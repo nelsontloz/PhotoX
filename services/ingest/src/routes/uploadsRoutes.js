@@ -525,7 +525,7 @@ module.exports = async function uploadsRoutes(app) {
           uploadedAt: new Date(media.created_at).toISOString()
         },
         {
-          jobId: `media.process:${media.id}`,
+          jobId: `media-process-${media.id}`,
           attempts: 3,
           backoff: {
             type: "exponential",
