@@ -4,7 +4,8 @@ const { ApiError, mapJwtError } = require("../errors");
 const {
   createAccessToken,
   createRefreshToken,
-  hashToken,
+  hashRefreshToken,
+  verifyStoredRefreshTokenHash,
   verifyRefreshToken,
   verifyRefreshTokenIgnoringExpiration
 } = require("../auth/tokens");
@@ -244,10 +245,11 @@ module.exports = async function authRoutes(app) {
       expiresInDays: app.config.refreshTokenTtlDays
     });
 
+    const refreshTokenHash = await hashRefreshToken(refreshToken);
     await app.repos.sessions.createSession({
       id: sessionId,
       userId: userRow.id,
-      refreshTokenHash: hashToken(refreshToken),
+      refreshTokenHash,
       expiresAt: refreshExpiresAt
     });
 
@@ -307,7 +309,8 @@ module.exports = async function authRoutes(app) {
       throw new ApiError(401, "AUTH_TOKEN_EXPIRED", "Token has expired");
     }
 
-    if (session.refresh_token_hash !== hashToken(body.refreshToken)) {
+    const isTokenValid = await verifyStoredRefreshTokenHash(body.refreshToken, session.refresh_token_hash);
+    if (!isTokenValid) {
       throw new ApiError(401, "AUTH_TOKEN_INVALID", "Token is invalid");
     }
 
@@ -323,9 +326,10 @@ module.exports = async function authRoutes(app) {
       expiresInDays: app.config.refreshTokenTtlDays
     });
 
+    const newRefreshTokenHash = await hashRefreshToken(refreshToken);
     await app.repos.sessions.rotateSessionToken({
       id: session.id,
-      refreshTokenHash: hashToken(refreshToken),
+      refreshTokenHash: newRefreshTokenHash,
       expiresAt: refreshExpiresAt
     });
 

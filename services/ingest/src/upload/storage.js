@@ -55,8 +55,12 @@ async function assemblePartsToFile({ originalsRoot, parts, outputRelativePath })
   try {
     for (const part of parts) {
       const partAbsolutePath = path.join(originalsRoot, part.relative_part_path);
-      const payload = await fs.readFile(partAbsolutePath);
-      out.write(payload);
+      const input = fsSync.createReadStream(partAbsolutePath);
+      await new Promise((resolve, reject) => {
+        input.pipe(out, { end: false });
+        input.on("error", (err) => reject(err));
+        input.on("end", () => resolve());
+      });
     }
     out.end();
     await finished(out);
@@ -72,11 +76,10 @@ function checksumFileSha256(filePath) {
   return new Promise((resolve, reject) => {
     const hash = crypto.createHash("sha256");
     const stream = fsSync.createReadStream(filePath);
-    stream.on("data", (chunk) => hash.update(chunk));
+    stream.pipe(hash);
     stream.on("error", reject);
-    stream.on("end", () => {
-      resolve(hash.digest("hex"));
-    });
+    hash.on("finish", () => resolve(hash.digest("hex")));
+    hash.on("error", reject);
   });
 }
 

@@ -7,6 +7,16 @@ function parsePositiveInt(value, fallback) {
 }
 
 function loadConfig(overrides = {}) {
+  const uploadPartSizeBytes =
+    overrides.uploadPartSizeBytes || parsePositiveInt(process.env.UPLOAD_PART_SIZE_BYTES, 5 * 1024 * 1024);
+  const uploadBodyLimitBytes =
+    overrides.uploadBodyLimitBytes ||
+    parsePositiveInt(process.env.UPLOAD_BODY_LIMIT_BYTES, 8 * 1024 * 1024);
+
+  if (uploadBodyLimitBytes < uploadPartSizeBytes) {
+    throw new Error("UPLOAD_BODY_LIMIT_BYTES must be greater than or equal to UPLOAD_PART_SIZE_BYTES");
+  }
+
   return {
     port: overrides.port || parsePositiveInt(process.env.PORT, 3000),
     serviceName: overrides.serviceName || process.env.SERVICE_NAME || "ingest-service",
@@ -20,11 +30,8 @@ function loadConfig(overrides = {}) {
       overrides.uploadOriginalsPath || process.env.UPLOAD_ORIGINALS_PATH || "/data/photox/originals",
     uploadDerivedPath:
       overrides.uploadDerivedPath || process.env.UPLOAD_DERIVED_PATH || "/data/photox/derived",
-    uploadPartSizeBytes:
-      overrides.uploadPartSizeBytes || parsePositiveInt(process.env.UPLOAD_PART_SIZE_BYTES, 5 * 1024 * 1024),
-    uploadBodyLimitBytes:
-      overrides.uploadBodyLimitBytes ||
-      parsePositiveInt(process.env.UPLOAD_BODY_LIMIT_BYTES, 64 * 1024 * 1024),
+    uploadPartSizeBytes,
+    uploadBodyLimitBytes,
     uploadTtlSeconds:
       overrides.uploadTtlSeconds || parsePositiveInt(process.env.UPLOAD_TTL_SECONDS, 24 * 60 * 60),
     mediaProcessQueueName:
