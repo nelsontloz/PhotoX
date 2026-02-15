@@ -14,11 +14,11 @@ Note:
 - [ ] Documentation links are accessible from docs index.
 
 ## Phase P1 - Auth + Upload
-- [ ] Auth endpoints implemented and tested.
-- [ ] Upload init/part/complete/abort implemented and tested.
-- [ ] Upload complete enqueues processing jobs.
-- [ ] Relative media paths persisted.
-- [ ] Unit + integration gates pass.
+- [x] Auth endpoints implemented and tested.
+- [x] Upload init/part/complete/abort implemented and tested.
+- [x] Upload complete enqueues processing jobs.
+- [x] Relative media paths persisted.
+- [x] Unit + integration gates pass.
 
 ## Phase P2 - Timeline
 - [ ] Timeline endpoint with cursor pagination implemented.

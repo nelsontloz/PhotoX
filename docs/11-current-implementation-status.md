@@ -38,20 +38,23 @@ Notes:
 Planned/pending:
 - `PATCH /api/v1/me`
 
-### ingest-service - scaffold-only
+### ingest-service - implemented
 
 Implemented now:
-- `GET /health`
-- `GET /metrics`
-- `GET /api/v1/uploads/docs`
-- `GET /api/v1/uploads/openapi.json`
-
-Planned/pending:
 - `POST /api/v1/uploads/init`
 - `POST /api/v1/uploads/{uploadId}/part`
 - `POST /api/v1/uploads/{uploadId}/complete`
 - `POST /api/v1/uploads/{uploadId}/abort`
 - `GET /api/v1/uploads/{uploadId}`
+- `GET /health`
+- `GET /metrics`
+- `GET /api/v1/uploads/docs`
+- `GET /api/v1/uploads/openapi.json`
+
+Notes:
+- Uses raw `application/octet-stream` chunk upload with `partNumber` query param.
+- Persists media relative path and enqueues `media.process` BullMQ job on complete.
+- Supports `Idempotency-Key` on `init` and `complete`.
 
 ### library-service - scaffold-only
 

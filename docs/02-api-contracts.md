@@ -124,6 +124,7 @@ Planned/pending:
 ## 3) Ingest Service
 
 ### Endpoints
+Implemented now:
 - `POST /uploads/init`
 - `POST /uploads/{uploadId}/part`
 - `POST /uploads/{uploadId}/complete`
@@ -131,6 +132,11 @@ Planned/pending:
 - `GET /uploads/{uploadId}`
 - `GET /uploads/docs`
 - `GET /uploads/openapi.json`
+
+### Ingest OpenAPI Documentation Requirements
+- Implemented write endpoints include request examples and response examples in OpenAPI.
+- Authenticated ingest endpoints include `bearerAuth` security metadata in OpenAPI.
+- `init` and `complete` support `Idempotency-Key` for safe retries.
 
 ### Init Request
 ```json
@@ -145,16 +151,46 @@ Planned/pending:
 ### Init Response
 ```json
 {
-  "uploadId": "upl_abc",
+  "uploadId": "30e71f52-775f-4a2f-a25d-aed8a48ac5d8",
   "partSize": 5242880,
-  "expiresAt": "2026-02-15T18:00:00Z"
+  "expiresAt": "2026-02-15T18:00:00.000Z"
+}
+```
+
+### Part Upload Request
+- Method: `POST /uploads/{uploadId}/part?partNumber=1`
+- Headers:
+  - `Authorization: Bearer <access-token>`
+  - `Content-Type: application/octet-stream`
+- Body: raw chunk bytes
+
+### Part Upload Response
+```json
+{
+  "uploadId": "30e71f52-775f-4a2f-a25d-aed8a48ac5d8",
+  "partNumber": 1,
+  "bytesStored": 5242880,
+  "checksumSha256": "de4ecf4e0d0f157c8142fdb7f0e6f9f607c37d9b233830f70f7f83b4f04f9b69"
+}
+```
+
+### Upload Status Response
+```json
+{
+  "uploadId": "30e71f52-775f-4a2f-a25d-aed8a48ac5d8",
+  "status": "uploading",
+  "fileSize": 3811212,
+  "partSize": 5242880,
+  "uploadedBytes": 1048576,
+  "uploadedParts": [1],
+  "expiresAt": "2026-02-15T18:00:00.000Z"
 }
 ```
 
 ### Complete Response
 ```json
 {
-  "mediaId": "med_789",
+  "mediaId": "2f4b3f2f-48f7-4f18-b3cb-c08de94461e2",
   "status": "processing"
 }
 ```
