@@ -46,6 +46,7 @@ Target tasks:
 - `E1-S1`: compose baseline and env wiring
 - `E1-S2`: gateway routing baseline
 - `E1-S3`: storage adapter and path policy
+- `E1-S4`: Swagger/OpenAPI baseline for every backend service
 - `E2-S1`: register/login/refresh
 - `E2-S2`: session management
 - `E3-S1`: chunked upload lifecycle
@@ -58,6 +59,7 @@ Target tasks:
 Required outcomes:
 - users can authenticate, upload large photos, and see timeline entries with derivatives.
 - upload completion emits BullMQ processing jobs.
+- every backend service exposes `/api/v1/<domain>/docs` and `/api/v1/<domain>/openapi.json`.
 
 Phase exit gates:
 - all P0/P1/P2 task reports complete.

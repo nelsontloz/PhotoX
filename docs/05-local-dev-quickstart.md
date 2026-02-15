@@ -91,6 +91,15 @@ docker compose --env-file .env down
 - Prometheus: `http://localhost:9090`
 - Service health (container-local): `http://127.0.0.1:<port>/health`
 
+Backend API docs through gateway:
+- Auth: `http://localhost/api/v1/auth/docs`
+- Ingest: `http://localhost/api/v1/uploads/docs`
+- Library: `http://localhost/api/v1/library/docs`
+- Album/Sharing: `http://localhost/api/v1/albums/docs`
+- Search: `http://localhost/api/v1/search/docs`
+- Worker: `http://localhost/api/v1/worker/docs`
+- ML: `http://localhost/api/v1/ml/docs`
+
 ---
 
 ## 6) Quick Health Verification

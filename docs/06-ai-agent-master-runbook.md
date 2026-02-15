@@ -34,6 +34,7 @@ Non-negotiable constraints:
 - Do not store absolute filesystem paths in database records.
 - Do not break `/api/v1` contract envelope without doc + test updates.
 - Do not ship endpoint changes without matching integration tests.
+- Every backend service must expose both Swagger UI and OpenAPI JSON endpoints.
 - Do not close tasks without artifact report defined in this runbook.
 
 ---

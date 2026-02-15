@@ -52,11 +52,12 @@ Required tests:
 Blocked by: E1-S1
 
 Acceptance criteria:
-- each service exposes `/openapi.json`.
+- each backend service exposes service-scoped OpenAPI JSON.
+- each backend service exposes service-scoped Swagger UI.
 - contract docs synchronized with route implementation.
 
 Required tests:
-- Integration: schema endpoint availability.
+- Integration: OpenAPI and Swagger endpoint availability.
 
 ### E1-S5 Observability Baseline
 Blocked by: E1-S1

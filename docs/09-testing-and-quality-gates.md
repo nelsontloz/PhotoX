@@ -29,10 +29,12 @@ Gate G3 - Integration Tests
 Gate G4 - Contract and Docs
 - API contract updates reflected in docs and OpenAPI.
 - Queue payload changes reflected in docs and tests.
+- Backend services expose Swagger UI and OpenAPI JSON at versioned service routes.
 
 Gate G5 - Runtime Health
 - Service exposes `/health` and `/metrics`.
 - Compose stack starts with service healthy state.
+- Swagger UI and OpenAPI endpoints return HTTP 200.
 
 Gate G6 - Verification Artifact
 - Task report completed with commands run and results.
