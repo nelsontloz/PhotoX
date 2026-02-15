@@ -124,7 +124,7 @@ services:
     environment:
       <<: *common-env
       PORT: 3000
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost/api/v1}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
     networks:
       - edge
       - internal

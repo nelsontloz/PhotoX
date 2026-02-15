@@ -14,34 +14,41 @@ Note:
 - [ ] Documentation links are accessible from docs index.
 
 ## Phase P1 - Auth + Upload
-- [ ] Auth endpoints implemented and tested.
-- [ ] Upload init/part/complete/abort implemented and tested.
-- [ ] Upload complete enqueues processing jobs.
-- [ ] Relative media paths persisted.
-- [ ] Unit + integration gates pass.
+- [x] Auth endpoints implemented and tested.
+- [x] Upload init/part/complete/abort implemented and tested.
+- [x] Upload complete enqueues processing jobs.
+- [x] Relative media paths persisted.
+- [x] Unit + integration gates pass.
 
-## Phase P2 - Timeline
+## Phase P2 - Web Auth + Upload UI
+- [x] Register UI flow implemented (`/register`).
+- [x] Login UI flow implemented (`/login`).
+- [x] Authenticated upload flow implemented (`/upload`).
+- [x] Upload progress and API error feedback implemented.
+- [x] Web unit + integration gates pass.
+
+## Phase P3 - Timeline
 - [ ] Timeline endpoint with cursor pagination implemented.
 - [ ] Derivatives generated and linked in responses.
 - [ ] Flags and media detail APIs implemented.
 - [ ] Soft delete and restore flow implemented.
 - [ ] Unit + integration gates pass.
 
-## Phase P3 - Albums and Sharing
+## Phase P4 - Albums and Sharing
 - [ ] Album CRUD complete.
 - [ ] Public link sharing and revoke complete.
 - [ ] Invite-only sharing complete.
 - [ ] Family library flow complete.
 - [ ] ACL checks verified by integration tests.
 
-## Phase P4 - Search
+## Phase P5 - Search
 - [ ] pgvector migration applied.
 - [ ] Metadata + text search implemented.
 - [ ] Semantic endpoint implemented.
 - [ ] Hybrid ranking behavior validated.
 - [ ] ACL filtering validated.
 
-## Phase P5 - Faces, Memories, Hardening
+## Phase P6 - Faces, Memories, Hardening
 - [ ] Face detection/embed/cluster API integration complete.
 - [ ] People management APIs complete (rename/merge/split).
 - [ ] Memories jobs and UI cards complete.
