@@ -24,7 +24,7 @@ function loadConfig(overrides = {}) {
       overrides.uploadPartSizeBytes || parsePositiveInt(process.env.UPLOAD_PART_SIZE_BYTES, 5 * 1024 * 1024),
     uploadBodyLimitBytes:
       overrides.uploadBodyLimitBytes ||
-      parsePositiveInt(process.env.UPLOAD_BODY_LIMIT_BYTES, 64 * 1024 * 1024),
+      parsePositiveInt(process.env.UPLOAD_BODY_LIMIT_BYTES, 8 * 1024 * 1024),
     uploadTtlSeconds:
       overrides.uploadTtlSeconds || parsePositiveInt(process.env.UPLOAD_TTL_SECONDS, 24 * 60 * 60),
     mediaProcessQueueName:

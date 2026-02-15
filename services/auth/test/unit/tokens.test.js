@@ -1,7 +1,8 @@
 const {
   createAccessToken,
   createRefreshToken,
-  hashToken,
+  hashRefreshToken,
+  verifyRefreshTokenHash,
   verifyAccessToken,
   verifyRefreshToken
 } = require("../../src/auth/tokens");
@@ -33,12 +34,13 @@ describe("token utilities", () => {
     expect(payload.type).toBe("refresh");
   });
 
-  it("hashToken is deterministic", () => {
-    const one = hashToken("token-value");
-    const two = hashToken("token-value");
-    const three = hashToken("another-token");
+  it("verifies refresh token hash", async () => {
+    const token = "token-value";
+    const hash = await hashRefreshToken(token);
+    const valid = await verifyRefreshTokenHash(token, hash);
+    const invalid = await verifyRefreshTokenHash("wrong-token", hash);
 
-    expect(one).toBe(two);
-    expect(one).not.toBe(three);
+    expect(valid).toBe(true);
+    expect(invalid).toBe(false);
   });
 });
