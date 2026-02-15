@@ -1,6 +1,6 @@
 import { clearSession, readSession, writeSession } from "./session";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost/api/v1";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "/api/v1";
 
 export class ApiClientError extends Error {
   constructor(status, code, message, details = {}) {
