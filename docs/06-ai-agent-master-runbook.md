@@ -7,7 +7,7 @@ This runbook defines how any AI coding agent should execute the PhotoX implement
 - Audience: model-agnostic coding agents and human reviewers.
 - Runtime baseline: Docker Engine + Docker Compose.
 - Product scope: personal-use, web-first, photos-first.
-- Primary objective under tradeoffs: upload + timeline first.
+- Primary objective under tradeoffs: upload + web auth/upload UI first, timeline next.
 - Quality posture: strict gates, unit + integration tests mandatory.
 
 Use this runbook together with:
@@ -90,7 +90,16 @@ Exit criteria:
 - Upload of large image (>25 MB) succeeds via chunking.
 - Upload completion generates processing job and metadata stub.
 
-### Phase P2 - Timeline Core
+### Phase P2 - Web Auth + Upload UI
+- Implement web register and login screens.
+- Implement token/session handling for authenticated UI requests.
+- Implement web upload flow using ingest init/part/complete endpoints.
+
+Exit criteria:
+- User can register and login from web UI.
+- Authenticated user can upload a photo from `/upload` with progress and actionable errors.
+
+### Phase P3 - Timeline Core
 - Implement timeline read model and filters.
 - Generate and serve derivatives for timeline cards.
 
@@ -98,21 +107,21 @@ Exit criteria:
 - Timeline query pagination stable.
 - New upload appears in timeline in <= 120 seconds.
 
-### Phase P3 - Albums and Sharing
+### Phase P4 - Albums and Sharing
 - Implement album CRUD and item management.
 - Implement public links, invite-only, family sharing ACL flows.
 
 Exit criteria:
 - Shared access permissions enforced.
 
-### Phase P4 - Search and Semantic Retrieval
+### Phase P5 - Search and Semantic Retrieval
 - Implement metadata and text search.
 - Add pgvector semantic retrieval and hybrid ranking.
 
 Exit criteria:
 - Search endpoint returns relevant results for text and semantic prompts.
 
-### Phase P5 - Faces, Memories, and Hardening
+### Phase P6 - Faces, Memories, and Hardening
 - Implement face detection and clustering workflows.
 - Implement memories jobs and UI cards.
 - Complete backup/restore scripts and reliability checks.

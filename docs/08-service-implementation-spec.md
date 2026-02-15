@@ -262,11 +262,12 @@ UI requirements:
 ## 4) Implementation Order
 
 1. Auth + upload skeleton.
-2. Metadata + derivatives + timeline.
-3. Album and sharing ACL.
-4. Search + pgvector ranking.
-5. Faces + memories.
-6. Operational hardening.
+2. Web auth + upload UI (`/register`, `/login`, `/upload`).
+3. Metadata + derivatives + timeline.
+4. Album and sharing ACL.
+5. Search + pgvector ranking.
+6. Faces + memories.
+7. Operational hardening.
 
 ---
 

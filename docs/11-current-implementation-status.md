@@ -18,6 +18,18 @@ Source of truth used for this snapshot:
 
 ---
 
+## Phase Plan (Current)
+
+- `P0`: environment baseline
+- `P1`: auth + upload backend skeleton (implemented)
+- `P2`: web auth + upload UI (`/register`, `/login`, `/upload`) (planned)
+- `P3`: timeline core (planned)
+- `P4`: albums and sharing (planned)
+- `P5`: search and semantic retrieval (planned)
+- `P6`: faces, memories, and hardening (planned)
+
+---
+
 ## Service Snapshot
 
 ### auth-service - implemented
@@ -128,7 +140,8 @@ Implemented now:
 - `GET /health`
 
 Planned/pending:
-- main app routes (`/upload`, `/albums`, `/search`, `/people`, `/memories`) and feature UIs
+- `P2` target routes: `/register`, `/login`, `/upload`
+- after P2: `/albums`, `/search`, `/people`, `/memories` and timeline feature UIs
 
 ---
 

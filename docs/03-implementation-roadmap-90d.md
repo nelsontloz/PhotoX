@@ -9,7 +9,7 @@
 - Personal-use deployment using Docker Compose.
 
 ### Priority Rule
-- If tradeoffs are required, prioritize upload + timeline functionality first.
+- If tradeoffs are required, prioritize upload + web auth/upload UI first, then timeline.
 
 ### Linked Execution Docs
 - Master execution protocol: `docs/06-ai-agent-master-runbook.md`
@@ -37,10 +37,10 @@
 
 ## 3) 90-Day Delivery Plan with Task IDs
 
-## Days 1-30 (Phase P0/P1/P2): Foundation, Upload, Timeline
+## Days 1-30 (Phase P0/P1/P2): Foundation, Upload Backend, Web Auth/Upload UI
 
 Primary objective:
-- deliver reliable upload and timeline path with strict quality gates.
+- deliver reliable upload backend and first usable web UX (register/login/upload) with strict quality gates.
 
 Target tasks:
 - `E1-S1`: compose baseline and env wiring
@@ -53,11 +53,11 @@ Target tasks:
 - `E3-S2`: checksum and dedupe pre-check
 - `E3-S3`: metadata extraction job
 - `E3-S4`: derivative generation job
-- `E4-S1`: timeline query API
-- `E4-S2`: media detail API
+- `P2-UI-S1` (proposed): web register/login flows
+- `P2-UI-S2` (proposed): authenticated upload page with chunked upload progress
 
 Required outcomes:
-- users can authenticate, upload large photos, and see timeline entries with derivatives.
+- users can register/login via web UI and upload large photos via web upload flow.
 - upload completion emits BullMQ processing jobs.
 - every backend service exposes `/api/v1/<domain>/docs` and `/api/v1/<domain>/openapi.json`.
 
@@ -65,29 +65,31 @@ Phase exit gates:
 - all P0/P1/P2 task reports complete.
 - unit and integration tests pass for touched services.
 
-## Days 31-60 (Phase P3/P4): Albums, Sharing, Search
+## Days 31-60 (Phase P3/P4): Timeline, Albums, Sharing
 
 Target tasks:
+- `E4-S1`: timeline query API
+- `E4-S2`: media detail API
 - `E5-S1`: album CRUD
 - `E5-S2`: public links
 - `E5-S3`: invite sharing
 - `E5-S4`: family library
+
+Required outcomes:
+- timeline and media detail APIs are stable and derivative-backed.
+- sharing model works with ACL enforcement.
+
+Phase exit gates:
+- timeline API pagination and consistency checks pass.
+- ACL integration tests pass.
+
+## Days 61-90 (Phase P5/P6): Search, Faces, Memories, Hardening
+
+Target tasks:
 - `E6-S1`: metadata indexing
 - `E6-S2`: keyword/faceted search
 - `E6-S3`: semantic search
 - `E6-S4`: pgvector setup
-
-Required outcomes:
-- sharing model works with ACL enforcement.
-- search supports metadata + semantic retrieval.
-
-Phase exit gates:
-- ACL integration tests pass.
-- search latency remains within defined target envelope.
-
-## Days 61-90 (Phase P5): Faces, Memories, Hardening
-
-Target tasks:
 - `E7-S1`: face detection + embeddings
 - `E7-S2`: clustering and person pages
 - `E7-S3`: merge/split controls
@@ -100,6 +102,7 @@ Target tasks:
 - `E9-S4`: observability hardening
 
 Required outcomes:
+- search supports metadata + semantic retrieval.
 - people and memories experiences are functional.
 - backup and restore workflows verified.
 
