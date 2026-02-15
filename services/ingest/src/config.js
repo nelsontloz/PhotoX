@@ -22,6 +22,9 @@ function loadConfig(overrides = {}) {
       overrides.uploadDerivedPath || process.env.UPLOAD_DERIVED_PATH || "/data/photox/derived",
     uploadPartSizeBytes:
       overrides.uploadPartSizeBytes || parsePositiveInt(process.env.UPLOAD_PART_SIZE_BYTES, 5 * 1024 * 1024),
+    uploadBodyLimitBytes:
+      overrides.uploadBodyLimitBytes ||
+      parsePositiveInt(process.env.UPLOAD_BODY_LIMIT_BYTES, 64 * 1024 * 1024),
     uploadTtlSeconds:
       overrides.uploadTtlSeconds || parsePositiveInt(process.env.UPLOAD_TTL_SECONDS, 24 * 60 * 60),
     mediaProcessQueueName:

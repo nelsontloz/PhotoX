@@ -45,7 +45,7 @@ describe("upload init integration", () => {
       databaseUrl: TEST_DATABASE_URL,
       jwtAccessSecret: accessSecret,
       serviceName: "ingest-service-test",
-      uploadPartSizeBytes: 1024 * 1024,
+      uploadPartSizeBytes: 5 * 1024 * 1024,
       uploadOriginalsPath: testUploadsRoot,
       mediaProcessQueue: queueStub
     });
@@ -89,7 +89,7 @@ describe("upload init integration", () => {
     expect(response.statusCode).toBe(201);
     const body = jsonBody(response);
     expect(body.uploadId).toBeTruthy();
-    expect(body.partSize).toBe(1024 * 1024);
+    expect(body.partSize).toBe(5 * 1024 * 1024);
     expect(body.expiresAt).toBeTruthy();
   });
 
@@ -332,5 +332,129 @@ describe("upload init integration", () => {
     });
     expect(status.statusCode).toBe(200);
     expect(jsonBody(status).status).toBe("aborted");
+  });
+
+  it("replays complete response for same idempotency key", async () => {
+    const accessToken = createAccessToken({
+      userId: "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
+      email: "user@example.com",
+      secret: accessSecret
+    });
+
+    const chunk = Buffer.from("idempotent complete", "utf8");
+    const fileChecksum = crypto.createHash("sha256").update(chunk).digest("hex");
+
+    const init = await app.inject({
+      method: "POST",
+      url: "/api/v1/uploads/init",
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      },
+      payload: {
+        fileName: "idem-complete.jpg",
+        contentType: "image/jpeg",
+        fileSize: chunk.length,
+        checksumSha256: fileChecksum
+      }
+    });
+    const uploadId = jsonBody(init).uploadId;
+
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/uploads/${uploadId}/part?partNumber=1`,
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "content-type": "application/octet-stream"
+      },
+      payload: chunk
+    });
+
+    const first = await app.inject({
+      method: "POST",
+      url: `/api/v1/uploads/${uploadId}/complete`,
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "idempotency-key": "idem-complete-replay-1"
+      },
+      payload: {
+        checksumSha256: fileChecksum
+      }
+    });
+
+    const second = await app.inject({
+      method: "POST",
+      url: `/api/v1/uploads/${uploadId}/complete`,
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "idempotency-key": "idem-complete-replay-1"
+      },
+      payload: {
+        checksumSha256: fileChecksum
+      }
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect(jsonBody(first)).toEqual(jsonBody(second));
+  });
+
+  it("supports chunked upload for files larger than 25MB", async () => {
+    const accessToken = createAccessToken({
+      userId: "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
+      email: "user@example.com",
+      secret: accessSecret
+    });
+
+    const totalBytes = 26 * 1024 * 1024;
+    const fullFile = Buffer.alloc(totalBytes, "a");
+    const fileChecksum = crypto.createHash("sha256").update(fullFile).digest("hex");
+    const partSize = 5 * 1024 * 1024;
+
+    const init = await app.inject({
+      method: "POST",
+      url: "/api/v1/uploads/init",
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      },
+      payload: {
+        fileName: "large-upload.jpg",
+        contentType: "image/jpeg",
+        fileSize: totalBytes,
+        checksumSha256: fileChecksum
+      }
+    });
+
+    expect(init.statusCode).toBe(201);
+    const uploadId = jsonBody(init).uploadId;
+
+    let partNumber = 1;
+    for (let offset = 0; offset < totalBytes; offset += partSize) {
+      const payload = fullFile.subarray(offset, Math.min(offset + partSize, totalBytes));
+      const partResponse = await app.inject({
+        method: "POST",
+        url: `/api/v1/uploads/${uploadId}/part?partNumber=${partNumber}`,
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          "content-type": "application/octet-stream"
+        },
+        payload
+      });
+      expect(partResponse.statusCode).toBe(200);
+      partNumber += 1;
+    }
+
+    const complete = await app.inject({
+      method: "POST",
+      url: `/api/v1/uploads/${uploadId}/complete`,
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      },
+      payload: {
+        checksumSha256: fileChecksum
+      }
+    });
+
+    expect(complete.statusCode).toBe(200);
+    expect(jsonBody(complete).status).toBe("processing");
   });
 });

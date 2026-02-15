@@ -27,8 +27,10 @@ function redisConnectionFromUrl(redisUrl) {
 }
 
 function buildApp(overrides = {}) {
+  const config = loadConfig(overrides);
   const app = Fastify({
     logger: true,
+    bodyLimit: config.uploadBodyLimitBytes,
     ajv: {
       plugins: [
         (ajv) => {
@@ -37,7 +39,6 @@ function buildApp(overrides = {}) {
       ]
     }
   });
-  const config = loadConfig(overrides);
   const db = overrides.db || createPool(config.databaseUrl);
   const queue =
     overrides.mediaProcessQueue ||
@@ -123,6 +124,25 @@ function buildApp(overrides = {}) {
   app.setErrorHandler((err, request, reply) => {
     if (err instanceof ApiError) {
       reply.code(err.statusCode).send(toErrorBody(err, request.id));
+      return;
+    }
+
+    if (err && err.code === "FST_ERR_CTP_BODY_TOO_LARGE") {
+      reply
+        .code(413)
+        .send(toErrorBody(new ApiError(413, "PAYLOAD_TOO_LARGE", "Request body is too large"), request.id));
+      return;
+    }
+
+    if (err && err.validation) {
+      reply
+        .code(400)
+        .send(
+          toErrorBody(
+            new ApiError(400, "VALIDATION_ERROR", "Request validation failed", { issues: err.validation }),
+            request.id
+          )
+        );
       return;
     }
 
