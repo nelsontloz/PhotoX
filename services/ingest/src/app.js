@@ -5,15 +5,31 @@ const swaggerUi = require("@fastify/swagger-ui");
 const { loadConfig } = require("./config");
 const { createPool, runMigrations } = require("./db");
 const { ApiError, toErrorBody } = require("./errors");
+const { buildUploadSessionsRepo } = require("./repos/uploadSessionsRepo");
+const { buildIdempotencyRepo } = require("./repos/idempotencyRepo");
 const openapiRoute = require("./routes/openapiRoute");
+const uploadsRoutes = require("./routes/uploadsRoutes");
 
 function buildApp(overrides = {}) {
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: true,
+    ajv: {
+      plugins: [
+        (ajv) => {
+          ajv.addKeyword("example");
+        }
+      ]
+    }
+  });
   const config = loadConfig(overrides);
   const db = overrides.db || createPool(config.databaseUrl);
 
   app.decorate("config", config);
   app.decorate("db", db);
+  app.decorate("repos", {
+    uploadSessions: buildUploadSessionsRepo(db),
+    idempotency: buildIdempotencyRepo(db)
+  });
 
   app.get("/health", async () => ({ status: "ok", service: config.serviceName }));
 
@@ -28,6 +44,21 @@ function buildApp(overrides = {}) {
         title: "PhotoX Ingest Service API",
         description: "Chunked upload lifecycle endpoints.",
         version: "1.0.0"
+      },
+      tags: [
+        {
+          name: "Uploads",
+          description: "Initialize and manage chunked uploads"
+        }
+      ],
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: "http",
+            scheme: "bearer",
+            bearerFormat: "JWT"
+          }
+        }
       }
     }
   });
@@ -37,6 +68,7 @@ function buildApp(overrides = {}) {
   });
 
   app.register(openapiRoute);
+  app.register(uploadsRoutes);
 
   app.addHook("onReady", async () => {
     await runMigrations(db);
