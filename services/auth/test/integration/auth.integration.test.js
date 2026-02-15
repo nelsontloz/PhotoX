@@ -1,4 +1,7 @@
+const crypto = require("node:crypto");
+
 const { buildApp } = require("../../src/app");
+const { createRefreshToken } = require("../../src/auth/tokens");
 
 const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ||
@@ -141,6 +144,50 @@ describe("auth integration", () => {
     expect(refreshBody.refreshToken).toBeTruthy();
     expect(refreshBody.accessToken).toBeTruthy();
     expect(refreshBody.refreshToken).not.toBe(loginBody.refreshToken);
+  });
+
+  it("accepts legacy sha256 refresh token hashes and migrates them on refresh", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "legacy-refresh@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const userResult = await app.db.query("SELECT id FROM users WHERE email = $1 LIMIT 1", [
+      "legacy-refresh@example.com"
+    ]);
+    const userId = userResult.rows[0].id;
+    const sessionId = crypto.randomUUID();
+    const { refreshToken, refreshExpiresAt } = createRefreshToken({
+      userId,
+      sessionId,
+      secret: "integration-refresh-secret",
+      expiresInDays: 1
+    });
+    const legacyHash = crypto.createHash("sha256").update(refreshToken).digest("hex");
+
+    await app.db.query(
+      "INSERT INTO sessions (id, user_id, refresh_token_hash, expires_at) VALUES ($1, $2, $3, $4)",
+      [sessionId, userId, legacyHash, refreshExpiresAt]
+    );
+
+    const refresh = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/refresh",
+      payload: {
+        refreshToken
+      }
+    });
+
+    expect(refresh.statusCode).toBe(200);
+    const updatedSession = await app.db.query("SELECT refresh_token_hash FROM sessions WHERE id = $1", [
+      sessionId
+    ]);
+    expect(updatedSession.rows[0].refresh_token_hash).not.toBe(legacyHash);
+    expect(updatedSession.rows[0].refresh_token_hash.startsWith("$2")).toBe(true);
   });
 
   it("revokes session on logout and blocks refresh", async () => {

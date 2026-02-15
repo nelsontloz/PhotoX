@@ -11,6 +11,22 @@ async function verifyRefreshTokenHash(token, hash) {
   return bcrypt.compare(token, hash);
 }
 
+function hashLegacyRefreshToken(token) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+async function verifyStoredRefreshTokenHash(token, storedHash) {
+  if (typeof storedHash !== "string" || storedHash.length === 0) {
+    return false;
+  }
+
+  if (/^[a-f0-9]{64}$/i.test(storedHash)) {
+    return hashLegacyRefreshToken(token) === storedHash;
+  }
+
+  return verifyRefreshTokenHash(token, storedHash);
+}
+
 function createAccessToken({ user, secret, expiresInSeconds }) {
   return jwt.sign(
     {
@@ -61,7 +77,9 @@ module.exports = {
   createAccessToken,
   createRefreshToken,
   hashRefreshToken,
+  hashLegacyRefreshToken,
   verifyRefreshTokenHash,
+  verifyStoredRefreshTokenHash,
   verifyAccessToken,
   verifyRefreshToken,
   verifyRefreshTokenIgnoringExpiration

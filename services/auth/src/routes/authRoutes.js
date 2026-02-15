@@ -5,7 +5,7 @@ const {
   createAccessToken,
   createRefreshToken,
   hashRefreshToken,
-  verifyRefreshTokenHash,
+  verifyStoredRefreshTokenHash,
   verifyRefreshToken,
   verifyRefreshTokenIgnoringExpiration
 } = require("../auth/tokens");
@@ -309,7 +309,7 @@ module.exports = async function authRoutes(app) {
       throw new ApiError(401, "AUTH_TOKEN_EXPIRED", "Token has expired");
     }
 
-    const isTokenValid = await verifyRefreshTokenHash(body.refreshToken, session.refresh_token_hash);
+    const isTokenValid = await verifyStoredRefreshTokenHash(body.refreshToken, session.refresh_token_hash);
     if (!isTokenValid) {
       throw new ApiError(401, "AUTH_TOKEN_INVALID", "Token is invalid");
     }

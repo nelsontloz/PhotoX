@@ -2,7 +2,9 @@ const {
   createAccessToken,
   createRefreshToken,
   hashRefreshToken,
+  hashLegacyRefreshToken,
   verifyRefreshTokenHash,
+  verifyStoredRefreshTokenHash,
   verifyAccessToken,
   verifyRefreshToken
 } = require("../../src/auth/tokens");
@@ -39,6 +41,17 @@ describe("token utilities", () => {
     const hash = await hashRefreshToken(token);
     const valid = await verifyRefreshTokenHash(token, hash);
     const invalid = await verifyRefreshTokenHash("wrong-token", hash);
+
+    expect(valid).toBe(true);
+    expect(invalid).toBe(false);
+  });
+
+  it("accepts legacy sha256 refresh token hashes", async () => {
+    const token = "token-value";
+    const legacyHash = hashLegacyRefreshToken(token);
+
+    const valid = await verifyStoredRefreshTokenHash(token, legacyHash);
+    const invalid = await verifyStoredRefreshTokenHash("wrong-token", legacyHash);
 
     expect(valid).toBe(true);
     expect(invalid).toBe(false);
