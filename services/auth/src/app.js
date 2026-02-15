@@ -1,4 +1,6 @@
 const Fastify = require("fastify");
+const swagger = require("@fastify/swagger");
+const swaggerUi = require("@fastify/swagger-ui");
 
 const { loadConfig } = require("./config");
 const { createPool, runMigrations } = require("./db");
@@ -26,6 +28,19 @@ function buildApp(overrides = {}) {
   app.get("/metrics", async (_, reply) => {
     reply.type("text/plain; version=0.0.4");
     return `service_up{service="${config.serviceName}"} 1\n`;
+  });
+
+  app.register(swagger, {
+    openapi: {
+      info: {
+        title: "PhotoX Auth Service API",
+        version: "1.0.0"
+      }
+    }
+  });
+
+  app.register(swaggerUi, {
+    routePrefix: "/api/v1/auth/docs"
   });
 
   app.register(openapiRoute);

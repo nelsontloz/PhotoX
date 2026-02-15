@@ -225,4 +225,22 @@ describe("auth integration", () => {
     expect(me.statusCode).toBe(401);
     expect(jsonBody(me).error.code).toBe("AUTH_TOKEN_INVALID");
   });
+
+  it("exposes OpenAPI and Swagger UI endpoints", async () => {
+    const openapi = await app.inject({
+      method: "GET",
+      url: "/api/v1/auth/openapi.json"
+    });
+
+    expect(openapi.statusCode).toBe(200);
+    expect(jsonBody(openapi).openapi).toBeTruthy();
+
+    const docs = await app.inject({
+      method: "GET",
+      url: "/api/v1/auth/docs"
+    });
+
+    expect(docs.statusCode).toBe(200);
+    expect(docs.headers["content-type"]).toContain("text/html");
+  });
 });

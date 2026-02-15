@@ -8,6 +8,8 @@
     "test:integration": "vitest run --globals test/integration"
   },
   "dependencies": {
+    "@fastify/swagger": "^9.5.2",
+    "@fastify/swagger-ui": "^5.2.3",
     "bcryptjs": "^3.0.2",
     "fastify": "^5.2.0",
     "jsonwebtoken": "^9.0.2",
