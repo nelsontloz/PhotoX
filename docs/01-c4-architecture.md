@@ -126,6 +126,7 @@ PhotoX Personal Edition is a web-first, self-hosted photo platform designed as a
 - If ML/search degrades, uploads and timeline remain available.
 - All services expose `/health` endpoints and structured logs.
 - Queue-driven background jobs run through BullMQ on Redis.
+- All backend services expose Swagger UI and OpenAPI JSON under service-scoped `/api/v1/*` routes.
 
 ---
 

@@ -133,6 +133,9 @@ docker compose logs --no-color <service> --tail 120
 
 # Service health from container
 docker compose exec -T <service> wget -qO- http://127.0.0.1:<port>/health
+
+# Swagger/OpenAPI smoke checks
+python3 scripts/smoke_swagger_docs.py
 ```
 
 When package test scripts are available, run:
