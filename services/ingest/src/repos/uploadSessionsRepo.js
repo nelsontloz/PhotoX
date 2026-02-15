@@ -50,6 +50,38 @@ function buildUploadSessionsRepo(db) {
         [id, userId, status]
       );
       return result.rows[0] || null;
+    },
+
+    async markCompleted({ id, userId, mediaId, storageRelativePath }) {
+      const result = await db.query(
+        `
+          UPDATE upload_sessions
+          SET status = 'completed',
+              media_id = $3,
+              storage_relative_path = $4,
+              updated_at = NOW()
+          WHERE id = $1 AND user_id = $2
+          RETURNING id, user_id, file_name, content_type, file_size, checksum_sha256, part_size, status, expires_at,
+                    media_id, storage_relative_path, created_at, updated_at
+        `,
+        [id, userId, mediaId, storageRelativePath]
+      );
+      return result.rows[0] || null;
+    },
+
+    async markAborted(id, userId) {
+      const result = await db.query(
+        `
+          UPDATE upload_sessions
+          SET status = 'aborted',
+              updated_at = NOW()
+          WHERE id = $1 AND user_id = $2
+          RETURNING id, user_id, file_name, content_type, file_size, checksum_sha256, part_size, status, expires_at,
+                    media_id, storage_relative_path, created_at, updated_at
+        `,
+        [id, userId]
+      );
+      return result.rows[0] || null;
     }
   };
 }

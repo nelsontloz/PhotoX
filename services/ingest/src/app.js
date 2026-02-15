@@ -1,6 +1,7 @@
 const Fastify = require("fastify");
 const swagger = require("@fastify/swagger");
 const swaggerUi = require("@fastify/swagger-ui");
+const { Queue } = require("bullmq");
 
 const { loadConfig } = require("./config");
 const { createPool, runMigrations } = require("./db");
@@ -8,8 +9,22 @@ const { ApiError, toErrorBody } = require("./errors");
 const { buildUploadSessionsRepo } = require("./repos/uploadSessionsRepo");
 const { buildIdempotencyRepo } = require("./repos/idempotencyRepo");
 const { buildUploadPartsRepo } = require("./repos/uploadPartsRepo");
+const { buildMediaRepo } = require("./repos/mediaRepo");
 const openapiRoute = require("./routes/openapiRoute");
 const uploadsRoutes = require("./routes/uploadsRoutes");
+
+function redisConnectionFromUrl(redisUrl) {
+  const parsed = new URL(redisUrl);
+  const dbNumber = Number.parseInt(parsed.pathname.replace("/", ""), 10);
+
+  return {
+    host: parsed.hostname,
+    port: Number.parseInt(parsed.port || "6379", 10),
+    username: parsed.username || undefined,
+    password: parsed.password || undefined,
+    db: Number.isNaN(dbNumber) ? 0 : dbNumber
+  };
+}
 
 function buildApp(overrides = {}) {
   const app = Fastify({
@@ -24,12 +39,21 @@ function buildApp(overrides = {}) {
   });
   const config = loadConfig(overrides);
   const db = overrides.db || createPool(config.databaseUrl);
+  const queue =
+    overrides.mediaProcessQueue ||
+    new Queue(config.mediaProcessQueueName, {
+      connection: redisConnectionFromUrl(config.redisUrl)
+    });
 
   app.decorate("config", config);
   app.decorate("db", db);
+  app.decorate("queues", {
+    mediaProcess: queue
+  });
   app.decorate("repos", {
     uploadSessions: buildUploadSessionsRepo(db),
     uploadParts: buildUploadPartsRepo(db),
+    media: buildMediaRepo(db),
     idempotency: buildIdempotencyRepo(db)
   });
 
@@ -87,6 +111,10 @@ function buildApp(overrides = {}) {
   });
 
   app.addHook("onClose", async () => {
+    if (!overrides.mediaProcessQueue) {
+      await queue.close();
+    }
+
     if (!overrides.db) {
       await db.end();
     }

@@ -23,7 +23,9 @@ function loadConfig(overrides = {}) {
     uploadPartSizeBytes:
       overrides.uploadPartSizeBytes || parsePositiveInt(process.env.UPLOAD_PART_SIZE_BYTES, 5 * 1024 * 1024),
     uploadTtlSeconds:
-      overrides.uploadTtlSeconds || parsePositiveInt(process.env.UPLOAD_TTL_SECONDS, 24 * 60 * 60)
+      overrides.uploadTtlSeconds || parsePositiveInt(process.env.UPLOAD_TTL_SECONDS, 24 * 60 * 60),
+    mediaProcessQueueName:
+      overrides.mediaProcessQueueName || process.env.MEDIA_PROCESS_QUEUE_NAME || "media.process"
   };
 }
 

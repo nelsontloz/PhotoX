@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
@@ -32,6 +33,12 @@ describe("upload init integration", () => {
   let app;
   const accessSecret = "ingest-integration-access-secret";
   const testUploadsRoot = path.join(os.tmpdir(), "photox-ingest-tests");
+  const queuedJobs = [];
+  const queueStub = {
+    add: async (...args) => {
+      queuedJobs.push(args);
+    }
+  };
 
   beforeAll(async () => {
     app = buildApp({
@@ -39,7 +46,8 @@ describe("upload init integration", () => {
       jwtAccessSecret: accessSecret,
       serviceName: "ingest-service-test",
       uploadPartSizeBytes: 1024 * 1024,
-      uploadOriginalsPath: testUploadsRoot
+      uploadOriginalsPath: testUploadsRoot,
+      mediaProcessQueue: queueStub
     });
     await app.ready();
   });
@@ -48,6 +56,7 @@ describe("upload init integration", () => {
     await app.db.query("TRUNCATE TABLE upload_parts, idempotency_keys, media, upload_sessions RESTART IDENTITY CASCADE");
     await fs.rm(testUploadsRoot, { recursive: true, force: true });
     await fs.mkdir(testUploadsRoot, { recursive: true });
+    queuedJobs.length = 0;
   });
 
   afterAll(async () => {
@@ -181,7 +190,7 @@ describe("upload init integration", () => {
         fileName: "IMG_2000.jpg",
         contentType: "image/jpeg",
         fileSize: 12,
-        checksumSha256: "6ec9f5ea0b122f7602e1f9aa09c07f2862f0336276d47f1ec2ac75463f0f0fe2"
+        checksumSha256: "7509e5bda0c762d2bac7f90d758b5b2263fa01ccbc542ab5e3df163be08e6ca9"
       }
     });
 
@@ -213,5 +222,115 @@ describe("upload init integration", () => {
     expect(statusBody.status).toBe("uploading");
     expect(statusBody.uploadedBytes).toBe(chunk.length);
     expect(statusBody.uploadedParts).toEqual([1]);
+  });
+
+  it("completes upload, creates media record, and enqueues processing job", async () => {
+    const accessToken = createAccessToken({
+      userId: "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
+      email: "user@example.com",
+      secret: accessSecret
+    });
+
+    const chunk = Buffer.from("hello world!", "utf8");
+    const fileChecksum = crypto.createHash("sha256").update(chunk).digest("hex");
+
+    const init = await app.inject({
+      method: "POST",
+      url: "/api/v1/uploads/init",
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      },
+      payload: {
+        fileName: "IMG_3000.jpg",
+        contentType: "image/jpeg",
+        fileSize: chunk.length,
+        checksumSha256: fileChecksum
+      }
+    });
+
+    const uploadId = jsonBody(init).uploadId;
+
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/uploads/${uploadId}/part?partNumber=1`,
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "content-type": "application/octet-stream"
+      },
+      payload: chunk
+    });
+
+    const complete = await app.inject({
+      method: "POST",
+      url: `/api/v1/uploads/${uploadId}/complete`,
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "idempotency-key": "idem-complete-1"
+      },
+      payload: {
+        checksumSha256: fileChecksum
+      }
+    });
+
+    expect(complete.statusCode).toBe(200);
+    const completeBody = jsonBody(complete);
+    expect(completeBody.mediaId).toBeTruthy();
+    expect(completeBody.status).toBe("processing");
+    expect(queuedJobs.length).toBe(1);
+    expect(queuedJobs[0][0]).toBe("media.process");
+
+    const mediaRow = await app.db.query("SELECT relative_path, status FROM media WHERE id = $1", [
+      completeBody.mediaId
+    ]);
+    expect(mediaRow.rowCount).toBe(1);
+    expect(mediaRow.rows[0].relative_path.includes("0f3c9d30-1307-4c9e-a4d7-75e84606c28d/")).toBe(true);
+    expect(mediaRow.rows[0].status).toBe("processing");
+  });
+
+  it("aborts upload session and marks status as aborted", async () => {
+    const accessToken = createAccessToken({
+      userId: "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
+      email: "user@example.com",
+      secret: accessSecret
+    });
+
+    const init = await app.inject({
+      method: "POST",
+      url: "/api/v1/uploads/init",
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      },
+      payload: {
+        fileName: "IMG_abort.jpg",
+        contentType: "image/jpeg",
+        fileSize: 3,
+        checksumSha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+      }
+    });
+
+    const uploadId = jsonBody(init).uploadId;
+    const abort = await app.inject({
+      method: "POST",
+      url: `/api/v1/uploads/${uploadId}/abort`,
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      }
+    });
+
+    expect(abort.statusCode).toBe(200);
+    expect(jsonBody(abort)).toEqual({
+      uploadId,
+      status: "aborted"
+    });
+
+    const status = await app.inject({
+      method: "GET",
+      url: `/api/v1/uploads/${uploadId}`,
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      }
+    });
+    expect(status.statusCode).toBe(200);
+    expect(jsonBody(status).status).toBe("aborted");
   });
 });

@@ -20,6 +20,17 @@ const uploadPartQuerySchema = z.object({
     .refine((value) => value > 0)
 });
 
+const completeUploadSchema = z
+  .object({
+    checksumSha256: z
+      .string()
+      .trim()
+      .regex(/^[a-fA-F0-9]{64}$/)
+      .optional()
+  })
+  .strict()
+  .default({});
+
 function parseOrThrow(schema, payload) {
   const parsed = schema.safeParse(payload);
   if (!parsed.success) {
@@ -32,6 +43,7 @@ function parseOrThrow(schema, payload) {
 
 module.exports = {
   initUploadSchema,
+  completeUploadSchema,
   uploadPartQuerySchema,
   uploadPathParamsSchema,
   parseOrThrow
