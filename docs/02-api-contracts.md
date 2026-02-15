@@ -61,6 +61,31 @@
 }
 ```
 
+### Refresh Request
+```json
+{
+  "refreshToken": "jwt-refresh-token"
+}
+```
+
+### Logout Request
+```json
+{
+  "refreshToken": "jwt-refresh-token"
+}
+```
+
+### Me Response
+```json
+{
+  "user": {
+    "id": "usr_123",
+    "email": "user@example.com",
+    "name": null
+  }
+}
+```
+
 ---
 
 ## 3) Ingest Service

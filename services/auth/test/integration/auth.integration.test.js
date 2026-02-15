@@ -1,0 +1,228 @@
+const { buildApp } = require("../../src/app");
+
+const TEST_DATABASE_URL =
+  process.env.TEST_DATABASE_URL ||
+  process.env.DATABASE_URL ||
+  "postgresql://photox:photox-dev-password@127.0.0.1:5432/photox";
+
+function jsonBody(response) {
+  return JSON.parse(response.body);
+}
+
+describe("auth integration", () => {
+  let app;
+
+  beforeAll(async () => {
+    app = buildApp({
+      databaseUrl: TEST_DATABASE_URL,
+      jwtAccessSecret: "integration-access-secret",
+      jwtRefreshSecret: "integration-refresh-secret",
+      accessTokenTtlSeconds: 120,
+      refreshTokenTtlDays: 1,
+      bcryptRounds: 4,
+      serviceName: "auth-service-test"
+    });
+    await app.ready();
+  });
+
+  beforeEach(async () => {
+    await app.db.query("TRUNCATE TABLE sessions, users RESTART IDENTITY CASCADE");
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it("registers user and rejects duplicates", async () => {
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "user@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    expect(first.statusCode).toBe(201);
+    expect(jsonBody(first).user.email).toBe("user@example.com");
+
+    const duplicate = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "user@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    expect(duplicate.statusCode).toBe(409);
+    expect(jsonBody(duplicate).error.code).toBe("CONFLICT_EMAIL_EXISTS");
+  });
+
+  it("logs in and returns token pair", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "login@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: {
+        email: "login@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    expect(login.statusCode).toBe(200);
+    const body = jsonBody(login);
+    expect(body.accessToken).toBeTruthy();
+    expect(body.refreshToken).toBeTruthy();
+    expect(body.user.email).toBe("login@example.com");
+  });
+
+  it("rejects invalid password login", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "bad-login@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: {
+        email: "bad-login@example.com",
+        password: "wrong"
+      }
+    });
+
+    expect(login.statusCode).toBe(401);
+    expect(jsonBody(login).error.code).toBe("AUTH_INVALID_CREDENTIALS");
+  });
+
+  it("refreshes token and rotates refresh hash", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "refresh@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: {
+        email: "refresh@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const loginBody = jsonBody(login);
+    const refresh = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/refresh",
+      payload: {
+        refreshToken: loginBody.refreshToken
+      }
+    });
+
+    expect(refresh.statusCode).toBe(200);
+    const refreshBody = jsonBody(refresh);
+    expect(refreshBody.refreshToken).toBeTruthy();
+    expect(refreshBody.accessToken).toBeTruthy();
+    expect(refreshBody.refreshToken).not.toBe(loginBody.refreshToken);
+  });
+
+  it("revokes session on logout and blocks refresh", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "logout@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: {
+        email: "logout@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const tokenPair = jsonBody(login);
+    const logout = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/logout",
+      payload: {
+        refreshToken: tokenPair.refreshToken
+      }
+    });
+
+    expect(logout.statusCode).toBe(200);
+
+    const refreshAfterLogout = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/refresh",
+      payload: {
+        refreshToken: tokenPair.refreshToken
+      }
+    });
+
+    expect(refreshAfterLogout.statusCode).toBe(401);
+    expect(jsonBody(refreshAfterLogout).error.code).toBe("AUTH_SESSION_REVOKED");
+  });
+
+  it("returns current user on /me when access token is valid", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "me@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: {
+        email: "me@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const me = await app.inject({
+      method: "GET",
+      url: "/api/v1/me",
+      headers: {
+        authorization: `Bearer ${jsonBody(login).accessToken}`
+      }
+    });
+
+    expect(me.statusCode).toBe(200);
+    expect(jsonBody(me).user.email).toBe("me@example.com");
+  });
+
+  it("rejects /me without token", async () => {
+    const me = await app.inject({
+      method: "GET",
+      url: "/api/v1/me"
+    });
+
+    expect(me.statusCode).toBe(401);
+    expect(jsonBody(me).error.code).toBe("AUTH_TOKEN_INVALID");
+  });
+});
