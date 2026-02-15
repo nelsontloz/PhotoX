@@ -1,5 +1,9 @@
 # PhotoX Personal Edition - Execution Checklists and Handoffs
 
+Note:
+- This checklist document defines target completion criteria.
+- For the current as-built implementation snapshot, see `docs/11-current-implementation-status.md`.
+
 ## 1) Phase Checklists
 
 ## Phase P0 - Environment Baseline

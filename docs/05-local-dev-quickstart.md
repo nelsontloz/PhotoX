@@ -16,6 +16,7 @@
 - Prometheus config: `infra/prometheus/prometheus.yml`
 - Service scaffolds: `services/*`
 - Web scaffold: `apps/web`
+- Current implementation snapshot: `docs/11-current-implementation-status.md`
 
 ---
 

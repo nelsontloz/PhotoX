@@ -33,14 +33,18 @@
 ## 2) Auth Service
 
 ### Endpoints
+
+Implemented now:
 - `POST /auth/register`
 - `POST /auth/login`
 - `POST /auth/logout`
 - `POST /auth/refresh`
 - `GET /me`
-- `PATCH /me`
 - `GET /auth/docs`
 - `GET /auth/openapi.json`
+
+Planned/pending:
+- `PATCH /me`
 
 ### Auth OpenAPI Documentation Requirements
 - Every implemented auth write endpoint must publish request body examples in OpenAPI.
