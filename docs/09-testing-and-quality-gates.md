@@ -28,11 +28,15 @@ Gate G3 - Integration Tests
 
 Gate G4 - Contract and Docs
 - API contract updates reflected in docs and OpenAPI.
+- Implemented write endpoints include OpenAPI request examples and response examples.
+- Implemented endpoints include OpenAPI summary + description metadata.
 - Queue payload changes reflected in docs and tests.
+- Backend services expose Swagger UI and OpenAPI JSON at versioned service routes.
 
 Gate G5 - Runtime Health
 - Service exposes `/health` and `/metrics`.
 - Compose stack starts with service healthy state.
+- Swagger UI and OpenAPI endpoints return HTTP 200.
 
 Gate G6 - Verification Artifact
 - Task report completed with commands run and results.
@@ -131,6 +135,9 @@ docker compose logs --no-color <service> --tail 120
 
 # Service health from container
 docker compose exec -T <service> wget -qO- http://127.0.0.1:<port>/health
+
+# Swagger/OpenAPI smoke checks
+python3 scripts/smoke_swagger_docs.py
 ```
 
 When package test scripts are available, run:

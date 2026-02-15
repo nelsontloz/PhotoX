@@ -7,6 +7,7 @@
 - Content type: `application/json`
 - Idempotency for critical writes: `Idempotency-Key` header
 - Pagination: cursor-based (`cursor`, `nextCursor`, `limit`)
+- Backend API docs are mandatory at `/api/v1/<domain>/docs` and `/api/v1/<domain>/openapi.json`
 
 ### Implementation Stack Notes
 - TS services (`auth`, `ingest`, `library`, `album-sharing`, `search`) run on Fastify.
@@ -32,18 +33,38 @@
 ## 2) Auth Service
 
 ### Endpoints
+
+Implemented now:
 - `POST /auth/register`
 - `POST /auth/login`
 - `POST /auth/logout`
 - `POST /auth/refresh`
 - `GET /me`
+- `GET /auth/docs`
+- `GET /auth/openapi.json`
+
+Planned/pending:
 - `PATCH /me`
+
+### Auth OpenAPI Documentation Requirements
+- Every implemented auth write endpoint must publish request body examples in OpenAPI.
+- Each implemented auth endpoint must include summary + description in OpenAPI.
+- Authenticated endpoints must include `bearerAuth` security requirement in OpenAPI.
+
+### Sample Register Request
+```json
+{
+  "email": "user@example.com",
+  "password": "super-secret-password",
+  "name": "Alex Doe"
+}
+```
 
 ### Sample Login Request
 ```json
 {
   "email": "user@example.com",
-  "password": "secret"
+  "password": "super-secret-password"
 }
 ```
 
@@ -61,6 +82,43 @@
 }
 ```
 
+### Refresh Request
+```json
+{
+  "refreshToken": "jwt-refresh-token"
+}
+```
+
+### Logout Request
+```json
+{
+  "refreshToken": "jwt-refresh-token"
+}
+```
+
+### Sample Auth Error Response
+```json
+{
+  "error": {
+    "code": "AUTH_INVALID_CREDENTIALS",
+    "message": "Invalid email or password",
+    "details": {}
+  },
+  "requestId": "req-4xYdA1GspM9n"
+}
+```
+
+### Me Response
+```json
+{
+  "user": {
+    "id": "usr_123",
+    "email": "user@example.com",
+    "name": null
+  }
+}
+```
+
 ---
 
 ## 3) Ingest Service
@@ -71,6 +129,8 @@
 - `POST /uploads/{uploadId}/complete`
 - `POST /uploads/{uploadId}/abort`
 - `GET /uploads/{uploadId}`
+- `GET /uploads/docs`
+- `GET /uploads/openapi.json`
 
 ### Init Request
 ```json
@@ -109,6 +169,8 @@
 - `PATCH /media/{mediaId}`
 - `DELETE /media/{mediaId}` (soft delete)
 - `POST /media/{mediaId}/restore`
+- `GET /library/docs`
+- `GET /library/openapi.json`
 
 ### PATCH /media/{mediaId} Request
 ```json
@@ -151,6 +213,8 @@
 - `DELETE /albums/{albumId}`
 - `POST /albums/{albumId}/items`
 - `DELETE /albums/{albumId}/items/{mediaId}`
+- `GET /albums/docs`
+- `GET /albums/openapi.json`
 
 ### Sharing Endpoints
 - `POST /shares/links` (public link)
@@ -172,6 +236,8 @@
 - `GET /search?q=&cursor=&limit=&type=all|people|places|things`
 - `POST /search/semantic`
 - `POST /search/reindex/{mediaId}` (internal/admin)
+- `GET /search/docs`
+- `GET /search/openapi.json`
 
 ### Semantic Search Request
 ```json
@@ -216,6 +282,8 @@
 - `PATCH /people/{personId}` (rename/merge/split)
 - `GET /people/{personId}/media`
 - `POST /face/reprocess/{mediaId}` (internal/admin)
+- `GET /ml/docs`
+- `GET /ml/openapi.json`
 
 ---
 

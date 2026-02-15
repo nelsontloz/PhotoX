@@ -45,6 +45,7 @@ done_criteria:
 - Keep API paths under `/api/v1`.
 - Return standardized error envelope.
 - Update OpenAPI spec for every API surface change.
+- Ensure backend service exposes both Swagger UI and OpenAPI JSON routes.
 - Add unit and integration tests for all non-trivial logic.
 - Produce final artifact report defined in `docs/06-ai-agent-master-runbook.md`.
 

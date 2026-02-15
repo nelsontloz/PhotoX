@@ -34,7 +34,7 @@ services:
       - "${HTTPS_PORT:-443}:443"
       - "${TRAEFIK_DASHBOARD_PORT:-8080}:8080"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
     networks:
       - edge
       - internal
@@ -271,6 +271,11 @@ services:
     volumes:
       - ${PHOTOX_ORIGINALS_DIR:-/data/photox/originals}:/data/photox/originals
       - ${PHOTOX_DERIVED_DIR:-/data/photox/derived}:/data/photox/derived
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.worker.rule=Host(`${WEB_HOST:-localhost}`) && PathPrefix(`/api/v1/worker`)
+      - traefik.http.routers.worker.entrypoints=web
+      - traefik.http.services.worker.loadbalancer.server.port=3000
 
   ml-service:
     restart: unless-stopped
@@ -298,6 +303,11 @@ services:
     volumes:
       - ${PHOTOX_ORIGINALS_DIR:-/data/photox/originals}:/data/photox/originals
       - ml_model_cache:/models
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.ml.rule=Host(`${WEB_HOST:-localhost}`) && PathPrefix(`/api/v1/ml`)
+      - traefik.http.routers.ml.entrypoints=web
+      - traefik.http.services.ml.loadbalancer.server.port=8000
 
 networks:
   edge:

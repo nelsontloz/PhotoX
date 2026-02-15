@@ -1,7 +1,11 @@
 from fastapi import FastAPI, Response
 from prometheus_client import Counter, generate_latest, CONTENT_TYPE_LATEST
 
-app = FastAPI(title="photox-ml-service")
+app = FastAPI(
+    title="photox-ml-service",
+    docs_url="/api/v1/ml/docs",
+    openapi_url="/api/v1/ml/openapi.json",
+)
 request_counter = Counter("ml_requests_total", "Total ML requests")
 
 

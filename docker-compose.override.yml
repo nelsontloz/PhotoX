@@ -1,0 +1,11 @@
+services:
+  traefik:
+    command:
+      - --api.dashboard=${TRAEFIK_DASHBOARD:-false}
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --ping=true
+    volumes:
+      - ./infra/traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro

@@ -16,6 +16,7 @@
 - Prometheus config: `infra/prometheus/prometheus.yml`
 - Service scaffolds: `services/*`
 - Web scaffold: `apps/web`
+- Current implementation snapshot: `docs/11-current-implementation-status.md`
 
 ---
 
@@ -91,6 +92,24 @@ docker compose --env-file .env down
 - Prometheus: `http://localhost:9090`
 - Service health (container-local): `http://127.0.0.1:<port>/health`
 
+Backend API docs through gateway:
+- Auth: `http://localhost/api/v1/auth/docs`
+- Ingest: `http://localhost/api/v1/uploads/docs`
+- Library: `http://localhost/api/v1/library/docs`
+- Album/Sharing: `http://localhost/api/v1/albums/docs`
+- Search: `http://localhost/api/v1/search/docs`
+- Worker: `http://localhost/api/v1/worker/docs`
+- ML: `http://localhost/api/v1/ml/docs`
+
+OpenAPI JSON through gateway:
+- Auth: `http://localhost/api/v1/auth/openapi.json`
+- Ingest: `http://localhost/api/v1/uploads/openapi.json`
+- Library: `http://localhost/api/v1/library/openapi.json`
+- Album/Sharing: `http://localhost/api/v1/albums/openapi.json`
+- Search: `http://localhost/api/v1/search/openapi.json`
+- Worker: `http://localhost/api/v1/worker/openapi.json`
+- ML: `http://localhost/api/v1/ml/openapi.json`
+
 ---
 
 ## 6) Quick Health Verification
@@ -101,6 +120,9 @@ Example checks:
 docker compose exec -T web-app wget -qO- http://127.0.0.1:3000/health
 docker compose exec -T auth-service wget -qO- http://127.0.0.1:3000/health
 docker compose exec -T ml-service python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health').status)"
+
+# Swagger/OpenAPI smoke checks
+python3 scripts/smoke_swagger_docs.py
 ```
 
 ---

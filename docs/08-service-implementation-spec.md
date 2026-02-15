@@ -11,6 +11,11 @@ This document provides implementation-level specifications for each service so A
 ### API Rules
 - Base route prefix: `/api/v1`.
 - JSON responses for all endpoints.
+- Swagger UI and OpenAPI JSON are mandatory for every backend service.
+- Preferred route convention per service: `/api/v1/<domain>/docs` and `/api/v1/<domain>/openapi.json`.
+- Every implemented write endpoint (`POST`, `PATCH`, `PUT`) must include request body examples in OpenAPI.
+- Every implemented endpoint must include OpenAPI summary and description fields.
+- Endpoints requiring JWT auth must declare a bearer auth security requirement in OpenAPI.
 - Standard error envelope:
 
 ```json
@@ -65,6 +70,8 @@ Required endpoints:
 - `POST /auth/refresh`
 - `POST /auth/logout`
 - `GET /me`
+- `GET /auth/docs`
+- `GET /auth/openapi.json`
 
 Required tables (minimum):
 - `users(id, email, password_hash, created_at, updated_at)`
@@ -90,6 +97,8 @@ Required endpoints:
 - `POST /uploads/{uploadId}/complete`
 - `POST /uploads/{uploadId}/abort`
 - `GET /uploads/{uploadId}`
+- `GET /uploads/docs`
+- `GET /uploads/openapi.json`
 
 Required tables (minimum):
 - `upload_sessions(id, user_id, file_name, content_type, file_size, checksum_sha256, status, created_at, updated_at)`
@@ -115,6 +124,8 @@ Required endpoints:
 - `PATCH /media/{mediaId}`
 - `DELETE /media/{mediaId}`
 - `POST /media/{mediaId}/restore`
+- `GET /library/docs`
+- `GET /library/openapi.json`
 
 Required tables (minimum):
 - `media_metadata(media_id, taken_at, uploaded_at, exif_json, location_json, width, height)`
@@ -137,6 +148,8 @@ Required endpoints:
 - `POST/PATCH/DELETE /shares/links...`
 - `POST /shares/invites`
 - `POST /shares/family`
+- `GET /albums/docs`
+- `GET /albums/openapi.json`
 
 Required tables (minimum):
 - `albums(id, owner_id, title, created_at, updated_at)`
@@ -163,6 +176,8 @@ Required endpoints:
 - `GET /search`
 - `POST /search/semantic`
 - `POST /search/reindex/{mediaId}`
+- `GET /search/docs`
+- `GET /search/openapi.json`
 
 Schema requirements:
 - `CREATE EXTENSION IF NOT EXISTS vector;`
@@ -190,6 +205,10 @@ Required processors:
 - `media.face.index`
 - `media.cleanup`
 
+Required API docs endpoints:
+- `GET /worker/docs`
+- `GET /worker/openapi.json`
+
 Reliability requirements:
 - bounded retries with exponential backoff.
 - dead-letter for non-recoverable failures.
@@ -209,6 +228,8 @@ Required endpoints:
 - `POST /ml/faces/detect`
 - `POST /ml/faces/embed`
 - `POST /ml/faces/cluster`
+- `GET /ml/docs`
+- `GET /ml/openapi.json`
 
 Contract requirements:
 - deterministic response schema with version field.
