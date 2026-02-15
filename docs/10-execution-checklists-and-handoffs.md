@@ -21,11 +21,11 @@ Note:
 - [x] Unit + integration gates pass.
 
 ## Phase P2 - Web Auth + Upload UI
-- [ ] Register UI flow implemented (`/register`).
-- [ ] Login UI flow implemented (`/login`).
-- [ ] Authenticated upload flow implemented (`/upload`).
-- [ ] Upload progress and API error feedback implemented.
-- [ ] Web unit + integration gates pass.
+- [x] Register UI flow implemented (`/register`).
+- [x] Login UI flow implemented (`/login`).
+- [x] Authenticated upload flow implemented (`/upload`).
+- [x] Upload progress and API error feedback implemented.
+- [x] Web unit + integration gates pass.
 
 ## Phase P3 - Timeline
 - [ ] Timeline endpoint with cursor pagination implemented.

@@ -22,7 +22,7 @@ Source of truth used for this snapshot:
 
 - `P0`: environment baseline
 - `P1`: auth + upload backend skeleton (implemented)
-- `P2`: web auth + upload UI (`/register`, `/login`, `/upload`) (planned)
+- `P2`: web auth + upload UI (`/register`, `/login`, `/upload`) (implemented)
 - `P3`: timeline core (planned)
 - `P4`: albums and sharing (planned)
 - `P5`: search and semantic retrieval (planned)
@@ -133,14 +133,23 @@ Planned/pending:
 - `POST /api/v1/ml/faces/embed`
 - `POST /api/v1/ml/faces/cluster`
 
-### web-app - scaffold-only
+### web-app - implemented
 
 Implemented now:
-- `GET /` renders placeholder scaffold page
+- `GET /` renders P2 web shell with links to auth and upload flows
 - `GET /health`
+- `GET /register`
+- `GET /login`
+- `GET /upload`
+
+Notes:
+- Tailwind CSS baseline added for web UI styling.
+- TanStack Query is used for auth and upload interaction state.
+- Login persists access/refresh token pair in client session storage.
+- Upload page validates authenticated session with `/api/v1/me`, performs chunked upload
+  (`init` -> `part` -> `complete`), renders progress, and shows API envelope errors.
 
 Planned/pending:
-- `P2` target routes: `/register`, `/login`, `/upload`
 - after P2: `/albums`, `/search`, `/people`, `/memories` and timeline feature UIs
 
 ---
