@@ -42,11 +42,25 @@
 - `GET /auth/docs`
 - `GET /auth/openapi.json`
 
+### Auth OpenAPI Documentation Requirements
+- Every implemented auth write endpoint must publish request body examples in OpenAPI.
+- Each implemented auth endpoint must include summary + description in OpenAPI.
+- Authenticated endpoints must include `bearerAuth` security requirement in OpenAPI.
+
+### Sample Register Request
+```json
+{
+  "email": "user@example.com",
+  "password": "super-secret-password",
+  "name": "Alex Doe"
+}
+```
+
 ### Sample Login Request
 ```json
 {
   "email": "user@example.com",
-  "password": "secret"
+  "password": "super-secret-password"
 }
 ```
 
@@ -75,6 +89,18 @@
 ```json
 {
   "refreshToken": "jwt-refresh-token"
+}
+```
+
+### Sample Auth Error Response
+```json
+{
+  "error": {
+    "code": "AUTH_INVALID_CREDENTIALS",
+    "message": "Invalid email or password",
+    "details": {}
+  },
+  "requestId": "req-4xYdA1GspM9n"
 }
 ```
 

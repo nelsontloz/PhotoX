@@ -28,6 +28,8 @@ Gate G3 - Integration Tests
 
 Gate G4 - Contract and Docs
 - API contract updates reflected in docs and OpenAPI.
+- Implemented write endpoints include OpenAPI request examples and response examples.
+- Implemented endpoints include OpenAPI summary + description metadata.
 - Queue payload changes reflected in docs and tests.
 - Backend services expose Swagger UI and OpenAPI JSON at versioned service routes.
 

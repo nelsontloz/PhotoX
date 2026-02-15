@@ -233,7 +233,25 @@ describe("auth integration", () => {
     });
 
     expect(openapi.statusCode).toBe(200);
-    expect(jsonBody(openapi).openapi).toBeTruthy();
+    const spec = jsonBody(openapi);
+    expect(spec.openapi).toBeTruthy();
+
+    const registerPost = spec.paths["/api/v1/auth/register"].post;
+    expect(registerPost.summary).toBeTruthy();
+    expect(registerPost.description).toBeTruthy();
+    expect(registerPost.requestBody).toBeTruthy();
+    expect(registerPost.requestBody.content["application/json"].schema.example).toBeTruthy();
+
+    const loginPost = spec.paths["/api/v1/auth/login"].post;
+    expect(loginPost.requestBody.content["application/json"].schema.example).toBeTruthy();
+
+    const refreshPost = spec.paths["/api/v1/auth/refresh"].post;
+    expect(refreshPost.requestBody.content["application/json"].schema.example).toBeTruthy();
+
+    const meGet = spec.paths["/api/v1/me"].get;
+    expect(meGet.security).toBeTruthy();
+    expect(meGet.security[0].bearerAuth).toEqual([]);
+    expect(meGet.responses["200"].content["application/json"].schema.example).toBeTruthy();
 
     const docs = await app.inject({
       method: "GET",

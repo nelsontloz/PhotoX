@@ -13,6 +13,9 @@ This document provides implementation-level specifications for each service so A
 - JSON responses for all endpoints.
 - Swagger UI and OpenAPI JSON are mandatory for every backend service.
 - Preferred route convention per service: `/api/v1/<domain>/docs` and `/api/v1/<domain>/openapi.json`.
+- Every implemented write endpoint (`POST`, `PATCH`, `PUT`) must include request body examples in OpenAPI.
+- Every implemented endpoint must include OpenAPI summary and description fields.
+- Endpoints requiring JWT auth must declare a bearer auth security requirement in OpenAPI.
 - Standard error envelope:
 
 ```json

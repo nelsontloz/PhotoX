@@ -25,8 +25,163 @@ function buildAuthPayload({ accessToken, refreshToken, accessTokenTtlSeconds, us
   };
 }
 
+const publicUserSchema = {
+  type: "object",
+  required: ["id", "email", "name"],
+  properties: {
+    id: { type: "string", format: "uuid" },
+    email: { type: "string", format: "email" },
+    name: {
+      anyOf: [{ type: "string", maxLength: 80 }, { type: "null" }]
+    }
+  },
+  additionalProperties: false
+};
+
+const registerBodySchema = {
+  type: "object",
+  required: ["email", "password"],
+  properties: {
+    email: { type: "string", format: "email" },
+    password: { type: "string", minLength: 8 },
+    name: { type: "string", minLength: 1, maxLength: 80 }
+  },
+  additionalProperties: false,
+  example: {
+    email: "user@example.com",
+    password: "super-secret-password",
+    name: "Alex Doe"
+  }
+};
+
+const loginBodySchema = {
+  type: "object",
+  required: ["email", "password"],
+  properties: {
+    email: { type: "string", format: "email" },
+    password: { type: "string", minLength: 1 }
+  },
+  additionalProperties: false,
+  example: {
+    email: "user@example.com",
+    password: "super-secret-password"
+  }
+};
+
+const refreshBodySchema = {
+  type: "object",
+  required: ["refreshToken"],
+  properties: {
+    refreshToken: { type: "string", minLength: 1 }
+  },
+  additionalProperties: false,
+  example: {
+    refreshToken:
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example-refresh-payload.example-signature"
+  }
+};
+
+const authPayloadSchema = {
+  type: "object",
+  required: ["accessToken", "refreshToken", "expiresIn", "user"],
+  properties: {
+    accessToken: { type: "string" },
+    refreshToken: { type: "string" },
+    expiresIn: { type: "integer", minimum: 1 },
+    user: publicUserSchema
+  },
+  additionalProperties: false,
+  example: {
+    accessToken:
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example-access-payload.example-signature",
+    refreshToken:
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example-refresh-payload.example-signature",
+    expiresIn: 3600,
+    user: {
+      id: "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
+      email: "user@example.com",
+      name: null
+    }
+  }
+};
+
+function buildErrorEnvelopeSchema({ code, message, details = {} }) {
+  return {
+    type: "object",
+    required: ["error", "requestId"],
+    properties: {
+      error: {
+        type: "object",
+        required: ["code", "message", "details"],
+        properties: {
+          code: { type: "string" },
+          message: { type: "string" },
+          details: {
+            type: "object",
+            additionalProperties: true
+          }
+        },
+        additionalProperties: false
+      },
+      requestId: { type: "string" }
+    },
+    additionalProperties: false,
+    example: {
+      error: {
+        code,
+        message,
+        details
+      },
+      requestId: "req-4xYdA1GspM9n"
+    }
+  };
+}
+
 module.exports = async function authRoutes(app) {
-  app.post("/api/v1/auth/register", async (request, reply) => {
+  app.post(
+    "/api/v1/auth/register",
+    {
+      schema: {
+        tags: ["Auth"],
+        summary: "Register user",
+        description: "Create a new account using email and password credentials.",
+        body: registerBodySchema,
+        response: {
+          201: {
+            type: "object",
+            required: ["user"],
+            properties: {
+              user: publicUserSchema
+            },
+            additionalProperties: false,
+            example: {
+              user: {
+                id: "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
+                email: "user@example.com",
+                name: null
+              }
+            }
+          },
+          400: buildErrorEnvelopeSchema({
+            code: "VALIDATION_ERROR",
+            message: "Request validation failed",
+            details: {
+              issues: [
+                {
+                  path: ["password"],
+                  message: "String must contain at least 8 character(s)"
+                }
+              ]
+            }
+          }),
+          409: buildErrorEnvelopeSchema({
+            code: "CONFLICT_EMAIL_EXISTS",
+            message: "Email is already registered"
+          })
+        }
+      }
+    },
+    async (request, reply) => {
     const body = parseOrThrow(registerSchema, request.body || {});
     const email = normalizeEmail(body.email);
     const passwordStatus = validatePassword(body.password);
@@ -47,9 +202,27 @@ module.exports = async function authRoutes(app) {
       }
       throw err;
     }
-  });
+    }
+  );
 
-  app.post("/api/v1/auth/login", async (request) => {
+  app.post(
+    "/api/v1/auth/login",
+    {
+      schema: {
+        tags: ["Auth"],
+        summary: "Login user",
+        description: "Validate credentials and return access plus refresh tokens.",
+        body: loginBodySchema,
+        response: {
+          200: authPayloadSchema,
+          401: buildErrorEnvelopeSchema({
+            code: "AUTH_INVALID_CREDENTIALS",
+            message: "Invalid email or password"
+          })
+        }
+      }
+    },
+    async (request) => {
     const body = parseOrThrow(loginSchema, request.body || {});
     const email = normalizeEmail(body.email);
     const userRow = await app.repos.users.findByEmail(email);
@@ -90,9 +263,27 @@ module.exports = async function authRoutes(app) {
       accessTokenTtlSeconds: app.config.accessTokenTtlSeconds,
       user: app.repos.users.toPublicUser(userRow)
     });
-  });
+    }
+  );
 
-  app.post("/api/v1/auth/refresh", async (request) => {
+  app.post(
+    "/api/v1/auth/refresh",
+    {
+      schema: {
+        tags: ["Auth"],
+        summary: "Refresh token pair",
+        description: "Rotate refresh token and issue a new access token.",
+        body: refreshBodySchema,
+        response: {
+          200: authPayloadSchema,
+          401: buildErrorEnvelopeSchema({
+            code: "AUTH_TOKEN_INVALID",
+            message: "Token is invalid"
+          })
+        }
+      }
+    },
+    async (request) => {
     const body = parseOrThrow(refreshSchema, request.body || {});
 
     let payload;
@@ -150,9 +341,37 @@ module.exports = async function authRoutes(app) {
       accessTokenTtlSeconds: app.config.accessTokenTtlSeconds,
       user: app.repos.users.toPublicUser(userRow)
     });
-  });
+    }
+  );
 
-  app.post("/api/v1/auth/logout", async (request) => {
+  app.post(
+    "/api/v1/auth/logout",
+    {
+      schema: {
+        tags: ["Auth"],
+        summary: "Logout session",
+        description: "Revoke the session associated with the provided refresh token.",
+        body: refreshBodySchema,
+        response: {
+          200: {
+            type: "object",
+            required: ["success"],
+            properties: {
+              success: { type: "boolean" }
+            },
+            additionalProperties: false,
+            example: {
+              success: true
+            }
+          },
+          401: buildErrorEnvelopeSchema({
+            code: "AUTH_TOKEN_INVALID",
+            message: "Token is invalid"
+          })
+        }
+      }
+    },
+    async (request) => {
     const body = parseOrThrow(refreshSchema, request.body || {});
 
     let payload;
@@ -168,5 +387,6 @@ module.exports = async function authRoutes(app) {
 
     await app.repos.sessions.revokeById(payload.sid);
     return { success: true };
-  });
+    }
+  );
 };
