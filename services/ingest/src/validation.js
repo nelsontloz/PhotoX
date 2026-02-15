@@ -8,6 +8,18 @@ const initUploadSchema = z.object({
   checksumSha256: z.string().trim().regex(/^[a-fA-F0-9]{64}$/)
 });
 
+const uploadPathParamsSchema = z.object({
+  uploadId: z.string().uuid()
+});
+
+const uploadPartQuerySchema = z.object({
+  partNumber: z
+    .string()
+    .regex(/^\d+$/)
+    .transform((value) => Number.parseInt(value, 10))
+    .refine((value) => value > 0)
+});
+
 function parseOrThrow(schema, payload) {
   const parsed = schema.safeParse(payload);
   if (!parsed.success) {
@@ -20,5 +32,7 @@ function parseOrThrow(schema, payload) {
 
 module.exports = {
   initUploadSchema,
+  uploadPartQuerySchema,
+  uploadPathParamsSchema,
   parseOrThrow
 };

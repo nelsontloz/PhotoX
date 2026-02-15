@@ -7,6 +7,7 @@ const { createPool, runMigrations } = require("./db");
 const { ApiError, toErrorBody } = require("./errors");
 const { buildUploadSessionsRepo } = require("./repos/uploadSessionsRepo");
 const { buildIdempotencyRepo } = require("./repos/idempotencyRepo");
+const { buildUploadPartsRepo } = require("./repos/uploadPartsRepo");
 const openapiRoute = require("./routes/openapiRoute");
 const uploadsRoutes = require("./routes/uploadsRoutes");
 
@@ -28,8 +29,19 @@ function buildApp(overrides = {}) {
   app.decorate("db", db);
   app.decorate("repos", {
     uploadSessions: buildUploadSessionsRepo(db),
+    uploadParts: buildUploadPartsRepo(db),
     idempotency: buildIdempotencyRepo(db)
   });
+
+  app.addContentTypeParser(
+    "application/octet-stream",
+    {
+      parseAs: "buffer"
+    },
+    function parseOctetStream(_request, body, done) {
+      done(null, body);
+    }
+  );
 
   app.get("/health", async () => ({ status: "ok", service: config.serviceName }));
 

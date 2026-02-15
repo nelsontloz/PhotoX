@@ -2,7 +2,13 @@ const crypto = require("node:crypto");
 
 const { requireAccessAuth } = require("../auth/guard");
 const { ApiError } = require("../errors");
-const { initUploadSchema, parseOrThrow } = require("../validation");
+const {
+  initUploadSchema,
+  parseOrThrow,
+  uploadPartQuerySchema,
+  uploadPathParamsSchema
+} = require("../validation");
+const { checksumSha256, writeUploadPart } = require("../upload/storage");
 
 const IDEMPOTENCY_SCOPE_UPLOAD_INIT = "upload_init";
 
@@ -14,6 +20,27 @@ function buildInitResponse(session) {
   return {
     uploadId: session.id,
     partSize: session.part_size,
+    expiresAt: new Date(session.expires_at).toISOString()
+  };
+}
+
+function buildPartResponse(part, uploadId) {
+  return {
+    uploadId,
+    partNumber: part.part_number,
+    bytesStored: part.byte_size,
+    checksumSha256: part.checksum_sha256
+  };
+}
+
+function buildStatusResponse({ session, uploadedBytes, uploadedParts }) {
+  return {
+    uploadId: session.id,
+    status: session.status,
+    fileSize: Number(session.file_size),
+    partSize: session.part_size,
+    uploadedBytes,
+    uploadedParts,
     expiresAt: new Date(session.expires_at).toISOString()
   };
 }
@@ -150,6 +177,175 @@ module.exports = async function uploadsRoutes(app) {
       }
 
       reply.code(201).send(responseBody);
+    }
+  );
+
+  app.post(
+    "/api/v1/uploads/:uploadId/part",
+    {
+      preHandler: requireAccessAuth(app.config),
+      schema: {
+        tags: ["Uploads"],
+        summary: "Upload chunk part",
+        description: "Upload a single binary chunk part for an existing upload session.",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          required: ["uploadId"],
+          properties: {
+            uploadId: { type: "string", format: "uuid" }
+          }
+        },
+        querystring: {
+          type: "object",
+          required: ["partNumber"],
+          properties: {
+            partNumber: { type: "string", pattern: "^\\d+$" }
+          }
+        },
+        response: {
+          200: {
+            type: "object",
+            required: ["uploadId", "partNumber", "bytesStored", "checksumSha256"],
+            properties: {
+              uploadId: { type: "string", format: "uuid" },
+              partNumber: { type: "integer", minimum: 1 },
+              bytesStored: { type: "integer", minimum: 1 },
+              checksumSha256: { type: "string", pattern: "^[a-fA-F0-9]{64}$" }
+            },
+            example: {
+              uploadId: "30e71f52-775f-4a2f-a25d-aed8a48ac5d8",
+              partNumber: 1,
+              bytesStored: 5242880,
+              checksumSha256: "de4ecf4e0d0f157c8142fdb7f0e6f9f607c37d9b233830f70f7f83b4f04f9b69"
+            }
+          },
+          400: buildErrorEnvelopeSchema("VALIDATION_ERROR", "Request validation failed"),
+          401: buildErrorEnvelopeSchema("AUTH_TOKEN_INVALID", "Missing bearer token"),
+          404: buildErrorEnvelopeSchema("UPLOAD_NOT_FOUND", "Upload session not found"),
+          409: buildErrorEnvelopeSchema("UPLOAD_STATE_INVALID", "Upload session is not accepting parts")
+        }
+      }
+    },
+    async (request) => {
+      const params = parseOrThrow(uploadPathParamsSchema, request.params || {});
+      const query = parseOrThrow(uploadPartQuerySchema, request.query || {});
+      const userId = request.userAuth.userId;
+
+      if (!Buffer.isBuffer(request.body)) {
+        throw new ApiError(400, "VALIDATION_ERROR", "Chunk payload must be binary (application/octet-stream)");
+      }
+
+      if (request.body.length === 0) {
+        throw new ApiError(400, "VALIDATION_ERROR", "Chunk payload cannot be empty");
+      }
+
+      const session = await app.repos.uploadSessions.findByIdForUser(params.uploadId, userId);
+      if (!session) {
+        throw new ApiError(404, "UPLOAD_NOT_FOUND", "Upload session not found");
+      }
+
+      if (!["initiated", "uploading"].includes(session.status)) {
+        throw new ApiError(409, "UPLOAD_STATE_INVALID", "Upload session is not accepting parts", {
+          status: session.status
+        });
+      }
+
+      if (request.body.length > session.part_size) {
+        throw new ApiError(400, "UPLOAD_PART_TOO_LARGE", "Chunk exceeds configured part size", {
+          partSize: session.part_size,
+          receivedBytes: request.body.length
+        });
+      }
+
+      const { relativePartPath } = await writeUploadPart({
+        originalsRoot: app.config.uploadOriginalsPath,
+        uploadId: params.uploadId,
+        partNumber: query.partNumber,
+        payload: request.body
+      });
+
+      const part = await app.repos.uploadParts.upsertPart({
+        uploadId: params.uploadId,
+        partNumber: query.partNumber,
+        byteSize: request.body.length,
+        checksumSha256: checksumSha256(request.body),
+        relativePartPath
+      });
+
+      await app.repos.uploadSessions.setStatus(params.uploadId, userId, "uploading");
+      return buildPartResponse(part, params.uploadId);
+    }
+  );
+
+  app.get(
+    "/api/v1/uploads/:uploadId",
+    {
+      preHandler: requireAccessAuth(app.config),
+      schema: {
+        tags: ["Uploads"],
+        summary: "Get upload session status",
+        description: "Return current upload session state and uploaded part progress.",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          required: ["uploadId"],
+          properties: {
+            uploadId: { type: "string", format: "uuid" }
+          }
+        },
+        response: {
+          200: {
+            type: "object",
+            required: [
+              "uploadId",
+              "status",
+              "fileSize",
+              "partSize",
+              "uploadedBytes",
+              "uploadedParts",
+              "expiresAt"
+            ],
+            properties: {
+              uploadId: { type: "string", format: "uuid" },
+              status: { type: "string" },
+              fileSize: { type: "integer", minimum: 1 },
+              partSize: { type: "integer", minimum: 1 },
+              uploadedBytes: { type: "integer", minimum: 0 },
+              uploadedParts: {
+                type: "array",
+                items: { type: "integer", minimum: 1 }
+              },
+              expiresAt: { type: "string", format: "date-time" }
+            },
+            example: {
+              uploadId: "30e71f52-775f-4a2f-a25d-aed8a48ac5d8",
+              status: "uploading",
+              fileSize: 3811212,
+              partSize: 5242880,
+              uploadedBytes: 1048576,
+              uploadedParts: [1],
+              expiresAt: "2026-02-15T18:00:00.000Z"
+            }
+          },
+          401: buildErrorEnvelopeSchema("AUTH_TOKEN_INVALID", "Missing bearer token"),
+          404: buildErrorEnvelopeSchema("UPLOAD_NOT_FOUND", "Upload session not found")
+        }
+      }
+    },
+    async (request) => {
+      const params = parseOrThrow(uploadPathParamsSchema, request.params || {});
+      const userId = request.userAuth.userId;
+      const session = await app.repos.uploadSessions.findByIdForUser(params.uploadId, userId);
+
+      if (!session) {
+        throw new ApiError(404, "UPLOAD_NOT_FOUND", "Upload session not found");
+      }
+
+      const parts = await app.repos.uploadParts.listParts(params.uploadId);
+      const uploadedBytes = await app.repos.uploadParts.getUploadedBytes(params.uploadId);
+      const uploadedParts = parts.map((part) => part.part_number);
+      return buildStatusResponse({ session, uploadedBytes, uploadedParts });
     }
   );
 };
