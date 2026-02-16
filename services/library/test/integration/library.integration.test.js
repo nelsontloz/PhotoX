@@ -1,6 +1,10 @@
 const crypto = require("node:crypto");
+const fs = require("node:fs/promises");
+const os = require("node:os");
+const path = require("node:path");
 
 const jwt = require("jsonwebtoken");
+const sharp = require("sharp");
 
 const { buildApp } = require("../../src/app");
 
@@ -31,22 +35,32 @@ describe("library integration", () => {
   let app;
   const accessSecret = "library-integration-access-secret";
   const ownerId = "0f3c9d30-1307-4c9e-a4d7-75e84606c28d";
+  const testOriginalsRoot = path.join(os.tmpdir(), "photox-library-originals-tests");
+  const testDerivedRoot = path.join(os.tmpdir(), "photox-library-derived-tests");
 
   beforeAll(async () => {
     app = buildApp({
       databaseUrl: TEST_DATABASE_URL,
       jwtAccessSecret: accessSecret,
-      serviceName: "library-service-test"
+      serviceName: "library-service-test",
+      uploadOriginalsPath: testOriginalsRoot,
+      uploadDerivedPath: testDerivedRoot
     });
     await app.ready();
   });
 
   beforeEach(async () => {
     await app.db.query("TRUNCATE TABLE media_flags, media_metadata, media RESTART IDENTITY CASCADE");
+    await fs.rm(testOriginalsRoot, { recursive: true, force: true });
+    await fs.rm(testDerivedRoot, { recursive: true, force: true });
+    await fs.mkdir(testOriginalsRoot, { recursive: true });
+    await fs.mkdir(testDerivedRoot, { recursive: true });
   });
 
   afterAll(async () => {
     await app.close();
+    await fs.rm(testOriginalsRoot, { recursive: true, force: true });
+    await fs.rm(testDerivedRoot, { recursive: true, force: true });
   });
 
   async function insertMedia({
@@ -242,5 +256,63 @@ describe("library integration", () => {
     });
     expect(timelineAfterRestore.statusCode).toBe(200);
     expect(jsonBody(timelineAfterRestore).items[0].id).toBe(mediaId);
+  });
+
+  it("returns media content and generates webp derivatives", async () => {
+    const token = createAccessToken({
+      userId: ownerId,
+      email: "content@example.com",
+      secret: accessSecret
+    });
+    const mediaId = "1f2ef07f-7c81-4662-93a3-fccce979c0ff";
+    const relativePath = `${ownerId}/2026/02/${mediaId}.jpg`;
+
+    await insertMedia({
+      id: mediaId,
+      ownerId,
+      relativePath,
+      mimeType: "image/jpeg",
+      createdAt: "2026-02-16T08:00:00.000Z"
+    });
+
+    const originalAbsolutePath = path.join(testOriginalsRoot, ...relativePath.split("/"));
+    await fs.mkdir(path.dirname(originalAbsolutePath), { recursive: true });
+    await sharp({
+      create: {
+        width: 900,
+        height: 600,
+        channels: 3,
+        background: {
+          r: 45,
+          g: 120,
+          b: 180
+        }
+      }
+    })
+      .jpeg()
+      .toFile(originalAbsolutePath);
+
+    const thumbResponse = await app.inject({
+      method: "GET",
+      url: `/api/v1/media/${mediaId}/content?variant=thumb`,
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    });
+
+    expect(thumbResponse.statusCode).toBe(200);
+    expect(thumbResponse.headers["content-type"]).toContain("image/webp");
+    expect(thumbResponse.rawPayload.length).toBeGreaterThan(0);
+
+    const originalResponse = await app.inject({
+      method: "GET",
+      url: `/api/v1/media/${mediaId}/content?variant=original`,
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    });
+
+    expect(originalResponse.statusCode).toBe(200);
+    expect(originalResponse.headers["content-type"]).toContain("image/jpeg");
   });
 });

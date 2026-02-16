@@ -1,6 +1,11 @@
+const fsSync = require("node:fs");
+
 const { requireAccessAuth } = require("../auth/guard");
 const { ApiError } = require("../errors");
+const { ensureWebpDerivative } = require("../media/derivatives");
+const { resolveAbsolutePath } = require("../media/paths");
 const {
+  mediaContentQuerySchema,
   mediaPathParamsSchema,
   parseOrThrow,
   patchMediaSchema,
@@ -48,6 +53,11 @@ function toMediaDto(row) {
     width: row.width,
     height: row.height,
     location: row.location_json,
+    derivatives: {
+      thumb: `/api/v1/media/${row.id}/content?variant=thumb`,
+      small: `/api/v1/media/${row.id}/content?variant=small`,
+      original: `/api/v1/media/${row.id}/content?variant=original`
+    },
     flags: {
       favorite: row.favorite,
       archived: row.archived,
@@ -312,6 +322,91 @@ module.exports = async function libraryRoutes(app) {
       return {
         media: toMediaDto(media)
       };
+    }
+  );
+
+  app.get(
+    "/api/v1/media/:mediaId/content",
+    {
+      preHandler: requireAccessAuth(app.config),
+      schema: {
+        tags: ["Media"],
+        summary: "Read media content",
+        description:
+          "Return original media bytes or generate and return WebP derivatives for timeline display.",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          required: ["mediaId"],
+          properties: {
+            mediaId: { type: "string", format: "uuid" }
+          }
+        },
+        querystring: {
+          type: "object",
+          properties: {
+            variant: {
+              type: "string",
+              enum: ["original", "thumb", "small"]
+            }
+          },
+          additionalProperties: false
+        },
+        response: {
+          401: buildErrorEnvelopeSchema("AUTH_TOKEN_INVALID", "Missing bearer token"),
+          404: buildErrorEnvelopeSchema("MEDIA_NOT_FOUND", "Media was not found")
+        }
+      }
+    },
+    async (request, reply) => {
+      const params = parseOrThrow(mediaPathParamsSchema, request.params || {});
+      const query = parseOrThrow(mediaContentQuerySchema, request.query || {});
+      const variant = query.variant || "original";
+      const media = await app.repos.library.findOwnedMediaDetails(params.mediaId, request.userAuth.userId);
+
+      if (!media) {
+        throw new ApiError(404, "MEDIA_NOT_FOUND", "Media was not found");
+      }
+
+      if (media.deleted_soft) {
+        throw new ApiError(404, "MEDIA_NOT_FOUND", "Media was not found");
+      }
+
+      try {
+        let contentType = media.mime_type;
+        let absolutePath;
+
+        if (variant === "original") {
+          absolutePath = resolveAbsolutePath(app.config.uploadOriginalsPath, media.relative_path);
+        } else {
+          const derivative = await ensureWebpDerivative({
+            originalsRoot: app.config.uploadOriginalsPath,
+            derivedRoot: app.config.uploadDerivedPath,
+            mediaRow: media,
+            variant
+          });
+          absolutePath = derivative.absolutePath;
+          contentType = derivative.contentType;
+        }
+
+        if (!fsSync.existsSync(absolutePath)) {
+          throw new ApiError(404, "MEDIA_CONTENT_NOT_FOUND", "Media file was not found");
+        }
+
+        reply.type(contentType);
+        reply.header("cache-control", "private, max-age=120");
+        return reply.send(fsSync.createReadStream(absolutePath));
+      } catch (err) {
+        if (err instanceof ApiError) {
+          throw err;
+        }
+
+        if (err && err.code === "ENOENT") {
+          throw new ApiError(404, "MEDIA_CONTENT_NOT_FOUND", "Media file was not found");
+        }
+
+        throw err;
+      }
     }
   );
 

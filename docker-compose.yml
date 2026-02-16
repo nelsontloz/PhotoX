@@ -199,9 +199,14 @@ services:
       SERVICE_NAME: library-service
       DATABASE_URL: postgresql://${POSTGRES_USER:-photox}:${POSTGRES_PASSWORD:-photox-dev-password}@postgres:5432/${POSTGRES_DB:-photox}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-me}
+      UPLOAD_ORIGINALS_PATH: /data/photox/originals
+      UPLOAD_DERIVED_PATH: /data/photox/derived
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - ${PHOTOX_ORIGINALS_DIR:-/data/photox/originals}:/data/photox/originals
+      - ${PHOTOX_DERIVED_DIR:-/data/photox/derived}:/data/photox/derived
     labels:
       - traefik.enable=true
       - traefik.http.routers.library.rule=Host(`${WEB_HOST:-localhost}`) && PathPrefix(`/api/v1/library`,`/api/v1/media`)

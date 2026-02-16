@@ -93,6 +93,12 @@ const patchMediaSchema = z
     }
   );
 
+const mediaContentQuerySchema = z
+  .object({
+    variant: z.enum(["original", "thumb", "small"]).optional()
+  })
+  .strict();
+
 function parseOrThrow(schema, input) {
   try {
     return schema.parse(input);
@@ -111,6 +117,7 @@ function parseOrThrow(schema, input) {
 }
 
 module.exports = {
+  mediaContentQuerySchema,
   mediaPathParamsSchema,
   parseOrThrow,
   patchMediaSchema,
