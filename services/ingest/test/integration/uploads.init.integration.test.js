@@ -53,7 +53,9 @@ describe("upload init integration", () => {
   });
 
   beforeEach(async () => {
-    await app.db.query("TRUNCATE TABLE upload_parts, idempotency_keys, media, upload_sessions RESTART IDENTITY CASCADE");
+    await app.db.query(
+      "TRUNCATE TABLE upload_parts, idempotency_keys, media_flags, media, upload_sessions RESTART IDENTITY CASCADE"
+    );
     await fs.rm(testUploadsRoot, { recursive: true, force: true });
     await fs.mkdir(testUploadsRoot, { recursive: true });
     queuedJobs.length = 0;
@@ -276,6 +278,7 @@ describe("upload init integration", () => {
     const completeBody = jsonBody(complete);
     expect(completeBody.mediaId).toBeTruthy();
     expect(completeBody.status).toBe("processing");
+    expect(completeBody.deduplicated).toBe(false);
     expect(queuedJobs.length).toBe(1);
     expect(queuedJobs[0][0]).toBe("media.process");
 
@@ -456,5 +459,152 @@ describe("upload init integration", () => {
 
     expect(complete.statusCode).toBe(200);
     expect(jsonBody(complete).status).toBe("processing");
+    expect(jsonBody(complete).deduplicated).toBe(false);
+  });
+
+  it("deduplicates repeated upload by owner and checksum when existing media is active", async () => {
+    const accessToken = createAccessToken({
+      userId: "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
+      email: "user@example.com",
+      secret: accessSecret
+    });
+
+    const chunk = Buffer.from("same-content", "utf8");
+    const fileChecksum = crypto.createHash("sha256").update(chunk).digest("hex");
+
+    async function createUploadAndComplete(fileName) {
+      const init = await app.inject({
+        method: "POST",
+        url: "/api/v1/uploads/init",
+        headers: {
+          authorization: `Bearer ${accessToken}`
+        },
+        payload: {
+          fileName,
+          contentType: "image/jpeg",
+          fileSize: chunk.length,
+          checksumSha256: fileChecksum
+        }
+      });
+
+      const uploadId = jsonBody(init).uploadId;
+
+      await app.inject({
+        method: "POST",
+        url: `/api/v1/uploads/${uploadId}/part?partNumber=1`,
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          "content-type": "application/octet-stream"
+        },
+        payload: chunk
+      });
+
+      return app.inject({
+        method: "POST",
+        url: `/api/v1/uploads/${uploadId}/complete`,
+        headers: {
+          authorization: `Bearer ${accessToken}`
+        },
+        payload: {
+          checksumSha256: fileChecksum
+        }
+      });
+    }
+
+    const firstComplete = await createUploadAndComplete("duplicate-1.jpg");
+    const firstBody = jsonBody(firstComplete);
+    expect(firstComplete.statusCode).toBe(200);
+    expect(firstBody.deduplicated).toBe(false);
+
+    const secondComplete = await createUploadAndComplete("duplicate-2.jpg");
+    const secondBody = jsonBody(secondComplete);
+    expect(secondComplete.statusCode).toBe(200);
+    expect(secondBody.mediaId).toBe(firstBody.mediaId);
+    expect(secondBody.deduplicated).toBe(true);
+
+    const mediaCount = await app.db.query(
+      "SELECT COUNT(*)::INTEGER AS count FROM media WHERE owner_id = $1 AND checksum_sha256 = $2",
+      ["0f3c9d30-1307-4c9e-a4d7-75e84606c28d", fileChecksum]
+    );
+    expect(mediaCount.rows[0].count).toBe(1);
+    expect(queuedJobs.length).toBe(1);
+  });
+
+  it("ignores soft-deleted media during dedupe and creates new media", async () => {
+    const accessToken = createAccessToken({
+      userId: "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
+      email: "user@example.com",
+      secret: accessSecret
+    });
+
+    const chunk = Buffer.from("same-content-soft-delete", "utf8");
+    const fileChecksum = crypto.createHash("sha256").update(chunk).digest("hex");
+
+    async function createUploadAndComplete(fileName) {
+      const init = await app.inject({
+        method: "POST",
+        url: "/api/v1/uploads/init",
+        headers: {
+          authorization: `Bearer ${accessToken}`
+        },
+        payload: {
+          fileName,
+          contentType: "image/jpeg",
+          fileSize: chunk.length,
+          checksumSha256: fileChecksum
+        }
+      });
+
+      const uploadId = jsonBody(init).uploadId;
+
+      await app.inject({
+        method: "POST",
+        url: `/api/v1/uploads/${uploadId}/part?partNumber=1`,
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          "content-type": "application/octet-stream"
+        },
+        payload: chunk
+      });
+
+      return app.inject({
+        method: "POST",
+        url: `/api/v1/uploads/${uploadId}/complete`,
+        headers: {
+          authorization: `Bearer ${accessToken}`
+        },
+        payload: {
+          checksumSha256: fileChecksum
+        }
+      });
+    }
+
+    const firstComplete = await createUploadAndComplete("soft-deleted-1.jpg");
+    const firstBody = jsonBody(firstComplete);
+    expect(firstComplete.statusCode).toBe(200);
+    expect(firstBody.deduplicated).toBe(false);
+
+    await app.db.query(
+      `
+        INSERT INTO media_flags (media_id, deleted_soft)
+        VALUES ($1, true)
+        ON CONFLICT (media_id)
+        DO UPDATE SET deleted_soft = true, updated_at = NOW()
+      `,
+      [firstBody.mediaId]
+    );
+
+    const secondComplete = await createUploadAndComplete("soft-deleted-2.jpg");
+    const secondBody = jsonBody(secondComplete);
+    expect(secondComplete.statusCode).toBe(200);
+    expect(secondBody.mediaId).not.toBe(firstBody.mediaId);
+    expect(secondBody.deduplicated).toBe(false);
+
+    const mediaCount = await app.db.query(
+      "SELECT COUNT(*)::INTEGER AS count FROM media WHERE owner_id = $1 AND checksum_sha256 = $2",
+      ["0f3c9d30-1307-4c9e-a4d7-75e84606c28d", fileChecksum]
+    );
+    expect(mediaCount.rows[0].count).toBe(2);
+    expect(queuedJobs.length).toBe(2);
   });
 });
