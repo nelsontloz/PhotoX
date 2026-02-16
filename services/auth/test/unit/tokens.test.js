@@ -8,6 +8,7 @@ const {
   verifyAccessToken,
   verifyRefreshToken
 } = require("../../src/auth/tokens");
+const bcrypt = require("bcryptjs");
 
 describe("token utilities", () => {
   it("creates and verifies access token", () => {
@@ -39,6 +40,23 @@ describe("token utilities", () => {
   it("verifies refresh token hash", async () => {
     const token = "token-value";
     const hash = await hashRefreshToken(token);
+    const valid = await verifyRefreshTokenHash(token, hash);
+    const invalid = await verifyRefreshTokenHash("wrong-token", hash);
+
+    expect(valid).toBe(true);
+    expect(invalid).toBe(false);
+  });
+
+  it("generates argon2 hash for new refresh tokens", async () => {
+    const token = "new-token";
+    const hash = await hashRefreshToken(token);
+    expect(hash.startsWith("$argon2")).toBe(true);
+  });
+
+  it("verifies legacy bcrypt refresh token hash", async () => {
+    const token = "legacy-token-value";
+    const hash = await bcrypt.hash(token, 8);
+
     const valid = await verifyRefreshTokenHash(token, hash);
     const invalid = await verifyRefreshTokenHash("wrong-token", hash);
 

@@ -1,13 +1,16 @@
 const crypto = require("node:crypto");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const argon2 = require("argon2");
 
 async function hashRefreshToken(token) {
-  // Use a faster salt round for tokens since they are high entropy and verified by signature too
-  return bcrypt.hash(token, 8);
+  return argon2.hash(token);
 }
 
 async function verifyRefreshTokenHash(token, hash) {
+  if (hash.startsWith("$argon2")) {
+    return argon2.verify(hash, token);
+  }
   return bcrypt.compare(token, hash);
 }
 

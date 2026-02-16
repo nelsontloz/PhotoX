@@ -187,7 +187,7 @@ describe("auth integration", () => {
       sessionId
     ]);
     expect(updatedSession.rows[0].refresh_token_hash).not.toBe(legacyHash);
-    expect(updatedSession.rows[0].refresh_token_hash.startsWith("$2")).toBe(true);
+    expect(updatedSession.rows[0].refresh_token_hash.startsWith("$argon2")).toBe(true);
   });
 
   it("revokes session on logout and blocks refresh", async () => {
