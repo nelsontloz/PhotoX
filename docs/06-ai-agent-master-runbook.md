@@ -117,6 +117,16 @@ Exit criteria:
 - At most 4 files upload concurrently.
 - Batch result reports successful and failed files with actionable feedback.
 
+### Phase P3.2 - Upload Dedupe
+- Extend ingest complete flow to dedupe by owner + checksum against active media.
+- Return dedupe metadata in complete response for UI/clients.
+- Keep dedupe scope independent from soft-deleted media (ignore soft-deleted matches).
+
+Exit criteria:
+- Re-uploading same content for same owner returns existing active `mediaId`.
+- Complete response includes `deduplicated=true` when reuse happens.
+- Re-upload after soft delete creates a new media row.
+
 ### Phase P4 - Albums and Sharing
 - Implement album CRUD and item management.
 - Implement public links, invite-only, family sharing ACL flows.

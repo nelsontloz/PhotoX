@@ -43,6 +43,13 @@ Note:
 - [x] Upload batch summary renders success + failure results with actionable error text.
 - [x] Web unit + integration gates pass for upload helpers.
 
+## Phase P3.2 - Upload Dedupe
+- [x] Ingest `complete` checks owner + checksum for existing active media.
+- [x] Duplicate content reuses existing `mediaId` and returns `deduplicated=true`.
+- [x] Duplicate `media.process` jobs are avoided for deduped completes.
+- [x] Soft-deleted media are ignored by dedupe matching.
+- [x] Ingest integration tests cover active dedupe and soft-delete bypass behavior.
+
 ## Phase P4 - Albums and Sharing
 - [ ] Album CRUD complete.
 - [ ] Public link sharing and revoke complete.

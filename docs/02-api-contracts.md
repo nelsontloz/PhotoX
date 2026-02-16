@@ -137,6 +137,7 @@ Implemented now:
 - Implemented write endpoints include request examples and response examples in OpenAPI.
 - Authenticated ingest endpoints include `bearerAuth` security metadata in OpenAPI.
 - `init` and `complete` support `Idempotency-Key` for safe retries.
+- `complete` performs owner-scoped checksum dedupe against active media.
 
 ### Init Request
 ```json
@@ -191,9 +192,12 @@ Implemented now:
 ```json
 {
   "mediaId": "2f4b3f2f-48f7-4f18-b3cb-c08de94461e2",
-  "status": "processing"
+  "status": "processing",
+  "deduplicated": false
 }
 ```
+
+`deduplicated=true` means an active media item with the same `checksumSha256` already existed for the same owner, so ingest reused that `mediaId` instead of creating a new one.
 
 ---
 

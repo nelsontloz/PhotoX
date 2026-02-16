@@ -88,6 +88,7 @@ Integration requirements:
 Responsibilities:
 - Chunked upload lifecycle.
 - Checksum validation.
+- Owner-scoped checksum dedupe.
 - Original file persistence.
 - Enqueue initial processing job.
 
@@ -108,6 +109,8 @@ Required tables (minimum):
 Idempotency requirements:
 - `init` and `complete` accept `Idempotency-Key`.
 - duplicate `complete` with same key returns same `mediaId`.
+- duplicate content for same owner and checksum returns existing active `mediaId` (`deduplicated=true`).
+- soft-deleted media are ignored during dedupe and do not block creating a new media row.
 
 ---
 

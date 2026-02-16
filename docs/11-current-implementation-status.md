@@ -25,6 +25,7 @@ Source of truth used for this snapshot:
 - `P2`: web auth + upload UI (`/register`, `/login`, `/upload`) (implemented)
 - `P3`: timeline core (implemented)
 - `P3.1`: multi-file web upload UX (4 concurrent, continue-on-error) (implemented)
+- `P3.2`: upload dedupe by owner checksum against active media (implemented)
 - `P4`: albums and sharing (planned)
 - `P5`: search and semantic retrieval (planned)
 - `P6`: faces, memories, and hardening (planned)
@@ -68,6 +69,10 @@ Notes:
 - Uses raw `application/octet-stream` chunk upload with `partNumber` query param.
 - Persists media relative path and enqueues `media.process` BullMQ job on complete.
 - Supports `Idempotency-Key` on `init` and `complete`.
+- `complete` deduplicates repeated uploads for the same owner and checksum against active media and returns
+  `deduplicated=true` when reusing an existing `mediaId`.
+- Soft-deleted media are excluded from dedupe matching; uploading the same content after soft delete creates
+  a new media item.
 
 ### library-service - implemented
 

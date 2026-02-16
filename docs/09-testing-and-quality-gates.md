@@ -60,6 +60,7 @@ Gate G6 - Verification Artifact
   - idempotency key behavior
 - Integration:
   - init/part/complete flow
+  - owner checksum dedupe behavior for repeated uploads
   - retry on interrupted upload
   - abort flow
 
