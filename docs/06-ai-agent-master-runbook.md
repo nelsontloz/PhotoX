@@ -107,6 +107,16 @@ Exit criteria:
 - Timeline query pagination stable.
 - New upload appears in timeline in <= 120 seconds.
 
+### Phase P3.1 - Multi-File Upload UX
+- Extend web upload page to support selecting multiple files.
+- Implement bounded upload concurrency at 4 simultaneous file uploads.
+- Continue uploading remaining files when one file fails and surface per-file errors.
+
+Exit criteria:
+- User can upload multiple files from `/upload` in one batch.
+- At most 4 files upload concurrently.
+- Batch result reports successful and failed files with actionable feedback.
+
 ### Phase P4 - Albums and Sharing
 - Implement album CRUD and item management.
 - Implement public links, invite-only, family sharing ACL flows.

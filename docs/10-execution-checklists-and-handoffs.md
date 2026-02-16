@@ -35,6 +35,14 @@ Note:
 - [x] Soft delete and restore flow implemented.
 - [x] Unit + integration gates pass.
 
+## Phase P3.1 - Multi-File Upload UX
+- [x] Upload page supports selecting multiple files.
+- [x] Bounded concurrency implemented (`maxConcurrent=4`).
+- [x] Continue-on-error behavior implemented (other files continue uploading).
+- [x] Per-file progress/status and aggregate progress rendered in UI.
+- [x] Upload batch summary renders success + failure results with actionable error text.
+- [x] Web unit + integration gates pass for upload helpers.
+
 ## Phase P4 - Albums and Sharing
 - [ ] Album CRUD complete.
 - [ ] Public link sharing and revoke complete.

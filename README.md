@@ -17,7 +17,7 @@ Implemented now:
 - `auth-service`: register, login, refresh, logout, `/me`, OpenAPI + Swagger.
 - `ingest-service`: chunked upload lifecycle (`init`, `part`, `complete`, `abort`, status), idempotency support, OpenAPI + Swagger.
 - `library-service`: timeline API, media detail/flags, soft delete/restore, and authenticated media content endpoint with WebP thumbnail generation.
-- `web-app`: `/register`, `/login`, `/upload`, `/timeline` flows.
+- `web-app`: `/register`, `/login`, `/upload`, `/timeline` flows, including multi-file upload batches with bounded concurrency (4).
 
 Scaffold/partial services:
 

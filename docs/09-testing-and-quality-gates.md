@@ -110,9 +110,11 @@ Gate G6 - Verification Artifact
 - Unit:
   - API client wrappers
   - UI state reducers/hooks
+  - multi-file upload scheduler behavior (bounded concurrency and partial failures)
 - Integration:
   - auth and timeline data fetch integration
   - upload API interaction and error handling
+  - multi-file upload summary and progress behavior
 
 ---
 

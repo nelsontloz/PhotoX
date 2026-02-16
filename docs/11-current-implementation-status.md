@@ -24,6 +24,7 @@ Source of truth used for this snapshot:
 - `P1`: auth + upload backend skeleton (implemented)
 - `P2`: web auth + upload UI (`/register`, `/login`, `/upload`) (implemented)
 - `P3`: timeline core (implemented)
+- `P3.1`: multi-file web upload UX (4 concurrent, continue-on-error) (implemented)
 - `P4`: albums and sharing (planned)
 - `P5`: search and semantic retrieval (planned)
 - `P6`: faces, memories, and hardening (planned)
@@ -156,6 +157,8 @@ Notes:
 - Login persists access/refresh token pair in client session storage.
 - Upload page validates authenticated session with `/api/v1/me`, performs chunked upload
   (`init` -> `part` -> `complete`), renders progress, and shows API envelope errors.
+- Upload page supports multi-file batch uploads with bounded concurrency of 4, per-file progress/status,
+  aggregate progress, and continue-on-error behavior.
 - Timeline page fetches cursor-paginated media from `/api/v1/library/timeline` and renders authenticated
   thumbnail previews via `/api/v1/media/{mediaId}/content?variant=thumb`.
 
