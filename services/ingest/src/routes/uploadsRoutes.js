@@ -1,4 +1,5 @@
 const crypto = require("node:crypto");
+const fs = require("node:fs/promises");
 
 const { requireAccessAuth } = require("../auth/guard");
 const { ApiError } = require("../errors");
@@ -54,10 +55,11 @@ function buildStatusResponse({ session, uploadedBytes, uploadedParts }) {
   };
 }
 
-function buildCompleteResponse(mediaId) {
+function buildCompleteResponse(mediaId, deduplicated = false) {
   return {
     mediaId,
-    status: "processing"
+    status: "processing",
+    deduplicated
   };
 }
 
@@ -405,14 +407,16 @@ module.exports = async function uploadsRoutes(app) {
         response: {
           200: {
             type: "object",
-            required: ["mediaId", "status"],
+            required: ["mediaId", "status", "deduplicated"],
             properties: {
               mediaId: { type: "string", format: "uuid" },
-              status: { type: "string", enum: ["processing"] }
+              status: { type: "string", enum: ["processing"] },
+              deduplicated: { type: "boolean" }
             },
             example: {
               mediaId: "2f4b3f2f-48f7-4f18-b3cb-c08de94461e2",
-              status: "processing"
+              status: "processing",
+              deduplicated: false
             }
           },
           400: buildErrorEnvelopeSchema("VALIDATION_ERROR", "Request validation failed"),
@@ -497,6 +501,37 @@ module.exports = async function uploadsRoutes(app) {
         });
       }
 
+      const duplicateMedia = await app.repos.media.findActiveByOwnerAndChecksum({
+        ownerId: userId,
+        checksumSha256: actualChecksum
+      });
+
+      if (duplicateMedia) {
+        await app.repos.uploadSessions.markCompleted({
+          id: params.uploadId,
+          userId,
+          mediaId: duplicateMedia.id,
+          storageRelativePath: duplicateMedia.relative_path
+        });
+
+        await fs.rm(outputAbsolutePath, { force: true });
+        await removeUploadTempDir(app.config.uploadOriginalsPath, params.uploadId);
+
+        const responseBody = buildCompleteResponse(duplicateMedia.id, true);
+        if (idempotencyKey) {
+          await app.repos.idempotency.insert({
+            userId,
+            scope: IDEMPOTENCY_SCOPE_UPLOAD_COMPLETE,
+            idemKey: idempotencyKey,
+            requestHash,
+            responseBody,
+            statusCode: 200
+          });
+        }
+
+        return responseBody;
+      }
+
       const media = await app.repos.media.create({
         id: mediaId,
         ownerId: userId,
@@ -534,7 +569,7 @@ module.exports = async function uploadsRoutes(app) {
         }
       );
 
-      const responseBody = buildCompleteResponse(media.id);
+      const responseBody = buildCompleteResponse(media.id, false);
       if (idempotencyKey) {
         await app.repos.idempotency.insert({
           userId,
