@@ -1,6 +1,7 @@
 "use client";
 
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -13,6 +14,9 @@ import {
 } from "../../lib/api";
 import { buildLoginPath } from "../../lib/navigation";
 import { clearSession, readRefreshToken } from "../../lib/session";
+import AppSidebar from "../components/app-sidebar";
+
+const TILE_ASPECTS = ["aspect-[4/3]", "aspect-square", "aspect-[3/4]", "aspect-square", "aspect-[4/3]"];
 
 function formatTimelineDate(value) {
   if (!value) {
@@ -27,7 +31,94 @@ function formatTimelineDate(value) {
   return date.toLocaleString();
 }
 
-function TimelineThumbnail({ mediaId, onOpen }) {
+function formatModalDate(value) {
+  if (!value) {
+    return "Unknown date";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown date";
+  }
+
+  return date.toLocaleDateString(undefined, {
+    month: "long",
+    day: "numeric",
+    year: "numeric"
+  });
+}
+
+function formatModalTime(value) {
+  if (!value) {
+    return "Unknown time";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown time";
+  }
+
+  return date.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function normalizeDayKey(value) {
+  if (!value) {
+    return "unknown";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "unknown";
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function sectionLabel(dayKey) {
+  if (dayKey === "unknown") {
+    return {
+      title: "Unknown date",
+      subtitle: "No timestamp"
+    };
+  }
+
+  const [year, month, day] = dayKey.split("-").map((part) => Number(part));
+  const date = new Date(year, month - 1, day);
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const diffDays = Math.round((todayStart.getTime() - date.getTime()) / 86400000);
+
+  const subtitle = date.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric"
+  });
+
+  if (diffDays === 0) {
+    return { title: "Today", subtitle };
+  }
+
+  if (diffDays === 1) {
+    return { title: "Yesterday", subtitle };
+  }
+
+  return {
+    title: date.toLocaleDateString(undefined, {
+      month: "long",
+      day: "numeric",
+      year: "numeric"
+    }),
+    subtitle
+  };
+}
+
+function TimelineThumbnail({ mediaId, onOpen, className = "" }) {
   const [imageUrl, setImageUrl] = useState("");
   const [loadError, setLoadError] = useState("");
 
@@ -58,14 +149,22 @@ function TimelineThumbnail({ mediaId, onOpen }) {
   }, [thumbQuery.error, thumbQuery.isError]);
 
   return (
-    <button type="button" className="w-full text-left" onClick={onOpen}>
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`relative w-full overflow-hidden rounded-lg bg-slate-200 text-left shadow-sm transition-all hover:shadow-md ${className}`}
+    >
       {imageUrl ? (
-        <img src={imageUrl} alt="Uploaded media" className="h-48 w-full rounded-xl object-cover" />
+        <img src={imageUrl} alt="Uploaded media" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
       ) : loadError ? (
-        <div className="error min-h-48 rounded-xl text-xs">Could not load preview. {loadError}</div>
+        <div className="flex h-full min-h-[180px] items-center justify-center p-4 text-xs text-red-600">{loadError}</div>
       ) : (
-        <div className="min-h-48 animate-pulse rounded-xl bg-[#d7e5eb]" />
+        <div className="h-full min-h-[180px] animate-pulse bg-slate-300" />
       )}
+      <div className="pointer-events-none absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/20" />
+      <div className="absolute bottom-2 right-2 opacity-0 transition-opacity group-hover:opacity-100">
+        <span className="rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-slate-700">Open</span>
+      </div>
     </button>
   );
 }
@@ -117,14 +216,58 @@ function TimelineModalImage({ mediaId }) {
   return <div className="h-[60vh] w-full animate-pulse rounded-xl bg-[#d7e5eb]" />;
 }
 
+function FilmstripThumb({ mediaId, isActive, onSelect }) {
+  const [thumbUrl, setThumbUrl] = useState("");
+
+  const thumbQuery = useQuery({
+    queryKey: ["timeline-thumb", mediaId],
+    queryFn: () => fetchMediaContentBlob(mediaId, "thumb"),
+    staleTime: 5 * 60 * 1000
+  });
+
+  useEffect(() => {
+    if (!thumbQuery.data) {
+      return;
+    }
+
+    const nextUrl = URL.createObjectURL(thumbQuery.data);
+    setThumbUrl(nextUrl);
+
+    return () => {
+      URL.revokeObjectURL(nextUrl);
+    };
+  }, [thumbQuery.data]);
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={
+        isActive
+          ? "relative h-14 w-20 shrink-0 overflow-hidden rounded-lg ring-2 ring-cyan-400 ring-offset-2 ring-offset-black"
+          : "relative h-12 w-16 shrink-0 overflow-hidden rounded opacity-60 transition-all hover:scale-105 hover:opacity-100"
+      }
+    >
+      {thumbUrl ? (
+        <img src={thumbUrl} alt="Filmstrip thumbnail" className="h-full w-full object-cover" />
+      ) : (
+        <div className="h-full w-full animate-pulse bg-slate-600" />
+      )}
+    </button>
+  );
+}
+
 export default function TimelinePage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [favoriteOnly, setFavoriteOnly] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [activeMediaId, setActiveMediaId] = useState(null);
   const [modalError, setModalError] = useState("");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const meQuery = useQuery({
     queryKey: ["me"],
@@ -139,14 +282,15 @@ export default function TimelinePage() {
   }, [meQuery.isError, router]);
 
   const timelineQuery = useInfiniteQuery({
-    queryKey: ["timeline", from, to, favoriteOnly],
+    queryKey: ["timeline", from, to, favoriteOnly, searchQuery],
     queryFn: ({ pageParam }) =>
       fetchTimeline({
         cursor: pageParam || undefined,
         limit: 18,
         from: from ? new Date(`${from}T00:00:00.000Z`).toISOString() : undefined,
         to: to ? new Date(`${to}T23:59:59.999Z`).toISOString() : undefined,
-        favorite: favoriteOnly ? true : undefined
+        favorite: favoriteOnly ? true : undefined,
+        q: searchQuery.trim() || undefined
       }),
     getNextPageParam: (lastPage) => lastPage.nextCursor || undefined,
     enabled: meQuery.isSuccess,
@@ -161,6 +305,29 @@ export default function TimelinePage() {
     return timelineQuery.data.pages.flatMap((page) => page.items || []);
   }, [timelineQuery.data]);
 
+  const sections = useMemo(() => {
+    const byDay = new Map();
+    for (const item of items) {
+      const key = normalizeDayKey(item.takenAt || item.uploadedAt);
+      if (!byDay.has(key)) {
+        byDay.set(key, []);
+      }
+      byDay.get(key).push(item);
+    }
+
+    return Array.from(byDay.entries())
+      .sort((a, b) => {
+        if (a[0] === "unknown") {
+          return 1;
+        }
+        if (b[0] === "unknown") {
+          return -1;
+        }
+        return a[0] < b[0] ? 1 : -1;
+      })
+      .map(([key, dayItems]) => ({ key, ...sectionLabel(key), items: dayItems }));
+  }, [items]);
+
   const activeIndex = useMemo(() => {
     if (!activeMediaId) {
       return -1;
@@ -170,10 +337,18 @@ export default function TimelinePage() {
   }, [activeMediaId, items]);
 
   const activeItem = activeIndex >= 0 ? items[activeIndex] : null;
-
   const canGoPrev = activeIndex > 0;
   const canGoNext =
     activeIndex >= 0 && (activeIndex < items.length - 1 || (activeIndex === items.length - 1 && timelineQuery.hasNextPage));
+  const filmstripItems = useMemo(() => {
+    if (activeIndex < 0) {
+      return [];
+    }
+
+    const start = Math.max(0, activeIndex - 3);
+    const end = Math.min(items.length, activeIndex + 4);
+    return items.slice(start, end);
+  }, [activeIndex, items]);
 
   useEffect(() => {
     if (!activeMediaId) {
@@ -322,132 +497,266 @@ export default function TimelinePage() {
   }
 
   return (
-    <main className="shell py-10">
-      <section className="panel space-y-6 p-8">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-ocean-900">Timeline</h1>
-            <p className="mt-1 text-sm text-ocean-700">
-              Signed in as <span className="font-semibold">{meQuery.data.user.email}</span>
-            </p>
+    <div className="relative flex h-[calc(100vh-61px)] overflow-hidden bg-[#f6f8f8] text-slate-900">
+      <style jsx global>{`
+        .timeline-scroll::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        .timeline-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .timeline-scroll::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 4px;
+        }
+        .timeline-scroll::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+      `}</style>
+
+      {isSidebarOpen ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+          aria-label="Close sidebar"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      ) : null}
+
+      <aside
+        className={`fixed inset-y-[61px] left-0 z-40 w-64 border-r border-slate-200 bg-white transition-transform duration-300 lg:static lg:inset-auto lg:translate-x-0 ${
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <AppSidebar activeLabel="Photos" />
+      </aside>
+
+      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="sticky top-0 z-10 border-b border-transparent bg-[#f6f8f8]/95 px-4 py-5 backdrop-blur lg:px-8">
+          <div className="mx-auto flex w-full max-w-3xl items-center gap-4">
+            <button
+              type="button"
+              className="shrink-0 rounded-full p-2 transition-colors hover:bg-slate-100 lg:hidden"
+              onClick={() => setIsSidebarOpen(true)}
+            >
+              Menu
+            </button>
+
+            <div className="group relative flex-1">
+              <input
+                className="block w-full rounded-full border border-slate-200 bg-white py-3 pl-4 pr-12 text-sm shadow-sm outline-none transition-all placeholder:text-slate-400 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200"
+                placeholder="Search your memories (e.g., 'Beach 2023', 'Cats')..."
+                type="text"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+              />
+              <button
+                type="button"
+                className="absolute inset-y-0 right-0 px-3 text-xs font-semibold text-slate-500"
+                onClick={handleLogout}
+              >
+                Logout
+              </button>
+            </div>
           </div>
 
-          <button type="button" className="btn btn-secondary" onClick={handleLogout}>
-            Logout
-          </button>
-        </div>
+          <div className="mx-auto mt-4 flex w-full max-w-3xl gap-3 overflow-x-auto pb-1">
+            <button className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-4 py-1.5 text-sm font-medium shadow-sm transition hover:border-cyan-500 hover:text-cyan-600">
+              People
+            </button>
+            <button className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-4 py-1.5 text-sm font-medium shadow-sm transition hover:border-cyan-500 hover:text-cyan-600">
+              Places
+            </button>
+            <button className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-4 py-1.5 text-sm font-medium shadow-sm transition hover:border-cyan-500 hover:text-cyan-600">
+              Things
+            </button>
+            <button className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-4 py-1.5 text-sm font-medium shadow-sm transition hover:border-cyan-500 hover:text-cyan-600">
+              Videos
+            </button>
+            <label className="ml-auto whitespace-nowrap rounded-full border border-slate-200 bg-white px-4 py-1.5 text-sm font-medium shadow-sm">
+              <input
+                type="checkbox"
+                className="mr-2 align-middle"
+                checked={favoriteOnly}
+                onChange={(event) => setFavoriteOnly(event.target.checked)}
+              />
+              Favorites
+            </label>
+          </div>
 
-        <div className="grid gap-3 md:grid-cols-4">
-          <label className="block md:col-span-1">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ocean-800">From</span>
+          <div className="mx-auto mt-3 grid w-full max-w-3xl gap-3 md:grid-cols-2">
             <input
-              className="field"
+              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm shadow-sm outline-none focus:border-cyan-500"
               type="date"
               value={from}
               onChange={(event) => setFrom(event.target.value)}
             />
-          </label>
-          <label className="block md:col-span-1">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ocean-800">To</span>
-            <input className="field" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
-          </label>
-          <label className="flex items-end gap-2 text-sm font-semibold text-ocean-800 md:col-span-2">
             <input
-              type="checkbox"
-              checked={favoriteOnly}
-              onChange={(event) => setFavoriteOnly(event.target.checked)}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm shadow-sm outline-none focus:border-cyan-500"
+              type="date"
+              value={to}
+              onChange={(event) => setTo(event.target.value)}
             />
-            Favorites only
-          </label>
+          </div>
+        </header>
+
+        <div className="timeline-scroll flex-1 overflow-y-auto px-4 pb-20 lg:px-8">
+          <div className="mx-auto flex max-w-6xl flex-col gap-10 py-6">
+            {timelineQuery.isError ? <p className="error">{formatApiError(timelineQuery.error)}</p> : null}
+            {timelineQuery.isPending ? <p className="text-sm text-slate-600">Loading timeline...</p> : null}
+
+            {!timelineQuery.isPending && sections.length === 0 ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm font-medium text-slate-700">
+                No media yet. Upload photos and they will appear here.
+              </div>
+            ) : null}
+
+            {sections.map((section) => (
+              <section key={section.key}>
+                <div className="sticky top-0 z-[1] mb-4 flex items-baseline gap-3 bg-[#f6f8f8] py-2">
+                  <h2 className="text-xl font-bold text-slate-900">{section.title}</h2>
+                  <span className="text-sm font-medium text-slate-500">{section.subtitle}</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {section.items.map((item, index) => (
+                    <div key={item.id} className={`group ${TILE_ASPECTS[index % TILE_ASPECTS.length]}`}>
+                      <TimelineThumbnail
+                        mediaId={item.id}
+                        className="h-full"
+                        onOpen={() => {
+                          setModalError("");
+                          setActiveMediaId(item.id);
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))}
+
+            {timelineQuery.hasNextPage ? (
+              <button
+                type="button"
+                className="mx-auto rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-cyan-500 hover:text-cyan-600"
+                disabled={timelineQuery.isFetchingNextPage}
+                onClick={() => timelineQuery.fetchNextPage()}
+              >
+                {timelineQuery.isFetchingNextPage ? "Loading more..." : "Load more"}
+              </button>
+            ) : null}
+
+            <div className="h-20" />
+          </div>
         </div>
 
-        {timelineQuery.isError ? <p className="error">{formatApiError(timelineQuery.error)}</p> : null}
-
-        {timelineQuery.isPending ? <p className="help">Loading timeline...</p> : null}
-
-        {!timelineQuery.isPending && items.length === 0 ? (
-          <div className="success">No media yet. Upload photos and they will appear here.</div>
-        ) : null}
-
-        {items.length > 0 ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {items.map((item) => (
-              <article key={item.id} className="rounded-2xl border border-[#d6e5eb] bg-white p-3">
-                <TimelineThumbnail
-                  mediaId={item.id}
-                  onOpen={() => {
-                    setModalError("");
-                    setActiveMediaId(item.id);
-                  }}
-                />
-                <div className="mt-3 space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-ocean-700">
-                    {item.flags.favorite ? "Favorite" : "Photo"}
-                  </p>
-                  <p className="text-sm font-semibold text-ocean-900">{formatTimelineDate(item.takenAt || item.uploadedAt)}</p>
-                  <p className="help">mediaId={item.id}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : null}
-
-        {timelineQuery.hasNextPage ? (
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={timelineQuery.isFetchingNextPage}
-            onClick={() => timelineQuery.fetchNextPage()}
-          >
-            {timelineQuery.isFetchingNextPage ? "Loading more..." : "Load more"}
-          </button>
-        ) : null}
-      </section>
+        <Link
+          href="/upload"
+          className="absolute bottom-8 right-8 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-cyan-500 text-2xl font-bold text-white shadow-lg transition-all hover:scale-105 hover:bg-cyan-600"
+          aria-label="Upload Photos"
+        >
+          +
+        </Link>
+      </main>
 
       {activeItem ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 flex flex-col bg-[#101d22]/95 text-white backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
-          onClick={handleCloseModal}
         >
-          <div className="absolute inset-0 bg-[#0a1a24]/80 backdrop-blur-[2px]" />
-          <div
-            className="relative z-10 w-full max-w-5xl rounded-2xl border border-[#2a5166] bg-[#0f2431] p-4 text-white shadow-2xl md:p-6"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <p className="text-sm text-[#d2e6ef]">
-                {activeIndex + 1} of {items.length} - {formatTimelineDate(activeItem.takenAt || activeItem.uploadedAt)}
-              </p>
-              <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>
-                Close
+          <header className="z-20 flex items-center justify-between bg-gradient-to-b from-black/60 to-transparent px-6 py-4">
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                className="rounded-full p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+                onClick={handleCloseModal}
+              >
+                Back
               </button>
+              <div>
+                <h2 className="text-base font-bold tracking-tight">{formatModalDate(activeItem.takenAt || activeItem.uploadedAt)}</h2>
+                <div className="flex items-center gap-2 text-xs font-medium text-white/60">
+                  <span>{formatModalTime(activeItem.takenAt || activeItem.uploadedAt)}</span>
+                  <span className="h-1 w-1 rounded-full bg-white/40" />
+                  <span>{activeItem.mimeType || "image/jpeg"}</span>
+                  <span className="h-1 w-1 rounded-full bg-white/40" />
+                  <span>PhotoX Viewer</span>
+                </div>
+              </div>
             </div>
 
-            <div className="flex min-h-[62vh] items-center justify-center rounded-xl bg-[#0b1a24] p-2">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center rounded-lg border border-white/10 bg-white/5 p-1 backdrop-blur-md">
+                <button type="button" className="h-10 w-10 rounded-lg text-sm text-white/80 transition-all hover:bg-white/10 hover:text-cyan-300">
+                  Share
+                </button>
+                <button type="button" className="h-10 w-10 rounded-lg text-sm text-cyan-300 transition-all hover:bg-white/10">
+                  Fav
+                </button>
+                <button type="button" className="h-10 w-10 rounded-lg text-sm text-white/80 transition-all hover:bg-white/10 hover:text-cyan-300">
+                  Info
+                </button>
+                <button type="button" className="h-10 w-10 rounded-lg text-sm text-white/80 transition-all hover:bg-white/10 hover:text-red-400">
+                  Del
+                </button>
+              </div>
+              <button
+                type="button"
+                className="h-10 w-10 rounded-full bg-white/10 text-white transition-all hover:bg-white/20"
+                onClick={handleCloseModal}
+              >
+                X
+              </button>
+            </div>
+          </header>
+
+          <main className="group/main relative flex flex-1 items-center justify-center overflow-hidden px-4 pb-24 pt-4 md:px-16">
+            <button
+              type="button"
+              className="absolute left-4 z-10 rounded-full border border-white/10 bg-black/20 p-3 text-white opacity-0 transition-all duration-300 group-hover/main:translate-x-0 group-hover/main:opacity-100 hover:scale-110 hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-20"
+              onClick={handlePreviousModal}
+              disabled={!canGoPrev}
+            >
+              {"<"}
+            </button>
+
+            <div className="relative flex max-h-full max-w-full items-center justify-center shadow-2xl">
               <TimelineModalImage mediaId={activeItem.id} />
             </div>
 
-            {modalError ? <p className="error mt-3">{modalError}</p> : null}
+            <button
+              type="button"
+              className="absolute right-4 z-10 rounded-full border border-white/10 bg-black/20 p-3 text-white opacity-0 transition-all duration-300 group-hover/main:translate-x-0 group-hover/main:opacity-100 hover:scale-110 hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-20"
+              onClick={handleNextModal}
+              disabled={!canGoNext || timelineQuery.isFetchingNextPage}
+            >
+              {">"}
+            </button>
+          </main>
 
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <button type="button" className="btn btn-secondary" disabled={!canGoPrev} onClick={handlePreviousModal}>
-                Previous
-              </button>
-              <p className="text-xs text-[#d2e6ef]">Use Left/Right arrows and Esc</p>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                disabled={!canGoNext || timelineQuery.isFetchingNextPage}
-                onClick={handleNextModal}
-              >
-                {timelineQuery.isFetchingNextPage && activeIndex === items.length - 1 ? "Loading..." : "Next"}
-              </button>
+          <div className="z-20 flex h-24 w-full flex-col justify-end bg-gradient-to-t from-black/90 to-transparent pb-4">
+            <div className="flex w-full justify-center px-4">
+              <div className="flex max-w-full gap-3 overflow-x-auto py-2">
+                {filmstripItems.map((item) => (
+                  <FilmstripThumb
+                    key={item.id}
+                    mediaId={item.id}
+                    isActive={item.id === activeItem.id}
+                    onSelect={() => {
+                      setModalError("");
+                      setActiveMediaId(item.id);
+                    }}
+                  />
+                ))}
+              </div>
             </div>
           </div>
+
+          {modalError ? <p className="absolute bottom-28 left-1/2 z-30 -translate-x-1/2 rounded bg-red-900/70 px-3 py-1 text-xs">{modalError}</p> : null}
         </div>
       ) : null}
-    </main>
+    </div>
   );
 }
