@@ -65,7 +65,7 @@ Phase exit gates:
 - all P0/P1/P2 task reports complete.
 - unit and integration tests pass for touched services.
 
-## Days 31-60 (Phase P3/P4): Timeline, Albums, Sharing
+## Days 31-60 (Phase P3/P4): Timeline + Admin User Management
 
 Target tasks:
 - `E4-S1`: timeline query API
@@ -73,20 +73,31 @@ Target tasks:
 - `P3.1-UI-S1`: multi-file upload UX with bounded concurrency (4)
 - `P3.2-INGEST-S1`: dedupe repeated uploads by owner + checksum
 - `P3.3-UI-S1`: timeline modal high-resolution viewer with navigation
-- `E5-S1`: album CRUD
-- `E5-S2`: public links
-- `E5-S3`: invite sharing
-- `E5-S4`: family library
+- `P4-ADM-S1` (proposed): first-user admin bootstrap + role model (`is_admin`, `is_active`)
+- `P4-ADM-S2` (proposed): admin user CRUD, role updates, and password resets
+- `P4-ADM-S3` (proposed): admin user metrics (`totalUsers`, active upload counts per user)
+- `P4-ADM-S4` (proposed): basic web `/admin` user management UI
 
 Required outcomes:
 - timeline and media detail APIs are stable and derivative-backed.
 - upload UI supports multi-file batches with per-file outcomes and bounded concurrency.
 - ingest dedupe prevents duplicate active media records for repeated identical uploads.
 - timeline UI supports modal high-resolution browsing with next/previous and auto-load navigation.
-- sharing model works with ACL enforcement.
+- admin user management is available from API and web UI.
 
 Phase exit gates:
 - timeline API pagination and consistency checks pass.
+- admin access-control and user-management integration tests pass.
+
+## Phase P+1 (Deferred from original P4): Albums and Sharing
+
+Target tasks:
+- `E5-S1`: album CRUD
+- `E5-S2`: public links
+- `E5-S3`: invite sharing
+- `E5-S4`: family library
+
+Phase exit gates:
 - ACL integration tests pass.
 
 ## Days 61-90 (Phase P5/P6): Search, Faces, Memories, Hardening

@@ -138,7 +138,17 @@ Exit criteria:
 - Modal supports close (`Esc`, backdrop, close button) and next/previous navigation.
 - Next navigation from loaded end fetches next timeline page and continues seamlessly.
 
-### Phase P4 - Albums and Sharing
+### Phase P4 - Admin User Management
+- Implement first-user admin bootstrap and default non-admin self-registration policy.
+- Implement admin user management APIs (create, modify, disable, password reset).
+- Implement admin user metrics (total users and active upload counts per user).
+- Implement basic web `/admin` user-management UI.
+
+Exit criteria:
+- First registered user is admin and subsequent self-registered users are non-admin.
+- Admin can manage users and promote other admins with self-demotion/lockout safeguards.
+
+### Phase P+1 - Albums and Sharing
 - Implement album CRUD and item management.
 - Implement public links, invite-only, family sharing ACL flows.
 

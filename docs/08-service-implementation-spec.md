@@ -70,16 +70,24 @@ Required endpoints:
 - `POST /auth/refresh`
 - `POST /auth/logout`
 - `GET /me`
+- `GET /admin/users`
+- `POST /admin/users`
+- `PATCH /admin/users/{userId}`
+- `POST /admin/users/{userId}/reset-password`
+- `DELETE /admin/users/{userId}`
 - `GET /auth/docs`
 - `GET /auth/openapi.json`
 
 Required tables (minimum):
-- `users(id, email, password_hash, created_at, updated_at)`
+- `users(id, email, password_hash, is_admin, is_active, created_at, updated_at)`
 - `sessions(id, user_id, refresh_token_hash, expires_at, revoked_at, created_at)`
 
 Integration requirements:
 - Login returns access + refresh token.
 - Logout revokes refresh token.
+- First registered user is created with `is_admin=true`; later self-registered users default to `is_admin=false`.
+- Admin routes require authenticated user with `is_admin=true`.
+- Soft-disabled users (`is_active=false`) cannot login/refresh and should have active sessions revoked on disable.
 - `users.password_hash` must store Argon2 PHC strings.
 - `sessions.refresh_token_hash` must store Argon2 PHC strings.
 - Non-Argon2 hash formats are not supported by auth verification paths.

@@ -27,7 +27,8 @@ Source of truth used for this snapshot:
 - `P3.1`: multi-file web upload UX (4 concurrent, continue-on-error) (implemented)
 - `P3.2`: upload dedupe by owner checksum against active media (implemented)
 - `P3.3`: timeline modal high-resolution viewer with next/previous navigation (implemented)
-- `P4`: albums and sharing (planned)
+- `P4`: admin user management (in progress)
+- `P+1`: albums and sharing (planned)
 - `P5`: search and semantic retrieval (planned)
 - `P6`: faces, memories, and hardening (planned)
 - `P100`: deferred security tech debt (planned)
@@ -44,12 +45,19 @@ Implemented now:
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
 - `GET /api/v1/me`
+- `GET /api/v1/admin/users`
+- `POST /api/v1/admin/users`
+- `PATCH /api/v1/admin/users/{userId}`
+- `POST /api/v1/admin/users/{userId}/reset-password`
+- `DELETE /api/v1/admin/users/{userId}`
 - `GET /api/v1/auth/docs`
 - `GET /api/v1/auth/openapi.json`
 
 Notes:
 - OpenAPI includes endpoint summaries/descriptions, request examples for write endpoints, response examples, and bearer auth security metadata.
 - Integration tests cover register/login/refresh/logout/me and docs/openapi availability.
+- First registered user is automatically admin; subsequent self-registered users are non-admin by default.
+- Admins can manage user role/status and password reset, with protection against self-demotion and last-active-admin lockout.
 
 Planned/pending:
 - `PATCH /api/v1/me`
@@ -98,7 +106,7 @@ Notes:
 Planned/pending:
 - `albumId` and `personId` timeline filters (deferred to P4/P6 relation wiring)
 
-### album-sharing-service - scaffold-only
+### album-sharing-service - scaffold-only (deferred to P+1)
 
 Implemented now:
 - `GET /health`

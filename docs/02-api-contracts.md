@@ -40,6 +40,11 @@ Implemented now:
 - `POST /auth/logout`
 - `POST /auth/refresh`
 - `GET /me`
+- `GET /admin/users`
+- `POST /admin/users`
+- `PATCH /admin/users/{userId}`
+- `POST /admin/users/{userId}/reset-password`
+- `DELETE /admin/users/{userId}`
 - `GET /auth/docs`
 - `GET /auth/openapi.json`
 
@@ -77,7 +82,9 @@ Planned/pending:
   "user": {
     "id": "usr_123",
     "email": "user@example.com",
-    "name": "User"
+    "name": "User",
+    "isAdmin": false,
+    "isActive": true
   }
 }
 ```
@@ -114,10 +121,24 @@ Planned/pending:
   "user": {
     "id": "usr_123",
     "email": "user@example.com",
-    "name": null
+    "name": null,
+    "isAdmin": false,
+    "isActive": true
   }
 }
 ```
+
+### Admin User Management (auth service)
+- `GET /admin/users?limit=&offset=`
+- `POST /admin/users`
+- `PATCH /admin/users/{userId}`
+- `POST /admin/users/{userId}/reset-password`
+- `DELETE /admin/users/{userId}`
+
+Rules:
+- First self-registered user is auto-assigned `isAdmin=true`.
+- Subsequent self-registered users default to `isAdmin=false`.
+- Admins can promote other users to admin.
 
 ---
 

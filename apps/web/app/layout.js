@@ -37,6 +37,9 @@ export default function RootLayout({ children }) {
                 <Link href="/timeline" className="hover:text-ocean-900">
                   Timeline
                 </Link>
+                <Link href="/admin" className="hover:text-ocean-900">
+                  Admin
+                </Link>
               </nav>
             </div>
           </header>

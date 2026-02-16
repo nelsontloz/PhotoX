@@ -258,6 +258,49 @@ export async function fetchMediaContentBlob(mediaId, variant = "thumb") {
   });
 }
 
+export async function listAdminUsers(params = {}) {
+  const search = new URLSearchParams();
+
+  if (params.limit !== undefined) {
+    search.set("limit", String(params.limit));
+  }
+
+  if (params.offset !== undefined) {
+    search.set("offset", String(params.offset));
+  }
+
+  const query = search.toString();
+  const suffix = query ? `?${query}` : "";
+  return requestWithAutoRefresh(`/admin/users${suffix}`, { method: "GET" });
+}
+
+export async function createAdminManagedUser(payload) {
+  return requestWithAutoRefresh("/admin/users", {
+    method: "POST",
+    body: payload
+  });
+}
+
+export async function updateAdminManagedUser(userId, payload) {
+  return requestWithAutoRefresh(`/admin/users/${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    body: payload
+  });
+}
+
+export async function disableAdminManagedUser(userId) {
+  return requestWithAutoRefresh(`/admin/users/${encodeURIComponent(userId)}`, {
+    method: "DELETE"
+  });
+}
+
+export async function resetAdminManagedUserPassword(userId, password) {
+  return requestWithAutoRefresh(`/admin/users/${encodeURIComponent(userId)}/reset-password`, {
+    method: "POST",
+    body: { password }
+  });
+}
+
 export function createIdempotencyKey(prefix) {
   const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36);
   return `${prefix}-${id}`;
