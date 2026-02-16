@@ -1,10 +1,19 @@
 import { completeUpload, createIdempotencyKey, initUpload, uploadPart } from "./api";
+import { sha256 } from "./sha256";
 
 async function sha256HexFromBlob(blob) {
-  const bytes = await blob.arrayBuffer();
-  const hashBuffer = await crypto.subtle.digest("SHA-256", bytes);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((part) => part.toString(16).padStart(2, "0")).join("");
+  const hasher = sha256.create();
+  const chunkSize = 5 * 1024 * 1024; // 5MB
+  let offset = 0;
+
+  while (offset < blob.size) {
+    const chunk = blob.slice(offset, offset + chunkSize);
+    const buffer = await chunk.arrayBuffer();
+    hasher.update(buffer);
+    offset += chunkSize;
+  }
+
+  return hasher.hex();
 }
 
 export function formatBytes(bytes) {
