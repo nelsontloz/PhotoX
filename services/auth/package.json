@@ -10,7 +10,7 @@
   "dependencies": {
     "@fastify/swagger": "^9.5.2",
     "@fastify/swagger-ui": "^5.2.3",
-    "bcryptjs": "^3.0.2",
+    "argon2": "^0.44.0",
     "fastify": "^5.2.0",
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.13.1",

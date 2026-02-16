@@ -80,6 +80,9 @@ Required tables (minimum):
 Integration requirements:
 - Login returns access + refresh token.
 - Logout revokes refresh token.
+- `users.password_hash` must store Argon2 PHC strings.
+- `sessions.refresh_token_hash` must store Argon2 PHC strings.
+- Non-Argon2 hash formats are not supported by auth verification paths.
 
 ---
 
