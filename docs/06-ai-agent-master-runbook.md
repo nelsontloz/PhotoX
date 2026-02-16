@@ -161,6 +161,16 @@ Exit criteria:
 - Face clustering controls (rename/merge/split) functional.
 - Backup and restore drill passes.
 
+### Phase P100 - Deferred Security Tech Debt
+- Migrate web auth session transport away from browser-readable token storage.
+- Enforce production-mode fail-fast validation for JWT secret configuration in auth/ingest/library services.
+- Add security-focused integration gates for cookie session flow and production startup policy.
+
+Exit criteria:
+- No access/refresh token persistence in browser-readable storage.
+- Production startup fails when JWT secrets are missing or insecure defaults.
+- P100 checklist in `docs/10-execution-checklists-and-handoffs.md` passes.
+
 ---
 
 ## 6) Standard Implementation Workflow Per Task

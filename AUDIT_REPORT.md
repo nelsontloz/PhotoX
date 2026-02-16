@@ -1,108 +1,133 @@
 # Comprehensive Code Audit Report: PhotoX
 
+Last updated: 2026-02-16
+
+This report reflects the current repository state after remediation work for:
+- transaction and concurrency hardening in ingest complete flow,
+- failure-path assembled-file cleanup,
+- conflict-safe idempotency persistence behavior.
+
+Deferred items are explicitly tracked in Phase `P100` security tech debt:
+- `docs/04-backlog-epics-stories.md` (`P100-S1`, `P100-S2`)
+- `docs/03-implementation-roadmap-90d.md` (Post-90 `P100`)
+- `docs/10-execution-checklists-and-handoffs.md` (Phase `P100` checklist)
+- `docs/11-current-implementation-status.md` (`P100` snapshot)
+
+---
+
 ## 1. Security Analysis
 
 ### 1.1 Insecure Token Storage (Critical)
-*   **File**: `apps/web/lib/session.js` (Lines 18-35)
-*   **Issue**: JWT Access and Refresh tokens are stored in `localStorage` via `writeSession` and `readSession`.
-*   **Exploit Scenario**: If the application is vulnerable to Cross-Site Scripting (XSS), an attacker can inject malicious JavaScript to read `localStorage`, exfiltrate the tokens, and impersonate the user.
-*   **Impact**: Full account takeover.
-*   **Remediation**: Use `httpOnly`, `Secure`, `SameSite` cookies to store tokens. The backend should set these cookies on login/refresh. The frontend should not access them directly.
+*   **Status**: **Deferred (P100-S1)**
+*   **File**: `apps/web/lib/session.js`
+*   **Current state**: Access and refresh tokens are still persisted in browser-readable storage.
+*   **Risk**: XSS can exfiltrate tokens and enable account takeover.
+*   **Planned remediation**: migrate to cookie-based auth transport (`httpOnly`, `Secure`, `SameSite`) with CSRF controls.
 
 ### 1.2 Weak Token Hashing (High)
-*   **File**: `services/auth/src/auth/tokens.js` (Lines 4-6)
-*   **Issue**: Refresh tokens are hashed using SHA-256 without a salt: `crypto.createHash("sha256").update(token).digest("hex")`.
-*   **Exploit Scenario**: If the database is compromised, an attacker can use rainbow tables or fast brute-force attacks to reverse the hashes (especially if tokens have low entropy, though JWTs usually don't). More importantly, if the attacker also has the JWT signing secret (often in env vars on the same server), they can forge tokens. But even without the secret, if they can reverse the hash, they can use the stolen refresh tokens to get access tokens.
-*   **Impact**: Persistence of access for attackers with DB access.
-*   **Remediation**: Use a salted hash (like `bcrypt` or `Argon2`) or at least `HMAC-SHA256` with a separate secret key for token storage.
+*   **Status**: **Partially mitigated**
+*   **File**: `services/auth/src/auth/tokens.js`
+*   **Current state**: New refresh tokens are bcrypt-hashed; legacy SHA-256 hashes are still accepted for backward compatibility.
+*   **Risk**: legacy hash verification path remains until migration window is closed.
+*   **Recommended follow-up**: sunset legacy hash verification after token-rotation horizon.
 
 ### 1.3 Denial of Service via Large Payload (High)
-*   **File**: `services/ingest/src/config.js` and `services/ingest/src/routes/uploadsRoutes.js`
-*   **Issue**: `uploadBodyLimitBytes` defaults to 64MB, while `uploadPartSizeBytes` defaults to 5MB. The check for part size happens *after* the request body is fully received and buffered by Fastify (in default configuration).
-*   **Exploit Scenario**: An attacker sends many concurrent requests with 60MB bodies. The server buffers them all in memory before rejecting them in the handler, leading to Memory Exhaustion (OOM) and crash.
-*   **Impact**: Service unavailability.
-*   **Remediation**: Configure `bodyLimit` in Fastify to be slightly larger than `partSize` (e.g., 6MB) or use a streaming multipart parser that enforces limits on the fly.
+*   **Status**: **Mitigated**
+*   **Files**: `services/ingest/src/config.js`, `services/ingest/src/app.js`, `services/ingest/src/routes/uploadsRoutes.js`
+*   **Current state**: Fastify `bodyLimit` is configured and defaults are aligned with chunk expectations.
+*   **Residual risk**: remains bounded by configured limit and request concurrency.
 
 ### 1.4 Path Traversal Risk (Medium)
-*   **File**: `services/ingest/src/upload/storage.js` (Lines 37-43)
-*   **Issue**: `toSafeExtension` relies on a regex that allows any alphanumeric extension. While mostly safe, it doesn't strictly whitelist safe extensions (like `.jpg`, `.png`).
-*   **Exploit Scenario**: An attacker uploads a file named `exploit.php` (if the server was PHP-based or served static files with execution enabled).
-*   **Impact**: Potential Remote Code Execution (RCE) if the storage bucket/server is misconfigured to execute scripts.
-*   **Remediation**: Whitelist allowed MIME types and extensions strictly.
+*   **Status**: **Not confirmed as traversal; deferred hardening**
+*   **File**: `services/ingest/src/upload/storage.js`
+*   **Current state**: file path uses controlled path segments (`userId/year/month/mediaId`) and extension extraction.
+*   **Risk posture**: not path traversal in current implementation, but strict extension/MIME allowlisting is still good hardening.
+*   **Recommended follow-up**: extension + MIME allowlist and upload-policy documentation.
 
 ### 1.5 User Enumeration (Low)
-*   **File**: `services/auth/src/routes/authRoutes.js` (Lines 159-161)
-*   **Issue**: The registration endpoint explicitly returns `CONFLICT_EMAIL_EXISTS` when an email is already taken.
-*   **Exploit Scenario**: An attacker can check if a list of emails (e.g., from a leak) exists on the platform.
-*   **Impact**: Privacy violation.
-*   **Remediation**: Return a generic "If the email is valid, a registration link has been sent" message, or at least ensure timing attacks don't reveal existence if you change the message. (Note: For a simple app, this might be acceptable, but for high security, it's a risk).
+*   **Status**: **Open**
+*   **File**: `services/auth/src/routes/authRoutes.js`
+*   **Current state**: register endpoint returns explicit `CONFLICT_EMAIL_EXISTS`.
+*   **Risk**: allows probing whether an email exists.
 
 ---
 
 ## 2. Performance and Scalability
 
 ### 2.1 Memory Inefficiency in File Assembly (Critical)
-*   **File**: `services/ingest/src/upload/storage.js` (Lines 61-63)
-*   **Issue**: `assemblePartsToFile` iterates through parts, reads each entire part into memory using `fs.readFile`, and writes it.
-    ```javascript
-    const payload = await fs.readFile(partAbsolutePath);
-    out.write(payload);
-    ```
-*   **Impact**: High memory usage. If multiple uploads are finalizing simultaneously, or if parts are large, this will cause GC pressure or OOM.
-*   **Remediation**: Use streams. `fs.createReadStream(partPath).pipe(out)` (or `pipeline`).
+*   **Status**: **Fixed**
+*   **File**: `services/ingest/src/upload/storage.js`
+*   **Current state**: assembly uses streaming read/write, not whole-file buffering per part.
 
 ### 2.2 Memory Inefficiency in Checksum Calculation (Critical)
-*   **File**: `services/ingest/src/upload/storage.js` (Lines 74-82)
-*   **Issue**: `checksumFileSha256` reads the file using `fsSync.createReadStream` but the implementation is manually handling data events. It is better to use `pipeline` or ensure backpressure is handled, though `createReadStream` handles it well. However, the synchronous `fsSync` usage in an async function is slightly confusing, though it creates a stream. The bigger issue is that for very large files (e.g., 10GB video), calculating checksum on the final file takes a long time and IO.
-*   **Impact**: High CPU/IO during upload completion.
-*   **Remediation**: Ensure streams are used efficiently.
+*   **Status**: **Mitigated**
+*   **File**: `services/ingest/src/upload/storage.js`
+*   **Current state**: checksum computation uses stream-based hashing.
 
 ### 2.3 Blocking Event Loop
-*   **File**: `services/ingest/src/upload/storage.js` (Line 76)
-*   **Issue**: Uses `fsSync.createReadStream`. While it creates a stream, using `fsSync` methods in a Node.js server (even for stream creation) can be slightly blocking if the filesystem is slow, though `createReadStream` is generally safe.
-*   **Remediation**: Use `fs.createReadStream` (from `fs` or `fs/promises` doesn't exist, just `fs`).
+*   **Status**: **Not confirmed**
+*   **File**: `services/ingest/src/upload/storage.js`
+*   **Current state**: stream-based APIs are used for assembly and checksum.
 
 ---
 
 ## 3. Concurrency and Reliability
 
 ### 3.1 Race Conditions in File Operations
-*   **File**: `services/ingest/src/upload/storage.js`
-*   **Issue**: No file locking. If two requests try to finalize the same upload (e.g. retry), they might overwrite or corrupt the file.
-*   **Remediation**: Use Idempotency keys (which are implemented! `services/ingest/src/routes/uploadsRoutes.js` uses them). The implementation looks good: `app.repos.idempotency.find` checks if the request was already handled.
+*   **Status**: **Improved**
+*   **Files**: `services/ingest/src/routes/uploadsRoutes.js`, `services/ingest/src/repos/uploadSessionsRepo.js`
+*   **Current state**:
+    - complete flow now uses row lock (`SELECT ... FOR UPDATE`) and transactional state writes,
+    - concurrent complete requests converge on one persisted media/session result.
 
 ### 3.2 Database Transaction Boundaries
-*   **File**: `services/ingest/src/routes/uploadsRoutes.js` (Complete Upload)
-*   **Issue**: The "Complete Upload" logic performs multiple DB operations (create media, update session, delete temp dir) but not in a single transaction.
-*   **Impact**: If `app.repos.media.create` succeeds but `app.repos.uploadSessions.markCompleted` fails, the system is in an inconsistent state (media exists but session is not marked done).
-*   **Remediation**: Wrap the completion logic in `db.transaction(...)`.
+*   **Status**: **Fixed**
+*   **Files**: `services/ingest/src/routes/uploadsRoutes.js`, `services/ingest/src/repos/mediaRepo.js`, `services/ingest/src/repos/uploadSessionsRepo.js`
+*   **Current state**: critical complete-flow DB mutations run in a single transaction.
+
+### 3.3 Failure-path Assembled File Cleanup
+*   **Status**: **Fixed**
+*   **Files**: `services/ingest/src/routes/uploadsRoutes.js`
+*   **Current state**: staged assembled output file is removed in `finally` for non-primary paths (including checksum mismatch and dedupe paths).
+
+### 3.4 Idempotency Persistence Conflict Races
+*   **Status**: **Fixed**
+*   **Files**: `services/ingest/src/repos/idempotencyRepo.js`, `services/ingest/src/routes/uploadsRoutes.js`
+*   **Current state**: idempotency persistence uses conflict-safe insert-or-fetch semantics instead of failing on unique constraint races.
 
 ---
 
 ## 4. Framework-Specific Issues
 
 ### 4.1 Missing Service Implementations
-*   **Services**: `search-service`, `library-service`, `album-sharing-service`, `worker-service`.
-*   **Issue**: These services are skeletons with no logic.
-*   **Impact**: The application is incomplete.
+*   **Status**: **Partially open**
+*   **Services**: `search-service`, `album-sharing-service`, `worker-service`
+*   **Current state**: still scaffold-level.
 
-### 4.2 Fastify Configuration
+### 4.2 Fastify `trustProxy` Configuration
+*   **Status**: **Open**
 *   **File**: `services/auth/src/app.js`
-*   **Issue**: Missing `trustProxy` configuration if behind Traefik.
-*   **Impact**: IP rate limiting (if added) would see the load balancer's IP.
-*   **Remediation**: set `trustProxy: true` in Fastify config.
+*   **Current state**: `trustProxy` not configured.
 
 ---
 
 ## 5. Code Quality and Maintainability
 
-### 5.1 Hardcoded Secrets in Config
-*   **File**: `services/auth/src/config.js`
-*   **Issue**: default values for secrets (`change-me`) are committed in code.
-*   **Impact**: If deployed without env vars, it's insecure.
-*   **Remediation**: Throw an error if secrets are missing in production environment (`NODE_ENV === 'production'`).
+### 5.1 Hardcoded Secret Defaults in Config
+*   **Status**: **Deferred (P100-S2)**
+*   **Files**: `services/auth/src/config.js`, `services/ingest/src/config.js`, `services/library/src/config.js`
+*   **Current state**: defaults still exist for local-development convenience.
+*   **Planned remediation**: production-mode fail-fast validation for weak/missing JWT secrets.
 
-### 5.2 Duplicate Code
-*   **Files**: `services/*/src/app.js`, `services/*/src/config.js`, `services/*/src/db.js`
-*   **Issue**: Boilerplate for Fastify app, DB connection, and config loading is repeated across services.
-*   **Remediation**: Create a shared library (package) for common infrastructure code.
+### 5.2 Duplicate Infrastructure Boilerplate
+*   **Status**: **Open**
+*   **Files**: repeated patterns under `services/*/src/app.js`, `services/*/src/config.js`, `services/*/src/db.js`
+*   **Current state**: duplication remains.
+
+---
+
+## 6. Immediate Priorities
+
+1. Execute `P100-S1` (cookie-based auth session migration).
+2. Execute `P100-S2` (production JWT secret hard-fail policy).
+3. Close remaining open items: user enumeration response policy, `trustProxy`, and service scaffold completion.

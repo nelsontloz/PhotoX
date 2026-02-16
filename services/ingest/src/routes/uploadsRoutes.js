@@ -82,6 +82,37 @@ function ensureUploadSessionExists(session) {
   }
 }
 
+function assertMatchingIdempotencyHash(existing, requestHash) {
+  if (existing.request_hash !== requestHash) {
+    throw new ApiError(
+      409,
+      "IDEMPOTENCY_CONFLICT",
+      "Idempotency key was already used with a different request"
+    );
+  }
+}
+
+async function persistIdempotencyResult({ app, userId, scope, idemKey, requestHash, responseBody, statusCode }) {
+  const stored = await app.repos.idempotency.insertOrGetExisting({
+    userId,
+    scope,
+    idemKey,
+    requestHash,
+    responseBody,
+    statusCode
+  });
+
+  if (!stored) {
+    throw new Error("Failed to persist idempotency response");
+  }
+
+  assertMatchingIdempotencyHash(stored.record, requestHash);
+  return {
+    statusCode: stored.record.status_code,
+    responseBody: stored.record.response_body
+  };
+}
+
 function buildErrorEnvelopeSchema(code, message, details = {}) {
   return {
     type: "object",
@@ -174,13 +205,7 @@ module.exports = async function uploadsRoutes(app) {
       if (idempotencyKey) {
         const existing = await app.repos.idempotency.find(userId, IDEMPOTENCY_SCOPE_UPLOAD_INIT, idempotencyKey);
         if (existing) {
-          if (existing.request_hash !== requestHash) {
-            throw new ApiError(
-              409,
-              "IDEMPOTENCY_CONFLICT",
-              "Idempotency key was already used with a different request"
-            );
-          }
+          assertMatchingIdempotencyHash(existing, requestHash);
 
           reply.code(existing.status_code).send(existing.response_body);
           return;
@@ -200,7 +225,8 @@ module.exports = async function uploadsRoutes(app) {
 
       const responseBody = buildInitResponse(session);
       if (idempotencyKey) {
-        await app.repos.idempotency.insert({
+        const persisted = await persistIdempotencyResult({
+          app,
           userId,
           scope: IDEMPOTENCY_SCOPE_UPLOAD_INIT,
           idemKey: idempotencyKey,
@@ -208,6 +234,9 @@ module.exports = async function uploadsRoutes(app) {
           responseBody,
           statusCode: 201
         });
+
+        reply.code(persisted.statusCode).send(persisted.responseBody);
+        return;
       }
 
       reply.code(201).send(responseBody);
@@ -440,13 +469,7 @@ module.exports = async function uploadsRoutes(app) {
           idempotencyKey
         );
         if (existing) {
-          if (existing.request_hash !== requestHash) {
-            throw new ApiError(
-              409,
-              "IDEMPOTENCY_CONFLICT",
-              "Idempotency key was already used with a different request"
-            );
-          }
+          assertMatchingIdempotencyHash(existing, requestHash);
 
           reply.code(existing.status_code).send(existing.response_body);
           return;
@@ -457,7 +480,22 @@ module.exports = async function uploadsRoutes(app) {
       ensureUploadSessionExists(session);
 
       if (session.status === "completed" && session.media_id) {
-        return buildCompleteResponse(session.media_id);
+        const responseBody = buildCompleteResponse(session.media_id);
+        if (idempotencyKey) {
+          const persisted = await persistIdempotencyResult({
+            app,
+            userId,
+            scope: IDEMPOTENCY_SCOPE_UPLOAD_COMPLETE,
+            idemKey: idempotencyKey,
+            requestHash,
+            responseBody,
+            statusCode: 200
+          });
+          reply.code(persisted.statusCode).send(persisted.responseBody);
+          return;
+        }
+
+        return responseBody;
       }
 
       if (!["initiated", "uploading"].includes(session.status)) {
@@ -479,47 +517,180 @@ module.exports = async function uploadsRoutes(app) {
         });
       }
 
-      const mediaId = crypto.randomUUID();
-      const relativePath = buildMediaRelativePath({
+      const stagedMediaId = crypto.randomUUID();
+      const stagedRelativePath = buildMediaRelativePath({
         userId,
-        mediaId,
+        mediaId: stagedMediaId,
         fileName: session.file_name
       });
 
-      const outputAbsolutePath = await assemblePartsToFile({
-        originalsRoot: app.config.uploadOriginalsPath,
-        parts,
-        outputRelativePath: relativePath
-      });
+      let outputAbsolutePath;
+      let keepAsPrimaryFile = false;
 
-      const expectedChecksum = body.checksumSha256 || session.checksum_sha256;
-      const actualChecksum = await checksumFileSha256(outputAbsolutePath);
-      if (actualChecksum !== expectedChecksum) {
-        throw new ApiError(409, "UPLOAD_CHECKSUM_MISMATCH", "Checksum mismatch while completing upload", {
-          expectedChecksum,
-          actualChecksum
+      try {
+        outputAbsolutePath = await assemblePartsToFile({
+          originalsRoot: app.config.uploadOriginalsPath,
+          parts,
+          outputRelativePath: stagedRelativePath
         });
+      } catch (err) {
+        if (err && err.code === "ENOENT") {
+          const latestSession = await app.repos.uploadSessions.findByIdForUser(params.uploadId, userId);
+          if (latestSession && latestSession.status === "completed" && latestSession.media_id) {
+            const responseBody = buildCompleteResponse(latestSession.media_id);
+            if (idempotencyKey) {
+              const persisted = await persistIdempotencyResult({
+                app,
+                userId,
+                scope: IDEMPOTENCY_SCOPE_UPLOAD_COMPLETE,
+                idemKey: idempotencyKey,
+                requestHash,
+                responseBody,
+                statusCode: 200
+              });
+              reply.code(persisted.statusCode).send(persisted.responseBody);
+              return;
+            }
+
+            return responseBody;
+          }
+
+          throw new ApiError(409, "UPLOAD_INCOMPLETE", "Upload parts unavailable for completion");
+        }
+
+        throw err;
       }
 
-      const duplicateMedia = await app.repos.media.findActiveByOwnerAndChecksum({
-        ownerId: userId,
-        checksumSha256: actualChecksum
-      });
+      try {
+        const expectedChecksum = body.checksumSha256 || session.checksum_sha256;
+        const actualChecksum = await checksumFileSha256(outputAbsolutePath);
+        if (actualChecksum !== expectedChecksum) {
+          throw new ApiError(409, "UPLOAD_CHECKSUM_MISMATCH", "Checksum mismatch while completing upload", {
+            expectedChecksum,
+            actualChecksum
+          });
+        }
 
-      if (duplicateMedia) {
-        await app.repos.uploadSessions.markCompleted({
-          id: params.uploadId,
-          userId,
-          mediaId: duplicateMedia.id,
-          storageRelativePath: duplicateMedia.relative_path
-        });
+        let responseBody;
+        let shouldRemoveUploadTempDir = false;
+        let queuePayload = null;
 
-        await fs.rm(outputAbsolutePath, { force: true });
-        await removeUploadTempDir(app.config.uploadOriginalsPath, params.uploadId);
+        const tx = await app.db.connect();
+        try {
+          await tx.query("BEGIN");
 
-        const responseBody = buildCompleteResponse(duplicateMedia.id, true);
+          const lockedSession = await app.repos.uploadSessions.findByIdForUserForUpdate(
+            params.uploadId,
+            userId,
+            tx
+          );
+          ensureUploadSessionExists(lockedSession);
+
+          if (lockedSession.status === "completed" && lockedSession.media_id) {
+            responseBody = buildCompleteResponse(lockedSession.media_id);
+          } else {
+            if (!["initiated", "uploading"].includes(lockedSession.status)) {
+              throw new ApiError(409, "UPLOAD_STATE_INVALID", "Upload session is not ready for completion", {
+                status: lockedSession.status
+              });
+            }
+
+            const lockedUploadedBytes = await app.repos.uploadParts.getUploadedBytes(params.uploadId, tx);
+            if (lockedUploadedBytes !== Number(lockedSession.file_size)) {
+              throw new ApiError(409, "UPLOAD_INCOMPLETE", "Uploaded bytes do not match expected file size", {
+                expected: Number(lockedSession.file_size),
+                uploaded: lockedUploadedBytes
+              });
+            }
+
+            const duplicateMedia = await app.repos.media.findActiveByOwnerAndChecksum(
+              {
+                ownerId: userId,
+                checksumSha256: actualChecksum
+              },
+              tx
+            );
+
+            if (duplicateMedia) {
+              await app.repos.uploadSessions.markCompleted(
+                {
+                  id: params.uploadId,
+                  userId,
+                  mediaId: duplicateMedia.id,
+                  storageRelativePath: duplicateMedia.relative_path
+                },
+                tx
+              );
+
+              responseBody = buildCompleteResponse(duplicateMedia.id, true);
+              shouldRemoveUploadTempDir = true;
+            } else {
+              const media = await app.repos.media.create(
+                {
+                  id: stagedMediaId,
+                  ownerId: userId,
+                  relativePath: stagedRelativePath,
+                  mimeType: lockedSession.content_type,
+                  status: "processing",
+                  checksumSha256: actualChecksum
+                },
+                tx
+              );
+
+              await app.repos.uploadSessions.markCompleted(
+                {
+                  id: params.uploadId,
+                  userId,
+                  mediaId: media.id,
+                  storageRelativePath: stagedRelativePath
+                },
+                tx
+              );
+
+              responseBody = buildCompleteResponse(media.id, false);
+              shouldRemoveUploadTempDir = true;
+              queuePayload = {
+                mediaId: media.id,
+                ownerId: userId,
+                relativePath: stagedRelativePath,
+                checksumSha256: media.checksum_sha256,
+                uploadedAt: new Date(media.created_at).toISOString()
+              };
+            }
+          }
+
+          await tx.query("COMMIT");
+        } catch (err) {
+          await tx.query("ROLLBACK");
+          throw err;
+        } finally {
+          tx.release();
+        }
+
+        keepAsPrimaryFile = queuePayload !== null;
+
+        if (queuePayload) {
+          await app.queues.mediaProcess.add(
+            "media.process",
+            queuePayload,
+            {
+              jobId: `media-process-${queuePayload.mediaId}`,
+              attempts: 3,
+              backoff: {
+                type: "exponential",
+                delay: 1000
+              }
+            }
+          );
+        }
+
+        if (shouldRemoveUploadTempDir) {
+          await removeUploadTempDir(app.config.uploadOriginalsPath, params.uploadId);
+        }
+
         if (idempotencyKey) {
-          await app.repos.idempotency.insert({
+          const persisted = await persistIdempotencyResult({
+            app,
             userId,
             scope: IDEMPOTENCY_SCOPE_UPLOAD_COMPLETE,
             idemKey: idempotencyKey,
@@ -527,61 +698,23 @@ module.exports = async function uploadsRoutes(app) {
             responseBody,
             statusCode: 200
           });
+          reply.code(persisted.statusCode).send(persisted.responseBody);
+          return;
         }
 
         return responseBody;
-      }
-
-      const media = await app.repos.media.create({
-        id: mediaId,
-        ownerId: userId,
-        relativePath,
-        mimeType: session.content_type,
-        status: "processing",
-        checksumSha256: actualChecksum
-      });
-
-      await app.repos.uploadSessions.markCompleted({
-        id: params.uploadId,
-        userId,
-        mediaId: media.id,
-        storageRelativePath: relativePath
-      });
-
-      await removeUploadTempDir(app.config.uploadOriginalsPath, params.uploadId);
-
-      await app.queues.mediaProcess.add(
-        "media.process",
-        {
-          mediaId: media.id,
-          ownerId: userId,
-          relativePath,
-          checksumSha256: media.checksum_sha256,
-          uploadedAt: new Date(media.created_at).toISOString()
-        },
-        {
-          jobId: `media-process-${media.id}`,
-          attempts: 3,
-          backoff: {
-            type: "exponential",
-            delay: 1000
+      } finally {
+        if (outputAbsolutePath && !keepAsPrimaryFile) {
+          try {
+            await fs.rm(outputAbsolutePath, { force: true });
+          } catch (cleanupError) {
+            request.log.warn(
+              { err: cleanupError, outputAbsolutePath },
+              "failed to remove staged assembled upload file"
+            );
           }
         }
-      );
-
-      const responseBody = buildCompleteResponse(media.id, false);
-      if (idempotencyKey) {
-        await app.repos.idempotency.insert({
-          userId,
-          scope: IDEMPOTENCY_SCOPE_UPLOAD_COMPLETE,
-          idemKey: idempotencyKey,
-          requestHash,
-          responseBody,
-          statusCode: 200
-        });
       }
-
-      return responseBody;
     }
   );
 

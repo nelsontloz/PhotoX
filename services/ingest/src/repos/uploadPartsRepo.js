@@ -1,7 +1,11 @@
 function buildUploadPartsRepo(db) {
+  function queryable(executor) {
+    return executor || db;
+  }
+
   return {
-    async upsertPart({ uploadId, partNumber, byteSize, checksumSha256, relativePartPath }) {
-      const result = await db.query(
+    async upsertPart({ uploadId, partNumber, byteSize, checksumSha256, relativePartPath }, executor) {
+      const result = await queryable(executor).query(
         `
           INSERT INTO upload_parts (upload_id, part_number, byte_size, checksum_sha256, relative_part_path)
           VALUES ($1, $2, $3, $4, $5)
@@ -18,8 +22,8 @@ function buildUploadPartsRepo(db) {
       return result.rows[0];
     },
 
-    async listParts(uploadId) {
-      const result = await db.query(
+    async listParts(uploadId, executor) {
+      const result = await queryable(executor).query(
         `
           SELECT upload_id, part_number, byte_size, checksum_sha256, relative_part_path, created_at
           FROM upload_parts
@@ -31,8 +35,8 @@ function buildUploadPartsRepo(db) {
       return result.rows;
     },
 
-    async getUploadedBytes(uploadId) {
-      const result = await db.query(
+    async getUploadedBytes(uploadId, executor) {
+      const result = await queryable(executor).query(
         `
           SELECT COALESCE(SUM(byte_size), 0)::BIGINT AS uploaded_bytes
           FROM upload_parts

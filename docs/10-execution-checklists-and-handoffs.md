@@ -78,6 +78,13 @@ Note:
 - [ ] Backup/restore scripts available.
 - [ ] Reliability checks and regression tests pass.
 
+## Phase P100 - Deferred Security Tech Debt
+- [ ] Web auth flow no longer stores access/refresh tokens in browser-readable storage.
+- [ ] Cookie-based session flow uses `httpOnly`, `Secure`, and `SameSite` attributes.
+- [ ] CSRF mitigation is implemented and verified for mutation endpoints.
+- [ ] Auth/ingest/library fail fast in production when JWT secrets are missing or insecure.
+- [ ] Security-focused unit + integration gates pass.
+
 ---
 
 ## 2) Per-Task Completion Checklist

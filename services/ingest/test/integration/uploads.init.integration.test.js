@@ -29,6 +29,23 @@ function createAccessToken({ userId, email, secret }) {
   );
 }
 
+async function listRelativeFiles(rootPath, currentPath = ".") {
+  const entries = await fs.readdir(path.join(rootPath, currentPath), { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    const nextPath = path.join(currentPath, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await listRelativeFiles(rootPath, nextPath)));
+      continue;
+    }
+
+    files.push(nextPath.split(path.sep).join("/"));
+  }
+
+  return files;
+}
+
 describe("upload init integration", () => {
   let app;
   const accessSecret = "ingest-integration-access-secret";
@@ -460,6 +477,140 @@ describe("upload init integration", () => {
     expect(complete.statusCode).toBe(200);
     expect(jsonBody(complete).status).toBe("processing");
     expect(jsonBody(complete).deduplicated).toBe(false);
+  });
+
+  it("cleans staged assembled file on checksum mismatch", async () => {
+    const accessToken = createAccessToken({
+      userId: "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
+      email: "user@example.com",
+      secret: accessSecret
+    });
+
+    const chunk = Buffer.from("checksum-mismatch", "utf8");
+    const fileChecksum = crypto.createHash("sha256").update(chunk).digest("hex");
+
+    const init = await app.inject({
+      method: "POST",
+      url: "/api/v1/uploads/init",
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      },
+      payload: {
+        fileName: "mismatch.jpg",
+        contentType: "image/jpeg",
+        fileSize: chunk.length,
+        checksumSha256: fileChecksum
+      }
+    });
+    const uploadId = jsonBody(init).uploadId;
+
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/uploads/${uploadId}/part?partNumber=1`,
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "content-type": "application/octet-stream"
+      },
+      payload: chunk
+    });
+
+    const complete = await app.inject({
+      method: "POST",
+      url: `/api/v1/uploads/${uploadId}/complete`,
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      },
+      payload: {
+        checksumSha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    });
+
+    expect(complete.statusCode).toBe(409);
+    expect(jsonBody(complete).error.code).toBe("UPLOAD_CHECKSUM_MISMATCH");
+
+    const files = await listRelativeFiles(testUploadsRoot);
+    const hasStagedAssembledFile = files.some((filePath) =>
+      filePath.startsWith("0f3c9d30-1307-4c9e-a4d7-75e84606c28d/")
+    );
+    expect(hasStagedAssembledFile).toBe(false);
+  });
+
+  it("handles concurrent complete requests with same idempotency key safely", async () => {
+    const accessToken = createAccessToken({
+      userId: "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
+      email: "user@example.com",
+      secret: accessSecret
+    });
+
+    const chunk = Buffer.from("concurrent-idempotent-complete", "utf8");
+    const fileChecksum = crypto.createHash("sha256").update(chunk).digest("hex");
+
+    const init = await app.inject({
+      method: "POST",
+      url: "/api/v1/uploads/init",
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      },
+      payload: {
+        fileName: "concurrent-idem.jpg",
+        contentType: "image/jpeg",
+        fileSize: chunk.length,
+        checksumSha256: fileChecksum
+      }
+    });
+    const uploadId = jsonBody(init).uploadId;
+
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/uploads/${uploadId}/part?partNumber=1`,
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "content-type": "application/octet-stream"
+      },
+      payload: chunk
+    });
+
+    const [firstComplete, secondComplete] = await Promise.all([
+      app.inject({
+        method: "POST",
+        url: `/api/v1/uploads/${uploadId}/complete`,
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          "idempotency-key": "idem-concurrent-complete-1"
+        },
+        payload: {
+          checksumSha256: fileChecksum
+        }
+      }),
+      app.inject({
+        method: "POST",
+        url: `/api/v1/uploads/${uploadId}/complete`,
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          "idempotency-key": "idem-concurrent-complete-1"
+        },
+        payload: {
+          checksumSha256: fileChecksum
+        }
+      })
+    ]);
+
+    expect(firstComplete.statusCode).toBe(200);
+    expect(secondComplete.statusCode).toBe(200);
+    expect(jsonBody(firstComplete)).toEqual(jsonBody(secondComplete));
+
+    const mediaCount = await app.db.query(
+      "SELECT COUNT(*)::INTEGER AS count FROM media WHERE owner_id = $1 AND checksum_sha256 = $2",
+      ["0f3c9d30-1307-4c9e-a4d7-75e84606c28d", fileChecksum]
+    );
+    expect(mediaCount.rows[0].count).toBe(1);
+
+    const idemCount = await app.db.query(
+      "SELECT COUNT(*)::INTEGER AS count FROM idempotency_keys WHERE user_id = $1 AND scope = $2 AND idem_key = $3",
+      ["0f3c9d30-1307-4c9e-a4d7-75e84606c28d", "upload_complete", "idem-concurrent-complete-1"]
+    );
+    expect(idemCount.rows[0].count).toBe(1);
+    expect(queuedJobs.length).toBe(1);
   });
 
   it("deduplicates repeated upload by owner and checksum when existing media is active", async () => {

@@ -414,9 +414,47 @@ Required tests:
 
 ---
 
+## Phase P100 - Security Hardening Tech Debt
+
+### P100-S1 Browser Token Storage Migration
+Blocked by: E2-S2, P2-UI-S2
+
+Problem statement:
+- The web app persists access and refresh tokens in browser-readable storage (`localStorage`), which increases impact of XSS.
+
+Acceptance criteria:
+- Auth token flow is migrated to `httpOnly`, `Secure`, `SameSite` cookies.
+- Web app no longer stores access or refresh tokens in `localStorage` or any other browser-readable persistent store.
+- Refresh rotation and logout behavior continue to work with cookie-based session handling.
+- CSRF protection strategy is documented and enforced for cookie-authenticated mutation endpoints.
+
+Required tests:
+- Unit: auth/session client utilities no longer read/write token pair from browser storage.
+- Integration: register/login/refresh/logout and `/api/v1/me` flows pass using cookie transport.
+- Integration: CSRF negative-path checks for mutation endpoints.
+
+### P100-S2 Production Secret Hard-Fail Policy
+Blocked by: E2-S1, E3-S1, E4-S1
+
+Problem statement:
+- Several services still have insecure JWT default values; production deployments can start with weak secrets if env vars are omitted.
+
+Acceptance criteria:
+- `auth-service`, `ingest-service`, and `library-service` fail fast at startup in production if JWT secrets are missing or default/weak.
+- Compose/deployment documentation clearly distinguishes local-development defaults from production requirements.
+- Startup error messages are actionable and include required environment variable names.
+
+Required tests:
+- Unit: config loaders reject weak/missing JWT secrets when `NODE_ENV=production`.
+- Integration: service startup fails in production mode with insecure defaults.
+- Integration: service startup succeeds in production mode with explicitly provided strong secrets.
+
+---
+
 ## 10) Priority Order
 
 1. Epic 1 -> Epic 2 -> Epic 3 -> Epic 4
 2. Epic 5 -> Epic 6
 3. Epic 7 -> Epic 8
 4. Epic 9 spans all phases and is finalized last
+5. Phase P100 runs as post-P6 hardening debt before production release

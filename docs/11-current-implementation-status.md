@@ -30,6 +30,7 @@ Source of truth used for this snapshot:
 - `P4`: albums and sharing (planned)
 - `P5`: search and semantic retrieval (planned)
 - `P6`: faces, memories, and hardening (planned)
+- `P100`: deferred security tech debt (planned)
 
 ---
 
@@ -173,6 +174,16 @@ Notes:
 
 Planned/pending:
 - `/albums`, `/search`, `/people`, `/memories` feature UIs
+
+### P100 security tech debt snapshot - planned
+
+Deferred from audit triage:
+- Browser token storage migration (`P100-S1`): web app currently persists access/refresh token pair in browser storage and needs migration to secure cookie-based session transport.
+- Production secret hard-fail policy (`P100-S2`): auth, ingest, and library services still allow insecure JWT defaults in non-hardened startup paths and require production-mode fail-fast enforcement.
+
+Tracking source:
+- Backlog definitions and acceptance criteria: `docs/04-backlog-epics-stories.md`.
+- Checklist gates: `docs/10-execution-checklists-and-handoffs.md`.
 
 ---
 

@@ -116,6 +116,21 @@ Phase exit gates:
 - full task gate matrix passes.
 - release readiness checklist in `docs/10-execution-checklists-and-handoffs.md` is complete.
 
+## Post-90 (Phase P100): Deferred Security Tech Debt
+
+Target tasks:
+- `P100-S1`: browser token storage migration to secure cookie-based auth session flow.
+- `P100-S2`: production secret hard-fail policy for auth, ingest, and library services.
+
+Required outcomes:
+- Web auth/session no longer depends on browser-readable token persistence.
+- Production deployments fail fast when JWT secrets are missing or insecure.
+- Security hardening tests are added to regular quality gates.
+
+Phase exit gates:
+- P100 acceptance criteria in `docs/04-backlog-epics-stories.md` are fully met.
+- `AUDIT_REPORT.md` items for token storage and default secret posture are marked closed.
+
 ---
 
 ## 4) Cadence and Reporting

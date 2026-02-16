@@ -1,6 +1,10 @@
 const crypto = require("node:crypto");
 
 function buildUploadSessionsRepo(db) {
+  function queryable(executor) {
+    return executor || db;
+  }
+
   return {
     async create({
       userId,
@@ -25,8 +29,8 @@ function buildUploadSessionsRepo(db) {
       return result.rows[0];
     },
 
-    async findByIdForUser(id, userId) {
-      const result = await db.query(
+    async findByIdForUser(id, userId, executor) {
+      const result = await queryable(executor).query(
         `
           SELECT id, user_id, file_name, content_type, file_size, checksum_sha256, part_size, status, expires_at,
                  media_id, storage_relative_path, created_at, updated_at
@@ -38,8 +42,22 @@ function buildUploadSessionsRepo(db) {
       return result.rows[0] || null;
     },
 
-    async setStatus(id, userId, status) {
-      const result = await db.query(
+    async findByIdForUserForUpdate(id, userId, executor) {
+      const result = await queryable(executor).query(
+        `
+          SELECT id, user_id, file_name, content_type, file_size, checksum_sha256, part_size, status, expires_at,
+                 media_id, storage_relative_path, created_at, updated_at
+          FROM upload_sessions
+          WHERE id = $1 AND user_id = $2
+          FOR UPDATE
+        `,
+        [id, userId]
+      );
+      return result.rows[0] || null;
+    },
+
+    async setStatus(id, userId, status, executor) {
+      const result = await queryable(executor).query(
         `
           UPDATE upload_sessions
           SET status = $3, updated_at = NOW()
@@ -52,8 +70,8 @@ function buildUploadSessionsRepo(db) {
       return result.rows[0] || null;
     },
 
-    async markCompleted({ id, userId, mediaId, storageRelativePath }) {
-      const result = await db.query(
+    async markCompleted({ id, userId, mediaId, storageRelativePath }, executor) {
+      const result = await queryable(executor).query(
         `
           UPDATE upload_sessions
           SET status = 'completed',
@@ -69,8 +87,8 @@ function buildUploadSessionsRepo(db) {
       return result.rows[0] || null;
     },
 
-    async markAborted(id, userId) {
-      const result = await db.query(
+    async markAborted(id, userId, executor) {
+      const result = await queryable(executor).query(
         `
           UPDATE upload_sessions
           SET status = 'aborted',
