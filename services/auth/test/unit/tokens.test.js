@@ -2,13 +2,10 @@ const {
   createAccessToken,
   createRefreshToken,
   hashRefreshToken,
-  hashLegacyRefreshToken,
   verifyRefreshTokenHash,
-  verifyStoredRefreshTokenHash,
   verifyAccessToken,
   verifyRefreshToken
 } = require("../../src/auth/tokens");
-const bcrypt = require("bcryptjs");
 
 describe("token utilities", () => {
   it("creates and verifies access token", () => {
@@ -53,25 +50,10 @@ describe("token utilities", () => {
     expect(hash.startsWith("$argon2")).toBe(true);
   });
 
-  it("verifies legacy bcrypt refresh token hash", async () => {
-    const token = "legacy-token-value";
-    const hash = await bcrypt.hash(token, 8);
-
-    const valid = await verifyRefreshTokenHash(token, hash);
-    const invalid = await verifyRefreshTokenHash("wrong-token", hash);
-
-    expect(valid).toBe(true);
-    expect(invalid).toBe(false);
-  });
-
-  it("accepts legacy sha256 refresh token hashes", async () => {
+  it("rejects non-argon2 refresh token hashes", async () => {
     const token = "token-value";
-    const legacyHash = hashLegacyRefreshToken(token);
+    const valid = await verifyRefreshTokenHash(token, "f".repeat(64));
 
-    const valid = await verifyStoredRefreshTokenHash(token, legacyHash);
-    const invalid = await verifyStoredRefreshTokenHash("wrong-token", legacyHash);
-
-    expect(valid).toBe(true);
-    expect(invalid).toBe(false);
+    expect(valid).toBe(false);
   });
 });

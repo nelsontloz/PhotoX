@@ -18,7 +18,9 @@ describe("password utilities", () => {
   });
 
   it("hashes and verifies passwords", async () => {
-    const passwordHash = await hashPassword("my-long-password", 4);
+    const passwordHash = await hashPassword("my-long-password");
+
+    expect(passwordHash.startsWith("$argon2")).toBe(true);
 
     await expect(verifyPassword("my-long-password", passwordHash)).resolves.toBe(true);
     await expect(verifyPassword("wrong-password", passwordHash)).resolves.toBe(false);

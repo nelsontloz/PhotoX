@@ -1,33 +1,21 @@
 const crypto = require("node:crypto");
 const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs");
 const argon2 = require("argon2");
 
 async function hashRefreshToken(token) {
-  return argon2.hash(token);
+  return argon2.hash(token, { type: argon2.argon2id });
 }
 
 async function verifyRefreshTokenHash(token, hash) {
-  if (hash.startsWith("$argon2")) {
-    return argon2.verify(hash, token);
-  }
-  return bcrypt.compare(token, hash);
-}
-
-function hashLegacyRefreshToken(token) {
-  return crypto.createHash("sha256").update(token).digest("hex");
-}
-
-async function verifyStoredRefreshTokenHash(token, storedHash) {
-  if (typeof storedHash !== "string" || storedHash.length === 0) {
+  if (typeof hash !== "string" || !hash.startsWith("$argon2")) {
     return false;
   }
 
-  if (/^[a-f0-9]{64}$/i.test(storedHash)) {
-    return hashLegacyRefreshToken(token) === storedHash;
+  try {
+    return await argon2.verify(hash, token);
+  } catch {
+    return false;
   }
-
-  return verifyRefreshTokenHash(token, storedHash);
 }
 
 function createAccessToken({ user, secret, expiresInSeconds }) {
@@ -80,9 +68,7 @@ module.exports = {
   createAccessToken,
   createRefreshToken,
   hashRefreshToken,
-  hashLegacyRefreshToken,
   verifyRefreshTokenHash,
-  verifyStoredRefreshTokenHash,
   verifyAccessToken,
   verifyRefreshToken,
   verifyRefreshTokenIgnoringExpiration

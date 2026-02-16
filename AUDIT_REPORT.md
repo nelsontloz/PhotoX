@@ -25,11 +25,10 @@ Deferred items are explicitly tracked in Phase `P100` security tech debt:
 *   **Planned remediation**: migrate to cookie-based auth transport (`httpOnly`, `Secure`, `SameSite`) with CSRF controls.
 
 ### 1.2 Weak Token Hashing (High)
-*   **Status**: **Partially mitigated**
+*   **Status**: **Mitigated**
 *   **File**: `services/auth/src/auth/tokens.js`
-*   **Current state**: New refresh tokens are bcrypt-hashed; legacy SHA-256 hashes are still accepted for backward compatibility.
-*   **Risk**: legacy hash verification path remains until migration window is closed.
-*   **Recommended follow-up**: sunset legacy hash verification after token-rotation horizon.
+*   **Current state**: Refresh tokens are hashed and verified with Argon2 only.
+*   **Residual risk**: Existing non-Argon2 refresh token hashes are rejected and require user re-authentication.
 
 ### 1.3 Denial of Service via Large Payload (High)
 *   **Status**: **Mitigated**
