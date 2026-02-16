@@ -6,7 +6,8 @@ const NAV_ITEMS = [
   { href: "/timeline", label: "Sharing", icon: "share" },
   { href: "/albums", label: "Albums", icon: "folder_open" },
   { href: "/timeline?favorite=true", label: "Favorites", icon: "favorite" },
-  { href: "/timeline", label: "Trash", icon: "delete" }
+  { href: "/timeline", label: "Trash", icon: "delete" },
+  { href: "/admin", label: "Admin", icon: "admin_panel_settings" }
 ];
 
 export default function AppSidebar({ activeLabel = "Photos" }) {
@@ -34,7 +35,21 @@ export default function AppSidebar({ activeLabel = "Photos" }) {
                     : "group flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
                 }
               >
-                <span className="text-base">{item.icon === "image" ? "◻" : item.icon === "explore" ? "◉" : item.icon === "share" ? "↗" : item.icon === "folder_open" ? "▣" : item.icon === "favorite" ? "♡" : "⌫"}</span>
+                <span className="text-base">
+                  {item.icon === "image"
+                    ? "◻"
+                    : item.icon === "explore"
+                      ? "◉"
+                      : item.icon === "share"
+                        ? "↗"
+                        : item.icon === "folder_open"
+                          ? "▣"
+                          : item.icon === "favorite"
+                            ? "♡"
+                            : item.icon === "admin_panel_settings"
+                              ? "⚙"
+                              : "⌫"}
+                </span>
                 {item.label}
               </Link>
             );
