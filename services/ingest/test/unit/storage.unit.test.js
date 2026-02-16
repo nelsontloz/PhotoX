@@ -1,6 +1,7 @@
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
+const { Readable } = require("node:stream");
 
 const {
   assemblePartsToFile,
@@ -27,13 +28,13 @@ describe("upload storage helpers", () => {
       originalsRoot: root,
       uploadId: "upload-1",
       partNumber: 2,
-      payload: Buffer.from("world", "utf8")
+      payloadStream: Readable.from(Buffer.from("world", "utf8"))
     });
     await writeUploadPart({
       originalsRoot: root,
       uploadId: "upload-1",
       partNumber: 1,
-      payload: Buffer.from("hello ", "utf8")
+      payloadStream: Readable.from(Buffer.from("hello ", "utf8"))
     });
 
     const outputPath = await assemblePartsToFile({

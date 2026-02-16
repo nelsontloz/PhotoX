@@ -2,7 +2,8 @@ const crypto = require("node:crypto");
 const fsSync = require("node:fs");
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { finished } = require("node:stream/promises");
+const { finished, pipeline } = require("node:stream/promises");
+const { Transform } = require("node:stream");
 
 function toPosixRelativePath(fromRoot, targetPath) {
   return path.relative(fromRoot, targetPath).split(path.sep).join("/");
@@ -12,14 +13,39 @@ function partAbsolutePath(originalsRoot, uploadId, partNumber) {
   return path.join(originalsRoot, "_tmp", uploadId, `part-${partNumber}`);
 }
 
-async function writeUploadPart({ originalsRoot, uploadId, partNumber, payload }) {
+async function writeUploadPart({ originalsRoot, uploadId, partNumber, payloadStream, maxSize }) {
   const absolutePath = partAbsolutePath(originalsRoot, uploadId, partNumber);
   await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-  await fs.writeFile(absolutePath, payload);
+
+  const writeStream = fsSync.createWriteStream(absolutePath);
+  const hash = crypto.createHash("sha256");
+  let bytesWritten = 0;
+
+  const transform = new Transform({
+    transform(chunk, encoding, callback) {
+      bytesWritten += chunk.length;
+      if (maxSize && bytesWritten > maxSize) {
+        callback(new Error("UPLOAD_PART_TOO_LARGE"));
+        return;
+      }
+      hash.update(chunk);
+      callback(null, chunk);
+    }
+  });
+
+  try {
+    await pipeline(payloadStream, transform, writeStream);
+  } catch (err) {
+    // If we aborted due to size, clean up the partial file
+    await fs.rm(absolutePath, { force: true });
+    throw err;
+  }
 
   return {
     absolutePath,
-    relativePartPath: toPosixRelativePath(originalsRoot, absolutePath)
+    relativePartPath: toPosixRelativePath(originalsRoot, absolutePath),
+    checksumSha256: hash.digest("hex"),
+    bytesWritten
   };
 }
 

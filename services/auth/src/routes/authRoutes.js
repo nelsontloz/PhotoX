@@ -228,12 +228,14 @@ module.exports = async function authRoutes(app) {
     const email = normalizeEmail(body.email);
     const userRow = await app.repos.users.findByEmail(email);
 
-    if (!userRow) {
-      throw new ApiError(401, "AUTH_INVALID_CREDENTIALS", "Invalid email or password");
-    }
+    // Timing attack mitigation: always perform password check
+    // If user is not found, use a dummy hash to simulate work
+    const dummyHash = "$2b$10$oqeg7ENm2QNJ0KDW/iKeyeWHlbNemMK/y7qOaoqTRbm6Pl8mZgKfG";
+    const hashToVerify = userRow ? userRow.password_hash : dummyHash;
 
-    const passwordMatches = await verifyPassword(body.password, userRow.password_hash);
-    if (!passwordMatches) {
+    const passwordMatches = await verifyPassword(body.password, hashToVerify);
+
+    if (!userRow || !passwordMatches) {
       throw new ApiError(401, "AUTH_INVALID_CREDENTIALS", "Invalid email or password");
     }
 

@@ -3,8 +3,8 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
 async function hashRefreshToken(token) {
-  // Use a faster salt round for tokens since they are high entropy and verified by signature too
-  return bcrypt.hash(token, 8);
+  // Use fast SHA-256 for tokens since they are high entropy and verified by signature too
+  return crypto.createHash("sha256").update(token).digest("hex");
 }
 
 async function verifyRefreshTokenHash(token, hash) {
@@ -15,13 +15,20 @@ function hashLegacyRefreshToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+function constantTimeEqual(a, b) {
+  if (a.length !== b.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
 async function verifyStoredRefreshTokenHash(token, storedHash) {
   if (typeof storedHash !== "string" || storedHash.length === 0) {
     return false;
   }
 
   if (/^[a-f0-9]{64}$/i.test(storedHash)) {
-    return hashLegacyRefreshToken(token) === storedHash;
+    return constantTimeEqual(hashLegacyRefreshToken(token), storedHash);
   }
 
   return verifyRefreshTokenHash(token, storedHash);

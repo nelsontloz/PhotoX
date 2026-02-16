@@ -39,8 +39,8 @@ describe("token utilities", () => {
   it("verifies refresh token hash", async () => {
     const token = "token-value";
     const hash = await hashRefreshToken(token);
-    const valid = await verifyRefreshTokenHash(token, hash);
-    const invalid = await verifyRefreshTokenHash("wrong-token", hash);
+    const valid = await verifyStoredRefreshTokenHash(token, hash);
+    const invalid = await verifyStoredRefreshTokenHash("wrong-token", hash);
 
     expect(valid).toBe(true);
     expect(invalid).toBe(false);

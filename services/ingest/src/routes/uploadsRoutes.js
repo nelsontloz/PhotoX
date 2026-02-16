@@ -266,11 +266,10 @@ module.exports = async function uploadsRoutes(app) {
       const query = parseOrThrow(uploadPartQuerySchema, request.query || {});
       const userId = request.userAuth.userId;
 
-      if (!Buffer.isBuffer(request.body)) {
-        throw new ApiError(400, "VALIDATION_ERROR", "Chunk payload must be binary (application/octet-stream)");
-      }
+      // Since we removed the buffer parser, request.body is now a stream
+      const contentLength = Number.parseInt(request.headers["content-length"] || "0", 10);
 
-      if (request.body.length === 0) {
+      if (contentLength === 0) {
         throw new ApiError(400, "VALIDATION_ERROR", "Chunk payload cannot be empty");
       }
 
@@ -283,25 +282,38 @@ module.exports = async function uploadsRoutes(app) {
         });
       }
 
-      if (request.body.length > session.part_size) {
+      if (contentLength > session.part_size) {
         throw new ApiError(400, "UPLOAD_PART_TOO_LARGE", "Chunk exceeds configured part size", {
           partSize: session.part_size,
-          receivedBytes: request.body.length
+          receivedBytes: contentLength
         });
       }
 
-      const { relativePartPath } = await writeUploadPart({
-        originalsRoot: app.config.uploadOriginalsPath,
-        uploadId: params.uploadId,
-        partNumber: query.partNumber,
-        payload: request.body
-      });
+      let uploadResult;
+      try {
+        uploadResult = await writeUploadPart({
+          originalsRoot: app.config.uploadOriginalsPath,
+          uploadId: params.uploadId,
+          partNumber: query.partNumber,
+          payloadStream: request.body,
+          maxSize: session.part_size
+        });
+      } catch (err) {
+        if (err.message === "UPLOAD_PART_TOO_LARGE") {
+          throw new ApiError(400, "UPLOAD_PART_TOO_LARGE", "Chunk exceeds configured part size", {
+            partSize: session.part_size
+          });
+        }
+        throw err;
+      }
+
+      const { relativePartPath, checksumSha256: calculatedChecksum, bytesWritten } = uploadResult;
 
       const part = await app.repos.uploadParts.upsertPart({
         uploadId: params.uploadId,
         partNumber: query.partNumber,
-        byteSize: request.body.length,
-        checksumSha256: checksumSha256(request.body),
+        byteSize: bytesWritten,
+        checksumSha256: calculatedChecksum,
         relativePartPath
       });
 
