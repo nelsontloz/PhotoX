@@ -1,4 +1,4 @@
-import { uploadPhotoInChunks } from "../../lib/upload";
+import { uploadPhotoInChunks, uploadPhotosInChunks } from "../../lib/upload";
 import { clearSession, writeSession } from "../../lib/session";
 
 function jsonResponse(status, payload) {
@@ -85,5 +85,44 @@ describe("upload integration", () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(fetchMock.mock.calls[0][0]).toContain("/uploads/init");
     expect(fetchMock.mock.calls[3][0]).toContain("/uploads/upload-123/complete");
+  });
+
+  it("aggregates per-file results for multi-file upload with continuation on failure", async () => {
+    const files = [
+      { name: "a.jpg", size: 4 },
+      { name: "b.jpg", size: 4 },
+      { name: "c.jpg", size: 4 }
+    ];
+
+    const uploadSingle = vi.fn(async ({ file, onProgress }) => {
+      onProgress({
+        uploadedBytes: file.size,
+        totalBytes: file.size,
+        percent: 100,
+        partNumber: 1,
+        totalParts: 1
+      });
+
+      if (file.name === "b.jpg") {
+        throw new Error("NETWORK_ERROR");
+      }
+
+      return {
+        mediaId: `media-${file.name}`,
+        uploadId: `upload-${file.name}`,
+        totalParts: 1
+      };
+    });
+
+    const summary = await uploadPhotosInChunks({
+      files,
+      maxConcurrent: 4,
+      uploadSingle
+    });
+
+    expect(uploadSingle).toHaveBeenCalledTimes(3);
+    expect(summary.successfulCount).toBe(2);
+    expect(summary.failedCount).toBe(1);
+    expect(summary.failed[0].fileName).toBe("b.jpg");
   });
 });
