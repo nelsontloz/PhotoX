@@ -1,4 +1,5 @@
 const fsSync = require("node:fs");
+const fs = require("node:fs/promises");
 
 const { requireAccessAuth } = require("../auth/guard");
 const { ApiError } = require("../errors");
@@ -389,8 +390,13 @@ module.exports = async function libraryRoutes(app) {
           contentType = derivative.contentType;
         }
 
-        if (!fsSync.existsSync(absolutePath)) {
-          throw new ApiError(404, "MEDIA_CONTENT_NOT_FOUND", "Media file was not found");
+        try {
+          await fs.stat(absolutePath);
+        } catch (err) {
+          if (err.code === "ENOENT") {
+            throw new ApiError(404, "MEDIA_CONTENT_NOT_FOUND", "Media file was not found");
+          }
+          throw err;
         }
 
         reply.type(contentType);
