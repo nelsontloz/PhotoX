@@ -20,8 +20,7 @@ function loadConfig(overrides = {}) {
     accessTokenTtlSeconds:
       overrides.accessTokenTtlSeconds || parsePositiveInt(process.env.ACCESS_TOKEN_TTL_SECONDS, 3600),
     refreshTokenTtlDays:
-      overrides.refreshTokenTtlDays || parsePositiveInt(process.env.REFRESH_TOKEN_TTL_DAYS, 30),
-    bcryptRounds: overrides.bcryptRounds || parsePositiveInt(process.env.BCRYPT_ROUNDS, 10)
+      overrides.refreshTokenTtlDays || parsePositiveInt(process.env.REFRESH_TOKEN_TTL_DAYS, 30)
   };
 }
 

@@ -5,7 +5,7 @@ const {
   createAccessToken,
   createRefreshToken,
   hashRefreshToken,
-  verifyStoredRefreshTokenHash,
+  verifyRefreshTokenHash,
   verifyRefreshToken,
   verifyRefreshTokenIgnoringExpiration
 } = require("../auth/tokens");
@@ -191,7 +191,7 @@ module.exports = async function authRoutes(app) {
       throw new ApiError(400, "VALIDATION_ERROR", passwordStatus.reason);
     }
 
-    const passwordHash = await hashPassword(body.password, app.config.bcryptRounds);
+    const passwordHash = await hashPassword(body.password);
     const id = crypto.randomUUID();
 
     try {
@@ -309,7 +309,7 @@ module.exports = async function authRoutes(app) {
       throw new ApiError(401, "AUTH_TOKEN_EXPIRED", "Token has expired");
     }
 
-    const isTokenValid = await verifyStoredRefreshTokenHash(body.refreshToken, session.refresh_token_hash);
+    const isTokenValid = await verifyRefreshTokenHash(body.refreshToken, session.refresh_token_hash);
     if (!isTokenValid) {
       throw new ApiError(401, "AUTH_TOKEN_INVALID", "Token is invalid");
     }
