@@ -7,20 +7,26 @@ import { useEffect, useState } from "react";
 
 import { formatApiError, loginUser } from "../../lib/api";
 import { resolveNextPath } from "../../lib/navigation";
-import { writeSession } from "../../lib/session";
+import { readSession, writeSession } from "../../lib/session";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [nextPath, setNextPath] = useState("/upload");
+  const [nextPath, setNextPath] = useState("/timeline");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState("");
 
   useEffect(() => {
+    const session = readSession();
+    if (session?.accessToken) {
+      router.replace("/timeline");
+      return;
+    }
+
     const params = new URLSearchParams(window.location.search);
     setNextPath(resolveNextPath(params.get("next")));
-  }, []);
+  }, [router]);
 
   const loginMutation = useMutation({
     mutationFn: (payload) => loginUser(payload),

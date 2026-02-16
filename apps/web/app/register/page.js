@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { formatApiError, loginUser, registerUser } from "../../lib/api";
-import { writeSession } from "../../lib/session";
+import { readSession, writeSession } from "../../lib/session";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -29,7 +29,7 @@ export default function RegisterPage() {
     },
     onSuccess: (authPayload) => {
       writeSession(authPayload);
-      router.replace("/upload");
+      router.replace("/timeline");
     },
     onError: (error) => {
       setFormError(formatApiError(error));
@@ -37,6 +37,13 @@ export default function RegisterPage() {
   });
 
   const submitDisabled = registerMutation.isPending;
+
+  useEffect(() => {
+    const session = readSession();
+    if (session?.accessToken) {
+      router.replace("/timeline");
+    }
+  }, [router]);
 
   function onSubmit(event) {
     event.preventDefault();

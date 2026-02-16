@@ -1,16 +1,21 @@
 import Link from "next/link";
 
-const NAV_ITEMS = [
-  { href: "/timeline", label: "Photos", icon: "image" },
-  { href: "/timeline", label: "Explore", icon: "explore" },
-  { href: "/timeline", label: "Sharing", icon: "share" },
-  { href: "/albums", label: "Albums", icon: "folder_open" },
-  { href: "/timeline?favorite=true", label: "Favorites", icon: "favorite" },
-  { href: "/timeline", label: "Trash", icon: "delete" },
-  { href: "/admin", label: "Admin", icon: "admin_panel_settings" }
-];
+export function getSidebarItems(isAdmin) {
+  const items = [
+    { href: "/timeline", label: "Timeline", icon: "image" },
+    { href: "/upload", label: "Upload", icon: "upload" }
+  ];
 
-export default function AppSidebar({ activeLabel = "Photos" }) {
+  if (isAdmin) {
+    items.push({ href: "/admin", label: "Admin", icon: "admin_panel_settings" });
+  }
+
+  return items;
+}
+
+export default function AppSidebar({ activeLabel = "Timeline", isAdmin = false }) {
+  const navItems = getSidebarItems(isAdmin);
+
   return (
     <div className="flex h-full w-full flex-col justify-between bg-white p-6 lg:bg-white/80">
       <div>
@@ -23,7 +28,7 @@ export default function AppSidebar({ activeLabel = "Photos" }) {
         </div>
 
         <nav className="flex flex-col gap-2">
-          {NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             const isActive = item.label === activeLabel;
             return (
               <Link
@@ -38,17 +43,11 @@ export default function AppSidebar({ activeLabel = "Photos" }) {
                 <span className="text-base">
                   {item.icon === "image"
                     ? "◻"
-                    : item.icon === "explore"
-                      ? "◉"
-                      : item.icon === "share"
-                        ? "↗"
-                        : item.icon === "folder_open"
-                          ? "▣"
-                          : item.icon === "favorite"
-                            ? "♡"
-                            : item.icon === "admin_panel_settings"
-                              ? "⚙"
-                              : "⌫"}
+                    : item.icon === "upload"
+                      ? "⇪"
+                      : item.icon === "admin_panel_settings"
+                        ? "⚙"
+                        : "•"}
                 </span>
                 {item.label}
               </Link>

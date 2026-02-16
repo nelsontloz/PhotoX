@@ -9,11 +9,9 @@ import {
   fetchCurrentUser,
   fetchMediaContentBlob,
   fetchTimeline,
-  formatApiError,
-  logoutUser
+  formatApiError
 } from "../../lib/api";
 import { buildLoginPath } from "../../lib/navigation";
-import { clearSession, readRefreshToken } from "../../lib/session";
 import AppSidebar from "../components/app-sidebar";
 
 const TILE_ASPECTS = ["aspect-[4/3]", "aspect-square", "aspect-[3/4]", "aspect-square", "aspect-[4/3]"];
@@ -468,20 +466,6 @@ export default function TimelinePage() {
     }
   }, [activeIndex, items, queryClient]);
 
-  async function handleLogout() {
-    const refreshToken = readRefreshToken();
-    if (refreshToken) {
-      try {
-        await logoutUser(refreshToken);
-      } catch (_err) {
-        // local logout still proceeds
-      }
-    }
-
-    clearSession();
-    router.replace("/login");
-  }
-
   if (meQuery.isPending) {
     return (
       <main className="shell py-10">
@@ -529,7 +513,7 @@ export default function TimelinePage() {
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <AppSidebar activeLabel="Photos" />
+        <AppSidebar activeLabel="Timeline" isAdmin={Boolean(meQuery.data?.user?.isAdmin)} />
       </aside>
 
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -551,13 +535,9 @@ export default function TimelinePage() {
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
               />
-              <button
-                type="button"
-                className="absolute inset-y-0 right-0 px-3 text-xs font-semibold text-slate-500"
-                onClick={handleLogout}
-              >
-                Logout
-              </button>
+              <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-xs font-semibold text-slate-400">
+                Search
+              </span>
             </div>
           </div>
 

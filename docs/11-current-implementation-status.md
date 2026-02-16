@@ -159,7 +159,7 @@ Planned/pending:
 ### web-app - implemented
 
 Implemented now:
-- `GET /` renders P3 web shell with links to auth, upload, and timeline flows
+- `GET /` redirects unauthenticated users to `/login` and authenticated users to `/timeline`
 - `GET /health`
 - `GET /register`
 - `GET /login`
@@ -170,6 +170,8 @@ Notes:
 - Tailwind CSS baseline added for web UI styling.
 - TanStack Query is used for auth and upload interaction state.
 - Login persists access/refresh token pair in client session storage.
+- Authenticated users visiting `/login` or `/register` are redirected to `/timeline`.
+- Successful registration redirects to `/timeline` by default.
 - Upload page validates authenticated session with `/api/v1/me`, performs chunked upload
   (`init` -> `part` -> `complete`), renders progress, and shows API envelope errors.
 - Upload page supports multi-file batch uploads with bounded concurrency of 4, per-file progress/status,
@@ -179,9 +181,12 @@ Notes:
 - Clicking a timeline photo opens a modal viewer that loads authenticated high-resolution (`variant=small`) media,
   supports close/escape, previous/next navigation, and auto-loads more timeline items when navigating past the
   last loaded card and additional pages are available.
+- Top bar is session-aware: authenticated users see account email and logout, and admin users additionally see
+  an admin button.
+- Sidebar navigation includes only implemented routes (`/timeline`, `/upload`) plus `/admin` for admins.
 
 Planned/pending:
-- `/albums`, `/search`, `/people`, `/memories` feature UIs
+- `/albums`, `/search`, `/people`, `/memories` feature UIs (current routes return not-found placeholders)
 
 ### P100 security tech debt snapshot - planned
 

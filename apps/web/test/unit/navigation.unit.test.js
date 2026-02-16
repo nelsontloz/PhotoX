@@ -7,9 +7,9 @@ describe("navigation helpers", () => {
   });
 
   it("falls back for empty or unsafe paths", () => {
-    expect(resolveNextPath("")).toBe("/upload");
-    expect(resolveNextPath("https://bad.example")).toBe("/upload");
-    expect(resolveNextPath("//evil")).toBe("/upload");
+    expect(resolveNextPath("")).toBe("/timeline");
+    expect(resolveNextPath("https://bad.example")).toBe("/timeline");
+    expect(resolveNextPath("//evil")).toBe("/timeline");
   });
 
   it("builds login redirect path", () => {

@@ -5,9 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { fetchCurrentUser, formatApiError, logoutUser } from "../../lib/api";
+import { fetchCurrentUser, formatApiError } from "../../lib/api";
 import { buildLoginPath } from "../../lib/navigation";
-import { clearSession, readRefreshToken } from "../../lib/session";
 import { formatBytes, uploadPhotosInChunks } from "../../lib/upload";
 import AppSidebar from "../components/app-sidebar";
 
@@ -158,20 +157,6 @@ export default function UploadPage() {
     [fileProgressList]
   );
 
-  async function handleLogout() {
-    const refreshToken = readRefreshToken();
-    if (refreshToken) {
-      try {
-        await logoutUser(refreshToken);
-      } catch (_error) {
-        // no-op, local logout still proceeds
-      }
-    }
-
-    clearSession();
-    router.replace("/login");
-  }
-
   function handleFileChange(event) {
     const files = event.target.files ? Array.from(event.target.files) : [];
     processSelectedFiles(files);
@@ -261,7 +246,7 @@ export default function UploadPage() {
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <AppSidebar activeLabel="Photos" />
+        <AppSidebar activeLabel="Upload" isAdmin={Boolean(meQuery.data?.user?.isAdmin)} />
       </aside>
 
       <main className="min-w-0 flex-1 overflow-y-auto">
@@ -276,12 +261,7 @@ export default function UploadPage() {
             </button>
             <h2 className="text-xl font-bold tracking-tight">PhotoX</h2>
           </div>
-          <div className="flex items-center gap-3 text-sm text-slate-500">
-            <span className="hidden md:inline">{meQuery.data.user.email}</span>
-            <button type="button" className="btn btn-secondary" onClick={handleLogout}>
-              Logout
-            </button>
-          </div>
+          <div className="text-sm text-slate-500">Upload workspace</div>
         </header>
 
         <div className="mx-auto flex w-full max-w-[960px] flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8">

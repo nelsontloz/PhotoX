@@ -13,6 +13,7 @@ import {
   resetAdminManagedUserPassword,
   updateAdminManagedUser
 } from "../../lib/api";
+import { buildLoginPath } from "../../lib/navigation";
 import AppSidebar from "../components/app-sidebar";
 
 function estimateStorageGb(uploadCount) {
@@ -80,14 +81,20 @@ export default function AdminPage() {
 
         setSessionUser(mePayload.user);
         if (!mePayload.user?.isAdmin) {
-          router.replace("/upload");
+          router.replace("/timeline");
           return;
         }
 
         await refreshUsers();
       } catch (error) {
         if (!cancelled) {
-          setErrorMessage(formatApiError(error));
+          const message = formatApiError(error);
+          if (message.includes("AUTH_REQUIRED") || message.includes("AUTH_TOKEN")) {
+            router.replace(buildLoginPath("/admin"));
+            return;
+          }
+
+          setErrorMessage(message);
         }
       } finally {
         if (!cancelled) {
@@ -256,7 +263,7 @@ export default function AdminPage() {
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <AppSidebar activeLabel="Admin" />
+        <AppSidebar activeLabel="Admin" isAdmin />
       </aside>
 
       <main className="admin-scroll flex min-w-0 flex-1 justify-center overflow-y-auto px-4 py-5 md:px-8 lg:px-12 xl:px-16">

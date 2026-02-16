@@ -1,4 +1,4 @@
-const DEFAULT_NEXT_PATH = "/upload";
+const DEFAULT_NEXT_PATH = "/timeline";
 
 export function resolveNextPath(pathValue) {
   if (!pathValue || typeof pathValue !== "string") {
