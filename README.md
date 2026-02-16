@@ -53,6 +53,20 @@ See `docs/01-c4-architecture.md` for the full C4 view.
 - `docs` - architecture, roadmap, contracts, and test gates
 - `scripts` - helper scripts (including Swagger smoke checks)
 
+## For AI coding agents
+
+This repository is docs-first. Before coding, read `AGENTS.md` and then follow the required docs order under `docs/`.
+
+Quick links:
+
+- `AGENTS.md` - repository-level execution policy for coding agents
+- `docs/06-ai-agent-master-runbook.md` - execution and handoff runbook
+- `docs/07-ai-agent-task-contracts.md` - task contract schema and global rules
+- `docs/08-service-implementation-spec.md` - service/API implementation constraints
+- `docs/09-testing-and-quality-gates.md` - mandatory gates and evidence format
+- `docs/10-execution-checklists-and-handoffs.md` - completion checklists and handoff template
+- `docs/11-current-implementation-status.md` - live implementation snapshot
+
 ## Local development quickstart
 
 Prerequisites:
@@ -73,6 +87,18 @@ Set at least:
 - `PHOTOX_DERIVED_DIR`
 - `JWT_ACCESS_SECRET` (generate with `openssl rand -hex 32`)
 - `JWT_REFRESH_SECRET` (generate with `openssl rand -hex 32`)
+
+Optional helper to generate and save both secrets:
+
+```bash
+JWT_ACCESS_SECRET="$(openssl rand -hex 32)"
+JWT_REFRESH_SECRET="$(openssl rand -hex 32)"
+```
+
+Notes:
+
+- Compose startup now requires explicit JWT values for auth/ingest/library.
+- In `NODE_ENV=production`, weak placeholders such as `change-me` are rejected at service startup.
 
 2) Create storage directories
 
