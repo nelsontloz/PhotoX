@@ -4,7 +4,7 @@ PhotoX is a web-first, self-hosted photo platform for personal use. It targets p
 
 ## What is in this repository
 
-- A Next.js web app (`apps/web`) for auth and upload flows.
+- A Next.js web app (`apps/web`) for auth, upload, and timeline flows.
 - Node.js + Fastify backend services (`services/*`) for auth, ingest, and domain APIs.
 - A Python FastAPI ML service (`services/ml`).
 - Local infrastructure via Docker Compose (Traefik, Postgres + pgvector, Redis, Prometheus, Grafana).
@@ -16,11 +16,12 @@ Implemented now:
 
 - `auth-service`: register, login, refresh, logout, `/me`, OpenAPI + Swagger.
 - `ingest-service`: chunked upload lifecycle (`init`, `part`, `complete`, `abort`, status), idempotency support, OpenAPI + Swagger.
-- `web-app`: `/register`, `/login`, `/upload` flows.
+- `library-service`: timeline API, media detail/flags, soft delete/restore, and authenticated media content endpoint with WebP thumbnail generation.
+- `web-app`: `/register`, `/login`, `/upload`, `/timeline` flows.
 
 Scaffold/partial services:
 
-- `library-service`, `album-sharing-service`, `search-service`, `worker-service`: health/metrics/docs scaffolding.
+- `album-sharing-service`, `search-service`, `worker-service`: health/metrics/docs scaffolding.
 - `ml-service`: health/metrics/docs and root scaffold route.
 
 See `docs/11-current-implementation-status.md` for the detailed live snapshot.
@@ -43,7 +44,7 @@ See `docs/01-c4-architecture.md` for the full C4 view.
 - `apps/web` - Next.js web UI
 - `services/auth` - auth and session APIs
 - `services/ingest` - upload lifecycle and media enqueue
-- `services/library` - library API scaffold
+- `services/library` - timeline and media APIs
 - `services/album-sharing` - albums/sharing API scaffold
 - `services/search` - search API scaffold
 - `services/worker` - worker scaffold
@@ -140,6 +141,14 @@ Web app:
 
 ```bash
 cd apps/web
+npm test
+npm run test:integration
+```
+
+Library service:
+
+```bash
+cd services/library
 npm test
 npm run test:integration
 ```

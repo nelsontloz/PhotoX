@@ -28,11 +28,12 @@ Note:
 - [x] Web unit + integration gates pass.
 
 ## Phase P3 - Timeline
-- [ ] Timeline endpoint with cursor pagination implemented.
-- [ ] Derivatives generated and linked in responses.
-- [ ] Flags and media detail APIs implemented.
-- [ ] Soft delete and restore flow implemented.
-- [ ] Unit + integration gates pass.
+- [x] Timeline endpoint with cursor pagination implemented.
+- [x] Timeline UI implemented (`/timeline`) and shows uploaded photos.
+- [x] Derivatives generated and linked in responses.
+- [x] Flags and media detail APIs implemented.
+- [x] Soft delete and restore flow implemented.
+- [x] Unit + integration gates pass.
 
 ## Phase P4 - Albums and Sharing
 - [ ] Album CRUD complete.

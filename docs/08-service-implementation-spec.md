@@ -115,6 +115,7 @@ Idempotency requirements:
 
 Responsibilities:
 - Timeline read model.
+- On-demand derivative generation for timeline cards.
 - Media detail and flags.
 - Soft delete and restore.
 
@@ -124,6 +125,7 @@ Required endpoints:
 - `PATCH /media/{mediaId}`
 - `DELETE /media/{mediaId}`
 - `POST /media/{mediaId}/restore`
+- `GET /media/{mediaId}/content?variant=original|thumb|small`
 - `GET /library/docs`
 - `GET /library/openapi.json`
 
@@ -134,6 +136,8 @@ Required tables (minimum):
 Query/index requirements:
 - composite index for timeline ordering by `(owner_id, taken_at desc, id desc)`.
 - cursor token includes stable sort keys.
+- P3 filters: date range + favorite/archive/hidden flags + optional free-text `q`.
+- `albumId` and `personId` relation-backed filtering is deferred to later phases.
 
 ---
 

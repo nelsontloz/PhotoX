@@ -200,13 +200,43 @@ Implemented now:
 ## 4) Library Service
 
 ### Endpoints
-- `GET /library/timeline?cursor=&from=&to=&albumId=&personId=&q=`
+- `GET /library/timeline?cursor=&limit=&from=&to=&favorite=&archived=&hidden=&albumId=&personId=&q=`
 - `GET /media/{mediaId}`
 - `PATCH /media/{mediaId}`
 - `DELETE /media/{mediaId}` (soft delete)
 - `POST /media/{mediaId}/restore`
+- `GET /media/{mediaId}/content?variant=original|thumb|small`
 - `GET /library/docs`
 - `GET /library/openapi.json`
+
+Notes:
+- `albumId` and `personId` are reserved query parameters; relation-backed filtering is deferred to later phases.
+- `thumb` and `small` are generated WebP derivatives.
+
+### Timeline Response
+```json
+{
+  "items": [
+    {
+      "id": "med_789",
+      "ownerId": "usr_123",
+      "takenAt": "2025-12-31T23:12:00Z",
+      "uploadedAt": "2026-02-15T10:00:00Z",
+      "mimeType": "image/jpeg",
+      "width": 4032,
+      "height": 3024,
+      "location": {"lat": 0, "lon": 0},
+      "flags": {"favorite": true, "archived": false, "hidden": false, "deletedSoft": false},
+      "derivatives": {
+        "thumb": "/api/v1/media/med_789/content?variant=thumb",
+        "small": "/api/v1/media/med_789/content?variant=small",
+        "original": "/api/v1/media/med_789/content?variant=original"
+      }
+    }
+  ],
+  "nextCursor": "eyJzb3J0QXQiOiIyMDI2LTAyLTE1VDEwOjAwOjAwLjAwMFoiLCJpZCI6Im1lZF83ODkifQ"
+}
+```
 
 ### PATCH /media/{mediaId} Request
 ```json
@@ -229,10 +259,11 @@ Implemented now:
   "width": 4032,
   "height": 3024,
   "location": {"lat": 0, "lon": 0},
-  "flags": {"favorite": true, "archived": false, "hidden": false},
+  "flags": {"favorite": true, "archived": false, "hidden": false, "deletedSoft": false},
   "derivatives": {
-    "thumb": "/media/med_789/thumb.jpg",
-    "small": "/media/med_789/small.jpg"
+    "thumb": "/api/v1/media/med_789/content?variant=thumb",
+    "small": "/api/v1/media/med_789/content?variant=small",
+    "original": "/api/v1/media/med_789/content?variant=original"
   }
 }
 ```

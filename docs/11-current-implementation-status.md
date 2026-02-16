@@ -2,7 +2,7 @@
 
 This document tracks what is implemented now in this repository and running stack.
 
-Last verified: 2026-02-15 (local compose stack)
+Last verified: 2026-02-16 (local compose stack)
 
 Source of truth used for this snapshot:
 - service route code under `services/*` and `apps/web`
@@ -23,7 +23,7 @@ Source of truth used for this snapshot:
 - `P0`: environment baseline
 - `P1`: auth + upload backend skeleton (implemented)
 - `P2`: web auth + upload UI (`/register`, `/login`, `/upload`) (implemented)
-- `P3`: timeline core (planned)
+- `P3`: timeline core (implemented)
 - `P4`: albums and sharing (planned)
 - `P5`: search and semantic retrieval (planned)
 - `P6`: faces, memories, and hardening (planned)
@@ -68,20 +68,27 @@ Notes:
 - Persists media relative path and enqueues `media.process` BullMQ job on complete.
 - Supports `Idempotency-Key` on `init` and `complete`.
 
-### library-service - scaffold-only
+### library-service - implemented
 
 Implemented now:
 - `GET /health`
 - `GET /metrics`
 - `GET /api/v1/library/docs`
 - `GET /api/v1/library/openapi.json`
-
-Planned/pending:
 - `GET /api/v1/library/timeline`
 - `GET /api/v1/media/{mediaId}`
 - `PATCH /api/v1/media/{mediaId}`
 - `DELETE /api/v1/media/{mediaId}`
 - `POST /api/v1/media/{mediaId}/restore`
+- `GET /api/v1/media/{mediaId}/content?variant=original|thumb|small`
+
+Notes:
+- Timeline supports stable cursor pagination, date range filters, flags filters, and text query over media path.
+- Timeline and media detail payloads include derivative URLs for `thumb`, `small`, and `original` media content.
+- `thumb` and `small` derivatives are generated on demand as WebP files by library-service.
+
+Planned/pending:
+- `albumId` and `personId` timeline filters (deferred to P4/P6 relation wiring)
 
 ### album-sharing-service - scaffold-only
 
@@ -136,11 +143,12 @@ Planned/pending:
 ### web-app - implemented
 
 Implemented now:
-- `GET /` renders P2 web shell with links to auth and upload flows
+- `GET /` renders P3 web shell with links to auth, upload, and timeline flows
 - `GET /health`
 - `GET /register`
 - `GET /login`
 - `GET /upload`
+- `GET /timeline`
 
 Notes:
 - Tailwind CSS baseline added for web UI styling.
@@ -148,9 +156,11 @@ Notes:
 - Login persists access/refresh token pair in client session storage.
 - Upload page validates authenticated session with `/api/v1/me`, performs chunked upload
   (`init` -> `part` -> `complete`), renders progress, and shows API envelope errors.
+- Timeline page fetches cursor-paginated media from `/api/v1/library/timeline` and renders authenticated
+  thumbnail previews via `/api/v1/media/{mediaId}/content?variant=thumb`.
 
 Planned/pending:
-- after P2: `/albums`, `/search`, `/people`, `/memories` and timeline feature UIs
+- `/albums`, `/search`, `/people`, `/memories` feature UIs
 
 ---
 
