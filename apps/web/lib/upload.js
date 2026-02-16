@@ -85,3 +85,189 @@ export async function uploadPhotoInChunks({ file, onProgress }) {
     checksumSha256
   };
 }
+
+function normalizeErrorMessage(error) {
+  if (!error) {
+    return "Upload failed";
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (error.message && typeof error.message === "string") {
+    return error.message;
+  }
+
+  return "Upload failed";
+}
+
+function toSafeFileArray(files) {
+  if (!files) {
+    return [];
+  }
+
+  if (Array.isArray(files)) {
+    return files.filter(Boolean);
+  }
+
+  return Array.from(files).filter(Boolean);
+}
+
+export async function uploadPhotosInChunks({
+  files,
+  maxConcurrent = 4,
+  onFileProgress,
+  onOverallProgress,
+  uploadSingle = uploadPhotoInChunks
+}) {
+  const queue = toSafeFileArray(files);
+  if (queue.length === 0) {
+    throw new Error("No files selected");
+  }
+
+  const safeMaxConcurrent =
+    Number.isFinite(maxConcurrent) && maxConcurrent > 0 ? Math.floor(maxConcurrent) : 1;
+  const workerCount = Math.max(1, Math.min(safeMaxConcurrent, queue.length));
+
+  const totalBytes = queue.reduce((sum, file) => sum + file.size, 0);
+  const uploadedBytesByIndex = queue.map(() => 0);
+  const successful = [];
+  const failed = [];
+
+  let nextIndex = 0;
+  let processedFiles = 0;
+  let successfulCount = 0;
+  let failedCount = 0;
+
+  function emitOverallProgress() {
+    if (!onOverallProgress) {
+      return;
+    }
+
+    const uploadedBytes = uploadedBytesByIndex.reduce((sum, value) => sum + value, 0);
+    const percent = Math.min(100, Math.round((processedFiles / queue.length) * 100));
+
+    onOverallProgress({
+      processedFiles,
+      totalFiles: queue.length,
+      successfulCount,
+      failedCount,
+      uploadedBytes,
+      totalBytes,
+      percent
+    });
+  }
+
+  emitOverallProgress();
+
+  async function worker() {
+    while (true) {
+      const fileIndex = nextIndex;
+      nextIndex += 1;
+      if (fileIndex >= queue.length) {
+        return;
+      }
+
+      const file = queue[fileIndex];
+
+      if (onFileProgress) {
+        onFileProgress({
+          fileIndex,
+          fileName: file.name,
+          uploadedBytes: 0,
+          totalBytes: file.size,
+          percent: 0,
+          partNumber: 0,
+          totalParts: 0,
+          status: "uploading"
+        });
+      }
+
+      try {
+        const result = await uploadSingle({
+          file,
+          onProgress: (progress) => {
+            uploadedBytesByIndex[fileIndex] = progress.uploadedBytes;
+            if (onFileProgress) {
+              onFileProgress({
+                fileIndex,
+                fileName: file.name,
+                ...progress,
+                status: "uploading"
+              });
+            }
+            emitOverallProgress();
+          }
+        });
+
+        uploadedBytesByIndex[fileIndex] = file.size;
+        processedFiles += 1;
+        successfulCount += 1;
+        successful.push({
+          fileIndex,
+          fileName: file.name,
+          fileSize: file.size,
+          ...result
+        });
+
+        if (onFileProgress) {
+          onFileProgress({
+            fileIndex,
+            fileName: file.name,
+            uploadedBytes: file.size,
+            totalBytes: file.size,
+            percent: 100,
+            partNumber: result.totalParts || 0,
+            totalParts: result.totalParts || 0,
+            status: "success",
+            mediaId: result.mediaId,
+            uploadId: result.uploadId
+          });
+        }
+
+        emitOverallProgress();
+      } catch (error) {
+        const errorMessage = normalizeErrorMessage(error);
+        processedFiles += 1;
+        failedCount += 1;
+
+        failed.push({
+          fileIndex,
+          fileName: file.name,
+          fileSize: file.size,
+          error: errorMessage
+        });
+
+        if (onFileProgress) {
+          const uploadedBytes = uploadedBytesByIndex[fileIndex];
+          const percent = file.size > 0 ? Math.min(99, Math.round((uploadedBytes / file.size) * 100)) : 0;
+          onFileProgress({
+            fileIndex,
+            fileName: file.name,
+            uploadedBytes,
+            totalBytes: file.size,
+            percent,
+            partNumber: 0,
+            totalParts: 0,
+            status: "failed",
+            error: errorMessage
+          });
+        }
+
+        emitOverallProgress();
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+  return {
+    totalFiles: queue.length,
+    successfulCount,
+    failedCount,
+    totalBytes,
+    successful,
+    failed
+  };
+}
