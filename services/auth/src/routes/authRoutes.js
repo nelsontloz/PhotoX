@@ -28,13 +28,15 @@ function buildAuthPayload({ accessToken, refreshToken, accessTokenTtlSeconds, us
 
 const publicUserSchema = {
   type: "object",
-  required: ["id", "email", "name"],
+  required: ["id", "email", "name", "isAdmin", "isActive"],
   properties: {
     id: { type: "string", format: "uuid" },
     email: { type: "string", format: "email" },
     name: {
       anyOf: [{ type: "string", maxLength: 80 }, { type: "null" }]
-    }
+    },
+    isAdmin: { type: "boolean" },
+    isActive: { type: "boolean" }
   },
   additionalProperties: false
 };
@@ -101,7 +103,9 @@ const authPayloadSchema = {
     user: {
       id: "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
       email: "user@example.com",
-      name: null
+      name: null,
+      isAdmin: false,
+      isActive: true
     }
   }
 };
@@ -159,7 +163,9 @@ module.exports = async function authRoutes(app) {
               user: {
                 id: "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
                 email: "user@example.com",
-                name: null
+                name: null,
+                isAdmin: false,
+                isActive: true
               }
             }
           },
@@ -195,7 +201,7 @@ module.exports = async function authRoutes(app) {
     const id = crypto.randomUUID();
 
     try {
-      const userRow = await app.repos.users.createUser({ id, email, passwordHash });
+      const userRow = await app.repos.users.createUserForRegistration({ id, email, passwordHash });
       reply.code(201).send({ user: app.repos.users.toPublicUser(userRow) });
     } catch (err) {
       if (err && err.code === "23505") {
@@ -216,6 +222,10 @@ module.exports = async function authRoutes(app) {
         body: loginBodySchema,
         response: {
           200: authPayloadSchema,
+          403: buildErrorEnvelopeSchema({
+            code: "AUTH_ACCOUNT_DISABLED",
+            message: "Account is disabled"
+          }),
           401: buildErrorEnvelopeSchema({
             code: "AUTH_INVALID_CREDENTIALS",
             message: "Invalid email or password"
@@ -230,6 +240,10 @@ module.exports = async function authRoutes(app) {
 
     if (!userRow) {
       throw new ApiError(401, "AUTH_INVALID_CREDENTIALS", "Invalid email or password");
+    }
+
+    if (!userRow.is_active) {
+      throw new ApiError(403, "AUTH_ACCOUNT_DISABLED", "Account is disabled");
     }
 
     const passwordMatches = await verifyPassword(body.password, userRow.password_hash);
@@ -278,6 +292,10 @@ module.exports = async function authRoutes(app) {
         body: refreshBodySchema,
         response: {
           200: authPayloadSchema,
+          403: buildErrorEnvelopeSchema({
+            code: "AUTH_ACCOUNT_DISABLED",
+            message: "Account is disabled"
+          }),
           401: buildErrorEnvelopeSchema({
             code: "AUTH_TOKEN_INVALID",
             message: "Token is invalid"
@@ -317,6 +335,11 @@ module.exports = async function authRoutes(app) {
     const userRow = await app.repos.users.findById(payload.sub);
     if (!userRow) {
       throw new ApiError(401, "AUTH_TOKEN_INVALID", "Token is invalid");
+    }
+
+    if (!userRow.is_active) {
+      await app.repos.sessions.revokeById(session.id);
+      throw new ApiError(403, "AUTH_ACCOUNT_DISABLED", "Account is disabled");
     }
 
     const { refreshToken, refreshExpiresAt } = createRefreshToken({

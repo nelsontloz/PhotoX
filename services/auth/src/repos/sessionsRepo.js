@@ -50,6 +50,18 @@ function buildSessionsRepo(pool) {
         `,
         [id]
       );
+    },
+
+    async revokeByUserId(userId) {
+      await pool.query(
+        `
+          UPDATE sessions
+          SET revoked_at = NOW()
+          WHERE user_id = $1
+            AND revoked_at IS NULL
+        `,
+        [userId]
+      );
     }
   };
 }

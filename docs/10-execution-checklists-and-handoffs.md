@@ -57,7 +57,14 @@ Note:
 - [x] Navigating next at loaded end auto-loads more timeline items when available.
 - [x] Modal image errors and loading states are surfaced with actionable feedback.
 
-## Phase P4 - Albums and Sharing
+## Phase P4 - Admin User Management
+- [ ] First registered user defaults to admin.
+- [ ] Subsequent self-registered users default to non-admin.
+- [ ] Admin user CRUD and role/status management APIs complete.
+- [ ] Admin metrics include total users and active upload counts per user.
+- [ ] Basic `/admin` web UI complete.
+
+## Phase P+1 - Albums and Sharing
 - [ ] Album CRUD complete.
 - [ ] Public link sharing and revoke complete.
 - [ ] Invite-only sharing complete.

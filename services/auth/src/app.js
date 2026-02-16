@@ -8,6 +8,7 @@ const { buildUsersRepo } = require("./repos/usersRepo");
 const { buildSessionsRepo } = require("./repos/sessionsRepo");
 const { ApiError, toErrorBody } = require("./errors");
 const authRoutes = require("./routes/authRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 const meRoute = require("./routes/meRoute");
 const openapiRoute = require("./routes/openapiRoute");
 
@@ -55,6 +56,10 @@ function buildApp(overrides = {}) {
         {
           name: "Me",
           description: "Current user endpoint protected by bearer token"
+        },
+        {
+          name: "Admin",
+          description: "Administrative user management operations"
         }
       ],
       components: {
@@ -68,16 +73,20 @@ function buildApp(overrides = {}) {
         schemas: {
           PublicUser: {
             type: "object",
-            required: ["id", "email", "name"],
+            required: ["id", "email", "name", "isAdmin", "isActive"],
             properties: {
               id: { type: "string", format: "uuid" },
               email: { type: "string", format: "email" },
-              name: { type: "string", nullable: true, maxLength: 80 }
+              name: { type: "string", nullable: true, maxLength: 80 },
+              isAdmin: { type: "boolean" },
+              isActive: { type: "boolean" }
             },
             example: {
               id: "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
               email: "user@example.com",
-              name: null
+              name: null,
+              isAdmin: false,
+              isActive: true
             }
           },
           AuthTokenPair: {
@@ -140,6 +149,7 @@ function buildApp(overrides = {}) {
 
   app.register(openapiRoute);
   app.register(authRoutes);
+  app.register(adminRoutes);
   app.register(meRoute);
 
   app.addHook("onReady", async () => {

@@ -23,6 +23,9 @@ export default function HomePage() {
           <Link href="/timeline" className="btn btn-secondary">
             Open timeline
           </Link>
+          <Link href="/admin" className="btn btn-secondary">
+            Admin console
+          </Link>
         </div>
       </section>
     </main>

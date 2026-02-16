@@ -37,7 +37,30 @@ function requireAccessAuth(config) {
   };
 }
 
+function requireAdminAuth(config, usersRepo) {
+  const accessAuth = requireAccessAuth(config);
+
+  return async function adminAuthPreHandler(request) {
+    await accessAuth(request);
+
+    const userRow = await usersRepo.findById(request.userAuth.userId);
+    if (!userRow || !userRow.is_active) {
+      throw new ApiError(401, "AUTH_TOKEN_INVALID", "Token is invalid");
+    }
+
+    if (!userRow.is_admin) {
+      throw new ApiError(403, "AUTH_FORBIDDEN", "Admin access is required");
+    }
+
+    request.userAuth = {
+      ...request.userAuth,
+      isAdmin: true
+    };
+  };
+}
+
 module.exports = {
   extractBearerToken,
-  requireAccessAuth
+  requireAccessAuth,
+  requireAdminAuth
 };

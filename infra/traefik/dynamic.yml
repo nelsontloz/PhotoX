@@ -9,7 +9,19 @@ http:
     auth:
       entryPoints:
         - web
-      rule: Host(`localhost`) && (PathPrefix(`/api/v1/auth`) || PathPrefix(`/api/v1/me`))
+      rule: Host(`localhost`) && PathPrefix(`/api/v1/auth`)
+      service: auth-service
+
+    auth-me:
+      entryPoints:
+        - web
+      rule: Host(`localhost`) && PathPrefix(`/api/v1/me`)
+      service: auth-service
+
+    auth-admin:
+      entryPoints:
+        - web
+      rule: Host(`localhost`) && PathPrefix(`/api/v1/admin`)
       service: auth-service
 
     ingest:
@@ -21,13 +33,25 @@ http:
     library:
       entryPoints:
         - web
-      rule: Host(`localhost`) && (PathPrefix(`/api/v1/library`) || PathPrefix(`/api/v1/media`))
+      rule: Host(`localhost`) && PathPrefix(`/api/v1/library`)
+      service: library-service
+
+    library-media:
+      entryPoints:
+        - web
+      rule: Host(`localhost`) && PathPrefix(`/api/v1/media`)
       service: library-service
 
     album:
       entryPoints:
         - web
-      rule: Host(`localhost`) && (PathPrefix(`/api/v1/albums`) || PathPrefix(`/api/v1/shares`))
+      rule: Host(`localhost`) && PathPrefix(`/api/v1/albums`)
+      service: album-sharing-service
+
+    album-shares:
+      entryPoints:
+        - web
+      rule: Host(`localhost`) && PathPrefix(`/api/v1/shares`)
       service: album-sharing-service
 
     search:

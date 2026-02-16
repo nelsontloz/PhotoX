@@ -44,6 +44,8 @@ describe("auth integration", () => {
 
     expect(first.statusCode).toBe(201);
     expect(jsonBody(first).user.email).toBe("user@example.com");
+    expect(jsonBody(first).user.isAdmin).toBe(true);
+    expect(jsonBody(first).user.isActive).toBe(true);
 
     const duplicate = await app.inject({
       method: "POST",
@@ -82,6 +84,8 @@ describe("auth integration", () => {
     expect(body.accessToken).toBeTruthy();
     expect(body.refreshToken).toBeTruthy();
     expect(body.user.email).toBe("login@example.com");
+    expect(body.user.isAdmin).toBe(true);
+    expect(body.user.isActive).toBe(true);
   });
 
   it("rejects invalid password login", async () => {
@@ -255,6 +259,8 @@ describe("auth integration", () => {
 
     expect(me.statusCode).toBe(200);
     expect(jsonBody(me).user.email).toBe("me@example.com");
+    expect(jsonBody(me).user.isAdmin).toBe(true);
+    expect(jsonBody(me).user.isActive).toBe(true);
   });
 
   it("rejects /me without token", async () => {
@@ -294,6 +300,13 @@ describe("auth integration", () => {
     expect(meGet.security[0].bearerAuth).toEqual([]);
     expect(meGet.responses["200"].content["application/json"].schema.example).toBeTruthy();
 
+    const adminUsersGet = spec.paths["/api/v1/admin/users"].get;
+    expect(adminUsersGet.summary).toBeTruthy();
+    expect(adminUsersGet.security[0].bearerAuth).toEqual([]);
+
+    const adminUsersPost = spec.paths["/api/v1/admin/users"].post;
+    expect(adminUsersPost.requestBody.content["application/json"].schema.example).toBeTruthy();
+
     const docs = await app.inject({
       method: "GET",
       url: "/api/v1/auth/docs"
@@ -301,5 +314,209 @@ describe("auth integration", () => {
 
     expect(docs.statusCode).toBe(200);
     expect(docs.headers["content-type"]).toContain("text/html");
+  });
+
+  it("sets only first registered user as admin", async () => {
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "first-admin@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const second = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "second-user@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    expect(first.statusCode).toBe(201);
+    expect(second.statusCode).toBe(201);
+    expect(jsonBody(first).user.isAdmin).toBe(true);
+    expect(jsonBody(second).user.isAdmin).toBe(false);
+  });
+
+  it("blocks non-admin users from admin endpoints", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "first-admin@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "non-admin@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: {
+        email: "non-admin@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const listUsers = await app.inject({
+      method: "GET",
+      url: "/api/v1/admin/users",
+      headers: {
+        authorization: `Bearer ${jsonBody(login).accessToken}`
+      }
+    });
+
+    expect(listUsers.statusCode).toBe(403);
+    expect(jsonBody(listUsers).error.code).toBe("AUTH_FORBIDDEN");
+  });
+
+  it("allows admin to promote user and blocks self-demotion", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "first-admin@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const userRegister = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "promote-me@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const adminLogin = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: {
+        email: "first-admin@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const promoted = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/users/${jsonBody(userRegister).user.id}`,
+      headers: {
+        authorization: `Bearer ${jsonBody(adminLogin).accessToken}`
+      },
+      payload: {
+        isAdmin: true
+      }
+    });
+
+    expect(promoted.statusCode).toBe(200);
+    expect(jsonBody(promoted).user.isAdmin).toBe(true);
+
+    const selfDemote = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admin/users/${jsonBody(adminLogin).user.id}`,
+      headers: {
+        authorization: `Bearer ${jsonBody(adminLogin).accessToken}`
+      },
+      payload: {
+        isAdmin: false
+      }
+    });
+
+    expect(selfDemote.statusCode).toBe(400);
+    expect(jsonBody(selfDemote).error.code).toBe("ADMIN_SELF_DEMOTE_FORBIDDEN");
+  });
+
+  it("prevents admin self-disable", async () => {
+    const registerAdmin = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "first-admin@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const adminLogin = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: {
+        email: "first-admin@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const disableAdmin = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/admin/users/${jsonBody(registerAdmin).user.id}`,
+      headers: {
+        authorization: `Bearer ${jsonBody(adminLogin).accessToken}`
+      }
+    });
+
+    expect(disableAdmin.statusCode).toBe(400);
+    expect(jsonBody(disableAdmin).error.code).toBe("ADMIN_SELF_DISABLE_FORBIDDEN");
+  });
+
+  it("disables user account and blocks subsequent login", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "first-admin@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const target = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "disable-me@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const adminLogin = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: {
+        email: "first-admin@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const disable = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/admin/users/${jsonBody(target).user.id}`,
+      headers: {
+        authorization: `Bearer ${jsonBody(adminLogin).accessToken}`
+      }
+    });
+
+    expect(disable.statusCode).toBe(200);
+
+    const loginDisabled = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: {
+        email: "disable-me@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    expect(loginDisabled.statusCode).toBe(403);
+    expect(jsonBody(loginDisabled).error.code).toBe("AUTH_ACCOUNT_DISABLED");
   });
 });

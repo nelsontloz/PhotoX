@@ -214,6 +214,57 @@ Required tests:
 
 ## Epic 5 - Albums and Sharing
 
+Status note:
+- Deferred to phase `P+1` after P4 admin-user management.
+
+---
+
+## Epic 4.5 - Admin User Management (P4)
+
+### P4-ADM-S1 First-User Admin Bootstrap
+Blocked by: E2-S1
+
+Acceptance criteria:
+- first self-registered user is assigned `is_admin=true`.
+- all subsequent self-registered users default to `is_admin=false`.
+- existing environments backfill oldest user to admin when no admin exists.
+
+Required tests:
+- Integration: first-user admin assignment and subsequent non-admin assignment.
+
+### P4-ADM-S2 Admin User Management APIs
+Blocked by: P4-ADM-S1
+
+Acceptance criteria:
+- admin can create/update/disable users and reset passwords.
+- admin can promote/demote other users.
+- admin cannot self-demote.
+- at least one active admin is always preserved.
+
+Required tests:
+- Unit: admin guard and last-admin protection logic.
+- Integration: admin endpoint access matrix and user lifecycle flows.
+
+### P4-ADM-S3 Admin User Metrics
+Blocked by: P4-ADM-S2
+
+Acceptance criteria:
+- admin users list includes `totalUsers` and active upload count per user.
+- upload count excludes soft-deleted media.
+
+Required tests:
+- Integration: list payload includes expected aggregate metrics.
+
+### P4-ADM-S4 Admin Web UI
+Blocked by: P4-ADM-S2
+
+Acceptance criteria:
+- `/admin` page supports user create/edit/disable/promote operations.
+- non-admin users cannot access admin functionality.
+
+Required tests:
+- Integration: admin page auth gating and mutation behavior.
+
 ### E5-S1 Album CRUD
 Blocked by: E2-S3, E4-S1
 
