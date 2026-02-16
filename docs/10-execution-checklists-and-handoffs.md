@@ -50,6 +50,13 @@ Note:
 - [x] Soft-deleted media are ignored by dedupe matching.
 - [x] Ingest integration tests cover active dedupe and soft-delete bypass behavior.
 
+## Phase P3.3 - Timeline Modal Viewer
+- [x] Clicking timeline photo opens modal with high-resolution image.
+- [x] Modal supports close via button, backdrop click, and `Esc` key.
+- [x] Modal supports previous/next navigation via buttons and keyboard arrows.
+- [x] Navigating next at loaded end auto-loads more timeline items when available.
+- [x] Modal image errors and loading states are surfaced with actionable feedback.
+
 ## Phase P4 - Albums and Sharing
 - [ ] Album CRUD complete.
 - [ ] Public link sharing and revoke complete.

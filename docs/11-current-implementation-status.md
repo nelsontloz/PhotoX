@@ -26,6 +26,7 @@ Source of truth used for this snapshot:
 - `P3`: timeline core (implemented)
 - `P3.1`: multi-file web upload UX (4 concurrent, continue-on-error) (implemented)
 - `P3.2`: upload dedupe by owner checksum against active media (implemented)
+- `P3.3`: timeline modal high-resolution viewer with next/previous navigation (implemented)
 - `P4`: albums and sharing (planned)
 - `P5`: search and semantic retrieval (planned)
 - `P6`: faces, memories, and hardening (planned)
@@ -166,6 +167,9 @@ Notes:
   aggregate progress, and continue-on-error behavior.
 - Timeline page fetches cursor-paginated media from `/api/v1/library/timeline` and renders authenticated
   thumbnail previews via `/api/v1/media/{mediaId}/content?variant=thumb`.
+- Clicking a timeline photo opens a modal viewer that loads authenticated high-resolution (`variant=small`) media,
+  supports close/escape, previous/next navigation, and auto-loads more timeline items when navigating past the
+  last loaded card and additional pages are available.
 
 Planned/pending:
 - `/albums`, `/search`, `/people`, `/memories` feature UIs

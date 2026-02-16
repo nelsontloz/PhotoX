@@ -127,6 +127,17 @@ Exit criteria:
 - Complete response includes `deduplicated=true` when reuse happens.
 - Re-upload after soft delete creates a new media row.
 
+### Phase P3.3 - Timeline Modal High-Resolution Viewer
+- Extend timeline UI to open selected media in modal viewer.
+- Load high-resolution timeline image variant in modal (`small`).
+- Implement keyboard/button navigation and close behavior.
+- Auto-load next timeline page when user navigates past currently loaded end.
+
+Exit criteria:
+- Clicking a timeline image opens modal with high-resolution media.
+- Modal supports close (`Esc`, backdrop, close button) and next/previous navigation.
+- Next navigation from loaded end fetches next timeline page and continues seamlessly.
+
 ### Phase P4 - Albums and Sharing
 - Implement album CRUD and item management.
 - Implement public links, invite-only, family sharing ACL flows.

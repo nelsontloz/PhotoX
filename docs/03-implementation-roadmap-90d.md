@@ -72,6 +72,7 @@ Target tasks:
 - `E4-S2`: media detail API
 - `P3.1-UI-S1`: multi-file upload UX with bounded concurrency (4)
 - `P3.2-INGEST-S1`: dedupe repeated uploads by owner + checksum
+- `P3.3-UI-S1`: timeline modal high-resolution viewer with navigation
 - `E5-S1`: album CRUD
 - `E5-S2`: public links
 - `E5-S3`: invite sharing
@@ -81,6 +82,7 @@ Required outcomes:
 - timeline and media detail APIs are stable and derivative-backed.
 - upload UI supports multi-file batches with per-file outcomes and bounded concurrency.
 - ingest dedupe prevents duplicate active media records for repeated identical uploads.
+- timeline UI supports modal high-resolution browsing with next/previous and auto-load navigation.
 - sharing model works with ACL enforcement.
 
 Phase exit gates:

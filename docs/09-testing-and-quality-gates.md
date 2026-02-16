@@ -116,6 +116,7 @@ Gate G6 - Verification Artifact
   - auth and timeline data fetch integration
   - upload API interaction and error handling
   - multi-file upload summary and progress behavior
+  - timeline modal high-resolution fetch and navigation behavior
 
 ---
 
