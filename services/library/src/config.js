@@ -6,7 +6,28 @@ function parsePositiveInt(value, fallback) {
   return parsed;
 }
 
+const WEAK_SECRET_VALUES = new Set(["change-me", "change-me-too"]);
+
+function resolveRequiredSecret({ envName, overrideValue }) {
+  const candidate = overrideValue !== undefined ? overrideValue : process.env[envName];
+
+  if (typeof candidate !== "string" || candidate.trim().length === 0) {
+    throw new Error(`${envName} is required`);
+  }
+
+  if (process.env.NODE_ENV === "production" && WEAK_SECRET_VALUES.has(candidate.trim().toLowerCase())) {
+    throw new Error(`${envName} must not use insecure placeholder values in production`);
+  }
+
+  return candidate;
+}
+
 function loadConfig(overrides = {}) {
+  const jwtAccessSecret = resolveRequiredSecret({
+    envName: "JWT_ACCESS_SECRET",
+    overrideValue: overrides.jwtAccessSecret
+  });
+
   return {
     port: overrides.port || parsePositiveInt(process.env.PORT, 3000),
     serviceName: overrides.serviceName || process.env.SERVICE_NAME || "library-service",
@@ -14,7 +35,7 @@ function loadConfig(overrides = {}) {
       overrides.databaseUrl ||
       process.env.DATABASE_URL ||
       "postgresql://photox:photox-dev-password@127.0.0.1:5432/photox",
-    jwtAccessSecret: overrides.jwtAccessSecret || process.env.JWT_ACCESS_SECRET || "change-me",
+    jwtAccessSecret,
     uploadOriginalsPath:
       overrides.uploadOriginalsPath || process.env.UPLOAD_ORIGINALS_PATH || "/data/photox/originals",
     uploadDerivedPath:
