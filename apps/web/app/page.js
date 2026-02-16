@@ -4,11 +4,11 @@ export default function HomePage() {
   return (
     <main className="shell py-10">
       <section className="panel p-8">
-        <p className="mb-2 text-sm font-semibold uppercase tracking-wide text-ocean-500">Phase P2</p>
-        <h1 className="mb-3 text-3xl font-black tracking-tight text-ocean-900">Web auth and upload UI is live</h1>
+        <p className="mb-2 text-sm font-semibold uppercase tracking-wide text-ocean-500">Phase P3</p>
+        <h1 className="mb-3 text-3xl font-black tracking-tight text-ocean-900">Timeline, auth, and upload are live</h1>
         <p className="max-w-2xl text-[15px] leading-7 text-ocean-700">
-          Register, login, and upload photos with resumable chunked transfer against the ingest API. Errors are
-          surfaced with API codes so failures are actionable.
+          Register, login, upload photos with resumable chunked transfer, and browse uploaded media in the
+          authenticated timeline UI.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link href="/register" className="btn btn-primary">
@@ -19,6 +19,9 @@ export default function HomePage() {
           </Link>
           <Link href="/upload" className="btn btn-secondary">
             Go to upload
+          </Link>
+          <Link href="/timeline" className="btn btn-secondary">
+            Open timeline
           </Link>
         </div>
       </section>

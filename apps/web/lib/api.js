@@ -93,13 +93,22 @@ async function request(path, options = {}) {
     body
   });
 
-  const payload = await parseJsonSafely(response);
+  const expectedResponse = options.expect || "json";
 
   if (!response.ok) {
+    const payload = await parseJsonSafely(response);
     throw parseErrorEnvelope(response.status, payload);
   }
 
-  return payload;
+  if (expectedResponse === "blob") {
+    return response.blob();
+  }
+
+  if (expectedResponse === "raw") {
+    return response;
+  }
+
+  return parseJsonSafely(response);
 }
 
 export async function registerUser(payload) {
@@ -200,6 +209,52 @@ export async function completeUpload(uploadId, payload, idempotencyKey) {
     headers: {
       "Idempotency-Key": idempotencyKey
     }
+  });
+}
+
+function buildTimelineQuery(params = {}) {
+  const search = new URLSearchParams();
+
+  if (params.cursor) {
+    search.set("cursor", params.cursor);
+  }
+
+  if (params.limit) {
+    search.set("limit", String(params.limit));
+  }
+
+  if (params.from) {
+    search.set("from", params.from);
+  }
+
+  if (params.to) {
+    search.set("to", params.to);
+  }
+
+  for (const key of ["favorite", "archived", "hidden"]) {
+    if (params[key] !== undefined) {
+      search.set(key, String(params[key]));
+    }
+  }
+
+  if (params.q) {
+    search.set("q", params.q);
+  }
+
+  const queryString = search.toString();
+  return queryString.length > 0 ? `?${queryString}` : "";
+}
+
+export async function fetchTimeline(params = {}) {
+  return requestWithAutoRefresh(`/library/timeline${buildTimelineQuery(params)}`, {
+    method: "GET"
+  });
+}
+
+export async function fetchMediaContentBlob(mediaId, variant = "thumb") {
+  return requestWithAutoRefresh(`/media/${mediaId}/content?variant=${encodeURIComponent(variant)}`, {
+    method: "GET",
+    expect: "blob"
   });
 }
 

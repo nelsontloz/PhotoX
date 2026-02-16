@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -159,8 +160,11 @@ export default function UploadPage() {
         ) : null}
 
         {uploadResult ? (
-          <div className="success">
-            Upload accepted. Media is processing. mediaId={uploadResult.mediaId}, uploadId={uploadResult.uploadId}
+          <div className="success space-y-2">
+            <p>Upload accepted. Media is processing. mediaId={uploadResult.mediaId}, uploadId={uploadResult.uploadId}</p>
+            <Link href="/timeline" className="inline-flex text-sm font-semibold underline underline-offset-4">
+              Open timeline
+            </Link>
           </div>
         ) : null}
 

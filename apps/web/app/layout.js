@@ -34,6 +34,9 @@ export default function RootLayout({ children }) {
                 <Link href="/upload" className="hover:text-ocean-900">
                   Upload
                 </Link>
+                <Link href="/timeline" className="hover:text-ocean-900">
+                  Timeline
+                </Link>
               </nav>
             </div>
           </header>
