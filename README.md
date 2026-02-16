@@ -71,6 +71,8 @@ Set at least:
 
 - `PHOTOX_ORIGINALS_DIR`
 - `PHOTOX_DERIVED_DIR`
+- `JWT_ACCESS_SECRET` (generate with `openssl rand -hex 32`)
+- `JWT_REFRESH_SECRET` (generate with `openssl rand -hex 32`)
 
 2) Create storage directories
 

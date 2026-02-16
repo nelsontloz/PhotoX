@@ -146,8 +146,8 @@ services:
       SERVICE_NAME: auth-service
       DATABASE_URL: postgresql://${POSTGRES_USER:-photox}:${POSTGRES_PASSWORD:-photox-dev-password}@postgres:5432/${POSTGRES_DB:-photox}
       REDIS_URL: redis://redis:6379
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-me}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-too}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
     depends_on:
       postgres:
         condition: service_healthy
@@ -171,6 +171,7 @@ services:
       SERVICE_NAME: ingest-service
       DATABASE_URL: postgresql://${POSTGRES_USER:-photox}:${POSTGRES_PASSWORD:-photox-dev-password}@postgres:5432/${POSTGRES_DB:-photox}
       REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
       UPLOAD_ORIGINALS_PATH: /data/photox/originals
       UPLOAD_DERIVED_PATH: /data/photox/derived
     depends_on:
@@ -198,7 +199,7 @@ services:
       PORT: 3000
       SERVICE_NAME: library-service
       DATABASE_URL: postgresql://${POSTGRES_USER:-photox}:${POSTGRES_PASSWORD:-photox-dev-password}@postgres:5432/${POSTGRES_DB:-photox}
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-me}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
       UPLOAD_ORIGINALS_PATH: /data/photox/originals
       UPLOAD_DERIVED_PATH: /data/photox/derived
     depends_on:
