@@ -198,6 +198,7 @@ services:
       PORT: 3000
       SERVICE_NAME: library-service
       DATABASE_URL: postgresql://${POSTGRES_USER:-photox}:${POSTGRES_PASSWORD:-photox-dev-password}@postgres:5432/${POSTGRES_DB:-photox}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-me}
     depends_on:
       postgres:
         condition: service_healthy
