@@ -5,6 +5,8 @@ const sharp = require("sharp");
 
 const { buildDerivativeRelativePath, resolveAbsolutePath } = require("./paths");
 
+const pendingDerivatives = new Map();
+
 async function fileExists(filePath) {
   try {
     await fs.access(filePath);
@@ -39,24 +41,37 @@ async function ensureWebpDerivative({ originalsRoot, derivedRoot, mediaRow, vari
   const derivativeRelativePath = buildDerivativeRelativePath(mediaRow.relative_path, mediaRow.id, variant);
   const derivativeAbsolutePath = resolveAbsolutePath(derivedRoot, derivativeRelativePath);
 
-  if (await fileExists(derivativeAbsolutePath)) {
-    return {
-      relativePath: derivativeRelativePath,
-      absolutePath: derivativeAbsolutePath,
-      contentType: "image/webp"
-    };
+  if (pendingDerivatives.has(derivativeAbsolutePath)) {
+    return pendingDerivatives.get(derivativeAbsolutePath);
   }
 
-  await fs.mkdir(path.dirname(derivativeAbsolutePath), { recursive: true });
+  const promise = (async () => {
+    try {
+      if (await fileExists(derivativeAbsolutePath)) {
+        return {
+          relativePath: derivativeRelativePath,
+          absolutePath: derivativeAbsolutePath,
+          contentType: "image/webp"
+        };
+      }
 
-  const pipeline = variantTransform(sharp(sourceAbsolutePath).rotate(), variant);
-  await pipeline.webp({ quality: 82 }).toFile(derivativeAbsolutePath);
+      await fs.mkdir(path.dirname(derivativeAbsolutePath), { recursive: true });
 
-  return {
-    relativePath: derivativeRelativePath,
-    absolutePath: derivativeAbsolutePath,
-    contentType: "image/webp"
-  };
+      const pipeline = variantTransform(sharp(sourceAbsolutePath).rotate(), variant);
+      await pipeline.webp({ quality: 82 }).toFile(derivativeAbsolutePath);
+
+      return {
+        relativePath: derivativeRelativePath,
+        absolutePath: derivativeAbsolutePath,
+        contentType: "image/webp"
+      };
+    } finally {
+      pendingDerivatives.delete(derivativeAbsolutePath);
+    }
+  })();
+
+  pendingDerivatives.set(derivativeAbsolutePath, promise);
+  return promise;
 }
 
 module.exports = {
