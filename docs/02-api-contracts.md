@@ -444,10 +444,16 @@ Notes:
 ```json
 {
   "mediaId": "med_789",
-  "thumbPath": "med_789/thumb.jpg",
-  "smallPath": "med_789/small.jpg"
+  "ownerId": "usr_123",
+  "relativePath": "usr_123/2026/02/med_789.jpg",
+  "requestedAt": "2026-02-15T10:00:10Z"
 }
 ```
+
+`media.derivatives.generate` compatibility requirements:
+- Required keys: `mediaId`, `relativePath`.
+- Optional keys: `ownerId`, `requestedAt`.
+- Worker generates both `thumb` and `small` WebP derivatives for each accepted job.
 
 ### Job `media.face.index`
 ```json

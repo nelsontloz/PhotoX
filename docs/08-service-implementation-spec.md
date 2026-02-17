@@ -129,7 +129,7 @@ Idempotency requirements:
 
 Responsibilities:
 - Timeline read model.
-- On-demand derivative generation for timeline cards.
+- Serve timeline media variants and enqueue derivative generation when derivatives are missing.
 - Media detail and flags.
 - Soft delete and restore.
 

@@ -205,11 +205,14 @@ services:
       PORT: 3000
       SERVICE_NAME: library-service
       DATABASE_URL: postgresql://${POSTGRES_USER:-photox}:${POSTGRES_PASSWORD:-photox-dev-password}@postgres:5432/${POSTGRES_DB:-photox}
+      REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
       UPLOAD_ORIGINALS_PATH: /data/photox/originals
       UPLOAD_DERIVED_PATH: /data/photox/derived
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     volumes:
       - ${PHOTOX_ORIGINALS_DIR:-/data/photox/originals}:/data/photox/originals
@@ -277,6 +280,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-photox}:${POSTGRES_PASSWORD:-photox-dev-password}@postgres:5432/${POSTGRES_DB:-photox}
       SERVICE_NAME: worker-service
       REDIS_URL: redis://redis:6379
+      MEDIA_DERIVATIVES_QUEUE_NAME: ${MEDIA_DERIVATIVES_QUEUE_NAME:-media.derivatives.generate}
       UPLOAD_ORIGINALS_PATH: /data/photox/originals
       UPLOAD_DERIVED_PATH: /data/photox/derived
     depends_on:

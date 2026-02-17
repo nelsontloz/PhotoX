@@ -3,8 +3,7 @@ const fs = require("node:fs/promises");
 
 const { requireAccessAuth } = require("../auth/guard");
 const { ApiError } = require("../errors");
-const { ensureWebpDerivative } = require("../media/derivatives");
-const { resolveAbsolutePath } = require("../media/paths");
+const { buildDerivativeRelativePath, resolveAbsolutePath } = require("../media/paths");
 const {
   mediaContentQuerySchema,
   mediaPathParamsSchema,
@@ -334,7 +333,7 @@ module.exports = async function libraryRoutes(app) {
         tags: ["Media"],
         summary: "Read media content",
         description:
-          "Return original media bytes or generate and return WebP derivatives for timeline display.",
+          "Return original media bytes or serve existing WebP derivatives; when derivatives are missing, queue background generation and return source media bytes.",
         security: [{ bearerAuth: [] }],
         params: {
           type: "object",
@@ -380,14 +379,44 @@ module.exports = async function libraryRoutes(app) {
         if (variant === "original") {
           absolutePath = resolveAbsolutePath(app.config.uploadOriginalsPath, media.relative_path);
         } else {
-          const derivative = await ensureWebpDerivative({
-            originalsRoot: app.config.uploadOriginalsPath,
-            derivedRoot: app.config.uploadDerivedPath,
-            mediaRow: media,
-            variant
-          });
-          absolutePath = derivative.absolutePath;
-          contentType = derivative.contentType;
+          const derivativeRelativePath = buildDerivativeRelativePath(media.relative_path, media.id, variant);
+          const derivativeAbsolutePath = resolveAbsolutePath(app.config.uploadDerivedPath, derivativeRelativePath);
+
+          try {
+            await fs.stat(derivativeAbsolutePath);
+            absolutePath = derivativeAbsolutePath;
+            contentType = "image/webp";
+          } catch (err) {
+            if (err.code !== "ENOENT") {
+              throw err;
+            }
+
+            absolutePath = resolveAbsolutePath(app.config.uploadOriginalsPath, media.relative_path);
+            try {
+              await app.queues.mediaDerivatives.add(
+                "media.derivatives.generate",
+                {
+                  mediaId: media.id,
+                  ownerId: media.owner_id,
+                  relativePath: media.relative_path,
+                  requestedAt: new Date().toISOString()
+                },
+                {
+                  jobId: `media-derivatives-${media.id}`,
+                  attempts: 5,
+                  backoff: {
+                    type: "exponential",
+                    delay: 3000
+                  }
+                }
+              );
+            } catch (enqueueErr) {
+              request.log.warn(
+                { err: enqueueErr, mediaId: media.id },
+                "failed to enqueue derivative generation job"
+              );
+            }
+          }
         }
 
         try {

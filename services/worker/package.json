@@ -3,11 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "vitest run --globals test/unit"
   },
   "dependencies": {
     "@fastify/swagger": "^9.5.2",
     "@fastify/swagger-ui": "^5.2.3",
-    "fastify": "^5.2.0"
+    "bullmq": "^5.61.0",
+    "fastify": "^5.2.0",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.8"
   }
 }

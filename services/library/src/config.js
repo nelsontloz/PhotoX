@@ -35,6 +35,7 @@ function loadConfig(overrides = {}) {
       overrides.databaseUrl ||
       process.env.DATABASE_URL ||
       "postgresql://photox:photox-dev-password@127.0.0.1:5432/photox",
+    redisUrl: overrides.redisUrl || process.env.REDIS_URL || "redis://127.0.0.1:6379",
     jwtAccessSecret,
     uploadOriginalsPath:
       overrides.uploadOriginalsPath || process.env.UPLOAD_ORIGINALS_PATH || "/data/photox/originals",
@@ -42,7 +43,11 @@ function loadConfig(overrides = {}) {
       overrides.uploadDerivedPath || process.env.UPLOAD_DERIVED_PATH || "/data/photox/derived",
     timelineDefaultLimit:
       overrides.timelineDefaultLimit || parsePositiveInt(process.env.TIMELINE_DEFAULT_LIMIT, 24),
-    timelineMaxLimit: overrides.timelineMaxLimit || parsePositiveInt(process.env.TIMELINE_MAX_LIMIT, 100)
+    timelineMaxLimit: overrides.timelineMaxLimit || parsePositiveInt(process.env.TIMELINE_MAX_LIMIT, 100),
+    mediaDerivativesQueueName:
+      overrides.mediaDerivativesQueueName ||
+      process.env.MEDIA_DERIVATIVES_QUEUE_NAME ||
+      "media.derivatives.generate"
   };
 }
 

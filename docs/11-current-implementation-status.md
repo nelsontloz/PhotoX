@@ -101,7 +101,8 @@ Implemented now:
 Notes:
 - Timeline supports stable cursor pagination, date range filters, flags filters, and text query over media path.
 - Timeline and media detail payloads include derivative URLs for `thumb`, `small`, and `original` media content.
-- `thumb` and `small` derivatives are generated on demand as WebP files by library-service.
+- `thumb` and `small` derivatives are served from derived storage as WebP files when present.
+- If a requested derivative is missing, library-service enqueues `media.derivatives.generate` and immediately serves source media bytes while the worker generates derivatives.
 
 Planned/pending:
 - `albumId` and `personId` timeline filters (deferred to P4/P6 relation wiring)
@@ -138,9 +139,10 @@ Implemented now:
 - `GET /metrics`
 - `GET /api/v1/worker/docs`
 - `GET /api/v1/worker/openapi.json`
+- BullMQ consumer for `media.derivatives.generate` that creates `thumb` and `small` WebP derivatives from originals
 
 Planned/pending:
-- worker processors for media pipeline jobs (`media.process`, metadata, derivatives, search index, face index, cleanup)
+- worker processors for `media.process`, metadata, search index, face index, and cleanup
 
 ### ml-service - partial
 

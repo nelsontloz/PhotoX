@@ -1,6 +1,7 @@
 const Fastify = require("fastify");
 const swagger = require("@fastify/swagger");
 const swaggerUi = require("@fastify/swagger-ui");
+const { Queue } = require("bullmq");
 
 const { loadConfig } = require("./config");
 const { createPool, runMigrations } = require("./db");
@@ -8,6 +9,19 @@ const { ApiError, toErrorBody } = require("./errors");
 const { buildLibraryRepo } = require("./repos/libraryRepo");
 const openapiRoute = require("./routes/openapiRoute");
 const libraryRoutes = require("./routes/libraryRoutes");
+
+function redisConnectionFromUrl(redisUrl) {
+  const parsed = new URL(redisUrl);
+  const dbNumber = Number.parseInt(parsed.pathname.replace("/", ""), 10);
+
+  return {
+    host: parsed.hostname,
+    port: Number.parseInt(parsed.port || "6379", 10),
+    username: parsed.username || undefined,
+    password: parsed.password || undefined,
+    db: Number.isNaN(dbNumber) ? 0 : dbNumber
+  };
+}
 
 function buildApp(overrides = {}) {
   const app = Fastify({
@@ -23,11 +37,19 @@ function buildApp(overrides = {}) {
 
   const config = loadConfig(overrides);
   const db = overrides.db || createPool(config.databaseUrl);
+  const mediaDerivativesQueue =
+    overrides.mediaDerivativesQueue ||
+    new Queue(config.mediaDerivativesQueueName, {
+      connection: redisConnectionFromUrl(config.redisUrl)
+    });
 
   app.decorate("config", config);
   app.decorate("db", db);
   app.decorate("repos", {
     library: buildLibraryRepo(db)
+  });
+  app.decorate("queues", {
+    mediaDerivatives: mediaDerivativesQueue
   });
 
   app.get("/health", async () => ({ status: "ok", service: config.serviceName }));
@@ -78,6 +100,10 @@ function buildApp(overrides = {}) {
   });
 
   app.addHook("onClose", async () => {
+    if (!overrides.mediaDerivativesQueue) {
+      await mediaDerivativesQueue.close();
+    }
+
     if (!overrides.db) {
       await db.end();
     }

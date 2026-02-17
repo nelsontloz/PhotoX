@@ -33,6 +33,7 @@ function createAccessToken({ userId, email, secret }) {
 
 describe("library integration", () => {
   let app;
+  const queuedDerivativeJobs = [];
   const accessSecret = "library-integration-access-secret";
   const ownerId = "0f3c9d30-1307-4c9e-a4d7-75e84606c28d";
   const testOriginalsRoot = path.join(os.tmpdir(), "photox-library-originals-tests");
@@ -44,12 +45,20 @@ describe("library integration", () => {
       jwtAccessSecret: accessSecret,
       serviceName: "library-service-test",
       uploadOriginalsPath: testOriginalsRoot,
-      uploadDerivedPath: testDerivedRoot
+      uploadDerivedPath: testDerivedRoot,
+      mediaDerivativesQueue: {
+        async add(name, payload, options) {
+          queuedDerivativeJobs.push([name, payload, options]);
+          return { id: options?.jobId || crypto.randomUUID() };
+        },
+        async close() {}
+      }
     });
     await app.ready();
   });
 
   beforeEach(async () => {
+    queuedDerivativeJobs.length = 0;
     await app.db.query("TRUNCATE TABLE media_flags, media_metadata, media RESTART IDENTITY CASCADE");
     await fs.rm(testOriginalsRoot, { recursive: true, force: true });
     await fs.rm(testDerivedRoot, { recursive: true, force: true });
@@ -258,7 +267,7 @@ describe("library integration", () => {
     expect(jsonBody(timelineAfterRestore).items[0].id).toBe(mediaId);
   });
 
-  it("returns media content and generates webp derivatives", async () => {
+  it("returns media content, queues missing derivatives, and serves generated derivative", async () => {
     const token = createAccessToken({
       userId: ownerId,
       email: "content@example.com",
@@ -301,8 +310,43 @@ describe("library integration", () => {
     });
 
     expect(thumbResponse.statusCode).toBe(200);
-    expect(thumbResponse.headers["content-type"]).toContain("image/webp");
+    expect(thumbResponse.headers["content-type"]).toContain("image/jpeg");
     expect(thumbResponse.rawPayload.length).toBeGreaterThan(0);
+    expect(queuedDerivativeJobs).toHaveLength(1);
+    expect(queuedDerivativeJobs[0][0]).toBe("media.derivatives.generate");
+    expect(queuedDerivativeJobs[0][1]).toMatchObject({
+      mediaId,
+      ownerId,
+      relativePath
+    });
+
+    const derivativeAbsolutePath = path.join(testDerivedRoot, ownerId, "2026", "02", `${mediaId}-thumb.webp`);
+    await fs.mkdir(path.dirname(derivativeAbsolutePath), { recursive: true });
+    await sharp({
+      create: {
+        width: 320,
+        height: 320,
+        channels: 3,
+        background: {
+          r: 40,
+          g: 40,
+          b: 40
+        }
+      }
+    })
+      .webp()
+      .toFile(derivativeAbsolutePath);
+
+    const thumbReadyResponse = await app.inject({
+      method: "GET",
+      url: `/api/v1/media/${mediaId}/content?variant=thumb`,
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    });
+
+    expect(thumbReadyResponse.statusCode).toBe(200);
+    expect(thumbReadyResponse.headers["content-type"]).toContain("image/webp");
 
     const originalResponse = await app.inject({
       method: "GET",
