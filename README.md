@@ -201,7 +201,6 @@ Contract runner behavior:
 ## Useful documentation
 
 - `docs/01-c4-architecture.md` - system architecture
-- `docs/03-implementation-roadmap-90d.md` - phased roadmap
 - `docs/05-local-dev-quickstart.md` - local setup details
 - `docs/08-service-implementation-spec.md` - service-level implementation contracts
 - `docs/09-testing-and-quality-gates.md` - required quality gates

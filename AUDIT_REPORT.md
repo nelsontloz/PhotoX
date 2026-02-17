@@ -8,8 +8,7 @@ This report reflects the current repository state after remediation work for:
 - conflict-safe idempotency persistence behavior.
 
 Deferred items are explicitly tracked in Phase `P100` security tech debt:
-- `docs/04-backlog-epics-stories.md` (`P100-S1`, `P100-S2`)
-- `docs/03-implementation-roadmap-90d.md` (Post-90 `P100`)
+- `docs/07-ai-agent-task-contracts.md` (`P100-S1`, `P100-S2`)
 - `docs/10-execution-checklists-and-handoffs.md` (Phase `P100` checklist)
 - `docs/11-current-implementation-status.md` (`P100` snapshot)
 

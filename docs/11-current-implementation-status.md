@@ -195,7 +195,7 @@ Deferred from audit triage:
 - Production secret hard-fail policy (`P100-S2`): auth, ingest, and library services still allow insecure JWT defaults in non-hardened startup paths and require production-mode fail-fast enforcement.
 
 Tracking source:
-- Backlog definitions and acceptance criteria: `docs/04-backlog-epics-stories.md`.
+- Task contracts and acceptance criteria: `docs/07-ai-agent-task-contracts.md`.
 - Checklist gates: `docs/10-execution-checklists-and-handoffs.md`.
 
 ---

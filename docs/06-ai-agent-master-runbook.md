@@ -55,7 +55,7 @@ Non-negotiable constraints:
 Use a single orchestrator agent that executes tasks sequentially and only parallelizes independent sub-steps inside a task.
 
 Task lifecycle:
-1. Select task ID from `docs/04-backlog-epics-stories.md`.
+1. Select task scope and acceptance criteria from `docs/07-ai-agent-task-contracts.md` and `docs/11-current-implementation-status.md`.
 2. Load matching task contract in `docs/07-ai-agent-task-contracts.md`.
 3. Execute implementation plan from `docs/08-service-implementation-spec.md`.
 4. Run all quality gates from `docs/09-testing-and-quality-gates.md`.
