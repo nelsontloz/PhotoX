@@ -519,4 +519,90 @@ describe("auth integration", () => {
     expect(loginDisabled.statusCode).toBe(403);
     expect(jsonBody(loginDisabled).error.code).toBe("AUTH_ACCOUNT_DISABLED");
   });
+
+  it("supports admin list/create/reset-password flow", async () => {
+    const adminRegister = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "first-admin@example.com",
+        password: "super-secret-password"
+      }
+    });
+    expect(adminRegister.statusCode).toBe(201);
+
+    const adminLogin = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: {
+        email: "first-admin@example.com",
+        password: "super-secret-password"
+      }
+    });
+    expect(adminLogin.statusCode).toBe(200);
+    const adminToken = jsonBody(adminLogin).accessToken;
+
+    const listBefore = await app.inject({
+      method: "GET",
+      url: "/api/v1/admin/users?limit=10&offset=0",
+      headers: {
+        authorization: `Bearer ${adminToken}`
+      }
+    });
+    expect(listBefore.statusCode).toBe(200);
+    expect(jsonBody(listBefore).totalUsers).toBe(1);
+
+    const createManaged = await app.inject({
+      method: "POST",
+      url: "/api/v1/admin/users",
+      headers: {
+        authorization: `Bearer ${adminToken}`
+      },
+      payload: {
+        email: "managed-user@example.com",
+        password: "managed-super-secret",
+        isAdmin: false,
+        isActive: true
+      }
+    });
+    expect(createManaged.statusCode).toBe(201);
+    const managedUser = jsonBody(createManaged).user;
+    expect(managedUser.email).toBe("managed-user@example.com");
+    expect(managedUser.isAdmin).toBe(false);
+    expect(managedUser.isActive).toBe(true);
+
+    const resetPassword = await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/users/${managedUser.id}/reset-password`,
+      headers: {
+        authorization: `Bearer ${adminToken}`
+      },
+      payload: {
+        password: "managed-new-password"
+      }
+    });
+    expect(resetPassword.statusCode).toBe(200);
+    expect(jsonBody(resetPassword)).toEqual({ success: true });
+
+    const managedLogin = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: {
+        email: "managed-user@example.com",
+        password: "managed-new-password"
+      }
+    });
+    expect(managedLogin.statusCode).toBe(200);
+    expect(jsonBody(managedLogin).user.email).toBe("managed-user@example.com");
+
+    const listAfter = await app.inject({
+      method: "GET",
+      url: "/api/v1/admin/users?limit=10&offset=0",
+      headers: {
+        authorization: `Bearer ${adminToken}`
+      }
+    });
+    expect(listAfter.statusCode).toBe(200);
+    expect(jsonBody(listAfter).totalUsers).toBe(2);
+  });
 });

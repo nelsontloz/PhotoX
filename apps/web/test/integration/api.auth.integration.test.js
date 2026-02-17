@@ -1,4 +1,4 @@
-import { fetchCurrentUser, loginUser } from "../../lib/api";
+import { fetchCurrentUser, loginUser, logoutUser, registerUser } from "../../lib/api";
 import { clearSession, readSession, writeSession } from "../../lib/session";
 
 function jsonResponse(status, payload) {
@@ -96,5 +96,38 @@ describe("auth api integration", () => {
     const updatedSession = readSession();
     expect(updatedSession.accessToken).toBe("new-access");
     expect(updatedSession.refreshToken).toBe("new-refresh");
+  });
+
+  it("registers and logs out through auth api wrappers", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(201, {
+          accessToken: "new-access",
+          refreshToken: "new-refresh",
+          expiresIn: 3600,
+          user: {
+            id: "usr_345",
+            email: "new-user@example.com",
+            name: null
+          }
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { success: true }));
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const registered = await registerUser({
+      email: "new-user@example.com",
+      password: "super-secret-password"
+    });
+    expect(registered.user.email).toBe("new-user@example.com");
+
+    const logoutResult = await logoutUser("new-refresh");
+    expect(logoutResult.success).toBe(true);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toContain("/auth/register");
+    expect(fetchMock.mock.calls[1][0]).toContain("/auth/logout");
   });
 });

@@ -102,6 +102,7 @@ Note:
 - [ ] Unit tests added/updated.
 - [ ] Integration tests added/updated.
 - [ ] Docs updated.
+- [ ] Contract runner passed for changed API/queue integrations.
 - [ ] Gate report completed.
 - [ ] Next-task recommendation written.
 
@@ -127,6 +128,7 @@ Verification:
 - Build commands:
 - Unit test commands:
 - Integration test commands:
+- Contract compatibility commands:
 - Runtime health checks:
 
 Risks/Notes:

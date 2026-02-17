@@ -758,4 +758,34 @@ describe("upload init integration", () => {
     expect(mediaCount.rows[0].count).toBe(2);
     expect(queuedJobs.length).toBe(2);
   });
+
+  it("exposes OpenAPI and Swagger docs with idempotency headers", async () => {
+    const openapi = await app.inject({
+      method: "GET",
+      url: "/api/v1/uploads/openapi.json"
+    });
+
+    expect(openapi.statusCode).toBe(200);
+    const spec = jsonBody(openapi);
+    expect(spec.openapi).toBeTruthy();
+
+    const initPost = spec.paths["/api/v1/uploads/init"].post;
+    const completePost = spec.paths["/api/v1/uploads/{uploadId}/complete"].post;
+    expect(initPost.summary).toBeTruthy();
+    expect(initPost.description).toBeTruthy();
+    expect(completePost.summary).toBeTruthy();
+    expect(completePost.description).toBeTruthy();
+
+    expect(initPost.description).toContain("Idempotency-Key");
+    expect(completePost.description).toContain("Idempotency-Key");
+    expect(initPost.security[0].bearerAuth).toEqual([]);
+    expect(completePost.security[0].bearerAuth).toEqual([]);
+
+    const docs = await app.inject({
+      method: "GET",
+      url: "/api/v1/uploads/docs"
+    });
+    expect(docs.statusCode).toBe(200);
+    expect(docs.headers["content-type"]).toContain("text/html");
+  });
 });

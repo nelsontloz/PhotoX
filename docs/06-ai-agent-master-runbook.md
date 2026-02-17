@@ -194,7 +194,8 @@ For each task, produce work in this order:
 6. Add/adjust unit tests.
 7. Add/adjust integration tests.
 8. Update API docs and linked docs.
-9. Run quality gates and produce report.
+9. Run contract compatibility runner (`python3 scripts/contract_runner.py --mode all --base-url http://localhost:8088`) when API/queue interfaces are changed.
+10. Run quality gates and produce report.
 
 ---
 

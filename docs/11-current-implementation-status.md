@@ -214,4 +214,6 @@ for service in ['auth','uploads','library','albums','search','worker','ml']:
     spec = json.load(urllib.request.urlopen(url, timeout=5))
     print(service, sorted(spec.get('paths', {}).keys()))
 PY
+
+python3 scripts/contract_runner.py --mode all --base-url http://localhost:8088
 ```

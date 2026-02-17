@@ -152,8 +152,19 @@ module.exports = async function uploadsRoutes(app) {
         tags: ["Uploads"],
         summary: "Initialize upload session",
         description:
-          "Create an upload session and return chunk size metadata for resumable part uploads.",
+          "Create an upload session and return chunk size metadata for resumable part uploads. Supports Idempotency-Key for safe retries.",
         security: [{ bearerAuth: [] }],
+        headers: {
+          type: "object",
+          properties: {
+            "idempotency-key": {
+              type: "string",
+              minLength: 1,
+              description: "Optional key to safely retry upload initialization without creating duplicate sessions."
+            }
+          },
+          additionalProperties: true
+        },
         body: {
           type: "object",
           required: ["fileName", "contentType", "fileSize", "checksumSha256"],
@@ -414,8 +425,20 @@ module.exports = async function uploadsRoutes(app) {
       schema: {
         tags: ["Uploads"],
         summary: "Complete upload",
-        description: "Assemble uploaded parts, validate checksum, persist media metadata, and enqueue processing.",
+        description:
+          "Assemble uploaded parts, validate checksum, persist media metadata, and enqueue processing. Supports Idempotency-Key for safe retries.",
         security: [{ bearerAuth: [] }],
+        headers: {
+          type: "object",
+          properties: {
+            "idempotency-key": {
+              type: "string",
+              minLength: 1,
+              description: "Optional key to safely retry completion and replay the same response."
+            }
+          },
+          additionalProperties: true
+        },
         params: {
           type: "object",
           required: ["uploadId"],

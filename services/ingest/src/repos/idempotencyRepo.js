@@ -66,7 +66,31 @@ function buildIdempotencyRepo(db) {
       );
 
       if (result.rowCount === 0) {
-        return null;
+        const fallback = await queryable(executor).query(
+          `
+            SELECT user_id, scope, idem_key, request_hash, response_body, status_code
+            FROM idempotency_keys
+            WHERE user_id = $1 AND scope = $2 AND idem_key = $3
+          `,
+          [userId, scope, idemKey]
+        );
+
+        if (fallback.rowCount === 0) {
+          return null;
+        }
+
+        const fallbackRow = fallback.rows[0];
+        return {
+          inserted: false,
+          record: {
+            user_id: fallbackRow.user_id,
+            scope: fallbackRow.scope,
+            idem_key: fallbackRow.idem_key,
+            request_hash: fallbackRow.request_hash,
+            response_body: fallbackRow.response_body,
+            status_code: fallbackRow.status_code
+          }
+        };
       }
 
       const row = result.rows[0];

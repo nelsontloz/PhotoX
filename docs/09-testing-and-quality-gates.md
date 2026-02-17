@@ -41,6 +41,11 @@ Gate G5 - Runtime Health
 Gate G6 - Verification Artifact
 - Task report completed with commands run and results.
 
+Gate G7 - Contract Compatibility
+- Consumer/provider API compatibility checks pass against live OpenAPI specs.
+- Queue payload compatibility checks pass for changed async boundaries.
+- Contract runner evidence is attached in command log.
+
 ---
 
 ## 3) Service-Level Test Expectations
@@ -142,7 +147,18 @@ docker compose exec -T <service> wget -qO- http://127.0.0.1:<port>/health
 
 # Swagger/OpenAPI smoke checks
 python3 scripts/smoke_swagger_docs.py
+
+# Contract compatibility checks (API + queue)
+python3 scripts/contract_runner.py --mode all --base-url http://localhost:8088
 ```
+
+Contract runner execution model:
+- Stack lifecycle is configurable via `--stack-mode`:
+  - `rebuild` (default): `down` -> `build --parallel` -> `up -d --no-build`
+  - `restart`: `down` -> `up -d`
+  - `reuse`: no compose lifecycle, checks run against existing stack
+- It waits for provider OpenAPI endpoints to become reachable before contract assertions.
+- `--skip-stack` remains available as a compatibility alias for `--stack-mode reuse`.
 
 When package test scripts are available, run:
 
@@ -177,6 +193,7 @@ G3 Integration: pass|fail
 G4 Contract+Docs: pass|fail
 G5 Runtime Health: pass|fail
 G6 Verification Artifact: pass|fail
+G7 Contract Compatibility: pass|fail
 
 COMMAND LOG
 - <command>: pass|fail

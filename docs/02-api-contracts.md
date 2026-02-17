@@ -28,6 +28,29 @@
 }
 ```
 
+### Contract Compatibility Enforcement
+
+- Consumer/provider compatibility is enforced with `python3 scripts/contract_runner.py --mode all --base-url http://localhost:8088`.
+- API contract checks compare consumer-required operations and fields against provider OpenAPI specs.
+- Queue contract checks validate required payload keys for async boundaries (starting with ingest -> worker `media.process`).
+
+Compatibility policy:
+- Non-breaking:
+  - add new endpoints,
+  - add optional request/response fields,
+  - add new optional queue payload fields.
+- Breaking:
+  - remove/rename existing consumed endpoint paths or methods,
+  - remove/rename required request/response fields used by consumers,
+  - change required field types incompatibly,
+  - remove required queue payload keys.
+
+Consumer/provider ownership matrix (v1):
+- `apps/web` -> `auth-service`: `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/me`.
+- `apps/web` -> `ingest-service`: `/api/v1/uploads/init`, `/api/v1/uploads/{uploadId}/part`, `/api/v1/uploads/{uploadId}/complete`.
+- `apps/web` -> `library-service`: `/api/v1/library/timeline`, `/api/v1/media/{mediaId}/content`.
+- `ingest-service` -> `worker-service` queue: `media.process`.
+
 ---
 
 ## 2) Auth Service
@@ -158,6 +181,7 @@ Implemented now:
 - Implemented write endpoints include request examples and response examples in OpenAPI.
 - Authenticated ingest endpoints include `bearerAuth` security metadata in OpenAPI.
 - `init` and `complete` support `Idempotency-Key` for safe retries.
+- Ingest OpenAPI operation descriptions for `init`/`complete` explicitly state `Idempotency-Key` retry support.
 - `complete` performs owner-scoped checksum dedupe against active media.
 
 ### Init Request
@@ -400,6 +424,11 @@ Notes:
   "uploadedAt": "2026-02-15T10:00:00Z"
 }
 ```
+
+`media.process` compatibility requirements:
+- Required keys: `mediaId`, `ownerId`, `relativePath`, `checksumSha256`, `uploadedAt`.
+- Providers may add optional keys, but must not remove or rename required keys.
+- Queue payload contract changes require same-task updates to docs, contract runner checks, and integration tests.
 
 ### Job `media.metadata.extract`
 ```json

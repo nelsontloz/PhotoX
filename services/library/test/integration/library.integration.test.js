@@ -315,4 +315,66 @@ describe("library integration", () => {
     expect(originalResponse.statusCode).toBe(200);
     expect(originalResponse.headers["content-type"]).toContain("image/jpeg");
   });
+
+  it("returns media detail endpoint payload", async () => {
+    const token = createAccessToken({
+      userId: ownerId,
+      email: "detail@example.com",
+      secret: accessSecret
+    });
+    const mediaId = "e8464f45-ac3b-467d-8d27-ff6f66f6d761";
+
+    await insertMedia({
+      id: mediaId,
+      ownerId,
+      relativePath: `${ownerId}/2026/02/${mediaId}.jpg`,
+      mimeType: "image/jpeg",
+      createdAt: "2026-02-16T08:00:00.000Z",
+      favorite: true,
+      archived: false,
+      hidden: false
+    });
+
+    const detail = await app.inject({
+      method: "GET",
+      url: `/api/v1/media/${mediaId}`,
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    });
+
+    expect(detail.statusCode).toBe(200);
+    const detailBody = jsonBody(detail);
+    expect(detailBody.media.id).toBe(mediaId);
+    expect(detailBody.media.ownerId).toBe(ownerId);
+    expect(detailBody.media.flags.favorite).toBe(true);
+  });
+
+  it("exposes OpenAPI and Swagger UI endpoints", async () => {
+    const openapi = await app.inject({
+      method: "GET",
+      url: "/api/v1/library/openapi.json"
+    });
+
+    expect(openapi.statusCode).toBe(200);
+    const spec = jsonBody(openapi);
+    expect(spec.openapi).toBeTruthy();
+
+    const timelineGet = spec.paths["/api/v1/library/timeline"].get;
+    expect(timelineGet.summary).toBeTruthy();
+    expect(timelineGet.description).toBeTruthy();
+    expect(timelineGet.security[0].bearerAuth).toEqual([]);
+
+    const mediaDetailGet = spec.paths["/api/v1/media/{mediaId}"].get;
+    expect(mediaDetailGet.summary).toBeTruthy();
+    expect(mediaDetailGet.description).toBeTruthy();
+
+    const docs = await app.inject({
+      method: "GET",
+      url: "/api/v1/library/docs"
+    });
+
+    expect(docs.statusCode).toBe(200);
+    expect(docs.headers["content-type"]).toContain("text/html");
+  });
 });

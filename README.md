@@ -185,7 +185,18 @@ Swagger/OpenAPI smoke checks:
 
 ```bash
 python3 scripts/smoke_swagger_docs.py
+
+# Contract compatibility checks
+python3 scripts/contract_runner.py --mode all --base-url http://localhost:8088
 ```
+
+Contract runner behavior:
+- Stack lifecycle is configurable with `--stack-mode`:
+  - `rebuild` (default): `docker compose down`, `docker compose build --parallel`, `docker compose up -d --no-build`
+  - `restart`: `docker compose down`, `docker compose up -d`
+  - `reuse`: no compose lifecycle, checks run against existing stack
+- It waits for OpenAPI endpoints to be reachable and then validates API and queue contracts.
+- `--skip-stack` remains available as a compatibility alias for `--stack-mode reuse`.
 
 ## Useful documentation
 

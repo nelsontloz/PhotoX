@@ -4,7 +4,7 @@
 
 - Docker Engine running locally.
 - Docker Compose v2 available.
-- Available ports: `80`, `443`, `3001`, `5432`, `6379`, `9090`.
+- Available ports: `8088`, `3001`, `5432`, `6379`, `9090`.
 - Local writable directories for media originals and derivatives.
 
 ---
@@ -87,28 +87,28 @@ docker compose --env-file .env down
 
 ## 5) Basic Endpoints
 
-- Web app: `http://localhost/`
+- Web app: `http://localhost:8088/`
 - Grafana: `http://localhost:3001`
 - Prometheus: `http://localhost:9090`
 - Service health (container-local): `http://127.0.0.1:<port>/health`
 
 Backend API docs through gateway:
-- Auth: `http://localhost/api/v1/auth/docs`
-- Ingest: `http://localhost/api/v1/uploads/docs`
-- Library: `http://localhost/api/v1/library/docs`
-- Album/Sharing: `http://localhost/api/v1/albums/docs`
-- Search: `http://localhost/api/v1/search/docs`
-- Worker: `http://localhost/api/v1/worker/docs`
-- ML: `http://localhost/api/v1/ml/docs`
+- Auth: `http://localhost:8088/api/v1/auth/docs`
+- Ingest: `http://localhost:8088/api/v1/uploads/docs`
+- Library: `http://localhost:8088/api/v1/library/docs`
+- Album/Sharing: `http://localhost:8088/api/v1/albums/docs`
+- Search: `http://localhost:8088/api/v1/search/docs`
+- Worker: `http://localhost:8088/api/v1/worker/docs`
+- ML: `http://localhost:8088/api/v1/ml/docs`
 
 OpenAPI JSON through gateway:
-- Auth: `http://localhost/api/v1/auth/openapi.json`
-- Ingest: `http://localhost/api/v1/uploads/openapi.json`
-- Library: `http://localhost/api/v1/library/openapi.json`
-- Album/Sharing: `http://localhost/api/v1/albums/openapi.json`
-- Search: `http://localhost/api/v1/search/openapi.json`
-- Worker: `http://localhost/api/v1/worker/openapi.json`
-- ML: `http://localhost/api/v1/ml/openapi.json`
+- Auth: `http://localhost:8088/api/v1/auth/openapi.json`
+- Ingest: `http://localhost:8088/api/v1/uploads/openapi.json`
+- Library: `http://localhost:8088/api/v1/library/openapi.json`
+- Album/Sharing: `http://localhost:8088/api/v1/albums/openapi.json`
+- Search: `http://localhost:8088/api/v1/search/openapi.json`
+- Worker: `http://localhost:8088/api/v1/worker/openapi.json`
+- ML: `http://localhost:8088/api/v1/ml/openapi.json`
 
 ---
 
@@ -123,7 +123,17 @@ docker compose exec -T ml-service python -c "import urllib.request; print(urllib
 
 # Swagger/OpenAPI smoke checks
 python3 scripts/smoke_swagger_docs.py
+
+# Contract compatibility checks
+python3 scripts/contract_runner.py --mode all --base-url http://localhost:8088
 ```
+
+Note:
+- `contract_runner.py` supports configurable compose lifecycle with `--stack-mode`:
+  - `rebuild` (default): stop, rebuild in parallel, start, then run checks
+  - `restart`: stop and start without rebuild
+  - `reuse`: run checks against existing stack
+- `--skip-stack` is a compatibility alias for `--stack-mode reuse`.
 
 ---
 
