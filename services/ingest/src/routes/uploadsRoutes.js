@@ -411,8 +411,10 @@ module.exports = async function uploadsRoutes(app) {
       const session = await app.repos.uploadSessions.findByIdForUser(params.uploadId, userId);
       ensureUploadSessionExists(session);
 
-      const parts = await app.repos.uploadParts.listParts(params.uploadId);
-      const uploadedBytes = await app.repos.uploadParts.getUploadedBytes(params.uploadId);
+      const [parts, uploadedBytes] = await Promise.all([
+        app.repos.uploadParts.listParts(params.uploadId),
+        app.repos.uploadParts.getUploadedBytes(params.uploadId)
+      ]);
       const uploadedParts = parts.map((part) => part.part_number);
       return buildStatusResponse({ session, uploadedBytes, uploadedParts });
     }
