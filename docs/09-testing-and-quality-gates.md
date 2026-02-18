@@ -152,6 +152,10 @@ python3 scripts/smoke_swagger_docs.py
 python3 scripts/contract_runner.py --mode all --base-url http://localhost:8088
 ```
 
+Smoke script behavior notes:
+- `scripts/smoke_swagger_docs.py` launches each Node service with `npm start`, waits for `/health` + docs/OpenAPI readiness with bounded retries, and prints captured stdout/stderr tails when startup fails.
+- If local dependencies are unavailable (for example Postgres/Redis), treat failures as environment-gate failures and include the captured diagnostics in the blocker report.
+
 Contract runner execution model:
 - Stack lifecycle is configurable via `--stack-mode`:
   - `rebuild` (default): `down` -> `build --parallel` -> `up -d --no-build`

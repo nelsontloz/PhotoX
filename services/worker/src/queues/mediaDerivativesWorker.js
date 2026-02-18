@@ -4,6 +4,60 @@ const { generateDerivativesForMedia } = require("../media/derivatives");
 const { extractMediaMetadata } = require("../media/metadata");
 const { resolveAbsolutePath } = require("../media/paths");
 
+const DEFAULT_LOCK_RETRY_ATTEMPTS = 5;
+const DEFAULT_LOCK_RETRY_DELAY_MS = 200;
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+class ProcessingLockUnavailableError extends Error {
+  constructor(message, details = {}) {
+    super(message);
+    this.name = "ProcessingLockUnavailableError";
+    this.code = "PROCESSING_LOCK_UNAVAILABLE";
+    this.retriable = true;
+    this.details = details;
+  }
+}
+
+async function acquireProcessingLockWithRetry({ mediaRepo, mediaId, logger, queueName, jobId, retryAttempts, retryDelayMs }) {
+  if (!mediaRepo?.acquireProcessingLock) {
+    return null;
+  }
+
+  const maxAttempts = Number.isInteger(retryAttempts) && retryAttempts > 0 ? retryAttempts : DEFAULT_LOCK_RETRY_ATTEMPTS;
+  const baseDelayMs = Number.isInteger(retryDelayMs) && retryDelayMs > 0 ? retryDelayMs : DEFAULT_LOCK_RETRY_DELAY_MS;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const lockHandle = await mediaRepo.acquireProcessingLock(mediaId, { tryOnly: true });
+    if (lockHandle?.acquired) {
+      return lockHandle;
+    }
+
+    if (attempt < maxAttempts) {
+      const backoffMs = baseDelayMs * attempt;
+      logger.warn(
+        {
+          queueName,
+          jobId,
+          mediaId,
+          attempt,
+          maxAttempts,
+          backoffMs
+        },
+        "processing lock busy; retrying"
+      );
+      await delay(backoffMs);
+    }
+  }
+
+  throw new ProcessingLockUnavailableError("Unable to acquire media processing lock after retries", {
+    mediaId,
+    attempts: maxAttempts
+  });
+}
+
 function redisConnectionFromUrl(redisUrl) {
   const parsed = new URL(redisUrl);
   const dbNumber = Number.parseInt(parsed.pathname.replace("/", ""), 10);
@@ -54,12 +108,17 @@ function createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger, c
       throw new Error("Invalid derivatives job payload: mediaId and relativePath are required");
     }
 
-    let hasLock = false;
+    let lockHandle = null;
     try {
-      if (mediaRepo?.acquireProcessingLock) {
-        await mediaRepo.acquireProcessingLock(mediaId);
-        hasLock = true;
-      }
+      lockHandle = await acquireProcessingLockWithRetry({
+        mediaRepo,
+        mediaId,
+        logger,
+        queueName: job.queueName,
+        jobId: job.id,
+        retryAttempts: job.data?.lockRetryAttempts,
+        retryDelayMs: job.data?.lockRetryDelayMs
+      });
 
       const sourceMedia = mediaRepo ? await mediaRepo.findById(mediaId) : null;
       const mimeType = sourceMedia?.mime_type;
@@ -126,9 +185,9 @@ function createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger, c
         derivatives
       };
     } finally {
-      if (hasLock) {
+      if (lockHandle) {
         try {
-          await mediaRepo.releaseProcessingLock(mediaId);
+          await mediaRepo.releaseProcessingLock(lockHandle);
         } catch (unlockErr) {
           logger.warn(
             {
@@ -268,6 +327,8 @@ function createMediaProcessWorker({ queueName, redisUrl, originalsRoot, derivedR
 module.exports = {
   isTerminalFailure,
   persistFailedStatusOnTerminalFailure,
+  ProcessingLockUnavailableError,
+  acquireProcessingLockWithRetry,
   createMediaDerivativesProcessor,
   createMediaDerivativesWorker,
   createMediaProcessWorker

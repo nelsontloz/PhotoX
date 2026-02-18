@@ -4,8 +4,10 @@ const path = require("node:path");
 
 const sharp = require("sharp");
 const {
+  acquireProcessingLockWithRetry,
   createMediaDerivativesProcessor,
   isTerminalFailure,
+  ProcessingLockUnavailableError,
   persistFailedStatusOnTerminalFailure
 } = require("../../src/queues/mediaDerivativesWorker");
 
@@ -54,7 +56,12 @@ describe("media derivatives processor", () => {
     };
 
     const mediaRepo = {
-      acquireProcessingLock: vi.fn().mockResolvedValue(undefined),
+      acquireProcessingLock: vi.fn().mockResolvedValue({
+        acquired: true,
+        mediaId,
+        client: { query: vi.fn() },
+        shouldReleaseClient: false
+      }),
       releaseProcessingLock: vi.fn().mockResolvedValue(undefined),
       findById: vi.fn().mockResolvedValue({
         id: mediaId,
@@ -98,10 +105,12 @@ describe("media derivatives processor", () => {
 
     expect(result.mediaId).toBe(mediaId);
     expect(result.derivatives).toHaveLength(2);
-    expect(mediaRepo.acquireProcessingLock).toHaveBeenCalledWith(mediaId);
+    expect(mediaRepo.acquireProcessingLock).toHaveBeenCalledWith(mediaId, { tryOnly: true });
     expect(mediaRepo.upsertMetadata).toHaveBeenCalled();
     expect(mediaRepo.setReadyIfProcessing).toHaveBeenCalledWith(mediaId);
-    expect(mediaRepo.releaseProcessingLock).toHaveBeenCalledWith(mediaId);
+    expect(mediaRepo.releaseProcessingLock).toHaveBeenCalledWith(
+      expect.objectContaining({ acquired: true, mediaId })
+    );
 
     const thumbPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-thumb.webp`);
     const smallPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-small.webp`);
@@ -139,7 +148,12 @@ describe("media derivatives processor", () => {
     });
 
     const mediaRepo = {
-      acquireProcessingLock: vi.fn().mockResolvedValue(undefined),
+      acquireProcessingLock: vi.fn().mockResolvedValue({
+        acquired: true,
+        mediaId,
+        client: { query: vi.fn() },
+        shouldReleaseClient: false
+      }),
       releaseProcessingLock: vi.fn().mockResolvedValue(undefined),
       findById: vi.fn().mockResolvedValue({
         id: mediaId,
@@ -183,10 +197,12 @@ describe("media derivatives processor", () => {
     expect(result.mediaId).toBe(mediaId);
     expect(result.derivatives).toHaveLength(3);
     expect(result.derivatives.map((derivative) => derivative.variant)).toEqual(["thumb", "small", "playback"]);
-    expect(mediaRepo.acquireProcessingLock).toHaveBeenCalledWith(mediaId);
+    expect(mediaRepo.acquireProcessingLock).toHaveBeenCalledWith(mediaId, { tryOnly: true });
     expect(mediaRepo.upsertMetadata).toHaveBeenCalled();
     expect(mediaRepo.setReadyIfProcessing).toHaveBeenCalledWith(mediaId);
-    expect(mediaRepo.releaseProcessingLock).toHaveBeenCalledWith(mediaId);
+    expect(mediaRepo.releaseProcessingLock).toHaveBeenCalledWith(
+      expect.objectContaining({ acquired: true, mediaId })
+    );
 
     const thumbPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-thumb.webp`);
     const smallPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-small.webp`);
@@ -219,6 +235,79 @@ describe("media derivatives processor", () => {
         }
       })
     ).rejects.toThrow("Invalid derivatives job payload");
+  });
+
+  it("retries lock acquisition with bounded backoff", async () => {
+    const mediaRepo = {
+      acquireProcessingLock: vi
+        .fn()
+        .mockResolvedValueOnce({ acquired: false, mediaId: "m-lock" })
+        .mockResolvedValueOnce({ acquired: false, mediaId: "m-lock" })
+        .mockResolvedValueOnce({
+          acquired: true,
+          mediaId: "m-lock",
+          client: { query: vi.fn() },
+          shouldReleaseClient: false
+        })
+    };
+
+    const logger = {
+      warn: vi.fn()
+    };
+
+    const lockHandle = await acquireProcessingLockWithRetry({
+      mediaRepo,
+      mediaId: "m-lock",
+      logger,
+      queueName: "media.derivatives.generate",
+      jobId: "job-lock",
+      retryAttempts: 3,
+      retryDelayMs: 1
+    });
+
+    expect(lockHandle).toEqual(expect.objectContaining({ acquired: true, mediaId: "m-lock" }));
+    expect(mediaRepo.acquireProcessingLock).toHaveBeenCalledTimes(3);
+    expect(logger.warn).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws retriable error when lock acquisition stays contended", async () => {
+    const mediaId = "m-contended";
+    const mediaRepo = {
+      acquireProcessingLock: vi.fn().mockResolvedValue({ acquired: false, mediaId }),
+      releaseProcessingLock: vi.fn(),
+      findById: vi.fn(),
+      upsertMetadata: vi.fn(),
+      setReadyIfProcessing: vi.fn()
+    };
+
+    const processor = createMediaDerivativesProcessor({
+      originalsRoot,
+      derivedRoot,
+      mediaRepo,
+      logger: {
+        info() {},
+        warn() {},
+        error() {}
+      }
+    });
+
+    await expect(
+      processor({
+        id: "job-lock-fail",
+        queueName: "media.derivatives.generate",
+        data: {
+          mediaId,
+          relativePath: "owner/2026/02/file.jpg",
+          lockRetryAttempts: 2,
+          lockRetryDelayMs: 1
+        }
+      })
+    ).rejects.toBeInstanceOf(ProcessingLockUnavailableError);
+
+    expect(mediaRepo.acquireProcessingLock).toHaveBeenCalledTimes(2);
+    expect(mediaRepo.findById).not.toHaveBeenCalled();
+    expect(mediaRepo.setReadyIfProcessing).not.toHaveBeenCalled();
+    expect(mediaRepo.releaseProcessingLock).not.toHaveBeenCalled();
   });
 
   it("detects terminal failure only when attempts are exhausted", () => {
