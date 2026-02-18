@@ -1,5 +1,5 @@
 const { z } = require("zod");
-const { parseOrThrow } = require("../../src/validation");
+const { initUploadSchema, parseOrThrow } = require("../../src/validation");
 const { ApiError } = require("../../src/errors");
 
 describe("validation helpers", () => {
@@ -33,5 +33,27 @@ describe("validation helpers", () => {
     const transformSchema = z.string().transform((val) => val.length);
     const result = parseOrThrow(transformSchema, "hello");
     expect(result).toBe(5);
+  });
+
+  it("accepts supported file extension/content type pairs", () => {
+    const parsed = parseOrThrow(initUploadSchema, {
+      fileName: "clip.mp4",
+      contentType: "video/mp4",
+      fileSize: 42,
+      checksumSha256: "de4ecf4e0d0f157c8142fdb7f0e6f9f607c37d9b233830f70f7f83b4f04f9b69"
+    });
+
+    expect(parsed.contentType).toBe("video/mp4");
+  });
+
+  it("rejects unsupported or mismatched file extension/content type pairs", () => {
+    expect(() =>
+      parseOrThrow(initUploadSchema, {
+        fileName: "clip.jpg",
+        contentType: "video/mp4",
+        fileSize: 42,
+        checksumSha256: "de4ecf4e0d0f157c8142fdb7f0e6f9f607c37d9b233830f70f7f83b4f04f9b69"
+      })
+    ).toThrow(ApiError);
   });
 });

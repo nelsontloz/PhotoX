@@ -49,17 +49,20 @@ describe("media derivatives processor", () => {
 
     const logger = {
       info() {},
+      warn() {},
       error() {}
     };
 
     const mediaRepo = {
+      acquireProcessingLock: vi.fn().mockResolvedValue(undefined),
+      releaseProcessingLock: vi.fn().mockResolvedValue(undefined),
       findById: vi.fn().mockResolvedValue({
         id: mediaId,
         mime_type: "image/jpeg",
         created_at: "2026-02-18T00:00:00.000Z"
       }),
       upsertMetadata: vi.fn().mockResolvedValue({ media_id: mediaId }),
-      setStatus: vi.fn().mockResolvedValue({ id: mediaId, status: "ready" })
+      setReadyIfProcessing: vi.fn().mockResolvedValue({ id: mediaId, status: "ready" })
     };
 
     const commandRunner = vi.fn().mockResolvedValue({
@@ -95,8 +98,10 @@ describe("media derivatives processor", () => {
 
     expect(result.mediaId).toBe(mediaId);
     expect(result.derivatives).toHaveLength(2);
+    expect(mediaRepo.acquireProcessingLock).toHaveBeenCalledWith(mediaId);
     expect(mediaRepo.upsertMetadata).toHaveBeenCalled();
-    expect(mediaRepo.setStatus).toHaveBeenCalledWith(mediaId, "ready");
+    expect(mediaRepo.setReadyIfProcessing).toHaveBeenCalledWith(mediaId);
+    expect(mediaRepo.releaseProcessingLock).toHaveBeenCalledWith(mediaId);
 
     const thumbPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-thumb.webp`);
     const smallPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-small.webp`);
@@ -134,13 +139,15 @@ describe("media derivatives processor", () => {
     });
 
     const mediaRepo = {
+      acquireProcessingLock: vi.fn().mockResolvedValue(undefined),
+      releaseProcessingLock: vi.fn().mockResolvedValue(undefined),
       findById: vi.fn().mockResolvedValue({
         id: mediaId,
         mime_type: "video/mp4",
         created_at: "2026-02-18T00:00:00.000Z"
       }),
       upsertMetadata: vi.fn().mockResolvedValue({ media_id: mediaId }),
-      setStatus: vi.fn().mockResolvedValue({ id: mediaId, status: "ready" })
+      setReadyIfProcessing: vi.fn().mockResolvedValue({ id: mediaId, status: "ready" })
     };
 
     const processor = createMediaDerivativesProcessor({
@@ -159,6 +166,7 @@ describe("media derivatives processor", () => {
         }),
       logger: {
         info() {},
+        warn() {},
         error() {}
       }
     });
@@ -175,8 +183,10 @@ describe("media derivatives processor", () => {
     expect(result.mediaId).toBe(mediaId);
     expect(result.derivatives).toHaveLength(3);
     expect(result.derivatives.map((derivative) => derivative.variant)).toEqual(["thumb", "small", "playback"]);
+    expect(mediaRepo.acquireProcessingLock).toHaveBeenCalledWith(mediaId);
     expect(mediaRepo.upsertMetadata).toHaveBeenCalled();
-    expect(mediaRepo.setStatus).toHaveBeenCalledWith(mediaId, "ready");
+    expect(mediaRepo.setReadyIfProcessing).toHaveBeenCalledWith(mediaId);
+    expect(mediaRepo.releaseProcessingLock).toHaveBeenCalledWith(mediaId);
 
     const thumbPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-thumb.webp`);
     const smallPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-small.webp`);
@@ -195,6 +205,7 @@ describe("media derivatives processor", () => {
       derivedRoot,
       logger: {
         info() {},
+        warn() {},
         error() {}
       }
     });
@@ -228,7 +239,7 @@ describe("media derivatives processor", () => {
 
   it("persists failed status for terminal job failures", async () => {
     const mediaRepo = {
-      setStatus: vi.fn().mockResolvedValue({ id: "m1", status: "failed" })
+      setFailedIfProcessing: vi.fn().mockResolvedValue({ id: "m1", status: "failed" })
     };
     const logger = {
       error: vi.fn()
@@ -246,13 +257,13 @@ describe("media derivatives processor", () => {
       queueName: "media.derivatives.generate"
     });
 
-    expect(mediaRepo.setStatus).toHaveBeenCalledWith("m1", "failed");
+    expect(mediaRepo.setFailedIfProcessing).toHaveBeenCalledWith("m1");
     expect(logger.error).not.toHaveBeenCalled();
   });
 
   it("does not persist failed status for non-terminal failures", async () => {
     const mediaRepo = {
-      setStatus: vi.fn()
+      setFailedIfProcessing: vi.fn()
     };
 
     await persistFailedStatusOnTerminalFailure({
@@ -269,6 +280,6 @@ describe("media derivatives processor", () => {
       queueName: "media.derivatives.generate"
     });
 
-    expect(mediaRepo.setStatus).not.toHaveBeenCalled();
+    expect(mediaRepo.setFailedIfProcessing).not.toHaveBeenCalled();
   });
 });

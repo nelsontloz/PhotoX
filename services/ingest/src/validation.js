@@ -1,11 +1,28 @@
 const { z } = require("zod");
 const { ApiError } = require("./errors");
+const {
+  isSupportedDeclaredMediaType,
+  normalizeContentType
+} = require("./upload/mediaTypePolicy");
 
 const initUploadSchema = z.object({
   fileName: z.string().trim().min(1).max(255),
-  contentType: z.string().trim().min(1).max(120),
+  contentType: z.string().trim().min(1).max(120).transform(normalizeContentType),
   fileSize: z.number().int().positive(),
   checksumSha256: z.string().trim().regex(/^[a-fA-F0-9]{64}$/)
+}).superRefine((value, ctx) => {
+  if (
+    !isSupportedDeclaredMediaType({
+      fileName: value.fileName,
+      contentType: value.contentType
+    })
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["contentType"],
+      message: "Unsupported or mismatched media type for file extension"
+    });
+  }
 });
 
 const uploadPathParamsSchema = z.object({

@@ -162,6 +162,8 @@ describe("library integration", () => {
     expect(firstBody.items).toHaveLength(2);
     expect(firstBody.items[0].id).toBe(mediaA);
     expect(firstBody.items[1].id).toBe(mediaB);
+    expect(firstBody.items[0].metadata).toBeUndefined();
+    expect(firstBody.items[0].metadataPreview).toBeDefined();
     expect(typeof firstBody.nextCursor).toBe("string");
 
     const secondPage = await app.inject({

@@ -33,7 +33,7 @@ async function persistFailedStatusOnTerminalFailure({ job, mediaRepo, logger, qu
   }
 
   try {
-    await mediaRepo.setStatus(job.data.mediaId, "failed");
+    await mediaRepo.setFailedIfProcessing(job.data.mediaId);
   } catch (statusErr) {
     logger.error(
       {
@@ -54,68 +54,94 @@ function createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger, c
       throw new Error("Invalid derivatives job payload: mediaId and relativePath are required");
     }
 
-    const sourceMedia = mediaRepo ? await mediaRepo.findById(mediaId) : null;
-    const mimeType = sourceMedia?.mime_type;
-    const uploadedAt = sourceMedia?.created_at || new Date().toISOString();
+    let hasLock = false;
+    try {
+      if (mediaRepo?.acquireProcessingLock) {
+        await mediaRepo.acquireProcessingLock(mediaId);
+        hasLock = true;
+      }
 
-    if (mediaRepo) {
-      try {
-        const metadata = await extractMediaMetadata({
-          sourceAbsolutePath: resolveAbsolutePath(originalsRoot, relativePath),
-          mimeType,
-          uploadedAt,
-          commandRunner
-        });
+      const sourceMedia = mediaRepo ? await mediaRepo.findById(mediaId) : null;
+      const mimeType = sourceMedia?.mime_type;
+      const uploadedAt = sourceMedia?.created_at || new Date().toISOString();
 
-        await mediaRepo.upsertMetadata({
-          mediaId,
-          takenAt: metadata.takenAt,
-          uploadedAt,
-          width: metadata.width,
-          height: metadata.height,
-          location: metadata.location,
-          exif: metadata.exif
-        });
-      } catch (metadataError) {
-        logger.warn(
-          {
-            queueName: job.queueName,
-            jobId: job.id,
+      if (mediaRepo) {
+        try {
+          const metadata = await extractMediaMetadata({
+            sourceAbsolutePath: resolveAbsolutePath(originalsRoot, relativePath),
+            mimeType,
+            uploadedAt,
+            commandRunner
+          });
+
+          await mediaRepo.upsertMetadata({
             mediaId,
-            err: metadataError
-          },
-          "metadata extraction failed; continuing derivative processing"
-        );
+            takenAt: metadata.takenAt,
+            uploadedAt,
+            width: metadata.width,
+            height: metadata.height,
+            location: metadata.location,
+            exif: metadata.exif
+          });
+        } catch (metadataError) {
+          logger.warn(
+            {
+              queueName: job.queueName,
+              jobId: job.id,
+              mediaId,
+              err: metadataError
+            },
+            "metadata extraction failed; continuing derivative processing"
+          );
+        }
+      }
+
+      const derivatives = await generateDerivativesForMedia({
+        originalsRoot,
+        derivedRoot,
+        mediaId,
+        relativePath,
+        commandRunner
+      });
+
+      logger.info(
+        {
+          queueName: job.queueName,
+          jobId: job.id,
+          mediaId,
+          derivativeCount: derivatives.length,
+          derivativeVariants: derivatives.map((derivative) => derivative.variant)
+        },
+        "generated media derivatives"
+      );
+
+      if (mediaRepo?.setReadyIfProcessing) {
+        await mediaRepo.setReadyIfProcessing(mediaId);
+      } else if (mediaRepo?.setStatus) {
+        await mediaRepo.setStatus(mediaId, "ready");
+      }
+
+      return {
+        mediaId,
+        derivatives
+      };
+    } finally {
+      if (hasLock) {
+        try {
+          await mediaRepo.releaseProcessingLock(mediaId);
+        } catch (unlockErr) {
+          logger.warn(
+            {
+              queueName: job.queueName,
+              jobId: job.id,
+              mediaId,
+              err: unlockErr
+            },
+            "failed to release media processing lock"
+          );
+        }
       }
     }
-
-    const derivatives = await generateDerivativesForMedia({
-      originalsRoot,
-      derivedRoot,
-      mediaId,
-      relativePath,
-      commandRunner
-    });
-
-    logger.info(
-      {
-        queueName: job.queueName,
-        jobId: job.id,
-        mediaId,
-        derivativeCount: derivatives.length,
-        derivativeVariants: derivatives.map((derivative) => derivative.variant)
-      },
-      "generated media derivatives"
-    );
-
-    if (mediaRepo) {
-      await mediaRepo.setStatus(mediaId, "ready");
-    }
-
-    return {
-      mediaId,
-      derivatives
-    };
   };
 }
 

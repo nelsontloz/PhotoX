@@ -79,6 +79,8 @@ Notes:
 - Uses raw `application/octet-stream` chunk upload with `partNumber` query param.
 - Persists media relative path and enqueues `media.process` BullMQ job on complete.
 - Upload accepts both image and video media types.
+- Upload init enforces supported extension/content-type pairs only.
+- Upload complete performs server-side signature sniffing and rejects mismatched/unsupported bytes with `UNSUPPORTED_MEDIA_TYPE`.
 - Supports `Idempotency-Key` on `init` and `complete`.
 - `complete` deduplicates repeated uploads for the same owner and checksum against active media and returns
   `deduplicated=true` when reusing an existing `mediaId`.
@@ -148,7 +150,8 @@ Implemented now:
 - BullMQ consumer for `media.derivatives.generate` that creates image `thumb`/`small` WebP derivatives and video `playback` WebM (VP9/Opus) derivatives
 - BullMQ consumer for `media.process` that extracts photo/video metadata, persists `media_metadata`, and generates derivatives for new uploads
 - After successful derivative generation, worker updates `media.status` from `processing` to `ready`.
-- On terminal derivative-processing failure (retry attempts exhausted), worker updates `media.status` to `failed`.
+- On terminal derivative-processing failure (retry attempts exhausted), worker updates `media.status` to `failed` only when status is still `processing`.
+- Worker uses a per-media advisory lock to serialize concurrent `media.process` / `media.derivatives.generate` execution for the same media ID.
 
 Planned/pending:
 - worker processors for metadata, search index, face index, and cleanup

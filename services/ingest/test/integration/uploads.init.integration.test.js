@@ -15,6 +15,17 @@ function jsonBody(response) {
   return JSON.parse(response.body);
 }
 
+function makePseudoJpeg(size = 64) {
+  const minSize = Math.max(size, 8);
+  const buffer = Buffer.alloc(minSize, 0x00);
+  buffer[0] = 0xff;
+  buffer[1] = 0xd8;
+  buffer[2] = 0xff;
+  buffer[minSize - 2] = 0xff;
+  buffer[minSize - 1] = 0xd9;
+  return buffer;
+}
+
 function createAccessToken({ userId, email, secret }) {
   return jwt.sign(
     {
@@ -110,6 +121,31 @@ describe("upload init integration", () => {
     expect(body.uploadId).toBeTruthy();
     expect(body.partSize).toBe(5 * 1024 * 1024);
     expect(body.expiresAt).toBeTruthy();
+  });
+
+  it("rejects unsupported media type declarations during init", async () => {
+    const accessToken = createAccessToken({
+      userId: "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
+      email: "user@example.com",
+      secret: accessSecret
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/uploads/init",
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      },
+      payload: {
+        fileName: "payload.pdf",
+        contentType: "application/pdf",
+        fileSize: 1200,
+        checksumSha256: "de4ecf4e0d0f157c8142fdb7f0e6f9f607c37d9b233830f70f7f83b4f04f9b69"
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(jsonBody(response).error.code).toBe("VALIDATION_ERROR");
   });
 
   it("replays upload init response for same idempotency key", async () => {
@@ -214,7 +250,7 @@ describe("upload init integration", () => {
     });
 
     const initBody = jsonBody(init);
-    const chunk = Buffer.from("hello world!", "utf8");
+    const chunk = makePseudoJpeg(128);
     const uploadPart = await app.inject({
       method: "POST",
       url: `/api/v1/uploads/${initBody.uploadId}/part?partNumber=1`,
@@ -250,7 +286,7 @@ describe("upload init integration", () => {
       secret: accessSecret
     });
 
-    const chunk = Buffer.from("hello world!", "utf8");
+    const chunk = makePseudoJpeg(128);
     const fileChecksum = crypto.createHash("sha256").update(chunk).digest("hex");
 
     const init = await app.inject({
@@ -361,7 +397,7 @@ describe("upload init integration", () => {
       secret: accessSecret
     });
 
-    const chunk = Buffer.from("idempotent complete", "utf8");
+    const chunk = makePseudoJpeg(192);
     const fileChecksum = crypto.createHash("sha256").update(chunk).digest("hex");
 
     const init = await app.inject({
@@ -426,7 +462,7 @@ describe("upload init integration", () => {
     });
 
     const totalBytes = 26 * 1024 * 1024;
-    const fullFile = Buffer.alloc(totalBytes, "a");
+    const fullFile = makePseudoJpeg(totalBytes);
     const fileChecksum = crypto.createHash("sha256").update(fullFile).digest("hex");
     const partSize = 5 * 1024 * 1024;
 
@@ -486,7 +522,7 @@ describe("upload init integration", () => {
       secret: accessSecret
     });
 
-    const chunk = Buffer.from("checksum-mismatch", "utf8");
+    const chunk = makePseudoJpeg(96);
     const fileChecksum = crypto.createHash("sha256").update(chunk).digest("hex");
 
     const init = await app.inject({
@@ -535,6 +571,62 @@ describe("upload init integration", () => {
     expect(hasStagedAssembledFile).toBe(false);
   });
 
+  it("rejects completion when detected media type mismatches declaration", async () => {
+    const accessToken = createAccessToken({
+      userId: "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
+      email: "user@example.com",
+      secret: accessSecret
+    });
+
+    const fakeMp4Chunk = Buffer.concat([
+      Buffer.from([0x00, 0x00, 0x00, 0x20]),
+      Buffer.from("ftypisom", "ascii"),
+      Buffer.alloc(32, 0x00)
+    ]);
+    const fileChecksum = crypto.createHash("sha256").update(fakeMp4Chunk).digest("hex");
+
+    const init = await app.inject({
+      method: "POST",
+      url: "/api/v1/uploads/init",
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      },
+      payload: {
+        fileName: "not-really-photo.jpg",
+        contentType: "image/jpeg",
+        fileSize: fakeMp4Chunk.length,
+        checksumSha256: fileChecksum
+      }
+    });
+
+    expect(init.statusCode).toBe(201);
+    const uploadId = jsonBody(init).uploadId;
+
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/uploads/${uploadId}/part?partNumber=1`,
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "content-type": "application/octet-stream"
+      },
+      payload: fakeMp4Chunk
+    });
+
+    const complete = await app.inject({
+      method: "POST",
+      url: `/api/v1/uploads/${uploadId}/complete`,
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      },
+      payload: {
+        checksumSha256: fileChecksum
+      }
+    });
+
+    expect(complete.statusCode).toBe(415);
+    expect(jsonBody(complete).error.code).toBe("UNSUPPORTED_MEDIA_TYPE");
+  });
+
   it("handles concurrent complete requests with same idempotency key safely", async () => {
     const accessToken = createAccessToken({
       userId: "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
@@ -542,7 +634,7 @@ describe("upload init integration", () => {
       secret: accessSecret
     });
 
-    const chunk = Buffer.from("concurrent-idempotent-complete", "utf8");
+    const chunk = makePseudoJpeg(160);
     const fileChecksum = crypto.createHash("sha256").update(chunk).digest("hex");
 
     const init = await app.inject({
@@ -620,7 +712,7 @@ describe("upload init integration", () => {
       secret: accessSecret
     });
 
-    const chunk = Buffer.from("same-content", "utf8");
+    const chunk = makePseudoJpeg(128);
     const fileChecksum = crypto.createHash("sha256").update(chunk).digest("hex");
 
     async function createUploadAndComplete(fileName) {
@@ -688,7 +780,7 @@ describe("upload init integration", () => {
       secret: accessSecret
     });
 
-    const chunk = Buffer.from("same-content-soft-delete", "utf8");
+    const chunk = makePseudoJpeg(144);
     const fileChecksum = crypto.createHash("sha256").update(chunk).digest("hex");
 
     async function createUploadAndComplete(fileName) {

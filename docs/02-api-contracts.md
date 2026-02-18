@@ -184,6 +184,8 @@ Implemented now:
 - Ingest OpenAPI operation descriptions for `init`/`complete` explicitly state `Idempotency-Key` retry support.
 - `complete` performs owner-scoped checksum dedupe against active media.
 - Upload `contentType` supports both image and video media types.
+- Upload declarations are restricted to supported extension/content-type pairs.
+- `complete` performs server-side media signature sniffing and rejects mismatched or unsupported bytes with `UNSUPPORTED_MEDIA_TYPE`.
 
 ### Init Request
 ```json

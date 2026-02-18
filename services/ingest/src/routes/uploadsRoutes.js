@@ -18,6 +18,12 @@ const {
   removeUploadTempDir,
   writeUploadPart
 } = require("../upload/storage");
+const {
+  detectSupportedMimeTypeFromFile,
+  getFileExtension,
+  isSupportedDeclaredMediaType,
+  normalizeContentType
+} = require("../upload/mediaTypePolicy");
 
 const IDEMPOTENCY_SCOPE_UPLOAD_INIT = "upload_init";
 const IDEMPOTENCY_SCOPE_UPLOAD_COMPLETE = "upload_complete";
@@ -198,6 +204,7 @@ module.exports = async function uploadsRoutes(app) {
             }
           },
           400: buildErrorEnvelopeSchema("VALIDATION_ERROR", "Request validation failed"),
+          415: buildErrorEnvelopeSchema("UNSUPPORTED_MEDIA_TYPE", "Unsupported or mismatched media type"),
           401: buildErrorEnvelopeSchema("AUTH_TOKEN_INVALID", "Missing bearer token"),
           409: buildErrorEnvelopeSchema(
             "IDEMPOTENCY_CONFLICT",
@@ -209,6 +216,18 @@ module.exports = async function uploadsRoutes(app) {
     async (request, reply) => {
       const body = parseOrThrow(initUploadSchema, request.body || {});
       const userId = request.userAuth.userId;
+
+      if (
+        !isSupportedDeclaredMediaType({
+          fileName: body.fileName,
+          contentType: body.contentType
+        })
+      ) {
+        throw new ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "Unsupported or mismatched media type", {
+          fileName: body.fileName,
+          contentType: body.contentType
+        });
+      }
 
       const idempotencyKey = readIdempotencyKey(request.headers);
 
@@ -472,6 +491,7 @@ module.exports = async function uploadsRoutes(app) {
             }
           },
           400: buildErrorEnvelopeSchema("VALIDATION_ERROR", "Request validation failed"),
+          415: buildErrorEnvelopeSchema("UNSUPPORTED_MEDIA_TYPE", "Unsupported or mismatched media type"),
           401: buildErrorEnvelopeSchema("AUTH_TOKEN_INVALID", "Missing bearer token"),
           404: buildErrorEnvelopeSchema("UPLOAD_NOT_FOUND", "Upload session not found"),
           409: buildErrorEnvelopeSchema("UPLOAD_STATE_INVALID", "Upload session is not ready for completion")
@@ -591,6 +611,33 @@ module.exports = async function uploadsRoutes(app) {
           throw new ApiError(409, "UPLOAD_CHECKSUM_MISMATCH", "Checksum mismatch while completing upload", {
             expectedChecksum,
             actualChecksum
+          });
+        }
+
+        const declaredContentType = normalizeContentType(session.content_type);
+        const detectedContentType = await detectSupportedMimeTypeFromFile(outputAbsolutePath);
+        const declaredExtension = getFileExtension(session.file_name);
+
+        if (!detectedContentType) {
+          throw new ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "Could not detect supported media type from uploaded bytes", {
+            fileName: session.file_name,
+            extension: declaredExtension,
+            contentType: declaredContentType
+          });
+        }
+
+        if (
+          !isSupportedDeclaredMediaType({
+            fileName: session.file_name,
+            contentType: declaredContentType
+          }) ||
+          detectedContentType !== declaredContentType
+        ) {
+          throw new ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "Unsupported or mismatched media type", {
+            fileName: session.file_name,
+            extension: declaredExtension,
+            declaredContentType,
+            detectedContentType
           });
         }
 

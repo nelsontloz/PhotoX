@@ -4,6 +4,14 @@ function buildMediaRepo(db) {
   }
 
   return {
+    async acquireProcessingLock(mediaId, executor) {
+      await queryable(executor).query("SELECT pg_advisory_lock(hashtext($1))", [mediaId]);
+    },
+
+    async releaseProcessingLock(mediaId, executor) {
+      await queryable(executor).query("SELECT pg_advisory_unlock(hashtext($1))", [mediaId]);
+    },
+
     async setStatus(mediaId, status, executor) {
       const result = await queryable(executor).query(
         `
@@ -14,6 +22,38 @@ function buildMediaRepo(db) {
           RETURNING id, owner_id, status, updated_at
         `,
         [mediaId, status]
+      );
+
+      return result.rows[0] || null;
+    },
+
+    async setReadyIfProcessing(mediaId, executor) {
+      const result = await queryable(executor).query(
+        `
+          UPDATE media
+          SET status = 'ready',
+              updated_at = NOW()
+          WHERE id = $1
+            AND status = 'processing'
+          RETURNING id, owner_id, status, updated_at
+        `,
+        [mediaId]
+      );
+
+      return result.rows[0] || null;
+    },
+
+    async setFailedIfProcessing(mediaId, executor) {
+      const result = await queryable(executor).query(
+        `
+          UPDATE media
+          SET status = 'failed',
+              updated_at = NOW()
+          WHERE id = $1
+            AND status = 'processing'
+          RETURNING id, owner_id, status, updated_at
+        `,
+        [mediaId]
       );
 
       return result.rows[0] || null;

@@ -47,17 +47,19 @@ function buildErrorEnvelopeSchema(code, message, details = {}) {
   };
 }
 
-function toMediaDto(row) {
+function buildMetadataPreview(row) {
   const metadata = row.exif_json && typeof row.exif_json === "object" ? row.exif_json : null;
   const videoMetadata = metadata?.video || null;
-  const metadataPreview = {
+  return {
     durationSec: typeof videoMetadata?.durationSec === "number" ? videoMetadata.durationSec : null,
     codec: typeof videoMetadata?.codec === "string" ? videoMetadata.codec : null,
     fps: typeof videoMetadata?.fps === "number" ? videoMetadata.fps : null,
     width: row.width,
     height: row.height
   };
+}
 
+function toTimelineMediaDto(row) {
   return {
     id: row.id,
     ownerId: row.owner_id,
@@ -72,7 +74,22 @@ function toMediaDto(row) {
       small: `/api/v1/media/${row.id}/content?variant=small`,
       original: `/api/v1/media/${row.id}/content?variant=original`
     },
-    metadataPreview,
+    metadataPreview: buildMetadataPreview(row),
+    flags: {
+      favorite: row.favorite,
+      archived: row.archived,
+      hidden: row.hidden,
+      deletedSoft: row.deleted_soft
+    }
+  };
+}
+
+function toMediaDetailDto(row) {
+  const metadata = row.exif_json && typeof row.exif_json === "object" ? row.exif_json : null;
+  const videoMetadata = metadata?.video || null;
+
+  return {
+    ...toTimelineMediaDto(row),
     metadata: {
       capture: {
         takenAt: row.taken_at ? new Date(row.taken_at).toISOString() : null,
@@ -82,12 +99,6 @@ function toMediaDto(row) {
       video: videoMetadata,
       location: row.location_json,
       raw: metadata
-    },
-    flags: {
-      favorite: row.favorite,
-      archived: row.archived,
-      hidden: row.hidden,
-      deletedSoft: row.deleted_soft
     }
   };
 }
@@ -205,7 +216,7 @@ module.exports = async function libraryRoutes(app) {
         : null;
 
       return {
-        items: visibleRows.map(toMediaDto),
+        items: visibleRows.map(toTimelineMediaDto),
         nextCursor
       };
     }
@@ -300,7 +311,7 @@ module.exports = async function libraryRoutes(app) {
       }
 
       return {
-        media: toMediaDto(media)
+        media: toMediaDetailDto(media)
       };
     }
   );
@@ -414,7 +425,7 @@ module.exports = async function libraryRoutes(app) {
       }
 
       return {
-        media: toMediaDto(media)
+        media: toMediaDetailDto(media)
       };
     }
   );
