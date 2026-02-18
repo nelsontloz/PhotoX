@@ -24,6 +24,7 @@ const {
   isSupportedDeclaredMediaType,
   normalizeContentType
 } = require("../upload/mediaTypePolicy");
+const { buildMediaProcessMessage } = require("../contracts/mediaProcessMessage");
 
 const IDEMPOTENCY_SCOPE_UPLOAD_INIT = "upload_init";
 const IDEMPOTENCY_SCOPE_UPLOAD_COMPLETE = "upload_complete";
@@ -719,13 +720,13 @@ module.exports = async function uploadsRoutes(app) {
 
               responseBody = buildCompleteResponse(media.id, false);
               shouldRemoveUploadTempDir = true;
-              queuePayload = {
+              queuePayload = buildMediaProcessMessage({
                 mediaId: media.id,
                 ownerId: userId,
                 relativePath: stagedRelativePath,
                 checksumSha256: media.checksum_sha256,
-                uploadedAt: new Date(media.created_at).toISOString()
-              };
+                uploadedAt: media.created_at
+              });
             }
           }
 

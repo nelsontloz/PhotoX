@@ -68,6 +68,32 @@ function buildApp(overrides = {}) {
     }
   );
 
+  app.addContentTypeParser(
+    "*",
+    {
+      parseAs: "string"
+    },
+    function parseUnknownContentType(_request, body, done) {
+      if (body == null) {
+        done(null, undefined);
+        return;
+      }
+
+      const textBody = typeof body === "string" ? body.trim() : String(body);
+
+      if (textBody.length === 0 || textBody === "null") {
+        done(null, undefined);
+        return;
+      }
+
+      try {
+        done(null, JSON.parse(textBody));
+      } catch {
+        done(null, textBody);
+      }
+    }
+  );
+
   app.get("/health", async () => ({ status: "ok", service: config.serviceName }));
 
   app.get("/metrics", async (_, reply) => {

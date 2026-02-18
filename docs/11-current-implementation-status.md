@@ -158,7 +158,7 @@ Implemented now:
 - Lock acquisition is non-blocking (`pg_try_advisory_lock`) with bounded retry/backoff; if contention persists, the job fails with a retriable lock-unavailable error and is retried by BullMQ policy.
 - Worker telemetry tracks lifecycle events (`active`, `completed`, `failed`, `stalled`, `error`) with bounded in-memory retention and queue depth polling.
 - `/metrics` now includes worker job counters, active gauges, queue depth gauges, and duration histogram series.
-- `scripts/contract_runner.py` enforces worker telemetry consumer/provider contracts for `/api/v1/worker/telemetry/snapshot` and `/api/v1/worker/telemetry/stream`.
+- Pact consumer/provider coverage includes worker telemetry contracts for `/api/v1/worker/telemetry/snapshot` and `/api/v1/worker/telemetry/stream`.
 
 Planned/pending:
 - worker processors for metadata, search index, face index, and cleanup
@@ -242,5 +242,9 @@ for service in ['auth','uploads','library','albums','search','worker','ml']:
     print(service, sorted(spec.get('paths', {}).keys()))
 PY
 
-python3 scripts/contract_runner.py --mode all --base-url http://localhost:8088
+npm --prefix apps/web test
+npm --prefix services/worker test
+npm --prefix services/auth test
+npm --prefix services/ingest test
+npm --prefix services/library test
 ```

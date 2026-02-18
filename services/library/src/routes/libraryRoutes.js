@@ -16,6 +16,7 @@ const {
   timelineQuerySchema
 } = require("../validation");
 const { decodeTimelineCursor, encodeTimelineCursor } = require("../timeline/cursor");
+const { buildMediaDerivativesGenerateMessage } = require("../contracts/mediaDerivativesMessage");
 
 function buildErrorEnvelopeSchema(code, message, details = {}) {
   return {
@@ -522,12 +523,12 @@ module.exports = async function libraryRoutes(app) {
             try {
               await app.queues.mediaDerivatives.add(
                 "media.derivatives.generate",
-                {
+                buildMediaDerivativesGenerateMessage({
                   mediaId: media.id,
                   ownerId: media.owner_id,
                   relativePath: media.relative_path,
-                  requestedAt: new Date().toISOString()
-                },
+                  requestedAt: new Date()
+                }),
                 {
                   jobId: `media-derivatives-${media.id}`,
                   attempts: 5,
@@ -569,12 +570,12 @@ module.exports = async function libraryRoutes(app) {
             try {
               await app.queues.mediaDerivatives.add(
                 "media.derivatives.generate",
-                {
+                buildMediaDerivativesGenerateMessage({
                   mediaId: media.id,
                   ownerId: media.owner_id,
                   relativePath: media.relative_path,
-                  requestedAt: new Date().toISOString()
-                },
+                  requestedAt: new Date()
+                }),
                 {
                   jobId: `media-derivatives-${media.id}`,
                   attempts: 5,

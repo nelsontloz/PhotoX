@@ -102,7 +102,7 @@ Note:
 - [ ] Unit tests added/updated.
 - [ ] Integration tests added/updated.
 - [ ] Docs updated.
-- [ ] Contract runner passed for changed API/queue integrations.
+- [ ] Pact contract runner passed for changed API/queue integrations using mock-based provider/message verification (no external runtime dependency except Pact Broker).
 - [ ] Gate report completed.
 - [ ] Next-task recommendation written.
 
@@ -129,6 +129,7 @@ Verification:
 - Unit test commands:
 - Integration test commands:
 - Contract compatibility commands:
+- Pact isolation evidence (embedded app + in-memory mocks, no PostgreSQL/Redis/BullMQ dependency):
 - Runtime health checks:
 
 Risks/Notes:

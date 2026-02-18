@@ -47,7 +47,9 @@ done_criteria:
 - Update OpenAPI spec for every API surface change.
 - Ensure backend service exposes both Swagger UI and OpenAPI JSON routes.
 - Add unit and integration tests for all non-trivial logic.
-- For API or queue interface changes, run `python3 scripts/contract_runner.py --mode all --base-url http://localhost:8088` and include results in the verification artifact.
+- For API or queue interface changes, run per-service `npm test` workflows in `apps/web`, `services/worker`, `services/auth`, `services/ingest`, and `services/library`, and include results in the verification artifact.
+- Pact provider/message verification tests must be mock-based (embedded app + in-memory mocks) and must not require PostgreSQL, Redis, BullMQ, or other live services.
+- `PACT_BROKER_BASE_URL` is required for pact publish/verification workflows; Pact Broker is the only external dependency allowed in pact verification.
 - Produce final artifact report defined in `docs/06-ai-agent-master-runbook.md`.
 
 ---

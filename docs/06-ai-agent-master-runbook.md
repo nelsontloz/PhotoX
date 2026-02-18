@@ -194,7 +194,9 @@ For each task, produce work in this order:
 6. Add/adjust unit tests.
 7. Add/adjust integration tests.
 8. Update API docs and linked docs.
-9. Run contract compatibility runner (`python3 scripts/contract_runner.py --mode all --base-url http://localhost:8088`) when API/queue interfaces are changed.
+9. Run per-service Pact compatibility workflows via `npm test` in `apps/web`, `services/worker`, `services/auth`, `services/ingest`, and `services/library` when API/queue interfaces are changed.
+   - Pact provider/message verification must run with embedded apps and in-memory mocks only; do not require PostgreSQL, Redis, BullMQ, or other live services.
+   - `PACT_BROKER_BASE_URL` is mandatory for pact publish/verification workflows; Pact Broker is the only allowed external dependency in pact verification.
 10. Run quality gates and produce report.
 
 ---

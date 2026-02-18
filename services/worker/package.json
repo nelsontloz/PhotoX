@@ -4,8 +4,12 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "test": "vitest run --globals test/unit",
-    "test:integration": "vitest run --globals test/integration"
+    "test": "npm run test:unit && npm run test:integration && npm run test:contract:messages && npm run pact:publish && npm run test:contract:provider",
+    "test:unit": "vitest run --globals test/unit",
+    "test:integration": "vitest run --globals test/integration",
+    "test:contract:provider": "sh -c 'if [ -z ${PACT_BROKER_BASE_URL:-} ]; then echo PACT_BROKER_BASE_URL is required for pact provider verification; exit 1; fi; PACT_PROVIDER_APP_VERSION=${PACT_PROVIDER_APP_VERSION:-$(git rev-parse --short HEAD)} PACT_CONTRACT_BRANCH=${PACT_CONTRACT_BRANCH:-$(git rev-parse --abbrev-ref HEAD)} vitest run --globals test/contracts/provider'",
+    "test:contract:messages": "vitest run --globals test/contracts/messages",
+    "pact:publish": "sh -c 'if [ -z ${PACT_BROKER_BASE_URL:-} ]; then echo PACT_BROKER_BASE_URL is required for pact publish; exit 1; fi; VERSION=${PACT_CONSUMER_APP_VERSION:-${PACT_PROVIDER_APP_VERSION:-$(git rev-parse --short HEAD)}}; BRANCH=${PACT_CONTRACT_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}; npx pact-broker publish ./pacts --broker-base-url ${PACT_BROKER_BASE_URL} --consumer-app-version ${VERSION} --branch ${BRANCH} --tag ${PACT_CONTRACT_TAG:-dev}'"
   },
   "dependencies": {
     "@fastify/swagger": "^9.5.2",
@@ -17,6 +21,8 @@
     "sharp": "^0.33.5"
   },
   "devDependencies": {
+    "@pact-foundation/pact": "^14.0.0",
+    "@pact-foundation/pact-node": "^10.18.0",
     "vitest": "^2.1.8"
   }
 }

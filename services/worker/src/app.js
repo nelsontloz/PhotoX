@@ -235,6 +235,11 @@ function buildApp(overrides = {}) {
           })
         });
 
+        if (request.headers["x-pact-test-sse-once"] === "1") {
+          reply.raw.end();
+          return reply;
+        }
+
         const unsubscribe = instance.telemetry.store.subscribe((eventName, payload) => {
           writeSafe(eventName, payload);
         });

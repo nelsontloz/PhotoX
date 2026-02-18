@@ -42,9 +42,11 @@ Gate G6 - Verification Artifact
 - Task report completed with commands run and results.
 
 Gate G7 - Contract Compatibility
-- Consumer/provider API compatibility checks pass against live OpenAPI specs.
-- Queue payload compatibility checks pass for changed async boundaries.
-- Contract runner evidence is attached in command log.
+- Pact consumer/provider verification passes for changed HTTP boundaries.
+- Pact message verification passes for changed async boundaries.
+- Per-service `npm test` contract evidence is attached in command log.
+- Pact provider/message verification is mock-based and hermetic (embedded app + in-memory mocks) and does not require PostgreSQL, Redis, BullMQ, or live service endpoints.
+- `PACT_BROKER_BASE_URL` is present for pact publish/verification workflows.
 
 ---
 
@@ -148,22 +150,30 @@ docker compose exec -T <service> wget -qO- http://127.0.0.1:<port>/health
 # Swagger/OpenAPI smoke checks
 python3 scripts/smoke_swagger_docs.py
 
-# Contract compatibility checks (API + queue)
-python3 scripts/contract_runner.py --mode all --base-url http://localhost:8088
+# Pact compatibility checks (service-local npm test workflows)
+npm --prefix apps/web test
+npm --prefix services/worker test
+npm --prefix services/auth test
+npm --prefix services/ingest test
+npm --prefix services/library test
 ```
 
 Smoke script behavior notes:
 - `scripts/smoke_swagger_docs.py` launches each Node service with `npm start`, waits for `/health` + docs/OpenAPI readiness with bounded retries, and prints captured stdout/stderr tails when startup fails.
 - If local dependencies are unavailable (for example Postgres/Redis), treat failures as environment-gate failures and include the captured diagnostics in the blocker report.
 
-Contract runner execution model:
-- Stack lifecycle is configurable via `--stack-mode`:
-  - `rebuild` (default): `down` -> `build --parallel` -> `up -d --no-build`
-  - `restart`: `down` -> `up -d`
-  - `reuse`: no compose lifecycle, checks run against existing stack
-- It waits for provider OpenAPI endpoints to become reachable before contract assertions.
-- `--skip-stack` remains available as a compatibility alias for `--stack-mode reuse`.
-- API assertions include worker telemetry contracts (`GET /api/v1/worker/telemetry/snapshot`, `GET /api/v1/worker/telemetry/stream`) in addition to auth/uploads/library contracts.
+Pact execution model:
+- `apps/web npm test`: runs unit/integration tests, generates HTTP consumer pacts, publishes pacts to broker.
+- `services/worker npm test`: runs unit/integration tests, generates message consumer pacts, publishes pacts to broker, verifies worker provider pacts from broker.
+- `services/auth|ingest|library npm test`: runs unit/integration tests, verifies provider pacts from broker, publishes verification results.
+
+Provider verification runtime requirement:
+- All provider pact tests now use **embedded Fastify apps with in-memory mock pools** — no running PostgreSQL, Redis, or BullMQ is needed.
+- Each service's `test/contracts/mockPool.js` provides an in-memory mock of `pg.Pool` that routes SQL patterns to Map-based stores.
+- Mock BullMQ queues are injected via `buildApp()` overrides.
+- `PACT_BROKER_BASE_URL` is mandatory for all pact provider verification workflows; tests fail fast when it is missing.
+- Consumer pacts include `.given()` provider states that trigger state handlers to seed mock data.
+- Any new pact verification flow that requires external runtime dependencies is non-compliant and must be refactored to mock-based verification.
 
 When package test scripts are available, run:
 

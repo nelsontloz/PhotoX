@@ -20,6 +20,12 @@ This repository uses docs-first execution. Every coding agent must read `/docs` 
 - Run quality gates from `docs/09-testing-and-quality-gates.md`.
 - Provide a final handoff report matching the template in `docs/06-ai-agent-master-runbook.md`.
 
+## Pact Test Isolation Policy
+- All Pact provider/message verification tests must run with embedded service apps and in-memory mocks.
+- Pact verification tests must not depend on external runtime services (PostgreSQL, Redis, BullMQ, or other live service endpoints).
+- `PACT_BROKER_BASE_URL` is mandatory for Pact publish/verification flows; Pact Broker is the only allowed external dependency for Pact verification.
+- New or modified Pact tests that require external runtime dependencies violate repository policy and must be refactored to mock-based verification.
+
 ## Docs-First Policy
 - If a request is ambiguous, resolve it using `/docs` first.
 - If code and docs conflict, call out the conflict explicitly and propose the smallest safe fix.
