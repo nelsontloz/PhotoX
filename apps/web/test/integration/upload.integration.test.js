@@ -87,6 +87,54 @@ describe("upload integration", () => {
     expect(fetchMock.mock.calls[3][0]).toContain("/uploads/upload-123/complete");
   });
 
+  it("accepts video uploads and sends media content type during init", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(201, {
+          uploadId: "upload-video-123",
+          partSize: 4,
+          expiresAt: "2026-02-15T18:00:00.000Z"
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          uploadId: "upload-video-123",
+          partNumber: 1,
+          bytesStored: 4,
+          checksumSha256: "abc"
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          mediaId: "media-video-123",
+          status: "processing"
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const blob = new Blob([new Uint8Array([0, 1, 2, 3])], {
+      type: "video/mp4"
+    });
+    const file = {
+      name: "clip.mp4",
+      size: blob.size,
+      type: blob.type,
+      arrayBuffer: () => blob.arrayBuffer(),
+      slice: (start, end) => blob.slice(start, end)
+    };
+
+    const result = await uploadPhotoInChunks({ file });
+    const initPayload = JSON.parse(fetchMock.mock.calls[0][1].body);
+
+    expect(result.mediaId).toBe("media-video-123");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[0][0]).toContain("/uploads/init");
+    expect(initPayload.fileName).toBe("clip.mp4");
+    expect(initPayload.contentType).toBe("video/mp4");
+  });
+
   it("aggregates per-file results for multi-file upload with continuation on failure", async () => {
     const files = [
       { name: "a.jpg", size: 4 },

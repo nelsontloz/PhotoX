@@ -15,10 +15,10 @@ function resolveAbsolutePath(rootPath, relativePath) {
   return absolutePath;
 }
 
-function buildDerivativeRelativePath(mediaRelativePath, mediaId, variant) {
+function buildDerivativeRelativePath(mediaRelativePath, mediaId, variant, extension = "webp") {
   const normalized = mediaRelativePath.split("\\").join("/");
   const directory = path.posix.dirname(normalized);
-  return `${directory}/${mediaId}-${variant}.webp`;
+  return `${directory}/${mediaId}-${variant}.${extension}`;
 }
 
 module.exports = {

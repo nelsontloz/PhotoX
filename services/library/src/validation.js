@@ -95,7 +95,7 @@ const patchMediaSchema = z
 
 const mediaContentQuerySchema = z
   .object({
-    variant: z.enum(["original", "thumb", "small"]).optional()
+    variant: z.enum(["original", "thumb", "small", "playback"]).optional()
   })
   .strict();
 

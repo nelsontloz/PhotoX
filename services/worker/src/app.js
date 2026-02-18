@@ -3,13 +3,20 @@ const swagger = require("@fastify/swagger");
 const swaggerUi = require("@fastify/swagger-ui");
 
 const { loadConfig } = require("./config");
+const { createPool } = require("./db");
+const { buildMediaRepo } = require("./repos/mediaRepo");
 const { createMediaDerivativesWorker } = require("./queues/mediaDerivativesWorker");
 
 function buildApp(overrides = {}) {
   const config = loadConfig(overrides);
   const app = Fastify({ logger: true });
+  const db = overrides.db || createPool(config.databaseUrl);
 
   app.decorate("config", config);
+  app.decorate("db", db);
+  app.decorate("repos", {
+    media: buildMediaRepo(db)
+  });
   app.decorate("workers", {
     mediaDerivatives: overrides.mediaDerivativesWorker || null
   });
@@ -44,6 +51,7 @@ function buildApp(overrides = {}) {
         redisUrl: config.redisUrl,
         originalsRoot: config.uploadOriginalsPath,
         derivedRoot: config.uploadDerivedPath,
+        mediaRepo: app.repos.media,
         logger: app.log
       });
     }
@@ -52,6 +60,10 @@ function buildApp(overrides = {}) {
   app.addHook("onClose", async () => {
     if (!overrides.mediaDerivativesWorker && app.workers.mediaDerivatives) {
       await app.workers.mediaDerivatives.close();
+    }
+
+    if (!overrides.db) {
+      await db.end();
     }
   });
 

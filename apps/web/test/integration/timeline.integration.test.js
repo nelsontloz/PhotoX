@@ -108,4 +108,26 @@ describe("timeline api integration", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toContain("/media/med_1/content?variant=small");
   });
+
+  it("fetches media playback content as blob for modal video view", async () => {
+    const blobPayload = new Blob([new Uint8Array([9, 8, 7, 6])], {
+      type: "video/webm"
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(blobPayload, {
+        status: 200,
+        headers: {
+          "content-type": "video/webm"
+        }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const blob = await fetchMediaContentBlob("med_2", "playback");
+    expect(blob.type).toBe("video/webm");
+    expect(blob.size).toBe(4);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toContain("/media/med_2/content?variant=playback");
+  });
 });

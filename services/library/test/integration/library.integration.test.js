@@ -360,6 +360,132 @@ describe("library integration", () => {
     expect(originalResponse.headers["content-type"]).toContain("image/jpeg");
   });
 
+  it("serves playback variant for videos when playback derivative exists", async () => {
+    const token = createAccessToken({
+      userId: ownerId,
+      email: "playback-ready@example.com",
+      secret: accessSecret
+    });
+    const mediaId = "f545f299-b83c-4053-a6d0-e30615db6e9f";
+    const relativePath = `${ownerId}/2026/02/${mediaId}.mp4`;
+
+    await insertMedia({
+      id: mediaId,
+      ownerId,
+      relativePath,
+      mimeType: "video/mp4",
+      createdAt: "2026-02-16T08:00:00.000Z"
+    });
+
+    const playbackAbsolutePath = path.join(
+      testDerivedRoot,
+      ownerId,
+      "2026",
+      "02",
+      `${mediaId}-playback.webm`
+    );
+    const playbackBytes = Buffer.from("video-playback-test-bytes", "utf8");
+    await fs.mkdir(path.dirname(playbackAbsolutePath), { recursive: true });
+    await fs.writeFile(playbackAbsolutePath, playbackBytes);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/media/${mediaId}/content?variant=playback`,
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("video/webm");
+    expect(response.rawPayload.equals(playbackBytes)).toBe(true);
+    expect(queuedDerivativeJobs).toHaveLength(0);
+  });
+
+  it("returns retriable error and enqueues job when playback derivative is missing", async () => {
+    const token = createAccessToken({
+      userId: ownerId,
+      email: "playback-missing@example.com",
+      secret: accessSecret
+    });
+    const mediaId = "4ed2b69e-cf6f-431d-947d-75c356f6fa7a";
+    const relativePath = `${ownerId}/2026/02/${mediaId}.mp4`;
+
+    await insertMedia({
+      id: mediaId,
+      ownerId,
+      relativePath,
+      mimeType: "video/mp4",
+      createdAt: "2026-02-16T08:00:00.000Z"
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/media/${mediaId}/content?variant=playback`,
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    });
+
+    expect(response.statusCode).toBe(503);
+    const body = jsonBody(response);
+    expect(body.error.code).toBe("PLAYBACK_DERIVATIVE_NOT_READY");
+    expect(body.error.message).toBe("Playback derivative is not ready; retry later");
+    expect(body.error.details).toMatchObject({
+      mediaId,
+      variant: "playback",
+      retriable: true,
+      queued: true
+    });
+
+    expect(queuedDerivativeJobs).toHaveLength(1);
+    expect(queuedDerivativeJobs[0][0]).toBe("media.derivatives.generate");
+    expect(queuedDerivativeJobs[0][1]).toMatchObject({
+      mediaId,
+      ownerId,
+      relativePath
+    });
+  });
+
+  it("returns validation error for playback variant on non-video media", async () => {
+    const token = createAccessToken({
+      userId: ownerId,
+      email: "playback-invalid@example.com",
+      secret: accessSecret
+    });
+    const mediaId = "1464a610-30ff-4150-b0f8-a3807f0f0496";
+
+    await insertMedia({
+      id: mediaId,
+      ownerId,
+      relativePath: `${ownerId}/2026/02/${mediaId}.jpg`,
+      mimeType: "image/jpeg",
+      createdAt: "2026-02-16T08:00:00.000Z"
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/media/${mediaId}/content?variant=playback`,
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    const body = jsonBody(response);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.message).toBe("Request validation failed");
+    expect(body.error.details.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: ["variant"],
+          message: "playback variant is only supported for video media"
+        })
+      ])
+    );
+    expect(queuedDerivativeJobs).toHaveLength(0);
+  });
+
   it("returns media detail endpoint payload", async () => {
     const token = createAccessToken({
       userId: ownerId,

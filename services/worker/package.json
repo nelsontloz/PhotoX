@@ -4,13 +4,15 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "test": "vitest run --globals test/unit"
+    "test": "vitest run --globals test/unit",
+    "test:integration": "vitest run --globals test/integration"
   },
   "dependencies": {
     "@fastify/swagger": "^9.5.2",
     "@fastify/swagger-ui": "^5.2.3",
     "bullmq": "^5.61.0",
     "fastify": "^5.2.0",
+    "pg": "^8.13.1",
     "sharp": "^0.33.5"
   },
   "devDependencies": {

@@ -183,6 +183,7 @@ Implemented now:
 - `init` and `complete` support `Idempotency-Key` for safe retries.
 - Ingest OpenAPI operation descriptions for `init`/`complete` explicitly state `Idempotency-Key` retry support.
 - `complete` performs owner-scoped checksum dedupe against active media.
+- Upload `contentType` supports both image and video media types.
 
 ### Init Request
 ```json
@@ -254,13 +255,16 @@ Implemented now:
 - `PATCH /media/{mediaId}`
 - `DELETE /media/{mediaId}` (soft delete)
 - `POST /media/{mediaId}/restore`
-- `GET /media/{mediaId}/content?variant=original|thumb|small`
+- `GET /media/{mediaId}/content?variant=original|thumb|small|playback`
 - `GET /library/docs`
 - `GET /library/openapi.json`
 
 Notes:
 - `albumId` and `personId` are reserved query parameters; relation-backed filtering is deferred to later phases.
 - `thumb` and `small` are generated WebP derivatives.
+- `playback` is a video-only variant and serves a derived `video/webm` (VP9/Opus) artifact.
+- If a `playback` derivative is missing, library enqueues `media.derivatives.generate` and returns a retriable
+  `503 PLAYBACK_DERIVATIVE_NOT_READY` error.
 
 ### Timeline Response
 ```json

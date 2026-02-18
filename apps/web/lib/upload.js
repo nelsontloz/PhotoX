@@ -36,7 +36,7 @@ function toUploadInitPayload(file, checksumSha256) {
   };
 }
 
-export async function uploadPhotoInChunks({ file, onProgress }) {
+export async function uploadMediaInChunks({ file, onProgress }) {
   if (!file) {
     throw new Error("No file selected");
   }
@@ -114,12 +114,12 @@ function toSafeFileArray(files) {
   return Array.from(files).filter(Boolean);
 }
 
-export async function uploadPhotosInChunks({
+export async function uploadMediaFilesInChunks({
   files,
   maxConcurrent = 4,
   onFileProgress,
   onOverallProgress,
-  uploadSingle = uploadPhotoInChunks
+  uploadSingle = uploadMediaInChunks
 }) {
   const queue = toSafeFileArray(files);
   if (queue.length === 0) {
@@ -270,4 +270,12 @@ export async function uploadPhotosInChunks({
     successful,
     failed
   };
+}
+
+export async function uploadPhotoInChunks(options) {
+  return uploadMediaInChunks(options);
+}
+
+export async function uploadPhotosInChunks(options) {
+  return uploadMediaFilesInChunks(options);
 }

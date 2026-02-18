@@ -24,6 +24,14 @@ export function formatApiError(error) {
   return toDisplayMessage(error);
 }
 
+export function isRetriableMediaProcessingError(error) {
+  return (
+    error instanceof ApiClientError &&
+    error.code === "PLAYBACK_DERIVATIVE_NOT_READY" &&
+    Boolean(error.details?.retriable)
+  );
+}
+
 function buildUrl(path) {
   return `${API_BASE_URL}${path}`;
 }

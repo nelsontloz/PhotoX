@@ -10,6 +10,10 @@ function loadConfig(overrides = {}) {
   return {
     port: overrides.port || parsePositiveInt(process.env.PORT, 3000),
     serviceName: overrides.serviceName || process.env.SERVICE_NAME || "worker-service",
+    databaseUrl:
+      overrides.databaseUrl ||
+      process.env.DATABASE_URL ||
+      "postgresql://photox:photox-dev-password@127.0.0.1:5432/photox",
     redisUrl: overrides.redisUrl || process.env.REDIS_URL || "redis://127.0.0.1:6379",
     uploadOriginalsPath:
       overrides.uploadOriginalsPath || process.env.UPLOAD_ORIGINALS_PATH || "/data/photox/originals",

@@ -3,8 +3,11 @@ const os = require("node:os");
 const path = require("node:path");
 
 const sharp = require("sharp");
-
-const { createMediaDerivativesProcessor } = require("../../src/queues/mediaDerivativesWorker");
+const {
+  createMediaDerivativesProcessor,
+  isTerminalFailure,
+  persistFailedStatusOnTerminalFailure
+} = require("../../src/queues/mediaDerivativesWorker");
 
 describe("media derivatives processor", () => {
   const originalsRoot = path.join(os.tmpdir(), "photox-worker-originals-tests");
@@ -49,9 +52,14 @@ describe("media derivatives processor", () => {
       error() {}
     };
 
+    const mediaRepo = {
+      setStatus: vi.fn().mockResolvedValue({ id: mediaId, status: "ready" })
+    };
+
     const processor = createMediaDerivativesProcessor({
       originalsRoot,
       derivedRoot,
+      mediaRepo,
       logger
     });
 
@@ -66,11 +74,90 @@ describe("media derivatives processor", () => {
 
     expect(result.mediaId).toBe(mediaId);
     expect(result.derivatives).toHaveLength(2);
+    expect(mediaRepo.setStatus).toHaveBeenCalledWith(mediaId, "ready");
 
     const thumbPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-thumb.webp`);
     const smallPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-small.webp`);
     await expect(fs.stat(thumbPath)).resolves.toBeTruthy();
     await expect(fs.stat(smallPath)).resolves.toBeTruthy();
+  });
+
+  it("writes video thumb, small, and playback webm derivatives", async () => {
+    const mediaId = "dbf242a8-59e8-4e46-b6a0-d7ec247ca4f7";
+    const ownerId = "f446dc45-1564-4f79-99a4-c7c17ce9e16f";
+    const relativePath = `${ownerId}/2026/02/${mediaId}.mp4`;
+    const sourceAbsolutePath = path.join(originalsRoot, ownerId, "2026", "02", `${mediaId}.mp4`);
+
+    await fs.mkdir(path.dirname(sourceAbsolutePath), { recursive: true });
+    await fs.writeFile(sourceAbsolutePath, "video-source-placeholder");
+
+    const execFileMock = vi.fn((command, args, options, callback) => {
+      const done = typeof options === "function" ? options : callback;
+
+      if (command === "ffprobe") {
+        done(null, JSON.stringify({ streams: [{ codec_type: "video" }] }), "");
+        return;
+      }
+
+      if (command === "ffmpeg") {
+        const outputPath = args.at(-1);
+        fs.mkdir(path.dirname(outputPath), { recursive: true })
+          .then(() => fs.writeFile(outputPath, `generated-${path.basename(outputPath)}`))
+          .then(() => done(null, "", ""))
+          .catch((err) => done(err));
+        return;
+      }
+
+      done(new Error(`Unexpected command: ${command}`));
+    });
+
+    const mediaRepo = {
+      setStatus: vi.fn().mockResolvedValue({ id: mediaId, status: "ready" })
+    };
+
+    const processor = createMediaDerivativesProcessor({
+      originalsRoot,
+      derivedRoot,
+      mediaRepo,
+      commandRunner: (command, args) =>
+        new Promise((resolve, reject) => {
+          execFileMock(command, args, (err, stdout, stderr) => {
+            if (err) {
+              reject(err);
+              return;
+            }
+            resolve({ stdout: stdout || "", stderr: stderr || "" });
+          });
+        }),
+      logger: {
+        info() {},
+        error() {}
+      }
+    });
+
+    const result = await processor({
+      id: "job-2",
+      queueName: "media.derivatives.generate",
+      data: {
+        mediaId,
+        relativePath
+      }
+    });
+
+    expect(result.mediaId).toBe(mediaId);
+    expect(result.derivatives).toHaveLength(3);
+    expect(result.derivatives.map((derivative) => derivative.variant)).toEqual(["thumb", "small", "playback"]);
+    expect(mediaRepo.setStatus).toHaveBeenCalledWith(mediaId, "ready");
+
+    const thumbPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-thumb.webp`);
+    const smallPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-small.webp`);
+    const playbackPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-playback.webm`);
+
+    await expect(fs.stat(thumbPath)).resolves.toBeTruthy();
+    await expect(fs.stat(smallPath)).resolves.toBeTruthy();
+    await expect(fs.stat(playbackPath)).resolves.toBeTruthy();
+
+    expect(execFileMock).toHaveBeenCalled();
   });
 
   it("rejects invalid payloads", async () => {
@@ -85,12 +172,74 @@ describe("media derivatives processor", () => {
 
     await expect(
       processor({
-        id: "job-2",
+        id: "job-3",
         queueName: "media.derivatives.generate",
         data: {
           mediaId: "missing-path"
         }
       })
     ).rejects.toThrow("Invalid derivatives job payload");
+  });
+
+  it("detects terminal failure only when attempts are exhausted", () => {
+    expect(
+      isTerminalFailure({
+        attemptsMade: 1,
+        opts: { attempts: 3 }
+      })
+    ).toBe(false);
+
+    expect(
+      isTerminalFailure({
+        attemptsMade: 3,
+        opts: { attempts: 3 }
+      })
+    ).toBe(true);
+  });
+
+  it("persists failed status for terminal job failures", async () => {
+    const mediaRepo = {
+      setStatus: vi.fn().mockResolvedValue({ id: "m1", status: "failed" })
+    };
+    const logger = {
+      error: vi.fn()
+    };
+
+    await persistFailedStatusOnTerminalFailure({
+      job: {
+        id: "job-final",
+        attemptsMade: 5,
+        opts: { attempts: 5 },
+        data: { mediaId: "m1" }
+      },
+      mediaRepo,
+      logger,
+      queueName: "media.derivatives.generate"
+    });
+
+    expect(mediaRepo.setStatus).toHaveBeenCalledWith("m1", "failed");
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it("does not persist failed status for non-terminal failures", async () => {
+    const mediaRepo = {
+      setStatus: vi.fn()
+    };
+
+    await persistFailedStatusOnTerminalFailure({
+      job: {
+        id: "job-retry",
+        attemptsMade: 2,
+        opts: { attempts: 5 },
+        data: { mediaId: "m1" }
+      },
+      mediaRepo,
+      logger: {
+        error: vi.fn()
+      },
+      queueName: "media.derivatives.generate"
+    });
+
+    expect(mediaRepo.setStatus).not.toHaveBeenCalled();
   });
 });

@@ -3,7 +3,11 @@ const fs = require("node:fs/promises");
 
 const { requireAccessAuth } = require("../auth/guard");
 const { ApiError } = require("../errors");
-const { buildDerivativeRelativePath, resolveAbsolutePath } = require("../media/paths");
+const {
+  buildDerivativeRelativePath,
+  buildPlaybackRelativePath,
+  resolveAbsolutePath
+} = require("../media/paths");
 const {
   mediaContentQuerySchema,
   mediaPathParamsSchema,
@@ -333,7 +337,7 @@ module.exports = async function libraryRoutes(app) {
         tags: ["Media"],
         summary: "Read media content",
         description:
-          "Return original media bytes or serve existing WebP derivatives; when derivatives are missing, queue background generation and return source media bytes.",
+          "Return original media bytes, serve existing image WebP derivatives, or serve video playback WebM derivatives. Missing image derivatives queue generation and fall back to source bytes; missing playback derivatives queue generation and return a retriable error.",
         security: [{ bearerAuth: [] }],
         params: {
           type: "object",
@@ -347,14 +351,25 @@ module.exports = async function libraryRoutes(app) {
           properties: {
             variant: {
               type: "string",
-              enum: ["original", "thumb", "small"]
+              enum: ["original", "thumb", "small", "playback"]
             }
           },
           additionalProperties: false
         },
         response: {
+          400: buildErrorEnvelopeSchema("VALIDATION_ERROR", "Request validation failed"),
           401: buildErrorEnvelopeSchema("AUTH_TOKEN_INVALID", "Missing bearer token"),
-          404: buildErrorEnvelopeSchema("MEDIA_NOT_FOUND", "Media was not found")
+          404: buildErrorEnvelopeSchema("MEDIA_NOT_FOUND", "Media was not found"),
+          503: buildErrorEnvelopeSchema(
+            "PLAYBACK_DERIVATIVE_NOT_READY",
+            "Playback derivative is not ready; retry later",
+            {
+              mediaId: "00000000-0000-0000-0000-000000000000",
+              variant: "playback",
+              retriable: true,
+              queued: true
+            }
+          )
         }
       }
     },
@@ -372,12 +387,70 @@ module.exports = async function libraryRoutes(app) {
         throw new ApiError(404, "MEDIA_NOT_FOUND", "Media was not found");
       }
 
+      if (variant === "playback" && !media.mime_type.startsWith("video/")) {
+        throw new ApiError(400, "VALIDATION_ERROR", "Request validation failed", {
+          issues: [
+            {
+              path: ["variant"],
+              message: "playback variant is only supported for video media"
+            }
+          ]
+        });
+      }
+
       try {
         let contentType = media.mime_type;
         let absolutePath;
 
         if (variant === "original") {
           absolutePath = resolveAbsolutePath(app.config.uploadOriginalsPath, media.relative_path);
+        } else if (variant === "playback") {
+          const playbackRelativePath = buildPlaybackRelativePath(media.relative_path, media.id);
+          const playbackAbsolutePath = resolveAbsolutePath(app.config.uploadDerivedPath, playbackRelativePath);
+
+          try {
+            await fs.stat(playbackAbsolutePath);
+            absolutePath = playbackAbsolutePath;
+            contentType = "video/webm";
+          } catch (err) {
+            if (err.code !== "ENOENT") {
+              throw err;
+            }
+
+            let queued = false;
+            try {
+              await app.queues.mediaDerivatives.add(
+                "media.derivatives.generate",
+                {
+                  mediaId: media.id,
+                  ownerId: media.owner_id,
+                  relativePath: media.relative_path,
+                  requestedAt: new Date().toISOString()
+                },
+                {
+                  jobId: `media-derivatives-${media.id}`,
+                  attempts: 5,
+                  backoff: {
+                    type: "exponential",
+                    delay: 3000
+                  }
+                }
+              );
+              queued = true;
+            } catch (enqueueErr) {
+              request.log.warn(
+                { err: enqueueErr, mediaId: media.id },
+                "failed to enqueue derivative generation job"
+              );
+            }
+
+            throw new ApiError(503, "PLAYBACK_DERIVATIVE_NOT_READY", "Playback derivative is not ready; retry later", {
+              mediaId: media.id,
+              variant: "playback",
+              retriable: true,
+              queued
+            });
+          }
         } else {
           const derivativeRelativePath = buildDerivativeRelativePath(media.relative_path, media.id, variant);
           const derivativeAbsolutePath = resolveAbsolutePath(app.config.uploadDerivedPath, derivativeRelativePath);

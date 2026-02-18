@@ -9,12 +9,31 @@ import {
   fetchCurrentUser,
   fetchMediaContentBlob,
   fetchTimeline,
-  formatApiError
+  formatApiError,
+  isRetriableMediaProcessingError
 } from "../../lib/api";
 import { buildLoginPath } from "../../lib/navigation";
 import AppSidebar from "../components/app-sidebar";
 
 const TILE_ASPECTS = ["aspect-[4/3]", "aspect-square", "aspect-[3/4]", "aspect-square", "aspect-[4/3]"];
+const MEDIA_POLL_INTERVAL_MS = 2000;
+const MEDIA_POLL_MAX_ATTEMPTS = 15;
+
+function Spinner({ label = "Loading...", size = "md", className = "" }) {
+  const sizeClass = size === "sm" ? "h-5 w-5 border-2" : "h-10 w-10 border-4";
+  return (
+    <div className={`flex flex-col items-center justify-center gap-2 text-slate-600 ${className}`}>
+      <span className={`inline-block animate-spin rounded-full border-slate-300 border-t-cyan-500 ${sizeClass}`} aria-hidden="true" />
+      <span className="text-xs font-medium" role="status" aria-live="polite">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function isVideoMimeType(mimeType) {
+  return typeof mimeType === "string" && mimeType.startsWith("video/");
+}
 
 function formatTimelineDate(value) {
   if (!value) {
@@ -157,7 +176,9 @@ function TimelineThumbnail({ mediaId, onOpen, className = "" }) {
       ) : loadError ? (
         <div className="flex h-full min-h-[180px] items-center justify-center p-4 text-xs text-red-600">{loadError}</div>
       ) : (
-        <div className="h-full min-h-[180px] animate-pulse bg-slate-300" />
+        <div className="flex h-full min-h-[180px] items-center justify-center bg-slate-100">
+          <Spinner label="Generating thumbnail..." size="sm" className="text-slate-500" />
+        </div>
       )}
       <div className="pointer-events-none absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/20" />
       <div className="absolute bottom-2 right-2 opacity-0 transition-opacity group-hover:opacity-100">
@@ -167,51 +188,88 @@ function TimelineThumbnail({ mediaId, onOpen, className = "" }) {
   );
 }
 
-function TimelineModalImage({ mediaId }) {
-  const [imageUrl, setImageUrl] = useState("");
+function TimelineModalMedia({ mediaId, mimeType }) {
+  const [mediaUrl, setMediaUrl] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [retryCount, setRetryCount] = useState(0);
+  const isVideo = isVideoMimeType(mimeType);
+  const variant = isVideo ? "playback" : "small";
 
   useEffect(() => {
-    setImageUrl("");
+    setMediaUrl("");
     setLoadError("");
-  }, [mediaId]);
+    setRetryCount(0);
+  }, [mediaId, variant]);
 
-  const largeQuery = useQuery({
-    queryKey: ["timeline-large", mediaId],
-    queryFn: () => fetchMediaContentBlob(mediaId, "small"),
+  const mediaQuery = useQuery({
+    queryKey: ["timeline-modal-media", mediaId, variant],
+    queryFn: () => fetchMediaContentBlob(mediaId, variant),
     enabled: Boolean(mediaId),
     staleTime: 5 * 60 * 1000
   });
+  const { isError: isMediaError, error: mediaError, refetch: refetchMedia } = mediaQuery;
 
   useEffect(() => {
-    if (!largeQuery.data) {
+    if (!mediaQuery.data) {
       return;
     }
 
-    const nextUrl = URL.createObjectURL(largeQuery.data);
-    setImageUrl(nextUrl);
+    const nextUrl = URL.createObjectURL(mediaQuery.data);
+    setMediaUrl(nextUrl);
     setLoadError("");
 
     return () => {
       URL.revokeObjectURL(nextUrl);
     };
-  }, [largeQuery.data]);
+  }, [mediaQuery.data]);
 
   useEffect(() => {
-    if (largeQuery.isError) {
-      setLoadError(formatApiError(largeQuery.error));
-    }
-  }, [largeQuery.error, largeQuery.isError]);
+    if (isMediaError) {
+      if (isRetriableMediaProcessingError(mediaError) && retryCount < MEDIA_POLL_MAX_ATTEMPTS) {
+        const timeoutId = window.setTimeout(() => {
+          setRetryCount((count) => count + 1);
+          refetchMedia();
+        }, MEDIA_POLL_INTERVAL_MS);
 
-  if (imageUrl) {
-    return <img src={imageUrl} alt="Selected media" className="max-h-[78vh] w-auto max-w-full rounded-xl object-contain" />;
+        return () => {
+          window.clearTimeout(timeoutId);
+        };
+      }
+
+      setLoadError(formatApiError(mediaError));
+    }
+  }, [isMediaError, mediaError, refetchMedia, retryCount]);
+
+  if (mediaUrl) {
+    if (isVideo) {
+      return (
+        <video
+          src={mediaUrl}
+          controls
+          playsInline
+          preload="metadata"
+          className="max-h-[78vh] w-auto max-w-full rounded-xl object-contain"
+          onError={() => setLoadError("Video playback failed (MEDIA_PLAYBACK_ERROR)")}
+        />
+      );
+    }
+
+    return <img src={mediaUrl} alt="Selected media" className="max-h-[78vh] w-auto max-w-full rounded-xl object-contain" />;
   }
 
   if (loadError) {
-    return <div className="error w-full">Could not load image. {loadError}</div>;
+    return <div className="error w-full">Could not load media. {loadError}</div>;
   }
 
-  return <div className="h-[60vh] w-full animate-pulse rounded-xl bg-[#d7e5eb]" />;
+  return (
+    <div className="flex h-[60vh] w-full items-center justify-center rounded-xl bg-[#d7e5eb]">
+      <Spinner
+        label={isVideo ? "Preparing video playback..." : "Preparing full preview..."}
+        size="md"
+        className="text-slate-700"
+      />
+    </div>
+  );
 }
 
 function FilmstripThumb({ mediaId, isActive, onSelect }) {
@@ -458,9 +516,11 @@ export default function TimelinePage() {
     }
 
     for (const mediaId of neighborIds) {
+      const media = items.find((item) => item.id === mediaId);
+      const variant = isVideoMimeType(media?.mimeType) ? "playback" : "small";
       queryClient.prefetchQuery({
-        queryKey: ["timeline-large", mediaId],
-        queryFn: () => fetchMediaContentBlob(mediaId, "small"),
+        queryKey: ["timeline-modal-media", mediaId, variant],
+        queryFn: () => fetchMediaContentBlob(mediaId, variant),
         staleTime: 5 * 60 * 1000
       });
     }
@@ -703,7 +763,7 @@ export default function TimelinePage() {
             </button>
 
             <div className="relative flex max-h-full max-w-full items-center justify-center shadow-2xl">
-              <TimelineModalImage mediaId={activeItem.id} />
+              <TimelineModalMedia mediaId={activeItem.id} mimeType={activeItem.mimeType} />
             </div>
 
             <button

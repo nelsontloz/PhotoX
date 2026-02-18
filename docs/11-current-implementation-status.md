@@ -2,7 +2,7 @@
 
 This document tracks what is implemented now in this repository and running stack.
 
-Last verified: 2026-02-16 (local compose stack)
+Last verified: 2026-02-18 (local compose stack)
 
 Source of truth used for this snapshot:
 - service route code under `services/*` and `apps/web`
@@ -78,11 +78,13 @@ Implemented now:
 Notes:
 - Uses raw `application/octet-stream` chunk upload with `partNumber` query param.
 - Persists media relative path and enqueues `media.process` BullMQ job on complete.
+- Upload accepts both image and video media types.
 - Supports `Idempotency-Key` on `init` and `complete`.
 - `complete` deduplicates repeated uploads for the same owner and checksum against active media and returns
   `deduplicated=true` when reusing an existing `mediaId`.
 - Soft-deleted media are excluded from dedupe matching; uploading the same content after soft delete creates
   a new media item.
+- New media rows are created with `status=processing` and are transitioned by worker-side derivative processing.
 
 ### library-service - implemented
 
@@ -96,13 +98,15 @@ Implemented now:
 - `PATCH /api/v1/media/{mediaId}`
 - `DELETE /api/v1/media/{mediaId}`
 - `POST /api/v1/media/{mediaId}/restore`
-- `GET /api/v1/media/{mediaId}/content?variant=original|thumb|small`
+- `GET /api/v1/media/{mediaId}/content?variant=original|thumb|small|playback`
 
 Notes:
 - Timeline supports stable cursor pagination, date range filters, flags filters, and text query over media path.
 - Timeline and media detail payloads include derivative URLs for `thumb`, `small`, and `original` media content.
 - `thumb` and `small` derivatives are served from derived storage as WebP files when present.
 - If a requested derivative is missing, library-service enqueues `media.derivatives.generate` and immediately serves source media bytes while the worker generates derivatives.
+- Video media support `playback` content variant, which serves derived `video/webm` (VP9/Opus).
+- If `playback` is requested before the derived artifact exists, library-service enqueues derivative generation and returns retriable `503 PLAYBACK_DERIVATIVE_NOT_READY`.
 
 Planned/pending:
 - `albumId` and `personId` timeline filters (deferred to P4/P6 relation wiring)
@@ -132,14 +136,16 @@ Planned/pending:
 - `POST /api/v1/search/semantic`
 - `POST /api/v1/search/reindex/{mediaId}`
 
-### worker-service - scaffold-only
+### worker-service - partial
 
 Implemented now:
 - `GET /health`
 - `GET /metrics`
 - `GET /api/v1/worker/docs`
 - `GET /api/v1/worker/openapi.json`
-- BullMQ consumer for `media.derivatives.generate` that creates `thumb` and `small` WebP derivatives from originals
+- BullMQ consumer for `media.derivatives.generate` that creates image `thumb`/`small` WebP derivatives and video `playback` WebM (VP9/Opus) derivatives
+- After successful derivative generation, worker updates `media.status` from `processing` to `ready`.
+- On terminal derivative-processing failure (retry attempts exhausted), worker updates `media.status` to `failed`.
 
 Planned/pending:
 - worker processors for `media.process`, metadata, search index, face index, and cleanup
@@ -180,9 +186,13 @@ Notes:
   aggregate progress, and continue-on-error behavior.
 - Timeline page fetches cursor-paginated media from `/api/v1/library/timeline` and renders authenticated
   thumbnail previews via `/api/v1/media/{mediaId}/content?variant=thumb`.
+- Timeline thumbnail cards show an explicit loading spinner while `thumb` derivatives are being generated.
 - Clicking a timeline photo opens a modal viewer that loads authenticated high-resolution (`variant=small`) media,
   supports close/escape, previous/next navigation, and auto-loads more timeline items when navigating past the
   last loaded card and additional pages are available.
+- Video timeline items load authenticated playback blobs from `/api/v1/media/{mediaId}/content?variant=playback`.
+- Modal viewer shows explicit loading spinners while `small` image or `playback` video derivatives are being
+  prepared, and playback requests that return retriable derivative-not-ready errors are polled with bounded retries.
 - Top bar is session-aware: authenticated users see account email and logout, and admin users additionally see
   an admin button.
 - Sidebar navigation includes only implemented routes (`/timeline`, `/upload`) plus `/admin` for admins.

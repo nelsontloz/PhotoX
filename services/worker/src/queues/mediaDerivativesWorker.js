@@ -15,7 +15,37 @@ function redisConnectionFromUrl(redisUrl) {
   };
 }
 
-function createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger }) {
+function isTerminalFailure(job) {
+  if (!job) {
+    return false;
+  }
+
+  const attempts = Number(job.opts?.attempts || 1);
+  const attemptsMade = Number(job.attemptsMade || 0);
+  return attemptsMade >= attempts;
+}
+
+async function persistFailedStatusOnTerminalFailure({ job, mediaRepo, logger, queueName }) {
+  if (!mediaRepo || !isTerminalFailure(job) || !job?.data?.mediaId) {
+    return;
+  }
+
+  try {
+    await mediaRepo.setStatus(job.data.mediaId, "failed");
+  } catch (statusErr) {
+    logger.error(
+      {
+        queueName,
+        jobId: job?.id,
+        mediaId: job?.data?.mediaId,
+        err: statusErr
+      },
+      "failed to persist terminal media status"
+    );
+  }
+}
+
+function createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger, commandRunner, mediaRepo }) {
   return async (job) => {
     const { mediaId, relativePath } = job.data || {};
     if (!mediaId || !relativePath) {
@@ -26,7 +56,8 @@ function createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger })
       originalsRoot,
       derivedRoot,
       mediaId,
-      relativePath
+      relativePath,
+      commandRunner
     });
 
     logger.info(
@@ -34,10 +65,15 @@ function createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger })
         queueName: job.queueName,
         jobId: job.id,
         mediaId,
-        derivativeCount: derivatives.length
+        derivativeCount: derivatives.length,
+        derivativeVariants: derivatives.map((derivative) => derivative.variant)
       },
       "generated media derivatives"
     );
+
+    if (mediaRepo) {
+      await mediaRepo.setStatus(mediaId, "ready");
+    }
 
     return {
       mediaId,
@@ -46,10 +82,10 @@ function createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger })
   };
 }
 
-function createMediaDerivativesWorker({ queueName, redisUrl, originalsRoot, derivedRoot, logger }) {
+function createMediaDerivativesWorker({ queueName, redisUrl, originalsRoot, derivedRoot, logger, mediaRepo }) {
   const worker = new Worker(
     queueName,
-    createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger }),
+    createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger, mediaRepo }),
     {
       connection: redisConnectionFromUrl(redisUrl),
       concurrency: 2
@@ -66,12 +102,16 @@ function createMediaDerivativesWorker({ queueName, redisUrl, originalsRoot, deri
       },
       "media derivatives job failed"
     );
+
+    persistFailedStatusOnTerminalFailure({ job, mediaRepo, logger, queueName });
   });
 
   return worker;
 }
 
 module.exports = {
+  isTerminalFailure,
+  persistFailedStatusOnTerminalFailure,
   createMediaDerivativesProcessor,
   createMediaDerivativesWorker
 };

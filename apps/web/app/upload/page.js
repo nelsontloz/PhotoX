@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchCurrentUser, formatApiError } from "../../lib/api";
 import { buildLoginPath } from "../../lib/navigation";
-import { formatBytes, uploadPhotosInChunks } from "../../lib/upload";
+import { formatBytes, uploadMediaFilesInChunks } from "../../lib/upload";
 import AppSidebar from "../components/app-sidebar";
 
 function statusLabel(status) {
@@ -27,15 +27,20 @@ function statusLabel(status) {
 }
 
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "tif", "tiff", "avif"]);
+const VIDEO_EXTENSIONS = new Set(["mp4", "mov", "m4v", "webm", "avi", "mkv", "3gp", "ogv", "wmv", "mpeg", "mpg"]);
 
-function isImageFile(file) {
+function isSupportedMediaFile(file) {
   if (typeof file?.type === "string" && file.type.startsWith("image/")) {
+    return true;
+  }
+
+  if (typeof file?.type === "string" && file.type.startsWith("video/")) {
     return true;
   }
 
   const name = typeof file?.name === "string" ? file.name : "";
   const extension = name.includes(".") ? name.split(".").pop()?.toLowerCase() : "";
-  return Boolean(extension && IMAGE_EXTENSIONS.has(extension));
+  return Boolean(extension && (IMAGE_EXTENSIONS.has(extension) || VIDEO_EXTENSIONS.has(extension)));
 }
 
 function statusChip(status) {
@@ -86,7 +91,7 @@ export default function UploadPage() {
 
   const uploadMutation = useMutation({
     mutationFn: (files) =>
-      uploadPhotosInChunks({
+      uploadMediaFilesInChunks({
         files,
         maxConcurrent: 4,
         onFileProgress: (progress) => {
@@ -182,11 +187,11 @@ export default function UploadPage() {
       return;
     }
 
-    const validFiles = files.filter(isImageFile);
+    const validFiles = files.filter(isSupportedMediaFile);
     const rejectedCount = files.length - validFiles.length;
 
     if (validFiles.length === 0) {
-      setUploadError("Only image files are supported right now (VALIDATION_ERROR)");
+      setUploadError("Only image and video files are supported right now (VALIDATION_ERROR)");
       return;
     }
 
@@ -196,7 +201,7 @@ export default function UploadPage() {
     setSelectedFiles(validFiles);
 
     if (rejectedCount > 0) {
-      setUploadError(`${rejectedCount} non-image file(s) were skipped. Only image uploads are supported (VALIDATION_ERROR)`);
+      setUploadError(`${rejectedCount} unsupported file(s) were skipped. Only image and video uploads are supported (VALIDATION_ERROR)`);
     } else {
       setUploadError("");
     }
@@ -275,7 +280,7 @@ export default function UploadPage() {
               ref={fileInputRef}
               className="hidden"
               type="file"
-              accept="image/*"
+              accept="image/*,video/*"
               multiple
               onChange={handleFileChange}
             />
@@ -289,8 +294,8 @@ export default function UploadPage() {
                 <span className="text-3xl font-black">UP</span>
               </div>
               <div className="max-w-[480px] text-center">
-                <p className="text-xl font-bold text-slate-900">Drag & drop photos here</p>
-                <p className="text-sm text-slate-500">Supports image files only (JPG, PNG, HEIC, WebP, AVIF; Max 2GB per file)</p>
+                <p className="text-xl font-bold text-slate-900">Drag & drop media here</p>
+                <p className="text-sm text-slate-500">Supports images and videos (JPG, PNG, HEIC, WebP, AVIF, MP4, MOV, WebM; Max 2GB per file)</p>
               </div>
               <div className="flex w-full items-center justify-center gap-3">
                 <span className="h-px w-16 bg-slate-200" />
