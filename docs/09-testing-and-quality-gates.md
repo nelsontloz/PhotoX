@@ -45,6 +45,8 @@ Gate G7 - Contract Compatibility
 - Pact consumer/provider verification passes for changed HTTP boundaries.
 - Pact message verification passes for changed async boundaries.
 - Per-service `npm test` contract evidence is attached in command log.
+- Pact provider/message verification is mock-based and hermetic (embedded app + in-memory mocks) and does not require PostgreSQL, Redis, BullMQ, or live service endpoints.
+- `PACT_BROKER_BASE_URL` is present for pact publish/verification workflows.
 
 ---
 
@@ -171,6 +173,7 @@ Provider verification runtime requirement:
 - Mock BullMQ queues are injected via `buildApp()` overrides.
 - `PACT_BROKER_BASE_URL` is mandatory for all pact provider verification workflows; tests fail fast when it is missing.
 - Consumer pacts include `.given()` provider states that trigger state handlers to seed mock data.
+- Any new pact verification flow that requires external runtime dependencies is non-compliant and must be refactored to mock-based verification.
 
 When package test scripts are available, run:
 
