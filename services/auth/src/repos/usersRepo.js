@@ -15,10 +15,11 @@ function buildUsersRepo(pool) {
 
   return {
     async createUserForRegistration({ id, email, passwordHash }) {
-      await pool.query("BEGIN");
+      const client = await pool.connect();
       try {
-        await pool.query("SELECT pg_advisory_xact_lock($1)", [947311]);
-        const result = await pool.query(
+        await client.query("BEGIN");
+        await client.query("SELECT pg_advisory_xact_lock($1)", [947311]);
+        const result = await client.query(
           `
             INSERT INTO users (id, email, password_hash, is_admin, is_active)
             VALUES (
@@ -32,11 +33,13 @@ function buildUsersRepo(pool) {
           `,
           [id, email, passwordHash]
         );
-        await pool.query("COMMIT");
+        await client.query("COMMIT");
         return result.rows[0];
       } catch (err) {
-        await pool.query("ROLLBACK");
+        await client.query("ROLLBACK");
         throw err;
+      } finally {
+        client.release();
       }
     },
 

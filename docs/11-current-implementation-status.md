@@ -57,6 +57,7 @@ Notes:
 - OpenAPI includes endpoint summaries/descriptions, request examples for write endpoints, response examples, and bearer auth security metadata.
 - Integration tests cover register/login/refresh/logout/me and docs/openapi availability.
 - First registered user is automatically admin; subsequent self-registered users are non-admin by default.
+- Registration admin-bootstrap logic now executes within a single dedicated DB client transaction (`BEGIN`/advisory lock/insert/`COMMIT`) to preserve transactional isolation under concurrent sign-ups.
 - Admins can manage user role/status and password reset, with protection against self-demotion and last-active-admin lockout.
 
 Planned/pending:
