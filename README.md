@@ -154,7 +154,6 @@ Auth service:
 ```bash
 cd services/auth
 npm test
-npm run test:integration
 ```
 
 Ingest service:
@@ -162,7 +161,6 @@ Ingest service:
 ```bash
 cd services/ingest
 npm test
-npm run test:integration
 ```
 
 Web app:
@@ -170,7 +168,6 @@ Web app:
 ```bash
 cd apps/web
 npm test
-npm run test:integration
 ```
 
 Library service:
@@ -178,7 +175,6 @@ Library service:
 ```bash
 cd services/library
 npm test
-npm run test:integration
 ```
 
 Swagger/OpenAPI smoke checks:
@@ -186,17 +182,21 @@ Swagger/OpenAPI smoke checks:
 ```bash
 python3 scripts/smoke_swagger_docs.py
 
-# Contract compatibility checks
-python3 scripts/contract_runner.py --mode all --base-url http://localhost:8088
+# Contract compatibility checks (service-local npm test workflows)
+npm --prefix apps/web test
+npm --prefix services/worker test
+npm --prefix services/auth test
+npm --prefix services/ingest test
+npm --prefix services/library test
 ```
 
-Contract runner behavior:
-- Stack lifecycle is configurable with `--stack-mode`:
-  - `rebuild` (default): `docker compose down`, `docker compose build --parallel`, `docker compose up -d --no-build`
-  - `restart`: `docker compose down`, `docker compose up -d`
-  - `reuse`: no compose lifecycle, checks run against existing stack
-- It waits for OpenAPI endpoints to be reachable and then validates API and queue contracts.
-- `--skip-stack` remains available as a compatibility alias for `--stack-mode reuse`.
+Pact testing behavior:
+- `apps/web npm test` runs unit/integration tests, generates HTTP consumer pacts, and publishes pacts to `PACT_BROKER_BASE_URL`.
+- `services/worker npm test` runs unit/integration tests, generates message consumer pacts, publishes pacts, and verifies worker provider pacts from broker.
+- `services/auth`, `services/ingest`, and `services/library` `npm test` verify provider pacts from broker and publish verification results.
+
+Provider verification note:
+- `auth-service`, `ingest-service`, and `library-service` provider verification require a reachable provider URL (defaults to `http://localhost:8088` unless `PACT_*_PROVIDER_BASE_URL` is set).
 
 ## Useful documentation
 

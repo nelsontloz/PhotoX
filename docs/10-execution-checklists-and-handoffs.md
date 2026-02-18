@@ -102,7 +102,7 @@ Note:
 - [ ] Unit tests added/updated.
 - [ ] Integration tests added/updated.
 - [ ] Docs updated.
-- [ ] Contract runner passed for changed API/queue integrations.
+- [ ] Pact contract runner passed for changed API/queue integrations.
 - [ ] Gate report completed.
 - [ ] Next-task recommendation written.
 

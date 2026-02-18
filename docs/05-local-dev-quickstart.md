@@ -124,20 +124,24 @@ docker compose exec -T ml-service python -c "import urllib.request; print(urllib
 # Swagger/OpenAPI smoke checks
 python3 scripts/smoke_swagger_docs.py
 
-# Contract compatibility checks
-python3 scripts/contract_runner.py --mode all --base-url http://localhost:8088
+# Pact contract checks (run inside each service/app)
+npm --prefix apps/web test
+npm --prefix services/worker test
+npm --prefix services/auth test
+npm --prefix services/ingest test
+npm --prefix services/library test
 ```
 
 Smoke check note:
 - `scripts/smoke_swagger_docs.py` starts each Node service locally and polls readiness endpoints (`/health`, docs, OpenAPI) with bounded retries before failing.
 - On failure, it reports the tail of service stdout/stderr to speed up diagnosis.
 
-Note:
-- `contract_runner.py` supports configurable compose lifecycle with `--stack-mode`:
-  - `rebuild` (default): stop, rebuild in parallel, start, then run checks
-  - `restart`: stop and start without rebuild
-  - `reuse`: run checks against existing stack
-- `--skip-stack` is a compatibility alias for `--stack-mode reuse`.
+Pact workflow notes:
+- `apps/web` test workflow generates and publishes HTTP consumer pacts.
+- `services/worker` test workflow generates and publishes message consumer pacts, then verifies worker provider pacts.
+- `services/auth`, `services/ingest`, and `services/library` test workflows verify pacts from broker and publish verification results.
+- Broker defaults to `PACT_BROKER_BASE_URL=http://localhost:9292`.
+- Auth/ingest/library provider verification uses `http://localhost:8088` by default unless provider base URL env vars are set.
 
 ---
 

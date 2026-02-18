@@ -47,7 +47,7 @@ done_criteria:
 - Update OpenAPI spec for every API surface change.
 - Ensure backend service exposes both Swagger UI and OpenAPI JSON routes.
 - Add unit and integration tests for all non-trivial logic.
-- For API or queue interface changes, run `python3 scripts/contract_runner.py --mode all --base-url http://localhost:8088` and include results in the verification artifact.
+- For API or queue interface changes, run per-service `npm test` workflows in `apps/web`, `services/worker`, `services/auth`, `services/ingest`, and `services/library`, and include results in the verification artifact.
 - Produce final artifact report defined in `docs/06-ai-agent-master-runbook.md`.
 
 ---

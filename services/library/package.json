@@ -4,8 +4,10 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "test": "vitest run --globals test/unit",
-    "test:integration": "vitest run --globals test/integration"
+    "test": "npm run test:unit && npm run test:integration && npm run test:contract:provider",
+    "test:unit": "vitest run --globals test/unit",
+    "test:integration": "vitest run --globals test/integration",
+    "test:contract:provider": "sh -c 'PACT_PROVIDER_APP_VERSION=${PACT_PROVIDER_APP_VERSION:-$(git rev-parse --short HEAD)} PACT_CONTRACT_BRANCH=${PACT_CONTRACT_BRANCH:-$(git rev-parse --abbrev-ref HEAD)} vitest run --globals test/contracts'"
   },
   "dependencies": {
     "@fastify/swagger": "^9.5.2",
@@ -18,6 +20,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@pact-foundation/pact": "^14.0.0",
     "vitest": "^2.1.8"
   }
 }

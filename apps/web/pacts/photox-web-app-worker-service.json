@@ -1,0 +1,144 @@
+{
+  "consumer": {
+    "name": "photox-web-app"
+  },
+  "interactions": [
+    {
+      "description": "read telemetry snapshot",
+      "request": {
+        "headers": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJhZG1pbkBleGFtcGxlLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwic3ViIjoiMjIyMjIyMjItMjIyMi00MjIyLTgyMjItMjIyMjIyMjIyMjIyIn0.0-evKRAjmV0CXyPtxd_Bb8duLQc-1-rKcDnzqIvD0Ew"
+        },
+        "method": "GET",
+        "path": "/api/v1/worker/telemetry/snapshot"
+      },
+      "response": {
+        "body": {
+          "counters": {},
+          "generatedAt": "2026-02-18T12:00:00.000Z",
+          "inFlightJobs": [],
+          "queueCounts": {},
+          "rates": {},
+          "recentEvents": [],
+          "recentFailures": {},
+          "schemaVersion": "2026-02-telemetry-v1",
+          "workerHealth": {}
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.counters": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.generatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$"
+                }
+              ]
+            },
+            "$.inFlightJobs": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.queueCounts": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.rates": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.recentEvents": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.recentFailures": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.schemaVersion": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.workerHealth": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "stream telemetry events",
+      "request": {
+        "headers": {
+          "Accept": "text/event-stream",
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJhZG1pbkBleGFtcGxlLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwic3ViIjoiMjIyMjIyMjItMjIyMi00MjIyLTgyMjItMjIyMjIyMjIyMjIyIn0.0-evKRAjmV0CXyPtxd_Bb8duLQc-1-rKcDnzqIvD0Ew",
+          "x-pact-test-sse-once": "1"
+        },
+        "method": "GET",
+        "path": "/api/v1/worker/telemetry/stream"
+      },
+      "response": {
+        "headers": {
+          "Content-Type": "text/event-stream"
+        },
+        "status": 200
+      }
+    }
+  ],
+  "metadata": {
+    "pact-js": {
+      "version": "14.0.0"
+    },
+    "pactRust": {
+      "ffi": "0.4.28",
+      "models": "1.3.5"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "worker-service"
+  }
+}
