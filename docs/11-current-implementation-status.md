@@ -147,11 +147,16 @@ Implemented now:
 - `GET /metrics`
 - `GET /api/v1/worker/docs`
 - `GET /api/v1/worker/openapi.json`
+- `GET /api/v1/worker/telemetry/snapshot` (admin-only)
+- `GET /api/v1/worker/telemetry/stream` (SSE, admin-only)
 - BullMQ consumer for `media.derivatives.generate` that creates image `thumb`/`small` WebP derivatives and video `playback` WebM (VP9/Opus) derivatives
 - BullMQ consumer for `media.process` that extracts photo/video metadata, persists `media_metadata`, and generates derivatives for new uploads
 - After successful derivative generation, worker updates `media.status` from `processing` to `ready`.
 - On terminal derivative-processing failure (retry attempts exhausted), worker updates `media.status` to `failed` only when status is still `processing`.
 - Worker uses a per-media advisory lock to serialize concurrent `media.process` / `media.derivatives.generate` execution for the same media ID.
+- Worker telemetry tracks lifecycle events (`active`, `completed`, `failed`, `stalled`, `error`) with bounded in-memory retention and queue depth polling.
+- `/metrics` now includes worker job counters, active gauges, queue depth gauges, and duration histogram series.
+- `scripts/contract_runner.py` enforces worker telemetry consumer/provider contracts for `/api/v1/worker/telemetry/snapshot` and `/api/v1/worker/telemetry/stream`.
 
 Planned/pending:
 - worker processors for metadata, search index, face index, and cleanup
@@ -202,6 +207,8 @@ Notes:
 - Top bar is session-aware: authenticated users see account email and logout, and admin users additionally see
   an admin button.
 - Sidebar navigation includes only implemented routes (`/timeline`, `/upload`) plus `/admin` for admins.
+- Admin page consumes worker telemetry snapshot + SSE stream with reconnect and polling fallback, and surfaces
+  a worker backlog metric with stream health state.
 
 Planned/pending:
 - `/albums`, `/search`, `/people`, `/memories` feature UIs (current routes return not-found placeholders)

@@ -31,6 +31,7 @@ API_PROVIDER_SPECS = {
     "auth": "/api/v1/auth/openapi.json",
     "uploads": "/api/v1/uploads/openapi.json",
     "library": "/api/v1/library/openapi.json",
+    "worker": "/api/v1/worker/openapi.json",
 }
 
 
@@ -206,6 +207,29 @@ API_CONSUMER_REQUIREMENTS = [
         "path": "/api/v1/media/{mediaId}/restore",
         "security_scheme": "bearerAuth",
         "response_fields": ["mediaId", "status"],
+    },
+    {
+        "provider": "worker",
+        "method": "get",
+        "path": "/api/v1/worker/telemetry/snapshot",
+        "security_scheme": "bearerAuth",
+        "response_fields": [
+            "schemaVersion",
+            "generatedAt",
+            "queueCounts",
+            "counters",
+            "rates",
+            "workerHealth",
+            "inFlightJobs",
+            "recentFailures",
+            "recentEvents",
+        ],
+    },
+    {
+        "provider": "worker",
+        "method": "get",
+        "path": "/api/v1/worker/telemetry/stream",
+        "security_scheme": "bearerAuth",
     },
 ]
 

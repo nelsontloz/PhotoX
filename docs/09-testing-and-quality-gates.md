@@ -159,6 +159,7 @@ Contract runner execution model:
   - `reuse`: no compose lifecycle, checks run against existing stack
 - It waits for provider OpenAPI endpoints to become reachable before contract assertions.
 - `--skip-stack` remains available as a compatibility alias for `--stack-mode reuse`.
+- API assertions include worker telemetry contracts (`GET /api/v1/worker/telemetry/snapshot`, `GET /api/v1/worker/telemetry/stream`) in addition to auth/uploads/library contracts.
 
 When package test scripts are available, run:
 

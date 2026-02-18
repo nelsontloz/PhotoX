@@ -32,6 +32,7 @@
 
 - Consumer/provider compatibility is enforced with `python3 scripts/contract_runner.py --mode all --base-url http://localhost:8088`.
 - API contract checks compare consumer-required operations and fields against provider OpenAPI specs.
+- API enforcement currently covers `auth`, `uploads`, `library`, and worker telemetry endpoints (`/api/v1/worker/telemetry/snapshot`, `/api/v1/worker/telemetry/stream`).
 - Queue contract checks validate required payload keys for async boundaries (starting with ingest -> worker `media.process`).
 
 Compatibility policy:
@@ -49,6 +50,7 @@ Consumer/provider ownership matrix (v1):
 - `apps/web` -> `auth-service`: `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/me`.
 - `apps/web` -> `ingest-service`: `/api/v1/uploads/init`, `/api/v1/uploads/{uploadId}/part`, `/api/v1/uploads/{uploadId}/complete`.
 - `apps/web` -> `library-service`: `/api/v1/library/timeline`, `/api/v1/media/{mediaId}/content`.
+- `apps/web` -> `worker-service`: `/api/v1/worker/telemetry/snapshot`, `/api/v1/worker/telemetry/stream`.
 - `ingest-service` -> `worker-service` queue: `media.process`.
 
 ---
@@ -323,6 +325,58 @@ Notes:
     "original": "/api/v1/media/med_789/content?variant=original"
   }
 }
+```
+
+---
+
+## 4b) Worker Service
+
+### Endpoints
+Implemented now:
+- `GET /worker/telemetry/snapshot`
+- `GET /worker/telemetry/stream` (SSE)
+- `GET /worker/docs`
+- `GET /worker/openapi.json`
+
+### Worker Telemetry Auth Requirements
+- Telemetry endpoints require bearer auth and active admin privileges.
+- Missing/invalid tokens return `401` with the global error envelope.
+- Non-admin users return `403 AUTH_FORBIDDEN`.
+
+### `GET /worker/telemetry/snapshot` response shape
+```json
+{
+  "schemaVersion": "2026-02-telemetry-v1",
+  "generatedAt": "2026-02-18T00:00:00.000Z",
+  "queueCounts": {
+    "media.process": {
+      "waiting": 0,
+      "active": 0,
+      "completed": 0,
+      "failed": 0,
+      "delayed": 0
+    }
+  },
+  "counters": {},
+  "rates": {},
+  "workerHealth": {},
+  "inFlightJobs": [],
+  "recentFailures": {},
+  "recentEvents": []
+}
+```
+
+### `GET /worker/telemetry/stream` SSE events
+- `heartbeat` every 10 seconds.
+- `event` on lifecycle changes (`active`, `completed`, `failed`, `stalled`, `error`).
+- `state_sync` periodic compact sync and initial state on connect.
+- Every event payload includes `schemaVersion`.
+
+SSE frame example:
+```text
+event: state_sync
+data: {"schemaVersion":"2026-02-telemetry-v1","state":{"generatedAt":"2026-02-18T00:00:00.000Z"}}
+
 ```
 
 ---

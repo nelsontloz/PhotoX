@@ -14,6 +14,14 @@ describe("worker media status integration", () => {
     app = buildApp({
       databaseUrl: TEST_DATABASE_URL,
       serviceName: "worker-service-test",
+      jwtAccessSecret: "worker-test-secret",
+      queueStatsPoller: {
+        async start() {},
+        async close() {},
+        getSnapshot() {
+          return {};
+        }
+      },
       mediaProcessWorker: {
         async close() {}
       },

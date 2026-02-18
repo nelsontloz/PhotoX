@@ -98,7 +98,8 @@ async function request(path, options = {}) {
   const response = await fetch(buildUrl(path), {
     method: options.method || "GET",
     headers,
-    body
+    body,
+    signal: options.signal
   });
 
   const expectedResponse = options.expect || "json";
@@ -307,6 +308,124 @@ export async function resetAdminManagedUserPassword(userId, password) {
     method: "POST",
     body: { password }
   });
+}
+
+export async function fetchWorkerTelemetrySnapshot() {
+  return requestWithAutoRefresh("/worker/telemetry/snapshot", {
+    method: "GET"
+  });
+}
+
+function parseSseChunks(buffer, onMessage) {
+  const messages = buffer.split("\n\n");
+  const trailing = messages.pop() || "";
+
+  for (const rawMessage of messages) {
+    const lines = rawMessage.split("\n");
+    let event = "message";
+    const dataLines = [];
+
+    for (const line of lines) {
+      if (line.startsWith("event:")) {
+        event = line.slice(6).trim();
+      } else if (line.startsWith("data:")) {
+        dataLines.push(line.slice(5).trim());
+      }
+    }
+
+    if (dataLines.length === 0) {
+      continue;
+    }
+
+    try {
+      const payload = JSON.parse(dataLines.join("\n"));
+      onMessage({ event, payload });
+    } catch (_err) {
+      // Ignore malformed frames and continue stream parsing.
+    }
+  }
+
+  return trailing;
+}
+
+export function openWorkerTelemetryStream({ onMessage, onOpen, onError }) {
+  let stopped = false;
+  const abortController = new AbortController();
+
+  const start = async () => {
+    try {
+      const session = readSession();
+      if (!session?.accessToken) {
+        throw new ApiClientError(401, "AUTH_REQUIRED", "Please login to continue", {});
+      }
+
+      let accessToken = session.accessToken;
+      let response;
+      try {
+        response = await request("/worker/telemetry/stream", {
+          method: "GET",
+          expect: "raw",
+          accessToken,
+          headers: {
+            Accept: "text/event-stream"
+          },
+          signal: abortController.signal
+        });
+      } catch (error) {
+        if (error instanceof ApiClientError && error.status === 401 && session.refreshToken) {
+          const refreshed = await refreshSessionToken(session.refreshToken);
+          writeSession(refreshed);
+          accessToken = refreshed.accessToken;
+          response = await request("/worker/telemetry/stream", {
+            method: "GET",
+            expect: "raw",
+            accessToken,
+            headers: {
+              Accept: "text/event-stream"
+            },
+            signal: abortController.signal
+          });
+        } else {
+          throw error;
+        }
+      }
+
+      if (!response.body || typeof response.body.getReader !== "function") {
+        throw new Error("SSE stream body is not readable");
+      }
+
+      if (typeof onOpen === "function") {
+        onOpen();
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (!stopped) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        buffer = parseSseChunks(buffer, onMessage);
+      }
+    } catch (error) {
+      if (!stopped && typeof onError === "function") {
+        onError(error);
+      }
+    }
+  };
+
+  start();
+
+  return {
+    close() {
+      stopped = true;
+      abortController.abort();
+    }
+  };
 }
 
 export function createIdempotencyKey(prefix) {

@@ -8,11 +8,14 @@ import {
   createAdminManagedUser,
   disableAdminManagedUser,
   fetchCurrentUser,
+  fetchWorkerTelemetrySnapshot,
   formatApiError,
   listAdminUsers,
+  openWorkerTelemetryStream,
   resetAdminManagedUserPassword,
   updateAdminManagedUser
 } from "../../lib/api";
+import { countActiveAdmins } from "../../lib/admin-metrics";
 import { buildLoginPath } from "../../lib/navigation";
 import AppSidebar from "../components/app-sidebar";
 
@@ -63,6 +66,8 @@ export default function AdminPage() {
   const [userFilter, setUserFilter] = useState("");
   const [isCreateFormVisible, setIsCreateFormVisible] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [workerTelemetry, setWorkerTelemetry] = useState(null);
+  const [workerStreamStatus, setWorkerStreamStatus] = useState("connecting");
 
   async function refreshUsers() {
     const payload = await listAdminUsers({ limit: 100, offset: 0 });
@@ -110,6 +115,125 @@ export default function AdminPage() {
     };
   }, [router]);
 
+  useEffect(() => {
+    if (!sessionUser?.isAdmin) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    let pollTimer = null;
+    let reconnectTimer = null;
+    let reconnectAttempts = 0;
+    let streamSubscription = null;
+
+    const clearTimers = () => {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+    };
+
+    const loadSnapshot = async () => {
+      const snapshot = await fetchWorkerTelemetrySnapshot();
+      if (!cancelled) {
+        setWorkerTelemetry(snapshot);
+      }
+    };
+
+    const ensurePollingFallback = () => {
+      if (pollTimer || cancelled) {
+        return;
+      }
+
+      setWorkerStreamStatus("polling");
+      loadSnapshot().catch(() => {});
+      pollTimer = setInterval(() => {
+        loadSnapshot().catch(() => {});
+      }, 5000);
+    };
+
+    const connectStream = () => {
+      if (cancelled) {
+        return;
+      }
+
+      setWorkerStreamStatus("connecting");
+      streamSubscription = openWorkerTelemetryStream({
+        onOpen: () => {
+          if (cancelled) {
+            return;
+          }
+
+          reconnectAttempts = 0;
+          setWorkerStreamStatus("connected");
+          if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+          }
+        },
+        onMessage: ({ event, payload }) => {
+          if (cancelled) {
+            return;
+          }
+
+          if (event === "state_sync" && payload?.state) {
+            setWorkerTelemetry(payload.state);
+            return;
+          }
+
+          if (event === "event" && payload?.event) {
+            setWorkerTelemetry((current) => {
+              if (!current) {
+                return current;
+              }
+
+              const nextEvents = [payload.event, ...(current.recentEvents || [])].slice(0, 120);
+              return {
+                ...current,
+                recentEvents: nextEvents
+              };
+            });
+          }
+        },
+        onError: () => {
+          if (cancelled) {
+            return;
+          }
+
+          ensurePollingFallback();
+
+          reconnectAttempts += 1;
+          const backoffMs = Math.min(30_000, 1_000 * 2 ** reconnectAttempts);
+          setWorkerStreamStatus("reconnecting");
+          reconnectTimer = setTimeout(() => {
+            if (streamSubscription) {
+              streamSubscription.close();
+              streamSubscription = null;
+            }
+            connectStream();
+          }, backoffMs);
+        }
+      });
+    };
+
+    loadSnapshot().catch(() => {
+      ensurePollingFallback();
+    });
+    connectStream();
+
+    return () => {
+      cancelled = true;
+      clearTimers();
+      if (streamSubscription) {
+        streamSubscription.close();
+      }
+    };
+  }, [sessionUser?.isAdmin]);
+
   const createMutation = useMutation({
     mutationFn: () =>
       createAdminManagedUser({
@@ -128,7 +252,7 @@ export default function AdminPage() {
   });
 
   const activeAdminCount = useMemo(
-    () => users.filter((item) => item.user.isAdmin && item.user.isActive).length,
+    () => countActiveAdmins(users),
     [users]
   );
 
@@ -152,6 +276,16 @@ export default function AdminPage() {
   );
 
   const storagePercent = clampPercent((totalStorageGb / 4000) * 100);
+
+  const workerBacklog = useMemo(() => {
+    const counts = workerTelemetry?.queueCounts || {};
+    return Object.values(counts).reduce(
+      (sum, queueCount) => sum + Number(queueCount.waiting || 0) + Number(queueCount.delayed || 0),
+      0
+    );
+  }, [workerTelemetry]);
+
+  const workerInFlight = useMemo(() => Number(workerTelemetry?.inFlightJobs?.length || 0), [workerTelemetry]);
 
   async function onToggleAdmin(userId, nextValue, isSelf) {
     if (isSelf && !nextValue) {
@@ -347,12 +481,20 @@ export default function AdminPage() {
             </form>
           ) : null}
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5 md:gap-6">
             <article className="relative flex h-32 flex-col justify-between overflow-hidden rounded-xl border border-[#e7f0f3] bg-white p-6 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#4c869a]">Total Users</p>
               <div className="flex items-end justify-between">
                 <p className="text-4xl font-bold text-[#0d181b]">{users.length}</p>
                 <span className="rounded bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-600">{activeUsersCount} active</span>
+              </div>
+            </article>
+
+            <article className="relative flex h-32 flex-col justify-between overflow-hidden rounded-xl border border-[#e7f0f3] bg-white p-6 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#4c869a]">Active Admins</p>
+              <div className="flex items-end justify-between">
+                <p className="text-4xl font-bold text-[#0d181b]">{activeAdminCount}</p>
+                <span className="rounded bg-cyan-50 px-2 py-1 text-xs font-bold text-cyan-600">privileged</span>
               </div>
             </article>
 
@@ -372,12 +514,26 @@ export default function AdminPage() {
             </article>
 
             <article className="relative flex h-32 flex-col justify-between overflow-hidden rounded-xl border border-[#e7f0f3] bg-white p-6 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#4c869a]">Worker Backlog</p>
+              <div className="flex items-end justify-between">
+                <p className="text-4xl font-bold text-[#0d181b]">{workerBacklog}</p>
+                <span className="rounded bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700">{workerInFlight} active</span>
+              </div>
+            </article>
+
+            <article className="relative flex h-32 flex-col justify-between overflow-hidden rounded-xl border border-[#e7f0f3] bg-white p-6 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#4c869a]">System Health</p>
               <div className="flex items-center gap-3">
-                <span className="inline-flex h-3 w-3 rounded-full bg-emerald-500" />
-                <p className="text-2xl font-bold text-[#0d181b]">Operational</p>
+                <span
+                  className={`inline-flex h-3 w-3 rounded-full ${
+                    workerStreamStatus === "connected" ? "bg-emerald-500" : "bg-amber-500"
+                  }`}
+                />
+                <p className="text-2xl font-bold text-[#0d181b]">
+                  {workerStreamStatus === "connected" ? "Operational" : "Degraded"}
+                </p>
               </div>
-              <p className="text-xs font-medium text-emerald-600">Admin API reachable and session verified</p>
+              <p className="text-xs font-medium text-[#4c869a]">Telemetry stream: {workerStreamStatus}</p>
             </article>
           </div>
 

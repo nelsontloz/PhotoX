@@ -145,37 +145,123 @@ function createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger, c
   };
 }
 
-function createMediaDerivativesWorker({ queueName, redisUrl, originalsRoot, derivedRoot, logger, mediaRepo }) {
+function createMediaDerivativesWorker({ queueName, redisUrl, originalsRoot, derivedRoot, logger, mediaRepo, telemetry }) {
   const worker = new Worker(queueName, createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger, mediaRepo }), {
     connection: redisConnectionFromUrl(redisUrl),
     concurrency: 2
   });
 
+  worker.on("active", (job) => {
+    telemetry?.recordEvent({
+      queue: queueName,
+      event: "active",
+      jobId: job?.id,
+      mediaId: job?.data?.mediaId,
+      attempts: job?.attemptsMade
+    });
+  });
+
+  worker.on("completed", (job) => {
+    const processedOn = Number(job?.processedOn || 0);
+    const finishedOn = Number(job?.finishedOn || Date.now());
+    const durationMs = processedOn > 0 && finishedOn >= processedOn ? finishedOn - processedOn : null;
+
+    logger.info(
+      {
+        queueName,
+        event: "completed",
+        jobId: job?.id,
+        mediaId: job?.data?.mediaId,
+        durationMs,
+        attempts: Number(job?.attemptsMade || 0)
+      },
+      "worker job completed"
+    );
+
+    telemetry?.recordEvent({
+      queue: queueName,
+      event: "completed",
+      jobId: job?.id,
+      mediaId: job?.data?.mediaId,
+      attempts: job?.attemptsMade,
+      durationMs
+    });
+  });
+
   worker.on("failed", (job, err) => {
+    const processedOn = Number(job?.processedOn || 0);
+    const finishedOn = Date.now();
+    const durationMs = processedOn > 0 && finishedOn >= processedOn ? finishedOn - processedOn : null;
+
     logger.error(
       {
         queueName,
+        event: "failed",
         jobId: job?.id,
         mediaId: job?.data?.mediaId,
+        durationMs,
+        attempts: Number(job?.attemptsMade || 0),
         err
       },
       "media derivatives job failed"
     );
 
+    telemetry?.recordEvent({
+      queue: queueName,
+      event: "failed",
+      jobId: job?.id,
+      mediaId: job?.data?.mediaId,
+      attempts: job?.attemptsMade,
+      durationMs,
+      failureCode: err?.code || null,
+      errorClass: err?.name || "Error"
+    });
+
     persistFailedStatusOnTerminalFailure({ job, mediaRepo, logger, queueName });
+  });
+
+  worker.on("stalled", (jobId) => {
+    logger.warn(
+      {
+        queueName,
+        event: "stalled",
+        jobId
+      },
+      "worker job stalled"
+    );
+
+    telemetry?.recordEvent({
+      queue: queueName,
+      event: "stalled",
+      jobId
+    });
+  });
+
+  worker.on("error", (err) => {
+    logger.error(
+      {
+        queueName,
+        event: "error",
+        err
+      },
+      "worker internal error"
+    );
+
+    telemetry?.markWorkerError(queueName, err);
   });
 
   return worker;
 }
 
-function createMediaProcessWorker({ queueName, redisUrl, originalsRoot, derivedRoot, logger, mediaRepo }) {
+function createMediaProcessWorker({ queueName, redisUrl, originalsRoot, derivedRoot, logger, mediaRepo, telemetry }) {
   return createMediaDerivativesWorker({
     queueName,
     redisUrl,
     originalsRoot,
     derivedRoot,
     logger,
-    mediaRepo
+    mediaRepo,
+    telemetry
   });
 }
 
