@@ -128,6 +128,10 @@ python3 scripts/smoke_swagger_docs.py
 python3 scripts/contract_runner.py --mode all --base-url http://localhost:8088
 ```
 
+Smoke check note:
+- `scripts/smoke_swagger_docs.py` starts each Node service locally and polls readiness endpoints (`/health`, docs, OpenAPI) with bounded retries before failing.
+- On failure, it reports the tail of service stdout/stderr to speed up diagnosis.
+
 Note:
 - `contract_runner.py` supports configurable compose lifecycle with `--stack-mode`:
   - `rebuild` (default): stop, rebuild in parallel, start, then run checks

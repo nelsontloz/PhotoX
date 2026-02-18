@@ -154,6 +154,7 @@ Implemented now:
 - After successful derivative generation, worker updates `media.status` from `processing` to `ready`.
 - On terminal derivative-processing failure (retry attempts exhausted), worker updates `media.status` to `failed` only when status is still `processing`.
 - Worker uses a per-media advisory lock to serialize concurrent `media.process` / `media.derivatives.generate` execution for the same media ID.
+- Lock acquisition is non-blocking (`pg_try_advisory_lock`) with bounded retry/backoff; if contention persists, the job fails with a retriable lock-unavailable error and is retried by BullMQ policy.
 - Worker telemetry tracks lifecycle events (`active`, `completed`, `failed`, `stalled`, `error`) with bounded in-memory retention and queue depth polling.
 - `/metrics` now includes worker job counters, active gauges, queue depth gauges, and duration histogram series.
 - `scripts/contract_runner.py` enforces worker telemetry consumer/provider contracts for `/api/v1/worker/telemetry/snapshot` and `/api/v1/worker/telemetry/stream`.

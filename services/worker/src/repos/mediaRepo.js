@@ -3,13 +3,81 @@ function buildMediaRepo(db) {
     return executor || db;
   }
 
+  async function acquireLockClient(executor) {
+    if (executor) {
+      return { client: executor, shouldReleaseClient: false };
+    }
+
+    if (typeof db.connect === "function") {
+      const client = await db.connect();
+      return { client, shouldReleaseClient: true };
+    }
+
+    return { client: db, shouldReleaseClient: false };
+  }
+
   return {
-    async acquireProcessingLock(mediaId, executor) {
-      await queryable(executor).query("SELECT pg_advisory_lock(hashtext($1))", [mediaId]);
+    async acquireProcessingLock(mediaId, optionsOrExecutor, maybeExecutor) {
+      const options =
+        optionsOrExecutor && typeof optionsOrExecutor.query === "function" ? {} : optionsOrExecutor || {};
+      const executor =
+        optionsOrExecutor && typeof optionsOrExecutor.query === "function" ? optionsOrExecutor : maybeExecutor;
+      const tryOnly = Boolean(options.tryOnly);
+
+      const { client, shouldReleaseClient } = await acquireLockClient(executor);
+
+      try {
+        if (tryOnly) {
+          const result = await client.query("SELECT pg_try_advisory_lock(hashtext($1)) AS acquired", [mediaId]);
+          const acquired = Boolean(result.rows[0]?.acquired);
+
+          if (!acquired && shouldReleaseClient) {
+            client.release?.();
+          }
+
+          return {
+            acquired,
+            mediaId,
+            client: acquired ? client : null,
+            shouldReleaseClient: acquired ? shouldReleaseClient : false
+          };
+        }
+
+        await client.query("SELECT pg_advisory_lock(hashtext($1))", [mediaId]);
+        return {
+          acquired: true,
+          mediaId,
+          client,
+          shouldReleaseClient
+        };
+      } catch (err) {
+        if (shouldReleaseClient) {
+          client.release?.();
+        }
+        throw err;
+      }
     },
 
-    async releaseProcessingLock(mediaId, executor) {
-      await queryable(executor).query("SELECT pg_advisory_unlock(hashtext($1))", [mediaId]);
+    async releaseProcessingLock(lockHandleOrMediaId, executor) {
+      if (lockHandleOrMediaId && typeof lockHandleOrMediaId === "object" && lockHandleOrMediaId.mediaId) {
+        const lockHandle = lockHandleOrMediaId;
+
+        if (!lockHandle.client || !lockHandle.acquired) {
+          return;
+        }
+
+        try {
+          await lockHandle.client.query("SELECT pg_advisory_unlock(hashtext($1))", [lockHandle.mediaId]);
+        } finally {
+          if (lockHandle.shouldReleaseClient) {
+            lockHandle.client.release?.();
+          }
+        }
+
+        return;
+      }
+
+      await queryable(executor).query("SELECT pg_advisory_unlock(hashtext($1))", [lockHandleOrMediaId]);
     },
 
     async setStatus(mediaId, status, executor) {

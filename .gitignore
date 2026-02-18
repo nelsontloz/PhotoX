@@ -7,3 +7,8 @@ apps/*/.next/
 .env.local
 
 data/
+
+# local tooling/runtime artifacts
+scripts/__pycache__/
+telemetry-id
+.kilocodemodes
