@@ -48,6 +48,16 @@ function buildErrorEnvelopeSchema(code, message, details = {}) {
 }
 
 function toMediaDto(row) {
+  const metadata = row.exif_json && typeof row.exif_json === "object" ? row.exif_json : null;
+  const videoMetadata = metadata?.video || null;
+  const metadataPreview = {
+    durationSec: typeof videoMetadata?.durationSec === "number" ? videoMetadata.durationSec : null,
+    codec: typeof videoMetadata?.codec === "string" ? videoMetadata.codec : null,
+    fps: typeof videoMetadata?.fps === "number" ? videoMetadata.fps : null,
+    width: row.width,
+    height: row.height
+  };
+
   return {
     id: row.id,
     ownerId: row.owner_id,
@@ -61,6 +71,17 @@ function toMediaDto(row) {
       thumb: `/api/v1/media/${row.id}/content?variant=thumb`,
       small: `/api/v1/media/${row.id}/content?variant=small`,
       original: `/api/v1/media/${row.id}/content?variant=original`
+    },
+    metadataPreview,
+    metadata: {
+      capture: {
+        takenAt: row.taken_at ? new Date(row.taken_at).toISOString() : null,
+        uploadedAt: row.uploaded_at ? new Date(row.uploaded_at).toISOString() : new Date(row.created_at).toISOString()
+      },
+      image: metadata?.image || null,
+      video: videoMetadata,
+      location: row.location_json,
+      raw: metadata
     },
     flags: {
       favorite: row.favorite,
@@ -117,6 +138,17 @@ module.exports = async function libraryRoutes(app) {
                     width: { anyOf: [{ type: "integer" }, { type: "null" }] },
                     height: { anyOf: [{ type: "integer" }, { type: "null" }] },
                     location: { anyOf: [{ type: "object", additionalProperties: true }, { type: "null" }] },
+                    metadataPreview: {
+                      type: "object",
+                      required: ["durationSec", "codec", "fps", "width", "height"],
+                      properties: {
+                        durationSec: { anyOf: [{ type: "number" }, { type: "null" }] },
+                        codec: { anyOf: [{ type: "string" }, { type: "null" }] },
+                        fps: { anyOf: [{ type: "number" }, { type: "null" }] },
+                        width: { anyOf: [{ type: "integer" }, { type: "null" }] },
+                        height: { anyOf: [{ type: "integer" }, { type: "null" }] }
+                      }
+                    },
                     flags: {
                       type: "object",
                       required: ["favorite", "archived", "hidden", "deletedSoft"],
@@ -212,6 +244,35 @@ module.exports = async function libraryRoutes(app) {
                   width: { anyOf: [{ type: "integer" }, { type: "null" }] },
                   height: { anyOf: [{ type: "integer" }, { type: "null" }] },
                   location: { anyOf: [{ type: "object", additionalProperties: true }, { type: "null" }] },
+                  metadataPreview: {
+                    type: "object",
+                    required: ["durationSec", "codec", "fps", "width", "height"],
+                    properties: {
+                      durationSec: { anyOf: [{ type: "number" }, { type: "null" }] },
+                      codec: { anyOf: [{ type: "string" }, { type: "null" }] },
+                      fps: { anyOf: [{ type: "number" }, { type: "null" }] },
+                      width: { anyOf: [{ type: "integer" }, { type: "null" }] },
+                      height: { anyOf: [{ type: "integer" }, { type: "null" }] }
+                    }
+                  },
+                  metadata: {
+                    type: "object",
+                    required: ["capture", "image", "video", "location", "raw"],
+                    properties: {
+                      capture: {
+                        type: "object",
+                        required: ["takenAt", "uploadedAt"],
+                        properties: {
+                          takenAt: { anyOf: [{ type: "string", format: "date-time" }, { type: "null" }] },
+                          uploadedAt: { type: "string", format: "date-time" }
+                        }
+                      },
+                      image: { anyOf: [{ type: "object", additionalProperties: true }, { type: "null" }] },
+                      video: { anyOf: [{ type: "object", additionalProperties: true }, { type: "null" }] },
+                      location: { anyOf: [{ type: "object", additionalProperties: true }, { type: "null" }] },
+                      raw: { anyOf: [{ type: "object", additionalProperties: true }, { type: "null" }] }
+                    }
+                  },
                   flags: {
                     type: "object",
                     required: ["favorite", "archived", "hidden", "deletedSoft"],
@@ -289,6 +350,35 @@ module.exports = async function libraryRoutes(app) {
                   width: { anyOf: [{ type: "integer" }, { type: "null" }] },
                   height: { anyOf: [{ type: "integer" }, { type: "null" }] },
                   location: { anyOf: [{ type: "object", additionalProperties: true }, { type: "null" }] },
+                  metadataPreview: {
+                    type: "object",
+                    required: ["durationSec", "codec", "fps", "width", "height"],
+                    properties: {
+                      durationSec: { anyOf: [{ type: "number" }, { type: "null" }] },
+                      codec: { anyOf: [{ type: "string" }, { type: "null" }] },
+                      fps: { anyOf: [{ type: "number" }, { type: "null" }] },
+                      width: { anyOf: [{ type: "integer" }, { type: "null" }] },
+                      height: { anyOf: [{ type: "integer" }, { type: "null" }] }
+                    }
+                  },
+                  metadata: {
+                    type: "object",
+                    required: ["capture", "image", "video", "location", "raw"],
+                    properties: {
+                      capture: {
+                        type: "object",
+                        required: ["takenAt", "uploadedAt"],
+                        properties: {
+                          takenAt: { anyOf: [{ type: "string", format: "date-time" }, { type: "null" }] },
+                          uploadedAt: { type: "string", format: "date-time" }
+                        }
+                      },
+                      image: { anyOf: [{ type: "object", additionalProperties: true }, { type: "null" }] },
+                      video: { anyOf: [{ type: "object", additionalProperties: true }, { type: "null" }] },
+                      location: { anyOf: [{ type: "object", additionalProperties: true }, { type: "null" }] },
+                      raw: { anyOf: [{ type: "object", additionalProperties: true }, { type: "null" }] }
+                    }
+                  },
                   flags: {
                     type: "object",
                     required: ["favorite", "archived", "hidden", "deletedSoft"],

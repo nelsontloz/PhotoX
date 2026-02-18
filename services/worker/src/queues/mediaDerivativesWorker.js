@@ -1,6 +1,8 @@
 const { Worker } = require("bullmq");
 
 const { generateDerivativesForMedia } = require("../media/derivatives");
+const { extractMediaMetadata } = require("../media/metadata");
+const { resolveAbsolutePath } = require("../media/paths");
 
 function redisConnectionFromUrl(redisUrl) {
   const parsed = new URL(redisUrl);
@@ -52,6 +54,41 @@ function createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger, c
       throw new Error("Invalid derivatives job payload: mediaId and relativePath are required");
     }
 
+    const sourceMedia = mediaRepo ? await mediaRepo.findById(mediaId) : null;
+    const mimeType = sourceMedia?.mime_type;
+    const uploadedAt = sourceMedia?.created_at || new Date().toISOString();
+
+    if (mediaRepo) {
+      try {
+        const metadata = await extractMediaMetadata({
+          sourceAbsolutePath: resolveAbsolutePath(originalsRoot, relativePath),
+          mimeType,
+          uploadedAt,
+          commandRunner
+        });
+
+        await mediaRepo.upsertMetadata({
+          mediaId,
+          takenAt: metadata.takenAt,
+          uploadedAt,
+          width: metadata.width,
+          height: metadata.height,
+          location: metadata.location,
+          exif: metadata.exif
+        });
+      } catch (metadataError) {
+        logger.warn(
+          {
+            queueName: job.queueName,
+            jobId: job.id,
+            mediaId,
+            err: metadataError
+          },
+          "metadata extraction failed; continuing derivative processing"
+        );
+      }
+    }
+
     const derivatives = await generateDerivativesForMedia({
       originalsRoot,
       derivedRoot,
@@ -83,14 +120,10 @@ function createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger, c
 }
 
 function createMediaDerivativesWorker({ queueName, redisUrl, originalsRoot, derivedRoot, logger, mediaRepo }) {
-  const worker = new Worker(
-    queueName,
-    createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger, mediaRepo }),
-    {
-      connection: redisConnectionFromUrl(redisUrl),
-      concurrency: 2
-    }
-  );
+  const worker = new Worker(queueName, createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger, mediaRepo }), {
+    connection: redisConnectionFromUrl(redisUrl),
+    concurrency: 2
+  });
 
   worker.on("failed", (job, err) => {
     logger.error(
@@ -109,9 +142,21 @@ function createMediaDerivativesWorker({ queueName, redisUrl, originalsRoot, deri
   return worker;
 }
 
+function createMediaProcessWorker({ queueName, redisUrl, originalsRoot, derivedRoot, logger, mediaRepo }) {
+  return createMediaDerivativesWorker({
+    queueName,
+    redisUrl,
+    originalsRoot,
+    derivedRoot,
+    logger,
+    mediaRepo
+  });
+}
+
 module.exports = {
   isTerminalFailure,
   persistFailedStatusOnTerminalFailure,
   createMediaDerivativesProcessor,
-  createMediaDerivativesWorker
+  createMediaDerivativesWorker,
+  createMediaProcessWorker
 };

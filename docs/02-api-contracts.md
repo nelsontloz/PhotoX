@@ -265,6 +265,8 @@ Notes:
 - `playback` is a video-only variant and serves a derived `video/webm` (VP9/Opus) artifact.
 - If a `playback` derivative is missing, library enqueues `media.derivatives.generate` and returns a retriable
   `503 PLAYBACK_DERIVATIVE_NOT_READY` error.
+- Timeline items expose compact additive metadata as `metadataPreview` (`durationSec`, `codec`, `fps`, `width`, `height`).
+- Media detail responses expose full additive metadata in `media.metadata` (capture/image/video/location/raw).
 
 ### Timeline Response
 ```json

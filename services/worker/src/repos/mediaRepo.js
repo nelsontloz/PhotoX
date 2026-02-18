@@ -31,6 +31,55 @@ function buildMediaRepo(db) {
       );
 
       return result.rows[0] || null;
+    },
+
+    async upsertMetadata(
+      {
+        mediaId,
+        takenAt,
+        uploadedAt,
+        width,
+        height,
+        location,
+        exif
+      },
+      executor
+    ) {
+      const result = await queryable(executor).query(
+        `
+          INSERT INTO media_metadata (
+            media_id,
+            taken_at,
+            uploaded_at,
+            exif_json,
+            location_json,
+            width,
+            height
+          )
+          VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7)
+          ON CONFLICT (media_id)
+          DO UPDATE SET
+            taken_at = COALESCE(EXCLUDED.taken_at, media_metadata.taken_at),
+            uploaded_at = COALESCE(media_metadata.uploaded_at, EXCLUDED.uploaded_at),
+            exif_json = COALESCE(EXCLUDED.exif_json, media_metadata.exif_json),
+            location_json = COALESCE(EXCLUDED.location_json, media_metadata.location_json),
+            width = COALESCE(EXCLUDED.width, media_metadata.width),
+            height = COALESCE(EXCLUDED.height, media_metadata.height),
+            updated_at = NOW()
+          RETURNING media_id, taken_at, uploaded_at, width, height, exif_json, location_json, updated_at
+        `,
+        [
+          mediaId,
+          takenAt || null,
+          uploadedAt,
+          exif ? JSON.stringify(exif) : null,
+          location ? JSON.stringify(location) : null,
+          width || null,
+          height || null
+        ]
+      );
+
+      return result.rows[0] || null;
     }
   };
 }
@@ -38,4 +87,3 @@ function buildMediaRepo(db) {
 module.exports = {
   buildMediaRepo
 };
-

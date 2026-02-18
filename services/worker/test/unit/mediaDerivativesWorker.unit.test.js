@@ -53,13 +53,34 @@ describe("media derivatives processor", () => {
     };
 
     const mediaRepo = {
+      findById: vi.fn().mockResolvedValue({
+        id: mediaId,
+        mime_type: "image/jpeg",
+        created_at: "2026-02-18T00:00:00.000Z"
+      }),
+      upsertMetadata: vi.fn().mockResolvedValue({ media_id: mediaId }),
       setStatus: vi.fn().mockResolvedValue({ id: mediaId, status: "ready" })
     };
+
+    const commandRunner = vi.fn().mockResolvedValue({
+      stdout: JSON.stringify({
+        format: {
+          tags: {
+            DateTimeOriginal: "2026:02:17 10:00:00",
+            Make: "Canon",
+            Model: "EOS"
+          }
+        },
+        streams: []
+      }),
+      stderr: ""
+    });
 
     const processor = createMediaDerivativesProcessor({
       originalsRoot,
       derivedRoot,
       mediaRepo,
+      commandRunner,
       logger
     });
 
@@ -74,6 +95,7 @@ describe("media derivatives processor", () => {
 
     expect(result.mediaId).toBe(mediaId);
     expect(result.derivatives).toHaveLength(2);
+    expect(mediaRepo.upsertMetadata).toHaveBeenCalled();
     expect(mediaRepo.setStatus).toHaveBeenCalledWith(mediaId, "ready");
 
     const thumbPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-thumb.webp`);
@@ -112,6 +134,12 @@ describe("media derivatives processor", () => {
     });
 
     const mediaRepo = {
+      findById: vi.fn().mockResolvedValue({
+        id: mediaId,
+        mime_type: "video/mp4",
+        created_at: "2026-02-18T00:00:00.000Z"
+      }),
+      upsertMetadata: vi.fn().mockResolvedValue({ media_id: mediaId }),
       setStatus: vi.fn().mockResolvedValue({ id: mediaId, status: "ready" })
     };
 
@@ -147,6 +175,7 @@ describe("media derivatives processor", () => {
     expect(result.mediaId).toBe(mediaId);
     expect(result.derivatives).toHaveLength(3);
     expect(result.derivatives.map((derivative) => derivative.variant)).toEqual(["thumb", "small", "playback"]);
+    expect(mediaRepo.upsertMetadata).toHaveBeenCalled();
     expect(mediaRepo.setStatus).toHaveBeenCalledWith(mediaId, "ready");
 
     const thumbPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-thumb.webp`);

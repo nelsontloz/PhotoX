@@ -5,7 +5,7 @@ const swaggerUi = require("@fastify/swagger-ui");
 const { loadConfig } = require("./config");
 const { createPool } = require("./db");
 const { buildMediaRepo } = require("./repos/mediaRepo");
-const { createMediaDerivativesWorker } = require("./queues/mediaDerivativesWorker");
+const { createMediaDerivativesWorker, createMediaProcessWorker } = require("./queues/mediaDerivativesWorker");
 
 function buildApp(overrides = {}) {
   const config = loadConfig(overrides);
@@ -18,7 +18,8 @@ function buildApp(overrides = {}) {
     media: buildMediaRepo(db)
   });
   app.decorate("workers", {
-    mediaDerivatives: overrides.mediaDerivativesWorker || null
+    mediaDerivatives: overrides.mediaDerivativesWorker || null,
+    mediaProcess: overrides.mediaProcessWorker || null
   });
 
   app.register(swagger, {
@@ -45,6 +46,17 @@ function buildApp(overrides = {}) {
   app.get("/api/v1/worker/openapi.json", async () => app.swagger());
 
   app.addHook("onReady", async () => {
+    if (!app.workers.mediaProcess) {
+      app.workers.mediaProcess = createMediaProcessWorker({
+        queueName: config.mediaProcessQueueName,
+        redisUrl: config.redisUrl,
+        originalsRoot: config.uploadOriginalsPath,
+        derivedRoot: config.uploadDerivedPath,
+        mediaRepo: app.repos.media,
+        logger: app.log
+      });
+    }
+
     if (!app.workers.mediaDerivatives) {
       app.workers.mediaDerivatives = createMediaDerivativesWorker({
         queueName: config.mediaDerivativesQueueName,
@@ -58,6 +70,10 @@ function buildApp(overrides = {}) {
   });
 
   app.addHook("onClose", async () => {
+    if (!overrides.mediaProcessWorker && app.workers.mediaProcess) {
+      await app.workers.mediaProcess.close();
+    }
+
     if (!overrides.mediaDerivativesWorker && app.workers.mediaDerivatives) {
       await app.workers.mediaDerivatives.close();
     }

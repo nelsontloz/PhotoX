@@ -21,7 +21,11 @@ function loadConfig(overrides = {}) {
     mediaDerivativesQueueName:
       overrides.mediaDerivativesQueueName ||
       process.env.MEDIA_DERIVATIVES_QUEUE_NAME ||
-      "media.derivatives.generate"
+      "media.derivatives.generate",
+    mediaProcessQueueName:
+      overrides.mediaProcessQueueName ||
+      process.env.MEDIA_PROCESS_QUEUE_NAME ||
+      "media.process"
   };
 }
 

@@ -14,6 +14,9 @@ describe("worker media status integration", () => {
     app = buildApp({
       databaseUrl: TEST_DATABASE_URL,
       serviceName: "worker-service-test",
+      mediaProcessWorker: {
+        async close() {}
+      },
       mediaDerivativesWorker: {
         async close() {}
       }
@@ -71,4 +74,3 @@ describe("worker media status integration", () => {
     expect(updated.status).toBe("failed");
   });
 });
-

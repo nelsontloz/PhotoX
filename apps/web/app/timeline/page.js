@@ -81,6 +81,25 @@ function formatModalTime(value) {
   });
 }
 
+function formatDurationSeconds(value) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return null;
+  }
+
+  const totalSeconds = Math.round(value);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatDimensions(width, height) {
+  if (!Number.isFinite(width) || !Number.isFinite(height)) {
+    return null;
+  }
+
+  return `${width}x${height}`;
+}
+
 function normalizeDayKey(value) {
   if (!value) {
     return "unknown";
@@ -393,6 +412,7 @@ export default function TimelinePage() {
   }, [activeMediaId, items]);
 
   const activeItem = activeIndex >= 0 ? items[activeIndex] : null;
+  const activeMetadataPreview = activeItem?.metadataPreview || null;
   const canGoPrev = activeIndex > 0;
   const canGoNext =
     activeIndex >= 0 && (activeIndex < items.length - 1 || (activeIndex === items.length - 1 && timelineQuery.hasNextPage));
@@ -721,6 +741,18 @@ export default function TimelinePage() {
                   <span>{formatModalTime(activeItem.takenAt || activeItem.uploadedAt)}</span>
                   <span className="h-1 w-1 rounded-full bg-white/40" />
                   <span>{activeItem.mimeType || "image/jpeg"}</span>
+                  {formatDimensions(activeMetadataPreview?.width, activeMetadataPreview?.height) ? (
+                    <>
+                      <span className="h-1 w-1 rounded-full bg-white/40" />
+                      <span>{formatDimensions(activeMetadataPreview?.width, activeMetadataPreview?.height)}</span>
+                    </>
+                  ) : null}
+                  {isVideoMimeType(activeItem.mimeType) && formatDurationSeconds(activeMetadataPreview?.durationSec) ? (
+                    <>
+                      <span className="h-1 w-1 rounded-full bg-white/40" />
+                      <span>{formatDurationSeconds(activeMetadataPreview?.durationSec)}</span>
+                    </>
+                  ) : null}
                   <span className="h-1 w-1 rounded-full bg-white/40" />
                   <span>PhotoX Viewer</span>
                 </div>

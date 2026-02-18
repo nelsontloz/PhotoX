@@ -79,6 +79,10 @@ describe("library integration", () => {
     mimeType,
     createdAt,
     takenAt,
+    width,
+    height,
+    exif,
+    location,
     favorite,
     archived,
     hidden,
@@ -94,10 +98,10 @@ describe("library integration", () => {
 
     await app.db.query(
       `
-        INSERT INTO media_metadata (media_id, taken_at, uploaded_at)
-        VALUES ($1, $2, $3)
+        INSERT INTO media_metadata (media_id, taken_at, uploaded_at, width, height, exif_json, location_json)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
       `,
-      [id, takenAt || null, createdAt]
+      [id, takenAt || null, createdAt, width || null, height || null, exif ? JSON.stringify(exif) : null, location ? JSON.stringify(location) : null]
     );
 
     await app.db.query(
@@ -500,6 +504,18 @@ describe("library integration", () => {
       relativePath: `${ownerId}/2026/02/${mediaId}.jpg`,
       mimeType: "image/jpeg",
       createdAt: "2026-02-16T08:00:00.000Z",
+      width: 1920,
+      height: 1080,
+      exif: {
+        image: {
+          make: "Canon",
+          model: "EOS"
+        }
+      },
+      location: {
+        lat: 37.7749,
+        lon: -122.4194
+      },
       favorite: true,
       archived: false,
       hidden: false
@@ -517,6 +533,21 @@ describe("library integration", () => {
     const detailBody = jsonBody(detail);
     expect(detailBody.media.id).toBe(mediaId);
     expect(detailBody.media.ownerId).toBe(ownerId);
+    expect(detailBody.media.metadataPreview).toEqual({
+      durationSec: null,
+      codec: null,
+      fps: null,
+      width: 1920,
+      height: 1080
+    });
+    expect(detailBody.media.metadata.image).toEqual({
+      make: "Canon",
+      model: "EOS"
+    });
+    expect(detailBody.media.metadata.location).toEqual({
+      lat: 37.7749,
+      lon: -122.4194
+    });
     expect(detailBody.media.flags.favorite).toBe(true);
   });
 

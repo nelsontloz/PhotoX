@@ -107,6 +107,8 @@ Notes:
 - If a requested derivative is missing, library-service enqueues `media.derivatives.generate` and immediately serves source media bytes while the worker generates derivatives.
 - Video media support `playback` content variant, which serves derived `video/webm` (VP9/Opus).
 - If `playback` is requested before the derived artifact exists, library-service enqueues derivative generation and returns retriable `503 PLAYBACK_DERIVATIVE_NOT_READY`.
+- Timeline responses include additive `metadataPreview` fields (`durationSec`, `codec`, `fps`, `width`, `height`).
+- Media detail responses include additive `metadata` fields for capture/image/video/location/raw metadata.
 
 Planned/pending:
 - `albumId` and `personId` timeline filters (deferred to P4/P6 relation wiring)
@@ -144,11 +146,12 @@ Implemented now:
 - `GET /api/v1/worker/docs`
 - `GET /api/v1/worker/openapi.json`
 - BullMQ consumer for `media.derivatives.generate` that creates image `thumb`/`small` WebP derivatives and video `playback` WebM (VP9/Opus) derivatives
+- BullMQ consumer for `media.process` that extracts photo/video metadata, persists `media_metadata`, and generates derivatives for new uploads
 - After successful derivative generation, worker updates `media.status` from `processing` to `ready`.
 - On terminal derivative-processing failure (retry attempts exhausted), worker updates `media.status` to `failed`.
 
 Planned/pending:
-- worker processors for `media.process`, metadata, search index, face index, and cleanup
+- worker processors for metadata, search index, face index, and cleanup
 
 ### ml-service - partial
 
