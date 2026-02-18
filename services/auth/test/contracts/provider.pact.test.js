@@ -1,11 +1,8 @@
-const path = require("node:path");
 const argon2 = require("argon2");
 const { Verifier } = require("@pact-foundation/pact");
 const { buildApp } = require("../../src/app");
 const { hashRefreshToken } = require("../../src/auth/tokens");
 const mockPool = require("./mockPool");
-
-const PACT_DIR = path.resolve(__dirname, "../../../../apps/web/pacts");
 
 // These must match the consumer pact constants exactly.
 const USER_ID = "11111111-1111-4111-8111-111111111111";
@@ -30,6 +27,14 @@ function brokerAuthOptions() {
   }
 
   return {};
+}
+
+function requireBrokerUrl() {
+  const brokerUrl = process.env.PACT_BROKER_BASE_URL;
+  if (!brokerUrl) {
+    throw new Error("PACT_BROKER_BASE_URL is required for broker-only pact verification");
+  }
+  return brokerUrl;
 }
 
 describe("auth http provider verification", () => {
@@ -161,14 +166,10 @@ describe("auth http provider verification", () => {
       }
     };
 
-    if (process.env.PACT_BROKER_BASE_URL) {
-      options.pactBrokerUrl = process.env.PACT_BROKER_BASE_URL;
-      options.consumerVersionSelectors = [{ latest: true, consumer: "photox-web-app" }];
-      options.publishVerificationResult = true;
-      Object.assign(options, brokerAuthOptions());
-    } else {
-      options.pactUrls = [path.join(PACT_DIR, "photox-web-app-auth-service.json")];
-    }
+    options.pactBrokerUrl = requireBrokerUrl();
+    options.consumerVersionSelectors = [{ latest: true, consumer: "photox-web-app" }];
+    options.publishVerificationResult = true;
+    Object.assign(options, brokerAuthOptions());
 
     await new Verifier(options).verifyProvider();
   }, 120000);

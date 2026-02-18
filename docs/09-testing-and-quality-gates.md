@@ -169,7 +169,7 @@ Provider verification runtime requirement:
 - All provider pact tests now use **embedded Fastify apps with in-memory mock pools** — no running PostgreSQL, Redis, or BullMQ is needed.
 - Each service's `test/contracts/mockPool.js` provides an in-memory mock of `pg.Pool` that routes SQL patterns to Map-based stores.
 - Mock BullMQ queues are injected via `buildApp()` overrides.
-- When `PACT_BROKER_BASE_URL` is not set, provider tests fall back to local pact files in `apps/web/pacts/`.
+- `PACT_BROKER_BASE_URL` is mandatory for all pact provider verification workflows; tests fail fast when it is missing.
 - Consumer pacts include `.given()` provider states that trigger state handlers to seed mock data.
 
 When package test scripts are available, run:

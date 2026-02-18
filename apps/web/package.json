@@ -10,7 +10,7 @@
     "test:unit": "vitest run --globals test/unit",
     "test:integration": "vitest run --globals test/integration",
     "test:contract": "vitest run --globals test/contracts",
-    "pact:publish": "sh -c 'VERSION=${PACT_CONSUMER_APP_VERSION:-${PACT_PROVIDER_APP_VERSION:-$(git rev-parse --short HEAD)}}; BRANCH=${PACT_CONTRACT_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}; npx pact-broker publish ./pacts --broker-base-url ${PACT_BROKER_BASE_URL:-http://localhost:9292} --consumer-app-version ${VERSION} --branch ${BRANCH} --tag ${PACT_CONTRACT_TAG:-dev}'"
+    "pact:publish": "sh -c 'if [ -z ${PACT_BROKER_BASE_URL:-} ]; then echo PACT_BROKER_BASE_URL is required for pact publish; exit 1; fi; VERSION=${PACT_CONSUMER_APP_VERSION:-${PACT_PROVIDER_APP_VERSION:-$(git rev-parse --short HEAD)}}; BRANCH=${PACT_CONTRACT_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}; npx pact-broker publish ./pacts --broker-base-url ${PACT_BROKER_BASE_URL} --consumer-app-version ${VERSION} --branch ${BRANCH} --tag ${PACT_CONTRACT_TAG:-dev}'"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.66.0",

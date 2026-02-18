@@ -25,6 +25,14 @@ function brokerAuthOptions() {
   return {};
 }
 
+function requireBrokerUrl() {
+  const brokerUrl = process.env.PACT_BROKER_BASE_URL;
+  if (!brokerUrl) {
+    throw new Error("PACT_BROKER_BASE_URL is required for broker-only pact verification");
+  }
+  return brokerUrl;
+}
+
 describe("library http provider verification", () => {
   let app;
   let tmpDir;
@@ -115,15 +123,9 @@ describe("library http provider verification", () => {
       }
     };
 
-    if (process.env.PACT_BROKER_BASE_URL) {
-      options.pactBrokerUrl = process.env.PACT_BROKER_BASE_URL;
-      options.consumerVersionSelectors = [{ latest: true, consumer: "photox-web-app" }];
-      Object.assign(options, brokerAuthOptions());
-    } else {
-      options.pactUrls = [
-        path.resolve(__dirname, "../../../../apps/web/pacts/photox-web-app-library-service.json")
-      ];
-    }
+    options.pactBrokerUrl = requireBrokerUrl();
+    options.consumerVersionSelectors = [{ latest: true, consumer: "photox-web-app" }];
+    Object.assign(options, brokerAuthOptions());
 
     await new Verifier(options).verifyProvider();
   }, 60000);

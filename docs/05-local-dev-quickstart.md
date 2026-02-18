@@ -140,7 +140,7 @@ Pact workflow notes:
 - `apps/web` test workflow generates and publishes HTTP consumer pacts.
 - `services/worker` test workflow generates and publishes message consumer pacts, then verifies worker provider pacts.
 - `services/auth`, `services/ingest`, and `services/library` test workflows verify pacts from broker and publish verification results.
-- Broker defaults to `PACT_BROKER_BASE_URL=http://localhost:9292`.
+- `PACT_BROKER_BASE_URL` must be set for pact publish and provider verification workflows (recommended local value: `http://localhost:9292`).
 - Auth/ingest/library provider verification uses `http://localhost:8088` by default unless provider base URL env vars are set.
 
 ---

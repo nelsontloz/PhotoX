@@ -1,4 +1,3 @@
-const path = require("node:path");
 const { MessageProviderPact } = require("@pact-foundation/pact");
 
 const { buildMediaProcessMessage } = require("../../src/contracts/mediaProcessMessage");
@@ -16,6 +15,14 @@ function brokerAuthOptions() {
   }
 
   return {};
+}
+
+function requireBrokerUrl() {
+  const brokerUrl = process.env.PACT_BROKER_BASE_URL;
+  if (!brokerUrl) {
+    throw new Error("PACT_BROKER_BASE_URL is required for broker-only pact verification");
+  }
+  return brokerUrl;
 }
 
 describe("ingest message provider verification", () => {
@@ -37,15 +44,9 @@ describe("ingest message provider verification", () => {
       }
     };
 
-    if (process.env.PACT_BROKER_BASE_URL) {
-      options.pactBrokerUrl = process.env.PACT_BROKER_BASE_URL;
-      options.consumerVersionSelectors = [{ latest: true, consumer: "worker-service" }];
-      Object.assign(options, brokerAuthOptions());
-    } else {
-      options.pactUrls = [
-        path.resolve(__dirname, "../../../../services/worker/pacts/worker-service-ingest-service.json")
-      ];
-    }
+    options.pactBrokerUrl = requireBrokerUrl();
+    options.consumerVersionSelectors = [{ latest: true, consumer: "worker-service" }];
+    Object.assign(options, brokerAuthOptions());
 
     const verifier = new MessageProviderPact(options);
     await verifier.verify();
