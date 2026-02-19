@@ -1,10 +1,19 @@
 import { completeUpload, createIdempotencyKey, initUpload, uploadPart } from "./api";
+import { sha256 } from "@noble/hashes/sha256";
+import { bytesToHex } from "@noble/hashes/utils";
+
+const HASH_CHUNK_SIZE_BYTES = 8 * 1024 * 1024;
 
 async function sha256HexFromBlob(blob) {
-  const bytes = await blob.arrayBuffer();
-  const hashBuffer = await crypto.subtle.digest("SHA-256", bytes);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((part) => part.toString(16).padStart(2, "0")).join("");
+  const hashState = sha256.create();
+
+  for (let offset = 0; offset < blob.size; offset += HASH_CHUNK_SIZE_BYTES) {
+    const chunk = blob.slice(offset, Math.min(offset + HASH_CHUNK_SIZE_BYTES, blob.size));
+    const bytes = new Uint8Array(await chunk.arrayBuffer());
+    hashState.update(bytes);
+  }
+
+  return bytesToHex(hashState.digest());
 }
 
 export function formatBytes(bytes) {

@@ -11,66 +11,108 @@ http:
         - web
       rule: Host(`localhost`) && PathPrefix(`/api/v1/auth`)
       service: auth-service
+      middlewares:
+        - cors-dev-allow-all
 
     auth-me:
       entryPoints:
         - web
       rule: Host(`localhost`) && PathPrefix(`/api/v1/me`)
       service: auth-service
+      middlewares:
+        - cors-dev-allow-all
 
     auth-admin:
       entryPoints:
         - web
       rule: Host(`localhost`) && PathPrefix(`/api/v1/admin`)
       service: auth-service
+      middlewares:
+        - cors-dev-allow-all
 
     ingest:
       entryPoints:
         - web
       rule: Host(`localhost`) && PathPrefix(`/api/v1/uploads`)
       service: ingest-service
+      middlewares:
+        - cors-dev-allow-all
 
     library:
       entryPoints:
         - web
       rule: Host(`localhost`) && PathPrefix(`/api/v1/library`)
       service: library-service
+      middlewares:
+        - cors-dev-allow-all
 
     library-media:
       entryPoints:
         - web
       rule: Host(`localhost`) && PathPrefix(`/api/v1/media`)
       service: library-service
+      middlewares:
+        - cors-dev-allow-all
 
     album:
       entryPoints:
         - web
       rule: Host(`localhost`) && PathPrefix(`/api/v1/albums`)
       service: album-sharing-service
+      middlewares:
+        - cors-dev-allow-all
 
     album-shares:
       entryPoints:
         - web
       rule: Host(`localhost`) && PathPrefix(`/api/v1/shares`)
       service: album-sharing-service
+      middlewares:
+        - cors-dev-allow-all
 
     search:
       entryPoints:
         - web
       rule: Host(`localhost`) && PathPrefix(`/api/v1/search`)
       service: search-service
+      middlewares:
+        - cors-dev-allow-all
 
     worker:
       entryPoints:
         - web
       rule: Host(`localhost`) && PathPrefix(`/api/v1/worker`)
       service: worker-service
+      middlewares:
+        - cors-dev-allow-all
 
     ml:
       entryPoints:
         - web
       rule: Host(`localhost`) && PathPrefix(`/api/v1/ml`)
       service: ml-service
+      middlewares:
+        - cors-dev-allow-all
+
+  middlewares:
+    cors-dev-allow-all:
+      headers:
+        accessControlAllowOriginList:
+          - "*"
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        accessControlAllowHeaders:
+          - "*"
+        accessControlExposeHeaders:
+          - "*"
+        accessControlMaxAge: 86400
+        accessControlAllowCredentials: false
+        addVaryHeader: false
 
   services:
     web-app:
