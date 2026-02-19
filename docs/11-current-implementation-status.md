@@ -151,7 +151,7 @@ Implemented now:
 - `GET /api/v1/worker/telemetry/snapshot` (admin-only)
 - `GET /api/v1/worker/telemetry/stream` (SSE, admin-only)
 - BullMQ consumer for `media.derivatives.generate` that creates image `thumb`/`small` WebP derivatives and video `playback` WebM (VP9/Opus) derivatives
-- BullMQ consumer for `media.process` that extracts photo/video metadata, persists `media_metadata`, and generates derivatives for new uploads
+ - BullMQ consumer for `media.process` that extracts photo/video metadata, persists `media_metadata`, and generates derivatives for new uploads
 - After successful derivative generation, worker updates `media.status` from `processing` to `ready`.
 - On terminal derivative-processing failure (retry attempts exhausted), worker updates `media.status` to `failed` only when status is still `processing`.
 - Worker uses a per-media advisory lock to serialize concurrent `media.process` / `media.derivatives.generate` execution for the same media ID.
@@ -159,6 +159,8 @@ Implemented now:
 - Worker telemetry tracks lifecycle events (`active`, `completed`, `failed`, `stalled`, `error`) with bounded in-memory retention and queue depth polling.
 - `/metrics` now includes worker job counters, active gauges, queue depth gauges, and duration histogram series.
 - Pact consumer/provider coverage includes worker telemetry contracts for `/api/v1/worker/telemetry/snapshot` and `/api/v1/worker/telemetry/stream`.
+- EXIF-based capture date extraction for images: worker parses the raw EXIF IFD buffer from `sharp` (via `exif-reader`) in `metadata.js`. `DateTimeOriginal` and other EXIF IFD date fields are used for `taken_at` / `sort_at`; falls back to upload timestamp when no EXIF date is found. Videos use `creation_time` from ffprobe format tags. `media.sort_at` reflects the actual capture date so the timeline sorts photos by when they were taken, not uploaded.
+
 
 Planned/pending:
 - worker processors for metadata, search index, face index, and cleanup

@@ -3,6 +3,13 @@ const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const path = require("node:path");
 
+let exifReader;
+try {
+  exifReader = require("exif-reader");
+} catch {
+  exifReader = null;
+}
+
 const execFileAsync = promisify(execFile);
 
 function pickFirstValue(source, keys) {
@@ -44,8 +51,17 @@ function parseExifDate(value) {
   }
 
   const trimmed = value.trim();
-  const normalized = trimmed.replace(/^(\d{4}):(\d{2}):(\d{2})/, "$1-$2-$3");
-  const parsed = new Date(normalized);
+  // Normalize EXIF date separator: "2026:02:17 10:30:00" -> "2026-02-17T10:30:00"
+  const normalized = trimmed
+    .replace(/^(\d{4}):(\d{2}):(\d{2})/, "$1-$2-$3")
+    .replace(" ", "T");
+  // EXIF dates carry no timezone designator. Treat them as UTC so the value is
+  // stable regardless of the server's local timezone offset.
+  const alreadyHasTz =
+    normalized.endsWith("Z") ||
+    /[+-]\d{2}:\d{2}$/.test(normalized);
+  const utcString = alreadyHasTz ? normalized : `${normalized}Z`;
+  const parsed = new Date(utcString);
   if (Number.isNaN(parsed.getTime())) {
     return null;
   }
@@ -132,6 +148,46 @@ function parseIso6709(value) {
   };
 }
 
+/**
+ * Parse the raw EXIF buffer returned by sharp into a flat lowercased tag map.
+ * Returns an empty object if exif-reader is unavailable or the buffer is invalid.
+ */
+function parseExifBuffer(exifBuffer) {
+  if (!exifReader || !Buffer.isBuffer(exifBuffer) || exifBuffer.length === 0) {
+    return {};
+  }
+
+  try {
+    const parsed = exifReader(exifBuffer);
+    const flat = {};
+
+    // Flatten all IFD sub-objects into one lowercased map.
+    // Common IFDs: Image (IFD0), Photo (ExifIFD), GPSInfo.
+    const sources = [
+      parsed?.Image,
+      parsed?.Photo,
+      parsed?.GPSInfo,
+      parsed?.Iop,
+      parsed?.ThumbnailIFD
+    ];
+
+    for (const source of sources) {
+      if (!source || typeof source !== "object") {
+        continue;
+      }
+      for (const [key, value] of Object.entries(source)) {
+        if (value !== undefined && value !== null) {
+          flat[key.toLowerCase()] = value;
+        }
+      }
+    }
+
+    return flat;
+  } catch {
+    return {};
+  }
+}
+
 function extractLocation(tags) {
   const iso = pickFirstValue(tags, ["location", "com.apple.quicktime.location.ISO6709"]);
   const isoLocation = parseIso6709(iso);
@@ -212,7 +268,14 @@ async function extractMetadataForImage({ sourceAbsolutePath, uploadedAt, command
   const probe = await probeMedia(sourceAbsolutePath, commandRunner);
   const stream = Array.isArray(probe.streams) ? probe.streams.find((item) => item.codec_type === "video") : null;
 
+  // Parse the raw EXIF IFD buffer from sharp (contains DateTimeOriginal, GPS, etc.)
+  // and merge it with ffprobe format/stream tags. ffprobe tags take final priority so
+  // explicitly provided container metadata wins; in real JPEGs ffprobe rarely exposes
+  // EXIF IFD fields so the EXIF buffer tags will fill in capture date and GPS correctly.
+  const exifIfdTags = parseExifBuffer(imageMeta.exif);
+
   const tags = {
+    ...exifIfdTags,
     ...(probe.format?.tags || {}),
     ...(stream?.tags || {})
   };
