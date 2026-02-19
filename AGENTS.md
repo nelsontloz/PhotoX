@@ -44,3 +44,4 @@ This repository uses docs-first execution. Every coding agent must read `/docs` 
 - Added EXIF-based capture date extraction for images.
 - Created `scripts/full-build.sh` to automate build and test.
 - Refactored Pact tests across all services (Auth, Ingest, Library, Worker) to use more descriptive interaction names and provider states, following Pact best practices for readability and maintainability.
+- Integrated Google Material Symbols in the Web App to modernize the UI and provide a premium aesthetic.

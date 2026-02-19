@@ -2,8 +2,8 @@ import Link from "next/link";
 
 export function getSidebarItems(isAdmin) {
   const items = [
-    { href: "/timeline", label: "Timeline", icon: "image" },
-    { href: "/upload", label: "Upload", icon: "upload" }
+    { href: "/timeline", label: "Timeline", icon: "photo_library" },
+    { href: "/upload", label: "Upload", icon: "cloud_upload" }
   ];
 
   if (isAdmin) {
@@ -40,14 +40,8 @@ export default function AppSidebar({ activeLabel = "Timeline", isAdmin = false }
                     : "group flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
                 }
               >
-                <span className="text-base">
-                  {item.icon === "image"
-                    ? "◻"
-                    : item.icon === "upload"
-                      ? "⇪"
-                      : item.icon === "admin_panel_settings"
-                        ? "⚙"
-                        : "•"}
+                <span className="material-symbols-outlined shrink-0 text-xl">
+                  {item.icon}
                 </span>
                 {item.label}
               </Link>
