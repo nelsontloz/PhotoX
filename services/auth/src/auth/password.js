@@ -1,5 +1,8 @@
 const argon2 = require("argon2");
 
+const DUMMY_PASSWORD_HASH =
+  "$argon2id$v=19$m=65536,t=3,p=4$GPpy/pWjQLCKaoWZq3c/vQ$c5nWY87TeDUTvoqYaLi4kELCaeFQ/Ae0EAs2WppufD8";
+
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
 }
@@ -31,6 +34,7 @@ async function verifyPassword(password, passwordHash) {
 }
 
 module.exports = {
+  DUMMY_PASSWORD_HASH,
   hashPassword,
   normalizeEmail,
   validatePassword,

@@ -2,6 +2,9 @@ const crypto = require("node:crypto");
 const jwt = require("jsonwebtoken");
 const argon2 = require("argon2");
 
+const DUMMY_REFRESH_TOKEN_HASH =
+  "$argon2id$v=19$m=65536,t=3,p=4$QLGp9aR2tzM2A32a6hc5YA$WHMv0xJfCIl92mWg2GOrC8I3y75aGcskW13pM7nG+Hk";
+
 async function hashRefreshToken(token) {
   return argon2.hash(token, { type: argon2.argon2id });
 }
@@ -65,6 +68,7 @@ function verifyRefreshTokenIgnoringExpiration(token, secret) {
 }
 
 module.exports = {
+  DUMMY_REFRESH_TOKEN_HASH,
   createAccessToken,
   createRefreshToken,
   hashRefreshToken,

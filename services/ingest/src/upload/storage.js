@@ -1,4 +1,5 @@
 const crypto = require("node:crypto");
+const { once } = require("node:events");
 const fsSync = require("node:fs");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -20,6 +21,54 @@ async function writeUploadPart({ originalsRoot, uploadId, partNumber, payload })
   return {
     absolutePath,
     relativePartPath: toPosixRelativePath(originalsRoot, absolutePath)
+  };
+}
+
+async function writeUploadPartStream({ originalsRoot, uploadId, partNumber, payloadStream, maxBytes }) {
+  const absolutePath = partAbsolutePath(originalsRoot, uploadId, partNumber);
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+
+  const output = fsSync.createWriteStream(absolutePath);
+  const hash = crypto.createHash("sha256");
+  let byteSize = 0;
+
+  try {
+    for await (const chunk of payloadStream) {
+      const payloadChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      byteSize += payloadChunk.length;
+
+      if (maxBytes && byteSize > maxBytes) {
+        const err = new Error("Chunk exceeds configured part size");
+        err.code = "UPLOAD_PART_TOO_LARGE";
+        throw err;
+      }
+
+      hash.update(payloadChunk);
+      if (!output.write(payloadChunk)) {
+        await once(output, "drain");
+      }
+    }
+
+    output.end();
+    await finished(output);
+  } catch (err) {
+    output.destroy();
+    await fs.rm(absolutePath, { force: true });
+    throw err;
+  }
+
+  if (byteSize === 0) {
+    await fs.rm(absolutePath, { force: true });
+    const err = new Error("Chunk payload cannot be empty");
+    err.code = "UPLOAD_PART_EMPTY";
+    throw err;
+  }
+
+  return {
+    absolutePath,
+    relativePartPath: toPosixRelativePath(originalsRoot, absolutePath),
+    byteSize,
+    checksumSha256: hash.digest("hex")
   };
 }
 
@@ -89,5 +138,6 @@ module.exports = {
   checksumSha256,
   checksumFileSha256,
   removeUploadTempDir,
-  writeUploadPart
+  writeUploadPart,
+  writeUploadPartStream
 };

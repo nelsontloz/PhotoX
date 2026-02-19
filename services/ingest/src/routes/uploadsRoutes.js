@@ -16,7 +16,8 @@ const {
   checksumFileSha256,
   checksumSha256,
   removeUploadTempDir,
-  writeUploadPart
+  writeUploadPart,
+  writeUploadPartStream
 } = require("../upload/storage");
 const {
   detectSupportedMimeTypeFromFile,
@@ -326,14 +327,6 @@ module.exports = async function uploadsRoutes(app) {
       const query = parseOrThrow(uploadPartQuerySchema, request.query || {});
       const userId = request.userAuth.userId;
 
-      if (!Buffer.isBuffer(request.body)) {
-        throw new ApiError(400, "VALIDATION_ERROR", "Chunk payload must be binary (application/octet-stream)");
-      }
-
-      if (request.body.length === 0) {
-        throw new ApiError(400, "VALIDATION_ERROR", "Chunk payload cannot be empty");
-      }
-
       const session = await app.repos.uploadSessions.findByIdForUser(params.uploadId, userId);
       ensureUploadSessionExists(session);
 
@@ -343,26 +336,64 @@ module.exports = async function uploadsRoutes(app) {
         });
       }
 
-      if (request.body.length > session.part_size) {
-        throw new ApiError(400, "UPLOAD_PART_TOO_LARGE", "Chunk exceeds configured part size", {
-          partSize: session.part_size,
-          receivedBytes: request.body.length
-        });
-      }
+      let partWriteResult;
 
-      const { relativePartPath } = await writeUploadPart({
-        originalsRoot: app.config.uploadOriginalsPath,
-        uploadId: params.uploadId,
-        partNumber: query.partNumber,
-        payload: request.body
-      });
+      if (Buffer.isBuffer(request.body)) {
+        if (request.body.length === 0) {
+          throw new ApiError(400, "VALIDATION_ERROR", "Chunk payload cannot be empty");
+        }
+
+        if (request.body.length > session.part_size) {
+          throw new ApiError(400, "UPLOAD_PART_TOO_LARGE", "Chunk exceeds configured part size", {
+            partSize: session.part_size,
+            receivedBytes: request.body.length
+          });
+        }
+
+        const { relativePartPath } = await writeUploadPart({
+          originalsRoot: app.config.uploadOriginalsPath,
+          uploadId: params.uploadId,
+          partNumber: query.partNumber,
+          payload: request.body
+        });
+
+        partWriteResult = {
+          relativePartPath,
+          byteSize: request.body.length,
+          checksumSha256: checksumSha256(request.body)
+        };
+      } else if (request.body && typeof request.body[Symbol.asyncIterator] === "function") {
+        try {
+          partWriteResult = await writeUploadPartStream({
+            originalsRoot: app.config.uploadOriginalsPath,
+            uploadId: params.uploadId,
+            partNumber: query.partNumber,
+            payloadStream: request.body,
+            maxBytes: session.part_size
+          });
+        } catch (err) {
+          if (err && err.code === "UPLOAD_PART_TOO_LARGE") {
+            throw new ApiError(400, "UPLOAD_PART_TOO_LARGE", "Chunk exceeds configured part size", {
+              partSize: session.part_size
+            });
+          }
+
+          if (err && err.code === "UPLOAD_PART_EMPTY") {
+            throw new ApiError(400, "VALIDATION_ERROR", "Chunk payload cannot be empty");
+          }
+
+          throw err;
+        }
+      } else {
+        throw new ApiError(400, "VALIDATION_ERROR", "Chunk payload must be binary (application/octet-stream)");
+      }
 
       const part = await app.repos.uploadParts.upsertPart({
         uploadId: params.uploadId,
         partNumber: query.partNumber,
-        byteSize: request.body.length,
-        checksumSha256: checksumSha256(request.body),
-        relativePartPath
+        byteSize: partWriteResult.byteSize,
+        checksumSha256: partWriteResult.checksumSha256,
+        relativePartPath: partWriteResult.relativePartPath
       });
 
       await app.repos.uploadSessions.setStatus(params.uploadId, userId, "uploading");

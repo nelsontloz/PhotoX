@@ -60,11 +60,8 @@ function buildApp(overrides = {}) {
 
   app.addContentTypeParser(
     "application/octet-stream",
-    {
-      parseAs: "buffer"
-    },
-    function parseOctetStream(_request, body, done) {
-      done(null, body);
+    function parseOctetStream(_request, payload, done) {
+      done(null, payload);
     }
   );
 

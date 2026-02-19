@@ -1,13 +1,15 @@
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
+const { Readable } = require("node:stream");
 
 const {
   assemblePartsToFile,
   buildMediaRelativePath,
   checksumFileSha256,
   checksumSha256,
-  writeUploadPart
+  writeUploadPart,
+  writeUploadPartStream
 } = require("../../src/upload/storage");
 
 describe("upload storage helpers", () => {
@@ -70,5 +72,39 @@ describe("upload storage helpers", () => {
     });
 
     expect(relativePath).toBe("user-123/2026/02/media-999.jpg");
+  });
+
+  it("writes upload part from stream and computes checksum", async () => {
+    const payload = Buffer.from("streamed-part-payload", "utf8");
+    const stream = Readable.from([payload.subarray(0, 8), payload.subarray(8)]);
+
+    const result = await writeUploadPartStream({
+      originalsRoot: root,
+      uploadId: "upload-stream-1",
+      partNumber: 1,
+      payloadStream: stream,
+      maxBytes: 1024
+    });
+
+    expect(result.byteSize).toBe(payload.length);
+    expect(result.checksumSha256).toBe(checksumSha256(payload));
+
+    const absolutePath = path.join(root, result.relativePartPath);
+    const persisted = await fs.readFile(absolutePath);
+    expect(persisted.equals(payload)).toBe(true);
+  });
+
+  it("rejects oversized streamed upload part", async () => {
+    const payload = Buffer.from("oversized-stream", "utf8");
+
+    await expect(
+      writeUploadPartStream({
+        originalsRoot: root,
+        uploadId: "upload-stream-2",
+        partNumber: 1,
+        payloadStream: Readable.from([payload]),
+        maxBytes: 4
+      })
+    ).rejects.toMatchObject({ code: "UPLOAD_PART_TOO_LARGE" });
   });
 });
