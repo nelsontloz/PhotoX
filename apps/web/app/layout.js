@@ -1,5 +1,6 @@
 import { Manrope } from "next/font/google";
 
+import "material-symbols/outlined.css";
 import "./globals.css";
 import TopBar from "./components/top-bar";
 import Providers from "./providers";

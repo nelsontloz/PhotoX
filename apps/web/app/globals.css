@@ -121,3 +121,13 @@ a {
   padding: 0.75rem 0.875rem;
   font-size: 0.9rem;
 }
+
+.material-symbols-outlined {
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 400,
+    'GRAD' 0,
+    'opsz' 24;
+  font-size: 24px;
+  vertical-align: middle;
+}
