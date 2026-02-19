@@ -9,6 +9,7 @@ const mockPool = require("./mockPool");
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const MEDIA_ID = "55555555-5555-4555-8555-555555555555";
 const RELATIVE_PATH = `${USER_ID}/2026/02/${MEDIA_ID}.jpg`;
+const VIDEO_RELATIVE_PATH = `${USER_ID}/2026/02/${MEDIA_ID}.mp4`;
 
 function brokerAuthOptions() {
   if (process.env.PACT_BROKER_TOKEN) {
@@ -79,9 +80,20 @@ describe("library http provider verification", () => {
     });
   }
 
-  async function seedDerivativeFile() {
+  function seedVideoMediaRow() {
+    mockPool.reset();
+    mockPool.seedMedia({
+      id: MEDIA_ID,
+      owner_id: USER_ID,
+      relative_path: VIDEO_RELATIVE_PATH,
+      mime_type: "video/mp4",
+      status: "ready"
+    });
+  }
+
+  async function seedDerivativeFile(variant = "thumb") {
     // Create the derivative WebP file so the content endpoint can serve it.
-    // Derivative path: {derivedDir}/{userId}/2026/02/{mediaId}-thumb.webp
+    // Derivative path: {derivedDir}/{userId}/2026/02/{mediaId}-{variant}.webp
     const dir = path.join(derivedDir, USER_ID, "2026", "02");
     await fs.mkdir(dir, { recursive: true });
     // Minimal 1x1 WebP — "RIFF" header + minimal content
@@ -89,7 +101,15 @@ describe("library http provider verification", () => {
       "524946462400000057454250565038200a000000300100009001002a0100010001200025a40003700000feef94000000",
       "hex"
     );
-    await fs.writeFile(path.join(dir, `${MEDIA_ID}-thumb.webp`), webpBytes);
+    await fs.writeFile(path.join(dir, `${MEDIA_ID}-${variant}.webp`), webpBytes);
+  }
+
+  async function seedPlaybackFile() {
+    // Minimal WebM header bytes for pact content-type assertion path.
+    const dir = path.join(derivedDir, USER_ID, "2026", "02");
+    await fs.mkdir(dir, { recursive: true });
+    const webmBytes = Buffer.from("1a45dfa3", "hex");
+    await fs.writeFile(path.join(dir, `${MEDIA_ID}-playback.webm`), webmBytes);
   }
 
   it("verifies web consumer pact", async () => {
@@ -104,6 +124,9 @@ describe("library http provider verification", () => {
         "read timeline page": async () => {
           seedMediaRow();
         },
+        "read timeline page with filters": async () => {
+          seedMediaRow();
+        },
         "read media detail": async () => {
           seedMediaRow();
         },
@@ -112,7 +135,15 @@ describe("library http provider verification", () => {
         },
         "read media bytes": async () => {
           seedMediaRow();
-          await seedDerivativeFile();
+          await seedDerivativeFile("thumb");
+        },
+        "read media bytes small": async () => {
+          seedMediaRow();
+          await seedDerivativeFile("small");
+        },
+        "read media playback bytes": async () => {
+          seedVideoMediaRow();
+          await seedPlaybackFile();
         },
         "soft-delete media": async () => {
           seedMediaRow();

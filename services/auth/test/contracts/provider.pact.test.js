@@ -137,6 +137,7 @@ describe("auth http provider verification", () => {
         "read current user": async () => { },
         "logout a user": async () => { },
         "list admin users": async () => { },
+        "list admin users paginated": async () => { },
         "create admin-managed user": async () => {
           // Admin create user sends "managed@example.com" — remove existing target user.
           mockPool.reset();
@@ -160,7 +161,31 @@ describe("auth http provider verification", () => {
             refresh_token_hash: refreshTokenHash
           });
         },
+        "create admin-managed admin user": async () => {
+          // Admin create user sends "managed-admin@example.com" — ensure email does not already exist.
+          mockPool.reset();
+          mockPool.seedUser({
+            id: ADMIN_ID,
+            email: "admin@example.com",
+            password_hash: dummyPasswordHash,
+            is_admin: true,
+            is_active: true
+          });
+          mockPool.seedUser({
+            id: USER_ID,
+            email: "new-user@example.com",
+            password_hash: loginPasswordHash,
+            is_admin: false,
+            is_active: true
+          });
+          mockPool.seedSession({
+            id: SESSION_ID,
+            user_id: USER_ID,
+            refresh_token_hash: refreshTokenHash
+          });
+        },
         "update admin-managed user": async () => { },
+        "reactivate managed user": async () => { },
         "reset managed user password": async () => { },
         "disable managed user": async () => { }
       }
