@@ -55,24 +55,24 @@ function buildLibraryRepo(db) {
             COALESCE(mf.archived, false) AS archived,
             COALESCE(mf.hidden, false) AS hidden,
             COALESCE(mf.deleted_soft, false) AS deleted_soft,
-            COALESCE(mm.taken_at, mm.uploaded_at, m.created_at) AS sort_at
+            m.sort_at AS sort_at
           FROM media m
           LEFT JOIN media_metadata mm ON mm.media_id = m.id
           LEFT JOIN media_flags mf ON mf.media_id = m.id
           WHERE m.owner_id = $1
             AND COALESCE(mf.deleted_soft, false) = false
-            AND ($2::timestamptz IS NULL OR COALESCE(mm.taken_at, mm.uploaded_at, m.created_at) >= $2)
-            AND ($3::timestamptz IS NULL OR COALESCE(mm.taken_at, mm.uploaded_at, m.created_at) <= $3)
+            AND ($2::timestamptz IS NULL OR m.sort_at >= $2)
+            AND ($3::timestamptz IS NULL OR m.sort_at <= $3)
             AND ($4::boolean IS NULL OR COALESCE(mf.favorite, false) = $4)
             AND ($5::boolean IS NULL OR COALESCE(mf.archived, false) = $5)
             AND ($6::boolean IS NULL OR COALESCE(mf.hidden, false) = $6)
             AND (
               $7::timestamptz IS NULL
-              OR COALESCE(mm.taken_at, mm.uploaded_at, m.created_at) < $7
-              OR (COALESCE(mm.taken_at, mm.uploaded_at, m.created_at) = $7 AND m.id < $8::uuid)
+              OR m.sort_at < $7
+              OR (m.sort_at = $7 AND m.id < $8::uuid)
             )
             AND ($9::text IS NULL OR m.relative_path ILIKE '%' || $9 || '%')
-          ORDER BY sort_at DESC, m.id DESC
+          ORDER BY m.sort_at DESC, m.id DESC
           LIMIT $10
         `,
         [
@@ -175,6 +175,18 @@ function buildLibraryRepo(db) {
               WHERE media_id = $1
             `,
             [mediaId, patch.takenAt]
+          );
+
+          await client.query(
+            `
+              UPDATE media m
+              SET sort_at = COALESCE(mm.taken_at, mm.uploaded_at, m.created_at),
+                  updated_at = NOW()
+              FROM media_metadata mm
+              WHERE m.id = $1
+                AND mm.media_id = m.id
+            `,
+            [mediaId]
           );
         }
 

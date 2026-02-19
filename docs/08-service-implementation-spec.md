@@ -148,7 +148,7 @@ Required tables (minimum):
 - `media_flags(media_id, favorite, archived, hidden, deleted_soft, updated_at)`
 
 Query/index requirements:
-- composite index for timeline ordering by `(owner_id, taken_at desc, id desc)`.
+- composite index for timeline ordering by `(owner_id, sort_at desc, id desc)`.
 - cursor token includes stable sort keys.
 - P3 filters: date range + favorite/archive/hidden flags + optional free-text `q`.
 - `albumId` and `personId` relation-backed filtering is deferred to later phases.

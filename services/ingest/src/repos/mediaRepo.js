@@ -7,9 +7,9 @@ function buildMediaRepo(db) {
     async create({ id, ownerId, relativePath, mimeType, status, checksumSha256 }, executor) {
       const result = await queryable(executor).query(
         `
-          INSERT INTO media (id, owner_id, relative_path, mime_type, status, checksum_sha256)
-          VALUES ($1, $2, $3, $4, $5, $6)
-          RETURNING id, owner_id, relative_path, mime_type, status, checksum_sha256, created_at, updated_at
+          INSERT INTO media (id, owner_id, relative_path, mime_type, status, checksum_sha256, sort_at)
+          VALUES ($1, $2, $3, $4, $5, $6, NOW())
+          RETURNING id, owner_id, relative_path, mime_type, status, checksum_sha256, sort_at, created_at, updated_at
         `,
         [id, ownerId, relativePath, mimeType, status, checksumSha256]
       );

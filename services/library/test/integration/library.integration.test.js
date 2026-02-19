@@ -90,10 +90,18 @@ describe("library integration", () => {
   }) {
     await app.db.query(
       `
-        INSERT INTO media (id, owner_id, relative_path, mime_type, status, checksum_sha256, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, 'ready', $5, $6, $6)
+        INSERT INTO media (id, owner_id, relative_path, mime_type, status, checksum_sha256, sort_at, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, 'ready', $5, $6, $7, $7)
       `,
-      [id, rowOwnerId, relativePath, mimeType, crypto.randomUUID().replaceAll("-", ""), createdAt]
+      [
+        id,
+        rowOwnerId,
+        relativePath,
+        mimeType,
+        crypto.randomUUID().replaceAll("-", ""),
+        takenAt || createdAt,
+        createdAt
+      ]
     );
 
     await app.db.query(

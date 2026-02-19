@@ -34,7 +34,7 @@ function fullMediaRow(m) {
         archived: mf.archived ?? false,
         hidden: mf.hidden ?? false,
         deleted_soft: mf.deleted_soft ?? false,
-        sort_at: mm.taken_at || mm.uploaded_at || m.created_at
+        sort_at: m.sort_at || mm.taken_at || mm.uploaded_at || m.created_at
     };
 }
 
@@ -148,6 +148,17 @@ function routeQuery(sql, params) {
         return { rows: [], rowCount: mm ? 1 : 0 };
     }
 
+    // ---- UPDATE media SET sort_at from media_metadata ----
+    if (/UPDATE media m SET sort_at/i.test(text) && /FROM media_metadata mm/i.test(text)) {
+        const mediaId = params[0];
+        const m = media.get(mediaId);
+        const mm = metadata.get(mediaId);
+        if (m) {
+            m.sort_at = (mm && (mm.taken_at || mm.uploaded_at)) || m.created_at;
+        }
+        return { rows: [], rowCount: m ? 1 : 0 };
+    }
+
     // ---- SELECT id FROM media WHERE id AND owner_id (ownership check) ----
     if (/SELECT id FROM media WHERE id = \$1 AND owner_id = \$2/i.test(text)) {
         const m = media.get(params[0]);
@@ -160,7 +171,7 @@ function routeQuery(sql, params) {
     // ---- Full media detail SELECT (with JOINs to metadata + flags) ----
     if (/FROM media m/i.test(text) && /LEFT JOIN media_metadata/i.test(text)) {
         // Timeline query (owner_id = $1 with many filters)
-        if (/WHERE m\.owner_id = \$1/i.test(text) && /ORDER BY sort_at/i.test(text)) {
+        if (/WHERE m\.owner_id = \$1/i.test(text) && /ORDER BY (?:m\.)?sort_at/i.test(text)) {
             const ownerId = params[0];
             const rows = [];
             for (const [, m] of media) {
@@ -219,7 +230,8 @@ const mockPool = {
             relative_path: relative_path || `${owner_id}/2026/02/${id}.jpg`,
             mime_type: mime_type || "image/jpeg",
             status: status || "ready",
-            created_at: ts
+            created_at: ts,
+            sort_at: taken_at || uploaded_at || ts
         });
         metadata.set(id, {
             media_id: id,
