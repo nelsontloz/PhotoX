@@ -564,6 +564,275 @@
       }
     },
     {
+      "description": "list admin users paginated",
+      "providerStates": [
+        {
+          "name": "list admin users paginated"
+        }
+      ],
+      "request": {
+        "headers": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJhZG1pbkBleGFtcGxlLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwic3ViIjoiMjIyMjIyMjItMjIyMi00MjIyLTgyMjItMjIyMjIyMjIyMjIyIn0.0-evKRAjmV0CXyPtxd_Bb8duLQc-1-rKcDnzqIvD0Ew"
+        },
+        "method": "GET",
+        "path": "/api/v1/admin/users",
+        "query": {
+          "limit": [
+            "100"
+          ],
+          "offset": [
+            "0"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "uploadCount": 0,
+              "user": {
+                "email": "managed@example.com",
+                "id": "33333333-3333-4333-8333-333333333333",
+                "isActive": true,
+                "isAdmin": false,
+                "name": null
+              }
+            }
+          ],
+          "limit": 100,
+          "offset": 0,
+          "totalUsers": 1
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.items": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.items[*].uploadCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].user.email": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].user.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                }
+              ]
+            },
+            "$.items[*].user.isActive": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].user.isAdmin": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.limit": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.offset": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.totalUsers": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "create admin-managed user",
+      "providerStates": [
+        {
+          "name": "create admin-managed user"
+        }
+      ],
+      "request": {
+        "body": {
+          "email": "managed@example.com",
+          "password": "super-secret-password"
+        },
+        "headers": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJhZG1pbkBleGFtcGxlLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwic3ViIjoiMjIyMjIyMjItMjIyMi00MjIyLTgyMjItMjIyMjIyMjIyMjIyIn0.0-evKRAjmV0CXyPtxd_Bb8duLQc-1-rKcDnzqIvD0Ew",
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/api/v1/admin/users"
+      },
+      "response": {
+        "body": {
+          "user": {
+            "email": "managed@example.com",
+            "id": "33333333-3333-4333-8333-333333333333",
+            "isActive": true,
+            "isAdmin": false,
+            "name": null
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.user.email": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.user.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                }
+              ]
+            },
+            "$.user.isActive": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.user.isAdmin": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 201
+      }
+    },
+    {
+      "description": "create admin-managed admin user",
+      "providerStates": [
+        {
+          "name": "create admin-managed admin user"
+        }
+      ],
+      "request": {
+        "body": {
+          "email": "managed-admin@example.com",
+          "isAdmin": true,
+          "password": "super-secret-password"
+        },
+        "headers": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJhZG1pbkBleGFtcGxlLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwic3ViIjoiMjIyMjIyMjItMjIyMi00MjIyLTgyMjItMjIyMjIyMjIyMjIyIn0.0-evKRAjmV0CXyPtxd_Bb8duLQc-1-rKcDnzqIvD0Ew",
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/api/v1/admin/users"
+      },
+      "response": {
+        "body": {
+          "user": {
+            "email": "managed-admin@example.com",
+            "id": "33333333-3333-4333-8333-333333333333",
+            "isActive": true,
+            "isAdmin": true,
+            "name": null
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.user.email": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.user.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                }
+              ]
+            },
+            "$.user.isActive": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.user.isAdmin": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 201
+      }
+    },
+    {
       "description": "update admin-managed user",
       "providerStates": [
         {
@@ -588,6 +857,77 @@
             "id": "33333333-3333-4333-8333-333333333333",
             "isActive": true,
             "isAdmin": true,
+            "name": null
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.user.email": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.user.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                }
+              ]
+            },
+            "$.user.isActive": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.user.isAdmin": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "reactivate managed user",
+      "providerStates": [
+        {
+          "name": "reactivate managed user"
+        }
+      ],
+      "request": {
+        "body": {
+          "isActive": true
+        },
+        "headers": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJhZG1pbkBleGFtcGxlLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwic3ViIjoiMjIyMjIyMjItMjIyMi00MjIyLTgyMjItMjIyMjIyMjIyMjIyIn0.0-evKRAjmV0CXyPtxd_Bb8duLQc-1-rKcDnzqIvD0Ew",
+          "Content-Type": "application/json"
+        },
+        "method": "PATCH",
+        "path": "/api/v1/admin/users/33333333-3333-4333-8333-333333333333"
+      },
+      "response": {
+        "body": {
+          "user": {
+            "email": "managed@example.com",
+            "id": "33333333-3333-4333-8333-333333333333",
+            "isActive": true,
+            "isAdmin": false,
             "name": null
           }
         },

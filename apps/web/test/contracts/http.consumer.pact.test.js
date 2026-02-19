@@ -201,6 +201,38 @@ describe("web http consumer pacts", () => {
           offset: like(0)
         }
       })
+      .given("list admin users paginated")
+      .uponReceiving("list admin users paginated")
+      .withRequest({
+        method: "GET",
+        path: "/api/v1/admin/users",
+        query: {
+          limit: "100",
+          offset: "0"
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: {
+          items: eachLike({
+            user: {
+              id: regex(UUID_REGEX, TARGET_USER_ID),
+              email: like("managed@example.com"),
+              name: null,
+              isAdmin: like(false),
+              isActive: like(true)
+            },
+            uploadCount: like(0)
+          }),
+          totalUsers: like(1),
+          limit: like(100),
+          offset: like(0)
+        }
+      })
       .given("create admin-managed user")
       .uponReceiving("create admin-managed user")
       .withRequest({
@@ -228,6 +260,34 @@ describe("web http consumer pacts", () => {
           }
         }
       })
+      .given("create admin-managed admin user")
+      .uponReceiving("create admin-managed admin user")
+      .withRequest({
+        method: "POST",
+        path: "/api/v1/admin/users",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: {
+          email: "managed-admin@example.com",
+          password: "super-secret-password",
+          isAdmin: true
+        }
+      })
+      .willRespondWith({
+        status: 201,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: {
+          user: {
+            id: regex(UUID_REGEX, TARGET_USER_ID),
+            email: like("managed-admin@example.com"),
+            name: null,
+            isAdmin: like(true),
+            isActive: like(true)
+          }
+        }
+      })
       .given("update admin-managed user")
       .uponReceiving("update admin-managed user")
       .withRequest({
@@ -250,6 +310,32 @@ describe("web http consumer pacts", () => {
             email: like("managed@example.com"),
             name: null,
             isAdmin: like(true),
+            isActive: like(true)
+          }
+        }
+      })
+      .given("reactivate managed user")
+      .uponReceiving("reactivate managed user")
+      .withRequest({
+        method: "PATCH",
+        path: `/api/v1/admin/users/${TARGET_USER_ID}`,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: {
+          isActive: true
+        }
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: {
+          user: {
+            id: regex(UUID_REGEX, TARGET_USER_ID),
+            email: like("managed@example.com"),
+            name: null,
+            isAdmin: like(false),
             isActive: like(true)
           }
         }
@@ -320,6 +406,10 @@ describe("web http consumer pacts", () => {
         method: "GET",
         headers: { Authorization: `Bearer ${accessToken}` }
       });
+      await jsonRequest(mockserver.url, "/api/v1/admin/users?limit=100&offset=0", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
       await jsonRequest(mockserver.url, "/api/v1/admin/users", {
         method: "POST",
         headers: {
@@ -328,6 +418,18 @@ describe("web http consumer pacts", () => {
         },
         body: JSON.stringify({ email: "managed@example.com", password: "super-secret-password" })
       });
+      await jsonRequest(mockserver.url, "/api/v1/admin/users", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          email: "managed-admin@example.com",
+          password: "super-secret-password",
+          isAdmin: true
+        })
+      });
       await jsonRequest(mockserver.url, `/api/v1/admin/users/${TARGET_USER_ID}`, {
         method: "PATCH",
         headers: {
@@ -335,6 +437,14 @@ describe("web http consumer pacts", () => {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({ isAdmin: true })
+      });
+      await jsonRequest(mockserver.url, `/api/v1/admin/users/${TARGET_USER_ID}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ isActive: true })
       });
       await jsonRequest(mockserver.url, `/api/v1/admin/users/${TARGET_USER_ID}/reset-password`, {
         method: "POST",
@@ -544,6 +654,42 @@ describe("web http consumer pacts", () => {
           nextCursor: null
         }
       })
+      .given("read timeline page with filters")
+      .uponReceiving("read timeline page with filters")
+      .withRequest({
+        method: "GET",
+        path: "/api/v1/library/timeline",
+        query: {
+          limit: "18",
+          from: "2026-02-01T00:00:00.000Z",
+          to: "2026-02-28T23:59:59.999Z",
+          favorite: "true",
+          q: "beach"
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: {
+          items: eachLike({
+            id: regex(UUID_REGEX, MEDIA_ID),
+            ownerId: regex(UUID_REGEX, USER_ID),
+            takenAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z"),
+            uploadedAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z"),
+            mimeType: like("image/jpeg"),
+            flags: {
+              favorite: like(true),
+              archived: like(false),
+              hidden: like(false),
+              deletedSoft: like(false)
+            }
+          }),
+          nextCursor: null
+        }
+      })
       .given("read media detail")
       .uponReceiving("read media detail")
       .withRequest({
@@ -618,6 +764,42 @@ describe("web http consumer pacts", () => {
           "Content-Type": "image/webp"
         }
       })
+      .given("read media bytes small")
+      .uponReceiving("read media bytes small")
+      .withRequest({
+        method: "GET",
+        path: `/api/v1/media/${MEDIA_ID}/content`,
+        query: {
+          variant: "small"
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      })
+      .willRespondWith({
+        status: 200,
+        headers: {
+          "Content-Type": "image/webp"
+        }
+      })
+      .given("read media playback bytes")
+      .uponReceiving("read media playback bytes")
+      .withRequest({
+        method: "GET",
+        path: `/api/v1/media/${MEDIA_ID}/content`,
+        query: {
+          variant: "playback"
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      })
+      .willRespondWith({
+        status: 200,
+        headers: {
+          "Content-Type": "video/webm"
+        }
+      })
       .given("soft-delete media")
       .uponReceiving("soft-delete media")
       .withRequest({
@@ -658,6 +840,14 @@ describe("web http consumer pacts", () => {
         method: "GET",
         headers: { Authorization: `Bearer ${accessToken}` }
       });
+      await jsonRequest(
+        mockserver.url,
+        "/api/v1/library/timeline?limit=18&from=2026-02-01T00%3A00%3A00.000Z&to=2026-02-28T23%3A59%3A59.999Z&favorite=true&q=beach",
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${accessToken}` }
+        }
+      );
       await jsonRequest(mockserver.url, `/api/v1/media/${MEDIA_ID}`, {
         method: "GET",
         headers: { Authorization: `Bearer ${accessToken}` }
@@ -675,6 +865,16 @@ describe("web http consumer pacts", () => {
         headers: { Authorization: `Bearer ${accessToken}` }
       });
       expect(content.status).toBe(200);
+      const smallContent = await fetch(`${mockserver.url}/api/v1/media/${MEDIA_ID}/content?variant=small`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      expect(smallContent.status).toBe(200);
+      const playbackContent = await fetch(`${mockserver.url}/api/v1/media/${MEDIA_ID}/content?variant=playback`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      expect(playbackContent.status).toBe(200);
       await jsonRequest(mockserver.url, `/api/v1/media/${MEDIA_ID}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${accessToken}` }
