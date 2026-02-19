@@ -157,7 +157,25 @@ Pact workflow notes:
 
 ---
 
-## 8) AI Agent Navigation
+## 8) Common Pact Troubleshooting
+
+### Missing libcrypt.so.1
+
+If you encounter the error `ruby: error while loading shared libraries: libcrypt.so.1: cannot open shared object file` when running Pact tests, it is likely because your Linux distribution (e.g., Fedora 33+, Ubuntu 22.04+) has moved to a newer version of the encryption library.
+
+**Fix for Fedora/RHEL:**
+```bash
+sudo dnf install libxcrypt-compat
+```
+
+**Fix for Ubuntu/Debian:**
+```bash
+sudo apt-get install libcrypt1
+```
+
+---
+
+## 9) AI Agent Navigation
 
 After environment is up, agents should follow:
 

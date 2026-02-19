@@ -103,9 +103,13 @@ describe("worker http provider verification", () => {
       publishVerificationResult: true
     };
 
-    options.pactBrokerUrl = requireBrokerUrl();
-    options.consumerVersionSelectors = [{ latest: true, consumer: "photox-web-app" }];
-    Object.assign(options, brokerAuthOptions());
+    if (process.env.PACT_URL) {
+      options.pactUrls = [process.env.PACT_URL];
+    } else {
+      options.pactBrokerUrl = requireBrokerUrl();
+      options.consumerVersionSelectors = [{ latest: true, consumer: "photox-web-app" }];
+      Object.assign(options, brokerAuthOptions());
+    }
 
     await new Verifier(options).verifyProvider();
   }, 60000);

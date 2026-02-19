@@ -121,7 +121,7 @@ describe("auth http provider verification", () => {
         seedDatabase();
       },
       stateHandlers: {
-        "register a user": async () => {
+        "a user with email 'new-user@example.com' does not exist": async () => {
           // Register expects "new-user@example.com" to NOT exist.
           mockPool.reset();
           mockPool.seedUser({
@@ -132,13 +132,13 @@ describe("auth http provider verification", () => {
             is_active: true
           });
         },
-        "login a user": async () => { },
-        "refresh auth tokens": async () => { },
-        "read current user": async () => { },
-        "logout a user": async () => { },
-        "list admin users": async () => { },
-        "list admin users paginated": async () => { },
-        "create admin-managed user": async () => {
+        "a user exists with email 'new-user@example.com' and password 'super-secret-password'": async () => { },
+        "a valid session exists for user '11111111-1111-4111-8111-111111111111'": async () => { },
+        "a user is logged in as admin with ID '22222222-2222-4222-8222-222222222222'": async () => { },
+        "a valid session exists to be terminated": async () => { },
+        "there are managed users in the system": async () => { },
+        "there are at least 100 managed users in the system": async () => { },
+        "administrator is logged in and 'managed@example.com' does not exist": async () => {
           // Admin create user sends "managed@example.com" — remove existing target user.
           mockPool.reset();
           mockPool.seedUser({
@@ -161,7 +161,7 @@ describe("auth http provider verification", () => {
             refresh_token_hash: refreshTokenHash
           });
         },
-        "create admin-managed admin user": async () => {
+        "administrator is logged in and 'managed-admin@example.com' does not exist": async () => {
           // Admin create user sends "managed-admin@example.com" — ensure email does not already exist.
           mockPool.reset();
           mockPool.seedUser({
@@ -184,17 +184,21 @@ describe("auth http provider verification", () => {
             refresh_token_hash: refreshTokenHash
           });
         },
-        "update admin-managed user": async () => { },
-        "reactivate managed user": async () => { },
-        "reset managed user password": async () => { },
-        "disable managed user": async () => { }
+        "a managed user exists with ID '33333333-3333-4333-8333-333333333333'": async () => { },
+        "an inactive managed user exists with ID '33333333-3333-4333-8333-333333333333'": async () => { },
+        "a managed user exists to have their password reset": async () => { },
+        "a managed user exists to be disabled": async () => { }
       }
     };
 
-    options.pactBrokerUrl = requireBrokerUrl();
-    options.consumerVersionSelectors = [{ latest: true, consumer: "photox-web-app" }];
-    options.publishVerificationResult = true;
-    Object.assign(options, brokerAuthOptions());
+    if (process.env.PACT_URL) {
+      options.pactUrls = [process.env.PACT_URL];
+    } else {
+      options.pactBrokerUrl = requireBrokerUrl();
+      options.consumerVersionSelectors = [{ latest: true, consumer: "photox-web-app" }];
+      Object.assign(options, brokerAuthOptions());
+    }
+    options.publishVerificationResult = !!process.env.PACT_BROKER_BASE_URL;
 
     await new Verifier(options).verifyProvider();
   }, 120000);

@@ -33,7 +33,7 @@ describe("library message provider verification", () => {
       providerVersionBranch: process.env.PACT_CONTRACT_BRANCH || "local",
       publishVerificationResult: !!process.env.PACT_BROKER_BASE_URL,
       messageProviders: {
-        "a media.derivatives.generate job payload": async () =>
+        "a command to generate thumbnails and variants for a media item": async () =>
           buildMediaDerivativesGenerateMessage({
             mediaId: "55555555-5555-4555-8555-555555555555",
             ownerId: "11111111-1111-4111-8111-111111111111",
@@ -43,9 +43,13 @@ describe("library message provider verification", () => {
       }
     };
 
-    options.pactBrokerUrl = requireBrokerUrl();
-    options.consumerVersionSelectors = [{ latest: true, consumer: "worker-service" }];
-    Object.assign(options, brokerAuthOptions());
+    if (process.env.PACT_URL) {
+      options.pactUrls = [process.env.PACT_URL];
+    } else {
+      options.pactBrokerUrl = requireBrokerUrl();
+      options.consumerVersionSelectors = [{ latest: true, consumer: "worker-service" }];
+      Object.assign(options, brokerAuthOptions());
+    }
 
     const verifier = new MessageProviderPact(options);
     await verifier.verify();

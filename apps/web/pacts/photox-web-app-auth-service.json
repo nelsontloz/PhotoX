@@ -4,10 +4,10 @@
   },
   "interactions": [
     {
-      "description": "register a user",
+      "description": "a request to register a new user",
       "providerStates": [
         {
-          "name": "register a user"
+          "name": "a user with email 'new-user@example.com' does not exist"
         }
       ],
       "request": {
@@ -75,10 +75,10 @@
       }
     },
     {
-      "description": "login a user",
+      "description": "a request to login with valid credentials",
       "providerStates": [
         {
-          "name": "login a user"
+          "name": "a user exists with email 'new-user@example.com' and password 'super-secret-password'"
         }
       ],
       "request": {
@@ -173,10 +173,10 @@
       }
     },
     {
-      "description": "refresh auth tokens",
+      "description": "a request to refresh access tokens",
       "providerStates": [
         {
-          "name": "refresh auth tokens"
+          "name": "a valid session exists for user '11111111-1111-4111-8111-111111111111'"
         }
       ],
       "request": {
@@ -270,10 +270,10 @@
       }
     },
     {
-      "description": "read current user",
+      "description": "a request to get current user details",
       "providerStates": [
         {
-          "name": "read current user"
+          "name": "a user is logged in as admin with ID '22222222-2222-4222-8222-222222222222'"
         }
       ],
       "request": {
@@ -337,10 +337,10 @@
       }
     },
     {
-      "description": "logout a user",
+      "description": "a request to logout and terminate session",
       "providerStates": [
         {
-          "name": "logout a user"
+          "name": "a valid session exists to be terminated"
         }
       ],
       "request": {
@@ -376,10 +376,10 @@
       }
     },
     {
-      "description": "list admin users",
+      "description": "a request to list all users from an admin account",
       "providerStates": [
         {
-          "name": "list admin users"
+          "name": "there are managed users in the system"
         }
       ],
       "request": {
@@ -492,82 +492,10 @@
       }
     },
     {
-      "description": "create admin-managed user",
+      "description": "a request to list users with specific pagination limits",
       "providerStates": [
         {
-          "name": "create admin-managed user"
-        }
-      ],
-      "request": {
-        "body": {
-          "email": "managed@example.com",
-          "password": "super-secret-password"
-        },
-        "headers": {
-          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJhZG1pbkBleGFtcGxlLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwic3ViIjoiMjIyMjIyMjItMjIyMi00MjIyLTgyMjItMjIyMjIyMjIyMjIyIn0.0-evKRAjmV0CXyPtxd_Bb8duLQc-1-rKcDnzqIvD0Ew",
-          "Content-Type": "application/json"
-        },
-        "method": "POST",
-        "path": "/api/v1/admin/users"
-      },
-      "response": {
-        "body": {
-          "user": {
-            "email": "managed@example.com",
-            "id": "33333333-3333-4333-8333-333333333333",
-            "isActive": true,
-            "isAdmin": false,
-            "name": null
-          }
-        },
-        "headers": {
-          "Content-Type": "application/json; charset=utf-8"
-        },
-        "matchingRules": {
-          "body": {
-            "$.user.email": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.user.id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-                }
-              ]
-            },
-            "$.user.isActive": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.user.isAdmin": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "status": 201
-      }
-    },
-    {
-      "description": "list admin users paginated",
-      "providerStates": [
-        {
-          "name": "list admin users paginated"
+          "name": "there are at least 100 managed users in the system"
         }
       ],
       "request": {
@@ -688,10 +616,10 @@
       }
     },
     {
-      "description": "create admin-managed user",
+      "description": "a request to create a new managed user",
       "providerStates": [
         {
-          "name": "create admin-managed user"
+          "name": "administrator is logged in and 'managed@example.com' does not exist"
         }
       ],
       "request": {
@@ -760,10 +688,10 @@
       }
     },
     {
-      "description": "create admin-managed admin user",
+      "description": "a request to create a new managed admin user",
       "providerStates": [
         {
-          "name": "create admin-managed admin user"
+          "name": "administrator is logged in and 'managed-admin@example.com' does not exist"
         }
       ],
       "request": {
@@ -833,10 +761,10 @@
       }
     },
     {
-      "description": "update admin-managed user",
+      "description": "a request to update a managed user's administrative status",
       "providerStates": [
         {
-          "name": "update admin-managed user"
+          "name": "a managed user exists with ID '33333333-3333-4333-8333-333333333333'"
         }
       ],
       "request": {
@@ -904,10 +832,10 @@
       }
     },
     {
-      "description": "reactivate managed user",
+      "description": "a request to reactivate a managed user account",
       "providerStates": [
         {
-          "name": "reactivate managed user"
+          "name": "an inactive managed user exists with ID '33333333-3333-4333-8333-333333333333'"
         }
       ],
       "request": {
@@ -975,10 +903,10 @@
       }
     },
     {
-      "description": "reset managed user password",
+      "description": "a request to reset a managed user's password",
       "providerStates": [
         {
-          "name": "reset managed user password"
+          "name": "a managed user exists to have their password reset"
         }
       ],
       "request": {
@@ -1015,10 +943,10 @@
       }
     },
     {
-      "description": "disable managed user",
+      "description": "a request to disable a managed user account",
       "providerStates": [
         {
-          "name": "disable managed user"
+          "name": "a managed user exists to be disabled"
         }
       ],
       "request": {
