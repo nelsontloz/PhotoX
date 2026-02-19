@@ -1,131 +1,168 @@
-# Comprehensive Code Audit Report: PhotoX
+# Comprehensive Senior-Level Code Audit Report: PhotoX
 
-Last updated: 2026-02-16
+**Date:** 2026-02-16
+**Auditor:** Jules (AI Senior Software Engineer)
 
-This report reflects the current repository state after remediation work for:
-- transaction and concurrency hardening in ingest complete flow,
-- failure-path assembled-file cleanup,
-- conflict-safe idempotency persistence behavior.
-
-Deferred items are explicitly tracked in Phase `P100` security tech debt:
-- `docs/07-ai-agent-task-contracts.md` (`P100-S1`, `P100-S2`)
-- `docs/10-execution-checklists-and-handoffs.md` (Phase `P100` checklist)
-- `docs/11-current-implementation-status.md` (`P100` snapshot)
+This report details the findings of a comprehensive code audit of the PhotoX repository, focusing on security, performance, scalability, concurrency, and code quality.
 
 ---
 
 ## 1. Security Analysis
 
-### 1.1 Insecure Token Storage (Critical)
-*   **Status**: **Deferred (P100-S1)**
-*   **File**: `apps/web/lib/session.js`
-*   **Current state**: Access and refresh tokens are still persisted in browser-readable storage.
-*   **Risk**: XSS can exfiltrate tokens and enable account takeover.
-*   **Planned remediation**: migrate to cookie-based auth transport (`httpOnly`, `Secure`, `SameSite`) with CSRF controls.
+### 1.1 Resource Exhaustion (DoS) in User Registration
+*   **Severity:** **High**
+*   **Location:** `services/auth/src/routes/authRoutes.js`, lines ~103-107
+*   **Vulnerability:** The registration endpoint computes the computationally expensive password hash (Argon2) *before* checking if the email is already registered.
+*   **Exploit Scenario:** An attacker sends a flood of registration requests with existing emails (or random emails). The server spends significant CPU resources hashing passwords, leading to a Denial of Service (DoS) where legitimate requests are starved.
+*   **Remediation:** Check for existing email (cheap operation) before hashing the password (expensive operation).
+    ```javascript
+    // services/auth/src/routes/authRoutes.js
 
-### 1.2 Weak Token Hashing (High)
-*   **Status**: **Mitigated**
-*   **File**: `services/auth/src/auth/tokens.js`
-*   **Current state**: Refresh tokens are hashed and verified with Argon2 only.
-*   **Residual risk**: Existing non-Argon2 refresh token hashes are rejected and require user re-authentication.
+    // Corrected Code:
+    const existingUser = await app.repos.users.findByEmail(email);
+    if (existingUser) {
+      throw new ApiError(409, "CONFLICT_EMAIL_EXISTS", "Email is already registered");
+    }
 
-### 1.3 Denial of Service via Large Payload (High)
-*   **Status**: **Mitigated**
-*   **Files**: `services/ingest/src/config.js`, `services/ingest/src/app.js`, `services/ingest/src/routes/uploadsRoutes.js`
-*   **Current state**: Fastify `bodyLimit` is configured and defaults are aligned with chunk expectations.
-*   **Residual risk**: remains bounded by configured limit and request concurrency.
+    // Only hash after verifying uniqueness
+    const passwordHash = await hashPassword(body.password);
+    // ... create user ...
+    ```
 
-### 1.4 Path Traversal Risk (Medium)
-*   **Status**: **Not confirmed as traversal; deferred hardening**
-*   **File**: `services/ingest/src/upload/storage.js`
-*   **Current state**: file path uses controlled path segments (`userId/year/month/mediaId`) and extension extraction.
-*   **Risk posture**: not path traversal in current implementation, but strict extension/MIME allowlisting is still good hardening.
-*   **Recommended follow-up**: extension + MIME allowlist and upload-policy documentation.
+### 1.2 Denial of Service (DoS) via Memory Exhaustion in Ingest
+*   **Severity:** **High**
+*   **Location:** `services/ingest/src/app.js`, lines ~43-49
+*   **Vulnerability:** The application configures `parseAs: "buffer"` for `application/octet-stream` uploads. This forces Fastify to buffer the entire request body into memory.
+*   **Exploit Scenario:** An attacker uploads a large file (e.g., 5GB) in a single request (or many concurrent large requests). The Node.js process runs out of memory (OOM) and crashes.
+*   **Remediation:** Stream the upload directly to disk using `fastify-multipart` or a custom stream handler, avoiding full buffering.
+    ```javascript
+    // services/ingest/src/app.js
 
-### 1.5 User Enumeration (Low)
-*   **Status**: **Open**
-*   **File**: `services/auth/src/routes/authRoutes.js`
-*   **Current state**: register endpoint returns explicit `CONFLICT_EMAIL_EXISTS`.
-*   **Risk**: allows probing whether an email exists.
+    // Corrected Code:
+    // Remove the buffer parser configuration.
+    // Use a streaming approach in the route handler, or configure:
+    app.addContentTypeParser('application/octet-stream', { parseAs: 'stream' }, (req, body, done) => {
+      done(null, body);
+    });
+    // Update route handler to consume the stream and pipe to disk.
+    ```
+
+### 1.3 User Enumeration via Timing Attack
+*   **Severity:** **Medium**
+*   **Location:** `services/auth/src/routes/authRoutes.js`, lines ~150-160 (Login) and ~243 (Refresh)
+*   **Vulnerability:** The login and refresh endpoints return immediately if the user is not found, before performing any cryptographic operations. This timing difference allows an attacker to determine if an email or user ID exists.
+*   **Remediation:** Normalize execution time by performing a dummy hash verification when the user is not found.
+    ```javascript
+    // services/auth/src/routes/authRoutes.js
+
+    // Corrected Code:
+    const userRow = await app.repos.users.findByEmail(email);
+    // If user not found, use a dummy hash (pre-computed) to simulate work
+    const hash toVerify = userRow ? userRow.password_hash : "$argon2id$v=19$m=4096,t=3,p=1$dummy...";
+    const passwordMatches = await verifyPassword(body.password, toVerify);
+
+    if (!userRow || !passwordMatches) {
+       throw new ApiError(401, "AUTH_INVALID_CREDENTIALS", "Invalid email or password");
+    }
+    ```
+
+### 1.4 Regression: Dropped Support for Legacy Bcrypt Hashes
+*   **Severity:** **High** (Functional Regression)
+*   **Location:** `services/auth/src/auth/password.js`, lines ~22-24
+*   **Issue:** The `verifyPassword` function explicitly requires hashes to start with `$argon2`. This breaks authentication for users with legacy bcrypt hashes, contradicting the requirement to retain support.
+*   **Remediation:** Allow bcrypt hashes verification if the prefix matches bcrypt format.
+    ```javascript
+    // services/auth/src/auth/password.js
+
+    // Corrected Code:
+    async function verifyPassword(password, passwordHash) {
+      if (typeof passwordHash !== "string") {
+        return false;
+      }
+
+      if (passwordHash.startsWith("$argon2")) {
+        return argon2.verify(passwordHash, password);
+      }
+
+      // Fallback for legacy bcrypt (assuming bcrypt library is available)
+      // return bcrypt.compare(password, passwordHash);
+      // Note: You must re-install/import bcrypt if it was removed.
+    }
+    ```
+
+### 1.5 Stored XSS Risk via Content-Type Trust
+*   **Severity:** **Medium**
+*   **Location:** `services/library/src/routes/libraryRoutes.js`, lines ~435 (Serving content)
+*   **Vulnerability:** The library service serves files with the `Content-Type` stored in the database. If the Ingest service's MIME detection is bypassed or the DB is compromised, an attacker can upload an HTML file with `text/html` which will execute scripts in the victim's browser when viewed.
+*   **Remediation:** Force `Content-Disposition: attachment` for risky MIME types or strictly allowlist `Content-Type` headers served by the Library service (e.g., only `image/*` and `video/*`).
+    ```javascript
+    // services/library/src/routes/libraryRoutes.js
+
+    // Corrected Code:
+    reply.type(contentType);
+    if (!contentType.startsWith("image/") && !contentType.startsWith("video/")) {
+       reply.header("Content-Disposition", "attachment");
+    }
+    ```
+
+### 1.6 Missing Security Headers
+*   **Severity:** **Low**
+*   **Location:** All Service `app.js` files
+*   **Issue:** Services lack standard security headers (HSTS, Content-Security-Policy, X-Frame-Options, etc.).
+*   **Remediation:** Use `fastify-helmet` in all Fastify services.
 
 ---
 
 ## 2. Performance and Scalability
 
-### 2.1 Memory Inefficiency in File Assembly (Critical)
-*   **Status**: **Fixed**
-*   **File**: `services/ingest/src/upload/storage.js`
-*   **Current state**: assembly uses streaming read/write, not whole-file buffering per part.
+### 2.1 Inefficient Database Sort (No Index Usage)
+*   **Severity:** **High**
+*   **Location:** `services/library/src/repos/libraryRepo.js`, lines ~53
+*   **Issue:** The `listTimeline` query sorts by `COALESCE(mm.taken_at, mm.uploaded_at, m.created_at)`. This computed value prevents the database from using indexes, leading to a full table scan and sort, which will degrade performance as the library grows.
+*   **Remediation:** Store the sort key in a dedicated, indexed column (e.g., `sort_at`) populated at ingest time.
+    ```sql
+    -- Schema Change:
+    ALTER TABLE media ADD COLUMN sort_at TIMESTAMPTZ;
+    CREATE INDEX idx_media_sort_at ON media (owner_id, sort_at DESC, id DESC);
+    -- Query Change:
+    SELECT ... FROM media ... ORDER BY sort_at DESC, id DESC;
+    ```
 
-### 2.2 Memory Inefficiency in Checksum Calculation (Critical)
-*   **Status**: **Mitigated**
-*   **File**: `services/ingest/src/upload/storage.js`
-*   **Current state**: checksum computation uses stream-based hashing.
+### 2.2 Inefficient Full-Text Search
+*   **Severity:** **Medium**
+*   **Location:** `services/library/src/repos/libraryRepo.js`, lines ~50
+*   **Issue:** The query uses `m.relative_path ILIKE '%' || $9 || '%'`. Leading wildcards prevent index usage.
+*   **Remediation:** Use PostgreSQL Full-Text Search (`tsvector`/`tsquery`) or a trigram index (`pg_trgm`) for efficient substring search.
 
-### 2.3 Blocking Event Loop
-*   **Status**: **Not confirmed**
-*   **File**: `services/ingest/src/upload/storage.js`
-*   **Current state**: stream-based APIs are used for assembly and checksum.
-
----
-
-## 3. Concurrency and Reliability
-
-### 3.1 Race Conditions in File Operations
-*   **Status**: **Improved**
-*   **Files**: `services/ingest/src/routes/uploadsRoutes.js`, `services/ingest/src/repos/uploadSessionsRepo.js`
-*   **Current state**:
-    - complete flow now uses row lock (`SELECT ... FOR UPDATE`) and transactional state writes,
-    - concurrent complete requests converge on one persisted media/session result.
-
-### 3.2 Database Transaction Boundaries
-*   **Status**: **Fixed**
-*   **Files**: `services/ingest/src/routes/uploadsRoutes.js`, `services/ingest/src/repos/mediaRepo.js`, `services/ingest/src/repos/uploadSessionsRepo.js`
-*   **Current state**: critical complete-flow DB mutations run in a single transaction.
-
-### 3.3 Failure-path Assembled File Cleanup
-*   **Status**: **Fixed**
-*   **Files**: `services/ingest/src/routes/uploadsRoutes.js`
-*   **Current state**: staged assembled output file is removed in `finally` for non-primary paths (including checksum mismatch and dedupe paths).
-
-### 3.4 Idempotency Persistence Conflict Races
-*   **Status**: **Fixed**
-*   **Files**: `services/ingest/src/repos/idempotencyRepo.js`, `services/ingest/src/routes/uploadsRoutes.js`
-*   **Current state**: idempotency persistence uses conflict-safe insert-or-fetch semantics instead of failing on unique constraint races.
+### 2.3 Client-Side Memory Exhaustion (OOM)
+*   **Severity:** **High**
+*   **Location:** `apps/web/lib/upload.js`, `sha256HexFromBlob`
+*   **Issue:** The client reads the entire file into an ArrayBuffer (`blob.arrayBuffer()`) to calculate the SHA256 hash. For large video files, this causes the browser tab to crash (OOM).
+*   **Remediation:** Use a streaming/chunked hashing approach (e.g., reading file slices and updating a hash state incrementally).
 
 ---
 
-## 4. Framework-Specific Issues
+## 3. Functionality and Reliability
 
-### 4.1 Missing Service Implementations
-*   **Status**: **Partially open**
-*   **Services**: `search-service`, `album-sharing-service`, `worker-service`
-*   **Current state**: still scaffold-level.
+### 3.1 Missing Auth Token Support for Native Images
+*   **Severity:** **Medium**
+*   **Location:** `services/library/src/auth/guard.js`
+*   **Issue:** The `requireAccessAuth` guard only checks the `Authorization` header. It does not check the `token` query parameter, which is required for loading authenticated images via native `<img>` tags.
+*   **Remediation:** Update the guard to accept tokens from the query string.
+    ```javascript
+    // services/library/src/auth/guard.js
 
-### 4.2 Fastify `trustProxy` Configuration
-*   **Status**: **Open**
-*   **File**: `services/auth/src/app.js`
-*   **Current state**: `trustProxy` not configured.
-
----
-
-## 5. Code Quality and Maintainability
-
-### 5.1 Hardcoded Secret Defaults in Config
-*   **Status**: **Deferred (P100-S2)**
-*   **Files**: `services/auth/src/config.js`, `services/ingest/src/config.js`, `services/library/src/config.js`
-*   **Current state**: defaults still exist for local-development convenience.
-*   **Planned remediation**: production-mode fail-fast validation for weak/missing JWT secrets.
-
-### 5.2 Duplicate Infrastructure Boilerplate
-*   **Status**: **Open**
-*   **Files**: repeated patterns under `services/*/src/app.js`, `services/*/src/config.js`, `services/*/src/db.js`
-*   **Current state**: duplication remains.
+    // Corrected Code:
+    const token = extractBearerToken(request.headers.authorization) || request.query.token;
+    ```
 
 ---
 
-## 6. Immediate Priorities
+## 4. Code Quality
 
-1. Execute `P100-S1` (cookie-based auth session migration).
-2. Execute `P100-S2` (production JWT secret hard-fail policy).
-3. Close remaining open items: user enumeration response policy, `trustProxy`, and service scaffold completion.
+### 4.1 Duplicated Authentication Logic
+*   **Severity:** **Low**
+*   **Location:** `services/library/src/auth/guard.js` and `services/ingest/src/auth/guard.js`
+*   **Issue:** The authentication guard logic is identical and duplicated across services.
+*   **Remediation:** Extract the guard logic into a shared internal package or library to improve maintainability and consistency.
+
