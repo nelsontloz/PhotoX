@@ -54,6 +54,7 @@ function mediaRow(m) {
         mime_type: m.mime_type,
         status: m.status,
         checksum_sha256: m.checksum_sha256,
+        sort_at: m.sort_at,
         created_at: m.created_at,
         updated_at: m.updated_at
     };
@@ -182,9 +183,11 @@ function routeQuery(sql, params) {
     // ---- media ----
     if (/INSERT INTO media/i.test(text)) {
         const ts = now();
+        const sortAt = params[6] || ts;
         const m = {
             id: params[0], owner_id: params[1], relative_path: params[2],
             mime_type: params[3], status: params[4], checksum_sha256: params[5],
+            sort_at: sortAt,
             created_at: ts, updated_at: ts
         };
         media.set(m.id, m);
@@ -295,6 +298,7 @@ const mockPool = {
         media.set(id, {
             id, owner_id, relative_path, mime_type: mime_type || "image/jpeg",
             status: status || "processing", checksum_sha256: checksum_sha256 || "0".repeat(64),
+            sort_at: ts,
             created_at: ts, updated_at: ts
         });
     }

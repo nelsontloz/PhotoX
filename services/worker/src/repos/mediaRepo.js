@@ -187,6 +187,18 @@ function buildMediaRepo(db) {
         ]
       );
 
+      await queryable(executor).query(
+        `
+          UPDATE media m
+          SET sort_at = COALESCE(mm.taken_at, mm.uploaded_at, m.created_at),
+              updated_at = NOW()
+          FROM media_metadata mm
+          WHERE m.id = $1
+            AND mm.media_id = m.id
+        `,
+        [mediaId]
+      );
+
       return result.rows[0] || null;
     }
   };
