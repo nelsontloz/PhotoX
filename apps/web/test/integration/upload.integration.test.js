@@ -11,6 +11,8 @@ function jsonResponse(status, payload) {
 }
 
 describe("upload integration", () => {
+  const ABCDEFGH_SHA256 = "9c56cc51b374c3ba189210d5b6d4bf57790d351c96c47c02190ecf1e430635ab";
+
   beforeEach(() => {
     clearSession();
     writeSession({
@@ -68,7 +70,9 @@ describe("upload integration", () => {
       name: "photo.jpg",
       size: blob.size,
       type: blob.type,
-      arrayBuffer: () => blob.arrayBuffer(),
+      arrayBuffer: () => {
+        throw new Error("full-file arrayBuffer must not be used");
+      },
       slice: (start, end) => blob.slice(start, end)
     };
 
@@ -85,6 +89,11 @@ describe("upload integration", () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(fetchMock.mock.calls[0][0]).toContain("/uploads/init");
     expect(fetchMock.mock.calls[3][0]).toContain("/uploads/upload-123/complete");
+
+    const initPayload = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const completePayload = JSON.parse(fetchMock.mock.calls[3][1].body);
+    expect(initPayload.checksumSha256).toBe(ABCDEFGH_SHA256);
+    expect(completePayload.checksumSha256).toBe(ABCDEFGH_SHA256);
   });
 
   it("accepts video uploads and sends media content type during init", async () => {
@@ -121,7 +130,9 @@ describe("upload integration", () => {
       name: "clip.mp4",
       size: blob.size,
       type: blob.type,
-      arrayBuffer: () => blob.arrayBuffer(),
+      arrayBuffer: () => {
+        throw new Error("full-file arrayBuffer must not be used");
+      },
       slice: (start, end) => blob.slice(start, end)
     };
 
