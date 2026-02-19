@@ -39,3 +39,5 @@ This repository uses docs-first execution. Every coding agent must read `/docs` 
 ## Operational Notes
 - Prefer repository-local conventions over generic defaults.
 - Keep changes scoped, auditable, and test-backed.
+## Implemented Changes
+- Added GIN Trigram index to `media.relative_path` in Library Service to optimize substring searches.
