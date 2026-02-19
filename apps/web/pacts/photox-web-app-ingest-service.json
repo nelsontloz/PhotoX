@@ -4,10 +4,10 @@
   },
   "interactions": [
     {
-      "description": "initialize upload",
+      "description": "a request to initialize a multi-part upload",
       "providerStates": [
         {
-          "name": "initialize upload"
+          "name": "a user is ready to upload a new 3.8MB JPEG file"
         }
       ],
       "request": {
@@ -68,10 +68,10 @@
       }
     },
     {
-      "description": "upload part bytes",
+      "description": "a request to upload the first part of the file",
       "providerStates": [
         {
-          "name": "upload part bytes"
+          "name": "an active upload session '44444444-4444-4444-8444-444444444444' exists"
         }
       ],
       "request": {
@@ -140,10 +140,10 @@
       }
     },
     {
-      "description": "read upload status",
+      "description": "a request to retrieve the current status of the upload",
       "providerStates": [
         {
-          "name": "read upload status"
+          "name": "an upload '44444444-4444-4444-8444-444444444444' is currently in the 'uploading' state"
         }
       ],
       "request": {
@@ -235,10 +235,10 @@
       }
     },
     {
-      "description": "complete upload",
+      "description": "a request to complete and finalize the upload",
       "providerStates": [
         {
-          "name": "complete upload"
+          "name": "all parts of the upload '44444444-4444-4444-8444-444444444444' have been successfully stored"
         }
       ],
       "request": {
@@ -295,10 +295,10 @@
       }
     },
     {
-      "description": "abort upload",
+      "description": "a request to abort the upload session",
       "providerStates": [
         {
-          "name": "abort upload"
+          "name": "an upload '44444444-4444-4444-8444-444444444444' exists and can be cancelled"
         }
       ],
       "request": {

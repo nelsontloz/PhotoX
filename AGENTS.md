@@ -41,5 +41,6 @@ This repository uses docs-first execution. Every coding agent must read `/docs` 
 - Keep changes scoped, auditable, and test-backed.
 ## Implemented Changes
 - Added GIN Trigram index to `media.relative_path` in Library Service to optimize substring searches.
-- Added EXIF-based capture date extraction for images: worker now parses `sharp`'s raw EXIF IFD buffer via `exif-reader` in `metadata.js`. `DateTimeOriginal` (and other EXIF date fields) from JPEG EXIF IFD takes priority over ffprobe container tags for images. Falls back to upload timestamp when no EXIF date is present. `media.sort_at` (and `media_metadata.taken_at`) are set from the EXIF capture date, so the timeline correctly orders media by when it was taken, not uploaded.
-- Fixed pre-existing UTC bug in `parseExifDate`: bare EXIF date strings are now explicitly treated as UTC.
+- Added EXIF-based capture date extraction for images.
+- Created `scripts/full-build.sh` to automate build and test.
+- Refactored Pact tests across all services (Auth, Ingest, Library, Worker) to use more descriptive interaction names and provider states, following Pact best practices for readability and maintainability.

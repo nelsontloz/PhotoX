@@ -10,7 +10,7 @@
         "relativePath": "11111111-1111-4111-8111-111111111111/2026/02/55555555-5555-4555-8555-555555555555.jpg",
         "requestedAt": "2026-02-18T12:00:10.000Z"
       },
-      "description": "a media.derivatives.generate job payload",
+      "description": "a command to generate thumbnails and variants for a media item",
       "matchingRules": {
         "body": {
           "$.mediaId": {

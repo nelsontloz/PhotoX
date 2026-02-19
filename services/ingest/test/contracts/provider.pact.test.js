@@ -147,19 +147,19 @@ describe("ingest http provider verification", () => {
       enablePending: true,
       publishVerificationResult: !!process.env.PACT_BROKER_BASE_URL,
       stateHandlers: {
-        "initialize upload": async () => {
+        "a user is ready to upload a new 3.8MB JPEG file": async () => {
           seedForInit();
         },
-        "upload part bytes": async () => {
+        "an active upload session '44444444-4444-4444-8444-444444444444' exists": async () => {
           seedForUploadPart();
         },
-        "read upload status": async () => {
+        "an upload '44444444-4444-4444-8444-444444444444' is currently in the 'uploading' state": async () => {
           seedForReadStatus();
         },
-        "complete upload": async () => {
+        "all parts of the upload '44444444-4444-4444-8444-444444444444' have been successfully stored": async () => {
           seedForComplete();
         },
-        "abort upload": async () => {
+        "an upload '44444444-4444-4444-8444-444444444444' exists and can be cancelled": async () => {
           seedForAbort();
           // Create temp dir so removeUploadTempDir succeeds
           const partDir = path.join(tmpDir, "_tmp", UPLOAD_ID);
@@ -168,9 +168,13 @@ describe("ingest http provider verification", () => {
       }
     };
 
-    options.pactBrokerUrl = requireBrokerUrl();
-    options.consumerVersionSelectors = [{ latest: true, consumer: "photox-web-app" }];
-    Object.assign(options, brokerAuthOptions());
+    if (process.env.PACT_URL) {
+      options.pactUrls = [process.env.PACT_URL];
+    } else {
+      options.pactBrokerUrl = requireBrokerUrl();
+      options.consumerVersionSelectors = [{ latest: true, consumer: "photox-web-app" }];
+      Object.assign(options, brokerAuthOptions());
+    }
 
     await new Verifier(options).verifyProvider();
   }, 60000);

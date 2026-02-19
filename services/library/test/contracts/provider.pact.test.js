@@ -121,42 +121,46 @@ describe("library http provider verification", () => {
       enablePending: true,
       publishVerificationResult: !!process.env.PACT_BROKER_BASE_URL,
       stateHandlers: {
-        "read timeline page": async () => {
+        "there are media items in the user's library": async () => {
           seedMediaRow();
         },
-        "read timeline page with filters": async () => {
+        "there are media items matching the search criteria 'beach'": async () => {
           seedMediaRow();
         },
-        "read media detail": async () => {
+        "a media item exists with ID '55555555-5555-4555-8555-555555555555'": async () => {
           seedMediaRow();
         },
-        "patch media flags": async () => {
+        "a media item exists to have its flags updated": async () => {
           seedMediaRow();
         },
-        "read media bytes": async () => {
+        "a thumbnail variant exists for media '55555555-5555-4555-8555-555555555555'": async () => {
           seedMediaRow();
           await seedDerivativeFile("thumb");
         },
-        "read media bytes small": async () => {
+        "a small variant exists for media '55555555-5555-4555-8555-555555555555'": async () => {
           seedMediaRow();
           await seedDerivativeFile("small");
         },
-        "read media playback bytes": async () => {
+        "a playback variant exists for video '55555555-5555-4555-8555-555555555555'": async () => {
           seedVideoMediaRow();
           await seedPlaybackFile();
         },
-        "soft-delete media": async () => {
+        "a media item exists to be soft-deleted": async () => {
           seedMediaRow();
         },
-        "restore soft-deleted media": async () => {
+        "a soft-deleted media item exists to be restored": async () => {
           seedMediaRow();
         }
       }
     };
 
-    options.pactBrokerUrl = requireBrokerUrl();
-    options.consumerVersionSelectors = [{ latest: true, consumer: "photox-web-app" }];
-    Object.assign(options, brokerAuthOptions());
+    if (process.env.PACT_URL) {
+      options.pactUrls = [process.env.PACT_URL];
+    } else {
+      options.pactBrokerUrl = requireBrokerUrl();
+      options.consumerVersionSelectors = [{ latest: true, consumer: "photox-web-app" }];
+      Object.assign(options, brokerAuthOptions());
+    }
 
     await new Verifier(options).verifyProvider();
   }, 60000);

@@ -4,10 +4,10 @@
   },
   "interactions": [
     {
-      "description": "read timeline page",
+      "description": "a request for the media timeline",
       "providerStates": [
         {
-          "name": "read timeline page"
+          "name": "there are media items in the user's library"
         }
       ],
       "request": {
@@ -132,232 +132,10 @@
       }
     },
     {
-      "description": "read media detail",
+      "description": "a filtered request for the media timeline",
       "providerStates": [
         {
-          "name": "read media detail"
-        }
-      ],
-      "request": {
-        "headers": {
-          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJuZXctdXNlckBleGFtcGxlLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwic3ViIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIn0.JhjfkCBLBPGeCG7E6KkBWmPSY8bO2st5TX-VrTHSumM"
-        },
-        "method": "GET",
-        "path": "/api/v1/media/55555555-5555-4555-8555-555555555555"
-      },
-      "response": {
-        "body": {
-          "media": {
-            "flags": {
-              "archived": false,
-              "deletedSoft": false,
-              "favorite": false,
-              "hidden": false
-            },
-            "id": "55555555-5555-4555-8555-555555555555",
-            "mimeType": "image/jpeg",
-            "ownerId": "11111111-1111-4111-8111-111111111111"
-          }
-        },
-        "headers": {
-          "Content-Type": "application/json; charset=utf-8"
-        },
-        "matchingRules": {
-          "body": {
-            "$.media.flags.archived": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.media.flags.deletedSoft": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.media.flags.favorite": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.media.flags.hidden": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.media.id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-                }
-              ]
-            },
-            "$.media.mimeType": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.media.ownerId": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-                }
-              ]
-            }
-          }
-        },
-        "status": 200
-      }
-    },
-    {
-      "description": "patch media flags",
-      "providerStates": [
-        {
-          "name": "patch media flags"
-        }
-      ],
-      "request": {
-        "body": {
-          "favorite": true
-        },
-        "headers": {
-          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJuZXctdXNlckBleGFtcGxlLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwic3ViIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIn0.JhjfkCBLBPGeCG7E6KkBWmPSY8bO2st5TX-VrTHSumM",
-          "Content-Type": "application/json"
-        },
-        "method": "PATCH",
-        "path": "/api/v1/media/55555555-5555-4555-8555-555555555555"
-      },
-      "response": {
-        "body": {
-          "media": {
-            "flags": {
-              "archived": false,
-              "deletedSoft": false,
-              "favorite": true,
-              "hidden": false
-            },
-            "id": "55555555-5555-4555-8555-555555555555",
-            "mimeType": "image/jpeg",
-            "ownerId": "11111111-1111-4111-8111-111111111111"
-          }
-        },
-        "headers": {
-          "Content-Type": "application/json; charset=utf-8"
-        },
-        "matchingRules": {
-          "body": {
-            "$.media.flags.archived": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.media.flags.deletedSoft": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.media.flags.favorite": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.media.flags.hidden": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.media.id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-                }
-              ]
-            },
-            "$.media.mimeType": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.media.ownerId": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-                }
-              ]
-            }
-          }
-        },
-        "status": 200
-      }
-    },
-    {
-      "description": "read media bytes",
-      "providerStates": [
-        {
-          "name": "read media bytes"
-        }
-      ],
-      "request": {
-        "headers": {
-          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJuZXctdXNlckBleGFtcGxlLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwic3ViIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIn0.JhjfkCBLBPGeCG7E6KkBWmPSY8bO2st5TX-VrTHSumM"
-        },
-        "method": "GET",
-        "path": "/api/v1/media/55555555-5555-4555-8555-555555555555/content",
-        "query": {
-          "variant": [
-            "thumb"
-          ]
-        }
-      },
-      "response": {
-        "headers": {
-          "Content-Type": "image/webp"
-        },
-        "status": 200
-      }
-    },
-    {
-      "description": "read timeline page with filters",
-      "providerStates": [
-        {
-          "name": "read timeline page with filters"
+          "name": "there are media items matching the search criteria 'beach'"
         }
       ],
       "request": {
@@ -499,10 +277,10 @@
       }
     },
     {
-      "description": "read media detail",
+      "description": "a request for detailed media information",
       "providerStates": [
         {
-          "name": "read media detail"
+          "name": "a media item exists with ID '55555555-5555-4555-8555-555555555555'"
         }
       ],
       "request": {
@@ -595,10 +373,10 @@
       }
     },
     {
-      "description": "patch media flags",
+      "description": "a request to toggle media favorite status",
       "providerStates": [
         {
-          "name": "patch media flags"
+          "name": "a media item exists to have its flags updated"
         }
       ],
       "request": {
@@ -695,10 +473,10 @@
       }
     },
     {
-      "description": "read media bytes",
+      "description": "a request for the thumbnail variant bytes",
       "providerStates": [
         {
-          "name": "read media bytes"
+          "name": "a thumbnail variant exists for media '55555555-5555-4555-8555-555555555555'"
         }
       ],
       "request": {
@@ -721,10 +499,10 @@
       }
     },
     {
-      "description": "read media bytes small",
+      "description": "a request for the small variant bytes",
       "providerStates": [
         {
-          "name": "read media bytes small"
+          "name": "a small variant exists for media '55555555-5555-4555-8555-555555555555'"
         }
       ],
       "request": {
@@ -747,10 +525,10 @@
       }
     },
     {
-      "description": "read media playback bytes",
+      "description": "a request for the video playback bytes",
       "providerStates": [
         {
-          "name": "read media playback bytes"
+          "name": "a playback variant exists for video '55555555-5555-4555-8555-555555555555'"
         }
       ],
       "request": {
@@ -773,10 +551,10 @@
       }
     },
     {
-      "description": "soft-delete media",
+      "description": "a request to soft-delete a media item",
       "providerStates": [
         {
-          "name": "soft-delete media"
+          "name": "a media item exists to be soft-deleted"
         }
       ],
       "request": {
@@ -819,10 +597,10 @@
       }
     },
     {
-      "description": "restore soft-deleted media",
+      "description": "a request to restore a soft-deleted media item",
       "providerStates": [
         {
-          "name": "restore soft-deleted media"
+          "name": "a soft-deleted media item exists to be restored"
         }
       ],
       "request": {

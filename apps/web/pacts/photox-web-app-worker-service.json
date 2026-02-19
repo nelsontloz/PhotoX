@@ -4,7 +4,7 @@
   },
   "interactions": [
     {
-      "description": "read telemetry snapshot",
+      "description": "a request for a snapshot of worker telemetry data",
       "request": {
         "headers": {
           "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJhZG1pbkBleGFtcGxlLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwic3ViIjoiMjIyMjIyMjItMjIyMi00MjIyLTgyMjItMjIyMjIyMjIyMjIyIn0.0-evKRAjmV0CXyPtxd_Bb8duLQc-1-rKcDnzqIvD0Ew"
@@ -108,7 +108,7 @@
       }
     },
     {
-      "description": "stream telemetry events",
+      "description": "a request to stream real-time worker telemetry events",
       "request": {
         "headers": {
           "Accept": "text/event-stream",

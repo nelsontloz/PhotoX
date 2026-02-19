@@ -57,8 +57,8 @@ describe("web http consumer pacts", () => {
 
     const provider = buildProvider("auth-service");
     provider
-      .given("register a user")
-      .uponReceiving("register a user")
+      .given("a user with email 'new-user@example.com' does not exist")
+      .uponReceiving("a request to register a new user")
       .withRequest({
         method: "POST",
         path: "/api/v1/auth/register",
@@ -81,8 +81,8 @@ describe("web http consumer pacts", () => {
           }
         }
       })
-      .given("login a user")
-      .uponReceiving("login a user")
+      .given("a user exists with email 'new-user@example.com' and password 'super-secret-password'")
+      .uponReceiving("a request to login with valid credentials")
       .withRequest({
         method: "POST",
         path: "/api/v1/auth/login",
@@ -108,8 +108,8 @@ describe("web http consumer pacts", () => {
           }
         }
       })
-      .given("refresh auth tokens")
-      .uponReceiving("refresh auth tokens")
+      .given("a valid session exists for user '11111111-1111-4111-8111-111111111111'")
+      .uponReceiving("a request to refresh access tokens")
       .withRequest({
         method: "POST",
         path: "/api/v1/auth/refresh",
@@ -134,8 +134,8 @@ describe("web http consumer pacts", () => {
           }
         }
       })
-      .given("read current user")
-      .uponReceiving("read current user")
+      .given("a user is logged in as admin with ID '22222222-2222-4222-8222-222222222222'")
+      .uponReceiving("a request to get current user details")
       .withRequest({
         method: "GET",
         path: "/api/v1/me",
@@ -156,8 +156,8 @@ describe("web http consumer pacts", () => {
           }
         }
       })
-      .given("logout a user")
-      .uponReceiving("logout a user")
+      .given("a valid session exists to be terminated")
+      .uponReceiving("a request to logout and terminate session")
       .withRequest({
         method: "POST",
         path: "/api/v1/auth/logout",
@@ -173,8 +173,8 @@ describe("web http consumer pacts", () => {
           success: like(true)
         }
       })
-      .given("list admin users")
-      .uponReceiving("list admin users")
+      .given("there are managed users in the system")
+      .uponReceiving("a request to list all users from an admin account")
       .withRequest({
         method: "GET",
         path: "/api/v1/admin/users",
@@ -201,8 +201,8 @@ describe("web http consumer pacts", () => {
           offset: like(0)
         }
       })
-      .given("list admin users paginated")
-      .uponReceiving("list admin users paginated")
+      .given("there are at least 100 managed users in the system")
+      .uponReceiving("a request to list users with specific pagination limits")
       .withRequest({
         method: "GET",
         path: "/api/v1/admin/users",
@@ -233,8 +233,8 @@ describe("web http consumer pacts", () => {
           offset: like(0)
         }
       })
-      .given("create admin-managed user")
-      .uponReceiving("create admin-managed user")
+      .given("administrator is logged in and 'managed@example.com' does not exist")
+      .uponReceiving("a request to create a new managed user")
       .withRequest({
         method: "POST",
         path: "/api/v1/admin/users",
@@ -260,8 +260,8 @@ describe("web http consumer pacts", () => {
           }
         }
       })
-      .given("create admin-managed admin user")
-      .uponReceiving("create admin-managed admin user")
+      .given("administrator is logged in and 'managed-admin@example.com' does not exist")
+      .uponReceiving("a request to create a new managed admin user")
       .withRequest({
         method: "POST",
         path: "/api/v1/admin/users",
@@ -288,8 +288,8 @@ describe("web http consumer pacts", () => {
           }
         }
       })
-      .given("update admin-managed user")
-      .uponReceiving("update admin-managed user")
+      .given("a managed user exists with ID '33333333-3333-4333-8333-333333333333'")
+      .uponReceiving("a request to update a managed user's administrative status")
       .withRequest({
         method: "PATCH",
         path: `/api/v1/admin/users/${TARGET_USER_ID}`,
@@ -314,8 +314,8 @@ describe("web http consumer pacts", () => {
           }
         }
       })
-      .given("reactivate managed user")
-      .uponReceiving("reactivate managed user")
+      .given("an inactive managed user exists with ID '33333333-3333-4333-8333-333333333333'")
+      .uponReceiving("a request to reactivate a managed user account")
       .withRequest({
         method: "PATCH",
         path: `/api/v1/admin/users/${TARGET_USER_ID}`,
@@ -340,8 +340,8 @@ describe("web http consumer pacts", () => {
           }
         }
       })
-      .given("reset managed user password")
-      .uponReceiving("reset managed user password")
+      .given("a managed user exists to have their password reset")
+      .uponReceiving("a request to reset a managed user's password")
       .withRequest({
         method: "POST",
         path: `/api/v1/admin/users/${TARGET_USER_ID}/reset-password`,
@@ -360,8 +360,8 @@ describe("web http consumer pacts", () => {
           success: like(true)
         }
       })
-      .given("disable managed user")
-      .uponReceiving("disable managed user")
+      .given("a managed user exists to be disabled")
+      .uponReceiving("a request to disable a managed user account")
       .withRequest({
         method: "DELETE",
         path: `/api/v1/admin/users/${TARGET_USER_ID}`,
@@ -466,8 +466,8 @@ describe("web http consumer pacts", () => {
     const provider = buildProvider("ingest-service");
 
     provider
-      .given("initialize upload")
-      .uponReceiving("initialize upload")
+      .given("a user is ready to upload a new 3.8MB JPEG file")
+      .uponReceiving("a request to initialize a multi-part upload")
       .withRequest({
         method: "POST",
         path: "/api/v1/uploads/init",
@@ -492,8 +492,8 @@ describe("web http consumer pacts", () => {
           expiresAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z")
         }
       })
-      .given("upload part bytes")
-      .uponReceiving("upload part bytes")
+      .given("an active upload session '44444444-4444-4444-8444-444444444444' exists")
+      .uponReceiving("a request to upload the first part of the file")
       .withRequest({
         method: "POST",
         path: `/api/v1/uploads/${UPLOAD_ID}/part`,
@@ -514,8 +514,8 @@ describe("web http consumer pacts", () => {
           checksumSha256: regex(SHA256_REGEX, "de4ecf4e0d0f157c8142fdb7f0e6f9f607c37d9b233830f70f7f83b4f04f9b69")
         }
       })
-      .given("read upload status")
-      .uponReceiving("read upload status")
+      .given("an upload '44444444-4444-4444-8444-444444444444' is currently in the 'uploading' state")
+      .uponReceiving("a request to retrieve the current status of the upload")
       .withRequest({
         method: "GET",
         path: `/api/v1/uploads/${UPLOAD_ID}`,
@@ -536,8 +536,8 @@ describe("web http consumer pacts", () => {
           expiresAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z")
         }
       })
-      .given("complete upload")
-      .uponReceiving("complete upload")
+      .given("all parts of the upload '44444444-4444-4444-8444-444444444444' have been successfully stored")
+      .uponReceiving("a request to complete and finalize the upload")
       .withRequest({
         method: "POST",
         path: `/api/v1/uploads/${UPLOAD_ID}/complete`,
@@ -559,8 +559,8 @@ describe("web http consumer pacts", () => {
           deduplicated: like(false)
         }
       })
-      .given("abort upload")
-      .uponReceiving("abort upload")
+      .given("an upload '44444444-4444-4444-8444-444444444444' exists and can be cancelled")
+      .uponReceiving("a request to abort the upload session")
       .withRequest({
         method: "POST",
         path: `/api/v1/uploads/${UPLOAD_ID}/abort`,
@@ -625,8 +625,8 @@ describe("web http consumer pacts", () => {
     const provider = buildProvider("library-service");
 
     provider
-      .given("read timeline page")
-      .uponReceiving("read timeline page")
+      .given("there are media items in the user's library")
+      .uponReceiving("a request for the media timeline")
       .withRequest({
         method: "GET",
         path: "/api/v1/library/timeline",
@@ -654,8 +654,8 @@ describe("web http consumer pacts", () => {
           nextCursor: null
         }
       })
-      .given("read timeline page with filters")
-      .uponReceiving("read timeline page with filters")
+      .given("there are media items matching the search criteria 'beach'")
+      .uponReceiving("a filtered request for the media timeline")
       .withRequest({
         method: "GET",
         path: "/api/v1/library/timeline",
@@ -690,8 +690,8 @@ describe("web http consumer pacts", () => {
           nextCursor: null
         }
       })
-      .given("read media detail")
-      .uponReceiving("read media detail")
+      .given("a media item exists with ID '55555555-5555-4555-8555-555555555555'")
+      .uponReceiving("a request for detailed media information")
       .withRequest({
         method: "GET",
         path: `/api/v1/media/${MEDIA_ID}`,
@@ -716,8 +716,8 @@ describe("web http consumer pacts", () => {
           }
         }
       })
-      .given("patch media flags")
-      .uponReceiving("patch media flags")
+      .given("a media item exists to have its flags updated")
+      .uponReceiving("a request to toggle media favorite status")
       .withRequest({
         method: "PATCH",
         path: `/api/v1/media/${MEDIA_ID}`,
@@ -746,8 +746,8 @@ describe("web http consumer pacts", () => {
           }
         }
       })
-      .given("read media bytes")
-      .uponReceiving("read media bytes")
+      .given("a thumbnail variant exists for media '55555555-5555-4555-8555-555555555555'")
+      .uponReceiving("a request for the thumbnail variant bytes")
       .withRequest({
         method: "GET",
         path: `/api/v1/media/${MEDIA_ID}/content`,
@@ -764,8 +764,8 @@ describe("web http consumer pacts", () => {
           "Content-Type": "image/webp"
         }
       })
-      .given("read media bytes small")
-      .uponReceiving("read media bytes small")
+      .given("a small variant exists for media '55555555-5555-4555-8555-555555555555'")
+      .uponReceiving("a request for the small variant bytes")
       .withRequest({
         method: "GET",
         path: `/api/v1/media/${MEDIA_ID}/content`,
@@ -782,8 +782,8 @@ describe("web http consumer pacts", () => {
           "Content-Type": "image/webp"
         }
       })
-      .given("read media playback bytes")
-      .uponReceiving("read media playback bytes")
+      .given("a playback variant exists for video '55555555-5555-4555-8555-555555555555'")
+      .uponReceiving("a request for the video playback bytes")
       .withRequest({
         method: "GET",
         path: `/api/v1/media/${MEDIA_ID}/content`,
@@ -800,8 +800,8 @@ describe("web http consumer pacts", () => {
           "Content-Type": "video/webm"
         }
       })
-      .given("soft-delete media")
-      .uponReceiving("soft-delete media")
+      .given("a media item exists to be soft-deleted")
+      .uponReceiving("a request to soft-delete a media item")
       .withRequest({
         method: "DELETE",
         path: `/api/v1/media/${MEDIA_ID}`,
@@ -817,8 +817,8 @@ describe("web http consumer pacts", () => {
           status: like("deleted")
         }
       })
-      .given("restore soft-deleted media")
-      .uponReceiving("restore soft-deleted media")
+      .given("a soft-deleted media item exists to be restored")
+      .uponReceiving("a request to restore a soft-deleted media item")
       .withRequest({
         method: "POST",
         path: `/api/v1/media/${MEDIA_ID}/restore`,
@@ -891,7 +891,7 @@ describe("web http consumer pacts", () => {
     const provider = buildProvider("worker-service");
 
     provider
-      .uponReceiving("read telemetry snapshot")
+      .uponReceiving("a request for a snapshot of worker telemetry data")
       .withRequest({
         method: "GET",
         path: "/api/v1/worker/telemetry/snapshot",
@@ -914,7 +914,7 @@ describe("web http consumer pacts", () => {
           recentEvents: like([])
         }
       })
-      .uponReceiving("stream telemetry events")
+      .uponReceiving("a request to stream real-time worker telemetry events")
       .withRequest({
         method: "GET",
         path: "/api/v1/worker/telemetry/stream",

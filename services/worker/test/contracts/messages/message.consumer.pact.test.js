@@ -16,7 +16,7 @@ describe("worker message consumer pacts", () => {
     });
 
     await messagePact
-      .expectsToReceive("a media.process job payload")
+      .expectsToReceive("a command to process a newly uploaded media file")
       .withMetadata({ contentType: "application/json" })
       .withContent({
         mediaId: regex(UUID_REGEX, "55555555-5555-4555-8555-555555555555"),
@@ -42,7 +42,7 @@ describe("worker message consumer pacts", () => {
     });
 
     await messagePact
-      .expectsToReceive("a media.derivatives.generate job payload")
+      .expectsToReceive("a command to generate thumbnails and variants for a media item")
       .withMetadata({ contentType: "application/json" })
       .withContent({
         mediaId: regex(UUID_REGEX, "55555555-5555-4555-8555-555555555555"),
