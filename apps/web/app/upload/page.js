@@ -1,14 +1,15 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { fetchCurrentUser, formatApiError } from "../../lib/api";
 import { buildLoginPath } from "../../lib/navigation";
-import { formatBytes, uploadMediaFilesInChunks } from "../../lib/upload";
+import { formatBytes } from "../../lib/upload";
 import AppSidebar from "../components/app-sidebar";
+import { useUpload } from "../components/upload-context";
 
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "tif", "tiff", "avif"]);
 const VIDEO_EXTENSIONS = new Set(["mp4", "mov", "m4v", "webm", "avi", "mkv", "3gp", "ogv", "wmv", "mpeg", "mpg"]);
@@ -29,12 +30,20 @@ function isSupportedMediaFile(file) {
 
 export default function UploadPage() {
   const router = useRouter();
-  const [selectedFiles, setSelectedFiles] = useState([]);
-  const [fileProgressByIndex, setFileProgressByIndex] = useState({});
-  const [overallProgress, setOverallProgress] = useState(null);
-  const [uploadSummary, setUploadSummary] = useState(null);
-  const [uploadError, setUploadError] = useState("");
   const fileInputRef = useRef(null);
+  const [localError, setLocalError] = useState("");
+
+  const {
+    selectedFiles,
+    fileProgressList,
+    overallProgress,
+    uploadSummary,
+    uploadError,
+    activeCount,
+    isUploading,
+    uploadFiles,
+    handleClearAll
+  } = useUpload();
 
   const meQuery = useQuery({
     queryKey: ["me"],
@@ -47,71 +56,6 @@ export default function UploadPage() {
       router.replace(buildLoginPath("/upload"));
     }
   }, [meQuery.isError, router]);
-
-  const uploadMutation = useMutation({
-    mutationFn: (files) =>
-      uploadMediaFilesInChunks({
-        files,
-        maxConcurrent: 4,
-        onFileProgress: (progress) => {
-          setFileProgressByIndex((previous) => ({
-            ...previous,
-            [progress.fileIndex]: {
-              ...(previous[progress.fileIndex] || {}),
-              ...progress
-            }
-          }));
-        },
-        onOverallProgress: (progress) => {
-          setOverallProgress(progress);
-        }
-      }),
-    onMutate: (files) => {
-      setUploadError("");
-      setUploadSummary(null);
-
-      const initialProgressByIndex = {};
-      for (const [index, file] of files.entries()) {
-        initialProgressByIndex[index] = {
-          fileIndex: index,
-          fileName: file.name,
-          uploadedBytes: 0,
-          totalBytes: file.size,
-          percent: 0,
-          partNumber: 0,
-          totalParts: 0,
-          status: "queued"
-        };
-      }
-
-      setFileProgressByIndex(initialProgressByIndex);
-      setOverallProgress({
-        processedFiles: 0,
-        totalFiles: files.length,
-        successfulCount: 0,
-        failedCount: 0,
-        uploadedBytes: 0,
-        totalBytes: files.reduce((sum, file) => sum + file.size, 0),
-        percent: 0
-      });
-    },
-    onSuccess: (summary) => {
-      setUploadSummary(summary);
-    },
-    onError: (error) => {
-      setUploadError(formatApiError(error));
-    }
-  });
-
-  const fileProgressList = useMemo(
-    () => Object.values(fileProgressByIndex).sort((a, b) => a.fileIndex - b.fileIndex),
-    [fileProgressByIndex]
-  );
-
-  const activeCount = useMemo(
-    () => fileProgressList.filter((item) => item.status === "uploading" || item.status === "queued").length,
-    [fileProgressList]
-  );
 
   function handleFileChange(event) {
     const files = event.target.files ? Array.from(event.target.files) : [];
@@ -129,12 +73,13 @@ export default function UploadPage() {
   }
 
   function processSelectedFiles(files) {
+    setLocalError("");
     if (files.length === 0) {
       return;
     }
 
-    if (uploadMutation.isPending) {
-      setUploadError("Upload already in progress. Wait for it to finish before selecting more files");
+    if (isUploading) {
+      setLocalError("Upload already in progress. Wait for it to finish before selecting more files");
       return;
     }
 
@@ -142,30 +87,20 @@ export default function UploadPage() {
     const rejectedCount = files.length - validFiles.length;
 
     if (validFiles.length === 0) {
-      setUploadError("Only image and video files are supported");
+      setLocalError("Only image and video files are supported");
       return;
     }
 
-    setOverallProgress(null);
-    setUploadSummary(null);
-    setFileProgressByIndex({});
-    setSelectedFiles(validFiles);
-
     if (rejectedCount > 0) {
-      setUploadError(`${rejectedCount} unsupported file(s) were skipped.`);
-    } else {
-      setUploadError("");
+      setLocalError(`${rejectedCount} unsupported file(s) were skipped.`);
     }
 
-    uploadMutation.mutate(validFiles);
+    uploadFiles(validFiles);
   }
 
-  function handleClearAll() {
-    setFileProgressByIndex({});
-    setSelectedFiles([]);
-    setOverallProgress(null);
-    setUploadSummary(null);
-    setUploadError("");
+  function handleLocalClear() {
+    setLocalError("");
+    handleClearAll();
   }
 
   if (meQuery.isPending) {
@@ -179,6 +114,8 @@ export default function UploadPage() {
   if (meQuery.isError) {
     return null;
   }
+
+  const displayError = localError || uploadError;
 
   return (
     <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-background-light dark:bg-background-dark">
@@ -203,10 +140,17 @@ export default function UploadPage() {
           {/* Upload Area */}
           <section className="flex flex-col">
             <div
-              className="group relative flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-border-dark bg-white dark:bg-card-dark px-6 py-16 transition-all hover:border-primary hover:bg-primary/5 dark:hover:border-primary dark:hover:bg-primary/5 cursor-pointer"
+              className={`group relative flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-border-dark bg-white dark:bg-card-dark px-6 py-16 transition-all cursor-pointer ${isUploading
+                  ? "opacity-50 cursor-not-allowed border-slate-200 dark:border-slate-800"
+                  : "hover:border-primary hover:bg-primary/5 dark:hover:border-primary dark:hover:bg-primary/5"
+                }`}
               onDrop={handleDrop}
               onDragOver={(e) => e.preventDefault()}
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => {
+                if (!isUploading) {
+                  fileInputRef.current?.click();
+                }
+              }}
             >
               <div className="flex size-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 group-hover:text-primary group-hover:scale-110 transition-all duration-300">
                 <span className="material-symbols-outlined text-4xl">cloud_upload</span>
@@ -216,7 +160,10 @@ export default function UploadPage() {
                 <p className="text-sm text-slate-500 dark:text-slate-400">Drag photos here or click to browse</p>
                 <p className="text-xs text-slate-400 dark:text-slate-600 mt-2">Supports JPG, PNG, HEIC, WebP, AVIF, MP4, MOV up to 2GB</p>
               </div>
-              <button className="mt-4 flex items-center justify-center rounded-lg bg-primary px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/30 transition-transform active:scale-95 hover:bg-blue-600">
+              <button
+                className="mt-4 flex items-center justify-center rounded-lg bg-primary px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/30 transition-transform active:scale-95 hover:bg-blue-600 disabled:opacity-50"
+                disabled={isUploading}
+              >
                 Select Files
               </button>
               <input
@@ -226,14 +173,15 @@ export default function UploadPage() {
                 type="file"
                 accept="image/*,video/*"
                 onChange={handleFileChange}
+                disabled={isUploading}
               />
             </div>
           </section>
 
           {/* Error Message */}
-          {uploadError && (
+          {displayError && (
             <div className="rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 p-4 text-sm text-red-600 dark:text-red-400">
-              {uploadError}
+              {displayError}
             </div>
           )}
 
@@ -242,10 +190,10 @@ export default function UploadPage() {
             <section className="flex flex-col gap-4">
               <div className="flex items-center justify-between px-1">
                 <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
-                  {uploadMutation.isPending ? `Uploading ${activeCount} files` : `Selected ${selectedFiles.length} files`}
+                  {isUploading ? `Uploading ${activeCount} files` : `Selected ${selectedFiles.length} files`}
                 </h2>
                 <button
-                  onClick={handleClearAll}
+                  onClick={handleLocalClear}
                   className="text-sm font-medium text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 transition-colors"
                 >
                   Clear All
@@ -283,18 +231,22 @@ export default function UploadPage() {
             </div>
             <div className="flex flex-1 justify-end sm:flex-none w-full sm:w-auto gap-4">
               <button
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full sm:w-auto rounded-lg border border-slate-300 dark:border-border-dark px-6 py-2.5 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                disabled={uploadMutation.isPending}
+                onClick={() => {
+                  if (!isUploading) {
+                    fileInputRef.current?.click();
+                  }
+                }}
+                className="w-full sm:w-auto rounded-lg border border-slate-300 dark:border-border-dark px-6 py-2.5 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+                disabled={isUploading}
               >
                 Add More
               </button>
               <button
-                disabled={uploadMutation.isPending || (fileProgressList.length === 0 && selectedFiles.length === 0)}
+                disabled={isUploading || (fileProgressList.length === 0 && selectedFiles.length === 0)}
                 onClick={() => router.push("/timeline")}
                 className="w-full sm:w-auto rounded-lg bg-primary px-8 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/20 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
               >
-                Done
+                {isUploading ? "Uploading..." : "Done"}
               </button>
             </div>
           </div>
@@ -312,7 +264,7 @@ function UploadItem({ fileName, fileSize, percent = 0, status, error }) {
   return (
     <div className={`flex flex-col gap-3 rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-card-dark p-4 shadow-sm transition-all ${isFailed ? "border-red-200 dark:border-red-900/30" : ""}`}>
       <div className="flex items-center gap-4">
-        <div className="relative size-12 shrink-0 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+        <div className={`relative size-12 shrink-0 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 ${isFailed ? "text-red-500" : ""}`}>
           {isFailed ? (
             <span className="material-symbols-outlined">broken_image</span>
           ) : (
