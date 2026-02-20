@@ -60,7 +60,7 @@ function buildLibraryRepo(db) {
           LEFT JOIN media_metadata mm ON mm.media_id = m.id
           LEFT JOIN media_flags mf ON mf.media_id = m.id
           WHERE m.owner_id = $1
-            AND COALESCE(mf.deleted_soft, false) = false
+            AND (mf.deleted_soft IS NULL OR mf.deleted_soft = false)
             AND ($2::timestamptz IS NULL OR m.sort_at >= $2)
             AND ($3::timestamptz IS NULL OR m.sort_at <= $3)
             AND ($4::boolean IS NULL OR COALESCE(mf.favorite, false) = $4)

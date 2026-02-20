@@ -14,6 +14,7 @@ const openapiRoute = require("./routes/openapiRoute");
 
 function buildApp(overrides = {}) {
   const app = Fastify({
+    trustProxy: true,
     logger: true,
     ajv: {
       plugins: [

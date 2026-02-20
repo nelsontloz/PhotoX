@@ -16,7 +16,11 @@ function extractBearerToken(headerValue) {
 
 function requireAccessAuth(config) {
   return async function accessAuthPreHandler(request) {
-    const token = extractBearerToken(request.headers.authorization);
+    let token = extractBearerToken(request.headers.authorization);
+    if (!token && request.query && typeof request.query.token === "string") {
+      token = request.query.token;
+    }
+
     if (!token) {
       throw new ApiError(401, "AUTH_TOKEN_INVALID", "Missing bearer token");
     }

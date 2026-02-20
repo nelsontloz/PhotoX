@@ -29,6 +29,7 @@ function redisConnectionFromUrl(redisUrl) {
 function buildApp(overrides = {}) {
   const config = loadConfig(overrides);
   const app = Fastify({
+    trustProxy: true,
     logger: true,
     bodyLimit: config.uploadBodyLimitBytes,
     ajv: {

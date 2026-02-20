@@ -25,6 +25,7 @@ function redisConnectionFromUrl(redisUrl) {
 
 function buildApp(overrides = {}) {
   const app = Fastify({
+    trustProxy: true,
     logger: true,
     ajv: {
       plugins: [
