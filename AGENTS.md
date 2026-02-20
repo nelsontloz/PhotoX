@@ -45,3 +45,6 @@ This repository uses docs-first execution. Every coding agent must read `/docs` 
 - Created `scripts/full-build.sh` to automate build and test.
 - Refactored Pact tests across all services (Auth, Ingest, Library, Worker) to use more descriptive interaction names and provider states, following Pact best practices for readability and maintainability.
 - Integrated Google Material Symbols in the Web App to modernize the UI and provide a premium aesthetic.
+- Refactored the UI of the Timeline page to match a modern design, including a sticky header with search, a rail-style sidebar with hover expansion, and a masonry grid for media display using theme colors and tokens.
+- Refactored the Upload page to match the new modern design with improved drag-and-drop feedback, modern upload items with progress bars, and a sticky footer, while preserving all upload logic.
+- Refactored the Admin Console to match a premium dashboard design, including updated metrics cards, a redesigned user management table with status toggles, and live worker telemetry integration.

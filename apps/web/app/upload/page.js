@@ -10,22 +10,6 @@ import { buildLoginPath } from "../../lib/navigation";
 import { formatBytes, uploadMediaFilesInChunks } from "../../lib/upload";
 import AppSidebar from "../components/app-sidebar";
 
-function statusLabel(status) {
-  if (status === "success") {
-    return "Uploaded";
-  }
-
-  if (status === "failed") {
-    return "Failed";
-  }
-
-  if (status === "uploading") {
-    return "Uploading";
-  }
-
-  return "Queued";
-}
-
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "tif", "tiff", "avif"]);
 const VIDEO_EXTENSIONS = new Set(["mp4", "mov", "m4v", "webm", "avi", "mkv", "3gp", "ogv", "wmv", "mpeg", "mpg"]);
 
@@ -43,30 +27,6 @@ function isSupportedMediaFile(file) {
   return Boolean(extension && (IMAGE_EXTENSIONS.has(extension) || VIDEO_EXTENSIONS.has(extension)));
 }
 
-function statusChip(status) {
-  if (status === "uploading") {
-    return "bg-cyan-100 text-cyan-600";
-  }
-
-  if (status === "success") {
-    return "bg-emerald-100 text-emerald-600";
-  }
-
-  if (status === "failed") {
-    return "bg-red-100 text-red-600";
-  }
-
-  return "bg-slate-100 text-slate-600";
-}
-
-function queueCardStyle(status) {
-  if (status === "failed") {
-    return "border-red-200 bg-red-50/50";
-  }
-
-  return "border-slate-200 bg-white";
-}
-
 export default function UploadPage() {
   const router = useRouter();
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -74,7 +34,6 @@ export default function UploadPage() {
   const [overallProgress, setOverallProgress] = useState(null);
   const [uploadSummary, setUploadSummary] = useState(null);
   const [uploadError, setUploadError] = useState("");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const fileInputRef = useRef(null);
 
   const meQuery = useQuery({
@@ -144,14 +103,6 @@ export default function UploadPage() {
     }
   });
 
-  const progressWidth = useMemo(() => {
-    if (!overallProgress) {
-      return "0%";
-    }
-
-    return `${overallProgress.percent}%`;
-  }, [overallProgress]);
-
   const fileProgressList = useMemo(
     () => Object.values(fileProgressByIndex).sort((a, b) => a.fileIndex - b.fileIndex),
     [fileProgressByIndex]
@@ -183,7 +134,7 @@ export default function UploadPage() {
     }
 
     if (uploadMutation.isPending) {
-      setUploadError("Upload already in progress. Wait for it to finish before selecting more files (UPLOAD_IN_PROGRESS)");
+      setUploadError("Upload already in progress. Wait for it to finish before selecting more files");
       return;
     }
 
@@ -191,7 +142,7 @@ export default function UploadPage() {
     const rejectedCount = files.length - validFiles.length;
 
     if (validFiles.length === 0) {
-      setUploadError("Only image and video files are supported right now (VALIDATION_ERROR)");
+      setUploadError("Only image and video files are supported");
       return;
     }
 
@@ -201,7 +152,7 @@ export default function UploadPage() {
     setSelectedFiles(validFiles);
 
     if (rejectedCount > 0) {
-      setUploadError(`${rejectedCount} unsupported file(s) were skipped. Only image and video uploads are supported (VALIDATION_ERROR)`);
+      setUploadError(`${rejectedCount} unsupported file(s) were skipped.`);
     } else {
       setUploadError("");
     }
@@ -209,25 +160,19 @@ export default function UploadPage() {
     uploadMutation.mutate(validFiles);
   }
 
-  function handleClearFinished() {
-    setFileProgressByIndex((previous) => {
-      const remaining = {};
-      for (const [index, value] of Object.entries(previous)) {
-        if (value.status !== "success" && value.status !== "failed") {
-          remaining[index] = value;
-        }
-      }
-      return remaining;
-    });
+  function handleClearAll() {
+    setFileProgressByIndex({});
+    setSelectedFiles([]);
+    setOverallProgress(null);
+    setUploadSummary(null);
+    setUploadError("");
   }
 
   if (meQuery.isPending) {
     return (
-      <main className="shell py-10">
-        <section className="panel p-8">
-          <p className="text-sm text-ocean-700">Validating session...</p>
-        </section>
-      </main>
+      <div className="flex h-screen items-center justify-center bg-background-light dark:bg-background-dark">
+        <p className="text-sm text-slate-500">Validating session...</p>
+      </div>
     );
   }
 
@@ -236,178 +181,188 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="relative flex min-h-[calc(100vh-61px)] bg-[#f6f8f8] text-slate-900">
-      {isSidebarOpen ? (
-        <button
-          type="button"
-          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
-          aria-label="Close sidebar"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      ) : null}
+    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-background-light dark:bg-background-dark">
+      <AppSidebar activeLabel="Upload" isAdmin={Boolean(meQuery.data?.user?.isAdmin)} />
 
-      <aside
-        className={`fixed inset-y-[61px] left-0 z-40 w-64 border-r border-slate-200 bg-white transition-transform duration-300 lg:static lg:inset-auto lg:flex lg:translate-x-0 ${
-          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <AppSidebar activeLabel="Upload" isAdmin={Boolean(meQuery.data?.user?.isAdmin)} />
-      </aside>
-
-      <main className="min-w-0 flex-1 overflow-y-auto">
-        <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4 md:px-10">
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 lg:hidden"
-              onClick={() => setIsSidebarOpen(true)}
-            >
-              Menu
-            </button>
-            <h2 className="text-xl font-bold tracking-tight">PhotoX</h2>
+      <main className="flex-1 overflow-y-auto relative scroll-smooth flex flex-col">
+        {/* Header Style Specific for Upload Control */}
+        <div className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 dark:border-border-dark bg-background-light/95 dark:bg-background-dark/95 backdrop-blur px-6 py-4 md:px-10 shrink-0">
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-bold leading-tight tracking-tight text-slate-900 dark:text-white">Upload Manager</h2>
           </div>
-          <div className="text-sm text-slate-500">Upload workspace</div>
-        </header>
+          <Link
+            href="/timeline"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary dark:hover:text-primary transition-colors"
+          >
+            <span className="material-symbols-outlined text-lg">arrow_back</span>
+            <span className="hidden sm:inline">Back to Gallery</span>
+          </Link>
+        </div>
 
-        <div className="mx-auto flex w-full max-w-[960px] flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-2">
-            <h1 className="text-3xl font-black tracking-tight text-slate-900 md:text-4xl">Upload Manager</h1>
-            <p className="text-lg text-slate-500">Manage your photo and video uploads to your private cloud.</p>
-          </div>
-
-          <div className="space-y-8">
-            <input
-              ref={fileInputRef}
-              className="hidden"
-              type="file"
-              accept="image/*,video/*"
-              multiple
-              onChange={handleFileChange}
-            />
-
+        <div className="w-full max-w-[960px] mx-auto p-4 md:p-8 flex flex-col gap-8 flex-1 pb-32">
+          {/* Upload Area */}
+          <section className="flex flex-col">
             <div
-              className="group relative flex flex-col items-center justify-center gap-6 rounded-xl border-2 border-dashed border-cyan-400/40 bg-white px-6 py-16 transition-all duration-200 hover:border-cyan-500 hover:bg-cyan-50/40"
+              className="group relative flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-border-dark bg-white dark:bg-card-dark px-6 py-16 transition-all hover:border-primary hover:bg-primary/5 dark:hover:border-primary dark:hover:bg-primary/5 cursor-pointer"
               onDrop={handleDrop}
-              onDragOver={(event) => event.preventDefault()}
+              onDragOver={(e) => e.preventDefault()}
+              onClick={() => fileInputRef.current?.click()}
             >
-              <div className="mb-2 rounded-full bg-cyan-100 p-4 text-cyan-500 transition-transform duration-300 group-hover:scale-110">
-                <span className="text-3xl font-black">UP</span>
+              <div className="flex size-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 group-hover:text-primary group-hover:scale-110 transition-all duration-300">
+                <span className="material-symbols-outlined text-4xl">cloud_upload</span>
               </div>
-              <div className="max-w-[480px] text-center">
-                <p className="text-xl font-bold text-slate-900">Drag & drop media here</p>
-                <p className="text-sm text-slate-500">Supports images and videos (JPG, PNG, HEIC, WebP, AVIF, MP4, MOV, WebM; Max 2GB per file)</p>
+              <div className="flex max-w-[480px] flex-col items-center gap-1 text-center">
+                <p className="text-lg font-bold leading-tight text-slate-900 dark:text-white">Upload Photos</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Drag photos here or click to browse</p>
+                <p className="text-xs text-slate-400 dark:text-slate-600 mt-2">Supports JPG, PNG, HEIC, WebP, AVIF, MP4, MOV up to 2GB</p>
               </div>
-              <div className="flex w-full items-center justify-center gap-3">
-                <span className="h-px w-16 bg-slate-200" />
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">OR</span>
-                <span className="h-px w-16 bg-slate-200" />
-              </div>
-              <button
-                type="button"
-                className="rounded-lg bg-cyan-500 px-8 py-3 text-base font-bold tracking-wide text-white shadow-lg shadow-cyan-200 transition-all hover:bg-cyan-600"
-                onClick={() => fileInputRef.current?.click()}
-              >
+              <button className="mt-4 flex items-center justify-center rounded-lg bg-primary px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/30 transition-transform active:scale-95 hover:bg-blue-600">
                 Select Files
               </button>
+              <input
+                ref={fileInputRef}
+                className="hidden"
+                multiple
+                type="file"
+                accept="image/*,video/*"
+                onChange={handleFileChange}
+              />
             </div>
+          </section>
 
-            {overallProgress ? (
-              <div className="space-y-2">
-                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
-                  <div className="h-full bg-cyan-500 transition-all" style={{ width: progressWidth }} />
-                </div>
-                <p className="text-sm text-slate-600">
-                  {overallProgress.percent}% - {overallProgress.processedFiles} / {overallProgress.totalFiles} files
-                </p>
-              </div>
-            ) : null}
+          {/* Error Message */}
+          {uploadError && (
+            <div className="rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 p-4 text-sm text-red-600 dark:text-red-400">
+              {uploadError}
+            </div>
+          )}
 
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-xl font-bold text-slate-900">Upload Queue</h3>
-                  <span className="rounded-full bg-cyan-100 px-2.5 py-0.5 text-xs font-bold text-cyan-600">{activeCount} Active</span>
-                </div>
+          {/* Upload List Section */}
+          {(fileProgressList.length > 0 || selectedFiles.length > 0) && (
+            <section className="flex flex-col gap-4">
+              <div className="flex items-center justify-between px-1">
+                <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
+                  {uploadMutation.isPending ? `Uploading ${activeCount} files` : `Selected ${selectedFiles.length} files`}
+                </h2>
                 <button
-                  type="button"
-                  className="text-sm font-medium text-slate-500 transition-colors hover:text-cyan-600"
-                  onClick={handleClearFinished}
+                  onClick={handleClearAll}
+                  className="text-sm font-medium text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 transition-colors"
                 >
-                  Clear Finished
+                  Clear All
                 </button>
               </div>
 
               <div className="flex flex-col gap-3">
                 {fileProgressList.length === 0 && selectedFiles.length > 0
-                  ? selectedFiles.map((file, index) => (
-                      <div key={`${file.name}-${file.size}-${index}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <div className="flex items-center justify-between gap-4">
-                          <p className="truncate text-base font-medium text-slate-900">{file.name}</p>
-                          <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-slate-600">
-                            Queued
-                          </span>
-                        </div>
-                        <p className="mt-1 text-sm text-slate-500">{formatBytes(file.size)}</p>
-                      </div>
-                    ))
-                  : null}
-
-                {fileProgressList.map((progress) => (
-                  <div
-                    key={progress.fileIndex}
-                    className={`relative overflow-hidden rounded-xl border p-4 shadow-sm ${queueCardStyle(progress.status)}`}
-                  >
-                    <div className="absolute bottom-0 left-0 h-1 bg-cyan-500 transition-all" style={{ width: `${progress.percent || 0}%` }} />
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-1 flex items-center justify-between gap-2">
-                          <p className="truncate pr-4 text-base font-bold text-slate-900">{progress.fileName}</p>
-                          <span className={`hidden rounded px-2 py-0.5 text-xs font-bold uppercase tracking-wider sm:inline-block ${statusChip(progress.status)}`}>
-                            {statusLabel(progress.status)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm text-slate-500">
-                          <span>
-                            {formatBytes(progress.totalBytes || 0)} - {progress.percent || 0}%
-                          </span>
-                          <span className="font-mono text-xs">{formatBytes(progress.uploadedBytes || 0)}</span>
-                        </div>
-                        {progress.status === "failed" && progress.error ? (
-                          <p className="mt-1 text-sm font-medium text-red-500">{progress.error}</p>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  ? selectedFiles.map((file, idx) => (
+                    <UploadItem key={`${file.name}-${idx}`} fileName={file.name} fileSize={file.size} status="queued" />
+                  ))
+                  : fileProgressList.map((progress) => (
+                    <UploadItem
+                      key={progress.fileIndex}
+                      fileName={progress.fileName}
+                      fileSize={progress.totalBytes}
+                      percent={progress.percent}
+                      status={progress.status}
+                      error={progress.error}
+                    />
+                  ))}
               </div>
-            </div>
+            </section>
+          )}
+        </div>
 
-            <div className="flex flex-wrap gap-3">
-              {uploadMutation.isPending ? (
-                <div className="rounded-lg bg-cyan-500 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-cyan-200">
-                  Uploading files...
-                </div>
-              ) : null}
-              {uploadSummary?.successfulCount > 0 ? (
-                <Link href="/timeline" className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-6 py-3 text-sm font-bold text-slate-800">
-                  Open timeline
-                </Link>
-              ) : null}
+        {/* Footer Actions */}
+        <section className="sticky bottom-0 z-40 px-6 py-6 bg-background-light/95 dark:bg-background-dark/95 backdrop-blur border-t border-slate-200 dark:border-border-dark mt-auto shrink-0">
+          <div className="max-w-[960px] mx-auto flex items-center justify-between">
+            <div className="hidden sm:flex flex-col">
+              <span className="text-sm font-medium text-slate-900 dark:text-white">Upload status</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                {overallProgress ? `${overallProgress.processedFiles} of ${overallProgress.totalFiles} files processed` : "No active uploads"}
+              </span>
+            </div>
+            <div className="flex flex-1 justify-end sm:flex-none w-full sm:w-auto gap-4">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full sm:w-auto rounded-lg border border-slate-300 dark:border-border-dark px-6 py-2.5 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                disabled={uploadMutation.isPending}
+              >
+                Add More
+              </button>
+              <button
+                disabled={uploadMutation.isPending || (fileProgressList.length === 0 && selectedFiles.length === 0)}
+                onClick={() => router.push("/timeline")}
+                className="w-full sm:w-auto rounded-lg bg-primary px-8 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/20 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+              >
+                Done
+              </button>
             </div>
           </div>
-
-          {uploadSummary ? (
-            <div className="success space-y-2">
-              <p>
-                Upload batch finished: {uploadSummary.successfulCount} successful, {uploadSummary.failedCount} failed
-                (max concurrency: 4).
-              </p>
-            </div>
-          ) : null}
-
-          {uploadError ? <div className="error">{uploadError}</div> : null}
-        </div>
+        </section>
       </main>
+    </div>
+  );
+}
+
+function UploadItem({ fileName, fileSize, percent = 0, status, error }) {
+  const isCompleted = status === "success";
+  const isUploading = status === "uploading";
+  const isFailed = status === "failed";
+
+  return (
+    <div className={`flex flex-col gap-3 rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-card-dark p-4 shadow-sm transition-all ${isFailed ? "border-red-200 dark:border-red-900/30" : ""}`}>
+      <div className="flex items-center gap-4">
+        <div className="relative size-12 shrink-0 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+          {isFailed ? (
+            <span className="material-symbols-outlined">broken_image</span>
+          ) : (
+            <span className="material-symbols-outlined">image</span>
+          )}
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col justify-center">
+          <div className="flex items-center justify-between mb-1">
+            <p className="truncate text-sm font-medium leading-normal text-slate-900 dark:text-white">{fileName}</p>
+
+            {isCompleted && (
+              <div className="flex items-center gap-1 text-green-500 dark:text-green-400">
+                <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                <span className="text-xs font-semibold">Completed</span>
+              </div>
+            )}
+
+            {isUploading && (
+              <div className="flex items-center gap-1 text-primary">
+                <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+                <span className="text-xs font-semibold">Uploading...</span>
+              </div>
+            )}
+
+            {isFailed && (
+              <div className="flex items-center gap-1 text-red-500 dark:text-red-400">
+                <span className="material-symbols-outlined text-[18px]">error</span>
+                <span className="text-xs font-semibold">Failed</span>
+              </div>
+            )}
+
+            {status === "queued" && (
+              <span className="text-xs font-semibold text-slate-400">Queued</span>
+            )}
+          </div>
+
+          <div className="relative h-1.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+            <div
+              className={`absolute top-0 left-0 h-full rounded-full transition-all duration-300 ${isFailed ? "bg-red-500" : "bg-primary"}`}
+              style={{ width: `${percent}%` }}
+            ></div>
+          </div>
+
+          <div className="mt-1 flex justify-between text-xs text-slate-500 dark:text-slate-400">
+            <span className={isFailed ? "text-red-500 dark:text-red-400" : ""}>{isFailed ? error || "Error" : formatBytes(fileSize)}</span>
+            <span>{percent}%</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

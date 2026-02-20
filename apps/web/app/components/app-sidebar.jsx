@@ -13,52 +13,66 @@ export function getSidebarItems(isAdmin) {
   return items;
 }
 
+import { useSidebar } from "./sidebar-context";
+
 export default function AppSidebar({ activeLabel = "Timeline", isAdmin = false }) {
+  const { isOpen, close } = useSidebar();
   const navItems = getSidebarItems(isAdmin);
 
   return (
-    <div className="flex h-full w-full flex-col justify-between bg-white p-6 lg:bg-white/80">
-      <div>
-        <div className="mb-8">
-          <h2 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-slate-900">
-            <span className="text-cyan-500">◎</span>
-            PhotoX
-          </h2>
-          <p className="mt-1 text-sm font-medium text-slate-500">Manage your memories</p>
-        </div>
+    <>
+      {/* Mobile Overlay */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm transition-opacity"
+          onClick={close}
+        ></div>
+      )}
 
-        <nav className="flex flex-col gap-2">
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-background-dark border-r border-gray-200 dark:border-border-dark transition-transform duration-300 lg:static lg:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"
+          } lg:flex lg:flex-col lg:w-[72px] lg:hover:w-60 transition-[width,transform] duration-300 group`}
+      >
+        <nav className="flex flex-col gap-2 p-3 mt-4">
           {navItems.map((item) => {
             const isActive = item.label === activeLabel;
             return (
               <Link
                 key={`${item.label}-${item.href}`}
                 href={item.href}
-                className={
-                  isActive
-                    ? "flex items-center gap-3 rounded-lg bg-cyan-100 px-4 py-3 text-sm font-semibold text-cyan-700"
-                    : "group flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
-                }
+                className={`flex items-center gap-4 px-3 py-3 rounded-lg transition-all group/item relative overflow-hidden ${isActive
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-card-dark hover:text-slate-900 dark:hover:text-white"
+                  }`}
               >
-                <span className="material-symbols-outlined shrink-0 text-xl">
-                  {item.icon}
+                <span className="material-symbols-outlined shrink-0">{item.icon}</span>
+                <span className="whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  {item.label}
                 </span>
-                {item.label}
+                {isActive && (
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary rounded-r-full"></div>
+                )}
               </Link>
             );
           })}
         </nav>
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-500">Storage</span>
-          <span className="text-xs font-bold text-slate-900">45% used</span>
+        <div className="mt-auto p-3 mb-4">
+          <Link
+            href="#"
+            className="flex items-center gap-4 px-3 py-3 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-card-dark hover:text-red-500 dark:hover:text-red-400 transition-colors group/item"
+          >
+            <span className="material-symbols-outlined shrink-0">delete</span>
+            <span className="whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Trash</span>
+          </Link>
+          <Link
+            href="#"
+            className="flex items-center gap-4 px-3 py-3 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-card-dark hover:text-slate-900 dark:hover:text-white transition-colors group/item"
+          >
+            <span className="material-symbols-outlined shrink-0">settings</span>
+            <span className="whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Settings</span>
+          </Link>
         </div>
-        <div className="h-2 w-full rounded-full bg-slate-200">
-          <div className="h-2 rounded-full bg-cyan-500" style={{ width: "45%" }} />
-        </div>
-      </div>
-    </div>
+      </aside>
+    </>
   );
 }

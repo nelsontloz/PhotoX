@@ -16,7 +16,7 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [agreeToTerms, setAgreeToTerms] = useState(false);
+
   const [formError, setFormError] = useState("");
 
   const registerMutation = useMutation({
@@ -54,10 +54,7 @@ export default function RegisterPage() {
       return;
     }
 
-    if (!agreeToTerms) {
-      setFormError("You must accept Terms of Service and Privacy Policy (VALIDATION_ERROR)");
-      return;
-    }
+
 
     registerMutation.mutate({
       email,
@@ -67,151 +64,158 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="relative isolate flex min-h-[calc(100vh-61px)] items-center justify-center overflow-hidden px-4 py-8 sm:py-12">
-      <div className="absolute inset-0 -z-10">
-        <div
-          className="h-full w-full scale-105 bg-cover bg-center blur-md"
-          style={{
-            backgroundImage:
-              "url('https://lh3.googleusercontent.com/aida-public/AB6AXuBP75H4ImlxeUwpr5N8KA_B6RztUJz7JFe1UB7mvbs4y6mRhYloFsT50vRb0UlGfNH1lpAUsAnT6WDS2rVT-We7BseJJBRXq-4NixnuG3lCXlcq5KSj1A1EBRGBtm6qjotwSIwGjEA7UeO3eZrEAzM7nBlVkwh3mTSjj9dOs6SVsCsUMes8OCD_A7JzhwmAdijR1htrQcjiVEB5u4gtsRvd0_a2bX0iuYMBrH7z3OJj3_oAPWLGDtd5n5eInFGyavPBtK80KBqqxn_I')"
-          }}
-        />
-        <div className="absolute inset-0 bg-[#f6f8f8]/65" />
-      </div>
-
-      <section className="w-full max-w-[480px] rounded-2xl border border-white/70 bg-white/85 p-8 shadow-2xl backdrop-blur-md sm:p-10">
-        <div className="mb-6 flex flex-col items-center gap-2 text-center">
-          <div className="mb-1 flex h-12 w-12 items-center justify-center rounded-lg bg-[#13b6ec] text-xl font-black text-white shadow-lg shadow-cyan-500/30">
-            P
+    <main className="font-display bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 antialiased min-h-screen flex flex-col justify-center items-center overflow-x-hidden selection:bg-primary selection:text-white">
+      <div className="w-full max-w-md p-6">
+        <div className="flex flex-col items-center mb-10 text-center">
+          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-primary/20 text-primary mb-4">
+            <span className="material-symbols-outlined text-3xl">photo_library</span>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-[#0d181b]">Join PhotoX</h1>
-          <p className="text-sm font-medium text-[#4c869a]">Start your self-hosted photography journey today.</p>
+          <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white mb-2">PhotoX</h1>
+          <p className="text-slate-500 dark:text-slate-400 text-sm font-normal">
+            Join our self-hosted community. Create your account.
+          </p>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-4">
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-bold text-[#0d181b]">Full Name</span>
-            <input
-              className="w-full rounded-lg border border-[#cfe1e7] bg-white/70 px-4 py-3 text-[#0d181b] outline-none ring-[#13b6ec] transition focus:ring-2"
-              type="text"
-              name="name"
-              placeholder="John Doe"
-              value={name}
-              autoComplete="name"
-              onChange={(event) => setName(event.target.value)}
-            />
-          </label>
-
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-bold text-[#0d181b]">Email Address</span>
-            <input
-              className="w-full rounded-lg border border-[#cfe1e7] bg-white/70 px-4 py-3 text-[#0d181b] outline-none ring-[#13b6ec] transition focus:ring-2"
-              type="email"
-              name="email"
-              placeholder="user@photox.com"
-              value={email}
-              autoComplete="email"
-              onChange={(event) => setEmail(event.target.value)}
-              required
-            />
-          </label>
-
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-bold text-[#0d181b]">Password</span>
-            <div className="relative">
-              <input
-                className="w-full rounded-lg border border-[#cfe1e7] bg-white/70 px-4 py-3 pr-12 text-[#0d181b] outline-none ring-[#13b6ec] transition focus:ring-2"
-                type={showPassword ? "text" : "password"}
-                name="password"
-                placeholder="••••••••"
-                value={password}
-                autoComplete="new-password"
-                onChange={(event) => setPassword(event.target.value)}
-                minLength={8}
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((current) => !current)}
-                className="absolute inset-y-0 right-0 px-3 text-xs font-bold uppercase tracking-wide text-[#4c869a]"
-                aria-label={showPassword ? "Hide password" : "Show password"}
-              >
-                {showPassword ? "Hide" : "Show"}
-              </button>
+        <div className="w-full rounded-xl bg-white dark:bg-[#1c2430] border border-slate-200 dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-black/20 overflow-hidden">
+          <form className="p-8 flex flex-col gap-5" onSubmit={onSubmit}>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300" htmlFor="fullname">
+                Full Name
+              </label>
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
+                  <span className="material-symbols-outlined text-[20px]">person</span>
+                </div>
+                <input
+                  className="form-input w-full rounded-lg border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#151b23] text-slate-900 dark:text-white pl-10 pr-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary placeholder:text-slate-400 dark:placeholder:text-slate-600 transition-all duration-200"
+                  id="fullname"
+                  name="fullname"
+                  placeholder="John Doe"
+                  type="text"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  autoComplete="name"
+                />
+              </div>
             </div>
-            <div className="mt-2 flex gap-1">
-              <div className="h-1 flex-1 rounded bg-[#13b6ec]" />
-              <div className="h-1 flex-1 rounded bg-[#13b6ec]" />
-              <div className="h-1 flex-1 rounded bg-[#13b6ec]" />
-              <div className="h-1 flex-1 rounded bg-gray-200" />
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300" htmlFor="email">
+                Email address
+              </label>
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
+                  <span className="material-symbols-outlined text-[20px]">mail</span>
+                </div>
+                <input
+                  className="form-input w-full rounded-lg border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#151b23] text-slate-900 dark:text-white pl-10 pr-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary placeholder:text-slate-400 dark:placeholder:text-slate-600 transition-all duration-200"
+                  id="email"
+                  name="email"
+                  placeholder="name@example.com"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  autoComplete="email"
+                  required
+                />
+              </div>
             </div>
-            <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-[#4c869a]">Strong Password</p>
-          </label>
 
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-bold text-[#0d181b]">Confirm Password</span>
-            <div className="relative">
-              <input
-                className="w-full rounded-lg border border-[#cfe1e7] bg-white/70 px-4 py-3 pr-12 text-[#0d181b] outline-none ring-[#13b6ec] transition focus:ring-2"
-                type={showConfirmPassword ? "text" : "password"}
-                name="confirmPassword"
-                placeholder="••••••••"
-                value={confirmPassword}
-                autoComplete="new-password"
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                minLength={8}
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirmPassword((current) => !current)}
-                className="absolute inset-y-0 right-0 px-3 text-xs font-bold uppercase tracking-wide text-[#4c869a]"
-                aria-label={showConfirmPassword ? "Hide password" : "Show password"}
-              >
-                {showConfirmPassword ? "Hide" : "Show"}
-              </button>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300" htmlFor="password">
+                Password
+              </label>
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
+                  <span className="material-symbols-outlined text-[20px]">lock</span>
+                </div>
+                <input
+                  className="form-input w-full rounded-lg border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#151b23] text-slate-900 dark:text-white pl-10 pr-10 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary placeholder:text-slate-400 dark:placeholder:text-slate-600 transition-all duration-200"
+                  id="password"
+                  name="password"
+                  placeholder="Create a password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                />
+                <button
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-300 focus:outline-none"
+                  type="button"
+                  onClick={() => setShowPassword((current) => !current)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  <span className="material-symbols-outlined text-[20px]">{showPassword ? "visibility_off" : "visibility"}</span>
+                </button>
+              </div>
             </div>
-          </label>
 
-          <label className="flex items-start gap-2 py-1">
-            <input
-              className="mt-1 h-4 w-4 rounded border-gray-300 text-[#13b6ec] focus:ring-[#13b6ec]"
-              type="checkbox"
-              name="terms"
-              checked={agreeToTerms}
-              onChange={(event) => setAgreeToTerms(event.target.checked)}
-              required
-            />
-            <span className="text-xs font-medium leading-relaxed text-[#4c869a]">
-              I agree to the <span className="font-bold text-[#13b6ec]">Terms of Service</span> and{" "}
-              <span className="font-bold text-[#13b6ec]">Privacy Policy</span>.
-            </span>
-          </label>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300" htmlFor="confirm-password">
+                Confirm Password
+              </label>
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
+                  <span className="material-symbols-outlined text-[20px]">lock_reset</span>
+                </div>
+                <input
+                  className="form-input w-full rounded-lg border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#151b23] text-slate-900 dark:text-white pl-10 pr-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary placeholder:text-slate-400 dark:placeholder:text-slate-600 transition-all duration-200"
+                  id="confirm-password"
+                  name="confirmPassword"
+                  placeholder="Repeat your password"
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                />
+                <button
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-300 focus:outline-none"
+                  type="button"
+                  onClick={() => setShowConfirmPassword((current) => !current)}
+                  aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                >
+                  <span className="material-symbols-outlined text-[20px]">{showConfirmPassword ? "visibility_off" : "visibility"}</span>
+                </button>
+              </div>
+            </div>
 
-          {formError ? <p className="error">{formError}</p> : null}
 
-          <button
-            type="submit"
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#13b6ec] px-4 py-3 font-bold text-white shadow-lg shadow-cyan-500/25 transition hover:bg-[#11a3d4]"
-            disabled={submitDisabled}
-          >
-            {submitDisabled ? "Creating account..." : "Create Account"}
-          </button>
-        </form>
 
-        <div className="my-6 flex items-center gap-4">
-          <div className="h-px flex-1 bg-[#cfe1e7]" />
-          <span className="text-xs font-medium text-[#4c869a]">Already have an account?</span>
-          <div className="h-px flex-1 bg-[#cfe1e7]" />
+            {formError ? (
+              <div className="flex items-center gap-2 text-red-500 text-xs bg-red-500/10 p-2 rounded border border-red-500/20">
+                <span className="material-symbols-outlined text-[16px]">error</span>
+                <span>{formError}</span>
+              </div>
+            ) : null}
+
+            <button
+              className="flex w-full cursor-pointer mt-2 items-center justify-center rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-bold h-11 px-5 transition-transform active:scale-[0.98]"
+              type="submit"
+              disabled={submitDisabled}
+            >
+              {submitDisabled ? "Creating account..." : "Create Account"}
+            </button>
+          </form>
+
+          <div className="px-8 py-5 bg-slate-50 dark:bg-[#151b23] border-t border-slate-200 dark:border-slate-800 text-center">
+            <p className="text-slate-500 dark:text-slate-400 text-sm">
+              Already have an account?{" "}
+              <Link className="font-bold text-primary hover:text-primary/80 inline-flex items-center gap-1 transition-colors" href="/login">
+                Sign in
+                <span className="material-symbols-outlined text-[16px] font-bold">login</span>
+              </Link>
+            </p>
+          </div>
         </div>
 
-        <Link
-          href="/login"
-          className="inline-flex w-full items-center justify-center rounded-lg border border-[#cfe1e7] bg-white/60 px-4 py-2.5 text-sm font-bold text-[#0d181b] transition hover:bg-gray-50"
-        >
-          Sign In
-        </Link>
-      </section>
+        <div className="mt-8 text-center">
+          <p className="text-xs text-slate-400 dark:text-slate-600 font-medium">PhotoX v2.4.0</p>
+        </div>
+      </div>
     </main>
   );
 }

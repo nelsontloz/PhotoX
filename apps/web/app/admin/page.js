@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 
@@ -65,7 +66,6 @@ export default function AdminPage() {
   const [resetPasswordByUserId, setResetPasswordByUserId] = useState({});
   const [userFilter, setUserFilter] = useState("");
   const [isCreateFormVisible, setIsCreateFormVisible] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [workerTelemetry, setWorkerTelemetry] = useState(null);
   const [workerStreamStatus, setWorkerStreamStatus] = useState("connecting");
 
@@ -246,6 +246,7 @@ export default function AdminPage() {
       setNewUserPassword("");
       setNewUserAdmin(false);
       setErrorMessage("");
+      setIsCreateFormVisible(false);
       await refreshUsers();
     },
     onError: (error) => setErrorMessage(formatApiError(error))
@@ -270,12 +271,17 @@ export default function AdminPage() {
     [users]
   );
 
+  const totalPhotos = useMemo(
+    () => users.reduce((sum, item) => sum + (item.uploadCount || 0), 0),
+    [users]
+  );
+
   const activeUsersCount = useMemo(
     () => users.filter((item) => item.user.isActive).length,
     [users]
   );
 
-  const storagePercent = clampPercent((totalStorageGb / 4000) * 100);
+  const storagePercent = clampPercent((totalStorageGb / 2000) * 100); // snippet uses 2TB max
 
   const workerBacklog = useMemo(() => {
     const counts = workerTelemetry?.queueCounts || {};
@@ -289,7 +295,7 @@ export default function AdminPage() {
 
   async function onToggleAdmin(userId, nextValue, isSelf) {
     if (isSelf && !nextValue) {
-      setErrorMessage("You cannot remove your own admin role (ADMIN_SELF_DEMOTE_FORBIDDEN)");
+      setErrorMessage("You cannot remove your own admin role");
       return;
     }
 
@@ -304,12 +310,12 @@ export default function AdminPage() {
 
   async function onToggleActive(userId, nextValue, isSelf, isTargetAdmin, isTargetActive) {
     if (isSelf && !nextValue) {
-      setErrorMessage("You cannot disable your own account (ADMIN_SELF_DISABLE_FORBIDDEN)");
+      setErrorMessage("You cannot disable your own account");
       return;
     }
 
     if (!nextValue && isTargetAdmin && isTargetActive && activeAdminCount <= 1) {
-      setErrorMessage("At least one active admin is required (ADMIN_LAST_ACTIVE_FORBIDDEN)");
+      setErrorMessage("At least one active admin is required");
       return;
     }
 
@@ -329,7 +335,7 @@ export default function AdminPage() {
   async function onResetPassword(userId) {
     const nextPassword = resetPasswordByUserId[userId] || "";
     if (nextPassword.length < 8) {
-      setErrorMessage("Password must be at least 8 characters (VALIDATION_ERROR)");
+      setErrorMessage("Password must be at least 8 characters");
       return;
     }
 
@@ -344,382 +350,303 @@ export default function AdminPage() {
 
   if (loading) {
     return (
-      <main className="shell py-10">
-        <section className="panel p-8">
-          <p className="text-ocean-700">Loading admin workspace...</p>
-        </section>
-      </main>
+      <div className="flex h-screen items-center justify-center bg-background-light dark:bg-background-dark text-slate-500">
+        <p>Loading admin workspace...</p>
+      </div>
     );
   }
 
   if (!sessionUser?.isAdmin) {
-    return (
-      <main className="shell py-10">
-        <section className="panel p-8">
-          <p className="error">Admin access is required.</p>
-        </section>
-      </main>
-    );
+    return null;
   }
 
   return (
-    <div className="relative flex h-[calc(100vh-61px)] overflow-hidden bg-[#f8fbfc] text-[#0d181b]" style={{ fontFamily: "'Space Grotesk', var(--font-manrope), sans-serif" }}>
-      <style jsx global>{`
-        @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap");
+    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-background-light dark:bg-background-dark">
+      <AppSidebar activeLabel="Admin" isAdmin />
 
-        .admin-scroll::-webkit-scrollbar {
-          width: 8px;
-          height: 8px;
-        }
-        .admin-scroll::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .admin-scroll::-webkit-scrollbar-thumb {
-          background: #cbd5e1;
-          border-radius: 4px;
-        }
-        .admin-scroll::-webkit-scrollbar-thumb:hover {
-          background: #94a3b8;
-        }
-      `}</style>
+      <main className="flex-1 overflow-y-auto relative scroll-smooth flex flex-col items-center py-10 px-4 md:px-10">
+        <div className="w-full max-w-[1200px] flex flex-col gap-8 pb-10">
 
-      {isSidebarOpen ? (
-        <button
-          type="button"
-          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
-          aria-label="Close sidebar"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      ) : null}
-
-      <aside
-        className={`fixed inset-y-[61px] left-0 z-40 w-64 border-r border-slate-200 bg-white transition-transform duration-300 lg:static lg:inset-auto lg:translate-x-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-          }`}
-      >
-        <AppSidebar activeLabel="Admin" isAdmin />
-      </aside>
-
-      <main className="admin-scroll flex min-w-0 flex-1 justify-center overflow-y-auto px-4 py-5 md:px-8 lg:px-12 xl:px-16">
-        <div className="flex w-full max-w-[1200px] flex-col gap-8">
-          <header className="flex items-center justify-between border-b border-[#e7f0f3] pb-5">
-            <div className="flex items-center gap-3">
-              <button type="button" className="rounded-lg p-2 hover:bg-slate-100 lg:hidden" onClick={() => setIsSidebarOpen(true)}>
-                <span className="material-symbols-outlined">menu</span>
-              </button>
-              <div className="flex items-center gap-3 text-[#0d181b]">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-sky-500 text-sm font-bold text-white shadow-lg shadow-cyan-200">
-                  <span className="material-symbols-outlined">auto_awesome</span>
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold tracking-tight">
-                    PhotoX <span className="font-normal text-[#4c869a]">Admin</span>
-                  </h2>
-                  <p className="text-xs font-medium text-[#4c869a]">User and system operations</p>
-                </div>
-              </div>
+          <div className="flex items-center gap-2 text-sm text-slate-500 w-full">
+            <Link className="hover:text-primary transition-colors" href="/timeline">Home</Link>
+            <span className="material-symbols-outlined text-base text-slate-400">chevron_right</span>
+            <span className="text-slate-900 dark:text-white font-medium">Admin Console</span>
+            <div className="ml-auto flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full bg-slate-100 dark:bg-background-dark border border-slate-200 dark:border-border-dark whitespace-nowrap">
+              <span className={`size-1.5 rounded-full ${workerStreamStatus === "connected" ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-amber-500 animate-pulse"}`}></span>
+              {workerStreamStatus === "connected" ? "Worker Online" : "Telemetry Delayed"}
             </div>
+          </div>
 
-            <div className="hidden items-center gap-3 md:flex">
-              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm">
-                <span className="material-symbols-outlined text-base">account_circle</span>
-                {sessionUser.email}
-              </div>
-            </div>
-          </header>
-
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight text-[#0d181b]">User Management</h1>
-              <p className="mt-1 text-sm font-medium text-[#4c869a]">Manage user access, roles, and monitor upload activity.</p>
+          <div className="flex flex-wrap justify-between items-end gap-4 pb-4 border-b border-slate-200 dark:border-border-dark">
+            <div className="flex flex-col gap-1">
+              <h1 className="text-3xl md:text-4xl font-black tracking-tight text-slate-900 dark:text-white uppercase">Admin Console</h1>
+              <p className="text-slate-500 dark:text-slate-400 text-sm">System performance and user management overview.</p>
             </div>
             <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-xl bg-cyan-500 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-cyan-200 transition hover:bg-cyan-600"
-              onClick={() => setIsCreateFormVisible((value) => !value)}
+              onClick={() => setIsCreateFormVisible(!isCreateFormVisible)}
+              className="flex items-center gap-2 cursor-pointer justify-center overflow-hidden rounded-lg h-10 px-4 bg-primary hover:bg-primary/90 transition-colors text-white text-sm font-bold shadow-lg shadow-primary/20"
             >
-              <span className="material-symbols-outlined text-xl">
-                {isCreateFormVisible ? "close" : "person_add"}
-              </span>
-              <span>{isCreateFormVisible ? "Close" : "Add New User"}</span>
+              <span className="material-symbols-outlined text-lg">{isCreateFormVisible ? "close" : "add"}</span>
+              <span>{isCreateFormVisible ? "Close" : "Add User"}</span>
             </button>
           </div>
 
-          {errorMessage ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">{errorMessage}</div>
-          ) : null}
+          {errorMessage && (
+            <div className="rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 p-4 text-sm text-red-600 dark:text-red-400">
+              {errorMessage}
+            </div>
+          )}
 
-          {isCreateFormVisible ? (
+          {isCreateFormVisible && (
             <form
-              className="grid gap-3 rounded-xl border border-[#e7f0f3] bg-white p-4 shadow-sm md:grid-cols-[2fr_2fr_auto_auto]"
-              onSubmit={(event) => {
-                event.preventDefault();
+              className="grid gap-4 rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-card-dark p-6 shadow-panel md:grid-cols-[1.5fr_1.5fr_auto_auto]"
+              onSubmit={(e) => {
+                e.preventDefault();
                 createMutation.mutate();
               }}
             >
-              <input
-                className="h-11 rounded-lg border border-[#e7f0f3] px-3 text-sm text-[#0d181b] outline-none transition focus:border-[#13b6ec] focus:ring-2 focus:ring-cyan-100"
-                type="email"
-                placeholder="user@example.com"
-                value={newUserEmail}
-                onChange={(event) => setNewUserEmail(event.target.value)}
-                required
-              />
-              <input
-                className="h-11 rounded-lg border border-[#e7f0f3] px-3 text-sm text-[#0d181b] outline-none transition focus:border-[#13b6ec] focus:ring-2 focus:ring-cyan-100"
-                type="password"
-                placeholder="Temporary password"
-                value={newUserPassword}
-                onChange={(event) => setNewUserPassword(event.target.value)}
-                minLength={8}
-                required
-              />
-              <label className="inline-flex items-center gap-2 rounded-lg border border-[#e7f0f3] bg-[#f8fbfc] px-3 text-sm font-semibold text-[#0d181b]">
-                <input type="checkbox" checked={newUserAdmin} onChange={(event) => setNewUserAdmin(event.target.checked)} />
-                Admin
-              </label>
-              <button
-                type="submit"
-                className="rounded-lg bg-[#13b6ec] px-4 py-2 text-sm font-bold text-white transition hover:bg-[#0e8db9] disabled:cursor-not-allowed disabled:opacity-70"
-                disabled={createMutation.isPending}
-              >
-                {createMutation.isPending ? "Creating..." : "Create User"}
-              </button>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block px-1">Email</label>
+                <input
+                  className="w-full h-11 rounded-lg border-transparent bg-slate-100 dark:bg-background-dark px-3 text-sm text-slate-900 dark:text-white focus:border-primary focus:ring-0 transition-all"
+                  type="email"
+                  placeholder="user@example.com"
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block px-1">Password</label>
+                <input
+                  className="w-full h-11 rounded-lg border-transparent bg-slate-100 dark:bg-background-dark px-3 text-sm text-slate-900 dark:text-white focus:border-primary focus:ring-0 transition-all"
+                  type="password"
+                  placeholder="Password (min 8 chars)"
+                  value={newUserPassword}
+                  onChange={(e) => setNewUserPassword(e.target.value)}
+                  minLength={8}
+                  required
+                />
+              </div>
+              <div className="flex items-center pt-5">
+                <label className="inline-flex items-center gap-2 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={newUserAdmin}
+                    onChange={(e) => setNewUserAdmin(e.target.checked)}
+                    className="size-4 rounded border-slate-300 text-primary focus:ring-primary dark:bg-background-dark dark:border-border-dark"
+                  />
+                  <span className="text-sm font-semibold text-slate-600 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Admin Access</span>
+                </label>
+              </div>
+              <div className="pt-5">
+                <button
+                  type="submit"
+                  disabled={createMutation.isPending}
+                  className="w-full h-11 rounded-lg bg-primary px-6 text-sm font-bold text-white shadow-lg shadow-primary/20 hover:bg-blue-600 disabled:opacity-50 transition-all uppercase tracking-wide"
+                >
+                  {createMutation.isPending ? "Creating..." : "Create User"}
+                </button>
+              </div>
             </form>
-          ) : null}
+          )}
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5 md:gap-6">
-            <article className="relative flex h-32 flex-col justify-between overflow-hidden rounded-2xl border border-slate-100 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Total Users</p>
-                <span className="material-symbols-outlined text-slate-300">group</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 md:gap-6">
+            <div className="p-6 rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-card-dark flex flex-col justify-between h-32 shadow-sm transition-shadow hover:shadow-md">
+              <div className="flex items-center justify-between text-slate-400">
+                <span className="text-xs font-bold uppercase tracking-widest">Total Users</span>
+                <span className="material-symbols-outlined text-lg">group</span>
               </div>
               <div className="flex items-end justify-between">
-                <p className="text-4xl font-bold text-slate-900">{users.length}</p>
-                <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-600 border border-emerald-100">{activeUsersCount} active</span>
+                <span className="text-3xl font-black text-slate-900 dark:text-white">{users.length.toLocaleString()}</span>
+                <span className="rounded bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">{activeUsersCount} Active</span>
               </div>
-            </article>
+            </div>
 
-            <article className="relative flex h-32 flex-col justify-between overflow-hidden rounded-2xl border border-slate-100 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Active Admins</p>
-                <span className="material-symbols-outlined text-slate-300">admin_panel_settings</span>
+            <div className="p-6 rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-card-dark flex flex-col justify-between h-32 shadow-sm transition-shadow hover:shadow-md">
+              <div className="flex items-center justify-between text-slate-400">
+                <span className="text-xs font-bold uppercase tracking-widest">Active Admins</span>
+                <span className="material-symbols-outlined text-lg">admin_panel_settings</span>
               </div>
               <div className="flex items-end justify-between">
-                <p className="text-4xl font-bold text-slate-900">{activeAdminCount}</p>
-                <span className="rounded-lg bg-cyan-50 px-2.5 py-1 text-xs font-bold text-cyan-600 border border-cyan-100">privileged</span>
+                <span className="text-3xl font-black text-slate-900 dark:text-white">{activeAdminCount}</span>
+                <span className="rounded bg-cyan-50 dark:bg-primary/10 px-2 py-1 text-[10px] font-bold text-cyan-600 dark:text-primary">Privileged</span>
               </div>
-            </article>
+            </div>
 
-            <article className="relative flex h-32 flex-col justify-between overflow-hidden rounded-2xl border border-slate-100 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Storage Used</p>
-                <span className="material-symbols-outlined text-slate-300">database</span>
+            <div className="p-6 rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-card-dark flex flex-col justify-between h-32 shadow-sm transition-shadow hover:shadow-md">
+              <div className="flex items-center justify-between text-slate-400">
+                <span className="text-xs font-bold uppercase tracking-widest">Storage Used</span>
+                <span className="material-symbols-outlined text-lg">database</span>
               </div>
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-bold text-slate-900">
-                  {(totalStorageGb / 1000).toFixed(2)} TB <span className="font-medium text-slate-400">/ 4 TB</span>
-                </p>
-                <p className="text-xs font-bold text-cyan-600">{storagePercent}%</p>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-xl font-black text-slate-900 dark:text-white">{(totalStorageGb / 1000).toFixed(2)}<span className="text-xs font-bold ml-1 text-slate-400">TB / 4TB</span></span>
+                <span className="text-[10px] font-bold text-primary">{storagePercent}%</span>
               </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                <div className="h-2 rounded-full bg-gradient-to-r from-cyan-400 to-sky-500" style={{ width: `${storagePercent}%` }} />
+              <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                <div className="bg-primary h-full transition-all duration-1000" style={{ width: `${storagePercent}%` }}></div>
               </div>
-            </article>
+            </div>
 
-            <article className="relative flex h-32 flex-col justify-between overflow-hidden rounded-2xl border border-slate-100 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Worker Status</p>
-                <span className="material-symbols-outlined text-slate-300">speed</span>
+            <div className="p-6 rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-card-dark flex flex-col justify-between h-32 shadow-sm transition-shadow hover:shadow-md">
+              <div className="flex items-center justify-between text-slate-400">
+                <span className="text-xs font-bold uppercase tracking-widest">Worker Backlog</span>
+                <span className="material-symbols-outlined text-lg">speed</span>
               </div>
               <div className="flex items-end justify-between">
-                <p className="text-4xl font-bold text-slate-900">{workerBacklog}</p>
-                <span className="rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700 border border-amber-100">{workerInFlight} active</span>
+                <span className="text-3xl font-black text-slate-900 dark:text-white">{workerBacklog}</span>
+                <span className="rounded bg-amber-50 dark:bg-amber-900/20 px-2 py-1 text-[10px] font-bold text-amber-700 dark:text-amber-500">{workerInFlight} Active</span>
               </div>
-            </article>
+            </div>
 
-            <article className="relative flex h-32 flex-col justify-between overflow-hidden rounded-2xl border border-slate-100 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">System Health</p>
-                <span className={`material-symbols-outlined ${workerStreamStatus === "connected" ? "text-emerald-500" : "text-amber-500"}`}>
+            <div className="p-6 rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-card-dark flex flex-col justify-between h-32 shadow-sm transition-shadow hover:shadow-md">
+              <div className="flex items-center justify-between text-slate-400">
+                <span className="text-xs font-bold uppercase tracking-widest">System Health</span>
+                <span className={`material-symbols-outlined text-lg ${workerStreamStatus === "connected" ? "text-emerald-500" : "text-amber-500"}`}>
                   {workerStreamStatus === "connected" ? "check_circle" : "warning"}
                 </span>
               </div>
-              <div className="flex items-center gap-3">
-                <p className="text-2xl font-bold text-slate-900">
+              <div className="flex items-end justify-between">
+                <span className="text-xl font-black text-slate-900 dark:text-white">
                   {workerStreamStatus === "connected" ? "Operational" : "Degraded"}
-                </p>
+                </span>
               </div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Telemetry: {workerStreamStatus}</p>
-            </article>
-          </div>
-
-          <div className="flex flex-col items-center justify-between gap-4 rounded-xl border border-slate-100 bg-white p-2 shadow-sm sm:flex-row">
-            <div className="relative w-full sm:w-80">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
-              <input
-                className="block h-11 w-full rounded-xl border border-slate-100 bg-slate-50 pl-10 pr-4 text-sm text-[#0d181b] outline-none transition focus:border-cyan-400 focus:bg-white focus:ring-4 focus:ring-cyan-50"
-                placeholder="Search users by email..."
-                type="text"
-                value={userFilter}
-                onChange={(event) => setUserFilter(event.target.value)}
-              />
-            </div>
-
-            <div className="flex w-full gap-2 sm:w-auto">
-              <button type="button" className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-100 bg-white px-4 py-2.5 text-sm font-bold text-slate-600 shadow-sm transition hover:bg-slate-50 sm:flex-none">
-                <span className="material-symbols-outlined text-xl">filter_list</span>
-                Filter
-              </button>
-              <button type="button" className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-100 bg-white px-4 py-2.5 text-sm font-bold text-slate-600 shadow-sm transition hover:bg-slate-50 sm:flex-none">
-                <span className="material-symbols-outlined text-xl">sort</span>
-                Sort
-              </button>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-1">Telemetry: {workerStreamStatus}</p>
             </div>
           </div>
 
-          <div className="w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/50">
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-slate-400">User</th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-slate-400">Role</th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-slate-400">Storage Used</th>
-                    <th className="px-6 py-4 text-center text-xs font-bold uppercase tracking-widest text-slate-400">Status</th>
-                    <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-widest text-slate-400">Actions</th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-50">
-                  {filteredUsers.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center text-sm font-medium text-slate-400">
-                        <div className="flex flex-col items-center gap-2">
-                          <span className="material-symbols-outlined text-4xl opacity-20">person_off</span>
-                          No users found.
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredUsers.map((item) => {
-                      const isSelf = item.user.id === sessionUser.id;
-                      const storageGb = estimateStorageGb(item.uploadCount);
-                      const storageQuotaGb = 1000;
-                      const storageRatio = clampPercent((storageGb / storageQuotaGb) * 100);
-
-                      return (
-                        <tr key={item.user.id} className="group transition-colors hover:bg-slate-50/50">
-                          <td className="whitespace-nowrap px-6 py-5">
-                            <div className="flex items-center">
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 text-sm font-bold text-slate-500 transition-transform group-hover:scale-110">
-                                {initialsFromEmail(item.user.email)}
-                              </div>
-                              <div className="ml-4">
-                                <div className="text-sm font-bold text-slate-900">{item.user.email.split("@")[0]}</div>
-                                <div className="text-xs font-medium text-slate-400">{item.user.email}</div>
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="whitespace-nowrap px-6 py-5 text-sm">
-                            <button
-                              type="button"
-                              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all shadow-sm ${item.user.isAdmin
-                                ? "bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200"
-                                : "bg-slate-50 text-slate-600 ring-1 ring-slate-200"
-                                }`}
-                              onClick={() => onToggleAdmin(item.user.id, !item.user.isAdmin, isSelf)}
-                            >
-                              <span className="material-symbols-outlined text-base">
-                                {item.user.isAdmin ? "verified_user" : "person"}
-                              </span>
-                              {item.user.isAdmin ? "Admin" : "User"}
-                            </button>
-                          </td>
-
-                          <td className="whitespace-nowrap px-6 py-5">
-                            <div className="flex w-full max-w-[200px] flex-col gap-2">
-                              <div className="flex justify-between text-[11px] font-bold uppercase tracking-wider">
-                                <span className="text-slate-900">{storageGb} GB</span>
-                                <span className="text-slate-400">{storageRatio}%</span>
-                              </div>
-                              <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                                <div
-                                  className={`h-1.5 rounded-full transition-all duration-500 ${storageRatio > 85 ? "bg-red-500" : "bg-cyan-500"
-                                    }`}
-                                  style={{ width: `${storageRatio}%` }}
-                                />
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="whitespace-nowrap px-6 py-5 text-center">
-                            <label className="relative inline-flex cursor-pointer items-center">
-                              <input
-                                type="checkbox"
-                                className="peer sr-only"
-                                checked={item.user.isActive}
-                                onChange={(event) =>
-                                  onToggleActive(
-                                    item.user.id,
-                                    event.target.checked,
-                                    isSelf,
-                                    item.user.isAdmin,
-                                    item.user.isActive
-                                  )
-                                }
-                              />
-                              <span className="h-5 w-10 rounded-full bg-slate-200 transition peer-checked:bg-cyan-500" />
-                              <span className="absolute left-[3px] top-[3px] h-3.5 w-3.5 rounded-full bg-white shadow-sm transition peer-checked:translate-x-5" />
-                            </label>
-                          </td>
-
-                          <td className="whitespace-nowrap px-6 py-5 text-right">
-                            <div className="flex items-center justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100">
-                              <input
-                                className="h-9 w-40 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-50"
-                                type="password"
-                                placeholder="New password"
-                                minLength={8}
-                                value={resetPasswordByUserId[item.user.id] || ""}
-                                onChange={(event) =>
-                                  setResetPasswordByUserId((prev) => ({
-                                    ...prev,
-                                    [item.user.id]: event.target.value
-                                  }))
-                                }
-                              />
-                              <button
-                                type="button"
-                                className="flex h-9 items-center gap-1 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800"
-                                onClick={() => onResetPassword(item.user.id)}
-                              >
-                                <span className="material-symbols-outlined text-base">lock_reset</span>
-                                Reset
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="flex items-center justify-between border-t border-[#e7f0f3] bg-white px-6 py-3">
-              <p className="text-sm text-[#4c869a]">
-                Showing <span className="font-semibold text-[#0d181b]">{filteredUsers.length === 0 ? 0 : 1}</span> to{" "}
-                <span className="font-semibold text-[#0d181b]">{filteredUsers.length}</span> of{" "}
-                <span className="font-semibold text-[#0d181b]">{users.length}</span> results
-              </p>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white uppercase tracking-tight">Recent Users</h3>
               <div className="flex gap-2">
-                <button type="button" className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-500">
-                  Prev
-                </button>
-                <button type="button" className="rounded-md bg-[#13b6ec] px-3 py-1.5 text-sm font-semibold text-white">
-                  1
-                </button>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 material-symbols-outlined text-sm">search</span>
+                  <input
+                    className="pl-9 pr-4 h-9 w-64 bg-white dark:bg-background-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs text-slate-900 dark:text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-primary transition-all"
+                    placeholder="Search users..."
+                    type="text"
+                    value={userFilter}
+                    onChange={(e) => setUserFilter(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-card-dark overflow-hidden shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 dark:bg-background-dark border-b border-slate-200 dark:border-border-dark">
+                      <th className="p-4 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 w-[25%]">User</th>
+                      <th className="p-4 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 w-[12%]">Role</th>
+                      <th className="p-4 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 w-[12%] text-right">Uploads</th>
+                      <th className="p-4 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 w-[25%]">Space Used</th>
+                      <th className="p-4 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 w-[10%] text-center">Status</th>
+                      <th className="p-4 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 w-[16%] text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-border-dark">
+                    {filteredUsers.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="p-12 text-center text-sm text-slate-400">No users found.</td>
+                      </tr>
+                    ) : (
+                      filteredUsers.map((item) => {
+                        const isSelf = item.user.id === sessionUser.id;
+                        const storageGb = estimateStorageGb(item.uploadCount);
+                        const storageQuotaGb = 1000;
+                        const storageRatio = clampPercent((storageGb / storageQuotaGb) * 100);
+
+                        return (
+                          <tr key={item.user.id} className="group hover:bg-slate-50 dark:hover:bg-background-dark/30 transition-colors">
+                            <td className="p-4">
+                              <div className="flex items-center gap-3">
+                                <div className="size-9 rounded-full bg-slate-200 dark:bg-slate-700 flex-shrink-0 flex items-center justify-center text-slate-500 dark:text-slate-400 font-bold text-xs uppercase">
+                                  {initialsFromEmail(item.user.email)}
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-sm font-semibold text-slate-900 dark:text-white uppercase truncate max-w-[150px]">
+                                    {item.user.email.split("@")[0]}
+                                  </span>
+                                  <span className="text-[11px] text-slate-500 dark:text-slate-400">{item.user.email}</span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-4">
+                              <button
+                                onClick={() => onToggleAdmin(item.user.id, !item.user.isAdmin, isSelf)}
+                                className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase transition-colors ${item.user.isAdmin
+                                  ? "bg-primary/10 text-primary border border-primary/20"
+                                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-border-dark"
+                                  }`}
+                              >
+                                {item.user.isAdmin ? "Admin" : "User"}
+                              </button>
+                            </td>
+                            <td className="p-4 text-right">
+                              <span className="text-sm font-mono text-slate-600 dark:text-slate-300">{(item.uploadCount || 0).toLocaleString()}</span>
+                            </td>
+                            <td className="p-4">
+                              <div className="flex flex-col gap-1.5 max-w-[140px]">
+                                <div className="flex justify-between text-[10px] font-medium">
+                                  <span className="text-slate-900 dark:text-slate-300">{storageGb}GB / 1TB</span>
+                                  <span className="text-slate-500">{storageRatio}%</span>
+                                </div>
+                                <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                  <div className={`h-full transition-all duration-500 ${storageRatio > 85 ? "bg-amber-500" : "bg-primary"}`} style={{ width: `${storageRatio}%` }}></div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-4 text-center">
+                              <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={item.user.isActive}
+                                  onChange={(e) => onToggleActive(item.user.id, e.target.checked, isSelf, item.user.isAdmin, item.user.isActive)}
+                                  className="sr-only peer"
+                                />
+                                <div className="w-8 h-4 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-4 after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary"></div>
+                              </label>
+                            </td>
+                            <td className="p-4 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <div className="relative group/edit">
+                                  <input
+                                    type="password"
+                                    placeholder="Reset Pass"
+                                    className="hidden group-hover/edit:block absolute right-10 top-1/2 -translate-y-1/2 w-32 h-8 px-2 py-1 text-[10px] bg-white dark:bg-background-dark border border-slate-200 dark:border-border-dark rounded shadow-lg focus:outline-none focus:ring-1 focus:ring-primary"
+                                    value={resetPasswordByUserId[item.user.id] || ""}
+                                    onChange={(e) => setResetPasswordByUserId(prev => ({ ...prev, [item.user.id]: e.target.value }))}
+                                  />
+                                  <button
+                                    onClick={() => onResetPassword(item.user.id)}
+                                    className="size-8 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-primary transition-colors"
+                                    title="Reset Password"
+                                  >
+                                    <span className="material-symbols-outlined text-lg">lock_reset</span>
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 dark:border-border-dark bg-slate-50 dark:bg-background-dark">
+                <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                  Showing <span className="text-slate-900 dark:text-white">1</span> to <span className="text-slate-900 dark:text-white">{filteredUsers.length}</span> of <span className="text-slate-900 dark:text-white">{users.length}</span> results
+                </span>
+                <div className="flex gap-2">
+                  <button className="px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 bg-white dark:bg-card-dark border border-slate-200 dark:border-border-dark hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors">
+                    Prev
+                  </button>
+                  <button className="px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 bg-white dark:bg-card-dark border border-slate-200 dark:border-border-dark hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                    Next
+                  </button>
+                </div>
               </div>
             </div>
           </div>
