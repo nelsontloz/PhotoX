@@ -12,7 +12,7 @@ x-node-service: &node-service
   environment:
     <<: *common-env
   healthcheck:
-    test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+    test: [ "CMD", "wget", "-qO-", "http://localhost:3000/health" ]
     interval: 30s
     timeout: 5s
     retries: 5
@@ -39,7 +39,7 @@ services:
       - edge
       - internal
     healthcheck:
-      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      test: [ "CMD", "traefik", "healthcheck", "--ping" ]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -58,7 +58,7 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-photox} -d ${POSTGRES_DB:-photox}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-photox} -d ${POSTGRES_DB:-photox}" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -66,7 +66,7 @@ services:
   redis:
     image: redis:7.4-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: [ "redis-server", "--appendonly", "yes" ]
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -74,14 +74,14 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 10
 
   prometheus:
     image: prom/prometheus:v3.5.0
-    profiles: ["app"]
+    profiles: [ "app" ]
     restart: unless-stopped
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -101,7 +101,7 @@ services:
 
   grafana:
     image: grafana/grafana:11.6.0
-    profiles: ["app"]
+    profiles: [ "app" ]
     restart: unless-stopped
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
@@ -117,7 +117,7 @@ services:
 
   web-app:
     <<: *node-service
-    profiles: ["app"]
+    profiles: [ "app" ]
     build:
       context: ./apps/web
       dockerfile: Dockerfile
@@ -136,7 +136,7 @@ services:
 
   auth-service:
     <<: *node-service
-    profiles: ["app"]
+    profiles: [ "app" ]
     build:
       context: ./services/auth
       dockerfile: Dockerfile
@@ -167,7 +167,7 @@ services:
 
   ingest-service:
     <<: *node-service
-    profiles: ["app"]
+    profiles: [ "app" ]
     build:
       context: ./services/ingest
       dockerfile: Dockerfile
@@ -196,7 +196,7 @@ services:
 
   library-service:
     <<: *node-service
-    profiles: ["app"]
+    profiles: [ "app" ]
     build:
       context: ./services/library
       dockerfile: Dockerfile
@@ -230,7 +230,7 @@ services:
 
   album-sharing-service:
     <<: *node-service
-    profiles: ["app"]
+    profiles: [ "app" ]
     build:
       context: ./services/album-sharing
       dockerfile: Dockerfile
@@ -239,6 +239,7 @@ services:
       PORT: 3000
       SERVICE_NAME: album-sharing-service
       DATABASE_URL: postgresql://${POSTGRES_USER:-photox}:${POSTGRES_PASSWORD:-photox-dev-password}@postgres:5432/${POSTGRES_DB:-photox}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
     depends_on:
       postgres:
         condition: service_healthy
@@ -250,7 +251,7 @@ services:
 
   search-service:
     <<: *node-service
-    profiles: ["app"]
+    profiles: [ "app" ]
     build:
       context: ./services/search
       dockerfile: Dockerfile
@@ -271,7 +272,7 @@ services:
 
   worker-service:
     restart: unless-stopped
-    profiles: ["app"]
+    profiles: [ "app" ]
     build:
       context: ./services/worker
       dockerfile: Dockerfile
@@ -302,7 +303,7 @@ services:
 
   ml-service:
     restart: unless-stopped
-    profiles: ["app"]
+    profiles: [ "app" ]
     build:
       context: ./services/ml
       dockerfile: Dockerfile
@@ -313,7 +314,7 @@ services:
       ML_MODEL_CACHE_DIR: /models
       UPLOAD_ORIGINALS_PATH: /data/photox/originals
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" ]
       interval: 30s
       timeout: 5s
       retries: 5

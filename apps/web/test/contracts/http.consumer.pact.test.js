@@ -948,4 +948,128 @@ describe("web http consumer pacts", () => {
       await stream.text();
     });
   });
+
+  it("album-sharing-service interactions", async () => {
+    const accessToken = createAccessToken({ userId: USER_ID, email: "user@example.com" });
+    const provider = buildProvider("album-sharing-service");
+    const ALBUM_ID = "alb_11111111111111111111111111111111";
+
+    provider
+      .given("a user exists and is ready to create an album")
+      .uponReceiving("a request to create a new album")
+      .withRequest({
+        method: "POST",
+        path: "/api/v1/albums",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: {
+          title: "Summer Vacation 2026"
+        }
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: {
+          id: regex("^alb_[0-9a-f]{32}$", ALBUM_ID),
+          ownerId: regex(UUID_REGEX, USER_ID),
+          title: like("Summer Vacation 2026"),
+          createdAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z"),
+          updatedAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z")
+        }
+      })
+      .given("the user has created albums")
+      .uponReceiving("a request to list albums")
+      .withRequest({
+        method: "GET",
+        path: "/api/v1/albums",
+        query: {
+          limit: "50"
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: {
+          items: eachLike({
+            id: regex("^alb_[0-9a-f]{32}$", ALBUM_ID),
+            ownerId: regex(UUID_REGEX, USER_ID),
+            title: like("Summer Vacation 2026"),
+            createdAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z"),
+            updatedAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z")
+          })
+        }
+      })
+      .given("an album 'alb_11111111111111111111111111111111' exists for the user and media '55555555-5555-4555-8555-555555555555' is owned by the user")
+      .uponReceiving("a request to add media to the album")
+      .withRequest({
+        method: "POST",
+        path: `/api/v1/albums/${ALBUM_ID}/items`,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: {
+          mediaId: MEDIA_ID
+        }
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: {
+          albumId: like(ALBUM_ID),
+          mediaId: like(MEDIA_ID)
+        }
+      })
+      .given("an album 'alb_11111111111111111111111111111111' exists with items inside")
+      .uponReceiving("a request to list items in an album")
+      .withRequest({
+        method: "GET",
+        path: `/api/v1/albums/${ALBUM_ID}/items`,
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: {
+          items: eachLike({
+            mediaId: regex(UUID_REGEX, MEDIA_ID),
+            addedAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z")
+          })
+        }
+      });
+
+    await provider.executeTest(async (mockserver) => {
+      await jsonRequest(mockserver.url, "/api/v1/albums", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ title: "Summer Vacation 2026" })
+      });
+      await jsonRequest(mockserver.url, "/api/v1/albums?limit=50", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      await jsonRequest(mockserver.url, `/api/v1/albums/${ALBUM_ID}/items`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ mediaId: MEDIA_ID })
+      });
+      await jsonRequest(mockserver.url, `/api/v1/albums/${ALBUM_ID}/items`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+    });
+  });
 });

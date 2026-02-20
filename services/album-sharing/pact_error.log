@@ -1,0 +1,131 @@
+
+ RUN  v2.1.9 /home/nalcocer/Documents/nodejs/photox/services/album-sharing
+
+{"level":30,"time":1771550926484,"pid":835750,"hostname":"zephyrus-cachyos","msg":"Server listening at http://127.0.0.1:46309"}
+[02:28:46.485] INFO (835750): pact@14.0.0: Verifying provider
+[02:28:46.502] INFO (835750): pact-core@16.1.1: Verifying Pacts.
+[02:28:46.503] INFO (835750): pact-core@16.1.1: Verifying Pact Files
+[02:28:46.507] INFO (835750): 0.4.28: pact native library successfully found, and the correct version
+2026-02-20T01:28:46.523365Z  INFO ThreadId(17) pact_verifier: Running setup provider state change handler 'a user exists and is ready to create an album' for 'a request to create a new album'
+2026-02-20T01:28:46.549874Z  INFO ThreadId(17) pact_verifier: Running provider verification for 'a request to create a new album'
+2026-02-20T01:28:46.549936Z  INFO ThreadId(17) pact_verifier::provider_client: Sending request to provider at http://127.0.0.1:44763/
+2026-02-20T01:28:46.549940Z  INFO ThreadId(17) pact_verifier::provider_client: Sending request HTTP Request ( method: POST, path: /api/v1/albums, query: None, headers: Some({"Authorization": ["Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUuY29tIiwiZXhwIjo0MTAyNDQ0ODAwLCJzdWIiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEifQ.qWoxC37LQvLRjg3tKiO09ZbeuiFzMHu1XKCMAdn7yIk"], "Content-Type": ["application/json"]}), body: Present(32 bytes) )
+(node:835750) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+{"level":30,"time":1771550926559,"pid":835750,"hostname":"zephyrus-cachyos","reqId":"req-1","req":{"method":"POST","url":"/api/v1/albums","host":"127.0.0.1:44763","remoteAddress":"127.0.0.1","remotePort":47150},"msg":"incoming request"}
+{"level":50,"time":1771550926565,"pid":835750,"hostname":"zephyrus-cachyos","reqId":"req-1","err":{"type":"TypeError","message":"validateBody is not a function","stack":"TypeError: validateBody is not a function\n    at Object.<anonymous> (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/src/routes/albumRoutes.js:40:31)\n    at preHandlerCallbackInner (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/node_modules/fastify/lib/handle-request.js:168:24)\n    at preHandlerCallback (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/node_modules/fastify/lib/handle-request.js:134:5)\n    at next (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/node_modules/fastify/lib/hooks.js:236:9)\n    at handleResolve (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/node_modules/fastify/lib/hooks.js:253:7)\n    at processTicksAndRejections (node:internal/process/task_queues:105:5)"},"msg":"validateBody is not a function"}
+{"level":30,"time":1771550926568,"pid":835750,"hostname":"zephyrus-cachyos","reqId":"req-1","res":{"statusCode":500},"responseTime":8.409523002803326,"msg":"request completed"}
+2026-02-20T01:28:46.571172Z  INFO ThreadId(17) pact_verifier::provider_client: Received response: HTTP Response ( status: 500, headers: Some({"connection": ["close"], "x-powered-by": ["Express"], "content-length": ["102"], "content-type": ["application/json; charset=utf-8"], "date": ["Fri, 20 Feb 2026 01:28:46 GMT"]}), body: Present(102 bytes, application/json;charset=utf-8) )
+2026-02-20T01:28:46.572381Z  INFO ThreadId(17) pact_verifier: Running teardown provider state change handler 'a user exists and is ready to create an album' for 'a request to create a new album'
+2026-02-20T01:28:46.594470Z  INFO ThreadId(17) pact_verifier: Running setup provider state change handler 'the user has created albums' for 'a request to list albums'
+2026-02-20T01:28:46.607055Z  INFO ThreadId(17) pact_verifier: Running provider verification for 'a request to list albums'
+2026-02-20T01:28:46.607138Z  INFO ThreadId(17) pact_verifier::provider_client: Sending request to provider at http://127.0.0.1:44763/
+2026-02-20T01:28:46.607142Z  INFO ThreadId(17) pact_verifier::provider_client: Sending request HTTP Request ( method: GET, path: /api/v1/albums, query: Some({"limit": [Some("50")]}), headers: Some({"Authorization": ["Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUuY29tIiwiZXhwIjo0MTAyNDQ0ODAwLCJzdWIiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEifQ.qWoxC37LQvLRjg3tKiO09ZbeuiFzMHu1XKCMAdn7yIk"]}), body: Missing )
+{"level":30,"time":1771550926610,"pid":835750,"hostname":"zephyrus-cachyos","reqId":"req-2","req":{"method":"GET","url":"/api/v1/albums?limit=50","host":"127.0.0.1:44763","remoteAddress":"127.0.0.1","remotePort":47158},"msg":"incoming request"}
+{"level":50,"time":1771550926612,"pid":835750,"hostname":"zephyrus-cachyos","reqId":"req-2","err":{"type":"TypeError","message":"validateQuery is not a function","stack":"TypeError: validateQuery is not a function\n    at Object.<anonymous> (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/src/routes/albumRoutes.js:94:31)\n    at preHandlerCallbackInner (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/node_modules/fastify/lib/handle-request.js:168:24)\n    at preHandlerCallback (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/node_modules/fastify/lib/handle-request.js:134:5)\n    at next (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/node_modules/fastify/lib/hooks.js:236:9)\n    at handleResolve (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/node_modules/fastify/lib/hooks.js:253:7)\n    at processTicksAndRejections (node:internal/process/task_queues:105:5)"},"msg":"validateQuery is not a function"}
+{"level":30,"time":1771550926613,"pid":835750,"hostname":"zephyrus-cachyos","reqId":"req-2","res":{"statusCode":500},"responseTime":2.215982999652624,"msg":"request completed"}
+2026-02-20T01:28:46.614299Z  INFO ThreadId(17) pact_verifier::provider_client: Received response: HTTP Response ( status: 500, headers: Some({"content-type": ["application/json; charset=utf-8"], "content-length": ["102"], "connection": ["close"], "x-powered-by": ["Express"], "date": ["Fri, 20 Feb 2026 01:28:46 GMT"]}), body: Present(102 bytes, application/json;charset=utf-8) )
+2026-02-20T01:28:46.615712Z  INFO ThreadId(17) pact_verifier: Running teardown provider state change handler 'the user has created albums' for 'a request to list albums'
+2026-02-20T01:28:46.639443Z  INFO ThreadId(17) pact_verifier: Running setup provider state change handler 'an album 'alb_11111111111111111111111111111111' exists for the user and media '55555555-5555-4555-8555-555555555555' is owned by the user' for 'a request to add media to the album'
+2026-02-20T01:28:46.651187Z  INFO ThreadId(17) pact_verifier: Running provider verification for 'a request to add media to the album'
+2026-02-20T01:28:46.651295Z  INFO ThreadId(17) pact_verifier::provider_client: Sending request to provider at http://127.0.0.1:44763/
+2026-02-20T01:28:46.651299Z  INFO ThreadId(17) pact_verifier::provider_client: Sending request HTTP Request ( method: POST, path: /api/v1/albums/alb_11111111111111111111111111111111/items, query: None, headers: Some({"Content-Type": ["application/json"], "Authorization": ["Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUuY29tIiwiZXhwIjo0MTAyNDQ0ODAwLCJzdWIiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEifQ.qWoxC37LQvLRjg3tKiO09ZbeuiFzMHu1XKCMAdn7yIk"]}), body: Present(50 bytes) )
+{"level":30,"time":1771550926653,"pid":835750,"hostname":"zephyrus-cachyos","reqId":"req-3","req":{"method":"POST","url":"/api/v1/albums/alb_11111111111111111111111111111111/items","host":"127.0.0.1:44763","remoteAddress":"127.0.0.1","remotePort":47168},"msg":"incoming request"}
+{"level":50,"time":1771550926654,"pid":835750,"hostname":"zephyrus-cachyos","reqId":"req-3","err":{"type":"TypeError","message":"validateParams is not a function","stack":"TypeError: validateParams is not a function\n    at Object.<anonymous> (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/src/routes/albumRoutes.js:146:33)\n    at preHandlerCallbackInner (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/node_modules/fastify/lib/handle-request.js:168:24)\n    at preHandlerCallback (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/node_modules/fastify/lib/handle-request.js:134:5)\n    at next (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/node_modules/fastify/lib/hooks.js:236:9)\n    at handleResolve (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/node_modules/fastify/lib/hooks.js:253:7)\n    at processTicksAndRejections (node:internal/process/task_queues:105:5)"},"msg":"validateParams is not a function"}
+{"level":30,"time":1771550926655,"pid":835750,"hostname":"zephyrus-cachyos","reqId":"req-3","res":{"statusCode":500},"responseTime":1.7491690032184124,"msg":"request completed"}
+2026-02-20T01:28:46.656776Z  INFO ThreadId(17) pact_verifier::provider_client: Received response: HTTP Response ( status: 500, headers: Some({"content-type": ["application/json; charset=utf-8"], "date": ["Fri, 20 Feb 2026 01:28:46 GMT"], "content-length": ["102"], "connection": ["close"], "x-powered-by": ["Express"]}), body: Present(102 bytes, application/json;charset=utf-8) )
+2026-02-20T01:28:46.657883Z  INFO ThreadId(17) pact_verifier: Running teardown provider state change handler 'an album 'alb_11111111111111111111111111111111' exists for the user and media '55555555-5555-4555-8555-555555555555' is owned by the user' for 'a request to add media to the album'
+2026-02-20T01:28:46.679735Z  INFO ThreadId(17) pact_verifier: Running setup provider state change handler 'an album 'alb_11111111111111111111111111111111' exists with items inside' for 'a request to list items in an album'
+2026-02-20T01:28:46.693129Z  INFO ThreadId(17) pact_verifier: Running provider verification for 'a request to list items in an album'
+2026-02-20T01:28:46.693238Z  INFO ThreadId(17) pact_verifier::provider_client: Sending request to provider at http://127.0.0.1:44763/
+2026-02-20T01:28:46.693246Z  INFO ThreadId(17) pact_verifier::provider_client: Sending request HTTP Request ( method: GET, path: /api/v1/albums/alb_11111111111111111111111111111111/items, query: None, headers: Some({"Authorization": ["Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUuY29tIiwiZXhwIjo0MTAyNDQ0ODAwLCJzdWIiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEifQ.qWoxC37LQvLRjg3tKiO09ZbeuiFzMHu1XKCMAdn7yIk"]}), body: Missing )
+{"level":30,"time":1771550926696,"pid":835750,"hostname":"zephyrus-cachyos","reqId":"req-4","req":{"method":"GET","url":"/api/v1/albums/alb_11111111111111111111111111111111/items","host":"127.0.0.1:44763","remoteAddress":"127.0.0.1","remotePort":47184},"msg":"incoming request"}
+{"level":50,"time":1771550926697,"pid":835750,"hostname":"zephyrus-cachyos","reqId":"req-4","err":{"type":"TypeError","message":"validateParams is not a function","stack":"TypeError: validateParams is not a function\n    at Object.<anonymous> (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/src/routes/albumRoutes.js:203:33)\n    at preHandlerCallbackInner (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/node_modules/fastify/lib/handle-request.js:168:24)\n    at preHandlerCallback (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/node_modules/fastify/lib/handle-request.js:134:5)\n    at next (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/node_modules/fastify/lib/hooks.js:236:9)\n    at handleResolve (/home/nalcocer/Documents/nodejs/photox/services/album-sharing/node_modules/fastify/lib/hooks.js:253:7)\n    at processTicksAndRejections (node:internal/process/task_queues:105:5)"},"msg":"validateParams is not a function"}
+{"level":30,"time":1771550926698,"pid":835750,"hostname":"zephyrus-cachyos","reqId":"req-4","res":{"statusCode":500},"responseTime":2.023383002728224,"msg":"request completed"}
+2026-02-20T01:28:46.700307Z  INFO ThreadId(17) pact_verifier::provider_client: Received response: HTTP Response ( status: 500, headers: Some({"date": ["Fri, 20 Feb 2026 01:28:46 GMT"], "content-type": ["application/json; charset=utf-8"], "connection": ["close"], "x-powered-by": ["Express"], "content-length": ["102"]}), body: Present(102 bytes, application/json;charset=utf-8) )
+2026-02-20T01:28:46.701735Z  INFO ThreadId(17) pact_verifier: Running teardown provider state change handler 'an album 'alb_11111111111111111111111111111111' exists with items inside' for 'a request to list items in an album'
+2026-02-20T01:28:46.713545Z  WARN ThreadId(17) pact_matching::metrics: 
+
+Please note:
+We are tracking events anonymously to gather important usage statistics like Pact version and operating system. To disable tracking, set the 'PACT_DO_NOT_TRACK' environment variable to 'true'.
+
+
+
+Verifying a pact between [1mphotox-web-app[0m and [1malbum-sharing-service[0m
+
+  a request to create a new album (0s loading, 71ms verification)
+     Given a user exists and is ready to create an album
+    returns a response which
+      has status code [1m200[0m ([31mFAILED[0m)
+      includes headers
+        "[1mContent-Type[0m" with value "[1mapplication/json; charset=utf-8[0m" ([32mOK[0m)
+      has a matching body ([31mFAILED[0m)
+
+  a request to list albums (0s loading, 45ms verification)
+     Given the user has created albums
+    returns a response which
+      has status code [1m200[0m ([31mFAILED[0m)
+      includes headers
+        "[1mContent-Type[0m" with value "[1mapplication/json; charset=utf-8[0m" ([32mOK[0m)
+      has a matching body ([31mFAILED[0m)
+
+  a request to add media to the album (0s loading, 39ms verification)
+     Given an album 'alb_11111111111111111111111111111111' exists for the user and media '55555555-5555-4555-8555-555555555555' is owned by the user
+    returns a response which
+      has status code [1m200[0m ([31mFAILED[0m)
+      includes headers
+        "[1mContent-Type[0m" with value "[1mapplication/json; charset=utf-8[0m" ([32mOK[0m)
+      has a matching body ([31mFAILED[0m)
+
+  a request to list items in an album (0s loading, 43ms verification)
+     Given an album 'alb_11111111111111111111111111111111' exists with items inside
+    returns a response which
+      has status code [1m200[0m ([31mFAILED[0m)
+      includes headers
+        "[1mContent-Type[0m" with value "[1mapplication/json; charset=utf-8[0m" ([32mOK[0m)
+      has a matching body ([31mFAILED[0m)
+
+
+Failures:
+
+1) Verifying a pact between photox-web-app and album-sharing-service Given a user exists and is ready to create an album - a request to create a new album
+    1.1) has a matching body
+           [1m$[0m -> Actual map is missing the following keys: createdAt, id, ownerId, title, updatedAt
+    1.2) has status code 200
+           expected [31m200[0m but was [32m500[0m
+2) Verifying a pact between photox-web-app and album-sharing-service Given the user has created albums - a request to list albums
+    2.1) has a matching body
+           [1m$[0m -> Actual map is missing the following keys: items
+    2.2) has status code 200
+           expected [31m200[0m but was [32m500[0m
+3) Verifying a pact between photox-web-app and album-sharing-service Given an album 'alb_11111111111111111111111111111111' exists for the user and media '55555555-5555-4555-8555-555555555555' is owned by the user - a request to add media to the album
+    3.1) has a matching body
+           [1m$[0m -> Actual map is missing the following keys: albumId, mediaId
+    3.2) has status code 200
+           expected [31m200[0m but was [32m500[0m
+4) Verifying a pact between photox-web-app and album-sharing-service Given an album 'alb_11111111111111111111111111111111' exists with items inside - a request to list items in an album
+    4.1) has a matching body
+           [1m$[0m -> Actual map is missing the following keys: items
+    4.2) has status code 200
+           expected [31m200[0m but was [32m500[0m
+
+There were 4 pact failures
+
+[02:28:46.796] ERROR (835750): pact-core@16.1.1: Verification unsuccessful
+ ❯ test/contracts/provider.pact.test.js (1 test | 1 failed) 503ms
+   × album sharing http provider verification > verifies web consumer pact 315ms
+     → Verfication failed
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/contracts/provider.pact.test.js > album sharing http provider verification > verifies web consumer pact
+Error: Verfication failed
+ ❯ node_modules/@pact-foundation/pact-core/src/verifier/nativeVerifier.ts:52:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  02:28:45
+   Duration  1.34s (transform 34ms, setup 0ms, collect 403ms, tests 503ms, environment 0ms, prepare 75ms)
+
