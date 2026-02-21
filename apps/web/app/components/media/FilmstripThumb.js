@@ -8,7 +8,7 @@ export function FilmstripThumb({ mediaId, isActive, onSelect }) {
     const [thumbUrl, setThumbUrl] = useState("");
 
     const thumbQuery = useQuery({
-        queryKey: ["timeline-thumb", mediaId],
+        queryKey: ["media-thumb", mediaId],
         queryFn: () => fetchMediaContentBlob(mediaId, "thumb"),
         staleTime: 5 * 60 * 1000
     });

@@ -8,8 +8,9 @@ import Link from "next/link";
 import AppSidebar from "../../components/app-sidebar";
 import { getAlbumById, listAlbumItems, removeMediaFromAlbum, formatApiError } from "../../../lib/api";
 import { Spinner } from "../../timeline/components/Spinner";
-import { TimelineLightbox } from "../../timeline/components/TimelineLightbox";
+import { MediaLightbox } from "../../components/media/MediaLightbox";
 import { AlbumMediaTile } from "../components/AlbumMediaTile";
+
 import { useRequireSession } from "../../shared/hooks/useRequireSession";
 
 export default function AlbumDetailPage() {
@@ -218,10 +219,9 @@ export default function AlbumDetailPage() {
       </main>
 
       {activeMediaId ? (
-        <TimelineLightbox
+        <MediaLightbox
           activeMediaId={activeMediaId}
           activeItem={activeItem}
-          activeMetadataPreview={activeItem?.metadataPreview}
           canGoPrev={canGoPrev}
           canGoNext={canGoNext}
           isFetchingNextPage={false}
@@ -233,6 +233,7 @@ export default function AlbumDetailPage() {
           onSelectFilmstrip={(id) => updateMediaId(id)}
         />
       ) : null}
+
     </div>
   );
 }

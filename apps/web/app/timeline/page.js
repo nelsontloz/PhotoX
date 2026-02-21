@@ -21,7 +21,7 @@ import { AssignToAlbumModal } from "./components/AssignToAlbumModal";
 import { TimelineFiltersBar } from "./components/TimelineFiltersBar";
 import { TimelineSectionList } from "./components/TimelineSectionList";
 import { TimelineSelectionActionBar } from "./components/TimelineSelectionActionBar";
-import { TimelineLightbox } from "./components/TimelineLightbox";
+import { MediaLightbox } from "../components/media/MediaLightbox";
 import { useTimelineSelection } from "./hooks/useTimelineSelection";
 import { useRequireSession } from "../shared/hooks/useRequireSession";
 
@@ -353,10 +353,9 @@ function TimelineContent() {
       )}
 
       {activeMediaId ? (
-        <TimelineLightbox
+        <MediaLightbox
           activeMediaId={activeMediaId}
           activeItem={activeItem}
-          activeMetadataPreview={activeMetadataPreview}
           canGoPrev={canGoPrev}
           canGoNext={canGoNext}
           isFetchingNextPage={timelineQuery.isFetchingNextPage}
@@ -365,10 +364,7 @@ function TimelineContent() {
           onClose={handleCloseModal}
           onPrevious={handlePreviousModal}
           onNext={handleNextModal}
-          onSelectFilmstrip={(mediaId) => {
-            setModalError("");
-            updateMediaId(mediaId);
-          }}
+          onSelectFilmstrip={(id) => updateMediaId(id)}
         />
       ) : null}
     </div>

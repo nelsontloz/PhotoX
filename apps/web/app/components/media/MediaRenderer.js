@@ -3,13 +3,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { fetchMediaContentBlob, formatApiError, isRetriableMediaProcessingError } from "../../../lib/api";
-import { isVideoMimeType } from "../utils";
-import { Spinner } from "./Spinner";
+import { isVideoMimeType } from "../../timeline/utils";
+
+import { Spinner } from "../Spinner";
 
 const MEDIA_POLL_INTERVAL_MS = 2000;
 const MEDIA_POLL_MAX_ATTEMPTS = 15;
 
-export function TimelineModalMedia({ mediaId, mimeType, className = "" }) {
+export function MediaRenderer({ mediaId, mimeType, className = "" }) {
     const [mediaUrl, setMediaUrl] = useState("");
     const [loadError, setLoadError] = useState("");
     const [retryCount, setRetryCount] = useState(0);
@@ -23,7 +24,7 @@ export function TimelineModalMedia({ mediaId, mimeType, className = "" }) {
     }, [mediaId, variant]);
 
     const mediaQuery = useQuery({
-        queryKey: ["timeline-modal-media", mediaId, variant],
+        queryKey: ["media-content", mediaId, variant],
         queryFn: () => fetchMediaContentBlob(mediaId, variant),
         enabled: Boolean(mediaId),
         staleTime: 5 * 60 * 1000
@@ -79,7 +80,7 @@ export function TimelineModalMedia({ mediaId, mimeType, className = "" }) {
     }
 
     if (loadError) {
-        return <div className="error w-full">Could not load media. {loadError}</div>;
+        return <div className="error w-full text-white/60 text-sm py-8 text-center bg-black/20 rounded-lg">Could not load media. {loadError}</div>;
     }
 
     return (
