@@ -7,14 +7,11 @@ import { useEffect, useMemo, useState } from "react";
 import { logoutUser } from "../../lib/api";
 import { clearSession, readRefreshToken, readSession } from "../../lib/session";
 
-import { useSidebar } from "./sidebar-context";
-
 const HIDDEN_ON_PATHS = new Set(["/login", "/register"]);
 
 export default function TopBar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { toggle } = useSidebar();
   const [session, setSession] = useState(null);
 
   useEffect(() => {
@@ -56,13 +53,6 @@ export default function TopBar() {
   return (
     <header className="flex items-center justify-between border-b border-gray-200 dark:border-border-dark bg-white/80 dark:bg-background-dark/80 backdrop-blur-md px-6 py-3 z-50 sticky top-0 h-16 w-full shrink-0">
       <div className="flex items-center gap-6 w-1/4">
-        {/* Mobile Menu Trigger (Hidden on Desktop) */}
-        <button
-          onClick={toggle}
-          className="lg:hidden text-slate-500 hover:text-primary transition-colors"
-        >
-          <span className="material-symbols-outlined">menu</span>
-        </button>
         <Link href={user ? "/timeline" : "/login"} className="flex items-center gap-3 text-slate-900 dark:text-white group">
           <div className="size-8 bg-primary rounded-lg flex items-center justify-center text-white shadow-lg shadow-primary/20">
             <span className="material-symbols-outlined text-[20px]">photo_library</span>

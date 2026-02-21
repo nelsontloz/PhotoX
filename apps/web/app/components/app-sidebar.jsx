@@ -14,25 +14,13 @@ export function getSidebarItems(isAdmin) {
   return items;
 }
 
-import { useSidebar } from "./sidebar-context";
-
 export default function AppSidebar({ activeLabel = "Timeline", isAdmin = false }) {
-  const { isOpen, close } = useSidebar();
   const navItems = getSidebarItems(isAdmin);
 
   return (
     <>
-      {/* Mobile Overlay */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm transition-opacity"
-          onClick={close}
-        ></div>
-      )}
-
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-[72px] bg-white dark:bg-background-dark border-r border-gray-200 dark:border-border-dark transition-transform duration-300 lg:static lg:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"
-          } lg:flex lg:flex-col lg:w-60 transition-[width,transform] duration-300 group`}
+        className="shrink-0 z-50 w-[72px] bg-white dark:bg-background-dark border-r border-gray-200 dark:border-border-dark lg:w-60 transition-[width] duration-300 group flex flex-col"
       >
         <nav className="flex flex-col gap-2 p-3 mt-4">
           {navItems.map((item) => {
