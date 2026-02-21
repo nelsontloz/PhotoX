@@ -1,16 +1,86 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import AppSidebar from "../components/app-sidebar";
-import { fetchCurrentUser, listAlbums, formatApiError } from "../../lib/api";
+import { fetchCurrentUser, listAlbums, createAlbum, formatApiError } from "../../lib/api";
 import { buildLoginPath } from "../../lib/navigation";
 import { Spinner } from "../timeline/components/Spinner";
 
+function CreateAlbumModal({ onClose, onCreated }) {
+  const [title, setTitle] = useState("");
+  const [error, setError] = useState("");
+  const queryClient = useQueryClient();
+
+  const createMutation = useMutation({
+    mutationFn: () => createAlbum({ title: title.trim() }),
+    onSuccess: (album) => {
+      queryClient.invalidateQueries({ queryKey: ["albums"] });
+      onCreated(album);
+    },
+    onError: (err) => setError(formatApiError(err))
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget && !createMutation.isPending) onClose(); }}
+    >
+      <div className="w-full max-w-sm rounded-2xl bg-slate-900 border border-white/10 shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+          <h2 className="text-base font-bold text-white">Create Album</h2>
+          {!createMutation.isPending && (
+            <button type="button" onClick={onClose} className="rounded-full p-1 text-white/60 hover:text-white hover:bg-white/10 transition-colors">
+              <span className="material-symbols-outlined text-[20px]">close</span>
+            </button>
+          )}
+        </div>
+        <div className="px-6 py-5 flex flex-col gap-4">
+          <div>
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-2">Album Title</label>
+            <input
+              type="text"
+              autoFocus
+              className="w-full rounded-lg bg-white/10 border border-white/10 focus:border-primary outline-none px-3 py-2.5 text-sm text-white placeholder-slate-500 transition-colors"
+              placeholder="e.g. Summer Trip 2026"
+              value={title}
+              onChange={(e) => { setTitle(e.target.value); setError(""); }}
+              onKeyDown={(e) => { if (e.key === "Enter" && title.trim()) createMutation.mutate(); }}
+              maxLength={1024}
+              disabled={createMutation.isPending}
+            />
+          </div>
+          {error && <p className="text-red-400 text-xs">{error}</p>}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="flex-1 rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-50 text-white text-sm font-semibold py-2.5 transition-colors flex items-center justify-center gap-2"
+              disabled={!title.trim() || createMutation.isPending}
+              onClick={() => createMutation.mutate()}
+            >
+              {createMutation.isPending ? <Spinner label="" size="sm" /> : null}
+              Create
+            </button>
+            <button
+              type="button"
+              className="rounded-lg border border-white/10 text-slate-400 hover:text-white text-sm px-4 py-2 transition-colors"
+              onClick={onClose}
+              disabled={createMutation.isPending}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AlbumsPage() {
   const router = useRouter();
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const meQuery = useQuery({
     queryKey: ["me"],
@@ -45,105 +115,90 @@ export default function AlbumsPage() {
       <AppSidebar activeLabel="Albums" isAdmin={Boolean(meQuery.data?.user?.isAdmin)} />
 
       <main className="flex-1 overflow-y-auto relative scroll-smooth px-6 sm:px-12 pb-20 pt-10 bg-background-light dark:bg-background-dark">
-        <section className="mb-12">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Featured</h2>
-              <p className="text-slate-500 dark:text-slate-400 mt-1">Your most cherished memories</p>
-            </div>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Albums</h1>
+            <p className="text-slate-500 dark:text-slate-400 mt-1">
+              {albumsQuery.isSuccess ? `${items.length} album${items.length !== 1 ? "s" : ""}` : "Your photo collections"}
+            </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 group relative h-[400px] rounded-2xl overflow-hidden cursor-pointer">
-              <img
-                alt="Summer Trip 2023"
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuAICJa25A8nWlO0Cx1ULd8yNg-LkoGDhsbhe3dybiakUIQyrz9hpNaE-2Ddd5B8DdQ4pirCUekuf3bvSLJh5fpz8goNRiOl_d2jJbnOhKaYmcQchkLRrRpj37kdohegFYRolgQ25lZIslATEGoSNQxbBNFa9413cmVv3bPmB6yNryxCGMMww_rRJha4CU362XXBD2-wvqbkmu0a9yKgqQomdl1PIsDLC8L_E7-yNv0rj2T7LCF9xA35fBM_j4yjw5h60PAnw9Ljn4w"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
-              <div className="absolute bottom-0 left-0 p-8 w-full">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="material-symbols-outlined text-primary text-sm filled" style={{ fontVariationSettings: '"FILL" 1' }}>star</span>
-                  <span className="text-xs font-bold text-primary uppercase tracking-widest">Favorite</span>
-                </div>
-                <h3 className="text-3xl font-bold text-white mb-2">European Summer</h3>
-                <div className="flex items-center gap-4 text-slate-300 text-sm">
-                  <span className="flex items-center gap-1">
-                    <span className="material-symbols-outlined text-sm">image</span> 342 photos
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="material-symbols-outlined text-sm">calendar_today</span> July 2023
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="group relative h-[400px] rounded-2xl overflow-hidden cursor-pointer">
-              <img
-                alt="Nature Retreat"
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuAH8mDgzWmv1SAB2UQmCP1SpT5YCju1cooHg_KvagWI5mA4EDBEKiFvO9zM_L_RSan8tdWeavxSG39VvhZsCB7hLxs7hujELsDAX9EzA5cpmD-kyf_jC_wIrlLNBrYevvDnEECD5B87htejaizf5feqz989HBLmRvOnPixS-rle3QKACGKGsiRzL3-wfh-RYlqrnWbMtlBNN_BgmAlGo3fHckuxTrWZ7P_Dzo0yV5zkfSInXL8afY0Pti4YDhMyP5ArMpvVs9arTCs"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
-              <div className="absolute bottom-0 left-0 p-8 w-full">
-                <h3 className="text-2xl font-bold text-white mb-2">Nature Retreat</h3>
-                <div className="flex items-center gap-4 text-slate-300 text-sm">
-                  <span className="flex items-center gap-1">
-                    <span className="material-symbols-outlined text-sm">image</span> 128 photos
-                  </span>
-                </div>
-              </div>
-            </div>
+          <button
+            type="button"
+            className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white text-sm font-semibold px-5 py-2.5 rounded-full transition-all shadow-lg shadow-primary/20"
+            onClick={() => setShowCreateModal(true)}
+          >
+            <span className="material-symbols-outlined text-[18px]">add</span>
+            New Album
+          </button>
+        </div>
+
+        {albumsQuery.isError && (
+          <p className="text-red-500 mb-6 text-sm">{formatApiError(albumsQuery.error)}</p>
+        )}
+
+        {albumsQuery.isPending && (
+          <div className="flex justify-center py-16">
+            <Spinner label="Loading albums..." />
           </div>
-        </section>
+        )}
 
-        <section>
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">All Albums</h2>
-            <div className="flex items-center gap-2">
-              <button className="p-2 text-slate-400 hover:text-white transition-colors">
-                <span className="material-symbols-outlined">grid_view</span>
-              </button>
-              <button className="p-2 text-slate-400 hover:text-white transition-colors">
-                <span className="material-symbols-outlined">list</span>
-              </button>
-            </div>
-          </div>
-
-          {albumsQuery.isError ? (
-            <p className="text-red-500 mb-6">{formatApiError(albumsQuery.error)}</p>
-          ) : null}
-
-          {albumsQuery.isPending ? (
-            <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">Loading albums...</p>
-          ) : null}
-
+        {albumsQuery.isSuccess && (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-            <div className="aspect-square group border-2 border-dashed border-slate-200 dark:border-border-dark hover:border-primary/50 rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all bg-white/5 hover:bg-white/10">
+            {/* Create Album card */}
+            <button
+              type="button"
+              className="aspect-square group border-2 border-dashed border-slate-200 dark:border-border-dark hover:border-primary/50 rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all bg-white/5 hover:bg-white/10"
+              onClick={() => setShowCreateModal(true)}
+            >
               <div className="size-14 rounded-full bg-slate-100 dark:bg-card-dark flex items-center justify-center text-slate-400 group-hover:text-primary group-hover:scale-110 transition-all">
                 <span className="material-symbols-outlined text-[32px]">add</span>
               </div>
               <span className="mt-4 text-sm font-semibold text-slate-500 dark:text-slate-400">Create Album</span>
-            </div>
+            </button>
 
             {items.map((album) => (
-              <div key={album.id} className="aspect-square group cursor-pointer flex flex-col" onClick={() => router.push(`/albums/${album.id}`)}>
-                <div className="w-full h-full rounded-xl overflow-hidden mb-3 relative flex items-center justify-center bg-slate-200 dark:bg-card-dark text-slate-300">
-                  <span className="material-symbols-outlined text-6xl opacity-50">photo_library</span>
-                  <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors"></div>
-                  <div className="absolute top-2 right-2">
-                    <div className="bg-black/50 backdrop-blur-md size-8 rounded-lg flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => {
-                      e.stopPropagation();
-                    }}>
-                      <span className="material-symbols-outlined text-[18px]">more_vert</span>
-                    </div>
+              <div
+                key={album.id}
+                className="aspect-square group cursor-pointer flex flex-col"
+                onClick={() => router.push(`/albums/${album.id}`)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter") router.push(`/albums/${album.id}`); }}
+              >
+                <div className="w-full flex-1 rounded-xl overflow-hidden mb-3 relative flex items-center justify-center bg-slate-100 dark:bg-card-dark text-slate-300">
+                  <span className="material-symbols-outlined text-6xl opacity-40">photo_library</span>
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-xl" />
+                  <div className="absolute bottom-2 right-2 bg-black/50 backdrop-blur-sm rounded-lg px-2 py-0.5 text-[10px] font-bold text-white">
+                    {album.mediaCount ?? 0}
                   </div>
                 </div>
-                <h4 className="font-semibold text-slate-900 dark:text-white truncate">{album.title}</h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400">{new Date(album.createdAt).toLocaleDateString()}</p>
+                <h4 className="font-semibold text-slate-900 dark:text-white truncate text-sm">{album.title}</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {album.mediaCount ?? 0} photo{(album.mediaCount ?? 0) !== 1 ? "s" : ""}
+                </p>
               </div>
             ))}
+
+            {items.length === 0 && (
+              <div className="col-span-full text-center py-12 text-slate-500 dark:text-slate-400">
+                <span className="material-symbols-outlined text-5xl opacity-30 mb-3 block">photo_library</span>
+                <p className="text-sm">No albums yet. Create your first one!</p>
+              </div>
+            )}
           </div>
-        </section>
+        )}
       </main>
+
+      {showCreateModal && (
+        <CreateAlbumModal
+          onClose={() => setShowCreateModal(false)}
+          onCreated={(album) => {
+            setShowCreateModal(false);
+            router.push(`/albums/${album.id}`);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -458,3 +458,15 @@ export async function listAlbumItems(albumId) {
     method: "GET"
   });
 }
+
+export async function getAlbumById(albumId) {
+  return requestWithAutoRefresh(`/albums/${encodeURIComponent(albumId)}`, {
+    method: "GET"
+  });
+}
+
+export async function removeMediaFromAlbum(albumId, mediaId) {
+  return requestWithAutoRefresh(`/albums/${encodeURIComponent(albumId)}/items/${encodeURIComponent(mediaId)}`, {
+    method: "DELETE"
+  });
+}

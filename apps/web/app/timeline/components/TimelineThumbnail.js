@@ -6,7 +6,7 @@ import { fetchMediaContentBlob, formatApiError } from "../../../lib/api";
 import { isVideoMimeType, formatDurationSeconds } from "../utils";
 import { Spinner } from "./Spinner";
 
-export function TimelineThumbnail({ item, onOpen, className = "" }) {
+export function TimelineThumbnail({ item, onOpen, onSelect, isSelected = false, selectionMode = false, className = "" }) {
     const [imageUrl, setImageUrl] = useState("");
     const [loadError, setLoadError] = useState("");
     const mediaId = item.id;
@@ -37,10 +37,18 @@ export function TimelineThumbnail({ item, onOpen, className = "" }) {
         }
     }, [thumbQuery.error, thumbQuery.isError]);
 
+    function handleClick() {
+        if (selectionMode) {
+            onSelect?.();
+        } else {
+            onOpen?.();
+        }
+    }
+
     return (
         <div
-            onClick={onOpen}
-            className={`masonry-item relative group rounded-lg overflow-hidden cursor-pointer bg-slate-200 dark:bg-card-dark ${className}`}
+            onClick={handleClick}
+            className={`masonry-item relative group rounded-lg overflow-hidden cursor-pointer bg-slate-200 dark:bg-card-dark transition-all ${isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-background-dark" : ""} ${className}`}
         >
             {imageUrl ? (
                 <img
@@ -60,10 +68,22 @@ export function TimelineThumbnail({ item, onOpen, className = "" }) {
 
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
 
-            {/* Selection Circle */}
-            <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                <div className="w-6 h-6 rounded-full border-2 border-white/80 hover:bg-primary hover:border-primary flex items-center justify-center transition-colors">
-                    <span className="material-symbols-outlined text-white text-[16px] hidden">check</span>
+            {/* Selection Circle — always visible in selection mode, hover-only otherwise */}
+            <div
+                className={`absolute top-3 left-3 transition-all duration-200 ${selectionMode ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                    }`}
+            >
+                <div
+                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${isSelected
+                            ? "bg-primary border-primary scale-110"
+                            : "border-white/80 hover:border-primary hover:bg-white/20"
+                        }`}
+                >
+                    {isSelected && (
+                        <span className="material-symbols-outlined text-white text-[14px]" style={{ fontVariationSettings: '"FILL" 1, "wght" 700' }}>
+                            check
+                        </span>
+                    )}
                 </div>
             </div>
 

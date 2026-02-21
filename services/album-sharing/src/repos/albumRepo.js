@@ -22,10 +22,14 @@ function buildAlbumRepo(db) {
     async function listAlbums({ ownerId, limit = 50 }) {
         const result = await db.query(
             `
-        SELECT id, owner_id AS "ownerId", title, created_at AS "createdAt", updated_at AS "updatedAt"
-        FROM albums
-        WHERE owner_id = $1
-        ORDER BY created_at DESC
+        SELECT a.id, a.owner_id AS "ownerId", a.title,
+               a.created_at AS "createdAt", a.updated_at AS "updatedAt",
+               COUNT(ai.media_id)::int AS "mediaCount"
+        FROM albums a
+        LEFT JOIN album_items ai ON ai.album_id = a.id
+        WHERE a.owner_id = $1
+        GROUP BY a.id
+        ORDER BY a.created_at DESC
         LIMIT $2
       `,
             [ownerId, limit]
@@ -48,6 +52,32 @@ function buildAlbumRepo(db) {
         }
 
         return result.rows[0];
+    }
+
+    async function getAlbumWithItemCount({ albumId, ownerId }) {
+        const result = await db.query(
+            `
+        SELECT a.id, a.owner_id AS "ownerId", a.title,
+               a.created_at AS "createdAt", a.updated_at AS "updatedAt",
+               COUNT(ai.media_id)::int AS "mediaCount"
+        FROM albums a
+        LEFT JOIN album_items ai ON ai.album_id = a.id
+        WHERE a.id = $1
+        GROUP BY a.id
+      `,
+            [albumId]
+        );
+
+        if (result.rowCount === 0) {
+            throw new ApiError(404, "ALBUM_NOT_FOUND", "Album not found");
+        }
+
+        const album = result.rows[0];
+        if (album.ownerId !== ownerId) {
+            throw new ApiError(403, "ALBUM_FORBIDDEN", "Forbidden: not the album owner");
+        }
+
+        return album;
     }
 
     async function addMediaToAlbum({ albumId, ownerId, mediaId }) {
@@ -85,6 +115,24 @@ function buildAlbumRepo(db) {
         return { albumId, mediaId };
     }
 
+    async function removeMediaFromAlbum({ albumId, ownerId, mediaId }) {
+        const album = await getAlbumById({ albumId });
+        if (album.ownerId !== ownerId) {
+            throw new ApiError(403, "ALBUM_FORBIDDEN", "Forbidden: not the album owner");
+        }
+
+        const result = await db.query(
+            `DELETE FROM album_items WHERE album_id = $1 AND media_id = $2`,
+            [albumId, mediaId]
+        );
+
+        if (result.rowCount === 0) {
+            throw new ApiError(404, "ALBUM_ITEM_NOT_FOUND", "Media not found in album");
+        }
+
+        return { albumId, mediaId };
+    }
+
     async function getAlbumItems({ albumId, ownerId }) {
         const album = await getAlbumById({ albumId });
         if (album.ownerId !== ownerId) {
@@ -108,7 +156,9 @@ function buildAlbumRepo(db) {
         createAlbum,
         listAlbums,
         getAlbumById,
+        getAlbumWithItemCount,
         addMediaToAlbum,
+        removeMediaFromAlbum,
         getAlbumItems
     };
 }

@@ -30,7 +30,8 @@ function albumRoutes(fastify, options, done) {
                             ownerId: { type: "string" },
                             title: { type: "string" },
                             createdAt: { type: "string", format: "date-time" },
-                            updatedAt: { type: "string", format: "date-time" }
+                            updatedAt: { type: "string", format: "date-time" },
+                            mediaCount: { type: "integer" }
                         }
                     }
                 }
@@ -49,7 +50,7 @@ function albumRoutes(fastify, options, done) {
                 title
             });
 
-            return result;
+            return { ...result, mediaCount: 0 };
         }
     );
 
@@ -81,7 +82,8 @@ function albumRoutes(fastify, options, done) {
                                         ownerId: { type: "string" },
                                         title: { type: "string" },
                                         createdAt: { type: "string", format: "date-time" },
-                                        updatedAt: { type: "string", format: "date-time" }
+                                        updatedAt: { type: "string", format: "date-time" },
+                                        mediaCount: { type: "integer" }
                                     }
                                 }
                             }
@@ -104,6 +106,52 @@ function albumRoutes(fastify, options, done) {
             });
 
             return { items };
+        }
+    );
+
+    fastify.get(
+        "/:albumId",
+        {
+            preHandler: [requireAuth],
+            schema: {
+                tags: ["Albums"],
+                summary: "Get album details",
+                description: "Returns the album detail including media count. Must be the album owner.",
+                security: [{ bearerAuth: [] }],
+                params: {
+                    type: "object",
+                    required: ["albumId"],
+                    properties: {
+                        albumId: { type: "string" }
+                    }
+                },
+                response: {
+                    200: {
+                        type: "object",
+                        properties: {
+                            id: { type: "string" },
+                            ownerId: { type: "string" },
+                            title: { type: "string" },
+                            createdAt: { type: "string", format: "date-time" },
+                            updatedAt: { type: "string", format: "date-time" },
+                            mediaCount: { type: "integer" }
+                        }
+                    }
+                }
+            }
+        },
+        async (request) => {
+            const { albumId } = validateParams(
+                request.params,
+                z.object({
+                    albumId: z.string().min(1)
+                })
+            );
+
+            return await album.getAlbumWithItemCount({
+                albumId,
+                ownerId: request.user.id
+            });
         }
     );
 
@@ -213,6 +261,51 @@ function albumRoutes(fastify, options, done) {
             });
 
             return { items };
+        }
+    );
+
+    fastify.delete(
+        "/:albumId/items/:mediaId",
+        {
+            preHandler: [requireAuth],
+            schema: {
+                tags: ["Albums"],
+                summary: "Remove media from album",
+                description: "Removes a media item from an album. Fails if user does not own the album.",
+                security: [{ bearerAuth: [] }],
+                params: {
+                    type: "object",
+                    required: ["albumId", "mediaId"],
+                    properties: {
+                        albumId: { type: "string" },
+                        mediaId: { type: "string" }
+                    }
+                },
+                response: {
+                    200: {
+                        type: "object",
+                        properties: {
+                            albumId: { type: "string" },
+                            mediaId: { type: "string" }
+                        }
+                    }
+                }
+            }
+        },
+        async (request) => {
+            const { albumId, mediaId } = validateParams(
+                request.params,
+                z.object({
+                    albumId: z.string().min(1),
+                    mediaId: z.string().min(1)
+                })
+            );
+
+            return await album.removeMediaFromAlbum({
+                albumId,
+                ownerId: request.user.id,
+                mediaId
+            });
         }
     );
 

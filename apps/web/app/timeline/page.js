@@ -26,6 +26,7 @@ import { Spinner } from "./components/Spinner";
 import { TimelineThumbnail } from "./components/TimelineThumbnail";
 import { TimelineModalMedia } from "./components/TimelineModalMedia";
 import { FilmstripThumb } from "./components/FilmstripThumb";
+import { AssignToAlbumModal } from "./components/AssignToAlbumModal";
 
 function TimelineContent() {
   const router = useRouter();
@@ -38,6 +39,28 @@ function TimelineContent() {
   const [to, setTo] = useState("");
   const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState(urlQ);
+
+  // Selection mode
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [showAssignModal, setShowAssignModal] = useState(false);
+
+  function toggleSelectionMode() {
+    setSelectionMode((prev) => !prev);
+    setSelectedIds(new Set());
+  }
+
+  function handleSelectItem(mediaId) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(mediaId)) {
+        next.delete(mediaId);
+      } else {
+        next.add(mediaId);
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     setSearchQuery(urlQ);
@@ -311,6 +334,23 @@ function TimelineContent() {
               <span className="absolute -top-2 left-3 px-1 bg-background-light dark:bg-background-dark text-[10px] font-bold text-slate-400 uppercase tracking-wider">To</span>
             </div>
           </div>
+
+          {/* Select mode toggle */}
+          <div className="flex justify-end">
+            <button
+              type="button"
+              className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-semibold border transition-all ${selectionMode
+                ? "bg-primary border-primary text-white"
+                : "border-slate-200 dark:border-border-dark bg-white dark:bg-card-dark text-slate-700 dark:text-slate-200 hover:border-primary hover:text-primary"
+                }`}
+              onClick={toggleSelectionMode}
+            >
+              <span className="material-symbols-outlined text-[16px]">
+                {selectionMode ? "close" : "select_all"}
+              </span>
+              {selectionMode ? "Cancel Select" : "Select"}
+            </button>
+          </div>
         </div>
 
         {timelineQuery.isError ? <p className="error mb-6">{formatApiError(timelineQuery.error)}</p> : null}
@@ -336,7 +376,21 @@ function TimelineContent() {
               <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{section.title}</h2>
               <span className="text-sm font-medium text-slate-500 mb-1">{section.subtitle}</span>
               <div className="ml-auto flex items-center">
-                <button className="text-xs font-semibold text-primary hover:text-primary/80">Select all</button>
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-primary hover:text-primary/80"
+                  onClick={() => {
+                    if (!selectionMode) setSelectionMode(true);
+                    const sectionIds = section.items.map((i) => i.id);
+                    setSelectedIds((prev) => {
+                      const next = new Set(prev);
+                      sectionIds.forEach((id) => next.add(id));
+                      return next;
+                    });
+                  }}
+                >
+                  Select all
+                </button>
               </div>
             </div>
 
@@ -345,6 +399,9 @@ function TimelineContent() {
                 <TimelineThumbnail
                   key={item.id}
                   item={item}
+                  selectionMode={selectionMode}
+                  isSelected={selectedIds.has(item.id)}
+                  onSelect={() => handleSelectItem(item.id)}
                   onOpen={() => {
                     setModalError("");
                     setActiveMediaId(item.id);
@@ -381,6 +438,42 @@ function TimelineContent() {
           <span>Upload</span>
         </Link>
       </main>
+
+      {/* Floating selection action bar */}
+      {selectionMode && selectedIds.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-between px-6 py-4 bg-slate-900/95 backdrop-blur-md border-t border-white/10 shadow-2xl">
+          <span className="text-white font-semibold text-sm">{selectedIds.size} selected</span>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              className="text-slate-400 hover:text-white text-sm transition-colors"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white text-sm font-semibold px-5 py-2 rounded-full transition-all shadow-lg"
+              onClick={() => setShowAssignModal(true)}
+            >
+              <span className="material-symbols-outlined text-[18px]">photo_library</span>
+              Add to Album
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showAssignModal && (
+        <AssignToAlbumModal
+          selectedIds={selectedIds}
+          onClose={() => setShowAssignModal(false)}
+          onSuccess={() => {
+            setShowAssignModal(false);
+            setSelectedIds(new Set());
+            setSelectionMode(false);
+          }}
+        />
+      )}
 
       {activeItem ? (
         <div
