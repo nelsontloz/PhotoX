@@ -267,6 +267,12 @@ export async function fetchMediaContentBlob(mediaId, variant = "thumb") {
   });
 }
 
+export async function fetchMediaDetail(mediaId) {
+  return requestWithAutoRefresh(`/media/${mediaId}`, {
+    method: "GET"
+  });
+}
+
 export async function listAdminUsers(params = {}) {
   const search = new URLSearchParams();
 

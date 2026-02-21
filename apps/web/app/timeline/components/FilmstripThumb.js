@@ -32,8 +32,8 @@ export function FilmstripThumb({ mediaId, isActive, onSelect }) {
             onClick={onSelect}
             className={
                 isActive
-                    ? "relative h-14 w-20 shrink-0 overflow-hidden rounded-lg ring-2 ring-primary ring-offset-2 ring-offset-black"
-                    : "relative h-12 w-16 shrink-0 overflow-hidden rounded opacity-60 transition-all hover:scale-105 hover:opacity-100 border border-white/10"
+                    ? "relative h-10 w-10 shrink-0 overflow-hidden rounded border-2 border-primary"
+                    : "relative h-10 w-10 shrink-0 overflow-hidden rounded border-2 border-transparent opacity-50 transition-opacity hover:opacity-100"
             }
         >
             {thumbUrl ? (

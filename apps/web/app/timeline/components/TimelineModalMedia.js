@@ -9,7 +9,7 @@ import { Spinner } from "./Spinner";
 const MEDIA_POLL_INTERVAL_MS = 2000;
 const MEDIA_POLL_MAX_ATTEMPTS = 15;
 
-export function TimelineModalMedia({ mediaId, mimeType }) {
+export function TimelineModalMedia({ mediaId, mimeType, className = "" }) {
     const [mediaUrl, setMediaUrl] = useState("");
     const [loadError, setLoadError] = useState("");
     const [retryCount, setRetryCount] = useState(0);
@@ -69,13 +69,13 @@ export function TimelineModalMedia({ mediaId, mimeType }) {
                     controls
                     playsInline
                     preload="metadata"
-                    className="max-h-[78vh] w-auto max-w-full rounded-xl object-contain"
+                    className={`max-h-full max-w-full object-contain select-none ${className}`}
                     onError={() => setLoadError("Video playback failed (MEDIA_PLAYBACK_ERROR)")}
                 />
             );
         }
 
-        return <img src={mediaUrl} alt="Selected media" className="max-h-[78vh] w-auto max-w-full rounded-xl object-contain" />;
+        return <img src={mediaUrl} alt="Selected media" className={`max-h-full max-w-full object-contain select-none ${className}`} />;
     }
 
     if (loadError) {
@@ -83,11 +83,11 @@ export function TimelineModalMedia({ mediaId, mimeType }) {
     }
 
     return (
-        <div className="flex h-[60vh] w-full items-center justify-center rounded-xl bg-[#d7e5eb]">
+        <div className="flex h-full w-full items-center justify-center bg-transparent">
             <Spinner
-                label={isVideo ? "Preparing video playback..." : "Preparing full preview..."}
+                label=""
                 size="md"
-                className="text-slate-700"
+                className="text-white/40"
             />
         </div>
     );
