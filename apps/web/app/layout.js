@@ -21,7 +21,7 @@ export default function RootLayout({ children }) {
       <head>
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=add,add_photo_alternate,admin_panel_settings,arrow_back,arrow_forward,broken_image,calendar_today,check,check_circle,chevron_right,close,cloud_upload,database,delete,error,event,group,image,lock,lock_reset,login,mail,menu,notifications,person,photo_album,photo_camera,photo_library,progress_activity,search,select_all,settings,speed,tune,upload,videocam,visibility,visibility_off"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=add,add_photo_alternate,admin_panel_settings,arrow_back,arrow_forward,broken_image,calendar_today,check,check_circle,chevron_right,close,cloud_upload,database,delete,error,event,expand_more,group,image,lock,lock_reset,login,mail,menu,notifications,person,photo_album,photo_camera,photo_library,progress_activity,search,select_all,settings,speed,tune,upload,videocam,visibility,visibility_off"
         />
       </head>
       <body className={`${inter.variable} bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 font-sans antialiased`}>

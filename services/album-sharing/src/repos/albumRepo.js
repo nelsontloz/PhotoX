@@ -24,7 +24,17 @@ function buildAlbumRepo(db) {
             `
         SELECT a.id, a.owner_id AS "ownerId", a.title,
                a.created_at AS "createdAt", a.updated_at AS "updatedAt",
-               COUNT(ai.media_id)::int AS "mediaCount"
+               COUNT(ai.media_id)::int AS "mediaCount",
+               (
+                 SELECT ARRAY_AGG(media_id)
+                 FROM (
+                   SELECT media_id
+                   FROM album_items
+                   WHERE album_id = a.id
+                   ORDER BY added_at DESC
+                   LIMIT 4
+                 ) s
+               ) AS "sampleMediaIds"
         FROM albums a
         LEFT JOIN album_items ai ON ai.album_id = a.id
         WHERE a.owner_id = $1
@@ -34,7 +44,10 @@ function buildAlbumRepo(db) {
       `,
             [ownerId, limit]
         );
-        return result.rows;
+        return result.rows.map(row => ({
+            ...row,
+            sampleMediaIds: row.sampleMediaIds || []
+        }));
     }
 
     async function getAlbumById({ albumId }) {

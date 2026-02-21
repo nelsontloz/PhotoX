@@ -83,7 +83,11 @@ function albumRoutes(fastify, options, done) {
                                         title: { type: "string" },
                                         createdAt: { type: "string", format: "date-time" },
                                         updatedAt: { type: "string", format: "date-time" },
-                                        mediaCount: { type: "integer" }
+                                        mediaCount: { type: "integer" },
+                                        sampleMediaIds: {
+                                            type: "array",
+                                            items: { type: "string" }
+                                        }
                                     }
                                 }
                             }

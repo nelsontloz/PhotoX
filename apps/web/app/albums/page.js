@@ -5,9 +5,82 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import AppSidebar from "../components/app-sidebar";
-import { fetchCurrentUser, listAlbums, createAlbum, formatApiError } from "../../lib/api";
+import { fetchCurrentUser, listAlbums, createAlbum, formatApiError, fetchMediaContentBlob } from "../../lib/api";
 import { buildLoginPath } from "../../lib/navigation";
 import { Spinner } from "../timeline/components/Spinner";
+
+function ThumbnailImage({ mediaId }) {
+  const { data: blob, isLoading } = useQuery({
+    queryKey: ["media", mediaId, "thumb"],
+    queryFn: () => fetchMediaContentBlob(mediaId, "thumb"),
+    staleTime: 1000 * 60 * 60, // 1 hour
+  });
+
+  const [url, setUrl] = useState(null);
+
+  useEffect(() => {
+    if (blob) {
+      const u = URL.createObjectURL(blob);
+      setUrl(u);
+      return () => URL.revokeObjectURL(u);
+    }
+  }, [blob]);
+
+  if (isLoading || !url) {
+    return <div className="bg-slate-200 dark:bg-slate-800 animate-pulse w-full h-full" />;
+  }
+
+  return <img src={url} alt="" className="object-cover w-full h-full" />;
+}
+
+function AlbumThumbnail({ sampleMediaIds }) {
+  const count = sampleMediaIds?.length || 0;
+
+  if (count === 0) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-slate-100 dark:bg-card-dark text-slate-300">
+        <span className="material-symbols-outlined text-6xl opacity-40">photo_library</span>
+      </div>
+    );
+  }
+
+  if (count === 1) {
+    return <ThumbnailImage mediaId={sampleMediaIds[0]} />;
+  }
+
+  if (count === 2) {
+    return (
+      <div className="grid grid-cols-2 h-full w-full gap-0.5">
+        <ThumbnailImage mediaId={sampleMediaIds[0]} />
+        <ThumbnailImage mediaId={sampleMediaIds[1]} />
+      </div>
+    );
+  }
+
+  if (count === 3) {
+    return (
+      <div className="grid grid-cols-2 h-full w-full gap-0.5">
+        <div className="h-full">
+          <ThumbnailImage mediaId={sampleMediaIds[0]} />
+        </div>
+        <div className="grid grid-rows-2 gap-0.5 h-full">
+          <ThumbnailImage mediaId={sampleMediaIds[1]} />
+          <ThumbnailImage mediaId={sampleMediaIds[2]} />
+        </div>
+      </div>
+    );
+  }
+
+  // 4 or more
+  return (
+    <div className="grid grid-cols-2 grid-rows-2 h-full w-full gap-0.5">
+      <ThumbnailImage mediaId={sampleMediaIds[0]} />
+      <ThumbnailImage mediaId={sampleMediaIds[1]} />
+      <ThumbnailImage mediaId={sampleMediaIds[2]} />
+      <ThumbnailImage mediaId={sampleMediaIds[3]} />
+    </div>
+  );
+}
 
 function CreateAlbumModal({ onClose, onCreated }) {
   const [title, setTitle] = useState("");
@@ -167,7 +240,7 @@ export default function AlbumsPage() {
                 onKeyDown={(e) => { if (e.key === "Enter") router.push(`/albums/${album.id}`); }}
               >
                 <div className="w-full flex-1 rounded-xl overflow-hidden mb-3 relative flex items-center justify-center bg-slate-100 dark:bg-card-dark text-slate-300">
-                  <span className="material-symbols-outlined text-6xl opacity-40">photo_library</span>
+                  <AlbumThumbnail sampleMediaIds={album.sampleMediaIds} />
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-xl" />
                   <div className="absolute bottom-2 right-2 bg-black/50 backdrop-blur-sm rounded-lg px-2 py-0.5 text-[10px] font-bold text-white">
                     {album.mediaCount ?? 0}
