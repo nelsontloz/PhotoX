@@ -1,23 +1,27 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useParams, useSearchParams, useRouter, usePathname } from "next/navigation";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 
 import AppSidebar from "../../components/app-sidebar";
 import { getAlbumById, listAlbumItems, removeMediaFromAlbum, formatApiError } from "../../../lib/api";
 import { Spinner } from "../../timeline/components/Spinner";
-import { TimelineModalMedia } from "../../timeline/components/TimelineModalMedia";
+import { TimelineLightbox } from "../../timeline/components/TimelineLightbox";
 import { AlbumMediaTile } from "../components/AlbumMediaTile";
 import { useRequireSession } from "../../shared/hooks/useRequireSession";
 
 export default function AlbumDetailPage() {
   const params = useParams();
   const albumId = params.id;
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
 
-  const [activeMediaId, setActiveMediaId] = useState(null);
+  const urlMediaId = searchParams.get("mediaId");
+  const activeMediaId = urlMediaId;
 
   const { meQuery, user } = useRequireSession({ redirectPath: `/albums/${albumId}` });
 
@@ -47,18 +51,28 @@ export default function AlbumDetailPage() {
     }
   });
 
+  const updateMediaId = useCallback((mediaId) => {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    if (mediaId) {
+      nextParams.set("mediaId", mediaId);
+    } else {
+      nextParams.delete("mediaId");
+    }
+    router.replace(`${pathname}?${nextParams.toString()}`, { scroll: false });
+  }, [pathname, router, searchParams]);
+
   useEffect(() => {
     if (!activeMediaId) {
       return;
     }
     const onKey = (e) => {
       if (e.key === "Escape") {
-        setActiveMediaId(null);
+        updateMediaId(null);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activeMediaId]);
+  }, [activeMediaId, updateMediaId]);
 
   useEffect(() => {
     if (!activeMediaId) {
@@ -71,6 +85,45 @@ export default function AlbumDetailPage() {
     };
   }, [activeMediaId]);
 
+  const album = albumQuery.data;
+  const rawItems = itemsQuery.data?.items || [];
+
+  // Normalize items for TimelineLightbox (aliasing mediaId to id)
+  const items = useMemo(() => {
+    return rawItems.map(item => ({
+      ...item,
+      id: item.mediaId
+    }));
+  }, [rawItems]);
+
+  const activeIndex = useMemo(() => {
+    if (!activeMediaId) return -1;
+    return items.findIndex(i => i.id === activeMediaId);
+  }, [activeMediaId, items]);
+
+  const activeItem = activeIndex >= 0 ? items[activeIndex] : null;
+  const canGoPrev = activeIndex > 0;
+  const canGoNext = activeIndex >= 0 && activeIndex < items.length - 1;
+
+  const handlePrevious = useCallback(() => {
+    if (canGoPrev) {
+      updateMediaId(items[activeIndex - 1].id);
+    }
+  }, [activeIndex, canGoPrev, items, updateMediaId]);
+
+  const handleNext = useCallback(() => {
+    if (canGoNext) {
+      updateMediaId(items[activeIndex + 1].id);
+    }
+  }, [activeIndex, canGoNext, items, updateMediaId]);
+
+  const filmstripItems = useMemo(() => {
+    if (activeIndex < 0) return [];
+    const start = Math.max(0, activeIndex - 3);
+    const end = Math.min(items.length, activeIndex + 4);
+    return items.slice(start, end);
+  }, [activeIndex, items]);
+
   if (meQuery.isPending || meQuery.isError) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background-light dark:bg-background-dark">
@@ -78,9 +131,6 @@ export default function AlbumDetailPage() {
       </div>
     );
   }
-
-  const album = albumQuery.data;
-  const items = itemsQuery.data?.items || [];
 
   return (
     <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-background-light dark:bg-background-dark">
@@ -155,11 +205,11 @@ export default function AlbumDetailPage() {
             <div className="masonry-grid">
               {items.map((item) => (
                 <AlbumMediaTile
-                  key={item.mediaId}
-                  mediaId={item.mediaId}
+                  key={item.id}
+                  mediaId={item.id}
                   mimeType={item.mimeType}
-                  onOpen={() => setActiveMediaId(item.mediaId)}
-                  onRemove={() => removeMutation.mutate(item.mediaId)}
+                  onOpen={() => updateMediaId(item.id)}
+                  onRemove={() => removeMutation.mutate(item.id)}
                 />
               ))}
             </div>
@@ -168,36 +218,20 @@ export default function AlbumDetailPage() {
       </main>
 
       {activeMediaId ? (
-        <div
-          className="fixed inset-0 z-50 flex flex-col bg-background-dark/95 text-white backdrop-blur-md"
-          role="dialog"
-          aria-modal="true"
-        >
-          <header className="z-20 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent px-6 py-6">
-            <button
-              type="button"
-              className="flex items-center gap-2 rounded-full bg-white/10 hover:bg-white/20 px-4 py-2 text-sm font-semibold text-white transition-all backdrop-blur-sm"
-              onClick={() => setActiveMediaId(null)}
-            >
-              <span className="material-symbols-outlined text-[20px]">arrow_back</span>
-              <span>Back</span>
-            </button>
-          </header>
-
-          <main className="relative flex flex-1 items-center justify-center overflow-hidden px-4 pb-16 pt-4 md:px-16">
-            <div className="relative flex max-h-full max-w-full items-center justify-center shadow-2xl">
-              <TimelineModalMedia mediaId={activeMediaId} mimeType={items.find((i) => i.mediaId === activeMediaId)?.mimeType} />
-            </div>
-          </main>
-
-          <button
-            type="button"
-            className="absolute top-4 right-4 z-30 h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all"
-            onClick={() => setActiveMediaId(null)}
-          >
-            <span className="material-symbols-outlined">close</span>
-          </button>
-        </div>
+        <TimelineLightbox
+          activeMediaId={activeMediaId}
+          activeItem={activeItem}
+          activeMetadataPreview={activeItem?.metadataPreview}
+          canGoPrev={canGoPrev}
+          canGoNext={canGoNext}
+          isFetchingNextPage={false}
+          filmstripItems={filmstripItems}
+          modalError=""
+          onClose={() => updateMediaId(null)}
+          onPrevious={handlePrevious}
+          onNext={handleNext}
+          onSelectFilmstrip={(id) => updateMediaId(id)}
+        />
       ) : null}
     </div>
   );
