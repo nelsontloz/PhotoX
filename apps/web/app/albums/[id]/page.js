@@ -5,7 +5,7 @@ import { useParams, useSearchParams, useRouter, usePathname } from "next/navigat
 import { useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 
-import { getAlbumById, listAlbumItems, removeMediaFromAlbum, formatApiError } from "../../../lib/api";
+import { deleteMedia, getAlbumById, listAlbumItems, removeMediaFromAlbum, formatApiError } from "../../../lib/api";
 import { Spinner } from "../../components/Spinner";
 import { MediaLightbox } from "../../components/media/MediaLightbox";
 import { AlbumMediaTile } from "../components/AlbumMediaTile";
@@ -51,6 +51,25 @@ export default function AlbumDetailPage() {
       });
       queryClient.invalidateQueries({ queryKey: ["album", albumId] });
       queryClient.invalidateQueries({ queryKey: ["albums"] });
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (mediaId) => deleteMedia(mediaId),
+    onSuccess: (_, mediaId) => {
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.delete("mediaId");
+      router.replace(`${pathname}?${nextParams.toString()}`, { scroll: false });
+      queryClient.setQueryData(["album-items", albumId], (old) => {
+        if (!old) {
+          return old;
+        }
+        return { ...old, items: old.items.filter((i) => i.mediaId !== mediaId) };
+      });
+      queryClient.invalidateQueries({ queryKey: ["album", albumId] });
+      queryClient.invalidateQueries({ queryKey: ["albums"] });
+      queryClient.invalidateQueries({ queryKey: ["timeline"] });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
     }
   });
 
@@ -215,9 +234,15 @@ export default function AlbumDetailPage() {
           filmstripItems={filmstripItems}
           modalError=""
           onClose={() => updateMediaId(null)}
+          onDelete={() => {
+            if (activeMediaId) {
+              deleteMutation.mutate(activeMediaId);
+            }
+          }}
           onPrevious={handlePrevious}
           onNext={handleNext}
           onSelectFilmstrip={(id) => updateMediaId(id)}
+          deleteInProgress={deleteMutation.isPending}
         />
       ) : null}
     </PageLayout>

@@ -99,6 +99,35 @@ const mediaContentQuerySchema = z
   })
   .strict();
 
+const trashPreviewQuerySchema = z
+  .object({
+    variant: z.enum(["thumb", "small"]).optional()
+  })
+  .strict();
+
+const trashListQuerySchema = z
+  .object({
+    cursor: z.string().min(1).max(500).optional(),
+    limit: z
+      .preprocess((value) => {
+        if (value === undefined || value === "") {
+          return undefined;
+        }
+
+        if (typeof value === "number") {
+          return value;
+        }
+
+        if (typeof value === "string") {
+          return Number.parseInt(value, 10);
+        }
+
+        return value;
+      }, z.number().int().min(1).max(100).optional())
+      .optional()
+  })
+  .strict();
+
 function parseOrThrow(schema, input) {
   try {
     return schema.parse(input);
@@ -121,5 +150,7 @@ module.exports = {
   mediaPathParamsSchema,
   parseOrThrow,
   patchMediaSchema,
-  timelineQuerySchema
+  timelineQuerySchema,
+  trashListQuerySchema,
+  trashPreviewQuerySchema
 };

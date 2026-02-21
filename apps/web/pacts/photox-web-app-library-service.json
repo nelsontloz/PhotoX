@@ -641,6 +641,200 @@
         },
         "status": 200
       }
+    },
+    {
+      "description": "a request to list trash media",
+      "providerStates": [
+        {
+          "name": "there are soft-deleted media items in trash"
+        }
+      ],
+      "request": {
+        "headers": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJuZXctdXNlckBleGFtcGxlLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwic3ViIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIn0.JhjfkCBLBPGeCG7E6KkBWmPSY8bO2st5TX-VrTHSumM"
+        },
+        "method": "GET",
+        "path": "/api/v1/library/trash",
+        "query": {
+          "limit": [
+            "24"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "deletedAt": "2026-02-18T12:00:00.000Z",
+              "flags": {
+                "archived": false,
+                "deletedSoft": true,
+                "favorite": false,
+                "hidden": false
+              },
+              "id": "55555555-5555-4555-8555-555555555555",
+              "mimeType": "image/jpeg",
+              "ownerId": "11111111-1111-4111-8111-111111111111"
+            }
+          ],
+          "nextCursor": null
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.items": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.items[*].deletedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$"
+                }
+              ]
+            },
+            "$.items[*].flags.archived": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].flags.deletedSoft": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].flags.favorite": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].flags.hidden": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                }
+              ]
+            },
+            "$.items[*].mimeType": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].ownerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request for trashed media preview bytes",
+      "providerStates": [
+        {
+          "name": "a trashed thumbnail variant exists for media '55555555-5555-4555-8555-555555555555'"
+        }
+      ],
+      "request": {
+        "headers": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJuZXctdXNlckBleGFtcGxlLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwic3ViIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIn0.JhjfkCBLBPGeCG7E6KkBWmPSY8bO2st5TX-VrTHSumM"
+        },
+        "method": "GET",
+        "path": "/api/v1/library/trash/55555555-5555-4555-8555-555555555555/preview",
+        "query": {
+          "variant": [
+            "thumb"
+          ]
+        }
+      },
+      "response": {
+        "headers": {
+          "Content-Type": "image/webp"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to empty trash",
+      "providerStates": [
+        {
+          "name": "there are soft-deleted media items to purge"
+        }
+      ],
+      "request": {
+        "headers": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJuZXctdXNlckBleGFtcGxlLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwic3ViIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIn0.JhjfkCBLBPGeCG7E6KkBWmPSY8bO2st5TX-VrTHSumM"
+        },
+        "method": "DELETE",
+        "path": "/api/v1/library/trash"
+      },
+      "response": {
+        "body": {
+          "queuedCount": 1,
+          "status": "queued"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.queuedCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
     }
   ],
   "metadata": {

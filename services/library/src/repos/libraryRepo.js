@@ -253,7 +253,9 @@ function buildLibraryRepo(db) {
         await client.query(
           `
             UPDATE media_flags
-            SET deleted_soft = $2, updated_at = NOW()
+            SET deleted_soft = $2,
+                deleted_soft_at = CASE WHEN $2 THEN NOW() ELSE NULL END,
+                updated_at = NOW()
             WHERE media_id = $1
           `,
           [mediaId, deletedSoft]
@@ -262,7 +264,8 @@ function buildLibraryRepo(db) {
         await client.query("COMMIT");
         return {
           mediaId,
-          deletedSoft
+          deletedSoft,
+          deletedSoftAt: deletedSoft ? new Date().toISOString() : null
         };
       } catch (err) {
         await client.query("ROLLBACK");
@@ -270,6 +273,68 @@ function buildLibraryRepo(db) {
       } finally {
         client.release();
       }
+    },
+
+    async listTrash({
+      ownerId,
+      limit,
+      cursorDeletedSoftAt,
+      cursorId
+    }) {
+      const result = await db.query(
+        `
+          SELECT
+            m.id,
+            m.owner_id,
+            m.relative_path,
+            m.mime_type,
+            m.status,
+            m.created_at,
+            mm.taken_at,
+            COALESCE(mm.uploaded_at, m.created_at) AS uploaded_at,
+            mm.width,
+            mm.height,
+            mm.location_json,
+            mm.exif_json,
+            COALESCE(mf.favorite, false) AS favorite,
+            COALESCE(mf.archived, false) AS archived,
+            COALESCE(mf.hidden, false) AS hidden,
+            COALESCE(mf.deleted_soft, false) AS deleted_soft,
+            mf.deleted_soft_at
+          FROM media m
+          LEFT JOIN media_metadata mm ON mm.media_id = m.id
+          LEFT JOIN media_flags mf ON mf.media_id = m.id
+          WHERE m.owner_id = $1
+            AND COALESCE(mf.deleted_soft, false) = true
+            AND mf.deleted_soft_at IS NOT NULL
+            AND (
+              $2::timestamptz IS NULL
+              OR mf.deleted_soft_at < $2
+              OR (mf.deleted_soft_at = $2 AND m.id < $3::uuid)
+            )
+          ORDER BY mf.deleted_soft_at DESC, m.id DESC
+          LIMIT $4
+        `,
+        [ownerId, cursorDeletedSoftAt || null, cursorId || null, limit + 1]
+      );
+
+      return result.rows;
+    },
+
+    async listTrashedMediaForCleanup(ownerId) {
+      const result = await db.query(
+        `
+          SELECT m.id, m.owner_id, m.relative_path, mf.deleted_soft_at
+          FROM media m
+          JOIN media_flags mf ON mf.media_id = m.id
+          WHERE m.owner_id = $1
+            AND COALESCE(mf.deleted_soft, false) = true
+          ORDER BY mf.deleted_soft_at ASC NULLS LAST, m.id ASC
+        `,
+        [ownerId]
+      );
+
+      return result.rows;
     }
   };
 }

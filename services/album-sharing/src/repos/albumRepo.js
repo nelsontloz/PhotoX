@@ -24,19 +24,31 @@ function buildAlbumRepo(db) {
             `
         SELECT a.id, a.owner_id AS "ownerId", a.title,
                a.created_at AS "createdAt", a.updated_at AS "updatedAt",
-               COUNT(ai.media_id)::int AS "mediaCount",
+               COUNT(
+                 CASE
+                   WHEN m.id IS NOT NULL AND COALESCE(mf.deleted_soft, false) = false
+                   THEN ai.media_id
+                   ELSE NULL
+                 END
+               )::int AS "mediaCount",
                (
-                 SELECT ARRAY_AGG(media_id)
-                 FROM (
-                   SELECT media_id
-                   FROM album_items
-                   WHERE album_id = a.id
-                   ORDER BY added_at DESC
-                   LIMIT 4
-                 ) s
-               ) AS "sampleMediaIds"
+                  SELECT ARRAY_AGG(media_id)
+                  FROM (
+                    SELECT ai_sample.media_id
+                    FROM album_items ai_sample
+                    LEFT JOIN media m_sample ON m_sample.id::text = ai_sample.media_id
+                    LEFT JOIN media_flags mf_sample ON mf_sample.media_id = m_sample.id
+                    WHERE ai_sample.album_id = a.id
+                      AND m_sample.id IS NOT NULL
+                      AND COALESCE(mf_sample.deleted_soft, false) = false
+                    ORDER BY added_at DESC
+                    LIMIT 4
+                  ) s
+                ) AS "sampleMediaIds"
         FROM albums a
         LEFT JOIN album_items ai ON ai.album_id = a.id
+        LEFT JOIN media m ON m.id::text = ai.media_id
+        LEFT JOIN media_flags mf ON mf.media_id = m.id
         WHERE a.owner_id = $1
         GROUP BY a.id
         ORDER BY a.created_at DESC
@@ -72,9 +84,17 @@ function buildAlbumRepo(db) {
             `
         SELECT a.id, a.owner_id AS "ownerId", a.title,
                a.created_at AS "createdAt", a.updated_at AS "updatedAt",
-               COUNT(ai.media_id)::int AS "mediaCount"
+               COUNT(
+                 CASE
+                   WHEN m.id IS NOT NULL AND COALESCE(mf.deleted_soft, false) = false
+                   THEN ai.media_id
+                   ELSE NULL
+                 END
+               )::int AS "mediaCount"
         FROM albums a
         LEFT JOIN album_items ai ON ai.album_id = a.id
+        LEFT JOIN media m ON m.id::text = ai.media_id
+        LEFT JOIN media_flags mf ON mf.media_id = m.id
         WHERE a.id = $1
         GROUP BY a.id
       `,
@@ -101,7 +121,15 @@ function buildAlbumRepo(db) {
 
         // Verify media belongs to user (assumes `media` table is accessible in the same database)
         const mediaRes = await db.query(
-            `SELECT id FROM media WHERE id = $1 AND owner_id = $2 AND status = 'ready'`,
+            `
+              SELECT m.id
+              FROM media m
+              LEFT JOIN media_flags mf ON mf.media_id = m.id
+              WHERE m.id = $1
+                AND m.owner_id = $2
+                AND m.status = 'ready'
+                AND COALESCE(mf.deleted_soft, false) = false
+            `,
             [mediaId, ownerId]
         );
 
@@ -157,7 +185,10 @@ function buildAlbumRepo(db) {
         SELECT ai.media_id AS "mediaId", ai.added_at AS "addedAt", COALESCE(m.mime_type, 'application/octet-stream') AS "mimeType"
         FROM album_items ai
         LEFT JOIN media m ON m.id::text = ai.media_id
+        LEFT JOIN media_flags mf ON mf.media_id = m.id
         WHERE ai.album_id = $1
+          AND m.id IS NOT NULL
+          AND COALESCE(mf.deleted_soft, false) = false
         ORDER BY ai.added_at DESC
       `,
             [albumId]

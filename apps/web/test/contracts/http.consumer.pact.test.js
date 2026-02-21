@@ -833,6 +833,72 @@ describe("web http consumer pacts", () => {
           mediaId: regex(UUID_REGEX, MEDIA_ID),
           status: like("active")
         }
+      })
+      .given("there are soft-deleted media items in trash")
+      .uponReceiving("a request to list trash media")
+      .withRequest({
+        method: "GET",
+        path: "/api/v1/library/trash",
+        query: {
+          limit: "24"
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: {
+          items: eachLike({
+            id: regex(UUID_REGEX, MEDIA_ID),
+            ownerId: regex(UUID_REGEX, USER_ID),
+            mimeType: like("image/jpeg"),
+            deletedAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z"),
+            flags: {
+              favorite: like(false),
+              archived: like(false),
+              hidden: like(false),
+              deletedSoft: like(true)
+            }
+          }),
+          nextCursor: null
+        }
+      })
+      .given("a trashed thumbnail variant exists for media '55555555-5555-4555-8555-555555555555'")
+      .uponReceiving("a request for trashed media preview bytes")
+      .withRequest({
+        method: "GET",
+        path: `/api/v1/library/trash/${MEDIA_ID}/preview`,
+        query: {
+          variant: "thumb"
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      })
+      .willRespondWith({
+        status: 200,
+        headers: {
+          "Content-Type": "image/webp"
+        }
+      })
+      .given("there are soft-deleted media items to purge")
+      .uponReceiving("a request to empty trash")
+      .withRequest({
+        method: "DELETE",
+        path: "/api/v1/library/trash",
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: {
+          status: like("queued"),
+          queuedCount: like(1)
+        }
       });
 
     await provider.executeTest(async (mockserver) => {
@@ -881,6 +947,22 @@ describe("web http consumer pacts", () => {
       });
       await jsonRequest(mockserver.url, `/api/v1/media/${MEDIA_ID}/restore`, {
         method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      await jsonRequest(mockserver.url, "/api/v1/library/trash?limit=24", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      const trashPreview = await fetch(
+        `${mockserver.url}/api/v1/library/trash/${MEDIA_ID}/preview?variant=thumb`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${accessToken}` }
+        }
+      );
+      expect(trashPreview.status).toBe(200);
+      await jsonRequest(mockserver.url, "/api/v1/library/trash", {
+        method: "DELETE",
         headers: { Authorization: `Bearer ${accessToken}` }
       });
     });

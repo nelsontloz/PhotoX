@@ -53,6 +53,7 @@ describe("library http provider verification", () => {
       jwtAccessSecret: "pact-access-secret",
       db: mockPool,
       mediaDerivativesQueue: mockQueue,
+      mediaCleanupQueue: mockQueue,
       uploadOriginalsPath: path.join(tmpDir, "originals"),
       uploadDerivedPath: derivedDir
     });
@@ -150,6 +151,40 @@ describe("library http provider verification", () => {
         },
         "a soft-deleted media item exists to be restored": async () => {
           seedMediaRow();
+        },
+        "there are soft-deleted media items in trash": async () => {
+          mockPool.reset();
+          mockPool.seedMedia({
+            id: MEDIA_ID,
+            owner_id: USER_ID,
+            relative_path: RELATIVE_PATH,
+            mime_type: "image/jpeg",
+            status: "ready",
+            deleted_soft: true
+          });
+        },
+        "a trashed thumbnail variant exists for media '55555555-5555-4555-8555-555555555555'": async () => {
+          mockPool.reset();
+          mockPool.seedMedia({
+            id: MEDIA_ID,
+            owner_id: USER_ID,
+            relative_path: RELATIVE_PATH,
+            mime_type: "image/jpeg",
+            status: "ready",
+            deleted_soft: true
+          });
+          await seedDerivativeFile("thumb");
+        },
+        "there are soft-deleted media items to purge": async () => {
+          mockPool.reset();
+          mockPool.seedMedia({
+            id: MEDIA_ID,
+            owner_id: USER_ID,
+            relative_path: RELATIVE_PATH,
+            mime_type: "image/jpeg",
+            status: "ready",
+            deleted_soft: true
+          });
         }
       }
     };

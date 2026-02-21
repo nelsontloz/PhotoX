@@ -42,6 +42,11 @@ function buildApp(overrides = {}) {
     new Queue(config.mediaDerivativesQueueName, {
       connection: redisConnectionFromUrl(config.redisUrl)
     });
+  const mediaCleanupQueue =
+    overrides.mediaCleanupQueue ||
+    new Queue(config.mediaCleanupQueueName, {
+      connection: redisConnectionFromUrl(config.redisUrl)
+    });
 
   app.decorate("config", config);
   app.decorate("db", db);
@@ -49,7 +54,8 @@ function buildApp(overrides = {}) {
     library: buildLibraryRepo(db)
   });
   app.decorate("queues", {
-    mediaDerivatives: mediaDerivativesQueue
+    mediaDerivatives: mediaDerivativesQueue,
+    mediaCleanup: mediaCleanupQueue
   });
 
   app.addContentTypeParser(
@@ -128,6 +134,10 @@ function buildApp(overrides = {}) {
   app.addHook("onClose", async () => {
     if (!overrides.mediaDerivativesQueue) {
       await mediaDerivativesQueue.close();
+    }
+
+    if (!overrides.mediaCleanupQueue) {
+      await mediaCleanupQueue.close();
     }
 
     if (!overrides.db) {

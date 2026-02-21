@@ -8,7 +8,11 @@ const { requireAdminAuth } = require("./auth/guard");
 const { ApiError, toErrorBody } = require("./errors");
 const { buildMediaRepo } = require("./repos/mediaRepo");
 const { buildUsersRepo } = require("./repos/usersRepo");
-const { createMediaDerivativesWorker, createMediaProcessWorker } = require("./queues/mediaDerivativesWorker");
+const {
+  createMediaCleanupWorker,
+  createMediaDerivativesWorker,
+  createMediaProcessWorker
+} = require("./queues/mediaDerivativesWorker");
 const { buildMetricsText } = require("./telemetry/metrics");
 const { QueueStatsPoller } = require("./telemetry/queueStatsPoller");
 const { WorkerTelemetryStore } = require("./telemetry/store");
@@ -65,7 +69,11 @@ function buildApp(overrides = {}) {
     }
   });
   const db = overrides.db || createPool(config.databaseUrl);
-  const queueNames = [config.mediaProcessQueueName, config.mediaDerivativesQueueName];
+  const queueNames = [
+    config.mediaProcessQueueName,
+    config.mediaDerivativesQueueName,
+    config.mediaCleanupQueueName
+  ];
   const telemetryStore =
     overrides.telemetryStore ||
     new WorkerTelemetryStore({
@@ -94,7 +102,8 @@ function buildApp(overrides = {}) {
   });
   app.decorate("workers", {
     mediaDerivatives: overrides.mediaDerivativesWorker || null,
-    mediaProcess: overrides.mediaProcessWorker || null
+    mediaProcess: overrides.mediaProcessWorker || null,
+    mediaCleanup: overrides.mediaCleanupWorker || null
   });
 
   app.register(swagger, {
@@ -299,6 +308,18 @@ function buildApp(overrides = {}) {
         telemetry: app.telemetry.store
       });
     }
+
+    if (!app.workers.mediaCleanup) {
+      app.workers.mediaCleanup = createMediaCleanupWorker({
+        queueName: config.mediaCleanupQueueName,
+        redisUrl: config.redisUrl,
+        originalsRoot: config.uploadOriginalsPath,
+        derivedRoot: config.uploadDerivedPath,
+        mediaRepo: app.repos.media,
+        logger: app.log,
+        telemetry: app.telemetry.store
+      });
+    }
   });
 
   app.addHook("onClose", async () => {
@@ -312,6 +333,10 @@ function buildApp(overrides = {}) {
 
     if (!overrides.mediaDerivativesWorker && app.workers.mediaDerivatives) {
       await app.workers.mediaDerivatives.close();
+    }
+
+    if (!overrides.mediaCleanupWorker && app.workers.mediaCleanup) {
+      await app.workers.mediaCleanup.close();
     }
 
     if (!overrides.db) {

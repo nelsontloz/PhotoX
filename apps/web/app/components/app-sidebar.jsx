@@ -4,7 +4,8 @@ export function getSidebarItems(isAdmin) {
   const items = [
     { href: "/timeline", label: "Timeline", icon: "photo_library" },
     { href: "/albums", label: "Albums", icon: "photo_album" },
-    { href: "/upload", label: "Upload", icon: "cloud_upload" }
+    { href: "/upload", label: "Upload", icon: "cloud_upload" },
+    { href: "/trash", label: "Trash", icon: "delete" }
   ];
 
   if (isAdmin) {
@@ -46,13 +47,6 @@ export default function AppSidebar({ activeLabel = "Timeline", isAdmin = false }
           })}
         </nav>
         <div className="mt-auto p-1 sm:p-3 mb-4">
-          <Link
-            href="#"
-            className="flex items-center justify-center lg:justify-start gap-0 lg:gap-4 px-1 sm:px-3 py-3 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-card-dark hover:text-red-500 dark:hover:text-red-400 transition-colors group/item"
-          >
-            <span className="material-symbols-outlined shrink-0">delete</span>
-            <span className="whitespace-nowrap hidden lg:block transition-opacity duration-300">Trash</span>
-          </Link>
           <Link
             href="#"
             className="flex items-center justify-center lg:justify-start gap-0 lg:gap-4 px-1 sm:px-3 py-3 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-card-dark hover:text-slate-900 dark:hover:text-white transition-colors group/item"

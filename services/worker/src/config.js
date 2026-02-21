@@ -47,6 +47,10 @@ function loadConfig(overrides = {}) {
       overrides.mediaProcessQueueName ||
       process.env.MEDIA_PROCESS_QUEUE_NAME ||
       "media.process",
+    mediaCleanupQueueName:
+      overrides.mediaCleanupQueueName ||
+      process.env.MEDIA_CLEANUP_QUEUE_NAME ||
+      "media.cleanup",
     jwtAccessSecret
   };
 }

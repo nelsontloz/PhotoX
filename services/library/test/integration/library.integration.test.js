@@ -34,6 +34,7 @@ function createAccessToken({ userId, email, secret }) {
 describe("library integration", () => {
   let app;
   const queuedDerivativeJobs = [];
+  const queuedCleanupJobs = [];
   const accessSecret = "library-integration-access-secret";
   const ownerId = "0f3c9d30-1307-4c9e-a4d7-75e84606c28d";
   const testOriginalsRoot = path.join(os.tmpdir(), "photox-library-originals-tests");
@@ -52,6 +53,13 @@ describe("library integration", () => {
           return { id: options?.jobId || crypto.randomUUID() };
         },
         async close() {}
+      },
+      mediaCleanupQueue: {
+        async add(name, payload, options) {
+          queuedCleanupJobs.push([name, payload, options]);
+          return { id: options?.jobId || crypto.randomUUID() };
+        },
+        async close() {}
       }
     });
     await app.ready();
@@ -59,6 +67,7 @@ describe("library integration", () => {
 
   beforeEach(async () => {
     queuedDerivativeJobs.length = 0;
+    queuedCleanupJobs.length = 0;
     await app.db.query("TRUNCATE TABLE media_flags, media_metadata, media RESTART IDENTITY CASCADE");
     await fs.rm(testOriginalsRoot, { recursive: true, force: true });
     await fs.rm(testDerivedRoot, { recursive: true, force: true });
@@ -250,6 +259,12 @@ describe("library integration", () => {
       }
     });
     expect(remove.statusCode).toBe(200);
+    expect(queuedCleanupJobs).toHaveLength(1);
+    expect(queuedCleanupJobs[0][0]).toBe("media.cleanup");
+    expect(queuedCleanupJobs[0][1]).toMatchObject({
+      mediaId,
+      ownerId
+    });
 
     const emptyTimeline = await app.inject({
       method: "GET",
@@ -279,6 +294,135 @@ describe("library integration", () => {
     });
     expect(timelineAfterRestore.statusCode).toBe(200);
     expect(jsonBody(timelineAfterRestore).items[0].id).toBe(mediaId);
+  });
+
+  it("lists trashed media and supports empty trash queueing", async () => {
+    const token = createAccessToken({
+      userId: ownerId,
+      email: "trash@example.com",
+      secret: accessSecret
+    });
+    const trashedMediaId = "2ec0f4b8-60e7-48d8-a220-3248f8218af6";
+    const activeMediaId = "4ec85cf4-cef3-41c8-95b9-b9761b773f9f";
+
+    await insertMedia({
+      id: trashedMediaId,
+      ownerId,
+      relativePath: `${ownerId}/2026/02/${trashedMediaId}.jpg`,
+      mimeType: "image/jpeg",
+      createdAt: "2026-02-16T08:00:00.000Z",
+      deletedSoft: true
+    });
+
+    await insertMedia({
+      id: activeMediaId,
+      ownerId,
+      relativePath: `${ownerId}/2026/02/${activeMediaId}.jpg`,
+      mimeType: "image/jpeg",
+      createdAt: "2026-02-17T08:00:00.000Z",
+      deletedSoft: false
+    });
+
+    await app.db.query(
+      "UPDATE media_flags SET deleted_soft_at = $2 WHERE media_id = $1",
+      [trashedMediaId, "2026-02-20T12:00:00.000Z"]
+    );
+
+    const trashResponse = await app.inject({
+      method: "GET",
+      url: "/api/v1/library/trash?limit=10",
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    });
+
+    expect(trashResponse.statusCode).toBe(200);
+    const trashBody = jsonBody(trashResponse);
+    expect(trashBody.items).toHaveLength(1);
+    expect(trashBody.items[0].id).toBe(trashedMediaId);
+    expect(trashBody.items[0].flags.deletedSoft).toBe(true);
+    expect(trashBody.items[0].deletedAt).toBe("2026-02-20T12:00:00.000Z");
+
+    const emptyTrashResponse = await app.inject({
+      method: "DELETE",
+      url: "/api/v1/library/trash",
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    });
+
+    expect(emptyTrashResponse.statusCode).toBe(200);
+    expect(jsonBody(emptyTrashResponse)).toEqual({
+      status: "queued",
+      queuedCount: 1
+    });
+    expect(queuedCleanupJobs.some((job) => job[1]?.mediaId === trashedMediaId)).toBe(true);
+  });
+
+  it("serves trashed media preview from existing derivatives only", async () => {
+    const token = createAccessToken({
+      userId: ownerId,
+      email: "trash-preview@example.com",
+      secret: accessSecret
+    });
+    const trashedMediaId = "c13c890f-3db0-46a9-98dd-b6e2459c8e06";
+    const activeMediaId = "e8d913a5-c86a-48a8-bd65-6f81376cb88f";
+
+    await insertMedia({
+      id: trashedMediaId,
+      ownerId,
+      relativePath: `${ownerId}/2026/02/${trashedMediaId}.jpg`,
+      mimeType: "image/jpeg",
+      createdAt: "2026-02-16T08:00:00.000Z",
+      deletedSoft: true
+    });
+
+    await insertMedia({
+      id: activeMediaId,
+      ownerId,
+      relativePath: `${ownerId}/2026/02/${activeMediaId}.jpg`,
+      mimeType: "image/jpeg",
+      createdAt: "2026-02-16T08:00:00.000Z",
+      deletedSoft: false
+    });
+
+    const trashedDerivativePath = path.join(testDerivedRoot, ownerId, "2026", "02", `${trashedMediaId}-thumb.webp`);
+    await fs.mkdir(path.dirname(trashedDerivativePath), { recursive: true });
+    await sharp({
+      create: {
+        width: 320,
+        height: 320,
+        channels: 3,
+        background: {
+          r: 85,
+          g: 85,
+          b: 85
+        }
+      }
+    })
+      .webp()
+      .toFile(trashedDerivativePath);
+
+    const previewResponse = await app.inject({
+      method: "GET",
+      url: `/api/v1/library/trash/${trashedMediaId}/preview?variant=thumb`,
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    });
+
+    expect(previewResponse.statusCode).toBe(200);
+    expect(previewResponse.headers["content-type"]).toContain("image/webp");
+    expect(previewResponse.rawPayload.length).toBeGreaterThan(0);
+
+    const activePreviewResponse = await app.inject({
+      method: "GET",
+      url: `/api/v1/library/trash/${activeMediaId}/preview?variant=thumb`,
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    });
+    expect(activePreviewResponse.statusCode).toBe(404);
   });
 
   it("returns media content, queues missing derivatives, and serves generated derivative", async () => {

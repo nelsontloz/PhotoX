@@ -20,9 +20,11 @@ export function MediaLightbox({
     filmstripItems = [],
     modalError,
     onClose,
+    onDelete,
     onPrevious,
     onNext,
-    onSelectFilmstrip
+    onSelectFilmstrip,
+    deleteInProgress = false
 }) {
     const [showInfo, setShowInfo] = useState(false);
 
@@ -91,6 +93,16 @@ export function MediaLightbox({
                         <button className="p-2 text-white/80 hover:text-white transition-colors" title="Edit">
                             <span className="material-symbols-outlined">edit</span>
                         </button>
+                        {typeof onDelete === "function" ? (
+                            <button
+                                onClick={onDelete}
+                                disabled={deleteInProgress}
+                                className="p-2 text-white/80 hover:text-red-400 transition-colors disabled:opacity-50"
+                                title="Move to Trash"
+                            >
+                                <span className="material-symbols-outlined">delete</span>
+                            </button>
+                        ) : null}
                         <div className="w-px h-4 bg-white/20 mx-2"></div>
                         <button
                             onClick={() => setShowInfo(!showInfo)}
