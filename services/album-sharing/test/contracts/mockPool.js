@@ -53,6 +53,48 @@ function routeQuery(sql, params) {
         return { rows: rows.slice(0, limit), rowCount: Math.min(rows.length, limit) };
     }
 
+    // SELECT ... FROM albums WITH mediaCount (JOIN album_items)
+    if (/SELECT .* FROM albums a LEFT JOIN album_items ai ON ai\.album_id = a\.id WHERE a\.owner_id = \$1 GROUP BY a\.id/i.test(text)) {
+        const ownerId = params[0];
+        const limit = params[1] || 50;
+        const rows = [];
+        for (const alb of albums.values()) {
+            if (alb.owner_id === ownerId) {
+                const itemIds = albumItems.get(alb.id) || [];
+                rows.push({
+                    id: alb.id,
+                    ownerId: alb.owner_id,
+                    title: alb.title,
+                    createdAt: alb.created_at,
+                    updatedAt: alb.updated_at,
+                    mediaCount: itemIds.length
+                });
+            }
+        }
+        return { rows: rows.slice(0, limit), rowCount: Math.min(rows.length, limit) };
+    }
+
+    // SELECT ... FROM albums WHERE id = $1 (WITH mediaCount)
+    if (/SELECT .* FROM albums a LEFT JOIN album_items ai ON ai\.album_id = a\.id WHERE a\.id = \$1 GROUP BY a\.id/i.test(text)) {
+        const id = params[0];
+        const alb = albums.get(id);
+        if (alb) {
+            const itemIds = albumItems.get(alb.id) || [];
+            return {
+                rows: [{
+                    id: alb.id,
+                    ownerId: alb.owner_id,
+                    title: alb.title,
+                    createdAt: alb.created_at,
+                    updatedAt: alb.updated_at,
+                    mediaCount: itemIds.length
+                }],
+                rowCount: 1
+            };
+        }
+        return { rows: [], rowCount: 0 };
+    }
+
     // SELECT ... FROM albums WHERE id = $1
     if (/SELECT .* FROM albums WHERE id = \$1/i.test(text)) {
         const id = params[0];
@@ -92,6 +134,17 @@ function routeQuery(sql, params) {
         }
         albumItems.get(albumId).push({ mediaId, addedAt: "2026-02-18T12:00:00.000Z" });
         return { rows: [], rowCount: 1 };
+    }
+
+    // DELETE FROM album_items
+    if (/DELETE FROM album_items WHERE album_id = \$1 AND media_id = \$2/i.test(text)) {
+        const albumId = params[0];
+        const mediaId = params[1];
+        const items = albumItems.get(albumId) || [];
+        const initialLen = items.length;
+        const filtered = items.filter(i => i.mediaId !== mediaId);
+        albumItems.set(albumId, filtered);
+        return { rows: [], rowCount: initialLen - filtered.length };
     }
 
     // SELECT ... FROM album_items WHERE album_id = $1

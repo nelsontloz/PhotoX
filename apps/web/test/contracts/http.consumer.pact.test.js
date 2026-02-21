@@ -976,7 +976,8 @@ describe("web http consumer pacts", () => {
           ownerId: regex(UUID_REGEX, USER_ID),
           title: like("Summer Vacation 2026"),
           createdAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z"),
-          updatedAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z")
+          updatedAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z"),
+          mediaCount: like(0)
         }
       })
       .given("the user has created albums")
@@ -1000,8 +1001,30 @@ describe("web http consumer pacts", () => {
             ownerId: regex(UUID_REGEX, USER_ID),
             title: like("Summer Vacation 2026"),
             createdAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z"),
-            updatedAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z")
+            updatedAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z"),
+            mediaCount: like(1)
           })
+        }
+      })
+      .given("an album 'alb_11111111111111111111111111111111' exists for the user")
+      .uponReceiving("a request to get album details")
+      .withRequest({
+        method: "GET",
+        path: `/api/v1/albums/${ALBUM_ID}`,
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: {
+          id: regex("^alb_[0-9a-f]{32}$", ALBUM_ID),
+          ownerId: regex(UUID_REGEX, USER_ID),
+          title: like("Summer Vacation 2026"),
+          createdAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z"),
+          updatedAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z"),
+          mediaCount: like(1)
         }
       })
       .given("an album 'alb_11111111111111111111111111111111' exists for the user and media '55555555-5555-4555-8555-555555555555' is owned by the user")
@@ -1043,6 +1066,23 @@ describe("web http consumer pacts", () => {
             addedAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z")
           })
         }
+      })
+      .given("an album 'alb_11111111111111111111111111111111' exists for the user and contains media '55555555-5555-4555-8555-555555555555'")
+      .uponReceiving("a request to remove media from the album")
+      .withRequest({
+        method: "DELETE",
+        path: `/api/v1/albums/${ALBUM_ID}/items/${MEDIA_ID}`,
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: {
+          albumId: like(ALBUM_ID),
+          mediaId: like(MEDIA_ID)
+        }
       });
 
     await provider.executeTest(async (mockserver) => {
@@ -1068,6 +1108,14 @@ describe("web http consumer pacts", () => {
       });
       await jsonRequest(mockserver.url, `/api/v1/albums/${ALBUM_ID}/items`, {
         method: "GET",
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      await jsonRequest(mockserver.url, `/api/v1/albums/${ALBUM_ID}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      await jsonRequest(mockserver.url, `/api/v1/albums/${ALBUM_ID}/items/${MEDIA_ID}`, {
+        method: "DELETE",
         headers: { Authorization: `Bearer ${accessToken}` }
       });
     });

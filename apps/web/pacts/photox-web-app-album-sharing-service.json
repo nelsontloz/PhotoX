@@ -25,6 +25,7 @@
         "body": {
           "createdAt": "2026-02-18T12:00:00.000Z",
           "id": "alb_11111111111111111111111111111111",
+          "mediaCount": 0,
           "ownerId": "11111111-1111-4111-8111-111111111111",
           "title": "Summer Vacation 2026",
           "updatedAt": "2026-02-18T12:00:00.000Z"
@@ -49,6 +50,14 @@
                 {
                   "match": "regex",
                   "regex": "^alb_[0-9a-f]{32}$"
+                }
+              ]
+            },
+            "$.mediaCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             },
@@ -108,6 +117,7 @@
             {
               "createdAt": "2026-02-18T12:00:00.000Z",
               "id": "alb_11111111111111111111111111111111",
+              "mediaCount": 1,
               "ownerId": "11111111-1111-4111-8111-111111111111",
               "title": "Summer Vacation 2026",
               "updatedAt": "2026-02-18T12:00:00.000Z"
@@ -146,6 +156,14 @@
                 }
               ]
             },
+            "$.items[*].mediaCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.items[*].ownerId": {
               "combine": "AND",
               "matchers": [
@@ -164,6 +182,91 @@
               ]
             },
             "$.items[*].updatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to get album details",
+      "providerStates": [
+        {
+          "name": "an album 'alb_11111111111111111111111111111111' exists for the user"
+        }
+      ],
+      "request": {
+        "headers": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUuY29tIiwiZXhwIjo0MTAyNDQ0ODAwLCJzdWIiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEifQ.qWoxC37LQvLRjg3tKiO09ZbeuiFzMHu1XKCMAdn7yIk"
+        },
+        "method": "GET",
+        "path": "/api/v1/albums/alb_11111111111111111111111111111111"
+      },
+      "response": {
+        "body": {
+          "createdAt": "2026-02-18T12:00:00.000Z",
+          "id": "alb_11111111111111111111111111111111",
+          "mediaCount": 1,
+          "ownerId": "11111111-1111-4111-8111-111111111111",
+          "title": "Summer Vacation 2026",
+          "updatedAt": "2026-02-18T12:00:00.000Z"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$"
+                }
+              ]
+            },
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^alb_[0-9a-f]{32}$"
+                }
+              ]
+            },
+            "$.mediaCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.ownerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                }
+              ]
+            },
+            "$.title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.updatedAt": {
               "combine": "AND",
               "matchers": [
                 {
@@ -278,6 +381,51 @@
                 {
                   "match": "regex",
                   "regex": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to remove media from the album",
+      "providerStates": [
+        {
+          "name": "an album 'alb_11111111111111111111111111111111' exists for the user and contains media '55555555-5555-4555-8555-555555555555'"
+        }
+      ],
+      "request": {
+        "headers": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUuY29tIiwiZXhwIjo0MTAyNDQ0ODAwLCJzdWIiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEifQ.qWoxC37LQvLRjg3tKiO09ZbeuiFzMHu1XKCMAdn7yIk"
+        },
+        "method": "DELETE",
+        "path": "/api/v1/albums/alb_11111111111111111111111111111111/items/55555555-5555-4555-8555-555555555555"
+      },
+      "response": {
+        "body": {
+          "albumId": "alb_11111111111111111111111111111111",
+          "mediaId": "55555555-5555-4555-8555-555555555555"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.albumId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.mediaId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             }

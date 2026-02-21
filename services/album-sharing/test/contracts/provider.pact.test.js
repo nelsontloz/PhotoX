@@ -83,6 +83,16 @@ describe("album sharing http provider verification", () => {
                     mockPool.reset();
                     mockPool.seedAlbum(ALBUM_ID, USER_ID, "Summer Vacation 2026");
                     mockPool.seedAlbumItem(ALBUM_ID, MEDIA_ID);
+                },
+                "an album 'alb_11111111111111111111111111111111' exists for the user": async () => {
+                    mockPool.reset();
+                    mockPool.seedAlbum(ALBUM_ID, USER_ID, "Summer Vacation 2026");
+                    mockPool.seedAlbumItem(ALBUM_ID, MEDIA_ID);
+                },
+                "an album 'alb_11111111111111111111111111111111' exists for the user and contains media '55555555-5555-4555-8555-555555555555'": async () => {
+                    mockPool.reset();
+                    mockPool.seedAlbum(ALBUM_ID, USER_ID, "Summer Vacation 2026");
+                    mockPool.seedAlbumItem(ALBUM_ID, MEDIA_ID);
                 }
             }
         };
