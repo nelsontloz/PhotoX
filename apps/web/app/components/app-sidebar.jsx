@@ -31,8 +31,8 @@ export default function AppSidebar({ activeLabel = "Timeline", isAdmin = false }
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-background-dark border-r border-gray-200 dark:border-border-dark transition-transform duration-300 lg:static lg:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"
-          } lg:flex lg:flex-col lg:w-[72px] lg:hover:w-60 transition-[width,transform] duration-300 group`}
+        className={`fixed inset-y-0 left-0 z-50 w-[72px] bg-white dark:bg-background-dark border-r border-gray-200 dark:border-border-dark transition-transform duration-300 lg:static lg:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"
+          } lg:flex lg:flex-col lg:w-60 transition-[width,transform] duration-300 group`}
       >
         <nav className="flex flex-col gap-2 p-3 mt-4">
           {navItems.map((item) => {
@@ -47,7 +47,7 @@ export default function AppSidebar({ activeLabel = "Timeline", isAdmin = false }
                   }`}
               >
                 <span className="material-symbols-outlined shrink-0">{item.icon}</span>
-                <span className="whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <span className="whitespace-nowrap opacity-0 lg:opacity-100 transition-opacity duration-300">
                   {item.label}
                 </span>
                 {isActive && (
@@ -63,14 +63,14 @@ export default function AppSidebar({ activeLabel = "Timeline", isAdmin = false }
             className="flex items-center gap-4 px-3 py-3 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-card-dark hover:text-red-500 dark:hover:text-red-400 transition-colors group/item"
           >
             <span className="material-symbols-outlined shrink-0">delete</span>
-            <span className="whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Trash</span>
+            <span className="whitespace-nowrap opacity-0 lg:opacity-100 transition-opacity duration-300">Trash</span>
           </Link>
           <Link
             href="#"
             className="flex items-center gap-4 px-3 py-3 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-card-dark hover:text-slate-900 dark:hover:text-white transition-colors group/item"
           >
             <span className="material-symbols-outlined shrink-0">settings</span>
-            <span className="whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Settings</span>
+            <span className="whitespace-nowrap opacity-0 lg:opacity-100 transition-opacity duration-300">Settings</span>
           </Link>
         </div>
       </aside>
