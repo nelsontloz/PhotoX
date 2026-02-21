@@ -8,8 +8,9 @@ import { useEffect, useRef, useState } from "react";
 import { fetchCurrentUser, formatApiError } from "../../lib/api";
 import { buildLoginPath } from "../../lib/navigation";
 import { formatBytes } from "../../lib/upload";
-import AppSidebar from "../components/app-sidebar";
 import { useUpload } from "../components/upload-context";
+import { PageLayout } from "../components/PageLayout";
+import { ErrorBanner } from "../components/ErrorBanner";
 
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "tif", "tiff", "avif"]);
 const VIDEO_EXTENSIONS = new Set(["mp4", "mov", "m4v", "webm", "avi", "mkv", "3gp", "ogv", "wmv", "mpeg", "mpg"]);
@@ -118,141 +119,133 @@ export default function UploadPage() {
   const displayError = localError || uploadError;
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-background-light dark:bg-background-dark">
-      <AppSidebar activeLabel="Upload" isAdmin={Boolean(meQuery.data?.user?.isAdmin)} />
-
-      <main className="flex-1 overflow-y-auto relative scroll-smooth flex flex-col">
-        {/* Header Style Specific for Upload Control */}
-        <div className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 dark:border-border-dark bg-background-light/95 dark:bg-background-dark/95 backdrop-blur px-6 py-4 md:px-10 shrink-0">
-          <div className="flex items-center gap-3">
-            <h2 className="text-lg font-bold leading-tight tracking-tight text-slate-900 dark:text-white">Upload Manager</h2>
-          </div>
-          <Link
-            href="/timeline"
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary dark:hover:text-primary transition-colors"
-          >
-            <span className="material-symbols-outlined text-lg">arrow_back</span>
-            <span className="hidden sm:inline">Back to Gallery</span>
-          </Link>
+    <PageLayout activeLabel="Upload" isAdmin={Boolean(meQuery.data?.user?.isAdmin)} mainClassName="flex flex-col">
+      {/* Header Style Specific for Upload Control */}
+      <div className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 dark:border-border-dark bg-background-light/95 dark:bg-background-dark/95 backdrop-blur px-6 py-4 md:px-10 shrink-0">
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-bold leading-tight tracking-tight text-slate-900 dark:text-white">Upload Manager</h2>
         </div>
+        <Link
+          href="/timeline"
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary dark:hover:text-primary transition-colors"
+        >
+          <span className="material-symbols-outlined text-lg">arrow_back</span>
+          <span className="hidden sm:inline">Back to Gallery</span>
+        </Link>
+      </div>
 
-        <div className="w-full max-w-[960px] mx-auto p-4 md:p-8 flex flex-col gap-8 flex-1 pb-32">
-          {/* Upload Area */}
-          <section className="flex flex-col">
-            <div
-              className={`group relative flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-border-dark bg-white dark:bg-card-dark px-6 py-16 transition-all cursor-pointer ${isUploading
-                  ? "opacity-50 cursor-not-allowed border-slate-200 dark:border-slate-800"
-                  : "hover:border-primary hover:bg-primary/5 dark:hover:border-primary dark:hover:bg-primary/5"
-                }`}
-              onDrop={handleDrop}
-              onDragOver={(e) => e.preventDefault()}
+      <div className="w-full max-w-[960px] mx-auto p-4 md:p-8 flex flex-col gap-8 flex-1 pb-32">
+        {/* Upload Area */}
+        <section className="flex flex-col">
+          <div
+            className={`group relative flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-border-dark bg-white dark:bg-card-dark px-6 py-16 transition-all cursor-pointer ${isUploading
+              ? "opacity-50 cursor-not-allowed border-slate-200 dark:border-slate-800"
+              : "hover:border-primary hover:bg-primary/5 dark:hover:border-primary dark:hover:bg-primary/5"
+              }`}
+            onDrop={handleDrop}
+            onDragOver={(e) => e.preventDefault()}
+            onClick={() => {
+              if (!isUploading) {
+                fileInputRef.current?.click();
+              }
+            }}
+          >
+            <div className="flex size-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 group-hover:text-primary group-hover:scale-110 transition-all duration-300">
+              <span className="material-symbols-outlined text-4xl">cloud_upload</span>
+            </div>
+            <div className="flex max-w-[480px] flex-col items-center gap-1 text-center">
+              <p className="text-lg font-bold leading-tight text-slate-900 dark:text-white">Upload Photos</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Drag photos here or click to browse</p>
+              <p className="text-xs text-slate-400 dark:text-slate-600 mt-2">Supports JPG, PNG, HEIC, WebP, AVIF, MP4, MOV up to 2GB</p>
+            </div>
+            <button
+              className="mt-4 flex items-center justify-center rounded-lg bg-primary px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/30 transition-transform active:scale-95 hover:bg-blue-600 disabled:opacity-50"
+              disabled={isUploading}
+            >
+              Select Files
+            </button>
+            <input
+              ref={fileInputRef}
+              className="hidden"
+              multiple
+              type="file"
+              accept="image/*,video/*"
+              onChange={handleFileChange}
+              disabled={isUploading}
+            />
+          </div>
+        </section>
+
+        {/* Error Message */}
+        <ErrorBanner message={displayError} />
+
+        {/* Upload List Section */}
+        {(fileProgressList.length > 0 || selectedFiles.length > 0) && (
+          <section className="flex flex-col gap-4">
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
+                {isUploading ? `Uploading ${activeCount} files` : `Selected ${selectedFiles.length} files`}
+              </h2>
+              <button
+                onClick={handleLocalClear}
+                className="text-sm font-medium text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 transition-colors"
+              >
+                Clear All
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {fileProgressList.length === 0 && selectedFiles.length > 0
+                ? selectedFiles.map((file, idx) => (
+                  <UploadItem key={`${file.name}-${idx}`} fileName={file.name} fileSize={file.size} status="queued" />
+                ))
+                : fileProgressList.map((progress) => (
+                  <UploadItem
+                    key={progress.fileIndex}
+                    fileName={progress.fileName}
+                    fileSize={progress.totalBytes}
+                    percent={progress.percent}
+                    status={progress.status}
+                    error={progress.error}
+                  />
+                ))}
+            </div>
+          </section>
+        )}
+      </div>
+
+      {/* Footer Actions */}
+      <section className="sticky bottom-0 z-40 px-6 py-6 bg-background-light/95 dark:bg-background-dark/95 backdrop-blur border-t border-slate-200 dark:border-border-dark mt-auto shrink-0">
+        <div className="max-w-[960px] mx-auto flex items-center justify-between">
+          <div className="hidden sm:flex flex-col">
+            <span className="text-sm font-medium text-slate-900 dark:text-white">Upload status</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              {overallProgress ? `${overallProgress.processedFiles} of ${overallProgress.totalFiles} files processed` : "No active uploads"}
+            </span>
+          </div>
+          <div className="flex flex-1 justify-end sm:flex-none w-full sm:w-auto gap-4">
+            <button
               onClick={() => {
                 if (!isUploading) {
                   fileInputRef.current?.click();
                 }
               }}
+              className="w-full sm:w-auto rounded-lg border border-slate-300 dark:border-border-dark px-6 py-2.5 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+              disabled={isUploading}
             >
-              <div className="flex size-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 group-hover:text-primary group-hover:scale-110 transition-all duration-300">
-                <span className="material-symbols-outlined text-4xl">cloud_upload</span>
-              </div>
-              <div className="flex max-w-[480px] flex-col items-center gap-1 text-center">
-                <p className="text-lg font-bold leading-tight text-slate-900 dark:text-white">Upload Photos</p>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Drag photos here or click to browse</p>
-                <p className="text-xs text-slate-400 dark:text-slate-600 mt-2">Supports JPG, PNG, HEIC, WebP, AVIF, MP4, MOV up to 2GB</p>
-              </div>
-              <button
-                className="mt-4 flex items-center justify-center rounded-lg bg-primary px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/30 transition-transform active:scale-95 hover:bg-blue-600 disabled:opacity-50"
-                disabled={isUploading}
-              >
-                Select Files
-              </button>
-              <input
-                ref={fileInputRef}
-                className="hidden"
-                multiple
-                type="file"
-                accept="image/*,video/*"
-                onChange={handleFileChange}
-                disabled={isUploading}
-              />
-            </div>
-          </section>
-
-          {/* Error Message */}
-          {displayError && (
-            <div className="rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 p-4 text-sm text-red-600 dark:text-red-400">
-              {displayError}
-            </div>
-          )}
-
-          {/* Upload List Section */}
-          {(fileProgressList.length > 0 || selectedFiles.length > 0) && (
-            <section className="flex flex-col gap-4">
-              <div className="flex items-center justify-between px-1">
-                <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
-                  {isUploading ? `Uploading ${activeCount} files` : `Selected ${selectedFiles.length} files`}
-                </h2>
-                <button
-                  onClick={handleLocalClear}
-                  className="text-sm font-medium text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 transition-colors"
-                >
-                  Clear All
-                </button>
-              </div>
-
-              <div className="flex flex-col gap-3">
-                {fileProgressList.length === 0 && selectedFiles.length > 0
-                  ? selectedFiles.map((file, idx) => (
-                    <UploadItem key={`${file.name}-${idx}`} fileName={file.name} fileSize={file.size} status="queued" />
-                  ))
-                  : fileProgressList.map((progress) => (
-                    <UploadItem
-                      key={progress.fileIndex}
-                      fileName={progress.fileName}
-                      fileSize={progress.totalBytes}
-                      percent={progress.percent}
-                      status={progress.status}
-                      error={progress.error}
-                    />
-                  ))}
-              </div>
-            </section>
-          )}
-        </div>
-
-        {/* Footer Actions */}
-        <section className="sticky bottom-0 z-40 px-6 py-6 bg-background-light/95 dark:bg-background-dark/95 backdrop-blur border-t border-slate-200 dark:border-border-dark mt-auto shrink-0">
-          <div className="max-w-[960px] mx-auto flex items-center justify-between">
-            <div className="hidden sm:flex flex-col">
-              <span className="text-sm font-medium text-slate-900 dark:text-white">Upload status</span>
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                {overallProgress ? `${overallProgress.processedFiles} of ${overallProgress.totalFiles} files processed` : "No active uploads"}
-              </span>
-            </div>
-            <div className="flex flex-1 justify-end sm:flex-none w-full sm:w-auto gap-4">
-              <button
-                onClick={() => {
-                  if (!isUploading) {
-                    fileInputRef.current?.click();
-                  }
-                }}
-                className="w-full sm:w-auto rounded-lg border border-slate-300 dark:border-border-dark px-6 py-2.5 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
-                disabled={isUploading}
-              >
-                Add More
-              </button>
-              <button
-                disabled={isUploading || (fileProgressList.length === 0 && selectedFiles.length === 0)}
-                onClick={() => router.push("/timeline")}
-                className="w-full sm:w-auto rounded-lg bg-primary px-8 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/20 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
-              >
-                {isUploading ? "Uploading..." : "Done"}
-              </button>
-            </div>
+              Add More
+            </button>
+            <button
+              disabled={isUploading || (fileProgressList.length === 0 && selectedFiles.length === 0)}
+              onClick={() => router.push("/timeline")}
+              className="w-full sm:w-auto rounded-lg bg-primary px-8 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/20 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+            >
+              {isUploading ? "Uploading..." : "Done"}
+            </button>
           </div>
-        </section>
-      </main>
-    </div>
+        </div>
+      </section>
+    </PageLayout>
   );
 }
 

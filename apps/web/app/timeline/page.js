@@ -3,14 +3,13 @@
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, Suspense, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
 
 import {
   fetchMediaContentBlob,
   fetchTimeline,
   formatApiError
 } from "../../lib/api";
-import AppSidebar from "../components/app-sidebar";
 import {
   normalizeDayKey,
   sectionLabel,
@@ -24,6 +23,9 @@ import { TimelineSelectionActionBar } from "./components/TimelineSelectionAction
 import { MediaLightbox } from "../components/media/MediaLightbox";
 import { useTimelineSelection } from "./hooks/useTimelineSelection";
 import { useRequireSession } from "../shared/hooks/useRequireSession";
+import { PageLayout } from "../components/PageLayout";
+import { SessionLoadingScreen } from "../components/SessionLoadingScreen";
+import { EmptyState } from "../components/EmptyState";
 
 function TimelineContent() {
   const queryClient = useQueryClient();
@@ -125,7 +127,6 @@ function TimelineContent() {
   }, [activeMediaId, items]);
 
   const activeItem = activeIndex >= 0 ? items[activeIndex] : null;
-  const activeMetadataPreview = activeItem?.metadataPreview || null;
   const canGoPrev = activeIndex > 0;
   const canGoNext =
     activeIndex >= 0 && (activeIndex < items.length - 1 || (activeIndex === items.length - 1 && timelineQuery.hasNextPage));
@@ -250,11 +251,7 @@ function TimelineContent() {
   }, [activeIndex, items, queryClient]);
 
   if (meQuery.isPending) {
-    return (
-      <div className="flex h-screen w-full flex-col items-center justify-center bg-background-light dark:bg-background-dark">
-        <Spinner size="lg" label="Validating session..." />
-      </div>
-    );
+    return <SessionLoadingScreen />;
   }
 
   if (meQuery.isError) {
@@ -262,76 +259,67 @@ function TimelineContent() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-background-light dark:bg-background-dark">
-      <AppSidebar activeLabel="Timeline" isAdmin={Boolean(user?.isAdmin)} />
+    <PageLayout activeLabel="Timeline" isAdmin={Boolean(user?.isAdmin)} mainClassName="px-4 sm:px-8 pb-20 pt-6">
+      <TimelineFiltersBar
+        favoriteOnly={favoriteOnly}
+        onFavoriteChange={setFavoriteOnly}
+        from={from}
+        to={to}
+        onFromChange={setFrom}
+        onToChange={setTo}
+        selectionMode={selectionMode}
+        onToggleSelectionMode={toggleSelectionMode}
+      />
 
-      <main className="flex-1 overflow-y-auto relative scroll-smooth px-4 sm:px-8 pb-20 pt-6">
-        <TimelineFiltersBar
-          favoriteOnly={favoriteOnly}
-          onFavoriteChange={setFavoriteOnly}
-          from={from}
-          to={to}
-          onFromChange={setFrom}
-          onToChange={setTo}
-          selectionMode={selectionMode}
-          onToggleSelectionMode={toggleSelectionMode}
+      {timelineQuery.isError ? <p className="error mb-6">{formatApiError(timelineQuery.error)}</p> : null}
+      {timelineQuery.isPending ? <p className="text-sm text-slate-600 dark:text-slate-400">Loading timeline...</p> : null}
+
+      {!timelineQuery.isPending && sections.length === 0 ? (
+        <EmptyState
+          icon="photo_camera_back"
+          title="No media yet"
+          description="Upload photos and they will appear here."
+          cta={{ label: "Upload Photos", href: "/upload", icon: "upload" }}
         />
+      ) : null}
 
-        {timelineQuery.isError ? <p className="error mb-6">{formatApiError(timelineQuery.error)}</p> : null}
-        {timelineQuery.isPending ? <p className="text-sm text-slate-600 dark:text-slate-400">Loading timeline...</p> : null}
+      <TimelineSectionList
+        sections={sections}
+        selectionMode={selectionMode}
+        selectedIds={selectedIds}
+        onSelectItem={selectItem}
+        onSelectAllSection={selectAllInSection}
+        onOpenItem={(mediaId) => {
+          setModalError("");
+          updateMediaId(mediaId);
+        }}
+      />
 
-        {!timelineQuery.isPending && sections.length === 0 ? (
-          <div className="rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-card-dark p-8 text-center">
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white">No media yet</h3>
-            <p className="mt-2 text-sm text-slate-500">Upload photos and they will appear here.</p>
-            <Link
-              href="/upload"
-              className="mt-6 inline-flex items-center gap-2 bg-primary text-white text-sm font-semibold px-6 py-2 rounded-lg transition-all"
-            >
-              <span className="material-symbols-outlined text-[18px]">upload</span>
-              <span>Upload Photos</span>
-            </Link>
-          </div>
-        ) : null}
+      {timelineQuery.hasNextPage ? (
+        <div className="flex justify-center mt-10">
+          <button
+            type="button"
+            className="flex items-center gap-2 bg-white dark:bg-card-dark border border-slate-200 dark:border-border-dark px-6 py-2 rounded-lg text-sm font-semibold text-slate-700 dark:text-slate-200 transition-all hover:bg-slate-50 dark:hover:bg-gray-800 disabled:opacity-50"
+            disabled={timelineQuery.isFetchingNextPage}
+            onClick={() => timelineQuery.fetchNextPage()}
+          >
+            {timelineQuery.isFetchingNextPage ? (
+              <Spinner label="" size="sm" />
+            ) : (
+              <span>Load more...</span>
+            )}
+          </button>
+        </div>
+      ) : null}
 
-        <TimelineSectionList
-          sections={sections}
-          selectionMode={selectionMode}
-          selectedIds={selectedIds}
-          onSelectItem={selectItem}
-          onSelectAllSection={selectAllInSection}
-          onOpenItem={(mediaId) => {
-            setModalError("");
-            updateMediaId(mediaId);
-          }}
-        />
-
-        {timelineQuery.hasNextPage ? (
-          <div className="flex justify-center mt-10">
-            <button
-              type="button"
-              className="flex items-center gap-2 bg-white dark:bg-card-dark border border-slate-200 dark:border-border-dark px-6 py-2 rounded-lg text-sm font-semibold text-slate-700 dark:text-slate-200 transition-all hover:bg-slate-50 dark:hover:bg-gray-800 disabled:opacity-50"
-              disabled={timelineQuery.isFetchingNextPage}
-              onClick={() => timelineQuery.fetchNextPage()}
-            >
-              {timelineQuery.isFetchingNextPage ? (
-                <Spinner label="" size="sm" />
-              ) : (
-                <span>Load more...</span>
-              )}
-            </button>
-          </div>
-        ) : null}
-
-        <Link
-          href="/upload"
-          className="fixed bottom-8 right-8 z-50 flex items-center gap-2 bg-primary hover:bg-primary/90 text-white font-bold px-6 py-3 rounded-full transition-all shadow-xl shadow-primary/20 sm:hidden"
-          aria-label="Upload Photos"
-        >
-          <span className="material-symbols-outlined">upload</span>
-          <span>Upload</span>
-        </Link>
-      </main>
+      <Link
+        href="/upload"
+        className="fixed bottom-8 right-8 z-50 flex items-center gap-2 bg-primary hover:bg-primary/90 text-white font-bold px-6 py-3 rounded-full transition-all shadow-xl shadow-primary/20 sm:hidden"
+        aria-label="Upload Photos"
+      >
+        <span className="material-symbols-outlined">upload</span>
+        <span>Upload</span>
+      </Link>
 
       {selectionMode && selectedIds.size > 0 && (
         <TimelineSelectionActionBar
@@ -367,7 +355,7 @@ function TimelineContent() {
           onSelectFilmstrip={(id) => updateMediaId(id)}
         />
       ) : null}
-    </div>
+    </PageLayout>
   );
 }
 

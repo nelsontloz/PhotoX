@@ -12,7 +12,6 @@ import {
   updateAdminManagedUser
 } from "../../lib/api";
 import { countActiveAdmins } from "../../lib/admin-metrics";
-import AppSidebar from "../components/app-sidebar";
 import { useRequireSession } from "../shared/hooks/useRequireSession";
 import { useWorkerTelemetry } from "./hooks/useWorkerTelemetry";
 import { AdminHeader } from "./components/AdminHeader";
@@ -20,6 +19,8 @@ import { CreateUserForm } from "./components/CreateUserForm";
 import { AdminKpiCards } from "./components/AdminKpiCards";
 import { UsersTable } from "./components/UsersTable";
 import { clampPercent, estimateStorageGb } from "./utils";
+import { PageLayout } from "../components/PageLayout";
+import { ErrorBanner } from "../components/ErrorBanner";
 
 export default function AdminPage() {
   const { meQuery, user: sessionUser, isAuthorized } = useRequireSession({
@@ -171,64 +172,56 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-background-light dark:bg-background-dark">
-      <AppSidebar activeLabel="Admin" isAdmin />
+    <PageLayout activeLabel="Admin" isAdmin mainClassName="flex flex-col items-center py-10 px-4 md:px-10">
+      <div className="w-full max-w-[1200px] flex flex-col gap-8 pb-10">
+        <AdminHeader
+          workerStreamStatus={workerStreamStatus}
+          isCreateFormVisible={isCreateFormVisible}
+          onToggleCreateForm={() => setIsCreateFormVisible((current) => !current)}
+        />
 
-      <main className="flex-1 overflow-y-auto relative scroll-smooth flex flex-col items-center py-10 px-4 md:px-10">
-        <div className="w-full max-w-[1200px] flex flex-col gap-8 pb-10">
-          <AdminHeader
-            workerStreamStatus={workerStreamStatus}
-            isCreateFormVisible={isCreateFormVisible}
-            onToggleCreateForm={() => setIsCreateFormVisible((current) => !current)}
+        <ErrorBanner message={errorMessage} />
+
+        {isCreateFormVisible && (
+          <CreateUserForm
+            newUserEmail={newUserEmail}
+            newUserPassword={newUserPassword}
+            newUserAdmin={newUserAdmin}
+            onEmailChange={(e) => setNewUserEmail(e.target.value)}
+            onPasswordChange={(e) => setNewUserPassword(e.target.value)}
+            onAdminChange={(e) => setNewUserAdmin(e.target.checked)}
+            onSubmit={(e) => {
+              e.preventDefault();
+              createMutation.mutate();
+            }}
+            isPending={createMutation.isPending}
           />
+        )}
 
-          {errorMessage && (
-            <div className="rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 p-4 text-sm text-red-600 dark:text-red-400">
-              {errorMessage}
-            </div>
-          )}
+        <AdminKpiCards
+          usersCount={users.length}
+          activeUsersCount={activeUsersCount}
+          activeAdminCount={activeAdminCount}
+          totalStorageTb={totalStorageGb / 1000}
+          storagePercent={storagePercent}
+          workerBacklog={workerBacklog}
+          workerInFlight={workerInFlight}
+          workerStreamStatus={workerStreamStatus}
+        />
 
-          {isCreateFormVisible && (
-            <CreateUserForm
-              newUserEmail={newUserEmail}
-              newUserPassword={newUserPassword}
-              newUserAdmin={newUserAdmin}
-              onEmailChange={(e) => setNewUserEmail(e.target.value)}
-              onPasswordChange={(e) => setNewUserPassword(e.target.value)}
-              onAdminChange={(e) => setNewUserAdmin(e.target.checked)}
-              onSubmit={(e) => {
-                e.preventDefault();
-                createMutation.mutate();
-              }}
-              isPending={createMutation.isPending}
-            />
-          )}
-
-          <AdminKpiCards
-            usersCount={users.length}
-            activeUsersCount={activeUsersCount}
-            activeAdminCount={activeAdminCount}
-            totalStorageTb={totalStorageGb / 1000}
-            storagePercent={storagePercent}
-            workerBacklog={workerBacklog}
-            workerInFlight={workerInFlight}
-            workerStreamStatus={workerStreamStatus}
-          />
-
-          <UsersTable
-            userFilter={userFilter}
-            onUserFilterChange={(e) => setUserFilter(e.target.value)}
-            filteredUsers={filteredUsers}
-            users={users}
-            sessionUserId={sessionUser?.id}
-            resetPasswordByUserId={resetPasswordByUserId}
-            onResetPasswordChange={(userId, value) => setResetPasswordByUserId((prev) => ({ ...prev, [userId]: value }))}
-            onToggleAdmin={onToggleAdmin}
-            onToggleActive={onToggleActive}
-            onResetPassword={onResetPassword}
-          />
-        </div>
-      </main>
-    </div>
+        <UsersTable
+          userFilter={userFilter}
+          onUserFilterChange={(e) => setUserFilter(e.target.value)}
+          filteredUsers={filteredUsers}
+          users={users}
+          sessionUserId={sessionUser?.id}
+          resetPasswordByUserId={resetPasswordByUserId}
+          onResetPasswordChange={(userId, value) => setResetPasswordByUserId((prev) => ({ ...prev, [userId]: value }))}
+          onToggleAdmin={onToggleAdmin}
+          onToggleActive={onToggleActive}
+          onResetPassword={onResetPassword}
+        />
+      </div>
+    </PageLayout>
   );
 }
