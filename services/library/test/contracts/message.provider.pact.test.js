@@ -1,6 +1,7 @@
 const { MessageProviderPact } = require("@pact-foundation/pact");
 
 const { buildMediaDerivativesGenerateMessage } = require("../../src/contracts/mediaDerivativesMessage");
+const { buildMediaCleanupMessage } = require("../../src/contracts/mediaCleanupMessage");
 
 function brokerAuthOptions() {
   if (process.env.PACT_BROKER_TOKEN) {
@@ -39,6 +40,12 @@ describe("library message provider verification", () => {
             ownerId: "11111111-1111-4111-8111-111111111111",
             relativePath: "11111111-1111-4111-8111-111111111111/2026/02/55555555-5555-4555-8555-555555555555.jpg",
             requestedAt: "2026-02-18T12:00:10.000Z"
+          }),
+        "a command to permanently delete a soft-deleted media item": async () =>
+          buildMediaCleanupMessage({
+            mediaId: "55555555-5555-4555-8555-555555555555",
+            ownerId: "11111111-1111-4111-8111-111111111111",
+            hardDeleteAt: "2026-03-20T12:00:00.000Z"
           })
       }
     };

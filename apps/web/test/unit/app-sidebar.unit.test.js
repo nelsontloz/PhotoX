@@ -5,7 +5,8 @@ describe("app sidebar navigation", () => {
     expect(getSidebarItems(false)).toEqual([
       { href: "/timeline", label: "Timeline", icon: "photo_library" },
       { href: "/albums", label: "Albums", icon: "photo_album" },
-      { href: "/upload", label: "Upload", icon: "cloud_upload" }
+      { href: "/upload", label: "Upload", icon: "cloud_upload" },
+      { href: "/trash", label: "Trash", icon: "delete" }
     ]);
   });
 
@@ -14,8 +15,8 @@ describe("app sidebar navigation", () => {
       { href: "/timeline", label: "Timeline", icon: "photo_library" },
       { href: "/albums", label: "Albums", icon: "photo_album" },
       { href: "/upload", label: "Upload", icon: "cloud_upload" },
+      { href: "/trash", label: "Trash", icon: "delete" },
       { href: "/admin", label: "Admin", icon: "admin_panel_settings" }
     ]);
   });
 });
-

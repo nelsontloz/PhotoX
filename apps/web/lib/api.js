@@ -273,6 +273,53 @@ export async function fetchMediaDetail(mediaId) {
   });
 }
 
+export async function deleteMedia(mediaId) {
+  return requestWithAutoRefresh(`/media/${encodeURIComponent(mediaId)}`, {
+    method: "DELETE"
+  });
+}
+
+export async function restoreMedia(mediaId) {
+  return requestWithAutoRefresh(`/media/${encodeURIComponent(mediaId)}/restore`, {
+    method: "POST"
+  });
+}
+
+function buildTrashQuery(params = {}) {
+  const search = new URLSearchParams();
+  if (params.cursor) {
+    search.set("cursor", params.cursor);
+  }
+  if (params.limit) {
+    search.set("limit", String(params.limit));
+  }
+
+  const queryString = search.toString();
+  return queryString.length > 0 ? `?${queryString}` : "";
+}
+
+export async function listTrash(params = {}) {
+  return requestWithAutoRefresh(`/library/trash${buildTrashQuery(params)}`, {
+    method: "GET"
+  });
+}
+
+export async function emptyTrash() {
+  return requestWithAutoRefresh("/library/trash", {
+    method: "DELETE"
+  });
+}
+
+export async function fetchTrashPreviewBlob(mediaId, variant = "thumb") {
+  return requestWithAutoRefresh(
+    `/library/trash/${encodeURIComponent(mediaId)}/preview?variant=${encodeURIComponent(variant)}`,
+    {
+      method: "GET",
+      expect: "blob"
+    }
+  );
+}
+
 export async function listAdminUsers(params = {}) {
   const search = new URLSearchParams();
 

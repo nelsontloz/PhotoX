@@ -27,6 +27,9 @@ describe("worker media status integration", () => {
       },
       mediaDerivativesWorker: {
         async close() {}
+      },
+      mediaCleanupWorker: {
+        async close() {}
       }
     });
     await app.ready();

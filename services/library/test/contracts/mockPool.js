@@ -34,6 +34,7 @@ function fullMediaRow(m) {
         archived: mf.archived ?? false,
         hidden: mf.hidden ?? false,
         deleted_soft: mf.deleted_soft ?? false,
+        deleted_soft_at: mf.deleted_soft_at || null,
         sort_at: m.sort_at || mm.taken_at || mm.uploaded_at || m.created_at
     };
 }
@@ -96,6 +97,7 @@ function routeQuery(sql, params) {
                 archived: false,
                 hidden: false,
                 deleted_soft: false,
+                deleted_soft_at: null,
                 updated_at: now()
             });
         }
@@ -131,10 +133,33 @@ function routeQuery(sql, params) {
         const mediaId = params[0];
         const mf = flags.get(mediaId);
         if (mf) {
-            mf.deleted_soft = params[1];
+          mf.deleted_soft = params[1];
+            mf.deleted_soft_at = params[1] ? now() : null;
             mf.updated_at = now();
         }
         return { rows: [], rowCount: mf ? 1 : 0 };
+    }
+
+    if (/SELECT m\.id, m\.owner_id, m\.relative_path, mf\.deleted_soft_at FROM media m JOIN media_flags mf/i.test(text)) {
+        const ownerId = params[0];
+        const rows = [];
+        for (const [, m] of media) {
+            if (m.owner_id !== ownerId) {
+                continue;
+            }
+            const mf = flags.get(m.id);
+            if (!mf || !mf.deleted_soft) {
+                continue;
+            }
+
+            rows.push({
+                id: m.id,
+                owner_id: m.owner_id,
+                relative_path: m.relative_path,
+                deleted_soft_at: mf.deleted_soft_at || null
+            });
+        }
+        return { rows, rowCount: rows.length };
     }
 
     // ---- UPDATE media_metadata SET taken_at ----
@@ -187,6 +212,46 @@ function routeQuery(sql, params) {
             return { rows: rows.slice(0, limit), rowCount: Math.min(rows.length, limit) };
         }
 
+        if (/WHERE m\.owner_id = \$1/i.test(text) && /COALESCE\(mf\.deleted_soft, false\) = true/i.test(text)) {
+            const ownerId = params[0];
+            const cursorDeletedAt = params[1] ? new Date(params[1]) : null;
+            const cursorId = params[2] || null;
+            const limit = params[3] ? Number(params[3]) : 25;
+            const rows = [];
+
+            for (const [, m] of media) {
+                if (m.owner_id !== ownerId) {
+                    continue;
+                }
+                const row = fullMediaRow(m);
+                if (!row.deleted_soft || !row.deleted_soft_at) {
+                    continue;
+                }
+
+                if (cursorDeletedAt) {
+                    const rowDeletedAt = new Date(row.deleted_soft_at);
+                    if (rowDeletedAt > cursorDeletedAt) {
+                        continue;
+                    }
+                    if (rowDeletedAt.getTime() === cursorDeletedAt.getTime() && cursorId && row.id >= cursorId) {
+                        continue;
+                    }
+                }
+
+                rows.push(row);
+            }
+
+            rows.sort((a, b) => {
+                const ts = new Date(b.deleted_soft_at) - new Date(a.deleted_soft_at);
+                if (ts !== 0) {
+                    return ts;
+                }
+                return a.id < b.id ? 1 : -1;
+            });
+
+            return { rows: rows.slice(0, limit), rowCount: Math.min(rows.length, limit) };
+        }
+
         // Single media detail query (WHERE m.id = $1 AND m.owner_id = $2)
         if (/WHERE m\.id = \$1 AND m\.owner_id = \$2/i.test(text)) {
             const m = media.get(params[0]);
@@ -222,7 +287,7 @@ const mockPool = {
         schemaMigrations.clear();
     },
 
-    seedMedia({ id, owner_id, relative_path, mime_type, status, taken_at, uploaded_at }) {
+    seedMedia({ id, owner_id, relative_path, mime_type, status, taken_at, uploaded_at, deleted_soft }) {
         const ts = now();
         media.set(id, {
             id,
@@ -248,7 +313,8 @@ const mockPool = {
             favorite: false,
             archived: false,
             hidden: false,
-            deleted_soft: false,
+            deleted_soft: Boolean(deleted_soft),
+            deleted_soft_at: deleted_soft ? ts : null,
             updated_at: ts
         });
     }

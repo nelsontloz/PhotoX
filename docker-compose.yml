@@ -180,6 +180,7 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
       UPLOAD_ORIGINALS_PATH: /data/photox/originals
       UPLOAD_DERIVED_PATH: /data/photox/derived
+      MEDIA_CLEANUP_QUEUE_NAME: ${MEDIA_CLEANUP_QUEUE_NAME:-media.cleanup}
     depends_on:
       postgres:
         condition: service_healthy
@@ -283,6 +284,7 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
       REDIS_URL: redis://redis:6379
       MEDIA_DERIVATIVES_QUEUE_NAME: ${MEDIA_DERIVATIVES_QUEUE_NAME:-media.derivatives.generate}
+      MEDIA_CLEANUP_QUEUE_NAME: ${MEDIA_CLEANUP_QUEUE_NAME:-media.cleanup}
       UPLOAD_ORIGINALS_PATH: /data/photox/originals
       UPLOAD_DERIVED_PATH: /data/photox/derived
     depends_on:

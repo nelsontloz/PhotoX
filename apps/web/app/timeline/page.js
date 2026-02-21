@@ -1,12 +1,13 @@
 "use client";
 
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
 
 import {
   fetchMediaContentBlob,
+  deleteMedia,
   fetchTimeline,
   formatApiError
 } from "../../lib/api";
@@ -85,6 +86,22 @@ function TimelineContent() {
     getNextPageParam: (lastPage) => lastPage.nextCursor || undefined,
     enabled: meQuery.isSuccess,
     initialPageParam: null
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (mediaId) => deleteMedia(mediaId),
+    onSuccess: () => {
+      updateMediaId(null);
+      setModalError("");
+      queryClient.invalidateQueries({ queryKey: ["timeline"] });
+      queryClient.invalidateQueries({ queryKey: ["albums"] });
+      queryClient.invalidateQueries({ queryKey: ["album"] });
+      queryClient.invalidateQueries({ queryKey: ["album-items"] });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
+    },
+    onError: (error) => {
+      setModalError(formatApiError(error));
+    }
   });
 
   const items = useMemo(() => {
@@ -350,9 +367,15 @@ function TimelineContent() {
           filmstripItems={filmstripItems}
           modalError={modalError}
           onClose={handleCloseModal}
+          onDelete={() => {
+            if (activeMediaId) {
+              deleteMutation.mutate(activeMediaId);
+            }
+          }}
           onPrevious={handlePreviousModal}
           onNext={handleNextModal}
           onSelectFilmstrip={(id) => updateMediaId(id)}
+          deleteInProgress={deleteMutation.isPending}
         />
       ) : null}
     </PageLayout>

@@ -13,10 +13,13 @@ const {
   mediaPathParamsSchema,
   parseOrThrow,
   patchMediaSchema,
-  timelineQuerySchema
+  timelineQuerySchema,
+  trashListQuerySchema,
+  trashPreviewQuerySchema
 } = require("../validation");
 const { decodeTimelineCursor, encodeTimelineCursor } = require("../timeline/cursor");
 const { buildMediaDerivativesGenerateMessage } = require("../contracts/mediaDerivativesMessage");
+const { buildMediaCleanupMessage } = require("../contracts/mediaCleanupMessage");
 
 function buildErrorEnvelopeSchema(code, message, details = {}) {
   return {
@@ -101,6 +104,46 @@ function toMediaDetailDto(row) {
       location: row.location_json,
       raw: metadata
     }
+  };
+}
+
+function encodeTrashCursor({ deletedAt, id }) {
+  return Buffer.from(
+    JSON.stringify({
+      deletedAt,
+      id
+    })
+  ).toString("base64url");
+}
+
+function decodeTrashCursor(value) {
+  try {
+    const decoded = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+    if (!decoded || typeof decoded.deletedAt !== "string" || typeof decoded.id !== "string") {
+      throw new Error("Invalid trash cursor shape");
+    }
+
+    if (Number.isNaN(Date.parse(decoded.deletedAt))) {
+      throw new Error("Invalid trash cursor timestamp");
+    }
+
+    return decoded;
+  } catch {
+    throw new ApiError(400, "VALIDATION_ERROR", "Request validation failed", {
+      issues: [
+        {
+          path: ["cursor"],
+          message: "Invalid cursor"
+        }
+      ]
+    });
+  }
+}
+
+function toTrashMediaDto(row) {
+  return {
+    ...toTimelineMediaDto(row),
+    deletedAt: row.deleted_soft_at ? new Date(row.deleted_soft_at).toISOString() : null
   };
 }
 
@@ -314,6 +357,218 @@ module.exports = async function libraryRoutes(app) {
       return {
         media: toMediaDetailDto(media)
       };
+    }
+  );
+
+  app.get(
+    "/api/v1/library/trash",
+    {
+      preHandler: requireAccessAuth(app.config),
+      schema: {
+        tags: ["Library"],
+        summary: "List trash items",
+        description:
+          "Return paginated soft-deleted media items for the authenticated user ordered by deletion time.",
+        security: [{ bearerAuth: [] }],
+        querystring: {
+          type: "object",
+          properties: {
+            cursor: { type: "string" },
+            limit: { type: "integer", minimum: 1, maximum: 100 }
+          },
+          additionalProperties: false
+        },
+        response: {
+          200: {
+            type: "object",
+            required: ["items", "nextCursor"],
+            properties: {
+              items: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: [
+                    "id",
+                    "ownerId",
+                    "takenAt",
+                    "uploadedAt",
+                    "mimeType",
+                    "flags",
+                    "deletedAt"
+                  ],
+                  properties: {
+                    id: { type: "string", format: "uuid" },
+                    ownerId: { type: "string", format: "uuid" },
+                    takenAt: { anyOf: [{ type: "string", format: "date-time" }, { type: "null" }] },
+                    uploadedAt: { type: "string", format: "date-time" },
+                    mimeType: { type: "string" },
+                    deletedAt: { anyOf: [{ type: "string", format: "date-time" }, { type: "null" }] },
+                    flags: {
+                      type: "object",
+                      required: ["favorite", "archived", "hidden", "deletedSoft"],
+                      properties: {
+                        favorite: { type: "boolean" },
+                        archived: { type: "boolean" },
+                        hidden: { type: "boolean" },
+                        deletedSoft: { type: "boolean" }
+                      }
+                    }
+                  }
+                }
+              },
+              nextCursor: { anyOf: [{ type: "string" }, { type: "null" }] }
+            }
+          },
+          400: buildErrorEnvelopeSchema("VALIDATION_ERROR", "Request validation failed"),
+          401: buildErrorEnvelopeSchema("AUTH_TOKEN_INVALID", "Missing bearer token")
+        }
+      }
+    },
+    async (request) => {
+      const query = parseOrThrow(trashListQuerySchema, request.query || {});
+      const cursor = query.cursor ? decodeTrashCursor(query.cursor) : null;
+      const limit = Math.min(query.limit || app.config.timelineDefaultLimit, app.config.timelineMaxLimit);
+      const rows = await app.repos.library.listTrash({
+        ownerId: request.userAuth.userId,
+        limit,
+        cursorDeletedSoftAt: cursor?.deletedAt || null,
+        cursorId: cursor?.id || null
+      });
+
+      const hasMore = rows.length > limit;
+      const visibleRows = hasMore ? rows.slice(0, limit) : rows;
+      const nextCursor = hasMore
+        ? encodeTrashCursor({
+            deletedAt: new Date(visibleRows[visibleRows.length - 1].deleted_soft_at).toISOString(),
+            id: visibleRows[visibleRows.length - 1].id
+          })
+        : null;
+
+      return {
+        items: visibleRows.map(toTrashMediaDto),
+        nextCursor
+      };
+    }
+  );
+
+  app.delete(
+    "/api/v1/library/trash",
+    {
+      preHandler: requireAccessAuth(app.config),
+      schema: {
+        tags: ["Library"],
+        summary: "Empty trash",
+        description:
+          "Queue immediate cleanup jobs for all currently soft-deleted media owned by the authenticated user.",
+        security: [{ bearerAuth: [] }],
+        response: {
+          200: {
+            type: "object",
+            required: ["status", "queuedCount"],
+            properties: {
+              status: { type: "string", enum: ["queued"] },
+              queuedCount: { type: "integer", minimum: 0 }
+            }
+          },
+          401: buildErrorEnvelopeSchema("AUTH_TOKEN_INVALID", "Missing bearer token")
+        }
+      }
+    },
+    async (request) => {
+      const trashedRows = await app.repos.library.listTrashedMediaForCleanup(request.userAuth.userId);
+      const hardDeleteAt = new Date();
+      let queuedCount = 0;
+
+      for (const row of trashedRows) {
+        try {
+          await app.queues.mediaCleanup.add(
+            "media.cleanup",
+            buildMediaCleanupMessage({
+              mediaId: row.id,
+              ownerId: row.owner_id,
+              hardDeleteAt
+            }),
+            {
+              jobId: `media-cleanup-${row.id}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+              attempts: 5,
+              backoff: {
+                type: "exponential",
+                delay: 3000
+              }
+            }
+          );
+          queuedCount += 1;
+        } catch (err) {
+          request.log.warn({ err, mediaId: row.id }, "failed to enqueue immediate cleanup job");
+        }
+      }
+
+      return {
+        status: "queued",
+        queuedCount
+      };
+    }
+  );
+
+  app.get(
+    "/api/v1/library/trash/:mediaId/preview",
+    {
+      preHandler: requireAccessAuth(app.config),
+      schema: {
+        tags: ["Library"],
+        summary: "Read trashed media preview",
+        description:
+          "Return an existing derived preview image for a soft-deleted media item owned by the caller. This endpoint does not serve originals and does not enqueue derivative generation.",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          required: ["mediaId"],
+          properties: {
+            mediaId: { type: "string", format: "uuid" }
+          }
+        },
+        querystring: {
+          type: "object",
+          properties: {
+            variant: {
+              type: "string",
+              enum: ["thumb", "small"]
+            }
+          },
+          additionalProperties: false
+        },
+        response: {
+          400: buildErrorEnvelopeSchema("VALIDATION_ERROR", "Request validation failed"),
+          401: buildErrorEnvelopeSchema("AUTH_TOKEN_INVALID", "Missing bearer token"),
+          404: buildErrorEnvelopeSchema("MEDIA_NOT_FOUND", "Media was not found")
+        }
+      }
+    },
+    async (request, reply) => {
+      const params = parseOrThrow(mediaPathParamsSchema, request.params || {});
+      const query = parseOrThrow(trashPreviewQuerySchema, request.query || {});
+      const variant = query.variant || "thumb";
+      const media = await app.repos.library.findOwnedMediaDetails(params.mediaId, request.userAuth.userId);
+
+      if (!media || !media.deleted_soft) {
+        throw new ApiError(404, "MEDIA_NOT_FOUND", "Media was not found");
+      }
+
+      const derivativeRelativePath = buildDerivativeRelativePath(media.relative_path, media.id, variant);
+      const derivativeAbsolutePath = resolveAbsolutePath(app.config.uploadDerivedPath, derivativeRelativePath);
+
+      try {
+        await fs.stat(derivativeAbsolutePath);
+      } catch (err) {
+        if (err && err.code === "ENOENT") {
+          throw new ApiError(404, "MEDIA_NOT_FOUND", "Media was not found");
+        }
+        throw err;
+      }
+
+      reply.type("image/webp");
+      reply.header("cache-control", "private, max-age=120");
+      return reply.send(fsSync.createReadStream(derivativeAbsolutePath));
     }
   );
 
@@ -655,6 +910,30 @@ module.exports = async function libraryRoutes(app) {
       const result = await app.repos.library.setDeletedSoft(params.mediaId, request.userAuth.userId, true);
       if (!result) {
         throw new ApiError(404, "MEDIA_NOT_FOUND", "Media was not found");
+      }
+
+      const hardDeleteAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const delayMs = Math.max(0, hardDeleteAt.getTime() - Date.now());
+      try {
+        await app.queues.mediaCleanup.add(
+          "media.cleanup",
+          buildMediaCleanupMessage({
+            mediaId: params.mediaId,
+            ownerId: request.userAuth.userId,
+            hardDeleteAt
+          }),
+          {
+            jobId: `media-cleanup-${params.mediaId}-${Date.now()}`,
+            delay: delayMs,
+            attempts: 5,
+            backoff: {
+              type: "exponential",
+              delay: 3000
+            }
+          }
+        );
+      } catch (err) {
+        request.log.warn({ err, mediaId: params.mediaId }, "failed to enqueue delayed cleanup job");
       }
 
       return {

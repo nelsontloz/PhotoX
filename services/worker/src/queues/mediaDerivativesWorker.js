@@ -1,8 +1,9 @@
+const fs = require("node:fs/promises");
 const { Worker } = require("bullmq");
 
 const { generateDerivativesForMedia } = require("../media/derivatives");
 const { extractMediaMetadata } = require("../media/metadata");
-const { resolveAbsolutePath } = require("../media/paths");
+const { buildDerivativeRelativePath, resolveAbsolutePath } = require("../media/paths");
 
 const DEFAULT_LOCK_RETRY_ATTEMPTS = 5;
 const DEFAULT_LOCK_RETRY_DELAY_MS = 200;
@@ -204,6 +205,100 @@ function createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger, c
   };
 }
 
+async function removeFileIfPresent(absolutePath) {
+  try {
+    await fs.unlink(absolutePath);
+    return true;
+  } catch (err) {
+    if (err && err.code === "ENOENT") {
+      return false;
+    }
+
+    throw err;
+  }
+}
+
+function createMediaCleanupProcessor({ originalsRoot, derivedRoot, logger, mediaRepo }) {
+  return async (job) => {
+    const { mediaId, ownerId } = job.data || {};
+    if (!mediaId || !ownerId) {
+      throw new Error("Invalid cleanup job payload: mediaId and ownerId are required");
+    }
+
+    let lockHandle = null;
+    try {
+      lockHandle = await acquireProcessingLockWithRetry({
+        mediaRepo,
+        mediaId,
+        logger,
+        queueName: job.queueName,
+        jobId: job.id,
+        retryAttempts: job.data?.lockRetryAttempts,
+        retryDelayMs: job.data?.lockRetryDelayMs
+      });
+
+      const target = await mediaRepo.findCleanupCandidate(mediaId, ownerId);
+      if (!target) {
+        return {
+          mediaId,
+          status: "missing"
+        };
+      }
+
+      if (!target.deleted_soft) {
+        return {
+          mediaId,
+          status: "restored-skip"
+        };
+      }
+
+      const originalAbsolutePath = resolveAbsolutePath(originalsRoot, target.relative_path);
+      const candidatePaths = [
+        originalAbsolutePath,
+        resolveAbsolutePath(derivedRoot, buildDerivativeRelativePath(target.relative_path, mediaId, "thumb")),
+        resolveAbsolutePath(derivedRoot, buildDerivativeRelativePath(target.relative_path, mediaId, "small")),
+        resolveAbsolutePath(
+          derivedRoot,
+          buildDerivativeRelativePath(target.relative_path, mediaId, "playback", "webm")
+        )
+      ];
+
+      for (const candidatePath of candidatePaths) {
+        await removeFileIfPresent(candidatePath);
+      }
+
+      const deletion = await mediaRepo.hardDeleteMediaGraphIfStillSoftDeleted(mediaId, ownerId);
+      if (!deletion.deleted) {
+        return {
+          mediaId,
+          status: "restored-race-skip"
+        };
+      }
+
+      return {
+        mediaId,
+        status: "deleted"
+      };
+    } finally {
+      if (lockHandle) {
+        try {
+          await mediaRepo.releaseProcessingLock(lockHandle);
+        } catch (unlockErr) {
+          logger.warn(
+            {
+              queueName: job.queueName,
+              jobId: job.id,
+              mediaId,
+              err: unlockErr
+            },
+            "failed to release media cleanup lock"
+          );
+        }
+      }
+    }
+  };
+}
+
 function createMediaDerivativesWorker({ queueName, redisUrl, originalsRoot, derivedRoot, logger, mediaRepo, telemetry }) {
   const worker = new Worker(queueName, createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger, mediaRepo }), {
     connection: redisConnectionFromUrl(redisUrl),
@@ -324,11 +419,87 @@ function createMediaProcessWorker({ queueName, redisUrl, originalsRoot, derivedR
   });
 }
 
+function createMediaCleanupWorker({ queueName, redisUrl, originalsRoot, derivedRoot, logger, mediaRepo, telemetry }) {
+  const worker = new Worker(queueName, createMediaCleanupProcessor({ originalsRoot, derivedRoot, logger, mediaRepo }), {
+    connection: redisConnectionFromUrl(redisUrl),
+    concurrency: 2
+  });
+
+  worker.on("active", (job) => {
+    telemetry?.recordEvent({
+      queue: queueName,
+      event: "active",
+      jobId: job?.id,
+      mediaId: job?.data?.mediaId,
+      attempts: job?.attemptsMade
+    });
+  });
+
+  worker.on("completed", (job) => {
+    telemetry?.recordEvent({
+      queue: queueName,
+      event: "completed",
+      jobId: job?.id,
+      mediaId: job?.data?.mediaId,
+      attempts: job?.attemptsMade
+    });
+  });
+
+  worker.on("failed", (job, err) => {
+    logger.error(
+      {
+        queueName,
+        event: "failed",
+        jobId: job?.id,
+        mediaId: job?.data?.mediaId,
+        attempts: Number(job?.attemptsMade || 0),
+        err
+      },
+      "media cleanup job failed"
+    );
+
+    telemetry?.recordEvent({
+      queue: queueName,
+      event: "failed",
+      jobId: job?.id,
+      mediaId: job?.data?.mediaId,
+      attempts: job?.attemptsMade,
+      failureCode: err?.code || null,
+      errorClass: err?.name || "Error"
+    });
+  });
+
+  worker.on("stalled", (jobId) => {
+    telemetry?.recordEvent({
+      queue: queueName,
+      event: "stalled",
+      jobId
+    });
+  });
+
+  worker.on("error", (err) => {
+    logger.error(
+      {
+        queueName,
+        event: "error",
+        err
+      },
+      "worker internal error"
+    );
+
+    telemetry?.markWorkerError(queueName, err);
+  });
+
+  return worker;
+}
+
 module.exports = {
   isTerminalFailure,
   persistFailedStatusOnTerminalFailure,
   ProcessingLockUnavailableError,
   acquireProcessingLockWithRetry,
+  createMediaCleanupProcessor,
+  createMediaCleanupWorker,
   createMediaDerivativesProcessor,
   createMediaDerivativesWorker,
   createMediaProcessWorker

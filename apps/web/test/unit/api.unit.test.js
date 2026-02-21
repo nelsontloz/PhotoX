@@ -1,8 +1,13 @@
 import {
   ApiClientError,
+  deleteMedia,
+  emptyTrash,
+  fetchTrashPreviewBlob,
   fetchWorkerTelemetrySnapshot,
   isRetriableMediaProcessingError,
-  openWorkerTelemetryStream
+  listTrash,
+  openWorkerTelemetryStream,
+  restoreMedia
 } from "../../lib/api";
 import { clearSession, writeSession } from "../../lib/session";
 
@@ -104,5 +109,58 @@ describe("api helpers", () => {
 
     expect(seen.length).toBeGreaterThan(0);
     expect(seen[0].event).toBe("state_sync");
+  });
+
+  it("calls trash and media lifecycle endpoints", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ items: [], nextCursor: null }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: "queued", queuedCount: 0 }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array([1, 2, 3]), {
+          status: 200,
+          headers: { "content-type": "image/webp" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ mediaId: "m1", status: "deleted" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ mediaId: "m1", status: "active" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        })
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listTrash({ limit: 24 });
+    await emptyTrash();
+    await fetchTrashPreviewBlob("m1", "thumb");
+    await deleteMedia("m1");
+    await restoreMedia("m1");
+
+    expect(fetchMock.mock.calls[0][0]).toContain("/library/trash?limit=24");
+    expect(fetchMock.mock.calls[1][0]).toContain("/library/trash");
+    expect(fetchMock.mock.calls[1][1].method).toBe("DELETE");
+    expect(fetchMock.mock.calls[2][0]).toContain("/library/trash/m1/preview?variant=thumb");
+    expect(fetchMock.mock.calls[2][1].method).toBe("GET");
+    expect(fetchMock.mock.calls[3][0]).toContain("/media/m1");
+    expect(fetchMock.mock.calls[3][1].method).toBe("DELETE");
+    expect(fetchMock.mock.calls[4][0]).toContain("/media/m1/restore");
+    expect(fetchMock.mock.calls[4][1].method).toBe("POST");
   });
 });

@@ -200,6 +200,99 @@ function buildMediaRepo(db) {
       );
 
       return result.rows[0] || null;
+    },
+
+    async findCleanupCandidate(mediaId, ownerId, executor) {
+      const result = await queryable(executor).query(
+        `
+          SELECT
+            m.id,
+            m.owner_id,
+            m.relative_path,
+            COALESCE(mf.deleted_soft, false) AS deleted_soft,
+            mf.deleted_soft_at
+          FROM media m
+          LEFT JOIN media_flags mf ON mf.media_id = m.id
+          WHERE m.id = $1
+            AND m.owner_id = $2
+          LIMIT 1
+        `,
+        [mediaId, ownerId]
+      );
+
+      return result.rows[0] || null;
+    },
+
+    async hardDeleteMediaGraphIfStillSoftDeleted(mediaId, ownerId, executor) {
+      const dbExecutor = queryable(executor);
+      const client = executor || (typeof db.connect === "function" ? await db.connect() : dbExecutor);
+      const shouldReleaseClient = !executor && typeof db.connect === "function";
+
+      try {
+        await client.query("BEGIN");
+
+        const target = await client.query(
+          `
+            SELECT m.id
+            FROM media m
+            JOIN media_flags mf ON mf.media_id = m.id
+            WHERE m.id = $1
+              AND m.owner_id = $2
+              AND COALESCE(mf.deleted_soft, false) = true
+            FOR UPDATE
+          `,
+          [mediaId, ownerId]
+        );
+
+        if (target.rowCount === 0) {
+          await client.query("ROLLBACK");
+          return { deleted: false };
+        }
+
+        await client.query(
+          `
+            DELETE FROM album_items
+            WHERE media_id = $1::text
+          `,
+          [mediaId]
+        );
+
+        await client.query(
+          `
+            DELETE FROM media_metadata
+            WHERE media_id = $1
+          `,
+          [mediaId]
+        );
+
+        await client.query(
+          `
+            DELETE FROM media_flags
+            WHERE media_id = $1
+          `,
+          [mediaId]
+        );
+
+        const deletedMedia = await client.query(
+          `
+            DELETE FROM media
+            WHERE id = $1
+              AND owner_id = $2
+            RETURNING id
+          `,
+          [mediaId, ownerId]
+        );
+
+        await client.query("COMMIT");
+        return { deleted: deletedMedia.rowCount > 0 };
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        if (shouldReleaseClient) {
+          client.release?.();
+        }
+      }
     }
   };
 }

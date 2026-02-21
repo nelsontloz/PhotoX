@@ -97,6 +97,9 @@ Implemented now:
 - `GET /api/v1/library/docs`
 - `GET /api/v1/library/openapi.json`
 - `GET /api/v1/library/timeline`
+- `GET /api/v1/library/trash`
+- `DELETE /api/v1/library/trash`
+- `GET /api/v1/library/trash/{mediaId}/preview?variant=thumb|small`
 - `GET /api/v1/media/{mediaId}`
 - `PATCH /api/v1/media/{mediaId}`
 - `DELETE /api/v1/media/{mediaId}`
@@ -112,6 +115,9 @@ Notes:
 - If `playback` is requested before the derived artifact exists, library-service enqueues derivative generation and returns retriable `503 PLAYBACK_DERIVATIVE_NOT_READY`.
 - Timeline responses include additive `metadataPreview` fields (`durationSec`, `codec`, `fps`, `width`, `height`).
 - Media detail responses include additive `metadata` fields for capture/image/video/location/raw metadata.
+- Soft delete now persists `media_flags.deleted_soft_at`, queues delayed `media.cleanup` hard-delete jobs (+30 days), and leaves album memberships intact for restore.
+- Empty Trash (`DELETE /api/v1/library/trash`) queues immediate `media.cleanup` jobs for all caller-owned trashed items.
+- Trash preview endpoint serves existing derived previews for soft-deleted items without exposing originals or enqueuing derivative generation.
 
 Planned/pending:
 - `albumId` and `personId` timeline filters (deferred to P4/P6 relation wiring)
@@ -164,6 +170,7 @@ Implemented now:
 - `GET /api/v1/worker/telemetry/stream` (SSE, admin-only)
 - BullMQ consumer for `media.derivatives.generate` that creates image `thumb`/`small` WebP derivatives and video `playback` WebM (VP9/Opus) derivatives
  - BullMQ consumer for `media.process` that extracts photo/video metadata, persists `media_metadata`, and generates derivatives for new uploads
+- BullMQ consumer for `media.cleanup` that verifies media is still soft-deleted, deletes original/derived files, and hard-deletes DB rows in a transaction.
 - After successful derivative generation, worker updates `media.status` from `processing` to `ready`.
 - On terminal derivative-processing failure (retry attempts exhausted), worker updates `media.status` to `failed` only when status is still `processing`.
 - Worker uses a per-media advisory lock to serialize concurrent `media.process` / `media.derivatives.generate` execution for the same media ID.
@@ -175,7 +182,7 @@ Implemented now:
 
 
 Planned/pending:
-- worker processors for metadata, search index, face index, and cleanup
+- worker processors for metadata, search index, and face index
 
 ### ml-service - partial
 
@@ -202,6 +209,7 @@ Implemented now:
 - `GET /timeline`
 - `GET /albums`
 - `GET /albums/[id]`
+- `GET /trash`
 
 Notes:
 - Tailwind CSS baseline added for web UI styling.
@@ -225,6 +233,10 @@ Notes:
 - Top bar is session-aware: authenticated users see account email and logout, and admin users additionally see
   an admin button.
 - Sidebar navigation includes only implemented routes (`/timeline`, `/upload`, `/albums`) plus `/admin` for admins.
+- Sidebar navigation includes `/trash` for all authenticated users.
+- Trash page lists soft-deleted media with restore actions and explicit Empty Trash confirmation.
+- Trash page renders authenticated thumbnail previews when derived preview artifacts are available.
+- Media lightbox now supports deleting media to Trash from Timeline and Album detail flows and invalidates timeline/album/trash queries.
 - Admin page consumes worker telemetry snapshot + SSE stream with reconnect and polling fallback, and surfaces
   a worker backlog metric with stream health state.
 - Timeline supports multi-select mode: a "Select" toggle enables per-photo selection with visible checkmarks.

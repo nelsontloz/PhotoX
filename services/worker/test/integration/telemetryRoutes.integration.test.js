@@ -33,6 +33,13 @@ describe("worker telemetry routes", () => {
           completed: 11,
           failed: 0,
           delayed: 0
+        },
+        "media.cleanup": {
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0
         }
       };
     }
@@ -40,7 +47,7 @@ describe("worker telemetry routes", () => {
 
   beforeAll(async () => {
     telemetryStore = new WorkerTelemetryStore({
-      queueNames: ["media.process", "media.derivatives.generate"],
+      queueNames: ["media.process", "media.derivatives.generate", "media.cleanup"],
       eventLimitPerQueue: 500,
       eventTtlMs: 15 * 60 * 1000
     });
@@ -69,6 +76,9 @@ describe("worker telemetry routes", () => {
         async close() {}
       },
       mediaDerivativesWorker: {
+        async close() {}
+      },
+      mediaCleanupWorker: {
         async close() {}
       }
     });

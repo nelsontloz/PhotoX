@@ -55,4 +55,26 @@ describe("worker message consumer pacts", () => {
         expect(message.contents).toHaveProperty("relativePath");
       });
   });
+
+  it("accepts library media.cleanup payload", async () => {
+    const messagePact = new MessageConsumerPact({
+      consumer: "worker-service",
+      provider: "library-service",
+      dir: path.resolve(__dirname, "../../../pacts")
+    });
+
+    await messagePact
+      .expectsToReceive("a command to permanently delete a soft-deleted media item")
+      .withMetadata({ contentType: "application/json" })
+      .withContent({
+        mediaId: regex(UUID_REGEX, "55555555-5555-4555-8555-555555555555"),
+        ownerId: regex(UUID_REGEX, "11111111-1111-4111-8111-111111111111"),
+        hardDeleteAt: regex(TIMESTAMP_REGEX, "2026-03-20T12:00:00.000Z")
+      })
+      .verify(async (message) => {
+        expect(message.contents).toHaveProperty("mediaId");
+        expect(message.contents).toHaveProperty("ownerId");
+        expect(message.contents).toHaveProperty("hardDeleteAt");
+      });
+  });
 });
