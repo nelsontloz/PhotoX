@@ -28,7 +28,7 @@ Source of truth used for this snapshot:
 - `P3.2`: upload dedupe by owner checksum against active media (implemented)
 - `P3.3`: timeline modal high-resolution viewer with next/previous navigation (implemented)
 - `P4`: admin user management (in progress)
-- `P+1`: albums and sharing (planned)
+- `P+1`: albums and sharing (implemented — album CRUD, item membership, selection on timeline)
 - `P5`: search and semantic retrieval (planned)
 - `P6`: faces, memories, and hardening (planned)
 - `P100`: deferred security tech debt (planned)
@@ -116,16 +116,28 @@ Notes:
 Planned/pending:
 - `albumId` and `personId` timeline filters (deferred to P4/P6 relation wiring)
 
-### album-sharing-service - scaffold-only (deferred to P+1)
+### album-sharing-service - implemented
 
 Implemented now:
 - `GET /health`
 - `GET /metrics`
 - `GET /api/v1/albums/docs`
 - `GET /api/v1/albums/openapi.json`
+- `POST /api/v1/albums` — create album (returns `mediaCount: 0`)
+- `GET /api/v1/albums` — list albums owned by authenticated user (with `mediaCount` via LEFT JOIN)
+- `GET /api/v1/albums/:albumId` — get album detail with `mediaCount`
+- `POST /api/v1/albums/:albumId/items` — add a media item to an album
+- `GET /api/v1/albums/:albumId/items` — list album items
+- `DELETE /api/v1/albums/:albumId/items/:mediaId` — remove a media item from an album
+
+Notes:
+- All endpoints require bearer auth (JWT validated via `requireAuth`).
+- Ownership is enforced on all album mutations; non-owners receive 403.
+- `addMediaToAlbum` validates that the media exists and belongs to the requesting user (`status = 'ready'`).
+- `album_items` uses `ON CONFLICT DO NOTHING` for idempotent adds.
+- `mediaCount` is computed via `COUNT(album_items.media_id)` in the same query using `LEFT JOIN`.
 
 Planned/pending:
-- album CRUD and item membership endpoints
 - sharing endpoints for links, invites, and family access
 
 ### search-service - scaffold-only
@@ -188,6 +200,8 @@ Implemented now:
 - `GET /login`
 - `GET /upload`
 - `GET /timeline`
+- `GET /albums`
+- `GET /albums/[id]`
 
 Notes:
 - Tailwind CSS baseline added for web UI styling.
@@ -210,12 +224,19 @@ Notes:
   prepared, and playback requests that return retriable derivative-not-ready errors are polled with bounded retries.
 - Top bar is session-aware: authenticated users see account email and logout, and admin users additionally see
   an admin button.
-- Sidebar navigation includes only implemented routes (`/timeline`, `/upload`) plus `/admin` for admins.
+- Sidebar navigation includes only implemented routes (`/timeline`, `/upload`, `/albums`) plus `/admin` for admins.
 - Admin page consumes worker telemetry snapshot + SSE stream with reconnect and polling fallback, and surfaces
   a worker backlog metric with stream health state.
+- Timeline supports multi-select mode: a "Select" toggle enables per-photo selection with visible checkmarks.
+  A floating bottom bar shows selected count and "Add to Album" button.
+- `AssignToAlbumModal` lets users add selected photos to an existing album or create a new one inline,
+  using `Promise.allSettled` for batch add with per-item success/error reporting.
+- Albums page (`/albums`) lists the user's real albums (with `mediaCount`), with a "Create Album" modal.
+- Album detail page (`/albums/[id]`) shows album photos in a masonry grid; hovering a photo reveals
+  a remove button (`DELETE /albums/:albumId/items/:mediaId`); an "Add Photos" link navigates to `/timeline`.
 
 Planned/pending:
-- `/albums`, `/search`, `/people`, `/memories` feature UIs (current routes return not-found placeholders)
+- `/search`, `/people`, `/memories` feature UIs (current routes return not-found placeholders)
 
 ### P100 security tech debt snapshot - planned
 

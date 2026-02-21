@@ -432,3 +432,41 @@ export function createIdempotencyKey(prefix) {
   const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36);
   return `${prefix}-${id}`;
 }
+
+export async function createAlbum(payload) {
+  return requestWithAutoRefresh("/albums", {
+    method: "POST",
+    body: payload
+  });
+}
+
+export async function listAlbums(limit = 50) {
+  return requestWithAutoRefresh(`/albums?limit=${limit}`, {
+    method: "GET"
+  });
+}
+
+export async function addMediaToAlbum(albumId, payload) {
+  return requestWithAutoRefresh(`/albums/${encodeURIComponent(albumId)}/items`, {
+    method: "POST",
+    body: payload
+  });
+}
+
+export async function listAlbumItems(albumId) {
+  return requestWithAutoRefresh(`/albums/${encodeURIComponent(albumId)}/items`, {
+    method: "GET"
+  });
+}
+
+export async function getAlbumById(albumId) {
+  return requestWithAutoRefresh(`/albums/${encodeURIComponent(albumId)}`, {
+    method: "GET"
+  });
+}
+
+export async function removeMediaFromAlbum(albumId, mediaId) {
+  return requestWithAutoRefresh(`/albums/${encodeURIComponent(albumId)}/items/${encodeURIComponent(mediaId)}`, {
+    method: "DELETE"
+  });
+}

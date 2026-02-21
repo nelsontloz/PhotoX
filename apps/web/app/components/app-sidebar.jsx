@@ -3,6 +3,7 @@ import Link from "next/link";
 export function getSidebarItems(isAdmin) {
   const items = [
     { href: "/timeline", label: "Timeline", icon: "photo_library" },
+    { href: "/albums", label: "Albums", icon: "photo_album" },
     { href: "/upload", label: "Upload", icon: "cloud_upload" }
   ];
 
