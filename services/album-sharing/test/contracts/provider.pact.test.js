@@ -73,6 +73,8 @@ describe("album sharing http provider verification", () => {
                 "the user has created albums": async () => {
                     mockPool.reset();
                     mockPool.seedAlbum(ALBUM_ID, USER_ID, "Summer Vacation 2026");
+                    mockPool.seedMedia(MEDIA_ID, USER_ID, "image/jpeg");
+                    mockPool.seedAlbumItem(ALBUM_ID, MEDIA_ID);
                 },
                 "an album 'alb_11111111111111111111111111111111' exists for the user and media '55555555-5555-4555-8555-555555555555' is owned by the user": async () => {
                     mockPool.reset();

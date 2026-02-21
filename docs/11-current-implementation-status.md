@@ -124,7 +124,7 @@ Implemented now:
 - `GET /api/v1/albums/docs`
 - `GET /api/v1/albums/openapi.json`
 - `POST /api/v1/albums` — create album (returns `mediaCount: 0`)
-- `GET /api/v1/albums` — list albums owned by authenticated user (with `mediaCount` via LEFT JOIN)
+- `GET /api/v1/albums` — list albums owned by authenticated user (with `mediaCount` via LEFT JOIN and up to 4 `sampleMediaIds` for collage thumbnails)
 - `GET /api/v1/albums/:albumId` — get album detail with `mediaCount`
 - `POST /api/v1/albums/:albumId/items` — add a media item to an album
 - `GET /api/v1/albums/:albumId/items` — list album items (includes `mimeType` per item for media-aware rendering)

@@ -35,6 +35,11 @@ echo "Verifying Worker Service (HTTP Provider)..."
 export PACT_URL="$PROJECT_ROOT/apps/web/pacts/photox-web-app-worker-service.json"
 (cd services/worker && npx vitest run --globals test/contracts/provider)
 
+# Album Sharing Service
+echo "Verifying Album Sharing Service..."
+export PACT_URL="$PROJECT_ROOT/apps/web/pacts/photox-web-app-album-sharing-service.json"
+(cd services/album-sharing && npx vitest run --globals test/contracts/provider.pact.test.js)
+
 echo "--- Verifying Message Providers against local pacts ---"
 
 # Ingest Message Provider

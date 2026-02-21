@@ -67,7 +67,8 @@ function routeQuery(sql, params) {
                     title: alb.title,
                     createdAt: alb.created_at,
                     updatedAt: alb.updated_at,
-                    mediaCount: itemIds.length
+                    mediaCount: itemIds.length,
+                    sampleMediaIds: itemIds.slice(0, 4).map((item) => item.mediaId)
                 });
             }
         }

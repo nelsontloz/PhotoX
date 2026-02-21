@@ -1002,7 +1002,8 @@ describe("web http consumer pacts", () => {
             title: like("Summer Vacation 2026"),
             createdAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z"),
             updatedAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z"),
-            mediaCount: like(1)
+            mediaCount: like(1),
+            sampleMediaIds: like([MEDIA_ID])
           })
         }
       })
