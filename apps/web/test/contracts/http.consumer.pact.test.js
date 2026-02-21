@@ -1063,7 +1063,8 @@ describe("web http consumer pacts", () => {
         body: {
           items: eachLike({
             mediaId: regex(UUID_REGEX, MEDIA_ID),
-            addedAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z")
+            addedAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:00.000Z"),
+            mimeType: like("video/mp4")
           })
         }
       })

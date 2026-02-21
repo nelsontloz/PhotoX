@@ -68,4 +68,26 @@ describe("albumRepo", () => {
         await expect(repo.removeMediaFromAlbum({ albumId: "alb_1", ownerId: "user_1", mediaId: "med_999" }))
             .rejects.toMatchObject({ statusCode: 404, code: "ALBUM_ITEM_NOT_FOUND" });
     });
+
+    it("should return album items with mimeType", async () => {
+        const mockDb = {
+            query: vi.fn()
+                .mockResolvedValueOnce({
+                    rowCount: 1,
+                    rows: [{ id: "alb_1", ownerId: "user_1", title: "T", createdAt: null, updatedAt: null }]
+                })
+                .mockResolvedValueOnce({
+                    rowCount: 1,
+                    rows: [{ mediaId: "med_1", addedAt: "2026-02-18T12:00:00.000Z", mimeType: "video/mp4" }]
+                })
+        };
+
+        const repo = buildAlbumRepo(mockDb);
+        const result = await repo.getAlbumItems({ albumId: "alb_1", ownerId: "user_1" });
+
+        expect(result).toEqual([
+            { mediaId: "med_1", addedAt: "2026-02-18T12:00:00.000Z", mimeType: "video/mp4" }
+        ]);
+        expect(mockDb.query).toHaveBeenCalledTimes(2);
+    });
 });

@@ -10,8 +10,9 @@ import { fetchCurrentUser, getAlbumById, listAlbumItems, fetchMediaContentBlob, 
 import { buildLoginPath } from "../../../lib/navigation";
 import { Spinner } from "../../timeline/components/Spinner";
 import { TimelineModalMedia } from "../../timeline/components/TimelineModalMedia";
+import { isVideoMimeType } from "../../timeline/utils";
 
-function AlbumThumbnail({ mediaId, onOpen, onRemove }) {
+function AlbumThumbnail({ mediaId, mimeType, onOpen, onRemove }) {
     const [imageUrl, setImageUrl] = useState("");
     const [loadError, setLoadError] = useState("");
 
@@ -49,6 +50,14 @@ function AlbumThumbnail({ mediaId, onOpen, onRemove }) {
                     </div>
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+                {isVideoMimeType(mimeType) && (
+                    <div className="absolute top-3 right-3 opacity-100 group-hover:opacity-100 transition-opacity duration-200">
+                        <div className="bg-black/50 backdrop-blur-sm rounded px-1.5 py-0.5 text-[10px] font-bold text-white flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[14px]">videocam</span>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Remove button */}
@@ -160,7 +169,7 @@ export default function AlbumDetailPage() {
                                 <>
                                     <h1 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{album?.title}</h1>
                                     <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-                                        {album?.mediaCount ?? items.length} photo{(album?.mediaCount ?? items.length) !== 1 ? "s" : ""}
+                                        {album?.mediaCount ?? items.length} media item{(album?.mediaCount ?? items.length) !== 1 ? "s" : ""}
                                         {album?.createdAt ? ` · Created ${new Date(album.createdAt).toLocaleDateString()}` : ""}
                                     </p>
                                 </>
@@ -181,7 +190,7 @@ export default function AlbumDetailPage() {
                 <div className="mx-auto max-w-6xl">
                     {itemsQuery.isPending && (
                         <div className="flex justify-center py-16">
-                            <Spinner label="Loading photos..." />
+                            <Spinner label="Loading media..." />
                         </div>
                     )}
 
@@ -193,7 +202,7 @@ export default function AlbumDetailPage() {
                         <div className="rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-card-dark p-12 text-center">
                             <span className="material-symbols-outlined text-6xl text-slate-300 dark:text-slate-600">photo_library</span>
                             <h3 className="text-lg font-bold text-slate-900 dark:text-white mt-4">Album is empty</h3>
-                            <p className="mt-2 text-sm text-slate-500">Go to Timeline, select photos and click &ldquo;Add to Album&rdquo;.</p>
+                            <p className="mt-2 text-sm text-slate-500">Go to Timeline, select media and click &ldquo;Add to Album&rdquo;.</p>
                             <Link
                                 href="/timeline"
                                 className="mt-6 inline-flex items-center gap-2 bg-primary text-white text-sm font-semibold px-6 py-2 rounded-lg transition-all"
@@ -210,6 +219,7 @@ export default function AlbumDetailPage() {
                                 <AlbumThumbnail
                                     key={item.mediaId}
                                     mediaId={item.mediaId}
+                                    mimeType={item.mimeType}
                                     onOpen={() => setActiveMediaId(item.mediaId)}
                                     onRemove={() => removeMutation.mutate(item.mediaId)}
                                 />

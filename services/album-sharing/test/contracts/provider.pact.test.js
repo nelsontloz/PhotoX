@@ -82,6 +82,7 @@ describe("album sharing http provider verification", () => {
                 "an album 'alb_11111111111111111111111111111111' exists with items inside": async () => {
                     mockPool.reset();
                     mockPool.seedAlbum(ALBUM_ID, USER_ID, "Summer Vacation 2026");
+                    mockPool.seedMedia(MEDIA_ID, USER_ID, "video/mp4");
                     mockPool.seedAlbumItem(ALBUM_ID, MEDIA_ID);
                 },
                 "an album 'alb_11111111111111111111111111111111' exists for the user": async () => {

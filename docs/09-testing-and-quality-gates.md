@@ -166,6 +166,11 @@ Pact execution model:
 - `apps/web npm test`: runs unit/integration tests, generates HTTP consumer pacts, publishes pacts to broker.
 - `services/worker npm test`: runs unit/integration tests, generates message consumer pacts, publishes pacts to broker, verifies worker provider pacts from broker.
 - `services/auth|ingest|library npm test`: runs unit/integration tests, verifies provider pacts from broker, publishes verification results.
+- If multiple services share the same test database, do not run these `npm test` commands in parallel. Use sequential contract-only sync to avoid cross-service truncate races:
+
+```bash
+PACT_BROKER_BASE_URL=http://localhost:9292 ./scripts/pact-broker-sync.sh
+```
 
 Provider verification runtime requirement:
 - All provider pact tests now use **embedded Fastify apps with in-memory mock pools** — no running PostgreSQL, Redis, or BullMQ is needed.

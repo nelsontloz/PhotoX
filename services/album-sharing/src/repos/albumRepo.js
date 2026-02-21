@@ -154,10 +154,11 @@ function buildAlbumRepo(db) {
 
         const result = await db.query(
             `
-        SELECT media_id AS "mediaId", added_at AS "addedAt"
-        FROM album_items
-        WHERE album_id = $1
-        ORDER BY added_at DESC
+        SELECT ai.media_id AS "mediaId", ai.added_at AS "addedAt", COALESCE(m.mime_type, 'application/octet-stream') AS "mimeType"
+        FROM album_items ai
+        LEFT JOIN media m ON m.id::text = ai.media_id
+        WHERE ai.album_id = $1
+        ORDER BY ai.added_at DESC
       `,
             [albumId]
         );

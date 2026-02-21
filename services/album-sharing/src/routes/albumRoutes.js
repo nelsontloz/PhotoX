@@ -242,7 +242,8 @@ function albumRoutes(fastify, options, done) {
                                     type: "object",
                                     properties: {
                                         mediaId: { type: "string" },
-                                        addedAt: { type: "string", format: "date-time" }
+                                        addedAt: { type: "string", format: "date-time" },
+                                        mimeType: { type: "string" }
                                     }
                                 }
                             }

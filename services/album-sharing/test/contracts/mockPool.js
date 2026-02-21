@@ -147,11 +147,18 @@ function routeQuery(sql, params) {
         return { rows: [], rowCount: initialLen - filtered.length };
     }
 
-    // SELECT ... FROM album_items WHERE album_id = $1
-    if (/SELECT .* FROM album_items WHERE album_id = \$1/i.test(text)) {
+    // SELECT ... FROM album_items LEFT JOIN media WHERE album_id = $1
+    if (/SELECT .* FROM album_items ai LEFT JOIN media m ON m\.id::text = ai\.media_id WHERE ai\.album_id = \$1/i.test(text)) {
         const albumId = params[0];
         const items = albumItems.get(albumId) || [];
-        return { rows: items, rowCount: items.length };
+        return {
+            rows: items.map((item) => ({
+                mediaId: item.mediaId,
+                addedAt: item.addedAt,
+                mimeType: media.get(item.mediaId)?.mime_type || "application/octet-stream"
+            })),
+            rowCount: items.length
+        };
     }
 
     console.warn("[mockPool] unhandled query:", text, params);
@@ -178,8 +185,8 @@ const mockPool = {
         albums.set(id, { id, owner_id: ownerId, title, created_at: "2026-02-18T12:00:00.000Z", updated_at: "2026-02-18T12:00:00.000Z" });
     },
 
-    seedMedia(id, ownerId) {
-        media.set(id, { id, owner_id: ownerId });
+    seedMedia(id, ownerId, mimeType = "image/jpeg") {
+        media.set(id, { id, owner_id: ownerId, mime_type: mimeType });
     },
 
     seedAlbumItem(albumId, mediaId) {

@@ -127,7 +127,7 @@ Implemented now:
 - `GET /api/v1/albums` — list albums owned by authenticated user (with `mediaCount` via LEFT JOIN)
 - `GET /api/v1/albums/:albumId` — get album detail with `mediaCount`
 - `POST /api/v1/albums/:albumId/items` — add a media item to an album
-- `GET /api/v1/albums/:albumId/items` — list album items
+- `GET /api/v1/albums/:albumId/items` — list album items (includes `mimeType` per item for media-aware rendering)
 - `DELETE /api/v1/albums/:albumId/items/:mediaId` — remove a media item from an album
 
 Notes:

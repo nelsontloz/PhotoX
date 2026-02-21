@@ -392,9 +392,23 @@ data: {"schemaVersion":"2026-02-telemetry-v1","state":{"generatedAt":"2026-02-18
 - `PATCH /albums/{albumId}`
 - `DELETE /albums/{albumId}`
 - `POST /albums/{albumId}/items`
+- `GET /albums/{albumId}/items`
 - `DELETE /albums/{albumId}/items/{mediaId}`
 - `GET /albums/docs`
 - `GET /albums/openapi.json`
+
+### `GET /albums/{albumId}/items` Response
+```json
+{
+  "items": [
+    {
+      "mediaId": "55555555-5555-4555-8555-555555555555",
+      "addedAt": "2026-02-18T12:00:00.000Z",
+      "mimeType": "video/mp4"
+    }
+  ]
+}
+```
 
 ### Sharing Endpoints
 - `POST /shares/links` (public link)
