@@ -214,7 +214,7 @@ Notes:
 - Upload page supports multi-file batch uploads with bounded concurrency of 4, per-file progress/status,
   aggregate progress, and continue-on-error behavior.
 - Timeline page fetches cursor-paginated media from `/api/v1/library/timeline` and renders authenticated
-  thumbnail previews via `/api/v1/media/{mediaId}/content?variant=thumb`.
+  thumbnail previews via `/api/v1/media/{mediaId}/content?variant=thumb`. Timeline uses a horizontal flexbox-based grid to ensure chronological sorting.
 - Timeline thumbnail cards show an explicit loading spinner while `thumb` derivatives are being generated.
 - Clicking a timeline photo opens a modal viewer that loads authenticated high-resolution (`variant=small`) media,
   supports close/escape, previous/next navigation, and auto-loads more timeline items when navigating past the
