@@ -1,131 +1,149 @@
 # Comprehensive Code Audit Report: PhotoX
 
-Last updated: 2026-02-16
+**Date:** 2026-02-18
+**Auditor:** Senior Software Engineer (Jules)
 
-This report reflects the current repository state after remediation work for:
-- transaction and concurrency hardening in ingest complete flow,
-- failure-path assembled-file cleanup,
-- conflict-safe idempotency persistence behavior.
-
-Deferred items are explicitly tracked in Phase `P100` security tech debt:
-- `docs/07-ai-agent-task-contracts.md` (`P100-S1`, `P100-S2`)
-- `docs/10-execution-checklists-and-handoffs.md` (Phase `P100` checklist)
-- `docs/11-current-implementation-status.md` (`P100` snapshot)
+This report details the findings of a comprehensive code audit of the PhotoX repository, covering security, performance, reliability, and code quality.
 
 ---
 
 ## 1. Security Analysis
 
-### 1.1 Insecure Token Storage (Critical)
-*   **Status**: **Deferred (P100-S1)**
-*   **File**: `apps/web/lib/session.js`
-*   **Current state**: Access and refresh tokens are still persisted in browser-readable storage.
-*   **Risk**: XSS can exfiltrate tokens and enable account takeover.
-*   **Planned remediation**: migrate to cookie-based auth transport (`httpOnly`, `Secure`, `SameSite`) with CSRF controls.
+### 1.1 User Enumeration (High)
+*   **File:** `services/auth/src/routes/authRoutes.js`
+*   **Location:** `app.post("/api/v1/auth/register", ...)`
+*   **Finding:** The registration endpoint explicitly returns a `409 CONFLICT` with the message "Email is already registered" when a user attempts to register with an existing email address. This allows an attacker to enumerate valid email addresses in the system.
+*   **Exploit Scenario:** An attacker can script requests with a list of email addresses. If the server returns 409, the email is valid. If it returns 201, it's new. This can be used for targeted phishing or credential stuffing.
+*   **Remediation:** Always return a generic success message (201 Created) even if the user exists, or send an email notification instead of an immediate error. If immediate feedback is required for UX, use a generic error message or CAPTCHA to rate-limit enumeration.
 
-### 1.2 Weak Token Hashing (High)
-*   **Status**: **Mitigated**
-*   **File**: `services/auth/src/auth/tokens.js`
-*   **Current state**: Refresh tokens are hashed and verified with Argon2 only.
-*   **Residual risk**: Existing non-Argon2 refresh token hashes are rejected and require user re-authentication.
+    **Corrected Code:**
+    ```javascript
+    // services/auth/src/routes/authRoutes.js
 
-### 1.3 Denial of Service via Large Payload (High)
-*   **Status**: **Mitigated**
-*   **Files**: `services/ingest/src/config.js`, `services/ingest/src/app.js`, `services/ingest/src/routes/uploadsRoutes.js`
-*   **Current state**: Fastify `bodyLimit` is configured and defaults are aligned with chunk expectations.
-*   **Residual risk**: remains bounded by configured limit and request concurrency.
+    // ... inside register handler
+    const existingUser = await app.repos.users.findByEmail(email);
+    if (existingUser) {
+      // SILENT FAIL: Return success to prevent enumeration, or send email.
+      // Ideally, trigger an email saying "Someone tried to register with your email."
+      // For this API, returning 201 with the existing user (sanitized) or a dummy user is safer.
+      // However, strictly:
+      request.log.info({ email }, "Registration attempt for existing email");
+      return reply.code(201).send({ user: app.repos.users.toPublicUser(existingUser) });
+      // OR better: return nothing and send email.
+    }
+    ```
 
-### 1.4 Path Traversal Risk (Medium)
-*   **Status**: **Not confirmed as traversal; deferred hardening**
-*   **File**: `services/ingest/src/upload/storage.js`
-*   **Current state**: file path uses controlled path segments (`userId/year/month/mediaId`) and extension extraction.
-*   **Risk posture**: not path traversal in current implementation, but strict extension/MIME allowlisting is still good hardening.
-*   **Recommended follow-up**: extension + MIME allowlist and upload-policy documentation.
+### 1.2 Stored XSS via LocalStorage (Critical)
+*   **File:** `apps/web/lib/session.js`
+*   **Location:** `writeSession` function
+*   **Finding:** JWTs (Access and Refresh tokens) are stored in `localStorage`. This makes them accessible to any JavaScript running on the page, including malicious scripts injected via XSS vulnerabilities (e.g., in a dependency or a compromised CDN).
+*   **Exploit Scenario:** An attacker injects a script (e.g., via a vulnerability in a third-party library or a reflected XSS in another part of the app). The script reads `localStorage.getItem("photox.session.v1")` and sends the tokens to the attacker's server, allowing full account takeover.
+*   **Remediation:** Store tokens in `httpOnly` cookies, which are inaccessible to JavaScript.
 
-### 1.5 User Enumeration (Low)
-*   **Status**: **Open**
-*   **File**: `services/auth/src/routes/authRoutes.js`
-*   **Current state**: register endpoint returns explicit `CONFLICT_EMAIL_EXISTS`.
-*   **Risk**: allows probing whether an email exists.
+    **Corrected Code:**
+    Refactor `auth-service` to set cookies on login/refresh, and `apps/web` to rely on cookies.
+    (This requires architectural changes to `auth-service` responses).
+
+### 1.3 Missing Security Headers (Medium)
+*   **Files:**
+    *   `services/auth/src/app.js`
+    *   `services/ingest/src/app.js`
+    *   `services/library/src/app.js`
+    *   `apps/web/next.config.js` (Missing)
+*   **Finding:** Backend services (Fastify) do not use `fastify-helmet` to set standard security headers (HSTS, X-Frame-Options, X-Content-Type-Options). The Frontend (Next.js) also lacks these headers.
+*   **Impact:** Increases risk of Clickjacking, MIME-sniffing attacks, and man-in-the-middle attacks (due to missing HSTS).
+*   **Remediation:**
+    *   **Backend:** Install `@fastify/helmet` and register it in `app.js`.
+    *   **Frontend:** Configure `headers()` in `next.config.js`.
+
+    **Corrected Code (Backend):**
+    ```javascript
+    // services/auth/src/app.js
+    const helmet = require("@fastify/helmet");
+    // ...
+    app.register(helmet, { global: true });
+    ```
+
+### 1.4 Insecure Docker Service Exposure (Medium)
+*   **File:** `docker-compose.yml`
+*   **Location:** `postgres` (ports), `redis` (ports), `prometheus` (ports), `grafana` (ports)
+*   **Finding:** Services are exposed using `"${PORT}:PORT"` syntax. If `PORT` is just a number (e.g., `5432`), Docker binds it to `0.0.0.0`, exposing the database to the entire network (and potentially the internet if the host is public).
+*   **Impact:** Unintended external access to sensitive data stores.
+*   **Remediation:** Explicitly bind to `127.0.0.1` for local development or use a firewall.
+
+    **Corrected Code:**
+    ```yaml
+    postgres:
+      ports:
+        - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    redis:
+      ports:
+        - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    ```
 
 ---
 
 ## 2. Performance and Scalability
 
-### 2.1 Memory Inefficiency in File Assembly (Critical)
-*   **Status**: **Fixed**
-*   **File**: `services/ingest/src/upload/storage.js`
-*   **Current state**: assembly uses streaming read/write, not whole-file buffering per part.
+### 2.1 Missing `trustProxy` Configuration (Medium)
+*   **Files:** `services/*/src/app.js`
+*   **Finding:** Fastify services are behind Traefik (a reverse proxy) but `trustProxy` is not configured.
+*   **Impact:** `request.ip` will likely be the internal IP of the Traefik container, not the real client IP. This breaks IP-based rate limiting, logging, and audit trails.
+*   **Remediation:** Enable `trustProxy`.
 
-### 2.2 Memory Inefficiency in Checksum Calculation (Critical)
-*   **Status**: **Mitigated**
-*   **File**: `services/ingest/src/upload/storage.js`
-*   **Current state**: checksum computation uses stream-based hashing.
-
-### 2.3 Blocking Event Loop
-*   **Status**: **Not confirmed**
-*   **File**: `services/ingest/src/upload/storage.js`
-*   **Current state**: stream-based APIs are used for assembly and checksum.
+    **Corrected Code:**
+    ```javascript
+    const app = Fastify({
+      logger: true,
+      trustProxy: true // Enable this
+      // ...
+    });
+    ```
 
 ---
 
 ## 3. Concurrency and Reliability
 
-### 3.1 Race Conditions in File Operations
-*   **Status**: **Improved**
-*   **Files**: `services/ingest/src/routes/uploadsRoutes.js`, `services/ingest/src/repos/uploadSessionsRepo.js`
-*   **Current state**:
-    - complete flow now uses row lock (`SELECT ... FOR UPDATE`) and transactional state writes,
-    - concurrent complete requests converge on one persisted media/session result.
+### 3.1 Legacy Password Hash Regression (High)
+*   **File:** `services/auth/src/auth/password.js`
+*   **Location:** `verifyPassword` function
+*   **Finding:** The function strictly checks `if (!passwordHash.startsWith("$argon2")) return false;`. This prevents the system from verifying legacy hashes (e.g., bcrypt) if the system was migrated or if older hashes exist.
+*   **Impact:** Users with valid legacy passwords will be unable to log in, causing a service outage for them.
+*   **Remediation:** Allow other hash prefixes if supported, or remove the check if `argon2.verify` handles format detection (though explicit checks are safer, they must include all supported formats).
 
-### 3.2 Database Transaction Boundaries
-*   **Status**: **Fixed**
-*   **Files**: `services/ingest/src/routes/uploadsRoutes.js`, `services/ingest/src/repos/mediaRepo.js`, `services/ingest/src/repos/uploadSessionsRepo.js`
-*   **Current state**: critical complete-flow DB mutations run in a single transaction.
+    **Corrected Code:**
+    ```javascript
+    async function verifyPassword(password, passwordHash) {
+      // Remove or expand strict check to support migration scenarios
+      // if (typeof passwordHash !== "string" || !passwordHash.startsWith("$argon2")) { ... }
 
-### 3.3 Failure-path Assembled File Cleanup
-*   **Status**: **Fixed**
-*   **Files**: `services/ingest/src/routes/uploadsRoutes.js`
-*   **Current state**: staged assembled output file is removed in `finally` for non-primary paths (including checksum mismatch and dedupe paths).
-
-### 3.4 Idempotency Persistence Conflict Races
-*   **Status**: **Fixed**
-*   **Files**: `services/ingest/src/repos/idempotencyRepo.js`, `services/ingest/src/routes/uploadsRoutes.js`
-*   **Current state**: idempotency persistence uses conflict-safe insert-or-fetch semantics instead of failing on unique constraint races.
-
----
-
-## 4. Framework-Specific Issues
-
-### 4.1 Missing Service Implementations
-*   **Status**: **Partially open**
-*   **Services**: `search-service`, `album-sharing-service`, `worker-service`
-*   **Current state**: still scaffold-level.
-
-### 4.2 Fastify `trustProxy` Configuration
-*   **Status**: **Open**
-*   **File**: `services/auth/src/app.js`
-*   **Current state**: `trustProxy` not configured.
+      try {
+        return await argon2.verify(passwordHash, password);
+      } catch {
+        return false;
+      }
+    }
+    ```
 
 ---
 
-## 5. Code Quality and Maintainability
+## 4. Code Quality and Maintainability
 
-### 5.1 Hardcoded Secret Defaults in Config
-*   **Status**: **Deferred (P100-S2)**
-*   **Files**: `services/auth/src/config.js`, `services/ingest/src/config.js`, `services/library/src/config.js`
-*   **Current state**: defaults still exist for local-development convenience.
-*   **Planned remediation**: production-mode fail-fast validation for weak/missing JWT secrets.
-
-### 5.2 Duplicate Infrastructure Boilerplate
-*   **Status**: **Open**
-*   **Files**: repeated patterns under `services/*/src/app.js`, `services/*/src/config.js`, `services/*/src/db.js`
-*   **Current state**: duplication remains.
+### 4.1 Hardcoded Secrets in Configuration (Low)
+*   **Files:** `services/*/src/config.js`
+*   **Finding:** Default values for secrets (e.g., `photox-dev-password`) are present in the code. While `resolveRequiredSecret` enforces stronger values in production, having these defaults can lead to accidental usage in non-production environments that are exposed.
+*   **Remediation:** Remove defaults for secrets entirely and rely on `.env` files or environment variables, forcing the developer to set them explicitly.
 
 ---
 
-## 6. Immediate Priorities
+## 5. Framework-Specific Issues
 
-1. Execute `P100-S1` (cookie-based auth session migration).
-2. Execute `P100-S2` (production JWT secret hard-fail policy).
-3. Close remaining open items: user enumeration response policy, `trustProxy`, and service scaffold completion.
+### 5.1 ML Service Scaffold
+*   **File:** `services/ml/app.py`
+*   **Finding:** The ML service is currently a placeholder. It uses FastAPI but implements no logic.
+*   **Recommendation:** Ensure `pydantic` models are used for input validation once logic is added, and avoid `pickle` for model loading if possible (use `safetensors` or `onnx`).
+
+### 5.2 Next.js Security Configuration
+*   **File:** `apps/web/next.config.js` (Missing)
+*   **Finding:** Absence of `next.config.js` means default headers are used.
+*   **Recommendation:** Create the file and add `X-Content-Type-Options`, `X-Frame-Options`, and `Referrer-Policy`.
