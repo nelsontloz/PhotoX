@@ -2,8 +2,8 @@
 
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState, Suspense, useRef } from "react";
 
 import {
   fetchMediaContentBlob,
@@ -29,6 +29,8 @@ function TimelineContent() {
   const queryClient = useQueryClient();
   const { meQuery, user } = useRequireSession({ redirectPath: "/timeline" });
 
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const urlQ = searchParams.get("q") || "";
 
@@ -52,8 +54,20 @@ function TimelineContent() {
     setSearchQuery(urlQ);
   }, [urlQ]);
 
-  const [activeMediaId, setActiveMediaId] = useState(null);
+  const urlMediaId = searchParams.get("mediaId");
+  const activeMediaId = urlMediaId;
   const [modalError, setModalError] = useState("");
+
+  const updateMediaId = useCallback((mediaId) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (mediaId) {
+      params.set("mediaId", mediaId);
+    } else {
+      params.delete("mediaId");
+    }
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [pathname, router, searchParams]);
+
 
   const timelineQuery = useInfiniteQuery({
     queryKey: ["timeline", from, to, favoriteOnly, searchQuery],
@@ -125,16 +139,6 @@ function TimelineContent() {
     return items.slice(start, end);
   }, [activeIndex, items]);
 
-  useEffect(() => {
-    if (!activeMediaId) {
-      return;
-    }
-
-    if (activeIndex === -1) {
-      setActiveMediaId(null);
-      setModalError("");
-    }
-  }, [activeIndex, activeMediaId]);
 
   useEffect(() => {
     if (!activeItem) {
@@ -150,18 +154,18 @@ function TimelineContent() {
   }, [activeItem]);
 
   const handleCloseModal = useCallback(() => {
-    setActiveMediaId(null);
+    updateMediaId(null);
     setModalError("");
-  }, []);
+  }, [updateMediaId]);
 
   const handlePreviousModal = useCallback(() => {
     if (activeIndex <= 0) {
       return;
     }
 
-    setActiveMediaId(items[activeIndex - 1].id);
+    updateMediaId(items[activeIndex - 1].id);
     setModalError("");
-  }, [activeIndex, items]);
+  }, [activeIndex, items, updateMediaId]);
 
   const handleNextModal = useCallback(async () => {
     if (activeIndex < 0) {
@@ -172,7 +176,7 @@ function TimelineContent() {
     const nextIndex = activeIndex + 1;
 
     if (nextIndex < items.length) {
-      setActiveMediaId(items[nextIndex].id);
+      updateMediaId(items[nextIndex].id);
       return;
     }
 
@@ -184,12 +188,12 @@ function TimelineContent() {
       const result = await timelineQuery.fetchNextPage();
       const nextItems = (result.data?.pages || []).flatMap((page) => page.items || []);
       if (nextIndex < nextItems.length) {
-        setActiveMediaId(nextItems[nextIndex].id);
+        updateMediaId(nextItems[nextIndex].id);
       }
     } catch (error) {
       setModalError(formatApiError(error));
     }
-  }, [activeIndex, items, timelineQuery]);
+  }, [activeIndex, items, timelineQuery, updateMediaId]);
 
   useEffect(() => {
     if (!activeItem) {
@@ -298,7 +302,7 @@ function TimelineContent() {
           onSelectAllSection={selectAllInSection}
           onOpenItem={(mediaId) => {
             setModalError("");
-            setActiveMediaId(mediaId);
+            updateMediaId(mediaId);
           }}
         />
 
@@ -348,8 +352,9 @@ function TimelineContent() {
         />
       )}
 
-      {activeItem ? (
+      {activeMediaId ? (
         <TimelineLightbox
+          activeMediaId={activeMediaId}
           activeItem={activeItem}
           activeMetadataPreview={activeMetadataPreview}
           canGoPrev={canGoPrev}
@@ -362,7 +367,7 @@ function TimelineContent() {
           onNext={handleNextModal}
           onSelectFilmstrip={(mediaId) => {
             setModalError("");
-            setActiveMediaId(mediaId);
+            updateMediaId(mediaId);
           }}
         />
       ) : null}

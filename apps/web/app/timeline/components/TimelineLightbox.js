@@ -14,6 +14,7 @@ import { TimelineModalMedia } from "./TimelineModalMedia";
 import { FilmstripThumb } from "./FilmstripThumb";
 
 export function TimelineLightbox({
+  activeMediaId,
   activeItem,
   activeMetadataPreview,
   canGoPrev,
@@ -29,9 +30,9 @@ export function TimelineLightbox({
   const [showInfo, setShowInfo] = useState(false);
 
   const detailQuery = useQuery({
-    queryKey: ["media-detail", activeItem?.id],
-    queryFn: () => fetchMediaDetail(activeItem?.id),
-    enabled: Boolean(activeItem?.id),
+    queryKey: ["media-detail", activeMediaId],
+    queryFn: () => fetchMediaDetail(activeMediaId),
+    enabled: Boolean(activeMediaId),
     staleTime: 5 * 60 * 1000
   });
 
@@ -39,11 +40,23 @@ export function TimelineLightbox({
   const metadata = detail?.metadata || {};
   const imageExif = metadata.image || {};
   const videoExif = metadata.video || {};
-  const location = metadata.location || activeItem.location || {};
-
-  // Mocking some fields as per design if not available in API
-  const fileName = activeItem.id ? activeItem.id.slice(0, 8).toUpperCase() + (isVideoMimeType(activeItem.mimeType) ? ".MP4" : ".JPG") : "LOADING...";
+  const fileName = activeMediaId ? activeMediaId.slice(0, 8).toUpperCase() + (isVideoMimeType(activeItem?.mimeType || detail?.mimeType) ? ".MP4" : ".JPG") : "LOADING...";
   const fileSize = "12.4 MB"; // Placeholder as size is not in DB
+  const location = metadata.location || activeItem?.location || {};
+
+  const currentTakenAt = activeItem?.takenAt || activeItem?.uploadedAt || detail?.takenAt || detail?.uploadedAt;
+  const currentMimeType = activeItem?.mimeType || detail?.mimeType;
+
+  if (detailQuery.isPending && !activeItem) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background-dark/90 backdrop-blur-sm">
+        <div className="text-center">
+          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto"></div>
+          <p className="text-white text-sm font-medium">Loading media...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -64,13 +77,13 @@ export function TimelineLightbox({
             <div className="hidden md:block">
               <h3 className="text-white text-sm font-medium">{fileName}</h3>
               <p className="text-white/60 text-xs">
-                Shot on {formatModalDate(activeItem.takenAt || activeItem.uploadedAt)} • {fileSize}
+                Shot on {formatModalDate(currentTakenAt)} • {fileSize}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button className="p-2 text-white/80 hover:text-white transition-colors" title="Favorite">
-              <span className={`material-symbols-outlined ${activeItem.flags?.favorite ? "fill-1 text-primary" : ""}`}>favorite</span>
+              <span className={`material-symbols-outlined ${(activeItem?.flags?.favorite || detail?.flags?.favorite) ? "fill-1 text-primary" : ""}`}>favorite</span>
             </button>
             <button className="p-2 text-white/80 hover:text-white transition-colors" title="Download">
               <span className="material-symbols-outlined">download</span>
@@ -103,8 +116,8 @@ export function TimelineLightbox({
           </button>
 
           <TimelineModalMedia
-            mediaId={activeItem.id}
-            mimeType={activeItem.mimeType}
+            mediaId={activeMediaId}
+            mimeType={currentMimeType}
             className="shadow-2xl rounded-lg"
           />
 
@@ -124,7 +137,7 @@ export function TimelineLightbox({
               <FilmstripThumb
                 key={item.id}
                 mediaId={item.id}
-                isActive={item.id === activeItem.id}
+                isActive={item.id === activeMediaId}
                 onSelect={() => onSelectFilmstrip(item.id)}
               />
             ))}
@@ -150,7 +163,7 @@ export function TimelineLightbox({
               <h4 className="text-xs font-bold uppercase tracking-wider">Description</h4>
             </div>
             <p className="text-sm text-slate-300 leading-relaxed font-normal">
-              {metadata.raw?.description || "No description provided for this media."}
+              {metadata.raw?.description || detail?.description || "No description provided for this media."}
             </p>
           </section>
 
