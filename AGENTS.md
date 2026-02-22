@@ -59,5 +59,16 @@ This repository uses docs-first execution. Every coding agent must read `/docs` 
 - Implemented Album Deep-Linking: Refactored `AlbumDetailPage` to support URL-based state for opened media items, enabling the lightbox to persist across page reloads. Replaced the custom album modal with the feature-rich `TimelineLightbox`, adding support for filmstrip navigation, keyboard shortcuts, and full EXIF metadata viewing within albums.
 - Extracted Media Lightbox to shared components: Refactored the feature-rich media viewing modal into reusable components (`MediaLightbox`, `MediaRenderer`, `FilmstripThumb`) located in `apps/web/app/components/media/`. Updated both the Timeline and Album pages to use this shared implementation, improving code maintainability and ensuring feature parity across different views.
 - Full UI component refactor: Extracted 10 new reusable shared components (`PageLayout`, `SessionLoadingScreen`, `ErrorBanner`, `FormError`, `EmptyState`, `LoadingCenter`, `PageHeader`, `FormInput`, `PasswordInput`, `AuthCard`, `AuthBrandHeader`) into `apps/web/app/components/`. Refactored all authenticated pages (Timeline, Albums, Album Detail, Admin, Upload) and auth pages (Login, Register) to use these components, significantly reducing code duplication and improving consistency.
+- Fixed missing `photo_camera_back` icon: Added it to the subsetted Material Symbols icon list in `apps/web/app/layout.js`. This icon was used by the `EmptyState` component on the timeline page but was absent from the Google Fonts subset URL, causing it to render as raw text instead of the icon glyph.
+
+## Icon Subset Policy (Material Symbols)
+The project uses a **subsetted** Google Fonts request for Material Symbols Outlined (in `apps/web/app/layout.js`).
+**Every time a new icon is introduced**, its name MUST be added to the `icon_names` parameter in the `<link>` tag in `layout.js`, otherwise the icon will render as raw text.
+
+Steps:
+1. Find the `href` attribute in `apps/web/app/layout.js` containing `icon_names=`.
+2. Add the new icon name in **alphabetical order** within the comma-separated list.
+3. Icons used dynamically via props (e.g. `EmptyState icon=`, `FormInput icon=`, `AuthCard footerLinkIcon=`) must be traced to their call sites and all used values audited.
+
 
 
