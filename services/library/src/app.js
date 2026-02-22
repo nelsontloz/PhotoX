@@ -127,6 +127,15 @@ function buildApp(overrides = {}) {
   app.register(openapiRoute);
   app.register(libraryRoutes);
 
+  app.addHook("onRequest", async (request, reply) => {
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("X-XSS-Protection", "1; mode=block");
+    if (process.env.NODE_ENV === "production") {
+      reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
+  });
+
   app.addHook("onReady", async () => {
     await runMigrations(db);
   });

@@ -8,10 +8,13 @@ function parsePositiveInt(value, fallback) {
 
 const WEAK_SECRET_VALUES = new Set(["change-me", "change-me-too"]);
 
-function resolveRequiredSecret({ envName, overrideValue }) {
+function resolveRequiredSecret({ envName, overrideValue, defaultValue }) {
   const candidate = overrideValue !== undefined ? overrideValue : process.env[envName];
 
   if (typeof candidate !== "string" || candidate.trim().length === 0) {
+    if (defaultValue !== undefined && process.env.NODE_ENV !== "production") {
+      return defaultValue;
+    }
     throw new Error(`${envName} is required`);
   }
 
@@ -27,15 +30,22 @@ function loadConfig(overrides = {}) {
     envName: "JWT_ACCESS_SECRET",
     overrideValue: overrides.jwtAccessSecret
   });
+  const databaseUrl = resolveRequiredSecret({
+    envName: "DATABASE_URL",
+    overrideValue: overrides.databaseUrl,
+    defaultValue: "postgresql://photox:photox-dev-password@127.0.0.1:5432/photox"
+  });
+  const redisUrl = resolveRequiredSecret({
+    envName: "REDIS_URL",
+    overrideValue: overrides.redisUrl,
+    defaultValue: "redis://127.0.0.1:6379"
+  });
 
   return {
     port: overrides.port || parsePositiveInt(process.env.PORT, 3000),
     serviceName: overrides.serviceName || process.env.SERVICE_NAME || "library-service",
-    databaseUrl:
-      overrides.databaseUrl ||
-      process.env.DATABASE_URL ||
-      "postgresql://photox:photox-dev-password@127.0.0.1:5432/photox",
-    redisUrl: overrides.redisUrl || process.env.REDIS_URL || "redis://127.0.0.1:6379",
+    databaseUrl,
+    redisUrl,
     jwtAccessSecret,
     uploadOriginalsPath:
       overrides.uploadOriginalsPath || process.env.UPLOAD_ORIGINALS_PATH || "/data/photox/originals",
