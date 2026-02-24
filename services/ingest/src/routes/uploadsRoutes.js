@@ -602,12 +602,16 @@ module.exports = async function uploadsRoutes(app) {
       let outputAbsolutePath;
       let keepAsPrimaryFile = false;
 
+      let checksumSha256;
+
       try {
-        outputAbsolutePath = await assemblePartsToFile({
+        const result = await assemblePartsToFile({
           originalsRoot: app.config.uploadOriginalsPath,
           parts,
           outputRelativePath: stagedRelativePath
         });
+        outputAbsolutePath = result.outputAbsolutePath;
+        checksumSha256 = result.checksumSha256;
       } catch (err) {
         if (err && err.code === "ENOENT") {
           const latestSession = await app.repos.uploadSessions.findByIdForUser(params.uploadId, userId);
@@ -638,7 +642,7 @@ module.exports = async function uploadsRoutes(app) {
 
       try {
         const expectedChecksum = body.checksumSha256 || session.checksum_sha256;
-        const actualChecksum = await checksumFileSha256(outputAbsolutePath);
+        const actualChecksum = checksumSha256;
         if (actualChecksum !== expectedChecksum) {
           throw new ApiError(409, "UPLOAD_CHECKSUM_MISMATCH", "Checksum mismatch while completing upload", {
             expectedChecksum,

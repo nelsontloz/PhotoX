@@ -8,12 +8,49 @@ function normalizeEmail(email) {
 }
 
 function validatePassword(password) {
-  if (typeof password !== "string" || password.length < 8) {
+  if (typeof password !== "string") {
     return {
       ok: false,
-      reason: "Password must be at least 8 characters"
+      reason: "Password must be a string"
     };
   }
+
+  if (password.length < 12 || password.length > 128) {
+    return {
+      ok: false,
+      reason: "Password must be between 12 and 128 characters"
+    };
+  }
+
+  if (!/[a-z]/.test(password)) {
+    return {
+      ok: false,
+      reason: "Password must contain at least one lowercase letter"
+    };
+  }
+
+  if (!/[A-Z]/.test(password)) {
+    return {
+      ok: false,
+      reason: "Password must contain at least one uppercase letter"
+    };
+  }
+
+  if (!/\d/.test(password)) {
+    return {
+      ok: false,
+      reason: "Password must contain at least one number"
+    };
+  }
+
+  // Check for at least one special character (non-alphanumeric)
+  if (!/[^a-zA-Z0-9]/.test(password)) {
+    return {
+      ok: false,
+      reason: "Password must contain at least one special character"
+    };
+  }
+
   return { ok: true };
 }
 
@@ -22,7 +59,13 @@ async function hashPassword(password) {
 }
 
 async function verifyPassword(password, passwordHash) {
-  if (typeof passwordHash !== "string" || !passwordHash.startsWith("$argon2")) {
+  if (typeof passwordHash !== "string") {
+    return false;
+  }
+
+  // Legacy support: Allow other prefixes if we had the libraries, but currently we only support Argon2.
+  // We keep the check to fail fast for invalid hashes, but we could relax it if we added bcrypt support.
+  if (!passwordHash.startsWith("$argon2")) {
     return false;
   }
 

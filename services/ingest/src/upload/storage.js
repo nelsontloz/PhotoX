@@ -101,11 +101,14 @@ async function assemblePartsToFile({ originalsRoot, parts, outputRelativePath })
   await fs.mkdir(path.dirname(outputAbsolutePath), { recursive: true });
 
   const out = fsSync.createWriteStream(outputAbsolutePath, { flags: "wx" });
+  const hash = crypto.createHash("sha256");
+
   try {
     for (const part of parts) {
       const partAbsolutePath = path.join(originalsRoot, part.relative_part_path);
       const input = fsSync.createReadStream(partAbsolutePath);
       await new Promise((resolve, reject) => {
+        input.on("data", (chunk) => hash.update(chunk));
         input.pipe(out, { end: false });
         input.on("error", (err) => reject(err));
         input.on("end", () => resolve());
@@ -113,7 +116,10 @@ async function assemblePartsToFile({ originalsRoot, parts, outputRelativePath })
     }
     out.end();
     await finished(out);
-    return outputAbsolutePath;
+    return {
+      outputAbsolutePath,
+      checksumSha256: hash.digest("hex")
+    };
   } catch (err) {
     out.destroy();
     await fs.rm(outputAbsolutePath, { force: true });

@@ -58,6 +58,14 @@ function buildApp(overrides = {}) {
     mediaCleanup: mediaCleanupQueue
   });
 
+  app.addHook("onRequest", async (request, reply) => {
+    reply.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("Content-Security-Policy", "default-src 'self';");
+    reply.header("Referrer-Policy", "no-referrer");
+  });
+
   app.addContentTypeParser(
     "*",
     {

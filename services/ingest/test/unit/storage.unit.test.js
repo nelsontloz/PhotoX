@@ -38,7 +38,7 @@ describe("upload storage helpers", () => {
       payload: Buffer.from("hello ", "utf8")
     });
 
-    const outputPath = await assemblePartsToFile({
+    const { outputAbsolutePath, checksumSha256 } = await assemblePartsToFile({
       originalsRoot: root,
       parts: [
         { relative_part_path: "_tmp/upload-1/part-1" },
@@ -47,8 +47,9 @@ describe("upload storage helpers", () => {
       outputRelativePath: "user/2026/02/media-1.jpg"
     });
 
-    const payload = await fs.readFile(outputPath, "utf8");
+    const payload = await fs.readFile(outputAbsolutePath, "utf8");
     expect(payload).toBe("hello world");
+    expect(checksumSha256).toBeDefined(); // Or verify exact hash "hello world" -> "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
   });
 
   it("computes deterministic checksum for payload and file", async () => {
