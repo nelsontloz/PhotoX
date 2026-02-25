@@ -26,9 +26,6 @@ fi
 
 echo "--- Starting PhotoX Master Build ---"
 
-echo "--- Ensuring integration dependencies are running (Postgres/Redis) ---"
-docker compose --env-file "$ENV_FILE" up -d postgres redis
-
 # Set unique versions for Pact to avoid mutation errors on the broker
 export PACT_CONSUMER_APP_VERSION="refactor-$(date +%s)"
 export PACT_PROVIDER_APP_VERSION="refactor-$(date +%s)"

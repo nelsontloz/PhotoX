@@ -242,7 +242,7 @@ Scope:
 
 Requirements:
 - Add missing test suites for recently changed modules.
-- Ensure integration tests run against Docker-backed dependencies.
+- Ensure integration tests run hermetically with embedded apps and in-memory mocks unless a task explicitly requires an external dependency.
 - Output pass/fail matrix by service.
 
 Deliverables:

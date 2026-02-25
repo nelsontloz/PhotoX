@@ -7,11 +7,7 @@ const jwt = require("jsonwebtoken");
 const sharp = require("sharp");
 
 const { buildApp } = require("../../src/app");
-
-const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ||
-  process.env.DATABASE_URL ||
-  "postgresql://photox:photox-dev-password@127.0.0.1:5432/photox";
+const mockPool = require("../contracts/mockPool");
 
 function jsonBody(response) {
   return JSON.parse(response.body);
@@ -42,7 +38,7 @@ describe("library integration", () => {
 
   beforeAll(async () => {
     app = buildApp({
-      databaseUrl: TEST_DATABASE_URL,
+      db: mockPool,
       jwtAccessSecret: accessSecret,
       serviceName: "library-service-test",
       uploadOriginalsPath: testOriginalsRoot,
@@ -68,7 +64,7 @@ describe("library integration", () => {
   beforeEach(async () => {
     queuedDerivativeJobs.length = 0;
     queuedCleanupJobs.length = 0;
-    await app.db.query("TRUNCATE TABLE media_flags, media_metadata, media RESTART IDENTITY CASCADE");
+    mockPool.reset();
     await fs.rm(testOriginalsRoot, { recursive: true, force: true });
     await fs.rm(testDerivedRoot, { recursive: true, force: true });
     await fs.mkdir(testOriginalsRoot, { recursive: true });
@@ -76,6 +72,7 @@ describe("library integration", () => {
   });
 
   afterAll(async () => {
+    mockPool.reset();
     await app.close();
     await fs.rm(testOriginalsRoot, { recursive: true, force: true });
     await fs.rm(testDerivedRoot, { recursive: true, force: true });
@@ -97,37 +94,25 @@ describe("library integration", () => {
     hidden,
     deletedSoft
   }) {
-    await app.db.query(
-      `
-        INSERT INTO media (id, owner_id, relative_path, mime_type, status, checksum_sha256, sort_at, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, 'ready', $5, $6, $7, $7)
-      `,
-      [
-        id,
-        rowOwnerId,
-        relativePath,
-        mimeType,
-        crypto.randomUUID().replaceAll("-", ""),
-        takenAt || createdAt,
-        createdAt
-      ]
-    );
-
-    await app.db.query(
-      `
-        INSERT INTO media_metadata (media_id, taken_at, uploaded_at, width, height, exif_json, location_json)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
-      `,
-      [id, takenAt || null, createdAt, width || null, height || null, exif ? JSON.stringify(exif) : null, location ? JSON.stringify(location) : null]
-    );
-
-    await app.db.query(
-      `
-        INSERT INTO media_flags (media_id, favorite, archived, hidden, deleted_soft)
-        VALUES ($1, $2, $3, $4, $5)
-      `,
-      [id, Boolean(favorite), Boolean(archived), Boolean(hidden), Boolean(deletedSoft)]
-    );
+    mockPool.seedMedia({
+      id,
+      owner_id: rowOwnerId,
+      relative_path: relativePath,
+      mime_type: mimeType,
+      status: "ready",
+      checksum_sha256: crypto.randomUUID().replaceAll("-", ""),
+      taken_at: takenAt || null,
+      uploaded_at: createdAt,
+      created_at: createdAt,
+      width: width || null,
+      height: height || null,
+      exif_json: exif || null,
+      location_json: location || null,
+      favorite: Boolean(favorite),
+      archived: Boolean(archived),
+      hidden: Boolean(hidden),
+      deleted_soft: Boolean(deletedSoft)
+    });
   }
 
   it("returns timeline pages with stable cursor pagination", async () => {
@@ -323,10 +308,7 @@ describe("library integration", () => {
       deletedSoft: false
     });
 
-    await app.db.query(
-      "UPDATE media_flags SET deleted_soft_at = $2 WHERE media_id = $1",
-      [trashedMediaId, "2026-02-20T12:00:00.000Z"]
-    );
+    mockPool.setDeletedSoftAt(trashedMediaId, "2026-02-20T12:00:00.000Z");
 
     const trashResponse = await app.inject({
       method: "GET",

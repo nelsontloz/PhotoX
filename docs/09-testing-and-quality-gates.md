@@ -5,7 +5,7 @@
 All implementation tasks require unit and integration tests. No exceptions for feature code.
 
 - Unit tests validate deterministic business logic.
-- Integration tests validate API contracts, DB behavior, queue behavior, and service interaction.
+- Integration tests validate API contracts, persistence and queue semantics, and service interaction using embedded apps with deterministic in-memory mocks by default.
 - E2E tests are optional in this phase and can be added later.
 
 ---
@@ -25,6 +25,7 @@ Gate G2 - Unit Tests
 Gate G3 - Integration Tests
 - Endpoints changed by task must have integration tests.
 - Async job flow changes must include integration coverage for enqueue and consume behavior.
+- Node service integration suites must remain hermetic and must not require PostgreSQL/Redis/BullMQ runtime dependencies.
 
 Gate G4 - Contract and Docs
 - API contract updates reflected in docs and OpenAPI.
@@ -59,6 +60,7 @@ Gate G7 - Contract Compatibility
 - Integration:
   - register/login/refresh/logout/me
   - expired/revoked token handling
+  - embedded Fastify app with in-memory DB mock (no live Postgres)
 
 ### ingest-service
 - Unit:
@@ -70,6 +72,7 @@ Gate G7 - Contract Compatibility
   - owner checksum dedupe behavior for repeated uploads
   - retry on interrupted upload
   - abort flow
+  - embedded Fastify app with in-memory DB and queue mocks (no live Postgres/Redis)
 
 ### library-service
 - Unit:
@@ -79,6 +82,7 @@ Gate G7 - Contract Compatibility
   - timeline pagination stability
   - flags update behavior
   - soft delete/restore behavior
+  - embedded Fastify app with in-memory DB and queue mocks (no live Postgres/Redis)
 
 ### album-sharing-service
 - Unit:
@@ -105,6 +109,7 @@ Gate G7 - Contract Compatibility
 - Integration:
   - queue consume pipeline for media process
   - dead-letter behavior on repeated failures
+  - embedded Fastify app with in-memory DB/worker mocks (no live Postgres/Redis)
 
 ### ml-service
 - Unit:
@@ -160,7 +165,7 @@ npm --prefix services/library test
 
 Smoke script behavior notes:
 - `scripts/smoke_swagger_docs.py` launches each Node service with `npm start`, waits for `/health` + docs/OpenAPI readiness with bounded retries, and prints captured stdout/stderr tails when startup fails.
-- If local dependencies are unavailable (for example Postgres/Redis), treat failures as environment-gate failures and include the captured diagnostics in the blocker report.
+- If local dependencies are unavailable (for example Postgres/Redis), only infra/runtime gates that explicitly require them should fail; hermetic integration and contract suites should still run.
 
 Pact execution model:
 - `apps/web npm test`: runs unit/integration tests, generates HTTP consumer pacts, publishes pacts to broker.

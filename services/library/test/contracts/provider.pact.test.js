@@ -125,7 +125,15 @@ describe("library http provider verification", () => {
           seedMediaRow();
         },
         "there are media items matching the search criteria 'beach'": async () => {
-          seedMediaRow();
+          mockPool.reset();
+          mockPool.seedMedia({
+            id: MEDIA_ID,
+            owner_id: USER_ID,
+            relative_path: `${USER_ID}/2026/02/beach-${MEDIA_ID}.jpg`,
+            mime_type: "image/jpeg",
+            status: "ready",
+            favorite: true
+          });
         },
         "a media item exists with ID '55555555-5555-4555-8555-555555555555'": async () => {
           seedMediaRow();

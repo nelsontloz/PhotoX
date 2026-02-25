@@ -1,9 +1,5 @@
 const { buildApp } = require("../../src/app");
-
-const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ||
-  process.env.DATABASE_URL ||
-  "postgresql://photox:photox-dev-password@127.0.0.1:5432/photox";
+const mockPool = require("../contracts/mockPool");
 
 function jsonBody(response) {
   return JSON.parse(response.body);
@@ -14,7 +10,7 @@ describe("auth integration", () => {
 
   beforeAll(async () => {
     app = buildApp({
-      databaseUrl: TEST_DATABASE_URL,
+      db: mockPool,
       jwtAccessSecret: "integration-access-secret",
       jwtRefreshSecret: "integration-refresh-secret",
       accessTokenTtlSeconds: 120,
@@ -25,10 +21,11 @@ describe("auth integration", () => {
   });
 
   beforeEach(async () => {
-    await app.db.query("TRUNCATE TABLE sessions, users RESTART IDENTITY CASCADE");
+    mockPool.reset();
   });
 
   afterAll(async () => {
+    mockPool.reset();
     await app.close();
   });
 

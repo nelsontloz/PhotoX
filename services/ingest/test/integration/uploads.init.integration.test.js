@@ -5,11 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const { buildApp } = require("../../src/app");
-
-const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ||
-  process.env.DATABASE_URL ||
-  "postgresql://photox:photox-dev-password@127.0.0.1:5432/photox";
+const mockPool = require("../contracts/mockPool");
 
 function jsonBody(response) {
   return JSON.parse(response.body);
@@ -70,7 +66,7 @@ describe("upload init integration", () => {
 
   beforeAll(async () => {
     app = buildApp({
-      databaseUrl: TEST_DATABASE_URL,
+      db: mockPool,
       jwtAccessSecret: accessSecret,
       serviceName: "ingest-service-test",
       uploadPartSizeBytes: 5 * 1024 * 1024,
@@ -81,15 +77,14 @@ describe("upload init integration", () => {
   });
 
   beforeEach(async () => {
-    await app.db.query(
-      "TRUNCATE TABLE upload_parts, idempotency_keys, media_flags, media, upload_sessions RESTART IDENTITY CASCADE"
-    );
+    mockPool.reset();
     await fs.rm(testUploadsRoot, { recursive: true, force: true });
     await fs.mkdir(testUploadsRoot, { recursive: true });
     queuedJobs.length = 0;
   });
 
   afterAll(async () => {
+    mockPool.reset();
     await app.close();
     await fs.rm(testUploadsRoot, { recursive: true, force: true });
   });
@@ -691,17 +686,20 @@ describe("upload init integration", () => {
     expect(secondComplete.statusCode).toBe(200);
     expect(jsonBody(firstComplete)).toEqual(jsonBody(secondComplete));
 
-    const mediaCount = await app.db.query(
-      "SELECT COUNT(*)::INTEGER AS count FROM media WHERE owner_id = $1 AND checksum_sha256 = $2",
-      ["0f3c9d30-1307-4c9e-a4d7-75e84606c28d", fileChecksum]
-    );
-    expect(mediaCount.rows[0].count).toBe(1);
+    expect(
+      mockPool.countMediaByOwnerAndChecksum(
+        "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
+        fileChecksum
+      )
+    ).toBe(1);
 
-    const idemCount = await app.db.query(
-      "SELECT COUNT(*)::INTEGER AS count FROM idempotency_keys WHERE user_id = $1 AND scope = $2 AND idem_key = $3",
-      ["0f3c9d30-1307-4c9e-a4d7-75e84606c28d", "upload_complete", "idem-concurrent-complete-1"]
-    );
-    expect(idemCount.rows[0].count).toBe(1);
+    expect(
+      mockPool.countIdempotencyKeys(
+        "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
+        "upload_complete",
+        "idem-concurrent-complete-1"
+      )
+    ).toBe(1);
     expect(queuedJobs.length).toBe(1);
   });
 
@@ -765,11 +763,12 @@ describe("upload init integration", () => {
     expect(secondBody.mediaId).toBe(firstBody.mediaId);
     expect(secondBody.deduplicated).toBe(true);
 
-    const mediaCount = await app.db.query(
-      "SELECT COUNT(*)::INTEGER AS count FROM media WHERE owner_id = $1 AND checksum_sha256 = $2",
-      ["0f3c9d30-1307-4c9e-a4d7-75e84606c28d", fileChecksum]
-    );
-    expect(mediaCount.rows[0].count).toBe(1);
+    expect(
+      mockPool.countMediaByOwnerAndChecksum(
+        "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
+        fileChecksum
+      )
+    ).toBe(1);
     expect(queuedJobs.length).toBe(1);
   });
 
@@ -827,15 +826,7 @@ describe("upload init integration", () => {
     expect(firstComplete.statusCode).toBe(200);
     expect(firstBody.deduplicated).toBe(false);
 
-    await app.db.query(
-      `
-        INSERT INTO media_flags (media_id, deleted_soft)
-        VALUES ($1, true)
-        ON CONFLICT (media_id)
-        DO UPDATE SET deleted_soft = true, updated_at = NOW()
-      `,
-      [firstBody.mediaId]
-    );
+    mockPool.setMediaSoftDeleted(firstBody.mediaId, true);
 
     const secondComplete = await createUploadAndComplete("soft-deleted-2.jpg");
     const secondBody = jsonBody(secondComplete);
@@ -843,11 +834,12 @@ describe("upload init integration", () => {
     expect(secondBody.mediaId).not.toBe(firstBody.mediaId);
     expect(secondBody.deduplicated).toBe(false);
 
-    const mediaCount = await app.db.query(
-      "SELECT COUNT(*)::INTEGER AS count FROM media WHERE owner_id = $1 AND checksum_sha256 = $2",
-      ["0f3c9d30-1307-4c9e-a4d7-75e84606c28d", fileChecksum]
-    );
-    expect(mediaCount.rows[0].count).toBe(2);
+    expect(
+      mockPool.countMediaByOwnerAndChecksum(
+        "0f3c9d30-1307-4c9e-a4d7-75e84606c28d",
+        fileChecksum
+      )
+    ).toBe(2);
     expect(queuedJobs.length).toBe(2);
   });
 

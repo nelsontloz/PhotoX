@@ -198,17 +198,61 @@ function routeQuery(sql, params) {
         // Timeline query (owner_id = $1 with many filters)
         if (/WHERE m\.owner_id = \$1/i.test(text) && /ORDER BY (?:m\.)?sort_at/i.test(text)) {
             const ownerId = params[0];
+            const from = params[1] ? new Date(params[1]) : null;
+            const to = params[2] ? new Date(params[2]) : null;
+            const favorite = params[3];
+            const archived = params[4];
+            const hidden = params[5];
+            const cursorSortAt = params[6] ? new Date(params[6]) : null;
+            const cursorId = params[7] || null;
+            const q = params[8] || null;
+            const limit = params[9] ? Number(params[9]) : 26;
             const rows = [];
             for (const [, m] of media) {
                 if (m.owner_id === ownerId) {
                     const row = fullMediaRow(m);
-                    if (!row.deleted_soft) {
-                        rows.push(row);
+                    if (row.deleted_soft) {
+                        continue;
                     }
+
+                    const sortAtDate = new Date(row.sort_at);
+                    if (from && sortAtDate < from) {
+                        continue;
+                    }
+                    if (to && sortAtDate > to) {
+                        continue;
+                    }
+                    if (favorite !== null && favorite !== undefined && row.favorite !== favorite) {
+                        continue;
+                    }
+                    if (archived !== null && archived !== undefined && row.archived !== archived) {
+                        continue;
+                    }
+                    if (hidden !== null && hidden !== undefined && row.hidden !== hidden) {
+                        continue;
+                    }
+                    if (cursorSortAt) {
+                        if (sortAtDate > cursorSortAt) {
+                            continue;
+                        }
+                        if (sortAtDate.getTime() === cursorSortAt.getTime() && cursorId && row.id >= cursorId) {
+                            continue;
+                        }
+                    }
+                    if (q && !String(row.relative_path).toLowerCase().includes(String(q).toLowerCase())) {
+                        continue;
+                    }
+
+                    rows.push(row);
                 }
             }
-            rows.sort((a, b) => new Date(b.sort_at) - new Date(a.sort_at));
-            const limit = params[9] ? Number(params[9]) : 25;
+            rows.sort((a, b) => {
+                const diff = new Date(b.sort_at) - new Date(a.sort_at);
+                if (diff !== 0) {
+                    return diff;
+                }
+                return a.id < b.id ? 1 : -1;
+            });
             return { rows: rows.slice(0, limit), rowCount: Math.min(rows.length, limit) };
         }
 
@@ -287,36 +331,66 @@ const mockPool = {
         schemaMigrations.clear();
     },
 
-    seedMedia({ id, owner_id, relative_path, mime_type, status, taken_at, uploaded_at, deleted_soft }) {
-        const ts = now();
+    seedMedia({
+        id,
+        owner_id,
+        relative_path,
+        mime_type,
+        status,
+        checksum_sha256,
+        taken_at,
+        uploaded_at,
+        created_at,
+        width,
+        height,
+        exif_json,
+        location_json,
+        favorite,
+        archived,
+        hidden,
+        deleted_soft
+    }) {
+        const ts = created_at || now();
         media.set(id, {
             id,
             owner_id,
             relative_path: relative_path || `${owner_id}/2026/02/${id}.jpg`,
             mime_type: mime_type || "image/jpeg",
             status: status || "ready",
+            checksum_sha256: checksum_sha256 || "0".repeat(64),
             created_at: ts,
             sort_at: taken_at || uploaded_at || ts
         });
         metadata.set(id, {
             media_id: id,
-            taken_at: taken_at || ts,
-            uploaded_at: uploaded_at || ts,
-            width: 4032,
-            height: 3024,
-            location_json: null,
-            exif_json: null,
+            taken_at: taken_at === undefined ? ts : taken_at,
+            uploaded_at: uploaded_at === undefined ? ts : uploaded_at,
+            width: width == null ? 4032 : width,
+            height: height == null ? 3024 : height,
+            location_json: location_json || null,
+            exif_json: exif_json || null,
             updated_at: ts
         });
         flags.set(id, {
             media_id: id,
-            favorite: false,
-            archived: false,
-            hidden: false,
+            favorite: Boolean(favorite),
+            archived: Boolean(archived),
+            hidden: Boolean(hidden),
             deleted_soft: Boolean(deleted_soft),
             deleted_soft_at: deleted_soft ? ts : null,
             updated_at: ts
         });
+    },
+
+    setDeletedSoftAt(mediaId, deletedSoftAt) {
+        const mf = flags.get(mediaId);
+        if (!mf) {
+            return;
+        }
+
+        mf.deleted_soft = true;
+        mf.deleted_soft_at = deletedSoftAt;
+        mf.updated_at = now();
     }
 };
 

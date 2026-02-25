@@ -180,7 +180,7 @@ function routeQuery(sql, params) {
         return { rows: found ? [sessionRow(found)] : [], rowCount: found ? 1 : 0 };
     }
 
-    if (/UPDATE sessions\s+SET refresh_token_hash/i.test(text)) {
+    if (/UPDATE sessions\s+SET refresh_token_hash/i.test(text) && /WHERE id/i.test(text)) {
         // rotateSessionToken
         const [id, refresh_token_hash, expires_at] = params || [];
         const found = sessions.get(id);
@@ -192,6 +192,21 @@ function routeQuery(sql, params) {
         found.revoked_at = null;
         sessions.set(id, found);
         return { rows: [sessionRow(found)], rowCount: 1 };
+    }
+
+    if (/UPDATE sessions SET refresh_token_hash = \$1 WHERE user_id = \$2/i.test(text)) {
+        const [refresh_token_hash, user_id] = params || [];
+        let updated = 0;
+        for (const [sessionId, session] of sessions) {
+            if (session.user_id !== user_id) {
+                continue;
+            }
+            session.refresh_token_hash = refresh_token_hash;
+            sessions.set(sessionId, session);
+            updated += 1;
+        }
+
+        return { rows: [], rowCount: updated };
     }
 
     if (/UPDATE sessions\s+SET revoked_at.*WHERE id/i.test(text)) {

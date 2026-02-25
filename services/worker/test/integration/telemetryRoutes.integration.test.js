@@ -2,11 +2,7 @@ const jwt = require("jsonwebtoken");
 
 const { buildApp } = require("../../src/app");
 const { WorkerTelemetryStore } = require("../../src/telemetry/store");
-
-const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ||
-  process.env.DATABASE_URL ||
-  "postgresql://photox:photox-dev-password@127.0.0.1:5432/photox";
+const mockPool = require("../helpers/mockPool");
 
 describe("worker telemetry routes", () => {
   const jwtAccessSecret = "worker-telemetry-test-secret";
@@ -67,7 +63,7 @@ describe("worker telemetry routes", () => {
     });
 
     app = buildApp({
-      databaseUrl: TEST_DATABASE_URL,
+      db: mockPool,
       serviceName: "worker-service-test",
       jwtAccessSecret,
       telemetryStore,
@@ -87,10 +83,11 @@ describe("worker telemetry routes", () => {
   });
 
   beforeEach(async () => {
-    await app.db.query("TRUNCATE TABLE users RESTART IDENTITY CASCADE");
+    mockPool.reset();
   });
 
   afterAll(async () => {
+    mockPool.reset();
     await app.close();
   });
 
@@ -111,10 +108,13 @@ describe("worker telemetry routes", () => {
   });
 
   it("returns 403 for non-admin user", async () => {
-    await app.db.query(
-      "INSERT INTO users (id, email, password_hash, is_admin, is_active) VALUES ($1, $2, $3, false, true)",
-      [nonAdminId, "user@example.com", "x"]
-    );
+    mockPool.seedUser({
+      id: nonAdminId,
+      email: "user@example.com",
+      password_hash: "x",
+      is_admin: false,
+      is_active: true
+    });
 
     const response = await app.inject({
       method: "GET",
@@ -128,10 +128,13 @@ describe("worker telemetry routes", () => {
   });
 
   it("returns telemetry snapshot for admin user", async () => {
-    await app.db.query(
-      "INSERT INTO users (id, email, password_hash, is_admin, is_active) VALUES ($1, $2, $3, true, true)",
-      [adminId, "admin@example.com", "x"]
-    );
+    mockPool.seedUser({
+      id: adminId,
+      email: "admin@example.com",
+      password_hash: "x",
+      is_admin: true,
+      is_active: true
+    });
 
     const response = await app.inject({
       method: "GET",

@@ -11,6 +11,7 @@ const crypto = require("node:crypto");
 const uploadSessions = new Map(); // keyed by id
 const uploadParts = new Map();    // keyed by `${uploadId}:${partNumber}`
 const media = new Map();          // keyed by id
+const mediaFlags = new Map();     // keyed by media_id
 const idempotencyKeys = new Map(); // keyed by `${userId}:${scope}:${idemKey}`
 const schemaMigrations = new Set();
 
@@ -201,7 +202,8 @@ function routeQuery(sql, params) {
 
     if (/FROM media m LEFT JOIN media_flags/i.test(text) && /owner_id = \$1/i.test(text) && /checksum_sha256 = \$2/i.test(text)) {
         for (const [, m] of media) {
-            if (m.owner_id === params[0] && m.checksum_sha256 === params[1]) {
+            const isSoftDeleted = Boolean(mediaFlags.get(m.id)?.deleted_soft);
+            if (m.owner_id === params[0] && m.checksum_sha256 === params[1] && !isSoftDeleted) {
                 return { rows: [mediaRow(m)], rowCount: 1 };
             }
         }
@@ -269,6 +271,7 @@ const mockPool = {
         uploadSessions.clear();
         uploadParts.clear();
         media.clear();
+        mediaFlags.clear();
         idempotencyKeys.clear();
         schemaMigrations.clear();
     },
@@ -301,6 +304,39 @@ const mockPool = {
             sort_at: ts,
             created_at: ts, updated_at: ts
         });
+        if (!mediaFlags.has(id)) {
+            mediaFlags.set(id, {
+                media_id: id,
+                deleted_soft: false,
+                updated_at: ts
+            });
+        }
+    },
+
+    setMediaSoftDeleted(mediaId, deletedSoft) {
+        const existing = mediaFlags.get(mediaId) || {
+            media_id: mediaId,
+            deleted_soft: false,
+            updated_at: now()
+        };
+        existing.deleted_soft = Boolean(deletedSoft);
+        existing.updated_at = now();
+        mediaFlags.set(mediaId, existing);
+    },
+
+    countMediaByOwnerAndChecksum(ownerId, checksumSha256) {
+        let count = 0;
+        for (const [, m] of media) {
+            if (m.owner_id === ownerId && m.checksum_sha256 === checksumSha256) {
+                count += 1;
+            }
+        }
+        return count;
+    },
+
+    countIdempotencyKeys(userId, scope, idemKey) {
+        const key = `${userId}:${scope}:${idemKey}`;
+        return idempotencyKeys.has(key) ? 1 : 0;
     }
 };
 
