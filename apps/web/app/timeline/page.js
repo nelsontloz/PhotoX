@@ -312,22 +312,27 @@ function TimelineContent() {
         }}
       />
 
-      {timelineQuery.hasNextPage ? (
-        <div className="flex justify-center mt-10">
-          <button
-            type="button"
-            className="flex items-center gap-2 bg-white dark:bg-card-dark border border-slate-200 dark:border-border-dark px-6 py-2 rounded-lg text-sm font-semibold text-slate-700 dark:text-slate-200 transition-all hover:bg-slate-50 dark:hover:bg-gray-800 disabled:opacity-50"
-            disabled={timelineQuery.isFetchingNextPage}
-            onClick={() => timelineQuery.fetchNextPage()}
-          >
-            {timelineQuery.isFetchingNextPage ? (
-              <Spinner label="" size="sm" />
-            ) : (
-              <span>Load more...</span>
-            )}
-          </button>
-        </div>
-      ) : null}
+      <div
+        id="timeline-sentinel"
+        className="flex justify-center mt-10 h-20"
+        ref={(el) => {
+          if (!el) return;
+          const observer = new IntersectionObserver(
+            (entries) => {
+              if (entries[0].isIntersecting && timelineQuery.hasNextPage && !timelineQuery.isFetchingNextPage) {
+                timelineQuery.fetchNextPage();
+              }
+            },
+            { threshold: 0.1 }
+          );
+          observer.observe(el);
+          return () => observer.disconnect();
+        }}
+      >
+        {timelineQuery.isFetchingNextPage && (
+          <Spinner label="Loading more..." size="sm" />
+        )}
+      </div>
 
       <Link
         href="/upload"
