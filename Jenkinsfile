@@ -1,5 +1,11 @@
 pipeline {
-  agent any
+  agent {
+    label "${params.CI_AGENT_LABEL}"
+  }
+
+  parameters {
+    string(name: 'CI_AGENT_LABEL', defaultValue: 'docker', description: 'Jenkins node label with docker, docker compose, node/npm, and python3')
+  }
 
   options {
     skipDefaultCheckout(true)
@@ -75,6 +81,38 @@ echo "Using env file: $CI_ENV_FILE"
 echo "PACT_BROKER_BASE_URL: $PACT_URL"
 echo "PACT_CONSUMER_APP_VERSION: $PACT_CONSUMER_VERSION"
 echo "PACT_PROVIDER_APP_VERSION: $PACT_PROVIDER_VERSION"
+'''
+      }
+    }
+
+    stage('Preflight Tooling') {
+      steps {
+        sh '''#!/usr/bin/env bash
+set -euo pipefail
+
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "Missing required command: $cmd"
+    exit 1
+  fi
+}
+
+require_cmd docker
+require_cmd node
+require_cmd npm
+require_cmd python3
+
+if ! docker compose version >/dev/null 2>&1; then
+  echo "Missing required Docker Compose v2 plugin (docker compose)"
+  exit 1
+fi
+
+docker --version
+docker compose version
+node --version
+npm --version
+python3 --version
 '''
       }
     }
@@ -169,8 +207,13 @@ if [ -f "$CI_PIPELINE_ENV_FILE" ]; then
   . "$CI_PIPELINE_ENV_FILE"
 fi
 
-docker compose --env-file "$CI_ENV_FILE" ps > artifacts/compose-ps.txt || true
-docker compose --env-file "$CI_ENV_FILE" logs --no-color > artifacts/compose-logs.txt || true
+if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  docker compose --env-file "$CI_ENV_FILE" ps > artifacts/compose-ps.txt || true
+  docker compose --env-file "$CI_ENV_FILE" logs --no-color > artifacts/compose-logs.txt || true
+else
+  printf '%s\n' 'docker/docker compose unavailable; skipping compose artifact collection' > artifacts/compose-logs.txt
+fi
+
 cp "$CI_ENV_FILE" artifacts/ci-env-used.env || true
 '''
       archiveArtifacts artifacts: 'artifacts/**', allowEmptyArchive: true, fingerprint: true
@@ -182,7 +225,11 @@ if [ -f "$CI_PIPELINE_ENV_FILE" ]; then
   . "$CI_PIPELINE_ENV_FILE"
 fi
 
-docker compose --env-file "$CI_ENV_FILE" down --remove-orphans || true
+if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  docker compose --env-file "$CI_ENV_FILE" down --remove-orphans || true
+else
+  echo "docker/docker compose unavailable; skipping compose teardown"
+fi
 '''
     }
   }
