@@ -31,7 +31,6 @@ describe("library message provider verification", () => {
     const options = {
       provider: "library-service",
       providerVersion: process.env.PACT_PROVIDER_APP_VERSION || "local-dev",
-      providerVersionBranch: process.env.PACT_CONTRACT_BRANCH || "local",
       publishVerificationResult: !!process.env.PACT_BROKER_BASE_URL,
       messageProviders: {
         "a command to generate thumbnails and variants for a media item": async () =>
@@ -49,6 +48,10 @@ describe("library message provider verification", () => {
           })
       }
     };
+
+    if (process.env.PACT_CONTRACT_BRANCH) {
+      options.providerVersionBranch = process.env.PACT_CONTRACT_BRANCH;
+    }
 
     if (process.env.PACT_URL) {
       options.pactUrls = [process.env.PACT_URL];

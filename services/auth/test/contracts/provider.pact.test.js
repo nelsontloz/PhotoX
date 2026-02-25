@@ -115,7 +115,6 @@ describe("auth http provider verification", () => {
       provider: "auth-service",
       providerBaseUrl,
       providerVersion: process.env.PACT_PROVIDER_APP_VERSION || "local-dev",
-      providerVersionBranch: process.env.PACT_CONTRACT_BRANCH || "local",
       enablePending: true,
       beforeEach: async () => {
         seedDatabase();
@@ -190,6 +189,10 @@ describe("auth http provider verification", () => {
         "a managed user exists to be disabled": async () => { }
       }
     };
+
+    if (process.env.PACT_CONTRACT_BRANCH) {
+      options.providerVersionBranch = process.env.PACT_CONTRACT_BRANCH;
+    }
 
     if (process.env.PACT_URL) {
       options.pactUrls = [process.env.PACT_URL];

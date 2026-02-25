@@ -30,7 +30,6 @@ describe("ingest message provider verification", () => {
     const options = {
       provider: "ingest-service",
       providerVersion: process.env.PACT_PROVIDER_APP_VERSION || "local-dev",
-      providerVersionBranch: process.env.PACT_CONTRACT_BRANCH || "local",
       publishVerificationResult: !!process.env.PACT_BROKER_BASE_URL,
       messageProviders: {
         "a command to process a newly uploaded media file": async () =>
@@ -43,6 +42,10 @@ describe("ingest message provider verification", () => {
           })
       }
     };
+
+    if (process.env.PACT_CONTRACT_BRANCH) {
+      options.providerVersionBranch = process.env.PACT_CONTRACT_BRANCH;
+    }
 
     if (process.env.PACT_URL) {
       options.pactUrls = [process.env.PACT_URL];

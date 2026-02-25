@@ -6,9 +6,16 @@
 set -e
 
 # Load .env variables if present
-if [ -f .env ]; then
-  echo "--- Sourcing .env file ---"
-  export $(grep -v '^#' .env | xargs)
+ENV_FILE=".env"
+if [ ! -f "$ENV_FILE" ]; then
+  ENV_FILE=".env.example"
+fi
+
+if [ -f "$ENV_FILE" ]; then
+  echo "--- Sourcing $ENV_FILE file ---"
+  set -a
+  . "./$ENV_FILE"
+  set +a
 fi
 
 # Validate required variables
@@ -18,6 +25,9 @@ if [ -z "$PACT_BROKER_BASE_URL" ]; then
 fi
 
 echo "--- Starting PhotoX Master Build ---"
+
+echo "--- Ensuring integration dependencies are running (Postgres/Redis) ---"
+docker compose --env-file "$ENV_FILE" up -d postgres redis
 
 # Set unique versions for Pact to avoid mutation errors on the broker
 export PACT_CONSUMER_APP_VERSION="refactor-$(date +%s)"

@@ -106,10 +106,13 @@ describe("worker http provider verification", () => {
       provider: "worker-service",
       providerBaseUrl: app.server.address() ? `http://127.0.0.1:${app.server.address().port}` : undefined,
       providerVersion: process.env.PACT_PROVIDER_APP_VERSION || "local-dev",
-      providerVersionBranch: process.env.PACT_CONTRACT_BRANCH || "local",
       enablePending: true,
       publishVerificationResult: true
     };
+
+    if (process.env.PACT_CONTRACT_BRANCH) {
+      options.providerVersionBranch = process.env.PACT_CONTRACT_BRANCH;
+    }
 
     if (process.env.PACT_URL) {
       options.pactUrls = [process.env.PACT_URL];

@@ -63,7 +63,6 @@ describe("album sharing http provider verification", () => {
             provider: "album-sharing-service",
             providerBaseUrl: `http://127.0.0.1:${app.server.address().port}`,
             providerVersion: process.env.PACT_PROVIDER_APP_VERSION || "local-dev",
-            providerVersionBranch: process.env.PACT_CONTRACT_BRANCH || "local",
             enablePending: true,
             publishVerificationResult: !!process.env.PACT_BROKER_BASE_URL,
             stateHandlers: {
@@ -99,6 +98,10 @@ describe("album sharing http provider verification", () => {
                 }
             }
         };
+
+        if (process.env.PACT_CONTRACT_BRANCH) {
+            options.providerVersionBranch = process.env.PACT_CONTRACT_BRANCH;
+        }
 
         if (process.env.PACT_URL) {
             options.pactUrls = [process.env.PACT_URL];
