@@ -1,4 +1,4 @@
-import { buildLoginPath, resolveNextPath } from "../../lib/navigation";
+import { buildLoginPath, resolveNextPath, shouldAutoRedirectAuthenticatedAuthPage } from "../../lib/navigation";
 
 describe("navigation helpers", () => {
   it("resolves safe next path", () => {
@@ -14,5 +14,17 @@ describe("navigation helpers", () => {
 
   it("builds login redirect path", () => {
     expect(buildLoginPath("/upload")).toBe("/login?next=%2Fupload");
+  });
+
+  it("auto-redirects authenticated auth-page visits without next", () => {
+    expect(shouldAutoRedirectAuthenticatedAuthPage({ hasAccessToken: true, hasNextParam: false })).toBe(true);
+  });
+
+  it("does not auto-redirect when login has next parameter", () => {
+    expect(shouldAutoRedirectAuthenticatedAuthPage({ hasAccessToken: true, hasNextParam: true })).toBe(false);
+  });
+
+  it("does not auto-redirect when user is unauthenticated", () => {
+    expect(shouldAutoRedirectAuthenticatedAuthPage({ hasAccessToken: false, hasNextParam: false })).toBe(false);
   });
 });
