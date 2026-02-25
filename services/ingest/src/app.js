@@ -58,6 +58,13 @@ function buildApp(overrides = {}) {
     idempotency: buildIdempotencyRepo(db)
   });
 
+  app.addHook("onRequest", async (_request, reply) => {
+    reply.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
+  });
+
   app.addContentTypeParser(
     "application/octet-stream",
     function parseOctetStream(_request, payload, done) {

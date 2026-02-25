@@ -33,6 +33,13 @@ function buildApp(overrides = {}) {
     sessions: buildSessionsRepo(db)
   });
 
+  app.addHook("onRequest", async (_request, reply) => {
+    reply.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
+  });
+
   app.get("/health", async () => ({ status: "ok", service: config.serviceName }));
 
   app.get("/metrics", async (_, reply) => {

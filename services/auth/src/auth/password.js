@@ -8,12 +8,48 @@ function normalizeEmail(email) {
 }
 
 function validatePassword(password) {
-  if (typeof password !== "string" || password.length < 8) {
+  if (typeof password !== "string") {
     return {
       ok: false,
-      reason: "Password must be at least 8 characters"
+      reason: "Password must be a string"
     };
   }
+
+  if (password.length < 12) {
+    return {
+      ok: false,
+      reason: "Password must be at least 12 characters"
+    };
+  }
+
+  if (!/[A-Z]/.test(password)) {
+    return {
+      ok: false,
+      reason: "Password must contain at least one uppercase letter"
+    };
+  }
+
+  if (!/[a-z]/.test(password)) {
+    return {
+      ok: false,
+      reason: "Password must contain at least one lowercase letter"
+    };
+  }
+
+  if (!/\d/.test(password)) {
+    return {
+      ok: false,
+      reason: "Password must contain at least one number"
+    };
+  }
+
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    return {
+      ok: false,
+      reason: "Password must contain at least one special character"
+    };
+  }
+
   return { ok: true };
 }
 

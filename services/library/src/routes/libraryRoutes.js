@@ -568,6 +568,7 @@ module.exports = async function libraryRoutes(app) {
 
       reply.type("image/webp");
       reply.header("cache-control", "private, max-age=120");
+      reply.header("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'");
       return reply.send(fsSync.createReadStream(derivativeAbsolutePath));
     }
   );
@@ -860,6 +861,7 @@ module.exports = async function libraryRoutes(app) {
 
         reply.type(contentType);
         reply.header("cache-control", "private, max-age=120");
+        reply.header("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'");
         return reply.send(fsSync.createReadStream(absolutePath));
       } catch (err) {
         if (err instanceof ApiError) {

@@ -199,11 +199,6 @@ module.exports = async function authRoutes(app) {
         throw new ApiError(400, "VALIDATION_ERROR", passwordStatus.reason);
       }
 
-      const existingUser = await app.repos.users.findByEmail(email);
-      if (existingUser) {
-        throw new ApiError(409, "CONFLICT_EMAIL_EXISTS", "Email is already registered");
-      }
-
       const passwordHash = await hashPassword(body.password);
       const id = crypto.randomUUID();
 
