@@ -74,8 +74,5 @@ cd services/worker
 npm run test:contract:provider
 cd ../..
 
-# 3. Docker Phase: Build images
-echo "--- Phase 3: Docker Images ---"
-docker compose build
 
 echo "--- PhotoX Master Build Complete! ---"
