@@ -16,3 +16,7 @@ export function buildLoginPath(nextPath = DEFAULT_NEXT_PATH) {
   const resolved = resolveNextPath(nextPath);
   return `/login?next=${encodeURIComponent(resolved)}`;
 }
+
+export function shouldAutoRedirectAuthenticatedAuthPage({ hasAccessToken, hasNextParam }) {
+  return Boolean(hasAccessToken) && !hasNextParam;
+}
