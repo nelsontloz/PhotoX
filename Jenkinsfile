@@ -58,6 +58,22 @@ else
   echo "- Not set in Jenkins env and no env file fallback found"
   echo "  full-build will fail until PACT_BROKER_BASE_URL is provided"
 fi
+
+is_container_runtime=false
+if [ -f "/.dockerenv" ] || grep -qaE 'docker|containerd|kubepods' /proc/1/cgroup 2>/dev/null; then
+  is_container_runtime=true
+fi
+
+if [ -n "${PACT_BROKER_BASE_URL:-}" ]; then
+  echo "PACT_BROKER_BASE_URL resolved to: ${PACT_BROKER_BASE_URL}"
+  if [ "$is_container_runtime" = "true" ] && echo "${PACT_BROKER_BASE_URL}" | grep -qiE '^https?://(localhost|127\\.0\\.0\\.1)(:[0-9]+)?(/|$)'; then
+    echo "Invalid PACT_BROKER_BASE_URL for container runtime: ${PACT_BROKER_BASE_URL}"
+    echo "Use a broker URL reachable from the containerized agent (for example: https://pact-broker.int.zerg91.com/)"
+    exit 1
+  fi
+else
+  echo "PACT_BROKER_BASE_URL not explicitly set in Jenkins env; full-build will resolve it from .env/.env.example"
+fi
 '''
       }
     }

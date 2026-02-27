@@ -18,11 +18,31 @@ if [ -f "$ENV_FILE" ]; then
   set +a
 fi
 
+# Broker compatibility note:
+# Some Pact Broker deployments do not support branch metadata publishing.
+# Provider verification in this repo conditionally sets providerVersionBranch
+# when PACT_CONTRACT_BRANCH is present, which can cause verification publish
+# failures on older brokers. Unset by default in this master build workflow.
+unset PACT_CONTRACT_BRANCH
+
 # Validate required variables
 if [ -z "$PACT_BROKER_BASE_URL" ]; then
   echo "Error: PACT_BROKER_BASE_URL is not set. Please set it in .env or environment."
   exit 1
 fi
+
+is_container_runtime=false
+if [ -f "/.dockerenv" ] || grep -qaE 'docker|containerd|kubepods' /proc/1/cgroup 2>/dev/null; then
+  is_container_runtime=true
+fi
+
+if [ "$is_container_runtime" = true ] && echo "$PACT_BROKER_BASE_URL" | grep -qiE '^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?(/|$)'; then
+  echo "Error: PACT_BROKER_BASE_URL resolves to localhost inside a container: $PACT_BROKER_BASE_URL"
+  echo "Set PACT_BROKER_BASE_URL to a reachable external URL (default repo value is https://pact-broker.int.zerg91.com/)."
+  exit 1
+fi
+
+echo "Resolved PACT_BROKER_BASE_URL: $PACT_BROKER_BASE_URL"
 
 echo "--- Starting PhotoX Master Build ---"
 

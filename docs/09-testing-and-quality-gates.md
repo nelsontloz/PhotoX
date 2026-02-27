@@ -182,6 +182,8 @@ Provider verification runtime requirement:
 - Each service's `test/contracts/mockPool.js` provides an in-memory mock of `pg.Pool` that routes SQL patterns to Map-based stores.
 - Mock BullMQ queues are injected via `buildApp()` overrides.
 - `PACT_BROKER_BASE_URL` is mandatory for all pact provider verification workflows; tests fail fast when it is missing.
+- `PACT_BROKER_BASE_URL` must resolve to a broker URL reachable from the active runtime context (local shell, CI agent, or Docker/container runtime). Avoid `localhost`/`127.0.0.1` inside containerized builds unless the broker is explicitly running in the same container namespace.
+- Environment precedence for pact workflows is: explicit process environment -> `.env` -> `.env.example` fallback.
 - Consumer pacts include `.given()` provider states that trigger state handlers to seed mock data.
 - Any new pact verification flow that requires external runtime dependencies is non-compliant and must be refactored to mock-based verification.
 
