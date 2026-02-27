@@ -12,8 +12,8 @@ describe("worker telemetry routes", () => {
   let telemetryStore;
 
   const queueStatsPoller = {
-    async start() {},
-    async close() {},
+    async start() { },
+    async close() { },
     getSnapshot() {
       return {
         "media.process": {
@@ -69,13 +69,13 @@ describe("worker telemetry routes", () => {
       telemetryStore,
       queueStatsPoller,
       mediaProcessWorker: {
-        async close() {}
+        async close() { }
       },
       mediaDerivativesWorker: {
-        async close() {}
+        async close() { }
       },
       mediaCleanupWorker: {
-        async close() {}
+        async close() { }
       }
     });
 
@@ -149,5 +149,105 @@ describe("worker telemetry routes", () => {
     expect(payload.schemaVersion).toBe("2026-02-telemetry-v1");
     expect(payload.queueCounts["media.process"].waiting).toBe(2);
     expect(Array.isArray(payload.recentEvents)).toBe(true);
+  });
+
+  it("returns default video encoding profile for admin user", async () => {
+    mockPool.seedUser({
+      id: adminId,
+      email: "admin@example.com",
+      password_hash: "x",
+      is_admin: true,
+      is_active: true
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/v1/worker/settings/video-encoding",
+      headers: {
+        authorization: `Bearer ${adminToken(adminId)}`
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    expect(payload.profile.outputFormat).toBe("webm");
+    expect(payload.profile.codec).toBe("libvpx-vp9");
+  });
+
+  it("saves video encoding profile for admin user", async () => {
+    mockPool.seedUser({
+      id: adminId,
+      email: "admin@example.com",
+      password_hash: "x",
+      is_admin: true,
+      is_active: true
+    });
+
+    const saveResponse = await app.inject({
+      method: "PUT",
+      url: "/api/v1/worker/settings/video-encoding",
+      headers: {
+        authorization: `Bearer ${adminToken(adminId)}`
+      },
+      payload: {
+        profile: {
+          codec: "libx264",
+          resolution: "1920x1080",
+          bitrateKbps: 2500,
+          frameRate: 30,
+          audioCodec: "aac",
+          audioBitrateKbps: 128,
+          preset: "balanced",
+          outputFormat: "mp4"
+        }
+      }
+    });
+
+    expect(saveResponse.statusCode).toBe(200);
+    expect(saveResponse.json().profile.outputFormat).toBe("mp4");
+
+    const getResponse = await app.inject({
+      method: "GET",
+      url: "/api/v1/worker/settings/video-encoding",
+      headers: {
+        authorization: `Bearer ${adminToken(adminId)}`
+      }
+    });
+
+    expect(getResponse.statusCode).toBe(200);
+    expect(getResponse.json().profile.codec).toBe("libx264");
+  });
+
+  it("rejects invalid video encoding profile payload", async () => {
+    mockPool.seedUser({
+      id: adminId,
+      email: "admin@example.com",
+      password_hash: "x",
+      is_admin: true,
+      is_active: true
+    });
+
+    const response = await app.inject({
+      method: "PUT",
+      url: "/api/v1/worker/settings/video-encoding",
+      headers: {
+        authorization: `Bearer ${adminToken(adminId)}`
+      },
+      payload: {
+        profile: {
+          codec: "libvpx-vp9",
+          resolution: "invalid",
+          bitrateKbps: 2500,
+          frameRate: 30,
+          audioCodec: "libopus",
+          audioBitrateKbps: 128,
+          preset: "balanced",
+          outputFormat: "webm"
+        }
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("VALIDATION_ERROR");
   });
 });

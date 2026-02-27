@@ -23,10 +23,10 @@ function buildDerivativeRelativePath(mediaRelativePath, mediaId, variant) {
   return `${directory}/${mediaId}-${variant}.webp`;
 }
 
-function buildPlaybackRelativePath(mediaRelativePath, mediaId) {
+function buildPlaybackRelativePath(mediaRelativePath, mediaId, extension = "webm") {
   const normalized = mediaRelativePath.split("\\").join("/");
   const directory = path.posix.dirname(normalized);
-  return `${directory}/${mediaId}-playback.webm`;
+  return `${directory}/${mediaId}-playback.${extension}`;
 }
 
 module.exports = {

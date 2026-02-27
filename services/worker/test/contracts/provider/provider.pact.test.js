@@ -38,8 +38,30 @@ describe("worker http provider verification", () => {
 
     app = buildApp({
       jwtAccessSecret: "pact-access-secret",
+      skipMigrations: true,
       db: {
+        profileStore: new Map(),
         async query() {
+          const sql = arguments[0];
+          const params = arguments[1] || [];
+          const text = String(sql || "").replace(/\s+/g, " ").trim();
+
+          if (/SELECT profile_key, profile_json, updated_by, updated_at FROM video_encoding_profiles WHERE profile_key = \$1 LIMIT 1/i.test(text)) {
+            const row = this.profileStore.get(params[0]);
+            return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+          }
+
+          if (/INSERT INTO video_encoding_profiles/i.test(text) && /ON CONFLICT \(profile_key\)/i.test(text)) {
+            const row = {
+              profile_key: params[0],
+              profile_json: JSON.parse(params[1]),
+              updated_by: params[2] || null,
+              updated_at: new Date().toISOString()
+            };
+            this.profileStore.set(params[0], row);
+            return { rows: [row], rowCount: 1 };
+          }
+
           return { rows: [] };
         },
         async end() { }
@@ -101,7 +123,7 @@ describe("worker http provider verification", () => {
     }
   });
 
-  it("verifies worker telemetry pact", async () => {
+  it("verifies worker telemetry and settings pact", async () => {
     const options = {
       provider: "worker-service",
       providerBaseUrl: app.server.address() ? `http://127.0.0.1:${app.server.address().port}` : undefined,

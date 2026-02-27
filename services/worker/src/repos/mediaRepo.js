@@ -17,6 +17,43 @@ function buildMediaRepo(db) {
   }
 
   return {
+    async getVideoEncodingProfile(profileKey, executor) {
+      const result = await queryable(executor).query(
+        `
+          SELECT profile_key, profile_json, updated_by, updated_at
+          FROM video_encoding_profiles
+          WHERE profile_key = $1
+          LIMIT 1
+        `,
+        [profileKey]
+      );
+
+      return result.rows[0] || null;
+    },
+
+    async upsertVideoEncodingProfile({ profileKey, profileJson, updatedBy = null }, executor) {
+      const result = await queryable(executor).query(
+        `
+          INSERT INTO video_encoding_profiles (
+            profile_key,
+            profile_json,
+            updated_by,
+            updated_at
+          )
+          VALUES ($1, $2::jsonb, $3, NOW())
+          ON CONFLICT (profile_key)
+          DO UPDATE SET
+            profile_json = EXCLUDED.profile_json,
+            updated_by = EXCLUDED.updated_by,
+            updated_at = NOW()
+          RETURNING profile_key, profile_json, updated_by, updated_at
+        `,
+        [profileKey, JSON.stringify(profileJson), updatedBy]
+      );
+
+      return result.rows[0] || null;
+    },
+
     async acquireProcessingLock(mediaId, optionsOrExecutor, maybeExecutor) {
       const options =
         optionsOrExecutor && typeof optionsOrExecutor.query === "function" ? {} : optionsOrExecutor || {};

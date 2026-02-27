@@ -369,6 +369,21 @@ export async function fetchWorkerTelemetrySnapshot() {
   });
 }
 
+export async function fetchWorkerVideoEncodingProfile() {
+  return requestWithAutoRefresh("/worker/settings/video-encoding", {
+    method: "GET"
+  });
+}
+
+export async function saveWorkerVideoEncodingProfile(profile) {
+  return requestWithAutoRefresh("/worker/settings/video-encoding", {
+    method: "PUT",
+    body: {
+      profile
+    }
+  });
+}
+
 function parseSseChunks(buffer, onMessage) {
   const messages = buffer.split("\n\n");
   const trailing = messages.pop() || "";

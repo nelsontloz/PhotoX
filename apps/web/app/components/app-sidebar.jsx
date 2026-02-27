@@ -17,6 +17,7 @@ export function getSidebarItems(isAdmin) {
 
 export default function AppSidebar({ activeLabel = "Timeline", isAdmin = false }) {
   const navItems = getSidebarItems(isAdmin);
+  const isSettingsActive = activeLabel === "Settings";
 
   return (
     <>
@@ -48,11 +49,17 @@ export default function AppSidebar({ activeLabel = "Timeline", isAdmin = false }
         </nav>
         <div className="mt-auto p-1 sm:p-3 mb-4">
           <Link
-            href="#"
-            className="flex items-center justify-center lg:justify-start gap-0 lg:gap-4 px-1 sm:px-3 py-3 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-card-dark hover:text-slate-900 dark:hover:text-white transition-colors group/item"
+            href="/settings"
+            className={`flex items-center justify-center lg:justify-start gap-0 lg:gap-4 px-1 sm:px-3 py-3 rounded-lg transition-all group/item relative overflow-hidden ${isSettingsActive
+              ? "bg-primary/10 text-primary font-medium"
+              : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-card-dark hover:text-slate-900 dark:hover:text-white"
+              }`}
           >
             <span className="material-symbols-outlined shrink-0">settings</span>
             <span className="whitespace-nowrap hidden lg:block transition-opacity duration-300">Settings</span>
+            {isSettingsActive && (
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary rounded-r-full"></div>
+            )}
           </Link>
         </div>
       </aside>

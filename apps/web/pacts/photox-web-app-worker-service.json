@@ -124,6 +124,211 @@
         },
         "status": 200
       }
+    },
+    {
+      "description": "a request to fetch the default worker video encoding profile",
+      "request": {
+        "headers": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJhZG1pbkBleGFtcGxlLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwic3ViIjoiMjIyMjIyMjItMjIyMi00MjIyLTgyMjItMjIyMjIyMjIyMjIyIn0.0-evKRAjmV0CXyPtxd_Bb8duLQc-1-rKcDnzqIvD0Ew"
+        },
+        "method": "GET",
+        "path": "/api/v1/worker/settings/video-encoding"
+      },
+      "response": {
+        "body": {
+          "profile": {
+            "audioBitrateKbps": 96,
+            "audioCodec": "libopus",
+            "bitrateKbps": 1800,
+            "codec": "libvpx-vp9",
+            "frameRate": 30,
+            "outputFormat": "webm",
+            "preset": "balanced",
+            "resolution": "1280x720"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.profile.audioBitrateKbps": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.profile.audioCodec": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.profile.bitrateKbps": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.profile.codec": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.profile.frameRate": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.profile.outputFormat": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.profile.preset": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.profile.resolution": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to save the default worker video encoding profile",
+      "request": {
+        "body": {
+          "profile": {
+            "audioBitrateKbps": 128,
+            "audioCodec": "aac",
+            "bitrateKbps": 2500,
+            "codec": "libx264",
+            "frameRate": 30,
+            "outputFormat": "mp4",
+            "preset": "quality",
+            "resolution": "1920x1080"
+          }
+        },
+        "headers": {
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoiYWNjZXNzIiwiZW1haWwiOiJhZG1pbkBleGFtcGxlLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwic3ViIjoiMjIyMjIyMjItMjIyMi00MjIyLTgyMjItMjIyMjIyMjIyMjIyIn0.0-evKRAjmV0CXyPtxd_Bb8duLQc-1-rKcDnzqIvD0Ew",
+          "Content-Type": "application/json"
+        },
+        "method": "PUT",
+        "path": "/api/v1/worker/settings/video-encoding"
+      },
+      "response": {
+        "body": {
+          "profile": {
+            "audioBitrateKbps": 128,
+            "audioCodec": "aac",
+            "bitrateKbps": 2500,
+            "codec": "libx264",
+            "frameRate": 30,
+            "outputFormat": "mp4",
+            "preset": "quality",
+            "resolution": "1920x1080"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.profile.audioBitrateKbps": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.profile.audioCodec": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.profile.bitrateKbps": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.profile.codec": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.profile.frameRate": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.profile.outputFormat": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.profile.preset": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.profile.resolution": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
     }
   ],
   "metadata": {

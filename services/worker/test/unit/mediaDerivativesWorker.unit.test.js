@@ -50,9 +50,9 @@ describe("media derivatives processor", () => {
       .toFile(sourceAbsolutePath);
 
     const logger = {
-      info() {},
-      warn() {},
-      error() {}
+      info() { },
+      warn() { },
+      error() { }
     };
 
     const mediaRepo = {
@@ -63,6 +63,7 @@ describe("media derivatives processor", () => {
         shouldReleaseClient: false
       }),
       releaseProcessingLock: vi.fn().mockResolvedValue(undefined),
+      getVideoEncodingProfile: vi.fn().mockResolvedValue(null),
       findById: vi.fn().mockResolvedValue({
         id: mediaId,
         mime_type: "image/jpeg",
@@ -155,6 +156,18 @@ describe("media derivatives processor", () => {
         shouldReleaseClient: false
       }),
       releaseProcessingLock: vi.fn().mockResolvedValue(undefined),
+      getVideoEncodingProfile: vi.fn().mockResolvedValue({
+        profile_json: {
+          codec: "libx264",
+          resolution: "1920x1080",
+          bitrateKbps: 2600,
+          frameRate: 30,
+          audioCodec: "aac",
+          audioBitrateKbps: 128,
+          preset: "balanced",
+          outputFormat: "mp4"
+        }
+      }),
       findById: vi.fn().mockResolvedValue({
         id: mediaId,
         mime_type: "video/mp4",
@@ -179,9 +192,9 @@ describe("media derivatives processor", () => {
           });
         }),
       logger: {
-        info() {},
-        warn() {},
-        error() {}
+        info() { },
+        warn() { },
+        error() { }
       }
     });
 
@@ -197,6 +210,9 @@ describe("media derivatives processor", () => {
     expect(result.mediaId).toBe(mediaId);
     expect(result.derivatives).toHaveLength(3);
     expect(result.derivatives.map((derivative) => derivative.variant)).toEqual(["thumb", "small", "playback"]);
+    expect(result.derivatives.find((derivative) => derivative.variant === "playback").relativePath.endsWith(".mp4")).toBe(
+      true
+    );
     expect(mediaRepo.acquireProcessingLock).toHaveBeenCalledWith(mediaId, { tryOnly: true });
     expect(mediaRepo.upsertMetadata).toHaveBeenCalled();
     expect(mediaRepo.setReadyIfProcessing).toHaveBeenCalledWith(mediaId);
@@ -206,7 +222,7 @@ describe("media derivatives processor", () => {
 
     const thumbPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-thumb.webp`);
     const smallPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-small.webp`);
-    const playbackPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-playback.webm`);
+    const playbackPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-playback.mp4`);
 
     await expect(fs.stat(thumbPath)).resolves.toBeTruthy();
     await expect(fs.stat(smallPath)).resolves.toBeTruthy();
@@ -215,14 +231,117 @@ describe("media derivatives processor", () => {
     expect(execFileMock).toHaveBeenCalled();
   });
 
+  it("uses job-level override profile over saved default profile", async () => {
+    const mediaId = "abf242a8-59e8-4e46-b6a0-d7ec247ca4f7";
+    const ownerId = "c446dc45-1564-4f79-99a4-c7c17ce9e16f";
+    const relativePath = `${ownerId}/2026/02/${mediaId}.mp4`;
+    const sourceAbsolutePath = path.join(originalsRoot, ownerId, "2026", "02", `${mediaId}.mp4`);
+
+    await fs.mkdir(path.dirname(sourceAbsolutePath), { recursive: true });
+    await fs.writeFile(sourceAbsolutePath, "video-source-placeholder");
+
+    const execFileMock = vi.fn((command, args, options, callback) => {
+      const done = typeof options === "function" ? options : callback;
+
+      if (command === "ffprobe") {
+        done(null, JSON.stringify({ streams: [{ codec_type: "video" }] }), "");
+        return;
+      }
+
+      if (command === "ffmpeg") {
+        const outputPath = args.at(-1);
+        fs.mkdir(path.dirname(outputPath), { recursive: true })
+          .then(() => fs.writeFile(outputPath, `generated-${path.basename(outputPath)}`))
+          .then(() => done(null, "", ""))
+          .catch((err) => done(err));
+        return;
+      }
+
+      done(new Error(`Unexpected command: ${command}`));
+    });
+
+    const mediaRepo = {
+      acquireProcessingLock: vi.fn().mockResolvedValue({
+        acquired: true,
+        mediaId,
+        client: { query: vi.fn() },
+        shouldReleaseClient: false
+      }),
+      releaseProcessingLock: vi.fn().mockResolvedValue(undefined),
+      getVideoEncodingProfile: vi.fn().mockResolvedValue({
+        profile_json: {
+          codec: "libx264",
+          resolution: "1920x1080",
+          bitrateKbps: 2600,
+          frameRate: 30,
+          audioCodec: "aac",
+          audioBitrateKbps: 128,
+          preset: "quality",
+          outputFormat: "mp4"
+        }
+      }),
+      findById: vi.fn().mockResolvedValue({
+        id: mediaId,
+        mime_type: "video/mp4",
+        created_at: "2026-02-18T00:00:00.000Z"
+      }),
+      upsertMetadata: vi.fn().mockResolvedValue({ media_id: mediaId }),
+      setReadyIfProcessing: vi.fn().mockResolvedValue({ id: mediaId, status: "ready" })
+    };
+
+    const processor = createMediaDerivativesProcessor({
+      originalsRoot,
+      derivedRoot,
+      mediaRepo,
+      commandRunner: (command, args) =>
+        new Promise((resolve, reject) => {
+          execFileMock(command, args, (err, stdout, stderr) => {
+            if (err) {
+              reject(err);
+              return;
+            }
+            resolve({ stdout: stdout || "", stderr: stderr || "" });
+          });
+        }),
+      logger: {
+        info() { },
+        warn() { },
+        error() { }
+      }
+    });
+
+    const result = await processor({
+      id: "job-override-1",
+      queueName: "media.derivatives.generate",
+      data: {
+        mediaId,
+        relativePath,
+        videoEncodingProfileOverride: {
+          codec: "libvpx-vp9",
+          resolution: "1280x720",
+          bitrateKbps: 1800,
+          frameRate: 24,
+          audioCodec: "libopus",
+          audioBitrateKbps: 96,
+          preset: "fast",
+          outputFormat: "webm"
+        }
+      }
+    });
+
+    expect(result.derivatives.find((derivative) => derivative.variant === "playback").relativePath.endsWith(".webm")).toBe(
+      true
+    );
+  });
+
   it("rejects invalid payloads", async () => {
     const processor = createMediaDerivativesProcessor({
       originalsRoot,
       derivedRoot,
       logger: {
-        info() {},
-        warn() {},
-        error() {}
+        info() { },
+        warn() { },
+        error() { }
       }
     });
 
@@ -285,9 +404,9 @@ describe("media derivatives processor", () => {
       derivedRoot,
       mediaRepo,
       logger: {
-        info() {},
-        warn() {},
-        error() {}
+        info() { },
+        warn() { },
+        error() { }
       }
     });
 

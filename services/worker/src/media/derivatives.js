@@ -6,6 +6,7 @@ const { promisify } = require("node:util");
 const sharp = require("sharp");
 
 const { buildDerivativeRelativePath, resolveAbsolutePath } = require("./paths");
+const { buildPlaybackFfmpegArgs } = require("../videoEncoding/profile");
 
 const execFileAsync = promisify(execFile);
 
@@ -140,47 +141,27 @@ async function writeVideoPlaybackDerivative({
   derivedRoot,
   mediaId,
   relativePath,
-  commandRunner
+  commandRunner,
+  profile
 }) {
-  const derivativeRelativePath = buildDerivativeRelativePath(relativePath, mediaId, "playback", "webm");
+  const outputFormat = (profile?.outputFormat || "webm").toLowerCase();
+  const derivativeRelativePath = buildDerivativeRelativePath(relativePath, mediaId, "playback", outputFormat);
   const derivativeAbsolutePath = resolveAbsolutePath(derivedRoot, derivativeRelativePath);
   await fs.mkdir(path.dirname(derivativeAbsolutePath), { recursive: true });
 
-  await commandRunner("ffmpeg", [
-    "-y",
-    "-v",
-    "error",
-    "-i",
+  const { args, normalizedProfile } = buildPlaybackFfmpegArgs({
     sourceAbsolutePath,
-    "-map",
-    "0:v:0",
-    "-map",
-    "0:a?",
-    "-vf",
-    "scale=1280:1280:force_original_aspect_ratio=decrease",
-    "-c:v",
-    "libvpx-vp9",
-    "-crf",
-    "32",
-    "-b:v",
-    "0",
-    "-row-mt",
-    "1",
-    "-threads",
-    "0",
-    "-cpu-used",
-    "2",
-    "-c:a",
-    "libopus",
-    "-b:a",
-    "96k",
-    derivativeAbsolutePath
-  ]);
+    derivativeAbsolutePath,
+    profile
+  });
+
+  await commandRunner("ffmpeg", args);
 
   return buildDescriptor({
     variant: "playback",
     derivativeRelativePath,
-    derivativeAbsolutePath
+    derivativeAbsolutePath,
+    outputFormat: normalizedProfile.outputFormat
   });
 }
 
@@ -201,7 +182,14 @@ async function generateImageDerivatives({ originalsRoot, derivedRoot, mediaId, r
   return derivatives;
 }
 
-async function generateVideoDerivatives({ sourceAbsolutePath, derivedRoot, mediaId, relativePath, commandRunner }) {
+async function generateVideoDerivatives({
+  sourceAbsolutePath,
+  derivedRoot,
+  mediaId,
+  relativePath,
+  commandRunner,
+  playbackProfile
+}) {
   const derivatives = [];
 
   for (const variant of ["thumb", "small"]) {
@@ -223,7 +211,8 @@ async function generateVideoDerivatives({ sourceAbsolutePath, derivedRoot, media
       derivedRoot,
       mediaId,
       relativePath,
-      commandRunner
+      commandRunner,
+      profile: playbackProfile
     })
   );
 
@@ -235,6 +224,7 @@ async function generateDerivativesForMedia({
   derivedRoot,
   mediaId,
   relativePath,
+  playbackProfile,
   commandRunner = execFileAsync
 }) {
   const sourceAbsolutePath = resolveAbsolutePath(originalsRoot, relativePath);
@@ -249,7 +239,8 @@ async function generateDerivativesForMedia({
     derivedRoot,
     mediaId,
     relativePath,
-    commandRunner
+    commandRunner,
+    playbackProfile
   });
 }
 

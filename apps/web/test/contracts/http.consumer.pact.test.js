@@ -1011,6 +1011,67 @@ describe("web http consumer pacts", () => {
         headers: {
           "Content-Type": "text/event-stream"
         }
+      })
+      .uponReceiving("a request to fetch the default worker video encoding profile")
+      .withRequest({
+        method: "GET",
+        path: "/api/v1/worker/settings/video-encoding",
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: {
+          profile: {
+            codec: like("libvpx-vp9"),
+            resolution: like("1280x720"),
+            bitrateKbps: like(1800),
+            frameRate: like(30),
+            audioCodec: like("libopus"),
+            audioBitrateKbps: like(96),
+            preset: like("balanced"),
+            outputFormat: like("webm")
+          }
+        }
+      })
+      .uponReceiving("a request to save the default worker video encoding profile")
+      .withRequest({
+        method: "PUT",
+        path: "/api/v1/worker/settings/video-encoding",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: {
+          profile: {
+            codec: "libx264",
+            resolution: "1920x1080",
+            bitrateKbps: 2500,
+            frameRate: 30,
+            audioCodec: "aac",
+            audioBitrateKbps: 128,
+            preset: "quality",
+            outputFormat: "mp4"
+          }
+        }
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: {
+          profile: {
+            codec: like("libx264"),
+            resolution: like("1920x1080"),
+            bitrateKbps: like(2500),
+            frameRate: like(30),
+            audioCodec: like("aac"),
+            audioBitrateKbps: like(128),
+            preset: like("quality"),
+            outputFormat: like("mp4")
+          }
+        }
       });
 
     await provider.executeTest(async (mockserver) => {
@@ -1028,6 +1089,31 @@ describe("web http consumer pacts", () => {
       });
       expect(stream.status).toBe(200);
       await stream.text();
+
+      await jsonRequest(mockserver.url, "/api/v1/worker/settings/video-encoding", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+
+      await jsonRequest(mockserver.url, "/api/v1/worker/settings/video-encoding", {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          profile: {
+            codec: "libx264",
+            resolution: "1920x1080",
+            bitrateKbps: 2500,
+            frameRate: 30,
+            audioCodec: "aac",
+            audioBitrateKbps: 128,
+            preset: "quality",
+            outputFormat: "mp4"
+          }
+        })
+      });
     });
   });
 

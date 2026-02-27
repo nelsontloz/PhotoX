@@ -168,6 +168,8 @@ Implemented now:
 - `GET /api/v1/worker/openapi.json`
 - `GET /api/v1/worker/telemetry/snapshot` (admin-only)
 - `GET /api/v1/worker/telemetry/stream` (SSE, admin-only)
+- `GET /api/v1/worker/settings/video-encoding` (admin-only)
+- `PUT /api/v1/worker/settings/video-encoding` (admin-only)
 - BullMQ consumer for `media.derivatives.generate` that creates image `thumb`/`small` WebP derivatives and video `playback` WebM (VP9/Opus) derivatives
  - BullMQ consumer for `media.process` that extracts photo/video metadata, persists `media_metadata`, and generates derivatives for new uploads
 - BullMQ consumer for `media.cleanup` that verifies media is still soft-deleted, deletes original/derived files, and hard-deletes DB rows in a transaction.
@@ -179,6 +181,9 @@ Implemented now:
 - `/metrics` now includes worker job counters, active gauges, queue depth gauges, and duration histogram series.
 - Pact consumer/provider coverage includes worker telemetry contracts for `/api/v1/worker/telemetry/snapshot` and `/api/v1/worker/telemetry/stream`.
 - EXIF-based capture date extraction for images: worker parses the raw EXIF IFD buffer from `sharp` (via `exif-reader`) in `metadata.js`. `DateTimeOriginal` and other EXIF IFD date fields are used for `taken_at` / `sort_at`; falls back to upload timestamp when no EXIF date is found. Videos use `creation_time` from ffprobe format tags. `media.sort_at` reflects the actual capture date so the timeline sorts photos by when they were taken, not uploaded.
+- Worker now persists a default video encoding profile (`video_encoding_profiles`) and applies it to all new video playback derivative generation jobs.
+- `media.derivatives.generate` now supports optional `videoEncodingProfileOverride`; precedence is override > saved default > built-in default.
+- Playback derivatives are now profile-driven and may be generated as WebM (VP9/Opus) or MP4 (H.264/AAC) depending on active settings.
 
 
 Planned/pending:
@@ -210,6 +215,7 @@ Implemented now:
 - `GET /albums`
 - `GET /albums/[id]`
 - `GET /trash`
+- `GET /settings`
 
 Notes:
 - Tailwind CSS baseline added for web UI styling.
@@ -218,6 +224,7 @@ Notes:
 - Authenticated users visiting `/login` or `/register` are redirected to `/timeline`.
 - Successful registration redirects to `/timeline` by default.
 - Upload page validates authenticated session with `/api/v1/me`, performs chunked upload
+- Settings page includes an admin-only section to view/update the default video encoding profile used by worker playback derivatives.
   (`init` -> `part` -> `complete`), renders progress, and shows API envelope errors.
 - Upload page supports multi-file batch uploads with bounded concurrency of 4, per-file progress/status,
   aggregate progress, and continue-on-error behavior.

@@ -254,9 +254,9 @@ module.exports = async function libraryRoutes(app) {
       const visibleRows = hasMore ? rows.slice(0, limit) : rows;
       const nextCursor = hasMore
         ? encodeTimelineCursor({
-            sortAt: new Date(visibleRows[visibleRows.length - 1].sort_at).toISOString(),
-            id: visibleRows[visibleRows.length - 1].id
-          })
+          sortAt: new Date(visibleRows[visibleRows.length - 1].sort_at).toISOString(),
+          id: visibleRows[visibleRows.length - 1].id
+        })
         : null;
 
       return {
@@ -439,9 +439,9 @@ module.exports = async function libraryRoutes(app) {
       const visibleRows = hasMore ? rows.slice(0, limit) : rows;
       const nextCursor = hasMore
         ? encodeTrashCursor({
-            deletedAt: new Date(visibleRows[visibleRows.length - 1].deleted_soft_at).toISOString(),
-            id: visibleRows[visibleRows.length - 1].id
-          })
+          deletedAt: new Date(visibleRows[visibleRows.length - 1].deleted_soft_at).toISOString(),
+          id: visibleRows[visibleRows.length - 1].id
+        })
         : null;
 
       return {
@@ -762,13 +762,43 @@ module.exports = async function libraryRoutes(app) {
         if (variant === "original") {
           absolutePath = resolveAbsolutePath(app.config.uploadOriginalsPath, media.relative_path);
         } else if (variant === "playback") {
-          const playbackRelativePath = buildPlaybackRelativePath(media.relative_path, media.id);
-          const playbackAbsolutePath = resolveAbsolutePath(app.config.uploadDerivedPath, playbackRelativePath);
+          const playbackCandidates = [
+            {
+              relativePath: buildPlaybackRelativePath(media.relative_path, media.id, "webm"),
+              contentType: "video/webm"
+            },
+            {
+              relativePath: buildPlaybackRelativePath(media.relative_path, media.id, "mp4"),
+              contentType: "video/mp4"
+            }
+          ];
 
           try {
-            await fs.stat(playbackAbsolutePath);
-            absolutePath = playbackAbsolutePath;
-            contentType = "video/webm";
+            let resolved = null;
+            for (const candidate of playbackCandidates) {
+              const candidateAbsolutePath = resolveAbsolutePath(app.config.uploadDerivedPath, candidate.relativePath);
+              try {
+                await fs.stat(candidateAbsolutePath);
+                resolved = {
+                  absolutePath: candidateAbsolutePath,
+                  contentType: candidate.contentType
+                };
+                break;
+              } catch (candidateErr) {
+                if (candidateErr.code !== "ENOENT") {
+                  throw candidateErr;
+                }
+              }
+            }
+
+            if (!resolved) {
+              const notFoundError = new Error("Playback derivative missing");
+              notFoundError.code = "ENOENT";
+              throw notFoundError;
+            }
+
+            absolutePath = resolved.absolutePath;
+            contentType = resolved.contentType;
           } catch (err) {
             if (err.code !== "ENOENT") {
               throw err;

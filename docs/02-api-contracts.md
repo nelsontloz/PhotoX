@@ -273,7 +273,7 @@ Implemented now:
 Notes:
 - `albumId` and `personId` are reserved query parameters; relation-backed filtering is deferred to later phases.
 - `thumb` and `small` are generated WebP derivatives.
-- `playback` is a video-only variant and serves a derived `video/webm` (VP9/Opus) artifact.
+- `playback` is a video-only variant and serves a derived playback artifact generated from the active default video encoding profile (currently `video/webm` VP9/Opus or `video/mp4` H.264/AAC).
 - If a `playback` derivative is missing, library enqueues `media.derivatives.generate` and returns a retriable
   `503 PLAYBACK_DERIVATIVE_NOT_READY` error.
 - Timeline items expose compact additive metadata as `metadataPreview` (`durationSec`, `codec`, `fps`, `width`, `height`).
@@ -348,6 +348,8 @@ Notes:
 Implemented now:
 - `GET /worker/telemetry/snapshot`
 - `GET /worker/telemetry/stream` (SSE)
+- `GET /worker/settings/video-encoding` (admin-only)
+- `PUT /worker/settings/video-encoding` (admin-only)
 - `GET /worker/docs`
 - `GET /worker/openapi.json`
 
@@ -384,6 +386,47 @@ Implemented now:
 - `event` on lifecycle changes (`active`, `completed`, `failed`, `stalled`, `error`).
 - `state_sync` periodic compact sync and initial state on connect.
 - Every event payload includes `schemaVersion`.
+
+### `GET /worker/settings/video-encoding` response shape
+```json
+{
+  "profile": {
+    "codec": "libvpx-vp9",
+    "resolution": "1280x720",
+    "bitrateKbps": 1800,
+    "frameRate": 30,
+    "audioCodec": "libopus",
+    "audioBitrateKbps": 96,
+    "preset": "balanced",
+    "outputFormat": "webm"
+  }
+}
+```
+
+### `PUT /worker/settings/video-encoding` request/response shape
+```json
+{
+  "profile": {
+    "codec": "libx264",
+    "resolution": "1920x1080",
+    "bitrateKbps": 2500,
+    "frameRate": 30,
+    "audioCodec": "aac",
+    "audioBitrateKbps": 128,
+    "preset": "quality",
+    "outputFormat": "mp4"
+  }
+}
+```
+
+Video encoding profile rules:
+- Required keys: `codec`, `resolution`, `bitrateKbps`, `frameRate`, `audioCodec`, `audioBitrateKbps`, `preset`, `outputFormat`.
+- `preset` must be one of: `fast`, `balanced`, `quality`.
+- `outputFormat` must be one of: `webm`, `mp4`.
+- Allowed codec families are format-bound:
+  - `webm` => `codec=libvpx-vp9`, `audioCodec=libopus`
+  - `mp4` => `codec=libx264`, `audioCodec=aac`
+- Access is admin-only and follows the global auth error envelope (`401/403`).
 
 SSE frame example:
 ```text
@@ -535,14 +578,28 @@ data: {"schemaVersion":"2026-02-telemetry-v1","state":{"generatedAt":"2026-02-18
   "mediaId": "med_789",
   "ownerId": "usr_123",
   "relativePath": "usr_123/2026/02/med_789.jpg",
-  "requestedAt": "2026-02-15T10:00:10Z"
+  "requestedAt": "2026-02-15T10:00:10Z",
+  "videoEncodingProfileOverride": {
+    "codec": "libx264",
+    "resolution": "1280x720",
+    "bitrateKbps": 1800,
+    "frameRate": 30,
+    "audioCodec": "aac",
+    "audioBitrateKbps": 96,
+    "preset": "balanced",
+    "outputFormat": "mp4"
+  }
 }
 ```
 
 `media.derivatives.generate` compatibility requirements:
 - Required keys: `mediaId`, `relativePath`.
-- Optional keys: `ownerId`, `requestedAt`.
+- Optional keys: `ownerId`, `requestedAt`, `videoEncodingProfileOverride`.
 - Worker generates both `thumb` and `small` WebP derivatives for each accepted job.
+- For video inputs, worker generates `playback` derivative using the following precedence:
+  1. `videoEncodingProfileOverride` from job payload (when present),
+  2. persisted default profile from worker settings,
+  3. built-in default profile.
 
 ### Job `media.face.index`
 ```json

@@ -48,7 +48,17 @@ describe("worker message consumer pacts", () => {
         mediaId: regex(UUID_REGEX, "55555555-5555-4555-8555-555555555555"),
         relativePath: like("11111111-1111-4111-8111-111111111111/2026/02/55555555-5555-4555-8555-555555555555.jpg"),
         ownerId: like("11111111-1111-4111-8111-111111111111"),
-        requestedAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:10.000Z")
+        requestedAt: regex(TIMESTAMP_REGEX, "2026-02-18T12:00:10.000Z"),
+        videoEncodingProfileOverride: like({
+          codec: "libvpx-vp9",
+          resolution: "1280x720",
+          bitrateKbps: 1800,
+          frameRate: 24,
+          audioCodec: "libopus",
+          audioBitrateKbps: 96,
+          preset: "fast",
+          outputFormat: "webm"
+        })
       })
       .verify(async (message) => {
         expect(message.contents).toHaveProperty("mediaId");

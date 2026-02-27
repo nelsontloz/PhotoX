@@ -3,6 +3,8 @@ import {
   deleteMedia,
   emptyTrash,
   fetchTrashPreviewBlob,
+  fetchWorkerVideoEncodingProfile,
+  saveWorkerVideoEncodingProfile,
   fetchWorkerTelemetrySnapshot,
   isRetriableMediaProcessingError,
   listTrash,
@@ -71,6 +73,75 @@ describe("api helpers", () => {
     expect(payload.schemaVersion).toBe("2026-02-telemetry-v1");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toContain("/worker/telemetry/snapshot");
+  });
+
+  it("fetches and saves worker video encoding profile", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            profile: {
+              codec: "libvpx-vp9",
+              resolution: "1280x720",
+              bitrateKbps: 1800,
+              frameRate: 30,
+              audioCodec: "libopus",
+              audioBitrateKbps: 96,
+              preset: "balanced",
+              outputFormat: "webm"
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            profile: {
+              codec: "libx264",
+              resolution: "1920x1080",
+              bitrateKbps: 2500,
+              frameRate: 30,
+              audioCodec: "aac",
+              audioBitrateKbps: 128,
+              preset: "quality",
+              outputFormat: "mp4"
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const fetched = await fetchWorkerVideoEncodingProfile();
+    expect(fetched.profile.outputFormat).toBe("webm");
+
+    const saved = await saveWorkerVideoEncodingProfile({
+      codec: "libx264",
+      resolution: "1920x1080",
+      bitrateKbps: 2500,
+      frameRate: 30,
+      audioCodec: "aac",
+      audioBitrateKbps: 128,
+      preset: "quality",
+      outputFormat: "mp4"
+    });
+
+    expect(saved.profile.outputFormat).toBe("mp4");
+    expect(fetchMock.mock.calls[0][0]).toContain("/worker/settings/video-encoding");
+    expect(fetchMock.mock.calls[1][1].method).toBe("PUT");
   });
 
   it("parses SSE stream messages for worker telemetry", async () => {

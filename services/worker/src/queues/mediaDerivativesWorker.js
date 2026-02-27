@@ -4,6 +4,7 @@ const { Worker } = require("bullmq");
 const { generateDerivativesForMedia } = require("../media/derivatives");
 const { extractMediaMetadata } = require("../media/metadata");
 const { buildDerivativeRelativePath, resolveAbsolutePath } = require("../media/paths");
+const { PROFILE_KEY, resolvePlaybackProfile } = require("../videoEncoding/profile");
 
 const DEFAULT_LOCK_RETRY_ATTEMPTS = 5;
 const DEFAULT_LOCK_RETRY_DELAY_MS = 200;
@@ -156,11 +157,23 @@ function createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger, c
         }
       }
 
+      let savedProfile = null;
+      if (mediaRepo?.getVideoEncodingProfile) {
+        const profileRow = await mediaRepo.getVideoEncodingProfile(PROFILE_KEY);
+        savedProfile = profileRow?.profile_json || null;
+      }
+
+      const playbackProfile = resolvePlaybackProfile({
+        savedProfile,
+        overrideProfile: job.data?.videoEncodingProfileOverride || null
+      });
+
       const derivatives = await generateDerivativesForMedia({
         originalsRoot,
         derivedRoot,
         mediaId,
         relativePath,
+        playbackProfile,
         commandRunner
       });
 

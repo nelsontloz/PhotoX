@@ -38,7 +38,17 @@ describe("library message provider verification", () => {
             mediaId: "55555555-5555-4555-8555-555555555555",
             ownerId: "11111111-1111-4111-8111-111111111111",
             relativePath: "11111111-1111-4111-8111-111111111111/2026/02/55555555-5555-4555-8555-555555555555.jpg",
-            requestedAt: "2026-02-18T12:00:10.000Z"
+            requestedAt: "2026-02-18T12:00:10.000Z",
+            videoEncodingProfileOverride: {
+              codec: "libvpx-vp9",
+              resolution: "1280x720",
+              bitrateKbps: 1800,
+              frameRate: 24,
+              audioCodec: "libopus",
+              audioBitrateKbps: 96,
+              preset: "fast",
+              outputFormat: "webm"
+            }
           }),
         "a command to permanently delete a soft-deleted media item": async () =>
           buildMediaCleanupMessage({

@@ -3,7 +3,7 @@ const swagger = require("@fastify/swagger");
 const swaggerUi = require("@fastify/swagger-ui");
 
 const { loadConfig } = require("./config");
-const { createPool } = require("./db");
+const { createPool, runMigrations } = require("./db");
 const { requireAdminAuth } = require("./auth/guard");
 const { ApiError, toErrorBody } = require("./errors");
 const { buildMediaRepo } = require("./repos/mediaRepo");
@@ -16,6 +16,11 @@ const {
 const { buildMetricsText } = require("./telemetry/metrics");
 const { QueueStatsPoller } = require("./telemetry/queueStatsPoller");
 const { WorkerTelemetryStore } = require("./telemetry/store");
+const {
+  DEFAULT_VIDEO_ENCODING_PROFILE,
+  PROFILE_KEY,
+  normalizeVideoEncodingProfile
+} = require("./videoEncoding/profile");
 
 const HEARTBEAT_INTERVAL_MS = 10_000;
 const STATE_SYNC_INTERVAL_MS = 30_000;
@@ -122,6 +127,10 @@ function buildApp(overrides = {}) {
         {
           name: "Telemetry",
           description: "Worker telemetry snapshot and stream"
+        },
+        {
+          name: "Settings",
+          description: "Administrative worker settings"
         }
       ],
       components: {
@@ -155,6 +164,201 @@ function buildApp(overrides = {}) {
     instance.get("/api/v1/worker/openapi.json", async () => instance.swagger());
 
     const adminGuard = requireAdminAuth(config, instance.repos.users);
+
+    instance.get(
+      "/api/v1/worker/settings/video-encoding",
+      {
+        preHandler: adminGuard,
+        schema: {
+          tags: ["Settings"],
+          summary: "Get default video encoding profile",
+          description: "Returns the default video encoding profile used by playback derivative generation.",
+          security: [{ bearerAuth: [] }],
+          response: {
+            200: {
+              type: "object",
+              required: ["profile"],
+              properties: {
+                profile: {
+                  type: "object",
+                  required: [
+                    "codec",
+                    "resolution",
+                    "bitrateKbps",
+                    "frameRate",
+                    "audioCodec",
+                    "audioBitrateKbps",
+                    "preset",
+                    "outputFormat"
+                  ],
+                  properties: {
+                    codec: { type: "string" },
+                    resolution: { type: "string", example: "1280x720" },
+                    bitrateKbps: { type: "integer", minimum: 64 },
+                    frameRate: { type: "integer", minimum: 1 },
+                    audioCodec: { type: "string" },
+                    audioBitrateKbps: { type: "integer", minimum: 32 },
+                    preset: { type: "string", enum: ["fast", "balanced", "quality"] },
+                    outputFormat: { type: "string", enum: ["webm", "mp4"] }
+                  },
+                  additionalProperties: false
+                }
+              },
+              additionalProperties: false,
+              example: {
+                profile: {
+                  codec: "libvpx-vp9",
+                  resolution: "1280x720",
+                  bitrateKbps: 1800,
+                  frameRate: 30,
+                  audioCodec: "libopus",
+                  audioBitrateKbps: 96,
+                  preset: "balanced",
+                  outputFormat: "webm"
+                }
+              }
+            },
+            401: buildErrorEnvelopeSchema({
+              code: "AUTH_TOKEN_INVALID",
+              message: "Token is invalid"
+            }),
+            403: buildErrorEnvelopeSchema({
+              code: "AUTH_FORBIDDEN",
+              message: "Admin access is required"
+            })
+          }
+        }
+      },
+      async () => {
+        const stored = await instance.repos.media.getVideoEncodingProfile(PROFILE_KEY);
+        return {
+          profile: normalizeVideoEncodingProfile(stored?.profile_json || DEFAULT_VIDEO_ENCODING_PROFILE)
+        };
+      }
+    );
+
+    instance.put(
+      "/api/v1/worker/settings/video-encoding",
+      {
+        preHandler: adminGuard,
+        schema: {
+          tags: ["Settings"],
+          summary: "Save default video encoding profile",
+          description:
+            "Creates or updates the default video encoding profile used by playback derivative generation jobs.",
+          security: [{ bearerAuth: [] }],
+          body: {
+            type: "object",
+            required: ["profile"],
+            properties: {
+              profile: {
+                type: "object",
+                required: [
+                  "codec",
+                  "resolution",
+                  "bitrateKbps",
+                  "frameRate",
+                  "audioCodec",
+                  "audioBitrateKbps",
+                  "preset",
+                  "outputFormat"
+                ],
+                properties: {
+                  codec: { type: "string", minLength: 1 },
+                  resolution: { type: "string", minLength: 3, maxLength: 32 },
+                  bitrateKbps: { type: "integer", minimum: 64 },
+                  frameRate: { type: "integer", minimum: 1, maximum: 120 },
+                  audioCodec: { type: "string", minLength: 1 },
+                  audioBitrateKbps: { type: "integer", minimum: 32, maximum: 512 },
+                  preset: { type: "string", enum: ["fast", "balanced", "quality"] },
+                  outputFormat: { type: "string", enum: ["webm", "mp4"] }
+                },
+                additionalProperties: false
+              }
+            },
+            additionalProperties: false,
+            example: {
+              profile: {
+                codec: "libvpx-vp9",
+                resolution: "1920x1080",
+                bitrateKbps: 2800,
+                frameRate: 30,
+                audioCodec: "libopus",
+                audioBitrateKbps: 128,
+                preset: "quality",
+                outputFormat: "webm"
+              }
+            }
+          },
+          response: {
+            200: {
+              type: "object",
+              required: ["profile"],
+              properties: {
+                profile: {
+                  type: "object",
+                  required: [
+                    "codec",
+                    "resolution",
+                    "bitrateKbps",
+                    "frameRate",
+                    "audioCodec",
+                    "audioBitrateKbps",
+                    "preset",
+                    "outputFormat"
+                  ],
+                  properties: {
+                    codec: { type: "string" },
+                    resolution: { type: "string" },
+                    bitrateKbps: { type: "integer" },
+                    frameRate: { type: "integer" },
+                    audioCodec: { type: "string" },
+                    audioBitrateKbps: { type: "integer" },
+                    preset: { type: "string", enum: ["fast", "balanced", "quality"] },
+                    outputFormat: { type: "string", enum: ["webm", "mp4"] }
+                  },
+                  additionalProperties: false
+                }
+              },
+              additionalProperties: false
+            },
+            400: buildErrorEnvelopeSchema({
+              code: "VALIDATION_ERROR",
+              message: "Request validation failed"
+            }),
+            401: buildErrorEnvelopeSchema({
+              code: "AUTH_TOKEN_INVALID",
+              message: "Token is invalid"
+            }),
+            403: buildErrorEnvelopeSchema({
+              code: "AUTH_FORBIDDEN",
+              message: "Admin access is required"
+            })
+          }
+        }
+      },
+      async (request) => {
+        try {
+          const profile = normalizeVideoEncodingProfile(request.body?.profile || {});
+          await instance.repos.media.upsertVideoEncodingProfile({
+            profileKey: PROFILE_KEY,
+            profileJson: profile,
+            updatedBy: request.userAuth.userId
+          });
+
+          return { profile };
+        } catch (err) {
+          throw new ApiError(400, "VALIDATION_ERROR", "Request validation failed", {
+            issues: [
+              {
+                path: ["profile"],
+                message: err.message
+              }
+            ]
+          });
+        }
+      }
+    );
 
     instance.get(
       "/api/v1/worker/telemetry/snapshot",
@@ -283,6 +487,10 @@ function buildApp(overrides = {}) {
   });
 
   app.addHook("onReady", async () => {
+    if (!overrides.skipMigrations) {
+      await runMigrations(db);
+    }
+
     await app.telemetry.queueStatsPoller.start();
 
     if (!app.workers.mediaProcess) {
