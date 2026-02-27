@@ -21,27 +21,28 @@ pipeline {
 
     stage('Build Root Dockerfile (Kaniko)') {
       steps {
-        sh '''#!/usr/bin/env bash
-set -euo pipefail
+        container('kaniko') {
+          sh '''#!/busybox/sh
+set -eu
 
 if [ ! -x "/kaniko/executor" ]; then
-  echo "Missing /kaniko/executor. Run this stage on a Kaniko-enabled Jenkins agent/container."
+  echo "Missing /kaniko/executor. Ensure this runs inside the kaniko container."
   exit 1
 fi
 
-KANIKO_ARGS=(
-  --dockerfile "$(pwd)/Dockerfile"
-  --context "$(pwd)"
-)
-
 if [ -n "${KANIKO_DESTINATION:-}" ]; then
-  KANIKO_ARGS+=(--destination "${KANIKO_DESTINATION}")
+  /kaniko/executor \
+    --dockerfile "${WORKSPACE}/Dockerfile" \
+    --context "${WORKSPACE}" \
+    --destination "${KANIKO_DESTINATION}"
 else
-  KANIKO_ARGS+=(--no-push)
+  /kaniko/executor \
+    --dockerfile "${WORKSPACE}/Dockerfile" \
+    --context "${WORKSPACE}" \
+    --no-push
 fi
-
-/kaniko/executor "${KANIKO_ARGS[@]}"
 '''
+        }
       }
     }
   }
