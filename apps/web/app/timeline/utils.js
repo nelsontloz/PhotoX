@@ -117,6 +117,6 @@ export function sectionLabel(dayKey) {
             day: "numeric",
             year: "numeric"
         }),
-        subtitle
+        subtitle: null
     };
 }

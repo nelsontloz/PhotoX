@@ -22,13 +22,14 @@ import { Spinner } from "./components/Spinner";
 import { AssignToAlbumModal } from "./components/AssignToAlbumModal";
 import { TimelineFiltersBar } from "./components/TimelineFiltersBar";
 import { TimelineSectionList } from "./components/TimelineSectionList";
-import { TimelineSelectionActionBar } from "./components/TimelineSelectionActionBar";
+import { SelectionActionBar } from "../components/SelectionActionBar";
 import { MediaLightbox } from "../components/media/MediaLightbox";
 import { useTimelineSelection } from "./hooks/useTimelineSelection";
 import { useRequireSession } from "../shared/hooks/useRequireSession";
 import { PageLayout } from "../components/PageLayout";
 import { SessionLoadingScreen } from "../components/SessionLoadingScreen";
 import { EmptyState } from "../components/EmptyState";
+import { ConfirmationModal } from "../components/ConfirmationModal";
 
 function TimelineContent() {
   const queryClient = useQueryClient();
@@ -44,6 +45,7 @@ function TimelineContent() {
   const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState(urlQ);
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const dragCounter = useRef(0);
   const fileInputRef = useRef(null);
@@ -108,6 +110,23 @@ function TimelineContent() {
     },
     onError: (error) => {
       setModalError(formatApiError(error));
+    }
+  });
+
+  const multiDeleteMutation = useMutation({
+    mutationFn: async (mediaIds) => {
+      // Library service currently only supports individual deletes.
+      // We'll perform them in parallel for speed.
+      await Promise.all(mediaIds.map(id => deleteMedia(id)));
+    },
+    onSuccess: () => {
+      closeSelection();
+      queryClient.invalidateQueries({ queryKey: ["timeline"] });
+      queryClient.invalidateQueries({ queryKey: ["albums"] });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
+    },
+    onError: (error) => {
+      alert(`Failed to delete some items: ${formatApiError(error)}`);
     }
   });
 
@@ -378,7 +397,6 @@ function TimelineContent() {
         selectionMode={selectionMode}
         selectedIds={selectedIds}
         onSelectItem={selectItem}
-        onSelectAllSection={selectAllInSection}
         onOpenItem={(mediaId) => {
           setModalError("");
           updateMediaId(mediaId);
@@ -422,12 +440,26 @@ function TimelineContent() {
       )}
 
       {selectionMode && selectedIds.size > 0 && (
-        <TimelineSelectionActionBar
+        <SelectionActionBar
           selectedCount={selectedIds.size}
           onClear={clearSelection}
           onAddToAlbum={() => setShowAssignModal(true)}
+          onDelete={() => setShowDeleteConfirm(true)}
         />
       )}
+
+      <ConfirmationModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={() => {
+          multiDeleteMutation.mutate(Array.from(selectedIds));
+          setShowDeleteConfirm(false);
+        }}
+        isPending={multiDeleteMutation.isPending}
+        title="Move to Trash?"
+        message={`Are you sure you want to move ${selectedIds.size} items to the trash?`}
+        confirmLabel="Move to Trash"
+      />
 
       {showAssignModal && (
         <AssignToAlbumModal

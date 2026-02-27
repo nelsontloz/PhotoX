@@ -237,10 +237,9 @@ Notes:
 - Trash page lists soft-deleted media with restore actions and explicit Empty Trash confirmation.
 - Trash page renders authenticated thumbnail previews when derived preview artifacts are available.
 - Media lightbox now supports deleting media to Trash from Timeline and Album detail flows and invalidates timeline/album/trash queries.
-- Admin page consumes worker telemetry snapshot + SSE stream with reconnect and polling fallback, and surfaces
-  a worker backlog metric with stream health state.
-- Timeline supports multi-select mode: a "Select" toggle enables per-photo selection with visible checkmarks.
-  A floating bottom bar shows selected count and "Add to Album" button.
+- Admin page consumes worker telemetry snapshot + SSE stream with reconnect and polling fallback, and surfaces a worker backlog metric with stream health state.
+- Timeline supports multi-select mode: a "Select" toggle enables per-photo selection with visible checkmarks. A floating bottom bar shows selected count, "Delete" on the left, and a "Add to Album" primary button on the right. Labels are responsive (icons only on mobile).
+- Created a global `ConfirmationModal` component for premium confirmation dialogs, replacing native browser confirms. Used for bulk deletion on the timeline.
 - `AssignToAlbumModal` lets users add selected photos to an existing album or create a new one inline,
   using `Promise.allSettled` for batch add with per-item success/error reporting.
 - Albums page (`/albums`) lists the user's real albums (with `mediaCount`), with a "Create Album" modal.
