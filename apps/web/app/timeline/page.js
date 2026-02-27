@@ -3,7 +3,7 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 
 import {
   fetchMediaContentBlob,
@@ -16,6 +16,8 @@ import {
   sectionLabel,
   isVideoMimeType
 } from "./utils";
+import { isSupportedMediaFile } from "../../lib/upload";
+import { useUpload } from "../components/upload-context";
 import { Spinner } from "./components/Spinner";
 import { AssignToAlbumModal } from "./components/AssignToAlbumModal";
 import { TimelineFiltersBar } from "./components/TimelineFiltersBar";
@@ -42,6 +44,9 @@ function TimelineContent() {
   const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState(urlQ);
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
+  const fileInputRef = useRef(null);
 
   const {
     selectionMode,
@@ -87,6 +92,8 @@ function TimelineContent() {
     enabled: meQuery.isSuccess,
     initialPageParam: null
   });
+
+  const { uploadFiles, isUploading } = useUpload();
 
   const deleteMutation = useMutation({
     mutationFn: (mediaId) => deleteMedia(mediaId),
@@ -243,6 +250,73 @@ function TimelineContent() {
     };
   }, [activeItem, handleCloseModal, handleNextModal, handlePreviousModal]);
 
+  const handleDragEnter = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current++;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current--;
+    if (dragCounter.current === 0) {
+      setIsDragging(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounter.current = 0;
+
+    const files = e.dataTransfer?.files ? Array.from(e.dataTransfer.files) : [];
+    if (files.length === 0) return;
+
+    const validFiles = files.filter(isSupportedMediaFile);
+
+    if (validFiles.length > 0) {
+      uploadFiles(validFiles);
+    }
+  }, [uploadFiles]);
+
+  const handleFileChange = useCallback((e) => {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    if (files.length === 0) return;
+
+    const validFiles = files.filter(isSupportedMediaFile);
+    if (validFiles.length > 0) {
+      uploadFiles(validFiles);
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }, [uploadFiles]);
+
+  useEffect(() => {
+    window.addEventListener("dragenter", handleDragEnter);
+    window.addEventListener("dragover", handleDragOver);
+    window.addEventListener("dragleave", handleDragLeave);
+    window.addEventListener("drop", handleDrop);
+
+    return () => {
+      window.removeEventListener("dragenter", handleDragEnter);
+      window.removeEventListener("dragover", handleDragOver);
+      window.removeEventListener("dragleave", handleDragLeave);
+      window.removeEventListener("drop", handleDrop);
+    };
+  }, [handleDragEnter, handleDragOver, handleDragLeave, handleDrop]);
+
   useEffect(() => {
     if (activeIndex < 0) {
       return;
@@ -295,8 +369,7 @@ function TimelineContent() {
         <EmptyState
           icon="photo_camera_back"
           title="No media yet"
-          description="Upload photos and they will appear here."
-          cta={{ label: "Upload Photos", href: "/upload", icon: "upload" }}
+          description="Drag photos here to upload them."
         />
       ) : null}
 
@@ -334,14 +407,19 @@ function TimelineContent() {
         )}
       </div>
 
-      <Link
-        href="/upload"
-        className="fixed bottom-8 right-8 z-50 flex items-center gap-2 bg-primary hover:bg-primary/90 text-white font-bold px-6 py-3 rounded-full transition-all shadow-xl shadow-primary/20 sm:hidden"
-        aria-label="Upload Photos"
-      >
-        <span className="material-symbols-outlined">upload</span>
-        <span>Upload</span>
-      </Link>
+      {isDragging && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-primary/10 dark:bg-primary/20 backdrop-blur-sm border-4 border-dashed border-primary m-4 rounded-2xl transition-all duration-300 pointer-events-none animate-in fade-in zoom-in-95">
+          <div className="flex flex-col items-center gap-4 p-8 rounded-2xl bg-white dark:bg-card-dark shadow-2xl scale-110">
+            <div className="size-20 bg-primary/10 rounded-full flex items-center justify-center text-primary">
+              <span className="material-symbols-outlined text-5xl animate-bounce">cloud_upload</span>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-slate-900 dark:text-white">Drop to Upload</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Release your photos and videos to start uploading</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectionMode && selectedIds.size > 0 && (
         <TimelineSelectionActionBar
@@ -383,6 +461,28 @@ function TimelineContent() {
           deleteInProgress={deleteMutation.isPending}
         />
       ) : null}
+
+      {/* Touch Upload Button - Hidden during selection or preview */}
+      {!selectionMode && !activeMediaId && (
+        <div className="fixed bottom-8 right-8 z-50 flex flex-col items-end gap-3 sm:hidden">
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            multiple
+            accept="image/*,video/*"
+            onChange={handleFileChange}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center justify-center size-14 rounded-full bg-primary text-white shadow-2xl shadow-primary/40 active:scale-95 transition-all outline-none"
+            aria-label="Upload memories"
+            title="Upload memories"
+          >
+            <span className="material-symbols-outlined text-3xl">add_photo_alternate</span>
+          </button>
+        </div>
+      )}
     </PageLayout>
   );
 }

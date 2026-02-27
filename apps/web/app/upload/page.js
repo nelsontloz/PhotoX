@@ -7,27 +7,11 @@ import { useEffect, useRef, useState } from "react";
 
 import { fetchCurrentUser, formatApiError } from "../../lib/api";
 import { buildLoginPath } from "../../lib/navigation";
-import { formatBytes } from "../../lib/upload";
+import { formatBytes, isSupportedMediaFile } from "../../lib/upload";
 import { useUpload } from "../components/upload-context";
 import { PageLayout } from "../components/PageLayout";
 import { ErrorBanner } from "../components/ErrorBanner";
 
-const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "tif", "tiff", "avif"]);
-const VIDEO_EXTENSIONS = new Set(["mp4", "mov", "m4v", "webm", "avi", "mkv", "3gp", "ogv", "wmv", "mpeg", "mpg"]);
-
-function isSupportedMediaFile(file) {
-  if (typeof file?.type === "string" && file.type.startsWith("image/")) {
-    return true;
-  }
-
-  if (typeof file?.type === "string" && file.type.startsWith("video/")) {
-    return true;
-  }
-
-  const name = typeof file?.name === "string" ? file.name : "";
-  const extension = name.includes(".") ? name.split(".").pop()?.toLowerCase() : "";
-  return Boolean(extension && (IMAGE_EXTENSIONS.has(extension) || VIDEO_EXTENSIONS.has(extension)));
-}
 
 export default function UploadPage() {
   const router = useRouter();

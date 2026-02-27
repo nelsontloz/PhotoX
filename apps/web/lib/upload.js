@@ -2,6 +2,23 @@ import { completeUpload, createIdempotencyKey, initUpload, uploadPart } from "./
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex } from "@noble/hashes/utils";
 
+export const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "tif", "tiff", "avif"]);
+export const VIDEO_EXTENSIONS = new Set(["mp4", "mov", "m4v", "webm", "avi", "mkv", "3gp", "ogv", "wmv", "mpeg", "mpg"]);
+
+export function isSupportedMediaFile(file) {
+  if (typeof file?.type === "string" && file.type.startsWith("image/")) {
+    return true;
+  }
+
+  if (typeof file?.type === "string" && file.type.startsWith("video/")) {
+    return true;
+  }
+
+  const name = typeof file?.name === "string" ? file.name : "";
+  const extension = name.includes(".") ? name.split(".").pop()?.toLowerCase() : "";
+  return Boolean(extension && (IMAGE_EXTENSIONS.has(extension) || VIDEO_EXTENSIONS.has(extension)));
+}
+
 const HASH_CHUNK_SIZE_BYTES = 8 * 1024 * 1024;
 
 async function sha256HexFromBlob(blob) {

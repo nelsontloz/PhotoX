@@ -97,19 +97,11 @@ export default function TopBar() {
       <div className="flex items-center justify-end gap-4 w-1/4">
         {user ? (
           <>
-            {pathname.startsWith("/albums") ? (
+            {pathname.startsWith("/albums") && (
               <button className="hidden sm:flex items-center gap-2 bg-primary hover:bg-primary/90 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-all shadow-lg shadow-primary/20">
                 <span className="material-symbols-outlined text-[18px]">add</span>
                 <span>New Album</span>
               </button>
-            ) : (
-              <Link
-                href="/upload"
-                className="hidden sm:flex items-center gap-2 bg-primary hover:bg-primary/90 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-all shadow-lg shadow-primary/20"
-              >
-                <span className="material-symbols-outlined text-[18px]">upload</span>
-                <span>Upload</span>
-              </Link>
             )}
             <div className="h-6 w-px bg-gray-200 dark:bg-border-dark mx-1 hidden sm:block"></div>
             <button className="relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-card-dark text-slate-500 dark:text-slate-400 transition-colors">

@@ -1,6 +1,6 @@
 export function TimelineSelectionActionBar({ selectedCount, onClear, onAddToAlbum }) {
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-between px-6 py-4 bg-slate-900/95 backdrop-blur-md border-t border-white/10 shadow-2xl">
+    <div className="fixed bottom-0 left-[45px] sm:left-[72px] lg:left-60 right-0 z-50 flex items-center justify-between px-6 py-4 bg-slate-900/95 backdrop-blur-md border-t border-white/10 shadow-2xl transition-[left] duration-300">
       <span className="text-white font-semibold text-sm">{selectedCount} selected</span>
       <div className="flex items-center gap-3">
         <button
