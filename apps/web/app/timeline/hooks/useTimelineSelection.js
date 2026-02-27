@@ -19,6 +19,13 @@ export function useTimelineSelection() {
       } else {
         next.add(mediaId);
       }
+
+      if (next.size === 0) {
+        setSelectionMode(false);
+      } else {
+        setSelectionMode(true);
+      }
+
       return next;
     });
   }
@@ -34,6 +41,7 @@ export function useTimelineSelection() {
 
   function clearSelection() {
     setSelectedIds(new Set());
+    setSelectionMode(false);
   }
 
   function closeSelection() {

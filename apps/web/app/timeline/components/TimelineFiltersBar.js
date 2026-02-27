@@ -57,21 +57,6 @@ export function TimelineFiltersBar({
         </div>
       </div>
 
-      <div className="flex justify-end">
-        <button
-          type="button"
-          className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-semibold border transition-all ${selectionMode
-            ? "bg-primary border-primary text-white"
-            : "border-slate-200 dark:border-border-dark bg-white dark:bg-card-dark text-slate-700 dark:text-slate-200 hover:border-primary hover:text-primary"
-            }`}
-          onClick={onToggleSelectionMode}
-        >
-          <span className="material-symbols-outlined text-[16px]">
-            {selectionMode ? "close" : "select_all"}
-          </span>
-          {selectionMode ? "Cancel Select" : "Select"}
-        </button>
-      </div>
     </div>
   );
 }

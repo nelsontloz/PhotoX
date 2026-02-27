@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { fetchMediaContentBlob } from "../../../lib/api";
 import { isVideoMimeType, formatDurationSeconds } from "../utils";
 import { Spinner } from "./Spinner";
@@ -12,7 +13,40 @@ export function TimelineThumbnail({ item, onOpen, onSelect, isSelected = false, 
     queryFn: () => fetchMediaContentBlob(mediaId, "thumb")
   });
 
-  function handleClick() {
+  const longPressTimer = useRef(null);
+  const [isLongPressing, setIsLongPressing] = useState(false);
+  const wasLongPressed = useRef(false);
+
+  function startLongPress(e) {
+    // Only handle primary pointer (left click / single touch)
+    if (e.button !== undefined && e.button !== 0) return;
+
+    wasLongPressed.current = false;
+    longPressTimer.current = setTimeout(() => {
+      onSelect?.();
+      wasLongPressed.current = true;
+      setIsLongPressing(true);
+      // Vibrate if available
+      if (typeof navigator !== "undefined" && navigator.vibrate) {
+        navigator.vibrate(50);
+      }
+    }, 500);
+  }
+
+  function clearLongPress() {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    setIsLongPressing(false);
+  }
+
+  function handleClick(e) {
+    if (wasLongPressed.current) {
+      wasLongPressed.current = false;
+      return;
+    }
+
     if (selectionMode) {
       onSelect?.();
     } else {
@@ -23,7 +57,11 @@ export function TimelineThumbnail({ item, onOpen, onSelect, isSelected = false, 
   return (
     <div
       onClick={handleClick}
-      className={`masonry-item relative group rounded-lg overflow-hidden cursor-pointer bg-slate-200 dark:bg-card-dark transition-all ${isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-background-dark" : ""} ${className}`}
+      onPointerDown={startLongPress}
+      onPointerUp={clearLongPress}
+      onPointerCancel={clearLongPress}
+      onPointerLeave={clearLongPress}
+      className={`masonry-item relative group rounded-lg overflow-hidden cursor-pointer bg-slate-200 dark:bg-card-dark transition-all ${isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-background-dark" : ""} ${isLongPressing ? "scale-[0.98]" : ""} ${className}`}
     >
       {mediaUrl ? (
         <img
@@ -44,6 +82,10 @@ export function TimelineThumbnail({ item, onOpen, onSelect, isSelected = false, 
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
 
       <div
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect?.();
+        }}
         className={`absolute top-3 left-3 transition-all duration-200 ${selectionMode ? "opacity-100" : "opacity-0 group-hover:opacity-100"
           }`}
       >
