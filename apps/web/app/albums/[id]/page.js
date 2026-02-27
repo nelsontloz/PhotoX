@@ -5,7 +5,7 @@ import { useParams, useSearchParams, useRouter, usePathname } from "next/navigat
 import { useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 
-import { deleteMedia, getAlbumById, listAlbumItems, removeMediaFromAlbum, formatApiError } from "../../../lib/api";
+import { deleteMedia, restoreMedia, getAlbumById, listAlbumItems, removeMediaFromAlbum, formatApiError } from "../../../lib/api";
 import { Spinner } from "../../components/Spinner";
 import { MediaLightbox } from "../../components/media/MediaLightbox";
 import { AlbumMediaTile } from "../components/AlbumMediaTile";
@@ -14,6 +14,7 @@ import { PageLayout } from "../../components/PageLayout";
 import { SessionLoadingScreen } from "../../components/SessionLoadingScreen";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { EmptyState } from "../../components/EmptyState";
+import { useNotification } from "../../components/NotificationContext";
 
 export default function AlbumDetailPage() {
   const params = useParams();
@@ -22,6 +23,7 @@ export default function AlbumDetailPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
+  const { show: showNotification } = useNotification();
 
   const urlMediaId = searchParams.get("mediaId");
   const activeMediaId = urlMediaId;
@@ -57,9 +59,7 @@ export default function AlbumDetailPage() {
   const deleteMutation = useMutation({
     mutationFn: (mediaId) => deleteMedia(mediaId),
     onSuccess: (_, mediaId) => {
-      const nextParams = new URLSearchParams(searchParams.toString());
-      nextParams.delete("mediaId");
-      router.replace(`${pathname}?${nextParams.toString()}`, { scroll: false });
+      // Optimistic navigation already handled in onDelete
       queryClient.setQueryData(["album-items", albumId], (old) => {
         if (!old) {
           return old;
@@ -70,6 +70,27 @@ export default function AlbumDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["albums"] });
       queryClient.invalidateQueries({ queryKey: ["timeline"] });
       queryClient.invalidateQueries({ queryKey: ["trash"] });
+
+      showNotification("Moved to trash", {
+        action: {
+          label: "Undo",
+          onClick: () => restoreMutation.mutate(mediaId)
+        }
+      });
+    }
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: (mediaId) => restoreMedia(mediaId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["album-items", albumId] });
+      queryClient.invalidateQueries({ queryKey: ["album", albumId] });
+      queryClient.invalidateQueries({ queryKey: ["timeline"] });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
+      showNotification("Restored photo");
+    },
+    onError: (error) => {
+      showNotification(`Failed to restore: ${formatApiError(error)}`);
     }
   });
 
@@ -236,6 +257,17 @@ export default function AlbumDetailPage() {
           onClose={() => updateMediaId(null)}
           onDelete={() => {
             if (activeMediaId) {
+              const nextIndex = activeIndex + 1;
+              const prevIndex = activeIndex - 1;
+              let nextId = null;
+
+              if (nextIndex < items.length) {
+                nextId = items[nextIndex].id;
+              } else if (prevIndex >= 0) {
+                nextId = items[prevIndex].id;
+              }
+
+              updateMediaId(nextId);
               deleteMutation.mutate(activeMediaId);
             }
           }}

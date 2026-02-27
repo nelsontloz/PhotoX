@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "rea
 import {
   fetchMediaContentBlob,
   deleteMedia,
+  restoreMedia,
   fetchTimeline,
   formatApiError
 } from "../../lib/api";
@@ -30,9 +31,11 @@ import { PageLayout } from "../components/PageLayout";
 import { SessionLoadingScreen } from "../components/SessionLoadingScreen";
 import { EmptyState } from "../components/EmptyState";
 import { ConfirmationModal } from "../components/ConfirmationModal";
+import { useNotification } from "../components/NotificationContext";
 
 function TimelineContent() {
   const queryClient = useQueryClient();
+  const { show: showNotification } = useNotification();
   const { meQuery, user } = useRequireSession({ redirectPath: "/timeline" });
 
   const router = useRouter();
@@ -99,17 +102,33 @@ function TimelineContent() {
 
   const deleteMutation = useMutation({
     mutationFn: (mediaId) => deleteMedia(mediaId),
-    onSuccess: () => {
-      updateMediaId(null);
+    onSuccess: (_, mediaId) => {
+      // updateMediaId(null); // Removed: Navigation now happens before/during mutation
       setModalError("");
       queryClient.invalidateQueries({ queryKey: ["timeline"] });
-      queryClient.invalidateQueries({ queryKey: ["albums"] });
-      queryClient.invalidateQueries({ queryKey: ["album"] });
-      queryClient.invalidateQueries({ queryKey: ["album-items"] });
       queryClient.invalidateQueries({ queryKey: ["trash"] });
+
+      showNotification("Moved to trash", {
+        action: {
+          label: "Undo",
+          onClick: () => restoreMutation.mutate(mediaId)
+        }
+      });
     },
     onError: (error) => {
       setModalError(formatApiError(error));
+    }
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: (mediaId) => restoreMedia(mediaId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["timeline"] });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
+      showNotification("Restored photo");
+    },
+    onError: (error) => {
+      showNotification(`Failed to restore: ${formatApiError(error)}`);
     }
   });
 
@@ -484,6 +503,17 @@ function TimelineContent() {
           onClose={handleCloseModal}
           onDelete={() => {
             if (activeMediaId) {
+              const nextIndex = activeIndex + 1;
+              const prevIndex = activeIndex - 1;
+              let nextId = null;
+
+              if (nextIndex < items.length) {
+                nextId = items[nextIndex].id;
+              } else if (prevIndex >= 0) {
+                nextId = items[prevIndex].id;
+              }
+
+              updateMediaId(nextId);
               deleteMutation.mutate(activeMediaId);
             }
           }}

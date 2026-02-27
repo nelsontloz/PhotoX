@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { UploadProvider } from "./components/upload-context";
 import GlobalUploadProgress from "./components/global-upload-progress";
+import { NotificationProvider } from "./components/NotificationProvider";
 
 export default function Providers({ children }) {
   const [queryClient] = useState(
@@ -22,8 +23,10 @@ export default function Providers({ children }) {
   return (
     <QueryClientProvider client={queryClient}>
       <UploadProvider>
-        {children}
-        <GlobalUploadProgress />
+        <NotificationProvider>
+          {children}
+          <GlobalUploadProgress />
+        </NotificationProvider>
       </UploadProvider>
     </QueryClientProvider>
   );
