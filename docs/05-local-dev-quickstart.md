@@ -87,10 +87,17 @@ docker compose --env-file .env down
 
 ## 5) Basic Endpoints
 
-- Web app: `http://localhost:8088/`
+- Web app (gateway): `http://localhost:8088/`
+- Web app (direct dev server): `http://localhost:3000/`
 - Grafana: `http://localhost:3001`
 - Prometheus: `http://localhost:9090`
 - Service health (container-local): `http://127.0.0.1:<port>/health`
+
+Notes:
+- When using `http://localhost:3000` directly, Next.js dev rewrites are enabled in `apps/web/next.config.mjs`.
+- Default dev mode in compose is `NEXT_DEV_API_PROXY_MODE=compose`, which routes `/api/v1/*` directly to internal service hosts (for example `/api/v1/me` -> `auth-service:3000`) and avoids proxying back through host `localhost` from inside the web container.
+- Alternative mode is `NEXT_DEV_API_PROXY_MODE=gateway`, which routes `/api/v1/*` to `${NEXT_DEV_API_PROXY_TARGET:-http://localhost:8088}/api/v1/*`.
+- This keeps web API calls like `/api/v1/me` working in local development and avoids auth redirect loops caused by local `404` responses from the Next.js server.
 
 Backend API docs through gateway:
 - Auth: `http://localhost:8088/api/v1/auth/docs`
