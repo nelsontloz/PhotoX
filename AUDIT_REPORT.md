@@ -1,131 +1,142 @@
 # Comprehensive Code Audit Report: PhotoX
 
-Last updated: 2026-02-16
+Last updated: 2026-02-18
 
-This report reflects the current repository state after remediation work for:
-- transaction and concurrency hardening in ingest complete flow,
-- failure-path assembled-file cleanup,
-- conflict-safe idempotency persistence behavior.
-
-Deferred items are explicitly tracked in Phase `P100` security tech debt:
-- `docs/07-ai-agent-task-contracts.md` (`P100-S1`, `P100-S2`)
-- `docs/10-execution-checklists-and-handoffs.md` (Phase `P100` checklist)
-- `docs/11-current-implementation-status.md` (`P100` snapshot)
+This report provides a senior-level code audit of the PhotoX repository, evaluating Security, Performance and Scalability, Concurrency and Reliability, Framework-Specific Issues, and Code Quality. It also acknowledges and excludes currently open Pull Requests (e.g., `perf/timeline-prefetch-neighbor-index`).
 
 ---
 
 ## 1. Security Analysis
 
 ### 1.1 Insecure Token Storage (Critical)
-*   **Status**: **Deferred (P100-S1)**
-*   **File**: `apps/web/lib/session.js`
-*   **Current state**: Access and refresh tokens are still persisted in browser-readable storage.
-*   **Risk**: XSS can exfiltrate tokens and enable account takeover.
-*   **Planned remediation**: migrate to cookie-based auth transport (`httpOnly`, `Secure`, `SameSite`) with CSRF controls.
+*   **File**: `apps/web/lib/session.js`, lines 33-41
+*   **Location**: `writeSession` function
+*   **Issue**: Access and refresh tokens are persisted in browser-readable storage (`window.localStorage`).
+*   **Exploit Scenario & Impact**: A Cross-Site Scripting (XSS) vulnerability anywhere in the web app allows attackers to read `localStorage` and exfiltrate the tokens, leading to full Account Takeover (ATO) without needing the user's credentials.
+*   **Remediation**: Migrate to cookie-based auth transport. The backend should send `Set-Cookie` headers for the refresh token with `HttpOnly`, `Secure`, and `SameSite=Strict` attributes.
+    ```javascript
+    // Backend (Fastify):
+    reply.setCookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: app.config.refreshTokenTtlDays * 24 * 60 * 60
+    });
+    // Frontend: Remove localStorage token persistence and rely on cookies for /refresh.
+    ```
 
-### 1.2 Weak Token Hashing (High)
-*   **Status**: **Mitigated**
-*   **File**: `services/auth/src/auth/tokens.js`
-*   **Current state**: Refresh tokens are hashed and verified with Argon2 only.
-*   **Residual risk**: Existing non-Argon2 refresh token hashes are rejected and require user re-authentication.
+### 1.2 User Enumeration via Registration Endpoint (Low/Medium)
+*   **File**: `services/auth/src/routes/authRoutes.js`, lines 203-205, 214-216
+*   **Location**: `POST /api/v1/auth/register`
+*   **Issue**: The endpoint explicitly returns a `409 Conflict` with `CONFLICT_EMAIL_EXISTS` when an email is already registered.
+*   **Exploit Scenario & Impact**: Attackers can brute-force email addresses against the `/register` endpoint to harvest a list of valid users on the platform, which can then be targeted for phishing or credential stuffing.
+*   **Remediation**: Return a generic success message or standard `201 Created` for all registration attempts, optionally triggering an asynchronous email to the user if the account already exists. For API context where a UI expects an error, rate limiting and CAPTCHAs are standard mitigation.
+    ```javascript
+    // Modified response logic
+    const existingUser = await app.repos.users.findByEmail(email);
+    if (existingUser) {
+      // Simulate processing time to prevent timing attacks, then return success.
+      return reply.code(201).send({ message: "Registration accepted. Check your email." });
+    }
+    ```
 
-### 1.3 Denial of Service via Large Payload (High)
-*   **Status**: **Mitigated**
-*   **Files**: `services/ingest/src/config.js`, `services/ingest/src/app.js`, `services/ingest/src/routes/uploadsRoutes.js`
-*   **Current state**: Fastify `bodyLimit` is configured and defaults are aligned with chunk expectations.
-*   **Residual risk**: remains bounded by configured limit and request concurrency.
-
-### 1.4 Path Traversal Risk (Medium)
-*   **Status**: **Not confirmed as traversal; deferred hardening**
-*   **File**: `services/ingest/src/upload/storage.js`
-*   **Current state**: file path uses controlled path segments (`userId/year/month/mediaId`) and extension extraction.
-*   **Risk posture**: not path traversal in current implementation, but strict extension/MIME allowlisting is still good hardening.
-*   **Recommended follow-up**: extension + MIME allowlist and upload-policy documentation.
-
-### 1.5 User Enumeration (Low)
-*   **Status**: **Open**
-*   **File**: `services/auth/src/routes/authRoutes.js`
-*   **Current state**: register endpoint returns explicit `CONFLICT_EMAIL_EXISTS`.
-*   **Risk**: allows probing whether an email exists.
+### 1.3 Weak Password Policy Enforcement (Medium)
+*   **File**: `services/auth/src/auth/password.js`, lines 9-16
+*   **Location**: `validatePassword` function
+*   **Issue**: The password validation only checks for a minimum length of 8 characters. It lacks complexity requirements (uppercase, lowercase, numbers, special characters) or checks against common password dictionaries.
+*   **Exploit Scenario & Impact**: Users may choose weak, easily guessable passwords, making the application susceptible to brute-force and dictionary attacks.
+*   **Remediation**: Implement stricter complexity requirements.
+    ```javascript
+    function validatePassword(password) {
+      if (typeof password !== "string" || password.length < 12) {
+        return { ok: false, reason: "Password must be at least 12 characters" };
+      }
+      if (!/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
+        return { ok: false, reason: "Password must contain uppercase letters and numbers" };
+      }
+      return { ok: true };
+    }
+    ```
 
 ---
 
 ## 2. Performance and Scalability
 
-### 2.1 Memory Inefficiency in File Assembly (Critical)
-*   **Status**: **Fixed**
-*   **File**: `services/ingest/src/upload/storage.js`
-*   **Current state**: assembly uses streaming read/write, not whole-file buffering per part.
+### 2.1 Inefficient Substring Search in Timeline (Medium)
+*   **File**: `services/library/src/repos/libraryRepo.js`, line 74
+*   **Location**: `listTimeline` query
+*   **Issue**: The search filter uses a leading and trailing wildcard `ILIKE '%' || $9 || '%'`.
+*   **Impact**: This forces PostgreSQL to perform a full table scan on the `media` table, ignoring standard B-Tree indexes. As the media library grows, this query will consume significant CPU and I/O, leading to severe performance degradation.
+*   **Remediation**: Use Postgres Full Text Search (FTS) or a `pg_trgm` GIN index. *Note: Memory indicates a GIN Trigram index was added to `media.relative_path`, but the query still uses `ILIKE`. The index will support `ILIKE`, but FTS (`to_tsvector`) provides better performance for keyword searches.*
+    ```sql
+    -- If using pg_trgm:
+    CREATE INDEX idx_media_relative_path_trgm ON media USING gin (relative_path gin_trgm_ops);
+    -- The ILIKE query will now use this index.
+    ```
 
-### 2.2 Memory Inefficiency in Checksum Calculation (Critical)
-*   **Status**: **Mitigated**
-*   **File**: `services/ingest/src/upload/storage.js`
-*   **Current state**: checksum computation uses stream-based hashing.
-
-### 2.3 Blocking Event Loop
-*   **Status**: **Not confirmed**
-*   **File**: `services/ingest/src/upload/storage.js`
-*   **Current state**: stream-based APIs are used for assembly and checksum.
+### 2.2 Inefficient Bulk Insert for Album Items (Low)
+*   **File**: `services/album-sharing/src/routes/albumRoutes.js` (and related repo)
+*   **Issue**: Using `Promise.allSettled` in a loop to add multiple items to an album causes a high volume of individual database queries, introducing network overhead and database load.
+*   **Impact**: Adding 1000 items to an album triggers 1000 individual `INSERT` statements, leading to I/O bottlenecks and increased latency.
+*   **Remediation**: Implement a bulk insert repository method using `unnest` or multiple value lists in a single `INSERT` statement.
+    ```javascript
+    // In albumRepo.js
+    async addMultipleItems(albumId, mediaIds) {
+      await db.query(`
+        INSERT INTO album_items (album_id, media_id)
+        SELECT $1, unnest($2::uuid[])
+        ON CONFLICT DO NOTHING
+      `, [albumId, mediaIds]);
+    }
+    ```
 
 ---
 
 ## 3. Concurrency and Reliability
 
-### 3.1 Race Conditions in File Operations
-*   **Status**: **Improved**
-*   **Files**: `services/ingest/src/routes/uploadsRoutes.js`, `services/ingest/src/repos/uploadSessionsRepo.js`
-*   **Current state**:
-    - complete flow now uses row lock (`SELECT ... FOR UPDATE`) and transactional state writes,
-    - concurrent complete requests converge on one persisted media/session result.
-
-### 3.2 Database Transaction Boundaries
-*   **Status**: **Fixed**
-*   **Files**: `services/ingest/src/routes/uploadsRoutes.js`, `services/ingest/src/repos/mediaRepo.js`, `services/ingest/src/repos/uploadSessionsRepo.js`
-*   **Current state**: critical complete-flow DB mutations run in a single transaction.
-
-### 3.3 Failure-path Assembled File Cleanup
-*   **Status**: **Fixed**
-*   **Files**: `services/ingest/src/routes/uploadsRoutes.js`
-*   **Current state**: staged assembled output file is removed in `finally` for non-primary paths (including checksum mismatch and dedupe paths).
-
-### 3.4 Idempotency Persistence Conflict Races
-*   **Status**: **Fixed**
-*   **Files**: `services/ingest/src/repos/idempotencyRepo.js`, `services/ingest/src/routes/uploadsRoutes.js`
-*   **Current state**: idempotency persistence uses conflict-safe insert-or-fetch semantics instead of failing on unique constraint races.
+### 3.1 Potential Race Condition on User Registration (Low)
+*   **File**: `services/auth/src/routes/authRoutes.js`, lines 199-219
+*   **Issue**: The registration endpoint checks if an email exists (`findByEmail`), then performs a hash, and then inserts the user. While the unique constraint handles the final integrity (`err.code === "23505"`), the delay during password hashing (Argon2) leaves a large time window.
+*   **Impact**: High concurrency of the same email can trigger excessive CPU usage because Argon2 hashing is performed *before* the unique constraint exception is hit for duplicate requests. This is a vector for resource exhaustion / DoS.
+*   **Remediation**: Check existence, but also consider acquiring a lightweight lock or doing the insert with a placeholder before the expensive hash operation, or simply applying an application-level rate limiter to the IP/email.
+    ```javascript
+    // Implement rate limiting using @fastify/rate-limit on /register and /login endpoints.
+    await app.register(require('@fastify/rate-limit'), {
+      max: 5,
+      timeWindow: '1 minute'
+    });
+    ```
 
 ---
 
 ## 4. Framework-Specific Issues
 
-### 4.1 Missing Service Implementations
-*   **Status**: **Partially open**
-*   **Services**: `search-service`, `album-sharing-service`, `worker-service`
-*   **Current state**: still scaffold-level.
-
-### 4.2 Fastify `trustProxy` Configuration
-*   **Status**: **Open**
-*   **File**: `services/auth/src/app.js`
-*   **Current state**: `trustProxy` not configured.
+### 4.1 Missing Fastify `trustProxy` Configuration (Medium)
+*   **File**: All services (`services/auth/src/app.js`, `services/ingest/src/app.js`, `services/library/src/app.js`, etc.)
+*   **Issue**: Fastify applications are deployed behind a reverse proxy (Traefik in Docker Compose) but do not configure `trustProxy: true` in the Fastify initialization.
+*   **Impact**: Request properties like `request.ip`, `request.hostname`, and `request.protocol` will reflect the proxy's internal IP instead of the actual client. This breaks IP-based rate limiting, audit logging, and geolocation, as all traffic appears to originate from the Traefik container.
+*   **Remediation**:
+    ```javascript
+    // In src/app.js for all services
+    const app = Fastify({
+      logger: true,
+      trustProxy: true, // Enable proxy trust
+      // ...
+    });
+    ```
 
 ---
 
 ## 5. Code Quality and Maintainability
 
-### 5.1 Hardcoded Secret Defaults in Config
-*   **Status**: **Deferred (P100-S2)**
-*   **Files**: `services/auth/src/config.js`, `services/ingest/src/config.js`, `services/library/src/config.js`
-*   **Current state**: defaults still exist for local-development convenience.
-*   **Planned remediation**: production-mode fail-fast validation for weak/missing JWT secrets.
-
-### 5.2 Duplicate Infrastructure Boilerplate
-*   **Status**: **Open**
-*   **Files**: repeated patterns under `services/*/src/app.js`, `services/*/src/config.js`, `services/*/src/db.js`
-*   **Current state**: duplication remains.
+### 5.1 Hardcoded Config Defaults (Security/Maintainability)
+*   **File**: `services/auth/src/config.js`, `services/ingest/src/config.js`, `services/library/src/config.js`
+*   **Issue**: The configuration files enforce `WEAK_SECRET_VALUES` in production, but still allow implicit fallbacks if `NODE_ENV` is not strictly `production`.
+*   **Impact**: A misconfigured deployment where `NODE_ENV` is missing or accidentally set to `staging` will silently accept missing or weak secrets, exposing the system.
+*   **Remediation**: Always require strong, explicit secrets regardless of the environment, unless an explicit `ALLOW_INSECURE_SECRETS_FOR_LOCAL_DEV` flag is enabled.
 
 ---
 
-## 6. Immediate Priorities
+## 6. Pull Request Awareness
 
-1. Execute `P100-S1` (cookie-based auth session migration).
-2. Execute `P100-S2` (production JWT secret hard-fail policy).
-3. Close remaining open items: user enumeration response policy, `trustProxy`, and service scaffold completion.
+*   **PR `perf/timeline-prefetch-neighbor-index`**: Evaluated and excluded. This PR optimizes the `buildNeighborPrefetchTargets` logic in `apps/web/app/timeline/utils.js` from an $O(N)$ scan to an $O(1)$ lookup, which correctly mitigates the timeline performance issue where active index lookups became expensive on large timelines. No duplicate findings reported for this.
