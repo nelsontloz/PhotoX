@@ -5,6 +5,7 @@
 
 # Local environment files
 .env
+.env.dev
 .env.local
 
 # Dependencies and build outputs

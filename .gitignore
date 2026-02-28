@@ -4,6 +4,7 @@ apps/*/node_modules/
 apps/*/.next/
 
 .env
+.env.dev
 .env.local
 
 data/
