@@ -1,7 +1,6 @@
 const Fastify = require("fastify");
 const swagger = require("@fastify/swagger");
 const swaggerUi = require("@fastify/swagger-ui");
-const { Queue } = require("bullmq");
 
 const { loadConfig } = require("./config");
 const { createPool, runMigrations } = require("./db");
@@ -10,21 +9,9 @@ const { buildUploadSessionsRepo } = require("./repos/uploadSessionsRepo");
 const { buildIdempotencyRepo } = require("./repos/idempotencyRepo");
 const { buildUploadPartsRepo } = require("./repos/uploadPartsRepo");
 const { buildMediaRepo } = require("./repos/mediaRepo");
+const { createJobQueueAdapter } = require("./queues/jobQueueAdapter");
 const openapiRoute = require("./routes/openapiRoute");
 const uploadsRoutes = require("./routes/uploadsRoutes");
-
-function redisConnectionFromUrl(redisUrl) {
-  const parsed = new URL(redisUrl);
-  const dbNumber = Number.parseInt(parsed.pathname.replace("/", ""), 10);
-
-  return {
-    host: parsed.hostname,
-    port: Number.parseInt(parsed.port || "6379", 10),
-    username: parsed.username || undefined,
-    password: parsed.password || undefined,
-    db: Number.isNaN(dbNumber) ? 0 : dbNumber
-  };
-}
 
 function buildApp(overrides = {}) {
   const config = loadConfig(overrides);
@@ -42,8 +29,12 @@ function buildApp(overrides = {}) {
   const db = overrides.db || createPool(config.databaseUrl);
   const queue =
     overrides.mediaProcessQueue ||
-    new Queue(config.mediaProcessQueueName, {
-      connection: redisConnectionFromUrl(config.redisUrl)
+    createJobQueueAdapter({
+      queueName: config.mediaProcessQueueName,
+      rabbitmqUrl: config.rabbitmqUrl,
+      rabbitmqExchangeName: config.rabbitmqExchangeName,
+      rabbitmqQueuePrefix: config.rabbitmqQueuePrefix,
+      logger: app.log
     });
 
   app.decorate("config", config);

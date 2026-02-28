@@ -1,27 +1,14 @@
 const Fastify = require("fastify");
 const swagger = require("@fastify/swagger");
 const swaggerUi = require("@fastify/swagger-ui");
-const { Queue } = require("bullmq");
 
 const { loadConfig } = require("./config");
 const { createPool, runMigrations } = require("./db");
 const { ApiError, toErrorBody } = require("./errors");
 const { buildLibraryRepo } = require("./repos/libraryRepo");
+const { createJobQueueAdapter } = require("./queues/jobQueueAdapter");
 const openapiRoute = require("./routes/openapiRoute");
 const libraryRoutes = require("./routes/libraryRoutes");
-
-function redisConnectionFromUrl(redisUrl) {
-  const parsed = new URL(redisUrl);
-  const dbNumber = Number.parseInt(parsed.pathname.replace("/", ""), 10);
-
-  return {
-    host: parsed.hostname,
-    port: Number.parseInt(parsed.port || "6379", 10),
-    username: parsed.username || undefined,
-    password: parsed.password || undefined,
-    db: Number.isNaN(dbNumber) ? 0 : dbNumber
-  };
-}
 
 function buildApp(overrides = {}) {
   const app = Fastify({
@@ -39,13 +26,21 @@ function buildApp(overrides = {}) {
   const db = overrides.db || createPool(config.databaseUrl);
   const mediaDerivativesQueue =
     overrides.mediaDerivativesQueue ||
-    new Queue(config.mediaDerivativesQueueName, {
-      connection: redisConnectionFromUrl(config.redisUrl)
+    createJobQueueAdapter({
+      queueName: config.mediaDerivativesQueueName,
+      rabbitmqUrl: config.rabbitmqUrl,
+      rabbitmqExchangeName: config.rabbitmqExchangeName,
+      rabbitmqQueuePrefix: config.rabbitmqQueuePrefix,
+      logger: app.log
     });
   const mediaCleanupQueue =
     overrides.mediaCleanupQueue ||
-    new Queue(config.mediaCleanupQueueName, {
-      connection: redisConnectionFromUrl(config.redisUrl)
+    createJobQueueAdapter({
+      queueName: config.mediaCleanupQueueName,
+      rabbitmqUrl: config.rabbitmqUrl,
+      rabbitmqExchangeName: config.rabbitmqExchangeName,
+      rabbitmqQueuePrefix: config.rabbitmqQueuePrefix,
+      logger: app.log
     });
 
   app.decorate("config", config);

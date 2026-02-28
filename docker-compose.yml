@@ -79,6 +79,20 @@ services:
       timeout: 5s
       retries: 10
 
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    networks:
+      - internal
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   prometheus:
     image: prom/prometheus:v3.5.0
     profiles: [ "app" ]
@@ -176,7 +190,9 @@ services:
       PORT: 3000
       SERVICE_NAME: ingest-service
       DATABASE_URL: postgresql://${POSTGRES_USER:-photox}:${POSTGRES_PASSWORD:-photox-dev-password}@postgres:5432/${POSTGRES_DB:-photox}
-      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672}
+      RABBITMQ_EXCHANGE_NAME: ${RABBITMQ_EXCHANGE_NAME:-photox.media}
+      RABBITMQ_QUEUE_PREFIX: ${RABBITMQ_QUEUE_PREFIX:-worker}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
       UPLOAD_ORIGINALS_PATH: /data/photox/originals
       UPLOAD_DERIVED_PATH: /data/photox/derived
@@ -184,7 +200,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      rabbitmq:
         condition: service_healthy
     volumes:
       - ${PHOTOX_ORIGINALS_DIR:-/data/photox/originals}:/data/photox/originals
@@ -206,14 +222,16 @@ services:
       PORT: 3000
       SERVICE_NAME: library-service
       DATABASE_URL: postgresql://${POSTGRES_USER:-photox}:${POSTGRES_PASSWORD:-photox-dev-password}@postgres:5432/${POSTGRES_DB:-photox}
-      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672}
+      RABBITMQ_EXCHANGE_NAME: ${RABBITMQ_EXCHANGE_NAME:-photox.media}
+      RABBITMQ_QUEUE_PREFIX: ${RABBITMQ_QUEUE_PREFIX:-worker}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
       UPLOAD_ORIGINALS_PATH: /data/photox/originals
       UPLOAD_DERIVED_PATH: /data/photox/derived
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      rabbitmq:
         condition: service_healthy
     volumes:
       - ${PHOTOX_ORIGINALS_DIR:-/data/photox/originals}:/data/photox/originals
@@ -282,7 +300,9 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-photox}:${POSTGRES_PASSWORD:-photox-dev-password}@postgres:5432/${POSTGRES_DB:-photox}
       SERVICE_NAME: worker-service
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
-      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672}
+      RABBITMQ_EXCHANGE_NAME: ${RABBITMQ_EXCHANGE_NAME:-photox.media}
+      RABBITMQ_QUEUE_PREFIX: ${RABBITMQ_QUEUE_PREFIX:-worker}
       MEDIA_DERIVATIVES_QUEUE_NAME: ${MEDIA_DERIVATIVES_QUEUE_NAME:-media.derivatives.generate}
       MEDIA_CLEANUP_QUEUE_NAME: ${MEDIA_CLEANUP_QUEUE_NAME:-media.cleanup}
       UPLOAD_ORIGINALS_PATH: /data/photox/originals
@@ -290,7 +310,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      rabbitmq:
         condition: service_healthy
     networks:
       - internal

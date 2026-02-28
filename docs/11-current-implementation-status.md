@@ -173,6 +173,11 @@ Implemented now:
 - BullMQ consumer for `media.derivatives.generate` that creates image `thumb`/`small` WebP derivatives and video `playback` WebM (VP9/Opus) derivatives
  - BullMQ consumer for `media.process` that extracts photo/video metadata, persists `media_metadata`, and generates derivatives for new uploads
 - BullMQ consumer for `media.cleanup` that verifies media is still soft-deleted, deletes original/derived files, and hard-deletes DB rows in a transaction.
+- Queue migration completed (queue-only scope):
+  - Ingest and library producers publish via RabbitMQ.
+  - Worker consumers process `media.process`, `media.derivatives.generate`, and `media.cleanup` via RabbitMQ.
+  - BullMQ transport removed from ingest/library/worker queue paths.
+  - Telemetry queue stats poller uses RabbitMQ while preserving `/api/v1/worker/telemetry/*` API shapes.
 - After successful derivative generation, worker updates `media.status` from `processing` to `ready`.
 - On terminal derivative-processing failure (retry attempts exhausted), worker updates `media.status` to `failed` only when status is still `processing`.
 - Worker uses a per-media advisory lock to serialize concurrent `media.process` / `media.derivatives.generate` execution for the same media ID.

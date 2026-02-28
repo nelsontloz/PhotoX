@@ -34,7 +34,7 @@ This document provides implementation-level specifications for each service so A
 - Derivatives: `${PHOTOX_DERIVED_DIR}/{mediaId}/{size}.jpg`
 - DB stores only relative paths.
 
-### Queue Rules (BullMQ)
+### Queue Rules (RabbitMQ)
 - Queue names:
   - `media.process`
   - `media.metadata.extract`
@@ -44,6 +44,10 @@ This document provides implementation-level specifications for each service so A
   - `media.cleanup`
 - Default retry policy: attempts `5`, exponential backoff starting at `3s`.
 - Dead-letter queue required per queue group.
+- RabbitMQ constraints:
+  - Topic exchange default: `photox.media`.
+  - Routing keys must equal queue contract names above.
+  - Queue names follow `<prefix>.<routingKey>` with default prefix `worker`.
 
 ### Processing State Model
 - `uploaded`
@@ -211,7 +215,7 @@ Ranking formula requirements:
 ## 3.6 worker-service
 
 Responsibilities:
-- Consume BullMQ jobs.
+- Consume RabbitMQ queue jobs.
 - Run metadata extraction and derivatives.
 - Trigger search and ML indexing jobs.
 

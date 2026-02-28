@@ -23,7 +23,7 @@ PhotoX Personal Edition is a web-first, self-hosted photo platform designed as a
 - **Core services:** Node.js 22 + Fastify (TypeScript)
 - **ML service:** Python 3.12 + FastAPI
 - **Database:** PostgreSQL 16 + pgvector extension
-- **Cache and job queue:** Redis + BullMQ
+- **Cache and job queue:** Redis (cache/session/rate-limit concerns) + RabbitMQ (async job queue)
 - **Image processing:** sharp/libvips
 - **Storage:** local filesystem volumes
 - **Observability:** Prometheus + Grafana (baseline)
@@ -47,8 +47,9 @@ PhotoX Personal Edition is a web-first, self-hosted photo platform designed as a
 
 ### Data and Infra Containers
 - **Postgres + pgvector:** source of truth plus vector similarity for semantic search.
-- **Redis:** session cache, hot query cache, rate-limit counters, and BullMQ backing store.
-- **BullMQ workers:** async processing for derivatives, indexing, memories, cleanup.
+- **Redis:** session cache, hot query cache, and rate-limit counters.
+- **RabbitMQ:** async media pipeline broker (routing keys: `media.process`, `media.derivatives.generate`, `media.cleanup`).
+- **Workers:** async processing for derivatives, indexing, memories, cleanup through RabbitMQ consumers.
 - **Local filesystem volumes:**
   - `/data/photox/originals`
   - `/data/photox/derived`

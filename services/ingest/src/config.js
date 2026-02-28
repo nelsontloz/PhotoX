@@ -46,6 +46,11 @@ function loadConfig(overrides = {}) {
       process.env.DATABASE_URL ||
       "postgresql://photox:photox-dev-password@127.0.0.1:5432/photox",
     redisUrl: overrides.redisUrl || process.env.REDIS_URL || "redis://127.0.0.1:6379",
+    rabbitmqUrl: overrides.rabbitmqUrl || process.env.RABBITMQ_URL || "amqp://127.0.0.1:5672",
+    rabbitmqExchangeName:
+      overrides.rabbitmqExchangeName || process.env.RABBITMQ_EXCHANGE_NAME || "photox.media",
+    rabbitmqQueuePrefix:
+      overrides.rabbitmqQueuePrefix || process.env.RABBITMQ_QUEUE_PREFIX || "worker",
     jwtAccessSecret,
     uploadOriginalsPath:
       overrides.uploadOriginalsPath || process.env.UPLOAD_ORIGINALS_PATH || "/data/photox/originals",

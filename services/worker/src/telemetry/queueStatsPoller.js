@@ -1,27 +1,18 @@
-const { Queue } = require("bullmq");
-
-function redisConnectionFromUrl(redisUrl) {
-  const parsed = new URL(redisUrl);
-  const dbNumber = Number.parseInt(parsed.pathname.replace("/", ""), 10);
-
-  return {
-    host: parsed.hostname,
-    port: Number.parseInt(parsed.port || "6379", 10),
-    username: parsed.username || undefined,
-    password: parsed.password || undefined,
-    db: Number.isNaN(dbNumber) ? 0 : dbNumber
-  };
-}
+const amqplib = require("amqplib");
 
 class QueueStatsPoller {
-  constructor({ queueNames, redisUrl, intervalMs = 5000, logger }) {
+  constructor({ queueNames, rabbitmqUrl, exchangeName = "photox.media", queuePrefix = "worker", intervalMs = 5000, logger }) {
     this.queueNames = queueNames;
-    this.redisUrl = redisUrl;
+    this.rabbitmqUrl = rabbitmqUrl;
+    this.exchangeName = exchangeName;
+    this.queuePrefix = queuePrefix;
     this.intervalMs = intervalMs;
     this.logger = logger;
     this.timer = null;
     this.queueCounts = {};
     this.queues = new Map();
+    this.rabbitConnection = null;
+    this.rabbitChannel = null;
   }
 
   async start() {
@@ -29,11 +20,27 @@ class QueueStatsPoller {
       return;
     }
 
+    this.rabbitConnection = await amqplib.connect(this.rabbitmqUrl);
+    this.rabbitChannel = await this.rabbitConnection.createChannel();
+    await this.rabbitChannel.assertExchange(this.exchangeName, "topic", { durable: true });
+
     for (const queueName of this.queueNames) {
-      const queue = new Queue(queueName, {
-        connection: redisConnectionFromUrl(this.redisUrl)
+      const mainQueueName = `${this.queuePrefix}.${queueName}`;
+      const retryQueueName = `${mainQueueName}.retry`;
+      await this.rabbitChannel.assertQueue(mainQueueName, { durable: true });
+      await this.rabbitChannel.assertQueue(retryQueueName, {
+        durable: true,
+        arguments: {
+          "x-dead-letter-exchange": this.exchangeName,
+          "x-dead-letter-routing-key": queueName
+        }
       });
-      this.queues.set(queueName, queue);
+      await this.rabbitChannel.bindQueue(mainQueueName, this.exchangeName, queueName);
+      this.queues.set(queueName, {
+        mainQueueName,
+        retryQueueName
+      });
+
       this.queueCounts[queueName] = {
         waiting: 0,
         active: 0,
@@ -56,13 +63,16 @@ class QueueStatsPoller {
 
     for (const [queueName, queue] of this.queues.entries()) {
       promises.push(
-        queue.getJobCounts("waiting", "active", "completed", "failed", "delayed").then((counts) => {
+        Promise.all([
+          this.rabbitChannel.checkQueue(queue.mainQueueName),
+          this.rabbitChannel.checkQueue(queue.retryQueueName)
+        ]).then(([mainStats, retryStats]) => {
           this.queueCounts[queueName] = {
-            waiting: Number(counts.waiting || 0),
-            active: Number(counts.active || 0),
-            completed: Number(counts.completed || 0),
-            failed: Number(counts.failed || 0),
-            delayed: Number(counts.delayed || 0)
+            waiting: Number(mainStats?.messageCount || 0),
+            active: Number(mainStats?.consumerCount || 0),
+            completed: 0,
+            failed: 0,
+            delayed: Number(retryStats?.messageCount || 0)
           };
         })
       );
@@ -81,9 +91,15 @@ class QueueStatsPoller {
       this.timer = null;
     }
 
-    for (const queue of this.queues.values()) {
-      await queue.close();
+    if (this.rabbitChannel) {
+      await this.rabbitChannel.close();
+      this.rabbitChannel = null;
     }
+    if (this.rabbitConnection) {
+      await this.rabbitConnection.close();
+      this.rabbitConnection = null;
+    }
+
     this.queues.clear();
   }
 }

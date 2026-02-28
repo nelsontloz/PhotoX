@@ -161,3 +161,22 @@ Escalate to human decision when:
 - schema migration impacts existing persisted data semantics,
 - queue retry policy risks duplicate side effects,
 - runtime blockers cannot be solved without changing infrastructure assumptions.
+
+---
+
+## 6) Queue Cutover Runbook (BullMQ -> RabbitMQ)
+
+Queue-only cutover steps:
+1. Ensure RabbitMQ is healthy and exchange/queues are provisioned (`photox.media`, routing keys `media.process`, `media.derivatives.generate`, `media.cleanup`).
+2. Stop BullMQ worker consumers.
+3. Drain outstanding BullMQ jobs (wait for `waiting/active/delayed` to reach zero).
+4. Switch producers (`ingest`, `library`) to RabbitMQ publish path.
+5. Start worker consumers on RabbitMQ.
+6. Validate telemetry endpoints and admin backlog/active KPIs.
+7. Keep Redis online for non-queue features until full Redis dependency audit/removal task is complete.
+
+Rollback steps:
+1. Stop RabbitMQ consumers.
+2. Re-enable previous queue transport build/flags from last known good deployment.
+3. Restart previous consumers and verify backlog drains.
+4. Re-validate telemetry snapshot/stream and media processing state transitions.

@@ -1,5 +1,5 @@
 const fs = require("node:fs/promises");
-const { Worker } = require("bullmq");
+const amqplib = require("amqplib");
 
 const { generateDerivativesForMedia } = require("../media/derivatives");
 const { extractMediaMetadata } = require("../media/metadata");
@@ -58,19 +58,6 @@ async function acquireProcessingLockWithRetry({ mediaRepo, mediaId, logger, queu
     mediaId,
     attempts: maxAttempts
   });
-}
-
-function redisConnectionFromUrl(redisUrl) {
-  const parsed = new URL(redisUrl);
-  const dbNumber = Number.parseInt(parsed.pathname.replace("/", ""), 10);
-
-  return {
-    host: parsed.hostname,
-    port: Number.parseInt(parsed.port || "6379", 10),
-    username: parsed.username || undefined,
-    password: parsed.password || undefined,
-    db: Number.isNaN(dbNumber) ? 0 : dbNumber
-  };
 }
 
 function isTerminalFailure(job) {
@@ -312,198 +299,275 @@ function createMediaCleanupProcessor({ originalsRoot, derivedRoot, logger, media
   };
 }
 
-function createMediaDerivativesWorker({ queueName, redisUrl, originalsRoot, derivedRoot, logger, mediaRepo, telemetry }) {
-  const worker = new Worker(queueName, createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger, mediaRepo }), {
-    connection: redisConnectionFromUrl(redisUrl),
-    concurrency: 2
-  });
-
-  worker.on("active", (job) => {
-    telemetry?.recordEvent({
-      queue: queueName,
-      event: "active",
-      jobId: job?.id,
-      mediaId: job?.data?.mediaId,
-      attempts: job?.attemptsMade
-    });
-  });
-
-  worker.on("completed", (job) => {
-    const processedOn = Number(job?.processedOn || 0);
-    const finishedOn = Number(job?.finishedOn || Date.now());
-    const durationMs = processedOn > 0 && finishedOn >= processedOn ? finishedOn - processedOn : null;
-
-    logger.info(
-      {
-        queueName,
-        event: "completed",
-        jobId: job?.id,
-        mediaId: job?.data?.mediaId,
-        durationMs,
-        attempts: Number(job?.attemptsMade || 0)
-      },
-      "worker job completed"
-    );
-
-    telemetry?.recordEvent({
-      queue: queueName,
-      event: "completed",
-      jobId: job?.id,
-      mediaId: job?.data?.mediaId,
-      attempts: job?.attemptsMade,
-      durationMs
-    });
-  });
-
-  worker.on("failed", (job, err) => {
-    const processedOn = Number(job?.processedOn || 0);
-    const finishedOn = Date.now();
-    const durationMs = processedOn > 0 && finishedOn >= processedOn ? finishedOn - processedOn : null;
-
-    logger.error(
-      {
-        queueName,
-        event: "failed",
-        jobId: job?.id,
-        mediaId: job?.data?.mediaId,
-        durationMs,
-        attempts: Number(job?.attemptsMade || 0),
-        err
-      },
-      "media derivatives job failed"
-    );
-
-    telemetry?.recordEvent({
-      queue: queueName,
-      event: "failed",
-      jobId: job?.id,
-      mediaId: job?.data?.mediaId,
-      attempts: job?.attemptsMade,
-      durationMs,
-      failureCode: err?.code || null,
-      errorClass: err?.name || "Error"
-    });
-
-    persistFailedStatusOnTerminalFailure({ job, mediaRepo, logger, queueName });
-  });
-
-  worker.on("stalled", (jobId) => {
-    logger.warn(
-      {
-        queueName,
-        event: "stalled",
-        jobId
-      },
-      "worker job stalled"
-    );
-
-    telemetry?.recordEvent({
-      queue: queueName,
-      event: "stalled",
-      jobId
-    });
-  });
-
-  worker.on("error", (err) => {
-    logger.error(
-      {
-        queueName,
-        event: "error",
-        err
-      },
-      "worker internal error"
-    );
-
-    telemetry?.markWorkerError(queueName, err);
-  });
-
-  return worker;
-}
-
-function createMediaProcessWorker({ queueName, redisUrl, originalsRoot, derivedRoot, logger, mediaRepo, telemetry }) {
-  return createMediaDerivativesWorker({
+function createMediaDerivativesWorker({
+  queueName,
+  rabbitmqUrl,
+  rabbitmqExchangeName = "photox.media",
+  rabbitmqQueuePrefix = "worker",
+  originalsRoot,
+  derivedRoot,
+  logger,
+  mediaRepo,
+  telemetry
+}) {
+  return createRabbitWorker({
     queueName,
-    redisUrl,
-    originalsRoot,
-    derivedRoot,
+    rabbitmqUrl,
+    exchangeName: rabbitmqExchangeName,
+    queuePrefix: rabbitmqQueuePrefix,
+    processor: createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger, mediaRepo }),
     logger,
+    telemetry,
     mediaRepo,
-    telemetry
+    onFailureLogMessage: "media derivatives job failed",
+    persistFailedStatus: true
   });
 }
 
-function createMediaCleanupWorker({ queueName, redisUrl, originalsRoot, derivedRoot, logger, mediaRepo, telemetry }) {
-  const worker = new Worker(queueName, createMediaCleanupProcessor({ originalsRoot, derivedRoot, logger, mediaRepo }), {
-    connection: redisConnectionFromUrl(redisUrl),
-    concurrency: 2
-  });
+function buildRabbitRetryDelayMs({ attemptsMade, baseDelayMs }) {
+  const safeAttempts = Number.isInteger(attemptsMade) && attemptsMade > 0 ? attemptsMade : 1;
+  const safeBaseDelay = Number.isInteger(baseDelayMs) && baseDelayMs > 0 ? baseDelayMs : 3000;
+  return safeBaseDelay * 2 ** Math.max(0, safeAttempts - 1);
+}
 
-  worker.on("active", (job) => {
-    telemetry?.recordEvent({
-      queue: queueName,
-      event: "active",
-      jobId: job?.id,
-      mediaId: job?.data?.mediaId,
-      attempts: job?.attemptsMade
+function createRabbitWorker({
+  queueName,
+  rabbitmqUrl,
+  exchangeName,
+  queuePrefix,
+  processor,
+  logger,
+  telemetry,
+  mediaRepo,
+  onFailureLogMessage,
+  persistFailedStatus = false
+}) {
+  const mainQueueName = `${queuePrefix}.${queueName}`;
+  const retryQueueName = `${mainQueueName}.retry`;
+  const dlqQueueName = `${mainQueueName}.dlq`;
+
+  let connection = null;
+  let channel = null;
+  let consumerTag = null;
+  let started = false;
+
+  async function ensureReady() {
+    if (started) {
+      return;
+    }
+
+    connection = await amqplib.connect(rabbitmqUrl);
+    channel = await connection.createConfirmChannel();
+
+    await channel.assertExchange(exchangeName, "topic", { durable: true });
+    await channel.assertQueue(mainQueueName, { durable: true });
+    await channel.assertQueue(retryQueueName, {
+      durable: true,
+      arguments: {
+        "x-dead-letter-exchange": exchangeName,
+        "x-dead-letter-routing-key": queueName
+      }
     });
-  });
+    await channel.assertQueue(dlqQueueName, { durable: true });
+    await channel.bindQueue(mainQueueName, exchangeName, queueName);
 
-  worker.on("completed", (job) => {
-    telemetry?.recordEvent({
-      queue: queueName,
-      event: "completed",
-      jobId: job?.id,
-      mediaId: job?.data?.mediaId,
-      attempts: job?.attemptsMade
-    });
-  });
+    await channel.prefetch(2);
+    const consumeResult = await channel.consume(mainQueueName, async (message) => {
+      if (!message) {
+        return;
+      }
 
-  worker.on("failed", (job, err) => {
-    logger.error(
-      {
+      const payloadText = message.content.toString("utf8");
+      const payload = JSON.parse(payloadText || "{}");
+      const attemptsMade = Number(message.properties?.headers?.attemptsMade || 0);
+      const maxAttempts = Number(message.properties?.headers?.maxAttempts || 5);
+      const backoffDelay = Number(message.properties?.headers?.backoffDelay || 3000);
+      const receivedAt = Date.now();
+
+      const job = {
+        id: message.properties?.messageId || null,
         queueName,
-        event: "failed",
-        jobId: job?.id,
-        mediaId: job?.data?.mediaId,
-        attempts: Number(job?.attemptsMade || 0),
-        err
-      },
-      "media cleanup job failed"
-    );
+        data: payload,
+        attemptsMade,
+        opts: {
+          attempts: maxAttempts
+        },
+        processedOn: receivedAt,
+        finishedOn: null
+      };
 
-    telemetry?.recordEvent({
-      queue: queueName,
-      event: "failed",
-      jobId: job?.id,
-      mediaId: job?.data?.mediaId,
-      attempts: job?.attemptsMade,
-      failureCode: err?.code || null,
-      errorClass: err?.name || "Error"
+      telemetry?.recordEvent({
+        queue: queueName,
+        event: "active",
+        jobId: job.id,
+        mediaId: payload?.mediaId,
+        attempts: attemptsMade
+      });
+
+      try {
+        await processor(job);
+        job.finishedOn = Date.now();
+
+        telemetry?.recordEvent({
+          queue: queueName,
+          event: "completed",
+          jobId: job.id,
+          mediaId: payload?.mediaId,
+          attempts: attemptsMade,
+          durationMs: job.finishedOn - receivedAt
+        });
+
+        channel.ack(message);
+      } catch (err) {
+        job.finishedOn = Date.now();
+
+        logger.error(
+          {
+            queueName,
+            event: "failed",
+            jobId: job.id,
+            mediaId: payload?.mediaId,
+            attempts: attemptsMade,
+            err
+          },
+          onFailureLogMessage
+        );
+
+        telemetry?.recordEvent({
+          queue: queueName,
+          event: "failed",
+          jobId: job.id,
+          mediaId: payload?.mediaId,
+          attempts: attemptsMade,
+          durationMs: job.finishedOn - receivedAt,
+          failureCode: err?.code || null,
+          errorClass: err?.name || "Error"
+        });
+
+        const nextAttemptsMade = attemptsMade + 1;
+        const terminalFailure = nextAttemptsMade >= maxAttempts;
+
+        if (persistFailedStatus) {
+          await persistFailedStatusOnTerminalFailure({
+            job: {
+              ...job,
+              attemptsMade: nextAttemptsMade,
+              opts: {
+                attempts: maxAttempts
+              }
+            },
+            mediaRepo,
+            logger,
+            queueName
+          });
+        }
+
+        const targetQueueName = terminalFailure ? dlqQueueName : retryQueueName;
+        const publishOptions = {
+          persistent: true,
+          contentType: "application/json",
+          messageId: job.id || undefined,
+          headers: {
+            attemptsMade: nextAttemptsMade,
+            maxAttempts,
+            backoffDelay
+          }
+        };
+
+        if (!terminalFailure) {
+          publishOptions.expiration = String(
+            buildRabbitRetryDelayMs({
+              attemptsMade: nextAttemptsMade,
+              baseDelayMs: backoffDelay
+            })
+          );
+        }
+
+        channel.sendToQueue(targetQueueName, Buffer.from(JSON.stringify(payload)), publishOptions);
+        await channel.waitForConfirms();
+        channel.ack(message);
+      }
     });
+
+    consumerTag = consumeResult.consumerTag;
+    started = true;
+  }
+
+  return {
+    async close() {
+      if (channel && consumerTag) {
+        await channel.cancel(consumerTag);
+      }
+
+      if (channel) {
+        await channel.close();
+      }
+
+      if (connection) {
+        await connection.close();
+      }
+
+      consumerTag = null;
+      channel = null;
+      connection = null;
+      started = false;
+    },
+    async start() {
+      await ensureReady();
+    }
+  };
+}
+
+function createMediaProcessWorker({
+  queueName,
+  rabbitmqUrl,
+  rabbitmqExchangeName = "photox.media",
+  rabbitmqQueuePrefix = "worker",
+  originalsRoot,
+  derivedRoot,
+  logger,
+  mediaRepo,
+  telemetry
+}) {
+  return createRabbitWorker({
+    queueName,
+    rabbitmqUrl,
+    exchangeName: rabbitmqExchangeName,
+    queuePrefix: rabbitmqQueuePrefix,
+    processor: createMediaDerivativesProcessor({ originalsRoot, derivedRoot, logger, mediaRepo }),
+    logger,
+    telemetry,
+    mediaRepo,
+    onFailureLogMessage: "media process job failed",
+    persistFailedStatus: true,
+    originalsRoot,
+    derivedRoot
   });
+}
 
-  worker.on("stalled", (jobId) => {
-    telemetry?.recordEvent({
-      queue: queueName,
-      event: "stalled",
-      jobId
-    });
+function createMediaCleanupWorker({
+  queueName,
+  rabbitmqUrl,
+  rabbitmqExchangeName = "photox.media",
+  rabbitmqQueuePrefix = "worker",
+  originalsRoot,
+  derivedRoot,
+  logger,
+  mediaRepo,
+  telemetry
+}) {
+  return createRabbitWorker({
+    queueName,
+    rabbitmqUrl,
+    exchangeName: rabbitmqExchangeName,
+    queuePrefix: rabbitmqQueuePrefix,
+    processor: createMediaCleanupProcessor({ originalsRoot, derivedRoot, logger, mediaRepo }),
+    logger,
+    telemetry,
+    mediaRepo,
+    onFailureLogMessage: "media cleanup job failed",
+    persistFailedStatus: false
   });
-
-  worker.on("error", (err) => {
-    logger.error(
-      {
-        queueName,
-        event: "error",
-        err
-      },
-      "worker internal error"
-    );
-
-    telemetry?.markWorkerError(queueName, err);
-  });
-
-  return worker;
 }
 
 module.exports = {

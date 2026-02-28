@@ -90,7 +90,9 @@ function buildApp(overrides = {}) {
     overrides.queueStatsPoller ||
     new QueueStatsPoller({
       queueNames,
-      redisUrl: config.redisUrl,
+      rabbitmqUrl: config.rabbitmqUrl,
+      exchangeName: config.rabbitmqExchangeName,
+      queuePrefix: config.rabbitmqQueuePrefix,
       logger: app.log,
       intervalMs: overrides.telemetryQueuePollMs || 5000
     });
@@ -496,7 +498,9 @@ function buildApp(overrides = {}) {
     if (!app.workers.mediaProcess) {
       app.workers.mediaProcess = createMediaProcessWorker({
         queueName: config.mediaProcessQueueName,
-        redisUrl: config.redisUrl,
+        rabbitmqUrl: config.rabbitmqUrl,
+        rabbitmqExchangeName: config.rabbitmqExchangeName,
+        rabbitmqQueuePrefix: config.rabbitmqQueuePrefix,
         originalsRoot: config.uploadOriginalsPath,
         derivedRoot: config.uploadDerivedPath,
         mediaRepo: app.repos.media,
@@ -508,7 +512,9 @@ function buildApp(overrides = {}) {
     if (!app.workers.mediaDerivatives) {
       app.workers.mediaDerivatives = createMediaDerivativesWorker({
         queueName: config.mediaDerivativesQueueName,
-        redisUrl: config.redisUrl,
+        rabbitmqUrl: config.rabbitmqUrl,
+        rabbitmqExchangeName: config.rabbitmqExchangeName,
+        rabbitmqQueuePrefix: config.rabbitmqQueuePrefix,
         originalsRoot: config.uploadOriginalsPath,
         derivedRoot: config.uploadDerivedPath,
         mediaRepo: app.repos.media,
@@ -520,13 +526,27 @@ function buildApp(overrides = {}) {
     if (!app.workers.mediaCleanup) {
       app.workers.mediaCleanup = createMediaCleanupWorker({
         queueName: config.mediaCleanupQueueName,
-        redisUrl: config.redisUrl,
+        rabbitmqUrl: config.rabbitmqUrl,
+        rabbitmqExchangeName: config.rabbitmqExchangeName,
+        rabbitmqQueuePrefix: config.rabbitmqQueuePrefix,
         originalsRoot: config.uploadOriginalsPath,
         derivedRoot: config.uploadDerivedPath,
         mediaRepo: app.repos.media,
         logger: app.log,
         telemetry: app.telemetry.store
       });
+    }
+
+    if (typeof app.workers.mediaProcess?.start === "function") {
+      await app.workers.mediaProcess.start();
+    }
+
+    if (typeof app.workers.mediaDerivatives?.start === "function") {
+      await app.workers.mediaDerivatives.start();
+    }
+
+    if (typeof app.workers.mediaCleanup?.start === "function") {
+      await app.workers.mediaCleanup.start();
     }
   });
 

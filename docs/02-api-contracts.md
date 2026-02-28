@@ -544,7 +544,12 @@ data: {"schemaVersion":"2026-02-telemetry-v1","state":{"generatedAt":"2026-02-18
 
 ---
 
-## 9) Internal Async Contracts (BullMQ over Redis)
+## 9) Internal Async Contracts (RabbitMQ)
+
+Transport compatibility note:
+- Job payload contracts in this section are transport-agnostic.
+- Runtime queue transport is RabbitMQ for ingest/library producers and worker consumers.
+- Routing keys must match contract names (`media.process`, `media.derivatives.generate`, `media.cleanup`).
 
 ### Job `media.process`
 ```json
