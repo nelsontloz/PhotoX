@@ -120,3 +120,22 @@ export function sectionLabel(dayKey) {
         subtitle: null
     };
 }
+
+export function buildNeighborPrefetchTargets(items, activeIndex) {
+    if (!Array.isArray(items) || activeIndex < 0 || activeIndex >= items.length) {
+        return [];
+    }
+
+    const neighbors = [];
+    if (activeIndex > 0) {
+        neighbors.push(items[activeIndex - 1]);
+    }
+    if (activeIndex + 1 < items.length) {
+        neighbors.push(items[activeIndex + 1]);
+    }
+
+    return neighbors.map((media) => ({
+        mediaId: media.id,
+        variant: isVideoMimeType(media?.mimeType) ? "playback" : "small"
+    }));
+}

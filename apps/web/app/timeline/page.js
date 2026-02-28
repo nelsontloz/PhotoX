@@ -15,7 +15,7 @@ import {
 import {
   normalizeDayKey,
   sectionLabel,
-  isVideoMimeType
+  buildNeighborPrefetchTargets
 } from "./utils";
 import { isSupportedMediaFile } from "../../lib/upload";
 import { useUpload } from "../components/upload-context";
@@ -356,21 +356,9 @@ function TimelineContent() {
   }, [handleDragEnter, handleDragOver, handleDragLeave, handleDrop]);
 
   useEffect(() => {
-    if (activeIndex < 0) {
-      return;
-    }
+    const targets = buildNeighborPrefetchTargets(items, activeIndex);
 
-    const neighborIds = [];
-    if (activeIndex > 0) {
-      neighborIds.push(items[activeIndex - 1].id);
-    }
-    if (activeIndex + 1 < items.length) {
-      neighborIds.push(items[activeIndex + 1].id);
-    }
-
-    for (const mediaId of neighborIds) {
-      const media = items.find((item) => item.id === mediaId);
-      const variant = isVideoMimeType(media?.mimeType) ? "playback" : "small";
+    for (const { mediaId, variant } of targets) {
       queryClient.prefetchQuery({
         queryKey: ["timeline-modal-media", mediaId, variant],
         queryFn: () => fetchMediaContentBlob(mediaId, variant),
