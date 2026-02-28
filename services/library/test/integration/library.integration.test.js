@@ -48,14 +48,14 @@ describe("library integration", () => {
           queuedDerivativeJobs.push([name, payload, options]);
           return { id: options?.jobId || crypto.randomUUID() };
         },
-        async close() {}
+        async close() { }
       },
       mediaCleanupQueue: {
         async add(name, payload, options) {
           queuedCleanupJobs.push([name, payload, options]);
           return { id: options?.jobId || crypto.randomUUID() };
         },
-        async close() {}
+        async close() { }
       }
     });
     await app.ready();
@@ -220,6 +220,59 @@ describe("library integration", () => {
     expect(patchBody.media.takenAt).toBe("2026-02-10T09:30:00.000Z");
   });
 
+  it("soft deletes media and persists soft-delete flags", async () => {
+    const token = createAccessToken({
+      userId: ownerId,
+      email: "soft-delete-flags@example.com",
+      secret: accessSecret
+    });
+    const mediaId = "5c0a4d87-5d5e-4d21-a11b-427edea1f346";
+
+    await insertMedia({
+      id: mediaId,
+      ownerId,
+      relativePath: `${ownerId}/2026/02/${mediaId}.jpg`,
+      mimeType: "image/jpeg",
+      createdAt: "2026-02-16T08:00:00.000Z"
+    });
+
+    const remove = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/media/${mediaId}`,
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    });
+
+    expect(remove.statusCode).toBe(200);
+    expect(jsonBody(remove)).toEqual({
+      mediaId,
+      status: "deleted"
+    });
+
+    expect(queuedCleanupJobs).toHaveLength(1);
+    expect(queuedCleanupJobs[0][0]).toBe("media.cleanup");
+    expect(queuedCleanupJobs[0][1]).toMatchObject({
+      mediaId,
+      ownerId
+    });
+
+    const trashAfterDelete = await app.inject({
+      method: "GET",
+      url: "/api/v1/library/trash?limit=10",
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    });
+
+    expect(trashAfterDelete.statusCode).toBe(200);
+    const trashedItem = jsonBody(trashAfterDelete).items.find((item) => item.id === mediaId);
+    expect(trashedItem).toBeDefined();
+    expect(trashedItem.flags.deletedSoft).toBe(true);
+    expect(typeof trashedItem.deletedAt).toBe("string");
+    expect(trashedItem.deletedAt).not.toBeNull();
+  });
+
   it("soft deletes and restores media affecting timeline results", async () => {
     const token = createAccessToken({
       userId: ownerId,
@@ -261,6 +314,16 @@ describe("library integration", () => {
     expect(emptyTimeline.statusCode).toBe(200);
     expect(jsonBody(emptyTimeline).items).toHaveLength(0);
 
+    const trashAfterDelete = await app.inject({
+      method: "GET",
+      url: "/api/v1/library/trash?limit=10",
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    });
+    expect(trashAfterDelete.statusCode).toBe(200);
+    expect(jsonBody(trashAfterDelete).items.map((item) => item.id)).toContain(mediaId);
+
     const restore = await app.inject({
       method: "POST",
       url: `/api/v1/media/${mediaId}/restore`,
@@ -269,6 +332,16 @@ describe("library integration", () => {
       }
     });
     expect(restore.statusCode).toBe(200);
+
+    const trashAfterRestore = await app.inject({
+      method: "GET",
+      url: "/api/v1/library/trash?limit=10",
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    });
+    expect(trashAfterRestore.statusCode).toBe(200);
+    expect(jsonBody(trashAfterRestore).items.map((item) => item.id)).not.toContain(mediaId);
 
     const timelineAfterRestore = await app.inject({
       method: "GET",

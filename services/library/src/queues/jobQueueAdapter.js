@@ -52,6 +52,7 @@ class RabbitQueueAdapter {
 
         const backoffDelay = Number(options?.backoff?.delay || 3000);
         const maxAttempts = Number(options?.attempts || 5);
+        const delayMs = Number(options?.delay || 0);
         const messageId = options?.jobId || undefined;
         const headers = {
             attemptsMade: 0,
@@ -59,12 +60,22 @@ class RabbitQueueAdapter {
             backoffDelay
         };
 
-        this.channel.publish(this.exchangeName, name, Buffer.from(JSON.stringify(payload)), {
-            persistent: true,
-            contentType: "application/json",
-            messageId,
-            headers
-        });
+        if (delayMs > 0) {
+            this.channel.sendToQueue(this.retryQueueName, Buffer.from(JSON.stringify(payload)), {
+                persistent: true,
+                contentType: "application/json",
+                messageId,
+                headers,
+                expiration: String(Math.floor(delayMs))
+            });
+        } else {
+            this.channel.publish(this.exchangeName, name, Buffer.from(JSON.stringify(payload)), {
+                persistent: true,
+                contentType: "application/json",
+                messageId,
+                headers
+            });
+        }
 
         await this.channel.waitForConfirms();
         return { id: messageId || null };

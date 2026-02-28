@@ -250,16 +250,23 @@ function buildLibraryRepo(db) {
 
         await ensureCompanionRows(client, mediaId);
 
-        await client.query(
+        const updateResult = await client.query(
           `
-            UPDATE media_flags
-            SET deleted_soft = $2,
-                deleted_soft_at = CASE WHEN $2 THEN NOW() ELSE NULL END,
-                updated_at = NOW()
-            WHERE media_id = $1
+            INSERT INTO media_flags (media_id, deleted_soft, deleted_soft_at, updated_at)
+            VALUES ($1, $2, CASE WHEN $2 THEN NOW() ELSE NULL END, NOW())
+            ON CONFLICT (media_id)
+            DO UPDATE SET
+              deleted_soft = EXCLUDED.deleted_soft,
+              deleted_soft_at = EXCLUDED.deleted_soft_at,
+              updated_at = NOW()
           `,
           [mediaId, deletedSoft]
         );
+
+        if (updateResult.rowCount === 0) {
+          await client.query("ROLLBACK");
+          return null;
+        }
 
         await client.query("COMMIT");
         return {

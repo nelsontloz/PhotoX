@@ -87,9 +87,33 @@ function routeQuery(sql, params) {
         return { rows: [], rowCount: 0 };
     }
 
-    // ---- media_flags INSERT ... ON CONFLICT DO NOTHING ----
+    // ---- media_flags INSERT ... ON CONFLICT ... ----
     if (/INSERT INTO media_flags/i.test(text)) {
         const mediaId = params[0];
+        const deletedSoftValue = params[1];
+
+        if (/ON CONFLICT \(media_id\) DO UPDATE SET/i.test(text)) {
+            const existing = flags.get(mediaId);
+            const deletedSoft = Boolean(deletedSoftValue);
+            if (existing) {
+                existing.deleted_soft = deletedSoft;
+                existing.deleted_soft_at = deletedSoft ? now() : null;
+                existing.updated_at = now();
+            } else {
+                flags.set(mediaId, {
+                    media_id: mediaId,
+                    favorite: false,
+                    archived: false,
+                    hidden: false,
+                    deleted_soft: deletedSoft,
+                    deleted_soft_at: deletedSoft ? now() : null,
+                    updated_at: now()
+                });
+            }
+
+            return { rows: [], rowCount: 1 };
+        }
+
         if (!flags.has(mediaId)) {
             flags.set(mediaId, {
                 media_id: mediaId,
@@ -133,7 +157,7 @@ function routeQuery(sql, params) {
         const mediaId = params[0];
         const mf = flags.get(mediaId);
         if (mf) {
-          mf.deleted_soft = params[1];
+            mf.deleted_soft = params[1];
             mf.deleted_soft_at = params[1] ? now() : null;
             mf.updated_at = now();
         }
