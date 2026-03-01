@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
-const devApiProxyMode = process.env.NEXT_DEV_API_PROXY_MODE || "compose";
-const devApiProxyTarget = process.env.NEXT_DEV_API_PROXY_TARGET || "http://localhost:8088";
+const devApiProxyMode = process.env.NEXT_DEV_API_PROXY_MODE || "direct";
+const devApiProxyTarget = process.env.NEXT_DEV_API_PROXY_TARGET || "http://auth-service:3000";
 
 function buildComposeServiceRewrites() {
     return [
@@ -24,7 +24,7 @@ const nextConfig = {
             return [];
         }
 
-        if (devApiProxyMode === "compose") {
+        if (devApiProxyMode === "direct" || devApiProxyMode === "compose") {
             return buildComposeServiceRewrites();
         }
 

@@ -24,31 +24,6 @@ x-node-dev-service: &node-dev-service
     start_period: 20s
 
 services:
-  traefik:
-    image: traefik:v3.3
-    restart: unless-stopped
-    command:
-      - --api.dashboard=${TRAEFIK_DASHBOARD:-true}
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
-      - --entrypoints.web.address=:80
-      - --entrypoints.websecure.address=:443
-      - --ping=true
-    ports:
-      - "${HTTP_PORT:-8088}:80"
-      - "${HTTPS_PORT:-8443}:443"
-      - "${TRAEFIK_DASHBOARD_PORT:-8080}:8080"
-    volumes:
-      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
-    networks:
-      - edge
-      - internal
-    healthcheck:
-      test: [ "CMD", "traefik", "healthcheck", "--ping" ]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-
   postgres:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
@@ -161,8 +136,8 @@ services:
       <<: *common-env
       PORT: 3000
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
-      NEXT_DEV_API_PROXY_MODE: ${NEXT_DEV_API_PROXY_MODE:-compose}
-      NEXT_DEV_API_PROXY_TARGET: ${NEXT_DEV_API_PROXY_TARGET:-http://localhost:8088}
+      NEXT_DEV_API_PROXY_MODE: direct
+      NEXT_DEV_API_PROXY_TARGET: http://auth-service:3000
     ports:
       - "${WEB_APP_DEV_PORT:-3000}:3000"
     volumes:
@@ -170,8 +145,6 @@ services:
       - web_app_node_modules:/app/node_modules
       - web_app_next:/app/.next
     depends_on:
-      traefik:
-        condition: service_healthy
       auth-service:
         condition: service_healthy
       ingest-service:
@@ -187,13 +160,7 @@ services:
       ml-service:
         condition: service_healthy
     networks:
-      - edge
       - internal
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.web.rule=Host(`${WEB_HOST:-localhost}`)
-      - traefik.http.routers.web.entrypoints=web
-      - traefik.http.services.web.loadbalancer.server.port=3000
 
   auth-service:
     <<: *node-dev-service
@@ -221,17 +188,6 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.auth.rule=Host(`${WEB_HOST:-localhost}`) && PathPrefix(`/api/v1/auth`)
-      - traefik.http.routers.auth.entrypoints=web
-      - traefik.http.routers.auth-me.rule=Host(`${WEB_HOST:-localhost}`) && PathPrefix(`/api/v1/me`)
-      - traefik.http.routers.auth-me.entrypoints=web
-      - traefik.http.routers.auth-me.service=auth
-      - traefik.http.routers.auth-admin.rule=Host(`${WEB_HOST:-localhost}`) && PathPrefix(`/api/v1/admin`)
-      - traefik.http.routers.auth-admin.entrypoints=web
-      - traefik.http.routers.auth-admin.service=auth
-      - traefik.http.services.auth.loadbalancer.server.port=3000
 
   ingest-service:
     <<: *node-dev-service
@@ -263,11 +219,6 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.ingest.rule=Host(`${WEB_HOST:-localhost}`) && PathPrefix(`/api/v1/uploads`)
-      - traefik.http.routers.ingest.entrypoints=web
-      - traefik.http.services.ingest.loadbalancer.server.port=3000
 
   library-service:
     <<: *node-dev-service
@@ -298,16 +249,6 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.library.rule=Host(`${WEB_HOST:-localhost}`) && PathPrefix(`/api/v1/library`)
-      - traefik.http.routers.library.entrypoints=web
-      - traefik.http.routers.library.service=library
-      - traefik.http.routers.library-media.rule=Host(`${WEB_HOST:-localhost}`) && PathPrefix(`/api/v1/media`)
-      - traefik.http.routers.library-media.entrypoints=web
-      - traefik.http.routers.library-media.service=library
-      - traefik.http.routers.library-media.priority=210
-      - traefik.http.services.library.loadbalancer.server.port=3000
 
   album-sharing-service:
     <<: *node-dev-service
@@ -329,11 +270,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.album.rule=Host(`${WEB_HOST:-localhost}`) && (PathPrefix(`/api/v1/albums`) || PathPrefix(`/api/v1/shares`))
-      - traefik.http.routers.album.entrypoints=web
-      - traefik.http.services.album.loadbalancer.server.port=3000
 
   search-service:
     <<: *node-dev-service
@@ -355,11 +291,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.search.rule=Host(`${WEB_HOST:-localhost}`) && PathPrefix(`/api/v1/search`)
-      - traefik.http.routers.search.entrypoints=web
-      - traefik.http.services.search.loadbalancer.server.port=3000
 
   worker-service:
     <<: *node-dev-service
@@ -392,11 +323,6 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.worker.rule=Host(`${WEB_HOST:-localhost}`) && PathPrefix(`/api/v1/worker`)
-      - traefik.http.routers.worker.entrypoints=web
-      - traefik.http.services.worker.loadbalancer.server.port=3000
 
   ml-service:
     restart: unless-stopped
@@ -432,15 +358,8 @@ services:
       - ./services/ml:/app
       - ${PHOTOX_ORIGINALS_DIR:-/data/photox/originals}:/data/photox/originals
       - ml_model_cache_dev:/models
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.ml.rule=Host(`${WEB_HOST:-localhost}`) && PathPrefix(`/api/v1/ml`)
-      - traefik.http.routers.ml.entrypoints=web
-      - traefik.http.services.ml.loadbalancer.server.port=8000
 
 networks:
-  edge:
-    driver: bridge
   internal:
     driver: bridge
 

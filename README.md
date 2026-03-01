@@ -190,7 +190,21 @@ docker compose \
 - Node services run with `nodemon` for hot reload.
 - ML service runs `uvicorn --reload`.
 - Each service mounts code from host and uses a container-managed `node_modules` volume to avoid host/container dependency conflicts.
-- Services are reachable through Traefik at `http://localhost:${HTTP_PORT:-8088}` and also on direct host dev ports for debugging.
+- Traefik is not used in the development compose stack.
+- Every service is reachable directly on host-exposed dev ports.
+
+### Dev direct access URLs
+
+These depend on your `.env.dev` values.
+
+- Web app: `http://localhost:${WEB_APP_DEV_PORT:-3000}`
+- Auth docs: `http://localhost:${AUTH_SERVICE_DEV_PORT:-3101}/api/v1/auth/docs`
+- Ingest docs: `http://localhost:${INGEST_SERVICE_DEV_PORT:-3102}/api/v1/uploads/docs`
+- Library docs: `http://localhost:${LIBRARY_SERVICE_DEV_PORT:-3103}/api/v1/library/docs`
+- Album/Sharing docs: `http://localhost:${ALBUM_SHARING_SERVICE_DEV_PORT:-3104}/api/v1/albums/docs`
+- Search docs: `http://localhost:${SEARCH_SERVICE_DEV_PORT:-3105}/api/v1/search/docs`
+- Worker docs: `http://localhost:${WORKER_SERVICE_DEV_PORT:-3106}/api/v1/worker/docs`
+- ML docs: `http://localhost:${ML_SERVICE_DEV_PORT:-8000}/api/v1/ml/docs`
 
 ## Default access URLs
 
