@@ -87,28 +87,32 @@ docker compose --env-file .env down
 
 ## 5) Basic Endpoints
 
-- Web app: `http://localhost:8088/`
+- Web app: `http://localhost:3000/`
 - Grafana: `http://localhost:3001`
 - Prometheus: `http://localhost:9090`
 - Service health (container-local): `http://127.0.0.1:<port>/health`
 
-Backend API docs through gateway:
-- Auth: `http://localhost:8088/api/v1/auth/docs`
-- Ingest: `http://localhost:8088/api/v1/uploads/docs`
-- Library: `http://localhost:8088/api/v1/library/docs`
-- Album/Sharing: `http://localhost:8088/api/v1/albums/docs`
-- Search: `http://localhost:8088/api/v1/search/docs`
-- Worker: `http://localhost:8088/api/v1/worker/docs`
-- ML: `http://localhost:8088/api/v1/ml/docs`
+Notes:
+- In dev compose, Traefik is removed and all services are reached directly via exposed host ports.
+- Default dev mode in compose is `NEXT_DEV_API_PROXY_MODE=direct`, which routes `/api/v1/*` from the web app to internal compose service hosts (for example `/api/v1/me` -> `auth-service:3000`).
 
-OpenAPI JSON through gateway:
-- Auth: `http://localhost:8088/api/v1/auth/openapi.json`
-- Ingest: `http://localhost:8088/api/v1/uploads/openapi.json`
-- Library: `http://localhost:8088/api/v1/library/openapi.json`
-- Album/Sharing: `http://localhost:8088/api/v1/albums/openapi.json`
-- Search: `http://localhost:8088/api/v1/search/openapi.json`
-- Worker: `http://localhost:8088/api/v1/worker/openapi.json`
-- ML: `http://localhost:8088/api/v1/ml/openapi.json`
+Backend API docs via direct service ports:
+- Auth: `http://localhost:3101/api/v1/auth/docs`
+- Ingest: `http://localhost:3102/api/v1/uploads/docs`
+- Library: `http://localhost:3103/api/v1/library/docs`
+- Album/Sharing: `http://localhost:3104/api/v1/albums/docs`
+- Search: `http://localhost:3105/api/v1/search/docs`
+- Worker: `http://localhost:3106/api/v1/worker/docs`
+- ML: `http://localhost:8000/api/v1/ml/docs`
+
+OpenAPI JSON via direct service ports:
+- Auth: `http://localhost:3101/api/v1/auth/openapi.json`
+- Ingest: `http://localhost:3102/api/v1/uploads/openapi.json`
+- Library: `http://localhost:3103/api/v1/library/openapi.json`
+- Album/Sharing: `http://localhost:3104/api/v1/albums/openapi.json`
+- Search: `http://localhost:3105/api/v1/search/openapi.json`
+- Worker: `http://localhost:3106/api/v1/worker/openapi.json`
+- ML: `http://localhost:8000/api/v1/ml/openapi.json`
 
 ---
 
@@ -142,7 +146,7 @@ Pact workflow notes:
 - `services/auth`, `services/ingest`, and `services/library` test workflows verify pacts from broker and publish verification results.
 - `PACT_BROKER_BASE_URL` must be set for pact publish and provider verification workflows (recommended local value: `http://localhost:9292`).
 - Pact provider/message verification is mock-based and must not require PostgreSQL, Redis, BullMQ, or other live service endpoints.
-- Auth/ingest/library provider verification uses `http://localhost:8088` by default unless provider base URL env vars are set.
+- Auth/ingest/library provider verification should target direct service ports (for example `http://localhost:3101`, `http://localhost:3102`, `http://localhost:3103`) unless provider base URL env vars are set.
 
 ---
 

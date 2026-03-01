@@ -1,0 +1,378 @@
+name: photox-dev
+
+x-common-env: &common-env
+  TZ: ${TZ:-UTC}
+  NODE_ENV: ${NODE_ENV:-development}
+  LOG_LEVEL: ${LOG_LEVEL:-debug}
+
+x-node-dev-service: &node-dev-service
+  restart: unless-stopped
+  networks:
+    - internal
+  env_file:
+    - path: ./.env
+      required: false
+    - path: ./.env.dev
+      required: false
+  environment:
+    <<: *common-env
+  healthcheck:
+    test: [ "CMD", "wget", "-qO-", "http://localhost:3000/health" ]
+    interval: 15s
+    timeout: 5s
+    retries: 10
+    start_period: 20s
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    env_file:
+      - path: ./.env
+        required: false
+      - path: ./.env.dev
+        required: false
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-photox}
+      POSTGRES_USER: ${POSTGRES_USER:-photox}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-photox-dev-password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-photox} -d ${POSTGRES_DB:-photox}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: [ "redis-server", "--appendonly", "yes" ]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data_dev:/data
+    networks:
+      - internal
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    networks:
+      - internal
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - internal
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      ingest-service:
+        condition: service_healthy
+      library-service:
+        condition: service_healthy
+      album-sharing-service:
+        condition: service_healthy
+      search-service:
+        condition: service_healthy
+      worker-service:
+        condition: service_healthy
+      ml-service:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    restart: unless-stopped
+    env_file:
+      - path: ./.env
+        required: false
+      - path: ./.env.dev
+        required: false
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    volumes:
+      - grafana_data_dev:/var/lib/grafana
+    networks:
+      - internal
+    depends_on:
+      prometheus:
+        condition: service_started
+
+  web-app:
+    <<: *node-dev-service
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.dev
+    command: [ "npm", "run", "dev" ]
+    environment:
+      <<: *common-env
+      PORT: 3000
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
+      NEXT_DEV_API_PROXY_MODE: direct
+      NEXT_DEV_API_PROXY_TARGET: http://auth-service:3000
+    ports:
+      - "${WEB_APP_DEV_PORT:-3000}:3000"
+    volumes:
+      - ./apps/web:/app
+      - web_app_node_modules:/app/node_modules
+      - web_app_next:/app/.next
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      ingest-service:
+        condition: service_healthy
+      library-service:
+        condition: service_healthy
+      album-sharing-service:
+        condition: service_healthy
+      search-service:
+        condition: service_healthy
+      worker-service:
+        condition: service_healthy
+      ml-service:
+        condition: service_healthy
+    networks:
+      - internal
+
+  auth-service:
+    <<: *node-dev-service
+    build:
+      context: ./services/auth
+      dockerfile: Dockerfile.dev
+    command: [ "nodemon", "--legacy-watch", "--watch", ".", "--ext", "js,mjs,cjs,json", "server.js" ]
+    environment:
+      <<: *common-env
+      PORT: 3000
+      SERVICE_NAME: auth-service
+      DATABASE_URL: postgresql://${POSTGRES_USER:-photox}:${POSTGRES_PASSWORD:-photox-dev-password}@postgres:5432/${POSTGRES_DB:-photox}
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
+    ports:
+      - "${AUTH_SERVICE_DEV_PORT:-3101}:3000"
+    volumes:
+      - ./services/auth:/app
+      - auth_service_node_modules:/app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  ingest-service:
+    <<: *node-dev-service
+    build:
+      context: ./services/ingest
+      dockerfile: Dockerfile.dev
+    command: [ "nodemon", "--legacy-watch", "--watch", ".", "--ext", "js,mjs,cjs,json", "server.js" ]
+    environment:
+      <<: *common-env
+      PORT: 3000
+      SERVICE_NAME: ingest-service
+      DATABASE_URL: postgresql://${POSTGRES_USER:-photox}:${POSTGRES_PASSWORD:-photox-dev-password}@postgres:5432/${POSTGRES_DB:-photox}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672}
+      RABBITMQ_EXCHANGE_NAME: ${RABBITMQ_EXCHANGE_NAME:-photox.media}
+      RABBITMQ_QUEUE_PREFIX: ${RABBITMQ_QUEUE_PREFIX:-worker}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
+      UPLOAD_ORIGINALS_PATH: /data/photox/originals
+      UPLOAD_DERIVED_PATH: /data/photox/derived
+      MEDIA_CLEANUP_QUEUE_NAME: ${MEDIA_CLEANUP_QUEUE_NAME:-media.cleanup}
+    ports:
+      - "${INGEST_SERVICE_DEV_PORT:-3102}:3000"
+    volumes:
+      - ./services/ingest:/app
+      - ingest_service_node_modules:/app/node_modules
+      - ${PHOTOX_ORIGINALS_DIR:-/data/photox/originals}:/data/photox/originals
+      - ${PHOTOX_DERIVED_DIR:-/data/photox/derived}:/data/photox/derived
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  library-service:
+    <<: *node-dev-service
+    build:
+      context: ./services/library
+      dockerfile: Dockerfile.dev
+    command: [ "nodemon", "--legacy-watch", "--watch", ".", "--ext", "js,mjs,cjs,json", "server.js" ]
+    environment:
+      <<: *common-env
+      PORT: 3000
+      SERVICE_NAME: library-service
+      DATABASE_URL: postgresql://${POSTGRES_USER:-photox}:${POSTGRES_PASSWORD:-photox-dev-password}@postgres:5432/${POSTGRES_DB:-photox}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672}
+      RABBITMQ_EXCHANGE_NAME: ${RABBITMQ_EXCHANGE_NAME:-photox.media}
+      RABBITMQ_QUEUE_PREFIX: ${RABBITMQ_QUEUE_PREFIX:-worker}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
+      UPLOAD_ORIGINALS_PATH: /data/photox/originals
+      UPLOAD_DERIVED_PATH: /data/photox/derived
+    ports:
+      - "${LIBRARY_SERVICE_DEV_PORT:-3103}:3000"
+    volumes:
+      - ./services/library:/app
+      - library_service_node_modules:/app/node_modules
+      - ${PHOTOX_ORIGINALS_DIR:-/data/photox/originals}:/data/photox/originals
+      - ${PHOTOX_DERIVED_DIR:-/data/photox/derived}:/data/photox/derived
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  album-sharing-service:
+    <<: *node-dev-service
+    build:
+      context: ./services/album-sharing
+      dockerfile: Dockerfile.dev
+    command: [ "nodemon", "--legacy-watch", "--watch", ".", "--ext", "js,mjs,cjs,json", "server.js" ]
+    environment:
+      <<: *common-env
+      PORT: 3000
+      SERVICE_NAME: album-sharing-service
+      DATABASE_URL: postgresql://${POSTGRES_USER:-photox}:${POSTGRES_PASSWORD:-photox-dev-password}@postgres:5432/${POSTGRES_DB:-photox}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
+    ports:
+      - "${ALBUM_SHARING_SERVICE_DEV_PORT:-3104}:3000"
+    volumes:
+      - ./services/album-sharing:/app
+      - album_sharing_service_node_modules:/app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  search-service:
+    <<: *node-dev-service
+    build:
+      context: ./services/search
+      dockerfile: Dockerfile.dev
+    command: [ "nodemon", "--legacy-watch", "--watch", ".", "--ext", "js,mjs,cjs,json", "server.js" ]
+    environment:
+      <<: *common-env
+      PORT: 3000
+      SERVICE_NAME: search-service
+      DATABASE_URL: postgresql://${POSTGRES_USER:-photox}:${POSTGRES_PASSWORD:-photox-dev-password}@postgres:5432/${POSTGRES_DB:-photox}
+      PGVECTOR_EMBEDDING_DIM: ${PGVECTOR_EMBEDDING_DIM:-768}
+    ports:
+      - "${SEARCH_SERVICE_DEV_PORT:-3105}:3000"
+    volumes:
+      - ./services/search:/app
+      - search_service_node_modules:/app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker-service:
+    <<: *node-dev-service
+    build:
+      context: ./services/worker
+      dockerfile: Dockerfile.dev
+    command: [ "nodemon", "--legacy-watch", "--watch", ".", "--ext", "js,mjs,cjs,json", "server.js" ]
+    environment:
+      <<: *common-env
+      PORT: 3000
+      SERVICE_NAME: worker-service
+      DATABASE_URL: postgresql://${POSTGRES_USER:-photox}:${POSTGRES_PASSWORD:-photox-dev-password}@postgres:5432/${POSTGRES_DB:-photox}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672}
+      RABBITMQ_EXCHANGE_NAME: ${RABBITMQ_EXCHANGE_NAME:-photox.media}
+      RABBITMQ_QUEUE_PREFIX: ${RABBITMQ_QUEUE_PREFIX:-worker}
+      MEDIA_DERIVATIVES_QUEUE_NAME: ${MEDIA_DERIVATIVES_QUEUE_NAME:-media.derivatives.generate}
+      MEDIA_CLEANUP_QUEUE_NAME: ${MEDIA_CLEANUP_QUEUE_NAME:-media.cleanup}
+      UPLOAD_ORIGINALS_PATH: /data/photox/originals
+      UPLOAD_DERIVED_PATH: /data/photox/derived
+    ports:
+      - "${WORKER_SERVICE_DEV_PORT:-3106}:3000"
+    volumes:
+      - ./services/worker:/app
+      - worker_service_node_modules:/app/node_modules
+      - ${PHOTOX_ORIGINALS_DIR:-/data/photox/originals}:/data/photox/originals
+      - ${PHOTOX_DERIVED_DIR:-/data/photox/derived}:/data/photox/derived
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  ml-service:
+    restart: unless-stopped
+    build:
+      context: ./services/ml
+      dockerfile: Dockerfile.dev
+    command: [ "uvicorn", "app:app", "--reload", "--host", "0.0.0.0", "--port", "8000" ]
+    env_file:
+      - path: ./.env
+        required: false
+      - path: ./.env.dev
+        required: false
+    environment:
+      TZ: ${TZ:-UTC}
+      PYTHONUNBUFFERED: 1
+      PORT: 8000
+      ML_MODEL_CACHE_DIR: /models
+      UPLOAD_ORIGINALS_PATH: /data/photox/originals
+    ports:
+      - "${ML_SERVICE_DEV_PORT:-8000}:8000"
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    volumes:
+      - ./services/ml:/app
+      - ${PHOTOX_ORIGINALS_DIR:-/data/photox/originals}:/data/photox/originals
+      - ml_model_cache_dev:/models
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  postgres_data_dev:
+  redis_data_dev:
+  grafana_data_dev:
+  ml_model_cache_dev:
+  web_app_node_modules:
+  web_app_next:
+  auth_service_node_modules:
+  ingest_service_node_modules:
+  library_service_node_modules:
+  album_sharing_service_node_modules:
+  search_service_node_modules:
+  worker_service_node_modules:

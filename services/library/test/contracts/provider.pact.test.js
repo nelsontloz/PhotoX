@@ -132,7 +132,10 @@ describe("library http provider verification", () => {
             relative_path: `${USER_ID}/2026/02/beach-${MEDIA_ID}.jpg`,
             mime_type: "image/jpeg",
             status: "ready",
-            favorite: true
+            favorite: true,
+            created_at: "2026-02-14T12:00:00.000Z",
+            uploaded_at: "2026-02-14T12:00:00.000Z",
+            taken_at: "2026-02-14T12:00:00.000Z"
           });
         },
         "a media item exists with ID '55555555-5555-4555-8555-555555555555'": async () => {

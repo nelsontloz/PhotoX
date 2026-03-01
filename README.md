@@ -130,6 +130,82 @@ docker compose --env-file .env ps
 docker compose --env-file .env down
 ```
 
+## Development stack with hot reload (new)
+
+This repository now includes a dedicated dev compose file that keeps production compose and Dockerfiles unchanged.
+
+Development artifacts:
+
+- `docker-compose.dev.yml`
+- `apps/web/Dockerfile.dev`
+- `services/*/Dockerfile.dev`
+- `services/ml/Dockerfile.dev`
+
+### First-time setup
+
+1) Create a dev env file:
+
+```bash
+cp .env.dev.example .env.dev
+```
+
+2) Ensure these are valid in `.env.dev` (or `.env`):
+
+- `PHOTOX_ORIGINALS_DIR`
+- `PHOTOX_DERIVED_DIR`
+- `JWT_ACCESS_SECRET`
+- `JWT_REFRESH_SECRET`
+
+3) Create storage directories if needed:
+
+```bash
+mkdir -p /absolute/path/to/photox/data/originals /absolute/path/to/photox/data/derived
+```
+
+### Start dev stack
+
+Use both env files so `.env.dev` overrides `.env`:
+
+```bash
+docker compose \
+  -f docker-compose.dev.yml \
+  --env-file .env \
+  --env-file .env.dev \
+  up --build
+```
+
+### Stop dev stack
+
+```bash
+docker compose \
+  -f docker-compose.dev.yml \
+  --env-file .env \
+  --env-file .env.dev \
+  down
+```
+
+### Dev behavior details
+
+- Web app runs `npm run dev` in-container with source bind mounts.
+- Node services run with `nodemon` for hot reload.
+- ML service runs `uvicorn --reload`.
+- Each service mounts code from host and uses a container-managed `node_modules` volume to avoid host/container dependency conflicts.
+- Traefik is not used in the development compose stack.
+- Every service is reachable directly on host-exposed dev ports.
+
+### Dev direct access URLs
+
+These depend on your `.env.dev` values.
+
+- Web app: `http://localhost:${WEB_APP_DEV_PORT:-3000}`
+- Auth docs: `http://localhost:${AUTH_SERVICE_DEV_PORT:-3101}/api/v1/auth/docs`
+- Ingest docs: `http://localhost:${INGEST_SERVICE_DEV_PORT:-3102}/api/v1/uploads/docs`
+- Library docs: `http://localhost:${LIBRARY_SERVICE_DEV_PORT:-3103}/api/v1/library/docs`
+- Album/Sharing docs: `http://localhost:${ALBUM_SHARING_SERVICE_DEV_PORT:-3104}/api/v1/albums/docs`
+- Search docs: `http://localhost:${SEARCH_SERVICE_DEV_PORT:-3105}/api/v1/search/docs`
+- Worker docs: `http://localhost:${WORKER_SERVICE_DEV_PORT:-3106}/api/v1/worker/docs`
+- ML docs: `http://localhost:${ML_SERVICE_DEV_PORT:-8000}/api/v1/ml/docs`
+
 ## Default access URLs
 
 These depend on your `.env` values (`HTTP_PORT`, `GRAFANA_PORT`, `PROMETHEUS_PORT`).
