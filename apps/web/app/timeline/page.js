@@ -145,7 +145,7 @@ function TimelineContent() {
       queryClient.invalidateQueries({ queryKey: ["trash"] });
     },
     onError: (error) => {
-      alert(`Failed to delete some items: ${formatApiError(error)}`);
+      showNotification(`Failed to delete some items: ${formatApiError(error)}`);
     }
   });
 
