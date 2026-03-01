@@ -261,6 +261,10 @@ function createMediaCleanupProcessor({ originalsRoot, derivedRoot, logger, media
         resolveAbsolutePath(
           derivedRoot,
           buildDerivativeRelativePath(target.relative_path, mediaId, "playback", "webm")
+        ),
+        resolveAbsolutePath(
+          derivedRoot,
+          buildDerivativeRelativePath(target.relative_path, mediaId, "playback", "mp4")
         )
       ];
 

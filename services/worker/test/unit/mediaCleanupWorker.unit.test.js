@@ -27,10 +27,14 @@ describe("media cleanup processor", () => {
 
     const originalPath = path.join(originalsRoot, ownerId, "2026", "02", `${mediaId}.jpg`);
     const thumbPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-thumb.webp`);
+    const playbackWebmPath = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-playback.webm`);
+    const playbackMp4Path = path.join(derivedRoot, ownerId, "2026", "02", `${mediaId}-playback.mp4`);
     await fs.mkdir(path.dirname(originalPath), { recursive: true });
     await fs.mkdir(path.dirname(thumbPath), { recursive: true });
     await fs.writeFile(originalPath, "original-bytes");
     await fs.writeFile(thumbPath, "thumb-bytes");
+    await fs.writeFile(playbackWebmPath, "playback-webm-bytes");
+    await fs.writeFile(playbackMp4Path, "playback-mp4-bytes");
 
     const mediaRepo = {
       acquireProcessingLock: vi.fn().mockResolvedValue({
@@ -54,9 +58,9 @@ describe("media cleanup processor", () => {
       derivedRoot,
       mediaRepo,
       logger: {
-        info() {},
-        warn() {},
-        error() {}
+        info() { },
+        warn() { },
+        error() { }
       }
     });
 
@@ -70,6 +74,8 @@ describe("media cleanup processor", () => {
     expect(mediaRepo.hardDeleteMediaGraphIfStillSoftDeleted).toHaveBeenCalledWith(mediaId, ownerId);
     await expect(fs.stat(originalPath)).rejects.toHaveProperty("code", "ENOENT");
     await expect(fs.stat(thumbPath)).rejects.toHaveProperty("code", "ENOENT");
+    await expect(fs.stat(playbackWebmPath)).rejects.toHaveProperty("code", "ENOENT");
+    await expect(fs.stat(playbackMp4Path)).rejects.toHaveProperty("code", "ENOENT");
     expect(mediaRepo.releaseProcessingLock).toHaveBeenCalled();
   });
 
@@ -99,9 +105,9 @@ describe("media cleanup processor", () => {
       derivedRoot,
       mediaRepo,
       logger: {
-        info() {},
-        warn() {},
-        error() {}
+        info() { },
+        warn() { },
+        error() { }
       }
     });
 
@@ -142,9 +148,9 @@ describe("media cleanup processor", () => {
       derivedRoot,
       mediaRepo,
       logger: {
-        info() {},
-        warn() {},
-        error() {}
+        info() { },
+        warn() { },
+        error() { }
       }
     });
 
