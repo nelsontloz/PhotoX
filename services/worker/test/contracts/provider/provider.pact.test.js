@@ -33,7 +33,7 @@ describe("worker http provider verification", () => {
 
   beforeAll(async () => {
     const telemetryStore = new WorkerTelemetryStore({
-      queueNames: ["media.process", "media.derivatives.generate", "media.cleanup"]
+      queueNames: ["media.process", "media.derivatives.generate", "media.cleanup", "media.orphan.sweep"]
     });
 
     app = buildApp({
@@ -92,13 +92,28 @@ describe("worker http provider verification", () => {
               completed: 0,
               failed: 0,
               delayed: 0
+            },
+            "media.orphan.sweep": {
+              waiting: 0,
+              active: 0,
+              completed: 0,
+              failed: 0,
+              delayed: 0
             }
           };
         }
       },
       mediaProcessWorker: { async close() { } },
       mediaDerivativesWorker: { async close() { } },
-      mediaCleanupWorker: { async close() { } }
+      mediaCleanupWorker: { async close() { } },
+      mediaOrphanSweepWorker: { async close() { } },
+      orphanSweepEnabled: false,
+      mediaOrphanSweepQueue: {
+        async add() {
+          return { id: "pact-orphan-sweep-job" };
+        },
+        async close() { }
+      }
     });
 
     app.repos.users.findById = async (id) => {

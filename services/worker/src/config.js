@@ -6,6 +6,24 @@ function parsePositiveInt(value, fallback) {
   return parsed;
 }
 
+function parseBoolean(value, fallback) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["1", "true", "yes", "on"].includes(normalized)) {
+      return true;
+    }
+    if (["0", "false", "no", "off"].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return fallback;
+}
+
 const WEAK_SECRET_VALUES = new Set(["change-me", "change-me-too"]);
 
 function resolveRequiredSecret({ envName, overrideValue }) {
@@ -55,6 +73,32 @@ function loadConfig(overrides = {}) {
       overrides.mediaCleanupQueueName ||
       process.env.MEDIA_CLEANUP_QUEUE_NAME ||
       "media.cleanup",
+    mediaOrphanSweepQueueName:
+      overrides.mediaOrphanSweepQueueName ||
+      process.env.MEDIA_ORPHAN_SWEEP_QUEUE_NAME ||
+      "media.orphan.sweep",
+    orphanSweepEnabled: parseBoolean(
+      overrides.orphanSweepEnabled !== undefined ? overrides.orphanSweepEnabled : process.env.ORPHAN_SWEEP_ENABLED,
+      true
+    ),
+    orphanSweepDefaultDryRun: parseBoolean(
+      overrides.orphanSweepDefaultDryRun !== undefined
+        ? overrides.orphanSweepDefaultDryRun
+        : process.env.ORPHAN_SWEEP_DEFAULT_DRY_RUN,
+      true
+    ),
+    orphanSweepIntervalMs: parsePositiveInt(
+      overrides.orphanSweepIntervalMs !== undefined ? overrides.orphanSweepIntervalMs : process.env.ORPHAN_SWEEP_INTERVAL_MS,
+      6 * 60 * 60 * 1000
+    ),
+    orphanSweepGraceMs: parsePositiveInt(
+      overrides.orphanSweepGraceMs !== undefined ? overrides.orphanSweepGraceMs : process.env.ORPHAN_SWEEP_GRACE_MS,
+      6 * 60 * 60 * 1000
+    ),
+    orphanSweepBatchSize: parsePositiveInt(
+      overrides.orphanSweepBatchSize !== undefined ? overrides.orphanSweepBatchSize : process.env.ORPHAN_SWEEP_BATCH_SIZE,
+      1000
+    ),
     jwtAccessSecret
   };
 }

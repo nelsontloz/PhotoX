@@ -1,6 +1,7 @@
 const Fastify = require("fastify");
 const swagger = require("@fastify/swagger");
 const swaggerUi = require("@fastify/swagger-ui");
+const crypto = require("node:crypto");
 
 const { loadConfig } = require("./config");
 const { createPool, runMigrations } = require("./db");
@@ -11,11 +12,16 @@ const { buildUsersRepo } = require("./repos/usersRepo");
 const {
   createMediaCleanupWorker,
   createMediaDerivativesWorker,
+  createMediaOrphanSweepWorker,
   createMediaProcessWorker
 } = require("./queues/mediaDerivativesWorker");
+const { createJobQueueAdapter } = require("./queues/jobQueueAdapter");
 const { buildMetricsText } = require("./telemetry/metrics");
 const { QueueStatsPoller } = require("./telemetry/queueStatsPoller");
 const { WorkerTelemetryStore } = require("./telemetry/store");
+const { buildMediaOrphanSweepMessage } = require("./contracts/mediaOrphanSweepMessage");
+const { DERIVED_SCOPE, ORIGINALS_SCOPE } = require("./orphanSweep/processor");
+const { OrphanSweepScheduler } = require("./orphanSweep/scheduler");
 const {
   DEFAULT_VIDEO_ENCODING_PROFILE,
   PROFILE_KEY,
@@ -61,6 +67,48 @@ function sseFrame(event, payload) {
   return `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
 }
 
+async function enqueueOrphanSweepJobs({
+  queue,
+  requestId,
+  trigger,
+  scopes,
+  dryRun,
+  graceMs,
+  batchSize,
+  logger
+}) {
+  let queuedCount = 0;
+
+  for (const scope of scopes) {
+    try {
+      await queue.add(
+        "media.orphan.sweep",
+        buildMediaOrphanSweepMessage({
+          scope,
+          dryRun,
+          requestedAt: new Date(),
+          requestId,
+          graceMs,
+          batchSize
+        }),
+        {
+          jobId: `media-orphan-sweep-${scope}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
+          attempts: 5,
+          backoff: {
+            type: "exponential",
+            delay: 3000
+          }
+        }
+      );
+      queuedCount += 1;
+    } catch (err) {
+      logger.warn({ err, scope, requestId, trigger }, "failed to enqueue orphan sweep job");
+    }
+  }
+
+  return queuedCount;
+}
+
 function buildApp(overrides = {}) {
   const config = loadConfig(overrides);
   const app = Fastify({
@@ -77,8 +125,19 @@ function buildApp(overrides = {}) {
   const queueNames = [
     config.mediaProcessQueueName,
     config.mediaDerivativesQueueName,
-    config.mediaCleanupQueueName
+    config.mediaCleanupQueueName,
+    config.mediaOrphanSweepQueueName
   ];
+
+  const mediaOrphanSweepQueue =
+    overrides.mediaOrphanSweepQueue ||
+    createJobQueueAdapter({
+      queueName: config.mediaOrphanSweepQueueName,
+      rabbitmqUrl: config.rabbitmqUrl,
+      rabbitmqExchangeName: config.rabbitmqExchangeName,
+      rabbitmqQueuePrefix: config.rabbitmqQueuePrefix,
+      logger: app.log
+    });
   const telemetryStore =
     overrides.telemetryStore ||
     new WorkerTelemetryStore({
@@ -110,7 +169,14 @@ function buildApp(overrides = {}) {
   app.decorate("workers", {
     mediaDerivatives: overrides.mediaDerivativesWorker || null,
     mediaProcess: overrides.mediaProcessWorker || null,
-    mediaCleanup: overrides.mediaCleanupWorker || null
+    mediaCleanup: overrides.mediaCleanupWorker || null,
+    mediaOrphanSweep: overrides.mediaOrphanSweepWorker || null
+  });
+  app.decorate("queues", {
+    mediaOrphanSweep: mediaOrphanSweepQueue
+  });
+  app.decorate("schedulers", {
+    orphanSweep: overrides.orphanSweepScheduler || null
   });
 
   app.register(swagger, {
@@ -362,6 +428,94 @@ function buildApp(overrides = {}) {
       }
     );
 
+    instance.post(
+      "/api/v1/worker/orphan-sweep/run",
+      {
+        preHandler: adminGuard,
+        schema: {
+          tags: ["Worker"],
+          summary: "Queue orphan-file sweep jobs",
+          description:
+            "Queues orphan-file sweep jobs for originals and/or derived storage. Default behavior follows configured dry-run and grace period values.",
+          security: [{ bearerAuth: [] }],
+          body: {
+            type: "object",
+            properties: {
+              scope: {
+                type: "string",
+                enum: [ORIGINALS_SCOPE, DERIVED_SCOPE]
+              },
+              dryRun: { type: "boolean" },
+              graceMs: { type: "integer", minimum: 1 },
+              batchSize: { type: "integer", minimum: 1 }
+            },
+            additionalProperties: false,
+            example: {
+              scope: "originals",
+              dryRun: true,
+              graceMs: 21600000,
+              batchSize: 1000
+            }
+          },
+          response: {
+            202: {
+              type: "object",
+              required: ["status", "requestId", "queuedCount", "scopes", "dryRun", "graceMs", "batchSize"],
+              properties: {
+                status: { type: "string", enum: ["queued"] },
+                requestId: { type: "string" },
+                queuedCount: { type: "integer", minimum: 0 },
+                scopes: {
+                  type: "array",
+                  items: { type: "string", enum: [ORIGINALS_SCOPE, DERIVED_SCOPE] }
+                },
+                dryRun: { type: "boolean" },
+                graceMs: { type: "integer" },
+                batchSize: { type: "integer" }
+              },
+              additionalProperties: false
+            },
+            401: buildErrorEnvelopeSchema({
+              code: "AUTH_TOKEN_INVALID",
+              message: "Token is invalid"
+            }),
+            403: buildErrorEnvelopeSchema({
+              code: "AUTH_FORBIDDEN",
+              message: "Admin access is required"
+            })
+          }
+        }
+      },
+      async (request, reply) => {
+        const scopes = request.body?.scope ? [request.body.scope] : [ORIGINALS_SCOPE, DERIVED_SCOPE];
+        const dryRun = request.body?.dryRun ?? config.orphanSweepDefaultDryRun;
+        const graceMs = request.body?.graceMs ?? config.orphanSweepGraceMs;
+        const batchSize = request.body?.batchSize ?? config.orphanSweepBatchSize;
+        const requestId = request.id;
+
+        const queuedCount = await enqueueOrphanSweepJobs({
+          queue: instance.queues.mediaOrphanSweep,
+          requestId,
+          trigger: "manual",
+          scopes,
+          dryRun,
+          graceMs,
+          batchSize,
+          logger: request.log
+        });
+
+        return reply.code(202).send({
+          status: "queued",
+          requestId,
+          queuedCount,
+          scopes,
+          dryRun,
+          graceMs,
+          batchSize
+        });
+      }
+    );
+
     instance.get(
       "/api/v1/worker/telemetry/snapshot",
       {
@@ -537,6 +691,20 @@ function buildApp(overrides = {}) {
       });
     }
 
+    if (!app.workers.mediaOrphanSweep) {
+      app.workers.mediaOrphanSweep = createMediaOrphanSweepWorker({
+        queueName: config.mediaOrphanSweepQueueName,
+        rabbitmqUrl: config.rabbitmqUrl,
+        rabbitmqExchangeName: config.rabbitmqExchangeName,
+        rabbitmqQueuePrefix: config.rabbitmqQueuePrefix,
+        originalsRoot: config.uploadOriginalsPath,
+        derivedRoot: config.uploadDerivedPath,
+        mediaRepo: app.repos.media,
+        logger: app.log,
+        telemetry: app.telemetry.store
+      });
+    }
+
     if (typeof app.workers.mediaProcess?.start === "function") {
       await app.workers.mediaProcess.start();
     }
@@ -547,6 +715,35 @@ function buildApp(overrides = {}) {
 
     if (typeof app.workers.mediaCleanup?.start === "function") {
       await app.workers.mediaCleanup.start();
+    }
+
+    if (typeof app.workers.mediaOrphanSweep?.start === "function") {
+      await app.workers.mediaOrphanSweep.start();
+    }
+
+    if (!app.schedulers.orphanSweep && config.orphanSweepEnabled) {
+      app.schedulers.orphanSweep = new OrphanSweepScheduler({
+        enabled: true,
+        intervalMs: config.orphanSweepIntervalMs,
+        logger: app.log,
+        run: async ({ trigger, requestedAt }) => {
+          const requestId = `scheduler-${requestedAt.getTime()}`;
+          await enqueueOrphanSweepJobs({
+            queue: app.queues.mediaOrphanSweep,
+            requestId,
+            trigger,
+            scopes: [ORIGINALS_SCOPE, DERIVED_SCOPE],
+            dryRun: config.orphanSweepDefaultDryRun,
+            graceMs: config.orphanSweepGraceMs,
+            batchSize: config.orphanSweepBatchSize,
+            logger: app.log
+          });
+        }
+      });
+    }
+
+    if (typeof app.schedulers.orphanSweep?.start === "function") {
+      await app.schedulers.orphanSweep.start();
     }
   });
 
@@ -565,6 +762,18 @@ function buildApp(overrides = {}) {
 
     if (!overrides.mediaCleanupWorker && app.workers.mediaCleanup) {
       await app.workers.mediaCleanup.close();
+    }
+
+    if (!overrides.mediaOrphanSweepWorker && app.workers.mediaOrphanSweep) {
+      await app.workers.mediaOrphanSweep.close();
+    }
+
+    if (!overrides.orphanSweepScheduler && app.schedulers.orphanSweep) {
+      await app.schedulers.orphanSweep.close();
+    }
+
+    if (!overrides.mediaOrphanSweepQueue && app.queues.mediaOrphanSweep) {
+      await app.queues.mediaOrphanSweep.close();
     }
 
     if (!overrides.db) {

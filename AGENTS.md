@@ -39,6 +39,8 @@ This repository uses docs-first execution. Every coding agent must read `/docs` 
 ## Operational Notes
 - Prefer repository-local conventions over generic defaults.
 - Keep changes scoped, auditable, and test-backed.
+- Assume the development Docker Compose environment (`docker-compose.dev.yml`) is running by default.
+- Use the development Docker Compose environment for debugging, verification, and troubleshooting workflows unless a task explicitly requires a different setup.
 ## Implemented Changes
 - Added GIN Trigram index to `media.relative_path` in Library Service to optimize substring searches.
 - Added EXIF-based capture date extraction for images.
@@ -75,6 +77,5 @@ Steps:
 1. Find the `href` attribute in `apps/web/app/layout.js` containing `icon_names=`.
 2. Add the new icon name in **alphabetical order** within the comma-separated list.
 3. Icons used dynamically via props (e.g. `EmptyState icon=`, `FormInput icon=`, `AuthCard footerLinkIcon=`) must be traced to their call sites and all used values audited.
-
 
 

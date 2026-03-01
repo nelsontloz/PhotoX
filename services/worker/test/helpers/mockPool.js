@@ -84,6 +84,20 @@ function routeQuery(sql, params) {
     return { rows: row ? [mediaRow(row)] : [], rowCount: row ? 1 : 0 };
   }
 
+  if (/SELECT 1 FROM media WHERE relative_path = \$1 LIMIT 1/i.test(text)) {
+    for (const row of media.values()) {
+      if (row.relative_path === params[0]) {
+        return { rows: [{ "?column?": 1 }], rowCount: 1 };
+      }
+    }
+    return { rows: [], rowCount: 0 };
+  }
+
+  if (/SELECT 1 FROM media WHERE id = \$1 LIMIT 1/i.test(text)) {
+    const row = media.get(params[0]);
+    return { rows: row ? [{ "?column?": 1 }] : [], rowCount: row ? 1 : 0 };
+  }
+
   if (/SELECT profile_key, profile_json, updated_by, updated_at FROM video_encoding_profiles WHERE profile_key = \$1 LIMIT 1/i.test(text)) {
     const row = videoEncodingProfiles.get(params[0]);
     return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };

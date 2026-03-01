@@ -8,6 +8,7 @@ import {
   disableAdminManagedUser,
   formatApiError,
   listAdminUsers,
+  runWorkerOrphanSweep,
   resetAdminManagedUserPassword,
   updateAdminManagedUser
 } from "../../lib/api";
@@ -37,6 +38,7 @@ export default function AdminPage() {
   const [resetPasswordByUserId, setResetPasswordByUserId] = useState({});
   const [userFilter, setUserFilter] = useState("");
   const [isCreateFormVisible, setIsCreateFormVisible] = useState(false);
+  const [orphanSweepMessage, setOrphanSweepMessage] = useState("");
 
   const { workerTelemetry, workerStreamStatus } = useWorkerTelemetry(Boolean(sessionUser?.isAdmin));
 
@@ -69,6 +71,23 @@ export default function AdminPage() {
       await refreshUsers();
     },
     onError: (error) => setErrorMessage(formatApiError(error))
+  });
+
+  const orphanSweepMutation = useMutation({
+    mutationFn: () =>
+      runWorkerOrphanSweep({
+        dryRun: false,
+        batchSize: 10000
+      }),
+    onSuccess: (payload) => {
+      const queued = Number(payload?.queuedCount ?? payload?.queuedJobs ?? 0);
+      setOrphanSweepMessage(`Orphan cleanup (delete mode) queued successfully (${queued} job${queued === 1 ? "" : "s"}).`);
+      setErrorMessage("");
+    },
+    onError: (error) => {
+      setOrphanSweepMessage("");
+      setErrorMessage(formatApiError(error));
+    }
   });
 
   const activeAdminCount = useMemo(() => countActiveAdmins(users), [users]);
@@ -178,9 +197,17 @@ export default function AdminPage() {
           workerStreamStatus={workerStreamStatus}
           isCreateFormVisible={isCreateFormVisible}
           onToggleCreateForm={() => setIsCreateFormVisible((current) => !current)}
+          onRunOrphanSweep={() => orphanSweepMutation.mutate()}
+          isOrphanSweepPending={orphanSweepMutation.isPending}
         />
 
         <ErrorBanner message={errorMessage} />
+
+        {orphanSweepMessage ? (
+          <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-900/30 p-4 text-sm text-emerald-700 dark:text-emerald-400">
+            {orphanSweepMessage}
+          </div>
+        ) : null}
 
         {isCreateFormVisible && (
           <CreateUserForm

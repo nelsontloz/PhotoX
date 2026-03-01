@@ -226,6 +226,12 @@ Required processors:
 - `media.search.index`
 - `media.face.index`
 - `media.cleanup`
+- `media.orphan.sweep`
+
+Operational controls:
+- Provide admin-triggered orphan sweep execution endpoint for manual runs.
+- Support scheduled orphan sweep execution with configurable interval, grace threshold, and dry-run defaults.
+- For derived scope cleanup, preserve canonical derivative artifacts and delete both true orphans and non-canonical duplicate artifacts.
 
 Required API docs endpoints:
 - `GET /worker/docs`

@@ -87,4 +87,32 @@ describe("worker message consumer pacts", () => {
         expect(message.contents).toHaveProperty("hardDeleteAt");
       });
   });
+
+  it("accepts worker media.orphan.sweep payload", async () => {
+    const messagePact = new MessageConsumerPact({
+      consumer: "worker-service",
+      provider: "worker-service",
+      dir: path.resolve(__dirname, "../../../pacts")
+    });
+
+    await messagePact
+      .expectsToReceive("a command to scan one storage scope for orphaned media files")
+      .withMetadata({ contentType: "application/json" })
+      .withContent({
+        scope: regex("^(originals|derived)$", "originals"),
+        dryRun: like(true),
+        requestedAt: regex(TIMESTAMP_REGEX, "2026-03-17T00:00:00.000Z"),
+        requestId: like("req_abc123"),
+        graceMs: like(21600000),
+        batchSize: like(1000)
+      })
+      .verify(async (message) => {
+        expect(message.contents).toHaveProperty("scope");
+        expect(message.contents).toHaveProperty("dryRun");
+        expect(message.contents).toHaveProperty("requestedAt");
+        expect(message.contents).toHaveProperty("requestId");
+        expect(message.contents).toHaveProperty("graceMs");
+        expect(message.contents).toHaveProperty("batchSize");
+      });
+  });
 });

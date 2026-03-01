@@ -1,0 +1,90 @@
+{
+  "consumer": {
+    "name": "worker-service"
+  },
+  "messages": [
+    {
+      "contents": {
+        "batchSize": 1000,
+        "dryRun": true,
+        "graceMs": 21600000,
+        "requestId": "req_abc123",
+        "requestedAt": "2026-03-17T00:00:00.000Z",
+        "scope": "originals"
+      },
+      "description": "a command to scan one storage scope for orphaned media files",
+      "matchingRules": {
+        "body": {
+          "$.batchSize": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.dryRun": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.graceMs": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.requestId": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.requestedAt": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "regex",
+                "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$"
+              }
+            ]
+          },
+          "$.scope": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "regex",
+                "regex": "^(originals|derived)$"
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "contentType": "application/json"
+      }
+    }
+  ],
+  "metadata": {
+    "pact-js": {
+      "version": "14.0.0"
+    },
+    "pactRust": {
+      "ffi": "0.4.28",
+      "models": "1.3.5"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "worker-service"
+  }
+}

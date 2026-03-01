@@ -4,6 +4,7 @@ const amqplib = require("amqplib");
 const { generateDerivativesForMedia } = require("../media/derivatives");
 const { extractMediaMetadata } = require("../media/metadata");
 const { buildDerivativeRelativePath, resolveAbsolutePath } = require("../media/paths");
+const { createMediaOrphanSweepProcessor } = require("../orphanSweep/processor");
 const { PROFILE_KEY, resolvePlaybackProfile } = require("../videoEncoding/profile");
 
 const DEFAULT_LOCK_RETRY_ATTEMPTS = 5;
@@ -570,6 +571,31 @@ function createMediaCleanupWorker({
   });
 }
 
+function createMediaOrphanSweepWorker({
+  queueName,
+  rabbitmqUrl,
+  rabbitmqExchangeName = "photox.media",
+  rabbitmqQueuePrefix = "worker",
+  originalsRoot,
+  derivedRoot,
+  logger,
+  mediaRepo,
+  telemetry
+}) {
+  return createRabbitWorker({
+    queueName,
+    rabbitmqUrl,
+    exchangeName: rabbitmqExchangeName,
+    queuePrefix: rabbitmqQueuePrefix,
+    processor: createMediaOrphanSweepProcessor({ originalsRoot, derivedRoot, logger, mediaRepo }),
+    logger,
+    telemetry,
+    mediaRepo,
+    onFailureLogMessage: "media orphan sweep job failed",
+    persistFailedStatus: false
+  });
+}
+
 module.exports = {
   isTerminalFailure,
   persistFailedStatusOnTerminalFailure,
@@ -577,6 +603,7 @@ module.exports = {
   acquireProcessingLockWithRetry,
   createMediaCleanupProcessor,
   createMediaCleanupWorker,
+  createMediaOrphanSweepWorker,
   createMediaDerivativesProcessor,
   createMediaDerivativesWorker,
   createMediaProcessWorker

@@ -9,6 +9,7 @@ import {
   isRetriableMediaProcessingError,
   listTrash,
   openWorkerTelemetryStream,
+  runWorkerOrphanSweep,
   restoreMedia
 } from "../../lib/api";
 import { clearSession, writeSession } from "../../lib/session";
@@ -233,5 +234,34 @@ describe("api helpers", () => {
     expect(fetchMock.mock.calls[3][1].method).toBe("DELETE");
     expect(fetchMock.mock.calls[4][0]).toContain("/media/m1/restore");
     expect(fetchMock.mock.calls[4][1].method).toBe("POST");
+  });
+
+  it("triggers orphan sweep through worker endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: "queued",
+          requestId: "req_123",
+          queuedCount: 2,
+          scopes: ["originals", "derived"],
+          dryRun: false,
+          graceMs: 21600000,
+          batchSize: 10000
+        }),
+        {
+          status: 202,
+          headers: { "content-type": "application/json" }
+        }
+      )
+    );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const payload = await runWorkerOrphanSweep({ dryRun: false, batchSize: 10000 });
+    expect(payload.status).toBe("queued");
+    expect(fetchMock.mock.calls[0][0]).toContain("/worker/orphan-sweep/run");
+    expect(fetchMock.mock.calls[0][1].method).toBe("POST");
+    expect(fetchMock.mock.calls[0][1].body).not.toContain('"scope"');
+    expect(fetchMock.mock.calls[0][1].body).toContain('"dryRun":false');
   });
 });

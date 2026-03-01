@@ -11,21 +11,25 @@ describe("worker media status integration", () => {
       db: mockPool,
       serviceName: "worker-service-test",
       jwtAccessSecret: "worker-test-secret",
+      orphanSweepEnabled: false,
       queueStatsPoller: {
-        async start() {},
-        async close() {},
+        async start() { },
+        async close() { },
         getSnapshot() {
           return {};
         }
       },
       mediaProcessWorker: {
-        async close() {}
+        async close() { }
       },
       mediaDerivativesWorker: {
-        async close() {}
+        async close() { }
       },
       mediaCleanupWorker: {
-        async close() {}
+        async close() { }
+      },
+      mediaOrphanSweepWorker: {
+        async close() { }
       }
     });
     await app.ready();

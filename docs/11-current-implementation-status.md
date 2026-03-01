@@ -170,9 +170,13 @@ Implemented now:
 - `GET /api/v1/worker/telemetry/stream` (SSE, admin-only)
 - `GET /api/v1/worker/settings/video-encoding` (admin-only)
 - `PUT /api/v1/worker/settings/video-encoding` (admin-only)
+- `POST /api/v1/worker/orphan-sweep/run` (admin-only)
 - BullMQ consumer for `media.derivatives.generate` that creates image `thumb`/`small` WebP derivatives and video `playback` WebM (VP9/Opus) derivatives
  - BullMQ consumer for `media.process` that extracts photo/video metadata, persists `media_metadata`, and generates derivatives for new uploads
 - BullMQ consumer for `media.cleanup` that verifies media is still soft-deleted, deletes original/derived files, and hard-deletes DB rows in a transaction.
+- RabbitMQ consumer for `media.orphan.sweep` that scans originals/derived storage for orphaned files with grace-threshold protection and optional dry-run mode.
+- Derived orphan sweep behavior now also removes non-canonical duplicate derived artifacts for existing media IDs while preserving canonical variants.
+- Worker scheduler enqueues periodic orphan-sweep jobs for `originals` and `derived` scopes.
 - Queue migration completed (queue-only scope):
   - Ingest and library producers publish via RabbitMQ.
   - Worker consumers process `media.process`, `media.derivatives.generate`, and `media.cleanup` via RabbitMQ.
@@ -189,6 +193,8 @@ Implemented now:
 - Worker now persists a default video encoding profile (`video_encoding_profiles`) and applies it to all new video playback derivative generation jobs.
 - `media.derivatives.generate` now supports optional `videoEncodingProfileOverride`; precedence is override > saved default > built-in default.
 - Playback derivatives are now profile-driven and may be generated as WebM (VP9/Opus) or MP4 (H.264/AAC) depending on active settings.
+- Admins can trigger manual orphan sweeps via `/api/v1/worker/orphan-sweep/run`, with scope (`originals|derived`), `dryRun`, `graceMs`, and `batchSize` controls.
+- `POST /api/v1/worker/orphan-sweep/run` responds with `status="queued"` and returns `requestId`, `queuedCount`, `scopes`, `dryRun`, `graceMs`, and `batchSize`.
 
 
 Planned/pending:

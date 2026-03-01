@@ -90,6 +90,7 @@ PhotoX Personal Edition is a web-first, self-hosted photo platform designed as a
 2. `library-service` marks record as deleted and enqueues `media.cleanup`.
 3. Cleanup worker removes derivatives/index entries.
 4. Hard-delete worker permanently removes files and metadata after retention window.
+5. `worker-service` runs periodic `media.orphan.sweep` jobs to detect and clean orphaned originals/derivatives (dry-run configurable for rollout safety).
 
 ---
 

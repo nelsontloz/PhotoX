@@ -178,6 +178,34 @@ function buildMediaRepo(db) {
       return result.rows[0] || null;
     },
 
+    async existsByRelativePath(relativePath, executor) {
+      const result = await queryable(executor).query(
+        `
+          SELECT 1
+          FROM media
+          WHERE relative_path = $1
+          LIMIT 1
+        `,
+        [relativePath]
+      );
+
+      return result.rowCount > 0;
+    },
+
+    async existsById(mediaId, executor) {
+      const result = await queryable(executor).query(
+        `
+          SELECT 1
+          FROM media
+          WHERE id = $1
+          LIMIT 1
+        `,
+        [mediaId]
+      );
+
+      return result.rowCount > 0;
+    },
+
     async upsertMetadata(
       {
         mediaId,

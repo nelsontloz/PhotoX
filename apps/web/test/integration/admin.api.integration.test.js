@@ -2,6 +2,7 @@ import {
   createAdminManagedUser,
   disableAdminManagedUser,
   listAdminUsers,
+  runWorkerOrphanSweep,
   resetAdminManagedUserPassword,
   updateAdminManagedUser
 } from "../../lib/api";
@@ -68,7 +69,18 @@ describe("admin api integration", () => {
         })
       )
       .mockResolvedValueOnce(jsonResponse(200, { success: true }))
-      .mockResolvedValueOnce(jsonResponse(200, { success: true }));
+      .mockResolvedValueOnce(jsonResponse(200, { success: true }))
+      .mockResolvedValueOnce(
+        jsonResponse(202, {
+          status: "queued",
+          requestId: "req_123",
+          queuedCount: 2,
+          scopes: ["originals", "derived"],
+          dryRun: false,
+          graceMs: 21600000,
+          batchSize: 10000
+        })
+      );
 
     vi.stubGlobal("fetch", fetchMock);
 
@@ -89,6 +101,14 @@ describe("admin api integration", () => {
 
     const disabled = await disableAdminManagedUser("usr_1");
     expect(disabled.success).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(5);
+
+    const orphanSweep = await runWorkerOrphanSweep({ dryRun: false, batchSize: 10000 });
+    expect(orphanSweep.status).toBe("queued");
+
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock.mock.calls[5][0]).toContain("/worker/orphan-sweep/run");
+    expect(fetchMock.mock.calls[5][1].method).toBe("POST");
+    expect(fetchMock.mock.calls[5][1].body).not.toContain('"scope"');
+    expect(fetchMock.mock.calls[5][1].body).toContain('"dryRun":false');
   });
 });

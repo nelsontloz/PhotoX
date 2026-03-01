@@ -1,6 +1,12 @@
 import Link from "next/link";
 
-export function AdminHeader({ workerStreamStatus, isCreateFormVisible, onToggleCreateForm }) {
+export function AdminHeader({
+  workerStreamStatus,
+  isCreateFormVisible,
+  onToggleCreateForm,
+  onRunOrphanSweep,
+  isOrphanSweepPending
+}) {
   return (
     <>
       <div className="flex items-center gap-2 text-sm text-slate-500 w-full">
@@ -18,14 +24,26 @@ export function AdminHeader({ workerStreamStatus, isCreateFormVisible, onToggleC
           <h1 className="text-3xl md:text-4xl font-black tracking-tight text-slate-900 dark:text-white uppercase">Admin Console</h1>
           <p className="text-slate-500 dark:text-slate-400 text-sm">System performance and user management overview.</p>
         </div>
-        <button
-          type="button"
-          onClick={onToggleCreateForm}
-          className="flex items-center gap-2 cursor-pointer justify-center overflow-hidden rounded-lg h-10 px-4 bg-primary hover:bg-primary/90 transition-colors text-white text-sm font-bold shadow-lg shadow-primary/20"
-        >
-          <span className="material-symbols-outlined text-lg">{isCreateFormVisible ? "close" : "add"}</span>
-          <span>{isCreateFormVisible ? "Close" : "Add User"}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onRunOrphanSweep}
+            disabled={isOrphanSweepPending}
+            className="flex items-center gap-2 cursor-pointer justify-center overflow-hidden rounded-lg h-10 px-4 bg-slate-900 dark:bg-slate-700 hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors text-white text-sm font-bold disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <span className="material-symbols-outlined text-lg">delete</span>
+            <span>{isOrphanSweepPending ? "Running..." : "Run Orphan Cleanup"}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onToggleCreateForm}
+            className="flex items-center gap-2 cursor-pointer justify-center overflow-hidden rounded-lg h-10 px-4 bg-primary hover:bg-primary/90 transition-colors text-white text-sm font-bold shadow-lg shadow-primary/20"
+          >
+            <span className="material-symbols-outlined text-lg">{isCreateFormVisible ? "close" : "add"}</span>
+            <span>{isCreateFormVisible ? "Close" : "Add User"}</span>
+          </button>
+        </div>
       </div>
     </>
   );

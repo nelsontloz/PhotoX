@@ -1,1 +1,1 @@
-{"version":"2.1.9","results":[[":apps/web/test/unit/api.unit.test.js",{"duration":0,"failed":true}],[":apps/web/test/integration/api.auth.integration.test.js",{"duration":0,"failed":true}]]}
+{"version":"2.1.9","results":[[":apps/web/test/unit/api.unit.test.js",{"duration":0,"failed":true}],[":apps/web/test/integration/admin.api.integration.test.js",{"duration":0,"failed":true}]]}

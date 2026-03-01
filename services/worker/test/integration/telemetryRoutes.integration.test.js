@@ -10,6 +10,7 @@ describe("worker telemetry routes", () => {
   const adminId = "22222222-2222-4222-8222-222222222222";
   let app;
   let telemetryStore;
+  let mediaOrphanSweepQueue;
 
   const queueStatsPoller = {
     async start() { },
@@ -42,6 +43,11 @@ describe("worker telemetry routes", () => {
   };
 
   beforeAll(async () => {
+    mediaOrphanSweepQueue = {
+      add: vi.fn().mockResolvedValue({ id: "orphan-job-1" }),
+      close: vi.fn().mockResolvedValue(undefined)
+    };
+
     telemetryStore = new WorkerTelemetryStore({
       queueNames: ["media.process", "media.derivatives.generate", "media.cleanup"],
       eventLimitPerQueue: 500,
@@ -76,7 +82,12 @@ describe("worker telemetry routes", () => {
       },
       mediaCleanupWorker: {
         async close() { }
-      }
+      },
+      mediaOrphanSweepWorker: {
+        async close() { }
+      },
+      mediaOrphanSweepQueue,
+      orphanSweepEnabled: false
     });
 
     await app.ready();
@@ -249,5 +260,36 @@ describe("worker telemetry routes", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.json().error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("queues manual orphan sweep for admin user", async () => {
+    mockPool.seedUser({
+      id: adminId,
+      email: "admin@example.com",
+      password_hash: "x",
+      is_admin: true,
+      is_active: true
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/worker/orphan-sweep/run",
+      headers: {
+        authorization: `Bearer ${adminToken(adminId)}`
+      },
+      payload: {
+        scope: "derived",
+        dryRun: true,
+        graceMs: 1000,
+        batchSize: 10
+      }
+    });
+
+    expect(response.statusCode).toBe(202);
+    const payload = response.json();
+    expect(payload.status).toBe("queued");
+    expect(payload.scopes).toEqual(["derived"]);
+    expect(payload.queuedCount).toBe(1);
+    expect(mediaOrphanSweepQueue.add).toHaveBeenCalledTimes(1);
   });
 });

@@ -384,6 +384,13 @@ export async function saveWorkerVideoEncodingProfile(profile) {
   });
 }
 
+export async function runWorkerOrphanSweep(payload = {}) {
+  return requestWithAutoRefresh("/worker/orphan-sweep/run", {
+    method: "POST",
+    body: payload
+  });
+}
+
 function parseSseChunks(buffer, onMessage) {
   const messages = buffer.split("\n\n");
   const trailing = messages.pop() || "";
