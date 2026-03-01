@@ -7,6 +7,7 @@ function parsePositiveInt(value, fallback) {
 }
 
 const WEAK_SECRET_VALUES = new Set(["change-me", "change-me-too"]);
+const MIN_PRODUCTION_SECRET_LENGTH = 32;
 
 function resolveRequiredSecret({ envName, overrideValue }) {
   const candidate = overrideValue !== undefined ? overrideValue : process.env[envName];
@@ -15,8 +16,17 @@ function resolveRequiredSecret({ envName, overrideValue }) {
     throw new Error(`${envName} is required`);
   }
 
-  if (process.env.NODE_ENV === "production" && WEAK_SECRET_VALUES.has(candidate.trim().toLowerCase())) {
-    throw new Error(`${envName} must not use insecure placeholder values in production`);
+  if (process.env.NODE_ENV === "production") {
+    const normalized = candidate.trim();
+    if (WEAK_SECRET_VALUES.has(normalized.toLowerCase())) {
+      throw new Error(`${envName} must not use insecure placeholder values in production`);
+    }
+
+    if (normalized.length < MIN_PRODUCTION_SECRET_LENGTH) {
+      throw new Error(
+        `${envName} must be at least ${MIN_PRODUCTION_SECRET_LENGTH} characters in production`
+      );
+    }
   }
 
   return candidate;

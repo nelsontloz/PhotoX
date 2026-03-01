@@ -17,7 +17,150 @@ const {
   validatePassword,
   verifyPassword
 } = require("../auth/password");
+const { parseCookieHeader } = require("../auth/guard");
 const { loginSchema, parseOrThrow, refreshSchema, registerSchema } = require("../validation");
+
+function isSecureCookieRequest(request) {
+  if (process.env.NODE_ENV === "production") {
+    return true;
+  }
+
+  const forwardedProto = request.headers["x-forwarded-proto"];
+  if (typeof forwardedProto === "string") {
+    return forwardedProto.toLowerCase().includes("https");
+  }
+
+  return request.protocol === "https";
+}
+
+function appendSetCookie(reply, cookieValue) {
+  const current = reply.getHeader("Set-Cookie");
+  if (!current) {
+    reply.header("Set-Cookie", [cookieValue]);
+    return;
+  }
+
+  if (Array.isArray(current)) {
+    reply.header("Set-Cookie", [...current, cookieValue]);
+    return;
+  }
+
+  reply.header("Set-Cookie", [current, cookieValue]);
+}
+
+function buildCookie(name, value, options = {}) {
+  const segments = [`${name}=${encodeURIComponent(value)}`];
+  segments.push("Path=/");
+
+  if (options.httpOnly) {
+    segments.push("HttpOnly");
+  }
+
+  if (options.sameSite) {
+    segments.push(`SameSite=${options.sameSite}`);
+  }
+
+  if (options.secure) {
+    segments.push("Secure");
+  }
+
+  if (typeof options.maxAge === "number") {
+    segments.push(`Max-Age=${Math.max(0, Math.floor(options.maxAge))}`);
+  }
+
+  return segments.join("; ");
+}
+
+function issueSessionCookies({ request, reply, accessToken, refreshToken, accessTtlSeconds, refreshTtlSeconds }) {
+  const secure = isSecureCookieRequest(request);
+  const csrfToken = crypto.randomBytes(24).toString("hex");
+
+  appendSetCookie(
+    reply,
+    buildCookie("access_token", accessToken, {
+      httpOnly: true,
+      sameSite: "Strict",
+      secure,
+      maxAge: accessTtlSeconds
+    })
+  );
+
+  appendSetCookie(
+    reply,
+    buildCookie("refresh_token", refreshToken, {
+      httpOnly: true,
+      sameSite: "Strict",
+      secure,
+      maxAge: refreshTtlSeconds
+    })
+  );
+
+  appendSetCookie(
+    reply,
+    buildCookie("csrf_token", csrfToken, {
+      httpOnly: false,
+      sameSite: "Strict",
+      secure,
+      maxAge: refreshTtlSeconds
+    })
+  );
+}
+
+function clearSessionCookies(request, reply) {
+  const secure = isSecureCookieRequest(request);
+  appendSetCookie(
+    reply,
+    buildCookie("access_token", "", {
+      httpOnly: true,
+      sameSite: "Strict",
+      secure,
+      maxAge: 0
+    })
+  );
+  appendSetCookie(
+    reply,
+    buildCookie("refresh_token", "", {
+      httpOnly: true,
+      sameSite: "Strict",
+      secure,
+      maxAge: 0
+    })
+  );
+  appendSetCookie(
+    reply,
+    buildCookie("csrf_token", "", {
+      httpOnly: false,
+      sameSite: "Strict",
+      secure,
+      maxAge: 0
+    })
+  );
+}
+
+function readRefreshTokenFromRequest(request, body) {
+  const explicitToken = typeof body?.refreshToken === "string" ? body.refreshToken : null;
+  if (explicitToken) {
+    return {
+      refreshToken: explicitToken,
+      fromCookie: false
+    };
+  }
+
+  const cookies = parseCookieHeader(request.headers.cookie);
+  const cookieToken = typeof cookies.refresh_token === "string" && cookies.refresh_token ? cookies.refresh_token : null;
+  return {
+    refreshToken: cookieToken,
+    fromCookie: Boolean(cookieToken),
+    csrfCookie: cookies.csrf_token
+  };
+}
+
+function assertCsrfForCookieRefresh(request, csrfCookie) {
+  const csrfHeader = request.headers["x-csrf-token"];
+  if (!csrfCookie || typeof csrfHeader !== "string" || csrfHeader.length === 0 || csrfHeader !== csrfCookie) {
+    throw new ApiError(403, "AUTH_CSRF_INVALID", "CSRF token is missing or invalid");
+  }
+}
 
 function buildAuthPayload({ accessToken, refreshToken, accessTokenTtlSeconds, user }) {
   return {
@@ -75,7 +218,6 @@ const loginBodySchema = {
 
 const refreshBodySchema = {
   type: "object",
-  required: ["refreshToken"],
   properties: {
     refreshToken: { type: "string", minLength: 1 }
   },
@@ -240,7 +382,7 @@ module.exports = async function authRoutes(app) {
         }
       }
     },
-    async (request) => {
+    async (request, reply) => {
       const body = parseOrThrow(loginSchema, request.body || {});
       const email = normalizeEmail(body.email);
       const userRow = await app.repos.users.findByEmail(email);
@@ -281,6 +423,15 @@ module.exports = async function authRoutes(app) {
         expiresInSeconds: app.config.accessTokenTtlSeconds
       });
 
+      issueSessionCookies({
+        request,
+        reply,
+        accessToken,
+        refreshToken,
+        accessTtlSeconds: app.config.accessTokenTtlSeconds,
+        refreshTtlSeconds: app.config.refreshTokenTtlDays * 24 * 60 * 60
+      });
+
       return buildAuthPayload({
         accessToken,
         refreshToken,
@@ -301,8 +452,8 @@ module.exports = async function authRoutes(app) {
         response: {
           200: authPayloadSchema,
           403: buildErrorEnvelopeSchema({
-            code: "AUTH_ACCOUNT_DISABLED",
-            message: "Account is disabled"
+            code: "AUTH_FORBIDDEN",
+            message: "Request is forbidden"
           }),
           401: buildErrorEnvelopeSchema({
             code: "AUTH_TOKEN_INVALID",
@@ -311,12 +462,19 @@ module.exports = async function authRoutes(app) {
         }
       }
     },
-    async (request) => {
+    async (request, reply) => {
       const body = parseOrThrow(refreshSchema, request.body || {});
+      const tokenSource = readRefreshTokenFromRequest(request, body);
+      if (!tokenSource.refreshToken) {
+        throw new ApiError(401, "AUTH_TOKEN_INVALID", "Token is invalid");
+      }
+      if (tokenSource.fromCookie) {
+        assertCsrfForCookieRefresh(request, tokenSource.csrfCookie);
+      }
 
       let payload;
       try {
-        payload = verifyRefreshToken(body.refreshToken, app.config.jwtRefreshSecret);
+        payload = verifyRefreshToken(tokenSource.refreshToken, app.config.jwtRefreshSecret);
       } catch (err) {
         throw mapJwtError(err);
       }
@@ -335,14 +493,14 @@ module.exports = async function authRoutes(app) {
         throw new ApiError(401, "AUTH_TOKEN_EXPIRED", "Token has expired");
       }
 
-      const isTokenValid = await verifyRefreshTokenHash(body.refreshToken, session.refresh_token_hash);
+      const isTokenValid = await verifyRefreshTokenHash(tokenSource.refreshToken, session.refresh_token_hash);
       if (!isTokenValid) {
         throw new ApiError(401, "AUTH_TOKEN_INVALID", "Token is invalid");
       }
 
       const userRow = await app.repos.users.findById(payload.sub);
       if (!userRow) {
-        await verifyRefreshTokenHash(body.refreshToken, DUMMY_REFRESH_TOKEN_HASH);
+        await verifyRefreshTokenHash(tokenSource.refreshToken, DUMMY_REFRESH_TOKEN_HASH);
         throw new ApiError(401, "AUTH_TOKEN_INVALID", "Token is invalid");
       }
 
@@ -369,6 +527,15 @@ module.exports = async function authRoutes(app) {
         user: { id: userRow.id, email: userRow.email },
         secret: app.config.jwtAccessSecret,
         expiresInSeconds: app.config.accessTokenTtlSeconds
+      });
+
+      issueSessionCookies({
+        request,
+        reply,
+        accessToken,
+        refreshToken,
+        accessTtlSeconds: app.config.accessTokenTtlSeconds,
+        refreshTtlSeconds: app.config.refreshTokenTtlDays * 24 * 60 * 60
       });
 
       return buildAuthPayload({
@@ -400,6 +567,10 @@ module.exports = async function authRoutes(app) {
               success: true
             }
           },
+          403: buildErrorEnvelopeSchema({
+            code: "AUTH_CSRF_INVALID",
+            message: "CSRF token is missing or invalid"
+          }),
           401: buildErrorEnvelopeSchema({
             code: "AUTH_TOKEN_INVALID",
             message: "Token is invalid"
@@ -407,22 +578,32 @@ module.exports = async function authRoutes(app) {
         }
       }
     },
-    async (request) => {
-    const body = parseOrThrow(refreshSchema, request.body || {});
+    async (request, reply) => {
+      const body = parseOrThrow(refreshSchema, request.body || {});
+      const tokenSource = readRefreshTokenFromRequest(request, body);
 
-    let payload;
-    try {
-      payload = verifyRefreshTokenIgnoringExpiration(body.refreshToken, app.config.jwtRefreshSecret);
-    } catch (err) {
-      throw mapJwtError(err);
-    }
+      if (!tokenSource.refreshToken) {
+        throw new ApiError(401, "AUTH_TOKEN_INVALID", "Token is invalid");
+      }
 
-    if (!payload.sid) {
-      throw new ApiError(401, "AUTH_TOKEN_INVALID", "Token is invalid");
-    }
+      if (tokenSource.fromCookie) {
+        assertCsrfForCookieRefresh(request, tokenSource.csrfCookie);
+      }
 
-    await app.repos.sessions.revokeById(payload.sid);
-    return { success: true };
+      let payload;
+      try {
+        payload = verifyRefreshTokenIgnoringExpiration(tokenSource.refreshToken, app.config.jwtRefreshSecret);
+      } catch (err) {
+        throw mapJwtError(err);
+      }
+
+      if (!payload.sid) {
+        throw new ApiError(401, "AUTH_TOKEN_INVALID", "Token is invalid");
+      }
+
+      await app.repos.sessions.revokeById(payload.sid);
+      clearSessionCookies(request, reply);
+      return { success: true };
     }
   );
 };

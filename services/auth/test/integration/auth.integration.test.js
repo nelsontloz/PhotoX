@@ -143,6 +143,77 @@ describe("auth integration", () => {
     expect(refreshBody.refreshToken).not.toBe(loginBody.refreshToken);
   });
 
+  it("refreshes token from cookie when csrf token header matches", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "refresh-cookie@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: {
+        email: "refresh-cookie@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const cookieHeader = login.cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+    const csrfCookie = login.cookies.find((cookie) => cookie.name === "csrf_token");
+    expect(csrfCookie).toBeTruthy();
+
+    const refresh = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/refresh",
+      headers: {
+        cookie: cookieHeader,
+        "x-csrf-token": csrfCookie.value
+      },
+      payload: {}
+    });
+
+    expect(refresh.statusCode).toBe(200);
+    expect(jsonBody(refresh).accessToken).toBeTruthy();
+  });
+
+  it("rejects cookie refresh without csrf token", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "refresh-cookie-csrf@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: {
+        email: "refresh-cookie-csrf@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const cookieHeader = login.cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+
+    const refresh = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/refresh",
+      headers: {
+        cookie: cookieHeader
+      },
+      payload: {}
+    });
+
+    expect(refresh.statusCode).toBe(403);
+    expect(jsonBody(refresh).error.code).toBe("AUTH_CSRF_INVALID");
+  });
+
   it("rejects legacy refresh token hashes after argon2 cutover", async () => {
     await app.inject({
       method: "POST",
@@ -225,6 +296,42 @@ describe("auth integration", () => {
 
     expect(refreshAfterLogout.statusCode).toBe(401);
     expect(jsonBody(refreshAfterLogout).error.code).toBe("AUTH_SESSION_REVOKED");
+  });
+
+  it("logs out from cookie session when csrf token matches", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: {
+        email: "logout-cookie@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: {
+        email: "logout-cookie@example.com",
+        password: "super-secret-password"
+      }
+    });
+
+    const cookieHeader = login.cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+    const csrfCookie = login.cookies.find((cookie) => cookie.name === "csrf_token");
+
+    const logout = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/logout",
+      headers: {
+        cookie: cookieHeader,
+        "x-csrf-token": csrfCookie.value
+      },
+      payload: {}
+    });
+
+    expect(logout.statusCode).toBe(200);
+    expect(jsonBody(logout).success).toBe(true);
   });
 
   it("returns current user on /me when access token is valid", async () => {

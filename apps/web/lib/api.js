@@ -1,4 +1,4 @@
-import { clearSession, readSession, writeSession } from "./session";
+import { clearSession, readCsrfToken, readSession, writeSession } from "./session";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "/api/v1";
 
@@ -95,11 +95,18 @@ async function request(path, options = {}) {
     body = JSON.stringify(body);
   }
 
+  const method = (options.method || "GET").toUpperCase();
+  const csrfToken = options.csrfToken || readCsrfToken();
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method) && csrfToken) {
+    headers.set("x-csrf-token", csrfToken);
+  }
+
   const response = await fetch(buildUrl(path), {
-    method: options.method || "GET",
+    method,
     headers,
     body,
-    signal: options.signal
+    signal: options.signal,
+    credentials: "include"
   });
 
   const expectedResponse = options.expect || "json";
@@ -135,40 +142,36 @@ export async function loginUser(payload) {
 }
 
 export async function refreshSessionToken(refreshToken) {
+  const requestBody = typeof refreshToken === "string" && refreshToken.length > 0 ? { refreshToken } : {};
   return request("/auth/refresh", {
     method: "POST",
-    body: {
-      refreshToken
-    }
+    body: requestBody
   });
 }
 
 export async function logoutUser(refreshToken) {
+  const requestBody = typeof refreshToken === "string" && refreshToken.length > 0 ? { refreshToken } : {};
   return request("/auth/logout", {
     method: "POST",
-    body: {
-      refreshToken
-    }
+    body: requestBody
   });
 }
 
 async function requestWithAutoRefresh(path, options = {}) {
   const session = readSession();
-  if (!session || !session.accessToken) {
-    throw new ApiClientError(401, "AUTH_REQUIRED", "Please login to continue", {});
-  }
+  const accessToken = session?.accessToken || null;
 
   try {
     return await request(path, {
       ...options,
-      accessToken: session.accessToken
+      accessToken
     });
   } catch (error) {
-    if (!(error instanceof ApiClientError) || error.status !== 401 || !session.refreshToken) {
+    if (!(error instanceof ApiClientError) || error.status !== 401) {
       throw error;
     }
 
-    const refreshed = await refreshSessionToken(session.refreshToken);
+    const refreshed = await refreshSessionToken(session?.refreshToken);
     writeSession(refreshed);
 
     return request(path, {
@@ -447,8 +450,8 @@ export function openWorkerTelemetryStream({ onMessage, onOpen, onError }) {
           signal: abortController.signal
         });
       } catch (error) {
-        if (error instanceof ApiClientError && error.status === 401 && session.refreshToken) {
-          const refreshed = await refreshSessionToken(session.refreshToken);
+        if (error instanceof ApiClientError && error.status === 401) {
+          const refreshed = await refreshSessionToken(session?.refreshToken);
           writeSession(refreshed);
           accessToken = refreshed.accessToken;
           response = await request("/worker/telemetry/stream", {

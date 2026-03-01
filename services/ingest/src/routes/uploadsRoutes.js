@@ -1,7 +1,7 @@
 const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 
-const { requireAccessAuth } = require("../auth/guard");
+const { requireAccessAuth, requireCsrfForCookieAuth } = require("../auth/guard");
 const { ApiError } = require("../errors");
 const {
   completeUploadSchema,
@@ -152,10 +152,18 @@ function buildErrorEnvelopeSchema(code, message, details = {}) {
 }
 
 module.exports = async function uploadsRoutes(app) {
+  const accessGuard = requireAccessAuth(app.config);
+  const csrfGuard = requireCsrfForCookieAuth();
+
+  const writeGuards = async (request) => {
+    await accessGuard(request);
+    await csrfGuard(request);
+  };
+
   app.post(
     "/api/v1/uploads/init",
     {
-      preHandler: requireAccessAuth(app.config),
+      preHandler: writeGuards,
       schema: {
         tags: ["Uploads"],
         summary: "Initialize upload session",
@@ -278,7 +286,7 @@ module.exports = async function uploadsRoutes(app) {
   app.post(
     "/api/v1/uploads/:uploadId/part",
     {
-      preHandler: requireAccessAuth(app.config),
+      preHandler: writeGuards,
       schema: {
         tags: ["Uploads"],
         summary: "Upload chunk part",
@@ -404,7 +412,7 @@ module.exports = async function uploadsRoutes(app) {
   app.get(
     "/api/v1/uploads/:uploadId",
     {
-      preHandler: requireAccessAuth(app.config),
+      preHandler: accessGuard,
       schema: {
         tags: ["Uploads"],
         summary: "Get upload session status",
@@ -472,7 +480,7 @@ module.exports = async function uploadsRoutes(app) {
   app.post(
     "/api/v1/uploads/:uploadId/complete",
     {
-      preHandler: requireAccessAuth(app.config),
+      preHandler: writeGuards,
       schema: {
         tags: ["Uploads"],
         summary: "Complete upload",
@@ -823,7 +831,7 @@ module.exports = async function uploadsRoutes(app) {
   app.post(
     "/api/v1/uploads/:uploadId/abort",
     {
-      preHandler: requireAccessAuth(app.config),
+      preHandler: writeGuards,
       schema: {
         tags: ["Uploads"],
         summary: "Abort upload",

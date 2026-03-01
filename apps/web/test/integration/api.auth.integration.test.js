@@ -95,7 +95,7 @@ describe("auth api integration", () => {
 
     const updatedSession = readSession();
     expect(updatedSession.accessToken).toBe("new-access");
-    expect(updatedSession.refreshToken).toBe("new-refresh");
+    expect(updatedSession.refreshToken).toBeNull();
   });
 
   it("registers and logs out through auth api wrappers", async () => {

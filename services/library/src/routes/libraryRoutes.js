@@ -1,7 +1,7 @@
 const fsSync = require("node:fs");
 const fs = require("node:fs/promises");
 
-const { requireAccessAuth } = require("../auth/guard");
+const { requireAccessAuth, requireCsrfForCookieAuth } = require("../auth/guard");
 const { ApiError } = require("../errors");
 const {
   buildDerivativeRelativePath,
@@ -148,10 +148,18 @@ function toTrashMediaDto(row) {
 }
 
 module.exports = async function libraryRoutes(app) {
+  const accessGuard = requireAccessAuth(app.config);
+  const csrfGuard = requireCsrfForCookieAuth();
+
+  const writeGuards = async (request) => {
+    await accessGuard(request);
+    await csrfGuard(request);
+  };
+
   app.get(
     "/api/v1/library/timeline",
     {
-      preHandler: requireAccessAuth(app.config),
+      preHandler: accessGuard,
       schema: {
         tags: ["Library"],
         summary: "Get timeline",
@@ -269,7 +277,7 @@ module.exports = async function libraryRoutes(app) {
   app.get(
     "/api/v1/media/:mediaId",
     {
-      preHandler: requireAccessAuth(app.config),
+      preHandler: accessGuard,
       schema: {
         tags: ["Media"],
         summary: "Get media detail",
@@ -363,7 +371,7 @@ module.exports = async function libraryRoutes(app) {
   app.get(
     "/api/v1/library/trash",
     {
-      preHandler: requireAccessAuth(app.config),
+      preHandler: accessGuard,
       schema: {
         tags: ["Library"],
         summary: "List trash items",
@@ -454,7 +462,7 @@ module.exports = async function libraryRoutes(app) {
   app.delete(
     "/api/v1/library/trash",
     {
-      preHandler: requireAccessAuth(app.config),
+      preHandler: writeGuards,
       schema: {
         tags: ["Library"],
         summary: "Empty trash",
@@ -513,7 +521,7 @@ module.exports = async function libraryRoutes(app) {
   app.get(
     "/api/v1/library/trash/:mediaId/preview",
     {
-      preHandler: requireAccessAuth(app.config),
+      preHandler: accessGuard,
       schema: {
         tags: ["Library"],
         summary: "Read trashed media preview",
@@ -575,7 +583,7 @@ module.exports = async function libraryRoutes(app) {
   app.patch(
     "/api/v1/media/:mediaId",
     {
-      preHandler: requireAccessAuth(app.config),
+      preHandler: writeGuards,
       schema: {
         tags: ["Media"],
         summary: "Update media flags and takenAt",
@@ -689,7 +697,7 @@ module.exports = async function libraryRoutes(app) {
   app.get(
     "/api/v1/media/:mediaId/content",
     {
-      preHandler: requireAccessAuth(app.config),
+      preHandler: accessGuard,
       schema: {
         tags: ["Media"],
         summary: "Read media content",
@@ -908,7 +916,7 @@ module.exports = async function libraryRoutes(app) {
   app.delete(
     "/api/v1/media/:mediaId",
     {
-      preHandler: requireAccessAuth(app.config),
+      preHandler: writeGuards,
       schema: {
         tags: ["Media"],
         summary: "Soft delete media",
@@ -976,7 +984,7 @@ module.exports = async function libraryRoutes(app) {
   app.post(
     "/api/v1/media/:mediaId/restore",
     {
-      preHandler: requireAccessAuth(app.config),
+      preHandler: writeGuards,
       schema: {
         tags: ["Media"],
         summary: "Restore media",

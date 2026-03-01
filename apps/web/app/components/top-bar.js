@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { logoutUser } from "../../lib/api";
-import { clearSession, readRefreshToken, readSession } from "../../lib/session";
+import { clearSession, readSession } from "../../lib/session";
 
 const HIDDEN_ON_PATHS = new Set(["/login", "/register"]);
 
@@ -33,13 +33,10 @@ export default function TopBar() {
   const user = session?.user || null;
 
   async function handleLogout() {
-    const refreshToken = readRefreshToken();
-    if (refreshToken) {
-      try {
-        await logoutUser(refreshToken);
-      } catch (_error) {
-        // local logout still proceeds
-      }
+    try {
+      await logoutUser();
+    } catch (_error) {
+      // local logout still proceeds
     }
 
     clearSession();

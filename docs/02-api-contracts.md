@@ -85,6 +85,16 @@ Planned/pending:
 - Each implemented auth endpoint must include summary + description in OpenAPI.
 - Authenticated endpoints must include `bearerAuth` security requirement in OpenAPI.
 
+### Auth Session Transport and CSRF
+- Auth service issues secure session cookies on login/refresh/logout flows:
+  - `access_token` (`HttpOnly`, `SameSite=Strict`, `Secure` in production)
+  - `refresh_token` (`HttpOnly`, `SameSite=Strict`, `Secure` in production)
+  - `csrf_token` (readable cookie for double-submit CSRF protection)
+- `POST /auth/refresh` and `POST /auth/logout` accept refresh token either:
+  - in request body (`refreshToken`) for backward compatibility, or
+  - from `refresh_token` cookie.
+- When refresh token is sourced from cookies, requests must include header `x-csrf-token` matching `csrf_token` cookie, otherwise auth returns `403 AUTH_CSRF_INVALID`.
+
 ### Sample Register Request
 ```json
 {

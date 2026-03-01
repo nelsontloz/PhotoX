@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
-import { formatApiError, loginUser, registerUser } from "../../lib/api";
+import { fetchCurrentUser, formatApiError, loginUser, registerUser } from "../../lib/api";
 import { readSession, writeSession } from "../../lib/session";
 import { AuthCard, AuthBrandHeader } from "../components/AuthCard";
 import { FormInput, PasswordInput } from "../components/FormInput";
@@ -38,10 +38,35 @@ export default function RegisterPage() {
   const submitDisabled = registerMutation.isPending;
 
   useEffect(() => {
-    const session = readSession();
-    if (session?.accessToken) {
-      router.replace("/timeline");
+    let cancelled = false;
+
+    async function validateSessionFromCookie() {
+      try {
+        const mePayload = await fetchCurrentUser();
+        if (!cancelled && mePayload?.user) {
+          const current = readSession();
+          writeSession({
+            accessToken: current?.accessToken || null,
+            refreshToken: current?.refreshToken || null,
+            expiresIn: current?.expiresIn || 0,
+            user: mePayload.user
+          });
+        }
+      } catch {
+        // ignore: no existing authenticated cookie session.
+      }
+
+      const session = readSession();
+      if (session?.accessToken || session?.user) {
+        router.replace("/timeline");
+      }
     }
+
+    validateSessionFromCookie();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   function onSubmit(event) {

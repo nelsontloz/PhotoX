@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
-import { formatApiError, loginUser } from "../../lib/api";
+import { fetchCurrentUser, formatApiError, loginUser } from "../../lib/api";
 import { resolveNextPath, shouldAutoRedirectAuthenticatedAuthPage } from "../../lib/navigation";
 import { readSession, writeSession } from "../../lib/session";
 import { AuthCard, AuthBrandHeader } from "../components/AuthCard";
@@ -20,16 +20,40 @@ export default function LoginPage() {
   const [formError, setFormError] = useState("");
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const hasNextParam = params.has("next");
-    const resolvedNextPath = resolveNextPath(params.get("next"));
-    setNextPath(resolvedNextPath);
+    let cancelled = false;
 
-    const session = readSession();
-    if (shouldAutoRedirectAuthenticatedAuthPage({ hasAccessToken: session?.accessToken, hasNextParam })) {
-      router.replace("/timeline");
-      return;
+    async function validateSessionFromCookie() {
+      try {
+        const mePayload = await fetchCurrentUser();
+        if (!cancelled && mePayload?.user) {
+          const current = readSession();
+          writeSession({
+            accessToken: current?.accessToken || null,
+            refreshToken: current?.refreshToken || null,
+            expiresIn: current?.expiresIn || 0,
+            user: mePayload.user
+          });
+        }
+      } catch {
+        // ignore: no existing authenticated cookie session.
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      const hasNextParam = params.has("next");
+      const resolvedNextPath = resolveNextPath(params.get("next"));
+      setNextPath(resolvedNextPath);
+
+      const session = readSession();
+      if (shouldAutoRedirectAuthenticatedAuthPage({ hasAccessToken: session?.accessToken || session?.user, hasNextParam })) {
+        router.replace("/timeline");
+      }
     }
+
+    validateSessionFromCookie();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   const loginMutation = useMutation({

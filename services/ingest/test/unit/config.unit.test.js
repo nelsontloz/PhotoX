@@ -65,4 +65,11 @@ describe("ingest config", () => {
 
     expect(config.jwtAccessSecret).toBe("change-me");
   });
+
+  it("rejects short secrets in production", () => {
+    process.env.NODE_ENV = "production";
+    process.env.JWT_ACCESS_SECRET = "short-secret";
+
+    expect(() => loadConfig()).toThrow("JWT_ACCESS_SECRET must be at least 32 characters in production");
+  });
 });
