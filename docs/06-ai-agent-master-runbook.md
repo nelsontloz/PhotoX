@@ -24,7 +24,7 @@ Use this runbook together with:
 - Backend services: Node.js 22 + Fastify (TypeScript target architecture).
 - ML service: Python FastAPI.
 - Data: PostgreSQL 16 + pgvector.
-- Queue and cache: Redis + BullMQ.
+- Queue and cache: Redis + RabbitMQ.
 - Image derivatives: sharp/libvips.
 - Storage: local filesystem using relative media paths in DB.
 - Gateway: Traefik.
@@ -84,7 +84,7 @@ Exit criteria:
 ### Phase P1 - Auth + Upload Skeleton
 - Implement auth flows and token lifecycle.
 - Implement upload init/part/complete and metadata record creation.
-- Introduce BullMQ job enqueue on upload complete.
+- Introduce RabbitMQ message enqueue on upload complete.
 
 Exit criteria:
 - Upload of large image (>25 MB) succeeds via chunking.
@@ -195,7 +195,7 @@ For each task, produce work in this order:
 7. Add/adjust integration tests.
 8. Update API docs and linked docs.
 9. Run per-service Pact compatibility workflows via `npm test` in `apps/web`, `services/worker`, `services/auth`, `services/ingest`, and `services/library` when API/queue interfaces are changed.
-   - Pact provider/message verification must run with embedded apps and in-memory mocks only; do not require PostgreSQL, Redis, BullMQ, or other live services.
+   - Pact provider/message verification must run with embedded apps and in-memory mocks only; do not require PostgreSQL, Redis, RabbitMQ, or other live services.
    - `PACT_BROKER_BASE_URL` is mandatory for pact publish/verification workflows; Pact Broker is the only allowed external dependency in pact verification.
 10. Run quality gates and produce report.
 
@@ -226,7 +226,7 @@ Task is incomplete if any section is missing.
 ## 8) Risk Controls
 
 - Idempotency: all upload and share-link mutation endpoints must support idempotency keys.
-- Retry safety: BullMQ jobs must define attempts, backoff, and dead-letter handling.
+- Retry safety: asynchronous media jobs must define attempts, backoff, and dead-letter handling.
 - Data integrity: no hard-delete in synchronous user request path.
 - Search consistency: async indexing is acceptable; API must expose processing state.
 - Fail-open policy: if ML fails, upload/timeline must continue.

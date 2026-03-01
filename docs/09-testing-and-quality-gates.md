@@ -25,7 +25,7 @@ Gate G2 - Unit Tests
 Gate G3 - Integration Tests
 - Endpoints changed by task must have integration tests.
 - Async job flow changes must include integration coverage for enqueue and consume behavior.
-- Node service integration suites must remain hermetic and must not require PostgreSQL/Redis/BullMQ runtime dependencies.
+- Node service integration suites must remain hermetic and must not require PostgreSQL/Redis/RabbitMQ runtime dependencies.
 
 Gate G4 - Contract and Docs
 - API contract updates reflected in docs and OpenAPI.
@@ -46,7 +46,7 @@ Gate G7 - Contract Compatibility
 - Pact consumer/provider verification passes for changed HTTP boundaries.
 - Pact message verification passes for changed async boundaries.
 - Per-service `npm test` contract evidence is attached in command log.
-- Pact provider/message verification is mock-based and hermetic (embedded app + in-memory mocks) and does not require PostgreSQL, Redis, BullMQ, or live service endpoints.
+- Pact provider/message verification is mock-based and hermetic (embedded app + in-memory mocks) and does not require PostgreSQL, Redis, RabbitMQ, or live service endpoints.
 - `PACT_BROKER_BASE_URL` is present for pact publish/verification workflows.
 
 ---
@@ -178,9 +178,9 @@ PACT_BROKER_BASE_URL=http://localhost:9292 ./scripts/pact-broker-sync.sh
 ```
 
 Provider verification runtime requirement:
-- All provider pact tests now use **embedded Fastify apps with in-memory mock pools** — no running PostgreSQL, Redis, or BullMQ is needed.
+- All provider pact tests now use **embedded Fastify apps with in-memory mock pools** — no running PostgreSQL, Redis, or RabbitMQ is needed.
 - Each service's `test/contracts/mockPool.js` provides an in-memory mock of `pg.Pool` that routes SQL patterns to Map-based stores.
-- Mock BullMQ queues are injected via `buildApp()` overrides.
+- Mock queue adapters are injected via `buildApp()` overrides.
 - `PACT_BROKER_BASE_URL` is mandatory for all pact provider verification workflows; tests fail fast when it is missing.
 - `PACT_BROKER_BASE_URL` must resolve to a broker URL reachable from the active runtime context (local shell, CI agent, or Docker/container runtime). Avoid `localhost`/`127.0.0.1` inside containerized builds unless the broker is explicitly running in the same container namespace.
 - Environment precedence for pact workflows is: explicit process environment -> `.env` -> `.env.example` fallback.

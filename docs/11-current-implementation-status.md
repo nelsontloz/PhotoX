@@ -78,7 +78,7 @@ Implemented now:
 
 Notes:
 - Uses raw `application/octet-stream` chunk upload with `partNumber` query param.
-- Persists media relative path and enqueues `media.process` BullMQ job on complete.
+- Persists media relative path and enqueues `media.process` RabbitMQ message on complete.
 - Upload accepts both image and video media types.
 - Upload init enforces supported extension/content-type pairs only.
 - Upload complete performs server-side signature sniffing and rejects mismatched/unsupported bytes with `UNSUPPORTED_MEDIA_TYPE`.
@@ -171,21 +171,21 @@ Implemented now:
 - `GET /api/v1/worker/settings/video-encoding` (admin-only)
 - `PUT /api/v1/worker/settings/video-encoding` (admin-only)
 - `POST /api/v1/worker/orphan-sweep/run` (admin-only)
-- BullMQ consumer for `media.derivatives.generate` that creates image `thumb`/`small` WebP derivatives and video `playback` WebM (VP9/Opus) derivatives
- - BullMQ consumer for `media.process` that extracts photo/video metadata, persists `media_metadata`, and generates derivatives for new uploads
-- BullMQ consumer for `media.cleanup` that verifies media is still soft-deleted, deletes original/derived files, and hard-deletes DB rows in a transaction.
+- RabbitMQ consumer for `media.derivatives.generate` that creates image `thumb`/`small` WebP derivatives and video `playback` WebM (VP9/Opus) derivatives
+ - RabbitMQ consumer for `media.process` that extracts photo/video metadata, persists `media_metadata`, and generates derivatives for new uploads
+- RabbitMQ consumer for `media.cleanup` that verifies media is still soft-deleted, deletes original/derived files, and hard-deletes DB rows in a transaction.
 - RabbitMQ consumer for `media.orphan.sweep` that scans originals/derived storage for orphaned files with grace-threshold protection and optional dry-run mode.
 - Derived orphan sweep behavior now also removes non-canonical duplicate derived artifacts for existing media IDs while preserving canonical variants.
 - Worker scheduler enqueues periodic orphan-sweep jobs for `originals` and `derived` scopes.
 - Queue migration completed (queue-only scope):
   - Ingest and library producers publish via RabbitMQ.
   - Worker consumers process `media.process`, `media.derivatives.generate`, and `media.cleanup` via RabbitMQ.
-  - BullMQ transport removed from ingest/library/worker queue paths.
+  - Legacy BullMQ transport removed from ingest/library/worker queue paths.
   - Telemetry queue stats poller uses RabbitMQ while preserving `/api/v1/worker/telemetry/*` API shapes.
 - After successful derivative generation, worker updates `media.status` from `processing` to `ready`.
 - On terminal derivative-processing failure (retry attempts exhausted), worker updates `media.status` to `failed` only when status is still `processing`.
 - Worker uses a per-media advisory lock to serialize concurrent `media.process` / `media.derivatives.generate` execution for the same media ID.
-- Lock acquisition is non-blocking (`pg_try_advisory_lock`) with bounded retry/backoff; if contention persists, the job fails with a retriable lock-unavailable error and is retried by BullMQ policy.
+- Lock acquisition is non-blocking (`pg_try_advisory_lock`) with bounded retry/backoff; if contention persists, the job fails with a retriable lock-unavailable error and is retried by configured RabbitMQ retry policy.
 - Worker telemetry tracks lifecycle events (`active`, `completed`, `failed`, `stalled`, `error`) with bounded in-memory retention and queue depth polling.
 - `/metrics` now includes worker job counters, active gauges, queue depth gauges, and duration histogram series.
 - Pact consumer/provider coverage includes worker telemetry contracts for `/api/v1/worker/telemetry/snapshot` and `/api/v1/worker/telemetry/stream`.

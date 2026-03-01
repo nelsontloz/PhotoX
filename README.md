@@ -33,7 +33,7 @@ See `docs/11-current-implementation-status.md` for the detailed live snapshot.
 - Core APIs: Node.js 22 + Fastify
 - ML API: Python 3.12 + FastAPI
 - Data: PostgreSQL 16 + pgvector
-- Queue/Cache: Redis + BullMQ
+- Queue/Cache: Redis + RabbitMQ
 - Storage: local filesystem volumes for originals/derived media
 - Observability: Prometheus + Grafana
 

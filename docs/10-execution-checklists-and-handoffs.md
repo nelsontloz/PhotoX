@@ -129,7 +129,7 @@ Verification:
 - Unit test commands:
 - Integration test commands:
 - Contract compatibility commands:
-- Pact isolation evidence (embedded app + in-memory mocks, no PostgreSQL/Redis/BullMQ dependency):
+- Pact isolation evidence (embedded app + in-memory mocks, no PostgreSQL/Redis/RabbitMQ dependency):
 - Runtime health checks:
 
 Risks/Notes:
@@ -164,7 +164,11 @@ Escalate to human decision when:
 
 ---
 
-## 6) Queue Cutover Runbook (BullMQ -> RabbitMQ)
+## 6) Legacy Queue Cutover Runbook (BullMQ -> RabbitMQ) - Historical Reference
+
+Historical note:
+- This section documents the completed migration history from BullMQ to RabbitMQ.
+- Current operations should follow RabbitMQ-only queue paths and tooling.
 
 Queue-only cutover steps:
 1. Ensure RabbitMQ is healthy and exchange/queues are provisioned (`photox.media`, routing keys `media.process`, `media.derivatives.generate`, `media.cleanup`).

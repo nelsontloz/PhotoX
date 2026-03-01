@@ -62,7 +62,7 @@ PhotoX Personal Edition is a web-first, self-hosted photo platform designed as a
 1. Web app calls `POST /uploads/init`.
 2. Client uploads chunks to `ingest-service`.
 3. Ingest validates checksum and writes file to `/data/photox/originals/...`.
-4. Ingest stores initial media record and enqueues a `media.process` BullMQ job.
+4. Ingest stores initial media record and enqueues a `media.process` RabbitMQ message.
 5. Worker consumes the job and triggers:
    - derivative generation (thumbnails/previews),
    - metadata extraction (EXIF/time/location),
@@ -127,7 +127,7 @@ PhotoX Personal Edition is a web-first, self-hosted photo platform designed as a
 - Keep sync APIs fast; move heavy work to async workers.
 - If ML/search degrades, uploads and timeline remain available.
 - All services expose `/health` endpoints and structured logs.
-- Queue-driven background jobs run through BullMQ on Redis.
+- Queue-driven background jobs run through RabbitMQ.
 - All backend services expose Swagger UI and OpenAPI JSON under service-scoped `/api/v1/*` routes.
 
 ---

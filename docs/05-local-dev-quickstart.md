@@ -145,7 +145,7 @@ Pact workflow notes:
 - `services/worker` test workflow generates and publishes message consumer pacts, then verifies worker provider pacts.
 - `services/auth`, `services/ingest`, and `services/library` test workflows verify pacts from broker and publish verification results.
 - `PACT_BROKER_BASE_URL` must be set for pact publish and provider verification workflows (recommended local value: `http://localhost:9292`).
-- Pact provider/message verification is mock-based and must not require PostgreSQL, Redis, BullMQ, or other live service endpoints.
+- Pact provider/message verification is mock-based and must not require PostgreSQL, Redis, RabbitMQ, or other live service endpoints.
 - Auth/ingest/library provider verification should target direct service ports (for example `http://localhost:3101`, `http://localhost:3102`, `http://localhost:3103`) unless provider base URL env vars are set.
 
 ---

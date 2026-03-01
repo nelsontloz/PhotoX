@@ -22,7 +22,7 @@ This repository uses docs-first execution. Every coding agent must read `/docs` 
 
 ## Pact Test Isolation Policy
 - All Pact provider/message verification tests must run with embedded service apps and in-memory mocks.
-- Pact verification tests must not depend on external runtime services (PostgreSQL, Redis, BullMQ, or other live service endpoints).
+- Pact verification tests must not depend on external runtime services (PostgreSQL, Redis, RabbitMQ, or other live service endpoints).
 - `PACT_BROKER_BASE_URL` is mandatory for Pact publish/verification flows; Pact Broker is the only allowed external dependency for Pact verification.
 - New or modified Pact tests that require external runtime dependencies violate repository policy and must be refactored to mock-based verification.
 
@@ -77,5 +77,4 @@ Steps:
 1. Find the `href` attribute in `apps/web/app/layout.js` containing `icon_names=`.
 2. Add the new icon name in **alphabetical order** within the comma-separated list.
 3. Icons used dynamically via props (e.g. `EmptyState icon=`, `FormInput icon=`, `AuthCard footerLinkIcon=`) must be traced to their call sites and all used values audited.
-
 
