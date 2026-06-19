@@ -10,7 +10,9 @@
     "clean": "turbo run clean && rm -rf node_modules",
     "test": "turbo run test",
     "test:watch": "turbo run test:watch",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "validate": "turbo run lint",
+    "verify": "pnpm run validate && pnpm run test && pnpm run typecheck && pnpm run build"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.0.0",

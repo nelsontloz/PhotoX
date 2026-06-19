@@ -43,6 +43,8 @@ pnpm typecheck        # tsc --noEmit across packages
 pnpm lint
 pnpm test             # vitest run across all packages
 pnpm test:watch       # vitest watch across all packages
+pnpm validate         # runs lint via turbo
+pnpm verify           # validate → test → typecheck → build (full pre-commit check)
 ```
 
 Single package:
@@ -124,7 +126,7 @@ After editing a service, `pnpm dev` (or the single-package filter) hot-reloads. 
 - `curl localhost:3003/health` — file-storage-service
 - `http://localhost:5173` — web app (service status grid)
 
-Pre-commit order: `pnpm typecheck && pnpm lint && pnpm test`. Turbo runs them with the right `^build` dependencies, so running them at the root is sufficient.
+Pre-commit order: `pnpm verify` (runs lint, test, typecheck, build in sequence). Alternatively, run individual steps: `pnpm typecheck && pnpm lint && pnpm test`.
 
 ## Out of scope (for now)
 
