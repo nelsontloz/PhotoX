@@ -7,12 +7,14 @@ kind: Pod
 spec:
   containers:
   - name: node
-    image: node:20-alpine
+    image: registry.int.zerg91.com/photox/node-builder:20-alpine
     command: ["cat"]
     tty: true
     env:
     - name: DOCKER_HOST
       value: tcp://localhost:2375
+    - name: TURBO_CACHE
+      value: "true"
   - name: dind
     image: docker:27.5.1-dind
     securityContext:
@@ -28,8 +30,10 @@ spec:
         stage('Install') {
             steps {
                 container('node') {
-                    sh 'corepack enable && corepack prepare pnpm@9.15.0 --activate'
-                    sh 'apk add --no-cache python3 make g++'
+                    cache([
+                        keys: ['pnpm-store-${checksum "pnpm-lock.yaml"}'],
+                        path: '~/.local/share/pnpm/store'
+                    ])
                     sh 'pnpm install --frozen-lockfile'
                 }
             }
