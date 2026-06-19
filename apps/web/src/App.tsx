@@ -1,10 +1,6 @@
-import { Routes, Route } from 'react-router-dom'
-import { HomePage } from './pages/HomePage'
+import { useRoutes } from 'react-router-dom'
+import routes from 'virtual:generated-pages-react'
 
 export function App() {
-  return (
-    <Routes>
-      <Route path="/" element={<HomePage />} />
-    </Routes>
-  )
+  return useRoutes(routes)
 }
