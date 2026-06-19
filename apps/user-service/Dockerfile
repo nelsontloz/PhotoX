@@ -1,6 +1,6 @@
 # -- deps --
 FROM node:20-alpine AS deps
-RUN corepack enable
+RUN apk add --no-cache python3 make g++ && ln -sf /usr/bin/python3 /usr/bin/python && corepack enable
 WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
 COPY packages/shared-types/package.json ./packages/shared-types/
@@ -12,6 +12,7 @@ RUN pnpm install --frozen-lockfile || pnpm install
 
 # -- build --
 FROM deps AS build
+RUN apk add --no-cache python3 make g++ && ln -sf /usr/bin/python3 /usr/bin/python
 COPY tsconfig.base.json ./
 COPY packages/ ./packages/
 COPY apps/user-service/ ./apps/user-service/

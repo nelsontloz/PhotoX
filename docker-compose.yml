@@ -63,6 +63,8 @@ services:
       POSTGRES_PASSWORD: photox_dev
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      AUTH_ACCESS_TTL: 15m
+      AUTH_REFRESH_TTL: 30d
     depends_on:
       postgres:
         condition: service_healthy

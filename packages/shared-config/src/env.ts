@@ -17,6 +17,8 @@ const envSchema = z.object({
   MINIO_ROOT_USER: z.string().default('photox'),
   MINIO_ROOT_PASSWORD: z.string().default('photox_dev'),
   MINIO_BUCKET: z.string().default('photox-files'),
+  AUTH_ACCESS_TTL: z.string().default('15m'),
+  AUTH_REFRESH_TTL: z.string().default('30d'),
 })
 
 export type Env = z.infer<typeof envSchema>
