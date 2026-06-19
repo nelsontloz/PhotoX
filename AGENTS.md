@@ -8,6 +8,7 @@ Personal photo/video hosting. NestJS microservices monorepo with a Vite React we
 - **Backend:** NestJS 10, TypeORM, PostgreSQL, Redis, MinIO
 - **Frontend:** Vite + React + TypeScript
 - **Single PG instance, 3 databases:** `users_db`, `library_db`, `files_db` (see `docker/postgres/init.sql`)
+- **Node:** 20 (see `.nvmrc`), **pnpm:** 9.15.0 (see `packageManager` in root `package.json`)
 
 ## Repository layout
 
@@ -40,6 +41,8 @@ pnpm dev              # runs all 10 packages in watch mode via turbo
 pnpm build            # builds all packages (turbo pipeline)
 pnpm typecheck        # tsc --noEmit across packages
 pnpm lint
+pnpm test             # vitest run across all packages
+pnpm test:watch       # vitest watch across all packages
 ```
 
 Single package:
@@ -47,6 +50,7 @@ Single package:
 ```bash
 pnpm --filter @photox/user-service dev
 pnpm --filter @photox/gateway build
+pnpm --filter @photox/user-service test
 ```
 
 After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
@@ -56,6 +60,16 @@ After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
 - Root `tsconfig.base.json` has `experimentalDecorators` + `emitDecoratorMetadata` enabled (NestJS requires these).
 - `composite` + `incremental` are set ONLY in the 5 shared package tsconfigs (which use `tsc -b`). They are NOT in the base — NestJS apps use `nest build` (composite breaks it). If a new shared package is added, it must set `composite: true` in its tsconfig or it will build but produce no dist output.
 - All NestJS apps have `"@types/node": "^22.0.0"` and `"typescript": "^5.7.0"` in dependencies. Do NOT use `workspace:*` for typescript — it doesn't resolve. Use the version number.
+
+## Testing
+
+- **Runner:** Vitest 3 everywhere (backend + web). Configs: `vitest.workspace.ts` at root lists all 10 workspaces; each app/package has its own `vitest.config.ts` with `globals: true` and `passWithNoTests: true`. The web app's vitest config lives inside `vite.config.ts` (single `defineConfig` with a `test` block) because Vite is its only build tool there.
+- **Globals are on.** `describe`, `it`, `expect`, `vi` are available without imports. The `tsconfig.vitest.json` at root extends the base and adds `vitest/globals` to `types` for IDE support — point test files at it if your editor complains.
+- **Conventions:** `*.spec.ts` co-located with source files. Web tests get `jsdom`; backend/shared tests get `node`.
+- **Backend extras installed:** `@nestjs/testing` + `supertest` + `@types/supertest` are devDeps in every backend service for integration tests of controllers.
+- **Web extras installed:** `jsdom`, `@testing-library/react`, `@testing-library/jest-dom` are devDeps of `apps/web` for component tests.
+- **`passWithNoTests: true`** is set on every vitest config so `pnpm test` succeeds before any test files are written. Remove it once you have real tests and want CI to fail on missing suites.
+- **Turbo pipeline:** `test` and `test:watch` tasks in `turbo.json` both `dependsOn: ["^build"]`, so shared packages build first. `test:watch` is `persistent: true`, which combined with 10 packages requires `concurrency: "100%"` at the top of `turbo.json` (otherwise turbo refuses to run with "concurrency of 10, set at least 11"). Keep that concurrency setting.
 
 ## NestJS module gotchas (verified the hard way)
 
@@ -84,7 +98,7 @@ After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
 - **CORS lives at the gateway, not on individual services.** Backend services do not call `enableCors()`. Only the gateway does, and only for the web origin(s).
 - **Each backend service exposes Swagger UI at `/docs` and the raw OpenAPI JSON at `/docs-json`** (both at the service root, unversioned, always public within `photox-net`). `main.ts` configures `SwaggerModule` with `DocumentBuilder`. Every backend service has a `nest-cli.json` that enables `@nestjs/swagger/plugin` for auto-inference from TS types. Service-local DTOs are decorated with `@ApiProperty` and `implements` the corresponding `shared-types` interface. `shared-types` itself never imports `@nestjs/swagger` — the decorators live in the service.
 
-## NestJS module gotchas (continued)
+## Auth
 
 **Password hashing: argon2 only.** Use `argon2` (not bcrypt, not `bcryptjs`). Native binding needs `python3 make g++` in the Docker build stages (`deps` + `build`). If a service does not need passwords (gateway, file-storage), don't add the dep.
 
@@ -95,8 +109,9 @@ After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
 ## Code style
 
 - No comments in code (per repo convention).
-- 2-space indent, single quotes, no semicolons (Prettier defaults in `.prettierrc`).
-- Strict TS: `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters` are on.
+- 2-space indent, single quotes, no semicolons, 100-col print width, trailing commas (Prettier defaults in `.prettierrc`).
+- Strict TS: `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters` are on. `exactOptionalPropertyTypes` is `false`.
+- ESLint (`@typescript-eslint/recommended-type-checked` + `stylistic-type-checked`) is type-aware — it reads each `tsconfig.json` via `project: true`. Don't add files that ESLint can't typecheck (e.g. random `*.cjs` outside the configured include) without updating `.eslintrc.cjs`.
 - Workspace deps: `"@photox/shared-*": "workspace:*"`.
 
 ## Verifying changes
@@ -109,8 +124,9 @@ After editing a service, `pnpm dev` (or the single-package filter) hot-reloads. 
 - `curl localhost:3003/health` — file-storage-service
 - `http://localhost:5173` — web app (service status grid)
 
+Pre-commit order: `pnpm typecheck && pnpm lint && pnpm test`. Turbo runs them with the right `^build` dependencies, so running them at the root is sufficient.
+
 ## Out of scope (for now)
 
-- No business logic yet — only `/health` and `/api/services` (gateway) endpoints were the previous baseline. user-service now also exposes `/v1/auth/{register,login,refresh,logout}`. Photo upload, albums, profile management remain the next phase.
-- No tests configured.
+- No business logic beyond `/health`, gateway `/api/services`, and user-service `/v1/auth/{register,login,refresh,logout}`. Photo upload, albums, profile management remain the next phase.
 - No CI.
