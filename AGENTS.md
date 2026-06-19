@@ -81,6 +81,7 @@ After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
 - **Cross-service request/response shapes live in `shared-types`.** Service-local DTOs may carry class-validator decorators, but the *interface* that crosses the wire is in `shared-types`. DTOs implement the interface.
 - **Cross-service event payloads live in `shared-events`.** Publisher and consumer both import the typed event from there.
 - **CORS lives at the gateway, not on individual services.** Backend services do not call `enableCors()`. Only the gateway does, and only for the web origin(s).
+- **Each backend service exposes Swagger UI at `/docs` and the raw OpenAPI JSON at `/docs-json`** (both at the service root, unversioned, always public within `photox-net`). `main.ts` configures `SwaggerModule` with `DocumentBuilder`. Every backend service has a `nest-cli.json` that enables `@nestjs/swagger/plugin` for auto-inference from TS types. Service-local DTOs are decorated with `@ApiProperty` and `implements` the corresponding `shared-types` interface. `shared-types` itself never imports `@nestjs/swagger` — the decorators live in the service.
 
 ## NestJS module gotchas (continued)
 
