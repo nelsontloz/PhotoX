@@ -34,19 +34,26 @@ spec:
                 }
             }
         }
-        stage('Typecheck') {
-            steps { container('node') { sh 'pnpm typecheck' } }
+        stage('Build Shared') {
+            steps { container('node') { sh 'pnpm --filter "./packages/*" build' } }
         }
-        stage('Lint') {
-            steps { container('node') { sh 'pnpm lint' } }
-        }
-        stage('Test') {
-            steps {
-                container('dind') {
-                    sh 'timeout 30 sh -c "until docker info >/dev/null 2>&1; do sleep 1; done"'
+        stage('Validate') {
+            parallel {
+                stage('Typecheck') {
+                    steps { container('node') { sh 'pnpm typecheck' } }
                 }
-                container('node') {
-                    sh 'pnpm test'
+                stage('Lint') {
+                    steps { container('node') { sh 'pnpm lint' } }
+                }
+                stage('Test') {
+                    steps {
+                        container('dind') {
+                            sh 'timeout 30 sh -c "until docker info >/dev/null 2>&1; do sleep 1; done"'
+                        }
+                        container('node') {
+                            sh 'pnpm test'
+                        }
+                    }
                 }
             }
         }
