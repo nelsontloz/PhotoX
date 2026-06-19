@@ -2,7 +2,6 @@ import { type INestApplication, ValidationPipe } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import supertest from 'supertest'
 import type { Server } from 'node:http'
-import { AppModule } from '../../src/app.module'
 import { setupTestInfra, teardownTestInfra } from './test-setup'
 
 interface HealthResponse {
@@ -21,6 +20,8 @@ let httpServer: Server
 
 beforeAll(async () => {
   await setupTestInfra()
+
+  const { AppModule } = await import('../../src/app.module')
 
   const module = await Test.createTestingModule({
     imports: [AppModule],
