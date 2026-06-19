@@ -21,6 +21,7 @@ let httpServer: Server
 beforeAll(async () => {
   await setupTestInfra()
 
+  // @ts-expect-error dynamic import — tsc can't resolve test→src paths, vitest can
   const { AppModule } = await import('../../src/app.module')
 
   const module = await Test.createTestingModule({
