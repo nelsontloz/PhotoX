@@ -27,7 +27,7 @@ spec:
     }
 
     options {
-        preserveStashes(1)
+        preserveStashes buildCount: 1
     }
 
     stages {
