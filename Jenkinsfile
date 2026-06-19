@@ -10,6 +10,16 @@ spec:
     image: node:20-alpine
     command: ["cat"]
     tty: true
+    env:
+    - name: DOCKER_HOST
+      value: tcp://localhost:2375
+  - name: dind
+    image: docker:27.5.1-dind
+    securityContext:
+      privileged: true
+    env:
+    - name: DOCKER_TLS_CERTDIR
+      value: ""
             '''
         }
     }
@@ -31,7 +41,14 @@ spec:
             steps { container('node') { sh 'pnpm lint' } }
         }
         stage('Test') {
-            steps { container('node') { sh 'pnpm test' } }
+            steps {
+                container('dind') {
+                    sh 'timeout 30 sh -c "until docker info >/dev/null 2>&1; do sleep 1; done"'
+                }
+                container('node') {
+                    sh 'pnpm test'
+                }
+            }
         }
         stage('Build') {
             steps { container('node') { sh 'pnpm build' } }
