@@ -22,7 +22,7 @@ export class RedisService {
           return Math.min(times * 200, 2000)
         },
       })
-      this.client.on('error', () => {})
+      this.client.on('error', () => undefined)
     }
     return this.client
   }
@@ -38,7 +38,7 @@ export class RedisService {
     }
   }
 
-  async disconnect(): Promise<void> {
+  disconnect(): void {
     if (this.client) {
       this.client.disconnect()
       this.client = null
@@ -48,7 +48,7 @@ export class RedisService {
   async ping(): Promise<string> {
     const client = this.getClient()
     if (client.status !== 'ready') {
-      await client.connect().catch(() => {})
+      await client.connect().catch(() => undefined)
     }
     if (client.status !== 'ready') {
       throw new Error('Redis not connected')

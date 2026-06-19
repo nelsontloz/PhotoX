@@ -31,4 +31,4 @@ async function bootstrap() {
   console.log(`User Service running on port ${env.USER_SERVICE_PORT}`)
 }
 
-bootstrap()
+void bootstrap()
