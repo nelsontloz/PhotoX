@@ -19,11 +19,7 @@ const SERVICES = [
 
 function StatusDot({ status }: { status: string }) {
   const color =
-    status === 'up'
-      ? 'bg-green-500'
-      : status === 'degraded'
-        ? 'bg-yellow-500'
-        : 'bg-red-500'
+    status === 'up' ? 'bg-green-500' : status === 'degraded' ? 'bg-yellow-500' : 'bg-red-500'
 
   return <span className={`inline-block h-3 w-3 rounded-full ${color} mr-2`} />
 }
@@ -77,7 +73,12 @@ export default function HomePage() {
       results.map((r, i) =>
         r.status === 'fulfilled'
           ? r.value
-          : { name: SERVICES[i]!.name, port: SERVICES[i]!.port, status: 'down', error: 'Network error' },
+          : {
+              name: SERVICES[i]!.name,
+              port: SERVICES[i]!.port,
+              status: 'down',
+              error: 'Network error',
+            },
       ),
     )
   }

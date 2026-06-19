@@ -58,7 +58,10 @@ export default function LoginPage() {
 
         <p className="text-center text-sm text-zinc-400">
           Don&apos;t have an account?{' '}
-          <Link to="/register" className="text-white underline underline-offset-2 hover:text-zinc-300">
+          <Link
+            to="/register"
+            className="text-white underline underline-offset-2 hover:text-zinc-300"
+          >
             Create one
           </Link>
         </p>
