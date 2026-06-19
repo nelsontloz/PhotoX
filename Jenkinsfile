@@ -13,9 +13,6 @@ spec:
     env:
     - name: DOCKER_HOST
       value: tcp://localhost:2375
-    volumeMounts:
-    - name: pnpm-store
-      mountPath: /pnpm-store
   - name: dind
     image: docker:27.5.1-dind
     securityContext:
@@ -23,10 +20,6 @@ spec:
     env:
     - name: DOCKER_TLS_CERTDIR
       value: ""
-  volumes:
-  - name: pnpm-store
-    persistentVolumeClaim:
-      claimName: photox-pnpm-store
             '''
         }
     }
@@ -35,7 +28,7 @@ spec:
         stage('Install') {
             steps {
                 container('node') {
-                    sh 'pnpm install --frozen-lockfile --store-dir /pnpm-store'
+                    sh 'pnpm install --frozen-lockfile'
                 }
             }
         }
