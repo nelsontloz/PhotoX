@@ -84,7 +84,7 @@ export default function HomePage() {
   }
 
   useEffect(() => {
-    fetchStatuses()
+    void fetchStatuses()
     const interval = setInterval(fetchStatuses, 5000)
     return () => clearInterval(interval)
   }, [])
