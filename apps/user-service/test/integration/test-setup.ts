@@ -14,20 +14,21 @@ let redisContainer: StartedTestContainer | null = null
 export async function setupTestInfra(): Promise<TestInfra> {
   const hash = randomBytes(3).toString('hex')
 
-  const pg = await new GenericContainer('postgres:16-alpine')
-    .withName(`postgres-${hash}`)
-    .withEnvironment({
-      POSTGRES_USER: 'test',
-      POSTGRES_PASSWORD: 'test',
-      POSTGRES_DB: 'users_db',
-    })
-    .withExposedPorts(5432)
-    .start()
-
-  const redis = await new GenericContainer('redis:7-alpine')
-    .withName(`redis-${hash}`)
-    .withExposedPorts(6379)
-    .start()
+  const [pg, redis] = await Promise.all([
+    new GenericContainer('postgres:16-alpine')
+      .withName(`postgres-${hash}`)
+      .withEnvironment({
+        POSTGRES_USER: 'test',
+        POSTGRES_PASSWORD: 'test',
+        POSTGRES_DB: 'users_db',
+      })
+      .withExposedPorts(5432)
+      .start(),
+    new GenericContainer('redis:7-alpine')
+      .withName(`redis-${hash}`)
+      .withExposedPorts(6379)
+      .start(),
+  ])
 
   pgContainer = pg
   redisContainer = redis

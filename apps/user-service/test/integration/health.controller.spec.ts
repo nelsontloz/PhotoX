@@ -35,7 +35,7 @@ beforeAll(async () => {
   )
   await app.init()
   httpServer = app.getHttpServer() as Server
-}, 60_000)
+}, 120_000)
 
 afterAll(async () => {
   await app?.close()
