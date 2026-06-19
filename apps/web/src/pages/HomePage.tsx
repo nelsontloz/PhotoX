@@ -88,7 +88,9 @@ export function HomePage() {
 
     setStatuses(
       results.map((r, i) =>
-        r.status === 'fulfilled' ? r.value : { ...SERVICES[i], status: 'down', error: 'Network error' },
+        r.status === 'fulfilled'
+          ? r.value
+          : { name: SERVICES[i]!.name, port: SERVICES[i]!.port, status: 'down', error: 'Network error' },
       ),
     )
   }
