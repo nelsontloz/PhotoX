@@ -20,4 +20,4 @@ async function bootstrap() {
   console.log(`File Storage Service running on port ${env.FILE_STORAGE_SERVICE_PORT}`)
 }
 
-bootstrap()
+void bootstrap()

@@ -15,4 +15,4 @@ async function bootstrap() {
   console.log(`Gateway running on port ${env.GATEWAY_PORT}`)
 }
 
-bootstrap()
+void bootstrap()

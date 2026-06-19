@@ -20,4 +20,4 @@ async function bootstrap() {
   console.log(`Library Service running on port ${env.LIBRARY_SERVICE_PORT}`)
 }
 
-bootstrap()
+void bootstrap()

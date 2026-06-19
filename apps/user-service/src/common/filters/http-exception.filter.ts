@@ -9,7 +9,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       status = exception.getStatus()
       const res = exception.getResponse()
-      message = typeof res === 'string' ? res : (res as { message?: string }).message ?? message
+      message = typeof res === 'string' ? res : ((res as { message?: string }).message ?? message)
     }
 
     console.error(`[ExceptionFilter] ${status}: ${message}`)
