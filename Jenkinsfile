@@ -13,8 +13,6 @@ spec:
     env:
     - name: DOCKER_HOST
       value: tcp://localhost:2375
-    - name: TURBO_CACHE
-      value: "true"
   - name: dind
     image: docker:27.5.1-dind
     securityContext:
