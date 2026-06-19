@@ -26,15 +26,21 @@ spec:
         }
     }
 
+    options {
+        preserveStashes(1)
+    }
+
     stages {
         stage('Install') {
             steps {
                 container('node') {
-                    cache([
-                        keys: ['pnpm-store-${checksum "pnpm-lock.yaml"}'],
-                        path: '~/.local/share/pnpm/store'
-                    ])
-                    sh 'pnpm install --frozen-lockfile'
+                    script {
+                        catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
+                            unstash 'pnpm-store'
+                        }
+                    }
+                    sh 'pnpm install --frozen-lockfile --store-dir ${WORKSPACE}/.pnpm-store'
+                    stash name: 'pnpm-store', includes: '.pnpm-store/**'
                 }
             }
         }
