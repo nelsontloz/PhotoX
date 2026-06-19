@@ -65,7 +65,7 @@ After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
 
 - **Runner:** Vitest 3 everywhere (backend + web). Configs: `vitest.workspace.ts` at root lists all 10 workspaces; each app/package has its own `vitest.config.ts` with `globals: true` and `passWithNoTests: true`. The web app's vitest config lives inside `vite.config.ts` (single `defineConfig` with a `test` block) because Vite is its only build tool there.
 - **Globals are on.** `describe`, `it`, `expect`, `vi` are available without imports. The `tsconfig.vitest.json` at root extends the base and adds `vitest/globals` to `types` for IDE support — point test files at it if your editor complains.
-- **Conventions:** `*.spec.ts` co-located with source files. Web tests get `jsdom`; backend/shared tests get `node`.
+- **Conventions:** `*.spec.ts` co-located with source files for unit tests. Integration tests that spin up testcontainers go in `test/integration/` (e.g. `apps/user-service/test/integration/`). Web tests get `jsdom`; backend/shared tests get `node`.
 - **Backend extras installed:** `@nestjs/testing` + `supertest` + `@types/supertest` are devDeps in every backend service for integration tests of controllers.
 - **Web extras installed:** `jsdom`, `@testing-library/react`, `@testing-library/jest-dom` are devDeps of `apps/web` for component tests.
 - **`passWithNoTests: true`** is set on every vitest config so `pnpm test` succeeds before any test files are written. Remove it once you have real tests and want CI to fail on missing suites.

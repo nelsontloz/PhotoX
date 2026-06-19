@@ -8,5 +8,6 @@ export default defineConfig({
     environment: 'node',
     passWithNoTests: true,
     testTimeout: 60_000,
+    include: ['src/**/*.spec.ts', 'test/integration/**/*.spec.ts'],
   },
 })
