@@ -254,9 +254,6 @@ importers:
       '@photox/shared-config':
         specifier: workspace:*
         version: link:../../packages/shared-config
-      '@photox/shared-redis':
-        specifier: workspace:*
-        version: link:../../packages/shared-redis
       '@photox/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
