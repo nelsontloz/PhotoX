@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common'
+import { Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { Readable } from 'stream'
@@ -41,9 +38,7 @@ export class InternalFilesService {
     }
   }
 
-  async stream(
-    fileId: string,
-  ): Promise<{ stream: Readable; record: FileRecord }> {
+  async stream(fileId: string): Promise<{ stream: Readable; record: FileRecord }> {
     const record = await this.fileRepo.findOne({ where: { id: fileId } })
     if (!record) throw new NotFoundException('File not found')
     const stream = await this.minio.downloadFile(record.storageKey)

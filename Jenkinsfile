@@ -15,6 +15,7 @@ spec:
       value: tcp://localhost:2375
   - name: dind
     image: docker:27.5.1-dind
+    args: ["--registry-mirror=https://registry.int.zerg91.com"]
     securityContext:
       privileged: true
     env:
@@ -47,9 +48,11 @@ spec:
                     steps {
                         container('dind') {
                             sh 'timeout 30 sh -c "until docker info >/dev/null 2>&1; do sleep 1; done"'
+                            sh 'docker pull postgres:16-alpine'
+                            sh 'docker pull minio/minio:RELEASE.2025-09-07T16-13-09Z'
                         }
                         container('node') {
-                            sh 'pnpm test'
+                            sh 'DEBUG=testcontainers pnpm test'
                         }
                     }
                 }

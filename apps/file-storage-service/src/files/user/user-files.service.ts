@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common'
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { randomUUID, createHash } from 'crypto'
@@ -69,12 +65,7 @@ export class UserFilesService {
     return record
   }
 
-  async list(
-    userId: string,
-    limit = 20,
-    offset = 0,
-    mimeType?: string,
-  ): Promise<FileListResponse> {
+  async list(userId: string, limit = 20, offset = 0, mimeType?: string): Promise<FileListResponse> {
     const qb = this.fileRepo.createQueryBuilder('f').where('f.userId = :userId', { userId })
 
     if (mimeType) {
