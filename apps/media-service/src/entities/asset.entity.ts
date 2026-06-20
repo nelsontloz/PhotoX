@@ -1,4 +1,13 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index, Unique } from 'typeorm'
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  Index,
+  Unique,
+  OneToMany,
+} from 'typeorm'
+import { AssetThumbnail } from './asset-thumbnail.entity'
 
 @Entity('assets')
 @Index(['userId', 'uploadedAt'])
@@ -89,4 +98,7 @@ export class Asset {
 
   @Column({ type: 'timestamptz', nullable: true })
   metadataExtractedAt!: Date | null
+
+  @OneToMany(() => AssetThumbnail, (t) => t.asset)
+  thumbnails?: AssetThumbnail[]
 }

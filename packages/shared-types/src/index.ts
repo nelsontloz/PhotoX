@@ -104,3 +104,14 @@ export interface AssetListResponse {
   limit: number
   offset: number
 }
+
+export interface AssetThumbnail {
+  size: string
+  fileId: string
+  width: number
+  height: number
+  bytes: number
+  createdAt: string
+}
+
+export type AssetThumbnailListResponse = AssetThumbnail[]
