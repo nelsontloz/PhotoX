@@ -3,7 +3,6 @@ export const EVENTS = {
   USER_UPDATED: 'user.updated',
   USER_DELETED: 'user.deleted',
   FILE_UPLOADED: 'file.uploaded',
-  FILE_PROCESSED: 'file.processed',
   FILE_DELETED: 'file.deleted',
 } as const
 
@@ -32,23 +31,6 @@ export interface FileUploadedEvent {
   mimeType: string
   sizeBytes: number
   timestamp: string
-}
-
-export interface FileProcessedEvent {
-  fileId: string
-  userId: string
-  width: number
-  height: number
-  takenAt?: string
-  thumbnails: ThumbnailInfo[]
-  timestamp: string
-}
-
-export interface ThumbnailInfo {
-  variant: 'sm' | 'md' | 'lg'
-  storageKey: string
-  width: number
-  height: number
 }
 
 export interface FileDeletedEvent {

@@ -23,18 +23,6 @@ export class FileRecord {
   @Column()
   checksumSha256!: string
 
-  @Column({ default: 'pending' })
-  processingStatus!: string
-
-  @Column({ nullable: true })
-  width?: number
-
-  @Column({ nullable: true })
-  height?: number
-
-  @Column({ type: 'timestamptz', nullable: true })
-  takenAt?: Date
-
   @CreateDateColumn()
   createdAt!: Date
 }
