@@ -2,6 +2,7 @@ import { type INestApplication, ValidationPipe } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { randomUUID } from 'node:crypto'
 import supertest from 'supertest'
+import { randomBytes } from 'node:crypto'
 import type { Server } from 'node:http'
 import { setupTestInfra, teardownTestInfra } from './test-setup'
 import type { AuthResponse } from '@photox/shared-types'
@@ -54,12 +55,27 @@ interface ErrorBody {
   error?: string
 }
 
+function randomEmail(): string {
+  return `test-${randomBytes(4).toString('hex')}@example.com`
+}
+
+function randomPassword(): string {
+  return `pw-${randomBytes(4).toString('hex')}`
+}
+
+async function registerUser(email: string, password: string): Promise<AuthResponse> {
+  const res = await supertest(httpServer)
+    .post('/v1/auth/register')
+    .send({ email, password, displayName: 'Test User' })
+    .expect(201)
+  return res.body as AuthResponse
+}
+
 describe('POST /v1/auth/register', () => {
   it('REG-01: creates account and returns AuthResponse', async () => {
     const payload = validPayload()
     const res = await supertest(httpServer).post('/v1/auth/register').send(payload).expect(201)
     const body = res.body as AuthResponse
-
     expect(typeof body.accessToken).toBe('string')
     expect(body.accessToken.length).toBeGreaterThan(0)
     expect(typeof body.refreshToken).toBe('string')
@@ -172,5 +188,105 @@ describe('POST /v1/auth/register', () => {
     const body = res.body as ErrorBody
 
     expect(body.message).toBeDefined()
+  })
+})
+
+describe('POST /v1/auth/login', () => {
+  it('LOG-01: happy path — valid credentials returns 200 + AuthResponse', async () => {
+    const email = randomEmail()
+    const password = randomPassword()
+    await registerUser(email, password)
+
+    const res = await supertest(httpServer)
+      .post('/v1/auth/login')
+      .send({ email, password })
+      .expect(200)
+
+    const body = res.body as AuthResponse
+    expect(body.accessToken).toBeTruthy()
+    expect(body.refreshToken).toBeTruthy()
+    expect(body.user).toBeDefined()
+    expect(body.user.email).toBe(email)
+  })
+
+  it('LOG-02: wrong password returns 401 with "Invalid credentials"', async () => {
+    const email = randomEmail()
+    const password = randomPassword()
+    await registerUser(email, password)
+
+    const res = await supertest(httpServer)
+      .post('/v1/auth/login')
+      .send({ email, password: 'wrongpassword' })
+      .expect(401)
+
+    const body = res.body as { message: string }
+    expect(body.message).toBe('Invalid credentials')
+  })
+
+  it('LOG-03: non-existent email returns 401 with "Invalid credentials"', async () => {
+    const res = await supertest(httpServer)
+      .post('/v1/auth/login')
+      .send({ email: randomEmail(), password: 'anypassword' })
+      .expect(401)
+
+    const body = res.body as { message: string }
+    expect(body.message).toBe('Invalid credentials')
+  })
+
+  it('LOG-04: invalid email format returns 400', async () => {
+    await supertest(httpServer)
+      .post('/v1/auth/login')
+      .send({ email: 'not-an-email', password: 'password' })
+      .expect(400)
+  })
+
+  it('LOG-05: missing password returns 400', async () => {
+    await supertest(httpServer)
+      .post('/v1/auth/login')
+      .send({ email: randomEmail() })
+      .expect(400)
+  })
+
+  it('LOG-06: empty password returns 400', async () => {
+    await supertest(httpServer)
+      .post('/v1/auth/login')
+      .send({ email: randomEmail(), password: '' })
+      .expect(400)
+  })
+
+  it('LOG-07: response tokens are non-empty truthy strings', async () => {
+    const email = randomEmail()
+    const password = randomPassword()
+    await registerUser(email, password)
+
+    const res = await supertest(httpServer)
+      .post('/v1/auth/login')
+      .send({ email, password })
+      .expect(200)
+
+    const body = res.body as AuthResponse
+    expect(typeof body.accessToken).toBe('string')
+    expect(body.accessToken.length).toBeGreaterThan(0)
+    expect(typeof body.refreshToken).toBe('string')
+    expect(body.refreshToken.length).toBeGreaterThan(0)
+  })
+
+  it('LOG-02+03: wrong password and non-existent email return the same error message', async () => {
+    const email = randomEmail()
+    await registerUser(email, randomPassword())
+
+    const wrongPw = await supertest(httpServer)
+      .post('/v1/auth/login')
+      .send({ email, password: 'wrongpassword' })
+      .expect(401)
+
+    const noUser = await supertest(httpServer)
+      .post('/v1/auth/login')
+      .send({ email: randomEmail(), password: 'anypassword' })
+      .expect(401)
+
+    expect((wrongPw.body as { message: string }).message).toBe(
+      (noUser.body as { message: string }).message,
+    )
   })
 })
