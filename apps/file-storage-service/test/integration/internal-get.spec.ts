@@ -18,11 +18,15 @@ afterAll(async () => {
 describe('GET /v1/internal/files/:fileId', () => {
   it('UC-I1: resolves a file by ID without x-user-id filter', async () => {
     const userId = mintUserId()
-    const record = await uploadForUser(httpServer, userId, 'doc.pdf', Buffer.from('pdf-data'), 'application/pdf')
+    const record = await uploadForUser(
+      httpServer,
+      userId,
+      'doc.pdf',
+      Buffer.from('pdf-data'),
+      'application/pdf',
+    )
 
-    const res = await supertest(httpServer)
-      .get(`/v1/internal/files/${record.id}`)
-      .expect(200)
+    const res = await supertest(httpServer).get(`/v1/internal/files/${record.id}`).expect(200)
 
     const body = res.body as FileRecord
     expect(body.id).toBe(record.id)

@@ -22,10 +22,7 @@ describe('GET /v1/files', () => {
     await uploadForUser(httpServer, userId, 'b.png', Buffer.from('bb'), 'image/png')
     await uploadForUser(httpServer, userId, 'c.png', Buffer.from('ccc'), 'image/png')
 
-    const res = await supertest(httpServer)
-      .get('/v1/files')
-      .set('x-user-id', userId)
-      .expect(200)
+    const res = await supertest(httpServer).get('/v1/files').set('x-user-id', userId).expect(200)
 
     const body = res.body as FileListResponse
     expect(body.total).toBe(3)
@@ -82,10 +79,7 @@ describe('GET /v1/files', () => {
     await uploadForUser(httpServer, userA, 'a.png', Buffer.from('a'), 'image/png')
     await uploadForUser(httpServer, userB, 'b.png', Buffer.from('bb'), 'image/png')
 
-    const res = await supertest(httpServer)
-      .get('/v1/files')
-      .set('x-user-id', userA)
-      .expect(200)
+    const res = await supertest(httpServer).get('/v1/files').set('x-user-id', userA).expect(200)
 
     const body = res.body as FileListResponse
     expect(body.total).toBe(1)
@@ -95,10 +89,7 @@ describe('GET /v1/files', () => {
   it('returns empty list for user with no files', async () => {
     const userId = mintUserId()
 
-    const res = await supertest(httpServer)
-      .get('/v1/files')
-      .set('x-user-id', userId)
-      .expect(200)
+    const res = await supertest(httpServer).get('/v1/files').set('x-user-id', userId).expect(200)
 
     const body = res.body as FileListResponse
     expect(body.total).toBe(0)

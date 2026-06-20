@@ -36,7 +36,7 @@ describe('GET /v1/files/:fileId/download', () => {
     expect(sha256(res.body as Buffer)).toBe(record.checksumSha256)
   })
 
-  it('UC-U8: returns 404 for someone else\'s file, no byte leak', async () => {
+  it("UC-U8: returns 404 for someone else's file, no byte leak", async () => {
     const owner = mintUserId()
     const other = mintUserId()
     const content = Buffer.from('owner-private-data')

@@ -18,7 +18,13 @@ describe('GET /v1/internal/files/:fileId/stream', () => {
   it('UC-I4: streams raw bytes with correct Content-Type and body sha256', async () => {
     const userId = mintUserId()
     const content = Buffer.from('stream-this-bytes')
-    const record = await uploadForUser(httpServer, userId, 'data.bin', content, 'application/octet-stream')
+    const record = await uploadForUser(
+      httpServer,
+      userId,
+      'data.bin',
+      content,
+      'application/octet-stream',
+    )
 
     const res = await supertest(httpServer)
       .get(`/v1/internal/files/${record.id}/stream`)

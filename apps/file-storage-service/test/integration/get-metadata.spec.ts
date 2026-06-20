@@ -18,7 +18,13 @@ afterAll(async () => {
 describe('GET /v1/files/:fileId', () => {
   it('UC-U5: returns 200 with FileRecordDto for own file', async () => {
     const userId = mintUserId()
-    const record = await uploadForUser(httpServer, userId, 'photo.jpg', Buffer.from('photo-data'), 'image/jpeg')
+    const record = await uploadForUser(
+      httpServer,
+      userId,
+      'photo.jpg',
+      Buffer.from('photo-data'),
+      'image/jpeg',
+    )
 
     const res = await supertest(httpServer)
       .get(`/v1/files/${record.id}`)
@@ -35,10 +41,16 @@ describe('GET /v1/files/:fileId', () => {
     expect(typeof body.createdAt).toBe('string')
   })
 
-  it('UC-U6: returns 404 for someone else\'s file (not 403)', async () => {
+  it("UC-U6: returns 404 for someone else's file (not 403)", async () => {
     const owner = mintUserId()
     const other = mintUserId()
-    const record = await uploadForUser(httpServer, owner, 'secret.jpg', Buffer.from('secret'), 'image/jpeg')
+    const record = await uploadForUser(
+      httpServer,
+      owner,
+      'secret.jpg',
+      Buffer.from('secret'),
+      'image/jpeg',
+    )
 
     const res = await supertest(httpServer)
       .get(`/v1/files/${record.id}`)

@@ -81,10 +81,7 @@ describe('POST /v1/files', () => {
   it('returns 400 when no file is attached', async () => {
     const userId = mintUserId()
 
-    const res = await supertest(httpServer)
-      .post('/v1/files')
-      .set('x-user-id', userId)
-      .expect(400)
+    const res = await supertest(httpServer).post('/v1/files').set('x-user-id', userId).expect(400)
 
     expect(res.body).toBeDefined()
   })

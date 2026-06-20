@@ -28,10 +28,7 @@ describe('DELETE /v1/files/:fileId', () => {
       .set('x-user-id', userId)
       .expect(204)
 
-    await supertest(httpServer)
-      .get(`/v1/files/${record.id}`)
-      .set('x-user-id', userId)
-      .expect(404)
+    await supertest(httpServer).get(`/v1/files/${record.id}`).set('x-user-id', userId).expect(404)
 
     const minioExists = await minioService.fileExists(record.storageKey)
     expect(minioExists).toBe(false)
@@ -53,16 +50,13 @@ describe('DELETE /v1/files/:fileId', () => {
       .expect(204)
   })
 
-  it('UC-U11: deleting someone else\'s file does not delete it', async () => {
+  it("UC-U11: deleting someone else's file does not delete it", async () => {
     const owner = mintUserId()
     const other = mintUserId()
     const content = Buffer.from('owner-protected')
     const record = await uploadForUser(httpServer, owner, 'protected.png', content, 'image/png')
 
-    await supertest(httpServer)
-      .delete(`/v1/files/${record.id}`)
-      .set('x-user-id', other)
-      .expect(204)
+    await supertest(httpServer).delete(`/v1/files/${record.id}`).set('x-user-id', other).expect(204)
 
     const res = await supertest(httpServer)
       .get(`/v1/files/${record.id}`)
