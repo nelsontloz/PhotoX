@@ -26,7 +26,7 @@ export async function setupTestInfra(): Promise<TestInfra> {
 
   pgContainer = pg
 
-  const minio = await new GenericContainer('minio/minio:latest')
+  const minio = await new GenericContainer('minio/minio:RELEASE.2025-09-07T16-13-09Z')
     .withName(`minio-${hash}`)
     .withEnvironment({
       MINIO_ROOT_USER: 'test',
@@ -34,7 +34,9 @@ export async function setupTestInfra(): Promise<TestInfra> {
     })
     .withCommand(['server', '/data', '--console-address', ':9001'])
     .withExposedPorts(9000)
-    .withWaitStrategy(Wait.forLogMessage(/API:/, 1))
+    .withStartupTimeout(120_000)
+    .withDefaultLogDriver()
+    .withWaitStrategy(Wait.forHttp('/minio/health/live', 9000))
     .start()
 
   minioContainer = minio
