@@ -31,3 +31,35 @@ export interface AuthResponse {
   refreshToken: string
   user: User
 }
+
+export interface FileRecord {
+  id: string
+  userId: string
+  storageKey: string
+  originalName: string
+  mimeType: string
+  sizeBytes: number
+  checksumSha256: string
+  createdAt: string
+}
+
+export interface FileSummary {
+  id: string
+  userId: string
+  originalName: string
+  mimeType: string
+  sizeBytes: number
+  createdAt: string
+}
+
+export interface FileListResponse {
+  items: FileSummary[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface BatchFilesResponse {
+  items: FileRecord[]
+  missing: string[]
+}
