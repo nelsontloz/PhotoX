@@ -379,10 +379,7 @@ describe('POST /v1/auth/refresh', () => {
   })
 
   it('REF-06: missing field returns 400', async () => {
-    await supertest(httpServer)
-      .post('/v1/auth/refresh')
-      .send({})
-      .expect(400)
+    await supertest(httpServer).post('/v1/auth/refresh').send({}).expect(400)
   })
 
   it('REF-07: user identity preserved after refresh', async () => {
@@ -451,9 +448,6 @@ describe('POST /v1/auth/logout', () => {
   })
 
   it('OUT-05: missing field returns 400', async () => {
-    await supertest(httpServer)
-      .post('/v1/auth/logout')
-      .send({})
-      .expect(400)
+    await supertest(httpServer).post('/v1/auth/logout').send({}).expect(400)
   })
 })

@@ -1,8 +1,8 @@
-import { type INestApplication, ValidationPipe } from '@nestjs/common'
-import { Test } from '@nestjs/testing'
+import { type INestApplication } from '@nestjs/common'
 import supertest from 'supertest'
 import type { Server } from 'node:http'
-import { setupTestInfra, teardownTestInfra, stopMinioContainer } from './test-setup'
+import { stopMinioContainer } from './test-setup'
+import { createTestApp, closeTestApp } from './helpers'
 
 interface HealthResponse {
   status: string
@@ -19,27 +19,11 @@ let app: INestApplication
 let httpServer: Server
 
 beforeAll(async () => {
-  await setupTestInfra()
-
-  // @ts-expect-error dynamic import — tsc can't resolve test→src paths, vitest can
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  const { AppModule } = await import('../../src/app.module')
-
-  const module = await Test.createTestingModule({
-    imports: [AppModule],
-  }).compile()
-
-  app = module.createNestApplication()
-  app.useGlobalPipes(
-    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
-  )
-  await app.init()
-  httpServer = app.getHttpServer() as Server
+  ;({ app, httpServer } = await createTestApp())
 }, 120_000)
 
 afterAll(async () => {
-  await app?.close()
-  await teardownTestInfra()
+  await closeTestApp(app)
 })
 
 describe('GET /health', () => {
