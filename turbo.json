@@ -1,6 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "concurrency": "100%",
+  "globalPassThroughEnv": ["DEBUG"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
