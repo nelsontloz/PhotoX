@@ -41,11 +41,30 @@ export async function setupTestInfra(): Promise<TestInfra> {
 
   minioContainer = minio
 
+  let minioPort: number
+  try {
+    minioPort = minio.getMappedPort(9000)
+  } catch (err) {
+    try {
+      const containerId = (minio as unknown as { getId: () => string }).getId()
+      const resp = await fetch(
+        `http://localhost:2375/containers/${containerId}/logs?stderr=1&stdout=1`,
+      )
+      const logs = await resp.text()
+      console.error('=== MinIO container logs (crashed) ===')
+      console.error(logs)
+      console.error('======================================')
+    } catch (logsErr) {
+      console.error('Failed to capture MinIO logs:', logsErr)
+    }
+    throw err
+  }
+
   const infra: TestInfra = {
     pgHost: pg.getHost(),
     pgPort: pg.getMappedPort(5432),
     minioHost: minio.getHost(),
-    minioPort: minio.getMappedPort(9000),
+    minioPort,
   }
 
   process.env.NODE_ENV = 'test'
