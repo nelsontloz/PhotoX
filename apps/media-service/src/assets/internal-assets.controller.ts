@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Delete, Param, Body, HttpCode, HttpStatus } from '@nestjs/common'
+import { Controller, Get, Patch, Param, Body } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { AssetsService } from './assets.service'
 import { AssetDto } from './dto/asset.dto'
@@ -22,14 +22,6 @@ export class InternalAssetsController {
   @ApiResponse({ status: 404, description: 'Asset not found for this fileId' })
   async getByFileId(@Param('fileId') fileId: string) {
     return this.assets.getByFileId(fileId)
-  }
-
-  @Delete('users/:userId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: "Cascade-delete a user's entire library (service-to-service)" })
-  @ApiResponse({ status: 204, description: 'Library deleted' })
-  async cascadeDeleteUser(@Param('userId') userId: string) {
-    await this.assets.cascadeDeleteUser(userId)
   }
 
   @Patch('assets/:id/metadata')
