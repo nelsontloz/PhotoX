@@ -8,7 +8,7 @@ export class HealthController {
   constructor(private readonly healthService: HealthService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Service health check (DB + Redis + MinIO)' })
+  @ApiOperation({ summary: 'Service health check (DB + MinIO)' })
   check() {
     return this.healthService.check()
   }
