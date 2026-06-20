@@ -105,9 +105,15 @@ importers:
       supertest:
         specifier: ^7.0.0
         version: 7.2.2
+      testcontainers:
+        specifier: ^10.0.0
+        version: 10.28.0
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
+      unplugin-swc:
+        specifier: ^1.5.0
+        version: 1.5.9(@swc/core@1.15.41)(rollup@4.62.0)
       vitest:
         specifier: ^3.1.0
         version: 3.2.6(@types/debug@4.1.13)(@types/node@22.19.21)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(terser@5.48.0)(yaml@2.9.0)
