@@ -15,6 +15,7 @@ spec:
       value: tcp://localhost:2375
   - name: dind
     image: docker:27.5.1-dind
+    args: ["--registry-mirror=https://registry.int.zerg91.com"]
     securityContext:
       privileged: true
     env:
