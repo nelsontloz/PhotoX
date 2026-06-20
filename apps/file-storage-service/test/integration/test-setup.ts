@@ -35,7 +35,6 @@ export async function setupTestInfra(): Promise<TestInfra> {
     .withCommand(['server', '/data', '--console-address', ':9001'])
     .withExposedPorts(9000)
     .withStartupTimeout(120_000)
-    .withDefaultLogDriver()
     .withWaitStrategy(Wait.forListeningPorts())
     .start()
 
