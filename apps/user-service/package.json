@@ -20,7 +20,6 @@
     "@nestjs/platform-express": "^10.4.0",
     "@nestjs/typeorm": "^10.0.0",
     "@photox/shared-config": "workspace:*",
-    "@photox/shared-redis": "workspace:*",
     "@photox/shared-types": "workspace:*",
     "argon2": "^0.41.0",
     "class-transformer": "^0.5.1",

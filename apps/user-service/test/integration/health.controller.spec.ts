@@ -11,7 +11,6 @@ interface HealthResponse {
   timestamp: string
   checks: {
     database: { status: string }
-    redis: { status: string }
   }
 }
 
@@ -43,14 +42,13 @@ afterAll(async () => {
 })
 
 describe('GET /health', () => {
-  it('HLT-01: returns 200 with ok status when DB and Redis are up', async () => {
+  it('HLT-01: returns 200 with ok status when DB is up', async () => {
     const res = await supertest(httpServer).get('/health').expect(200)
     const body = res.body as HealthResponse
 
     expect(body.status).toBe('ok')
     expect(body.service).toBe('user-service')
     expect(body.checks.database.status).toBe('up')
-    expect(body.checks.redis.status).toBe('up')
   })
 
   it('HLT-02: includes uptime and timestamp', async () => {
