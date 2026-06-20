@@ -39,10 +39,10 @@ export class Asset {
   @Column({ type: 'timestamptz', nullable: true })
   trashedAt!: Date | null
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   title!: string | null
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   description!: string | null
 
   @Column({ type: 'timestamptz', nullable: true })
@@ -51,31 +51,31 @@ export class Asset {
   @Column({ default: false })
   favorite!: boolean
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   mimeType!: string | null
 
   @Column({ type: 'bigint', nullable: true })
   sizeBytes!: number | null
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   originalName!: string | null
 
-  @Column({ nullable: true })
+  @Column({ type: 'int', nullable: true })
   width!: number | null
 
-  @Column({ nullable: true })
+  @Column({ type: 'int', nullable: true })
   height!: number | null
 
   @Column({ type: 'numeric', nullable: true })
   durationSeconds!: number | null
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   cameraMake!: string | null
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   cameraModel!: string | null
 
-  @Column({ nullable: true })
+  @Column({ type: 'int', nullable: true })
   orientation!: number | null
 
   @Column({ type: 'numeric', precision: 9, scale: 6, nullable: true })
@@ -87,10 +87,10 @@ export class Asset {
   @Column({ type: 'numeric', nullable: true })
   fps!: number | null
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   codec!: string | null
 
-  @Column({ nullable: true })
+  @Column({ type: 'boolean', nullable: true })
   hasAudio!: boolean | null
 
   @Column({ type: 'enum', enum: ['pending', 'ready', 'failed'], default: 'pending' })
