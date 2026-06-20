@@ -38,7 +38,7 @@ pnpm --filter user-service dev
 | -------------------- | --------- | --------------------------------- |
 | gateway              | 3000      | API Gateway                       |
 | user-service         | 3001      | User management & auth            |
-| library-service      | 3002      | Photo & album metadata            |
+| media-service        | 3002      | Photo & album metadata            |
 | file-storage-service | 3003      | File upload, storage & thumbnails |
 | web                  | 5173      | React frontend                    |
 | postgres             | 5432      | PostgreSQL database               |

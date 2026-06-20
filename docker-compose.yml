@@ -75,21 +75,22 @@ services:
     networks:
       - photox-net
 
-  library-service:
+  media-service:
     build:
       context: .
-      dockerfile: apps/library-service/Dockerfile
+      dockerfile: apps/media-service/Dockerfile
     ports:
       - "3002:3002"
     environment:
       NODE_ENV: production
-      LIBRARY_SERVICE_PORT: 3002
+      MEDIA_SERVICE_PORT: 3002
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: photox
       POSTGRES_PASSWORD: photox_dev
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      FILE_STORAGE_SERVICE_URL: http://file-storage-service:3003
     depends_on:
       postgres:
         condition: service_healthy
@@ -150,12 +151,12 @@ services:
       NODE_ENV: production
       GATEWAY_PORT: 3000
       USER_SERVICE_URL: http://user-service:3001
-      LIBRARY_SERVICE_URL: http://library-service:3002
+      MEDIA_SERVICE_URL: http://media-service:3002
       FILE_STORAGE_SERVICE_URL: http://file-storage-service:3003
     depends_on:
       user-service:
         condition: service_healthy
-      library-service:
+      media-service:
         condition: service_healthy
       file-storage-service:
         condition: service_healthy

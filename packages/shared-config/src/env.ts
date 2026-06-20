@@ -4,7 +4,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   GATEWAY_PORT: z.coerce.number().default(3000),
   USER_SERVICE_PORT: z.coerce.number().default(3001),
-  LIBRARY_SERVICE_PORT: z.coerce.number().default(3002),
+  MEDIA_SERVICE_PORT: z.coerce.number().default(3002),
   FILE_STORAGE_SERVICE_PORT: z.coerce.number().default(3003),
   POSTGRES_HOST: z.string().default('localhost'),
   POSTGRES_PORT: z.coerce.number().default(5432),
@@ -19,6 +19,7 @@ const envSchema = z.object({
   MINIO_BUCKET: z.string().default('photox-files'),
   AUTH_ACCESS_TTL: z.string().default('15m'),
   AUTH_REFRESH_TTL: z.string().default('30d'),
+  FILE_STORAGE_SERVICE_URL: z.string().default('http://localhost:3003'),
 })
 
 export type Env = z.infer<typeof envSchema>
