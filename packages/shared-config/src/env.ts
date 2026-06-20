@@ -19,6 +19,7 @@ const envSchema = z.object({
   MINIO_BUCKET: z.string().default('photox-files'),
   AUTH_ACCESS_TTL: z.string().default('15m'),
   AUTH_REFRESH_TTL: z.string().default('30d'),
+  FILE_STORAGE_SERVICE_URL: z.string().default('http://localhost:3003'),
 })
 
 export type Env = z.infer<typeof envSchema>

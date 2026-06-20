@@ -63,3 +63,44 @@ export interface BatchFilesResponse {
   items: FileRecord[]
   missing: string[]
 }
+
+export type AssetKind = 'photo' | 'video'
+
+export type MetadataStatus = 'pending' | 'ready' | 'failed'
+
+export interface Asset {
+  id: string
+  userId: string
+  kind: AssetKind
+  fileId: string
+  uploadedAt: string
+  isTrashed: boolean
+  trashedAt: string | null
+  title: string | null
+  description: string | null
+  takenAt: string | null
+  favorite: boolean
+  mimeType: string | null
+  sizeBytes: number | null
+  originalName: string | null
+  width: number | null
+  height: number | null
+  durationSeconds: number | null
+  cameraMake: string | null
+  cameraModel: string | null
+  orientation: number | null
+  latitude: number | null
+  longitude: number | null
+  fps: number | null
+  codec: string | null
+  hasAudio: boolean | null
+  metadataStatus: MetadataStatus
+  metadataExtractedAt: string | null
+}
+
+export interface AssetListResponse {
+  items: Asset[]
+  total: number
+  limit: number
+  offset: number
+}
