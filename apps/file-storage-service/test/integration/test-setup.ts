@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers'
 
@@ -40,11 +41,30 @@ export async function setupTestInfra(): Promise<TestInfra> {
 
   minioContainer = minio
 
+  let minioPort: number
+  try {
+    minioPort = minio.getMappedPort(9000)
+  } catch (err) {
+    try {
+      const name = minio.getName()
+      const logs = execSync(`docker logs ${name} 2>&1`, {
+        encoding: 'utf8',
+        timeout: 5000,
+      })
+      console.error('=== MinIO container logs (crashed) ===')
+      console.error(logs)
+      console.error('======================================')
+    } catch (logsErr) {
+      console.error('Failed to capture MinIO logs:', logsErr)
+    }
+    throw err
+  }
+
   const infra: TestInfra = {
     pgHost: pg.getHost(),
     pgPort: pg.getMappedPort(5432),
     minioHost: minio.getHost(),
-    minioPort: minio.getMappedPort(9000),
+    minioPort,
   }
 
   process.env.NODE_ENV = 'test'
@@ -68,5 +88,12 @@ export async function teardownTestInfra(): Promise<void> {
   if (pgContainer) {
     await pgContainer.stop()
     pgContainer = null
+  }
+}
+
+export async function stopMinioContainer(): Promise<void> {
+  if (minioContainer) {
+    await minioContainer.stop()
+    minioContainer = null
   }
 }
