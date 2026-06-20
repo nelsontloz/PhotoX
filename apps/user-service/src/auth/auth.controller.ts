@@ -21,6 +21,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Authenticate with email and password' })
   @ApiResponse({ status: 200, description: 'Authenticated', type: AuthResponseDto })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
