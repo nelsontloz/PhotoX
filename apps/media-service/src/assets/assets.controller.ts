@@ -3,7 +3,6 @@ import {
   Get,
   Post,
   Patch,
-  Delete,
   Param,
   Query,
   Body,
@@ -75,15 +74,5 @@ export class AssetsController {
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async restore(@Req() req: Request, @Param('id') id: string) {
     await this.assets.restore(req.userId!, id)
-  }
-
-  @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Permanently delete an asset (purge). Cascades to file-storage.' })
-  @ApiResponse({ status: 204, description: 'Asset purged' })
-  @ApiResponse({ status: 404, description: 'Asset not found' })
-  @ApiResponse({ status: 502, description: 'File storage delete failed' })
-  async purge(@Req() req: Request, @Param('id') id: string) {
-    await this.assets.purge(req.userId!, id)
   }
 }

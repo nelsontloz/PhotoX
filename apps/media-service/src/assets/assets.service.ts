@@ -2,21 +2,17 @@ import { Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, Brackets } from 'typeorm'
 import { Asset } from '../entities/asset.entity'
-import { FileStorageClient } from './file-storage.client'
 import { CreateAssetDto } from './dto/create-asset.dto'
 import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
 import { UpdateMetadataDto } from './dto/update-metadata.dto'
 import type { Asset as AssetResponse, AssetListResponse } from '@photox/shared-types'
 
-const CONCURRENCY_LIMIT = 10
-
 @Injectable()
 export class AssetsService {
   constructor(
     @InjectRepository(Asset)
     private readonly repo: Repository<Asset>,
-    private readonly fileStorage: FileStorageClient,
   ) {}
 
   async create(userId: string, dto: CreateAssetDto): Promise<AssetResponse> {
@@ -140,15 +136,6 @@ export class AssetsService {
     }
   }
 
-  async purge(userId: string, id: string): Promise<void> {
-    const asset = await this.repo.findOne({ where: { id, userId } })
-    if (!asset) throw new NotFoundException('Asset not found')
-
-    await this.fileStorage.deleteFile(asset.fileId)
-
-    await this.repo.delete(id)
-  }
-
   async listByUser(userId: string): Promise<AssetResponse[]> {
     const assets = await this.repo.find({ where: { userId }, order: { uploadedAt: 'DESC' } })
     return assets.map((a) => this.toResponse(a))
@@ -158,19 +145,6 @@ export class AssetsService {
     const asset = await this.repo.findOne({ where: { fileId } })
     if (!asset) throw new NotFoundException('Asset not found for fileId')
     return this.toResponse(asset)
-  }
-
-  async cascadeDeleteUser(userId: string): Promise<void> {
-    const assets = await this.repo.find({
-      where: { userId },
-      select: ['id', 'fileId'],
-    })
-
-    const fileIds = assets.map((a) => a.fileId).filter(Boolean)
-
-    await this.repo.delete({ userId })
-
-    await this.fanOutFileDeletes(fileIds)
   }
 
   async updateMetadata(id: string, dto: UpdateMetadataDto): Promise<AssetResponse> {
@@ -200,24 +174,6 @@ export class AssetsService {
     await this.repo.update(id, patch)
     const updated = await this.repo.findOne({ where: { id } })
     return this.toResponse(updated!)
-  }
-
-  private async fanOutFileDeletes(fileIds: string[]): Promise<void> {
-    const queue = [...fileIds]
-
-    const processNext = async (): Promise<void> => {
-      const fileId = queue.pop()
-      if (!fileId) return
-      try {
-        await this.fileStorage.deleteFile(fileId)
-      } catch (err) {
-        console.error(`[AssetsService] failed to delete file ${fileId}:`, err)
-      }
-      return processNext()
-    }
-
-    const workers = Array.from({ length: Math.min(CONCURRENCY_LIMIT, queue.length) }, processNext)
-    await Promise.all(workers)
   }
 
   private toResponse(asset: Asset): AssetResponse {
