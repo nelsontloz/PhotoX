@@ -30,6 +30,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Rotate a refresh token for a new token pair' })
   @ApiResponse({ status: 200, description: 'Tokens rotated', type: AuthResponseDto })
   @ApiResponse({ status: 401, description: 'Invalid, revoked, or expired refresh token' })
