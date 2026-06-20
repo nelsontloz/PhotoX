@@ -67,11 +67,7 @@ export class UserFilesController {
   @ApiOperation({ summary: 'Download file bytes' })
   @ApiResponse({ status: 200, description: 'File stream' })
   @ApiResponse({ status: 404, description: 'File not found' })
-  async download(
-    @Req() req: Request,
-    @Res() res: Response,
-    @Param('fileId') fileId: string,
-  ) {
+  async download(@Req() req: Request, @Res() res: Response, @Param('fileId') fileId: string) {
     const { stream, record } = await this.userFilesService.download(req.userId!, fileId)
     res.set({
       'Content-Type': record.mimeType,

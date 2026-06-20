@@ -241,10 +241,7 @@ describe('POST /v1/auth/login', () => {
   })
 
   it('LOG-05: missing password returns 400', async () => {
-    await supertest(httpServer)
-      .post('/v1/auth/login')
-      .send({ email: randomEmail() })
-      .expect(400)
+    await supertest(httpServer).post('/v1/auth/login').send({ email: randomEmail() }).expect(400)
   })
 
   it('LOG-06: empty password returns 400', async () => {
