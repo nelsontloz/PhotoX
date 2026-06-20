@@ -3,7 +3,7 @@ import { defineWorkspace } from 'vitest/config'
 export default defineWorkspace([
   'apps/gateway',
   'apps/user-service',
-  'apps/library-service',
+  'apps/media-service',
   'apps/file-storage-service',
   'apps/web',
   'packages/shared-auth',

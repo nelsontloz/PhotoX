@@ -16,7 +16,7 @@ Personal photo/video hosting. NestJS microservices monorepo with a Vite React we
 apps/
   gateway/              NestJS, port 3000
   user-service/         NestJS, port 3001
-  library-service/      NestJS, port 3002
+  media-service/        NestJS, port 3002
   file-storage-service/ NestJS, port 3003
   web/                  Vite + React, port 5173
 packages/
@@ -122,7 +122,7 @@ After editing a service, `pnpm dev` (or the single-package filter) hot-reloads. 
 
 - `curl localhost:3000/health` — gateway (aggregates downstream)
 - `curl localhost:3001/health` — user-service
-- `curl localhost:3002/health` — library-service
+- `curl localhost:3002/health` — media-service
 - `curl localhost:3003/health` — file-storage-service
 - `http://localhost:5173` — web app (service status grid)
 

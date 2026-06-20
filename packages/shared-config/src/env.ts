@@ -4,7 +4,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   GATEWAY_PORT: z.coerce.number().default(3000),
   USER_SERVICE_PORT: z.coerce.number().default(3001),
-  LIBRARY_SERVICE_PORT: z.coerce.number().default(3002),
+  MEDIA_SERVICE_PORT: z.coerce.number().default(3002),
   FILE_STORAGE_SERVICE_PORT: z.coerce.number().default(3003),
   POSTGRES_HOST: z.string().default('localhost'),
   POSTGRES_PORT: z.coerce.number().default(5432),

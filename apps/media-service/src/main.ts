@@ -19,8 +19,8 @@ async function bootstrap() {
   app.useGlobalFilters(new HttpExceptionFilter())
 
   const config = new DocumentBuilder()
-    .setTitle('Photox Library Service')
-    .setDescription('Photo and album library')
+    .setTitle('Photox Media Service')
+    .setDescription('Photo and album media')
     .setVersion('1.0')
     .addTag('assets')
     .addTag('internal-assets')
@@ -28,8 +28,8 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config)
   SwaggerModule.setup('docs', app, document, { jsonDocumentUrl: 'docs-json' })
 
-  await app.listen(env.LIBRARY_SERVICE_PORT)
-  console.log(`Library Service running on port ${env.LIBRARY_SERVICE_PORT}`)
+  await app.listen(env.MEDIA_SERVICE_PORT)
+  console.log(`Media Service running on port ${env.MEDIA_SERVICE_PORT}`)
 }
 
 void bootstrap()

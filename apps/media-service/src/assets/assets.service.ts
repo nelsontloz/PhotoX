@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common'
+import { Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, Brackets } from 'typeorm'
 import { Asset } from '../entities/asset.entity'
@@ -59,10 +56,10 @@ export class AssetsService {
               fromDate: q.fromDate,
               toDate: q.toDate,
             })
-            .orWhere(
-              'asset.takenAt IS NULL AND asset.uploadedAt BETWEEN :fromDate AND :toDate',
-              { fromDate: q.fromDate, toDate: q.toDate },
-            ),
+            .orWhere('asset.takenAt IS NULL AND asset.uploadedAt BETWEEN :fromDate AND :toDate', {
+              fromDate: q.fromDate,
+              toDate: q.toDate,
+            }),
         ),
       )
     } else if (q.fromDate) {
@@ -229,7 +226,8 @@ export class AssetsService {
       userId: asset.userId,
       kind: asset.kind,
       fileId: asset.fileId,
-      uploadedAt: asset.uploadedAt instanceof Date ? asset.uploadedAt.toISOString() : asset.uploadedAt,
+      uploadedAt:
+        asset.uploadedAt instanceof Date ? asset.uploadedAt.toISOString() : asset.uploadedAt,
       isTrashed: asset.isTrashed,
       trashedAt: asset.trashedAt instanceof Date ? asset.trashedAt.toISOString() : null,
       title: asset.title,
@@ -251,7 +249,8 @@ export class AssetsService {
       codec: asset.codec,
       hasAudio: asset.hasAudio,
       metadataStatus: asset.metadataStatus,
-      metadataExtractedAt: asset.metadataExtractedAt instanceof Date ? asset.metadataExtractedAt.toISOString() : null,
+      metadataExtractedAt:
+        asset.metadataExtractedAt instanceof Date ? asset.metadataExtractedAt.toISOString() : null,
     }
   }
 }

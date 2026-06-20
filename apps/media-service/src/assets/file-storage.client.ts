@@ -17,7 +17,9 @@ export class FileStorageClient {
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status
       if (status === 404 || status === 204) return
-      throw new BadGatewayException(`file-storage delete failed: ${status ?? 'service unreachable'}`)
+      throw new BadGatewayException(
+        `file-storage delete failed: ${status ?? 'service unreachable'}`,
+      )
     }
   }
 }

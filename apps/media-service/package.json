@@ -1,5 +1,5 @@
 {
-  "name": "@photox/library-service",
+  "name": "@photox/media-service",
   "version": "0.0.1",
   "private": true,
   "scripts": {
