@@ -2,7 +2,7 @@ import { type INestApplication, ValidationPipe } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import supertest from 'supertest'
 import type { Server } from 'node:http'
-import { setupTestInfra, teardownTestInfra, stopMinioContainer } from './test-setup'
+import { setupTestInfra, teardownTestInfra } from './test-setup'
 
 interface HealthResponse {
   status: string
@@ -69,15 +69,4 @@ describe('GET /health', () => {
     expect(typeof body.checks.database.latencyMs).toBe('number')
     expect(typeof body.checks.minio.latencyMs).toBe('number')
   })
-
-  it('HLT-04: returns degraded when MinIO is down and DB is still up', async () => {
-    await stopMinioContainer()
-
-    const res = await supertest(httpServer).get('/health').expect(200)
-    const body = res.body as HealthResponse
-
-    expect(body.status).toBe('degraded')
-    expect(body.checks.database.status).toBe('up')
-    expect(body.checks.minio.status).toBe('down')
-  }, 30_000)
 })

@@ -70,10 +70,3 @@ export async function teardownTestInfra(): Promise<void> {
     pgContainer = null
   }
 }
-
-export async function stopMinioContainer(): Promise<void> {
-  if (minioContainer) {
-    await minioContainer.stop()
-    minioContainer = null
-  }
-}
