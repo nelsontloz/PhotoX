@@ -36,7 +36,7 @@ export async function setupTestInfra(): Promise<TestInfra> {
     .withExposedPorts(9000)
     .withStartupTimeout(120_000)
     .withDefaultLogDriver()
-    .withWaitStrategy(Wait.forHttp('/minio/health/live', 9000))
+    .withWaitStrategy(Wait.forListeningPorts())
     .start()
 
   minioContainer = minio
