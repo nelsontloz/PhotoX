@@ -16,15 +16,15 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
-import { FilesService } from './files.service'
-import { UserIdGuard } from './guards/user-id.guard'
-import { FileRecordDto } from './dto/file-record.dto'
+import { UserFilesService } from './user-files.service'
+import { UserIdGuard } from './user-id.guard'
+import { FileRecordDto } from '../file-record.dto'
 import { FileListResponseDto, ListFilesQueryDto } from './dto/list-files-query.dto'
 
 @ApiTags('files')
 @Controller('v1/files')
-export class FilesController {
-  constructor(private readonly filesService: FilesService) {}
+export class UserFilesController {
+  constructor(private readonly userFilesService: UserFilesService) {}
 
   @Post()
   @UseInterceptors(FileInterceptor('file'))
@@ -37,7 +37,7 @@ export class FilesController {
     @Req() req: Request,
     @UploadedFile() file: { buffer: Buffer; originalname: string; mimetype: string; size: number },
   ) {
-    return this.filesService.upload(req.userId!, file)
+    return this.userFilesService.upload(req.userId!, file)
   }
 
   @Get()
@@ -45,7 +45,7 @@ export class FilesController {
   @ApiOperation({ summary: "List the authenticated user's files" })
   @ApiResponse({ status: 200, description: 'Paginated file list', type: FileListResponseDto })
   async list(@Req() req: Request, @Query() query: ListFilesQueryDto) {
-    return this.filesService.list(
+    return this.userFilesService.list(
       req.userId!,
       query.limit ?? 20,
       query.offset ?? 0,
@@ -59,7 +59,7 @@ export class FilesController {
   @ApiResponse({ status: 200, description: 'File record', type: FileRecordDto })
   @ApiResponse({ status: 404, description: 'File not found' })
   async getOne(@Req() req: Request, @Param('fileId') fileId: string) {
-    return this.filesService.getOne(req.userId!, fileId)
+    return this.userFilesService.getOne(req.userId!, fileId)
   }
 
   @Get(':fileId/download')
@@ -72,7 +72,7 @@ export class FilesController {
     @Res() res: Response,
     @Param('fileId') fileId: string,
   ) {
-    const { stream, record } = await this.filesService.download(req.userId!, fileId)
+    const { stream, record } = await this.userFilesService.download(req.userId!, fileId)
     res.set({
       'Content-Type': record.mimeType,
       'Content-Disposition': `attachment; filename="${record.originalName}"`,
@@ -86,6 +86,6 @@ export class FilesController {
   @ApiOperation({ summary: 'Delete a file (idempotent)' })
   @ApiResponse({ status: 204, description: 'File deleted' })
   async delete(@Req() req: Request, @Param('fileId') fileId: string) {
-    await this.filesService.delete(req.userId!, fileId)
+    await this.userFilesService.delete(req.userId!, fileId)
   }
 }

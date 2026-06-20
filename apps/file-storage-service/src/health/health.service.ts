@@ -1,13 +1,11 @@
 import { Injectable } from '@nestjs/common'
 import { DataSource } from 'typeorm'
-import { RedisService } from '@photox/shared-redis'
 import { MinioService } from '../storage/minio.service'
 
 @Injectable()
 export class HealthService {
   constructor(
     private readonly dataSource: DataSource,
-    private readonly redis: RedisService,
     private readonly minio: MinioService,
   ) {}
 
@@ -20,14 +18,6 @@ export class HealthService {
       checks.database = { status: 'up', latencyMs: Date.now() - dbStart }
     } catch {
       checks.database = { status: 'down', latencyMs: Date.now() - dbStart }
-    }
-
-    const redisStart = Date.now()
-    try {
-      await this.redis.ping()
-      checks.redis = { status: 'up', latencyMs: Date.now() - redisStart }
-    } catch {
-      checks.redis = { status: 'down', latencyMs: Date.now() - redisStart }
     }
 
     const minioStart = Date.now()

@@ -7,19 +7,17 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { randomUUID, createHash } from 'crypto'
 import { Readable } from 'stream'
-import { RedisService } from '@photox/shared-redis'
-import { EVENTS, type FileUploadedEvent, type FileDeletedEvent } from '@photox/shared-events'
-import { FileRecord } from '../entities/file-record.entity'
-import { MinioService } from '../storage/minio.service'
-import type { FileListResponse, BatchFilesResponse } from '@photox/shared-types'
+import { FileRecord } from '../../entities/file-record.entity'
+import { MinioService } from '../../storage/minio.service'
+import { toFileRecordResponse } from '../file-record.mapper'
+import type { FileListResponse } from '@photox/shared-types'
 
 @Injectable()
-export class FilesService {
+export class UserFilesService {
   constructor(
     @InjectRepository(FileRecord)
     private readonly fileRepo: Repository<FileRecord>,
     private readonly minio: MinioService,
-    private readonly redis: RedisService,
   ) {}
 
   async upload(
@@ -43,7 +41,7 @@ export class FilesService {
         file.mimetype,
       )
     } catch (err) {
-      console.error('[FilesService] MinIO upload failed', err)
+      console.error('[UserFilesService] MinIO upload failed', err)
       throw new BadRequestException('Failed to upload file to storage')
     }
 
@@ -59,22 +57,14 @@ export class FilesService {
     try {
       await this.fileRepo.save(record)
     } catch (err) {
-      console.error('[FilesService] DB save failed, cleaning up MinIO object', err)
+      console.error('[UserFilesService] DB save failed, cleaning up MinIO object', err)
       try {
         await this.minio.deleteFile(storageKey)
       } catch (cleanupErr) {
-        console.error('[FilesService] Orphan cleanup failed', cleanupErr)
+        console.error('[UserFilesService] Orphan cleanup failed', cleanupErr)
       }
       throw new BadRequestException('Failed to save file record')
     }
-
-    this.publishEvent(EVENTS.FILE_UPLOADED, {
-      fileId: record.id,
-      userId: record.userId,
-      mimeType: record.mimeType,
-      sizeBytes: record.sizeBytes,
-      timestamp: new Date().toISOString(),
-    } satisfies FileUploadedEvent)
 
     return record
   }
@@ -116,7 +106,7 @@ export class FilesService {
     const record = await this.fileRepo.findOne({ where: { id: fileId } })
     if (!record) throw new NotFoundException('File not found')
     if (record.userId !== userId) throw new NotFoundException('File not found')
-    return this.toResponse(record)
+    return toFileRecordResponse(record)
   }
 
   async download(
@@ -138,90 +128,14 @@ export class FilesService {
     try {
       await this.minio.deleteFile(record.storageKey)
     } catch (err) {
-      console.error('[FilesService] MinIO delete failed', err)
+      console.error('[UserFilesService] MinIO delete failed', err)
     }
 
     await this.fileRepo.remove(record)
-
-    this.publishEvent(EVENTS.FILE_DELETED, {
-      fileId: record.id,
-      userId: record.userId,
-      timestamp: new Date().toISOString(),
-    } satisfies FileDeletedEvent)
-  }
-
-  async getOneInternal(fileId: string) {
-    const record = await this.fileRepo.findOne({ where: { id: fileId } })
-    if (!record) throw new NotFoundException('File not found')
-    return this.toResponse(record)
-  }
-
-  async getBatchInternal(fileIds: string[]): Promise<BatchFilesResponse> {
-    if (fileIds.length === 0) return { items: [], missing: [] }
-
-    const found = await this.fileRepo
-      .createQueryBuilder('f')
-      .where('f.id IN (:...fileIds)', { fileIds })
-      .getMany()
-
-    const foundIds = new Set(found.map((f) => f.id))
-    const missing = fileIds.filter((id) => !foundIds.has(id))
-
-    return {
-      items: found.map((f) => this.toResponse(f)),
-      missing,
-    }
-  }
-
-  async streamInternal(
-    fileId: string,
-  ): Promise<{ stream: Readable; record: FileRecord }> {
-    const record = await this.fileRepo.findOne({ where: { id: fileId } })
-    if (!record) throw new NotFoundException('File not found')
-    const stream = await this.minio.downloadFile(record.storageKey)
-    return { stream, record }
-  }
-
-  async deleteInternal(fileId: string): Promise<void> {
-    const record = await this.fileRepo.findOne({ where: { id: fileId } })
-    if (!record) return
-
-    try {
-      await this.minio.deleteFile(record.storageKey)
-    } catch (err) {
-      console.error('[FilesService] MinIO delete failed', err)
-    }
-
-    await this.fileRepo.remove(record)
-
-    this.publishEvent(EVENTS.FILE_DELETED, {
-      fileId: record.id,
-      userId: record.userId,
-      timestamp: new Date().toISOString(),
-    } satisfies FileDeletedEvent)
-  }
-
-  private toResponse(record: FileRecord) {
-    return {
-      id: record.id,
-      userId: record.userId,
-      storageKey: record.storageKey,
-      originalName: record.originalName,
-      mimeType: record.mimeType,
-      sizeBytes: record.sizeBytes,
-      checksumSha256: record.checksumSha256,
-      createdAt: record.createdAt.toISOString(),
-    }
   }
 
   private getExtension(filename: string): string {
     const dot = filename.lastIndexOf('.')
     return dot >= 0 ? filename.slice(dot + 1) : 'bin'
-  }
-
-  private publishEvent(channel: string, payload: unknown): void {
-    this.redis.publish(channel, JSON.stringify(payload)).catch((err) => {
-      console.error(`[FilesService] Failed to publish ${channel}`, err)
-    })
   }
 }
