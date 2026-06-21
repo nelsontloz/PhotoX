@@ -19,6 +19,7 @@ const envSchema = z.object({
   MINIO_BUCKET: z.string().default('photox-files'),
   AUTH_ACCESS_TTL: z.string().default('30m'),
   AUTH_REFRESH_TTL: z.string().default('30d'),
+  AUTH_CLOCK_TOLERANCE_SEC: z.coerce.number().default(60),
   FILE_STORAGE_SERVICE_URL: z.string().default('http://localhost:3003'),
 })
 

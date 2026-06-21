@@ -1,12 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
 import { firstValueFrom } from 'rxjs'
-
-const SERVICES = {
-  'user-service': process.env.USER_SERVICE_URL ?? 'http://localhost:3001',
-  'media-service': process.env.MEDIA_SERVICE_URL ?? 'http://localhost:3002',
-  'file-storage-service': process.env.FILE_STORAGE_SERVICE_URL ?? 'http://localhost:3003',
-} as const
+import { SERVICE_URLS } from '@photox/shared-config'
 
 @Injectable()
 export class HealthService {
@@ -15,7 +10,7 @@ export class HealthService {
   async check() {
     const checks: Record<string, { status: string; latencyMs?: number }> = {}
 
-    const entries = Object.entries(SERVICES)
+    const entries = Object.entries(SERVICE_URLS)
     await Promise.allSettled(
       entries.map(async ([name, url]) => {
         const start = Date.now()

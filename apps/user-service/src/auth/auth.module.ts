@@ -8,7 +8,7 @@ import { PasswordService } from './tokens/password.service'
 import { TokenService, AUTH_CLOCK_TOLERANCE } from './tokens/token.service'
 import { User } from '../entities/user.entity'
 import { RefreshToken } from '../entities/refresh-token.entity'
-import { loadAuthEnv } from '../config/auth-env'
+import { loadAuthEnv } from '@photox/shared-auth'
 
 @Module({
   imports: [
