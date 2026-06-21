@@ -113,6 +113,10 @@ export class AssetsService {
     if (dto.takenAt !== undefined) patch.takenAt = dto.takenAt ? new Date(dto.takenAt) : null
     if (dto.favorite !== undefined) patch.favorite = dto.favorite
 
+    if (Object.keys(patch).length === 0) {
+      return this.toResponse(asset)
+    }
+
     await this.repo.update(id, patch)
     const updated = await this.repo.findOne({ where: { id } })
     return this.toResponse(updated!)
