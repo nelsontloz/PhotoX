@@ -10,7 +10,6 @@ interface HealthResponse {
   timestamp: string
   checks: {
     database: { status: string; latencyMs?: number }
-    redis: { status: string; latencyMs?: number }
   }
 }
 
@@ -26,32 +25,30 @@ afterAll(async () => {
 })
 
 describe('GET /health', () => {
-  it('HLT-01: returns 503 with status degraded when Redis is unreachable', async () => {
-    const res = await supertest(httpServer).get('/health').expect(503)
+  it('HLT-01: returns 200 with status ok when all checks pass', async () => {
+    const res = await supertest(httpServer).get('/health').expect(200)
     const body = res.body as HealthResponse
 
-    expect(body.status).toBe('degraded')
+    expect(body.status).toBe('ok')
     expect(body.service).toBe('media-service')
   })
 
-  it('HLT-02: database is up, redis is down', async () => {
-    const res = await supertest(httpServer).get('/health').expect(503)
+  it('HLT-02: database is up', async () => {
+    const res = await supertest(httpServer).get('/health').expect(200)
     const body = res.body as HealthResponse
 
     expect(body.checks.database.status).toBe('up')
-    expect(body.checks.redis.status).toBe('down')
   })
 
-  it('HLT-03: latencyMs is a number for both checks', async () => {
-    const res = await supertest(httpServer).get('/health').expect(503)
+  it('HLT-03: latencyMs is a number for database check', async () => {
+    const res = await supertest(httpServer).get('/health').expect(200)
     const body = res.body as HealthResponse
 
     expect(typeof body.checks.database.latencyMs).toBe('number')
-    expect(typeof body.checks.redis.latencyMs).toBe('number')
   })
 
   it('HLT-04: uptime is a number and timestamp is ISO-8601', async () => {
-    const res = await supertest(httpServer).get('/health').expect(503)
+    const res = await supertest(httpServer).get('/health').expect(200)
     const body = res.body as HealthResponse
 
     expect(typeof body.uptime).toBe('number')

@@ -5,7 +5,7 @@ Personal photo/video hosting. NestJS microservices monorepo with a Vite React we
 ## Stack
 
 - **Monorepo:** Turborepo + pnpm workspaces (`apps/*`, `packages/*`)
-- **Backend:** NestJS 10, TypeORM, PostgreSQL, Redis, MinIO
+- **Backend:** NestJS 10, TypeORM, PostgreSQL, MinIO
 - **Frontend:** Vite + React + TypeScript
 - **Single PG instance, 3 databases:** `users_db`, `library_db`, `files_db` (see `docker/postgres/init.sql`)
 - **Node:** 20 (see `.nvmrc`), **pnpm:** 9.15.0 (see `packageManager` in root `package.json`)
@@ -23,18 +23,17 @@ packages/
   shared-types/         DTOs (sparse for now)
   shared-events/        Event constants + payload types
   shared-auth/          Auth types (JwtPayload, TokenPair)
-  shared-redis/         RedisService + RedisModule.forRoot()
   shared-config/        Zod env loader (loadEnv)
 docker/
   postgres/init.sql     Creates the 3 databases
-docker-compose.yml      8 services: postgres, redis, minio, 4 nestjs, web
+docker-compose.yml      7 services: postgres, minio, 4 nestjs, web
 ```
 
 ## Essential commands
 
 ```bash
-# 1. Start infrastructure FIRST (services need postgres/redis/minio)
-docker compose up -d postgres redis minio
+# 1. Start infrastructure FIRST (services need postgres/minio)
+docker compose up -d postgres minio
 
 # 2. Then start apps
 pnpm dev              # runs all 10 packages in watch mode via turbo
@@ -75,19 +74,13 @@ After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
 
 ## NestJS module gotchas (verified the hard way)
 
-**`RedisModule` is `@Global()` in `shared-redis` but that means nothing until it's imported.** Each NestJS `AppModule` must import `RedisModule.forRoot({ host, port })` or `RedisService` won't be resolvable.
-
-**`ioredis` must be created lazily.** `new Redis({ lazyConnect: true })` alone does NOT prevent ECONNREFUSED crashes when Redis is down — ioredis still emits unhandled `error` events. The pattern used here: `RedisService` creates the ioredis client only inside `getClient()` (called from `ping()`/`publish()`/`subscribe()`), with `this.client.on('error', () => {})` attached at creation time. Module factory uses `useValue`, not `useFactory` with `connect()`. Don't refactor to eager connection.
-
 **`HealthService` uses `DataSource.query('SELECT 1')`, not `@InjectRepository()`.** A repository injection requires `TypeOrmModule.forFeature()` in the module — too much coupling for a health check. `DataSource` is globally available because the DB `TypeOrmModule.forRoot()` is imported in `AppModule`.
 
 **`file-storage-service` HealthModule must import `StorageModule`** so `MinioService` is in scope.
 
-**Gateway has no DB.** Its `HealthService` only checks downstream services via `HttpService` — no `DataSource` or `RedisService` injection.
+**Gateway has no DB.** Its `HealthService` only checks downstream services via `HttpService` — no `DataSource` injection.
 
 **TypeORM config:** Each backend service has `retryAttempts: 3, retryDelay: 3000, connectTimeoutMS: 3000` in `DatabaseModule.forRoot()`. Do NOT set `retryAttempts: 0` — it makes the process crash immediately on connection failure instead of waiting briefly.
-
-**`useValue` for RedisModule:** the `useFactory: async () => { await redisService.connect() }` pattern WILL crash the process on ECONNREFUSED because the connect attempt throws inside the factory. Use `useValue: redisService` instead.
 
 ## API conventions (apply to all NestJS services)
 
