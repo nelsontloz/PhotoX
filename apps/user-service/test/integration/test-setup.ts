@@ -1,6 +1,9 @@
 import { randomBytes } from 'node:crypto'
 import { GenericContainer, type StartedTestContainer } from 'testcontainers'
 
+process.env.AUTH_TOKEN_SECRET = 'test-auth-secret-at-least-32-characters-long!!'
+process.env.AUTH_CLOCK_TOLERANCE_SEC = '60'
+
 interface TestInfra {
   pgHost: string
   pgPort: number

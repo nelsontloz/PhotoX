@@ -79,6 +79,32 @@ async function loginUser(email: string, password: string): Promise<AuthResponse>
   return res.body as AuthResponse
 }
 
+function decodeJwtPayload(token: string): { sub: string; email: string; iat: number; exp: number } {
+  const parts = token.split('.')
+  expect(parts).toHaveLength(3)
+  const header: { alg: string; typ: string } = JSON.parse(
+    Buffer.from(parts[0]!, 'base64url').toString(),
+  ) as { alg: string; typ: string }
+  expect(header).toMatchObject({ alg: 'HS256', typ: 'JWT' })
+  return JSON.parse(Buffer.from(parts[1]!, 'base64url').toString()) as {
+    sub: string
+    email: string
+    iat: number
+    exp: number
+  }
+}
+
+function expectJwtAccessToken(token: string, expectedSub: string, expectedEmail: string) {
+  const payload = decodeJwtPayload(token)
+  expect(payload.sub).toBe(expectedSub)
+  expect(payload.email).toBe(expectedEmail)
+  expect(payload.iat).toBeGreaterThan(0)
+  expect(payload.exp).toBeGreaterThan(payload.iat)
+  const ttl = payload.exp - payload.iat
+  expect(ttl).toBeGreaterThanOrEqual(1790)
+  expect(ttl).toBeLessThanOrEqual(1900)
+}
+
 describe('POST /v1/auth/register', () => {
   it('REG-01: creates account and returns AuthResponse', async () => {
     const payload = validPayload()
@@ -86,6 +112,7 @@ describe('POST /v1/auth/register', () => {
     const body = res.body as AuthResponse
     expect(typeof body.accessToken).toBe('string')
     expect(body.accessToken.length).toBeGreaterThan(0)
+    expectJwtAccessToken(body.accessToken, body.user.id, payload.email)
     expect(typeof body.refreshToken).toBe('string')
     expect(body.refreshToken.length).toBeGreaterThan(0)
     expect(body.user).toBeDefined()
@@ -212,6 +239,7 @@ describe('POST /v1/auth/login', () => {
 
     const body = res.body as AuthResponse
     expect(body.accessToken).toBeTruthy()
+    expectJwtAccessToken(body.accessToken, body.user.id, body.user.email)
     expect(body.refreshToken).toBeTruthy()
     expect(body.user).toBeDefined()
     expect(body.user.email).toBe(email)
@@ -272,6 +300,7 @@ describe('POST /v1/auth/login', () => {
     const body = res.body as AuthResponse
     expect(typeof body.accessToken).toBe('string')
     expect(body.accessToken.length).toBeGreaterThan(0)
+    expectJwtAccessToken(body.accessToken, body.user.id, body.user.email)
     expect(typeof body.refreshToken).toBe('string')
     expect(body.refreshToken.length).toBeGreaterThan(0)
   })
@@ -311,6 +340,7 @@ describe('POST /v1/auth/refresh', () => {
     const body = res.body as AuthResponse
     expect(typeof body.accessToken).toBe('string')
     expect(body.accessToken.length).toBeGreaterThan(0)
+    expectJwtAccessToken(body.accessToken, body.user.id, body.user.email)
     expect(typeof body.refreshToken).toBe('string')
     expect(body.refreshToken.length).toBeGreaterThan(0)
     expect(body.accessToken).not.toBe(login.accessToken)

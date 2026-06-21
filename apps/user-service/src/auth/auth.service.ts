@@ -72,20 +72,14 @@ export class AuthService {
   }
 
   private async issueTokens(user: User): Promise<AuthResponse> {
-    const accessRaw = this.tokenService.generate()
-    const refreshRaw = this.tokenService.generate()
+    const accessToken = await this.tokenService.signAccessToken({
+      id: user.id,
+      email: user.email,
+    })
 
-    const accessHash = this.tokenService.hash(accessRaw)
+    const refreshRaw = this.tokenService.generate()
     const refreshHash = this.tokenService.hash(refreshRaw)
 
-    await this.tokenRepo.save(
-      this.tokenRepo.create({
-        userId: user.id,
-        tokenHash: accessHash,
-        purpose: 'access' as const,
-        expiresAt: this.tokenService.getAccessExpiresAt(),
-      }),
-    )
     await this.tokenRepo.save(
       this.tokenRepo.create({
         userId: user.id,
@@ -96,7 +90,7 @@ export class AuthService {
     )
 
     return {
-      accessToken: accessRaw,
+      accessToken,
       refreshToken: refreshRaw,
       user: {
         id: user.id,
