@@ -6,10 +6,8 @@ import supertest from 'supertest'
 import type { Server } from 'node:http'
 import { setupTestInfra, teardownTestInfra } from './test-setup'
 import { DatabaseModule } from '../../src/database/database.module'
-import { RedisModule } from '@photox/shared-redis'
 import { HealthModule } from '../../src/health/health.module'
 import { HttpExceptionFilter } from '../../src/common/filters/http-exception.filter'
-import { loadEnv } from '@photox/shared-config'
 
 interface HealthResponse {
   status: string
@@ -18,7 +16,6 @@ interface HealthResponse {
   timestamp: string
   checks: {
     database: { status: string; latencyMs?: number }
-    redis: { status: string; latencyMs?: number }
   }
 }
 
@@ -27,13 +24,11 @@ let httpServer: Server
 
 beforeAll(async () => {
   await setupTestInfra()
-  const env = loadEnv()
 
   const module = await Test.createTestingModule({
     imports: [
       ConfigModule.forRoot({ isGlobal: true }),
       DatabaseModule.forRoot('library_db'),
-      RedisModule.forRoot({ host: env.REDIS_HOST, port: env.REDIS_PORT }),
       HealthModule,
     ],
   })
@@ -65,7 +60,6 @@ describe('GET /health — DB down', () => {
     expect(body.status).toBe('degraded')
     expect(body.service).toBe('media-service')
     expect(body.checks.database.status).toBe('down')
-    expect(body.checks.redis.status).toBe('down')
     expect(typeof body.checks.database.latencyMs).toBe('number')
   })
 })

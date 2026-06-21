@@ -25,7 +25,7 @@ open http://localhost:5173
 
 ```bash
 # Run all services in dev mode (hot reload)
-docker compose up -d postgres redis minio
+docker compose up -d postgres minio
 pnpm dev
 
 # Run a single service
@@ -42,5 +42,4 @@ pnpm --filter user-service dev
 | file-storage-service | 3003      | File upload, storage & thumbnails |
 | web                  | 5173      | React frontend                    |
 | postgres             | 5432      | PostgreSQL database               |
-| redis                | 6379      | Redis (Pub/Sub + cache)           |
 | minio                | 9000/9001 | S3-compatible object storage      |

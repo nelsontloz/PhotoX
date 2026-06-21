@@ -17,18 +17,6 @@ services:
     networks:
       - photox-net
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    networks:
-      - photox-net
-
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     ports:
@@ -88,13 +76,9 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_USER: photox
       POSTGRES_PASSWORD: photox_dev
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
       FILE_STORAGE_SERVICE_URL: http://file-storage-service:3003
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3002/health || exit 1"]
@@ -118,8 +102,6 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_USER: photox
       POSTGRES_PASSWORD: photox_dev
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
       MINIO_ENDPOINT: minio
       MINIO_PORT: 9000
       MINIO_ROOT_USER: photox
@@ -127,8 +109,6 @@ services:
       MINIO_BUCKET: photox-files
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
       minio:
         condition: service_healthy
