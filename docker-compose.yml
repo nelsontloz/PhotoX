@@ -134,6 +134,7 @@ services:
       USER_SERVICE_URL: http://user-service:3001
       MEDIA_SERVICE_URL: http://media-service:3002
       FILE_STORAGE_SERVICE_URL: http://file-storage-service:3003
+      AUTH_TOKEN_SECRET: dev-auth-secret-32-characters-minimum!!
     depends_on:
       user-service:
         condition: service_healthy

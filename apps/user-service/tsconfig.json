@@ -8,6 +8,7 @@
   "references": [
     { "path": "../../packages/shared-types" },
     { "path": "../../packages/shared-events" },
-    { "path": "../../packages/shared-config" }
+    { "path": "../../packages/shared-config" },
+    { "path": "../../packages/shared-auth" }
   ]
 }

@@ -8,7 +8,10 @@ import { InternalFilesModule } from './files/internal/internal-files.module'
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['../../.env', '.env'],
+    }),
     DatabaseModule.forRoot('files_db'),
     StorageModule,
     UserFilesModule,
