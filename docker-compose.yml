@@ -49,8 +49,9 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_USER: photox
       POSTGRES_PASSWORD: photox_dev
-      AUTH_ACCESS_TTL: 15m
+      AUTH_ACCESS_TTL: 30m
       AUTH_REFRESH_TTL: 30d
+      AUTH_TOKEN_SECRET: dev-auth-secret-32-characters-minimum!!
     depends_on:
       postgres:
         condition: service_healthy

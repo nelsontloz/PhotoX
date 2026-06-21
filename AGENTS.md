@@ -97,9 +97,9 @@ After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
 
 **Password hashing: argon2 only.** Use `argon2` (not bcrypt, not `bcryptjs`). Native binding needs `python3 make g++` in the Docker build stages (`deps` + `build`). If a service does not need passwords (gateway, file-storage), don't add the dep.
 
-**Token model: opaque, persisted, rotated.** Tokens are 32 random bytes (`crypto.randomBytes(32).toString('base64url')`). Both access and refresh tokens are hashed (sha256) and stored in the `refresh_tokens` table with a `purpose` discriminator and `expiresAt`. `/refresh` rotates (revokes the old row, issues two new rows). `/logout` revokes the refresh row. JWTs are not used in this project — do not add `jsonwebtoken` or `@nestjs/jwt` to any service.
+**Token model: split.** **Access tokens** are HS256 JWTs (`@nestjs/jwt`), self-describing, locally verifiable, 2-hour TTL. **Refresh tokens** are opaque, persisted, rotated: 32 random bytes hashed (sha256) and stored in the `refresh_tokens` table with `purpose = 'refresh'` and `expiresAt`. `/refresh` rotates (revokes the old row, issues a new pair). `/logout` revokes the refresh row. A JWT access token cannot be revoked before its `exp` — the refresh token is the only revocation surface.
 
-**Token TTLs come from env.** `AUTH_ACCESS_TTL` (default `15m`) and `AUTH_REFRESH_TTL` (default `30d`) live in `shared-config/src/env.ts`.
+**Token TTLs and secrets come from env.** `AUTH_ACCESS_TTL` (default `2h`) and `AUTH_REFRESH_TTL` (default `30d`) live in `shared-config/src/env.ts`. `AUTH_TOKEN_SECRET` (required, ≥32 characters) and `AUTH_CLOCK_TOLERANCE_SEC` (default `60`) live in the user-service-local env loader at `apps/user-service/src/config/auth-env.ts`.
 
 ## Code style
 
