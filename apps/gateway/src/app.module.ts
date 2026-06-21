@@ -6,6 +6,11 @@ import { ServicesModule } from './services/services.module'
 import { AuthModule } from './auth/auth.module'
 import { AuthProxyModule } from './proxy/auth-proxy/auth-proxy.module'
 import { UsersProxyModule } from './proxy/users-proxy/users-proxy.module'
+import { FilesProxyModule } from './proxy/files-proxy/files-proxy.module'
+import { MediaProxyModule } from './proxy/media-proxy/media-proxy.module'
+import { UploadFlowModule } from './flows/upload/upload.module'
+import { AssetListFlowModule } from './flows/asset-list/asset-list.module'
+import { AssetDetailFlowModule } from './flows/asset-detail/asset-detail.module'
 import { JwtAuthGuard } from './auth/jwt-auth.guard'
 
 @Module({
@@ -19,6 +24,11 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard'
     AuthModule,
     AuthProxyModule,
     UsersProxyModule,
+    FilesProxyModule,
+    MediaProxyModule,
+    UploadFlowModule,
+    AssetListFlowModule,
+    AssetDetailFlowModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })

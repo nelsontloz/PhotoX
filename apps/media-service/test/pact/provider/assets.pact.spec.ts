@@ -1,12 +1,13 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
 import path from 'node:path'
 import { Verifier } from '@pact-foundation/pact'
-import { setupMockedApp, PACT_DIR, createAssetRepo } from './verifier'
+import { setupMockedApp, PACT_DIR, createAssetRepo, createBasicRepo } from './verifier'
 import type { INestApplication } from '@nestjs/common'
 
 let app: INestApplication
 let url: string
 let mockAssetRepo: ReturnType<typeof createAssetRepo>
+let mockThumbnailRepo: ReturnType<typeof createBasicRepo>
 
 const ASSET_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22'
 const USER_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
@@ -16,6 +17,7 @@ beforeAll(async () => {
   app = setup.app
   url = setup.url
   mockAssetRepo = setup.repos.mockAssetRepo
+  mockThumbnailRepo = setup.repos.mockThumbnailRepo
 }, 60_000)
 
 afterAll(async () => {
@@ -66,6 +68,25 @@ describe('Pact verification — media-service', () => {
             isTrashed: true,
             trashedAt: new Date('2024-06-01T00:00:00.000Z'),
           })
+        },
+        'asset a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22 has thumbnails for user 1': async () => {
+          await mockAssetRepo.save({
+            id: ASSET_ID,
+            userId: USER_ID,
+            kind: 'photo',
+            fileId: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+          })
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+          mockThumbnailRepo.find.mockResolvedValue([
+            {
+              size: 'sm',
+              fileId: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+              width: 320,
+              height: 240,
+              bytes: 24576,
+              createdAt: new Date('2024-01-01T00:00:00.000Z'),
+            },
+          ])
         },
       },
     }).verifyProvider()

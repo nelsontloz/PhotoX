@@ -271,6 +271,60 @@ describe('Gateway → media-service assets pact', () => {
       })
   })
 
+  it('DELETE /v1/assets/:id — happy path', async () => {
+    await provider
+      .given('asset a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22 exists for user 1')
+      .uponReceiving('a delete asset request via DELETE')
+      .withRequest({
+        method: 'DELETE',
+        path: '/v1/assets/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22',
+        headers: { 'x-user-id': USER_ID },
+      })
+      .willRespondWith({ status: 204 })
+      .executeTest(async (mockserver) => {
+        const res = await axios.delete(
+          `${mockserver.url}/v1/assets/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22`,
+          { headers: { 'x-user-id': USER_ID }, validateStatus: () => true },
+        )
+        expect(res.status).toBe(204)
+      })
+  })
+
+  it('GET /v1/assets/:id/thumbnails — happy path', async () => {
+    await provider
+      .given('asset a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22 has thumbnails for user 1')
+      .uponReceiving('a list thumbnails request')
+      .withRequest({
+        method: 'GET',
+        path: '/v1/assets/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22/thumbnails',
+        headers: { 'x-user-id': USER_ID },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: MatchersV3.atLeastOneLike({
+          size: MatchersV3.string('sm'),
+          fileId: MatchersV3.uuid('f47ac10b-58cc-4372-a567-0e02b2c3d479'),
+          width: MatchersV3.integer(320),
+          height: MatchersV3.integer(240),
+          bytes: MatchersV3.integer(24576),
+          createdAt: MatchersV3.datetime(
+            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+            '2024-01-01T00:00:00.000Z',
+          ),
+        }),
+      })
+      .executeTest(async (mockserver) => {
+        const res = await axios.get(
+          `${mockserver.url}/v1/assets/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22/thumbnails`,
+          { headers: { 'x-user-id': USER_ID } },
+        )
+        const data = res.data as unknown[]
+        expect(res.status).toBe(200)
+        expect(data).toHaveLength(1)
+      })
+  })
+
   it('POST /v1/assets/:id/restore — happy path', async () => {
     await provider
       .given('asset a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22 is trashed for user 1')

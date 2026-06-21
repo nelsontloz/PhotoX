@@ -5,6 +5,6 @@ import { ProxyService } from './proxy.service'
 @Module({
   imports: [HttpModule],
   providers: [ProxyService],
-  exports: [ProxyService],
+  exports: [ProxyService, HttpModule],
 })
 export class ProxyModule {}

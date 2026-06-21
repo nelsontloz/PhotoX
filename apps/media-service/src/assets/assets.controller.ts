@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Query,
   Body,
@@ -56,6 +57,15 @@ export class AssetsController {
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async update(@Req() req: Request, @Param('id') id: string, @Body() dto: UpdateAssetDto) {
     return this.assets.update(req.userId!, id, dto)
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Soft-delete (trash) an asset. Idempotent.' })
+  @ApiResponse({ status: 204, description: 'Asset trashed' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  async delete(@Req() req: Request, @Param('id') id: string) {
+    await this.assets.trash(req.userId!, id)
   }
 
   @Post(':id/trash')

@@ -2,6 +2,10 @@ import { Injectable, HttpException, BadGatewayException, Logger } from '@nestjs/
 import { HttpService } from '@nestjs/axios'
 import { firstValueFrom, timeout, catchError, throwError } from 'rxjs'
 import type { AxiosError } from 'axios'
+import type { Readable } from 'stream'
+import type { Request } from 'express'
+import * as http from 'http'
+import FormData from 'form-data'
 
 const HOP_BY_HOP = new Set([
   'host',
@@ -120,5 +124,239 @@ export class ProxyService {
 
       throw err
     }
+  }
+
+  async forwardStream(
+    url: string,
+    headers: Record<string, string>,
+  ): Promise<{ status: number; headers: Record<string, string>; data: Readable }> {
+    const start = Date.now()
+
+    const response = await firstValueFrom(
+      this.http
+        .request<Readable>({
+          method: 'GET',
+          url,
+          responseType: 'stream',
+          headers,
+          timeout: 30_000,
+          validateStatus: () => true,
+        })
+        .pipe(
+          timeout(30_000),
+          catchError((err: AxiosError) => throwError(() => err)),
+        ),
+    )
+
+    const latencyMs = Date.now() - start
+    this.logger.log({
+      method: 'GET',
+      path: url,
+      upstreamStatus: response.status,
+      latencyMs,
+      requestId: headers['x-request-id'],
+    })
+
+    const upstreamHeaders: Record<string, string> = {}
+    for (const [key, value] of Object.entries(response.headers)) {
+      if (value && typeof value === 'string') {
+        upstreamHeaders[key] = value
+      }
+    }
+
+    return { status: response.status, headers: upstreamHeaders, data: response.data }
+  }
+
+  async forwardRawBody<T = unknown>(
+    targetUrl: string,
+    req: Request,
+    headers: Record<string, string>,
+  ): Promise<{ status: number; data: T }> {
+    return new Promise((resolve, reject) => {
+      const parsed = new URL(targetUrl)
+
+      const upstreamHeaders: Record<string, string> = { ...headers }
+      const incomingHeader = req.headers['content-type']
+      if (incomingHeader) {
+        upstreamHeaders['content-type'] = Array.isArray(incomingHeader)
+          ? String(incomingHeader[0])
+          : String(incomingHeader)
+      }
+
+      const upstreamReq = http.request(
+        {
+          hostname: parsed.hostname,
+          port: parsed.port,
+          path: parsed.pathname,
+          method: 'POST',
+          headers: upstreamHeaders,
+          timeout: 60_000,
+        },
+        (upstreamRes) => {
+          const chunks: Buffer[] = []
+          upstreamRes.on('data', (c: Buffer) => chunks.push(c))
+          upstreamRes.on('end', () => {
+            const buf = Buffer.concat(chunks)
+            let data: T
+            try {
+              data = JSON.parse(buf.toString('utf8')) as T
+            } catch {
+              data = buf as unknown as T
+            }
+
+            const status = upstreamRes.statusCode ?? 500
+            this.logger.log({
+              method: 'POST',
+              path: parsed.pathname,
+              service: targetUrl,
+              upstreamStatus: status,
+              latencyMs: 0,
+              requestId: headers['x-request-id'],
+            })
+
+            if (status >= 400 && status < 500) {
+              return reject(new HttpException(data as string | Record<string, unknown>, status))
+            }
+            if (status >= 500) {
+              return reject(
+                new BadGatewayException({
+                  statusCode: 502,
+                  upstream: targetUrl,
+                  message: 'Upstream server error',
+                  traceId: headers['x-request-id'],
+                }),
+              )
+            }
+
+            resolve({ status, data })
+          })
+        },
+      )
+
+      upstreamReq.on('error', (err) => {
+        this.logger.warn({
+          method: 'POST',
+          path: parsed.pathname,
+          service: targetUrl,
+          error: err.message,
+          requestId: headers['x-request-id'],
+        })
+        reject(
+          new BadGatewayException({
+            statusCode: 502,
+            upstream: targetUrl,
+            message: `Upstream unavailable: ${err.message}`,
+            traceId: headers['x-request-id'],
+          }),
+        )
+      })
+
+      upstreamReq.on('timeout', () => {
+        upstreamReq.destroy()
+        reject(
+          new BadGatewayException({
+            statusCode: 502,
+            upstream: targetUrl,
+            message: 'Upstream timeout',
+            traceId: headers['x-request-id'],
+          }),
+        )
+      })
+
+      req.pipe(upstreamReq)
+    })
+  }
+
+  async forwardFormData<T = unknown>(
+    targetUrl: string,
+    form: FormData,
+    extraHeaders: Record<string, string>,
+  ): Promise<{ status: number; data: T }> {
+    const parsed = new URL(targetUrl)
+    const formHeaders = form.getHeaders()
+
+    return new Promise((resolve, reject) => {
+      const upstreamReq = http.request(
+        {
+          hostname: parsed.hostname,
+          port: parsed.port,
+          path: parsed.pathname,
+          method: 'POST',
+          headers: { ...extraHeaders, ...formHeaders },
+          timeout: 60_000,
+        },
+        (upstreamRes) => {
+          const chunks: Buffer[] = []
+          upstreamRes.on('data', (c: Buffer) => chunks.push(c))
+          upstreamRes.on('end', () => {
+            const buf = Buffer.concat(chunks)
+            let data: T
+            try {
+              data = JSON.parse(buf.toString('utf8')) as T
+            } catch {
+              data = buf as unknown as T
+            }
+
+            const status = upstreamRes.statusCode ?? 500
+            this.logger.log({
+              method: 'POST',
+              path: parsed.pathname,
+              service: targetUrl,
+              upstreamStatus: status,
+              latencyMs: 0,
+              requestId: extraHeaders['x-request-id'],
+            })
+
+            if (status >= 400 && status < 500) {
+              return reject(new HttpException(data as string | Record<string, unknown>, status))
+            }
+            if (status >= 500) {
+              return reject(
+                new BadGatewayException({
+                  statusCode: 502,
+                  upstream: targetUrl,
+                  message: 'Upstream server error',
+                  traceId: extraHeaders['x-request-id'],
+                }),
+              )
+            }
+
+            resolve({ status, data })
+          })
+        },
+      )
+
+      upstreamReq.on('error', (err) => {
+        this.logger.warn({
+          method: 'POST',
+          path: parsed.pathname,
+          service: targetUrl,
+          error: err.message,
+          requestId: extraHeaders['x-request-id'],
+        })
+        reject(
+          new BadGatewayException({
+            statusCode: 502,
+            upstream: targetUrl,
+            message: `Upstream unavailable: ${err.message}`,
+            traceId: extraHeaders['x-request-id'],
+          }),
+        )
+      })
+
+      upstreamReq.on('timeout', () => {
+        upstreamReq.destroy()
+        reject(
+          new BadGatewayException({
+            statusCode: 502,
+            upstream: targetUrl,
+            message: 'Upstream timeout',
+            traceId: extraHeaders['x-request-id'],
+          }),
+        )
+      })
+
+      form.pipe(upstreamReq)
+    })
   }
 }

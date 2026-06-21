@@ -89,6 +89,32 @@ describe('Gateway → file-storage-service files pact', () => {
       })
   })
 
+  it('GET /v1/files/:fileId/download — happy path', async () => {
+    await provider
+      .given('file f47ac10b-58cc-4372-a567-0e02b2c3d479 exists for user 1')
+      .uponReceiving('a download file request')
+      .withRequest({
+        method: 'GET',
+        path: '/v1/files/f47ac10b-58cc-4372-a567-0e02b2c3d479/download',
+        headers: { 'x-user-id': USER_ID },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: {
+          'Content-Type': 'image/jpeg',
+          'Content-Disposition': 'attachment; filename="photo.jpg"',
+        },
+      })
+      .executeTest(async (mockserver) => {
+        const res = await axios.get(
+          `${mockserver.url}/v1/files/f47ac10b-58cc-4372-a567-0e02b2c3d479/download`,
+          { headers: { 'x-user-id': USER_ID }, responseType: 'stream' },
+        )
+        expect(res.status).toBe(200)
+        expect(res.headers['content-type']).toBe('image/jpeg')
+      })
+  })
+
   it('DELETE /v1/files/:fileId — happy path', async () => {
     await provider
       .given('file f47ac10b-58cc-4372-a567-0e02b2c3d479 exists for user 1')

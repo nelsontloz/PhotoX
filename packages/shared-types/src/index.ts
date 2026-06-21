@@ -115,3 +115,7 @@ export interface AssetThumbnail {
 }
 
 export type AssetThumbnailListResponse = AssetThumbnail[]
+
+export interface AssetSummary extends Asset {
+  signedDownloadUrl?: string
+}

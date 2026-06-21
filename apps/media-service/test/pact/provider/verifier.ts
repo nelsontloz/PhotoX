@@ -36,6 +36,7 @@ const ASSET_DEFAULTS = {
 
 export interface MockRepos {
   mockAssetRepo: ReturnType<typeof createAssetRepo>
+  mockThumbnailRepo: ReturnType<typeof createBasicRepo>
 }
 
 export async function setupMockedApp(): Promise<{
@@ -68,7 +69,7 @@ export async function setupMockedApp(): Promise<{
   return {
     app,
     url,
-    repos: { mockAssetRepo },
+    repos: { mockAssetRepo, mockThumbnailRepo },
   }
 }
 
@@ -114,7 +115,7 @@ export function createAssetRepo() {
   }
 }
 
-function createBasicRepo() {
+export function createBasicRepo() {
   return {
     findOne: vi.fn().mockResolvedValue(null),
     save: vi.fn().mockImplementation((data: any) => Promise.resolve(data)),
