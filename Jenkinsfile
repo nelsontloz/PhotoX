@@ -73,6 +73,13 @@ spec:
                                 }
                             }
                         }
+                        stage('Coverage') {
+                            steps {
+                                container('node') {
+                                    sh 'pnpm pact-coverage'
+                                }
+                            }
+                        }
                     }
                 }
             }
