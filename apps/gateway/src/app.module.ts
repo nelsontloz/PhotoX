@@ -5,7 +5,6 @@ import { HealthModule } from './health/health.module'
 import { ServicesModule } from './services/services.module'
 import { AuthModule } from './auth/auth.module'
 import { AuthProxyModule } from './proxy/auth-proxy/auth-proxy.module'
-import { UsersProxyModule } from './proxy/users-proxy/users-proxy.module'
 import { JwtAuthGuard } from './auth/jwt-auth.guard'
 
 @Module({
@@ -18,7 +17,6 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard'
     ServicesModule,
     AuthModule,
     AuthProxyModule,
-    UsersProxyModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })
