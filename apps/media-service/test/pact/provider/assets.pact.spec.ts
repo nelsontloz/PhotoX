@@ -30,7 +30,9 @@ describe('Pact verification — media-service', () => {
       pactUrls: [path.join(PACT_DIR, 'gateway-media-service.json')],
       logLevel: 'error',
       stateHandlers: {
-        'user 1 can create assets': () => { return Promise.resolve() },
+        'user 1 can create assets': () => {
+          return Promise.resolve()
+        },
         'user 1 has assets': async () => {
           await mockAssetRepo.save({
             id: ASSET_ID,
