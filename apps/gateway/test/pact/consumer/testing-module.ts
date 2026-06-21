@@ -6,6 +6,7 @@ import { Test } from '@nestjs/testing'
 import axios from 'axios'
 import { AuthProxyController } from '../../../src/proxy/auth-proxy/auth-proxy.controller'
 import { AssetsProxyController } from '../../../src/proxy/assets-proxy/assets-proxy.controller'
+import { FilesProxyController } from '../../../src/proxy/files-proxy/files-proxy.controller'
 import { requestIdMiddleware } from '../../../src/common/middleware/request-id.middleware'
 import { ProxyService } from '../../../src/proxy/proxy.service'
 
@@ -56,7 +57,7 @@ export async function setupGatewayTestingModule(): Promise<{
   const stub = createStubProxy()
 
   const module = await Test.createTestingModule({
-    controllers: [AuthProxyController, AssetsProxyController],
+    controllers: [AuthProxyController, AssetsProxyController, FilesProxyController],
     providers: [
       { provide: ProxyService, useValue: stub },
       {
