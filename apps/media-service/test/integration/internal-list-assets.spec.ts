@@ -2,7 +2,7 @@ import { type INestApplication } from '@nestjs/common'
 import supertest from 'supertest'
 import type { Server } from 'node:http'
 import { createTestApp, closeTestApp, mintUserId, createAssetForUser } from './helpers'
-import type { Asset } from '@photox/shared-types'
+import type { AssetListResponse } from '@photox/shared-types'
 
 let app: INestApplication
 let httpServer: Server
@@ -32,27 +32,34 @@ describe('GET /v1/internal/users/:userId/assets', () => {
       .get(`/v1/internal/users/${userId}/assets`)
       .expect(200)
 
-    const body = res.body as Asset[]
-    expect(body).toHaveLength(3)
+    const body = res.body as AssetListResponse
+    expect(body.items).toHaveLength(3)
+    expect(body.total).toBe(3)
+    expect(body.limit).toBe(100)
+    expect(body.offset).toBe(0)
 
-    const trashed = body.find((a) => a.id === a2.id)
+    const trashed = body.items.find((a) => a.id === a2.id)
     expect(trashed).toBeDefined()
     expect(trashed!.isTrashed).toBe(true)
     expect(trashed!.trashedAt).not.toBeNull()
 
-    const uploadedAts = body.map((a) => new Date(a.uploadedAt).getTime())
+    const uploadedAts = body.items.map((a) => new Date(a.uploadedAt).getTime())
     for (let i = 1; i < uploadedAts.length; i++) {
       expect(uploadedAts[i - 1]!).toBeGreaterThanOrEqual(uploadedAts[i]!)
     }
   })
 
-  it('UC-I2: returns empty array for a user with no assets', async () => {
+  it('UC-I2: returns paginated empty array for a user with no assets', async () => {
     const userId = mintUserId()
 
     const res = await supertest(httpServer)
       .get(`/v1/internal/users/${userId}/assets`)
       .expect(200)
 
-    expect(res.body).toEqual([])
+    const body = res.body as AssetListResponse
+    expect(body.items).toEqual([])
+    expect(body.total).toBe(0)
+    expect(body.limit).toBe(100)
+    expect(body.offset).toBe(0)
   })
 })
