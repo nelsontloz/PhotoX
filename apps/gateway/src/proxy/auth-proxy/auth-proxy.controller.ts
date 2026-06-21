@@ -1,6 +1,4 @@
-import {
-  Controller, Post, Body, Req, HttpCode, HttpStatus,
-} from '@nestjs/common'
+import { Controller, Post, Body, Req, HttpCode, HttpStatus } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Request } from 'express'
 import { Public } from '../../auth/public.decorator'

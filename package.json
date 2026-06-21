@@ -10,9 +10,11 @@
     "clean": "turbo run clean && rm -rf node_modules",
     "test": "turbo run test",
     "test:watch": "turbo run test:watch",
+    "pact-consumer": "turbo run pact-consumer",
+    "pact-provider": "turbo run pact-provider",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "validate": "turbo run lint",
-    "verify": "pnpm run validate && turbo run test --force && pnpm run typecheck && pnpm run build"
+    "verify": "rm -rf pacts && pnpm run validate && pnpm run pact-consumer && pnpm run pact-provider && turbo run test --force && pnpm run typecheck && pnpm run build"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.0.0",

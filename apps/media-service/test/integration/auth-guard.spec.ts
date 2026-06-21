@@ -20,10 +20,7 @@ afterAll(async () => {
 
 describe('UserIdGuard — x-user-id header', () => {
   it('UC-U16: POST /v1/assets returns 400 when x-user-id is missing', async () => {
-    const res = await supertest(httpServer)
-      .post('/v1/assets')
-      .send(assetPayload())
-      .expect(400)
+    const res = await supertest(httpServer).post('/v1/assets').send(assetPayload()).expect(400)
 
     const body = res.body as ErrorBody
     expect(body.message).toBe('x-user-id header is required')

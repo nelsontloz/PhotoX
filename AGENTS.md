@@ -109,6 +109,33 @@ After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
 - ESLint (`@typescript-eslint/recommended-type-checked` + `stylistic-type-checked`) is type-aware — it reads each `tsconfig.json` via `project: true`. Don't add files that ESLint can't typecheck (e.g. random `*.cjs` outside the configured include) without updating `.eslintrc.cjs`.
 - Workspace deps: `"@photox/shared-*": "workspace:*"`.
 
+## Pact contract testing
+
+- **Consumer:** Gateway (`apps/gateway`) is the only consumer. Pact tests at `test/pact/consumer/`. Uses `PactV3` from `@pact-foundation/pact`. 13 happy-path interactions across user-service, media-service, file-storage-service.
+- **Providers:** Each backend service has pact verification tests at `test/pact/provider/`. Uses `Verifier` from `@pact-foundation/pact`. Provider tests use mocked repositories (no testcontainers) — `Test.createTestingModule` with `overrideProvider(getRepositoryToken(Entity))`.
+- **Pacts stored at repo root** `pacts/<consumer>-<provider>.json`. Not committed (in `.gitignore`). Regenerated fresh on every `pnpm verify`.
+- **Commands per service:** `pnpm pact-consumer` runs `vitest run --config vitest.consumer.config.ts` (includes `test/pact/consumer/**`). `pnpm pact-provider` runs `vitest run --config vitest.provider.config.ts` (includes `test/pact/provider/**`). Both use `passWithNoTests: true`.
+- **Root commands:** `pnpm pact-consumer` / `pnpm pact-provider` run across all services via turbo. `pact-provider` depends on `pact-consumer` in `turbo.json` so consumers always run first.
+- **`pnpm verify`** wipes `pacts/`, runs consumer → provider → regular tests → typecheck → build.
+- **File layout per service:**
+  ```
+  test/
+    integration/          # untouched existing tests
+    pact/
+      consumer/           # gateway only
+        setup.ts
+        auth.pact.spec.ts
+        assets.pact.spec.ts
+        files.pact.spec.ts
+      provider/           # backend services only
+        verifier.ts
+        auth.pact.spec.ts           # user-service
+        assets.pact.spec.ts         # media-service
+        files.pact.spec.ts          # file-storage-service
+  vitest.consumer.config.ts
+  vitest.provider.config.ts
+  ```
+
 ## Verifying changes
 
 After editing a service, `pnpm dev` (or the single-package filter) hot-reloads. Hit the health endpoint to confirm:
@@ -119,7 +146,7 @@ After editing a service, `pnpm dev` (or the single-package filter) hot-reloads. 
 - `curl localhost:3003/health` — file-storage-service
 - `http://localhost:5173` — web app (service status grid)
 
-Pre-commit order: `pnpm verify` (runs lint, test, typecheck, build in sequence). Alternatively, run individual steps: `pnpm typecheck && pnpm lint && pnpm test`.
+Pre-commit order: `pnpm verify` (runs pact consumer → pact provider → lint → test → typecheck → build in sequence). Alternatively, run individual steps: `pnpm pact-consumer && pnpm pact-provider && pnpm typecheck && pnpm lint && pnpm test`.
 
 ## Out of scope (for now)
 

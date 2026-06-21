@@ -56,6 +56,25 @@ spec:
                         }
                     }
                 }
+                stage('Pact') {
+                    stages {
+                        stage('Consumer') {
+                            steps {
+                                container('node') {
+                                    sh 'rm -rf pacts'
+                                    sh 'pnpm pact-consumer'
+                                }
+                            }
+                        }
+                        stage('Provider') {
+                            steps {
+                                container('node') {
+                                    sh 'pnpm pact-provider'
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         stage('Build') {

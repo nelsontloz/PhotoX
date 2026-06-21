@@ -10,7 +10,9 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "pact-consumer": "vitest run --config vitest.consumer.config.ts",
+    "pact-provider": "vitest run --config vitest.provider.config.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",
@@ -44,6 +46,7 @@
     "typescript": "^5.7.0",
     "testcontainers": "^10.0.0",
     "unplugin-swc": "^1.5.0",
-    "vitest": "^3.1.0"
+    "vitest": "^3.1.0",
+    "@pact-foundation/pact": "^13.0.0"
   }
 }
