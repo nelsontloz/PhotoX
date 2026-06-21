@@ -20,13 +20,14 @@ export class AuthProxyController {
   @ApiOperation({ summary: 'Register a new user account' })
   @ApiResponse({ status: 201, description: 'Account created' })
   async register(@Body() dto: RegisterDto, @Req() req: Request) {
-    return this.proxy.forward(SERVICE_URLS['user-service'], {
+    const result = await this.proxy.forward(SERVICE_URLS['user-service'], {
       method: 'POST',
       path: 'v1/auth/register',
       body: dto,
       headers: { 'x-request-id': (req.headers['x-request-id'] as string) ?? '' },
       timeout: 30_000,
     })
+    return result.data
   }
 
   @Post('login')
@@ -35,13 +36,14 @@ export class AuthProxyController {
   @ApiOperation({ summary: 'Authenticate with email and password' })
   @ApiResponse({ status: 200, description: 'Authenticated' })
   async login(@Body() dto: LoginDto, @Req() req: Request) {
-    return this.proxy.forward(SERVICE_URLS['user-service'], {
+    const result = await this.proxy.forward(SERVICE_URLS['user-service'], {
       method: 'POST',
       path: 'v1/auth/login',
       body: dto,
       headers: { 'x-request-id': (req.headers['x-request-id'] as string) ?? '' },
       timeout: 30_000,
     })
+    return result.data
   }
 
   @Post('refresh')
@@ -50,13 +52,14 @@ export class AuthProxyController {
   @ApiOperation({ summary: 'Rotate a refresh token for a new token pair' })
   @ApiResponse({ status: 200, description: 'Tokens rotated' })
   async refresh(@Body() dto: RefreshDto, @Req() req: Request) {
-    return this.proxy.forward(SERVICE_URLS['user-service'], {
+    const result = await this.proxy.forward(SERVICE_URLS['user-service'], {
       method: 'POST',
       path: 'v1/auth/refresh',
       body: dto,
       headers: { 'x-request-id': (req.headers['x-request-id'] as string) ?? '' },
       timeout: 30_000,
     })
+    return result.data
   }
 
   @Post('logout')

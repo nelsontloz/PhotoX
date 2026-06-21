@@ -11,4 +11,5 @@ export default defineWorkspace([
   'packages/shared-events',
   'packages/shared-redis',
   'packages/shared-types',
+  'scripts',
 ])

@@ -65,6 +65,26 @@ describe('Pact verification — user-service', () => {
           })
           return Promise.resolve()
         },
+        'email new@test.com is already registered': () => {
+          repos.mockUserRepo.findOne.mockResolvedValue({
+            id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+            email: 'new@test.com',
+            passwordHash: hash,
+            displayName: 'New User',
+            avatarUrl: null,
+            createdAt: new Date('2024-01-01T00:00:00.000Z'),
+            updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+          })
+          return Promise.resolve()
+        },
+        'login credentials are invalid': () => {
+          repos.mockUserRepo.findOne.mockResolvedValue(null)
+          return Promise.resolve()
+        },
+        'refresh token is invalid or revoked': () => {
+          repos.mockRefreshTokenRepo.findOne.mockResolvedValue(null)
+          return Promise.resolve()
+        },
       },
     }).verifyProvider()
   }, 30_000)
