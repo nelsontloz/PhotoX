@@ -5,6 +5,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     passWithNoTests: true,
-    include: ['src/**/*.spec.ts', 'test/integration/**/*.spec.ts'],
+    testTimeout: 30_000,
+    include: ['test/pact/consumer/**/*.spec.ts'],
   },
 })

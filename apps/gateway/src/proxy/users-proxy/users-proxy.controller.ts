@@ -1,6 +1,4 @@
-import {
-  Controller, Get, Patch, Body, Req, HttpException,
-} from '@nestjs/common'
+import { Controller, Get, Patch, Body, Req, HttpException } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Request } from 'express'
 import { CurrentUser, type CurrentUser as CurrentUserType } from '../../auth/current-user.decorator'
@@ -40,7 +38,11 @@ export class UsersProxyController {
   @ApiResponse({ status: 200, description: 'Profile updated' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 501, description: 'Not Implemented' })
-  async updateProfile(@CurrentUser() user: CurrentUserType, @Body() body: unknown, @Req() req: Request) {
+  async updateProfile(
+    @CurrentUser() user: CurrentUserType,
+    @Body() body: unknown,
+    @Req() req: Request,
+  ) {
     const result = await this.proxy.forward(SERVICE_URLS['user-service'], {
       method: 'PATCH',
       path: 'v1/users/me',

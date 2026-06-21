@@ -28,10 +28,7 @@ describe('GET /v1/assets', () => {
   it('UC-U3: returns empty library for a user with no assets', async () => {
     const userId = mintUserId()
 
-    const res = await supertest(httpServer)
-      .get('/v1/assets')
-      .set('x-user-id', userId)
-      .expect(200)
+    const res = await supertest(httpServer).get('/v1/assets').set('x-user-id', userId).expect(200)
 
     const body = res.body as AssetListResponse
     expect(body.items).toHaveLength(0)
@@ -42,10 +39,7 @@ describe('GET /v1/assets', () => {
     const userId = mintUserId()
     await createAssetForUser(httpServer, userId)
 
-    const res = await supertest(httpServer)
-      .get('/v1/assets')
-      .set('x-user-id', userId)
-      .expect(200)
+    const res = await supertest(httpServer).get('/v1/assets').set('x-user-id', userId).expect(200)
 
     const body = res.body as AssetListResponse
     expect(body.limit).toBe(20)
@@ -158,10 +152,7 @@ describe('GET /v1/assets', () => {
     const b = await createAssetForUser(httpServer, userId)
     await assetRepo.update(b.id, { isTrashed: true, trashedAt: new Date() })
 
-    const res = await supertest(httpServer)
-      .get('/v1/assets')
-      .set('x-user-id', userId)
-      .expect(200)
+    const res = await supertest(httpServer).get('/v1/assets').set('x-user-id', userId).expect(200)
 
     const body = res.body as AssetListResponse
     expect(body.total).toBe(1)
@@ -220,10 +211,7 @@ describe('GET /v1/assets', () => {
   it('UC-U6: pagination — limit=100 is accepted (upper boundary)', async () => {
     const userId = mintUserId()
 
-    await supertest(httpServer)
-      .get('/v1/assets?limit=100')
-      .set('x-user-id', userId)
-      .expect(200)
+    await supertest(httpServer).get('/v1/assets?limit=100').set('x-user-id', userId).expect(200)
   })
 
   it('UC-U6: pagination — offset past end returns empty items', async () => {

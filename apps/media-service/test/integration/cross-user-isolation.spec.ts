@@ -20,7 +20,7 @@ afterAll(async () => {
 })
 
 describe('Cross-user isolation', () => {
-  it('UC-U14: GET /v1/assets/:id returns 404 for another user\'s asset (not 403)', async () => {
+  it("UC-U14: GET /v1/assets/:id returns 404 for another user's asset (not 403)", async () => {
     const owner = mintUserId()
     const other = mintUserId()
     const asset = await createAssetForUser(httpServer, owner)
@@ -34,7 +34,7 @@ describe('Cross-user isolation', () => {
     expect(body.message).toBeDefined()
   })
 
-  it('UC-U14: PATCH /v1/assets/:id returns 404 for another user\'s asset', async () => {
+  it("UC-U14: PATCH /v1/assets/:id returns 404 for another user's asset", async () => {
     const owner = mintUserId()
     const other = mintUserId()
     const asset = await createAssetForUser(httpServer, owner)
@@ -49,7 +49,7 @@ describe('Cross-user isolation', () => {
     expect(body.message).toBeDefined()
   })
 
-  it('UC-U14: POST /v1/assets/:id/trash returns 404 for another user\'s asset', async () => {
+  it("UC-U14: POST /v1/assets/:id/trash returns 404 for another user's asset", async () => {
     const owner = mintUserId()
     const other = mintUserId()
     const asset = await createAssetForUser(httpServer, owner)
@@ -63,7 +63,7 @@ describe('Cross-user isolation', () => {
     expect(body.message).toBeDefined()
   })
 
-  it('UC-U14: POST /v1/assets/:id/restore returns 404 for another user\'s asset', async () => {
+  it("UC-U14: POST /v1/assets/:id/restore returns 404 for another user's asset", async () => {
     const owner = mintUserId()
     const other = mintUserId()
     const asset = await createAssetForUser(httpServer, owner)
@@ -77,17 +77,14 @@ describe('Cross-user isolation', () => {
     expect(body.message).toBeDefined()
   })
 
-  it('UC-U15: asset list does not leak another user\'s assets', async () => {
+  it("UC-U15: asset list does not leak another user's assets", async () => {
     const userA = mintUserId()
     const userB = mintUserId()
     await createAssetForUser(httpServer, userA)
     await createAssetForUser(httpServer, userA)
     await createAssetForUser(httpServer, userB)
 
-    const res = await supertest(httpServer)
-      .get('/v1/assets')
-      .set('x-user-id', userA)
-      .expect(200)
+    const res = await supertest(httpServer).get('/v1/assets').set('x-user-id', userA).expect(200)
 
     const body = res.body as AssetListResponse
     expect(body.total).toBe(2)
@@ -101,10 +98,7 @@ describe('Cross-user isolation', () => {
     const userB = mintUserId()
     await createAssetForUser(httpServer, userB)
 
-    const res = await supertest(httpServer)
-      .get('/v1/assets')
-      .set('x-user-id', userA)
-      .expect(200)
+    const res = await supertest(httpServer).get('/v1/assets').set('x-user-id', userA).expect(200)
 
     const body = res.body as AssetListResponse
     expect(body.total).toBe(0)

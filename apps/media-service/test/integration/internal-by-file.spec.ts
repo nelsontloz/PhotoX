@@ -34,9 +34,7 @@ describe('GET /v1/internal/assets/by-file/:fileId', () => {
   it('UC-I4: returns 404 for an unknown fileId', async () => {
     const fakeFileId = randomUUID()
 
-    await supertest(httpServer)
-      .get(`/v1/internal/assets/by-file/${fakeFileId}`)
-      .expect(404)
+    await supertest(httpServer).get(`/v1/internal/assets/by-file/${fakeFileId}`).expect(404)
   })
 
   it('UC-I5: trashed asset is still returned with isTrashed=true', async () => {

@@ -4,8 +4,14 @@ import { firstValueFrom, timeout, catchError, throwError } from 'rxjs'
 import type { AxiosError } from 'axios'
 
 const HOP_BY_HOP = new Set([
-  'host', 'connection', 'transfer-encoding', 'proxy-authenticate',
-  'proxy-authorization', 'te', 'trailer', 'upgrade',
+  'host',
+  'connection',
+  'transfer-encoding',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'upgrade',
 ])
 
 export interface ForwardOptions {
@@ -23,7 +29,10 @@ export class ProxyService {
 
   constructor(private readonly http: HttpService) {}
 
-  async forward<T = unknown>(serviceUrl: string, opts: ForwardOptions): Promise<{ status: number; data: T }> {
+  async forward<T = unknown>(
+    serviceUrl: string,
+    opts: ForwardOptions,
+  ): Promise<{ status: number; data: T }> {
     const url = `${serviceUrl}/${opts.path}`
     const timeoutMs = opts.timeout ?? 5_000
     const start = Date.now()
@@ -40,20 +49,22 @@ export class ProxyService {
 
     try {
       const response = await firstValueFrom(
-        this.http.request<T>({
-          method: opts.method,
-          url,
-          data: opts.body,
-          params: opts.query,
-          headers,
-          timeout: timeoutMs,
-          validateStatus: () => true,
-        }).pipe(
-          timeout(timeoutMs),
-          catchError((err: AxiosError) => {
-            return throwError(() => err)
-          }),
-        ),
+        this.http
+          .request<T>({
+            method: opts.method,
+            url,
+            data: opts.body,
+            params: opts.query,
+            headers,
+            timeout: timeoutMs,
+            validateStatus: () => true,
+          })
+          .pipe(
+            timeout(timeoutMs),
+            catchError((err: AxiosError) => {
+              return throwError(() => err)
+            }),
+          ),
       )
 
       const latencyMs = Date.now() - start
@@ -87,7 +98,11 @@ export class ProxyService {
         throw err
       }
 
-      if (axiosErr.code === 'ECONNREFUSED' || axiosErr.code === 'ETIMEDOUT' || axiosErr.code === 'ECONNABORTED') {
+      if (
+        axiosErr.code === 'ECONNREFUSED' ||
+        axiosErr.code === 'ETIMEDOUT' ||
+        axiosErr.code === 'ECONNABORTED'
+      ) {
         this.logger.warn({
           method: opts.method,
           path: opts.path,

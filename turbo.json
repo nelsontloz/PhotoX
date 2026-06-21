@@ -27,6 +27,14 @@
       "dependsOn": ["^build"],
       "cache": false,
       "persistent": true
+    },
+    "pact-consumer": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "pact-provider": {
+      "dependsOn": ["pact-consumer", "^build"],
+      "cache": false
     }
   }
 }

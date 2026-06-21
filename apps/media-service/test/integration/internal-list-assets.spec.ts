@@ -28,9 +28,7 @@ describe('GET /v1/internal/users/:userId/assets', () => {
       .set('x-user-id', userId)
       .expect(204)
 
-    const res = await supertest(httpServer)
-      .get(`/v1/internal/users/${userId}/assets`)
-      .expect(200)
+    const res = await supertest(httpServer).get(`/v1/internal/users/${userId}/assets`).expect(200)
 
     const body = res.body as Asset[]
     expect(body).toHaveLength(3)
@@ -49,9 +47,7 @@ describe('GET /v1/internal/users/:userId/assets', () => {
   it('UC-I2: returns empty array for a user with no assets', async () => {
     const userId = mintUserId()
 
-    const res = await supertest(httpServer)
-      .get(`/v1/internal/users/${userId}/assets`)
-      .expect(200)
+    const res = await supertest(httpServer).get(`/v1/internal/users/${userId}/assets`).expect(200)
 
     expect(res.body).toEqual([])
   })
