@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { Asset, AssetListResponse, AssetThumbnailListResponse, FileRecord } from '@photox/shared-types'
+import type { Asset, AssetListResponse, AssetThumbnailListResponse } from '@photox/shared-types'
 
 interface ListAssetsParams {
   limit?: number
@@ -27,11 +27,19 @@ export async function downloadFile(fileId: string): Promise<Blob> {
 export async function uploadFile(
   file: File,
   onProgress?: (pct: number) => void,
-): Promise<FileRecord> {
+  kind?: 'photo' | 'video',
+  title?: string,
+  description?: string,
+  takenAt?: string,
+): Promise<Asset> {
   const formData = new FormData()
   formData.append('file', file)
+  if (kind) formData.append('kind', kind)
+  if (title) formData.append('title', title)
+  if (description) formData.append('description', description)
+  if (takenAt) formData.append('takenAt', takenAt)
 
-  const { data } = await api.post<FileRecord>('/v1/files', formData, {
+  const { data } = await api.post<Asset>('/v1/files', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 180_000,
     onUploadProgress: (e) => {

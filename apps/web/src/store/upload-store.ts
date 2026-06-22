@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type UploadStatus = 'queued' | 'uploading' | 'creating' | 'done' | 'error'
+export type UploadStatus = 'queued' | 'uploading' | 'done' | 'error'
 
 export interface UploadItem {
   id: string
@@ -58,9 +58,7 @@ export const useUploadStore = create<UploadState>((set) => ({
 
   setStatus: (id, status, patch) =>
     set((s) => ({
-      items: s.items.map((item) =>
-        item.id === id ? { ...item, status, ...patch } : item,
-      ),
+      items: s.items.map((item) => (item.id === id ? { ...item, status, ...patch } : item)),
     })),
 
   clearDone: () => set((s) => ({ items: s.items.filter((i) => i.status !== 'done') })),
