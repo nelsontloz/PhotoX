@@ -40,14 +40,24 @@ function main(): void {
     process.exit(1)
   }
 
+  function findPactSpecFiles(dir: string): string[] {
+    const results: string[] = []
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        results.push(...findPactSpecFiles(fullPath))
+      } else if (entry.isFile() && entry.name.endsWith('.pact.spec.ts')) {
+        results.push(fullPath)
+      }
+    }
+    return results
+  }
+
   const providerSpecs: string[] = []
   for (const svc of services) {
     const providerDir = path.join(appsDir, svc, 'test', 'pact', 'provider')
     if (fs.existsSync(providerDir)) {
-      const files = fs.readdirSync(providerDir).filter((f) => f.endsWith('.pact.spec.ts'))
-      for (const f of files) {
-        providerSpecs.push(path.join(providerDir, f))
-      }
+      providerSpecs.push(...findPactSpecFiles(providerDir))
     }
   }
 

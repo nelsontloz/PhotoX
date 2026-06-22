@@ -2,16 +2,16 @@
 import type { INestApplication } from '@nestjs/common'
 import { MatchersV3 } from '@pact-foundation/pact'
 import request from 'supertest'
-import { createPact } from './setup'
-import { setupGatewayTestingModule } from './testing-module'
-import type { StubProxy } from './testing-module'
+import { createPact } from '../setup'
+import { setupUserServicePactModule } from './testing-module'
+import type { StubProxy } from '../stub'
 
 const provider = createPact('user-service')
 let app: INestApplication
 let stub: StubProxy
 
 beforeAll(async () => {
-  const setup = await setupGatewayTestingModule()
+  const setup = await setupUserServicePactModule()
   app = setup.app
   stub = setup.stub
 }, 30_000)
