@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { FaCircle } from 'react-icons/fa6'
 import { checkGatewayHealth, checkServiceHealth } from '../api/health'
 
 interface ServiceStatus {
@@ -19,9 +20,9 @@ const SERVICES = [
 
 function StatusDot({ status }: { status: string }) {
   const color =
-    status === 'up' ? 'bg-green-500' : status === 'degraded' ? 'bg-yellow-500' : 'bg-red-500'
+    status === 'up' ? 'text-green-500' : status === 'degraded' ? 'text-yellow-500' : 'text-red-500'
 
-  return <span className={`inline-block h-3 w-3 rounded-full ${color} mr-2`} />
+  return <FaCircle className={`inline-block text-xs mr-2 ${color}`} />
 }
 
 function ServiceCard({ service }: { service: ServiceStatus }) {
@@ -85,7 +86,9 @@ export default function HomePage() {
 
   useEffect(() => {
     void fetchStatuses()
-    const interval = setInterval(fetchStatuses, 5000)
+    const interval = setInterval(() => {
+      void fetchStatuses()
+    }, 5000)
     return () => clearInterval(interval)
   }, [])
 

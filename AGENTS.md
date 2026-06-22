@@ -101,6 +101,11 @@ After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
 
 **Token TTLs and secrets come from env.** `AUTH_ACCESS_TTL` (default `2h`) and `AUTH_REFRESH_TTL` (default `30d`) live in `shared-config/src/env.ts`. `AUTH_TOKEN_SECRET` (required, ≥32 characters) and `AUTH_CLOCK_TOLERANCE_SEC` (default `60`) live in the user-service-local env loader at `apps/user-service/src/config/auth-env.ts`.
 
+## Frontend conventions (web)
+
+- **Icons: use Font Awesome only.** Import from `react-icons/fa6` (e.g. `FaCamera`, `FaLock`, `FaSpinner`). Do NOT use Material Symbols (`<span class="material-symbols-outlined">`) or any other icon set in the web app. The Material Symbols font link in `index.html` is legacy — ignore it.
+- **Dark mode:** Pages use `dark:` Tailwind variants. Default to dark (`<html class="dark">`). The app respects `darkMode: "class"`.
+
 ## Code style
 
 - No comments in code (per repo convention).
