@@ -1,9 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument */
 import type { INestApplication } from '@nestjs/common'
-import { ValidationPipe } from '@nestjs/common'
+import { ValidationPipe, type ExecutionContext } from '@nestjs/common'
+import { APP_GUARD } from '@nestjs/core'
 import { Test } from '@nestjs/testing'
 import axios from 'axios'
 import { AuthProxyController } from '../../../src/proxy/auth-proxy/auth-proxy.controller'
+import { AssetsProxyController } from '../../../src/proxy/assets-proxy/assets-proxy.controller'
+import { FilesProxyController } from '../../../src/proxy/files-proxy/files-proxy.controller'
 import { requestIdMiddleware } from '../../../src/common/middleware/request-id.middleware'
 import { ProxyService } from '../../../src/proxy/proxy.service'
 
@@ -54,8 +57,20 @@ export async function setupGatewayTestingModule(): Promise<{
   const stub = createStubProxy()
 
   const module = await Test.createTestingModule({
-    controllers: [AuthProxyController],
-    providers: [{ provide: ProxyService, useValue: stub }],
+    controllers: [AuthProxyController, AssetsProxyController, FilesProxyController],
+    providers: [
+      { provide: ProxyService, useValue: stub },
+      {
+        provide: APP_GUARD,
+        useValue: {
+          canActivate: (context: ExecutionContext) => {
+            const req = context.switchToHttp().getRequest<{ user?: { id: string } }>()
+            req.user = { id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' }
+            return true
+          },
+        },
+      },
+    ],
   }).compile()
 
   const app = module.createNestApplication()
