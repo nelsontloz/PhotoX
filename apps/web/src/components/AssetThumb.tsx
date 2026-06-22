@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Asset, AssetThumbnail } from '@photox/shared-types'
 import { listThumbnails, downloadFile } from '../api/assets'
+import { useThumbStore } from '../store/thumb-store'
 import { Skeleton } from './Skeleton'
 
 interface AssetThumbProps {
@@ -19,6 +20,7 @@ function pickThumbnail(thumbs: AssetThumbnail[]): AssetThumbnail | undefined {
 }
 
 export function AssetThumb({ asset, className = '' }: AssetThumbProps) {
+  const localThumb = useThumbStore((s) => s.urls[asset.fileId])
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   const [error, setError] = useState(false)
 
@@ -48,7 +50,9 @@ export function AssetThumb({ asset, className = '' }: AssetThumbProps) {
     }
   }, [asset.id, asset.kind])
 
-  if (error) {
+  const src = localThumb ?? objectUrl
+
+  if (error && !src) {
     return (
       <div className={`w-full bg-slate-800 flex items-center justify-center ${className}`}>
         <span className="text-xs text-slate-500">No preview</span>
@@ -56,7 +60,7 @@ export function AssetThumb({ asset, className = '' }: AssetThumbProps) {
     )
   }
 
-  if (!objectUrl) {
+  if (!src) {
     const aspect =
       asset.width && asset.height
         ? { aspectRatio: `${asset.width} / ${asset.height}` }
@@ -67,7 +71,7 @@ export function AssetThumb({ asset, className = '' }: AssetThumbProps) {
 
   return (
     <img
-      src={objectUrl}
+      src={src}
       alt={asset.originalName ?? asset.title ?? 'Photo'}
       className={`w-full h-auto object-cover ${className}`}
       loading="lazy"

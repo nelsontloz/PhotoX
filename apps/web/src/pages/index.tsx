@@ -1,25 +1,12 @@
-import { useRef, useState } from 'react'
-import {
-  FaCamera,
-  FaHeart,
-  FaImage,
-  FaMountain,
-  FaSpinner,
-  FaWandMagicSparkles,
-} from 'react-icons/fa6'
+import { FaHeart, FaImage, FaMountain, FaSpinner, FaWandMagicSparkles } from 'react-icons/fa6'
 import { RequireAuth } from '../components/RequireAuth'
 import { AppShell } from '../components/AppShell'
 import { AssetThumb } from '../components/AssetThumb'
+import { UploadButton } from '../components/UploadButton'
 import { useAssetGroups } from '../hooks/useAssetGroups'
 
 function TimelineContent() {
-  const { groups, loading, error } = useAssetGroups()
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [pending, setPending] = useState<File[]>([])
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setPending(Array.from(e.target.files ?? []))
-  }
+  const { groups, loading, error, refresh } = useAssetGroups()
 
   if (loading) {
     return (
@@ -67,26 +54,7 @@ function TimelineContent() {
           Your timeline is currently empty. Start preserving your life's moments by uploading your
           first batch of photos.
         </p>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={handleFileChange}
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="group inline-flex items-center gap-3 bg-primary text-white px-10 py-5 rounded-full font-bold text-lg shadow-2xl shadow-primary/30 hover:scale-105 active:scale-95 transition-transform"
-        >
-          <FaCamera className="text-2xl group-hover:-translate-y-0.5 transition-transform" />
-          <span>Upload Photos</span>
-        </button>
-        {pending.length > 0 && (
-          <p className="text-slate-500 text-sm mt-4">
-            {pending.length} file{pending.length === 1 ? '' : 's'} selected. Upload coming soon.
-          </p>
-        )}
+        <UploadButton onComplete={() => { void refresh() }} />
       </div>
     )
   }
