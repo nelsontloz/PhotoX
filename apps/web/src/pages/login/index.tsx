@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import {
   FaCamera,
   FaRegEnvelope,
@@ -18,6 +18,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const navigate = useNavigate()
   const { login, status, error, clearError } = useAuthStore()
+  const authenticated = status === 'authenticated'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -25,6 +26,10 @@ export default function LoginPage() {
     if (useAuthStore.getState().status === 'authenticated') {
       void navigate('/')
     }
+  }
+
+  if (authenticated) {
+    return <Navigate to="/" replace />
   }
 
   return (

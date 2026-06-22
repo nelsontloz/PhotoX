@@ -1,112 +1,143 @@
-import { useState, useEffect } from 'react'
-import { FaCircle } from 'react-icons/fa6'
-import { checkGatewayHealth, checkServiceHealth } from '../api/health'
+import { useRef, useState } from 'react'
+import {
+  FaCamera,
+  FaHeart,
+  FaImage,
+  FaMountain,
+  FaSpinner,
+  FaWandMagicSparkles,
+} from 'react-icons/fa6'
+import { RequireAuth } from '../components/RequireAuth'
+import { AppShell } from '../components/AppShell'
+import { AssetThumb } from '../components/AssetThumb'
+import { useAssetGroups } from '../hooks/useAssetGroups'
 
-interface ServiceStatus {
-  name: string
-  port: number
-  status: string
-  latencyMs?: number
-  uptime?: number
-  error?: string
-}
+function TimelineContent() {
+  const { groups, loading, error } = useAssetGroups()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [pending, setPending] = useState<File[]>([])
 
-const SERVICES = [
-  { name: 'Gateway', port: 3000 },
-  { name: 'User Service', port: 3001 },
-  { name: 'Library Service', port: 3002 },
-  { name: 'File Storage Service', port: 3003 },
-]
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPending(Array.from(e.target.files ?? []))
+  }
 
-function StatusDot({ status }: { status: string }) {
-  const color =
-    status === 'up' ? 'text-green-500' : status === 'degraded' ? 'text-yellow-500' : 'text-red-500'
-
-  return <FaCircle className={`inline-block text-xs mr-2 ${color}`} />
-}
-
-function ServiceCard({ service }: { service: ServiceStatus }) {
-  return (
-    <div className="min-w-[240px] rounded-xl border border-zinc-800 bg-zinc-900 p-6">
-      <div className="mb-3 flex items-center">
-        <StatusDot status={service.status} />
-        <h3 className="text-sm font-semibold">{service.name}</h3>
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-32">
+        <FaSpinner className="text-2xl text-primary animate-spin" />
       </div>
-      <div className="space-y-1 text-xs text-zinc-400">
-        <div>Port: {service.port}</div>
-        <div>Status: {service.status || 'unknown'}</div>
-        {service.latencyMs !== undefined && <div>Latency: {service.latencyMs}ms</div>}
-        {service.uptime !== undefined && <div>Uptime: {Math.floor(service.uptime)}s</div>}
-        {service.error && <div className="text-red-500">Error: {service.error}</div>}
-      </div>
-    </div>
-  )
-}
-
-export default function HomePage() {
-  const [statuses, setStatuses] = useState<ServiceStatus[]>(
-    SERVICES.map((s) => ({ ...s, status: 'checking' })),
-  )
-
-  const fetchStatuses = async () => {
-    const results = await Promise.allSettled(
-      SERVICES.map(async (svc) => {
-        try {
-          if (svc.port === 3000) {
-            const health = await checkGatewayHealth()
-            return { ...svc, status: health.status, uptime: health.uptime }
-          }
-          const health = await checkServiceHealth(svc.port)
-          const dbCheck = health.checks?.database
-          return {
-            ...svc,
-            status: health.status,
-            latencyMs: dbCheck?.latencyMs,
-            uptime: health.uptime,
-          }
-        } catch (err) {
-          return { ...svc, status: 'down', error: (err as Error).message }
-        }
-      }),
-    )
-
-    setStatuses(
-      results.map((r, i) =>
-        r.status === 'fulfilled'
-          ? r.value
-          : {
-              name: SERVICES[i]!.name,
-              port: SERVICES[i]!.port,
-              status: 'down',
-              error: 'Network error',
-            },
-      ),
     )
   }
 
-  useEffect(() => {
-    void fetchStatuses()
-    const interval = setInterval(() => {
-      void fetchStatuses()
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [])
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 gap-4">
+        <p className="text-red-500 text-sm">{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="text-primary text-sm font-medium hover:underline"
+        >
+          Retry
+        </button>
+      </div>
+    )
+  }
+
+  if (groups.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 px-4 text-center max-w-lg mx-auto">
+        <div className="mb-12 relative w-64 h-64 flex items-center justify-center">
+          <div className="absolute inset-0 bg-primary/5 blur-[100px] rounded-full animate-pulse" />
+          <div className="relative w-32 h-32">
+            <div className="absolute inset-0 rounded-[32px] bg-[#272a32] border border-[#424754]/20 rotate-12 shadow-2xl flex items-center justify-center">
+              <FaImage className="text-6xl text-primary opacity-20" />
+            </div>
+            <div className="absolute -top-4 -left-4 w-32 h-32 rounded-[32px] bg-[#1d1f27] border border-[#424754]/20 -rotate-6 shadow-2xl flex items-center justify-center">
+              <FaMountain className="text-6xl text-primary opacity-40" />
+            </div>
+            <div className="absolute -top-8 left-2 w-32 h-32 rounded-[32px] bg-[#32353d] border border-primary/30 shadow-2xl flex items-center justify-center">
+              <FaWandMagicSparkles className="text-6xl text-primary" />
+            </div>
+          </div>
+        </div>
+        <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-slate-100 mb-6">
+          No memories yet
+        </h1>
+        <p className="text-slate-400 text-lg leading-relaxed max-w-sm mx-auto mb-10">
+          Your timeline is currently empty. Start preserving your life's moments by uploading your
+          first batch of photos.
+        </p>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={handleFileChange}
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="group inline-flex items-center gap-3 bg-primary text-white px-10 py-5 rounded-full font-bold text-lg shadow-2xl shadow-primary/30 hover:scale-105 active:scale-95 transition-transform"
+        >
+          <FaCamera className="text-2xl group-hover:-translate-y-0.5 transition-transform" />
+          <span>Upload Photos</span>
+        </button>
+        {pending.length > 0 && (
+          <p className="text-slate-500 text-sm mt-4">
+            {pending.length} file{pending.length === 1 ? '' : 's'} selected. Upload coming soon.
+          </p>
+        )}
+      </div>
+    )
+  }
 
   return (
-    <div className="mx-auto max-w-screen-xl px-12 py-12">
-      <header className="mb-12">
-        <h1 className="mb-2 text-3xl font-bold">Photox</h1>
-        <p className="text-base text-zinc-400">Personal photo &amp; video hosting</p>
-      </header>
+    <>
+      {groups.map((group) => (
+        <section key={group.sortKey} className="mb-10">
+          <div className="flex items-end gap-3 mb-4 sticky top-0 bg-background-light/95 dark:bg-background-dark/95 backdrop-blur z-30 py-2 -mx-4 px-4 sm:-mx-8 sm:px-8 border-b border-transparent dark:border-transparent transition-all">
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+              {group.label}
+            </h2>
+            <div className="ml-auto flex items-center">
+              <button className="text-xs font-semibold text-primary hover:text-primary/80">
+                Select all
+              </button>
+            </div>
+          </div>
+          <div className="masonry-grid">
+            {group.items.map((asset) => (
+              <div
+                key={asset.id}
+                className="masonry-item relative group rounded-lg overflow-hidden cursor-pointer"
+              >
+                <AssetThumb asset={asset} />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                  <div className="w-6 h-6 rounded-full border-2 border-white/80 hover:bg-primary hover:border-primary flex items-center justify-center transition-colors"></div>
+                </div>
+                {asset.favorite && (
+                  <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <div className="bg-black/50 backdrop-blur-sm rounded px-1.5 py-0.5 text-[10px] font-bold text-white flex items-center gap-1">
+                      <FaHeart className="text-[10px]" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+    </>
+  )
+}
 
-      <section>
-        <h2 className="mb-6 text-xl font-semibold">Service Health</h2>
-        <div className="flex flex-wrap gap-4">
-          {statuses.map((svc) => (
-            <ServiceCard key={svc.port} service={svc} />
-          ))}
-        </div>
-      </section>
-    </div>
+export default function TimelineRoute() {
+  return (
+    <RequireAuth>
+      <AppShell>
+        <TimelineContent />
+      </AppShell>
+    </RequireAuth>
   )
 }
