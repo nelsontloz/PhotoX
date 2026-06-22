@@ -1,1 +1,16 @@
 @import "tailwindcss";
+
+@theme {
+  --color-primary: #136dec;
+  --color-background-light: #f6f7f8;
+  --color-background-dark: #101822;
+  --color-card-dark: #1c2430;
+  --color-footer-dark: #151b23;
+  --color-error: #ba1a1a;
+
+  --font-display: "Inter", sans-serif;
+}
+
+.material-symbols-outlined {
+  font-variation-settings: "FILL" 0, "wght" 100..700, "GRAD" 0, "opsz" 24;
+}
