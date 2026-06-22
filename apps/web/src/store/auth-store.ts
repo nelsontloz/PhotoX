@@ -1,7 +1,14 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { User } from '@photox/shared-types'
+import type { AuthResponse } from '@photox/shared-types'
 import * as authApi from '../api/auth'
+import { getAccessTokenExp } from '../lib/jwt'
+
+const REFRESH_LEAD_MS = 5 * 60 * 1000
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
+let refreshInFlight: Promise<AuthResponse> | null = null
+const authFailureListeners = new Set<() => void>()
 
 interface AuthState {
   user: User | null
@@ -12,6 +19,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, displayName: string) => Promise<void>
   logout: () => Promise<void>
+  refresh: () => Promise<void>
   clearError: () => void
 }
 
@@ -74,6 +82,35 @@ export const useAuthStore = create<AuthState>()(
         })
       },
 
+      refresh: async () => {
+        const rt = get().refreshToken
+        if (!rt) return
+
+        if (refreshInFlight) {
+          await refreshInFlight.catch(() => {
+            // ignore — caller handles error via the auth-failure listener
+          })
+          return
+        }
+
+        try {
+          const promise = authApi.refresh(rt)
+          refreshInFlight = promise
+          const res = await promise
+          set({
+            user: res.user,
+            accessToken: res.accessToken,
+            refreshToken: res.refreshToken,
+            status: 'authenticated',
+          })
+        } catch {
+          await get().logout()
+          authFailureListeners.forEach((cb) => cb())
+        } finally {
+          refreshInFlight = null
+        }
+      },
+
       clearError: () => set({ error: null }),
     }),
     {
@@ -95,3 +132,35 @@ export const useAuthStore = create<AuthState>()(
     },
   ),
 )
+
+function scheduleRefresh(accessToken: string | null) {
+  if (refreshTimer) {
+    clearTimeout(refreshTimer)
+    refreshTimer = null
+  }
+  if (!accessToken) return
+
+  const exp = getAccessTokenExp(accessToken)
+  if (exp === null) return
+
+  const delay = exp * 1000 - Date.now() - REFRESH_LEAD_MS
+  if (delay <= 0) {
+    void useAuthStore.getState().refresh()
+    return
+  }
+
+  refreshTimer = setTimeout(() => {
+    void useAuthStore.getState().refresh()
+  }, delay)
+}
+
+useAuthStore.subscribe((state) => {
+  scheduleRefresh(state.accessToken)
+})
+
+export function subscribeAuthFailure(cb: () => void): () => void {
+  authFailureListeners.add(cb)
+  return () => {
+    authFailureListeners.delete(cb)
+  }
+}
