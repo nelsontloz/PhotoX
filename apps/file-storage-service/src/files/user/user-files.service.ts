@@ -25,6 +25,12 @@ export class UserFilesService {
     }
 
     const checksum = createHash('sha256').update(file.buffer).digest('hex')
+
+    const existing = await this.fileRepo.findOne({
+      where: { userId, checksumSha256: checksum },
+    })
+    if (existing) return existing
+
     const ext = this.getExtension(file.originalname)
     const fileId = randomUUID()
     const storageKey = `${userId}/${fileId}.${ext}`

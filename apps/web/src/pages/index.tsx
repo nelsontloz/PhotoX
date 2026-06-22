@@ -54,7 +54,11 @@ function TimelineContent() {
           Your timeline is currently empty. Start preserving your life's moments by uploading your
           first batch of photos.
         </p>
-        <UploadButton onComplete={() => { void refresh() }} />
+        <UploadButton
+          onComplete={() => {
+            void refresh()
+          }}
+        />
       </div>
     )
   }

@@ -1,6 +1,7 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm'
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm'
 
 @Entity('files')
+@Index(['userId', 'checksumSha256'])
 export class FileRecord {
   @PrimaryGeneratedColumn('uuid')
   id!: string

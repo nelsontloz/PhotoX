@@ -45,7 +45,9 @@ afterAll(async () => {
 
 beforeEach(() => {
   stub.targetUrl = ''
-  stub.calls.length = 0
+  stub.targetUrls = {}
+  stub.calls = []
+  stub.interceptFn = undefined
 })
 
 describe('Gateway → file-storage-service files pact', () => {
