@@ -36,6 +36,23 @@ describe('Pact verification — file-storage-service', () => {
           qb.getManyAndCount.mockResolvedValue([[], 0])
           return Promise.resolve()
         },
+        'user has one file': () => {
+          const qb = repos.mockFileRepo.createQueryBuilder()
+          qb.getManyAndCount.mockResolvedValue([
+            [
+              {
+                id: FILE_ID,
+                userId: USER_ID,
+                originalName: 'photo.png',
+                mimeType: 'image/png',
+                sizeBytes: 12345,
+                createdAt: new Date('2024-01-01T00:00:00.000Z'),
+              },
+            ],
+            1,
+          ])
+          return Promise.resolve()
+        },
         [`file exists with id ${FILE_ID}`]: () => {
           repos.mockFileRepo.findOne.mockImplementation((opts: { where?: { id?: string } }) => {
             if (opts?.where?.id === FILE_ID) {

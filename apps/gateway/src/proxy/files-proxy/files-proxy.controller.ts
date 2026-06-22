@@ -1,13 +1,4 @@
-import {
-  Controller,
-  Get,
-  Delete,
-  Param,
-  Query,
-  Req,
-  HttpCode,
-  HttpStatus,
-} from '@nestjs/common'
+import { Controller, Get, Delete, Param, Query, Req, HttpCode, HttpStatus } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Request } from 'express'
 import { ProxyService } from '../proxy.service'
@@ -45,18 +36,15 @@ export class FilesProxyController {
   @ApiResponse({ status: 200, description: 'File record found' })
   @ApiResponse({ status: 404, description: 'File not found' })
   async getOne(@Param('fileId') fileId: string, @Req() req: Request): Promise<FileRecord> {
-    const result = await this.proxy.forward<FileRecord>(
-      SERVICE_URLS['file-storage-service'],
-      {
-        method: 'GET',
-        path: `v1/files/${fileId}`,
-        headers: {
-          'x-request-id': (req.headers['x-request-id'] as string) ?? '',
-          'x-user-id': (req.user as { id: string }).id,
-        },
-        timeout: 30_000,
+    const result = await this.proxy.forward<FileRecord>(SERVICE_URLS['file-storage-service'], {
+      method: 'GET',
+      path: `v1/files/${fileId}`,
+      headers: {
+        'x-request-id': (req.headers['x-request-id'] as string) ?? '',
+        'x-user-id': (req.user as { id: string }).id,
       },
-    )
+      timeout: 30_000,
+    })
     return result.data
   }
 

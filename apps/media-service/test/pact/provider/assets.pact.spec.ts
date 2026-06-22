@@ -70,6 +70,14 @@ describe('Pact verification — media-service', () => {
           repos.mockAssetRepo.save(baseAsset)
           return Promise.resolve()
         },
+        'trashed asset exists with id a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22': () => {
+          repos.mockAssetRepo.save({
+            ...baseAsset,
+            isTrashed: true,
+            trashedAt: new Date('2024-01-02T00:00:00.000Z'),
+          })
+          return Promise.resolve()
+        },
       },
     }).verifyProvider()
   }, 30_000)

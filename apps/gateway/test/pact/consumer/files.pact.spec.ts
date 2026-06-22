@@ -24,6 +24,15 @@ const fileRecordMatcher = {
   createdAt: MatchersV3.datetime("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", '2024-01-01T00:00:00.000Z'),
 }
 
+const fileListItemMatcher = {
+  id: MatchersV3.uuid(FILE_ID),
+  userId: MatchersV3.uuid(USER_ID),
+  originalName: MatchersV3.string('photo.png'),
+  mimeType: MatchersV3.string('image/png'),
+  sizeBytes: MatchersV3.integer(12345),
+  createdAt: MatchersV3.datetime("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", '2024-01-01T00:00:00.000Z'),
+}
+
 beforeAll(async () => {
   const setup = await setupGatewayTestingModule()
   app = setup.app
@@ -65,6 +74,37 @@ describe('Gateway → file-storage-service files pact', () => {
         expect(res.status).toBe(200)
         expect(res.body.items).toEqual([])
         expect(res.body.total).toBe(0)
+      })
+  })
+
+  it('GET /v1/files — list files (one item)', async () => {
+    await fileStorage
+      .given('user has one file')
+      .uponReceiving('a list files request that returns one item')
+      .withRequest({
+        method: 'GET',
+        path: '/v1/files',
+        headers: { 'x-user-id': USER_ID },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: {
+          items: [fileListItemMatcher],
+          total: 1,
+          limit: 20,
+          offset: 0,
+        },
+      })
+      .executeTest(async (mockserver) => {
+        stub.targetUrl = mockserver.url
+        const res = await request(app.getHttpServer()).get('/api/v1/files')
+        expect(res.status).toBe(200)
+        expect(res.body.items).toHaveLength(1)
+        expect(res.body.items[0].id).toBe(FILE_ID)
+        expect(res.body.items[0].storageKey).toBeUndefined()
+        expect(res.body.items[0].checksumSha256).toBeUndefined()
+        expect(res.body.total).toBe(1)
       })
   })
 
