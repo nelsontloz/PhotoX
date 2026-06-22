@@ -2,9 +2,9 @@
 import type { INestApplication } from '@nestjs/common'
 import { MatchersV3 } from '@pact-foundation/pact'
 import request from 'supertest'
-import { createPact } from './setup'
-import { setupGatewayTestingModule } from './testing-module'
-import type { StubProxy } from './testing-module'
+import { createPact } from '../setup'
+import { setupFileStorageServicePactModule } from './testing-module'
+import type { StubProxy } from '../stub'
 
 const fileStorage = createPact('file-storage-service')
 let app: INestApplication
@@ -34,7 +34,7 @@ const fileListItemMatcher = {
 }
 
 beforeAll(async () => {
-  const setup = await setupGatewayTestingModule()
+  const setup = await setupFileStorageServicePactModule()
   app = setup.app
   stub = setup.stub
 }, 30_000)

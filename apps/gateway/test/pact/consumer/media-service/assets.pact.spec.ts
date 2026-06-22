@@ -2,9 +2,9 @@
 import type { INestApplication } from '@nestjs/common'
 import { MatchersV3 } from '@pact-foundation/pact'
 import request from 'supertest'
-import { createPact } from './setup'
-import { setupGatewayTestingModule } from './testing-module'
-import type { StubProxy } from './testing-module'
+import { createPact } from '../setup'
+import { setupMediaServicePactModule } from './testing-module'
+import type { StubProxy } from '../stub'
 
 const mediaService = createPact('media-service')
 let app: INestApplication
@@ -46,7 +46,7 @@ const assetMatcher = {
 }
 
 beforeAll(async () => {
-  const setup = await setupGatewayTestingModule()
+  const setup = await setupMediaServicePactModule()
   app = setup.app
   stub = setup.stub
 }, 30_000)
