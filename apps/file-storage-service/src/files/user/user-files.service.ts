@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { randomUUID, createHash } from 'crypto'
-import { Readable } from 'stream'
+import { Readable, PassThrough } from 'stream'
 import { FileRecord } from '../../entities/file-record.entity'
 import { MinioService } from '../../storage/minio.service'
 import { toFileRecordResponse } from '../file-record.mapper'
@@ -24,18 +24,54 @@ export class UserFilesService {
       throw new BadRequestException('No file provided')
     }
 
-    const checksum = createHash('sha256').update(file.buffer).digest('hex')
     const ext = this.getExtension(file.originalname)
     const fileId = randomUUID()
     const storageKey = `${userId}/${fileId}.${ext}`
 
+    let checksum = ''
+
     try {
-      await this.minio.uploadFile(
-        storageKey,
-        Readable.from(file.buffer),
-        file.buffer.length,
-        file.mimetype,
-      )
+      const hash = createHash('sha256')
+      const passThrough = new PassThrough()
+
+      passThrough.on('data', (chunk: Buffer) => hash.update(chunk))
+
+      const hashPromise = new Promise<string>((resolve) => {
+        passThrough.on('end', () => resolve(hash.digest('hex')))
+      })
+
+      // By default Readable.from(Buffer) will emit the whole buffer at once, blocking the loop.
+      // We manually chunk it to yield to the event loop.
+      const stream = new Readable({
+        read() {
+          const chunkSize = 1024 * 1024 // 1MB
+          // @ts-expect-error adding custom property
+          this.offset ??= 0
+
+          // @ts-expect-error adding custom property
+          const currentOffset = this.offset as number
+
+          if (currentOffset < file.buffer.length) {
+            setImmediate(() => {
+              this.push(file.buffer.subarray(currentOffset, currentOffset + chunkSize))
+              // @ts-expect-error adding custom property
+              this.offset = currentOffset + chunkSize
+            })
+          } else {
+            setImmediate(() => {
+              this.push(null)
+            })
+          }
+        },
+      })
+
+      stream.pipe(passThrough)
+
+      const [, hashRes] = await Promise.all([
+        this.minio.uploadFile(storageKey, passThrough, file.buffer.length, file.mimetype),
+        hashPromise,
+      ])
+      checksum = hashRes
     } catch (err) {
       console.error('[UserFilesService] MinIO upload failed', err)
       throw new BadRequestException('Failed to upload file to storage')
