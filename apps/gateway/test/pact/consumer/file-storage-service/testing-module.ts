@@ -2,6 +2,7 @@ import type { INestApplication } from '@nestjs/common'
 import { ValidationPipe, type ExecutionContext } from '@nestjs/common'
 import { APP_GUARD } from '@nestjs/core'
 import { Test } from '@nestjs/testing'
+import { HttpModule } from '@nestjs/axios'
 import { FilesProxyController } from '../../../../src/proxy/files-proxy/files-proxy.controller'
 import { requestIdMiddleware } from '../../../../src/common/middleware/request-id.middleware'
 import { ProxyService } from '../../../../src/proxy/proxy.service'
@@ -18,6 +19,7 @@ export async function setupFileStorageServicePactModule(): Promise<{
   const stub = createStubProxy()
 
   const module = await Test.createTestingModule({
+    imports: [HttpModule],
     controllers: [FilesProxyController],
     providers: [
       { provide: ProxyService, useValue: stub },

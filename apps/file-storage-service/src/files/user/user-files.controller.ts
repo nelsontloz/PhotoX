@@ -27,7 +27,7 @@ export class UserFilesController {
   constructor(private readonly userFilesService: UserFilesService) {}
 
   @Post()
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 100 * 1024 * 1024 } }))
   @UseGuards(UserIdGuard)
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Upload a file' })

@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   FaCamera,
@@ -10,10 +11,10 @@ import {
   FaGear,
   FaMagnifyingGlass,
   FaSliders,
-  FaUpload,
   FaBell,
 } from 'react-icons/fa6'
 import { useAuthStore } from '../store/auth-store'
+import { UploadButton, type UploadButtonHandle } from './UploadButton'
 
 interface AppShellProps {
   children: React.ReactNode
@@ -23,6 +24,7 @@ export function AppShell({ children }: AppShellProps) {
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
   const navigate = useNavigate()
+  const uploadRef = useRef<UploadButtonHandle>(null)
 
   const initials =
     user?.displayName
@@ -86,10 +88,7 @@ export function AppShell({ children }: AppShellProps) {
         </div>
 
         <div className="flex items-center justify-end gap-4 w-1/4">
-          <button className="hidden sm:flex items-center gap-2 bg-primary hover:bg-primary/90 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-all shadow-lg shadow-primary/20">
-            <FaUpload className="text-[14px]" />
-            <span>Upload</span>
-          </button>
+          <UploadButton ref={uploadRef} variant="compact" />
           <div className="h-6 w-px bg-gray-200 dark:border-border-dark mx-1 hidden sm:block" />
           <button className="relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-card-dark text-slate-500 dark:text-slate-400 transition-colors">
             <FaBell className="text-[18px]" />
