@@ -1,11 +1,13 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth-store'
+import { useAuthFailureRedirect } from '../hooks/useAuthFailureRedirect'
 
 interface RequireAuthProps {
   children: React.ReactNode
 }
 
 export function RequireAuth({ children }: RequireAuthProps) {
+  useAuthFailureRedirect()
   const status = useAuthStore((s) => s.status)
   const location = useLocation()
 

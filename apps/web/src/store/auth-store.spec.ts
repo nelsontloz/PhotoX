@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { useAuthStore } from './auth-store'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { useAuthStore, subscribeAuthFailure } from './auth-store'
 import * as authApi from '../api/auth'
 
 vi.mock('../api/auth')
@@ -7,6 +7,7 @@ vi.mock('../api/auth')
 const mockLogin = vi.mocked(authApi.login)
 const mockRegister = vi.mocked(authApi.register)
 const mockLogout = vi.mocked(authApi.logout)
+const mockRefresh = vi.mocked(authApi.refresh)
 
 const mockUser = {
   id: 'u1',
@@ -118,5 +119,108 @@ describe('authStore', () => {
 
     useAuthStore.getState().clearError()
     expect(useAuthStore.getState().error).toBeNull()
+  })
+
+  describe('refresh', () => {
+    let failureCb: ReturnType<typeof vi.fn>
+    let unsub: () => void
+
+    beforeEach(() => {
+      failureCb = vi.fn()
+      unsub = subscribeAuthFailure(failureCb)
+    })
+
+    afterEach(() => {
+      unsub()
+    })
+
+    it('swaps both tokens on success', async () => {
+      useAuthStore.setState({
+        user: mockUser,
+        accessToken: 'old-at',
+        refreshToken: 'old-rt',
+        status: 'authenticated',
+      })
+
+      mockRefresh.mockResolvedValueOnce({
+        accessToken: 'new-at',
+        refreshToken: 'new-rt',
+        user: mockUser,
+      })
+
+      await useAuthStore.getState().refresh()
+
+      const s = useAuthStore.getState()
+      expect(s.status).toBe('authenticated')
+      expect(s.accessToken).toBe('new-at')
+      expect(s.refreshToken).toBe('new-rt')
+      expect(s.user).toEqual(mockUser)
+    })
+
+    it('calls logout and fires failure listener on error', async () => {
+      useAuthStore.setState({
+        user: mockUser,
+        accessToken: 'old-at',
+        refreshToken: 'old-rt',
+        status: 'authenticated',
+      })
+
+      mockRefresh.mockRejectedValueOnce(new Error('expired'))
+      mockLogout.mockResolvedValueOnce(undefined)
+
+      await useAuthStore.getState().refresh()
+
+      expect(useAuthStore.getState().status).toBe('idle')
+      expect(useAuthStore.getState().accessToken).toBeNull()
+      expect(failureCb).toHaveBeenCalledOnce()
+    })
+
+    it('single-flight: two concurrent calls share one request', async () => {
+      useAuthStore.setState({
+        user: mockUser,
+        accessToken: 'old-at',
+        refreshToken: 'old-rt',
+        status: 'authenticated',
+      })
+
+      let resolveFirst!: (v: {
+        accessToken: string
+        refreshToken: string
+        user: typeof mockUser
+      }) => void
+      const firstPromise = new Promise<{
+        accessToken: string
+        refreshToken: string
+        user: typeof mockUser
+      }>((resolve) => {
+        resolveFirst = resolve
+      })
+
+      mockRefresh.mockReturnValueOnce(firstPromise)
+
+      const p1 = useAuthStore.getState().refresh()
+      const p2 = useAuthStore.getState().refresh()
+
+      expect(mockRefresh).toHaveBeenCalledOnce()
+
+      resolveFirst({
+        accessToken: 'fresh-at',
+        refreshToken: 'fresh-rt',
+        user: mockUser,
+      })
+
+      await Promise.all([p1, p2])
+
+      expect(mockRefresh).toHaveBeenCalledOnce()
+      expect(useAuthStore.getState().accessToken).toBe('fresh-at')
+    })
+
+    it('no-op when refreshToken is null', async () => {
+      useAuthStore.setState({ refreshToken: null })
+
+      await useAuthStore.getState().refresh()
+
+      expect(mockRefresh).not.toHaveBeenCalled()
+    })
   })
 })
