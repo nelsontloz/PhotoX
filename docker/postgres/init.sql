@@ -1,3 +1,4 @@
 CREATE DATABASE users_db;
 CREATE DATABASE library_db;
 CREATE DATABASE files_db;
+CREATE DATABASE worker_db;
