@@ -12,6 +12,11 @@ export async function listAssets(params: ListAssetsParams = {}): Promise<AssetLi
   return data
 }
 
+export async function getAsset(id: string): Promise<Asset> {
+  const { data } = await api.get<Asset>(`/v1/assets/${id}`)
+  return data
+}
+
 export async function listThumbnails(assetId: string): Promise<AssetThumbnailListResponse> {
   const { data } = await api.get<AssetThumbnailListResponse>(`/v1/assets/${assetId}/thumbnails`)
   return data

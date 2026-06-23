@@ -7,6 +7,7 @@ import { Skeleton } from './Skeleton'
 interface AssetThumbProps {
   asset: Asset
   className?: string
+  aspect?: 'square' | 'native'
 }
 
 const THUMB_SIZES = ['sm', 'md', 'lg']
@@ -19,7 +20,7 @@ function pickThumbnail(thumbs: AssetThumbnail[]): AssetThumbnail | undefined {
   return thumbs[0]
 }
 
-export function AssetThumb({ asset, className = '' }: AssetThumbProps) {
+export function AssetThumb({ asset, className = '', aspect = 'native' }: AssetThumbProps) {
   const localThumb = useThumbStore((s) => s.urls[asset.fileId])
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   const [error, setError] = useState(false)
@@ -61,19 +62,21 @@ export function AssetThumb({ asset, className = '' }: AssetThumbProps) {
   }
 
   if (!src) {
-    const aspect =
-      asset.width && asset.height
-        ? { aspectRatio: `${asset.width} / ${asset.height}` }
-        : { paddingBottom: '75%' }
+    const aspectStyle =
+      aspect === 'square'
+        ? { aspectRatio: '1 / 1' }
+        : asset.width && asset.height
+          ? { aspectRatio: `${asset.width} / ${asset.height}` }
+          : { paddingBottom: '75%' }
 
-    return <Skeleton className={`w-full ${className}`} style={{ ...aspect, width: '100%' }} />
+    return <Skeleton className={`w-full ${className}`} style={{ ...aspectStyle, width: '100%' }} />
   }
 
   return (
     <img
       src={src}
       alt={asset.originalName ?? asset.title ?? 'Photo'}
-      className={`w-full h-auto object-cover ${className}`}
+      className={`${aspect === 'square' ? 'h-full w-full' : 'w-full h-auto'} object-cover ${className}`}
       loading="lazy"
     />
   )

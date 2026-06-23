@@ -1,4 +1,5 @@
 import { FaHeart, FaImage, FaMountain, FaSpinner, FaWandMagicSparkles } from 'react-icons/fa6'
+import { useNavigate } from 'react-router-dom'
 import { RequireAuth } from '../components/RequireAuth'
 import { AppShell } from '../components/AppShell'
 import { AssetThumb } from '../components/AssetThumb'
@@ -7,6 +8,8 @@ import { useAssetGroups } from '../hooks/useAssetGroups'
 
 function TimelineContent() {
   const { groups, loading, error, refresh } = useAssetGroups()
+  const navigate = useNavigate()
+  const flatAssets = groups.flatMap((g) => g.items)
 
   if (loading) {
     return (
@@ -77,13 +80,18 @@ function TimelineContent() {
               </button>
             </div>
           </div>
-          <div className="masonry-grid">
+          <div className="asset-grid">
             {group.items.map((asset) => (
               <div
                 key={asset.id}
-                className="masonry-item relative group rounded-lg overflow-hidden cursor-pointer"
+                onClick={() => {
+                  void navigate(`/assets/${asset.id}`, {
+                    state: { context: flatAssets },
+                  })
+                }}
+                className="relative group rounded overflow-hidden cursor-pointer aspect-square"
               >
-                <AssetThumb asset={asset} />
+                <AssetThumb asset={asset} aspect="square" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                   <div className="w-6 h-6 rounded-full border-2 border-white/80 hover:bg-primary hover:border-primary flex items-center justify-center transition-colors"></div>
