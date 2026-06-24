@@ -10,7 +10,7 @@ const FILE_ID = '550e8400-e29b-41d4-a716-446655440000'
 const USER_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
 const JOB_ID = 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a33'
 
-describe.skip('Gateway → worker-service thumbnail pact', () => {
+describe('Gateway → worker-service thumbnail pact', () => {
   it('POST /v1/jobs/thumbnail — enqueue thumbnail jobs (happy path)', async () => {
     await worker
       .given('no existing job for this asset')
