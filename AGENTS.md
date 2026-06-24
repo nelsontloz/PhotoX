@@ -21,7 +21,6 @@ apps/
   web/                  Vite + React, port 5173
 packages/
   shared-types/         DTOs (sparse for now)
-  shared-events/        Event constants + payload types
   shared-auth/          Auth types (JwtPayload, TokenPair)
   shared-config/        Zod env loader (loadEnv)
 docker/
@@ -95,7 +94,6 @@ After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
 - **Global pipes & filters are mandatory.** Every `main.ts` must include: `app.useGlobalPipes(new ValidationPipe({ whitelist, forbidNonWhitelisted, transform }))` and `app.useGlobalFilters(new HttpExceptionFilter())`. The shared `HttpExceptionFilter` lives at `apps/<service>/src/common/filters/http-exception.filter.ts`.
 - **Validation uses class-validator + class-transformer.** DTOs live next to the controller in `apps/<service>/src/<feature>/dto/*.dto.ts`. `class-validator` and `class-transformer` must be added to the service's `package.json` even though they are optional peers of `@nestjs/common` — do not rely on hoisting.
 - **Cross-service request/response shapes live in `shared-types`.** Service-local DTOs may carry class-validator decorators, but the _interface_ that crosses the wire is in `shared-types`. DTOs implement the corresponding `shared-types` interface where one exists (e.g. `RegisterDto`, `LoginDto`, `RefreshDto`, `LogoutDto`, `AuthResponseDto`, `FileRecordDto`, `BatchFilesResponseDto`).
-- **Cross-service event payloads live in `shared-events`.** Defined but currently unused — there are no publishers or consumers yet.
 - **CORS lives at the gateway, not on individual services.** Backend services do not call `enableCors()`. Only the gateway does, and only for the web origin(s).
 - **Each backend service exposes Swagger UI at `/docs` and the raw OpenAPI JSON at `/docs-json`** (both at the service root, unversioned, always public within `photox-net`). `main.ts` configures `SwaggerModule` with `DocumentBuilder`. Every backend service has a `nest-cli.json` that enables `@nestjs/swagger/plugin` for auto-inference from TS types. Service-local DTOs are decorated with `@ApiProperty` and `implements` the corresponding `shared-types` interface. `shared-types` itself never imports `@nestjs/swagger` — the decorators live in the service.
 
