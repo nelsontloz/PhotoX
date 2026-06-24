@@ -41,6 +41,6 @@ export async function setupMockedApp(): Promise<{
   return {
     app,
     url,
-    repos: { mockAssetRepo },
+    repos: { mockAssetRepo, mockThumbnailRepo },
   }
 }
