@@ -1,5 +1,6 @@
 # -- deps --
 FROM node:20-alpine AS deps
+RUN apk add --no-cache python3 make g++
 RUN corepack enable
 WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
