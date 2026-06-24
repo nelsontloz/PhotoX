@@ -1,10 +1,27 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { IsIn, IsOptional, IsString, IsNumber, IsBoolean, Min } from 'class-validator'
+import { Type } from 'class-transformer'
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  IsNumber,
+  IsInt,
+  IsBoolean,
+  IsDate,
+  IsObject,
+  Min,
+} from 'class-validator'
 
 export class UpdateMetadataDto {
   @ApiProperty({ enum: ['ready', 'failed'] })
   @IsIn(['ready', 'failed'])
   status!: 'ready' | 'failed'
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @Type(() => Date)
+  @IsDate()
+  takenAt?: Date
 
   @ApiProperty({ required: false })
   @IsOptional()
@@ -68,8 +85,37 @@ export class UpdateMetadataDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
+  @IsString()
+  lensModel?: string
+
+  @ApiProperty({ required: false })
+  @IsOptional()
   @IsNumber()
   orientation?: number
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  iso?: number
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fNumber?: number
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  exposureTime?: number
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  focalLength?: number
 
   @ApiProperty({ required: false })
   @IsOptional()
@@ -80,4 +126,15 @@ export class UpdateMetadataDto {
   @IsOptional()
   @IsNumber()
   longitude?: number
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  altitude?: number
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown>
 }

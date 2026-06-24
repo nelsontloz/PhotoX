@@ -13,3 +13,5 @@ pnpm-debug.log*
 .codegraph/
 pacts/
 .tmp/
+.slim/
+.worktrees/

@@ -88,12 +88,19 @@ export interface Asset {
   durationSeconds: number | null
   cameraMake: string | null
   cameraModel: string | null
+  lensModel: string | null
   orientation: number | null
+  iso: number | null
+  fNumber: number | null
+  exposureTime: number | null
+  focalLength: number | null
   latitude: number | null
   longitude: number | null
+  altitude: number | null
   fps: number | null
   codec: string | null
   hasAudio: boolean | null
+  metadata: Record<string, unknown> | null
   metadataStatus: MetadataStatus
   metadataExtractedAt: string | null
 }
