@@ -14,8 +14,9 @@ import {
 
 export class UpdateMetadataDto {
   @ApiProperty({ enum: ['ready', 'failed', 'pending'] })
+  @IsOptional()
   @IsIn(['ready', 'failed', 'pending'])
-  status!: 'ready' | 'failed' | 'pending'
+  status?: 'ready' | 'failed' | 'pending'
 
   @ApiProperty({ required: false })
   @IsOptional()

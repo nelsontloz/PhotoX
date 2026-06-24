@@ -31,11 +31,11 @@ export async function downloadFile(fileId: string): Promise<Blob> {
 
 export function getVideoStreamUrl(assetId: string, userId: string): string {
   const params = new URLSearchParams({ userId })
-  return `/v1/videos/${assetId}/stream?${params.toString()}`
+  return `/api/v1/videos/${assetId}/stream?${params.toString()}`
 }
 
 export function getHlsPlaylistUrl(assetId: string): string {
-  return `/v1/videos/${assetId}/playlist.m3u8`
+  return `/api/v1/videos/${assetId}/playlist.m3u8`
 }
 
 export async function uploadFile(

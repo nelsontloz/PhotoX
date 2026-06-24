@@ -1,7 +1,16 @@
-import { Controller, Get, Param, Query, Res, NotFoundException } from '@nestjs/common'
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  Res,
+  Req,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import type { Response } from 'express'
+import type { Request, Response } from 'express'
 import { firstValueFrom } from 'rxjs'
 import { SERVICE_URLS, loadEnv } from '@photox/shared-config'
 import type { Asset } from '@photox/shared-types'
@@ -69,6 +78,68 @@ export class VideosProxyController {
     const env = loadEnv()
     const url = `${env.MINIO_PUBLIC_ENDPOINT}/${env.MINIO_BUCKET}/${asset.hlsMasterKey}`
     res.redirect(302, url)
+  }
+
+  @Get(':assetId/*')
+  @Public()
+  @ApiOperation({ summary: 'Get a redirect to an HLS variant playlist or segment' })
+  @ApiResponse({ status: 302, description: 'Redirect to the HLS asset path in MinIO' })
+  @ApiResponse({ status: 400, description: 'Invalid HLS path' })
+  @ApiResponse({ status: 404, description: 'Asset not found or not a video' })
+  @ApiResponse({ status: 409, description: 'Transcoding failed' })
+  @ApiResponse({ status: 425, description: 'Transcoding in progress' })
+  async getHlsAsset(@Param('assetId') assetId: string, @Req() req: Request, @Res() res: Response) {
+    const rawPath = (req.params[0] ?? '').replace(/^\/+/, '')
+    if (!rawPath) {
+      throw new NotFoundException('HLS path is empty')
+    }
+    const safePath = this.sanitizeHlsPath(rawPath)
+
+    const asset = await this.getAsset(assetId)
+
+    if (asset.kind !== 'video') {
+      throw new NotFoundException('Asset is not a video')
+    }
+
+    if (asset.transcodeStatus === 'pending') {
+      res.status(425).json({ status: 'pending', message: 'Transcoding in progress' })
+      return
+    }
+
+    if (asset.transcodeStatus === 'failed') {
+      res.status(409).json({ status: 'failed', message: 'Transcoding failed' })
+      return
+    }
+
+    if (!asset.hlsMasterKey) {
+      res.status(500).json({ status: 'error', message: 'HLS master key missing' })
+      return
+    }
+
+    const env = loadEnv()
+    const masterDir = asset.hlsMasterKey.slice(0, asset.hlsMasterKey.lastIndexOf('/'))
+    const url = `${env.MINIO_PUBLIC_ENDPOINT}/${env.MINIO_BUCKET}/${masterDir}/${safePath}`
+    res.redirect(302, url)
+  }
+
+  private sanitizeHlsPath(rawPath: string): string {
+    const segments = rawPath.split('/').map((s) => {
+      const decoded = decodeURIComponent(s)
+      if (
+        !decoded ||
+        decoded === '.' ||
+        decoded === '..' ||
+        decoded.includes('\0') ||
+        decoded.includes('\\')
+      ) {
+        throw new BadRequestException('Invalid HLS path')
+      }
+      return encodeURIComponent(decoded)
+    })
+    if (segments.length === 0) {
+      throw new BadRequestException('Invalid HLS path')
+    }
+    return segments.join('/')
   }
 
   private async getAsset(assetId: string): Promise<Asset> {

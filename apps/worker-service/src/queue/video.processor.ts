@@ -6,7 +6,7 @@ import { firstValueFrom } from 'rxjs'
 import { type Job } from 'pg-boss'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { writeFile, rm, readdir, readFile } from 'fs/promises'
+import { writeFile, rm, readdir, readFile, mkdir } from 'fs/promises'
 import { PgBossService } from './pg-boss.service'
 import { JobRecord, JobStatus } from './entities/job.entity'
 import type { ProcessVideoDto } from './dto/process-video.dto'
@@ -76,8 +76,10 @@ export function buildAbrArgs(
   inputPath: string,
   outputDir: string,
   ladder: AbrVariant[],
-  options?: { hdrFilter?: string; transpose?: 0 | 1 | 2 | 3 },
+  options?: { hdrFilter?: string; transpose?: 0 | 1 | 2 | 3; hasAudio?: boolean },
 ): string[] {
+  const hasAudio = options?.hasAudio ?? false
+
   const scaleFilters: string[] = []
   for (let i = 0; i < ladder.length; i++) {
     const v = ladder[i]!
@@ -96,9 +98,9 @@ export function buildAbrArgs(
       ? `[0:v]${preprocess.join(',')},split=${ladder.length}${splits};${scaleFilters.join(';')}`
       : `[0:v]split=${ladder.length}${splits};${scaleFilters.join(';')}`
 
-  const streamMap = ladder.map((_, i) => `v:${i},a:0`).join(' ')
+  const streamMap = ladder.map((_, i) => (hasAudio ? `v:${i},a:${i}` : `v:${i}`)).join(' ')
 
-  return [
+  const args: string[] = [
     '-y',
     '-i',
     inputPath,
@@ -124,12 +126,16 @@ export function buildAbrArgs(
       `-bufsize:v:${i}`,
       v.bufSize,
     ]),
-    '-c:a',
-    'aac',
-    '-b:a',
-    '128k',
-    '-ac',
-    '2',
+  ]
+
+  if (hasAudio) {
+    ladder.forEach(() => {
+      args.push('-map', '0:a:0')
+    })
+    args.push('-c:a', 'aac', '-b:a', '128k', '-ac', '2')
+  }
+
+  args.push(
     '-f',
     'hls',
     '-hls_time',
@@ -145,7 +151,9 @@ export function buildAbrArgs(
     '-var_stream_map',
     streamMap,
     `${outputDir}/%v/playlist.m3u8`,
-  ]
+  )
+
+  return args
 }
 
 async function walkDir(dir: string): Promise<string[]> {
@@ -232,6 +240,7 @@ export class VideoProcessor {
       const videoStream = probe.streams.find((s) => s.codec_type === 'video')
       const width = videoStream?.width ?? 0
       const height = videoStream?.height ?? 0
+      const hasAudio = probe.streams.some((s) => s.codec_type === 'audio')
 
       if (duration > MAX_DURATION_SEC) {
         throw new Error(`Video duration ${duration}s exceeds ${MAX_DURATION_SEC}s limit`)
@@ -247,12 +256,13 @@ export class VideoProcessor {
       const isHdr = isHdrStream(videoStream)
       const transpose = detectTranspose(videoStream)
       this.logger.log(
-        `Video ${fileId}: hdr=${isHdr}, rotation=${transpose === 1 ? 90 : transpose === 2 ? 180 : transpose === 3 ? 270 : 0}, variants=${ladder.length}`,
+        `Video ${fileId}: hdr=${isHdr}, rotation=${transpose === 1 ? 90 : transpose === 2 ? 180 : transpose === 3 ? 270 : 0}, audio=${hasAudio}, variants=${ladder.length}`,
       )
 
       const args = buildAbrArgs(srcPath, outDir, ladder, {
         hdrFilter: isHdr ? HDR_TONEMAP_FILTER : undefined,
         transpose,
+        hasAudio,
       })
       await runFfmpeg(args, { timeoutMs: HLS_TIMEOUT_MS })
 
@@ -333,6 +343,7 @@ export class VideoProcessor {
         ? 'mov'
         : 'mp4'
     const destPath = join(destDir, `source.${ext}`)
+    await mkdir(destDir, { recursive: true })
     await writeFile(destPath, buffer)
     return destPath
   }

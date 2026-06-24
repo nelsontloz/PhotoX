@@ -156,9 +156,10 @@ export class AssetsService {
     const asset = await this.repo.findOne({ where: { id } })
     if (!asset) throw new NotFoundException('Asset not found')
 
-    const patch: Partial<Asset> & { metadataExtractedAt?: Date } = {
-      metadataStatus: dto.status,
-      metadataExtractedAt: new Date(),
+    const patch: Partial<Asset> = {}
+    if (dto.status !== undefined) {
+      patch.metadataStatus = dto.status
+      patch.metadataExtractedAt = new Date()
     }
 
     if (dto.takenAt !== undefined) patch.takenAt = dto.takenAt

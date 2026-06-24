@@ -1,15 +1,26 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+import { of } from 'rxjs'
+import { rm, stat } from 'fs/promises'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { randomUUID } from 'node:crypto'
+import { HttpService } from '@nestjs/axios'
+import type { Repository } from 'typeorm'
 import {
   buildAbrArgs,
   ABR_LADDER,
   HDR_TONEMAP_FILTER,
   isHdrStream,
   detectTranspose,
+  VideoProcessor,
 } from './video.processor'
+import { PgBossService } from './pg-boss.service'
+import { HlsStorageService } from '../storage/hls-storage.service'
+import { JobRecord } from './entities/job.entity'
 import type { FfprobeStream } from './ffmpeg'
 
 describe('buildAbrArgs', () => {
-  it('produces correct ffmpeg args for a 1080p source', () => {
+  it('produces correct ffmpeg args for a 1080p source without audio', () => {
     const args = buildAbrArgs('/tmp/src.mp4', '/tmp/out', ABR_LADDER)
 
     expect(args[0]).toBe('-y')
@@ -20,6 +31,7 @@ describe('buildAbrArgs', () => {
     const filterIdx = args.indexOf('-filter_complex')
     const filterVal = args[filterIdx + 1]
     expect(filterVal).toContain('split=5')
+    expect(filterVal).not.toContain('anull')
 
     expect(args).toContain('libx264')
     expect(args).toContain('-f')
@@ -36,19 +48,51 @@ describe('buildAbrArgs', () => {
 
     const mapIdx = args.indexOf('-var_stream_map')
     const mapVal = args[mapIdx + 1]
-    expect(mapVal).toBe('v:0,a:0 v:1,a:0 v:2,a:0 v:3,a:0 v:4,a:0')
+    expect(mapVal).toBe('v:0 v:1 v:2 v:3 v:4')
 
     expect(args).toContain('-b:v:0')
     expect(args).toContain('4500k')
     expect(args).toContain('-b:v:4')
     expect(args).toContain('400k')
+    expect(args).not.toContain('-c:a')
+    expect(args).not.toContain('aac')
+    expect(args).not.toContain('-b:a')
+    expect(args).not.toContain('128k')
+
+    const lastArg = args[args.length - 1]
+    expect(lastArg).toBe('/tmp/out/%v/playlist.m3u8')
+  })
+
+  it('produces correct ffmpeg args for a 1080p source with audio', () => {
+    const args = buildAbrArgs('/tmp/src.mp4', '/tmp/out', ABR_LADDER, { hasAudio: true })
+
+    const filterIdx = args.indexOf('-filter_complex')
+    const filterVal = args[filterIdx + 1]!
+    expect(filterVal).toContain('split=5')
+    expect(filterVal).not.toContain('anull')
+
+    const mapIdx = args.indexOf('-var_stream_map')
+    const mapVal = args[mapIdx + 1]
+    expect(mapVal).toBe('v:0,a:0 v:1,a:1 v:2,a:2 v:3,a:3 v:4,a:4')
+
+    const audioMapCount = args.filter((a, i) => a === '-map' && args[i + 1] === '0:a:0').length
+    expect(audioMapCount).toBe(ABR_LADDER.length)
+
     expect(args).toContain('-c:a')
     expect(args).toContain('aac')
     expect(args).toContain('-b:a')
     expect(args).toContain('128k')
+    expect(args).toContain('-ac')
+    expect(args).toContain('2')
+  })
 
-    const lastArg = args[args.length - 1]
-    expect(lastArg).toBe('/tmp/out/%v/playlist.m3u8')
+  it('audio var_stream_map is type-relative (v:N,a:N per variant)', () => {
+    const smallLadder = ABR_LADDER.slice(0, 3)
+    const args = buildAbrArgs('/tmp/src.mp4', '/tmp/out', smallLadder, { hasAudio: true })
+
+    const mapIdx = args.indexOf('-var_stream_map')
+    const mapVal = args[mapIdx + 1]
+    expect(mapVal).toBe('v:0,a:0 v:1,a:1 v:2,a:2')
   })
 
   it('filters ladder by source height but keeps lowest variant', () => {
@@ -208,5 +252,49 @@ describe('detectTranspose', () => {
   it('returns 0 when no rotation info', () => {
     const stream = { codec_name: 'h264' } as FfprobeStream
     expect(detectTranspose(stream)).toBe(0)
+  })
+})
+
+describe('VideoProcessor.downloadSource', () => {
+  it('creates the destination directory before writing the source file', async () => {
+    const fileId = randomUUID()
+    const destDir = join(tmpdir(), `photox-vp-test-${fileId}`)
+    const fileBytes = Buffer.from([0, 1, 2, 3, 4, 5, 6, 7])
+    const presignedUrl = 'http://127.0.0.1:1/never-fetched.mp4'
+
+    const http = {
+      get: vi
+        .fn()
+        .mockReturnValueOnce(of({ data: { url: presignedUrl }, headers: {}, status: 200 } as never))
+        .mockReturnValueOnce(
+          of({
+            data: fileBytes,
+            headers: { 'content-type': 'video/mp4' },
+            status: 200,
+          } as never),
+        ),
+    } as unknown as HttpService
+
+    const processor = new VideoProcessor(
+      {} as PgBossService,
+      {} as Repository<JobRecord>,
+      http,
+      {} as HlsStorageService,
+    )
+
+    const downloadSource = (
+      processor as unknown as {
+        downloadSource: (id: string, dir: string) => Promise<string>
+      }
+    ).downloadSource.bind(processor)
+
+    const result = await downloadSource(fileId, destDir)
+
+    expect(result).toBe(join(destDir, 'source.mp4'))
+    const fileStat = await stat(result)
+    expect(fileStat.isFile()).toBe(true)
+    expect(fileStat.size).toBe(fileBytes.length)
+
+    await rm(destDir, { recursive: true, force: true })
   })
 })

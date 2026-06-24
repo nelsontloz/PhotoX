@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common'
+import { NotFoundException, BadRequestException } from '@nestjs/common'
 import { of } from 'rxjs'
 import type { Response } from 'express'
 import { VideosProxyController } from './videos-proxy.controller'
@@ -256,6 +256,167 @@ describe('VideosProxyController', () => {
       expect(getRedirect().url).toContain('/photox-files/')
       expect(getRedirect().url).toContain('uid/fid/hls/master.m3u8')
       expect(getRedirect().url).toMatch(/^http:\/\/localhost:\d+/)
+    })
+  })
+
+  describe('GET /api/v1/videos/:assetId/* (HLS variants and segments)', () => {
+    function mockReq(splat: string): { params: Record<string, string> } {
+      return { params: { '0': splat } }
+    }
+
+    it('redirects to MinIO URL for a variant playlist', async () => {
+      const http = createMockHttp([
+        {
+          urlPattern: '/v1/assets/',
+          data: {
+            id: 'asset-1',
+            kind: 'video',
+            transcodeStatus: 'ready',
+            hlsMasterKey: 'uid/fid/hls/master.m3u8',
+          },
+        },
+      ])
+      const controller = createController(http)
+      const { res, getRedirect } = mockRes()
+
+      await controller.getHlsAsset('asset-1', mockReq('/4/playlist.m3u8') as never, res)
+
+      expect(getRedirect().status).toBe(302)
+      expect(getRedirect().url).toBe(
+        'http://localhost:9000/photox-files/uid/fid/hls/4/playlist.m3u8',
+      )
+    })
+
+    it('redirects to MinIO URL for a variant segment', async () => {
+      const http = createMockHttp([
+        {
+          urlPattern: '/v1/assets/',
+          data: {
+            id: 'asset-1',
+            kind: 'video',
+            transcodeStatus: 'ready',
+            hlsMasterKey: 'uid/fid/hls/master.m3u8',
+          },
+        },
+      ])
+      const controller = createController(http)
+      const { res, getRedirect } = mockRes()
+
+      await controller.getHlsAsset('asset-1', mockReq('/0/seg_000.m4s') as never, res)
+
+      expect(getRedirect().status).toBe(302)
+      expect(getRedirect().url).toBe('http://localhost:9000/photox-files/uid/fid/hls/0/seg_000.m4s')
+    })
+
+    it('redirects to MinIO URL for a variant init segment', async () => {
+      const http = createMockHttp([
+        {
+          urlPattern: '/v1/assets/',
+          data: {
+            id: 'asset-1',
+            kind: 'video',
+            transcodeStatus: 'ready',
+            hlsMasterKey: 'uid/fid/hls/master.m3u8',
+          },
+        },
+      ])
+      const controller = createController(http)
+      const { res, getRedirect } = mockRes()
+
+      await controller.getHlsAsset('asset-1', mockReq('/0/init_0.mp4') as never, res)
+
+      expect(getRedirect().url).toBe('http://localhost:9000/photox-files/uid/fid/hls/0/init_0.mp4')
+    })
+
+    it('strips leading slashes from the splat', async () => {
+      const http = createMockHttp([
+        {
+          urlPattern: '/v1/assets/',
+          data: {
+            id: 'asset-1',
+            kind: 'video',
+            transcodeStatus: 'ready',
+            hlsMasterKey: 'uid/fid/hls/master.m3u8',
+          },
+        },
+      ])
+      const controller = createController(http)
+      const { res, getRedirect } = mockRes()
+
+      await controller.getHlsAsset('asset-1', mockReq('0/playlist.m3u8') as never, res)
+
+      expect(getRedirect().url).toBe(
+        'http://localhost:9000/photox-files/uid/fid/hls/0/playlist.m3u8',
+      )
+    })
+
+    it('rejects path traversal with ..', async () => {
+      const http = createMockHttp([])
+      const controller = createController(http)
+      const { res } = mockRes()
+
+      await expect(
+        controller.getHlsAsset('asset-1', mockReq('/../../../etc/passwd') as never, res),
+      ).rejects.toThrow(BadRequestException)
+    })
+
+    it('rejects empty path', async () => {
+      const http = createMockHttp([])
+      const controller = createController(http)
+      const { res } = mockRes()
+
+      await expect(controller.getHlsAsset('asset-1', mockReq('') as never, res)).rejects.toThrow(
+        NotFoundException,
+      )
+      await expect(controller.getHlsAsset('asset-1', mockReq('/') as never, res)).rejects.toThrow(
+        NotFoundException,
+      )
+    })
+
+    it('returns 404 for non-video asset', async () => {
+      const http = createMockHttp([
+        {
+          urlPattern: '/v1/assets/',
+          data: { id: 'asset-1', kind: 'photo', transcodeStatus: 'ready' },
+        },
+      ])
+      const controller = createController(http)
+      const { res } = mockRes()
+
+      await expect(
+        controller.getHlsAsset('asset-1', mockReq('/0/playlist.m3u8') as never, res),
+      ).rejects.toThrow(NotFoundException)
+    })
+
+    it('returns 425 when transcode is pending', async () => {
+      const http = createMockHttp([
+        {
+          urlPattern: '/v1/assets/',
+          data: { id: 'asset-1', kind: 'video', transcodeStatus: 'pending' },
+        },
+      ])
+      const controller = createController(http)
+      const { res, getJson } = mockRes()
+
+      await controller.getHlsAsset('asset-1', mockReq('/0/playlist.m3u8') as never, res)
+
+      const json = getJson()
+      expect(json.body).toEqual({ status: 'pending', message: 'Transcoding in progress' })
+    })
+
+    it('returns 404 when asset not found', async () => {
+      const http = createMockHttp([])
+      http.get.mockReturnValueOnce({
+        subscribe: () => {
+          throw new Error('fail')
+        },
+      })
+      const controller = createController(http)
+      const { res } = mockRes()
+
+      await expect(
+        controller.getHlsAsset('missing', mockReq('/0/playlist.m3u8') as never, res),
+      ).rejects.toThrow(NotFoundException)
     })
   })
 })
