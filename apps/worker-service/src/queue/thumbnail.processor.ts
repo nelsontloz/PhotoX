@@ -120,7 +120,7 @@ export class ThumbnailProcessor {
     const dims = STANDARD_SIZES[size]
     const [width, height] = dims ?? size.split('x').map(Number)
 
-    const streamUrl = `${SERVICE_URLS['file-storage-service']}/v1/internal/files/${fileId}/stream`
+    const streamUrl = `${SERVICE_URLS['file-storage-service']}/v1/files/${fileId}/stream`
     const upstream = await firstValueFrom(
       this.http.get(streamUrl, { responseType: 'arraybuffer', timeout: 30_000 }),
     )
@@ -131,7 +131,7 @@ export class ThumbnailProcessor {
       .webp({ quality: WEBP_QUALITY[size] ?? 80 })
       .toBuffer({ resolveWithObject: true })
 
-    const uploadUrl = `${SERVICE_URLS['file-storage-service']}/v1/internal/files/upload`
+    const uploadUrl = `${SERVICE_URLS['file-storage-service']}/v1/files`
     const form = new FormData()
     form.append('file', thumbBuffer, {
       filename: `thumb-${size}.webp`,
@@ -148,7 +148,7 @@ export class ThumbnailProcessor {
     )
     const newFileRecord = uploadRes.data as { id: string }
 
-    const registerUrl = `${SERVICE_URLS['media-service']}/v1/internal/assets/${assetId}/thumbnails`
+    const registerUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/thumbnails`
     await firstValueFrom(
       this.http.post(registerUrl, {
         size,

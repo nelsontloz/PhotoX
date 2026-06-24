@@ -15,8 +15,8 @@ afterAll(async () => {
   await closeTestApp(app)
 })
 
-describe('GET /v1/internal/files/:fileId', () => {
-  it('UC-I1: resolves a file by ID without x-user-id filter', async () => {
+describe('GET /v1/files/:fileId', () => {
+  it('UC-I1: resolves a file by ID', async () => {
     const userId = mintUserId()
     const record = await uploadForUser(
       httpServer,
@@ -26,7 +26,10 @@ describe('GET /v1/internal/files/:fileId', () => {
       'application/pdf',
     )
 
-    const res = await supertest(httpServer).get(`/v1/internal/files/${record.id}`).expect(200)
+    const res = await supertest(httpServer)
+      .get(`/v1/files/${record.id}`)
+      .query({ userId })
+      .expect(200)
 
     const body = res.body as FileRecord
     expect(body.id).toBe(record.id)
@@ -37,8 +40,10 @@ describe('GET /v1/internal/files/:fileId', () => {
   })
 
   it('UC-I2: returns 404 for a missing file', async () => {
+    const userId = mintUserId()
     await supertest(httpServer)
-      .get('/v1/internal/files/00000000-0000-0000-0000-000000000000')
+      .get('/v1/files/00000000-0000-0000-0000-000000000000')
+      .query({ userId })
       .expect(404)
   })
 })

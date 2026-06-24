@@ -6,7 +6,7 @@ import { Readable } from 'stream'
 import { FileRecord } from '../../entities/file-record.entity'
 import { MinioService } from '../../storage/minio.service'
 import { toFileRecordResponse } from '../file-record.mapper'
-import type { FileListResponse } from '@photox/shared-types'
+import type { FileListResponse, BatchFilesResponse } from '@photox/shared-types'
 
 @Injectable()
 export class UserFilesService {
@@ -129,6 +129,30 @@ export class UserFilesService {
     }
 
     await this.fileRepo.remove(record)
+  }
+
+  async getBatch(fileIds: string[]): Promise<BatchFilesResponse> {
+    if (fileIds.length === 0) return { items: [], missing: [] }
+
+    const found = await this.fileRepo
+      .createQueryBuilder('f')
+      .where('f.id IN (:...fileIds)', { fileIds })
+      .getMany()
+
+    const foundIds = new Set(found.map((f) => f.id))
+    const missing = fileIds.filter((id) => !foundIds.has(id))
+
+    return {
+      items: found.map((f) => toFileRecordResponse(f)),
+      missing,
+    }
+  }
+
+  async stream(fileId: string): Promise<{ stream: Readable; record: FileRecord }> {
+    const record = await this.fileRepo.findOne({ where: { id: fileId } })
+    if (!record) throw new NotFoundException('File not found')
+    const stream = await this.minio.downloadFile(record.storageKey)
+    return { stream, record }
   }
 
   private getExtension(filename: string): string {

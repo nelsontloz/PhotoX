@@ -13,8 +13,6 @@ let stub: StubProxy
 const USER_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
 const ASSET_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22'
 const FILE_ID = '550e8400-e29b-41d4-a716-446655440000'
-const X_USER_ID = { 'x-user-id': USER_ID }
-
 const assetMatcher = {
   id: MatchersV3.uuid(ASSET_ID),
   userId: MatchersV3.uuid(USER_ID),
@@ -68,8 +66,8 @@ describe('Gateway → media-service assets pact', () => {
       .withRequest({
         method: 'POST',
         path: '/v1/assets',
-        headers: { 'Content-Type': 'application/json', ...X_USER_ID },
-        body: { fileId: FILE_ID, kind: 'photo' },
+        headers: { 'Content-Type': 'application/json' },
+        body: { fileId: FILE_ID, kind: 'photo', userId: USER_ID },
       })
       .willRespondWith({
         status: 201,
@@ -94,7 +92,7 @@ describe('Gateway → media-service assets pact', () => {
       .withRequest({
         method: 'GET',
         path: '/v1/assets',
-        headers: X_USER_ID,
+        query: { userId: USER_ID },
       })
       .willRespondWith({
         status: 200,
@@ -122,7 +120,7 @@ describe('Gateway → media-service assets pact', () => {
       .withRequest({
         method: 'GET',
         path: `/v1/assets/${ASSET_ID}`,
-        headers: X_USER_ID,
+        query: { userId: USER_ID },
       })
       .willRespondWith({
         status: 200,
@@ -144,8 +142,8 @@ describe('Gateway → media-service assets pact', () => {
       .withRequest({
         method: 'PATCH',
         path: `/v1/assets/${ASSET_ID}`,
-        headers: { 'Content-Type': 'application/json', ...X_USER_ID },
-        body: { title: 'Updated Title' },
+        headers: { 'Content-Type': 'application/json' },
+        body: { title: 'Updated Title', userId: USER_ID },
       })
       .willRespondWith({
         status: 200,
@@ -169,7 +167,7 @@ describe('Gateway → media-service assets pact', () => {
       .withRequest({
         method: 'POST',
         path: `/v1/assets/${ASSET_ID}/trash`,
-        headers: X_USER_ID,
+        query: { userId: USER_ID },
       })
       .willRespondWith({ status: 204 })
       .executeTest(async (mockserver) => {
@@ -186,7 +184,7 @@ describe('Gateway → media-service assets pact', () => {
       .withRequest({
         method: 'POST',
         path: `/v1/assets/${ASSET_ID}/restore`,
-        headers: X_USER_ID,
+        query: { userId: USER_ID },
       })
       .willRespondWith({ status: 204 })
       .executeTest(async (mockserver) => {

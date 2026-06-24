@@ -57,8 +57,7 @@ export async function createAssetForUser(
 ): Promise<Asset> {
   const res = await supertest(httpServer)
     .post('/v1/assets')
-    .set('x-user-id', userId)
-    .send(assetPayload(overrides))
+    .send({ userId, ...assetPayload(overrides) })
     .expect(201)
   return res.body as Asset
 }

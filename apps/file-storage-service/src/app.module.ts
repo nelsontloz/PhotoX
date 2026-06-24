@@ -4,7 +4,6 @@ import { HealthModule } from './health/health.module'
 import { DatabaseModule } from './database/database.module'
 import { StorageModule } from './storage/storage.module'
 import { UserFilesModule } from './files/user/user-files.module'
-import { InternalFilesModule } from './files/internal/internal-files.module'
 
 @Module({
   imports: [
@@ -15,7 +14,6 @@ import { InternalFilesModule } from './files/internal/internal-files.module'
     DatabaseModule.forRoot('files_db'),
     StorageModule,
     UserFilesModule,
-    InternalFilesModule,
     HealthModule,
   ],
 })

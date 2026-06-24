@@ -23,7 +23,6 @@ async function bootstrap() {
     .setDescription('Object storage for user files')
     .setVersion('1.0')
     .addTag('files')
-    .addTag('internal-files')
     .build()
   const document = SwaggerModule.createDocument(app, config)
   SwaggerModule.setup('docs', app, document, { jsonDocumentUrl: 'docs-json' })

@@ -75,7 +75,6 @@ export class ProxyService {
         upstreamStatus: response.status,
         latencyMs,
         requestId: opts.headers?.['x-request-id'],
-        userId: opts.headers?.['x-user-id'],
       })
 
       if (response.status >= 400 && response.status < 500) {

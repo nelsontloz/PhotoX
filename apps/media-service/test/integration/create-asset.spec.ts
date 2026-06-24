@@ -27,8 +27,7 @@ describe('POST /v1/assets', () => {
 
     const res = await supertest(httpServer)
       .post('/v1/assets')
-      .set('x-user-id', userId)
-      .send(payload)
+      .send({ userId, ...payload })
       .expect(201)
 
     const body = res.body as Asset
@@ -58,8 +57,7 @@ describe('POST /v1/assets', () => {
 
     const res = await supertest(httpServer)
       .post('/v1/assets')
-      .set('x-user-id', userId)
-      .send(payload)
+      .send({ userId, ...payload })
       .expect(201)
 
     const body = res.body as Asset
@@ -74,8 +72,7 @@ describe('POST /v1/assets', () => {
 
     const res = await supertest(httpServer)
       .post('/v1/assets')
-      .set('x-user-id', userId)
-      .send({ fileId: 'not-a-uuid', kind: 'photo' })
+      .send({ userId, fileId: 'not-a-uuid', kind: 'photo' })
       .expect(400)
 
     const body = res.body as ErrorBody
@@ -87,8 +84,7 @@ describe('POST /v1/assets', () => {
 
     const res = await supertest(httpServer)
       .post('/v1/assets')
-      .set('x-user-id', userId)
-      .send({ fileId: randomUUID(), kind: 'document' })
+      .send({ userId, fileId: randomUUID(), kind: 'document' })
       .expect(400)
 
     const body = res.body as ErrorBody
@@ -100,8 +96,7 @@ describe('POST /v1/assets', () => {
 
     const res = await supertest(httpServer)
       .post('/v1/assets')
-      .set('x-user-id', userId)
-      .send({ ...assetPayload(), hack: 'injected' })
+      .send({ userId, ...assetPayload(), hack: 'injected' })
       .expect(400)
 
     const body = res.body as ErrorBody

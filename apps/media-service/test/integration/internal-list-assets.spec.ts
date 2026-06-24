@@ -15,7 +15,7 @@ afterAll(async () => {
   await closeTestApp(app)
 })
 
-describe('GET /v1/internal/users/:userId/assets', () => {
+describe('GET /v1/assets/by-user/:userId', () => {
   it('UC-I1: returns all assets for a user including trashed, sorted uploadedAt DESC', async () => {
     const userId = mintUserId()
 
@@ -23,12 +23,9 @@ describe('GET /v1/internal/users/:userId/assets', () => {
     const a2 = await createAssetForUser(httpServer, userId, { title: 'second' })
     await createAssetForUser(httpServer, userId, { title: 'third' })
 
-    await supertest(httpServer)
-      .post(`/v1/assets/${a2.id}/trash`)
-      .set('x-user-id', userId)
-      .expect(204)
+    await supertest(httpServer).post(`/v1/assets/${a2.id}/trash`).query({ userId }).expect(204)
 
-    const res = await supertest(httpServer).get(`/v1/internal/users/${userId}/assets`).expect(200)
+    const res = await supertest(httpServer).get(`/v1/assets/by-user/${userId}`).expect(200)
 
     const body = res.body as Asset[]
     expect(body).toHaveLength(3)
@@ -47,7 +44,7 @@ describe('GET /v1/internal/users/:userId/assets', () => {
   it('UC-I2: returns empty array for a user with no assets', async () => {
     const userId = mintUserId()
 
-    const res = await supertest(httpServer).get(`/v1/internal/users/${userId}/assets`).expect(200)
+    const res = await supertest(httpServer).get(`/v1/assets/by-user/${userId}`).expect(200)
 
     expect(res.body).toEqual([])
   })

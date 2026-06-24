@@ -29,7 +29,7 @@ describe('GET /v1/assets/:id', () => {
 
     const res = await supertest(httpServer)
       .get(`/v1/assets/${created.id}`)
-      .set('x-user-id', userId)
+      .query({ userId })
       .expect(200)
 
     const body = res.body as Asset
@@ -46,7 +46,7 @@ describe('GET /v1/assets/:id', () => {
 
     const res = await supertest(httpServer)
       .get(`/v1/assets/${fakeId}`)
-      .set('x-user-id', userId)
+      .query({ userId })
       .expect(404)
 
     const body = res.body as ErrorBody

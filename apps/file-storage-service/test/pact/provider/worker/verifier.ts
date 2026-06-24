@@ -6,7 +6,7 @@ import { Test } from '@nestjs/testing'
 import { getRepositoryToken } from '@nestjs/typeorm'
 import { FileRecord } from '../../../../src/entities/file-record.entity'
 import { MinioService } from '../../../../src/storage/minio.service'
-import { InternalFilesModule } from '../../../../src/files/internal/internal-files.module'
+import { UserFilesModule } from '../../../../src/files/user/user-files.module'
 import { createFileRepo } from './mock-repos'
 import type { MockRepos } from './mock-repos'
 
@@ -24,7 +24,7 @@ export async function setupMockedApp(): Promise<{
   const mockMinio = createMockMinio()
 
   const module = await Test.createTestingModule({
-    imports: [InternalFilesModule],
+    imports: [UserFilesModule],
   })
     .overrideProvider(getRepositoryToken(FileRecord))
     .useValue(mockFileRepo)

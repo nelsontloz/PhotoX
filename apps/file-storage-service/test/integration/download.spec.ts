@@ -22,7 +22,7 @@ describe('GET /v1/files/:fileId/download', () => {
 
     const res = await supertest(httpServer)
       .get(`/v1/files/${record.id}/download`)
-      .set('x-user-id', userId)
+      .query({ userId })
       .buffer(true)
       .parse((response, callback) => {
         const chunks: Buffer[] = []
@@ -44,7 +44,7 @@ describe('GET /v1/files/:fileId/download', () => {
 
     const res = await supertest(httpServer)
       .get(`/v1/files/${record.id}/download`)
-      .set('x-user-id', other)
+      .query({ userId: other })
       .expect(404)
 
     expect(res.body).toBeDefined()
@@ -56,7 +56,7 @@ describe('GET /v1/files/:fileId/download', () => {
 
     await supertest(httpServer)
       .get('/v1/files/00000000-0000-0000-0000-000000000000/download')
-      .set('x-user-id', userId)
+      .query({ userId })
       .expect(404)
   })
 })

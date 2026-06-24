@@ -89,7 +89,7 @@ After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
 ## API conventions (apply to all NestJS services)
 
 - **Path versioning lives on the service.** Each backend service exposes its public routes under `/v1/...` declared on the controller, e.g. `@Controller('v1/auth')` in user-service. Do NOT use a global `app.setGlobalPrefix` — keep version routes explicit per controller.
-- **Gateway BFF routes live under `api/`.** The gateway exposes `api/services`, `api/v1/auth`, `api/v1/assets`, and `api/v1/files` via proxy controllers that forward to backend services. `ProxyService` strips hop-by-hop headers, maps downstream 4xx to `HttpException`, 5xx / connection failures to `BadGatewayException` (502), and forwards `x-user-id` upstream.
+- **Gateway BFF routes live under `api/`.** The gateway exposes `api/services`, `api/v1/auth`, `api/v1/assets`, and `api/v1/files` via proxy controllers that forward to backend services. `ProxyService` strips hop-by-hop headers, maps downstream 4xx to `HttpException`, 5xx / connection failures to `BadGatewayException` (502). The gateway extracts the user id from the verified JWT (`req.user.id`) and passes it as a query parameter (GET/DELETE) or body field (POST/PATCH) to the backend — it does not send any custom auth headers.
 - **Health is unversioned.** Each service exposes `GET /health` (no `v1` prefix) because the web app calls it directly on the service port for the status grid.
 - **Global pipes & filters are mandatory.** Every `main.ts` must include: `app.useGlobalPipes(new ValidationPipe({ whitelist, forbidNonWhitelisted, transform }))` and `app.useGlobalFilters(new HttpExceptionFilter())`. The shared `HttpExceptionFilter` lives at `apps/<service>/src/common/filters/http-exception.filter.ts`.
 - **Validation uses class-validator + class-transformer.** DTOs live next to the controller in `apps/<service>/src/<feature>/dto/*.dto.ts`. `class-validator` and `class-transformer` must be added to the service's `package.json` even though they are optional peers of `@nestjs/common` — do not rely on hoisting.
@@ -105,7 +105,32 @@ After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
 
 **Token TTLs and secrets come from env.** `AUTH_ACCESS_TTL` (default `30m`) and `AUTH_REFRESH_TTL` (default `30d`) live in `shared-config/src/env.ts`. `AUTH_TOKEN_SECRET` (required, ≥32 characters) and `AUTH_CLOCK_TOLERANCE_SEC` (default `60`) live in `packages/shared-auth/src/env.ts` via `loadAuthEnv()`, shared by user-service and the gateway.
 
-**Jwt payload shape.** `JwtPayload` in `shared-auth` is `{ sub, email, iat, exp, jti? }`. The gateway's `JwtStrategy` maps `payload.sub` to a request user of `{ id, email }` and forwards `x-user-id` upstream.
+**Jwt payload shape.** `JwtPayload` in `shared-auth` is `{ sub, email, iat, exp, jti? }`. The gateway's `JwtStrategy` maps `payload.sub` to a request user of `{ id, email }` and passes `id` as a query/body parameter to backend services.
+
+## Service-to-service communication: trust the network
+
+**No guards, no `x-user-id` header, no `/v1/internal/` path prefix.** Backend services trust the network boundary. The gateway is the only auth surface.
+
+### How identity flows
+
+- **User requests (gateway → backend):** The gateway extracts `userId` from the verified JWT (`req.user.id`) and passes it as a regular CRUD parameter:
+  - `userId` as a **query parameter** for GET and DELETE (e.g. `GET /v1/assets?userId=...`)
+  - `userId` in the **request body** for POST and PATCH (e.g. `POST /v1/assets` body `{ fileId, kind, userId }`)
+  - `userId` as a **form field** for multipart upload (e.g. `POST /v1/files` with `userId` in the multipart body alongside the file)
+- **System calls (worker → backend):** The worker has `userId` in the thumbnail job payload (put there by the gateway when enqueueing). It passes it as a form field on upload, and the thumbnail register endpoint doesn't need it.
+- **No custom auth headers between services.** No `x-user-id`, no `x-internal-token`, no `Authorization: Bearer <service-jwt>`. The `x-request-id` header is passed through for tracing only — it's not auth.
+
+### How endpoints are structured
+
+- **One controller per resource, no path-based split.** `AssetsController` handles all asset routes (user CRUD + by-file lookup + metadata update). `ThumbnailsController` handles all thumbnail routes (list, get, register, unregister). `UserFilesController` handles all file routes (upload, list, get, download, delete, stream, batch).
+- **Route ordering matters.** Specific routes (`by-file/:fileId`, `by-user/:userId`, `:fileId/stream`) must be declared BEFORE parameterized routes (`:id`, `:fileId`) to avoid being matched as a path parameter.
+- **`userId` in a query/body parameter is a data access concern, not a guard.** Service methods like `getOne(userId, id)` do `WHERE id = ? AND userId = ?` in the DB. This is enforced by the service layer, not by a guard or middleware.
+
+### Trust boundary (non-negotiable for prod)
+
+**In production, only the gateway is reachable from outside the trusted network.** Backend services (media-service, file-storage-service, worker-service) run on a private network and are not exposed to the internet. This is the only thing that makes "no auth between services" safe. The `docker-compose.yml` setup publishes backend ports for dev convenience — that's fine because dev runs on localhost, but in prod, backend ports must not be published.
+
+If you ever misconfigure the prod network (accidentally publish a backend port, wrong ingress rule, etc.), there is zero auth backstop. The gateway is the only door. For a personal photo app, this is an acceptable bet — just make the deployment boundary explicit and don't forget it.
 
 ## Frontend conventions (web)
 
@@ -123,8 +148,11 @@ After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
 
 ## Pact contract testing
 
-- **Consumer:** Gateway (`apps/gateway`) is the only consumer. Pact tests at `test/pact/consumer/`. Uses `PactV3` from `@pact-foundation/pact`. 18 interactions total across user-service, media-service, file-storage-service: 7 auth (4 happy + 409/401/401), 6 assets (all happy), 5 files (4 happy + 404).
-- **Providers:** Each backend service has pact verification tests at `test/pact/provider/gateway/`. Uses `Verifier` from `@pact-foundation/pact`. Provider tests use mocked repositories (no testcontainers) — `Test.createTestingModule` with `overrideProvider(getRepositoryToken(Entity))`. Non-repository external services (e.g. `MinioService` in file-storage) are mocked via `overrideProvider(Token).useValue(...)`.
+- **Consumers:** Two services have consumer pact tests:
+  - **Gateway** (`apps/gateway/test/pact/consumer/`) — calls user-service, media-service, file-storage-service, worker-service
+  - **Worker-service** (`apps/worker-service/test/pact/consumer/`) — calls media-service and file-storage-service (thumbnail processing)
+  Both use `PactV3` from `@pact-foundation/pact`. ~26 interactions total: 7 auth, 6 assets, 5 files, 2 jobs, 6 worker→backend (2 thumbnail register + 4 file stream/upload).
+- **Providers:** Each backend service has pact verification tests at `test/pact/provider/gateway/` (for the gateway consumer) and `test/pact/provider/worker/` (for the worker consumer, in media-service and file-storage-service). Uses `Verifier` from `@pact-foundation/pact`. Provider tests use mocked repositories (no testcontainers) — `Test.createTestingModule` with `overrideProvider(getRepositoryToken(Entity))`. Non-repository external services (e.g. `MinioService` in file-storage) are mocked via `overrideProvider(Token).useValue(...)`.
 - **Pacts stored at repo root** `pacts/<consumer>-<provider>.json`. Not committed (in `.gitignore`). Regenerated fresh on every `pnpm verify`.
 - **Commands per service:** `pnpm pact-consumer` runs `vitest run --config vitest.consumer.config.ts` (includes `test/pact/consumer/**`). `pnpm pact-provider` runs `vitest run --config vitest.provider.config.ts` (includes `test/pact/provider/**`). Both use `passWithNoTests: true`.
 - **Root commands:** `pnpm pact-consumer` / `pnpm pact-provider` / `pnpm pact-coverage` run across all services via turbo. `pact-provider` depends on `pact-consumer` in `turbo.json` so consumers always run first.
@@ -145,14 +173,30 @@ After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
   file-storage-service/
     testing-module.ts                       # ditto, FilesProxyController + HttpModule
     files.pact.spec.ts
+  worker-service/
+    thumbnail.pact.spec.ts                  # no test module — uses axios directly against the mock server
 
-  # Each backend service (provider) — apps/<service>/test/pact/provider/gateway/
-  verifier.ts                               # setupMockedApp(): Test.createTestingModule with overrideProvider(...) for repos (and MinioService for file-storage); computes argon2 hash for auth flow
-  mock-repos.ts                             # vi.fn()-backed repos for each entity
-  <feature>.pact.spec.ts                    # user-service: auth | media-service: assets | file-storage-service: files
+  # Worker-service (consumer) — apps/worker-service/test/pact/consumer/
+  setup.ts                                  # createPact(providerName) factory with consumer: 'worker-service'
+  media-service/
+    testing-module.ts                       # HttpModule + HttpService (no NestJS controller — tests raw outbound calls)
+    thumbnails.pact.spec.ts
+  file-storage-service/
+    testing-module.ts                       # ditto
+    files.pact.spec.ts
+
+  # Each backend service (provider) — apps/<service>/test/pact/provider/
+  gateway/
+    verifier.ts                             # setupMockedApp(): Test.createTestingModule with overrideProvider(...) for repos (and MinioService for file-storage); computes argon2 hash for auth flow
+    mock-repos.ts                           # vi.fn()-backed repos for each entity
+    <feature>.pact.spec.ts                  # user-service: auth | media-service: assets | file-storage-service: files | worker-service: jobs
+  worker/                                    # only in media-service and file-storage-service
+    verifier.ts                             # ditto, simpler (no argon2)
+    mock-repos.ts                           # ditto
+    <feature>.pact.spec.ts                  # media-service: thumbnails | file-storage-service: files
 
   # Per-service vitest configs
-  vitest.consumer.config.ts                 # only the gateway has a non-empty include set; backend consumer configs exist for symmetry and pass via passWithNoTests
+  vitest.consumer.config.ts                 # gateway and worker-service have non-empty include sets; others pass via passWithNoTests
   vitest.provider.config.ts                 # only backend services have matching spec files; gateway provider config exists for symmetry
   ```
 
@@ -170,4 +214,4 @@ Pre-commit order: `pnpm verify` (wipes `pacts/` and runs lint → `pact-consumer
 
 ## Implemented / out of scope
 
-- **Implemented:** photo upload end-to-end (file-storage upload → gateway → web timeline page), media-service assets CRUD + trash/restore + thumbnails + internal cross-service endpoints, gateway BFF layer (`api/` and `api/v1/*` proxy routes) with JWT guard + `ProxyService`, web auth, login/register, timeline, and upload UI.
+- **Implemented:** photo upload end-to-end (file-storage upload → gateway → web timeline page), media-service assets CRUD + trash/restore + thumbnails, gateway BFF layer (`api/` and `api/v1/*` proxy routes) with JWT guard + `ProxyService`, web auth, login/register, timeline, and upload UI.
