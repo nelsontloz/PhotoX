@@ -13,6 +13,7 @@ let stub: StubProxy
 const USER_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
 const ASSET_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22'
 const FILE_ID = '550e8400-e29b-41d4-a716-446655440000'
+const SIZE = 'sm'
 const assetMatcher = {
   id: MatchersV3.uuid(ASSET_ID),
   userId: MatchersV3.uuid(USER_ID),
@@ -41,6 +42,15 @@ const assetMatcher = {
   hasAudio: null,
   metadataStatus: MatchersV3.regex(/pending|ready|failed/, 'pending'),
   metadataExtractedAt: null,
+}
+
+const thumbnailMatcher = {
+  size: MatchersV3.string(SIZE),
+  fileId: MatchersV3.uuid(FILE_ID),
+  width: MatchersV3.integer(320),
+  height: MatchersV3.integer(240),
+  bytes: MatchersV3.integer(12345),
+  createdAt: MatchersV3.datetime("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", '2024-01-01T00:00:00.000Z'),
 }
 
 beforeAll(async () => {
@@ -191,6 +201,52 @@ describe('Gateway → media-service assets pact', () => {
         stub.targetUrl = mockserver.url
         const res = await request(app.getHttpServer()).post(`/api/v1/assets/${ASSET_ID}/restore`)
         expect(res.status).toBe(204)
+      })
+  })
+
+  it('GET /v1/assets/:id/thumbnails — list thumbnails', async () => {
+    await mediaService
+      .given(`asset ${ASSET_ID} has 2 thumbnails`)
+      .uponReceiving('a list thumbnails request')
+      .withRequest({
+        method: 'GET',
+        path: `/v1/assets/${ASSET_ID}/thumbnails`,
+        query: { userId: USER_ID },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: MatchersV3.eachLike(thumbnailMatcher, 2),
+      })
+      .executeTest(async (mockserver) => {
+        stub.targetUrl = mockserver.url
+        const res = await request(app.getHttpServer()).get(`/api/v1/assets/${ASSET_ID}/thumbnails`)
+        expect(res.status).toBe(200)
+        expect(res.body).toHaveLength(2)
+      })
+  })
+
+  it('GET /v1/assets/:id/thumbnails/:size — get one thumbnail', async () => {
+    await mediaService
+      .given(`asset ${ASSET_ID} has a thumbnail of size ${SIZE}`)
+      .uponReceiving('a get thumbnail request')
+      .withRequest({
+        method: 'GET',
+        path: `/v1/assets/${ASSET_ID}/thumbnails/${SIZE}`,
+        query: { userId: USER_ID },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: thumbnailMatcher,
+      })
+      .executeTest(async (mockserver) => {
+        stub.targetUrl = mockserver.url
+        const res = await request(app.getHttpServer()).get(
+          `/api/v1/assets/${ASSET_ID}/thumbnails/${SIZE}`,
+        )
+        expect(res.status).toBe(200)
+        expect(res.body.size).toBe(SIZE)
       })
   })
 })

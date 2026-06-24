@@ -229,4 +229,31 @@ describe('Worker → media-service metadata pact', () => {
         }
       })
   })
+
+  it('PATCH /v1/assets/:id/metadata — mark video as pending (deferred extraction)', async () => {
+    await mediaService
+      .given('asset exists with id ' + ASSET_ID)
+      .uponReceiving('a request to mark video metadata as pending')
+      .withRequest({
+        method: 'PATCH',
+        path: `/v1/assets/${ASSET_ID}/metadata`,
+        headers: { 'Content-Type': 'application/json' },
+        body: { status: 'pending', mimeType: 'video/mp4' },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: { ...failedMetadataResponseMatcher, metadataStatus: 'pending', mimeType: 'video/mp4' },
+      })
+      .executeTest(async (mockserver) => {
+        const res = await axios.patch(
+          `${mockserver.url}/v1/assets/${ASSET_ID}/metadata`,
+          { status: 'pending', mimeType: 'video/mp4' },
+          { headers: { 'Content-Type': 'application/json' } },
+        )
+        expect(res.status).toBe(200)
+        expect(res.data.metadataStatus).toBe('pending')
+        expect(res.data.mimeType).toBe('video/mp4')
+      })
+  })
 })
