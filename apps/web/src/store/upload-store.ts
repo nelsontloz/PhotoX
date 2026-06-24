@@ -17,9 +17,11 @@ export interface UploadItem {
 
 interface UploadState {
   items: UploadItem[]
+  dismissed: boolean
   enqueue: (files: File[]) => void
   setProgress: (id: string, pct: number) => void
   setStatus: (id: string, status: UploadStatus, patch?: Partial<UploadItem>) => void
+  setDismissed: (b: boolean) => void
   clearDone: () => void
   clearAll: () => void
 }
@@ -35,9 +37,11 @@ function fileKind(file: File): 'photo' | 'video' {
 
 export const useUploadStore = create<UploadState>((set) => ({
   items: [],
+  dismissed: false,
 
   enqueue: (files) =>
     set((s) => ({
+      dismissed: false,
       items: [
         ...s.items,
         ...files.map((file) => ({
@@ -60,6 +64,8 @@ export const useUploadStore = create<UploadState>((set) => ({
     set((s) => ({
       items: s.items.map((item) => (item.id === id ? { ...item, status, ...patch } : item)),
     })),
+
+  setDismissed: (b) => set({ dismissed: b }),
 
   clearDone: () => set((s) => ({ items: s.items.filter((i) => i.status !== 'done') })),
 

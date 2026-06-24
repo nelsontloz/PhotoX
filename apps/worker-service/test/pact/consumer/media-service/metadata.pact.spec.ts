@@ -230,36 +230,34 @@ describe('Worker → media-service metadata pact', () => {
       })
   })
 
-  it('PATCH /v1/assets/:id/metadata — transcode status update only (no status field)', async () => {
+  it('PATCH /v1/assets/:id/metadata — mark video as pending (deferred extraction)', async () => {
     await mediaService
       .given('asset exists with id ' + ASSET_ID)
-      .uponReceiving('a request to update only transcodeStatus without metadata status')
+      .uponReceiving('a request to mark video metadata as pending')
       .withRequest({
         method: 'PATCH',
         path: `/v1/assets/${ASSET_ID}/metadata`,
         headers: { 'Content-Type': 'application/json' },
-        body: { transcodeStatus: 'pending' },
+        body: { status: 'pending', mimeType: 'video/mp4' },
       })
       .willRespondWith({
         status: 200,
         headers: { 'Content-Type': 'application/json' },
         body: {
-          id: MatchersV3.uuid(ASSET_ID),
-          transcodeStatus: MatchersV3.string('pending'),
-          metadataStatus: MatchersV3.string('pending'),
-          metadataExtractedAt: MatchersV3.nullValue(),
+          ...failedMetadataResponseMatcher,
+          metadataStatus: 'pending',
+          mimeType: 'video/mp4',
         },
       })
       .executeTest(async (mockserver) => {
         const res = await axios.patch(
           `${mockserver.url}/v1/assets/${ASSET_ID}/metadata`,
-          { transcodeStatus: 'pending' },
+          { status: 'pending', mimeType: 'video/mp4' },
           { headers: { 'Content-Type': 'application/json' } },
         )
         expect(res.status).toBe(200)
-        expect(res.data.transcodeStatus).toBe('pending')
         expect(res.data.metadataStatus).toBe('pending')
-        expect(res.data.metadataExtractedAt).toBeNull()
+        expect(res.data.mimeType).toBe('video/mp4')
       })
   })
 })

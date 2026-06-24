@@ -2,6 +2,7 @@
 import type { INestApplication } from '@nestjs/common'
 import { MatchersV3 } from '@pact-foundation/pact'
 import request from 'supertest'
+import { SERVICE_URLS } from '@photox/shared-config'
 import { createPact } from '../setup'
 import { setupFileStorageServicePactModule } from './testing-module'
 import type { StubProxy } from '../stub'
@@ -11,6 +12,7 @@ let app: INestApplication
 let stub: StubProxy
 
 const USER_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
+const ASSET_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22'
 const FILE_ID = '550e8400-e29b-41d4-a716-446655440000'
 
 const fileRecordMatcher = {
@@ -168,6 +170,104 @@ describe('Gateway → file-storage-service files pact', () => {
         stub.targetUrl = mockserver.url
         const res = await request(app.getHttpServer()).delete(`/api/v1/files/${FILE_ID}`)
         expect(res.status).toBe(204)
+      })
+  })
+
+  it('POST /v1/files — upload file (cascade happy path)', async () => {
+    let cascadeVerified = false
+    stub.interceptFn = (_serviceUrl, opts) => {
+      if (opts.method === 'POST' && opts.path === 'v1/files') {
+        return {
+          status: 201,
+          data: {
+            id: FILE_ID,
+            userId: USER_ID,
+            storageKey: `${USER_ID}/${FILE_ID}.png`,
+            originalName: 'photo.png',
+            mimeType: 'image/png',
+            sizeBytes: 16,
+            checksumSha256: 'abc123def456',
+            createdAt: '2024-01-01T00:00:00.000Z',
+          },
+        }
+      }
+      if (opts.method === 'GET' && opts.path.startsWith('v1/assets/by-file/')) {
+        return { status: 404, data: { message: 'Asset not found' } }
+      }
+      if (opts.method === 'POST' && opts.path === 'v1/assets') {
+        cascadeVerified = true
+        return {
+          status: 201,
+          data: {
+            id: ASSET_ID,
+            userId: USER_ID,
+            fileId: FILE_ID,
+            kind: 'photo',
+            uploadedAt: '2024-01-01T00:00:00.000Z',
+            isTrashed: false,
+            trashedAt: null,
+            title: null,
+            description: null,
+            takenAt: null,
+            favorite: false,
+            mimeType: null,
+            sizeBytes: null,
+            originalName: null,
+            width: null,
+            height: null,
+            durationSeconds: null,
+            cameraMake: null,
+            cameraModel: null,
+            orientation: null,
+            latitude: null,
+            longitude: null,
+            fps: null,
+            codec: null,
+            hasAudio: null,
+            metadataStatus: 'pending',
+            metadataExtractedAt: null,
+          },
+        }
+      }
+      return null
+    }
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/files')
+      .attach('file', Buffer.from('test-image-data'), 'photo.png')
+      .field('kind', 'photo')
+    expect(res.status).toBe(201)
+    expect(res.body.id).toBe(ASSET_ID)
+    expect(cascadeVerified).toBe(true)
+    expect(stub.calls.some((c) => c.path.startsWith('v1/assets/by-file/'))).toBe(true)
+    expect(stub.calls.some((c) => c.method === 'POST' && c.path === 'v1/assets')).toBe(true)
+  })
+
+  it('GET /v1/files/:fileId/download — download a file', async () => {
+    await fileStorage
+      .given('file exists with id ' + FILE_ID)
+      .uponReceiving('a request to download a file')
+      .withRequest({
+        method: 'GET',
+        path: `/v1/files/${FILE_ID}/download`,
+        query: { userId: USER_ID },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: {
+          'Content-Type': MatchersV3.string('image/png'),
+          'Content-Disposition': MatchersV3.string('attachment; filename="photo.png"'),
+        },
+      })
+      .executeTest(async (mockserver) => {
+        const originalUrl = (SERVICE_URLS as Record<string, string>)['file-storage-service']!
+        ;(SERVICE_URLS as Record<string, string>)['file-storage-service'] = mockserver.url
+        try {
+          const res = await request(app.getHttpServer()).get(`/api/v1/files/${FILE_ID}/download`)
+          expect(res.status).toBe(200)
+          expect(res.headers['content-type']).toContain('image/png')
+        } finally {
+          ;(SERVICE_URLS as Record<string, string>)['file-storage-service'] = originalUrl
+        }
       })
   })
 })

@@ -78,6 +78,50 @@ describe('Pact verification — media-service', () => {
           })
           return Promise.resolve()
         },
+        [`asset ${ASSET_ID} has 2 thumbnails`]: () => {
+          repos.mockAssetRepo.save(baseAsset)
+          repos.mockThumbnailRepo.find.mockResolvedValue([
+            {
+              assetId: ASSET_ID,
+              size: 'sm',
+              fileId: FILE_ID,
+              width: 320,
+              height: 240,
+              bytes: 12345,
+              createdAt: new Date('2024-01-01T00:00:00.000Z'),
+            },
+            {
+              assetId: ASSET_ID,
+              size: 'md',
+              fileId: FILE_ID,
+              width: 640,
+              height: 480,
+              bytes: 23456,
+              createdAt: new Date('2024-01-01T00:00:01.000Z'),
+            },
+          ])
+          return Promise.resolve()
+        },
+        [`asset ${ASSET_ID} has a thumbnail of size sm`]: () => {
+          repos.mockAssetRepo.save(baseAsset)
+          repos.mockThumbnailRepo.findOne.mockImplementation(
+            (opts: { where?: { assetId?: string; size?: string } }) => {
+              if (opts?.where?.assetId === ASSET_ID && opts?.where?.size === 'sm') {
+                return Promise.resolve({
+                  assetId: ASSET_ID,
+                  size: 'sm',
+                  fileId: FILE_ID,
+                  width: 320,
+                  height: 240,
+                  bytes: 12345,
+                  createdAt: new Date('2024-01-01T00:00:00.000Z'),
+                })
+              }
+              return Promise.resolve(null)
+            },
+          )
+          return Promise.resolve()
+        },
       },
     }).verifyProvider()
   }, 30_000)

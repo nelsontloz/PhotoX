@@ -26,6 +26,7 @@ export const ASSET_DEFAULTS = {
 
 export interface MockRepos {
   mockAssetRepo: ReturnType<typeof createAssetRepo>
+  mockThumbnailRepo: ReturnType<typeof createBasicRepo>
 }
 
 export function createAssetRepo() {
