@@ -45,7 +45,7 @@ export async function uploadForUser(
 ): Promise<FileRecord> {
   const res = await supertest(httpServer)
     .post('/v1/files')
-    .set('x-user-id', userId)
+    .field('userId', userId)
     .attach('file', content, { filename, contentType: mimeType })
     .expect(201)
   return res.body as FileRecord

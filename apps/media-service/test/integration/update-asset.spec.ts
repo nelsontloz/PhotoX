@@ -26,8 +26,7 @@ describe('PATCH /v1/assets/:id', () => {
 
     const res = await supertest(httpServer)
       .patch(`/v1/assets/${created.id}`)
-      .set('x-user-id', userId)
-      .send({ title: 'Updated Title' })
+      .send({ userId, title: 'Updated Title' })
       .expect(200)
 
     const body = res.body as Asset
@@ -41,8 +40,8 @@ describe('PATCH /v1/assets/:id', () => {
 
     const res = await supertest(httpServer)
       .patch(`/v1/assets/${created.id}`)
-      .set('x-user-id', userId)
       .send({
+        userId,
         title: 'New Title',
         description: 'New Description',
         favorite: true,
@@ -66,8 +65,7 @@ describe('PATCH /v1/assets/:id', () => {
 
     const res = await supertest(httpServer)
       .patch(`/v1/assets/${created.id}`)
-      .set('x-user-id', userId)
-      .send({})
+      .send({ userId })
       .expect(200)
 
     const body = res.body as Asset
@@ -81,8 +79,7 @@ describe('PATCH /v1/assets/:id', () => {
 
     const res = await supertest(httpServer)
       .patch(`/v1/assets/${fakeId}`)
-      .set('x-user-id', userId)
-      .send({ title: 'x' })
+      .send({ userId, title: 'x' })
       .expect(404)
 
     const body = res.body as ErrorBody
@@ -96,8 +93,7 @@ describe('PATCH /v1/assets/:id', () => {
 
     const res = await supertest(httpServer)
       .patch(`/v1/assets/${created.id}`)
-      .set('x-user-id', userId)
-      .send({ title: longTitle })
+      .send({ userId, title: longTitle })
       .expect(200)
 
     const body = res.body as Asset
@@ -110,8 +106,7 @@ describe('PATCH /v1/assets/:id', () => {
 
     const res = await supertest(httpServer)
       .patch(`/v1/assets/${created.id}`)
-      .set('x-user-id', userId)
-      .send({ title: 'a'.repeat(256) })
+      .send({ userId, title: 'a'.repeat(256) })
       .expect(400)
 
     const body = res.body as ErrorBody
@@ -125,8 +120,7 @@ describe('PATCH /v1/assets/:id', () => {
 
     const res = await supertest(httpServer)
       .patch(`/v1/assets/${created.id}`)
-      .set('x-user-id', userId)
-      .send({ description: longDesc })
+      .send({ userId, description: longDesc })
       .expect(200)
 
     const body = res.body as Asset
@@ -139,8 +133,7 @@ describe('PATCH /v1/assets/:id', () => {
 
     const res = await supertest(httpServer)
       .patch(`/v1/assets/${created.id}`)
-      .set('x-user-id', userId)
-      .send({ description: 'a'.repeat(2001) })
+      .send({ userId, description: 'a'.repeat(2001) })
       .expect(400)
 
     const body = res.body as ErrorBody
@@ -153,8 +146,7 @@ describe('PATCH /v1/assets/:id', () => {
 
     await supertest(httpServer)
       .patch(`/v1/assets/${created.id}`)
-      .set('x-user-id', userId)
-      .send({ takenAt: '2025-06-20T12:00:00.000Z' })
+      .send({ userId, takenAt: '2025-06-20T12:00:00.000Z' })
       .expect(200)
   })
 
@@ -164,8 +156,7 @@ describe('PATCH /v1/assets/:id', () => {
 
     const res = await supertest(httpServer)
       .patch(`/v1/assets/${created.id}`)
-      .set('x-user-id', userId)
-      .send({ takenAt: 'not-a-date' })
+      .send({ userId, takenAt: 'not-a-date' })
       .expect(400)
 
     const body = res.body as ErrorBody

@@ -58,7 +58,7 @@ describe('Gateway → file-storage-service files pact', () => {
       .withRequest({
         method: 'GET',
         path: '/v1/files',
-        headers: { 'x-user-id': USER_ID },
+        query: { userId: USER_ID },
       })
       .willRespondWith({
         status: 200,
@@ -86,7 +86,7 @@ describe('Gateway → file-storage-service files pact', () => {
       .withRequest({
         method: 'GET',
         path: '/v1/files',
-        headers: { 'x-user-id': USER_ID },
+        query: { userId: USER_ID },
       })
       .willRespondWith({
         status: 200,
@@ -117,7 +117,7 @@ describe('Gateway → file-storage-service files pact', () => {
       .withRequest({
         method: 'GET',
         path: `/v1/files/${FILE_ID}`,
-        headers: { 'x-user-id': USER_ID },
+        query: { userId: USER_ID },
       })
       .willRespondWith({
         status: 200,
@@ -139,7 +139,7 @@ describe('Gateway → file-storage-service files pact', () => {
       .withRequest({
         method: 'GET',
         path: `/v1/files/${FILE_ID}`,
-        headers: { 'x-user-id': USER_ID },
+        query: { userId: USER_ID },
       })
       .willRespondWith({
         status: 404,
@@ -161,7 +161,7 @@ describe('Gateway → file-storage-service files pact', () => {
       .withRequest({
         method: 'DELETE',
         path: `/v1/files/${FILE_ID}`,
-        headers: { 'x-user-id': USER_ID },
+        query: { userId: USER_ID },
       })
       .willRespondWith({ status: 204 })
       .executeTest(async (mockserver) => {

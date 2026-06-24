@@ -4,6 +4,10 @@ import { IsUUID, IsIn, IsOptional, IsString, MaxLength, IsDateString } from 'cla
 export class CreateAssetDto {
   @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
   @IsUUID()
+  userId!: string
+
+  @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
+  @IsUUID()
   fileId!: string
 
   @ApiProperty({ enum: ['photo', 'video'] })

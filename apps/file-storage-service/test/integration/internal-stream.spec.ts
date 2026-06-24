@@ -14,7 +14,7 @@ afterAll(async () => {
   await closeTestApp(app)
 })
 
-describe('GET /v1/internal/files/:fileId/stream', () => {
+describe('GET /v1/files/:fileId/stream', () => {
   it('UC-I4: streams raw bytes with correct Content-Type and body sha256', async () => {
     const userId = mintUserId()
     const content = Buffer.from('stream-this-bytes')
@@ -27,7 +27,8 @@ describe('GET /v1/internal/files/:fileId/stream', () => {
     )
 
     const res = await supertest(httpServer)
-      .get(`/v1/internal/files/${record.id}/stream`)
+      .get(`/v1/files/${record.id}/stream`)
+      .query({ userId })
       .buffer(true)
       .parse((response, callback) => {
         const chunks: Buffer[] = []
@@ -42,8 +43,10 @@ describe('GET /v1/internal/files/:fileId/stream', () => {
   })
 
   it('returns 404 for a non-existent file', async () => {
+    const userId = mintUserId()
     await supertest(httpServer)
-      .get('/v1/internal/files/00000000-0000-0000-0000-000000000000/stream')
+      .get('/v1/files/00000000-0000-0000-0000-000000000000/stream')
+      .query({ userId })
       .expect(404)
   })
 })

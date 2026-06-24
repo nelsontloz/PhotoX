@@ -16,14 +16,12 @@ afterAll(async () => {
   await closeTestApp(app)
 })
 
-describe('GET /v1/internal/assets/by-file/:fileId', () => {
+describe('GET /v1/assets/by-file/:fileId', () => {
   it('UC-I3: returns the asset for a known fileId', async () => {
     const userId = mintUserId()
     const created = await createAssetForUser(httpServer, userId)
 
-    const res = await supertest(httpServer)
-      .get(`/v1/internal/assets/by-file/${created.fileId}`)
-      .expect(200)
+    const res = await supertest(httpServer).get(`/v1/assets/by-file/${created.fileId}`).expect(200)
 
     const body = res.body as Asset
     expect(body.id).toBe(created.id)
@@ -34,21 +32,16 @@ describe('GET /v1/internal/assets/by-file/:fileId', () => {
   it('UC-I4: returns 404 for an unknown fileId', async () => {
     const fakeFileId = randomUUID()
 
-    await supertest(httpServer).get(`/v1/internal/assets/by-file/${fakeFileId}`).expect(404)
+    await supertest(httpServer).get(`/v1/assets/by-file/${fakeFileId}`).expect(404)
   })
 
   it('UC-I5: trashed asset is still returned with isTrashed=true', async () => {
     const userId = mintUserId()
     const created = await createAssetForUser(httpServer, userId)
 
-    await supertest(httpServer)
-      .post(`/v1/assets/${created.id}/trash`)
-      .set('x-user-id', userId)
-      .expect(204)
+    await supertest(httpServer).post(`/v1/assets/${created.id}/trash`).query({ userId }).expect(204)
 
-    const res = await supertest(httpServer)
-      .get(`/v1/internal/assets/by-file/${created.fileId}`)
-      .expect(200)
+    const res = await supertest(httpServer).get(`/v1/assets/by-file/${created.fileId}`).expect(200)
 
     const body = res.body as Asset
     expect(body.isTrashed).toBe(true)

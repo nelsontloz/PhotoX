@@ -31,13 +31,13 @@ const fileRecordMatcher = {
 }
 
 describe('Worker → file-storage-service files pact', () => {
-  it('GET /v1/internal/files/:fileId/stream — stream file (happy path)', async () => {
+  it('GET /v1/files/:fileId/stream — stream file (happy path)', async () => {
     await fileStorage
       .given('file exists with id ' + FILE_ID)
       .uponReceiving('a request to stream a file')
       .withRequest({
         method: 'GET',
-        path: `/v1/internal/files/${FILE_ID}/stream`,
+        path: `/v1/files/${FILE_ID}/stream`,
       })
       .willRespondWith({
         status: 200,
@@ -47,7 +47,7 @@ describe('Worker → file-storage-service files pact', () => {
         },
       })
       .executeTest(async (mockserver) => {
-        const res = await axios.get(`${mockserver.url}/v1/internal/files/${FILE_ID}/stream`, {
+        const res = await axios.get(`${mockserver.url}/v1/files/${FILE_ID}/stream`, {
           responseType: 'arraybuffer',
         })
         expect(res.status).toBe(200)
@@ -56,13 +56,13 @@ describe('Worker → file-storage-service files pact', () => {
       })
   })
 
-  it('GET /v1/internal/files/:fileId/stream — file not found', async () => {
+  it('GET /v1/files/:fileId/stream — file not found', async () => {
     await fileStorage
       .given('file does not exist')
       .uponReceiving('a request to stream a missing file')
       .withRequest({
         method: 'GET',
-        path: `/v1/internal/files/${FILE_ID}/stream`,
+        path: `/v1/files/${FILE_ID}/stream`,
       })
       .willRespondWith({
         status: 404,
@@ -73,7 +73,7 @@ describe('Worker → file-storage-service files pact', () => {
       })
       .executeTest(async (mockserver) => {
         try {
-          await axios.get(`${mockserver.url}/v1/internal/files/${FILE_ID}/stream`)
+          await axios.get(`${mockserver.url}/v1/files/${FILE_ID}/stream`)
         } catch (err: unknown) {
           if (axios.isAxiosError(err) && err.response) {
             expect(err.response.status).toBe(404)
@@ -85,7 +85,7 @@ describe('Worker → file-storage-service files pact', () => {
       })
   })
 
-  it('POST /v1/internal/files/upload — upload file (happy path)', async () => {
+  it('POST /v1/files — upload file (happy path)', async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), 'pact-'))
     const tmpFile = join(tmpDir, 'thumb-sm.webp')
     writeFileSync(tmpFile, WEBP_DATA)
@@ -96,7 +96,7 @@ describe('Worker → file-storage-service files pact', () => {
       .withRequestMultipartFileUpload(
         {
           method: 'POST',
-          path: '/v1/internal/files/upload',
+          path: '/v1/files',
         },
         'image/webp',
         tmpFile,
@@ -115,7 +115,7 @@ describe('Worker → file-storage-service files pact', () => {
         })
         form.append('userId', USER_ID)
 
-        const res = await axios.post(`${mockserver.url}/v1/internal/files/upload`, form, {
+        const res = await axios.post(`${mockserver.url}/v1/files`, form, {
           headers: form.getHeaders(),
           maxContentLength: Infinity,
           maxBodyLength: Infinity,
@@ -126,7 +126,7 @@ describe('Worker → file-storage-service files pact', () => {
       })
   })
 
-  it('POST /v1/internal/files/upload — server error', async () => {
+  it('POST /v1/files — upload fails', async () => {
     const errorPact = createPact('file-storage-service')
     const tmpDir = mkdtempSync(join(tmpdir(), 'pact-'))
     const tmpFile = join(tmpDir, 'thumb-sm.webp')
@@ -138,18 +138,18 @@ describe('Worker → file-storage-service files pact', () => {
       .withRequestMultipartFileUpload(
         {
           method: 'POST',
-          path: '/v1/internal/files/upload',
+          path: '/v1/files',
         },
         'image/webp',
         tmpFile,
         'file',
       )
       .willRespondWith({
-        status: 500,
+        status: 400,
         headers: { 'Content-Type': 'application/json' },
         body: MatchersV3.like({
-          statusCode: 500,
-          message: MatchersV3.string('Internal server error'),
+          statusCode: 400,
+          message: MatchersV3.string('Failed to upload file to storage'),
         }),
       })
       .executeTest(async (mockserver) => {
@@ -161,14 +161,14 @@ describe('Worker → file-storage-service files pact', () => {
         form.append('userId', USER_ID)
 
         try {
-          await axios.post(`${mockserver.url}/v1/internal/files/upload`, form, {
+          await axios.post(`${mockserver.url}/v1/files`, form, {
             headers: form.getHeaders(),
             maxContentLength: Infinity,
             maxBodyLength: Infinity,
           })
         } catch (err: unknown) {
           if (axios.isAxiosError(err) && err.response) {
-            expect(err.response.status).toBe(500)
+            expect(err.response.status).toBe(400)
             expect(err.response.data).toBeTruthy()
           } else {
             throw err

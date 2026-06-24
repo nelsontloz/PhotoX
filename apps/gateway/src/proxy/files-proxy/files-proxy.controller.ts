@@ -70,6 +70,7 @@ export class FilesProxyController {
 
     const form = new FormData()
     form.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname)
+    form.append('userId', userId)
 
     const fileResult = await this.proxy.forward<FileRecord>(SERVICE_URLS['file-storage-service'], {
       method: 'POST',
@@ -77,7 +78,6 @@ export class FilesProxyController {
       body: form,
       headers: {
         'x-request-id': requestId,
-        'x-user-id': userId,
       },
       timeout: 180_000,
     })
@@ -89,7 +89,7 @@ export class FilesProxyController {
     try {
       const existingAsset = await this.proxy.forward<Asset>(SERVICE_URLS['media-service'], {
         method: 'GET',
-        path: `v1/internal/assets/by-file/${record.id}`,
+        path: `v1/assets/by-file/${record.id}`,
         headers: { 'x-request-id': requestId },
         timeout: 5_000,
       })
@@ -124,10 +124,10 @@ export class FilesProxyController {
           title,
           description,
           takenAt,
+          userId,
         },
         headers: {
           'x-request-id': requestId,
-          'x-user-id': userId,
         },
         timeout: 5_000,
       })
@@ -138,9 +138,9 @@ export class FilesProxyController {
         await this.proxy.forward(SERVICE_URLS['file-storage-service'], {
           method: 'DELETE',
           path: `v1/files/${record.id}`,
+          query: { userId },
           headers: {
             'x-request-id': requestId,
-            'x-user-id': userId,
           },
           timeout: 5_000,
         })
@@ -164,10 +164,12 @@ export class FilesProxyController {
       {
         method: 'GET',
         path: 'v1/files',
-        query: q as unknown as Record<string, string>,
+        query: { ...q, userId: (req.user as { id: string }).id } as unknown as Record<
+          string,
+          string
+        >,
         headers: {
           'x-request-id': (req.headers['x-request-id'] as string) ?? '',
-          'x-user-id': (req.user as { id: string }).id,
         },
         timeout: 30_000,
       },
@@ -183,9 +185,9 @@ export class FilesProxyController {
     const result = await this.proxy.forward<FileRecord>(SERVICE_URLS['file-storage-service'], {
       method: 'GET',
       path: `v1/files/${fileId}`,
+      query: { userId: (req.user as { id: string }).id },
       headers: {
         'x-request-id': (req.headers['x-request-id'] as string) ?? '',
-        'x-user-id': (req.user as { id: string }).id,
       },
       timeout: 30_000,
     })
@@ -201,9 +203,9 @@ export class FilesProxyController {
     const upstream = await firstValueFrom(
       this.http.get(url, {
         responseType: 'arraybuffer',
+        params: { userId: (req.user as { id: string }).id },
         headers: {
           'x-request-id': (req.headers['x-request-id'] as string) ?? '',
-          'x-user-id': (req.user as { id: string }).id,
         },
         timeout: 30_000,
         validateStatus: () => true,
@@ -229,9 +231,9 @@ export class FilesProxyController {
     await this.proxy.forward(SERVICE_URLS['file-storage-service'], {
       method: 'DELETE',
       path: `v1/files/${fileId}`,
+      query: { userId: (req.user as { id: string }).id },
       headers: {
         'x-request-id': (req.headers['x-request-id'] as string) ?? '',
-        'x-user-id': (req.user as { id: string }).id,
       },
       timeout: 30_000,
     })

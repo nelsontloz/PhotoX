@@ -32,7 +32,7 @@ describe('POST /v1/files', () => {
 
     const res = await supertest(httpServer)
       .post('/v1/files')
-      .set('x-user-id', userId)
+      .field('userId', userId)
       .attach('file', content, { filename, contentType: mimeType })
       .expect(201)
 
@@ -61,7 +61,7 @@ describe('POST /v1/files', () => {
 
     const res = await supertest(httpServer)
       .post('/v1/files')
-      .set('x-user-id', userId)
+      .field('userId', userId)
       .attach('file', content, { filename, contentType: mimeType })
       .expect(201)
 
@@ -81,12 +81,12 @@ describe('POST /v1/files', () => {
   it('returns 400 when no file is attached', async () => {
     const userId = mintUserId()
 
-    const res = await supertest(httpServer).post('/v1/files').set('x-user-id', userId).expect(400)
+    const res = await supertest(httpServer).post('/v1/files').field('userId', userId).expect(400)
 
     expect(res.body).toBeDefined()
   })
 
-  it('returns 400 when x-user-id header is missing', async () => {
+  it('returns 400 when userId field is missing', async () => {
     const content = Buffer.from('test')
 
     await supertest(httpServer)

@@ -27,7 +27,7 @@ describe('Cross-user isolation', () => {
 
     const res = await supertest(httpServer)
       .get(`/v1/assets/${asset.id}`)
-      .set('x-user-id', other)
+      .query({ userId: other })
       .expect(404)
 
     const body = res.body as ErrorBody
@@ -41,8 +41,7 @@ describe('Cross-user isolation', () => {
 
     const res = await supertest(httpServer)
       .patch(`/v1/assets/${asset.id}`)
-      .set('x-user-id', other)
-      .send({ title: 'hacked' })
+      .send({ userId: other, title: 'hacked' })
       .expect(404)
 
     const body = res.body as ErrorBody
@@ -56,7 +55,7 @@ describe('Cross-user isolation', () => {
 
     const res = await supertest(httpServer)
       .post(`/v1/assets/${asset.id}/trash`)
-      .set('x-user-id', other)
+      .query({ userId: other })
       .expect(404)
 
     const body = res.body as ErrorBody
@@ -70,7 +69,7 @@ describe('Cross-user isolation', () => {
 
     const res = await supertest(httpServer)
       .post(`/v1/assets/${asset.id}/restore`)
-      .set('x-user-id', other)
+      .query({ userId: other })
       .expect(404)
 
     const body = res.body as ErrorBody
@@ -84,7 +83,7 @@ describe('Cross-user isolation', () => {
     await createAssetForUser(httpServer, userA)
     await createAssetForUser(httpServer, userB)
 
-    const res = await supertest(httpServer).get('/v1/assets').set('x-user-id', userA).expect(200)
+    const res = await supertest(httpServer).get('/v1/assets').query({ userId: userA }).expect(200)
 
     const body = res.body as AssetListResponse
     expect(body.total).toBe(2)
@@ -98,7 +97,7 @@ describe('Cross-user isolation', () => {
     const userB = mintUserId()
     await createAssetForUser(httpServer, userB)
 
-    const res = await supertest(httpServer).get('/v1/assets').set('x-user-id', userA).expect(200)
+    const res = await supertest(httpServer).get('/v1/assets').query({ userId: userA }).expect(200)
 
     const body = res.body as AssetListResponse
     expect(body.total).toBe(0)

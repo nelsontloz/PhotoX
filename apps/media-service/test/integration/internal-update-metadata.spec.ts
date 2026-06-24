@@ -16,7 +16,7 @@ afterAll(async () => {
   await closeTestApp(app)
 })
 
-describe('PATCH /v1/internal/assets/:id/metadata', () => {
+describe('PATCH /v1/assets/:id/metadata', () => {
   it('UC-I6: status "ready" with full payload persists all fields and stamps metadataStatus + extractedAt', async () => {
     const userId = mintUserId()
     const created = await createAssetForUser(httpServer, userId)
@@ -41,7 +41,7 @@ describe('PATCH /v1/internal/assets/:id/metadata', () => {
 
     const before = Date.now()
     const res = await supertest(httpServer)
-      .patch(`/v1/internal/assets/${created.id}/metadata`)
+      .patch(`/v1/assets/${created.id}/metadata`)
       .send(payload)
       .expect(200)
     const after = Date.now()
@@ -73,12 +73,12 @@ describe('PATCH /v1/internal/assets/:id/metadata', () => {
     const created = await createAssetForUser(httpServer, userId)
 
     await supertest(httpServer)
-      .patch(`/v1/internal/assets/${created.id}/metadata`)
+      .patch(`/v1/assets/${created.id}/metadata`)
       .send({ status: 'ready', mimeType: 'image/png', width: 800, height: 600 })
       .expect(200)
 
     const res = await supertest(httpServer)
-      .patch(`/v1/internal/assets/${created.id}/metadata`)
+      .patch(`/v1/assets/${created.id}/metadata`)
       .send({ status: 'failed' })
       .expect(200)
 
@@ -95,12 +95,12 @@ describe('PATCH /v1/internal/assets/:id/metadata', () => {
     const created = await createAssetForUser(httpServer, userId)
 
     await supertest(httpServer)
-      .patch(`/v1/internal/assets/${created.id}/metadata`)
+      .patch(`/v1/assets/${created.id}/metadata`)
       .send({ status: 'ready', mimeType: 'video/mp4', codec: 'h265' })
       .expect(200)
 
     const res = await supertest(httpServer)
-      .patch(`/v1/internal/assets/${created.id}/metadata`)
+      .patch(`/v1/assets/${created.id}/metadata`)
       .send({ status: 'ready', width: 3840, height: 2160 })
       .expect(200)
 
@@ -115,7 +115,7 @@ describe('PATCH /v1/internal/assets/:id/metadata', () => {
     const fakeId = randomUUID()
 
     await supertest(httpServer)
-      .patch(`/v1/internal/assets/${fakeId}/metadata`)
+      .patch(`/v1/assets/${fakeId}/metadata`)
       .send({ status: 'ready' })
       .expect(404)
   })
@@ -124,13 +124,10 @@ describe('PATCH /v1/internal/assets/:id/metadata', () => {
     const userId = mintUserId()
     const created = await createAssetForUser(httpServer, userId)
 
-    await supertest(httpServer)
-      .post(`/v1/assets/${created.id}/trash`)
-      .set('x-user-id', userId)
-      .expect(204)
+    await supertest(httpServer).post(`/v1/assets/${created.id}/trash`).query({ userId }).expect(204)
 
     const res = await supertest(httpServer)
-      .patch(`/v1/internal/assets/${created.id}/metadata`)
+      .patch(`/v1/assets/${created.id}/metadata`)
       .send({ status: 'ready' })
       .expect(200)
 
@@ -144,7 +141,7 @@ describe('PATCH /v1/internal/assets/:id/metadata', () => {
     const created = await createAssetForUser(httpServer, userId)
 
     await supertest(httpServer)
-      .patch(`/v1/internal/assets/${created.id}/metadata`)
+      .patch(`/v1/assets/${created.id}/metadata`)
       .send({ status: 'processing' })
       .expect(400)
   })
@@ -154,7 +151,7 @@ describe('PATCH /v1/internal/assets/:id/metadata', () => {
     const created = await createAssetForUser(httpServer, userId)
 
     await supertest(httpServer)
-      .patch(`/v1/internal/assets/${created.id}/metadata`)
+      .patch(`/v1/assets/${created.id}/metadata`)
       .send({ mimeType: 'image/jpeg' })
       .expect(400)
   })
@@ -164,7 +161,7 @@ describe('PATCH /v1/internal/assets/:id/metadata', () => {
     const created = await createAssetForUser(httpServer, userId)
 
     await supertest(httpServer)
-      .patch(`/v1/internal/assets/${created.id}/metadata`)
+      .patch(`/v1/assets/${created.id}/metadata`)
       .send({ status: 'ready', width: -1 })
       .expect(400)
   })

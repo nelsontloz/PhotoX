@@ -32,7 +32,7 @@ describe('POST /v1/files — dedup', () => {
 
     const res1 = await supertest(httpServer)
       .post('/v1/files')
-      .set('x-user-id', userId)
+      .field('userId', userId)
       .attach('file', content, { filename: 'photo.png', contentType: 'image/png' })
       .expect(201)
 
@@ -40,7 +40,7 @@ describe('POST /v1/files — dedup', () => {
 
     const res2 = await supertest(httpServer)
       .post('/v1/files')
-      .set('x-user-id', userId)
+      .field('userId', userId)
       .attach('file', content, { filename: 'photo.png', contentType: 'image/png' })
       .expect(201)
 
@@ -59,13 +59,13 @@ describe('POST /v1/files — dedup', () => {
 
     await supertest(httpServer)
       .post('/v1/files')
-      .set('x-user-id', userId)
+      .field('userId', userId)
       .attach('file', content, { filename: 'photo.png', contentType: 'image/png' })
       .expect(201)
 
     await supertest(httpServer)
       .post('/v1/files')
-      .set('x-user-id', userId)
+      .field('userId', userId)
       .attach('file', content, { filename: 'photo.png', contentType: 'image/png' })
       .expect(201)
 
@@ -80,7 +80,7 @@ describe('POST /v1/files — dedup', () => {
 
     const res1 = await supertest(httpServer)
       .post('/v1/files')
-      .set('x-user-id', userId)
+      .field('userId', userId)
       .attach('file', content, { filename: 'photo.png', contentType: 'image/png' })
       .expect(201)
 
@@ -88,7 +88,7 @@ describe('POST /v1/files — dedup', () => {
 
     await supertest(httpServer)
       .post('/v1/files')
-      .set('x-user-id', userId)
+      .field('userId', userId)
       .attach('file', content, { filename: 'photo.png', contentType: 'image/png' })
       .expect(201)
 
@@ -115,13 +115,13 @@ describe('POST /v1/files — dedup', () => {
 
     const res1 = await supertest(httpServer)
       .post('/v1/files')
-      .set('x-user-id', userId1)
+      .field('userId', userId1)
       .attach('file', content, { filename: 'photo.png', contentType: 'image/png' })
       .expect(201)
 
     const res2 = await supertest(httpServer)
       .post('/v1/files')
-      .set('x-user-id', userId2)
+      .field('userId', userId2)
       .attach('file', content, { filename: 'photo.png', contentType: 'image/png' })
       .expect(201)
 
@@ -139,7 +139,7 @@ describe('POST /v1/files — dedup', () => {
 
     const res1 = await supertest(httpServer)
       .post('/v1/files')
-      .set('x-user-id', userId)
+      .field('userId', userId)
       .attach('file', content, { filename: 'photo.png', contentType: 'image/png' })
       .expect(201)
 
@@ -147,7 +147,7 @@ describe('POST /v1/files — dedup', () => {
 
     const res2 = await supertest(httpServer)
       .post('/v1/files')
-      .set('x-user-id', userId)
+      .field('userId', userId)
       .attach('file', content, { filename: 'photo.png', contentType: 'image/png' })
       .expect(201)
 
@@ -162,7 +162,7 @@ describe('POST /v1/files — dedup', () => {
 
     const res1 = await supertest(httpServer)
       .post('/v1/files')
-      .set('x-user-id', userId)
+      .field('userId', userId)
       .attach('file', content, { filename: 'original.png', contentType: 'image/png' })
       .expect(201)
 
@@ -170,7 +170,7 @@ describe('POST /v1/files — dedup', () => {
 
     const res2 = await supertest(httpServer)
       .post('/v1/files')
-      .set('x-user-id', userId)
+      .field('userId', userId)
       .attach('file', content, { filename: 'renamed.jpg', contentType: 'image/jpeg' })
       .expect(201)
 

@@ -24,14 +24,11 @@ describe('POST /v1/assets/:id/trash', () => {
     const userId = mintUserId()
     const created = await createAssetForUser(httpServer, userId)
 
-    await supertest(httpServer)
-      .post(`/v1/assets/${created.id}/trash`)
-      .set('x-user-id', userId)
-      .expect(204)
+    await supertest(httpServer).post(`/v1/assets/${created.id}/trash`).query({ userId }).expect(204)
 
     const getRes = await supertest(httpServer)
       .get(`/v1/assets/${created.id}`)
-      .set('x-user-id', userId)
+      .query({ userId })
       .expect(200)
 
     const body = getRes.body as Asset
@@ -45,15 +42,9 @@ describe('POST /v1/assets/:id/trash', () => {
     const userId = mintUserId()
     const created = await createAssetForUser(httpServer, userId)
 
-    await supertest(httpServer)
-      .post(`/v1/assets/${created.id}/trash`)
-      .set('x-user-id', userId)
-      .expect(204)
+    await supertest(httpServer).post(`/v1/assets/${created.id}/trash`).query({ userId }).expect(204)
 
-    const listRes = await supertest(httpServer)
-      .get('/v1/assets')
-      .set('x-user-id', userId)
-      .expect(200)
+    const listRes = await supertest(httpServer).get('/v1/assets').query({ userId }).expect(200)
 
     const listBody = listRes.body as AssetListResponse
     expect(listBody.total).toBe(0)
@@ -64,14 +55,11 @@ describe('POST /v1/assets/:id/trash', () => {
     const userId = mintUserId()
     const created = await createAssetForUser(httpServer, userId)
 
-    await supertest(httpServer)
-      .post(`/v1/assets/${created.id}/trash`)
-      .set('x-user-id', userId)
-      .expect(204)
+    await supertest(httpServer).post(`/v1/assets/${created.id}/trash`).query({ userId }).expect(204)
 
     const listRes = await supertest(httpServer)
       .get('/v1/assets?isTrashed=true')
-      .set('x-user-id', userId)
+      .query({ userId })
       .expect(200)
 
     const listBody = listRes.body as AssetListResponse
@@ -83,26 +71,20 @@ describe('POST /v1/assets/:id/trash', () => {
     const userId = mintUserId()
     const created = await createAssetForUser(httpServer, userId)
 
-    await supertest(httpServer)
-      .post(`/v1/assets/${created.id}/trash`)
-      .set('x-user-id', userId)
-      .expect(204)
+    await supertest(httpServer).post(`/v1/assets/${created.id}/trash`).query({ userId }).expect(204)
 
     const afterFirst = await supertest(httpServer)
       .get(`/v1/assets/${created.id}`)
-      .set('x-user-id', userId)
+      .query({ userId })
       .expect(200)
 
     const firstTrashedAt = (afterFirst.body as Asset).trashedAt
 
-    await supertest(httpServer)
-      .post(`/v1/assets/${created.id}/trash`)
-      .set('x-user-id', userId)
-      .expect(204)
+    await supertest(httpServer).post(`/v1/assets/${created.id}/trash`).query({ userId }).expect(204)
 
     const afterSecond = await supertest(httpServer)
       .get(`/v1/assets/${created.id}`)
-      .set('x-user-id', userId)
+      .query({ userId })
       .expect(200)
 
     const body = afterSecond.body as Asset
@@ -116,7 +98,7 @@ describe('POST /v1/assets/:id/trash', () => {
 
     const res = await supertest(httpServer)
       .post(`/v1/assets/${fakeId}/trash`)
-      .set('x-user-id', userId)
+      .query({ userId })
       .expect(404)
 
     const body = res.body as ErrorBody
@@ -129,19 +111,16 @@ describe('POST /v1/assets/:id/restore', () => {
     const userId = mintUserId()
     const created = await createAssetForUser(httpServer, userId)
 
-    await supertest(httpServer)
-      .post(`/v1/assets/${created.id}/trash`)
-      .set('x-user-id', userId)
-      .expect(204)
+    await supertest(httpServer).post(`/v1/assets/${created.id}/trash`).query({ userId }).expect(204)
 
     await supertest(httpServer)
       .post(`/v1/assets/${created.id}/restore`)
-      .set('x-user-id', userId)
+      .query({ userId })
       .expect(204)
 
     const getRes = await supertest(httpServer)
       .get(`/v1/assets/${created.id}`)
-      .set('x-user-id', userId)
+      .query({ userId })
       .expect(200)
 
     const body = getRes.body as Asset
@@ -153,20 +132,14 @@ describe('POST /v1/assets/:id/restore', () => {
     const userId = mintUserId()
     const created = await createAssetForUser(httpServer, userId)
 
-    await supertest(httpServer)
-      .post(`/v1/assets/${created.id}/trash`)
-      .set('x-user-id', userId)
-      .expect(204)
+    await supertest(httpServer).post(`/v1/assets/${created.id}/trash`).query({ userId }).expect(204)
 
     await supertest(httpServer)
       .post(`/v1/assets/${created.id}/restore`)
-      .set('x-user-id', userId)
+      .query({ userId })
       .expect(204)
 
-    const listRes = await supertest(httpServer)
-      .get('/v1/assets')
-      .set('x-user-id', userId)
-      .expect(200)
+    const listRes = await supertest(httpServer).get('/v1/assets').query({ userId }).expect(200)
 
     const listBody = listRes.body as AssetListResponse
     expect(listBody.total).toBe(1)
@@ -179,12 +152,12 @@ describe('POST /v1/assets/:id/restore', () => {
 
     await supertest(httpServer)
       .post(`/v1/assets/${created.id}/restore`)
-      .set('x-user-id', userId)
+      .query({ userId })
       .expect(204)
 
     const getRes = await supertest(httpServer)
       .get(`/v1/assets/${created.id}`)
-      .set('x-user-id', userId)
+      .query({ userId })
       .expect(200)
 
     const body = getRes.body as Asset
@@ -198,7 +171,7 @@ describe('POST /v1/assets/:id/restore', () => {
 
     const res = await supertest(httpServer)
       .post(`/v1/assets/${fakeId}/restore`)
-      .set('x-user-id', userId)
+      .query({ userId })
       .expect(404)
 
     const body = res.body as ErrorBody

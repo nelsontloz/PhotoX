@@ -1,8 +1,21 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { IsOptional, IsString, Min, Max, IsIn, IsDateString, IsBoolean } from 'class-validator'
+import {
+  IsOptional,
+  IsString,
+  Min,
+  Max,
+  IsIn,
+  IsDateString,
+  IsBoolean,
+  IsUUID,
+} from 'class-validator'
 import { Type } from 'class-transformer'
 
 export class ListAssetsQueryDto {
+  @IsUUID()
+  @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
+  userId!: string
+
   @IsOptional()
   @Type(() => Number)
   @Min(1)

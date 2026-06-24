@@ -23,12 +23,9 @@ describe('DELETE /v1/files/:fileId', () => {
     const content = Buffer.from('to-be-deleted')
     const record = await uploadForUser(httpServer, userId, 'delete-me.png', content, 'image/png')
 
-    await supertest(httpServer)
-      .delete(`/v1/files/${record.id}`)
-      .set('x-user-id', userId)
-      .expect(204)
+    await supertest(httpServer).delete(`/v1/files/${record.id}`).query({ userId }).expect(204)
 
-    await supertest(httpServer).get(`/v1/files/${record.id}`).set('x-user-id', userId).expect(404)
+    await supertest(httpServer).get(`/v1/files/${record.id}`).query({ userId }).expect(404)
 
     const minioExists = await minioService.fileExists(record.storageKey)
     expect(minioExists).toBe(false)
@@ -39,15 +36,9 @@ describe('DELETE /v1/files/:fileId', () => {
     const content = Buffer.from('already-deleted')
     const record = await uploadForUser(httpServer, userId, 'gone.png', content, 'image/png')
 
-    await supertest(httpServer)
-      .delete(`/v1/files/${record.id}`)
-      .set('x-user-id', userId)
-      .expect(204)
+    await supertest(httpServer).delete(`/v1/files/${record.id}`).query({ userId }).expect(204)
 
-    await supertest(httpServer)
-      .delete(`/v1/files/${record.id}`)
-      .set('x-user-id', userId)
-      .expect(204)
+    await supertest(httpServer).delete(`/v1/files/${record.id}`).query({ userId }).expect(204)
   })
 
   it("UC-U11: deleting someone else's file does not delete it", async () => {
@@ -56,11 +47,14 @@ describe('DELETE /v1/files/:fileId', () => {
     const content = Buffer.from('owner-protected')
     const record = await uploadForUser(httpServer, owner, 'protected.png', content, 'image/png')
 
-    await supertest(httpServer).delete(`/v1/files/${record.id}`).set('x-user-id', other).expect(204)
+    await supertest(httpServer)
+      .delete(`/v1/files/${record.id}`)
+      .query({ userId: other })
+      .expect(204)
 
     const res = await supertest(httpServer)
       .get(`/v1/files/${record.id}`)
-      .set('x-user-id', owner)
+      .query({ userId: owner })
       .expect(200)
 
     const body = res.body as { id: string }

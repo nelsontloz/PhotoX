@@ -37,10 +37,9 @@ export class AssetsProxyController {
       {
         method: 'POST',
         path: 'v1/assets',
-        body: dto,
+        body: { ...dto, userId: (req.user as { id: string }).id },
         headers: {
           'x-request-id': (req.headers['x-request-id'] as string) ?? '',
-          'x-user-id': (req.user as { id: string }).id,
         },
         timeout: 30_000,
       },
@@ -60,10 +59,9 @@ export class AssetsProxyController {
     const result = await this.proxy.forward(SERVICE_URLS['media-service'], {
       method: 'GET',
       path: 'v1/assets',
-      query: q as unknown as Record<string, string>,
+      query: { ...q, userId: (req.user as { id: string }).id } as unknown as Record<string, string>,
       headers: {
         'x-request-id': (req.headers['x-request-id'] as string) ?? '',
-        'x-user-id': (req.user as { id: string }).id,
       },
       timeout: 30_000,
     })
@@ -78,9 +76,9 @@ export class AssetsProxyController {
     const result = await this.proxy.forward(SERVICE_URLS['media-service'], {
       method: 'GET',
       path: `v1/assets/${id}`,
+      query: { userId: (req.user as { id: string }).id },
       headers: {
         'x-request-id': (req.headers['x-request-id'] as string) ?? '',
-        'x-user-id': (req.user as { id: string }).id,
       },
       timeout: 30_000,
     })
@@ -95,10 +93,9 @@ export class AssetsProxyController {
     const result = await this.proxy.forward(SERVICE_URLS['media-service'], {
       method: 'PATCH',
       path: `v1/assets/${id}`,
-      body: dto,
+      body: { ...dto, userId: (req.user as { id: string }).id },
       headers: {
         'x-request-id': (req.headers['x-request-id'] as string) ?? '',
-        'x-user-id': (req.user as { id: string }).id,
       },
       timeout: 30_000,
     })
@@ -114,9 +111,9 @@ export class AssetsProxyController {
     await this.proxy.forward(SERVICE_URLS['media-service'], {
       method: 'POST',
       path: `v1/assets/${id}/trash`,
+      query: { userId: (req.user as { id: string }).id },
       headers: {
         'x-request-id': (req.headers['x-request-id'] as string) ?? '',
-        'x-user-id': (req.user as { id: string }).id,
       },
       timeout: 30_000,
     })
@@ -131,9 +128,9 @@ export class AssetsProxyController {
     await this.proxy.forward(SERVICE_URLS['media-service'], {
       method: 'POST',
       path: `v1/assets/${id}/restore`,
+      query: { userId: (req.user as { id: string }).id },
       headers: {
         'x-request-id': (req.headers['x-request-id'] as string) ?? '',
-        'x-user-id': (req.user as { id: string }).id,
       },
       timeout: 30_000,
     })
@@ -147,9 +144,9 @@ export class AssetsProxyController {
     const result = await this.proxy.forward(SERVICE_URLS['media-service'], {
       method: 'GET',
       path: `v1/assets/${id}/thumbnails`,
+      query: { userId: (req.user as { id: string }).id },
       headers: {
         'x-request-id': (req.headers['x-request-id'] as string) ?? '',
-        'x-user-id': (req.user as { id: string }).id,
       },
       timeout: 30_000,
     })
@@ -164,9 +161,9 @@ export class AssetsProxyController {
     const result = await this.proxy.forward(SERVICE_URLS['media-service'], {
       method: 'GET',
       path: `v1/assets/${id}/thumbnails/${size}`,
+      query: { userId: (req.user as { id: string }).id },
       headers: {
         'x-request-id': (req.headers['x-request-id'] as string) ?? '',
-        'x-user-id': (req.user as { id: string }).id,
       },
       timeout: 30_000,
     })

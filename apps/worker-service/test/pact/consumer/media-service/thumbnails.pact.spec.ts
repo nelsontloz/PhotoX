@@ -19,13 +19,13 @@ const thumbnailResponseMatcher = {
 }
 
 describe('Worker → media-service thumbnails pact', () => {
-  it('POST /v1/internal/assets/:id/thumbnails — register thumbnail (happy path)', async () => {
+  it('POST /v1/assets/:id/thumbnails — register thumbnail (happy path)', async () => {
     await mediaService
       .given('asset exists with id ' + ASSET_ID)
       .uponReceiving('a request to register a thumbnail')
       .withRequest({
         method: 'POST',
-        path: `/v1/internal/assets/${ASSET_ID}/thumbnails`,
+        path: `/v1/assets/${ASSET_ID}/thumbnails`,
         headers: { 'Content-Type': 'application/json' },
         body: {
           size: SIZE,
@@ -42,7 +42,7 @@ describe('Worker → media-service thumbnails pact', () => {
       })
       .executeTest(async (mockserver) => {
         const res = await axios.post(
-          `${mockserver.url}/v1/internal/assets/${ASSET_ID}/thumbnails`,
+          `${mockserver.url}/v1/assets/${ASSET_ID}/thumbnails`,
           {
             size: SIZE,
             fileId: FILE_ID,
@@ -61,13 +61,13 @@ describe('Worker → media-service thumbnails pact', () => {
       })
   })
 
-  it('POST /v1/internal/assets/:id/thumbnails — asset not found', async () => {
+  it('POST /v1/assets/:id/thumbnails — asset not found', async () => {
     await mediaService
       .given('asset does not exist')
       .uponReceiving('a request to register a thumbnail for missing asset')
       .withRequest({
         method: 'POST',
-        path: `/v1/internal/assets/${ASSET_ID}/thumbnails`,
+        path: `/v1/assets/${ASSET_ID}/thumbnails`,
         headers: { 'Content-Type': 'application/json' },
         body: {
           size: SIZE,
@@ -87,7 +87,7 @@ describe('Worker → media-service thumbnails pact', () => {
       .executeTest(async (mockserver) => {
         try {
           await axios.post(
-            `${mockserver.url}/v1/internal/assets/${ASSET_ID}/thumbnails`,
+            `${mockserver.url}/v1/assets/${ASSET_ID}/thumbnails`,
             {
               size: SIZE,
               fileId: FILE_ID,

@@ -15,7 +15,7 @@ afterAll(async () => {
   await closeTestApp(app)
 })
 
-describe('POST /v1/internal/files/batch', () => {
+describe('POST /v1/files/batch', () => {
   it('UC-I3: resolves many files — items for found, missing for not found', async () => {
     const userId = mintUserId()
     const r1 = await uploadForUser(httpServer, userId, 'a.png', Buffer.from('a'), 'image/png')
@@ -24,7 +24,7 @@ describe('POST /v1/internal/files/batch', () => {
     const fakeId = '00000000-0000-0000-0000-000000000000'
 
     const res = await supertest(httpServer)
-      .post('/v1/internal/files/batch')
+      .post('/v1/files/batch')
       .send({ fileIds: [r1.id, r2.id, fakeId, r3.id] })
       .expect(201)
 
@@ -39,7 +39,7 @@ describe('POST /v1/internal/files/batch', () => {
 
   it('returns empty items and missing for empty input', async () => {
     const res = await supertest(httpServer)
-      .post('/v1/internal/files/batch')
+      .post('/v1/files/batch')
       .send({ fileIds: [] })
       .expect(201)
 
@@ -53,7 +53,7 @@ describe('POST /v1/internal/files/batch', () => {
     const fakeId2 = '00000000-0000-0000-0000-000000000002'
 
     const res = await supertest(httpServer)
-      .post('/v1/internal/files/batch')
+      .post('/v1/files/batch')
       .send({ fileIds: [fakeId1, fakeId2] })
       .expect(201)
 
