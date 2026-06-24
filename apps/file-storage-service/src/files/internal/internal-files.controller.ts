@@ -6,10 +6,13 @@ import {
   Param,
   Body,
   Res,
+  UseInterceptors,
+  UploadedFile,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
+import { FileInterceptor } from '@nestjs/platform-express'
+import { ApiTags, ApiOperation, ApiResponse, ApiConsumes } from '@nestjs/swagger'
 import type { Response } from 'express'
 import { InternalFilesService } from './internal-files.service'
 import { FileRecordDto } from '../file-record.dto'
@@ -19,6 +22,18 @@ import { BatchFilesRequestDto, BatchFilesResponseDto } from './dto/batch-files.d
 @Controller('v1/internal/files')
 export class InternalFilesController {
   constructor(private readonly internalFilesService: InternalFilesService) {}
+
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 100 * 1024 * 1024 } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload a file (service-to-service)' })
+  @ApiResponse({ status: 201, type: FileRecordDto })
+  async upload(
+    @Body('userId') userId: string,
+    @UploadedFile() file: { buffer: Buffer; originalname: string; mimetype: string },
+  ) {
+    return this.internalFilesService.upload(userId, file)
+  }
 
   @Get(':fileId')
   @ApiOperation({ summary: 'Get file record (service-to-service)' })

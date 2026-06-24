@@ -21,6 +21,7 @@ import type { Request, Response } from 'express'
 import { firstValueFrom } from 'rxjs'
 import { ProxyService } from '../proxy.service'
 import { SERVICE_URLS } from '@photox/shared-config'
+import { ThumbnailOrchestratorService } from '../../orchestrator/thumbnail-orchestrator.service'
 import type { FileListResponse, FileRecord, Asset } from '@photox/shared-types'
 import { ListFilesQueryDto } from './dto/list-files-query.dto'
 
@@ -30,6 +31,7 @@ export class FilesProxyController {
   constructor(
     private readonly proxy: ProxyService,
     private readonly http: HttpService,
+    private readonly thumbnails: ThumbnailOrchestratorService,
   ) {}
 
   @Post()
@@ -129,6 +131,7 @@ export class FilesProxyController {
         },
         timeout: 5_000,
       })
+      void this.thumbnails.enqueueThumbnails(assetResult.data.id, record.id, userId)
       return assetResult.data
     } catch (assetErr) {
       try {

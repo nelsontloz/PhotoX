@@ -6,6 +6,7 @@ const envSchema = z.object({
   USER_SERVICE_PORT: z.coerce.number().default(3001),
   MEDIA_SERVICE_PORT: z.coerce.number().default(3002),
   FILE_STORAGE_SERVICE_PORT: z.coerce.number().default(3003),
+  WORKER_SERVICE_PORT: z.coerce.number().default(3004),
   POSTGRES_HOST: z.string().default('localhost'),
   POSTGRES_PORT: z.coerce.number().default(5432),
   POSTGRES_USER: z.string().default('photox'),
@@ -21,6 +22,7 @@ const envSchema = z.object({
   AUTH_REFRESH_TTL: z.string().default('30d'),
   AUTH_CLOCK_TOLERANCE_SEC: z.coerce.number().default(60),
   FILE_STORAGE_SERVICE_URL: z.string().default('http://localhost:3003'),
+  WORKER_SERVICE_URL: z.string().default('http://localhost:3004'),
 })
 
 export type Env = z.infer<typeof envSchema>

@@ -1,6 +1,12 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { PgBoss, type Job, type SendOptions, type WorkOptions, type ConstructorOptions } from 'pg-boss'
+import {
+  PgBoss,
+  type Job,
+  type SendOptions,
+  type WorkOptions,
+  type ConstructorOptions,
+} from 'pg-boss'
 
 @Injectable()
 export class PgBossService implements OnModuleInit, OnModuleDestroy {

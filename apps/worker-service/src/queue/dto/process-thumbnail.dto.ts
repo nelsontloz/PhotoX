@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty } from 'class-validator'
+import { IsString, IsNotEmpty, IsUUID } from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
 
 export class ProcessThumbnailDto {
@@ -16,6 +16,11 @@ export class ProcessThumbnailDto {
   @IsString()
   @IsNotEmpty()
   size!: string
+
+  @ApiProperty({ description: 'Owner user UUID' })
+  @IsUUID()
+  @IsNotEmpty()
+  userId!: string
 }
 
 export class JobResponseDto {

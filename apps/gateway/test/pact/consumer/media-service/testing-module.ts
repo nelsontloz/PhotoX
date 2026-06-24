@@ -5,6 +5,7 @@ import { Test } from '@nestjs/testing'
 import { AssetsProxyController } from '../../../../src/proxy/assets-proxy/assets-proxy.controller'
 import { requestIdMiddleware } from '../../../../src/common/middleware/request-id.middleware'
 import { ProxyService } from '../../../../src/proxy/proxy.service'
+import { ThumbnailOrchestratorService } from '../../../../src/orchestrator/thumbnail-orchestrator.service'
 import { createStubProxy } from '../stub'
 import type { StubProxy } from '../stub'
 
@@ -21,6 +22,10 @@ export async function setupMediaServicePactModule(): Promise<{
     controllers: [AssetsProxyController],
     providers: [
       { provide: ProxyService, useValue: stub },
+      {
+        provide: ThumbnailOrchestratorService,
+        useValue: { enqueueThumbnails: vi.fn().mockResolvedValue(undefined) },
+      },
       {
         provide: APP_GUARD,
         useValue: {

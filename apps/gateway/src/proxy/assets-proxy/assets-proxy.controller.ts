@@ -17,27 +17,39 @@ import { CreateAssetDto } from './dto/create-asset.dto'
 import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
 import { SERVICE_URLS } from '@photox/shared-config'
+import { ThumbnailOrchestratorService } from '../../orchestrator/thumbnail-orchestrator.service'
 
 @ApiTags('assets')
 @Controller('api/v1/assets')
 export class AssetsProxyController {
-  constructor(private readonly proxy: ProxyService) {}
+  constructor(
+    private readonly proxy: ProxyService,
+    private readonly thumbnails: ThumbnailOrchestratorService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create an asset from an uploaded file' })
   @ApiResponse({ status: 201, description: 'Asset created' })
   async create(@Body() dto: CreateAssetDto, @Req() req: Request) {
-    const result = await this.proxy.forward(SERVICE_URLS['media-service'], {
-      method: 'POST',
-      path: 'v1/assets',
-      body: dto,
-      headers: {
-        'x-request-id': (req.headers['x-request-id'] as string) ?? '',
-        'x-user-id': (req.user as { id: string }).id,
+    const result = await this.proxy.forward<{ id: string; fileId: string }>(
+      SERVICE_URLS['media-service'],
+      {
+        method: 'POST',
+        path: 'v1/assets',
+        body: dto,
+        headers: {
+          'x-request-id': (req.headers['x-request-id'] as string) ?? '',
+          'x-user-id': (req.user as { id: string }).id,
+        },
+        timeout: 30_000,
       },
-      timeout: 30_000,
-    })
+    )
+    void this.thumbnails.enqueueThumbnails(
+      result.data.id,
+      result.data.fileId,
+      (req.user as { id: string }).id,
+    )
     return result.data
   }
 
@@ -125,5 +137,39 @@ export class AssetsProxyController {
       },
       timeout: 30_000,
     })
+  }
+
+  @Get(':id/thumbnails')
+  @ApiOperation({ summary: 'List thumbnails for an asset' })
+  @ApiResponse({ status: 200, description: 'Thumbnail list' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  async listThumbnails(@Param('id') id: string, @Req() req: Request) {
+    const result = await this.proxy.forward(SERVICE_URLS['media-service'], {
+      method: 'GET',
+      path: `v1/assets/${id}/thumbnails`,
+      headers: {
+        'x-request-id': (req.headers['x-request-id'] as string) ?? '',
+        'x-user-id': (req.user as { id: string }).id,
+      },
+      timeout: 30_000,
+    })
+    return result.data
+  }
+
+  @Get(':id/thumbnails/:size')
+  @ApiOperation({ summary: 'Get a specific thumbnail size' })
+  @ApiResponse({ status: 200, description: 'Thumbnail details' })
+  @ApiResponse({ status: 404, description: 'Thumbnail not found' })
+  async getThumbnail(@Param('id') id: string, @Param('size') size: string, @Req() req: Request) {
+    const result = await this.proxy.forward(SERVICE_URLS['media-service'], {
+      method: 'GET',
+      path: `v1/assets/${id}/thumbnails/${size}`,
+      headers: {
+        'x-request-id': (req.headers['x-request-id'] as string) ?? '',
+        'x-user-id': (req.user as { id: string }).id,
+      },
+      timeout: 30_000,
+    })
+    return result.data
   }
 }

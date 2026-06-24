@@ -15,6 +15,7 @@
     "pact-provider": "vitest run --config vitest.provider.config.ts"
   },
   "dependencies": {
+    "@nestjs/axios": "^3.1.0",
     "@nestjs/common": "^10.4.0",
     "@nestjs/swagger": "^8.0.0",
     "@nestjs/config": "^3.3.0",
@@ -28,6 +29,7 @@
     "typeorm": "^0.3.20",
     "pg": "^8.13.0",
     "pg-boss": "^12.0.0",
+    "form-data": "^4.0.0",
     "sharp": "^0.34.0",
     "swagger-ui-express": "^5.0.0",
     "reflect-metadata": "^0.2.2",
@@ -45,6 +47,7 @@
     "testcontainers": "^10.0.0",
     "unplugin-swc": "^1.5.0",
     "vitest": "^3.1.0",
-    "@pact-foundation/pact": "^13.0.0"
+    "@pact-foundation/pact": "^13.0.0",
+    "axios": "^1.7.0"
   }
 }

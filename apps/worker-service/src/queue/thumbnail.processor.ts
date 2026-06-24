@@ -1,16 +1,27 @@
 import { Injectable, Logger } from '@nestjs/common'
+import { HttpService } from '@nestjs/axios'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import sharp from 'sharp'
+import { firstValueFrom } from 'rxjs'
+import FormData from 'form-data'
 import { type Job } from 'pg-boss'
 import { PgBossService } from './pg-boss.service'
 import { JobRecord, JobStatus } from './entities/job.entity'
 import type { ProcessThumbnailDto } from './dto/process-thumbnail.dto'
+import { SERVICE_URLS } from '@photox/shared-config'
+
+const STANDARD_SIZES: Record<string, [number, number]> = {
+  sm: [150, 150],
+  md: [300, 300],
+  lg: [600, 600],
+}
 
 interface ThumbnailJob {
   assetId: string
   fileId: string
   size: string
+  userId: string
 }
 
 @Injectable()
@@ -21,6 +32,7 @@ export class ThumbnailProcessor {
     private readonly pgBoss: PgBossService,
     @InjectRepository(JobRecord)
     private readonly jobRepo: Repository<JobRecord>,
+    private readonly http: HttpService,
   ) {}
 
   async enqueue(dto: ProcessThumbnailDto): Promise<{ jobId: string; status: string }> {
@@ -44,6 +56,7 @@ export class ThumbnailProcessor {
       assetId: dto.assetId,
       fileId: dto.fileId,
       size: dto.size,
+      userId: dto.userId,
     })
 
     return { jobId: jobId ?? record.id, status: JobStatus.QUEUED }
@@ -61,14 +74,14 @@ export class ThumbnailProcessor {
   }
 
   private async processJob(job: Job<ThumbnailJob>) {
-    const { assetId, fileId, size } = job.data
+    const { assetId, fileId, size, userId } = job.data
 
     this.logger.log(`Processing thumbnail: asset=${assetId}, size=${size}`)
 
     await this.jobRepo.update({ assetId, size }, { status: JobStatus.PROCESSING })
 
     try {
-      await this.generateThumbnail(fileId, size)
+      await this.generateThumbnail(fileId, assetId, size, userId)
 
       await this.jobRepo.update({ assetId, size }, { status: JobStatus.COMPLETED })
 
@@ -83,24 +96,52 @@ export class ThumbnailProcessor {
     }
   }
 
-  private async generateThumbnail(_fileId: string, size: string): Promise<void> {
-    const [width, height] = size.split('x').map(Number)
+  private async generateThumbnail(
+    fileId: string,
+    assetId: string,
+    size: string,
+    userId: string,
+  ): Promise<void> {
+    const dims = STANDARD_SIZES[size]
+    const [width, height] = dims ?? size.split('x').map(Number)
 
-    // TODO: Fetch original file from file-storage-service
-    // For now, stub: create a minimal placeholder thumbnail
-    const buffer = await sharp({
-      create: {
-        width: width || 150,
-        height: height || 150,
-        channels: 3,
-        background: { r: 0, g: 0, b: 0 },
-      },
-    })
+    const streamUrl = `${SERVICE_URLS['file-storage-service']}/v1/internal/files/${fileId}/stream`
+    const upstream = await firstValueFrom(
+      this.http.get(streamUrl, { responseType: 'arraybuffer', timeout: 30_000 }),
+    )
+    const buffer = Buffer.from(upstream.data as ArrayBuffer)
+
+    const thumbBuffer = await sharp(buffer)
+      .resize(width, height, { fit: 'cover' })
       .jpeg({ quality: 80 })
       .toBuffer()
 
-    // TODO: Upload thumbnail to file-storage-service
-    // TODO: Register thumbnail metadata via media-service internal API
-    void buffer
+    const uploadUrl = `${SERVICE_URLS['file-storage-service']}/v1/internal/files/upload`
+    const form = new FormData()
+    form.append('file', thumbBuffer, {
+      filename: `thumb-${size}.jpg`,
+      contentType: 'image/jpeg',
+    })
+    form.append('userId', userId)
+
+    const uploadRes = await firstValueFrom(
+      this.http.post(uploadUrl, form, {
+        headers: form.getHeaders(),
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+      }),
+    )
+    const newFileRecord = uploadRes.data as { id: string }
+
+    const registerUrl = `${SERVICE_URLS['media-service']}/v1/internal/assets/${assetId}/thumbnails`
+    await firstValueFrom(
+      this.http.post(registerUrl, {
+        size,
+        fileId: newFileRecord.id,
+        width,
+        height,
+        bytes: thumbBuffer.length,
+      }),
+    )
   }
 }
