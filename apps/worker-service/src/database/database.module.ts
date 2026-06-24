@@ -19,7 +19,7 @@ export class DatabaseModule {
           password: env.POSTGRES_PASSWORD,
           database,
           autoLoadEntities: true,
-          synchronize: true,
+          synchronize: env.NODE_ENV !== 'production',
           retryAttempts: 3,
           retryDelay: 3000,
           connectTimeoutMS: 3000,

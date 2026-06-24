@@ -16,7 +16,7 @@ const baseFileRecord = {
   id: FILE_ID,
   userId: USER_ID,
   storageKey: `${USER_ID}/${FILE_ID}.png`,
-  originalName: 'photo.png',
+  originalName: 'photo.jpg',
   mimeType: 'image/png',
   sizeBytes: 12345,
   checksumSha256: 'abc123def456',
