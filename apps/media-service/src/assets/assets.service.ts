@@ -89,7 +89,8 @@ export class AssetsService {
     }
 
     const [items, total] = await qb
-      .orderBy('asset.uploadedAt', 'DESC')
+      .orderBy(`COALESCE(asset.takenAt, asset.uploadedAt)`, 'DESC')
+      .addOrderBy('asset.uploadedAt', 'DESC')
       .skip(offset)
       .take(limit)
       .getManyAndCount()

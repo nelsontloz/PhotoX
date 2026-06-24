@@ -54,26 +54,21 @@ export function AssetThumb({ asset, className = '' }: AssetThumbProps) {
 
   if (error && !src) {
     return (
-      <div className={`w-full bg-slate-800 flex items-center justify-center ${className}`}>
+      <div className={`w-full h-full bg-slate-800 flex items-center justify-center ${className}`}>
         <span className="text-xs text-slate-500">No preview</span>
       </div>
     )
   }
 
   if (!src) {
-    const aspect =
-      asset.width && asset.height
-        ? { aspectRatio: `${asset.width} / ${asset.height}` }
-        : { paddingBottom: '75%' }
-
-    return <Skeleton className={`w-full ${className}`} style={{ ...aspect, width: '100%' }} />
+    return <Skeleton className={`w-full h-full ${className}`} />
   }
 
   return (
     <img
       src={src}
       alt={asset.originalName ?? asset.title ?? 'Photo'}
-      className={`w-full h-auto object-cover ${className}`}
+      className={`w-full h-full object-cover ${className}`}
       loading="lazy"
     />
   )

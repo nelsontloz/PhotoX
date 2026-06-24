@@ -96,7 +96,7 @@ function TimelineContent() {
               </button>
             </div>
           </div>
-          <div className="masonry-grid">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
             {group.items.map((asset) => (
               <div
                 key={asset.id}
@@ -111,7 +111,7 @@ function TimelineContent() {
                     setSelectedAsset(asset)
                   }
                 }}
-                className="masonry-item relative group rounded-lg overflow-hidden cursor-pointer"
+                className="relative group rounded-lg overflow-hidden cursor-pointer aspect-square bg-slate-800"
               >
                 <AssetThumb asset={asset} />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
