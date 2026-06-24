@@ -8,8 +8,6 @@ export default defineWorkspace([
   'apps/web',
   'packages/shared-auth',
   'packages/shared-config',
-  'packages/shared-events',
-  'packages/shared-redis',
   'packages/shared-types',
   'scripts',
 ])
