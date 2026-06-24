@@ -6,8 +6,12 @@ import {
   FaCheck,
   FaCircleExclamation,
   FaXmark,
-  FaChevronUp,
   FaChevronDown,
+  FaCloudArrowUp,
+  FaCircleCheck,
+  FaBroom,
+  FaImage,
+  FaVideo,
 } from 'react-icons/fa6'
 import { useUploadStore, type UploadItem } from '../store/upload-store'
 import { useThumbStore } from '../store/thumb-store'
@@ -223,98 +227,242 @@ function UploadPanel({
   onDismiss,
 }: UploadPanelProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const thumbGet = useThumbStore((s) => s.get)
 
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setMounted(true))
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
+  const totalProgress =
+    items.length > 0 ? Math.round(items.reduce((sum, i) => sum + i.progress, 0) / items.length) : 0
+
+  const errorCount = items.filter((i) => i.status === 'error').length
+  const hasDoneItems = doneCount > 0
+  const showOverallProgress = inFlight.length > 0 || allDone
+
+  const title =
+    inFlight.length > 0
+      ? `Uploading ${inFlight.length} of ${items.length} file${items.length > 1 ? 's' : ''}`
+      : allDone
+        ? errorCount > 0
+          ? `${errorCount} of ${items.length} upload${items.length > 1 ? 's' : ''} failed`
+          : `All ${items.length} file${items.length > 1 ? 's' : ''} uploaded`
+        : `${items.length} file${items.length > 1 ? 's' : ''} queued`
+
+  const subtitle =
+    inFlight.length > 0
+      ? `${totalProgress}% complete`
+      : allDone
+        ? errorCount > 0
+          ? 'Click an item to retry'
+          : 'Click the X to dismiss'
+        : 'Preparing to upload'
+
+  const handleClose = () => {
+    if (allDone) {
+      onDismiss()
+    } else {
+      onClose()
+    }
+  }
+
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-80 bg-[#1d1f27] border border-[#424754]/30 rounded-xl shadow-2xl overflow-hidden">
-      <div
-        className="flex items-center justify-between px-4 py-3 bg-[#272a32] cursor-pointer select-none"
-        onClick={() => setCollapsed((c) => !c)}
-      >
-        <div className="flex items-center gap-2">
-          {inFlight.length > 0 ? (
-            <FaSpinner className="text-primary animate-spin text-sm" />
-          ) : allDone ? (
-            <FaCheck className="text-green-400 text-sm" />
-          ) : null}
-          <span className="text-sm font-semibold text-white">
-            {inFlight.length > 0
-              ? `Uploading ${inFlight.length} file${inFlight.length > 1 ? 's' : ''}...`
-              : allDone
-                ? `Done (${doneCount}/${items.length})`
-                : `${items.length} file${items.length > 1 ? 's' : ''}`}
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
+    <section
+      aria-label="Upload progress"
+      className={[
+        'fixed z-50',
+        'bottom-4 right-4 left-4 sm:left-auto sm:w-80',
+        'bg-white/95 dark:bg-card-dark/95 backdrop-blur-md',
+        'border border-slate-200 dark:border-border-dark',
+        'rounded-xl shadow-2xl shadow-slate-900/10 dark:shadow-black/40',
+        'overflow-hidden',
+        'transition-all duration-300 ease-out',
+        mounted ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0',
+      ].join(' ')}
+    >
+      <header className="bg-slate-50/80 dark:bg-footer-dark/80">
+        <div className="flex items-center gap-2 px-3 py-2.5">
           <button
-            onClick={(e) => {
-              e.stopPropagation()
-              if (allDone) {
-                onDismiss()
-              } else {
-                onClose()
-              }
-            }}
-            className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            aria-expanded={!collapsed}
+            aria-controls="upload-panel-list"
+            className="flex items-center gap-2.5 flex-1 min-w-0 text-left cursor-pointer rounded"
           >
-            {allDone ? (
-              <FaXmark className="text-xs" />
-            ) : collapsed ? (
-              <FaChevronUp className="text-xs" />
-            ) : (
-              <FaChevronDown className="text-xs" />
-            )}
+            <div
+              className={[
+                'shrink-0 size-8 rounded-full flex items-center justify-center',
+                'transition-colors',
+                inFlight.length > 0
+                  ? 'bg-primary/10 dark:bg-primary/20'
+                  : allDone && errorCount === 0
+                    ? 'bg-green-100 dark:bg-green-900/30'
+                    : allDone
+                      ? 'bg-amber-100 dark:bg-amber-900/30'
+                      : 'bg-slate-200 dark:bg-slate-700/50',
+              ].join(' ')}
+            >
+              {inFlight.length > 0 ? (
+                <FaSpinner className="text-primary text-xs animate-spin" />
+              ) : allDone && errorCount === 0 ? (
+                <FaCircleCheck className="text-green-600 dark:text-green-400 text-sm" />
+              ) : allDone ? (
+                <FaCircleExclamation className="text-amber-600 dark:text-amber-400 text-sm" />
+              ) : (
+                <FaCloudArrowUp className="text-primary text-sm" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p
+                aria-live="polite"
+                aria-atomic="true"
+                className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate"
+              >
+                {title}
+              </p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{subtitle}</p>
+            </div>
+            <FaChevronDown
+              className={[
+                'shrink-0 text-[10px] text-slate-400 dark:text-slate-500',
+                'transition-transform duration-200',
+                collapsed ? '-rotate-90' : 'rotate-0',
+              ].join(' ')}
+              aria-hidden="true"
+            />
           </button>
+          <div className="flex items-center gap-0.5 shrink-0">
+            {hasDoneItems && !allDone && (
+              <button
+                type="button"
+                onClick={onDismiss}
+                className="p-1.5 rounded text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors"
+                aria-label="Clear completed uploads"
+                title="Clear completed"
+              >
+                <FaBroom className="text-xs" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleClose}
+              className="p-1.5 rounded text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors"
+              aria-label={allDone ? 'Dismiss upload panel' : 'Close upload panel'}
+              title={allDone ? 'Dismiss' : 'Close'}
+            >
+              <FaXmark className="text-xs" />
+            </button>
+          </div>
         </div>
-      </div>
+        {showOverallProgress && (
+          <div
+            className="h-0.5 bg-slate-200 dark:bg-slate-700/50 overflow-hidden"
+            role="progressbar"
+            aria-valuenow={allDone ? 100 : totalProgress}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Overall upload progress"
+          >
+            <div
+              className={[
+                'h-full transition-all duration-500 ease-out',
+                allDone ? (errorCount > 0 ? 'bg-amber-500' : 'bg-green-500') : 'bg-primary',
+              ].join(' ')}
+              style={{ width: `${allDone ? 100 : totalProgress}%` }}
+            />
+          </div>
+        )}
+      </header>
 
       {!collapsed && (
-        <div className="max-h-60 overflow-y-auto">
+        <ul
+          id="upload-panel-list"
+          className="max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60"
+        >
           {items.map((item) => {
             const thumbUrl = item.localThumbUrl ?? thumbGet(item.id)
+            const isError = item.status === 'error'
+            const isDone = item.status === 'done'
+            const isUploading = item.status === 'uploading'
             return (
-              <div
+              <li
                 key={item.id}
-                className="flex items-center gap-3 px-4 py-2 border-t border-[#424754]/10"
+                className={[
+                  'flex items-center gap-3 px-3 py-2.5',
+                  'transition-colors',
+                  isError ? 'bg-red-50/60 dark:bg-red-950/20' : '',
+                ].join(' ')}
               >
-                <div className="w-8 h-8 rounded bg-[#32353d] overflow-hidden shrink-0 flex items-center justify-center">
+                <div
+                  className={[
+                    'w-10 h-10 rounded-md overflow-hidden shrink-0 flex items-center justify-center',
+                    'bg-slate-100 dark:bg-slate-800/60',
+                    isError ? 'ring-1 ring-red-200/60 dark:ring-red-900/40' : '',
+                  ].join(' ')}
+                >
                   {thumbUrl ? (
                     <img src={thumbUrl} alt="" className="w-full h-full object-cover" />
+                  ) : item.kind === 'video' ? (
+                    <FaVideo className="text-base text-slate-400 dark:text-slate-500" />
                   ) : (
-                    <FaCamera className="text-xs text-slate-500" />
+                    <FaImage className="text-base text-slate-400 dark:text-slate-500" />
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-white truncate">{item.fileName}</p>
-                  {item.status === 'error' ? (
-                    <p className="text-[10px] text-red-400 truncate">{item.error}</p>
-                  ) : item.status === 'done' ? (
-                    <p className="text-[10px] text-green-400">Uploaded</p>
-                  ) : item.status === 'uploading' ? (
-                    <div className="mt-1 h-1 bg-[#424754] rounded-full overflow-hidden">
+                  <p
+                    className={[
+                      'text-xs truncate',
+                      isError
+                        ? 'text-red-700 dark:text-red-300'
+                        : 'text-slate-700 dark:text-slate-200',
+                    ].join(' ')}
+                  >
+                    {item.fileName}
+                  </p>
+                  {isError ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        /* retry not yet wired */
+                      }}
+                      className="text-[10px] text-red-600 dark:text-red-400 hover:underline truncate max-w-full text-left inline-flex items-center gap-1"
+                      title="Click to retry"
+                    >
+                      <span className="truncate">{item.error ?? 'Upload failed'}</span>
+                      <span className="shrink-0">· Click to retry</span>
+                    </button>
+                  ) : isDone ? (
+                    <p className="text-[10px] text-green-600 dark:text-green-400 inline-flex items-center gap-1">
+                      <FaCheck className="text-[8px]" />
+                      <span>Uploaded</span>
+                    </p>
+                  ) : isUploading ? (
+                    <div className="mt-1 h-1 bg-slate-200 dark:bg-slate-700/50 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-primary rounded-full transition-all duration-300"
+                        className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
                         style={{ width: `${item.progress}%` }}
                       />
                     </div>
                   ) : (
-                    <p className="text-[10px] text-slate-500">Waiting...</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Waiting...</p>
                   )}
                 </div>
-                <div className="shrink-0">
-                  {item.status === 'done' && <FaCheck className="text-green-400 text-xs" />}
-                  {item.status === 'error' && (
-                    <FaCircleExclamation className="text-red-400 text-xs" />
-                  )}
-                  {item.status === 'uploading' && (
-                    <span className="text-[10px] text-slate-400">{item.progress}%</span>
+                <div className="shrink-0 w-10 text-right">
+                  {isDone && <FaCheck className="text-green-500 text-xs ml-auto" />}
+                  {isError && <FaCircleExclamation className="text-red-500 text-xs ml-auto" />}
+                  {isUploading && (
+                    <span className="text-[10px] tabular-nums text-slate-500 dark:text-slate-400">
+                      {item.progress}%
+                    </span>
                   )}
                 </div>
-              </div>
+              </li>
             )
           })}
-        </div>
+        </ul>
       )}
-    </div>
+    </section>
   )
 }
