@@ -75,14 +75,32 @@ export class Asset {
   @Column({ type: 'varchar', nullable: true })
   cameraModel!: string | null
 
+  @Column({ type: 'varchar', nullable: true })
+  lensModel!: string | null
+
   @Column({ type: 'int', nullable: true })
   orientation!: number | null
+
+  @Column({ type: 'int', nullable: true })
+  iso!: number | null
+
+  @Column({ type: 'numeric', precision: 3, scale: 1, nullable: true })
+  fNumber!: number | null
+
+  @Column({ type: 'numeric', precision: 10, scale: 7, nullable: true })
+  exposureTime!: number | null
+
+  @Column({ type: 'numeric', precision: 5, scale: 1, nullable: true })
+  focalLength!: number | null
 
   @Column({ type: 'numeric', precision: 9, scale: 6, nullable: true })
   latitude!: number | null
 
   @Column({ type: 'numeric', precision: 9, scale: 6, nullable: true })
   longitude!: number | null
+
+  @Column({ type: 'numeric', precision: 9, scale: 3, nullable: true })
+  altitude!: number | null
 
   @Column({ type: 'numeric', nullable: true })
   fps!: number | null
@@ -92,6 +110,9 @@ export class Asset {
 
   @Column({ type: 'boolean', nullable: true })
   hasAudio!: boolean | null
+
+  @Column({ type: 'jsonb', nullable: true })
+  metadata!: Record<string, unknown> | null
 
   @Column({ type: 'enum', enum: ['pending', 'ready', 'failed'], default: 'pending' })
   metadataStatus!: 'pending' | 'ready' | 'failed'

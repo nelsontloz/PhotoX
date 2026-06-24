@@ -118,7 +118,7 @@ export class AssetsService {
       return this.toResponse(asset)
     }
 
-    await this.repo.update(id, patch)
+    await this.repo.update(id, patch as Record<string, unknown>)
     const updated = await this.repo.findOne({ where: { id } })
     return this.toResponse(updated!)
   }
@@ -161,6 +161,7 @@ export class AssetsService {
       metadataExtractedAt: new Date(),
     }
 
+    if (dto.takenAt !== undefined) patch.takenAt = dto.takenAt
     if (dto.mimeType !== undefined) patch.mimeType = dto.mimeType
     if (dto.sizeBytes !== undefined) patch.sizeBytes = dto.sizeBytes
     if (dto.originalName !== undefined) patch.originalName = dto.originalName
@@ -172,11 +173,18 @@ export class AssetsService {
     if (dto.hasAudio !== undefined) patch.hasAudio = dto.hasAudio
     if (dto.cameraMake !== undefined) patch.cameraMake = dto.cameraMake
     if (dto.cameraModel !== undefined) patch.cameraModel = dto.cameraModel
+    if (dto.lensModel !== undefined) patch.lensModel = dto.lensModel
     if (dto.orientation !== undefined) patch.orientation = dto.orientation
+    if (dto.iso !== undefined) patch.iso = dto.iso
+    if (dto.fNumber !== undefined) patch.fNumber = dto.fNumber
+    if (dto.exposureTime !== undefined) patch.exposureTime = dto.exposureTime
+    if (dto.focalLength !== undefined) patch.focalLength = dto.focalLength
     if (dto.latitude !== undefined) patch.latitude = dto.latitude
     if (dto.longitude !== undefined) patch.longitude = dto.longitude
+    if (dto.altitude !== undefined) patch.altitude = dto.altitude
+    if (dto.metadata !== undefined) patch.metadata = dto.metadata
 
-    await this.repo.update(id, patch)
+    await this.repo.update(id, patch as Record<string, unknown>)
     const updated = await this.repo.findOne({ where: { id } })
     return this.toResponse(updated!)
   }
@@ -203,12 +211,19 @@ export class AssetsService {
       durationSeconds: asset.durationSeconds !== null ? Number(asset.durationSeconds) : null,
       cameraMake: asset.cameraMake,
       cameraModel: asset.cameraModel,
+      lensModel: asset.lensModel,
       orientation: asset.orientation,
+      iso: asset.iso,
+      fNumber: asset.fNumber !== null ? Number(asset.fNumber) : null,
+      exposureTime: asset.exposureTime !== null ? Number(asset.exposureTime) : null,
+      focalLength: asset.focalLength !== null ? Number(asset.focalLength) : null,
       latitude: asset.latitude !== null ? Number(asset.latitude) : null,
       longitude: asset.longitude !== null ? Number(asset.longitude) : null,
+      altitude: asset.altitude !== null ? Number(asset.altitude) : null,
       fps: asset.fps !== null ? Number(asset.fps) : null,
       codec: asset.codec,
       hasAudio: asset.hasAudio,
+      metadata: asset.metadata,
       metadataStatus: asset.metadataStatus,
       metadataExtractedAt:
         asset.metadataExtractedAt instanceof Date ? asset.metadataExtractedAt.toISOString() : null,

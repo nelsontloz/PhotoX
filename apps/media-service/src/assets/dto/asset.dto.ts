@@ -60,13 +60,31 @@ export class AssetDto implements Asset {
   cameraModel!: string | null
 
   @ApiProperty({ required: false, nullable: true })
+  lensModel!: string | null
+
+  @ApiProperty({ required: false, nullable: true })
   orientation!: number | null
+
+  @ApiProperty({ required: false, nullable: true })
+  iso!: number | null
+
+  @ApiProperty({ required: false, nullable: true })
+  fNumber!: number | null
+
+  @ApiProperty({ required: false, nullable: true })
+  exposureTime!: number | null
+
+  @ApiProperty({ required: false, nullable: true })
+  focalLength!: number | null
 
   @ApiProperty({ required: false, nullable: true })
   latitude!: number | null
 
   @ApiProperty({ required: false, nullable: true })
   longitude!: number | null
+
+  @ApiProperty({ required: false, nullable: true })
+  altitude!: number | null
 
   @ApiProperty({ required: false, nullable: true })
   fps!: number | null
@@ -76,6 +94,9 @@ export class AssetDto implements Asset {
 
   @ApiProperty({ required: false, nullable: true })
   hasAudio!: boolean | null
+
+  @ApiProperty({ required: false, nullable: true })
+  metadata!: Record<string, unknown> | null
 
   @ApiProperty({ enum: ['pending', 'ready', 'failed'] })
   metadataStatus!: 'pending' | 'ready' | 'failed'

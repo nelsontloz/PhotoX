@@ -10,6 +10,7 @@ import { PgBossService } from './pg-boss.service'
 import { JobRecord, JobStatus } from './entities/job.entity'
 import type { ProcessThumbnailDto } from './dto/process-thumbnail.dto'
 import { SERVICE_URLS } from '@photox/shared-config'
+import { MetadataExtractor, type ExtractedMetadata } from './metadata.extractor'
 
 const STANDARD_SIZES: Record<string, [number, number]> = {
   sm: [150, 150],
@@ -48,6 +49,7 @@ export class ThumbnailProcessor {
     @InjectRepository(JobRecord)
     private readonly jobRepo: Repository<JobRecord>,
     private readonly http: HttpService,
+    private readonly metadataExtractor: MetadataExtractor,
   ) {}
 
   async enqueue(dto: ProcessThumbnailDto): Promise<{ jobId: string; status: string }> {
@@ -125,6 +127,92 @@ export class ThumbnailProcessor {
       this.http.get(streamUrl, { responseType: 'arraybuffer', timeout: 30_000 }),
     )
     const buffer = Buffer.from(upstream.data as ArrayBuffer)
+
+    const ctHeader = upstream.headers['content-type']
+    const rawContentType =
+      typeof ctHeader === 'string' ? ctHeader : ((Array.isArray(ctHeader) ? ctHeader[0] : '') ?? '')
+    const mimeType = rawContentType.split(';')[0]?.trim() ?? null
+
+    let metadata: ExtractedMetadata = {
+      takenAt: null,
+      cameraMake: null,
+      cameraModel: null,
+      lensModel: null,
+      orientation: null,
+      width: null,
+      height: null,
+      latitude: null,
+      longitude: null,
+      altitude: null,
+      iso: null,
+      fNumber: null,
+      exposureTime: null,
+      focalLength: null,
+      raw: null,
+    }
+    let metadataStatus: 'ready' | 'failed' | 'pending' = 'pending'
+
+    if (mimeType?.startsWith('image/')) {
+      try {
+        metadata = this.metadataExtractor.extract(buffer)
+        metadataStatus = metadata.raw !== null ? 'ready' : 'failed'
+      } catch {
+        metadataStatus = 'failed'
+      }
+
+      const clHeader = upstream.headers['content-length']
+      const rawContentLength =
+        typeof clHeader === 'string'
+          ? clHeader
+          : ((Array.isArray(clHeader) ? clHeader[0] : '') ?? '')
+      const sizeBytes = Number(rawContentLength) || buffer.length
+
+      const rawDisposition = String(upstream.headers['content-disposition'] ?? '')
+      const nameMatch = /filename\*?=(?:UTF-8'')?"?([^";]+)/i.exec(rawDisposition)
+      const originalName = nameMatch ? decodeURIComponent(nameMatch[1]!.trim()) : null
+
+      const patchUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
+      try {
+        await firstValueFrom(
+          this.http.patch(patchUrl, {
+            takenAt: metadata.takenAt,
+            cameraMake: metadata.cameraMake,
+            cameraModel: metadata.cameraModel,
+            lensModel: metadata.lensModel,
+            orientation: metadata.orientation,
+            latitude: metadata.latitude,
+            longitude: metadata.longitude,
+            iso: metadata.iso,
+            fNumber: metadata.fNumber,
+            exposureTime: metadata.exposureTime,
+            focalLength: metadata.focalLength,
+            altitude: metadata.altitude,
+            mimeType,
+            sizeBytes,
+            originalName,
+            status: metadataStatus,
+          }),
+        )
+        this.logger.debug(`Metadata patched for asset=${assetId}`)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        this.logger.warn(`Metadata patch failed for asset=${assetId}: ${message}`)
+      }
+    } else if (mimeType?.startsWith('video/')) {
+      const patchUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
+      try {
+        await firstValueFrom(
+          this.http.patch(patchUrl, {
+            status: 'pending',
+            mimeType,
+          }),
+        )
+        this.logger.debug(`Video metadata status set to pending for asset=${assetId}`)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        this.logger.warn(`Video metadata patch failed for asset=${assetId}: ${message}`)
+      }
+    }
 
     const { data: thumbBuffer, info } = await sharp(buffer)
       .resize(width, height, RESIZE_OPTIONS[size] ?? { fit: 'cover' })

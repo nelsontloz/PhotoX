@@ -32,12 +32,19 @@ const baseAsset = {
   durationSeconds: null,
   cameraMake: null,
   cameraModel: null,
+  lensModel: null,
   orientation: null,
+  iso: null,
+  fNumber: null,
+  exposureTime: null,
+  focalLength: null,
   latitude: null,
   longitude: null,
+  altitude: null,
   fps: null,
   codec: null,
   hasAudio: null,
+  metadata: null,
   metadataStatus: 'pending' as const,
   metadataExtractedAt: null,
 }
@@ -53,7 +60,7 @@ afterAll(async () => {
   await app?.close()
 })
 
-describe('Pact verification — media-service (worker)', () => {
+describe('Pact verification — media-service (worker metadata)', () => {
   it('validates expectations of Worker', async () => {
     await new Verifier({
       provider: 'media-service',
