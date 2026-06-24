@@ -3,7 +3,7 @@ import { HttpService } from '@nestjs/axios'
 import { firstValueFrom } from 'rxjs'
 import { SERVICE_URLS } from '@photox/shared-config'
 
-const STANDARD_SIZES = ['sm', 'md', 'lg']
+const STANDARD_SIZES = ['sm', 'md', 'lg', 'xl']
 
 @Injectable()
 export class ThumbnailOrchestratorService {
