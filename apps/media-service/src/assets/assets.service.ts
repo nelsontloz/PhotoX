@@ -5,6 +5,7 @@ import { Asset } from '../entities/asset.entity'
 import { CreateAssetDto } from './dto/create-asset.dto'
 import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
+import { ListUserAssetsQueryDto } from './dto/list-user-assets-query.dto'
 import { UpdateMetadataDto } from './dto/update-metadata.dto'
 import type { Asset as AssetResponse, AssetListResponse } from '@photox/shared-types'
 
@@ -140,9 +141,16 @@ export class AssetsService {
     }
   }
 
-  async listByUser(userId: string): Promise<AssetResponse[]> {
-    const assets = await this.repo.find({ where: { userId }, order: { uploadedAt: 'DESC' } })
-    return assets.map((a) => this.toResponse(a))
+  async listByUser(userId: string, q: ListUserAssetsQueryDto = {}): Promise<AssetListResponse> {
+    const limit = q.limit ?? 100
+    const offset = q.offset ?? 0
+    const [items, total] = await this.repo.findAndCount({
+      where: { userId },
+      order: { uploadedAt: 'DESC' },
+      take: limit,
+      skip: offset,
+    })
+    return { items: items.map((a) => this.toResponse(a)), total, limit, offset }
   }
 
   async getByFileId(fileId: string): Promise<AssetResponse> {

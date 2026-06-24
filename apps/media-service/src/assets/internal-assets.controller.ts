@@ -1,7 +1,9 @@
-import { Controller, Get, Patch, Param, Body } from '@nestjs/common'
+import { Controller, Get, Patch, Param, Query, Body } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { AssetsService } from './assets.service'
 import { AssetDto } from './dto/asset.dto'
+import { AssetListResponseDto } from './dto/asset-list-response.dto'
+import { ListUserAssetsQueryDto } from './dto/list-user-assets-query.dto'
 import { UpdateMetadataDto } from './dto/update-metadata.dto'
 
 @ApiTags('internal-assets')
@@ -11,9 +13,9 @@ export class InternalAssetsController {
 
   @Get('users/:userId/assets')
   @ApiOperation({ summary: 'Get all assets for a user (service-to-service)' })
-  @ApiResponse({ status: 200, type: [AssetDto] })
-  async listByUser(@Param('userId') userId: string) {
-    return this.assets.listByUser(userId)
+  @ApiResponse({ status: 200, type: AssetListResponseDto })
+  async listByUser(@Param('userId') userId: string, @Query() q: ListUserAssetsQueryDto) {
+    return this.assets.listByUser(userId, q)
   }
 
   @Get('assets/by-file/:fileId')
