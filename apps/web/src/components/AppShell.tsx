@@ -1,4 +1,3 @@
-import { useRef } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   FaCamera,
@@ -14,7 +13,8 @@ import {
   FaBell,
 } from 'react-icons/fa6'
 import { useAuthStore } from '../store/auth-store'
-import { UploadButton, type UploadButtonHandle } from './UploadButton'
+import { UploadButton } from './UploadButton'
+import { UploadNotification } from './UploadNotification'
 
 interface AppShellProps {
   children: React.ReactNode
@@ -24,7 +24,6 @@ export function AppShell({ children }: AppShellProps) {
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
   const navigate = useNavigate()
-  const uploadRef = useRef<UploadButtonHandle>(null)
 
   const initials =
     user?.displayName
@@ -88,7 +87,7 @@ export function AppShell({ children }: AppShellProps) {
         </div>
 
         <div className="flex items-center justify-end gap-4 w-1/4">
-          <UploadButton ref={uploadRef} variant="compact" />
+          <UploadButton variant="compact" />
           <div className="h-6 w-px bg-gray-200 dark:border-border-dark mx-1 hidden sm:block" />
           <button className="relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-card-dark text-slate-500 dark:text-slate-400 transition-colors">
             <FaBell className="text-[18px]" />
@@ -167,6 +166,7 @@ export function AppShell({ children }: AppShellProps) {
           {children}
         </main>
       </div>
+      <UploadNotification />
     </div>
   )
 }

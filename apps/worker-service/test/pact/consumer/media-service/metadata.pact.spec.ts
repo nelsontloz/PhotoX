@@ -243,7 +243,11 @@ describe('Worker → media-service metadata pact', () => {
       .willRespondWith({
         status: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: { ...failedMetadataResponseMatcher, metadataStatus: 'pending', mimeType: 'video/mp4' },
+        body: {
+          ...failedMetadataResponseMatcher,
+          metadataStatus: 'pending',
+          mimeType: 'video/mp4',
+        },
       })
       .executeTest(async (mockserver) => {
         const res = await axios.patch(
