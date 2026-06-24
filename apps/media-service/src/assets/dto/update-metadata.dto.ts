@@ -13,9 +13,9 @@ import {
 } from 'class-validator'
 
 export class UpdateMetadataDto {
-  @ApiProperty({ enum: ['ready', 'failed'] })
-  @IsIn(['ready', 'failed'])
-  status!: 'ready' | 'failed'
+  @ApiProperty({ enum: ['pending', 'ready', 'failed'] })
+  @IsIn(['pending', 'ready', 'failed'])
+  status!: 'pending' | 'ready' | 'failed'
 
   @ApiProperty({ required: false })
   @IsOptional()
