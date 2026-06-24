@@ -135,8 +135,14 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_USER: photox
       POSTGRES_PASSWORD: photox_dev
+      FILE_STORAGE_SERVICE_URL: http://file-storage-service:3003
+      MEDIA_SERVICE_URL: http://media-service:3002
     depends_on:
       postgres:
+        condition: service_healthy
+      file-storage-service:
+        condition: service_healthy
+      media-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3004/health || exit 1"]
