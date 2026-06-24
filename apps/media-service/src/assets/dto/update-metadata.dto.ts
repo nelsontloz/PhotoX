@@ -130,6 +130,7 @@ export class UpdateMetadataDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsNumber()
+  @Min(0)
   altitude?: number
 
   @ApiProperty({ required: false })
