@@ -23,9 +23,7 @@ import { BatchFilesRequestDto, BatchFilesResponseDto } from './dto/batch-files.d
 @ApiTags('files')
 @Controller('v1/files')
 export class UserFilesController {
-  constructor(
-    private readonly userFilesService: UserFilesService,
-  ) {}
+  constructor(private readonly userFilesService: UserFilesService) {}
 
   @Post()
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 100 * 1024 * 1024 } }))

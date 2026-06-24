@@ -151,7 +151,7 @@ If you ever misconfigure the prod network (accidentally publish a backend port, 
 - **Consumers:** Two services have consumer pact tests:
   - **Gateway** (`apps/gateway/test/pact/consumer/`) — calls user-service, media-service, file-storage-service, worker-service
   - **Worker-service** (`apps/worker-service/test/pact/consumer/`) — calls media-service and file-storage-service (thumbnail processing)
-  Both use `PactV3` from `@pact-foundation/pact`. ~26 interactions total: 7 auth, 6 assets, 5 files, 2 jobs, 6 worker→backend (2 thumbnail register + 4 file stream/upload).
+    Both use `PactV3` from `@pact-foundation/pact`. ~26 interactions total: 7 auth, 6 assets, 5 files, 2 jobs, 6 worker→backend (2 thumbnail register + 4 file stream/upload).
 - **Providers:** Each backend service has pact verification tests at `test/pact/provider/gateway/` (for the gateway consumer) and `test/pact/provider/worker/` (for the worker consumer, in media-service and file-storage-service). Uses `Verifier` from `@pact-foundation/pact`. Provider tests use mocked repositories (no testcontainers) — `Test.createTestingModule` with `overrideProvider(getRepositoryToken(Entity))`. Non-repository external services (e.g. `MinioService` in file-storage) are mocked via `overrideProvider(Token).useValue(...)`.
 - **Pacts stored at repo root** `pacts/<consumer>-<provider>.json`. Not committed (in `.gitignore`). Regenerated fresh on every `pnpm verify`.
 - **Commands per service:** `pnpm pact-consumer` runs `vitest run --config vitest.consumer.config.ts` (includes `test/pact/consumer/**`). `pnpm pact-provider` runs `vitest run --config vitest.provider.config.ts` (includes `test/pact/provider/**`). Both use `passWithNoTests: true`.
