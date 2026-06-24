@@ -1,12 +1,31 @@
+import { useState } from 'react'
 import { FaHeart, FaImage, FaMountain, FaSpinner, FaWandMagicSparkles } from 'react-icons/fa6'
+import type { Asset } from '@photox/shared-types'
 import { RequireAuth } from '../components/RequireAuth'
 import { AppShell } from '../components/AppShell'
 import { AssetThumb } from '../components/AssetThumb'
+import { AssetViewer } from '../components/AssetViewer/AssetViewer'
 import { UploadButton } from '../components/UploadButton'
 import { useAssetGroups } from '../hooks/useAssetGroups'
 
 function TimelineContent() {
   const { groups, loading, error, refresh } = useAssetGroups()
+  const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
+
+  const allAssets = groups.flatMap((g) => g.items)
+  const currentIndex = selectedAsset ? allAssets.findIndex((a) => a.id === selectedAsset.id) : -1
+  const hasPrev = currentIndex > 0
+  const hasNext = currentIndex >= 0 && currentIndex < allAssets.length - 1
+
+  const goPrev = () => {
+    if (hasPrev) setSelectedAsset(allAssets[currentIndex - 1] ?? null)
+  }
+  const goNext = () => {
+    if (hasNext) setSelectedAsset(allAssets[currentIndex + 1] ?? null)
+  }
+  const closeViewer = () => {
+    setSelectedAsset(null)
+  }
 
   if (loading) {
     return (
@@ -81,6 +100,17 @@ function TimelineContent() {
             {group.items.map((asset) => (
               <div
                 key={asset.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  setSelectedAsset(asset)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    setSelectedAsset(asset)
+                  }
+                }}
                 className="masonry-item relative group rounded-lg overflow-hidden cursor-pointer"
               >
                 <AssetThumb asset={asset} />
@@ -100,6 +130,16 @@ function TimelineContent() {
           </div>
         </section>
       ))}
+      {selectedAsset && (
+        <AssetViewer
+          asset={selectedAsset}
+          onClose={closeViewer}
+          onPrev={goPrev}
+          onNext={goNext}
+          hasPrev={hasPrev}
+          hasNext={hasNext}
+        />
+      )}
     </>
   )
 }

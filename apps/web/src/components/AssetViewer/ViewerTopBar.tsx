@@ -6,6 +6,7 @@ interface ViewerTopBarProps {
   asset: Asset
   infoOpen: boolean
   onToggleInfo: () => void
+  onClose: () => void
 }
 
 function formatBytes(bytes: number): string {
@@ -24,7 +25,7 @@ function formatDate(dateStr: string): string {
   })
 }
 
-export function ViewerTopBar({ asset, infoOpen, onToggleInfo }: ViewerTopBarProps) {
+export function ViewerTopBar({ asset, infoOpen, onToggleInfo, onClose }: ViewerTopBarProps) {
   const title = asset.originalName ?? asset.title ?? 'Untitled'
   const dateStr = asset.takenAt ?? asset.uploadedAt
   const sizeStr = asset.sizeBytes ? ` · ${formatBytes(asset.sizeBytes)}` : ''
@@ -50,10 +51,7 @@ export function ViewerTopBar({ asset, infoOpen, onToggleInfo }: ViewerTopBarProp
   return (
     <div className="absolute top-0 left-0 right-0 h-16 flex items-center justify-between px-6 z-20 bg-gradient-to-b from-black/40 to-transparent">
       <div className="flex items-center gap-4">
-        <button
-          onClick={() => window.history.back()}
-          className="p-2 text-white/80 hover:text-white transition-colors"
-        >
+        <button onClick={onClose} className="p-2 text-white/80 hover:text-white transition-colors">
           <FaArrowLeft className="text-lg" />
         </button>
         <div>
