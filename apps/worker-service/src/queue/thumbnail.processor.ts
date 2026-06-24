@@ -15,6 +15,21 @@ const STANDARD_SIZES: Record<string, [number, number]> = {
   sm: [150, 150],
   md: [300, 300],
   lg: [600, 600],
+  xl: [1920, 1920],
+}
+
+const RESIZE_OPTIONS: Record<string, sharp.ResizeOptions> = {
+  sm: { fit: 'cover' },
+  md: { fit: 'cover' },
+  lg: { fit: 'cover' },
+  xl: { fit: 'inside' },
+}
+
+const WEBP_QUALITY: Record<string, number> = {
+  sm: 80,
+  md: 80,
+  lg: 80,
+  xl: 85,
 }
 
 interface ThumbnailJob {
@@ -111,16 +126,16 @@ export class ThumbnailProcessor {
     )
     const buffer = Buffer.from(upstream.data as ArrayBuffer)
 
-    const thumbBuffer = await sharp(buffer)
-      .resize(width, height, { fit: 'cover' })
-      .jpeg({ quality: 80 })
-      .toBuffer()
+    const { data: thumbBuffer, info } = await sharp(buffer)
+      .resize(width, height, RESIZE_OPTIONS[size] ?? { fit: 'cover' })
+      .webp({ quality: WEBP_QUALITY[size] ?? 80 })
+      .toBuffer({ resolveWithObject: true })
 
     const uploadUrl = `${SERVICE_URLS['file-storage-service']}/v1/internal/files/upload`
     const form = new FormData()
     form.append('file', thumbBuffer, {
-      filename: `thumb-${size}.jpg`,
-      contentType: 'image/jpeg',
+      filename: `thumb-${size}.webp`,
+      contentType: 'image/webp',
     })
     form.append('userId', userId)
 
@@ -138,8 +153,8 @@ export class ThumbnailProcessor {
       this.http.post(registerUrl, {
         size,
         fileId: newFileRecord.id,
-        width,
-        height,
+        width: info.width,
+        height: info.height,
         bytes: thumbBuffer.length,
       }),
     )
