@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return */
 import path from 'node:path'
 import { Verifier } from '@pact-foundation/pact'
 import { setupMockedApp, PACT_DIR } from './verifier'
@@ -35,7 +35,7 @@ afterAll(async () => {
   await app?.close()
 })
 
-describe.skip('Pact verification — file-storage-service (worker)', () => {
+describe('Pact verification — file-storage-service (worker)', () => {
   it('validates expectations of Worker', async () => {
     await new Verifier({
       provider: 'file-storage-service',
@@ -57,11 +57,26 @@ describe.skip('Pact verification — file-storage-service (worker)', () => {
           return Promise.resolve()
         },
         'user can upload a file': () => {
+          repos.mockFileRepo.create.mockImplementation((data: any) => ({
+            ...baseFileRecord,
+            ...data,
+            id: data.id ?? FILE_ID,
+            userId: data.userId ?? USER_ID,
+          }))
           repos.mockFileRepo.save.mockImplementation((data: any) => {
             const id = data.id ?? FILE_ID
-            return Promise.resolve({ ...baseFileRecord, ...data, id })
+            return Promise.resolve({
+              ...baseFileRecord,
+              ...data,
+              id,
+              userId: data.userId ?? USER_ID,
+            })
           })
           minio.uploadFile.mockResolvedValue(undefined)
+          return Promise.resolve()
+        },
+        'file upload fails with server error': () => {
+          minio.uploadFile.mockRejectedValue(new Error('MinIO connection failed'))
           return Promise.resolve()
         },
       },

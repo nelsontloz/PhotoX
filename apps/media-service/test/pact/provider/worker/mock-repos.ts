@@ -72,13 +72,53 @@ export function createAssetRepo() {
 }
 
 export function createBasicRepo() {
+  const store: Record<string, any> = {}
+  const compositeKey = (opts: { assetId: string; size: string }) => `${opts.assetId}::${opts.size}`
+
   return {
-    findOne: vi.fn().mockResolvedValue(null),
-    save: vi.fn().mockImplementation((data: any) => Promise.resolve(data)),
-    create: vi.fn((data: any) => data),
+    findOne: vi.fn().mockImplementation((opts: any) => {
+      const id = opts?.where?.id
+      if (id) return Promise.resolve(store[id] ?? null)
+      const assetId = opts?.where?.assetId
+      const size = opts?.where?.size
+      if (assetId && size) {
+        return Promise.resolve(store[compositeKey({ assetId, size })] ?? null)
+      }
+      return Promise.resolve(null)
+    }),
+    findOneOrFail: vi.fn().mockImplementation((opts: any) => {
+      const assetId = opts?.where?.assetId
+      const size = opts?.where?.size
+      const key = compositeKey({ assetId, size })
+      const found = store[key]
+      if (!found) return Promise.reject(new Error('Not found'))
+      return Promise.resolve(found)
+    }),
+    save: vi.fn().mockImplementation((data: any) => {
+      const id = data.id ?? 'c3eebc99-9c0b-4ef8-bb6d-6bb9bd380a44'
+      store[id] = { ...data, id, createdAt: data.createdAt ?? new Date('2024-01-01T00:00:00.000Z') }
+      return Promise.resolve(store[id])
+    }),
+    upsert: vi.fn().mockImplementation((dataOrArray: any) => {
+      const record = Array.isArray(dataOrArray) ? dataOrArray[0] : dataOrArray
+      const key = compositeKey({ assetId: record.assetId, size: record.size })
+      const existing = store[key]
+      store[key] = {
+        ...existing,
+        ...record,
+        id: existing?.id ?? 'c3eebc99-9c0b-4ef8-bb6d-6bb9bd380a44',
+        createdAt: existing?.createdAt ?? new Date('2024-01-01T00:00:00.000Z'),
+      }
+      return Promise.resolve({
+        identifiers: [{ id: store[key].id }],
+        generatedMaps: [store[key]],
+      })
+    }),
+    create: vi.fn((data: any) => ({ ...data })),
     update: vi.fn().mockResolvedValue({ affected: 1 }),
     find: vi.fn().mockResolvedValue([]),
     remove: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn().mockResolvedValue({ affected: 1 }),
     createQueryBuilder: vi.fn().mockReturnValue({
       where: vi.fn().mockReturnThis(),
       andWhere: vi.fn().mockReturnThis(),

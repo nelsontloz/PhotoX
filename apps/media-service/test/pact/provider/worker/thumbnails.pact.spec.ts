@@ -53,7 +53,7 @@ afterAll(async () => {
   await app?.close()
 })
 
-describe.skip('Pact verification — media-service (worker)', () => {
+describe('Pact verification — media-service (worker)', () => {
   it('validates expectations of Worker', async () => {
     await new Verifier({
       provider: 'media-service',

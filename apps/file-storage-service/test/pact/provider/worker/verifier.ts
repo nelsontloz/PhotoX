@@ -51,7 +51,7 @@ export async function setupMockedApp(): Promise<{
 function createMockMinio() {
   return {
     uploadFile: vi.fn().mockResolvedValue(undefined),
-    downloadFile: vi.fn().mockResolvedValue(Readable.from(Buffer.from('test'))),
+    downloadFile: vi.fn().mockResolvedValue(Readable.from(Buffer.from('fake-image-bytes'))),
     deleteFile: vi.fn().mockResolvedValue(undefined),
     fileExists: vi.fn().mockResolvedValue(true),
     ping: vi.fn().mockResolvedValue(undefined),

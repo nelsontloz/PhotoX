@@ -20,7 +20,10 @@ export function createFileRepo() {
       }
       return Promise.resolve(store[id])
     }),
-    create: vi.fn((data: any) => data),
+    create: vi.fn((data: any) => ({
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      ...data,
+    })),
     update: vi.fn().mockResolvedValue({ affected: 1 }),
     remove: vi.fn().mockImplementation((record: any) => {
       if (record.id) delete store[record.id]
