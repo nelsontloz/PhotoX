@@ -6,6 +6,7 @@ import { AppShell } from '../components/AppShell'
 import { AssetThumb } from '../components/AssetThumb'
 import { AssetViewer } from '../components/AssetViewer/AssetViewer'
 import { UploadButton } from '../components/UploadButton'
+import { DropZone } from '../components/DropZone'
 import { useAssetGroups } from '../hooks/useAssetGroups'
 
 function TimelineContent() {
@@ -83,7 +84,7 @@ function TimelineContent() {
   }
 
   return (
-    <>
+    <DropZone className="h-full">
       {groups.map((group) => (
         <section key={group.sortKey} className="mb-10">
           <div className="flex items-end gap-3 mb-4 sticky top-0 bg-background-light/95 dark:bg-background-dark/95 backdrop-blur z-30 py-2 -mx-4 px-4 sm:-mx-8 sm:px-8 border-b border-transparent dark:border-transparent transition-all">
@@ -140,7 +141,7 @@ function TimelineContent() {
           hasNext={hasNext}
         />
       )}
-    </>
+    </DropZone>
   )
 }
 

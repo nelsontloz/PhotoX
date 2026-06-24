@@ -27,4 +27,8 @@
   background: #3f4752;
 }
 
+.upload-queue-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
 
