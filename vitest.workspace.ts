@@ -5,6 +5,7 @@ export default defineWorkspace([
   'apps/user-service',
   'apps/media-service',
   'apps/file-storage-service',
+  'apps/worker-service',
   'apps/web',
   'packages/shared-auth',
   'packages/shared-config',

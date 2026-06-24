@@ -9,7 +9,7 @@ interface AssetThumbProps {
   className?: string
 }
 
-const THUMB_SIZES = ['sm', 'md', 'lg']
+const THUMB_SIZES = ['md', 'lg', 'sm']
 
 function pickThumbnail(thumbs: AssetThumbnail[]): AssetThumbnail | undefined {
   for (const size of THUMB_SIZES) {

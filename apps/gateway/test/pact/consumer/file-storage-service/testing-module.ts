@@ -6,6 +6,7 @@ import { HttpModule } from '@nestjs/axios'
 import { FilesProxyController } from '../../../../src/proxy/files-proxy/files-proxy.controller'
 import { requestIdMiddleware } from '../../../../src/common/middleware/request-id.middleware'
 import { ProxyService } from '../../../../src/proxy/proxy.service'
+import { ThumbnailOrchestratorService } from '../../../../src/orchestrator/thumbnail-orchestrator.service'
 import { createStubProxy } from '../stub'
 import type { StubProxy } from '../stub'
 
@@ -23,6 +24,10 @@ export async function setupFileStorageServicePactModule(): Promise<{
     controllers: [FilesProxyController],
     providers: [
       { provide: ProxyService, useValue: stub },
+      {
+        provide: ThumbnailOrchestratorService,
+        useValue: { enqueueThumbnails: vi.fn().mockResolvedValue(undefined) },
+      },
       {
         provide: APP_GUARD,
         useValue: {

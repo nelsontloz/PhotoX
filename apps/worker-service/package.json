@@ -1,0 +1,53 @@
+{
+  "name": "@photox/worker-service",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch",
+    "start": "node dist/main.js",
+    "clean": "rm -rf dist",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "pact-consumer": "vitest run --config vitest.consumer.config.ts",
+    "pact-provider": "vitest run --config vitest.provider.config.ts"
+  },
+  "dependencies": {
+    "@nestjs/axios": "^3.1.0",
+    "@nestjs/common": "^10.4.0",
+    "@nestjs/swagger": "^8.0.0",
+    "@nestjs/config": "^3.3.0",
+    "@nestjs/core": "^10.4.0",
+    "@nestjs/platform-express": "^10.4.0",
+    "@nestjs/typeorm": "^10.0.0",
+    "@photox/shared-config": "workspace:*",
+    "@photox/shared-types": "workspace:*",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.0",
+    "typeorm": "^0.3.20",
+    "pg": "^8.13.0",
+    "pg-boss": "^12.0.0",
+    "form-data": "^4.0.0",
+    "sharp": "^0.34.0",
+    "swagger-ui-express": "^5.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.0"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.4.0",
+    "@nestjs/schematics": "^10.2.0",
+    "@nestjs/testing": "^10.4.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.0.0",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^7.0.0",
+    "typescript": "^5.7.0",
+    "testcontainers": "^10.0.0",
+    "unplugin-swc": "^1.5.0",
+    "vitest": "^3.1.0",
+    "@pact-foundation/pact": "^13.0.0",
+    "axios": "^1.7.0"
+  }
+}
