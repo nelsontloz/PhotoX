@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import ExifReader from 'exifreader'
+import { runFfprobeJson, type FfprobeResult } from './ffmpeg'
 
 export interface ExtractedMetadata {
   takenAt: Date | null
@@ -142,6 +143,99 @@ export class MetadataExtractor {
       exposureTime: readNumber(exif.ExposureTime as Record<string, unknown> | undefined),
       focalLength: readNumber(exif.FocalLength as Record<string, unknown> | undefined),
       raw,
+    }
+  }
+}
+
+export interface VideoMetadataPatch {
+  durationSeconds: number | null
+  width: number | null
+  height: number | null
+  codec: string | null
+  fps: number | null
+  hasAudio: boolean | null
+  orientation: number | null
+  metadataStatus: 'ready'
+  metadataExtractedAt: Date
+}
+
+function parseFps(rate: string | undefined): number | null {
+  if (!rate || typeof rate !== 'string') return null
+  const parts = rate.split('/')
+  if (parts.length !== 2) return null
+  const num = Number(parts[0])
+  const den = Number(parts[1])
+  if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) return null
+  const fps = num / den
+  return Number.isFinite(fps) && fps > 0 ? Math.round(fps * 100) / 100 : null
+}
+
+function readOrientation(result: FfprobeResult): number | null {
+  for (const stream of result.streams) {
+    if (stream.codec_type !== 'video') continue
+    if (stream.tags?.rotate) {
+      const rot = Number(stream.tags.rotate)
+      if (Number.isFinite(rot)) return rot
+    }
+    if (stream.side_data_list) {
+      for (const sd of stream.side_data_list) {
+        if (sd.rotation !== undefined) {
+          const rot = Number(sd.rotation)
+          if (Number.isFinite(rot)) return rot
+        }
+      }
+    }
+  }
+  return null
+}
+
+export function seekForThumbnail(durationSeconds: number | null): number {
+  if (durationSeconds === null || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    return 1
+  }
+  return Math.max(1, durationSeconds * 0.25)
+}
+
+@Injectable()
+export class VideoMetadataExtractor {
+  private readonly logger = new Logger(VideoMetadataExtractor.name)
+
+  async extract(inputPath: string): Promise<VideoMetadataPatch> {
+    let result: FfprobeResult
+    try {
+      result = await runFfprobeJson(inputPath)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.logger.warn(`ffprobe failed for ${inputPath}: ${message}`)
+      return {
+        durationSeconds: null,
+        width: null,
+        height: null,
+        codec: null,
+        fps: null,
+        hasAudio: null,
+        orientation: null,
+        metadataStatus: 'ready',
+        metadataExtractedAt: new Date(),
+      }
+    }
+
+    const videoStream = result.streams.find((s) => s.codec_type === 'video')
+    const hasAudio = result.streams.some((s) => s.codec_type === 'audio')
+
+    const duration = result.format.duration ? Number.parseFloat(result.format.duration) : null
+
+    return {
+      durationSeconds:
+        duration !== null && Number.isFinite(duration) ? Math.round(duration * 1000) / 1000 : null,
+      width: videoStream?.width ?? null,
+      height: videoStream?.height ?? null,
+      codec: videoStream?.codec_name ?? null,
+      fps: parseFps(videoStream?.avg_frame_rate),
+      hasAudio,
+      orientation: readOrientation(result),
+      metadataStatus: 'ready',
+      metadataExtractedAt: new Date(),
     }
   }
 }

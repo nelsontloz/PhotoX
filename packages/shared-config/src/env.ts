@@ -18,6 +18,7 @@ const envSchema = z.object({
   MINIO_ROOT_USER: z.string().default('photox'),
   MINIO_ROOT_PASSWORD: z.string().default('photox_dev'),
   MINIO_BUCKET: z.string().default('photox-files'),
+  MINIO_PUBLIC_ENDPOINT: z.string().default('http://localhost:9000'),
   AUTH_ACCESS_TTL: z.string().default('30m'),
   AUTH_REFRESH_TTL: z.string().default('30d'),
   AUTH_CLOCK_TOLERANCE_SEC: z.coerce.number().default(60),

@@ -1,4 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm'
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  Index,
+} from 'typeorm'
 
 export enum JobStatus {
   QUEUED = 'queued',
@@ -8,6 +15,7 @@ export enum JobStatus {
 }
 
 @Entity('job_records')
+@Index(['kind', 'status'])
 export class JobRecord {
   @PrimaryGeneratedColumn('uuid')
   id!: string
@@ -23,6 +31,9 @@ export class JobRecord {
 
   @Column({ type: 'varchar', length: 20, default: JobStatus.QUEUED })
   status!: string
+
+  @Column({ type: 'varchar', length: 20, default: 'thumbnail' })
+  kind!: 'thumbnail' | 'video'
 
   @Column({ type: 'text', nullable: true })
   error?: string

@@ -183,6 +183,9 @@ export class AssetsService {
     if (dto.longitude !== undefined) patch.longitude = dto.longitude
     if (dto.altitude !== undefined) patch.altitude = dto.altitude
     if (dto.metadata !== undefined) patch.metadata = dto.metadata
+    if (dto.hlsMasterKey !== undefined) patch.hlsMasterKey = dto.hlsMasterKey
+    if (dto.transcodeStatus !== undefined) patch.transcodeStatus = dto.transcodeStatus
+    if (dto.transcodedAt !== undefined) patch.transcodedAt = dto.transcodedAt
 
     await this.repo.update(id, patch as Record<string, unknown>)
     const updated = await this.repo.findOne({ where: { id } })
@@ -227,6 +230,9 @@ export class AssetsService {
       metadataStatus: asset.metadataStatus,
       metadataExtractedAt:
         asset.metadataExtractedAt instanceof Date ? asset.metadataExtractedAt.toISOString() : null,
+      hlsMasterKey: asset.hlsMasterKey,
+      transcodeStatus: asset.transcodeStatus,
+      transcodedAt: asset.transcodedAt instanceof Date ? asset.transcodedAt.toISOString() : null,
     }
   }
 }

@@ -47,6 +47,22 @@ export class MinioService implements OnModuleInit {
     return this.client.getObject(env.MINIO_BUCKET, key)
   }
 
+  async downloadFileRange(key: string, offset: number, length: number): Promise<Readable> {
+    const env = loadEnv()
+    return this.client.getPartialObject(env.MINIO_BUCKET, key, offset, length)
+  }
+
+  async statFile(key: string): Promise<{ size: number; lastModified: Date }> {
+    const env = loadEnv()
+    const stat = await this.client.statObject(env.MINIO_BUCKET, key)
+    return { size: stat.size, lastModified: stat.lastModified }
+  }
+
+  async presignedGetUrl(key: string, ttlSeconds: number): Promise<string> {
+    const env = loadEnv()
+    return this.client.presignedGetObject(env.MINIO_BUCKET, key, ttlSeconds)
+  }
+
   async deleteFile(key: string): Promise<void> {
     const env = loadEnv()
     await this.client.removeObject(env.MINIO_BUCKET, key)

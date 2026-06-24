@@ -103,4 +103,13 @@ export class AssetDto implements Asset {
 
   @ApiProperty({ required: false, nullable: true })
   metadataExtractedAt!: string | null
+
+  @ApiProperty({ required: false, nullable: true })
+  hlsMasterKey!: string | null
+
+  @ApiProperty({ enum: ['pending', 'ready', 'failed'] })
+  transcodeStatus!: 'pending' | 'ready' | 'failed'
+
+  @ApiProperty({ required: false, nullable: true })
+  transcodedAt!: string | null
 }

@@ -10,6 +10,10 @@ Personal photo/video hosting. NestJS microservices monorepo with a Vite React we
 - **Single PG instance, 3 databases:** `users_db`, `library_db`, `files_db` (see `docker/postgres/init.sql`)
 - **Node:** 20 (see `.nvmrc`), **pnpm:** 9.15.0 (see `packageManager` in root `package.json`)
 
+## Video processing
+
+Worker-service uses ffmpeg/ffprobe at runtime. The Docker base-builder installs ffmpeg automatically. For local dev without Docker, install via `apt install ffmpeg` (Debian/Ubuntu) or `brew install ffmpeg` (macOS).
+
 ## Repository layout
 
 ```

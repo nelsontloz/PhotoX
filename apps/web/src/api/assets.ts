@@ -12,6 +12,11 @@ export async function listAssets(params: ListAssetsParams = {}): Promise<AssetLi
   return data
 }
 
+export async function getAsset(assetId: string): Promise<Asset> {
+  const { data } = await api.get<Asset>(`/v1/assets/${assetId}`)
+  return data
+}
+
 export async function listThumbnails(assetId: string): Promise<AssetThumbnailListResponse> {
   const { data } = await api.get<AssetThumbnailListResponse>(`/v1/assets/${assetId}/thumbnails`)
   return data
@@ -22,6 +27,15 @@ export async function downloadFile(fileId: string): Promise<Blob> {
     responseType: 'blob',
   })
   return data
+}
+
+export function getVideoStreamUrl(assetId: string, userId: string): string {
+  const params = new URLSearchParams({ userId })
+  return `/v1/videos/${assetId}/stream?${params.toString()}`
+}
+
+export function getHlsPlaylistUrl(assetId: string): string {
+  return `/v1/videos/${assetId}/playlist.m3u8`
 }
 
 export async function uploadFile(

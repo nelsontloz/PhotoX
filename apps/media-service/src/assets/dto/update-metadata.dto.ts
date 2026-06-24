@@ -13,9 +13,9 @@ import {
 } from 'class-validator'
 
 export class UpdateMetadataDto {
-  @ApiProperty({ enum: ['ready', 'failed'] })
-  @IsIn(['ready', 'failed'])
-  status!: 'ready' | 'failed'
+  @ApiProperty({ enum: ['ready', 'failed', 'pending'] })
+  @IsIn(['ready', 'failed', 'pending'])
+  status!: 'ready' | 'failed' | 'pending'
 
   @ApiProperty({ required: false })
   @IsOptional()
@@ -137,4 +137,20 @@ export class UpdateMetadataDto {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>
+
+  @ApiProperty({ required: false, nullable: true })
+  @IsOptional()
+  @IsString()
+  hlsMasterKey?: string | null
+
+  @ApiProperty({ required: false, enum: ['pending', 'ready', 'failed'] })
+  @IsOptional()
+  @IsIn(['pending', 'ready', 'failed'])
+  transcodeStatus?: 'pending' | 'ready' | 'failed'
+
+  @ApiProperty({ required: false, nullable: true })
+  @IsOptional()
+  @Type(() => Date)
+  @IsDate()
+  transcodedAt?: Date
 }

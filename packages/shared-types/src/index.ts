@@ -68,6 +68,8 @@ export type AssetKind = 'photo' | 'video'
 
 export type MetadataStatus = 'pending' | 'ready' | 'failed'
 
+export type TranscodeStatus = 'pending' | 'ready' | 'failed'
+
 export interface Asset {
   id: string
   userId: string
@@ -103,6 +105,9 @@ export interface Asset {
   metadata: Record<string, unknown> | null
   metadataStatus: MetadataStatus
   metadataExtractedAt: string | null
+  hlsMasterKey: string | null
+  transcodeStatus: TranscodeStatus
+  transcodedAt: string | null
 }
 
 export interface AssetListResponse {

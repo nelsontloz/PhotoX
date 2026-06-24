@@ -137,6 +137,12 @@ services:
       POSTGRES_PASSWORD: photox_dev
       FILE_STORAGE_SERVICE_URL: http://file-storage-service:3003
       MEDIA_SERVICE_URL: http://media-service:3002
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ROOT_USER: photox
+      MINIO_ROOT_PASSWORD: photox_dev
+      MINIO_BUCKET: photox-files
+      MINIO_PUBLIC_ENDPOINT: http://localhost:9000
     depends_on:
       postgres:
         condition: service_healthy
