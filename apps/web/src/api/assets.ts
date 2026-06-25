@@ -29,6 +29,13 @@ export async function downloadFile(fileId: string): Promise<Blob> {
   return data
 }
 
+/**
+ * The /api/v1/videos/* routes are gateway-authenticated. The browser must
+ * send `Authorization: Bearer <accessToken>` on every request (manifest +
+ * every segment + the original stream fallback). hls.js does this via its
+ * `xhrSetup` hook in VideoPlayer; the axios-based fallback passes the header
+ * directly. These URL helpers just build paths; auth is the caller's job.
+ */
 export function getVideoStreamUrl(assetId: string, userId: string): string {
   const params = new URLSearchParams({ userId })
   return `/api/v1/videos/${assetId}/stream?${params.toString()}`
@@ -36,6 +43,11 @@ export function getVideoStreamUrl(assetId: string, userId: string): string {
 
 export function getHlsPlaylistUrl(assetId: string): string {
   return `/api/v1/videos/${assetId}/playlist.m3u8`
+}
+
+export function getHlsSegmentUrl(assetId: string, segmentPath: string): string {
+  const trimmed = segmentPath.replace(/^\/+/, '')
+  return `/api/v1/videos/${assetId}/${trimmed}`
 }
 
 export async function uploadFile(

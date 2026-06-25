@@ -2,89 +2,77 @@ import {
   Controller,
   Get,
   Param,
-  Query,
-  Res,
   Req,
+  Res,
   NotFoundException,
+  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
 import { firstValueFrom } from 'rxjs'
-import { SERVICE_URLS, loadEnv } from '@photox/shared-config'
+import { SERVICE_URLS } from '@photox/shared-config'
 import type { Asset } from '@photox/shared-types'
-import { Public } from '../../auth/public.decorator'
+import { HlsProxyService } from './hls-proxy.service'
 
 @ApiTags('videos')
+@ApiBearerAuth()
 @Controller('api/v1/videos')
 export class VideosProxyController {
-  constructor(private readonly http: HttpService) {}
+  constructor(
+    private readonly http: HttpService,
+    private readonly hls: HlsProxyService,
+  ) {}
 
   @Get(':assetId/stream')
-  @Public()
-  @ApiOperation({ summary: 'Get a redirect to a presigned video URL' })
-  @ApiResponse({ status: 302, description: 'Redirect to presigned URL' })
+  @ApiOperation({ summary: 'Stream the original video file (authenticated)' })
+  @ApiResponse({ status: 200, description: 'Video stream' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid JWT' })
+  @ApiResponse({ status: 403, description: 'Asset does not belong to the authenticated user' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async streamVideo(
-    @Param('assetId') assetId: string,
-    @Query('ttl') ttl: string | undefined,
-    @Res() res: Response,
-  ) {
-    const asset = await this.getAsset(assetId)
+  async streamVideo(@Param('assetId') assetId: string, @Req() req: Request, @Res() res: Response) {
+    const userId = this.userId(req)
+    const asset = await this.getAsset(assetId, userId)
 
-    const fileId = asset.fileId
-    const query = ttl ? `?ttl=${encodeURIComponent(ttl)}` : ''
-    const urlRes = await firstValueFrom(
-      this.http.get<{ url: string; expiresAt: number }>(
-        `${SERVICE_URLS['file-storage-service']}/v1/files/${fileId}/url${query}`,
-        { timeout: 5_000 },
-      ),
-    )
-
-    const { url } = urlRes.data
-    res.redirect(302, url)
+    const stream = await this.hls.getOriginalFileStream(asset.fileId, userId)
+    res.set({
+      'Content-Type': 'video/mp4',
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'private, max-age=60',
+    })
+    stream.pipe(res)
   }
 
   @Get(':assetId/playlist.m3u8')
-  @Public()
-  @ApiOperation({ summary: 'Get a redirect to the HLS master playlist' })
-  @ApiResponse({ status: 302, description: 'Redirect to HLS playlist URL' })
+  @ApiOperation({ summary: 'Get the HLS master playlist (authenticated)' })
+  @ApiResponse({ status: 200, description: 'Rewritten HLS master playlist' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid JWT' })
+  @ApiResponse({ status: 403, description: 'Asset does not belong to the authenticated user' })
   @ApiResponse({ status: 404, description: 'Asset not found or not a video' })
   @ApiResponse({ status: 409, description: 'Transcoding failed' })
   @ApiResponse({ status: 425, description: 'Transcoding in progress' })
-  async getPlaylist(@Param('assetId') assetId: string, @Res() res: Response) {
-    const asset = await this.getAsset(assetId)
+  async getPlaylist(@Param('assetId') assetId: string, @Req() req: Request, @Res() res: Response) {
+    const userId = this.userId(req)
+    const asset = await this.getAsset(assetId, userId)
+    this.assertVideo(asset)
+    if (this.assertTranscodeReady(res, asset)) return
 
-    if (asset.kind !== 'video') {
-      throw new NotFoundException('Asset is not a video')
-    }
-
-    if (asset.transcodeStatus === 'pending') {
-      res.status(425).json({ status: 'pending', message: 'Transcoding in progress' })
-      return
-    }
-
-    if (asset.transcodeStatus === 'failed') {
-      res.status(409).json({ status: 'failed', message: 'Transcoding failed' })
-      return
-    }
-
-    if (!asset.hlsMasterKey) {
-      res.status(500).json({ status: 'error', message: 'HLS master key missing' })
-      return
-    }
-
-    const env = loadEnv()
-    const url = `${env.MINIO_PUBLIC_ENDPOINT}/${env.MINIO_BUCKET}/${asset.hlsMasterKey}`
-    res.redirect(302, url)
+    const playlist = await this.hls.getMasterPlaylistText(asset.hlsMasterKey!)
+    const rewritten = this.rewritePlaylistUrls(playlist, assetId)
+    res.set({
+      'Content-Type': 'application/vnd.apple.mpegurl',
+      'Cache-Control': 'no-store',
+    })
+    res.status(200).send(rewritten)
   }
 
   @Get(':assetId/*')
-  @Public()
-  @ApiOperation({ summary: 'Get a redirect to an HLS variant playlist or segment' })
-  @ApiResponse({ status: 302, description: 'Redirect to the HLS asset path in MinIO' })
+  @ApiOperation({ summary: 'Get an HLS variant playlist or segment (authenticated)' })
+  @ApiResponse({ status: 200, description: 'HLS asset bytes' })
   @ApiResponse({ status: 400, description: 'Invalid HLS path' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid JWT' })
+  @ApiResponse({ status: 403, description: 'Asset does not belong to the authenticated user' })
   @ApiResponse({ status: 404, description: 'Asset not found or not a video' })
   @ApiResponse({ status: 409, description: 'Transcoding failed' })
   @ApiResponse({ status: 425, description: 'Transcoding in progress' })
@@ -95,31 +83,103 @@ export class VideosProxyController {
     }
     const safePath = this.sanitizeHlsPath(rawPath)
 
-    const asset = await this.getAsset(assetId)
+    const userId = this.userId(req)
+    const asset = await this.getAsset(assetId, userId)
+    this.assertVideo(asset)
+    if (this.assertTranscodeReady(res, asset)) return
 
+    const masterDir = asset.hlsMasterKey!.slice(0, asset.hlsMasterKey!.lastIndexOf('/'))
+    if (!`${masterDir}/${safePath}`.startsWith(`${masterDir}/`)) {
+      throw new BadRequestException('Invalid HLS path')
+    }
+
+    const key = `${masterDir}/${safePath}`
+    const stream = await this.hls.getHlsStream(key)
+    res.set({
+      'Content-Type': this.contentTypeFor(safePath),
+      'Cache-Control': 'no-store',
+    })
+    stream.pipe(res)
+  }
+
+  private userId(req: Request): string {
+    const user = req.user as { id?: string }
+    if (!user?.id) {
+      throw new NotFoundException('Authenticated user not found on request')
+    }
+    return user.id
+  }
+
+  private async getAsset(assetId: string, userId: string): Promise<Asset> {
+    let asset: Asset
+    try {
+      const assetRes = await firstValueFrom(
+        this.http.get<Asset>(`${SERVICE_URLS['media-service']}/v1/assets/${assetId}`, {
+          params: { userId },
+          timeout: 5_000,
+        }),
+      )
+      asset = assetRes.data
+    } catch {
+      throw new ForbiddenException('Asset not accessible to the authenticated user')
+    }
+
+    if (!asset) {
+      throw new ForbiddenException('Asset not accessible to the authenticated user')
+    }
+
+    if (asset.userId !== userId) {
+      throw new ForbiddenException('Asset does not belong to the authenticated user')
+    }
+
+    return asset
+  }
+
+  private assertVideo(asset: Asset): void {
     if (asset.kind !== 'video') {
       throw new NotFoundException('Asset is not a video')
     }
+  }
 
+  private assertTranscodeReady(res: Response, asset: Asset): boolean {
     if (asset.transcodeStatus === 'pending') {
       res.status(425).json({ status: 'pending', message: 'Transcoding in progress' })
-      return
+      return true
     }
-
     if (asset.transcodeStatus === 'failed') {
       res.status(409).json({ status: 'failed', message: 'Transcoding failed' })
-      return
+      return true
     }
-
     if (!asset.hlsMasterKey) {
       res.status(500).json({ status: 'error', message: 'HLS master key missing' })
-      return
+      return true
     }
+    return false
+  }
 
-    const env = loadEnv()
-    const masterDir = asset.hlsMasterKey.slice(0, asset.hlsMasterKey.lastIndexOf('/'))
-    const url = `${env.MINIO_PUBLIC_ENDPOINT}/${env.MINIO_BUCKET}/${masterDir}/${safePath}`
-    res.redirect(302, url)
+  private rewritePlaylistUrls(playlist: string, assetId: string): string {
+    return playlist
+      .split('\n')
+      .map((line) => {
+        const trimmed = line.trim()
+        if (!trimmed || trimmed.startsWith('#') || trimmed.includes('://')) {
+          return line
+        }
+        if (trimmed.includes('?')) {
+          const [path, query] = trimmed.split('?')
+          return `/api/v1/videos/${assetId}/${path}?${query}`
+        }
+        return `/api/v1/videos/${assetId}/${trimmed}`
+      })
+      .join('\n')
+  }
+
+  private contentTypeFor(safePath: string): string {
+    if (safePath.endsWith('.m3u8')) return 'application/vnd.apple.mpegurl'
+    if (safePath.endsWith('.m4s')) return 'video/iso.segment'
+    if (safePath.endsWith('.ts')) return 'video/mp2t'
+    if (safePath.endsWith('.mp4')) return 'video/mp4'
+    return 'application/octet-stream'
   }
 
   private sanitizeHlsPath(rawPath: string): string {
@@ -140,25 +200,5 @@ export class VideosProxyController {
       throw new BadRequestException('Invalid HLS path')
     }
     return segments.join('/')
-  }
-
-  private async getAsset(assetId: string): Promise<Asset> {
-    let asset: Asset
-    try {
-      const assetRes = await firstValueFrom(
-        this.http.get<Asset>(`${SERVICE_URLS['media-service']}/v1/assets/${assetId}`, {
-          timeout: 5_000,
-        }),
-      )
-      asset = assetRes.data
-    } catch {
-      throw new NotFoundException('Asset not found')
-    }
-
-    if (!asset) {
-      throw new NotFoundException('Asset not found')
-    }
-
-    return asset
   }
 }

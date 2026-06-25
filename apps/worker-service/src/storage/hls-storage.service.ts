@@ -1,10 +1,10 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
+import { Injectable, OnModuleInit } from '@nestjs/common'
 import * as Minio from 'minio'
+import { Readable } from 'stream'
 import { loadEnv } from '@photox/shared-config'
 
 @Injectable()
 export class HlsStorageService implements OnModuleInit {
-  private readonly logger = new Logger(HlsStorageService.name)
   private client!: Minio.Client
   private bucket!: string
   private publicEndpoint!: string
@@ -26,20 +26,21 @@ export class HlsStorageService implements OnModuleInit {
       await this.client.makeBucket(this.bucket)
     }
 
-    const policyResource = `arn:aws:s3:::${this.bucket}/*/hls/*`
-    const policy = JSON.stringify({
-      Version: '2012-10-17',
-      Statement: [
-        {
-          Effect: 'Allow',
-          Principal: { AWS: ['*'] },
-          Action: ['s3:GetObject'],
-          Resource: [policyResource],
-        },
-      ],
-    })
-    await this.client.setBucketPolicy(this.bucket, policy)
-    this.logger.log('HLS public-read policy applied')
+    if (process.env.NODE_ENV !== 'production') {
+      const policyResource = `arn:aws:s3:::${this.bucket}/*/hls/*`
+      const policy = JSON.stringify({
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Effect: 'Allow',
+            Principal: { AWS: ['*'] },
+            Action: ['s3:GetObject'],
+            Resource: [policyResource],
+          },
+        ],
+      })
+      await this.client.setBucketPolicy(this.bucket, policy)
+    }
   }
 
   async uploadHlsFile(key: string, body: Buffer, contentType: string): Promise<void> {
@@ -58,6 +59,14 @@ export class HlsStorageService implements OnModuleInit {
     }
   }
 
+  async getHlsFileBuffer(key: string): Promise<Buffer> {
+    return this.streamToBuffer(await this.client.getObject(this.bucket, key))
+  }
+
+  getHlsFileStream(key: string): Promise<Readable> {
+    return this.client.getObject(this.bucket, key)
+  }
+
   getBucketName(): string {
     return this.bucket
   }
@@ -66,7 +75,17 @@ export class HlsStorageService implements OnModuleInit {
     return this.publicEndpoint
   }
 
+  /** @deprecated Prod must proxy HLS bytes through the gateway. Retained for dev convenience only. */
   getPublicUrl(key: string): string {
     return `${this.publicEndpoint}/${this.bucket}/${key}`
+  }
+
+  private streamToBuffer(stream: Readable): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = []
+      stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+      stream.on('end', () => resolve(Buffer.concat(chunks)))
+      stream.on('error', reject)
+    })
   }
 }

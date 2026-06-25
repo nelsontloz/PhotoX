@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { FaCircleExclamation, FaSpinner, FaVideo } from 'react-icons/fa6'
 import type { TranscodeStatus } from '@photox/shared-types'
+import { api } from '../api/client'
+import { getAuthHeader } from '../lib/authHeader'
 
 export interface VideoPlayerProps {
   src: string
@@ -24,7 +26,9 @@ export function VideoPlayer({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [useFallback, setUseFallback] = useState(false)
+  const [fallbackUrl, setFallbackUrl] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const fallbackUrlRef = useRef<string | null>(null)
 
   const label = title ? `Video player for ${title}` : 'Video player'
   const useTranscoded = transcodeStatus === 'ready'
@@ -37,13 +41,6 @@ export function VideoPlayer({
     if (!useTranscoded || !hlsSrc) return
     if (typeof window === 'undefined') return
 
-    const nativeHls = video.canPlayType('application/vnd.apple.mpegurl') !== ''
-
-    if (nativeHls) {
-      video.src = hlsSrc
-      return
-    }
-
     let cancelled = false
     let hlsInstance: { destroy: () => void } | null = null
 
@@ -53,7 +50,14 @@ export function VideoPlayer({
         if (cancelled) return
         const Hls = mod.default
         if (Hls.isSupported()) {
-          const hls = new Hls()
+          const hls = new Hls({
+            xhrSetup: (xhr) => {
+              const header = getAuthHeader()
+              if (header.Authorization) {
+                xhr.setRequestHeader('Authorization', header.Authorization)
+              }
+            },
+          })
           hls.loadSource(hlsSrc)
           hls.attachMedia(video)
           if (cancelled) {
@@ -76,6 +80,46 @@ export function VideoPlayer({
       }
     }
   }, [hlsSrc, src, useFallback, useTranscoded])
+
+  useEffect(() => {
+    if (!useFallback) {
+      if (fallbackUrlRef.current) {
+        URL.revokeObjectURL(fallbackUrlRef.current)
+        fallbackUrlRef.current = null
+        setFallbackUrl(null)
+      }
+      return
+    }
+
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await api.get<Blob>(src, {
+          responseType: 'blob',
+          headers: getAuthHeader(),
+        })
+        if (cancelled) return
+        const objectUrl = URL.createObjectURL(res.data)
+        fallbackUrlRef.current = objectUrl
+        setFallbackUrl(objectUrl)
+      } catch {
+        if (!cancelled) setError(true)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [src, useFallback])
+
+  useEffect(() => {
+    return () => {
+      if (fallbackUrlRef.current) {
+        URL.revokeObjectURL(fallbackUrlRef.current)
+        fallbackUrlRef.current = null
+      }
+    }
+  }, [])
 
   if (transcodeStatus === 'pending') {
     return (
@@ -162,6 +206,8 @@ export function VideoPlayer({
     )
   }
 
+  const videoSrc = useFallback ? (fallbackUrl ?? undefined) : playableSrc
+
   return (
     <div
       className={[
@@ -171,7 +217,7 @@ export function VideoPlayer({
     >
       <video
         ref={videoRef}
-        src={playableSrc}
+        src={videoSrc}
         poster={poster}
         controls
         playsInline

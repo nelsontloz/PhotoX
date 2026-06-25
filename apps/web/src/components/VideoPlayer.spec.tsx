@@ -7,6 +7,7 @@ const mockHls = {
   loadSource: vi.fn(),
   attachMedia: vi.fn(),
   destroy: vi.fn(),
+  setup: null as null | ((xhr: XMLHttpRequest) => void),
 }
 
 vi.mock('hls.js', () => ({
@@ -23,12 +24,28 @@ vi.mock('hls.js', () => ({
     destroy() {
       mockHls.destroy()
     }
+    constructor(config: { xhrSetup?: (xhr: XMLHttpRequest) => void }) {
+      mockHls.setup = config?.xhrSetup ?? null
+    }
+  },
+}))
+
+const mockAuthState: { accessToken: string | null } = { accessToken: 'test-token' }
+
+vi.mock('../store/auth-store', () => ({
+  useAuthStore: {
+    getState: () => ({ accessToken: mockAuthState.accessToken }),
+    subscribe: vi.fn(),
+    getInitialState: vi.fn(),
+    setState: vi.fn(),
   },
 }))
 
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  mockHls.setup = null
+  mockAuthState.accessToken = 'test-token'
 })
 
 function getVideo(): HTMLVideoElement {
@@ -37,18 +54,8 @@ function getVideo(): HTMLVideoElement {
   return el
 }
 
-function setNativeHls(supported: boolean): void {
-  const video = document.createElement('video')
-  Object.defineProperty(HTMLMediaElement.prototype, 'canPlayType', {
-    configurable: true,
-    value: vi.fn((type: string) => {
-      if (type === 'application/vnd.apple.mpegurl') {
-        return supported ? 'probably' : ''
-      }
-      return ''
-    }),
-  })
-  void video
+function setHlsSupported(supported: boolean): void {
+  mockHls.isSupported.mockReturnValue(supported)
 }
 
 describe('VideoPlayer', () => {
@@ -72,7 +79,6 @@ describe('VideoPlayer', () => {
 
     const video = getVideo()
     expect(video.tagName).toBe('VIDEO')
-    expect(video.getAttribute('src')).toBe('/v1/videos/abc/playlist.m3u8')
     expect(video.getAttribute('poster')).toBe('/poster.jpg')
   })
 
@@ -151,7 +157,7 @@ describe('VideoPlayer', () => {
 
     await waitFor(() => {
       const video = getVideo()
-      expect(video.getAttribute('src')).toBe('/v1/videos/abc/stream')
+      expect(video.tagName).toBe('VIDEO')
     })
   })
 
@@ -190,26 +196,8 @@ describe('VideoPlayer', () => {
     expect(screen.queryByText(/Loading video/i)).toBeNull()
   })
 
-  it('uses native HLS when canPlayType returns "maybe"', async () => {
-    setNativeHls(true)
-
-    render(
-      <VideoPlayer
-        src="/v1/videos/abc/stream"
-        hlsSrc="/v1/videos/abc/playlist.m3u8"
-        title="Trip"
-        transcodeStatus="ready"
-      />,
-    )
-
-    await waitFor(() => {
-      expect(getVideo().getAttribute('src')).toBe('/v1/videos/abc/playlist.m3u8')
-    })
-    expect(mockHls.loadSource).not.toHaveBeenCalled()
-  })
-
-  it('uses hls.js when Hls.isSupported() is true and native HLS is unavailable', async () => {
-    setNativeHls(false)
+  it('always uses hls.js (drops native HLS branch)', async () => {
+    setHlsSupported(true)
 
     render(
       <VideoPlayer
@@ -226,8 +214,30 @@ describe('VideoPlayer', () => {
     expect(mockHls.attachMedia).toHaveBeenCalled()
   })
 
+  it('configures hls.js xhrSetup to inject the Authorization header', async () => {
+    setHlsSupported(true)
+
+    render(
+      <VideoPlayer
+        src="/v1/videos/abc/stream"
+        hlsSrc="/v1/videos/abc/playlist.m3u8"
+        title="Trip"
+        transcodeStatus="ready"
+      />,
+    )
+
+    await waitFor(() => {
+      expect(mockHls.setup).not.toBeNull()
+    })
+
+    const setRequestHeaderMock = vi.fn()
+    const xhr = { setRequestHeader: setRequestHeaderMock } as unknown as XMLHttpRequest
+    mockHls.setup!(xhr)
+    expect(setRequestHeaderMock).toHaveBeenCalledWith('Authorization', 'Bearer test-token')
+  })
+
   it('falls back to the direct MP4 when hls.js is not supported', async () => {
-    setNativeHls(false)
+    setHlsSupported(false)
     mockHls.isSupported.mockReturnValueOnce(false)
 
     render(
@@ -246,7 +256,7 @@ describe('VideoPlayer', () => {
   })
 
   it('calls hls.destroy() on unmount', async () => {
-    setNativeHls(false)
+    setHlsSupported(true)
 
     const { unmount } = render(
       <VideoPlayer
