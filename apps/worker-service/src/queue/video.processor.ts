@@ -12,7 +12,7 @@ import { JobRecord, JobStatus } from './entities/job.entity'
 import type { ProcessVideoDto } from './dto/process-video.dto'
 import { SERVICE_URLS } from '@photox/shared-config'
 import { runFfmpeg, runFfprobeJson, type FfprobeStream } from './ffmpeg'
-import { HlsStorageService } from '../storage/hls-storage.service'
+import { HlsHttpClient } from '../storage/hls-http.client'
 
 export interface AbrVariant {
   name: string
@@ -179,7 +179,7 @@ export class VideoProcessor {
     @InjectRepository(JobRecord)
     private readonly jobRepo: Repository<JobRecord>,
     private readonly http: HttpService,
-    private readonly hlsStorage: HlsStorageService,
+    private readonly hlsHttpClient: HlsHttpClient,
   ) {}
 
   async enqueue(dto: ProcessVideoDto): Promise<{ jobId: string; status: string }> {
@@ -274,7 +274,7 @@ export class VideoProcessor {
         const body = await readFile(absPath)
         uploadBatch.push({ key, body, contentType: getContentType(absPath) })
       }
-      await this.hlsStorage.uploadHlsFiles(uploadBatch)
+      await this.hlsHttpClient.uploadBatch(userId, fileId, uploadBatch)
 
       const hlsMasterKey = `${userId}/${fileId}/hls/master.m3u8`
       await this.patchAsset(assetId, {

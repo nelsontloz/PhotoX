@@ -1,15 +1,15 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return */
 import path from 'node:path'
 import { Verifier } from '@pact-foundation/pact'
 import { setupMockedApp, PACT_DIR } from './verifier'
 import type { INestApplication } from '@nestjs/common'
 
+const USER_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
+const FILE_ID = '550e8400-e29b-41d4-a716-446655440000'
+
 let app: INestApplication
 let url: string
 let repos: Awaited<ReturnType<typeof setupMockedApp>>['repos']
-
-const USER_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
-const FILE_ID = '550e8400-e29b-41d4-a716-446655440000'
 
 beforeAll(async () => {
   const setup = await setupMockedApp()
@@ -22,7 +22,7 @@ afterAll(async () => {
   await app?.close()
 })
 
-describe('Pact verification — file-storage-service', () => {
+describe('Pact verification — file-storage-service (gateway HLS)', () => {
   it('validates expectations of Gateway', async () => {
     await new Verifier({
       provider: 'file-storage-service',

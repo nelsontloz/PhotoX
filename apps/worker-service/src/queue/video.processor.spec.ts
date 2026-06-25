@@ -15,7 +15,7 @@ import {
   VideoProcessor,
 } from './video.processor'
 import { PgBossService } from './pg-boss.service'
-import { HlsStorageService } from '../storage/hls-storage.service'
+import { HlsHttpClient } from '../storage/hls-http.client'
 import { JobRecord } from './entities/job.entity'
 import type { FfprobeStream } from './ffmpeg'
 
@@ -279,7 +279,7 @@ describe('VideoProcessor.downloadSource', () => {
       {} as PgBossService,
       {} as Repository<JobRecord>,
       http,
-      {} as HlsStorageService,
+      {} as HlsHttpClient,
     )
 
     const downloadSource = (

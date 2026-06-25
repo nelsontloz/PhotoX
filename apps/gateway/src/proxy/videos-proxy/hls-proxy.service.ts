@@ -1,37 +1,27 @@
-import { Injectable, OnModuleInit } from '@nestjs/common'
+import { BadRequestException, Injectable } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
-import * as Minio from 'minio'
 import { Readable } from 'stream'
 import { firstValueFrom } from 'rxjs'
-import { loadEnv } from '@photox/shared-config'
 import { SERVICE_URLS } from '@photox/shared-config'
 
 @Injectable()
-export class HlsProxyService implements OnModuleInit {
-  private client!: Minio.Client
-  private bucket!: string
-
+export class HlsProxyService {
   constructor(private readonly http: HttpService) {}
 
-  onModuleInit() {
-    const env = loadEnv()
-    this.bucket = env.MINIO_BUCKET
-    this.client = new Minio.Client({
-      endPoint: env.MINIO_ENDPOINT,
-      port: env.MINIO_PORT,
-      useSSL: false,
-      accessKey: env.MINIO_ROOT_USER,
-      secretKey: env.MINIO_ROOT_PASSWORD,
-    })
+  async getMasterPlaylistText(hlsMasterKey: string): Promise<string> {
+    const { userId, fileId, relPath } = this.splitHlsKey(hlsMasterKey)
+    const url = `${SERVICE_URLS['file-storage-service']}/v1/internal/hls/files/${encodeURIComponent(userId)}/${encodeURIComponent(fileId)}/${relPath.split('/').map(encodeURIComponent).join('/')}`
+    const res = await firstValueFrom(this.http.get(url, { responseType: 'text', timeout: 30_000 }))
+    return res.data as string
   }
 
-  async getMasterPlaylistText(key: string): Promise<string> {
-    const stream = await this.client.getObject(this.bucket, key)
-    return this.streamToString(stream)
-  }
-
-  async getHlsStream(key: string): Promise<Readable> {
-    return this.client.getObject(this.bucket, key)
+  async getHlsStream(hlsMasterKey: string): Promise<Readable> {
+    const { userId, fileId, relPath } = this.splitHlsKey(hlsMasterKey)
+    const url = `${SERVICE_URLS['file-storage-service']}/v1/internal/hls/files/${encodeURIComponent(userId)}/${encodeURIComponent(fileId)}/${relPath.split('/').map(encodeURIComponent).join('/')}`
+    const res = await firstValueFrom(
+      this.http.get(url, { responseType: 'stream', timeout: 30_000 }),
+    )
+    return res.data as Readable
   }
 
   async getOriginalFileStream(fileId: string, userId: string): Promise<Readable> {
@@ -42,12 +32,20 @@ export class HlsProxyService implements OnModuleInit {
     return res.data as Readable
   }
 
-  private streamToString(stream: Readable): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const chunks: Buffer[] = []
-      stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-      stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')))
-      stream.on('error', reject)
-    })
+  private splitHlsKey(hlsMasterKey: string): { userId: string; fileId: string; relPath: string } {
+    const hlsIdx = hlsMasterKey.indexOf('/hls/')
+    if (hlsIdx === -1) {
+      throw new BadRequestException('Invalid hlsMasterKey format')
+    }
+    const prefix = hlsMasterKey.slice(0, hlsIdx)
+    const slashIdx = prefix.indexOf('/')
+    if (slashIdx === -1) {
+      throw new BadRequestException('Invalid hlsMasterKey format')
+    }
+    return {
+      userId: prefix.slice(0, slashIdx),
+      fileId: prefix.slice(slashIdx + 1),
+      relPath: hlsMasterKey.slice(hlsIdx + '/hls/'.length),
+    }
   }
 }
