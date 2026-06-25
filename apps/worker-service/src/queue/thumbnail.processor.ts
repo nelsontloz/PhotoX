@@ -6,11 +6,20 @@ import sharp from 'sharp'
 import { firstValueFrom } from 'rxjs'
 import FormData from 'form-data'
 import { type Job } from 'pg-boss'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { writeFile, unlink } from 'fs/promises'
 import { PgBossService } from './pg-boss.service'
 import { JobRecord, JobStatus } from './entities/job.entity'
 import type { ProcessThumbnailDto } from './dto/process-thumbnail.dto'
 import { SERVICE_URLS } from '@photox/shared-config'
-import { MetadataExtractor, type ExtractedMetadata } from './metadata.extractor'
+import {
+  MetadataExtractor,
+  VideoMetadataExtractor,
+  seekForThumbnail,
+  type ExtractedMetadata,
+} from './metadata.extractor'
+import { extractVideoFrame } from './ffmpeg'
 
 const STANDARD_SIZES: Record<string, [number, number]> = {
   sm: [150, 150],
@@ -50,6 +59,7 @@ export class ThumbnailProcessor {
     private readonly jobRepo: Repository<JobRecord>,
     private readonly http: HttpService,
     private readonly metadataExtractor: MetadataExtractor,
+    private readonly videoMetadataExtractor: VideoMetadataExtractor,
   ) {}
 
   async enqueue(dto: ProcessThumbnailDto): Promise<{ jobId: string; status: string }> {
@@ -199,18 +209,89 @@ export class ThumbnailProcessor {
         this.logger.warn(`Metadata patch failed for asset=${assetId}: ${message}`)
       }
     } else if (mimeType?.startsWith('video/')) {
-      const patchUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
+      let tmpPath: string | null = null
       try {
-        await firstValueFrom(
-          this.http.patch(patchUrl, {
-            status: 'pending',
-            mimeType,
+        const ext = mimeType.includes('mp4')
+          ? 'mp4'
+          : mimeType.includes('webm')
+            ? 'webm'
+            : mimeType.includes('quicktime')
+              ? 'mov'
+              : 'bin'
+        tmpPath = join(tmpdir(), `${fileId}.${ext}`)
+        await writeFile(tmpPath, buffer)
+
+        const videoMeta = await this.videoMetadataExtractor.extract(tmpPath)
+        const patchUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
+        try {
+          await firstValueFrom(
+            this.http.patch(patchUrl, {
+              status: videoMeta.metadataStatus,
+              mimeType,
+              durationSeconds: videoMeta.durationSeconds,
+              width: videoMeta.width,
+              height: videoMeta.height,
+              codec: videoMeta.codec,
+              fps: videoMeta.fps,
+              hasAudio: videoMeta.hasAudio,
+              orientation: videoMeta.orientation,
+            }),
+          )
+          this.logger.debug(`Video metadata patched for asset=${assetId}`)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          this.logger.warn(`Video metadata patch failed for asset=${assetId}: ${message}`)
+        }
+
+        const seekSec = seekForThumbnail(videoMeta.durationSeconds)
+        const frameBuffer = await extractVideoFrame(tmpPath, seekSec)
+
+        const frameOrientation = videoMeta.orientation
+        let framePipeline = sharp(frameBuffer)
+        if (frameOrientation && frameOrientation > 0) {
+          framePipeline = framePipeline.rotate(frameOrientation)
+        }
+        const { data: thumbBuffer, info } = await framePipeline
+          .resize(width, height, RESIZE_OPTIONS[size] ?? { fit: 'cover' })
+          .webp({ quality: WEBP_QUALITY[size] ?? 80 })
+          .toBuffer({ resolveWithObject: true })
+
+        const uploadUrl = `${SERVICE_URLS['file-storage-service']}/v1/files`
+        const form = new FormData()
+        form.append('file', thumbBuffer, {
+          filename: `thumb-${size}.webp`,
+          contentType: 'image/webp',
+        })
+        form.append('userId', userId)
+
+        const uploadRes = await firstValueFrom(
+          this.http.post(uploadUrl, form, {
+            headers: form.getHeaders(),
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
           }),
         )
-        this.logger.debug(`Video metadata status set to pending for asset=${assetId}`)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        this.logger.warn(`Video metadata patch failed for asset=${assetId}: ${message}`)
+        const newFileRecord = uploadRes.data as { id: string }
+
+        const registerUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/thumbnails`
+        await firstValueFrom(
+          this.http.post(registerUrl, {
+            size,
+            fileId: newFileRecord.id,
+            width: info.width,
+            height: info.height,
+            bytes: thumbBuffer.length,
+          }),
+        )
+        return
+      } finally {
+        if (tmpPath) {
+          try {
+            await unlink(tmpPath)
+          } catch {
+            // file may already be removed
+          }
+        }
       }
     }
 

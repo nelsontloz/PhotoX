@@ -7,18 +7,38 @@ import {
   Query,
   Body,
   Res,
+  Req,
   UseInterceptors,
   UploadedFile,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes } from '@nestjs/swagger'
-import type { Response } from 'express'
+import type { Request, Response } from 'express'
 import { UserFilesService } from './user-files.service'
 import { FileRecordDto } from '../file-record.dto'
 import { FileListResponseDto, ListFilesQueryDto } from './dto/list-files-query.dto'
 import { BatchFilesRequestDto, BatchFilesResponseDto } from './dto/batch-files.dto'
+
+const RANGE_RE = /^bytes=(\d+)-(\d*)$/
+
+function parseRangeHeader(
+  rangeHeader: string,
+  totalSize: number,
+): { start: number; end: number } | null {
+  const match = RANGE_RE.exec(rangeHeader)
+  if (!match) return null
+  const start = Number(match[1])
+  if (!Number.isFinite(start) || start < 0 || start >= totalSize) return null
+  const endStr = match[2]
+  const end = endStr ? Number(endStr) : totalSize - 1
+  if (!Number.isFinite(end) || end < start) {
+    return { start, end: totalSize - 1 }
+  }
+  return { start, end: Math.min(end, totalSize - 1) }
+}
 
 @ApiTags('files')
 @Controller('v1/files')
@@ -26,7 +46,7 @@ export class UserFilesController {
   constructor(private readonly userFilesService: UserFilesService) {}
 
   @Post()
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 100 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 2 * 1024 * 1024 * 1024 } }))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Upload a file' })
   @ApiResponse({ status: 201, description: 'File uploaded', type: FileRecordDto })
@@ -60,14 +80,60 @@ export class UserFilesController {
   @Get(':fileId/stream')
   @ApiOperation({ summary: 'Stream file bytes' })
   @ApiResponse({ status: 200, description: 'File stream' })
+  @ApiResponse({ status: 206, description: 'Partial content' })
   @ApiResponse({ status: 404, description: 'File not found' })
-  async stream(@Param('fileId') fileId: string, @Res() res: Response) {
+  @ApiResponse({ status: 416, description: 'Range not satisfiable' })
+  async stream(@Param('fileId') fileId: string, @Res() res: Response, @Req() req: Request) {
+    const rangeHeader = req.headers.range
+
+    if (rangeHeader) {
+      const { totalSize } = await this.userFilesService.getFileTotalSize(fileId)
+
+      const range = parseRangeHeader(rangeHeader, totalSize)
+      if (!range) {
+        res.set('Content-Range', `bytes */${totalSize}`)
+        res.status(416).end()
+        return
+      }
+
+      const { stream, record } = await this.userFilesService.streamRange(
+        fileId,
+        range.start,
+        range.end,
+      )
+
+      res.set({
+        'Content-Type': record.mimeType,
+        'Content-Range': `bytes ${range.start}-${range.end}/${totalSize}`,
+        'Content-Length': String(range.end - range.start + 1),
+        'Accept-Ranges': 'bytes',
+      })
+      res.status(206)
+      stream.pipe(res)
+      return
+    }
+
     const { stream, record } = await this.userFilesService.stream(fileId)
     res.set({
       'Content-Type': record.mimeType,
       'Content-Disposition': `attachment; filename="${record.originalName}"`,
+      'Accept-Ranges': 'bytes',
     })
     stream.pipe(res)
+  }
+
+  @Get(':fileId/url')
+  @ApiOperation({ summary: 'Get a short-lived presigned URL for a file' })
+  @ApiResponse({ status: 200, description: 'Presigned URL' })
+  @ApiResponse({ status: 400, description: 'Invalid TTL' })
+  @ApiResponse({ status: 404, description: 'File not found' })
+  async getPresignedUrl(@Param('fileId') fileId: string, @Query('ttl') ttl?: string) {
+    const ttlSeconds = ttl ? Number(ttl) : 300
+    if (!Number.isFinite(ttlSeconds) || ttlSeconds < 1 || ttlSeconds > 3600) {
+      throw new BadRequestException('TTL must be between 1 and 3600 seconds')
+    }
+    const url = await this.userFilesService.getFileUrl(fileId, ttlSeconds)
+    return { url, expiresAt: Date.now() + ttlSeconds * 1000 }
   }
 
   @Get(':fileId')

@@ -3,20 +3,33 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 import { HttpModule } from '@nestjs/axios'
 import { PgBossService } from './pg-boss.service'
 import { ThumbnailProcessor } from './thumbnail.processor'
-import { MetadataExtractor } from './metadata.extractor'
+import { VideoProcessor } from './video.processor'
+import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor'
+import { HlsHttpClient } from '../storage/hls-http.client'
 import { JobRecord } from './entities/job.entity'
 import { QueueController } from './queue.controller'
 
 @Module({
   imports: [TypeOrmModule.forFeature([JobRecord]), HttpModule],
   controllers: [QueueController],
-  providers: [PgBossService, ThumbnailProcessor, MetadataExtractor],
+  providers: [
+    PgBossService,
+    ThumbnailProcessor,
+    VideoProcessor,
+    MetadataExtractor,
+    VideoMetadataExtractor,
+    HlsHttpClient,
+  ],
   exports: [PgBossService],
 })
 export class QueueModule implements OnModuleInit {
-  constructor(private readonly processor: ThumbnailProcessor) {}
+  constructor(
+    private readonly thumbnailProcessor: ThumbnailProcessor,
+    private readonly videoProcessor: VideoProcessor,
+  ) {}
 
   async onModuleInit() {
-    await this.processor.start()
+    await this.thumbnailProcessor.start()
+    await this.videoProcessor.start()
   }
 }

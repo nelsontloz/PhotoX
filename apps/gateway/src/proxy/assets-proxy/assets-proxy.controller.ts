@@ -18,6 +18,7 @@ import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
 import { SERVICE_URLS } from '@photox/shared-config'
 import { ThumbnailOrchestratorService } from '../../orchestrator/thumbnail-orchestrator.service'
+import { VideoOrchestratorService } from '../../orchestrator/video-orchestrator.service'
 
 @ApiTags('assets')
 @Controller('api/v1/assets')
@@ -25,6 +26,7 @@ export class AssetsProxyController {
   constructor(
     private readonly proxy: ProxyService,
     private readonly thumbnails: ThumbnailOrchestratorService,
+    private readonly videoTranscode: VideoOrchestratorService,
   ) {}
 
   @Post()
@@ -49,6 +51,13 @@ export class AssetsProxyController {
       result.data.fileId,
       (req.user as { id: string }).id,
     )
+    if (dto.kind === 'video') {
+      void this.videoTranscode.enqueueVideo(
+        result.data.id,
+        result.data.fileId,
+        (req.user as { id: string }).id,
+      )
+    }
     return result.data
   }
 

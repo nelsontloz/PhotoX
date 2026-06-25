@@ -1,8 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { FaChevronLeft, FaChevronRight, FaImage, FaSpinner, FaXmark } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
-import { downloadFile, listThumbnails } from '../../api/assets'
+import { useAuthStore } from '../../store/auth-store'
+import {
+  downloadFile,
+  getAsset,
+  getHlsPlaylistUrl,
+  getVideoStreamUrl,
+  listThumbnails,
+} from '../../api/assets'
+import { VideoPlayer } from '../VideoPlayer'
 import { ViewerTopBar } from './ViewerTopBar'
+import { AssetMetadataPanel } from './sections/AssetMetadataPanel'
 import { DescriptionSection } from './sections/DescriptionSection'
 import { LocationSection } from './sections/LocationSection'
 
@@ -15,6 +24,8 @@ interface AssetViewerProps {
   hasNext: boolean
 }
 
+const TRANSCODE_POLL_MS = 5_000
+
 export function AssetViewer({
   asset,
   onClose,
@@ -24,35 +35,61 @@ export function AssetViewer({
   hasNext,
 }: AssetViewerProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [videoPosterUrl, setVideoPosterUrl] = useState<string | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [currentAsset, setCurrentAsset] = useState<Asset>(asset)
   const urlRef = useRef<string | null>(null)
+  const posterRef = useRef<string | null>(null)
+  const userId = useAuthStore((s) => s.user?.id)
+
+  useEffect(() => {
+    setCurrentAsset(asset)
+  }, [asset])
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setImageUrl(null)
+    setVideoPosterUrl(null)
 
-    if (asset.kind !== 'photo') {
-      setLoading(false)
-      return
+    if (currentAsset.kind === 'photo') {
+      listThumbnails(currentAsset.id)
+        .then((thumbs) => {
+          const xl = thumbs.find((t) => t.size === 'xl')
+          if (!xl) throw new Error('No preview available')
+          return downloadFile(xl.fileId)
+        })
+        .then((blob) => {
+          if (cancelled) return
+          const url = URL.createObjectURL(blob)
+          urlRef.current = url
+          setImageUrl(url)
+        })
+        .catch(() => {
+          if (!cancelled) setLoading(false)
+        })
+    } else {
+      listThumbnails(currentAsset.id)
+        .then((thumbs) => {
+          if (thumbs.length === 0) return null
+          const lg = thumbs.find((t) => t.size === 'lg') ?? thumbs[0]
+          if (!lg) return null
+          return downloadFile(lg.fileId)
+        })
+        .then((blob) => {
+          if (cancelled || !blob) {
+            if (!cancelled) setLoading(false)
+            return
+          }
+          const url = URL.createObjectURL(blob)
+          posterRef.current = url
+          setVideoPosterUrl(url)
+        })
+        .catch(() => {
+          if (!cancelled) setLoading(false)
+        })
     }
-
-    listThumbnails(asset.id)
-      .then((thumbs) => {
-        const xl = thumbs.find((t) => t.size === 'xl')
-        if (!xl) throw new Error('No preview available')
-        return downloadFile(xl.fileId)
-      })
-      .then((blob) => {
-        if (cancelled) return
-        const url = URL.createObjectURL(blob)
-        urlRef.current = url
-        setImageUrl(url)
-      })
-      .catch(() => {
-        if (!cancelled) setLoading(false)
-      })
 
     return () => {
       cancelled = true
@@ -60,8 +97,37 @@ export function AssetViewer({
         URL.revokeObjectURL(urlRef.current)
         urlRef.current = null
       }
+      if (posterRef.current) {
+        URL.revokeObjectURL(posterRef.current)
+        posterRef.current = null
+      }
     }
-  }, [asset.id, asset.kind])
+  }, [currentAsset.id, currentAsset.kind])
+
+  useEffect(() => {
+    if (currentAsset.kind !== 'video') return
+    if (currentAsset.transcodeStatus !== 'pending') return
+
+    let cancelled = false
+    const interval = setInterval(() => {
+      void getAsset(currentAsset.id)
+        .then((next) => {
+          if (cancelled) return
+          setCurrentAsset(next)
+          if (next.transcodeStatus !== 'pending') {
+            clearInterval(interval)
+          }
+        })
+        .catch(() => {
+          /* ignore transient errors; the next tick will retry */
+        })
+    }, TRANSCODE_POLL_MS)
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [currentAsset.id, currentAsset.kind, currentAsset.transcodeStatus])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -81,9 +147,14 @@ export function AssetViewer({
     }
   }, [])
 
+  const isVideo = currentAsset.kind === 'video'
+  const videoSrc = isVideo && userId ? getVideoStreamUrl(currentAsset.id, userId) : null
+  const hlsSrc = isVideo ? getHlsPlaylistUrl(currentAsset.id) : null
+  const transcodeStatus = isVideo ? currentAsset.transcodeStatus : undefined
+
   return (
     <div className="fixed inset-0 z-50 flex overflow-hidden bg-black">
-      {imageUrl && (
+      {imageUrl && !isVideo && (
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <img
             src={imageUrl}
@@ -96,7 +167,7 @@ export function AssetViewer({
       )}
       <div className="relative flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         <ViewerTopBar
-          asset={asset}
+          asset={currentAsset}
           infoOpen={infoOpen}
           onToggleInfo={() => {
             setInfoOpen((v) => !v)
@@ -113,10 +184,19 @@ export function AssetViewer({
               <FaChevronLeft className="text-2xl" />
             </button>
           )}
-          {imageUrl ? (
+          {isVideo && videoSrc && hlsSrc ? (
+            <VideoPlayer
+              src={videoSrc}
+              hlsSrc={hlsSrc}
+              poster={videoPosterUrl ?? undefined}
+              title={currentAsset.title ?? currentAsset.originalName ?? undefined}
+              transcodeStatus={transcodeStatus}
+              className="relative max-h-full max-w-full"
+            />
+          ) : imageUrl ? (
             <img
               src={imageUrl}
-              alt={asset.originalName ?? asset.title ?? 'Photo'}
+              alt={currentAsset.originalName ?? currentAsset.title ?? 'Photo'}
               className="relative max-h-full max-w-full object-contain shadow-2xl select-none"
             />
           ) : loading ? (
@@ -156,8 +236,9 @@ export function AssetViewer({
             </button>
           </div>
           <div className="flex-1 overflow-y-auto p-6 space-y-8">
-            <DescriptionSection asset={asset} />
-            <LocationSection asset={asset} />
+            <AssetMetadataPanel asset={currentAsset} />
+            <DescriptionSection asset={currentAsset} />
+            <LocationSection asset={currentAsset} />
           </div>
         </aside>
       )}

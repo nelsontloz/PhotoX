@@ -146,14 +146,48 @@ describe('PATCH /v1/assets/:id/metadata', () => {
       .expect(400)
   })
 
-  it('UC-I12: missing status field returns 400', async () => {
+  it('UC-I12: missing status field is allowed (200), other fields update, metadataStatus/extractedAt untouched', async () => {
     const userId = mintUserId()
     const created = await createAssetForUser(httpServer, userId)
 
-    await supertest(httpServer)
+    const seeded = await supertest(httpServer)
       .patch(`/v1/assets/${created.id}/metadata`)
-      .send({ mimeType: 'image/jpeg' })
-      .expect(400)
+      .send({ status: 'ready', mimeType: 'image/jpeg' })
+      .expect(200)
+    const seededBody = seeded.body as Asset
+    expect(seededBody.metadataStatus).toBe('ready')
+    expect(seededBody.metadataExtractedAt).not.toBeNull()
+
+    const res = await supertest(httpServer)
+      .patch(`/v1/assets/${created.id}/metadata`)
+      .send({ mimeType: 'image/png' })
+      .expect(200)
+
+    const body = res.body as Asset
+    expect(body.mimeType).toBe('image/png')
+    expect(body.metadataStatus).toBe('ready')
+    expect(body.metadataExtractedAt).toBe(seededBody.metadataExtractedAt)
+  })
+
+  it('UC-I12b: transcodeStatus-only patch leaves metadataStatus/extractedAt untouched', async () => {
+    const userId = mintUserId()
+    const created = await createAssetForUser(httpServer, userId)
+
+    const seeded = await supertest(httpServer)
+      .patch(`/v1/assets/${created.id}/metadata`)
+      .send({ status: 'ready' })
+      .expect(200)
+    const seededBody = seeded.body as Asset
+
+    const res = await supertest(httpServer)
+      .patch(`/v1/assets/${created.id}/metadata`)
+      .send({ transcodeStatus: 'pending' })
+      .expect(200)
+
+    const body = res.body as Asset
+    expect(body.transcodeStatus).toBe('pending')
+    expect(body.metadataStatus).toBe('ready')
+    expect(body.metadataExtractedAt).toBe(seededBody.metadataExtractedAt)
   })
 
   it('UC-I13: width -1 returns 400 (@Min(0))', async () => {

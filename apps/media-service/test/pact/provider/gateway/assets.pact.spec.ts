@@ -66,6 +66,13 @@ describe('Pact verification — media-service', () => {
         'user has no assets': () => {
           return Promise.resolve()
         },
+        'asset exists with id a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22 owned by another user': () => {
+          repos.mockAssetRepo.save({
+            ...baseAsset,
+            userId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd39999',
+          })
+          return Promise.resolve()
+        },
         'asset exists with id a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22': () => {
           repos.mockAssetRepo.save(baseAsset)
           return Promise.resolve()
@@ -76,6 +83,10 @@ describe('Pact verification — media-service', () => {
             isTrashed: true,
             trashedAt: new Date('2024-01-02T00:00:00.000Z'),
           })
+          return Promise.resolve()
+        },
+        'a get asset request for a user that does not own it': () => {
+          repos.mockAssetRepo.save(baseAsset)
           return Promise.resolve()
         },
         [`asset ${ASSET_ID} has 2 thumbnails`]: () => {

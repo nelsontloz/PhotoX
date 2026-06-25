@@ -155,6 +155,32 @@ export class UserFilesService {
     return { stream, record }
   }
 
+  async streamRange(
+    fileId: string,
+    start: number,
+    end: number,
+  ): Promise<{ stream: Readable; record: FileRecord; totalSize: number }> {
+    const record = await this.fileRepo.findOne({ where: { id: fileId } })
+    if (!record) throw new NotFoundException('File not found')
+    const stat = await this.minio.statFile(record.storageKey)
+    const length = end - start + 1
+    const stream = await this.minio.downloadFileRange(record.storageKey, start, length)
+    return { stream, record, totalSize: stat.size }
+  }
+
+  async getFileTotalSize(fileId: string): Promise<{ record: FileRecord; totalSize: number }> {
+    const record = await this.fileRepo.findOne({ where: { id: fileId } })
+    if (!record) throw new NotFoundException('File not found')
+    const stat = await this.minio.statFile(record.storageKey)
+    return { record, totalSize: stat.size }
+  }
+
+  async getFileUrl(fileId: string, ttlSeconds = 300): Promise<string> {
+    const record = await this.fileRepo.findOne({ where: { id: fileId } })
+    if (!record) throw new NotFoundException('File not found')
+    return this.minio.presignedGetUrl(record.storageKey, ttlSeconds)
+  }
+
   private getExtension(filename: string): string {
     const dot = filename.lastIndexOf('.')
     return dot >= 0 ? filename.slice(dot + 1) : 'bin'

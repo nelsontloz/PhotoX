@@ -14,8 +14,9 @@ import {
 
 export class UpdateMetadataDto {
   @ApiProperty({ enum: ['pending', 'ready', 'failed'] })
+  @IsOptional()
   @IsIn(['pending', 'ready', 'failed'])
-  status!: 'pending' | 'ready' | 'failed'
+  status?: 'pending' | 'ready' | 'failed'
 
   @ApiProperty({ required: false })
   @IsOptional()
@@ -137,4 +138,20 @@ export class UpdateMetadataDto {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>
+
+  @ApiProperty({ required: false, nullable: true })
+  @IsOptional()
+  @IsString()
+  hlsMasterKey?: string | null
+
+  @ApiProperty({ required: false, enum: ['pending', 'ready', 'failed'] })
+  @IsOptional()
+  @IsIn(['pending', 'ready', 'failed'])
+  transcodeStatus?: 'pending' | 'ready' | 'failed'
+
+  @ApiProperty({ required: false, nullable: true })
+  @IsOptional()
+  @Type(() => Date)
+  @IsDate()
+  transcodedAt?: Date
 }

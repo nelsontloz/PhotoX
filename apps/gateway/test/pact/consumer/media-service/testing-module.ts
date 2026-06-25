@@ -2,10 +2,14 @@ import type { INestApplication } from '@nestjs/common'
 import { ValidationPipe, type ExecutionContext } from '@nestjs/common'
 import { APP_GUARD } from '@nestjs/core'
 import { Test } from '@nestjs/testing'
+import { HttpModule } from '@nestjs/axios'
 import { AssetsProxyController } from '../../../../src/proxy/assets-proxy/assets-proxy.controller'
+import { VideosProxyController } from '../../../../src/proxy/videos-proxy/videos-proxy.controller'
+import { HlsProxyService } from '../../../../src/proxy/videos-proxy/hls-proxy.service'
 import { requestIdMiddleware } from '../../../../src/common/middleware/request-id.middleware'
 import { ProxyService } from '../../../../src/proxy/proxy.service'
 import { ThumbnailOrchestratorService } from '../../../../src/orchestrator/thumbnail-orchestrator.service'
+import { VideoOrchestratorService } from '../../../../src/orchestrator/video-orchestrator.service'
 import { createStubProxy } from '../stub'
 import type { StubProxy } from '../stub'
 
@@ -19,12 +23,25 @@ export async function setupMediaServicePactModule(): Promise<{
   const stub = createStubProxy()
 
   const module = await Test.createTestingModule({
-    controllers: [AssetsProxyController],
+    imports: [HttpModule],
+    controllers: [AssetsProxyController, VideosProxyController],
     providers: [
       { provide: ProxyService, useValue: stub },
       {
+        provide: HlsProxyService,
+        useValue: {
+          getMasterPlaylistText: vi.fn(),
+          getHlsStream: vi.fn(),
+          getOriginalFileStream: vi.fn(),
+        },
+      },
+      {
         provide: ThumbnailOrchestratorService,
         useValue: { enqueueThumbnails: vi.fn().mockResolvedValue(undefined) },
+      },
+      {
+        provide: VideoOrchestratorService,
+        useValue: { enqueueVideo: vi.fn().mockResolvedValue(undefined) },
       },
       {
         provide: APP_GUARD,

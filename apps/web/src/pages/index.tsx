@@ -1,5 +1,13 @@
 import { useState } from 'react'
-import { FaHeart, FaImage, FaMountain, FaSpinner, FaWandMagicSparkles } from 'react-icons/fa6'
+import {
+  FaHeart,
+  FaImage,
+  FaMountain,
+  FaPlay,
+  FaSpinner,
+  FaTriangleExclamation,
+  FaWandMagicSparkles,
+} from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
 import { RequireAuth } from '../components/RequireAuth'
 import { AppShell } from '../components/AppShell'
@@ -8,6 +16,7 @@ import { AssetViewer } from '../components/AssetViewer/AssetViewer'
 import { UploadButton } from '../components/UploadButton'
 import { DropZone } from '../components/DropZone'
 import { useAssetGroups } from '../hooks/useAssetGroups'
+import { formatDuration } from '../lib/format'
 
 function TimelineContent() {
   const { groups, loading, error, refresh } = useAssetGroups()
@@ -98,36 +107,69 @@ function TimelineContent() {
             </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
-            {group.items.map((asset) => (
-              <div
-                key={asset.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => {
-                  setSelectedAsset(asset)
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
+            {group.items.map((asset) => {
+              const isVideo = asset.kind === 'video'
+              const transcodeStatus = isVideo ? asset.transcodeStatus : null
+              const duration = isVideo ? formatDuration(asset.durationSeconds) : null
+              return (
+                <div
+                  key={asset.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
                     setSelectedAsset(asset)
-                  }
-                }}
-                className="relative group rounded-lg overflow-hidden cursor-pointer aspect-square bg-slate-800"
-              >
-                <AssetThumb asset={asset} />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                  <div className="w-6 h-6 rounded-full border-2 border-white/80 hover:bg-primary hover:border-primary flex items-center justify-center transition-colors"></div>
-                </div>
-                {asset.favorite && (
-                  <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                    <div className="bg-black/50 backdrop-blur-sm rounded px-1.5 py-0.5 text-[10px] font-bold text-white flex items-center gap-1">
-                      <FaHeart className="text-[10px]" />
-                    </div>
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      setSelectedAsset(asset)
+                    }
+                  }}
+                  className="relative group rounded-lg overflow-hidden cursor-pointer aspect-square bg-slate-800"
+                >
+                  <AssetThumb asset={asset} />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <div className="w-6 h-6 rounded-full border-2 border-white/80 hover:bg-primary hover:border-primary flex items-center justify-center transition-colors"></div>
                   </div>
-                )}
-              </div>
-            ))}
+                  {isVideo && transcodeStatus === 'ready' && (
+                    <div className="absolute top-3 left-3 group-hover:opacity-0 transition-opacity duration-200 pointer-events-none">
+                      <div className="bg-black/60 backdrop-blur-sm rounded-full w-7 h-7 flex items-center justify-center">
+                        <FaPlay className="text-white text-[10px] ml-0.5" />
+                      </div>
+                    </div>
+                  )}
+                  {isVideo && transcodeStatus === 'pending' && (
+                    <div className="absolute top-3 left-3 pointer-events-none">
+                      <div className="bg-black/60 backdrop-blur-sm rounded-full w-7 h-7 flex items-center justify-center">
+                        <FaSpinner className="text-white text-[12px] animate-spin" />
+                      </div>
+                    </div>
+                  )}
+                  {isVideo && transcodeStatus === 'failed' && (
+                    <div className="absolute top-3 left-3 pointer-events-none">
+                      <div className="bg-amber-500/90 backdrop-blur-sm rounded-full w-7 h-7 flex items-center justify-center">
+                        <FaTriangleExclamation className="text-white text-[12px]" />
+                      </div>
+                    </div>
+                  )}
+                  {isVideo && duration && (
+                    <div className="absolute bottom-2 right-2 pointer-events-none">
+                      <div className="bg-black/65 backdrop-blur-sm rounded px-1.5 py-0.5 text-[10px] font-semibold text-white tabular-nums">
+                        {duration}
+                      </div>
+                    </div>
+                  )}
+                  {asset.favorite && (
+                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                      <div className="bg-black/50 backdrop-blur-sm rounded px-1.5 py-0.5 text-[10px] font-bold text-white flex items-center gap-1">
+                        <FaHeart className="text-[10px]" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </section>
       ))}

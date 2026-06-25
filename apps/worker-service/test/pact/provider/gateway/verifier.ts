@@ -25,7 +25,6 @@ export async function setupMockedApp(): Promise<{
     send: vi.fn().mockResolvedValue('c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a33'),
     work: vi.fn().mockResolvedValue(undefined),
   }
-
   const module = await Test.createTestingModule({
     imports: [QueueModule],
   })

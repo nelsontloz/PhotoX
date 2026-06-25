@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { FaSpinner, FaTriangleExclamation } from 'react-icons/fa6'
 import type { Asset, AssetThumbnail } from '@photox/shared-types'
 import { listThumbnails, downloadFile } from '../api/assets'
 import { useThumbStore } from '../store/thumb-store'
@@ -27,7 +28,7 @@ export function AssetThumb({ asset, className = '' }: AssetThumbProps) {
   useEffect(() => {
     let cancelled = false
 
-    if (asset.kind !== 'photo') return
+    if (asset.kind !== 'photo' && asset.kind !== 'video') return
 
     listThumbnails(asset.id)
       .then((thumbs) => {
@@ -52,6 +53,9 @@ export function AssetThumb({ asset, className = '' }: AssetThumbProps) {
 
   const src = localThumb ?? objectUrl
 
+  const isVideo = asset.kind === 'video'
+  const transcodeStatus = isVideo ? asset.transcodeStatus : null
+
   if (error && !src) {
     return (
       <div className={`w-full h-full bg-slate-800 flex items-center justify-center ${className}`}>
@@ -64,12 +68,33 @@ export function AssetThumb({ asset, className = '' }: AssetThumbProps) {
     return <Skeleton className={`w-full h-full ${className}`} />
   }
 
+  const altText = isVideo
+    ? (asset.originalName ?? asset.title ?? 'Video')
+    : (asset.originalName ?? asset.title ?? 'Photo')
+
   return (
-    <img
-      src={src}
-      alt={asset.originalName ?? asset.title ?? 'Photo'}
-      className={`w-full h-full object-cover ${className}`}
-      loading="lazy"
-    />
+    <div className={`relative w-full h-full ${className}`}>
+      <img
+        src={src}
+        alt={altText}
+        className="absolute inset-0 w-full h-full object-cover"
+        loading="lazy"
+      />
+      {isVideo && transcodeStatus === 'pending' && (
+        <div className="absolute top-2 left-2 pointer-events-none" aria-label="Transcoding">
+          <div className="bg-black/65 backdrop-blur-sm rounded px-1.5 py-0.5 text-[10px] font-semibold text-white inline-flex items-center gap-1">
+            <FaSpinner className="text-[10px] animate-spin" />
+            <span>Transcoding</span>
+          </div>
+        </div>
+      )}
+      {isVideo && transcodeStatus === 'failed' && (
+        <div className="absolute top-2 right-2 pointer-events-none" aria-label="Transcode failed">
+          <div className="bg-amber-500/90 backdrop-blur-sm rounded-full w-6 h-6 flex items-center justify-center">
+            <FaTriangleExclamation className="text-white text-[12px]" />
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

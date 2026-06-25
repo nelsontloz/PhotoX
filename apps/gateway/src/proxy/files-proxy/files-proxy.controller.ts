@@ -22,6 +22,7 @@ import { firstValueFrom } from 'rxjs'
 import { ProxyService } from '../proxy.service'
 import { SERVICE_URLS } from '@photox/shared-config'
 import { ThumbnailOrchestratorService } from '../../orchestrator/thumbnail-orchestrator.service'
+import { VideoOrchestratorService } from '../../orchestrator/video-orchestrator.service'
 import type { FileListResponse, FileRecord, Asset } from '@photox/shared-types'
 import { ListFilesQueryDto } from './dto/list-files-query.dto'
 
@@ -32,6 +33,7 @@ export class FilesProxyController {
     private readonly proxy: ProxyService,
     private readonly http: HttpService,
     private readonly thumbnails: ThumbnailOrchestratorService,
+    private readonly videoTranscode: VideoOrchestratorService,
   ) {}
 
   @Post()
@@ -132,6 +134,9 @@ export class FilesProxyController {
         timeout: 5_000,
       })
       void this.thumbnails.enqueueThumbnails(assetResult.data.id, record.id, userId)
+      if (kind === 'video') {
+        void this.videoTranscode.enqueueVideo(assetResult.data.id, record.id, userId)
+      }
       return assetResult.data
     } catch (assetErr) {
       try {
