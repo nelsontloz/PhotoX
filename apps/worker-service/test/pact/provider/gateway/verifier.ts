@@ -1,9 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return */
 import path from 'node:path'
+import { Readable } from 'stream'
 import { type INestApplication, ValidationPipe } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { getRepositoryToken } from '@nestjs/typeorm'
 import { JobRecord } from '../../../../src/queue/entities/job.entity'
+import { HlsStorageService } from '../../../../src/storage/hls-storage.service'
 import { PgBossService } from '../../../../src/queue/pg-boss.service'
 import { QueueModule } from '../../../../src/queue/queue.module'
 import { createJobRepo } from './mock-repos'
@@ -25,6 +27,16 @@ export async function setupMockedApp(): Promise<{
     send: vi.fn().mockResolvedValue('c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a33'),
     work: vi.fn().mockResolvedValue(undefined),
   }
+  const mockHlsStorage = {
+    onModuleInit: vi.fn().mockResolvedValue(undefined),
+    uploadHlsFile: vi.fn().mockResolvedValue(undefined),
+    uploadHlsFiles: vi.fn().mockResolvedValue(undefined),
+    getHlsFileBuffer: vi.fn().mockResolvedValue(Buffer.from('')),
+    getHlsFileStream: vi.fn().mockResolvedValue(new Readable()),
+    getBucketName: vi.fn().mockReturnValue('test-bucket'),
+    getEndpoint: vi.fn().mockReturnValue('http://localhost:9000'),
+    getPublicUrl: vi.fn().mockReturnValue('http://localhost:9000/test-bucket'),
+  }
 
   const module = await Test.createTestingModule({
     imports: [QueueModule],
@@ -33,6 +45,8 @@ export async function setupMockedApp(): Promise<{
     .useValue(mockJobRepo)
     .overrideProvider(PgBossService)
     .useValue(mockPgBoss)
+    .overrideProvider(HlsStorageService)
+    .useValue(mockHlsStorage)
     .compile()
 
   const app = module.createNestApplication()
