@@ -34,28 +34,24 @@ export interface FfprobeResult {
 const DEFAULT_TIMEOUT_MS = 120_000
 const SIGKILL_DELAY_MS = 5_000
 
-function collectStream(stream: NodeJS.ReadableStream | null): Promise<Buffer> {
+function collect(
+  stream: NodeJS.ReadableStream | null,
+  mode: 'binary' | 'text',
+): Promise<Buffer | string> {
   return new Promise((resolve, reject) => {
     if (!stream) {
-      resolve(Buffer.alloc(0))
+      resolve(mode === 'binary' ? Buffer.alloc(0) : '')
       return
     }
-    const chunks: Buffer[] = []
-    stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-    stream.on('end', () => resolve(Buffer.concat(chunks)))
-    stream.on('error', reject)
-  })
-}
-
-function collectString(stream: NodeJS.ReadableStream | null): Promise<string> {
-  return new Promise((resolve, reject) => {
-    if (!stream) {
-      resolve('')
-      return
+    if (mode === 'binary') {
+      const chunks: Buffer[] = []
+      stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+      stream.on('end', () => resolve(Buffer.concat(chunks)))
+    } else {
+      const chunks: string[] = []
+      stream.on('data', (chunk: Buffer | string) => chunks.push(String(chunk)))
+      stream.on('end', () => resolve(chunks.join('')))
     }
-    const chunks: string[] = []
-    stream.on('data', (chunk: Buffer | string) => chunks.push(String(chunk)))
-    stream.on('end', () => resolve(chunks.join('')))
     stream.on('error', reject)
   })
 }
@@ -91,8 +87,8 @@ export async function runFfmpeg(
 
   const proc = spawn(FFMPEG_PATH, args, { stdio })
 
-  const stdoutPromise = collectStream(proc.stdout)
-  const stderrPromise = collectString(proc.stderr)
+  const stdoutPromise = collect(proc.stdout, 'binary') as Promise<Buffer>
+  const stderrPromise = collect(proc.stderr, 'text') as Promise<string>
 
   let timer: ReturnType<typeof setTimeout> | undefined
 
@@ -137,8 +133,8 @@ export async function runFfprobeJson(input: string): Promise<FfprobeResult> {
     { stdio: ['ignore', 'pipe', 'pipe'] },
   )
 
-  const stdoutPromise = collectStream(proc.stdout)
-  const stderrPromise = collectString(proc.stderr)
+  const stdoutPromise = collect(proc.stdout, 'binary') as Promise<Buffer>
+  const stderrPromise = collect(proc.stderr, 'text') as Promise<string>
 
   const result = await new Promise<{ stdout: Buffer; stderr: string; code: number | null }>(
     (resolve, reject) => {
@@ -164,21 +160,4 @@ export async function runFfprobeJson(input: string): Promise<FfprobeResult> {
     streams: Array.isArray(parsed.streams) ? parsed.streams : [],
     format: parsed.format ?? { filename: input },
   }
-}
-
-export async function extractVideoFrame(input: string, seekSeconds: number): Promise<Buffer> {
-  const result = await runFfmpeg([
-    '-y',
-    '-ss',
-    String(seekSeconds),
-    '-i',
-    input,
-    '-vframes',
-    '1',
-    '-f',
-    'image2pipe',
-    '-',
-  ])
-
-  return result.stdout
 }

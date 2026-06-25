@@ -48,7 +48,7 @@ describe('Gateway → file-storage-service HLS pact', () => {
       })
       .executeTest(async (mockserver) => {
         ;(SERVICE_URLS as Record<string, string>)['file-storage-service'] = mockserver.url!
-        const text = await hlsService.getMasterPlaylistText(HLS_MASTER_KEY)
+        const text = await hlsService.fetchHls(HLS_MASTER_KEY, 'text')
         expect(text).toContain('#EXTM3U')
       })
   })
@@ -69,7 +69,7 @@ describe('Gateway → file-storage-service HLS pact', () => {
       })
       .executeTest(async (mockserver) => {
         ;(SERVICE_URLS as Record<string, string>)['file-storage-service'] = mockserver.url!
-        const stream = await hlsService.getHlsStream(HLS_SEGMENT_KEY)
+        const stream = await hlsService.fetchHls(HLS_SEGMENT_KEY, 'stream')
         expect(stream).toBeInstanceOf(Readable)
         const chunks: Buffer[] = []
         for await (const chunk of stream) {

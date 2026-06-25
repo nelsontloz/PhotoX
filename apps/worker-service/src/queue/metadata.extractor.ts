@@ -159,17 +159,6 @@ export interface VideoMetadataPatch {
   metadataExtractedAt: Date
 }
 
-function parseFps(rate: string | undefined): number | null {
-  if (!rate || typeof rate !== 'string') return null
-  const parts = rate.split('/')
-  if (parts.length !== 2) return null
-  const num = Number(parts[0])
-  const den = Number(parts[1])
-  if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) return null
-  const fps = num / den
-  return Number.isFinite(fps) && fps > 0 ? Math.round(fps * 100) / 100 : null
-}
-
 function readOrientation(result: FfprobeResult): number | null {
   for (const stream of result.streams) {
     if (stream.codec_type !== 'video') continue
@@ -187,13 +176,6 @@ function readOrientation(result: FfprobeResult): number | null {
     }
   }
   return null
-}
-
-export function seekForThumbnail(durationSeconds: number | null): number {
-  if (durationSeconds === null || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-    return 1
-  }
-  return Math.max(1, durationSeconds * 0.25)
 }
 
 @Injectable()
@@ -231,7 +213,17 @@ export class VideoMetadataExtractor {
       width: videoStream?.width ?? null,
       height: videoStream?.height ?? null,
       codec: videoStream?.codec_name ?? null,
-      fps: parseFps(videoStream?.avg_frame_rate),
+      fps: (() => {
+        const rate = videoStream?.avg_frame_rate
+        if (!rate || typeof rate !== 'string') return null
+        const parts = rate.split('/')
+        if (parts.length !== 2) return null
+        const num = Number(parts[0])
+        const den = Number(parts[1])
+        if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) return null
+        const fps = num / den
+        return Number.isFinite(fps) && fps > 0 ? Math.round(fps * 100) / 100 : null
+      })(),
       hasAudio,
       orientation: readOrientation(result),
       metadataStatus: 'ready',

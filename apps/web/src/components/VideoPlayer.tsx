@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { FaCircleExclamation, FaSpinner, FaVideo } from 'react-icons/fa6'
 import type { TranscodeStatus } from '@photox/shared-types'
-import { api } from '../api/client'
-import { getAuthHeader } from '../lib/authHeader'
+import { getAuthHeaderValue } from '../lib/authHeader'
 
 export interface VideoPlayerProps {
   src: string
@@ -25,19 +24,15 @@ export function VideoPlayer({
 }: VideoPlayerProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
-  const [useFallback, setUseFallback] = useState(false)
-  const [fallbackUrl, setFallbackUrl] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const fallbackUrlRef = useRef<string | null>(null)
 
   const label = title ? `Video player for ${title}` : 'Video player'
   const useTranscoded = transcodeStatus === 'ready'
-  const playableSrc = useTranscoded && hlsSrc && !useFallback ? hlsSrc : src
+  const playableSrc = useTranscoded && hlsSrc ? hlsSrc : src
 
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
-    if (useFallback) return
     if (!useTranscoded || !hlsSrc) return
     if (typeof window === 'undefined') return
 
@@ -52,9 +47,9 @@ export function VideoPlayer({
         if (Hls.isSupported()) {
           const hls = new Hls({
             xhrSetup: (xhr) => {
-              const header = getAuthHeader()
-              if (header.Authorization) {
-                xhr.setRequestHeader('Authorization', header.Authorization)
+              const header = getAuthHeaderValue()
+              if (header) {
+                xhr.setRequestHeader('Authorization', header)
               }
             },
           })
@@ -79,47 +74,7 @@ export function VideoPlayer({
         hlsInstance.destroy()
       }
     }
-  }, [hlsSrc, src, useFallback, useTranscoded])
-
-  useEffect(() => {
-    if (!useFallback) {
-      if (fallbackUrlRef.current) {
-        URL.revokeObjectURL(fallbackUrlRef.current)
-        fallbackUrlRef.current = null
-        setFallbackUrl(null)
-      }
-      return
-    }
-
-    let cancelled = false
-    void (async () => {
-      try {
-        const res = await api.get<Blob>(src, {
-          responseType: 'blob',
-          headers: getAuthHeader(),
-        })
-        if (cancelled) return
-        const objectUrl = URL.createObjectURL(res.data)
-        fallbackUrlRef.current = objectUrl
-        setFallbackUrl(objectUrl)
-      } catch {
-        if (!cancelled) setError(true)
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [src, useFallback])
-
-  useEffect(() => {
-    return () => {
-      if (fallbackUrlRef.current) {
-        URL.revokeObjectURL(fallbackUrlRef.current)
-        fallbackUrlRef.current = null
-      }
-    }
-  }, [])
+  }, [hlsSrc, src, useTranscoded])
 
   if (transcodeStatus === 'pending') {
     return (
@@ -145,7 +100,7 @@ export function VideoPlayer({
     )
   }
 
-  if (transcodeStatus === 'failed' && !useFallback) {
+  if (transcodeStatus === 'failed') {
     return (
       <div
         role="alert"
@@ -166,22 +121,18 @@ export function VideoPlayer({
         <p className="text-xs text-slate-500 dark:text-slate-400">
           You can still watch the original file.
         </p>
-        <button
-          type="button"
-          onClick={() => {
-            setError(false)
-            setUseFallback(true)
-            setLoading(true)
-          }}
+        <a
+          href={src}
+          download
           className="text-xs font-semibold text-primary hover:text-primary/80 hover:underline"
         >
           Try the original quality
-        </button>
+        </a>
       </div>
     )
   }
 
-  if (error && !useFallback) {
+  if (error) {
     return (
       <div
         role="alert"
@@ -206,8 +157,6 @@ export function VideoPlayer({
     )
   }
 
-  const videoSrc = useFallback ? (fallbackUrl ?? undefined) : playableSrc
-
   return (
     <div
       className={[
@@ -217,7 +166,7 @@ export function VideoPlayer({
     >
       <video
         ref={videoRef}
-        src={videoSrc}
+        src={playableSrc}
         poster={poster}
         controls
         playsInline

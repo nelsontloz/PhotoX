@@ -26,6 +26,14 @@ interface AssetViewerProps {
 
 const TRANSCODE_POLL_MS = 5_000
 
+async function loadThumbBlob(id: string, preferSize: 'xl' | 'lg'): Promise<string | null> {
+  const thumbs = await listThumbnails(id)
+  const picked = thumbs.find((t) => t.size === preferSize) ?? thumbs[0]
+  if (!picked) return null
+  const blob = await downloadFile(picked.fileId)
+  return URL.createObjectURL(blob)
+}
+
 export function AssetViewer({
   asset,
   onClose,
@@ -54,15 +62,12 @@ export function AssetViewer({
     setVideoPosterUrl(null)
 
     if (currentAsset.kind === 'photo') {
-      listThumbnails(currentAsset.id)
-        .then((thumbs) => {
-          const xl = thumbs.find((t) => t.size === 'xl')
-          if (!xl) throw new Error('No preview available')
-          return downloadFile(xl.fileId)
-        })
-        .then((blob) => {
-          if (cancelled) return
-          const url = URL.createObjectURL(blob)
+      loadThumbBlob(currentAsset.id, 'xl')
+        .then((url) => {
+          if (cancelled || !url) {
+            if (!cancelled) setLoading(false)
+            return
+          }
           urlRef.current = url
           setImageUrl(url)
         })
@@ -70,19 +75,12 @@ export function AssetViewer({
           if (!cancelled) setLoading(false)
         })
     } else {
-      listThumbnails(currentAsset.id)
-        .then((thumbs) => {
-          if (thumbs.length === 0) return null
-          const lg = thumbs.find((t) => t.size === 'lg') ?? thumbs[0]
-          if (!lg) return null
-          return downloadFile(lg.fileId)
-        })
-        .then((blob) => {
-          if (cancelled || !blob) {
+      loadThumbBlob(currentAsset.id, 'lg')
+        .then((url) => {
+          if (cancelled || !url) {
             if (!cancelled) setLoading(false)
             return
           }
-          const url = URL.createObjectURL(blob)
           posterRef.current = url
           setVideoPosterUrl(url)
         })

@@ -8,20 +8,15 @@ import { SERVICE_URLS } from '@photox/shared-config'
 export class HlsProxyService {
   constructor(private readonly http: HttpService) {}
 
-  async getMasterPlaylistText(hlsMasterKey: string): Promise<string> {
-    const { userId, fileId, relPath } = this.splitHlsKey(hlsMasterKey)
-    const url = `${SERVICE_URLS['file-storage-service']}/v1/internal/hls/files/${encodeURIComponent(userId)}/${encodeURIComponent(fileId)}/${relPath.split('/').map(encodeURIComponent).join('/')}`
-    const res = await firstValueFrom(this.http.get(url, { responseType: 'text', timeout: 30_000 }))
-    return res.data as string
-  }
-
-  async getHlsStream(hlsMasterKey: string): Promise<Readable> {
-    const { userId, fileId, relPath } = this.splitHlsKey(hlsMasterKey)
+  async fetchHls(key: string, responseType: 'text'): Promise<string>
+  async fetchHls(key: string, responseType: 'stream'): Promise<Readable>
+  async fetchHls(key: string, responseType: 'text' | 'stream'): Promise<string | Readable> {
+    const { userId, fileId, relPath } = this.splitHlsKey(key)
     const url = `${SERVICE_URLS['file-storage-service']}/v1/internal/hls/files/${encodeURIComponent(userId)}/${encodeURIComponent(fileId)}/${relPath.split('/').map(encodeURIComponent).join('/')}`
     const res = await firstValueFrom(
-      this.http.get(url, { responseType: 'stream', timeout: 30_000 }),
+      this.http.get(url, { responseType: responseType, timeout: 30_000 }),
     )
-    return res.data as Readable
+    return res.data as string | Readable
   }
 
   async getOriginalFileStream(fileId: string, userId: string): Promise<Readable> {
@@ -33,19 +28,18 @@ export class HlsProxyService {
   }
 
   private splitHlsKey(hlsMasterKey: string): { userId: string; fileId: string; relPath: string } {
-    const hlsIdx = hlsMasterKey.indexOf('/hls/')
-    if (hlsIdx === -1) {
+    const parts = hlsMasterKey.split('/hls/')
+    if (parts.length !== 2) {
       throw new BadRequestException('Invalid hlsMasterKey format')
     }
-    const prefix = hlsMasterKey.slice(0, hlsIdx)
-    const slashIdx = prefix.indexOf('/')
-    if (slashIdx === -1) {
+    const prefix = parts[0]!
+    const relPath = parts[1]!
+    const ids = prefix.split('/')
+    const userId = ids[0]
+    const fileId = ids[1]
+    if (!userId || !fileId) {
       throw new BadRequestException('Invalid hlsMasterKey format')
     }
-    return {
-      userId: prefix.slice(0, slashIdx),
-      fileId: prefix.slice(slashIdx + 1),
-      relPath: hlsMasterKey.slice(hlsIdx + '/hls/'.length),
-    }
+    return { userId, fileId, relPath }
   }
 }

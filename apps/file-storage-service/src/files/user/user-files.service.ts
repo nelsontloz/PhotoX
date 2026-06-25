@@ -148,31 +148,23 @@ export class UserFilesService {
     }
   }
 
-  async stream(fileId: string): Promise<{ stream: Readable; record: FileRecord }> {
-    const record = await this.fileRepo.findOne({ where: { id: fileId } })
-    if (!record) throw new NotFoundException('File not found')
-    const stream = await this.minio.downloadFile(record.storageKey)
-    return { stream, record }
-  }
-
-  async streamRange(
+  async stream(
     fileId: string,
-    start: number,
-    end: number,
+    opts?: { range: { start: number; end: number } },
   ): Promise<{ stream: Readable; record: FileRecord; totalSize: number }> {
     const record = await this.fileRepo.findOne({ where: { id: fileId } })
     if (!record) throw new NotFoundException('File not found')
     const stat = await this.minio.statFile(record.storageKey)
-    const length = end - start + 1
-    const stream = await this.minio.downloadFileRange(record.storageKey, start, length)
-    return { stream, record, totalSize: stat.size }
-  }
+    const totalSize = stat.size
 
-  async getFileTotalSize(fileId: string): Promise<{ record: FileRecord; totalSize: number }> {
-    const record = await this.fileRepo.findOne({ where: { id: fileId } })
-    if (!record) throw new NotFoundException('File not found')
-    const stat = await this.minio.statFile(record.storageKey)
-    return { record, totalSize: stat.size }
+    if (opts) {
+      const length = opts.range.end - opts.range.start + 1
+      const stream = await this.minio.downloadFileRange(record.storageKey, opts.range.start, length)
+      return { stream, record, totalSize }
+    }
+
+    const stream = await this.minio.downloadFile(record.storageKey)
+    return { stream, record, totalSize }
   }
 
   async getFileUrl(fileId: string, ttlSeconds = 300): Promise<string> {

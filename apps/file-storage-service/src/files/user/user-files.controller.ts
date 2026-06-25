@@ -21,24 +21,7 @@ import { UserFilesService } from './user-files.service'
 import { FileRecordDto } from '../file-record.dto'
 import { FileListResponseDto, ListFilesQueryDto } from './dto/list-files-query.dto'
 import { BatchFilesRequestDto, BatchFilesResponseDto } from './dto/batch-files.dto'
-
-const RANGE_RE = /^bytes=(\d+)-(\d*)$/
-
-function parseRangeHeader(
-  rangeHeader: string,
-  totalSize: number,
-): { start: number; end: number } | null {
-  const match = RANGE_RE.exec(rangeHeader)
-  if (!match) return null
-  const start = Number(match[1])
-  if (!Number.isFinite(start) || start < 0 || start >= totalSize) return null
-  const endStr = match[2]
-  const end = endStr ? Number(endStr) : totalSize - 1
-  if (!Number.isFinite(end) || end < start) {
-    return { start, end: totalSize - 1 }
-  }
-  return { start, end: Math.min(end, totalSize - 1) }
-}
+import { parseRangeHeader } from '../streaming.util'
 
 @ApiTags('files')
 @Controller('v1/files')
@@ -87,7 +70,8 @@ export class UserFilesController {
     const rangeHeader = req.headers.range
 
     if (rangeHeader) {
-      const { totalSize } = await this.userFilesService.getFileTotalSize(fileId)
+      const preflight = await this.userFilesService.stream(fileId)
+      const totalSize = preflight.totalSize
 
       const range = parseRangeHeader(rangeHeader, totalSize)
       if (!range) {
@@ -96,11 +80,7 @@ export class UserFilesController {
         return
       }
 
-      const { stream, record } = await this.userFilesService.streamRange(
-        fileId,
-        range.start,
-        range.end,
-      )
+      const { stream, record } = await this.userFilesService.stream(fileId, { range })
 
       res.set({
         'Content-Type': record.mimeType,

@@ -8,10 +8,7 @@ import { loadEnv } from '@photox/shared-config'
 
 async function bootstrap() {
   const env = loadEnv()
-  const app = await NestFactory.create(AppModule, {
-    bodyParser: true,
-    rawBody: true,
-  })
+  const app = await NestFactory.create(AppModule, { rawBody: true })
 
   app.use(requestIdMiddleware)
 
