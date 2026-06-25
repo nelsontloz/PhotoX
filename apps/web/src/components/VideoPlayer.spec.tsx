@@ -138,7 +138,7 @@ describe('VideoPlayer', () => {
     expect(status.textContent).toContain('Preparing this video for streaming')
   })
 
-  it('shows the failed state with a fallback link to the original quality', async () => {
+  it('shows the failed state with a link to the original quality', () => {
     render(
       <VideoPlayer
         src="/v1/videos/abc/stream"
@@ -152,13 +152,9 @@ describe('VideoPlayer', () => {
     const alert = screen.getByRole('alert')
     expect(alert.textContent).toContain("couldn't be processed")
 
-    const button = screen.getByRole('button', { name: /original quality/i })
-    fireEvent.click(button)
-
-    await waitFor(() => {
-      const video = getVideo()
-      expect(video.tagName).toBe('VIDEO')
-    })
+    const link = screen.getByRole('link', { name: /original quality/i })
+    expect(link.getAttribute('href')).toBe('/v1/videos/abc/stream')
+    expect(link.getAttribute('download')).toBe('')
   })
 
   it('shows the error fallback when the video fires an error event', () => {

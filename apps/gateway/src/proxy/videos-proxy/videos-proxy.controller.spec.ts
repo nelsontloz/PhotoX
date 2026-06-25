@@ -10,8 +10,7 @@ interface MockHttp {
 }
 
 interface MockHls {
-  getMasterPlaylistText: ReturnType<typeof vi.fn>
-  getHlsStream: ReturnType<typeof vi.fn>
+  fetchHls: ReturnType<typeof vi.fn>
   getOriginalFileStream: ReturnType<typeof vi.fn>
 }
 
@@ -24,8 +23,7 @@ function createMockHttp(): MockHttp {
 
 function createMockHls(): MockHls {
   return {
-    getMasterPlaylistText: vi.fn(),
-    getHlsStream: vi.fn(),
+    fetchHls: vi.fn(),
     getOriginalFileStream: vi.fn(),
   }
 }
@@ -169,7 +167,7 @@ describe('VideosProxyController', () => {
       const hls = createMockHls()
       const asset = buildAsset()
       mockHttpGetAsset(http, asset)
-      hls.getMasterPlaylistText.mockResolvedValueOnce(
+      hls.fetchHls.mockResolvedValueOnce(
         '#EXTM3U\n#EXT-X-VERSION:6\n0/playlist.m3u8\n1/playlist.m3u8\n',
       )
       const controller = createController(http, hls)
@@ -188,7 +186,7 @@ describe('VideosProxyController', () => {
       const http = createMockHttp()
       const hls = createMockHls()
       mockHttpGetAsset(http, buildAsset())
-      hls.getMasterPlaylistText.mockResolvedValueOnce('#EXTM3U\n0/seg_001.m4s?token=abc\n')
+      hls.fetchHls.mockResolvedValueOnce('#EXTM3U\n0/seg_001.m4s?token=abc\n')
       const controller = createController(http, hls)
       const { res, getSent } = mockRes()
 
@@ -201,7 +199,7 @@ describe('VideosProxyController', () => {
       const http = createMockHttp()
       const hls = createMockHls()
       mockHttpGetAsset(http, buildAsset())
-      hls.getMasterPlaylistText.mockResolvedValueOnce(
+      hls.fetchHls.mockResolvedValueOnce(
         '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=2000000\nhttps://example.com/abs.m3u8\n',
       )
       const controller = createController(http, hls)
@@ -218,7 +216,7 @@ describe('VideosProxyController', () => {
       const http = createMockHttp()
       const hls = createMockHls()
       mockHttpGetAsset(http, buildAsset())
-      hls.getMasterPlaylistText.mockResolvedValueOnce('#EXTM3U\n')
+      hls.fetchHls.mockResolvedValueOnce('#EXTM3U\n')
       const controller = createController(http, hls)
       const { res } = mockRes()
 
@@ -241,7 +239,7 @@ describe('VideosProxyController', () => {
 
       expect(getStatus()).toBe(425)
       expect(getJson()).toEqual({ status: 'pending', message: 'Transcoding in progress' })
-      expect(hls.getMasterPlaylistText).not.toHaveBeenCalled()
+      expect(hls.fetchHls).not.toHaveBeenCalled()
     })
 
     it('returns 409 when transcode failed', async () => {
@@ -308,13 +306,13 @@ describe('VideosProxyController', () => {
       const hls = createMockHls()
       mockHttpGetAsset(http, buildAsset())
       const upstream = mockStream()
-      hls.getHlsStream.mockResolvedValueOnce(upstream)
+      hls.fetchHls.mockResolvedValueOnce(upstream)
       const controller = createController(http, hls)
       const { res } = mockRes()
 
       await controller.getHlsAsset('asset-1', mockReqWithSplat('/0/seg_000.m4s'), res)
 
-      expect(hls.getHlsStream).toHaveBeenCalledWith('uid/fid/hls/0/seg_000.m4s')
+      expect(hls.fetchHls).toHaveBeenCalledWith('uid/fid/hls/0/seg_000.m4s', 'stream')
       expect(upstream.pipe).toHaveBeenCalledWith(res)
     })
 
@@ -322,7 +320,7 @@ describe('VideosProxyController', () => {
       const http = createMockHttp()
       const hls = createMockHls()
       mockHttpGetAsset(http, buildAsset())
-      hls.getHlsStream.mockResolvedValueOnce(mockStream())
+      hls.fetchHls.mockResolvedValueOnce(mockStream())
       const controller = createController(http, hls)
       const { res, setMock } = mockRes()
 
@@ -337,7 +335,7 @@ describe('VideosProxyController', () => {
       const http = createMockHttp()
       const hls = createMockHls()
       mockHttpGetAsset(http, buildAsset())
-      hls.getHlsStream.mockResolvedValueOnce(mockStream())
+      hls.fetchHls.mockResolvedValueOnce(mockStream())
       const controller = createController(http, hls)
       const { res, setMock } = mockRes()
 
@@ -352,7 +350,7 @@ describe('VideosProxyController', () => {
       const http = createMockHttp()
       const hls = createMockHls()
       mockHttpGetAsset(http, buildAsset())
-      hls.getHlsStream.mockResolvedValueOnce(mockStream())
+      hls.fetchHls.mockResolvedValueOnce(mockStream())
       const controller = createController(http, hls)
       const { res, setMock } = mockRes()
 

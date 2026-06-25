@@ -3,7 +3,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { unlinkSync } from 'fs'
-import { runFfprobeJson, extractVideoFrame, runFfmpeg, FFMPEG_PATH } from './ffmpeg'
+import { runFfprobeJson, runFfmpeg, FFMPEG_PATH } from './ffmpeg'
 
 const fixturePath = join(tmpdir(), 'test-fixture.mp4')
 
@@ -66,7 +66,19 @@ describeIfFfmpeg('ffmpeg wrapper', () => {
   })
 
   it('extractVideoFrame returns a non-empty JPEG buffer', async () => {
-    const buffer = await extractVideoFrame(fixturePath, 1)
+    const result = await runFfmpeg([
+      '-y',
+      '-ss',
+      '1',
+      '-i',
+      fixturePath,
+      '-vframes',
+      '1',
+      '-f',
+      'image2pipe',
+      '-',
+    ])
+    const buffer = result.stdout
 
     expect(buffer.length).toBeGreaterThan(0)
 

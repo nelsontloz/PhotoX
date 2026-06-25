@@ -156,20 +156,6 @@ export function buildAbrArgs(
   return args
 }
 
-async function walkDir(dir: string): Promise<string[]> {
-  const entries = await readdir(dir, { withFileTypes: true })
-  const files: string[] = []
-  for (const entry of entries) {
-    const fullPath = join(dir, entry.name)
-    if (entry.isDirectory()) {
-      files.push(...(await walkDir(fullPath)))
-    } else {
-      files.push(fullPath)
-    }
-  }
-  return files
-}
-
 @Injectable()
 export class VideoProcessor {
   private readonly logger = new Logger(VideoProcessor.name)
@@ -266,10 +252,10 @@ export class VideoProcessor {
       })
       await runFfmpeg(args, { timeoutMs: HLS_TIMEOUT_MS })
 
-      const hlsFiles = await walkDir(outDir)
+      const hlsFiles = (await readdir(outDir, { recursive: true })).filter((p) => p.includes('.'))
       const uploadBatch: { key: string; body: Buffer; contentType: string }[] = []
-      for (const absPath of hlsFiles) {
-        const relPath = absPath.slice(outDir.length + 1)
+      for (const relPath of hlsFiles) {
+        const absPath = join(outDir, relPath)
         const key = `${userId}/${fileId}/hls/${relPath}`
         const body = await readFile(absPath)
         uploadBatch.push({ key, body, contentType: getContentType(absPath) })

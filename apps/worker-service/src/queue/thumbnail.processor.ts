@@ -16,10 +16,9 @@ import { SERVICE_URLS } from '@photox/shared-config'
 import {
   MetadataExtractor,
   VideoMetadataExtractor,
-  seekForThumbnail,
   type ExtractedMetadata,
 } from './metadata.extractor'
-import { extractVideoFrame } from './ffmpeg'
+import { runFfmpeg } from './ffmpeg'
 
 const STANDARD_SIZES: Record<string, [number, number]> = {
   sm: [150, 150],
@@ -243,8 +242,26 @@ export class ThumbnailProcessor {
           this.logger.warn(`Video metadata patch failed for asset=${assetId}: ${message}`)
         }
 
-        const seekSec = seekForThumbnail(videoMeta.durationSeconds)
-        const frameBuffer = await extractVideoFrame(tmpPath, seekSec)
+        const seekSec =
+          videoMeta.durationSeconds === null ||
+          !Number.isFinite(videoMeta.durationSeconds) ||
+          videoMeta.durationSeconds <= 0
+            ? 1
+            : Math.max(1, videoMeta.durationSeconds * 0.25)
+        const frameBuffer = (
+          await runFfmpeg([
+            '-y',
+            '-ss',
+            String(seekSec),
+            '-i',
+            tmpPath,
+            '-vframes',
+            '1',
+            '-f',
+            'image2pipe',
+            '-',
+          ])
+        ).stdout
 
         const frameOrientation = videoMeta.orientation
         let framePipeline = sharp(frameBuffer)

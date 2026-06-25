@@ -14,18 +14,7 @@ import { FilesInterceptor } from '@nestjs/platform-express'
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
 import { HlsFilesService } from './hls-files.service'
-
-const MIME_MAP: Record<string, string> = {
-  '.m3u8': 'application/vnd.apple.mpegurl',
-  '.m4s': 'video/iso.segment',
-  '.ts': 'video/mp2t',
-  '.mp4': 'video/mp4',
-}
-
-function extensionOf(path: string): string {
-  const dot = path.lastIndexOf('.')
-  return dot >= 0 ? path.slice(dot) : ''
-}
+import { contentTypeFor } from '../streaming.util'
 
 @ApiTags('hls-internal')
 @Controller('v1/internal/hls/files')
@@ -78,8 +67,7 @@ export class HlsFilesController {
 
     const result = await this.hlsFilesService.stream(userId, fileId, safePath, rangeHeader)
 
-    const ext = extensionOf(safePath)
-    const contentType = MIME_MAP[ext] ?? 'application/octet-stream'
+    const contentType = contentTypeFor(safePath)
 
     if (result.range) {
       const { start, end } = result.range

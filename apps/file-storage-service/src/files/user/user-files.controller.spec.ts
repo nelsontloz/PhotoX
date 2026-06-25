@@ -7,8 +7,6 @@ describe('UserFilesController – Range streaming', () => {
   let controller: UserFilesController
   let service: {
     stream: ReturnType<typeof vi.fn>
-    streamRange: ReturnType<typeof vi.fn>
-    getFileTotalSize: ReturnType<typeof vi.fn>
     upload: ReturnType<typeof vi.fn>
     list: ReturnType<typeof vi.fn>
     getOne: ReturnType<typeof vi.fn>
@@ -20,8 +18,6 @@ describe('UserFilesController – Range streaming', () => {
   beforeEach(async () => {
     service = {
       stream: vi.fn(),
-      streamRange: vi.fn(),
-      getFileTotalSize: vi.fn(),
       upload: vi.fn(),
       list: vi.fn(),
       getOne: vi.fn(),
@@ -69,6 +65,7 @@ describe('UserFilesController – Range streaming', () => {
     service.stream.mockResolvedValue({
       stream: { pipe: vi.fn() },
       record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
+      totalSize: 1000,
     })
 
     const { res, headers } = mockRes()
@@ -81,15 +78,17 @@ describe('UserFilesController – Range streaming', () => {
   })
 
   it('returns 206 with Content-Range when Range header present', async () => {
-    service.getFileTotalSize.mockResolvedValue({
-      record: { id: 'file-1', mimeType: 'video/mp4' },
-      totalSize: 1000,
-    })
-    service.streamRange.mockResolvedValue({
-      stream: { pipe: vi.fn() },
-      record: { mimeType: 'video/mp4' },
-      totalSize: 1000,
-    })
+    service.stream
+      .mockResolvedValueOnce({
+        stream: { pipe: vi.fn() },
+        record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
+        totalSize: 1000,
+      })
+      .mockResolvedValueOnce({
+        stream: { pipe: vi.fn() },
+        record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
+        totalSize: 1000,
+      })
 
     const { res, headers, getStatus } = mockRes()
     const req = mockReq({ range: 'bytes=0-4' })
@@ -103,15 +102,17 @@ describe('UserFilesController – Range streaming', () => {
   })
 
   it('returns 206 with open-ended Range', async () => {
-    service.getFileTotalSize.mockResolvedValue({
-      record: { id: 'file-1', mimeType: 'video/mp4' },
-      totalSize: 1000,
-    })
-    service.streamRange.mockResolvedValue({
-      stream: { pipe: vi.fn() },
-      record: { mimeType: 'video/mp4' },
-      totalSize: 1000,
-    })
+    service.stream
+      .mockResolvedValueOnce({
+        stream: { pipe: vi.fn() },
+        record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
+        totalSize: 1000,
+      })
+      .mockResolvedValueOnce({
+        stream: { pipe: vi.fn() },
+        record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
+        totalSize: 1000,
+      })
 
     const { res, headers, getStatus } = mockRes()
     const req = mockReq({ range: 'bytes=997-' })
@@ -124,8 +125,9 @@ describe('UserFilesController – Range streaming', () => {
   })
 
   it('returns 416 for out-of-range start', async () => {
-    service.getFileTotalSize.mockResolvedValue({
-      record: { id: 'file-1', mimeType: 'video/mp4' },
+    service.stream.mockResolvedValue({
+      stream: { pipe: vi.fn() },
+      record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
       totalSize: 100,
     })
 
@@ -139,8 +141,9 @@ describe('UserFilesController – Range streaming', () => {
   })
 
   it('returns 416 for invalid Range format', async () => {
-    service.getFileTotalSize.mockResolvedValue({
-      record: { id: 'file-1', mimeType: 'video/mp4' },
+    service.stream.mockResolvedValue({
+      stream: { pipe: vi.fn() },
+      record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
       totalSize: 100,
     })
 
@@ -154,15 +157,17 @@ describe('UserFilesController – Range streaming', () => {
   })
 
   it('clamps end byte to totalSize-1 when Range exceeds total', async () => {
-    service.getFileTotalSize.mockResolvedValue({
-      record: { id: 'file-1', mimeType: 'video/mp4' },
-      totalSize: 100,
-    })
-    service.streamRange.mockResolvedValue({
-      stream: { pipe: vi.fn() },
-      record: { mimeType: 'video/mp4' },
-      totalSize: 100,
-    })
+    service.stream
+      .mockResolvedValueOnce({
+        stream: { pipe: vi.fn() },
+        record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
+        totalSize: 100,
+      })
+      .mockResolvedValueOnce({
+        stream: { pipe: vi.fn() },
+        record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
+        totalSize: 100,
+      })
 
     const { res, headers, getStatus } = mockRes()
     const req = mockReq({ range: 'bytes=90-200' })

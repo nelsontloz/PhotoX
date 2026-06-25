@@ -58,7 +58,7 @@ export class VideosProxyController {
     this.assertVideo(asset)
     if (this.assertTranscodeReady(res, asset)) return
 
-    const playlist = await this.hls.getMasterPlaylistText(asset.hlsMasterKey!)
+    const playlist = await this.hls.fetchHls(asset.hlsMasterKey!, 'text')
     const rewritten = this.rewritePlaylistUrls(playlist, assetId)
     res.set({
       'Content-Type': 'application/vnd.apple.mpegurl',
@@ -89,12 +89,8 @@ export class VideosProxyController {
     if (this.assertTranscodeReady(res, asset)) return
 
     const masterDir = asset.hlsMasterKey!.slice(0, asset.hlsMasterKey!.lastIndexOf('/'))
-    if (!`${masterDir}/${safePath}`.startsWith(`${masterDir}/`)) {
-      throw new BadRequestException('Invalid HLS path')
-    }
-
     const key = `${masterDir}/${safePath}`
-    const stream = await this.hls.getHlsStream(key)
+    const stream = await this.hls.fetchHls(key, 'stream')
     res.set({
       'Content-Type': this.contentTypeFor(safePath),
       'Cache-Control': 'no-store',
@@ -121,10 +117,6 @@ export class VideosProxyController {
       )
       asset = assetRes.data
     } catch {
-      throw new ForbiddenException('Asset not accessible to the authenticated user')
-    }
-
-    if (!asset) {
       throw new ForbiddenException('Asset not accessible to the authenticated user')
     }
 
