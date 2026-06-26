@@ -1,31 +1,16 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common'
-import { InjectDataSource } from '@nestjs/typeorm'
-import { DataSource } from 'typeorm'
-import { PgBossService } from '../queue/pg-boss.service'
+import { BullMqService } from '../queue/bullmq.service'
 
 @Injectable()
 export class HealthService {
-  constructor(
-    @InjectDataSource()
-    private readonly dataSource: DataSource,
-    private readonly pgBoss: PgBossService,
-  ) {}
+  constructor(private readonly bullMq: BullMqService) {}
 
   async check() {
     const checks: Record<string, string> = {}
 
-    // Database check
     try {
-      await this.dataSource.query('SELECT 1')
-      checks.database = 'ok'
-    } catch {
-      checks.database = 'error'
-    }
-
-    // Queue check
-    try {
-      const isConnected = this.pgBoss.isConnected()
-      checks.queue = isConnected ? 'ok' : 'disconnected'
+      const ok = await this.bullMq.isHealthy()
+      checks.queue = ok ? 'ok' : 'down'
     } catch {
       checks.queue = 'error'
     }

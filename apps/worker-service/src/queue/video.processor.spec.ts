@@ -5,7 +5,6 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'node:crypto'
 import { HttpService } from '@nestjs/axios'
-import type { Repository } from 'typeorm'
 import {
   buildAbrArgs,
   ABR_LADDER,
@@ -14,9 +13,8 @@ import {
   detectTranspose,
   VideoProcessor,
 } from './video.processor'
-import { PgBossService } from './pg-boss.service'
+import { BullMqService } from './bullmq.service'
 import { HlsHttpClient } from '../storage/hls-http.client'
-import { JobRecord } from './entities/job.entity'
 import type { FfprobeStream } from './ffmpeg'
 
 describe('buildAbrArgs', () => {
@@ -276,8 +274,7 @@ describe('VideoProcessor.downloadSource', () => {
     } as unknown as HttpService
 
     const processor = new VideoProcessor(
-      {} as PgBossService,
-      {} as Repository<JobRecord>,
+      {} as BullMqService,
       http,
       {} as HlsHttpClient,
     )

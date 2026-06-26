@@ -1,26 +1,22 @@
 import { Module, OnModuleInit } from '@nestjs/common'
-import { TypeOrmModule } from '@nestjs/typeorm'
 import { HttpModule } from '@nestjs/axios'
-import { PgBossService } from './pg-boss.service'
+import { BullMqService } from './bullmq.service'
 import { ThumbnailProcessor } from './thumbnail.processor'
 import { VideoProcessor } from './video.processor'
 import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor'
 import { HlsHttpClient } from '../storage/hls-http.client'
-import { JobRecord } from './entities/job.entity'
-import { QueueController } from './queue.controller'
 
 @Module({
-  imports: [TypeOrmModule.forFeature([JobRecord]), HttpModule],
-  controllers: [QueueController],
+  imports: [HttpModule],
   providers: [
-    PgBossService,
+    BullMqService,
     ThumbnailProcessor,
     VideoProcessor,
     MetadataExtractor,
     VideoMetadataExtractor,
     HlsHttpClient,
   ],
-  exports: [PgBossService],
+  exports: [BullMqService],
 })
 export class QueueModule implements OnModuleInit {
   constructor(
@@ -28,8 +24,8 @@ export class QueueModule implements OnModuleInit {
     private readonly videoProcessor: VideoProcessor,
   ) {}
 
-  async onModuleInit() {
-    await this.thumbnailProcessor.start()
-    await this.videoProcessor.start()
+  onModuleInit() {
+    this.thumbnailProcessor.start()
+    this.videoProcessor.start()
   }
 }

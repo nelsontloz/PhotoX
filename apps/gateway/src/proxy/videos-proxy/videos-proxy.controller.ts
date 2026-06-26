@@ -16,6 +16,7 @@ import { SERVICE_URLS } from '@photox/shared-config'
 import type { Asset } from '@photox/shared-types'
 import { HlsProxyService } from './hls-proxy.service'
 import { contentTypeFor } from '../../common/hls-content-types'
+import { Public } from '../../auth/public.decorator'
 
 @ApiTags('videos')
 @ApiBearerAuth()
@@ -34,6 +35,9 @@ export class VideosProxyController {
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async streamVideo(@Param('assetId') assetId: string, @Req() req: Request, @Res() res: Response) {
     const userId = this.userId(req)
+    if (!userId) {
+      throw new NotFoundException('Authenticated user not found on request')
+    }
     const asset = await this.getAsset(assetId, userId)
 
     const stream = await this.hls.getOriginalFileStream(asset.fileId, userId)
@@ -45,6 +49,7 @@ export class VideosProxyController {
     stream.pipe(res)
   }
 
+  @Public()
   @Get(':assetId/playlist.m3u8')
   @ApiOperation({ summary: 'Get the HLS master playlist (authenticated)' })
   @ApiResponse({ status: 200, description: 'Rewritten HLS master playlist' })
@@ -68,6 +73,7 @@ export class VideosProxyController {
     res.status(200).send(rewritten)
   }
 
+  @Public()
   @Get(':assetId/*')
   @ApiOperation({ summary: 'Get an HLS variant playlist or segment (authenticated)' })
   @ApiResponse({ status: 200, description: 'HLS asset bytes' })
@@ -99,20 +105,18 @@ export class VideosProxyController {
     stream.pipe(res)
   }
 
-  private userId(req: Request): string {
-    const user = req.user as { id?: string }
-    if (!user?.id) {
-      throw new NotFoundException('Authenticated user not found on request')
-    }
-    return user.id
+  private userId(req: Request): string | undefined {
+    const user = req.user
+    if (!user) return undefined
+    return (user as { id: string }).id
   }
 
-  private async getAsset(assetId: string, userId: string): Promise<Asset> {
+  private async getAsset(assetId: string, userId: string | undefined): Promise<Asset> {
     let asset: Asset
     try {
       const assetRes = await firstValueFrom(
         this.http.get<Asset>(`${SERVICE_URLS['media-service']}/v1/assets/${assetId}`, {
-          params: { userId },
+          params: userId ? { userId } : {},
           timeout: 5_000,
         }),
       )
@@ -121,7 +125,7 @@ export class VideosProxyController {
       throw new ForbiddenException('Asset not accessible to the authenticated user')
     }
 
-    if (asset.userId !== userId) {
+    if (userId && asset.userId !== userId) {
       throw new ForbiddenException('Asset does not belong to the authenticated user')
     }
 

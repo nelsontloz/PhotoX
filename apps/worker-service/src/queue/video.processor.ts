@@ -1,18 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
-import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
 import { firstValueFrom } from 'rxjs'
-import { type Job } from 'pg-boss'
+import type { Job } from 'bullmq'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { writeFile, rm, readdir, readFile, mkdir } from 'fs/promises'
-import { PgBossService } from './pg-boss.service'
-import { JobRecord, JobStatus } from './entities/job.entity'
-import type { ProcessVideoDto } from './dto/process-video.dto'
+import { BullMqService } from './bullmq.service'
 import { SERVICE_URLS } from '@photox/shared-config'
 import { runFfmpeg, runFfprobeJson, type FfprobeStream } from './ffmpeg'
 import { HlsHttpClient } from '../storage/hls-http.client'
+
+export interface ProcessVideoJob {
+  assetId: string
+  fileId: string
+  userId: string
+}
 
 export interface AbrVariant {
   name: string
@@ -161,57 +163,25 @@ export class VideoProcessor {
   private readonly logger = new Logger(VideoProcessor.name)
 
   constructor(
-    private readonly pgBoss: PgBossService,
-    @InjectRepository(JobRecord)
-    private readonly jobRepo: Repository<JobRecord>,
+    private readonly bullMq: BullMqService,
     private readonly http: HttpService,
     private readonly hlsHttpClient: HlsHttpClient,
   ) {}
 
-  async enqueue(dto: ProcessVideoDto): Promise<{ jobId: string; status: string }> {
-    const existing = await this.jobRepo.findOne({
-      where: { assetId: dto.assetId, status: JobStatus.QUEUED, kind: 'video' },
-    })
-
-    if (existing) {
-      return { jobId: existing.id, status: existing.status }
-    }
-
-    const record = this.jobRepo.create({
-      assetId: dto.assetId,
-      fileId: dto.fileId,
-      size: 'hls',
-      status: JobStatus.QUEUED,
-      kind: 'video',
-    })
-    await this.jobRepo.save(record)
-
-    const jobId = await this.pgBoss.send(
+  start() {
+    this.bullMq.createWorker<ProcessVideoJob>(
       'process-video',
-      { assetId: dto.assetId, fileId: dto.fileId, userId: dto.userId },
-      { retryLimit: 3, retryBackoff: true },
+      (job) => this.processJob(job),
+      { concurrency: 1 },
     )
-
-    return { jobId: jobId ?? record.id, status: JobStatus.QUEUED }
-  }
-
-  async start() {
-    await this.pgBoss.createQueue('process-video')
-    await this.pgBoss.work<ProcessVideoDto>('process-video', async (jobs) => {
-      for (const job of jobs) {
-        await this.processJob(job)
-      }
-    })
 
     this.logger.log('Video processor listening for jobs')
   }
 
-  private async processJob(job: Job<ProcessVideoDto>) {
+  private async processJob(job: Job<ProcessVideoJob>) {
     const { assetId, fileId, userId } = job.data
 
     this.logger.log(`Processing video transcode: asset=${assetId}`)
-
-    await this.jobRepo.update({ assetId, kind: 'video' }, { status: JobStatus.PROCESSING })
 
     const srcDir = join(tmpdir(), `${fileId}`)
     const outDir = `${srcDir}-hls`
@@ -269,17 +239,10 @@ export class VideoProcessor {
         transcodedAt: new Date().toISOString(),
       })
 
-      await this.jobRepo.update({ assetId, kind: 'video' }, { status: JobStatus.COMPLETED })
-
       this.logger.log(`Video transcode complete: asset=${assetId}`)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       this.logger.error(`Video transcode failed: asset=${assetId} — ${message}`)
-
-      await this.jobRepo.update(
-        { assetId, kind: 'video' },
-        { status: JobStatus.FAILED, error: message },
-      )
 
       try {
         await this.patchAsset(assetId, {

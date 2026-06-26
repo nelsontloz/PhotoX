@@ -7,6 +7,7 @@ import { AuthProxyModule } from './proxy/auth-proxy/auth-proxy.module'
 import { AssetsProxyModule } from './proxy/assets-proxy/assets-proxy.module'
 import { FilesProxyModule } from './proxy/files-proxy/files-proxy.module'
 import { VideosProxyModule } from './proxy/videos-proxy/videos-proxy.module'
+import { BullMqModule } from './queue/bullmq.module'
 import { JwtAuthGuard } from './auth/jwt-auth.guard'
 
 @Module({
@@ -21,6 +22,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard'
     AssetsProxyModule,
     FilesProxyModule,
     VideosProxyModule,
+    BullMqModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })
