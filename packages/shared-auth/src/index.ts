@@ -7,8 +7,3 @@ export interface JwtPayload {
   exp: number
   jti?: string
 }
-
-export interface TokenPair {
-  accessToken: string
-  refreshToken: string
-}

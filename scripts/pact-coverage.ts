@@ -29,59 +29,31 @@ function main(): void {
   }
 
   const appsDir = path.join(ROOT, 'apps')
-  let services: string[]
-  try {
-    services = fs
-      .readdirSync(appsDir, { withFileTypes: true })
-      .filter((d) => d.isDirectory())
-      .map((d) => d.name)
-  } catch {
-    console.error('Pact coverage: apps/ directory not found')
-    process.exit(1)
-  }
-
-  function findPactSpecFiles(dir: string): string[] {
-    const results: string[] = []
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const fullPath = path.join(dir, entry.name)
-      if (entry.isDirectory()) {
-        results.push(...findPactSpecFiles(fullPath))
-      } else if (entry.isFile() && entry.name.endsWith('.pact.spec.ts')) {
-        results.push(fullPath)
-      }
-    }
-    return results
-  }
-
-  const providerSpecs: string[] = []
-  for (const svc of services) {
-    const providerDir = path.join(appsDir, svc, 'test', 'pact', 'provider')
-    if (fs.existsSync(providerDir)) {
-      providerSpecs.push(...findPactSpecFiles(providerDir))
-    }
-  }
+  const providerSpecs = fs
+    .readdirSync(appsDir, { recursive: true, withFileTypes: true })
+    .filter(
+      (d) =>
+        d.isFile() &&
+        d.name.endsWith('.pact.spec.ts') &&
+        d.parentPath.includes(path.join('test', 'pact', 'provider')),
+    )
+    .map((d) => path.join(d.parentPath, d.name))
 
   if (providerSpecs.length === 0) {
     console.error('Pact coverage: no provider spec files found in apps/*/test/pact/provider/')
     process.exit(1)
   }
 
-  const verifiedPacts = new Set<string>()
   const specPactMap = new Map<string, string[]>()
+  const verifiedPacts = new Set<string>()
 
   for (const specPath of providerSpecs) {
-    const content = fs.readFileSync(specPath, 'utf-8')
-    const pacts = parsePactUrls(content)
-
+    const pacts = parsePactUrls(fs.readFileSync(specPath, 'utf-8'))
     specPactMap.set(specPath, pacts)
-    for (const pact of pacts) {
-      verifiedPacts.add(pact)
-    }
+    for (const pact of pacts) verifiedPacts.add(pact)
   }
 
   const pactSet = new Set(pactFiles)
-  const unverified = pactFiles.filter((f) => !verifiedPacts.has(f))
-  const orphans = [...verifiedPacts].filter((f) => !pactSet.has(f))
 
   console.log()
   console.log('Pact coverage')
@@ -90,24 +62,22 @@ function main(): void {
   let failed = false
 
   for (const pact of pactFiles.sort()) {
-    if (verifiedPacts.has(pact)) {
-      const verifyingSpecs = [...specPactMap.entries()]
-        .filter(([, pacts]) => pacts.includes(pact))
-        .map(([spec]) => path.basename(path.dirname(spec)) + '/' + path.basename(spec))
-      console.log(`  \u2713 ${pact}  verified by ${verifyingSpecs.join(', ')}`)
+    const specs = [...specPactMap.entries()]
+      .filter(([, pacts]) => pacts.includes(pact))
+      .map(([spec]) => path.basename(path.dirname(spec)) + '/' + path.basename(spec))
+    if (specs.length) {
+      console.log(`  \u2713 ${pact}  verified by ${specs.join(', ')}`)
     } else {
       console.log(`  \u2717 ${pact}  NO PROVIDER VERIFIES THIS`)
       failed = true
     }
   }
 
-  for (const orphan of orphans.sort()) {
-    const referringSpecs = [...specPactMap.entries()]
+  for (const orphan of [...verifiedPacts].filter((f) => !pactSet.has(f)).sort()) {
+    const specs = [...specPactMap.entries()]
       .filter(([, pacts]) => pacts.includes(orphan))
       .map(([spec]) => path.basename(path.dirname(spec)) + '/' + path.basename(spec))
-    console.log(
-      `  \u2717 ${orphan}  referenced by ${referringSpecs.join(', ')} but not found in pacts/`,
-    )
+    console.log(`  \u2717 ${orphan}  referenced by ${specs.join(', ')} but not found in pacts/`)
     failed = true
   }
 

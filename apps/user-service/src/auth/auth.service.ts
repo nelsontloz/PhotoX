@@ -6,9 +6,9 @@ import {
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
+import * as argon2 from 'argon2'
 import { User } from '../entities/user.entity'
 import { RefreshToken } from '../entities/refresh-token.entity'
-import { PasswordService } from './tokens/password.service'
 import { TokenService } from './tokens/token.service'
 import type { AuthResponse } from '@photox/shared-types'
 
@@ -17,7 +17,6 @@ export class AuthService {
   constructor(
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(RefreshToken) private readonly tokenRepo: Repository<RefreshToken>,
-    private readonly passwordService: PasswordService,
     private readonly tokenService: TokenService,
   ) {}
 
@@ -25,7 +24,7 @@ export class AuthService {
     const existing = await this.userRepo.findOne({ where: { email } })
     if (existing) throw new ConflictException('Email already registered')
 
-    const passwordHash = await this.passwordService.hash(password)
+    const passwordHash = await argon2.hash(password)
     const user = this.userRepo.create({ email, passwordHash, displayName })
     const saved = await this.userRepo.save(user)
 
@@ -36,7 +35,7 @@ export class AuthService {
     const user = await this.userRepo.findOne({ where: { email } })
     if (!user) throw new UnauthorizedException('Invalid credentials')
 
-    const valid = await this.passwordService.verify(user.passwordHash, password)
+    const valid = await argon2.verify(user.passwordHash, password)
     if (!valid) throw new UnauthorizedException('Invalid credentials')
 
     return this.issueTokens(user)

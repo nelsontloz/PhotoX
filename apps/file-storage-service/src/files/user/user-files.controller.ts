@@ -20,7 +20,6 @@ import type { Request, Response } from 'express'
 import { UserFilesService } from './user-files.service'
 import { FileRecordDto } from '../file-record.dto'
 import { FileListResponseDto, ListFilesQueryDto } from './dto/list-files-query.dto'
-import { BatchFilesRequestDto, BatchFilesResponseDto } from './dto/batch-files.dto'
 import { parseRangeHeader } from '../streaming.util'
 
 @ApiTags('files')
@@ -43,8 +42,8 @@ export class UserFilesController {
 
   @Post('batch')
   @ApiOperation({ summary: 'Get multiple file records' })
-  @ApiResponse({ status: 200, description: 'Found and missing files', type: BatchFilesResponseDto })
-  async getBatch(@Body() dto: BatchFilesRequestDto) {
+  @ApiResponse({ status: 200, description: 'Found and missing files' })
+  async getBatch(@Body() dto: { fileIds: string[] }) {
     return this.userFilesService.getBatch(dto.fileIds)
   }
 

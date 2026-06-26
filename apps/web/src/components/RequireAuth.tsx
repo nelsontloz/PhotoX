@@ -1,13 +1,18 @@
-import { Navigate, useLocation } from 'react-router-dom'
-import { useAuthStore } from '../store/auth-store'
-import { useAuthFailureRedirect } from '../hooks/useAuthFailureRedirect'
+import { useEffect } from 'react'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { useAuthStore, subscribeAuthFailure } from '../store/auth-store'
 
 interface RequireAuthProps {
   children: React.ReactNode
 }
 
 export function RequireAuth({ children }: RequireAuthProps) {
-  useAuthFailureRedirect()
+  const navigate = useNavigate()
+  useEffect(() => {
+    return subscribeAuthFailure(() => {
+      void navigate('/login', { replace: true })
+    })
+  }, [navigate])
   const status = useAuthStore((s) => s.status)
   const location = useLocation()
 

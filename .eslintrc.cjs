@@ -13,5 +13,12 @@ module.exports = {
     'plugin:@typescript-eslint/stylistic-type-checked',
     'prettier',
   ],
-  ignorePatterns: ['dist/', 'node_modules/', 'turbo/', 'vitest.config.ts', 'vitest.*.config.ts', 'vite.config.ts'],
+  ignorePatterns: [
+    'dist/',
+    'node_modules/',
+    'turbo/',
+    'vitest.config.ts',
+    'vitest.*.config.ts',
+    'vite.config.ts',
+  ],
 }

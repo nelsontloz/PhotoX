@@ -1,9 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger'
 import { IsString, IsNotEmpty } from 'class-validator'
-import type { LogoutRequest } from '@photox/shared-types'
+import type { RefreshRequest } from '@photox/shared-types'
 
-export class LogoutDto implements LogoutRequest {
-  @ApiProperty({ description: 'The refresh token to revoke (idempotent)' })
+export class RefreshDto implements RefreshRequest {
+  @ApiProperty({ description: 'The opaque refresh token from the last auth response' })
   @IsString()
   @IsNotEmpty()
   refreshToken!: string

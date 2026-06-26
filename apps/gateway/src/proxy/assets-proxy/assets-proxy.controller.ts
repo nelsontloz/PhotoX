@@ -15,7 +15,6 @@ import type { Request } from 'express'
 import { ProxyService } from '../proxy.service'
 import { CreateAssetDto } from './dto/create-asset.dto'
 import { UpdateAssetDto } from './dto/update-asset.dto'
-import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
 import { SERVICE_URLS } from '@photox/shared-config'
 import { ThumbnailOrchestratorService } from '../../orchestrator/thumbnail-orchestrator.service'
 import { VideoOrchestratorService } from '../../orchestrator/video-orchestrator.service'
@@ -64,11 +63,11 @@ export class AssetsProxyController {
   @Get()
   @ApiOperation({ summary: 'List assets with filters' })
   @ApiResponse({ status: 200, description: 'Paginated asset list' })
-  async list(@Query() q: ListAssetsQueryDto, @Req() req: Request) {
+  async list(@Query() q: Record<string, string | undefined>, @Req() req: Request) {
     const result = await this.proxy.forward(SERVICE_URLS['media-service'], {
       method: 'GET',
       path: 'v1/assets',
-      query: { ...q, userId: (req.user as { id: string }).id } as unknown as Record<string, string>,
+      query: { ...q, userId: (req.user as { id: string }).id },
       headers: {
         'x-request-id': (req.headers['x-request-id'] as string) ?? '',
       },

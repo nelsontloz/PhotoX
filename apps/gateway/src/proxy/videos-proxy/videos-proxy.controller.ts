@@ -15,6 +15,7 @@ import { firstValueFrom } from 'rxjs'
 import { SERVICE_URLS } from '@photox/shared-config'
 import type { Asset } from '@photox/shared-types'
 import { HlsProxyService } from './hls-proxy.service'
+import { contentTypeFor } from '../../common/hls-content-types'
 
 @ApiTags('videos')
 @ApiBearerAuth()
@@ -92,7 +93,7 @@ export class VideosProxyController {
     const key = `${masterDir}/${safePath}`
     const stream = await this.hls.fetchHls(key, 'stream')
     res.set({
-      'Content-Type': this.contentTypeFor(safePath),
+      'Content-Type': contentTypeFor(safePath),
       'Cache-Control': 'no-store',
     })
     stream.pipe(res)
@@ -164,14 +165,6 @@ export class VideosProxyController {
         return `/api/v1/videos/${assetId}/${trimmed}`
       })
       .join('\n')
-  }
-
-  private contentTypeFor(safePath: string): string {
-    if (safePath.endsWith('.m3u8')) return 'application/vnd.apple.mpegurl'
-    if (safePath.endsWith('.m4s')) return 'video/iso.segment'
-    if (safePath.endsWith('.ts')) return 'video/mp2t'
-    if (safePath.endsWith('.mp4')) return 'video/mp4'
-    return 'application/octet-stream'
   }
 
   private sanitizeHlsPath(rawPath: string): string {

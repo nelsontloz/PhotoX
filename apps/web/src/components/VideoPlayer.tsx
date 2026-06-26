@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { FaCircleExclamation, FaSpinner, FaVideo } from 'react-icons/fa6'
 import type { TranscodeStatus } from '@photox/shared-types'
-import { getAuthHeaderValue } from '../lib/authHeader'
+import { useAuthStore } from '../store/auth-store'
 
 export interface VideoPlayerProps {
   src: string
@@ -47,7 +47,8 @@ export function VideoPlayer({
         if (Hls.isSupported()) {
           const hls = new Hls({
             xhrSetup: (xhr) => {
-              const header = getAuthHeaderValue()
+              const token = useAuthStore.getState().accessToken
+              const header = token ? `Bearer ${token}` : undefined
               if (header) {
                 xhr.setRequestHeader('Authorization', header)
               }

@@ -4,8 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 import { loadEnv } from '@photox/shared-config'
 import { AuthController } from './auth.controller'
 import { AuthService } from './auth.service'
-import { PasswordService } from './tokens/password.service'
-import { TokenService, AUTH_CLOCK_TOLERANCE } from './tokens/token.service'
+import { TokenService } from './tokens/token.service'
 import { User } from '../entities/user.entity'
 import { RefreshToken } from '../entities/refresh-token.entity'
 import { loadAuthEnv } from '@photox/shared-auth'
@@ -28,14 +27,6 @@ import { loadAuthEnv } from '@photox/shared-auth'
     }),
   ],
   controllers: [AuthController],
-  providers: [
-    AuthService,
-    PasswordService,
-    TokenService,
-    {
-      provide: AUTH_CLOCK_TOLERANCE,
-      useFactory: () => loadAuthEnv().AUTH_CLOCK_TOLERANCE_SEC,
-    },
-  ],
+  providers: [AuthService, TokenService],
 })
 export class AuthModule {}

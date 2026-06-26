@@ -27,13 +27,11 @@
     "class-validator": "^0.14.0",
     "typeorm": "^0.3.20",
     "pg": "^8.13.0",
-    "swagger-ui-express": "^5.0.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.0",
-    "@nestjs/schematics": "^10.2.0",
     "@nestjs/testing": "^10.4.0",
     "@types/express": "^5.0.6",
     "@types/node": "^22.0.0",

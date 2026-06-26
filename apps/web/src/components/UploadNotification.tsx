@@ -10,12 +10,7 @@ import {
 } from 'react-icons/fa6'
 import { useUploadStore } from '../store/upload-store'
 import { useThumbStore } from '../store/thumb-store'
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`
-}
+import { formatBytes } from '../lib/format'
 
 export function UploadNotification() {
   const items = useUploadStore((s) => s.items)

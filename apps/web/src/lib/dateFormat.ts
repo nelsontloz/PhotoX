@@ -1,21 +1,11 @@
 const SHORT = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
 const LONG = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' })
-const NUMERIC = new Intl.DateTimeFormat('en-US', {
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-})
-
 export function formatShortDate(d: Date): string {
   return SHORT.format(d)
 }
 
 export function formatMonthYear(d: Date): string {
   return LONG.format(d)
-}
-
-export function formatNumeric(d: Date): string {
-  return NUMERIC.format(d)
 }
 
 function startOfDay(d: Date): Date {

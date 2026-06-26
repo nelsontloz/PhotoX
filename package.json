@@ -6,6 +6,7 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
+    "format": "prettier --write .",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && rm -rf node_modules",
     "test": "turbo run test",
@@ -13,9 +14,7 @@
     "pact-consumer": "turbo run pact-consumer",
     "pact-provider": "turbo run pact-provider",
     "pact-coverage": "tsx scripts/pact-coverage.ts",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
-    "validate": "turbo run lint",
-    "verify": "rm -rf pacts && pnpm run validate && pnpm run pact-consumer && pnpm run pact-provider && pnpm run pact-coverage && turbo run test --force && pnpm run typecheck && pnpm run build"
+    "verify": "rm -rf pacts && pnpm run lint && pnpm run pact-consumer && pnpm run pact-provider && pnpm run pact-coverage && turbo run test --force && pnpm run typecheck && pnpm run build"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.0.0",
