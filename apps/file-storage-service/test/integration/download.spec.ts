@@ -59,4 +59,22 @@ describe('GET /v1/files/:fileId/download', () => {
       .query({ userId })
       .expect(404)
   })
+
+  it('UC-DL-ESC: filename with double-quote is NOT escaped in Content-Disposition (documents current behavior)', async () => {
+    const userId = mintUserId()
+    const record = await uploadForUser(
+      httpServer,
+      userId,
+      'evil"; .txt',
+      Buffer.from('contents'),
+      'text/plain',
+    )
+
+    const res = await supertest(httpServer)
+      .get(`/v1/files/${record.id}/download`)
+      .query({ userId })
+      .expect(200)
+
+    expect(res.headers['content-disposition']).toBe(`attachment; filename="${record.originalName}"`)
+  })
 })

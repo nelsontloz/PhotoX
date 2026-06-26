@@ -106,12 +106,16 @@ export class UserFilesController {
   @ApiResponse({ status: 200, description: 'Presigned URL' })
   @ApiResponse({ status: 400, description: 'Invalid TTL' })
   @ApiResponse({ status: 404, description: 'File not found' })
-  async getPresignedUrl(@Param('fileId') fileId: string, @Query('ttl') ttl?: string) {
+  async getPresignedUrl(
+    @Param('fileId') fileId: string,
+    @Query('userId') userId: string,
+    @Query('ttl') ttl?: string,
+  ) {
     const ttlSeconds = ttl ? Number(ttl) : 300
     if (!Number.isFinite(ttlSeconds) || ttlSeconds < 1 || ttlSeconds > 3600) {
       throw new BadRequestException('TTL must be between 1 and 3600 seconds')
     }
-    const url = await this.userFilesService.getFileUrl(fileId, ttlSeconds)
+    const url = await this.userFilesService.getFileUrl(userId, fileId, ttlSeconds)
     return { url, expiresAt: Date.now() + ttlSeconds * 1000 }
   }
 

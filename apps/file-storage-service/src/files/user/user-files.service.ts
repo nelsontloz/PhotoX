@@ -167,9 +167,10 @@ export class UserFilesService {
     return { stream, record, totalSize }
   }
 
-  async getFileUrl(fileId: string, ttlSeconds = 300): Promise<string> {
+  async getFileUrl(userId: string, fileId: string, ttlSeconds = 300): Promise<string> {
     const record = await this.fileRepo.findOne({ where: { id: fileId } })
     if (!record) throw new NotFoundException('File not found')
+    if (record.userId !== userId) throw new NotFoundException('File not found')
     return this.minio.presignedGetUrl(record.storageKey, ttlSeconds)
   }
 
