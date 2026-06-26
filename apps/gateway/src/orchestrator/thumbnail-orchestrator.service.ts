@@ -25,9 +25,7 @@ export class ThumbnailOrchestratorService {
         })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        this.logger.error(
-          `Failed to enqueue thumbnail (asset=${assetId}, size=${size}): ${msg}`,
-        )
+        this.logger.error(`Failed to enqueue thumbnail (asset=${assetId}, size=${size}): ${msg}`)
       }
     }
   }

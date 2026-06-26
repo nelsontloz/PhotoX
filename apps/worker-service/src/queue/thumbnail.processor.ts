@@ -56,11 +56,9 @@ export class ThumbnailProcessor {
   ) {}
 
   start() {
-    this.bullMq.createWorker<ThumbnailJob>(
-      'process-thumbnail',
-      (job) => this.processJob(job),
-      { concurrency: 1 },
-    )
+    this.bullMq.createWorker<ThumbnailJob>('process-thumbnail', (job) => this.processJob(job), {
+      concurrency: 1,
+    })
 
     this.logger.log('Thumbnail processor listening for jobs')
   }

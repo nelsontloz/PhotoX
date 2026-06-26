@@ -169,11 +169,9 @@ export class VideoProcessor {
   ) {}
 
   start() {
-    this.bullMq.createWorker<ProcessVideoJob>(
-      'process-video',
-      (job) => this.processJob(job),
-      { concurrency: 1 },
-    )
+    this.bullMq.createWorker<ProcessVideoJob>('process-video', (job) => this.processJob(job), {
+      concurrency: 1,
+    })
 
     this.logger.log('Video processor listening for jobs')
   }

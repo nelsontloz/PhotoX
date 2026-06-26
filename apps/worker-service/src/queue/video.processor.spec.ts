@@ -273,11 +273,7 @@ describe('VideoProcessor.downloadSource', () => {
         ),
     } as unknown as HttpService
 
-    const processor = new VideoProcessor(
-      {} as BullMqService,
-      http,
-      {} as HlsHttpClient,
-    )
+    const processor = new VideoProcessor({} as BullMqService, http, {} as HlsHttpClient)
 
     const downloadSource = (
       processor as unknown as {
