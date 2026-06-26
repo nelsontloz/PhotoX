@@ -1,4 +1,13 @@
-import { FaArrowLeft, FaHeart, FaDownload, FaShare, FaPen, FaCircleInfo } from 'react-icons/fa6'
+import {
+  FaArrowLeft,
+  FaHeart,
+  FaDownload,
+  FaShare,
+  FaPen,
+  FaCircleInfo,
+  FaTrash,
+  FaRotateLeft,
+} from 'react-icons/fa6'
 import { downloadFile } from '../../api/assets'
 import type { Asset } from '@photox/shared-types'
 import { formatBytes } from '../../lib/format'
@@ -8,6 +17,8 @@ interface ViewerTopBarProps {
   infoOpen: boolean
   onToggleInfo: () => void
   onClose: () => void
+  onTrash?: () => void
+  onRestore?: () => void
 }
 
 function formatDate(dateStr: string): string {
@@ -18,7 +29,14 @@ function formatDate(dateStr: string): string {
   })
 }
 
-export function ViewerTopBar({ asset, infoOpen, onToggleInfo, onClose }: ViewerTopBarProps) {
+export function ViewerTopBar({
+  asset,
+  infoOpen,
+  onToggleInfo,
+  onClose,
+  onTrash,
+  onRestore,
+}: ViewerTopBarProps) {
   const title = asset.originalName ?? asset.title ?? 'Untitled'
   const dateStr = asset.takenAt ?? asset.uploadedAt
   const sizeStr = asset.sizeBytes ? ` · ${formatBytes(asset.sizeBytes)}` : ''
@@ -66,16 +84,40 @@ export function ViewerTopBar({ asset, infoOpen, onToggleInfo, onClose }: ViewerT
         >
           <FaDownload className="text-base" />
         </button>
-        <button
-          onClick={() => handleShare()}
-          className="p-2 text-white/80 hover:text-white transition-colors"
-          title="Share"
-        >
-          <FaShare className="text-base" />
-        </button>
-        <button className="p-2 text-white/80 hover:text-white transition-colors" title="Edit">
-          <FaPen className="text-base" />
-        </button>
+        {!asset.isTrashed && (
+          <>
+            <button
+              onClick={() => handleShare()}
+              className="p-2 text-white/80 hover:text-white transition-colors"
+              title="Share"
+            >
+              <FaShare className="text-base" />
+            </button>
+            <button className="p-2 text-white/80 hover:text-white transition-colors" title="Edit">
+              <FaPen className="text-base" />
+            </button>
+          </>
+        )}
+        {onTrash && (
+          <button
+            onClick={onTrash}
+            className="p-2 text-red-400 hover:text-red-300 transition-colors"
+            title="Move to trash"
+            aria-label="Move to trash"
+          >
+            <FaTrash className="text-base" />
+          </button>
+        )}
+        {onRestore && (
+          <button
+            onClick={onRestore}
+            className="p-2 text-white/80 hover:text-white transition-colors"
+            title="Restore from trash"
+            aria-label="Restore from trash"
+          >
+            <FaRotateLeft className="text-base" />
+          </button>
+        )}
         <div className="w-px h-4 bg-white/20 mx-2" />
         <button
           onClick={onToggleInfo}

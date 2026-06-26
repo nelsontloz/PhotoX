@@ -22,6 +22,8 @@ interface AssetViewerProps {
   onNext?: () => void
   hasPrev: boolean
   hasNext: boolean
+  onTrash?: () => void
+  onRestore?: () => void
 }
 
 const TRANSCODE_POLL_MS = 5_000
@@ -41,6 +43,8 @@ export function AssetViewer({
   onNext,
   hasPrev,
   hasNext,
+  onTrash,
+  onRestore,
 }: AssetViewerProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [videoPosterUrl, setVideoPosterUrl] = useState<string | null>(null)
@@ -171,6 +175,8 @@ export function AssetViewer({
             setInfoOpen((v) => !v)
           }}
           onClose={onClose}
+          onTrash={onTrash}
+          onRestore={onRestore}
         />
         <div className="flex-1 flex items-center justify-center p-8 relative min-h-0">
           {hasPrev && onPrev && (
