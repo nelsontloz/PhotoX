@@ -23,6 +23,9 @@ export class AssetsService {
     asset.title = dto.title ?? null
     asset.description = dto.description ?? null
     asset.takenAt = dto.takenAt ? new Date(dto.takenAt) : null
+    asset.mimeType = dto.mimeType ?? null
+    asset.sizeBytes = dto.sizeBytes ?? null
+    asset.originalName = dto.originalName ?? null
     const saved = await this.repo.save(asset)
     return this.toResponse(saved)
   }

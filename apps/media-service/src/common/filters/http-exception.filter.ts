@@ -20,6 +20,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
       status = exception.getStatus()
       const res = exception.getResponse()
       message = typeof res === 'string' ? res : ((res as { message?: string }).message ?? message)
+    } else {
+      const err = exception instanceof Error ? exception : new Error(String(exception))
+      console.error(`[ExceptionFilter] ${status}: ${err.stack ?? err.message}`)
+      response.status(status).json({ statusCode: status, message: err.message })
+      return
     }
 
     console.error(`[ExceptionFilter] ${status}: ${message}`)

@@ -27,4 +27,18 @@ export class CreateAssetDto {
   @IsOptional()
   @IsDateString()
   takenAt?: string
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  mimeType?: string
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  sizeBytes?: number
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  originalName?: string
 }

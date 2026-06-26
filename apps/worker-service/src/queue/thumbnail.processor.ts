@@ -158,6 +158,9 @@ export class ThumbnailProcessor {
             sizeBytes,
             originalName,
             status: metadataStatus,
+            width: metadata.width,
+            height: metadata.height,
+            metadata: null,
           }),
         )
         this.logger.debug(`Metadata patched for asset=${assetId}`)
@@ -166,6 +169,17 @@ export class ThumbnailProcessor {
         this.logger.warn(`Metadata patch failed for asset=${assetId}: ${message}`)
       }
     } else if (mimeType?.startsWith('video/')) {
+      const clHeader = upstream.headers['content-length']
+      const rawContentLength =
+        typeof clHeader === 'string'
+          ? clHeader
+          : ((Array.isArray(clHeader) ? clHeader[0] : '') ?? '')
+      const sizeBytes = Number(rawContentLength) || buffer.length
+
+      const rawDisposition = String(upstream.headers['content-disposition'] ?? '')
+      const nameMatch = /filename\*?=(?:UTF-8'')?"?([^";]+)/i.exec(rawDisposition)
+      const originalName = nameMatch ? decodeURIComponent(nameMatch[1]!.trim()) : null
+
       let tmpPath: string | null = null
       try {
         const ext = mimeType.includes('mp4')
@@ -192,6 +206,16 @@ export class ThumbnailProcessor {
               fps: videoMeta.fps,
               hasAudio: videoMeta.hasAudio,
               orientation: videoMeta.orientation,
+              sizeBytes,
+              originalName,
+              takenAt: videoMeta.takenAt,
+              cameraMake: videoMeta.cameraMake,
+              cameraModel: videoMeta.cameraModel,
+              lensModel: videoMeta.lensModel,
+              latitude: videoMeta.latitude,
+              longitude: videoMeta.longitude,
+              altitude: videoMeta.altitude,
+              metadata: null,
             }),
           )
           this.logger.debug(`Video metadata patched for asset=${assetId}`)

@@ -155,6 +155,14 @@ export interface VideoMetadataPatch {
   fps: number | null
   hasAudio: boolean | null
   orientation: number | null
+  takenAt: Date | null
+  cameraMake: string | null
+  cameraModel: string | null
+  lensModel: string | null
+  latitude: number | null
+  longitude: number | null
+  altitude: number | null
+  metadata: Record<string, unknown> | null
   metadataStatus: 'ready'
   metadataExtractedAt: Date
 }
@@ -178,6 +186,22 @@ function readOrientation(result: FfprobeResult): number | null {
   return null
 }
 
+function parseIso6709(
+  s: string,
+): { latitude: number; longitude: number; altitude: number | null } | null {
+  const m = /^([+-][\d.]+)([+-][\d.]+)(?:([+-][\d.]+))?\//.exec(s)
+  if (!m) return null
+  const lat = Number.parseFloat(m[1]!)
+  const lon = Number.parseFloat(m[2]!)
+  const alt = m[3] ? Number.parseFloat(m[3]) : null
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
+  return {
+    latitude: lat,
+    longitude: lon,
+    altitude: alt !== null && Number.isFinite(alt) ? alt : null,
+  }
+}
+
 @Injectable()
 export class VideoMetadataExtractor {
   private readonly logger = new Logger(VideoMetadataExtractor.name)
@@ -197,6 +221,14 @@ export class VideoMetadataExtractor {
         fps: null,
         hasAudio: null,
         orientation: null,
+        takenAt: null,
+        cameraMake: null,
+        cameraModel: null,
+        lensModel: null,
+        latitude: null,
+        longitude: null,
+        altitude: null,
+        metadata: null,
         metadataStatus: 'ready',
         metadataExtractedAt: new Date(),
       }
@@ -206,6 +238,33 @@ export class VideoMetadataExtractor {
     const hasAudio = result.streams.some((s) => s.codec_type === 'audio')
 
     const duration = result.format.duration ? Number.parseFloat(result.format.duration) : null
+
+    let takenAt: Date | null = null
+    const creationTime = result.format.tags?.creation_time
+    if (creationTime) {
+      const d = new Date(creationTime)
+      if (Number.isFinite(d.getTime()) && d.getFullYear() >= 1990) {
+        takenAt = d
+      }
+    }
+
+    const cameraMake =
+      result.format.tags?.make?.trim() ??
+      videoStream?.tags?.['com.apple.quicktime.make']?.trim() ??
+      videoStream?.tags?.make?.trim() ??
+      null
+    const cameraModel =
+      result.format.tags?.model?.trim() ??
+      videoStream?.tags?.['com.apple.quicktime.model']?.trim() ??
+      videoStream?.tags?.model?.trim() ??
+      null
+    const lensModel =
+      videoStream?.tags?.['com.apple.quicktime.lensmodel']?.trim() ??
+      videoStream?.tags?.lensmodel?.trim() ??
+      null
+
+    const locationTag = result.format.tags?.location
+    const location = locationTag ? parseIso6709(locationTag) : null
 
     return {
       durationSeconds:
@@ -226,6 +285,14 @@ export class VideoMetadataExtractor {
       })(),
       hasAudio,
       orientation: readOrientation(result),
+      takenAt,
+      cameraMake,
+      cameraModel,
+      lensModel,
+      latitude: location?.latitude ?? null,
+      longitude: location?.longitude ?? null,
+      altitude: location?.altitude ?? null,
+      metadata: result as unknown as Record<string, unknown>,
       metadataStatus: 'ready',
       metadataExtractedAt: new Date(),
     }

@@ -126,6 +126,9 @@ export class FilesProxyController {
           description,
           takenAt,
           userId,
+          mimeType: record.mimeType,
+          sizeBytes: record.sizeBytes,
+          originalName: record.originalName,
         },
         headers: {
           'x-request-id': requestId,

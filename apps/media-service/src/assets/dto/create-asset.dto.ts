@@ -1,5 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { IsUUID, IsIn, IsOptional, IsString, MaxLength, IsDateString } from 'class-validator'
+import {
+  IsUUID,
+  IsIn,
+  IsOptional,
+  IsString,
+  IsNumber,
+  Min,
+  MaxLength,
+  IsDateString,
+} from 'class-validator'
 
 export class CreateAssetDto {
   @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
@@ -30,4 +39,20 @@ export class CreateAssetDto {
   @IsOptional()
   @IsDateString()
   takenAt?: string
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  mimeType?: string
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  sizeBytes?: number
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  originalName?: string
 }
