@@ -107,7 +107,10 @@ export function AssetThumb({ asset, className = '' }: AssetThumbProps) {
             </div>
           )}
           {isVideo && transcodeStatus === 'failed' && (
-            <div className="absolute top-2 right-2 pointer-events-none" aria-label="Transcode failed">
+            <div
+              className="absolute top-2 right-2 pointer-events-none"
+              aria-label="Transcode failed"
+            >
               <div className="bg-amber-500/90 backdrop-blur-sm rounded-full w-6 h-6 flex items-center justify-center">
                 <FaTriangleExclamation className="text-white text-[12px]" />
               </div>
