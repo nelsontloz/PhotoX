@@ -5,6 +5,7 @@ interface ListAssetsParams {
   limit?: number
   offset?: number
   kind?: 'photo' | 'video'
+  isTrashed?: boolean
 }
 
 export async function listAssets(params: ListAssetsParams = {}): Promise<AssetListResponse> {
@@ -63,4 +64,12 @@ export async function uploadFile(
     },
   })
   return data
+}
+
+export async function trashAsset(assetId: string): Promise<void> {
+  await api.post(`/v1/assets/${assetId}/trash`)
+}
+
+export async function restoreAsset(assetId: string): Promise<void> {
+  await api.post(`/v1/assets/${assetId}/restore`)
 }
