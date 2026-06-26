@@ -23,6 +23,7 @@ import { ProxyService } from '../proxy.service'
 import { SERVICE_URLS } from '@photox/shared-config'
 import { ThumbnailOrchestratorService } from '../../orchestrator/thumbnail-orchestrator.service'
 import { VideoOrchestratorService } from '../../orchestrator/video-orchestrator.service'
+import { MetadataOrchestratorService } from '../../orchestrator/metadata-orchestrator.service'
 import type { FileListResponse, FileRecord, Asset } from '@photox/shared-types'
 
 @ApiTags('files')
@@ -33,6 +34,7 @@ export class FilesProxyController {
     private readonly http: HttpService,
     private readonly thumbnails: ThumbnailOrchestratorService,
     private readonly videoTranscode: VideoOrchestratorService,
+    private readonly metadataOrchestrator: MetadataOrchestratorService,
   ) {}
 
   @Post()
@@ -135,6 +137,7 @@ export class FilesProxyController {
         },
         timeout: 5_000,
       })
+      void this.metadataOrchestrator.enqueueMetadata(assetResult.data.id, record.id, userId, kind)
       void this.thumbnails.enqueueThumbnails(assetResult.data.id, record.id, userId)
       if (kind === 'video') {
         void this.videoTranscode.enqueueVideo(assetResult.data.id, record.id, userId)
