@@ -63,10 +63,7 @@ describe('POST /v1/assets/:id/thumbnails', () => {
     const first = thumb()
     const second = { ...first, fileId: randomUUID(), bytes: 99999 }
 
-    await supertest(httpServer)
-      .post(`/v1/assets/${asset.id}/thumbnails`)
-      .send(first)
-      .expect(201)
+    await supertest(httpServer).post(`/v1/assets/${asset.id}/thumbnails`).send(first).expect(201)
 
     const secondRes = await supertest(httpServer)
       .post(`/v1/assets/${asset.id}/thumbnails`)
@@ -189,10 +186,7 @@ describe('GET /v1/assets/:id/thumbnails', () => {
     const owner = mintUserId()
     const other = mintUserId()
     const asset = await createAssetForUser(httpServer, owner)
-    await supertest(httpServer)
-      .post(`/v1/assets/${asset.id}/thumbnails`)
-      .send(thumb())
-      .expect(201)
+    await supertest(httpServer).post(`/v1/assets/${asset.id}/thumbnails`).send(thumb()).expect(201)
 
     const res = await supertest(httpServer)
       .get(`/v1/assets/${asset.id}/thumbnails`)
@@ -254,10 +248,7 @@ describe('GET /v1/assets/:id/thumbnails/:size', () => {
     const owner = mintUserId()
     const other = mintUserId()
     const asset = await createAssetForUser(httpServer, owner)
-    await supertest(httpServer)
-      .post(`/v1/assets/${asset.id}/thumbnails`)
-      .send(thumb())
-      .expect(201)
+    await supertest(httpServer).post(`/v1/assets/${asset.id}/thumbnails`).send(thumb()).expect(201)
 
     const res = await supertest(httpServer)
       .get(`/v1/assets/${asset.id}/thumbnails/sm`)
@@ -277,9 +268,7 @@ describe('DELETE /v1/assets/:id/thumbnails/:size', () => {
       .send(thumb({ size: 'sm' }))
       .expect(201)
 
-    await supertest(httpServer)
-      .delete(`/v1/assets/${asset.id}/thumbnails/sm`)
-      .expect(204)
+    await supertest(httpServer).delete(`/v1/assets/${asset.id}/thumbnails/sm`).expect(204)
 
     await supertest(httpServer)
       .get(`/v1/assets/${asset.id}/thumbnails/sm`)
