@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common'
 import { PassportStrategy } from '@nestjs/passport'
 import { ExtractJwt, Strategy } from 'passport-jwt'
-import { loadAuthEnv } from '@photox/shared-auth'
+import { loadAuthEnv, type JwtPayload } from '@photox/shared-auth'
 import { loadEnv } from '@photox/shared-config'
-import type { JwtPayload } from '@photox/shared-auth'
+import type { Role } from '@photox/shared-types'
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
@@ -21,7 +21,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     })
   }
 
-  validate(payload: JwtPayload): { id: string; email: string } {
-    return { id: payload.sub, email: payload.email }
+  validate(payload: JwtPayload): { id: string; email: string; role: Role } {
+    return { id: payload.sub, email: payload.email, role: payload.role }
   }
 }

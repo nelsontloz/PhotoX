@@ -24,6 +24,7 @@ async function bootstrap() {
     .setVersion('1.0')
     .addTag('assets')
     .addTag('asset-thumbnails')
+    .addTag('admin')
     .build()
   const document = SwaggerModule.createDocument(app, config)
   SwaggerModule.setup('docs', app, document, { jsonDocumentUrl: 'docs-json' })

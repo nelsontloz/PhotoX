@@ -23,6 +23,7 @@ async function bootstrap() {
     .setDescription('Authentication endpoints')
     .setVersion('1.0')
     .addTag('auth')
+    .addTag('admin')
     .build()
   const document = SwaggerModule.createDocument(app, config)
   SwaggerModule.setup('docs', app, document, { jsonDocumentUrl: 'docs-json' })

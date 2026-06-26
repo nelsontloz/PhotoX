@@ -62,7 +62,7 @@
 }
 
 .justified-grid-gallery::after {
-  content: " ";
+  content: ' ';
   flex-grow: 1000000000;
   background: var(--last-row-background);
 }

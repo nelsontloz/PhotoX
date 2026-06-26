@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config'
 import { HealthModule } from './health/health.module'
 import { DatabaseModule } from './database/database.module'
 import { AssetsModule } from './assets/assets.module'
+import { AdminModule } from './admin/admin.module'
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { AssetsModule } from './assets/assets.module'
     }),
     DatabaseModule.forRoot('library_db'),
     AssetsModule,
+    AdminModule,
     HealthModule,
   ],
 })

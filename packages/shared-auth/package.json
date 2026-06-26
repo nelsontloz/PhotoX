@@ -5,6 +5,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "dependencies": {
+    "@photox/shared-types": "workspace:*",
     "zod": "^3.24.0"
   },
   "scripts": {

@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
-import { HealthModule } from './health/health.module'
+import { AdminModule } from './admin/admin.module'
 import { AuthModule } from './auth/auth.module'
 import { DatabaseModule } from './database/database.module'
+import { HealthModule } from './health/health.module'
 
 @Module({
   imports: [
@@ -11,8 +12,9 @@ import { DatabaseModule } from './database/database.module'
       envFilePath: ['../../.env', '.env'],
     }),
     DatabaseModule.forRoot('users_db'),
-    HealthModule,
+    AdminModule,
     AuthModule,
+    HealthModule,
   ],
 })
 export class AppModule {}

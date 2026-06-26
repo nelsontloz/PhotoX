@@ -8,6 +8,9 @@ export class User {
   @Column({ unique: true })
   email!: string
 
+  @Column({ type: 'enum', enum: ['user', 'admin'], default: 'user' })
+  role!: 'user' | 'admin'
+
   @Column()
   passwordHash!: string
 
