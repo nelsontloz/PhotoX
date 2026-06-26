@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
 import { firstValueFrom } from 'rxjs'
 import { SERVICE_URLS } from '@photox/shared-config'
+import { sleep } from '../common/sleep'
 
 const STANDARD_SIZES = ['sm', 'md', 'lg', 'xl']
 
@@ -126,8 +127,4 @@ export class ThumbnailOrchestratorService implements OnModuleDestroy {
       }
     }
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }

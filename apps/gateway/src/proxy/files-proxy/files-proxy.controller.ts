@@ -24,7 +24,6 @@ import { SERVICE_URLS } from '@photox/shared-config'
 import { ThumbnailOrchestratorService } from '../../orchestrator/thumbnail-orchestrator.service'
 import { VideoOrchestratorService } from '../../orchestrator/video-orchestrator.service'
 import type { FileListResponse, FileRecord, Asset } from '@photox/shared-types'
-import { ListFilesQueryDto } from './dto/list-files-query.dto'
 
 @ApiTags('files')
 @Controller('api/v1/files')
@@ -163,16 +162,16 @@ export class FilesProxyController {
   @Get()
   @ApiOperation({ summary: 'List files with filters' })
   @ApiResponse({ status: 200, description: 'Paginated file list' })
-  async list(@Query() q: ListFilesQueryDto, @Req() req: Request): Promise<FileListResponse> {
+  async list(
+    @Query() q: Record<string, string | undefined>,
+    @Req() req: Request,
+  ): Promise<FileListResponse> {
     const result = await this.proxy.forward<FileListResponse>(
       SERVICE_URLS['file-storage-service'],
       {
         method: 'GET',
         path: 'v1/files',
-        query: { ...q, userId: (req.user as { id: string }).id } as unknown as Record<
-          string,
-          string
-        >,
+        query: { ...q, userId: (req.user as { id: string }).id },
         headers: {
           'x-request-id': (req.headers['x-request-id'] as string) ?? '',
         },

@@ -2,7 +2,6 @@ import { ApiProperty } from '@nestjs/swagger'
 import { IsOptional, IsString, IsUUID, Min, Max } from 'class-validator'
 import { Type } from 'class-transformer'
 import type { FileListResponse } from '@photox/shared-types'
-import { FileSummaryDto } from './file-summary.dto'
 
 export class ListFilesQueryDto {
   @IsUUID()
@@ -29,15 +28,11 @@ export class ListFilesQueryDto {
 }
 
 export class FileListResponseDto implements FileListResponse {
-  @ApiProperty({ type: [FileSummaryDto] })
-  items!: FileSummaryDto[]
+  items!: FileListResponse['items']
 
-  @ApiProperty()
   total!: number
 
-  @ApiProperty()
   limit!: number
 
-  @ApiProperty()
   offset!: number
 }

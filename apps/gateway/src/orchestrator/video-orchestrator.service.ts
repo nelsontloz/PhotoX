@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
 import { firstValueFrom } from 'rxjs'
 import { SERVICE_URLS } from '@photox/shared-config'
+import { sleep } from '../common/sleep'
 
 const MAX_ATTEMPTS = 3
 const BACKOFF_MS = [500, 1000, 2000]
@@ -51,8 +52,4 @@ export class VideoOrchestratorService {
     }
     return false
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }

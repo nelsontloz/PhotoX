@@ -11,7 +11,6 @@ import {
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { ThumbnailsService } from './thumbnails.service'
-import { ThumbnailResponseDto } from './dto/thumbnail-response.dto'
 import { RegisterThumbnailDto } from './dto/register-thumbnail.dto'
 
 @ApiTags('asset-thumbnails')
@@ -24,7 +23,7 @@ export class ThumbnailsController {
   @ApiOperation({
     summary: 'Register a thumbnail (idempotent upsert on assetId+size)',
   })
-  @ApiResponse({ status: 201, type: ThumbnailResponseDto })
+  @ApiResponse({ status: 201, description: 'Thumbnail registered' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async register(@Param('id') id: string, @Body() dto: RegisterThumbnailDto) {
     return this.thumbs.register(id, dto)
@@ -41,7 +40,7 @@ export class ThumbnailsController {
 
   @Get(':id/thumbnails')
   @ApiOperation({ summary: 'List all thumbnails for an asset' })
-  @ApiResponse({ status: 200, type: [ThumbnailResponseDto] })
+  @ApiResponse({ status: 200, description: 'Thumbnail list' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async list(@Param('id') id: string, @Query('userId') userId: string) {
     return this.thumbs.listForAsset(userId, id)
@@ -49,7 +48,7 @@ export class ThumbnailsController {
 
   @Get(':id/thumbnails/:size')
   @ApiOperation({ summary: 'Get a specific thumbnail metadata by size' })
-  @ApiResponse({ status: 200, type: ThumbnailResponseDto })
+  @ApiResponse({ status: 200, description: 'Thumbnail details' })
   @ApiResponse({ status: 404, description: 'Asset or thumbnail not found' })
   async getOne(
     @Param('id') id: string,

@@ -3,7 +3,8 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import type { User } from '@photox/shared-types'
 import type { AuthResponse } from '@photox/shared-types'
 import * as authApi from '../api/auth'
-import { getAccessTokenExp } from '../lib/jwt'
+import { jwtDecode } from 'jwt-decode'
+import type { JwtPayload } from '@photox/shared-auth'
 
 const REFRESH_LEAD_MS = 5 * 60 * 1000
 let refreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -140,7 +141,13 @@ function scheduleRefresh(accessToken: string | null) {
   }
   if (!accessToken) return
 
-  const exp = getAccessTokenExp(accessToken)
+  let exp: number | null = null
+  try {
+    const payload = jwtDecode<JwtPayload>(accessToken)
+    if (typeof payload.exp === 'number') exp = payload.exp
+  } catch {
+    /* invalid token */
+  }
   if (exp === null) return
 
   const delay = exp * 1000 - Date.now() - REFRESH_LEAD_MS
