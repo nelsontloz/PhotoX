@@ -63,7 +63,7 @@ export class AssetsController {
   @ApiOperation({ summary: 'Get a single asset' })
   @ApiResponse({ status: 200, description: 'Asset found' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async getOne(@Param('id') id: string, @Query('userId') userId: string) {
+  async getOne(@Param('id') id: string, @Query('userId') userId?: string) {
     return this.assets.getOne(userId, id)
   }
 

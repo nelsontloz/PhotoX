@@ -98,8 +98,9 @@ export class AssetsService {
     return { items: items.map((a) => this.toResponse(a)), total, limit, offset }
   }
 
-  async getOne(userId: string, id: string): Promise<AssetResponse> {
-    const asset = await this.repo.findOne({ where: { id, userId } })
+  async getOne(userId: string | undefined, id: string): Promise<AssetResponse> {
+    const where = userId ? { id, userId } : { id }
+    const asset = await this.repo.findOne({ where })
     if (!asset) throw new NotFoundException('Asset not found')
     return this.toResponse(asset)
   }

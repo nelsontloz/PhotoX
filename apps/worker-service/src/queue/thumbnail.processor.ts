@@ -1,17 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
-import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
 import sharp from 'sharp'
 import { firstValueFrom } from 'rxjs'
 import FormData from 'form-data'
-import { type Job } from 'pg-boss'
+import type { Job } from 'bullmq'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { writeFile, unlink } from 'fs/promises'
-import { PgBossService } from './pg-boss.service'
-import { JobRecord, JobStatus } from './entities/job.entity'
-import type { ProcessThumbnailDto } from './dto/process-thumbnail.dto'
+import { BullMqService } from './bullmq.service'
 import { SERVICE_URLS } from '@photox/shared-config'
 import {
   MetadataExtractor,
@@ -53,47 +49,15 @@ export class ThumbnailProcessor {
   private readonly logger = new Logger(ThumbnailProcessor.name)
 
   constructor(
-    private readonly pgBoss: PgBossService,
-    @InjectRepository(JobRecord)
-    private readonly jobRepo: Repository<JobRecord>,
+    private readonly bullMq: BullMqService,
     private readonly http: HttpService,
     private readonly metadataExtractor: MetadataExtractor,
     private readonly videoMetadataExtractor: VideoMetadataExtractor,
   ) {}
 
-  async enqueue(dto: ProcessThumbnailDto): Promise<{ jobId: string; status: string }> {
-    const existing = await this.jobRepo.findOne({
-      where: { assetId: dto.assetId, size: dto.size, status: JobStatus.QUEUED },
-    })
-
-    if (existing) {
-      return { jobId: existing.id, status: existing.status }
-    }
-
-    const record = this.jobRepo.create({
-      assetId: dto.assetId,
-      fileId: dto.fileId,
-      size: dto.size,
-      status: JobStatus.QUEUED,
-    })
-    await this.jobRepo.save(record)
-
-    const jobId = await this.pgBoss.send('process-thumbnail', {
-      assetId: dto.assetId,
-      fileId: dto.fileId,
-      size: dto.size,
-      userId: dto.userId,
-    })
-
-    return { jobId: jobId ?? record.id, status: JobStatus.QUEUED }
-  }
-
-  async start() {
-    await this.pgBoss.createQueue('process-thumbnail')
-    await this.pgBoss.work<ThumbnailJob>('process-thumbnail', async (jobs) => {
-      for (const job of jobs) {
-        await this.processJob(job)
-      }
+  start() {
+    this.bullMq.createWorker<ThumbnailJob>('process-thumbnail', (job) => this.processJob(job), {
+      concurrency: 1,
     })
 
     this.logger.log('Thumbnail processor listening for jobs')
@@ -104,19 +68,13 @@ export class ThumbnailProcessor {
 
     this.logger.log(`Processing thumbnail: asset=${assetId}, size=${size}`)
 
-    await this.jobRepo.update({ assetId, size }, { status: JobStatus.PROCESSING })
-
     try {
       await this.generateThumbnail(fileId, assetId, size, userId)
-
-      await this.jobRepo.update({ assetId, size }, { status: JobStatus.COMPLETED })
 
       this.logger.log(`Thumbnail complete: asset=${assetId}, size=${size}`)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       this.logger.error(`Thumbnail failed: asset=${assetId}, size=${size} — ${message}`)
-
-      await this.jobRepo.update({ assetId, size }, { status: JobStatus.FAILED, error: message })
 
       throw err
     }

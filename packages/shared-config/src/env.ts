@@ -11,6 +11,8 @@ const envSchema = z.object({
   POSTGRES_PORT: z.coerce.number().default(5432),
   POSTGRES_USER: z.string().default('photox'),
   POSTGRES_PASSWORD: z.string().default('photox_dev'),
+  REDIS_HOST: z.string().default('localhost'),
+  REDIS_PORT: z.coerce.number().default(6379),
   MINIO_ENDPOINT: z.string().default('localhost'),
   MINIO_PORT: z.coerce.number().default(9000),
   MINIO_ROOT_USER: z.string().default('photox'),

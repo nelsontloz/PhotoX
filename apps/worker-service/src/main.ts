@@ -19,7 +19,6 @@ async function bootstrap() {
     .setDescription('Background job processing (thumbnails)')
     .setVersion('1.0')
     .addTag('health')
-    .addTag('jobs')
     .build()
   const document = SwaggerModule.createDocument(app, config)
   SwaggerModule.setup('docs', app, document, { jsonDocumentUrl: 'docs-json' })
