@@ -24,6 +24,7 @@ export interface FfprobeFormat {
   duration?: string
   bit_rate?: string
   format_name?: string
+  tags?: Record<string, string>
 }
 
 export interface FfprobeResult {

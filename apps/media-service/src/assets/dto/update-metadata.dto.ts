@@ -149,6 +149,11 @@ export class UpdateMetadataDto {
   @IsIn(['pending', 'ready', 'failed'])
   transcodeStatus?: 'pending' | 'ready' | 'failed'
 
+  @ApiProperty({ required: false, enum: ['pending', 'ready', 'failed'] })
+  @IsOptional()
+  @IsIn(['pending', 'ready', 'failed'])
+  thumbnailStatus?: 'pending' | 'ready' | 'failed' | null
+
   @ApiProperty({ required: false, nullable: true })
   @IsOptional()
   @Type(() => Date)

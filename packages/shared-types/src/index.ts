@@ -68,7 +68,9 @@ export type AssetKind = 'photo' | 'video'
 
 export type MetadataStatus = 'pending' | 'ready' | 'failed'
 
-export type TranscodeStatus = 'pending' | 'ready' | 'failed'
+export type TranscodeStatus = 'pending' | 'ready' | 'failed' | null
+
+export type ThumbnailStatus = 'pending' | 'ready' | 'failed' | null
 
 export interface Asset {
   id: string
@@ -107,6 +109,7 @@ export interface Asset {
   metadataExtractedAt: string | null
   hlsMasterKey: string | null
   transcodeStatus: TranscodeStatus
+  thumbnailStatus: ThumbnailStatus
   transcodedAt: string | null
 }
 

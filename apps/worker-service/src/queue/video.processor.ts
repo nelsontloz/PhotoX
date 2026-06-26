@@ -187,7 +187,7 @@ export class VideoProcessor {
     try {
       await this.patchAsset(assetId, { transcodeStatus: 'pending' })
 
-      const srcPath = await this.downloadSource(fileId, srcDir)
+      const srcPath = await this.downloadSource(fileId, userId, srcDir)
 
       const probe = await runFfprobeJson(srcPath)
       const duration = probe.format.duration ? Number.parseFloat(probe.format.duration) : 0
@@ -266,10 +266,10 @@ export class VideoProcessor {
     }
   }
 
-  private async downloadSource(fileId: string, destDir: string): Promise<string> {
+  private async downloadSource(fileId: string, userId: string, destDir: string): Promise<string> {
     const urlRes = await firstValueFrom(
       this.http.get<{ url: string }>(
-        `${SERVICE_URLS['file-storage-service']}/v1/files/${fileId}/url?ttl=600`,
+        `${SERVICE_URLS['file-storage-service']}/v1/files/${fileId}/url?userId=${encodeURIComponent(userId)}&ttl=600`,
         { timeout: 5_000 },
       ),
     )

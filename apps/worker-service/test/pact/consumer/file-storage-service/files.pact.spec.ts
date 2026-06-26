@@ -126,6 +126,68 @@ describe('Worker → file-storage-service files pact', () => {
       })
   })
 
+  it('GET /v1/files/:fileId/url — get presigned URL (worker downloads source)', async () => {
+    await fileStorage
+      .given('file exists with id ' + FILE_ID)
+      .uponReceiving('a request to get a presigned URL for transcoding')
+      .withRequest({
+        method: 'GET',
+        path: `/v1/files/${FILE_ID}/url`,
+        query: { userId: USER_ID, ttl: '600' },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: MatchersV3.like({
+          url: MatchersV3.string(
+            `http://minio.local/${USER_ID}/${FILE_ID}.png?X-Amz-Signature=fake`,
+          ),
+          expiresAt: MatchersV3.integer(Date.now() + 600_000),
+        }),
+      })
+      .executeTest(async (mockserver) => {
+        const res = await axios.get(`${mockserver.url}/v1/files/${FILE_ID}/url`, {
+          params: { userId: USER_ID, ttl: 600 },
+        })
+        expect(res.status).toBe(200)
+        expect(typeof res.data.url).toBe('string')
+        expect(typeof res.data.expiresAt).toBe('number')
+      })
+  })
+
+  it('GET /v1/files/:fileId/url — file not found', async () => {
+    const errorPact = createPact('file-storage-service')
+    await errorPact
+      .given('file does not exist')
+      .uponReceiving('a request to get a presigned URL for a missing file')
+      .withRequest({
+        method: 'GET',
+        path: `/v1/files/${FILE_ID}/url`,
+        query: { userId: USER_ID, ttl: '600' },
+      })
+      .willRespondWith({
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+        body: MatchersV3.like({
+          message: MatchersV3.string('File not found'),
+        }),
+      })
+      .executeTest(async (mockserver) => {
+        try {
+          await axios.get(`${mockserver.url}/v1/files/${FILE_ID}/url`, {
+            params: { userId: USER_ID, ttl: 600 },
+          })
+        } catch (err: unknown) {
+          if (axios.isAxiosError(err) && err.response) {
+            expect(err.response.status).toBe(404)
+            expect(err.response.data.message).toBeTruthy()
+          } else {
+            throw err
+          }
+        }
+      })
+  })
+
   it('POST /v1/files — upload fails', async () => {
     const errorPact = createPact('file-storage-service')
     const tmpDir = mkdtempSync(join(tmpdir(), 'pact-'))

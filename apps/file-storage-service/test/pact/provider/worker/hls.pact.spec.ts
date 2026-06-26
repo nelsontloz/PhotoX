@@ -21,7 +21,10 @@ let mockFileRepo: ReturnType<typeof createFileRepo>
 let mockMinio: ReturnType<typeof createMockHlsMinio>
 
 function createMockMinio() {
-  return createMockHlsMinio()
+  return {
+    ...createMockHlsMinio(),
+    presignedGetUrl: vi.fn().mockResolvedValue('http://minio.local/fake-presigned-url'),
+  }
 }
 
 const baseFileRecord = {

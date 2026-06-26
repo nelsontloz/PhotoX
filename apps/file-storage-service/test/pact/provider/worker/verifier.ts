@@ -56,5 +56,6 @@ function createMockMinio() {
   return {
     ...createMockHlsMinio(),
     downloadFile: vi.fn().mockResolvedValue(Readable.from(Buffer.from('fake-image-bytes'))),
+    presignedGetUrl: vi.fn().mockResolvedValue('http://minio.local/fake-presigned-url'),
   }
 }
