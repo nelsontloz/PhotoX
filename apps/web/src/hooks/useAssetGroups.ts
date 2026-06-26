@@ -11,7 +11,10 @@ export interface AssetGroup {
 
 const PAGE_SIZE = 50
 
-export function useAssetGroups() {
+export function useAssetGroups(
+  opts: { isTrashed?: boolean; dateField?: 'takenAt' | 'trashedAt' } = {},
+) {
+  const { isTrashed, dateField = 'takenAt' } = opts
   const [groups, setGroups] = useState<AssetGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -21,28 +24,31 @@ export function useAssetGroups() {
       setLoading(true)
       setError(null)
 
+      const dateOf = (a: Asset) =>
+        dateField === 'trashedAt' ? a.trashedAt : (a.takenAt ?? a.uploadedAt)
+
       const all: Asset[] = []
       let offset = 0
       let total = 0
 
       do {
-        const res = await listAssets({ limit: PAGE_SIZE, offset })
+        const res = await listAssets({ limit: PAGE_SIZE, offset, isTrashed })
         all.push(...res.items)
         total = res.total
         offset += PAGE_SIZE
       } while (offset < total)
 
       const sorted = all
-        .filter((a) => a.takenAt ?? a.uploadedAt)
+        .filter((a) => dateOf(a))
         .sort((a, b) => {
-          const da = new Date(a.takenAt ?? a.uploadedAt ?? '')
-          const db = new Date(b.takenAt ?? b.uploadedAt ?? '')
+          const da = new Date(dateOf(a) ?? '')
+          const db = new Date(dateOf(b) ?? '')
           return db.getTime() - da.getTime()
         })
 
       const map = new Map<string, Asset[]>()
       for (const asset of sorted) {
-        const dateStr = asset.takenAt ?? asset.uploadedAt ?? ''
+        const dateStr = dateOf(asset) ?? ''
         const key = groupDateSortKey(dateStr)
         if (!map.has(key)) map.set(key, [])
         map.get(key)!.push(asset)
@@ -52,7 +58,7 @@ export function useAssetGroups() {
         .sort(([a], [b]) => b.localeCompare(a))
         .map(([sortKey, items]) => {
           const representative = items[0]!
-          const dateStr = representative.takenAt ?? representative.uploadedAt ?? ''
+          const dateStr = dateOf(representative) ?? ''
           return {
             label: groupDateLabel(dateStr),
             sortKey,
