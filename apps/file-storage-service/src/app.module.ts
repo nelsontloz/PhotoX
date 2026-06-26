@@ -5,6 +5,7 @@ import { DatabaseModule } from './database/database.module'
 import { StorageModule } from './storage/storage.module'
 import { UserFilesModule } from './files/user/user-files.module'
 import { HlsFilesModule } from './files/hls/hls-files.module'
+import { AdminModule } from './admin/admin.module'
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { HlsFilesModule } from './files/hls/hls-files.module'
     UserFilesModule,
     HlsFilesModule,
     HealthModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

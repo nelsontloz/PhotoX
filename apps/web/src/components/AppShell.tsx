@@ -11,6 +11,7 @@ import {
   FaMagnifyingGlass,
   FaSliders,
   FaBell,
+  FaUserShield,
 } from 'react-icons/fa6'
 import { useAuthStore } from '../store/auth-store'
 import { UploadButton } from './UploadButton'
@@ -49,6 +50,7 @@ export function AppShell({ children }: AppShellProps) {
   const bottomNavItems = [
     { to: '/trash', icon: FaTrash, label: 'Trash' },
     { to: '/settings', icon: FaGear, label: 'Settings' },
+    ...(user?.role === 'admin' ? [{ to: '/admin', icon: FaUserShield, label: 'Admin' }] : []),
   ]
 
   return (

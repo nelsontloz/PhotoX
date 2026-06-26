@@ -19,6 +19,7 @@ export function createMockRepo() {
     find: vi.fn().mockResolvedValue([]),
     remove: vi.fn().mockResolvedValue(undefined),
     createQueryBuilder: vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnThis(),
       andWhere: vi.fn().mockReturnThis(),
       orderBy: vi.fn().mockReturnThis(),
@@ -26,5 +27,6 @@ export function createMockRepo() {
       take: vi.fn().mockReturnThis(),
       getManyAndCount: vi.fn().mockResolvedValue([[], 0]),
     }),
+    count: vi.fn().mockResolvedValue(0),
   }
 }

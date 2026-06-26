@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import {
   FaHeart,
   FaImage,
@@ -125,13 +125,17 @@ function TimelineContent() {
               </button>
             </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
+          <div className="justified-grid-gallery">
             {group.items.map((asset) => {
               const isVideo = asset.kind === 'video'
               const transcodeStatus = isVideo ? asset.transcodeStatus : null
               const duration = isVideo ? formatDuration(asset.durationSeconds) : null
+              const figureStyle = {
+                '--width': asset.width ?? 1,
+                '--height': asset.height ?? 1,
+              } as CSSProperties
               return (
-                <div
+                <figure
                   key={asset.id}
                   role="button"
                   tabIndex={0}
@@ -144,11 +148,12 @@ function TimelineContent() {
                       setSelectedAsset(asset)
                     }
                   }}
-                  className="relative group rounded-lg overflow-hidden cursor-pointer aspect-square bg-slate-800"
+                  className="group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  style={figureStyle}
                 >
                   <AssetThumb asset={asset} />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                  <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                  <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                     <div className="w-6 h-6 rounded-full border-2 border-white/80 hover:bg-primary hover:border-primary flex items-center justify-center transition-colors"></div>
                   </div>
                   {isVideo && transcodeStatus === 'ready' && (
@@ -180,13 +185,13 @@ function TimelineContent() {
                     </div>
                   )}
                   {asset.favorite && (
-                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                       <div className="bg-black/50 backdrop-blur-sm rounded px-1.5 py-0.5 text-[10px] font-bold text-white flex items-center gap-1">
                         <FaHeart className="text-[10px]" />
                       </div>
                     </div>
                   )}
-                </div>
+                </figure>
               )
             })}
           </div>

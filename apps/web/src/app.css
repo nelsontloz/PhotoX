@@ -30,3 +30,39 @@
 .upload-queue-scroll::-webkit-scrollbar {
   width: 4px;
 }
+
+.justified-grid-gallery {
+  --space: 4px;
+  --min-height: 200px;
+  --last-row-background: transparent;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space);
+  list-style: none;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.justified-grid-gallery > figure {
+  flex-grow: calc(var(--width) * (100000 / var(--height)));
+  flex-basis: calc(var(--min-height) * (var(--width) / var(--height)));
+  aspect-ratio: var(--width) / var(--height);
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: #1c2430;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.justified-grid-gallery > figure img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.justified-grid-gallery::after {
+  content: ' ';
+  flex-grow: 1000000000;
+  background: var(--last-row-background);
+}

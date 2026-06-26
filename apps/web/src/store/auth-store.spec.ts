@@ -12,6 +12,7 @@ const mockRefresh = vi.mocked(authApi.refresh)
 const mockUser = {
   id: 'u1',
   email: 'a@b.com',
+  role: 'user' as const,
   displayName: 'A',
   createdAt: '2025-01-01T00:00:00Z',
   updatedAt: '2025-01-01T00:00:00Z',

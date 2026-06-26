@@ -24,8 +24,10 @@ export class AuthService {
     const existing = await this.userRepo.findOne({ where: { email } })
     if (existing) throw new ConflictException('Email already registered')
 
+    const existingCount = await this.userRepo.count()
+    const role = existingCount === 0 ? 'admin' : 'user'
     const passwordHash = await argon2.hash(password)
-    const user = this.userRepo.create({ email, passwordHash, displayName })
+    const user = this.userRepo.create({ email, passwordHash, displayName, role })
     const saved = await this.userRepo.save(user)
 
     return this.issueTokens(saved)
@@ -74,6 +76,7 @@ export class AuthService {
     const accessToken = await this.tokenService.signAccessToken({
       id: user.id,
       email: user.email,
+      role: user.role,
     })
 
     const refreshRaw = this.tokenService.generate()
@@ -94,6 +97,7 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
+        role: user.role,
         displayName: user.displayName,
         avatarUrl: user.avatarUrl ?? undefined,
         createdAt: user.createdAt.toISOString(),

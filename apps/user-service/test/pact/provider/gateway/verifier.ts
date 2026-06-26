@@ -7,6 +7,7 @@ import { getRepositoryToken } from '@nestjs/typeorm'
 import { User } from '../../../../src/entities/user.entity'
 import { RefreshToken } from '../../../../src/entities/refresh-token.entity'
 import { AuthModule } from '../../../../src/auth/auth.module'
+import { AdminModule } from '../../../../src/admin/admin.module'
 import { createMockRepo } from './mock-repos'
 import type { MockRepos } from './mock-repos'
 
@@ -28,7 +29,7 @@ export async function setupMockedApp(): Promise<{
   const mockRefreshTokenRepo = createMockRepo()
 
   const module = await Test.createTestingModule({
-    imports: [AuthModule],
+    imports: [AuthModule, AdminModule],
   })
     .overrideProvider(getRepositoryToken(User))
     .useValue(mockUserRepo)

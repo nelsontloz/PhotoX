@@ -1,6 +1,9 @@
+export type Role = 'user' | 'admin'
+
 export interface User {
   id: string
   email: string
+  role: Role
   displayName: string
   avatarUrl?: string
   createdAt: string
@@ -130,3 +133,22 @@ export interface AssetThumbnail {
 }
 
 export type AssetThumbnailListResponse = AssetThumbnail[]
+
+export type AdminUserSortField = 'createdAt' | 'displayName' | 'email' | 'role'
+
+export interface AdminUserRow {
+  id: string
+  displayName: string
+  email: string
+  role: Role
+  createdAt: string
+  assetCount: number
+  bytesUsed: number
+}
+
+export interface AdminUserListResponse {
+  items: AdminUserRow[]
+  total: number
+  limit: number
+  offset: number
+}
