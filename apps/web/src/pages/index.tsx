@@ -16,7 +16,6 @@ import { AssetViewer } from '../components/AssetViewer/AssetViewer'
 import { UploadButton } from '../components/UploadButton'
 import { DropZone } from '../components/DropZone'
 import { useAssetGroups } from '../hooks/useAssetGroups'
-import { trashAsset } from '../api/assets'
 import { formatDuration } from '../lib/format'
 
 function TimelineContent() {
@@ -36,24 +35,6 @@ function TimelineContent() {
   }
   const closeViewer = () => {
     setSelectedAsset(null)
-  }
-
-  const handleTrash = async () => {
-    if (!selectedAsset) return
-    const kindLabel = selectedAsset.kind === 'video' ? 'video' : 'photo'
-    if (
-      !window.confirm(
-        `Move "${selectedAsset.originalName ?? selectedAsset.title ?? `this ${kindLabel}`}" to trash?`,
-      )
-    )
-      return
-    try {
-      await trashAsset(selectedAsset.id)
-      closeViewer()
-      await refresh()
-    } catch {
-      window.alert('Failed to move to trash. Please try again.')
-    }
   }
 
   if (loading) {
@@ -200,9 +181,6 @@ function TimelineContent() {
           onNext={goNext}
           hasPrev={hasPrev}
           hasNext={hasNext}
-          onTrash={() => {
-            void handleTrash()
-          }}
         />
       )}
     </DropZone>
