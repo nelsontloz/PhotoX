@@ -76,6 +76,13 @@ export class ThumbnailProcessor {
       const message = err instanceof Error ? err.message : String(err)
       this.logger.error(`Thumbnail failed: asset=${assetId}, size=${size} — ${message}`)
 
+      try {
+        const statusUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
+        await firstValueFrom(this.http.patch(statusUrl, { thumbnailStatus: 'failed' }))
+      } catch {
+        // best-effort, do not mask the original error
+      }
+
       throw err
     }
   }
@@ -282,6 +289,15 @@ export class ThumbnailProcessor {
             bytes: thumbBuffer.length,
           }),
         )
+
+        try {
+          const statusUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
+          await firstValueFrom(this.http.patch(statusUrl, { thumbnailStatus: 'ready' }))
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          this.logger.warn(`Thumbnail status update failed for asset=${assetId}: ${msg}`)
+        }
+
         return
       } finally {
         if (tmpPath) {
@@ -326,5 +342,13 @@ export class ThumbnailProcessor {
         bytes: thumbBuffer.length,
       }),
     )
+
+    try {
+      const statusUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
+      await firstValueFrom(this.http.patch(statusUrl, { thumbnailStatus: 'ready' }))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      this.logger.warn(`Thumbnail status update failed for asset=${assetId}: ${msg}`)
+    }
   }
 }

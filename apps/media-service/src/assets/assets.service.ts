@@ -26,6 +26,8 @@ export class AssetsService {
     asset.mimeType = dto.mimeType ?? null
     asset.sizeBytes = dto.sizeBytes ?? null
     asset.originalName = dto.originalName ?? null
+    asset.transcodeStatus = dto.kind === 'video' ? 'pending' : null
+    asset.thumbnailStatus = 'pending'
     const saved = await this.repo.save(asset)
     return this.toResponse(saved)
   }
@@ -190,6 +192,7 @@ export class AssetsService {
     if (dto.metadata !== undefined) patch.metadata = dto.metadata
     if (dto.hlsMasterKey !== undefined) patch.hlsMasterKey = dto.hlsMasterKey
     if (dto.transcodeStatus !== undefined) patch.transcodeStatus = dto.transcodeStatus
+    if (dto.thumbnailStatus !== undefined) patch.thumbnailStatus = dto.thumbnailStatus
     if (dto.transcodedAt !== undefined) patch.transcodedAt = dto.transcodedAt
 
     await this.repo.update(id, patch as Record<string, unknown>)
@@ -237,6 +240,7 @@ export class AssetsService {
         asset.metadataExtractedAt instanceof Date ? asset.metadataExtractedAt.toISOString() : null,
       hlsMasterKey: asset.hlsMasterKey,
       transcodeStatus: asset.transcodeStatus,
+      thumbnailStatus: asset.thumbnailStatus,
       transcodedAt: asset.transcodedAt instanceof Date ? asset.transcodedAt.toISOString() : null,
     }
   }
