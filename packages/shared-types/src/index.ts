@@ -153,3 +153,15 @@ export interface AdminUserListResponse {
   limit: number
   offset: number
 }
+
+export interface AssetFailureCounts {
+  processing: number
+  metadata: number
+  thumbnails: number
+  encoding: number
+}
+
+export interface AdminAssetCountsResponse {
+  photos: AssetFailureCounts
+  videos: AssetFailureCounts
+}
