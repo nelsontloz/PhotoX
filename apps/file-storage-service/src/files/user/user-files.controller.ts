@@ -47,6 +47,30 @@ export class UserFilesController {
     return this.userFilesService.getBatch(dto.fileIds)
   }
 
+  @Post('derivatives')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 4 * 1024 * 1024 * 1024 } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Register a derivative file (e.g. transcoded video) for an existing asset',
+  })
+  @ApiResponse({ status: 201, description: 'Derivative registered', type: FileRecordDto })
+  @ApiResponse({ status: 400, description: 'No file or invalid request' })
+  async uploadDerivative(
+    @Body('userId') userId: string,
+    @Body('assetId') assetId: string,
+    @UploadedFile() file: { buffer: Buffer; originalname: string; mimetype: string; size: number },
+  ) {
+    return this.userFilesService.uploadDerivative(userId, assetId, file)
+  }
+
+  @Delete('by-asset/:assetId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete all derivative files for an asset (idempotent)' })
+  @ApiResponse({ status: 204 })
+  async deleteByAsset(@Param('assetId') assetId: string, @Query('userId') userId: string) {
+    await this.userFilesService.deleteByAsset(userId, assetId)
+  }
+
   @Get()
   @ApiOperation({ summary: "List the authenticated user's files" })
   @ApiResponse({ status: 200, description: 'Paginated file list', type: FileListResponseDto })
@@ -57,21 +81,6 @@ export class UserFilesController {
       query.offset ?? 0,
       query.mimeType,
     )
-  }
-
-  @Post(':fileId/replace')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 4 * 1024 * 1024 * 1024 } }))
-  @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Replace a file' })
-  @ApiResponse({ status: 200, description: 'File replaced', type: FileRecordDto })
-  @ApiResponse({ status: 400, description: 'No file or invalid request' })
-  @ApiResponse({ status: 404, description: 'File not found' })
-  async replace(
-    @Param('fileId') fileId: string,
-    @Query('userId') userId: string,
-    @UploadedFile() file: { buffer: Buffer; mimetype: string; size: number },
-  ) {
-    return this.userFilesService.replace(userId, fileId, file)
   }
 
   @Get(':fileId/stream')

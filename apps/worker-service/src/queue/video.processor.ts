@@ -68,13 +68,13 @@ export class VideoProcessor {
       const needsTranscode = videoCodec !== 'h264' || (audioStream && audioCodec !== 'aac')
 
       if (!needsTranscode) {
-        await this.patchAsset(assetId, { transcodeStatus: 'ready' })
+        await this.patchAsset(assetId, { transcodeStatus: 'ready', transcodeFileId: null })
         this.logger.log(`Video already browser-safe, skipping transcode: asset=${assetId}`)
         return
       }
 
       await mkdir(outDir, { recursive: true })
-      const outPath = join(outDir, 'output.mp4')
+      const outPath = join(outDir, 'output.webm')
 
       const scaleFilter = height > 720 ? `scale=-2:min(720\\,ih)` : undefined
 
@@ -83,29 +83,27 @@ export class VideoProcessor {
         '-i',
         srcPath,
         '-c:v',
-        'libx264',
+        'libsvtav1',
         '-preset',
-        'medium',
+        '6',
         '-crf',
-        '23',
+        '32',
         '-pix_fmt',
         'yuv420p',
         ...(scaleFilter ? ['-vf', scaleFilter] : []),
-        '-c:a',
-        'aac',
-        '-b:a',
-        '128k',
-        '-movflags',
-        '+faststart',
+        ...(audioStream ? ['-c:a', 'libopus', '-b:a', '96k'] : []),
         outPath,
       ]
 
       await runFfmpeg(ffmpegArgs, { timeoutMs: TRANSCODE_TIMEOUT_MS })
 
       const transcoded = await readFile(outPath)
-      await this.replaceFile(fileId, userId, transcoded)
+      const derivativeFileId = await this.registerDerivative(assetId, userId, transcoded)
 
-      await this.patchAsset(assetId, { transcodeStatus: 'ready' })
+      await this.patchAsset(assetId, {
+        transcodeStatus: 'ready',
+        transcodeFileId: derivativeFileId,
+      })
       this.logger.log(`Video transcode complete: asset=${assetId}`)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -164,18 +162,25 @@ export class VideoProcessor {
     return destPath
   }
 
-  private async replaceFile(fileId: string, userId: string, body: Buffer): Promise<void> {
+  // ponytail: this exists. Replaces the older in-place replace path that overwrote the original bytes; originals are now immutable and derivatives live as separate FileRecord rows.
+  private async registerDerivative(assetId: string, userId: string, body: Buffer): Promise<string> {
     const form = new FormData()
     form.append('userId', userId)
-    const blob = new Blob([body], { type: 'video/mp4' })
-    form.append('file', blob, 'video.mp4')
-    await firstValueFrom(
-      this.http.post(`${SERVICE_URLS['file-storage-service']}/v1/files/${fileId}/replace`, form, {
-        timeout: 300_000,
-        maxBodyLength: Infinity,
-        maxContentLength: Infinity,
-      }),
+    form.append('assetId', assetId)
+    const blob = new Blob([body], { type: 'video/webm' })
+    form.append('file', blob, 'video.webm')
+    const res = await firstValueFrom(
+      this.http.post<{ id: string }>(
+        `${SERVICE_URLS['file-storage-service']}/v1/files/derivatives`,
+        form,
+        {
+          timeout: 300_000,
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+        },
+      ),
     )
+    return res.data.id
   }
 
   private async patchAsset(assetId: string, patch: Record<string, unknown>): Promise<void> {

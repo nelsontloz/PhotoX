@@ -1,23 +1,14 @@
-import { useState, type CSSProperties } from 'react'
-import {
-  FaHeart,
-  FaImage,
-  FaMountain,
-  FaPlay,
-  FaSpinner,
-  FaTriangleExclamation,
-  FaWandMagicSparkles,
-} from 'react-icons/fa6'
+import { useState } from 'react'
+import { FaImage, FaMountain, FaSpinner, FaWandMagicSparkles } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
 import { RequireAuth } from '../components/RequireAuth'
 import { AppShell } from '../components/AppShell'
-import { AssetThumb } from '../components/AssetThumb'
 import { AssetViewer } from '../components/AssetViewer/AssetViewer'
+import { GalleryItem } from '../components/GalleryItem'
 import { UploadButton } from '../components/UploadButton'
 import { DropZone } from '../components/DropZone'
 import { useAssetGroups } from '../hooks/useAssetGroups'
 import { trashAsset } from '../api/assets'
-import { formatDuration } from '../lib/format'
 
 function TimelineContent() {
   const { groups, loading, error, refresh } = useAssetGroups()
@@ -127,72 +118,7 @@ function TimelineContent() {
           </div>
           <div className="justified-grid-gallery">
             {group.items.map((asset) => {
-              const isVideo = asset.kind === 'video'
-              const transcodeStatus = isVideo ? asset.transcodeStatus : null
-              const duration = isVideo ? formatDuration(asset.durationSeconds) : null
-              const figureStyle = {
-                '--width': asset.width ?? 1,
-                '--height': asset.height ?? 1,
-              } as CSSProperties
-              return (
-                <figure
-                  key={asset.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => {
-                    setSelectedAsset(asset)
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      setSelectedAsset(asset)
-                    }
-                  }}
-                  className="group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  style={figureStyle}
-                >
-                  <AssetThumb asset={asset} />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-                  <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                    <div className="w-6 h-6 rounded-full border-2 border-white/80 hover:bg-primary hover:border-primary flex items-center justify-center transition-colors"></div>
-                  </div>
-                  {isVideo && transcodeStatus === 'ready' && (
-                    <div className="absolute top-3 left-3 group-hover:opacity-0 transition-opacity duration-200 pointer-events-none">
-                      <div className="bg-black/60 backdrop-blur-sm rounded-full w-7 h-7 flex items-center justify-center">
-                        <FaPlay className="text-white text-[10px] ml-0.5" />
-                      </div>
-                    </div>
-                  )}
-                  {isVideo && transcodeStatus === 'pending' && (
-                    <div className="absolute top-3 left-3 pointer-events-none">
-                      <div className="bg-black/60 backdrop-blur-sm rounded-full w-7 h-7 flex items-center justify-center">
-                        <FaSpinner className="text-white text-[12px] animate-spin" />
-                      </div>
-                    </div>
-                  )}
-                  {isVideo && transcodeStatus === 'failed' && (
-                    <div className="absolute top-3 left-3 pointer-events-none">
-                      <div className="bg-amber-500/90 backdrop-blur-sm rounded-full w-7 h-7 flex items-center justify-center">
-                        <FaTriangleExclamation className="text-white text-[12px]" />
-                      </div>
-                    </div>
-                  )}
-                  {isVideo && duration && (
-                    <div className="absolute bottom-2 right-2 pointer-events-none">
-                      <div className="bg-black/65 backdrop-blur-sm rounded px-1.5 py-0.5 text-[10px] font-semibold text-white tabular-nums">
-                        {duration}
-                      </div>
-                    </div>
-                  )}
-                  {asset.favorite && (
-                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                      <div className="bg-black/50 backdrop-blur-sm rounded px-1.5 py-0.5 text-[10px] font-bold text-white flex items-center gap-1">
-                        <FaHeart className="text-[10px]" />
-                      </div>
-                    </div>
-                  )}
-                </figure>
-              )
+              return <GalleryItem key={asset.id} asset={asset} onSelect={setSelectedAsset} />
             })}
           </div>
         </section>

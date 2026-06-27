@@ -8,6 +8,7 @@ import { Skeleton } from './Skeleton'
 interface AssetThumbProps {
   asset: Asset
   className?: string
+  onThumbPicked?: (thumb: AssetThumbnail) => void
 }
 
 const THUMB_SIZES = ['md', 'lg', 'sm']
@@ -20,7 +21,7 @@ function pickThumbnail(thumbs: AssetThumbnail[]): AssetThumbnail | undefined {
   return thumbs[0]
 }
 
-export function AssetThumb({ asset, className = '' }: AssetThumbProps) {
+export function AssetThumb({ asset, className = '', onThumbPicked }: AssetThumbProps) {
   const ref = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
   const localThumb = useThumbStore((s) => s.urls[asset.fileId])
@@ -58,6 +59,7 @@ export function AssetThumb({ asset, className = '' }: AssetThumbProps) {
         if (cancelled || thumbs.length === 0) return
         const thumb = pickThumbnail(thumbs)
         if (!thumb) return
+        onThumbPicked?.(thumb)
         return downloadFile(thumb.fileId)
       })
       .then((blob) => {
