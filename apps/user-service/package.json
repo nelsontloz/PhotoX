@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "pact-consumer": "vitest run --config vitest.consumer.config.ts",
     "pact-provider": "vitest run --config vitest.provider.config.ts"
   },
   "dependencies": {
