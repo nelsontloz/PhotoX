@@ -2,7 +2,6 @@
 import type { INestApplication } from '@nestjs/common'
 import { MatchersV3 } from '@pact-foundation/pact'
 import request from 'supertest'
-import { SERVICE_URLS } from '@photox/shared-config'
 import { createPact } from '../setup'
 import { setupMediaServicePactModule } from './testing-module'
 import type { StubProxy } from '../stub'
@@ -224,34 +223,6 @@ describe('Gateway → media-service assets pact', () => {
         const res = await request(app.getHttpServer()).get(`/api/v1/assets/${ASSET_ID}/thumbnails`)
         expect(res.status).toBe(200)
         expect(res.body).toHaveLength(2)
-      })
-  })
-
-  it('GET /v1/assets/:id — ownership mismatch returns 404 to gateway (gateway maps to 403)', async () => {
-    await mediaService
-      .given('asset exists with id ' + ASSET_ID + ' owned by another user')
-      .uponReceiving('a get asset request from a non-owning user')
-      .withRequest({
-        method: 'GET',
-        path: `/v1/assets/${ASSET_ID}`,
-        query: { userId: USER_ID },
-      })
-      .willRespondWith({
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-        body: MatchersV3.like({ message: MatchersV3.string('Asset not found') }),
-      })
-      .executeTest(async (mockserver) => {
-        const originalUrl = (SERVICE_URLS as Record<string, string>)['media-service']!
-        ;(SERVICE_URLS as Record<string, string>)['media-service'] = mockserver.url
-        try {
-          const res = await request(app.getHttpServer()).get(
-            `/api/v1/videos/${ASSET_ID}/playlist.m3u8`,
-          )
-          expect(res.status).toBe(403)
-        } finally {
-          ;(SERVICE_URLS as Record<string, string>)['media-service'] = originalUrl
-        }
       })
   })
 

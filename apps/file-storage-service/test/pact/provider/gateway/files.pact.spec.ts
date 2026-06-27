@@ -75,8 +75,6 @@ describe('Pact verification — file-storage-service', () => {
           repos.mockFileRepo.findOne.mockResolvedValue(null)
           return Promise.resolve()
         },
-        'HLS master playlist exists': () => Promise.resolve(),
-        'HLS segment exists': () => Promise.resolve(),
       },
     }).verifyProvider()
   }, 30_000)

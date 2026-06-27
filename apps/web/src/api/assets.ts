@@ -30,13 +30,9 @@ export async function downloadFile(fileId: string): Promise<Blob> {
   return data
 }
 
-export function getVideoStreamUrl(assetId: string, userId: string): string {
+export function getVideoStreamUrl(fileId: string, userId: string): string {
   const params = new URLSearchParams({ userId })
-  return `/api/v1/videos/${assetId}/stream?${params.toString()}`
-}
-
-export function getHlsPlaylistUrl(assetId: string): string {
-  return `/api/v1/videos/${assetId}/playlist.m3u8`
+  return `/api/v1/files/${fileId}/stream?${params.toString()}`
 }
 
 export async function uploadFile(
@@ -56,7 +52,7 @@ export async function uploadFile(
 
   const { data } = await api.post<Asset>('/v1/files', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 180_000,
+    timeout: 3_600_000,
     onUploadProgress: (e) => {
       if (onProgress && e.total) {
         onProgress(Math.round((e.loaded / e.total) * 100))

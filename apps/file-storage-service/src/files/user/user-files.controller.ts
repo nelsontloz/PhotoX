@@ -28,7 +28,7 @@ export class UserFilesController {
   constructor(private readonly userFilesService: UserFilesService) {}
 
   @Post()
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 2 * 1024 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 4 * 1024 * 1024 * 1024 } }))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Upload a file' })
   @ApiResponse({ status: 201, description: 'File uploaded', type: FileRecordDto })
@@ -57,6 +57,21 @@ export class UserFilesController {
       query.offset ?? 0,
       query.mimeType,
     )
+  }
+
+  @Post(':fileId/replace')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 4 * 1024 * 1024 * 1024 } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Replace a file' })
+  @ApiResponse({ status: 200, description: 'File replaced', type: FileRecordDto })
+  @ApiResponse({ status: 400, description: 'No file or invalid request' })
+  @ApiResponse({ status: 404, description: 'File not found' })
+  async replace(
+    @Param('fileId') fileId: string,
+    @Query('userId') userId: string,
+    @UploadedFile() file: { buffer: Buffer; mimetype: string; size: number },
+  ) {
+    return this.userFilesService.replace(userId, fileId, file)
   }
 
   @Get(':fileId/stream')

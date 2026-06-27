@@ -321,17 +321,15 @@ describe('Worker → media-service metadata pact', () => {
       })
   })
 
-  it('PATCH /v1/assets/:id/metadata — mark transcode ready (worker completes HLS upload)', async () => {
-    const transcodedAt = '2024-06-26T14:30:00.000Z'
-    const hlsMasterKey = `a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11/550e8400-e29b-41d4-a716-446655440000/hls/master.m3u8`
+  it('PATCH /v1/assets/:id/metadata — mark transcode ready', async () => {
     await mediaService
       .given('asset exists with id ' + ASSET_ID)
-      .uponReceiving('a request to mark transcode status as ready with HLS info')
+      .uponReceiving('a request to mark transcode status as ready')
       .withRequest({
         method: 'PATCH',
         path: `/v1/assets/${ASSET_ID}/metadata`,
         headers: { 'Content-Type': 'application/json' },
-        body: { transcodeStatus: 'ready', hlsMasterKey, transcodedAt },
+        body: { transcodeStatus: 'ready' },
       })
       .willRespondWith({
         status: 200,
@@ -340,20 +338,16 @@ describe('Worker → media-service metadata pact', () => {
           ...failedMetadataResponseMatcher,
           metadataExtractedAt: MatchersV3.nullValue(),
           transcodeStatus: MatchersV3.string('ready'),
-          hlsMasterKey: MatchersV3.string(hlsMasterKey),
-          transcodedAt: MatchersV3.datetime("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", transcodedAt),
         },
       })
       .executeTest(async (mockserver) => {
         const res = await axios.patch(
           `${mockserver.url}/v1/assets/${ASSET_ID}/metadata`,
-          { transcodeStatus: 'ready', hlsMasterKey, transcodedAt },
+          { transcodeStatus: 'ready' },
           { headers: { 'Content-Type': 'application/json' } },
         )
         expect(res.status).toBe(200)
         expect(res.data.transcodeStatus).toBe('ready')
-        expect(res.data.hlsMasterKey).toBe(hlsMasterKey)
-        expect(res.data.transcodedAt).toBe(transcodedAt)
       })
   })
 })

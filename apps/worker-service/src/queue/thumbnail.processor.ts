@@ -7,6 +7,7 @@ import type { Job } from 'bullmq'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { writeFile, unlink } from 'fs/promises'
+import { randomUUID } from 'crypto'
 import { BullMqService } from './bullmq.service'
 import { SERVICE_URLS } from '@photox/shared-config'
 import { runFfmpeg } from './ffmpeg'
@@ -110,7 +111,7 @@ export class ThumbnailProcessor {
             : mimeType.includes('quicktime')
               ? 'mov'
               : 'bin'
-        tmpPath = join(tmpdir(), `${fileId}.${ext}`)
+        tmpPath = join(tmpdir(), `${fileId}-${randomUUID()}.${ext}`)
         await writeFile(tmpPath, buffer)
 
         let orientation: number | null = null
@@ -138,7 +139,10 @@ export class ThumbnailProcessor {
         orientation ??= 1
         if (durationSeconds === null || !Number.isFinite(durationSeconds)) durationSeconds = 0
 
-        const seekSec = durationSeconds > 0 ? Math.max(1, durationSeconds * 0.25) : 1
+        const seekSec =
+          durationSeconds > 0
+            ? Math.min(Math.max(0, durationSeconds * 0.25), Math.max(0, durationSeconds - 0.1))
+            : 0
 
         const frameBuffer = (
           await runFfmpeg([

@@ -3,6 +3,7 @@ import { HttpService } from '@nestjs/axios'
 import { firstValueFrom } from 'rxjs'
 import type { Job } from 'bullmq'
 import { writeFile, unlink } from 'fs/promises'
+import { randomUUID } from 'crypto'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { BullMqService } from './bullmq.service'
@@ -117,7 +118,7 @@ export class MetadataProcessor {
             : mimeType?.includes('quicktime')
               ? 'mov'
               : 'bin'
-        const tmpPath = join(tmpdir(), `${fileId}.${ext}`)
+        const tmpPath = join(tmpdir(), `${fileId}-${randomUUID()}.${ext}`)
         try {
           await writeFile(tmpPath, buffer)
 

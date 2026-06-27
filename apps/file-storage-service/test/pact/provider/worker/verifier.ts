@@ -7,7 +7,6 @@ import { getRepositoryToken } from '@nestjs/typeorm'
 import { FileRecord } from '../../../../src/entities/file-record.entity'
 import { MinioService } from '../../../../src/storage/minio.service'
 import { UserFilesModule } from '../../../../src/files/user/user-files.module'
-import { MockHlsFilesController, createMockHlsMinio } from '../shared/mock-hls'
 import { createFileRepo } from './mock-repos'
 import type { MockRepos } from './mock-repos'
 
@@ -28,7 +27,6 @@ export async function setupMockedApp(): Promise<{
 
   const module = await Test.createTestingModule({
     imports: [UserFilesModule],
-    controllers: [MockHlsFilesController],
   })
     .overrideProvider(getRepositoryToken(FileRecord))
     .useValue(mockFileRepo)
@@ -54,8 +52,15 @@ export async function setupMockedApp(): Promise<{
 
 function createMockMinio() {
   return {
-    ...createMockHlsMinio(),
+    uploadFile: vi.fn().mockResolvedValue(undefined),
     downloadFile: vi.fn().mockResolvedValue(Readable.from(Buffer.from('fake-image-bytes'))),
+    downloadFileRange: vi.fn().mockResolvedValue(Readable.from(Buffer.from('fake-segment-bytes'))),
+    deleteFile: vi.fn().mockResolvedValue(undefined),
+    fileExists: vi.fn().mockResolvedValue(true),
+    statFile: vi
+      .fn()
+      .mockResolvedValue({ size: 100, lastModified: new Date('2024-01-01T00:00:00.000Z') }),
+    ping: vi.fn().mockResolvedValue(undefined),
     presignedGetUrl: vi.fn().mockResolvedValue('http://minio.local/fake-presigned-url'),
   }
 }

@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return */
 import path from 'node:path'
+import { Readable } from 'stream'
 import { type INestApplication, ValidationPipe } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { getRepositoryToken } from '@nestjs/typeorm'
 import { FileRecord } from '../../../../src/entities/file-record.entity'
 import { MinioService } from '../../../../src/storage/minio.service'
 import { UserFilesModule } from '../../../../src/files/user/user-files.module'
-import { MockHlsFilesController, createMockHlsMinio } from '../shared/mock-hls'
 import { createFileRepo } from './mock-repos'
 import type { MockRepos } from './mock-repos'
 
@@ -22,11 +22,19 @@ export async function setupMockedApp(): Promise<{
   process.env.NODE_ENV = 'test'
 
   const mockFileRepo = createFileRepo()
-  const mockMinioService = createMockHlsMinio()
+  const mockMinioService = {
+    uploadFile: vi.fn().mockResolvedValue(undefined),
+    downloadFile: vi.fn().mockResolvedValue(Readable.from(Buffer.from('fake-file-bytes'))),
+    deleteFile: vi.fn().mockResolvedValue(undefined),
+    fileExists: vi.fn().mockResolvedValue(true),
+    statFile: vi
+      .fn()
+      .mockResolvedValue({ size: 100, lastModified: new Date('2024-01-01T00:00:00.000Z') }),
+    ping: vi.fn().mockResolvedValue(undefined),
+  }
 
   const module = await Test.createTestingModule({
     imports: [UserFilesModule],
-    controllers: [MockHlsFilesController],
   })
     .overrideProvider(getRepositoryToken(FileRecord))
     .useValue(mockFileRepo)

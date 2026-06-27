@@ -18,6 +18,13 @@ The gateway publishes thumbnail and video jobs directly to Redis BullMQ queues (
 
 Worker-service uses ffmpeg/ffprobe at runtime and consumes `process-video` jobs from BullMQ. The Docker base-builder installs ffmpeg automatically. For local dev without Docker, install via `apt install ffmpeg` (Debian/Ubuntu) or `brew install ffmpeg` (macOS).
 
+**Pipeline (single-pass, no HLS):** the gateway publishes a `process-video` job after asset creation. The worker downloads the source via a presigned MinIO URL (`ttl=600`), ffprobes the codec, and:
+
+- if video is already `h264` AND (no audio OR audio is `aac`) → skip transcode, set `transcodeStatus='ready'`, return;
+- else → single ffmpeg pass to `h264 yuv420p aac 128k -movflags +faststart`, capped at 720p height, then POSTs the bytes to `file-storage-service /v1/files/:fileId/replace` which overwrites the MinIO object at the same storage key. The original upload is always playable immediately; the transcode is an in-place byte optimization.
+
+**Playback:** web `<video src="/api/v1/files/:fileId/stream?userId=...">` hits a `@Public()` gateway route that proxies to `file-storage-service /v1/files/:fileId/stream` (no auth — capability URL model on the trusted network). Range requests are forwarded for seeking.
+
 ## Repository layout
 
 ```
@@ -100,7 +107,7 @@ After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
 ## API conventions (apply to all NestJS services)
 
 - **Path versioning lives on the service.** Each backend service exposes its public routes under `/v1/...` declared on the controller, e.g. `@Controller('v1/auth')` in user-service. Do NOT use a global `app.setGlobalPrefix` — keep version routes explicit per controller.
-- **Gateway BFF routes live under `api/`.** The gateway exposes `api/services`, `api/v1/auth`, `api/v1/assets`, `api/v1/files`, and `api/v1/videos` via proxy controllers that forward to backend services. `ProxyService` strips hop-by-hop headers, maps downstream 4xx to `HttpException`, 5xx / connection failures to `BadGatewayException` (502). The gateway extracts the user id from the verified JWT (`req.user.id`) and passes it as a query parameter (GET/DELETE) or body field (POST/PATCH) to the backend — it does not send any custom auth headers. The HLS routes under `api/v1/videos/:assetId/playlist.m3u8` and `api/v1/videos/:assetId/*` are marked `@Public()` because the web `<video>` element issues sub-requests for media segments that don't carry the Authorization header; the segment path encodes the asset id and is treated as a capability URL signed by the gateway session.
+- **Gateway BFF routes live under `api/`.** The gateway exposes `api/services`, `api/v1/auth`, `api/v1/assets`, `api/v1/files`, and `api/v1/videos` via proxy controllers that forward to backend services. `ProxyService` strips hop-by-hop headers, maps downstream 4xx to `HttpException`, 5xx / connection failures to `BadGatewayException` (502). The gateway extracts the user id from the verified JWT (`req.user.id`) and passes it as a query parameter (GET/DELETE) or body field (POST/PATCH) to the backend — it does not send any custom auth headers. The `api/v1/files/:fileId/stream?userId=...` route is marked `@Public()` because the web `<video>` element issues sub-requests for media bytes that don't carry the Authorization header; the path encodes the file id and is treated as a capability URL signed by the gateway session.
 - **Health is unversioned.** Each service exposes `GET /health` (no `v1` prefix) because the web app calls it directly on the service port for the status grid.
 - **Global pipes & filters are mandatory.** Every `main.ts` must include: `app.useGlobalPipes(new ValidationPipe({ whitelist, forbidNonWhitelisted, transform }))` and `app.useGlobalFilters(new HttpExceptionFilter())`. The shared `HttpExceptionFilter` lives at `apps/<service>/src/common/filters/http-exception.filter.ts`.
 - **Validation uses class-validator + class-transformer.** DTOs live next to the controller in `apps/<service>/src/<feature>/dto/*.dto.ts`. `class-validator` and `class-transformer` must be added to the service's `package.json` even though they are optional peers of `@nestjs/common` — do not rely on hoisting.
@@ -210,4 +217,4 @@ Pre-commit order: `pnpm verify` (wipes `pacts/` and runs lint → `pact-consumer
 
 ## Implemented / out of scope
 
-- **Implemented:** photo upload end-to-end (file-storage upload → gateway → web timeline page), media-service assets CRUD + trash/restore + thumbnails, gateway BFF layer (`api/` and `api/v1/*` proxy routes, including HLS video) with JWT guard + `ProxyService`, BullMQ async jobs (gateway publishes thumbnail + video jobs to Redis; worker-service consumes them with no DB of its own), web auth, login/register, timeline, and upload UI.
+- **Implemented:** photo + video upload end-to-end (file-storage upload → gateway → web timeline page), media-service assets CRUD + trash/restore + thumbnails, gateway BFF layer (`api/` and `api/v1/*` proxy routes, including the public video stream route) with JWT guard + `ProxyService`, BullMQ async jobs (gateway publishes thumbnail + single-pass video jobs to Redis; worker-service consumes them with no DB of its own), web auth, login/register, timeline, and upload UI. Video playback uses a single mp4 streamed through the gateway (capability URL); ffmpeg transcode is an in-place byte replacement, not a transcode-to-HLS pipeline.

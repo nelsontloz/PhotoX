@@ -79,10 +79,6 @@ describe('Pact verification — file-storage-service (worker)', () => {
           minio.uploadFile.mockRejectedValue(new Error('MinIO connection failed'))
           return Promise.resolve()
         },
-        'user can upload HLS files': () => {
-          minio.uploadFile.mockResolvedValue(undefined)
-          return Promise.resolve()
-        },
       },
     }).verifyProvider()
   }, 30_000)

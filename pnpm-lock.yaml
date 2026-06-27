@@ -398,9 +398,6 @@ importers:
       axios:
         specifier: ^1.7.0
         version: 1.18.0
-      hls.js:
-        specifier: ^1.6.0
-        version: 1.6.16
       jwt-decode:
         specifier: ^4.0.0
         version: 4.0.0
@@ -5077,12 +5074,6 @@ packages:
     resolution:
       {
         integrity: sha512-TAOnTB8Tz5Dw8penUuzHVrKNKlCIbwwbHnXraNJxPwf8LRtE2HlM84RYuezMFcwOJmoYOCWVDyJ8TQGxn9PgxA==,
-      }
-
-  hls.js@1.6.16:
-    resolution:
-      {
-        integrity: sha512-VSIRpLfRwlAAdGL4wiTucx2ScRipo0ed1FBatWkyt832jC4CReKstga6yIhYVwGu9LOBjuX9wzmRMeQdBJtzEA==,
       }
 
   html-encoding-sniffer@4.0.0:
@@ -10994,8 +10985,6 @@ snapshots:
     dependencies:
       glob: 8.1.0
       readable-stream: 3.6.2
-
-  hls.js@1.6.16: {}
 
   html-encoding-sniffer@4.0.0:
     dependencies:
