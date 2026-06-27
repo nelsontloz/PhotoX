@@ -63,14 +63,6 @@ export class UserFilesController {
     return this.userFilesService.uploadDerivative(userId, assetId, file)
   }
 
-  @Delete('by-asset/:assetId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete all derivative files for an asset (idempotent)' })
-  @ApiResponse({ status: 204 })
-  async deleteByAsset(@Param('assetId') assetId: string, @Query('userId') userId: string) {
-    await this.userFilesService.deleteByAsset(userId, assetId)
-  }
-
   @Get()
   @ApiOperation({ summary: "List the authenticated user's files" })
   @ApiResponse({ status: 200, description: 'Paginated file list', type: FileListResponseDto })

@@ -162,25 +162,6 @@ export class UserFilesService {
     return record
   }
 
-  async deleteByAsset(userId: string, assetId: string): Promise<void> {
-    // ponytail: cascade from media-service asset hard-delete — caller wires later
-    const records = await this.fileRepo.find({
-      where: { userId, assetId, purpose: 'transcode' as const },
-    })
-
-    for (const record of records) {
-      try {
-        await this.minio.deleteFile(record.storageKey)
-      } catch (err) {
-        console.error('[UserFilesService] MinIO derivative delete failed', err)
-      }
-    }
-
-    if (records.length > 0) {
-      await this.fileRepo.remove(records)
-    }
-  }
-
   async getOne(userId: string, fileId: string) {
     const record = await this.fileRepo.findOne({ where: { id: fileId } })
     if (!record) throw new NotFoundException('File not found')

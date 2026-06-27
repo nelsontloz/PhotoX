@@ -43,9 +43,6 @@ export function GalleryItem({ asset, onSelect, dark = false }: GalleryItemProps)
         onThumbPicked={(t: AssetThumbnail) => setDims({ width: t.width, height: t.height })}
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-      <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-        <div className="w-6 h-6 rounded-full border-2 border-white/80 hover:bg-primary hover:border-primary flex items-center justify-center transition-colors" />
-      </div>
       {isVideo && transcodeStatus === 'ready' && (
         <div className="absolute top-3 left-3 group-hover:opacity-0 transition-opacity duration-200 pointer-events-none">
           <div className="bg-black/60 backdrop-blur-sm rounded-full w-7 h-7 flex items-center justify-center">
