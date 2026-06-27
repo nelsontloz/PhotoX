@@ -12,7 +12,7 @@ export class HlsProxyService {
   async fetchHls(key: string, responseType: 'stream'): Promise<Readable>
   async fetchHls(key: string, responseType: 'text' | 'stream'): Promise<string | Readable> {
     const { userId, fileId, relPath } = this.splitHlsKey(key)
-    const url = `${SERVICE_URLS['file-storage-service']}/v1/internal/hls/files/${encodeURIComponent(userId)}/${encodeURIComponent(fileId)}/${relPath.split('/').map(encodeURIComponent).join('/')}`
+    const url = `${SERVICE_URLS['file-storage-service']}/v1/hls/files/${encodeURIComponent(userId)}/${encodeURIComponent(fileId)}/${relPath.split('/').map(encodeURIComponent).join('/')}`
     const res = await firstValueFrom(
       this.http.get(url, { responseType: responseType, timeout: 30_000 }),
     )

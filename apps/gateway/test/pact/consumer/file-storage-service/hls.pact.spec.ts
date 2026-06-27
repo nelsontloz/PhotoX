@@ -31,13 +31,13 @@ describe('Gateway → file-storage-service HLS pact', () => {
     ;(SERVICE_URLS as Record<string, string>)['file-storage-service'] = originalUrl
   })
 
-  it('GET /v1/internal/hls/files/:userId/:fileId/master.m3u8 — fetch HLS master playlist', async () => {
+  it('GET /v1/hls/files/:userId/:fileId/master.m3u8 — fetch HLS master playlist', async () => {
     await fileStorage
       .given('HLS master playlist exists')
       .uponReceiving('a request to fetch the HLS master playlist')
       .withRequest({
         method: 'GET',
-        path: '/v1/internal/hls/files/user-1/file-1/master.m3u8',
+        path: '/v1/hls/files/user-1/file-1/master.m3u8',
       })
       .willRespondWith({
         status: 200,
@@ -53,13 +53,13 @@ describe('Gateway → file-storage-service HLS pact', () => {
       })
   })
 
-  it('GET /v1/internal/hls/files/:userId/:fileId/0/seg_000.m4s — fetch HLS segment', async () => {
+  it('GET /v1/hls/files/:userId/:fileId/0/seg_000.m4s — fetch HLS segment', async () => {
     await fileStorage
       .given('HLS segment exists')
       .uponReceiving('a request to fetch an HLS segment')
       .withRequest({
         method: 'GET',
-        path: '/v1/internal/hls/files/user-1/file-1/0/seg_000.m4s',
+        path: '/v1/hls/files/user-1/file-1/0/seg_000.m4s',
       })
       .willRespondWith({
         status: 200,

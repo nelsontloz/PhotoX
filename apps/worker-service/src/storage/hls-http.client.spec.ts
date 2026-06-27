@@ -33,7 +33,7 @@ describe('HlsHttpClient', () => {
       expect(http.post).toHaveBeenCalledTimes(1)
       const call = http.post.mock.calls[0] as [string, FormData, Record<string, unknown>]
       const [url, body, options] = call
-      expect(url).toMatch(/\/v1\/internal\/hls\/files\/batch$/)
+      expect(url).toMatch(/\/v1\/hls\/files\/batch$/)
       expect(body).toBeInstanceOf(FormData)
       expect(options.headers).toBeUndefined()
       expect(options.timeout).toBeGreaterThan(0)

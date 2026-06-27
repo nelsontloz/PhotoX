@@ -27,7 +27,7 @@ const uploadSegment = async (
   mimeType: string,
 ) => {
   await supertest(httpServer)
-    .post('/v1/internal/hls/files/batch')
+    .post('/v1/hls/files/batch')
     .field('userId', userId)
     .field('fileId', fileId)
     .field('paths', JSON.stringify([relPath]))
@@ -45,7 +45,7 @@ const collectBuffer = (
   response.on('error', (e: Error) => callback(e))
 }
 
-describe('GET /v1/internal/hls/files/:userId/:fileId/*', () => {
+describe('GET /v1/hls/files/:userId/:fileId/*', () => {
   it('UC-HLS-S1: streams full file (200), correct content-type for .m3u8, body sha matches', async () => {
     const userId = mintUserId()
     const fileId = randomUUID()
@@ -53,7 +53,7 @@ describe('GET /v1/internal/hls/files/:userId/:fileId/*', () => {
     await uploadSegment(userId, fileId, 'master.m3u8', content, 'application/vnd.apple.mpegurl')
 
     const res = await supertest(httpServer)
-      .get(`/v1/internal/hls/files/${userId}/${fileId}/master.m3u8`)
+      .get(`/v1/hls/files/${userId}/${fileId}/master.m3u8`)
       .buffer(true)
       .parse((response, callback) => {
         const chunks: Buffer[] = []
@@ -73,7 +73,7 @@ describe('GET /v1/internal/hls/files/:userId/:fileId/*', () => {
     await uploadSegment(userId, fileId, 'seg_000.ts', content, 'video/mp2t')
 
     const res = await supertest(httpServer)
-      .get(`/v1/internal/hls/files/${userId}/${fileId}/seg_000.ts`)
+      .get(`/v1/hls/files/${userId}/${fileId}/seg_000.ts`)
       .expect(200)
 
     expect(res.headers['content-type']).toBe('video/mp2t')
@@ -86,7 +86,7 @@ describe('GET /v1/internal/hls/files/:userId/:fileId/*', () => {
     await uploadSegment(userId, fileId, 'range.ts', content, 'video/mp2t')
 
     const res = await supertest(httpServer)
-      .get(`/v1/internal/hls/files/${userId}/${fileId}/range.ts`)
+      .get(`/v1/hls/files/${userId}/${fileId}/range.ts`)
       .set('Range', 'bytes=0-99')
       .buffer(true)
       .parse(collectBuffer)
@@ -106,7 +106,7 @@ describe('GET /v1/internal/hls/files/:userId/:fileId/*', () => {
     await uploadSegment(userId, fileId, 'short.ts', content, 'video/mp2t')
 
     const res = await supertest(httpServer)
-      .get(`/v1/internal/hls/files/${userId}/${fileId}/short.ts`)
+      .get(`/v1/hls/files/${userId}/${fileId}/short.ts`)
       .set('Range', 'bytes=10000-20000')
       .expect(400)
 
@@ -118,7 +118,7 @@ describe('GET /v1/internal/hls/files/:userId/:fileId/*', () => {
     const fileId = randomUUID()
 
     const res = await supertest(httpServer)
-      .get(`/v1/internal/hls/files/${userId}/${fileId}/never.ts`)
+      .get(`/v1/hls/files/${userId}/${fileId}/never.ts`)
       .expect(404)
 
     expect((res.body as ErrorBody).message).toBeDefined()
@@ -131,7 +131,7 @@ describe('GET /v1/internal/hls/files/:userId/:fileId/*', () => {
     await uploadSegment(userId, fileId, '0/seg_000.m4s', content, 'video/iso.segment')
 
     const res = await supertest(httpServer)
-      .get(`/v1/internal/hls/files/${userId}/${fileId}/0/seg_000.m4s`)
+      .get(`/v1/hls/files/${userId}/${fileId}/0/seg_000.m4s`)
       .buffer(true)
       .parse(collectBuffer)
       .expect(200)
@@ -147,7 +147,7 @@ describe('GET /v1/internal/hls/files/:userId/:fileId/*', () => {
     await uploadSegment(userId, fileId, 'safe.ts', content, 'video/mp2t')
 
     const res = await supertest(httpServer)
-      .get(`/v1/internal/hls/files/${userId}/${fileId}/%2E%2E/${fileId}/safe.ts`)
+      .get(`/v1/hls/files/${userId}/${fileId}/%2E%2E/${fileId}/safe.ts`)
       .buffer(true)
       .parse(collectBuffer)
       .expect(200)

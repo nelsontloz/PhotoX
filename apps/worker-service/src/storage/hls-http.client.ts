@@ -25,7 +25,7 @@ export class HlsHttpClient {
     }
     form.append('paths', JSON.stringify(paths))
     await firstValueFrom(
-      this.http.post(`${SERVICE_URLS['file-storage-service']}/v1/internal/hls/files/batch`, form, {
+      this.http.post(`${SERVICE_URLS['file-storage-service']}/v1/hls/files/batch`, form, {
         timeout: 5 * 60 * 1000,
         maxBodyLength: Infinity,
         maxContentLength: Infinity,

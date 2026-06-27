@@ -10,7 +10,7 @@ export const HLS_MIME_MAP: Record<string, string> = {
   '.m4s': 'video/iso.segment',
 }
 
-@Controller('v1/internal/hls/files')
+@Controller('v1/hls/files')
 export class MockHlsFilesController {
   @Post('batch')
   uploadBatch(@Body('userId') _userId: string, @Body('fileId') _fileId: string) {

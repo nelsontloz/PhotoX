@@ -12,13 +12,13 @@ const FILE_ID = '550e8400-e29b-41d4-a716-446655440000'
 const M3U8_DATA = Buffer.from('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000\n0/seg_000.m4s\n')
 
 describe('Worker → file-storage-service HLS pact', () => {
-  it('POST /v1/internal/hls/files/batch — upload HLS segments (happy path)', async () => {
+  it('POST /v1/hls/files/batch — upload HLS segments (happy path)', async () => {
     await fileStorage
       .given('user can upload HLS files')
       .uponReceiving('a request to upload a batch of HLS segment files')
       .withRequest({
         method: 'POST',
-        path: '/v1/internal/hls/files/batch',
+        path: '/v1/hls/files/batch',
         headers: {
           'Content-Type': MatchersV3.regex(
             'multipart/form-data; boundary=.+',
@@ -40,7 +40,7 @@ describe('Worker → file-storage-service HLS pact', () => {
           contentType: 'application/vnd.apple.mpegurl',
         })
 
-        const res = await axios.post(`${mockserver.url}/v1/internal/hls/files/batch`, form, {
+        const res = await axios.post(`${mockserver.url}/v1/hls/files/batch`, form, {
           headers: form.getHeaders(),
           maxContentLength: Infinity,
           maxBodyLength: Infinity,

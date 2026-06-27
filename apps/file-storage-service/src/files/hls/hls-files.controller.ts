@@ -17,7 +17,7 @@ import { HlsFilesService } from './hls-files.service'
 import { contentTypeFor } from '../streaming.util'
 
 @ApiTags('hls-internal')
-@Controller('v1/internal/hls/files')
+@Controller('v1/hls/files')
 export class HlsFilesController {
   constructor(private readonly hlsFilesService: HlsFilesService) {}
 

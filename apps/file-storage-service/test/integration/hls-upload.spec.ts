@@ -30,7 +30,7 @@ afterAll(async () => {
 const attach = (req: supertest.Test, name: string, mimeType: string) =>
   req.attach('files', Buffer.from(`bytes-of-${name}`), { filename: name, contentType: mimeType })
 
-describe('POST /v1/internal/hls/files/batch', () => {
+describe('POST /v1/hls/files/batch', () => {
   it('UC-HLS-U1: uploads a batch of segments, objects land at ${userId}/${fileId}/hls/<path>', async () => {
     const userId = mintUserId()
     const fileId = randomUUID()
@@ -38,7 +38,7 @@ describe('POST /v1/internal/hls/files/batch', () => {
     const paths = ['seg_000.ts', 'seg_001.ts', 'playlist.m3u8']
 
     let req = supertest(httpServer)
-      .post('/v1/internal/hls/files/batch')
+      .post('/v1/hls/files/batch')
       .field('userId', userId)
       .field('fileId', fileId)
       .field('paths', JSON.stringify(paths))
@@ -70,7 +70,7 @@ describe('POST /v1/internal/hls/files/batch', () => {
     const fileId = randomUUID()
 
     const res = await supertest(httpServer)
-      .post('/v1/internal/hls/files/batch')
+      .post('/v1/hls/files/batch')
       .field('userId', userId)
       .field('fileId', fileId)
       .field('paths', JSON.stringify(['a.ts', 'b.ts']))
@@ -84,7 +84,7 @@ describe('POST /v1/internal/hls/files/batch', () => {
     const fileId = randomUUID()
 
     await supertest(httpServer)
-      .post('/v1/internal/hls/files/batch')
+      .post('/v1/hls/files/batch')
       .field('fileId', fileId)
       .field('paths', JSON.stringify(['a.ts']))
       .attach('files', Buffer.from('a'), { filename: 'a.ts', contentType: 'video/mp2t' })
@@ -95,7 +95,7 @@ describe('POST /v1/internal/hls/files/batch', () => {
     const userId = mintUserId()
 
     await supertest(httpServer)
-      .post('/v1/internal/hls/files/batch')
+      .post('/v1/hls/files/batch')
       .field('userId', userId)
       .field('paths', JSON.stringify(['a.ts']))
       .attach('files', Buffer.from('a'), { filename: 'a.ts', contentType: 'video/mp2t' })
@@ -107,7 +107,7 @@ describe('POST /v1/internal/hls/files/batch', () => {
     const fileId = randomUUID()
 
     await supertest(httpServer)
-      .post('/v1/internal/hls/files/batch')
+      .post('/v1/hls/files/batch')
       .field('userId', userId)
       .field('fileId', fileId)
       .field('paths', JSON.stringify(['a.ts']))
@@ -119,7 +119,7 @@ describe('POST /v1/internal/hls/files/batch', () => {
     const fileId = randomUUID()
 
     const res = await supertest(httpServer)
-      .post('/v1/internal/hls/files/batch')
+      .post('/v1/hls/files/batch')
       .field('userId', userId)
       .field('fileId', fileId)
       .field('paths', JSON.stringify(['../etc/passwd']))
@@ -137,7 +137,7 @@ describe('POST /v1/internal/hls/files/batch', () => {
     const fileId = randomUUID()
 
     const res = await supertest(httpServer)
-      .post('/v1/internal/hls/files/batch')
+      .post('/v1/hls/files/batch')
       .field('userId', userId)
       .field('fileId', fileId)
       .field('paths', JSON.stringify(['/absolute/foo.ts']))
@@ -152,7 +152,7 @@ describe('POST /v1/internal/hls/files/batch', () => {
     const fileId = randomUUID()
 
     await supertest(httpServer)
-      .post('/v1/internal/hls/files/batch')
+      .post('/v1/hls/files/batch')
       .field('userId', userId)
       .field('fileId', fileId)
       .field('paths', JSON.stringify([1, 2, 3]))
@@ -165,7 +165,7 @@ describe('POST /v1/internal/hls/files/batch', () => {
     const fileId = randomUUID()
 
     await supertest(httpServer)
-      .post('/v1/internal/hls/files/batch')
+      .post('/v1/hls/files/batch')
       .field('userId', userId)
       .field('fileId', fileId)
       .field('paths', 'not-json-at-all')
