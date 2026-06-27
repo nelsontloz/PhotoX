@@ -9,11 +9,6 @@ import { join } from 'path'
 import { writeFile, unlink } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
 import { SERVICE_URLS } from '@photox/shared-config'
-import {
-  MetadataExtractor,
-  VideoMetadataExtractor,
-  type ExtractedMetadata,
-} from './metadata.extractor'
 import { runFfmpeg } from './ffmpeg'
 
 const STANDARD_SIZES: Record<string, [number, number]> = {
@@ -51,8 +46,6 @@ export class ThumbnailProcessor {
   constructor(
     private readonly bullMq: BullMqService,
     private readonly http: HttpService,
-    private readonly metadataExtractor: MetadataExtractor,
-    private readonly videoMetadataExtractor: VideoMetadataExtractor,
   ) {}
 
   start() {
@@ -107,86 +100,7 @@ export class ThumbnailProcessor {
       typeof ctHeader === 'string' ? ctHeader : ((Array.isArray(ctHeader) ? ctHeader[0] : '') ?? '')
     const mimeType = rawContentType.split(';')[0]?.trim() ?? null
 
-    let metadata: ExtractedMetadata = {
-      takenAt: null,
-      cameraMake: null,
-      cameraModel: null,
-      lensModel: null,
-      orientation: null,
-      width: null,
-      height: null,
-      latitude: null,
-      longitude: null,
-      altitude: null,
-      iso: null,
-      fNumber: null,
-      exposureTime: null,
-      focalLength: null,
-      raw: null,
-    }
-    let metadataStatus: 'ready' | 'failed' | 'pending' = 'pending'
-
-    if (mimeType?.startsWith('image/')) {
-      try {
-        metadata = this.metadataExtractor.extract(buffer)
-        metadataStatus = metadata.raw !== null ? 'ready' : 'failed'
-      } catch {
-        metadataStatus = 'failed'
-      }
-
-      const clHeader = upstream.headers['content-length']
-      const rawContentLength =
-        typeof clHeader === 'string'
-          ? clHeader
-          : ((Array.isArray(clHeader) ? clHeader[0] : '') ?? '')
-      const sizeBytes = Number(rawContentLength) || buffer.length
-
-      const rawDisposition = String(upstream.headers['content-disposition'] ?? '')
-      const nameMatch = /filename\*?=(?:UTF-8'')?"?([^";]+)/i.exec(rawDisposition)
-      const originalName = nameMatch ? decodeURIComponent(nameMatch[1]!.trim()) : null
-
-      const patchUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
-      try {
-        await firstValueFrom(
-          this.http.patch(patchUrl, {
-            takenAt: metadata.takenAt,
-            cameraMake: metadata.cameraMake,
-            cameraModel: metadata.cameraModel,
-            lensModel: metadata.lensModel,
-            orientation: metadata.orientation,
-            latitude: metadata.latitude,
-            longitude: metadata.longitude,
-            iso: metadata.iso,
-            fNumber: metadata.fNumber,
-            exposureTime: metadata.exposureTime,
-            focalLength: metadata.focalLength,
-            altitude: metadata.altitude,
-            mimeType,
-            sizeBytes,
-            originalName,
-            status: metadataStatus,
-            width: metadata.width,
-            height: metadata.height,
-            metadata: null,
-          }),
-        )
-        this.logger.debug(`Metadata patched for asset=${assetId}`)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        this.logger.warn(`Metadata patch failed for asset=${assetId}: ${message}`)
-      }
-    } else if (mimeType?.startsWith('video/')) {
-      const clHeader = upstream.headers['content-length']
-      const rawContentLength =
-        typeof clHeader === 'string'
-          ? clHeader
-          : ((Array.isArray(clHeader) ? clHeader[0] : '') ?? '')
-      const sizeBytes = Number(rawContentLength) || buffer.length
-
-      const rawDisposition = String(upstream.headers['content-disposition'] ?? '')
-      const nameMatch = /filename\*?=(?:UTF-8'')?"?([^";]+)/i.exec(rawDisposition)
-      const originalName = nameMatch ? decodeURIComponent(nameMatch[1]!.trim()) : null
-
+    if (mimeType?.startsWith('video/')) {
       let tmpPath: string | null = null
       try {
         const ext = mimeType.includes('mp4')
@@ -199,44 +113,33 @@ export class ThumbnailProcessor {
         tmpPath = join(tmpdir(), `${fileId}.${ext}`)
         await writeFile(tmpPath, buffer)
 
-        const videoMeta = await this.videoMetadataExtractor.extract(tmpPath)
-        const patchUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
-        try {
-          await firstValueFrom(
-            this.http.patch(patchUrl, {
-              status: videoMeta.metadataStatus,
-              mimeType,
-              durationSeconds: videoMeta.durationSeconds,
-              width: videoMeta.width,
-              height: videoMeta.height,
-              codec: videoMeta.codec,
-              fps: videoMeta.fps,
-              hasAudio: videoMeta.hasAudio,
-              orientation: videoMeta.orientation,
-              sizeBytes,
-              originalName,
-              takenAt: videoMeta.takenAt,
-              cameraMake: videoMeta.cameraMake,
-              cameraModel: videoMeta.cameraModel,
-              lensModel: videoMeta.lensModel,
-              latitude: videoMeta.latitude,
-              longitude: videoMeta.longitude,
-              altitude: videoMeta.altitude,
-              metadata: null,
-            }),
-          )
-          this.logger.debug(`Video metadata patched for asset=${assetId}`)
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err)
-          this.logger.warn(`Video metadata patch failed for asset=${assetId}: ${message}`)
-        }
+        let orientation: number | null = null
+        let durationSeconds: number | null = null
 
-        const seekSec =
-          videoMeta.durationSeconds === null ||
-          !Number.isFinite(videoMeta.durationSeconds) ||
-          videoMeta.durationSeconds <= 0
-            ? 1
-            : Math.max(1, videoMeta.durationSeconds * 0.25)
+        // ponytail: 5x1s wait for metadata to land; race is rare
+        for (let attempt = 0; attempt < 5; attempt++) {
+          try {
+            const assetUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}?userId=${encodeURIComponent(userId)}`
+            const assetRes = await firstValueFrom(this.http.get(assetUrl))
+            const asset = assetRes.data as {
+              orientation?: number | null
+              durationSeconds?: number | null
+              mimeType?: string | null
+            }
+            orientation = asset.orientation ?? null
+            durationSeconds = asset.durationSeconds ?? null
+            break
+          } catch {
+            if (attempt < 4) {
+              await new Promise((r) => setTimeout(r, 1000))
+            }
+          }
+        }
+        orientation ??= 1
+        if (durationSeconds === null || !Number.isFinite(durationSeconds)) durationSeconds = 0
+
+        const seekSec = durationSeconds > 0 ? Math.max(1, durationSeconds * 0.25) : 1
+
         const frameBuffer = (
           await runFfmpeg([
             '-y',
@@ -252,10 +155,10 @@ export class ThumbnailProcessor {
           ])
         ).stdout
 
-        const frameOrientation = videoMeta.orientation
+        // ponytail: per-rotation step is image metadata's job now
         let framePipeline = sharp(frameBuffer)
-        if (frameOrientation && frameOrientation > 0) {
-          framePipeline = framePipeline.rotate(frameOrientation)
+        if (orientation > 1) {
+          framePipeline = framePipeline.rotate(orientation)
         }
         const { data: thumbBuffer, info } = await framePipeline
           .resize(width, height, RESIZE_OPTIONS[size] ?? { fit: 'cover' })

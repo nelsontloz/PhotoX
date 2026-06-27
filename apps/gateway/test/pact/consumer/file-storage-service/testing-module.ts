@@ -8,6 +8,7 @@ import { requestIdMiddleware } from '../../../../src/common/middleware/request-i
 import { ProxyService } from '../../../../src/proxy/proxy.service'
 import { ThumbnailOrchestratorService } from '../../../../src/orchestrator/thumbnail-orchestrator.service'
 import { VideoOrchestratorService } from '../../../../src/orchestrator/video-orchestrator.service'
+import { MetadataOrchestratorService } from '../../../../src/orchestrator/metadata-orchestrator.service'
 import { createStubProxy } from '../stub'
 import type { StubProxy } from '../stub'
 
@@ -32,6 +33,10 @@ export async function setupFileStorageServicePactModule(): Promise<{
       {
         provide: VideoOrchestratorService,
         useValue: { enqueueVideo: vi.fn().mockResolvedValue(undefined) },
+      },
+      {
+        provide: MetadataOrchestratorService,
+        useValue: { enqueueMetadata: vi.fn().mockResolvedValue(undefined) },
       },
       {
         provide: APP_GUARD,
