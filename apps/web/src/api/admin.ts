@@ -1,5 +1,9 @@
 import { api } from './client'
-import type { AdminUserListResponse, AdminUserSortField } from '@photox/shared-types'
+import type {
+  AdminUserListResponse,
+  AdminUserSortField,
+  AdminAssetCountsResponse,
+} from '@photox/shared-types'
 
 export interface ListAdminUsersParams {
   limit?: number
@@ -23,5 +27,10 @@ export async function listAdminUsers(
       role: params.role,
     },
   })
+  return data
+}
+
+export async function getAdminAssetCounts(): Promise<AdminAssetCountsResponse> {
+  const { data } = await api.get<AdminAssetCountsResponse>('/v1/admin/assets/counts')
   return data
 }

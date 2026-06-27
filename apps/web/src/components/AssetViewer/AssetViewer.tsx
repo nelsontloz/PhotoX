@@ -117,7 +117,14 @@ export function AssetViewer({
   }, [])
 
   const isVideo = currentAsset.kind === 'video'
-  const videoSrc = isVideo && userId ? getVideoStreamUrl(currentAsset.fileId, userId) : null
+  const primaryVideoSrc =
+    isVideo && userId
+      ? getVideoStreamUrl(currentAsset.transcodeFileId ?? currentAsset.fileId, userId)
+      : null
+  const videoFallbackSrc =
+    isVideo && userId && currentAsset.transcodeFileId
+      ? getVideoStreamUrl(currentAsset.fileId, userId)
+      : undefined
 
   return (
     <div className="fixed inset-0 z-50 flex overflow-hidden bg-black">
@@ -153,9 +160,10 @@ export function AssetViewer({
               <FaChevronLeft className="text-2xl" />
             </button>
           )}
-          {isVideo && videoSrc ? (
+          {isVideo && primaryVideoSrc ? (
             <VideoPlayer
-              src={videoSrc}
+              src={primaryVideoSrc}
+              fallbackSrc={videoFallbackSrc}
               poster={videoPosterUrl ?? undefined}
               title={currentAsset.title ?? currentAsset.originalName ?? undefined}
               className="relative max-h-full max-w-full"

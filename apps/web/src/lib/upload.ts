@@ -74,7 +74,7 @@ async function processQueue(ids: string[]): Promise<void> {
             assetId: existingAssetId,
           })
           filesRef.delete(id)
-          return
+          continue
         }
         useUploadStore.getState().setStatus(id, 'error', {
           error: (err as Error).message ?? 'Upload failed',

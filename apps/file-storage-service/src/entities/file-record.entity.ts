@@ -24,6 +24,13 @@ export class FileRecord {
   @Column()
   checksumSha256!: string
 
+  @Column({ type: 'varchar', length: 16, default: 'original' })
+  purpose!: 'original' | 'transcode'
+
+  @Column({ type: 'uuid', nullable: true })
+  @Index()
+  assetId!: string | null
+
   @CreateDateColumn()
   createdAt!: Date
 }

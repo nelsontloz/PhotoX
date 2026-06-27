@@ -3,7 +3,7 @@ import { FaSpinner, FaTrash } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
-import { AssetThumb } from '../../components/AssetThumb'
+import { GalleryItem } from '../../components/GalleryItem'
 import { AssetViewer } from '../../components/AssetViewer/AssetViewer'
 import { restoreAsset } from '../../api/assets'
 import { useAssetGroups } from '../../hooks/useAssetGroups'
@@ -88,29 +88,9 @@ function TrashContent() {
               {group.label}
             </h2>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
+          <div className="justified-grid-gallery">
             {group.items.map((asset) => {
-              return (
-                <div
-                  key={asset.id}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Trashed ${asset.kind === 'video' ? 'video' : 'photo'}: ${asset.originalName ?? asset.title ?? 'untitled'}`}
-                  onClick={() => {
-                    setSelectedAsset(asset)
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      setSelectedAsset(asset)
-                    }
-                  }}
-                  className="relative group rounded-lg overflow-hidden cursor-pointer aspect-square bg-slate-800"
-                >
-                  <AssetThumb asset={asset} />
-                  <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
-                </div>
-              )
+              return <GalleryItem key={asset.id} asset={asset} onSelect={setSelectedAsset} dark />
             })}
           </div>
         </section>

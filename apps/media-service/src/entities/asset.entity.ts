@@ -126,6 +126,9 @@ export class Asset {
   @Column({ type: 'varchar', length: 16, nullable: true })
   thumbnailStatus!: 'pending' | 'ready' | 'failed' | null
 
+  @Column({ type: 'uuid', nullable: true })
+  transcodeFileId!: string | null
+
   @OneToMany(() => AssetThumbnail, (t) => t.asset)
   thumbnails?: AssetThumbnail[]
 }

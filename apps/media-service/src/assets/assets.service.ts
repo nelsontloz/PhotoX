@@ -192,6 +192,7 @@ export class AssetsService {
     if (dto.metadata !== undefined) patch.metadata = dto.metadata
     if (dto.transcodeStatus !== undefined) patch.transcodeStatus = dto.transcodeStatus
     if (dto.thumbnailStatus !== undefined) patch.thumbnailStatus = dto.thumbnailStatus
+    if (dto.transcodeFileId !== undefined) patch.transcodeFileId = dto.transcodeFileId
 
     await this.repo.update(id, patch as Record<string, unknown>)
     const updated = await this.repo.findOne({ where: { id } })
@@ -237,6 +238,7 @@ export class AssetsService {
       metadataExtractedAt:
         asset.metadataExtractedAt instanceof Date ? asset.metadataExtractedAt.toISOString() : null,
       transcodeStatus: asset.transcodeStatus,
+      transcodeFileId: asset.transcodeFileId,
       thumbnailStatus: asset.thumbnailStatus,
     }
   }

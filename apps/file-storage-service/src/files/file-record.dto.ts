@@ -23,6 +23,12 @@ export class FileRecordDto implements FileRecord {
   @ApiProperty()
   checksumSha256!: string
 
+  @ApiProperty({ enum: ['original', 'transcode'] })
+  purpose!: 'original' | 'transcode'
+
+  @ApiProperty({ required: false, nullable: true })
+  assetId!: string | null
+
   @ApiProperty()
   createdAt!: string
 }
