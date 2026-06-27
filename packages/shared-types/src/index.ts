@@ -43,6 +43,8 @@ export interface FileRecord {
   mimeType: string
   sizeBytes: number
   checksumSha256: string
+  purpose: 'original' | 'transcode'
+  assetId: string | null
   createdAt: string
 }
 
@@ -111,6 +113,7 @@ export interface Asset {
   metadataStatus: MetadataStatus
   metadataExtractedAt: string | null
   transcodeStatus: TranscodeStatus
+  transcodeFileId: string | null
   thumbnailStatus: ThumbnailStatus
 }
 
@@ -149,4 +152,16 @@ export interface AdminUserListResponse {
   total: number
   limit: number
   offset: number
+}
+
+export interface AssetFailureCounts {
+  processing: number
+  metadata: number
+  thumbnails: number
+  encoding: number
+}
+
+export interface AdminAssetCountsResponse {
+  photos: AssetFailureCounts
+  videos: AssetFailureCounts
 }

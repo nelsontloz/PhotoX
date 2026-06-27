@@ -19,10 +19,11 @@ const STANDARD_SIZES: Record<string, [number, number]> = {
   xl: [1920, 1920],
 }
 
+// ponytail: fit: 'inside' preserves the source aspect ratio (landscape/portrait); 'cover' was cropping to a square, which broke the downstream masonry grid.
 const RESIZE_OPTIONS: Record<string, sharp.ResizeOptions> = {
-  sm: { fit: 'cover' },
-  md: { fit: 'cover' },
-  lg: { fit: 'cover' },
+  sm: { fit: 'inside' },
+  md: { fit: 'inside' },
+  lg: { fit: 'inside' },
   xl: { fit: 'inside' },
 }
 
@@ -165,7 +166,7 @@ export class ThumbnailProcessor {
           framePipeline = framePipeline.rotate(orientation)
         }
         const { data: thumbBuffer, info } = await framePipeline
-          .resize(width, height, RESIZE_OPTIONS[size] ?? { fit: 'cover' })
+          .resize(width, height, RESIZE_OPTIONS[size] ?? { fit: 'inside' })
           .webp({ quality: WEBP_QUALITY[size] ?? 80 })
           .toBuffer({ resolveWithObject: true })
 
@@ -218,7 +219,7 @@ export class ThumbnailProcessor {
     }
 
     const { data: thumbBuffer, info } = await sharp(buffer)
-      .resize(width, height, RESIZE_OPTIONS[size] ?? { fit: 'cover' })
+      .resize(width, height, RESIZE_OPTIONS[size] ?? { fit: 'inside' })
       .webp({ quality: WEBP_QUALITY[size] ?? 80 })
       .toBuffer({ resolveWithObject: true })
 

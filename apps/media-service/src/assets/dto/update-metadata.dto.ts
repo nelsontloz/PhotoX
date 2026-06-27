@@ -9,6 +9,7 @@ import {
   IsBoolean,
   IsDate,
   IsObject,
+  IsUUID,
   Min,
 } from 'class-validator'
 
@@ -148,4 +149,9 @@ export class UpdateMetadataDto {
   @IsOptional()
   @IsIn(['pending', 'ready', 'failed'])
   thumbnailStatus?: 'pending' | 'ready' | 'failed' | null
+
+  @ApiProperty({ required: false, nullable: true })
+  @IsOptional()
+  @IsUUID()
+  transcodeFileId?: string | null
 }

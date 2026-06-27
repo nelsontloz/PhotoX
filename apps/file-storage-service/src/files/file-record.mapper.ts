@@ -9,6 +9,8 @@ export function toFileRecordResponse(record: FileRecord) {
     mimeType: record.mimeType,
     sizeBytes: record.sizeBytes,
     checksumSha256: record.checksumSha256,
+    purpose: record.purpose,
+    assetId: record.assetId,
     createdAt: record.createdAt.toISOString(),
   }
 }

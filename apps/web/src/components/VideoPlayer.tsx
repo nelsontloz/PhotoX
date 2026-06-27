@@ -3,6 +3,7 @@ import { FaCircleExclamation, FaSpinner, FaVideo } from 'react-icons/fa6'
 
 export interface VideoPlayerProps {
   src: string
+  fallbackSrc?: string
   poster?: string
   title?: string
   autoPlay?: boolean
@@ -11,11 +12,13 @@ export interface VideoPlayerProps {
 
 export function VideoPlayer({
   src,
+  fallbackSrc,
   poster,
   title,
   autoPlay = false,
   className = '',
 }: VideoPlayerProps) {
+  const [currentSrc, setCurrentSrc] = useState(src)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
@@ -54,7 +57,7 @@ export function VideoPlayer({
       ].join(' ')}
     >
       <video
-        src={src}
+        src={currentSrc}
         poster={poster}
         controls
         playsInline
@@ -65,7 +68,13 @@ export function VideoPlayer({
         onLoadedMetadata={() => {
           setLoading(false)
         }}
-        onError={() => {
+        onError={(e) => {
+          const video = e.currentTarget
+          if (fallbackSrc && currentSrc !== fallbackSrc) {
+            setCurrentSrc(fallbackSrc)
+            video.load()
+            return
+          }
           setLoading(false)
           setError(true)
         }}

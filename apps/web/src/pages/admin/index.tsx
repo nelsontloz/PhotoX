@@ -3,16 +3,24 @@ import {
   FaArrowDown,
   FaArrowUp,
   FaArrowsUpDown,
+  FaArrowsRotate,
+  FaCamera,
+  FaFilm,
   FaMagnifyingGlass,
   FaSpinner,
+  FaTriangleExclamation,
   FaUserShield,
 } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { RequireAdmin } from '../../components/RequireAdmin'
 import { AppShell } from '../../components/AppShell'
-import { listAdminUsers, type ListAdminUsersParams } from '../../api/admin'
+import { listAdminUsers, getAdminAssetCounts, type ListAdminUsersParams } from '../../api/admin'
 import { formatBytes } from '../../lib/format'
-import type { AdminUserListResponse, AdminUserSortField } from '@photox/shared-types'
+import type {
+  AdminUserListResponse,
+  AdminUserSortField,
+  AdminAssetCountsResponse,
+} from '@photox/shared-types'
 
 type SortDir = 'asc' | 'desc'
 
@@ -23,6 +31,148 @@ interface SortState {
 
 const DEFAULT_SORT: SortState = { field: 'createdAt', dir: 'desc' }
 const DEFAULT_LIMIT = 20
+
+function FailureTile({ count, label }: { count: number; label: string }) {
+  return (
+    <div className="text-center">
+      <span
+        className={`text-2xl font-bold tabular-nums ${count > 0 ? 'text-red-400' : 'text-slate-500'}`}
+      >
+        {count.toLocaleString()}
+      </span>
+      <p className="text-[10px] uppercase tracking-wider text-slate-400 mt-1">{label}</p>
+    </div>
+  )
+}
+
+interface FailureCardProps {
+  kind: string
+  icon: typeof FaCamera
+  tiles: { count: number; label: string }[]
+}
+
+function FailureCard({ kind, icon: Icon, tiles }: FailureCardProps) {
+  const colClass = tiles.length === 4 ? 'grid-cols-4' : 'grid-cols-3'
+  return (
+    <div className="bg-card-dark border border-border-dark rounded-xl p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <Icon className="text-slate-400" />
+        <span className="text-sm font-semibold text-slate-200">{kind}</span>
+      </div>
+      <div className={`grid ${colClass} gap-3`}>
+        {tiles.map((t) => (
+          <FailureTile key={t.label} count={t.count} label={t.label} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SkeletonCard({ tileCount = 4 }: { tileCount?: number }) {
+  const colClass = tileCount === 4 ? 'grid-cols-4' : 'grid-cols-3'
+  return (
+    <div className="bg-card-dark border border-border-dark rounded-xl p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="h-4 w-4 rounded bg-slate-700 animate-pulse" />
+        <div className="h-4 w-16 rounded bg-slate-700 animate-pulse" />
+      </div>
+      <div className={`grid ${colClass} gap-3`}>
+        {Array.from({ length: tileCount }).map((_, i) => (
+          <div key={i} className="text-center">
+            <div className="h-8 w-10 mx-auto rounded bg-slate-700 animate-pulse mb-2" />
+            <div className="h-3 w-full rounded bg-slate-700 animate-pulse" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function AssetHealthSection() {
+  const [data, setData] = useState<AdminAssetCountsResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [version, setVersion] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    getAdminAssetCounts()
+      .then((res) => {
+        if (cancelled) return
+        setData(res)
+      })
+      .catch((err: Error) => {
+        if (cancelled) return
+        setError(err.message ?? 'Failed to load asset counts')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [version])
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <FaTriangleExclamation className="text-slate-400" />
+          <h2 className="text-sm font-semibold text-slate-200">Asset health</h2>
+        </div>
+        <button
+          type="button"
+          onClick={() => setVersion((v) => v + 1)}
+          className="text-slate-400 hover:text-slate-200 transition-colors"
+        >
+          <FaArrowsRotate />
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <SkeletonCard tileCount={3} />
+          <SkeletonCard tileCount={4} />
+        </div>
+      ) : error ? (
+        <div className="bg-card-dark border border-border-dark rounded-xl p-4 text-center">
+          <p className="text-xs text-red-400 mb-2">{error}</p>
+          <button
+            type="button"
+            onClick={() => setVersion((v) => v + 1)}
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            Retry
+          </button>
+        </div>
+      ) : data ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FailureCard
+            kind="Pictures"
+            icon={FaCamera}
+            tiles={[
+              { count: data.photos.processing, label: 'Processing' },
+              { count: data.photos.metadata, label: 'Metadata' },
+              { count: data.photos.thumbnails, label: 'Thumbnails' },
+            ]}
+          />
+          <FailureCard
+            kind="Videos"
+            icon={FaFilm}
+            tiles={[
+              { count: data.videos.processing, label: 'Processing' },
+              { count: data.videos.metadata, label: 'Metadata' },
+              { count: data.videos.thumbnails, label: 'Thumbnails' },
+              { count: data.videos.encoding, label: 'Encoding' },
+            ]}
+          />
+        </div>
+      ) : null}
+    </section>
+  )
+}
 
 function AdminPageContent() {
   const [searchInput, setSearchInput] = useState('')
@@ -87,6 +237,8 @@ function AdminPageContent() {
 
   return (
     <div className="space-y-6">
+      <AssetHealthSection />
+
       <header className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
           <FaUserShield className="text-2xl text-primary" />

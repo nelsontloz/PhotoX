@@ -56,6 +56,20 @@ describe('VideoPlayer', () => {
     expect(alert.textContent).toContain("isn't supported by your browser")
   })
 
+  it('falls back to fallbackSrc when the primary src errors', () => {
+    const { container } = render(
+      <VideoPlayer
+        src="/api/v1/files/primary/stream?userId=u1"
+        fallbackSrc="/api/v1/files/orig/stream?userId=u1"
+        title="Trip"
+      />,
+    )
+    const video = container.querySelector('video')!
+    expect(video.src).toContain('/primary/stream')
+    fireEvent.error(video)
+    expect(video.src).toContain('/orig/stream')
+  })
+
   it('hides the loading overlay once metadata is loaded', () => {
     render(<VideoPlayer src="/api/v1/files/abc/stream?userId=u1" title="Trip" />)
 
