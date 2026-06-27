@@ -121,7 +121,7 @@ export async function runFfmpeg(
   )
 
   if (result.code !== 0) {
-    throw new Error(`ffmpeg exited with code ${result.code}: ${result.stderr.slice(0, 500)}`)
+    throw new Error(`ffmpeg exited with code ${result.code}: ${result.stderr.slice(-2000)}`)
   }
 
   return result
@@ -151,7 +151,7 @@ export async function runFfprobeJson(input: string): Promise<FfprobeResult> {
   )
 
   if (result.code !== 0) {
-    throw new Error(`ffprobe exited with code ${result.code}: ${result.stderr.slice(0, 500)}`)
+    throw new Error(`ffprobe exited with code ${result.code}: ${result.stderr.slice(-2000)}`)
   }
 
   const raw = result.stdout.toString('utf-8')

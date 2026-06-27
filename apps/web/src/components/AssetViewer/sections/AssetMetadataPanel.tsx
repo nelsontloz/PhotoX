@@ -13,7 +13,6 @@ function formatFps(fps: number | null): string | null {
 
 function transcodeLabel(
   status: Asset['transcodeStatus'],
-  transcodedAt: string | null,
 ): { text: string; tone: 'ok' | 'pending' | 'failed' } | null {
   if (status === 'ready') {
     return { text: 'Ready', tone: 'ok' }
@@ -23,9 +22,6 @@ function transcodeLabel(
   }
   if (status === 'failed') {
     return { text: 'Failed', tone: 'failed' }
-  }
-  if (transcodedAt) {
-    return { text: 'Ready', tone: 'ok' }
   }
   return null
 }
@@ -40,7 +36,7 @@ export function AssetMetadataPanel({ asset }: AssetMetadataPanelProps) {
     asset.width != null && asset.height != null ? `${asset.width} × ${asset.height}` : null
   const codec = asset.codec ?? null
   const hasAudio = asset.hasAudio === null ? null : asset.hasAudio ? 'Yes' : 'No'
-  const streaming = isVideo ? transcodeLabel(asset.transcodeStatus, asset.transcodedAt) : null
+  const streaming = isVideo ? transcodeLabel(asset.transcodeStatus) : null
 
   const photoRows = [
     { label: 'Resolution', value: resolution },

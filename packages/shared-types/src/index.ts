@@ -110,10 +110,8 @@ export interface Asset {
   metadata: Record<string, unknown> | null
   metadataStatus: MetadataStatus
   metadataExtractedAt: string | null
-  hlsMasterKey: string | null
   transcodeStatus: TranscodeStatus
   thumbnailStatus: ThumbnailStatus
-  transcodedAt: string | null
 }
 
 export interface AssetListResponse {

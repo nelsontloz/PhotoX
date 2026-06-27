@@ -4,8 +4,6 @@ import { APP_GUARD } from '@nestjs/core'
 import { Test } from '@nestjs/testing'
 import { HttpModule } from '@nestjs/axios'
 import { AssetsProxyController } from '../../../../src/proxy/assets-proxy/assets-proxy.controller'
-import { VideosProxyController } from '../../../../src/proxy/videos-proxy/videos-proxy.controller'
-import { HlsProxyService } from '../../../../src/proxy/videos-proxy/hls-proxy.service'
 import { requestIdMiddleware } from '../../../../src/common/middleware/request-id.middleware'
 import { ProxyService } from '../../../../src/proxy/proxy.service'
 import { ThumbnailOrchestratorService } from '../../../../src/orchestrator/thumbnail-orchestrator.service'
@@ -24,17 +22,9 @@ export async function setupMediaServicePactModule(): Promise<{
 
   const module = await Test.createTestingModule({
     imports: [HttpModule],
-    controllers: [AssetsProxyController, VideosProxyController],
+    controllers: [AssetsProxyController],
     providers: [
       { provide: ProxyService, useValue: stub },
-      {
-        provide: HlsProxyService,
-        useValue: {
-          getMasterPlaylistText: vi.fn(),
-          getHlsStream: vi.fn(),
-          getOriginalFileStream: vi.fn(),
-        },
-      },
       {
         provide: ThumbnailOrchestratorService,
         useValue: { enqueueThumbnails: vi.fn().mockResolvedValue(undefined) },

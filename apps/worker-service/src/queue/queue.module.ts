@@ -5,7 +5,6 @@ import { ThumbnailProcessor } from './thumbnail.processor'
 import { VideoProcessor } from './video.processor'
 import { MetadataProcessor } from './metadata.processor'
 import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor'
-import { HlsHttpClient } from '../storage/hls-http.client'
 
 @Module({
   imports: [HttpModule],
@@ -16,7 +15,6 @@ import { HlsHttpClient } from '../storage/hls-http.client'
     MetadataProcessor,
     MetadataExtractor,
     VideoMetadataExtractor,
-    HlsHttpClient,
   ],
   exports: [BullMqService],
 })

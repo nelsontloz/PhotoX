@@ -120,17 +120,11 @@ export class Asset {
   @Column({ type: 'timestamptz', nullable: true })
   metadataExtractedAt!: Date | null
 
-  @Column({ type: 'text', nullable: true })
-  hlsMasterKey!: string | null
-
   @Column({ type: 'varchar', length: 16, nullable: true })
   transcodeStatus!: 'pending' | 'ready' | 'failed' | null
 
   @Column({ type: 'varchar', length: 16, nullable: true })
   thumbnailStatus!: 'pending' | 'ready' | 'failed' | null
-
-  @Column({ type: 'timestamptz', nullable: true })
-  transcodedAt!: Date | null
 
   @OneToMany(() => AssetThumbnail, (t) => t.asset)
   thumbnails?: AssetThumbnail[]

@@ -2,13 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FaChevronLeft, FaChevronRight, FaImage, FaSpinner, FaXmark } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
 import { useAuthStore } from '../../store/auth-store'
-import {
-  downloadFile,
-  getAsset,
-  getHlsPlaylistUrl,
-  getVideoStreamUrl,
-  listThumbnails,
-} from '../../api/assets'
+import { downloadFile, getVideoStreamUrl, listThumbnails } from '../../api/assets'
 import { VideoPlayer } from '../VideoPlayer'
 import { ViewerTopBar } from './ViewerTopBar'
 import { AssetMetadataPanel } from './sections/AssetMetadataPanel'
@@ -25,8 +19,6 @@ interface AssetViewerProps {
   onTrash?: () => void
   onRestore?: () => void
 }
-
-const TRANSCODE_POLL_MS = 5_000
 
 async function loadThumbBlob(id: string, preferSize: 'xl' | 'lg'): Promise<string | null> {
   const thumbs = await listThumbnails(id)
@@ -107,31 +99,6 @@ export function AssetViewer({
   }, [currentAsset.id, currentAsset.kind])
 
   useEffect(() => {
-    if (currentAsset.kind !== 'video') return
-    if (currentAsset.transcodeStatus !== 'pending') return
-
-    let cancelled = false
-    const interval = setInterval(() => {
-      void getAsset(currentAsset.id)
-        .then((next) => {
-          if (cancelled) return
-          setCurrentAsset(next)
-          if (next.transcodeStatus !== 'pending') {
-            clearInterval(interval)
-          }
-        })
-        .catch(() => {
-          /* ignore transient errors; the next tick will retry */
-        })
-    }, TRANSCODE_POLL_MS)
-
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
-  }, [currentAsset.id, currentAsset.kind, currentAsset.transcodeStatus])
-
-  useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
       else if (e.key === 'ArrowLeft' && hasPrev && onPrev) onPrev()
@@ -150,9 +117,7 @@ export function AssetViewer({
   }, [])
 
   const isVideo = currentAsset.kind === 'video'
-  const videoSrc = isVideo && userId ? getVideoStreamUrl(currentAsset.id, userId) : null
-  const hlsSrc = isVideo ? getHlsPlaylistUrl(currentAsset.id) : null
-  const transcodeStatus = isVideo ? currentAsset.transcodeStatus : undefined
+  const videoSrc = isVideo && userId ? getVideoStreamUrl(currentAsset.fileId, userId) : null
 
   return (
     <div className="fixed inset-0 z-50 flex overflow-hidden bg-black">
@@ -188,13 +153,11 @@ export function AssetViewer({
               <FaChevronLeft className="text-2xl" />
             </button>
           )}
-          {isVideo && videoSrc && hlsSrc ? (
+          {isVideo && videoSrc ? (
             <VideoPlayer
               src={videoSrc}
-              hlsSrc={hlsSrc}
               poster={videoPosterUrl ?? undefined}
               title={currentAsset.title ?? currentAsset.originalName ?? undefined}
-              transcodeStatus={transcodeStatus}
               className="relative max-h-full max-w-full"
             />
           ) : imageUrl ? (

@@ -119,7 +119,7 @@ describe('GET /v1/files/:fileId/url', () => {
     expect((res.body as ErrorBody).message).toBeDefined()
   })
 
-  it("UC-PRE-7: 404 for another user's file (ownership check)", async () => {
+  it('UC-PRE-7: any userId returns presigned URL (no ownership check on internal endpoint)', async () => {
     const owner = mintUserId()
     const other = mintUserId()
     const record = await uploadForUser(httpServer, owner, 'h.png', Buffer.from('h'), 'image/png')
@@ -127,8 +127,9 @@ describe('GET /v1/files/:fileId/url', () => {
     const res = await supertest(httpServer)
       .get(`/v1/files/${record.id}/url`)
       .query({ userId: other, ttl: 60 })
-      .expect(404)
+      .expect(200)
 
-    expect((res.body as ErrorBody).message).toBeDefined()
+    const body = res.body as UrlResponse
+    expect(body.url).toContain(record.storageKey)
   })
 })

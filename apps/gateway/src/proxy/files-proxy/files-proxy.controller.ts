@@ -24,6 +24,7 @@ import { SERVICE_URLS } from '@photox/shared-config'
 import { ThumbnailOrchestratorService } from '../../orchestrator/thumbnail-orchestrator.service'
 import { VideoOrchestratorService } from '../../orchestrator/video-orchestrator.service'
 import { MetadataOrchestratorService } from '../../orchestrator/metadata-orchestrator.service'
+import { Public } from '../../auth/public.decorator'
 import type { FileListResponse, FileRecord, Asset } from '@photox/shared-types'
 
 @ApiTags('files')
@@ -38,7 +39,7 @@ export class FilesProxyController {
   ) {}
 
   @Post()
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 100 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 4 * 1024 * 1024 * 1024 } }))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Upload a file and create an asset' })
   @ApiResponse({ status: 201, description: 'File uploaded and asset created' })
@@ -82,7 +83,7 @@ export class FilesProxyController {
       headers: {
         'x-request-id': requestId,
       },
-      timeout: 180_000,
+      timeout: 3_600_000,
     })
 
     const record = fileResult.data
@@ -231,6 +232,42 @@ export class FilesProxyController {
       'Content-Length': String(buf.byteLength),
     })
     res.send(buf)
+  }
+
+  @Public()
+  @Get(':fileId/stream')
+  @ApiOperation({ summary: 'Stream file for video playback (public, capability URL)' })
+  @ApiResponse({ status: 200, description: 'File stream' })
+  @ApiResponse({ status: 404, description: 'File not found' })
+  async stream(@Param('fileId') fileId: string, @Req() req: Request, @Res() res: Response) {
+    const url = `${SERVICE_URLS['file-storage-service']}/v1/files/${fileId}/stream`
+    const upstream = await firstValueFrom(
+      this.http.get(url, {
+        responseType: 'stream',
+        params: { userId: (req.query.userId as string) ?? '' },
+        headers: {
+          'x-request-id': (req.headers['x-request-id'] as string) ?? '',
+          ...(req.headers.range ? { range: req.headers.range } : {}),
+        },
+        timeout: 30_000,
+        validateStatus: () => true,
+      }),
+    )
+    if (upstream.status >= 400) {
+      res.status(upstream.status).json({ statusCode: upstream.status, message: 'File not found' })
+      return
+    }
+    res.set({
+      'Content-Type': upstream.headers['content-type'] as string,
+      ...(upstream.headers['content-range']
+        ? { 'content-range': upstream.headers['content-range'] as string }
+        : {}),
+      ...(upstream.headers['accept-ranges']
+        ? { 'accept-ranges': upstream.headers['accept-ranges'] as string }
+        : {}),
+    })
+    res.status(upstream.status)
+    ;(upstream.data as NodeJS.ReadableStream).pipe(res)
   }
 
   @Delete(':fileId')
