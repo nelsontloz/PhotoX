@@ -24,10 +24,9 @@ export class HealthService {
     )
 
     const allUp = Object.values(checks).every((c) => c.status === 'up')
-    const anyDown = Object.values(checks).some((c) => c.status === 'down')
 
     return {
-      status: allUp ? 'ok' : anyDown ? 'down' : 'degraded',
+      status: allUp ? 'ok' : 'down',
       service: 'gateway',
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),

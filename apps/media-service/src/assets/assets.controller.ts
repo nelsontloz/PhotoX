@@ -44,13 +44,6 @@ export class AssetsController {
     return this.assets.getByFileId(fileId)
   }
 
-  @Get('by-user/:userId')
-  @ApiOperation({ summary: 'Get all assets for a user (service-to-service)' })
-  @ApiResponse({ status: 200 })
-  async listByUser(@Param('userId') userId: string) {
-    return this.assets.listByUser(userId)
-  }
-
   @Patch(':id/metadata')
   @ApiOperation({ summary: 'Update extracted metadata (called by metadata process)' })
   @ApiResponse({ status: 200 })

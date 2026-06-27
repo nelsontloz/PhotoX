@@ -1,18 +1,7 @@
 import { Injectable, HttpException, BadGatewayException, Logger } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
-import { firstValueFrom, timeout, catchError, throwError } from 'rxjs'
+import { firstValueFrom } from 'rxjs'
 import type { AxiosError } from 'axios'
-
-const HOP_BY_HOP = new Set([
-  'host',
-  'connection',
-  'transfer-encoding',
-  'proxy-authenticate',
-  'proxy-authorization',
-  'te',
-  'trailer',
-  'upgrade',
-])
 
 export interface ForwardOptions {
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE'
@@ -37,34 +26,19 @@ export class ProxyService {
     const timeoutMs = opts.timeout ?? 5_000
     const start = Date.now()
 
-    const headers: Record<string, string> = {}
-    if (opts.headers) {
-      for (const [key, value] of Object.entries(opts.headers)) {
-        const lower = key.toLowerCase()
-        if (!HOP_BY_HOP.has(lower)) {
-          headers[key] = value
-        }
-      }
-    }
+    const headers: Record<string, string> = opts.headers ? { ...opts.headers } : {}
 
     try {
       const response = await firstValueFrom(
-        this.http
-          .request<T>({
-            method: opts.method,
-            url,
-            data: opts.body,
-            params: opts.query,
-            headers,
-            timeout: timeoutMs,
-            validateStatus: () => true,
-          })
-          .pipe(
-            timeout(timeoutMs),
-            catchError((err: AxiosError) => {
-              return throwError(() => err)
-            }),
-          ),
+        this.http.request<T>({
+          method: opts.method,
+          url,
+          data: opts.body,
+          params: opts.query,
+          headers,
+          timeout: timeoutMs,
+          validateStatus: () => true,
+        }),
       )
 
       const latencyMs = Date.now() - start

@@ -85,7 +85,7 @@ export class MetadataProcessor {
           metadata.fNumber !== null ||
           metadata.exposureTime !== null ||
           metadata.focalLength !== null
-        const metadataStatus = metadata.raw !== null && hasAnyField ? 'ready' : 'failed'
+        const metadataStatus = hasAnyField ? 'ready' : 'failed'
 
         await firstValueFrom(
           this.http.patch(patchUrl, {

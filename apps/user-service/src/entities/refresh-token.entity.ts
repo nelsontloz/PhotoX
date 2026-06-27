@@ -1,12 +1,4 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  ManyToOne,
-  JoinColumn,
-} from 'typeorm'
-import { User } from './user.entity'
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm'
 
 @Entity('refresh_tokens')
 export class RefreshToken {
@@ -16,15 +8,11 @@ export class RefreshToken {
   @Column({ type: 'uuid' })
   userId!: string
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'userId' })
-  user!: User
-
   @Column({ unique: true })
   tokenHash!: string
 
-  @Column({ type: 'enum', enum: ['access', 'refresh'] })
-  purpose!: 'access' | 'refresh'
+  @Column({ type: 'enum', enum: ['refresh'] })
+  purpose!: 'refresh'
 
   @Column({ type: 'timestamptz' })
   expiresAt!: Date

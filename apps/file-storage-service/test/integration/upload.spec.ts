@@ -45,8 +45,8 @@ describe('POST /v1/files', () => {
     expect(body.checksumSha256).toBe(sha256(content))
     expect(typeof body.createdAt).toBe('string')
 
-    const minioExists = await minioService.fileExists(body.storageKey)
-    expect(minioExists).toBe(true)
+    const stat = await minioService.statFile(body.storageKey)
+    expect(stat.size).toBeGreaterThan(0)
 
     const dbRecord = await fileRepo.findOne({ where: { id: body.id } })
     expect(dbRecord).not.toBeNull()
@@ -71,8 +71,8 @@ describe('POST /v1/files', () => {
     expect(body.sizeBytes).toBe(content.length)
     expect(body.checksumSha256).toBe(sha256(content))
 
-    const minioExists = await minioService.fileExists(body.storageKey)
-    expect(minioExists).toBe(true)
+    const stat = await minioService.statFile(body.storageKey)
+    expect(stat.size).toBeGreaterThan(0)
 
     const dbRecord = await fileRepo.findOne({ where: { id: body.id } })
     expect(dbRecord).not.toBeNull()
