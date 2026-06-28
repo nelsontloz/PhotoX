@@ -4,6 +4,7 @@ import { HealthModule } from './health/health.module'
 import { DatabaseModule } from './database/database.module'
 import { AssetsModule } from './assets/assets.module'
 import { AdminModule } from './admin/admin.module'
+import { PersonsModule } from './persons/persons.module'
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { AdminModule } from './admin/admin.module'
     DatabaseModule.forRoot('library_db'),
     AssetsModule,
     AdminModule,
+    PersonsModule,
     HealthModule,
   ],
 })

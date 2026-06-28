@@ -19,7 +19,7 @@ afterAll(async () => {
   await app?.close()
 })
 
-describe('Pact verification — media-service', () => {
+describe('Pact verification — media-service persons', () => {
   it('validates expectations of Gateway', async () => {
     await new Verifier({
       provider: 'media-service',

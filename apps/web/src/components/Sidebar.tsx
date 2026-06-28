@@ -4,6 +4,7 @@ import {
   FaPhotoFilm,
   FaHeart,
   FaUsers,
+  FaFaceSmile,
   FaMapLocationDot,
   FaTrash,
   FaGear,
@@ -18,6 +19,7 @@ export function Sidebar() {
     { to: '/', icon: FaClock, label: 'Timeline', end: true },
     { to: '/albums', icon: FaPhotoFilm, label: 'Albums' },
     { to: '/favorites', icon: FaHeart, label: 'Favorites' },
+    { to: '/people', icon: FaFaceSmile, label: 'People' },
     { to: '/shared', icon: FaUsers, label: 'Shared' },
     { to: '/places', icon: FaMapLocationDot, label: 'Places' },
   ]

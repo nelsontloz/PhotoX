@@ -86,6 +86,17 @@ export class FaceProcessor {
       )
 
       this.logger.log(`Faces complete: asset=${assetId}, count=${faces.length}`)
+
+      try {
+        await this.bullMq.getQueue('process-faces-cluster').add(
+          'cluster',
+          { userId, reason: 'face-detected' },
+          { jobId: `cluster:${userId}` },
+        )
+      } catch (clusterErr) {
+        const clusterMsg = clusterErr instanceof Error ? clusterErr.message : String(clusterErr)
+        this.logger.warn(`Failed to enqueue cluster job for user=${userId}: ${clusterMsg}`)
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       this.logger.error(`Faces failed: asset=${assetId} — ${message}`)

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { Face } from './entities/face.entity'
@@ -33,5 +33,22 @@ export class FacesService {
   async getForAsset(assetId: string): Promise<FaceResponseDto[]> {
     const faces = await this.repo.find({ where: { assetId } })
     return faces.map(FaceResponseDto.fromEntity)
+  }
+
+  async listForUser(userId: string, includeEmbeddings: boolean) {
+    const faces = await this.repo.find({ where: { userId } })
+    return faces.map((f) => ({
+      id: f.id,
+      assetId: f.assetId,
+      box: f.box,
+      ...(includeEmbeddings ? { embedding: f.embedding } : {}),
+    }))
+  }
+
+  async assignPerson(userId: string, faceId: string, personId: string | null): Promise<void> {
+    const face = await this.repo.findOne({ where: { id: faceId, userId } })
+    if (!face) throw new NotFoundException('Face not found')
+    face.personId = personId
+    await this.repo.save(face)
   }
 }

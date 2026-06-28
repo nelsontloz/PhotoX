@@ -177,6 +177,7 @@ export interface FaceDto {
   assetId: string
   box: FaceBox
   confidence: number
+  personId?: string | null
 }
 
 export interface DetectedFaceInput {
@@ -191,4 +192,53 @@ export interface RegisterFacesRequestDto {
 
 export interface RegisterFacesResponseDto {
   count: number
+}
+
+export interface PersonDto {
+  id: string
+  userId: string
+  name: string | null
+  coverFaceId: string | null
+  coverFaceUrl: string | null
+  clusterLabel: string | null
+  faceCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PersonListResponse {
+  items: PersonDto[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface PersonAssetItem {
+  assetId: string
+  faceId: string
+  thumbnailUrl: string | null
+  uploadedAt: string
+  faceCount: number
+}
+
+export interface PersonAssetsResponse {
+  personId: string
+  items: PersonAssetItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface UpdatePersonRequest {
+  name: string | null
+}
+
+export interface ReassignFacesRequest {
+  fromPersonId: string | null
+  toPersonId: string | null
+  faceIds: string[]
+}
+
+export interface ReassignFacesResponse {
+  moved: number
 }

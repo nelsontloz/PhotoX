@@ -38,12 +38,16 @@ export class FaceResponseDto implements FaceDto {
   @ApiProperty()
   confidence!: number
 
+  @ApiProperty({ nullable: true })
+  personId!: string | null
+
   static fromEntity(this: void, face: Face): FaceResponseDto {
     const dto = new FaceResponseDto()
     dto.id = face.id
     dto.assetId = face.assetId
     dto.box = face.box
     dto.confidence = face.confidence
+    dto.personId = face.personId ?? null
     return dto
   }
 }
