@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import type { Asset } from '@photox/shared-types'
-import { trashAsset } from '../api/assets'
+import { restoreAsset, trashAsset } from '../api/assets'
 
 interface UseAssetNavigationOptions {
   assets: Asset[]
-  onAfterTrash?: () => void | Promise<void>
+  onAfterAction?: () => void | Promise<void>
 }
 
 interface UseAssetNavigationResult {
@@ -16,23 +17,36 @@ interface UseAssetNavigationResult {
   hasPrev: boolean
   hasNext: boolean
   trash: () => Promise<void>
+  restore: () => Promise<void>
 }
 
 export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNavigationResult {
-  const [selected, setSelected] = useState<Asset | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const id = searchParams.get('asset')
+  const selected = useMemo(
+    () => (id ? (opts.assets.find((a) => a.id === id) ?? null) : null),
+    [id, opts.assets],
+  )
 
   const allAssets = opts.assets
   const currentIndex = selected ? allAssets.findIndex((a) => a.id === selected.id) : -1
   const hasPrev = currentIndex > 0
   const hasNext = currentIndex >= 0 && currentIndex < allAssets.length - 1
 
-  const open = (asset: Asset) => setSelected(asset)
-  const close = () => setSelected(null)
+  const open = (asset: Asset) => setSearchParams({ asset: asset.id })
+  const close = () => setSearchParams({}, { replace: true })
+
   const goPrev = () => {
-    if (hasPrev) setSelected(allAssets[currentIndex - 1] ?? null)
+    if (!hasPrev) return
+    const prev = allAssets[currentIndex - 1]
+    if (!prev) return
+    setSearchParams({ asset: prev.id }, { replace: true })
   }
   const goNext = () => {
-    if (hasNext) setSelected(allAssets[currentIndex + 1] ?? null)
+    if (!hasNext) return
+    const next = allAssets[currentIndex + 1]
+    if (!next) return
+    setSearchParams({ asset: next.id }, { replace: true })
   }
 
   const trash = async () => {
@@ -46,12 +60,23 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
       return
     try {
       await trashAsset(selected.id)
-      close()
-      await opts.onAfterTrash?.()
+      setSearchParams({}, { replace: true })
+      await opts.onAfterAction?.()
     } catch {
       window.alert('Failed to move to trash. Please try again.')
     }
   }
 
-  return { selected, open, close, goPrev, goNext, hasPrev, hasNext, trash }
+  const restore = async () => {
+    if (!selected) return
+    try {
+      await restoreAsset(selected.id)
+      setSearchParams({}, { replace: true })
+      await opts.onAfterAction?.()
+    } catch {
+      window.alert('Failed to restore. Please try again.')
+    }
+  }
+
+  return { selected, open, close, goPrev, goNext, hasPrev, hasNext, trash, restore }
 }

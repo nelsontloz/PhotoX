@@ -2,7 +2,7 @@ type AccessGetter = () => string | null
 type Refresher = () => Promise<void>
 
 let getter: AccessGetter = () => null
-let refresher: Refresher = async () => {}
+let refresher: Refresher | null = null
 
 export function registerAuthAccess(g: AccessGetter, r: Refresher): void {
   getter = g
@@ -14,5 +14,5 @@ export function getAccessToken(): string | null {
 }
 
 export function refreshAuth(): Promise<void> {
-  return refresher()
+  return refresher ? refresher() : Promise.resolve()
 }

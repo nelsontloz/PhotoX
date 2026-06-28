@@ -16,7 +16,7 @@ function TimelineContent() {
   const { groups, loading, error, refresh } = useAssetGroups()
   const nav = useAssetNavigation({
     assets: groups.flatMap((g) => g.items),
-    onAfterTrash: refresh,
+    onAfterAction: refresh,
   })
 
   if (loading) return <TimelineSkeleton />
