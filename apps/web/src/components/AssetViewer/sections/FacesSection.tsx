@@ -1,12 +1,11 @@
 import { FaSpinner, FaTriangleExclamation, FaUser } from 'react-icons/fa6'
-import type { Asset } from '@photox/shared-types'
-import { parseFaces, type Face } from '../FaceOverlay'
+import type { Asset, FaceDto } from '@photox/shared-types'
 
 export interface FacesSectionProps {
   asset: Asset
 }
 
-function FaceRow({ face, index }: { face: Face; index: number }) {
+function FaceRow({ face, index }: { face: FaceDto; index: number }) {
   const pct = Math.max(0, Math.min(100, Math.round(face.confidence * 100)))
   return (
     <li className="flex items-center gap-3 text-sm">
@@ -28,7 +27,7 @@ function FaceRow({ face, index }: { face: Face; index: number }) {
 }
 
 export function FacesSection({ asset }: FacesSectionProps) {
-  const faces = parseFaces(asset.metadata)
+  const faces: FaceDto[] = asset.faces ?? []
   const status = asset.faceStatus
 
   if (status === 'pending') {

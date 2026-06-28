@@ -1,0 +1,35 @@
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm'
+import { toSql as pgToSql, fromSql as pgFromSql } from 'pgvector'
+
+const toVectorString = (v: number[]): string => pgToSql(v) as string
+const fromVectorString = (v: string): number[] => pgFromSql(v) as number[]
+
+@Entity('faces')
+export class Face {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string
+
+  @Column('uuid')
+  assetId!: string
+
+  @Column('uuid')
+  userId!: string
+
+  @Column('jsonb')
+  box!: { x: number; y: number; w: number; h: number }
+
+  @Column('real')
+  confidence!: number
+
+  @Column({
+    type: 'text',
+    transformer: {
+      to: toVectorString,
+      from: fromVectorString,
+    },
+  })
+  embedding!: number[]
+
+  @CreateDateColumn()
+  createdAt!: Date
+}

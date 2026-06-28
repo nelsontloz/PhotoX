@@ -6,6 +6,7 @@ import { CreateAssetDto } from './dto/create-asset.dto'
 import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
 import { UpdateMetadataDto } from './dto/update-metadata.dto'
+import { FacesService } from '../faces/faces.service'
 import type { Asset as AssetResponse, AssetListResponse } from '@photox/shared-types'
 
 @Injectable()
@@ -13,6 +14,7 @@ export class AssetsService {
   constructor(
     @InjectRepository(Asset)
     private readonly repo: Repository<Asset>,
+    private readonly facesService: FacesService,
   ) {}
 
   async create(userId: string, dto: CreateAssetDto): Promise<AssetResponse> {
@@ -113,7 +115,8 @@ export class AssetsService {
     const where = userId ? { id, userId } : { id }
     const asset = await this.repo.findOne({ where })
     if (!asset) throw new NotFoundException('Asset not found')
-    return this.toResponse(asset)
+    const faces = await this.facesService.getForAsset(id)
+    return { ...this.toResponse(asset), faces }
   }
 
   async update(userId: string, id: string, dto: UpdateAssetDto): Promise<AssetResponse> {
@@ -151,25 +154,6 @@ export class AssetsService {
     if (asset.isTrashed) {
       await this.repo.update(id, { isTrashed: false, trashedAt: null })
     }
-  }
-
-  async getFaces(
-    userId: string,
-    id: string,
-  ): Promise<{
-    faces: { id: string; box: { x: number; y: number; w: number; h: number }; confidence: number }[]
-  }> {
-    const asset = await this.repo.findOne({ where: { id, userId } })
-    if (!asset) throw new NotFoundException('Asset not found')
-    const meta = asset.metadata as {
-      faces?: {
-        id: string
-        box: { x: number; y: number; w: number; h: number }
-        confidence: number
-      }[]
-    } | null
-    if (!meta?.faces || !Array.isArray(meta.faces)) return { faces: [] }
-    return { faces: meta.faces }
   }
 
   async getByFileId(fileId: string): Promise<AssetResponse> {

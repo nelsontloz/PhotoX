@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Asset } from '@photox/shared-types'
 import { useAuthStore } from '../../store/auth-store'
-import { getVideoStreamUrl } from '../../api/assets'
+import { getAsset, getVideoStreamUrl } from '../../api/assets'
 import { ViewerTopBar } from './ViewerTopBar'
 import { useAssetMedia } from './useAssetMedia'
 import { useBodyScrollLock } from './useBodyScrollLock'
@@ -36,6 +36,17 @@ export function AssetViewer({
 
   useEffect(() => {
     setCurrentAsset(asset)
+    let cancelled = false
+    void getAsset(asset.id)
+      .then((fresh) => {
+        if (!cancelled) setCurrentAsset(fresh)
+      })
+      .catch(() => {
+        // ponytail: list entry is good enough on refetch failure (faces missing is the only diff)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [asset])
   const { imageUrl, videoPosterUrl, loading } = useAssetMedia(currentAsset)
   useViewerKeyboard({ onClose, onPrev, onNext, hasPrev, hasNext })

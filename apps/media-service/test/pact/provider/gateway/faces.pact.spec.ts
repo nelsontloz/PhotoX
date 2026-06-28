@@ -52,7 +52,7 @@ afterAll(async () => {
   await app?.close()
 })
 
-describe('Pact verification — media-service', () => {
+describe('Pact verification — media-service faces', () => {
   it('validates expectations of Gateway', async () => {
     await new Verifier({
       provider: 'media-service',
@@ -134,6 +134,14 @@ describe('Pact verification — media-service', () => {
           return Promise.resolve()
         },
         [`faces can be registered for asset ${ASSET_ID}`]: () => {
+          repos.mockFaceRepo.save.mockImplementation((entities: unknown[]) =>
+            Promise.resolve(
+              (entities as { assetId: string; userId: string }[]).map((e, i) => ({
+                id: `face-${i}`,
+                ...e,
+              })),
+            ),
+          )
           return Promise.resolve()
         },
       },

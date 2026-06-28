@@ -25,6 +25,9 @@
     "tsx": "^4.22.4",
     "turbo": "^2.3.0"
   },
+  "dependencies": {
+    "pgvector": "^0.2.0"
+  },
   "pnpm": {
     "overrides": {
       "ioredis": "^5.4.2"

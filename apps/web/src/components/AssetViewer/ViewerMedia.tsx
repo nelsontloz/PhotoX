@@ -1,7 +1,7 @@
 import { FaChevronLeft, FaChevronRight, FaImage, FaSpinner } from 'react-icons/fa6'
-import type { Asset } from '@photox/shared-types'
+import type { Asset, FaceDto } from '@photox/shared-types'
 import { VideoPlayer } from '../VideoPlayer'
-import { FaceOverlay, parseFaces } from './FaceOverlay'
+import { FaceOverlay } from './FaceOverlay'
 
 interface ViewerMediaProps {
   isVideo: boolean
@@ -36,7 +36,7 @@ export function ViewerMedia({
   onPrev,
   onNext,
 }: ViewerMediaProps) {
-  const faces = parseFaces(asset.metadata)
+  const faces: FaceDto[] = asset.faces ?? []
   const dims =
     asset.width != null && asset.height != null ? { w: asset.width, h: asset.height } : null
   const showOverlay = infoOpen && !isVideo && imageUrl != null && dims != null && faces.length > 0

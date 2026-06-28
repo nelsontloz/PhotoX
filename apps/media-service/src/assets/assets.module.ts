@@ -6,9 +6,10 @@ import { AssetsService } from './assets.service'
 import { AssetsController } from './assets.controller'
 import { ThumbnailsService } from './thumbnails.service'
 import { ThumbnailsController } from './thumbnails.controller'
+import { FacesModule } from '../faces/faces.module'
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Asset, AssetThumbnail])],
+  imports: [TypeOrmModule.forFeature([Asset, AssetThumbnail]), FacesModule],
   controllers: [AssetsController, ThumbnailsController],
   providers: [AssetsService, ThumbnailsService],
 })

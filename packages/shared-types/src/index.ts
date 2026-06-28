@@ -113,6 +113,7 @@ export interface Asset {
   thumbnailStatus: ThumbnailStatus
   faceStatus: 'pending' | 'ready' | 'failed' | null
   faceCount: number | null
+  faces?: FaceDto[]
 }
 
 export interface AssetListResponse {
@@ -162,4 +163,32 @@ export interface AssetFailureCounts {
 export interface AdminAssetCountsResponse {
   photos: AssetFailureCounts
   videos: AssetFailureCounts
+}
+
+export interface FaceBox {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export interface FaceDto {
+  id: string
+  assetId: string
+  box: FaceBox
+  confidence: number
+}
+
+export interface DetectedFaceInput {
+  box: FaceBox
+  confidence: number
+  embedding: number[]
+}
+
+export interface RegisterFacesRequestDto {
+  faces: DetectedFaceInput[]
+}
+
+export interface RegisterFacesResponseDto {
+  count: number
 }

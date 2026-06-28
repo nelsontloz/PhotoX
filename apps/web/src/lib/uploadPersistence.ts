@@ -134,9 +134,10 @@ export function bootstrapUploadPersistence(): void {
   }
 
   let lastFingerprint =
-    useUploadStore.getState().items.map(
-      (i) => `${i.id}:${i.status}:${i.status === 'error' ? (i.error ?? '') : ''}`,
-    ).join('|') + `|d:${useUploadStore.getState().dismissed}`
+    useUploadStore
+      .getState()
+      .items.map((i) => `${i.id}:${i.status}:${i.status === 'error' ? (i.error ?? '') : ''}`)
+      .join('|') + `|d:${useUploadStore.getState().dismissed}`
 
   useUploadStore.subscribe((state) => {
     const fp =

@@ -16,7 +16,11 @@ export class FaceDetectorService implements OnModuleInit {
     this.human = new Human({
       modelBasePath: pathToFileURL(modelsDir).toString() + '/',
       backend: 'tensorflow',
-      face: { enabled: true, detector: { rotation: false, maxDetected: 20 } },
+      face: {
+        enabled: true,
+        detector: { rotation: false, maxDetected: 20 },
+        description: { enabled: true },
+      },
       body: { enabled: false },
       hand: { enabled: false },
       object: { enabled: false },
@@ -30,15 +34,25 @@ export class FaceDetectorService implements OnModuleInit {
 
   async detect(
     buffer: Buffer,
-  ): Promise<{ box: { x: number; y: number; w: number; h: number }; confidence: number }[]> {
+  ): Promise<
+    {
+      box: { x: number; y: number; w: number; h: number }
+      confidence: number
+      embedding: number[]
+    }[]
+  > {
     const jpeg = await sharp(buffer).jpeg({ quality: 90 }).toBuffer()
     const tensor = tf.node.decodeJpeg(jpeg)
     try {
       const result = await this.human.detect(tensor)
-      return result.face.map((f: FaceResult) => ({
-        box: { x: f.box[0], y: f.box[1], w: f.box[2], h: f.box[3] },
-        confidence: Number(f.score.toFixed(4)),
-      }))
+      // ponytail: human may not return embedding for very small/blurry faces; skip rather than store zero-vector
+      return result.face
+        .filter((f: FaceResult) => f.embedding && f.embedding.length > 0)
+        .map((f: FaceResult) => ({
+          box: { x: f.box[0], y: f.box[1], w: f.box[2], h: f.box[3] },
+          confidence: Number(f.score.toFixed(4)),
+          embedding: f.embedding!,
+        }))
     } finally {
       tensor.dispose()
     }
