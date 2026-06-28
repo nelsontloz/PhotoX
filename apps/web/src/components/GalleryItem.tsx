@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react'
-import { FaHeart, FaPlay, FaSpinner, FaTriangleExclamation } from 'react-icons/fa6'
+import { FaHeart, FaPlay, FaSpinner, FaTriangleExclamation, FaUser } from 'react-icons/fa6'
 import type { Asset, AssetThumbnail } from '@photox/shared-types'
 import { AssetThumb } from './AssetThumb'
 import { formatDuration } from '../lib/format'
@@ -76,6 +76,14 @@ export function GalleryItem({ asset, onSelect, dark = false }: GalleryItemProps)
         <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
           <div className="bg-black/50 backdrop-blur-sm rounded px-1.5 py-0.5 text-[10px] font-bold text-white flex items-center gap-1">
             <FaHeart className="text-[10px]" />
+          </div>
+        </div>
+      )}
+      {asset.faceCount !== null && asset.faceCount !== undefined && asset.faceCount >= 1 && (
+        <div className="absolute bottom-2 left-2 pointer-events-none">
+          <div className="bg-black/65 backdrop-blur-sm rounded px-1.5 py-0.5 text-[10px] font-semibold text-white inline-flex items-center gap-1 tabular-nums">
+            <FaUser className="text-[10px]" />
+            <span>{asset.faceCount >= 10 ? '10+' : asset.faceCount}</span>
           </div>
         </div>
       )}

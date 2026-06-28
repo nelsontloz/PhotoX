@@ -64,4 +64,10 @@ export class ListAssetsQueryDto {
   @IsIn(['pending', 'ready', 'failed'])
   @ApiProperty({ enum: ['pending', 'ready', 'failed'], required: false })
   metadataStatus?: 'pending' | 'ready' | 'failed'
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  @ApiProperty({ required: false })
+  hasFaces?: boolean
 }

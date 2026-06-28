@@ -126,6 +126,12 @@ export class Asset {
   @Column({ type: 'varchar', length: 16, nullable: true })
   thumbnailStatus!: 'pending' | 'ready' | 'failed' | null
 
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  faceStatus!: 'pending' | 'ready' | 'failed' | null
+
+  @Column({ type: 'int', nullable: true, default: 0 })
+  faceCount!: number | null
+
   @Column({ type: 'uuid', nullable: true })
   transcodeFileId!: string | null
 

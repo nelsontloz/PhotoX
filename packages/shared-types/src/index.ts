@@ -111,6 +111,8 @@ export interface Asset {
   transcodeStatus: TranscodeStatus
   transcodeFileId: string | null
   thumbnailStatus: ThumbnailStatus
+  faceStatus: 'pending' | 'ready' | 'failed' | null
+  faceCount: number | null
 }
 
 export interface AssetListResponse {

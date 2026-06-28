@@ -154,4 +154,16 @@ export class UpdateMetadataDto {
   @IsOptional()
   @IsUUID()
   transcodeFileId?: string | null
+
+  @ApiProperty({ required: false, enum: ['pending', 'ready', 'failed'] })
+  @IsOptional()
+  @IsIn(['pending', 'ready', 'failed'])
+  faceStatus?: 'pending' | 'ready' | 'failed' | null
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  faceCount?: number | null
 }
