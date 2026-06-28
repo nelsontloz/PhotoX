@@ -15,7 +15,7 @@ export class PersonListItemDto implements PersonDto {
   coverFaceId!: string | null
 
   @ApiProperty({ nullable: true })
-  // ponytail: coverFaceUrl is derived from coverFaceId at gateway level, not computed here
+  // ponytail: built by PersonsService.toListItem as a relative path through the gateway
   coverFaceUrl!: string | null
 
   @ApiProperty({ nullable: true })

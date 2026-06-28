@@ -183,7 +183,9 @@ export class PersonsService {
       userId: person.userId,
       name: person.name,
       coverFaceId: person.coverFaceId,
-      coverFaceUrl: person.coverFaceId ? `/files/${person.coverFaceId}/thumb` : null,
+      coverFaceUrl: person.coverFaceId
+        ? `/api/v1/faces/${person.coverFaceId}/thumb?userId=${person.userId}`
+        : null,
       clusterLabel: person.clusterLabel,
       faceCount: person.faceCount,
       createdAt:
