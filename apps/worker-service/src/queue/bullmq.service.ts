@@ -40,7 +40,10 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     })
     this.workers.push(worker)
     worker.on('failed', (job, err) => {
-      this.logger.error(`Job ${job?.id} on ${name} failed: ${err.message}`)
+      this.logger.error(`Job ${job?.id} on ${name} failed: ${err.message}\n${err.stack ?? ''}`)
+    })
+    worker.on('error', (err) => {
+      this.logger.error(`Worker ${name} error: ${err.message}`)
     })
     return worker
   }

@@ -74,8 +74,11 @@ export class ThumbnailProcessor {
       try {
         const statusUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
         await firstValueFrom(this.http.patch(statusUrl, { thumbnailStatus: 'failed' }))
-      } catch {
-        // best-effort, do not mask the original error
+      } catch (patchErr) {
+        const patchMsg = patchErr instanceof Error ? patchErr.message : String(patchErr)
+        this.logger.warn(
+          `Failed to patch thumbnail status to failed for asset=${assetId}, size=${size}: ${patchMsg}`,
+        )
       }
 
       throw err
