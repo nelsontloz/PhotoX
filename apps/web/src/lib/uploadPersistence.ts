@@ -77,7 +77,7 @@ export function deserialize(raw: unknown): UploadItem[] {
     return []
   }
 
-  if ((raw as Record<string, unknown>).v !== 2) {
+  if ((raw as Record<string, unknown>).v !== 1) {
     try {
       localStorage.removeItem(STORAGE_KEY)
     } catch {
@@ -149,7 +149,7 @@ export function bootstrapUploadPersistence(): void {
         const serialized = serialize(state.items)
         localStorage.setItem(
           STORAGE_KEY,
-          JSON.stringify({ v: 2, items: serialized, dismissed: state.dismissed }),
+          JSON.stringify({ v: 1, items: serialized, dismissed: state.dismissed }),
         )
       } catch (err) {
         console.warn('Failed to persist upload queue:', err)
