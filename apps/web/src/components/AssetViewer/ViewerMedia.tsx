@@ -1,5 +1,7 @@
 import { FaChevronLeft, FaChevronRight, FaImage, FaSpinner } from 'react-icons/fa6'
+import type { Asset } from '@photox/shared-types'
 import { VideoPlayer } from '../VideoPlayer'
+import { FaceOverlay, parseFaces } from './FaceOverlay'
 
 interface ViewerMediaProps {
   isVideo: boolean
@@ -12,6 +14,8 @@ interface ViewerMediaProps {
   loading: boolean
   hasPrev: boolean
   hasNext: boolean
+  infoOpen: boolean
+  asset: Asset
   onPrev?: () => void
   onNext?: () => void
 }
@@ -27,9 +31,16 @@ export function ViewerMedia({
   loading,
   hasPrev,
   hasNext,
+  infoOpen,
+  asset,
   onPrev,
   onNext,
 }: ViewerMediaProps) {
+  const faces = parseFaces(asset.metadata)
+  const dims =
+    asset.width != null && asset.height != null ? { w: asset.width, h: asset.height } : null
+  const showOverlay = infoOpen && !isVideo && imageUrl != null && dims != null && faces.length > 0
+
   return (
     <div className="flex-1 flex items-center justify-center p-8 relative min-h-0">
       {hasPrev && onPrev && (
@@ -50,11 +61,25 @@ export function ViewerMedia({
           className="relative max-h-full max-w-full"
         />
       ) : imageUrl ? (
-        <img
-          src={imageUrl}
-          alt={imageAlt}
-          className="relative max-h-full max-w-full object-contain shadow-2xl select-none"
-        />
+        dims ? (
+          <div
+            className="relative max-h-full max-w-full"
+            style={{ aspectRatio: `${dims.w} / ${dims.h}` }}
+          >
+            <img
+              src={imageUrl}
+              alt={imageAlt}
+              className="block w-full h-full object-contain shadow-2xl select-none"
+            />
+            {showOverlay && <FaceOverlay faces={faces} imageWidth={dims.w} imageHeight={dims.h} />}
+          </div>
+        ) : (
+          <img
+            src={imageUrl}
+            alt={imageAlt}
+            className="relative max-h-full max-w-full object-contain shadow-2xl select-none"
+          />
+        )
       ) : loading ? (
         <div className="flex flex-col items-center gap-3 text-slate-400">
           <FaSpinner className="text-4xl text-primary animate-spin" />
