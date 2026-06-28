@@ -18,14 +18,20 @@ export async function getAsset(assetId: string): Promise<Asset> {
   return data
 }
 
-export async function listThumbnails(assetId: string): Promise<AssetThumbnailListResponse> {
-  const { data } = await api.get<AssetThumbnailListResponse>(`/v1/assets/${assetId}/thumbnails`)
+export async function listThumbnails(
+  assetId: string,
+  signal?: AbortSignal,
+): Promise<AssetThumbnailListResponse> {
+  const { data } = await api.get<AssetThumbnailListResponse>(`/v1/assets/${assetId}/thumbnails`, {
+    signal,
+  })
   return data
 }
 
-export async function downloadFile(fileId: string): Promise<Blob> {
+export async function downloadFile(fileId: string, signal?: AbortSignal): Promise<Blob> {
   const { data } = await api.get<Blob>(`/v1/files/${fileId}/download`, {
     responseType: 'blob',
+    signal,
   })
   return data
 }
