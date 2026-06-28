@@ -179,8 +179,11 @@ export class MetadataProcessor {
       try {
         const statusUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
         await firstValueFrom(this.http.patch(statusUrl, { status: 'failed' }))
-      } catch {
-        // best-effort, do not mask the original error
+      } catch (patchErr) {
+        const patchMsg = patchErr instanceof Error ? patchErr.message : String(patchErr)
+        this.logger.warn(
+          `Failed to patch metadata status to failed for asset=${assetId}: ${patchMsg}`,
+        )
       }
 
       throw err
