@@ -1,5 +1,4 @@
 import type { Role } from '@photox/shared-types'
-export type { Role }
 
 export { loadAuthEnv, type AuthEnv } from './env'
 

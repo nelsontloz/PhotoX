@@ -9,7 +9,7 @@ import { BullMqService } from './bullmq.service'
 import { SERVICE_URLS } from '@photox/shared-config'
 import { runFfmpeg, runFfprobeJson } from './ffmpeg'
 
-export interface ProcessVideoJob {
+interface ProcessVideoJob {
   assetId: string
   fileId: string
   userId: string

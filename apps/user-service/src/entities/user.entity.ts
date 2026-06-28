@@ -8,7 +8,7 @@ export class User {
   @Column({ unique: true })
   email!: string
 
-  @Column({ type: 'enum', enum: ['user', 'admin'], default: 'user' })
+  @Column({ type: 'enum', enum: ['user', 'admin'] })
   role!: 'user' | 'admin'
 
   @Column()

@@ -17,7 +17,6 @@ export interface ExtractedMetadata {
   fNumber: number | null
   exposureTime: number | null
   focalLength: number | null
-  raw: Record<string, unknown> | null
 }
 
 const EMPTY: ExtractedMetadata = {
@@ -35,7 +34,6 @@ const EMPTY: ExtractedMetadata = {
   fNumber: null,
   exposureTime: null,
   focalLength: null,
-  raw: null,
 }
 
 const DATE_RE = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/
@@ -142,12 +140,11 @@ export class MetadataExtractor {
       fNumber: readNumber(exif.FNumber as Record<string, unknown> | undefined),
       exposureTime: readNumber(exif.ExposureTime as Record<string, unknown> | undefined),
       focalLength: readNumber(exif.FocalLength as Record<string, unknown> | undefined),
-      raw,
     }
   }
 }
 
-export interface VideoMetadataPatch {
+interface VideoMetadataPatch {
   durationSeconds: number | null
   width: number | null
   height: number | null

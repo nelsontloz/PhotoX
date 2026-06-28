@@ -67,18 +67,4 @@ export class MinioService implements OnModuleInit {
     const env = loadEnv()
     await this.client.removeObject(env.MINIO_BUCKET, key)
   }
-
-  async fileExists(key: string): Promise<boolean> {
-    const env = loadEnv()
-    try {
-      await this.client.statObject(env.MINIO_BUCKET, key)
-      return true
-    } catch {
-      return false
-    }
-  }
-
-  getClient(): Minio.Client {
-    return this.client
-  }
 }

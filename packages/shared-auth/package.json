@@ -12,9 +12,7 @@
     "build": "tsc -b",
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

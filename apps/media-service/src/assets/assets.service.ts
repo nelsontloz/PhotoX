@@ -147,11 +147,6 @@ export class AssetsService {
     }
   }
 
-  async listByUser(userId: string): Promise<AssetResponse[]> {
-    const assets = await this.repo.find({ where: { userId }, order: { uploadedAt: 'DESC' } })
-    return assets.map((a) => this.toResponse(a))
-  }
-
   async getByFileId(fileId: string): Promise<AssetResponse> {
     const asset = await this.repo.findOne({ where: { fileId } })
     if (!asset) throw new NotFoundException('Asset not found for fileId')

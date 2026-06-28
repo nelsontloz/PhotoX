@@ -65,7 +65,6 @@ describe('MetadataExtractor', () => {
     expect(result.latitude).toBe(40.75)
     expect(result.longitude).toBe(-73.99)
     expect(result.altitude).toBe(10.5)
-    expect(result.raw).toBeTypeOf('object')
   })
 
   it('extracts EXIF fields but returns null GPS when none present', () => {
@@ -106,7 +105,6 @@ describe('MetadataExtractor', () => {
     expect(result.width).toBe(4000)
     expect(result.height).toBe(3000)
     expect(result.orientation).toBe(6)
-    expect(result.raw).toBeTypeOf('object')
   })
 
   it('returns all null fields for JPEG with no EXIF data', () => {
@@ -128,7 +126,6 @@ describe('MetadataExtractor', () => {
     expect(result.fNumber).toBeNull()
     expect(result.exposureTime).toBeNull()
     expect(result.focalLength).toBeNull()
-    expect(result.raw).toEqual({})
   })
 
   it('returns empty metadata when ExifReader throws', () => {
@@ -152,6 +149,5 @@ describe('MetadataExtractor', () => {
     expect(result.fNumber).toBeNull()
     expect(result.exposureTime).toBeNull()
     expect(result.focalLength).toBeNull()
-    expect(result.raw).toBeNull()
   })
 })

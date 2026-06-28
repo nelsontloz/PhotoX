@@ -10,20 +10,13 @@ export interface FfprobeStream {
   width?: number
   height?: number
   avg_frame_rate?: string
-  r_frame_rate?: string
-  sample_rate?: string
-  channels?: number
   tags?: Record<string, string>
   side_data_list?: { side_data_type?: string; rotation?: number }[]
-  color_primaries?: string
-  color_transfer?: string
 }
 
 export interface FfprobeFormat {
   filename: string
   duration?: string
-  bit_rate?: string
-  format_name?: string
   tags?: Record<string, string>
 }
 

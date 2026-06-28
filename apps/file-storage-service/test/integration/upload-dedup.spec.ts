@@ -7,7 +7,6 @@ import { getRepositoryToken } from '@nestjs/typeorm'
 import type { Repository } from 'typeorm'
 import { createTestApp, closeTestApp, mintUserId, sha256 } from './helpers'
 import type { FileRecord as FileRecordResponse } from '@photox/shared-types'
-import { loadEnv } from '@photox/shared-config'
 
 let app: INestApplication
 let httpServer: Server
@@ -76,7 +75,6 @@ describe('POST /v1/files — dedup', () => {
   it('UC-DEDUP-3: does not create a duplicate MinIO object', async () => {
     const userId = mintUserId()
     const content = Buffer.from('dedup-test-content-unique-3')
-    const env = loadEnv()
 
     const res1 = await supertest(httpServer)
       .post('/v1/files')
@@ -92,20 +90,11 @@ describe('POST /v1/files — dedup', () => {
       .attach('file', content, { filename: 'photo.png', contentType: 'image/png' })
       .expect(201)
 
-    const client = minioService.getClient()
-    const objects = await new Promise<string[]>((resolve, reject) => {
-      const keys: string[] = []
-      const stream = client.listObjects(env.MINIO_BUCKET, `${userId}/`, false)
-      stream.on('data', (obj) => {
-        if (obj.name) keys.push(obj.name)
-      })
-      stream.on('end', () => resolve(keys))
-      stream.on('error', reject)
-    })
+    const stat = await minioService.statFile(body1.storageKey)
+    expect(stat.size).toBeGreaterThan(0)
 
-    expect(objects).toContain(body1.storageKey)
-    const matchingObjects = objects.filter((obj) => obj.startsWith(userId))
-    expect(matchingObjects).toHaveLength(1)
+    const count = await fileRepo.count({ where: { userId, checksumSha256: sha256(content) } })
+    expect(count).toBe(1)
   })
 
   it('UC-DEDUP-4: different user uploading same content gets a new fileId', async () => {

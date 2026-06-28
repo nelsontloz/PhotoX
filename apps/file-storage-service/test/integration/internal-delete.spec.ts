@@ -27,8 +27,7 @@ describe('DELETE /v1/files/:fileId', () => {
 
     await supertest(httpServer).get(`/v1/files/${record.id}`).query({ userId }).expect(404)
 
-    const minioExists = await minioService.fileExists(record.storageKey)
-    expect(minioExists).toBe(false)
+    await expect(minioService.statFile(record.storageKey)).rejects.toThrow()
   })
 
   it('UC-I5: idempotent on second call', async () => {
