@@ -15,6 +15,7 @@ import { CreatePersonDto } from './dto/create-person.dto'
 import { UpdatePersonDto } from './dto/update-person.dto'
 import { CoverPersonDto } from './dto/cover-person.dto'
 import { ReassignFacesDto } from './dto/reassign-faces.dto'
+import { ListPersonsQueryDto } from './dto/list-persons-query.dto'
 import type { PersonListResponse, PersonDto, PersonAssetsResponse, ReassignFacesResponse } from '@photox/shared-types'
 
 @ApiTags('persons')
@@ -25,12 +26,8 @@ export class PersonsController {
   @Get()
   @ApiOperation({ summary: 'List persons for a user' })
   @ApiResponse({ status: 200, description: 'Paginated person list' })
-  async list(
-    @Query('userId') userId: string,
-    @Query('limit') limit?: number,
-    @Query('offset') offset?: number,
-  ): Promise<PersonListResponse> {
-    return this.persons.list(userId, limit ?? 20, offset ?? 0)
+  async list(@Query() q: ListPersonsQueryDto): Promise<PersonListResponse> {
+    return this.persons.list(q.userId, q.limit ?? 20, q.offset ?? 0)
   }
 
   @Post()
@@ -70,11 +67,9 @@ export class PersonsController {
   @ApiResponse({ status: 404, description: 'Person not found' })
   async getAssets(
     @Param('id') id: string,
-    @Query('userId') userId: string,
-    @Query('limit') limit?: number,
-    @Query('offset') offset?: number,
+    @Query() q: ListPersonsQueryDto,
   ): Promise<PersonAssetsResponse> {
-    return this.persons.getAssetsForPerson(userId, id, limit ?? 20, offset ?? 0)
+    return this.persons.getAssetsForPerson(q.userId, id, q.limit ?? 20, q.offset ?? 0)
   }
 
   @Patch(':id/cover')
