@@ -1,5 +1,5 @@
 import axios, { type AxiosError } from 'axios'
-import { useAuthStore } from '../store/auth-store'
+import { getAccessToken, refreshAuth } from '../lib/authToken'
 
 export const api = axios.create({
   baseURL: '/api',
@@ -7,7 +7,7 @@ export const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().accessToken
+  const token = getAccessToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -29,9 +29,9 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    await useAuthStore.getState().refresh()
+    await refreshAuth()
 
-    const newToken = useAuthStore.getState().accessToken
+    const newToken = getAccessToken()
     if (!newToken) {
       return Promise.reject(error)
     }

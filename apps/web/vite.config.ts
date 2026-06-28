@@ -20,7 +20,16 @@ function suppressEconnreset(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), Pages(), suppressEconnreset()],
+  plugins: [react(), tailwindcss(), Pages({ importMode: 'async' }), suppressEconnreset()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom', 'zustand', 'axios', 'jwt-decode'],
+        },
+      },
+    },
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,
