@@ -93,6 +93,12 @@ export class AssetsService {
       qb.andWhere('asset.metadataStatus = :metadataStatus', { metadataStatus: q.metadataStatus })
     }
 
+    if (q.hasFaces === true) {
+      qb.andWhere('asset.faceCount > 0')
+    } else if (q.hasFaces === false) {
+      qb.andWhere('(asset.faceCount IS NULL OR asset.faceCount = 0)')
+    }
+
     const [items, total] = await qb
       .orderBy(`COALESCE(asset.takenAt, asset.uploadedAt)`, 'DESC')
       .addOrderBy('asset.uploadedAt', 'DESC')
@@ -147,6 +153,25 @@ export class AssetsService {
     }
   }
 
+  async getFaces(
+    userId: string,
+    id: string,
+  ): Promise<{
+    faces: { id: string; box: { x: number; y: number; w: number; h: number }; confidence: number }[]
+  }> {
+    const asset = await this.repo.findOne({ where: { id, userId } })
+    if (!asset) throw new NotFoundException('Asset not found')
+    const meta = asset.metadata as {
+      faces?: {
+        id: string
+        box: { x: number; y: number; w: number; h: number }
+        confidence: number
+      }[]
+    } | null
+    if (!meta?.faces || !Array.isArray(meta.faces)) return { faces: [] }
+    return { faces: meta.faces }
+  }
+
   async getByFileId(fileId: string): Promise<AssetResponse> {
     const asset = await this.repo.findOne({ where: { fileId } })
     if (!asset) throw new NotFoundException('Asset not found for fileId')
@@ -188,6 +213,8 @@ export class AssetsService {
     if (dto.transcodeStatus !== undefined) patch.transcodeStatus = dto.transcodeStatus
     if (dto.thumbnailStatus !== undefined) patch.thumbnailStatus = dto.thumbnailStatus
     if (dto.transcodeFileId !== undefined) patch.transcodeFileId = dto.transcodeFileId
+    if (dto.faceStatus !== undefined) patch.faceStatus = dto.faceStatus
+    if (dto.faceCount !== undefined) patch.faceCount = dto.faceCount
 
     await this.repo.update(id, patch as Record<string, unknown>)
     const updated = await this.repo.findOne({ where: { id } })
@@ -235,6 +262,8 @@ export class AssetsService {
       transcodeStatus: asset.transcodeStatus,
       transcodeFileId: asset.transcodeFileId,
       thumbnailStatus: asset.thumbnailStatus,
+      faceStatus: asset.faceStatus,
+      faceCount: asset.faceCount,
     }
   }
 }

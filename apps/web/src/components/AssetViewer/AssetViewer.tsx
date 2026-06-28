@@ -88,6 +88,8 @@ export function AssetViewer({
           loading={loading}
           hasPrev={hasPrev}
           hasNext={hasNext}
+          infoOpen={infoOpen}
+          asset={currentAsset}
           onPrev={onPrev}
           onNext={onNext}
         />

@@ -67,10 +67,8 @@ export function UploadNotification() {
   const handleClose = () => {
     if (allDone) {
       useUploadStore.getState().clearDone()
-      setDismissed(false)
-    } else {
-      setDismissed(true)
     }
+    setDismissed(true)
   }
 
   return (

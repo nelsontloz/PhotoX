@@ -24,6 +24,7 @@ import { SERVICE_URLS } from '@photox/shared-config'
 import { ThumbnailOrchestratorService } from '../../orchestrator/thumbnail-orchestrator.service'
 import { VideoOrchestratorService } from '../../orchestrator/video-orchestrator.service'
 import { MetadataOrchestratorService } from '../../orchestrator/metadata-orchestrator.service'
+import { FaceOrchestratorService } from '../../orchestrator/face-orchestrator.service'
 import { Public } from '../../auth/public.decorator'
 import type { FileListResponse, FileRecord, Asset } from '@photox/shared-types'
 
@@ -36,6 +37,7 @@ export class FilesProxyController {
     private readonly thumbnails: ThumbnailOrchestratorService,
     private readonly videoTranscode: VideoOrchestratorService,
     private readonly metadataOrchestrator: MetadataOrchestratorService,
+    private readonly faceOrchestrator: FaceOrchestratorService,
   ) {}
 
   @Post()
@@ -142,6 +144,9 @@ export class FilesProxyController {
       void this.thumbnails.enqueueThumbnails(assetResult.data.id, record.id, userId)
       if (kind === 'video') {
         void this.videoTranscode.enqueueVideo(assetResult.data.id, record.id, userId)
+      }
+      if (kind === 'photo') {
+        void this.faceOrchestrator.enqueueFaces(assetResult.data.id, record.id, userId)
       }
       return assetResult.data
     } catch (assetErr) {

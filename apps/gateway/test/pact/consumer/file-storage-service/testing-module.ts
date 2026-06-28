@@ -9,6 +9,7 @@ import { ProxyService } from '../../../../src/proxy/proxy.service'
 import { ThumbnailOrchestratorService } from '../../../../src/orchestrator/thumbnail-orchestrator.service'
 import { VideoOrchestratorService } from '../../../../src/orchestrator/video-orchestrator.service'
 import { MetadataOrchestratorService } from '../../../../src/orchestrator/metadata-orchestrator.service'
+import { FaceOrchestratorService } from '../../../../src/orchestrator/face-orchestrator.service'
 import { createStubProxy } from '../stub'
 import type { StubProxy } from '../stub'
 
@@ -37,6 +38,10 @@ export async function setupFileStorageServicePactModule(): Promise<{
       {
         provide: MetadataOrchestratorService,
         useValue: { enqueueMetadata: vi.fn().mockResolvedValue(undefined) },
+      },
+      {
+        provide: FaceOrchestratorService,
+        useValue: { enqueueFaces: vi.fn().mockResolvedValue(undefined) },
       },
       {
         provide: APP_GUARD,
