@@ -4,6 +4,8 @@ import { IsArray, IsNumber, IsUUID, ArrayMinSize, ValidateNested } from 'class-v
 import type { RegisterFacesRequestDto, DetectedFaceInput } from '@photox/shared-types'
 import { FaceBoxResponseDto } from './face.dto'
 
+// ponytail: empty faces array is valid (no faces detected in the image) — service handles it, worker still patches faceStatus=ready+faceCount=0
+
 export class DetectedFaceDto implements DetectedFaceInput {
   @ApiProperty({ type: FaceBoxResponseDto })
   @ValidateNested()
@@ -24,7 +26,6 @@ export class DetectedFaceDto implements DetectedFaceInput {
 export class RegisterFacesDto implements RegisterFacesRequestDto {
   @ApiProperty({ type: [DetectedFaceDto] })
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => DetectedFaceDto)
   faces!: DetectedFaceDto[]
