@@ -1,45 +1,20 @@
-import { useState } from 'react'
 import { FaSpinner, FaTrash } from 'react-icons/fa6'
-import type { Asset } from '@photox/shared-types'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { GalleryItem } from '../../components/GalleryItem'
 import { AssetViewer } from '../../components/AssetViewer/AssetViewer'
-import { restoreAsset } from '../../api/assets'
 import { useAssetGroups } from '../../hooks/useAssetGroups'
+import { useAssetNavigation } from '../../hooks/useAssetNavigation'
 
 function TrashContent() {
   const { groups, loading, error, refresh } = useAssetGroups({
     isTrashed: true,
     dateField: 'trashedAt',
   })
-  const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
-
-  const allAssets = groups.flatMap((g) => g.items)
-  const currentIndex = selectedAsset ? allAssets.findIndex((a) => a.id === selectedAsset.id) : -1
-  const hasPrev = currentIndex > 0
-  const hasNext = currentIndex >= 0 && currentIndex < allAssets.length - 1
-
-  const goPrev = () => {
-    if (hasPrev) setSelectedAsset(allAssets[currentIndex - 1] ?? null)
-  }
-  const goNext = () => {
-    if (hasNext) setSelectedAsset(allAssets[currentIndex + 1] ?? null)
-  }
-  const closeViewer = () => {
-    setSelectedAsset(null)
-  }
-
-  const handleRestore = async () => {
-    if (!selectedAsset) return
-    try {
-      await restoreAsset(selectedAsset.id)
-      closeViewer()
-      await refresh()
-    } catch {
-      window.alert('Failed to restore. Please try again.')
-    }
-  }
+  const nav = useAssetNavigation({
+    assets: groups.flatMap((g) => g.items),
+    onAfterAction: refresh,
+  })
 
   if (loading) {
     return (
@@ -90,21 +65,21 @@ function TrashContent() {
           </div>
           <div className="justified-grid-gallery">
             {group.items.map((asset) => {
-              return <GalleryItem key={asset.id} asset={asset} onSelect={setSelectedAsset} dark />
+              return <GalleryItem key={asset.id} asset={asset} onSelect={nav.open} dark />
             })}
           </div>
         </section>
       ))}
-      {selectedAsset && (
+      {nav.selected && (
         <AssetViewer
-          asset={selectedAsset}
-          onClose={closeViewer}
-          onPrev={goPrev}
-          onNext={goNext}
-          hasPrev={hasPrev}
-          hasNext={hasNext}
+          asset={nav.selected}
+          onClose={nav.close}
+          onPrev={nav.goPrev}
+          onNext={nav.goNext}
+          hasPrev={nav.hasPrev}
+          hasNext={nav.hasNext}
           onRestore={() => {
-            void handleRestore()
+            void nav.restore()
           }}
         />
       )}
