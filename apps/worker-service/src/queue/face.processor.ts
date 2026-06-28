@@ -91,7 +91,7 @@ export class FaceProcessor {
         await this.bullMq.getQueue('process-faces-cluster').add(
           'cluster',
           { userId, reason: 'face-detected' },
-          { jobId: `cluster:${userId}` },
+          { jobId: `cluster-${userId}` },
         )
       } catch (clusterErr) {
         const clusterMsg = clusterErr instanceof Error ? clusterErr.message : String(clusterErr)
