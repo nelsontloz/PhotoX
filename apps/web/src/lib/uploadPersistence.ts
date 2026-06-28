@@ -77,7 +77,7 @@ export function deserialize(raw: unknown): UploadItem[] {
     return []
   }
 
-  if ((raw as Record<string, unknown>).v !== 1) {
+  if ((raw as Record<string, unknown>).v !== 2) {
     try {
       localStorage.removeItem(STORAGE_KEY)
     } catch {
@@ -123,26 +123,34 @@ export function bootstrapUploadPersistence(): void {
     if (raw !== null) {
       const parsed = JSON.parse(raw) as unknown
       const items = deserialize(parsed)
-      useUploadStore.setState({ items })
+      const dismissed =
+        typeof (parsed as Record<string, unknown>).dismissed === 'boolean'
+          ? ((parsed as Record<string, unknown>).dismissed as boolean)
+          : false
+      useUploadStore.setState({ items, dismissed })
     }
   } catch (err) {
     console.warn('Failed to restore upload queue:', err)
   }
 
-  let lastFingerprint = useUploadStore
-    .getState()
-    .items.map((i) => `${i.id}:${i.status}:${i.status === 'error' ? (i.error ?? '') : ''}`)
-    .join('|')
+  let lastFingerprint =
+    useUploadStore.getState().items.map(
+      (i) => `${i.id}:${i.status}:${i.status === 'error' ? (i.error ?? '') : ''}`,
+    ).join('|') + `|d:${useUploadStore.getState().dismissed}`
 
   useUploadStore.subscribe((state) => {
-    const fp = state.items
-      .map((i) => `${i.id}:${i.status}:${i.status === 'error' ? (i.error ?? '') : ''}`)
-      .join('|')
+    const fp =
+      state.items
+        .map((i) => `${i.id}:${i.status}:${i.status === 'error' ? (i.error ?? '') : ''}`)
+        .join('|') + `|d:${state.dismissed}`
     if (fp !== lastFingerprint) {
       lastFingerprint = fp
       try {
         const serialized = serialize(state.items)
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: 1, items: serialized }))
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ v: 2, items: serialized, dismissed: state.dismissed }),
+        )
       } catch (err) {
         console.warn('Failed to persist upload queue:', err)
       }
