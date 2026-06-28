@@ -16,7 +16,12 @@ import { UpdatePersonDto } from './dto/update-person.dto'
 import { CoverPersonDto } from './dto/cover-person.dto'
 import { ReassignFacesDto } from './dto/reassign-faces.dto'
 import { ListPersonsQueryDto } from './dto/list-persons-query.dto'
-import type { PersonListResponse, PersonDto, PersonAssetsResponse, ReassignFacesResponse } from '@photox/shared-types'
+import type {
+  PersonListResponse,
+  PersonDto,
+  PersonAssetsResponse,
+  ReassignFacesResponse,
+} from '@photox/shared-types'
 
 @ApiTags('persons')
 @Controller('v1/persons')
@@ -42,10 +47,7 @@ export class PersonsController {
   @ApiOperation({ summary: 'Get a single person' })
   @ApiResponse({ status: 200, description: 'Person found' })
   @ApiResponse({ status: 404, description: 'Person not found' })
-  async getOne(
-    @Param('id') id: string,
-    @Query('userId') userId: string,
-  ): Promise<PersonDto> {
+  async getOne(@Param('id') id: string, @Query('userId') userId: string): Promise<PersonDto> {
     return this.persons.getOne(userId, id)
   }
 
@@ -77,10 +79,7 @@ export class PersonsController {
   @ApiOperation({ summary: 'Set the cover face for a person' })
   @ApiResponse({ status: 200, description: 'Cover set' })
   @ApiResponse({ status: 404, description: 'Person or face not found' })
-  async setCover(
-    @Param('id') id: string,
-    @Body() dto: CoverPersonDto,
-  ) {
+  async setCover(@Param('id') id: string, @Body() dto: CoverPersonDto) {
     return this.persons.setCover(dto.userId, id, dto.faceId)
   }
 

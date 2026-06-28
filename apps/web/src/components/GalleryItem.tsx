@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import { FaHeart, FaPlay, FaSpinner, FaTriangleExclamation, FaUser } from 'react-icons/fa6'
 import type { Asset, AssetThumbnail } from '@photox/shared-types'
 import { AssetThumb } from './AssetThumb'
@@ -8,9 +8,11 @@ interface GalleryItemProps {
   asset: Asset
   onSelect?: (asset: Asset) => void
   dark?: boolean
+  // ponytail: extra absolute-positioned content rendered inside the figure (e.g. face box overlay) — keeps the figure as the positioning context
+  overlay?: ReactNode
 }
 
-export function GalleryItem({ asset, onSelect, dark = false }: GalleryItemProps) {
+export function GalleryItem({ asset, onSelect, dark = false, overlay }: GalleryItemProps) {
   const [dims, setDims] = useState<{ width: number; height: number } | null>(null)
 
   const w = dims?.width ?? asset.width ?? 1
@@ -87,6 +89,7 @@ export function GalleryItem({ asset, onSelect, dark = false }: GalleryItemProps)
           </div>
         </div>
       )}
+      {overlay}
     </figure>
   )
 }

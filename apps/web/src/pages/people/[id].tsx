@@ -3,9 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { FaArrowLeft, FaSpinner, FaFaceSmile } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
+import { GalleryItem } from '../../components/GalleryItem'
+import { FaceOverlay } from '../../components/AssetViewer/FaceOverlay'
 import { getPerson, getPersonAssets, renamePerson } from '../../api/persons'
 import { getAsset } from '../../api/assets'
-import type { PersonDto, PersonAssetItem, Asset } from '@photox/shared-types'
+import type { Asset, FaceDto, PersonDto } from '@photox/shared-types'
 
 const AssetViewer = lazy(() =>
   import('../../components/AssetViewer/AssetViewer').then((m) => ({ default: m.AssetViewer })),
@@ -15,7 +17,8 @@ export default function PersonDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [person, setPerson] = useState<PersonDto | null>(null)
-  const [assets, setAssets] = useState<PersonAssetItem[]>([])
+  const [assets, setAssets] = useState<Asset[]>([])
+  const [faceMap, setFaceMap] = useState<Map<string, FaceDto>>(new Map())
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [editingName, setEditingName] = useState(false)
@@ -24,14 +27,34 @@ export default function PersonDetailPage() {
 
   useEffect(() => {
     if (!id) return
-    Promise.all([getPerson(id), getPersonAssets(id, { limit: 100 })])
-      .then(([p, a]) => {
+    void (async () => {
+      try {
+        const [p, personAssets] = await Promise.all([
+          getPerson(id),
+          getPersonAssets(id, { limit: 100 }),
+        ])
         setPerson(p)
-        setAssets(a.items)
-        setTotal(a.total)
-      })
-      .catch(() => { /* ponytail: silent fail */ })
-      .finally(() => setLoading(false))
+        setTotal(personAssets.total)
+        // ponytail: fetch full assets in parallel to get faces (for box overlay) + original dims
+        const fetched = await Promise.all(
+          personAssets.items.map((item) => getAsset(item.assetId).catch(() => null)),
+        )
+        const valid = fetched.filter((a): a is Asset => a !== null)
+        const fm = new Map<string, FaceDto>()
+        personAssets.items.forEach((item, i) => {
+          const a = fetched[i]
+          if (!a?.faces) return
+          const face = a.faces.find((f) => f.id === item.faceId)
+          if (face) fm.set(item.assetId, face)
+        })
+        setAssets(valid)
+        setFaceMap(fm)
+      } catch {
+        /* ponytail: silent fail */
+      } finally {
+        setLoading(false)
+      }
+    })()
   }, [id])
 
   const handleRename = async () => {
@@ -42,15 +65,6 @@ export default function PersonDetailPage() {
       setEditingName(false)
     } catch {
       setEditingName(false)
-    }
-  }
-
-  const handleAssetClick = async (assetId: string) => {
-    try {
-      const asset = await getAsset(assetId)
-      setSelectedAsset(asset)
-    } catch {
-      // ponytail: asset fetch fails silently
     }
   }
 
@@ -85,7 +99,9 @@ export default function PersonDetailPage() {
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center gap-4 mb-6">
             <button
-              onClick={() => { void navigate('/people') }}
+              onClick={() => {
+                void navigate('/people')
+              }}
               className="text-slate-400 hover:text-white transition-colors"
             >
               <FaArrowLeft className="text-xl" />
@@ -95,7 +111,9 @@ export default function PersonDetailPage() {
                 autoFocus
                 value={nameValue}
                 onChange={(e) => setNameValue(e.target.value)}
-                onBlur={() => { void handleRename() }}
+                onBlur={() => {
+                  void handleRename()
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') void handleRename()
                 }}
@@ -124,26 +142,26 @@ export default function PersonDetailPage() {
               <p className="text-slate-400">No assets with this person</p>
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-2">
-              {assets.map((item) => (
-                <button
-                  key={item.faceId}
-                  onClick={() => { void handleAssetClick(item.assetId) }}
-                  className="aspect-square rounded-lg overflow-hidden bg-card-dark border border-border-dark hover:border-primary/50 transition-colors"
-                >
-                  {item.thumbnailUrl ? (
-                    <img
-                      src={item.thumbnailUrl}
-                      alt=""
-                      className="w-full h-full object-cover"
+            <div className="justified-grid-gallery">
+              {assets.map((asset) => {
+                const face = faceMap.get(asset.id)
+                const faceOverlay =
+                  face && asset.width && asset.height ? (
+                    <FaceOverlay
+                      faces={[face]}
+                      imageWidth={asset.width}
+                      imageHeight={asset.height}
                     />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <FaFaceSmile className="text-2xl text-slate-500" />
-                    </div>
-                  )}
-                </button>
-              ))}
+                  ) : undefined
+                return (
+                  <GalleryItem
+                    key={asset.id}
+                    asset={asset}
+                    onSelect={setSelectedAsset}
+                    overlay={faceOverlay}
+                  />
+                )
+              })}
             </div>
           )}
 

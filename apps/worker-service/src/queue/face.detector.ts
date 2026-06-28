@@ -32,9 +32,7 @@ export class FaceDetectorService implements OnModuleInit {
     this.logger.log('Human face detector warmed up')
   }
 
-  async detect(
-    buffer: Buffer,
-  ): Promise<
+  async detect(buffer: Buffer): Promise<
     {
       box: { x: number; y: number; w: number; h: number }
       confidence: number

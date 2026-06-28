@@ -18,11 +18,9 @@ export class FaceClusterProcessor {
   ) {}
 
   start() {
-    this.bullMq.createWorker<ClusterJob>(
-      'process-faces-cluster',
-      (job) => this.processJob(job),
-      { concurrency: 1 },
-    )
+    this.bullMq.createWorker<ClusterJob>('process-faces-cluster', (job) => this.processJob(job), {
+      concurrency: 1,
+    })
 
     this.logger.log('Face cluster processor listening for jobs')
   }

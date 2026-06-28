@@ -15,7 +15,9 @@ export default function PeoplePage() {
   useEffect(() => {
     listPersons()
       .then((res) => setPersons(res.items))
-      .catch(() => { /* ponytail: silent fail */ })
+      .catch(() => {
+        /* ponytail: silent fail */
+      })
       .finally(() => setLoading(false))
   }, [])
 
@@ -39,7 +41,9 @@ export default function PeoplePage() {
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-2xl font-bold text-white">People</h1>
             <button
-              onClick={() => { void handleCluster() }}
+              onClick={() => {
+                void handleCluster()
+              }}
               disabled={clustering}
               className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/80 transition-colors disabled:opacity-50"
             >
@@ -64,7 +68,9 @@ export default function PeoplePage() {
               <FaUsers className="text-4xl text-slate-500 mb-4" />
               <p className="text-slate-400 text-lg mb-4">No people found</p>
               <button
-                onClick={() => { void handleCluster() }}
+                onClick={() => {
+                  void handleCluster()
+                }}
                 disabled={clustering}
                 className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/80 transition-colors disabled:opacity-50"
               >

@@ -179,9 +179,9 @@ export function buildStateHandlers(repos: MockRepos): Record<string, () => Promi
         orderBy: vi.fn().mockReturnThis(),
         skip: vi.fn().mockReturnThis(),
         take: vi.fn().mockReturnThis(),
-        getRawMany: vi.fn().mockResolvedValue([
-          { assetId: PERSON_ASSET_ID, faceId: FACE_ID, faceCount: '2' },
-        ]),
+        getRawMany: vi
+          .fn()
+          .mockResolvedValue([{ assetId: PERSON_ASSET_ID, faceId: FACE_ID, faceCount: '2' }]),
         getRawOne: vi.fn().mockResolvedValue({ count: '1' }),
       })
       repos.mockAssetRepo.createQueryBuilder.mockReturnValue({
@@ -189,20 +189,18 @@ export function buildStateHandlers(repos: MockRepos): Record<string, () => Promi
         addSelect: vi.fn().mockReturnThis(),
         where: vi.fn().mockReturnThis(),
         andWhere: vi.fn().mockReturnThis(),
-        getRawMany: vi.fn().mockResolvedValue([
-          { id: PERSON_ASSET_ID, uploadedAt: new Date('2024-01-01T00:00:00.000Z') },
-        ]),
+        getRawMany: vi
+          .fn()
+          .mockResolvedValue([
+            { id: PERSON_ASSET_ID, uploadedAt: new Date('2024-01-01T00:00:00.000Z') },
+          ]),
       })
       return Promise.resolve()
     },
 
     'faces reassigned': () => {
-      repos.mockFaceRepo.find.mockResolvedValue([
-        { id: FACE_ID, userId: USER_ID, personId: null },
-      ])
-      repos.mockFaceRepo.save.mockImplementation((entities: unknown[]) =>
-        Promise.resolve(entities),
-      )
+      repos.mockFaceRepo.find.mockResolvedValue([{ id: FACE_ID, userId: USER_ID, personId: null }])
+      repos.mockFaceRepo.save.mockImplementation((entities: unknown[]) => Promise.resolve(entities))
       repos.mockFaceRepo.count.mockResolvedValue(1)
       repos.mockPersonRepo.update.mockResolvedValue({ affected: 1 })
       return Promise.resolve()

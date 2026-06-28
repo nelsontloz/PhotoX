@@ -38,9 +38,7 @@ function FaceRow({
           <div className="h-full bg-amber-400" style={{ width: `${pct}%` }} />
         </div>
         {(personName ?? face.personId) && (
-          <p className="text-[11px] text-slate-400 mt-1 truncate">
-            {personName ?? 'Assigned'}
-          </p>
+          <p className="text-[11px] text-slate-400 mt-1 truncate">{personName ?? 'Assigned'}</p>
         )}
         <div className="mt-1.5">
           <select
@@ -74,16 +72,16 @@ export function FacesSection({ asset }: FacesSectionProps) {
         setPersons(res.items)
         setPersonMap(new Map(res.items.map((p) => [p.id, p])))
       })
-      .catch(() => { /* ponytail: silent fail */ })
+      .catch(() => {
+        /* ponytail: silent fail */
+      })
   }, [faces.length])
 
   const handleReassign = async (faceId: string, toPersonId: string | null) => {
     const face = faces.find((f) => f.id === faceId)
     if (!face) return
 
-    const targetPerson = toPersonId
-      ? persons.find((p) => p.id === toPersonId)
-      : null
+    const targetPerson = toPersonId ? persons.find((p) => p.id === toPersonId) : null
 
     try {
       const result = await reassignFaces(targetPerson?.id ?? '', {
@@ -167,7 +165,9 @@ export function FacesSection({ asset }: FacesSectionProps) {
             index={i}
             persons={persons}
             personMap={personMap}
-            onReassign={(faceId, toPersonId) => { void handleReassign(faceId, toPersonId) }}
+            onReassign={(faceId, toPersonId) => {
+              void handleReassign(faceId, toPersonId)
+            }}
           />
         ))}
       </ul>

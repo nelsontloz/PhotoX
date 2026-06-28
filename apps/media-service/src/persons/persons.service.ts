@@ -23,9 +23,7 @@ export class PersonsService {
   ) {}
 
   async list(userId: string, limit = 20, offset = 0): Promise<PersonListResponse> {
-    const qb = this.personRepo
-      .createQueryBuilder('p')
-      .where('p.userId = :userId', { userId })
+    const qb = this.personRepo.createQueryBuilder('p').where('p.userId = :userId', { userId })
 
     const total = await qb.getCount()
 
@@ -92,45 +90,34 @@ export class PersonsService {
     const person = await this.personRepo.findOne({ where: { id, userId } })
     if (!person) throw new NotFoundException('Person not found')
 
+    // ponytail: per-asset rollup — one row per asset containing this person; faceId is any of the person's faces in that asset (used to fetch the face box for overlay)
     const rows = await this.faceRepo
       .createQueryBuilder('f')
-      .select('f.assetId', 'assetId')
-      .addSelect('f.id', 'faceId')
-      .addSelect('COUNT(f2.id)', 'faceCount')
-      .innerJoin(
-        (qb) =>
-          qb
-            .select('DISTINCT ON (f3."assetId") f3."assetId"', 'assetId')
-            .addSelect('f3.id', 'firstFaceId')
-            .from(Face, 'f3')
-            .where('f3.personId = :personId', { personId: id })
-            .andWhere('f3.userId = :userId', { userId })
-            .orderBy('f3."assetId"'),
-        'distinct',
-      )
-      .innerJoin(Face, 'f', 'f.assetId = distinct."assetId" AND f.userId = :userId', { userId })
-      .where('distinct."firstFaceId" = f.id')
-      .andWhere('f.personId = :personId', { personId: id })
-      .groupBy('distinct."firstFaceId"')
-      .addGroupBy('f.assetId')
-      .addGroupBy('f.id')
-      .orderBy('f."createdAt"', 'DESC')
-      .skip(offset)
-      .take(limit)
-      .getRawMany<{ assetId: string; faceId: string; faceCount: string }>()
+      .select('f."assetId"', 'assetId')
+      .addSelect(`MIN(f.id::text)::uuid`, 'faceId')
+      .addSelect('COUNT(*)', 'faceCount')
+      .addSelect('MAX(f."createdAt")', 'lastSeen')
+      .where('f."personId" = :personId', { personId: id })
+      .andWhere('f."userId" = :userId', { userId })
+      .groupBy('f."assetId"')
+      .orderBy('"lastSeen"', 'DESC')
+      .limit(limit)
+      .offset(offset)
+      .getRawMany<{ assetId: string; faceId: string; faceCount: string; lastSeen: Date }>()
 
     const total = await this.faceRepo
       .createQueryBuilder('f')
       .select('COUNT(DISTINCT f."assetId")')
-      .where('f.personId = :personId', { personId: id })
-      .andWhere('f.userId = :userId', { userId })
+      .where('f."personId" = :personId', { personId: id })
+      .andWhere('f."userId" = :userId', { userId })
       .getRawOne<{ count: string }>()
       .then((r) => Number(r?.count ?? 0))
 
+    // ponytail: thumbnailUrl left null — page fetches thumbs via listThumbnails+downloadFile (auth) and overlays the face box from the fetched asset
     const items = rows.map((r) => ({
       assetId: r.assetId,
       faceId: r.faceId,
-      thumbnailUrl: `/files/${r.faceId}/thumb`,
+      thumbnailUrl: null,
       uploadedAt: '',
       faceCount: Number(r.faceCount),
     }))
@@ -200,9 +187,13 @@ export class PersonsService {
       clusterLabel: person.clusterLabel,
       faceCount: person.faceCount,
       createdAt:
-        person.createdAt instanceof Date ? person.createdAt.toISOString() : String(person.createdAt),
+        person.createdAt instanceof Date
+          ? person.createdAt.toISOString()
+          : String(person.createdAt),
       updatedAt:
-        person.updatedAt instanceof Date ? person.updatedAt.toISOString() : String(person.updatedAt),
+        person.updatedAt instanceof Date
+          ? person.updatedAt.toISOString()
+          : String(person.updatedAt),
     }
   }
 }

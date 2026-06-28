@@ -25,10 +25,7 @@ export class FacesQueryController {
   @ApiOperation({ summary: 'Assign or unassign a face from a person' })
   @ApiResponse({ status: 200, description: 'Face updated' })
   @ApiResponse({ status: 404, description: 'Face not found or userId mismatch' })
-  async assignPerson(
-    @Param('id') id: string,
-    @Body() dto: AssignPersonDto,
-  ) {
+  async assignPerson(@Param('id') id: string, @Body() dto: AssignPersonDto) {
     await this.faces.assignPerson(dto.userId, id, dto.personId)
     return { ok: true }
   }

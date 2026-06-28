@@ -101,7 +101,9 @@ export class FaceClusterService {
 
   async cluster(userId: string): Promise<void> {
     const facesUrl = `${SERVICE_URLS['media-service']}/v1/faces?userId=${encodeURIComponent(userId)}&includeEmbeddings=true`
-    const res = await firstValueFrom(this.http.get<{ items: FaceItem[] }>(facesUrl, { timeout: 30_000 }))
+    const res = await firstValueFrom(
+      this.http.get<{ items: FaceItem[] }>(facesUrl, { timeout: 30_000 }),
+    )
     const faces = res.data.items
 
     if (faces.length === 0) {
@@ -137,24 +139,15 @@ export class FaceClusterService {
       labelToPersonId.set(p.clusterLabel, p.id)
     }
 
-    let nextClusterIdx = 0
-    for (const [label] of clusters) {
-      while (labelToPersonId.has(`cluster-${nextClusterIdx}`)) nextClusterIdx++
-      const key = `cluster-${label}`
-      if (!labelToPersonId.has(key)) {
-        labelToPersonId.set(key, `cluster-${nextClusterIdx}`)
-        nextClusterIdx++
-      }
-    }
-
     for (const [clusterLabel, facesInCluster] of clusters) {
       const key = `cluster-${clusterLabel}`
       let personId = labelToPersonId.get(key)
 
       if (!personId) {
         const createUrl = `${SERVICE_URLS['media-service']}/v1/persons`
+        // ponytail: CreatePersonDto uses forbidNonWhitelisted, so only declared fields are accepted. Service sets name=null from clusterLabel, so no need to send it.
         const createRes = await firstValueFrom(
-          this.http.post<{ id: string }>(createUrl, { userId, name: key, clusterLabel: key }),
+          this.http.post<{ id: string }>(createUrl, { userId, clusterLabel: key }),
         )
         personId = createRes.data.id
         labelToPersonId.set(key, personId)
@@ -162,20 +155,18 @@ export class FaceClusterService {
 
       for (const face of facesInCluster) {
         const patchFaceUrl = `${SERVICE_URLS['media-service']}/v1/faces/${face.id}/person`
-        await firstValueFrom(
-          this.http.patch(patchFaceUrl, { userId, personId }),
-        )
+        await firstValueFrom(this.http.patch(patchFaceUrl, { userId, personId }))
       }
 
       const coverFace = facesInCluster.reduce((best, f) =>
         f.box.w * f.box.h > best.box.w * best.box.h ? f : best,
       )
       const coverUrl = `${SERVICE_URLS['media-service']}/v1/persons/${personId}/cover`
-      await firstValueFrom(
-        this.http.patch(coverUrl, { userId, faceId: coverFace.id }),
-      )
+      await firstValueFrom(this.http.patch(coverUrl, { userId, faceId: coverFace.id }))
     }
 
-    this.logger.log(`Clustered ${faces.length} faces into ${clusters.size} groups for user=${userId}`)
+    this.logger.log(
+      `Clustered ${faces.length} faces into ${clusters.size} groups for user=${userId}`,
+    )
   }
 }

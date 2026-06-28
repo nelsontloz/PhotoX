@@ -10,7 +10,7 @@ export class ListPersonsQueryDto {
   @IsOptional()
   @Type(() => Number)
   @Min(1)
-  @Max(100)
+  @Max(1000)
   @ApiProperty({ default: 20, required: false })
   limit?: number
 

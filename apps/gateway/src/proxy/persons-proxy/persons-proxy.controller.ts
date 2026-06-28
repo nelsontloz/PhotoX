@@ -34,7 +34,9 @@ export class PersonsProxyController {
   async triggerCluster(@Req() req: Request) {
     const userId = (req.user as { id: string }).id
     const jobId = `cluster-${userId}-manual`
-    await this.bullmq.getQueue('process-faces-cluster').add('cluster', { userId, reason: 'manual' }, { jobId })
+    await this.bullmq
+      .getQueue('process-faces-cluster')
+      .add('cluster', { userId, reason: 'manual' }, { jobId })
     return { queued: true, jobId }
   }
 
@@ -71,11 +73,7 @@ export class PersonsProxyController {
   @ApiOperation({ summary: 'Rename a person' })
   @ApiResponse({ status: 200, description: 'Person updated' })
   @ApiResponse({ status: 404, description: 'Person not found' })
-  async update(
-    @Param('id') id: string,
-    @Body() dto: UpdatePersonDto,
-    @Req() req: Request,
-  ) {
+  async update(@Param('id') id: string, @Body() dto: UpdatePersonDto, @Req() req: Request) {
     const result = await this.proxy.forward(SERVICE_URLS['media-service'], {
       method: 'PATCH',
       path: `v1/persons/${id}`,
@@ -110,11 +108,7 @@ export class PersonsProxyController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reassign faces between persons' })
   @ApiResponse({ status: 200, description: 'Faces reassigned' })
-  async reassign(
-    @Param('id') id: string,
-    @Body() dto: ReassignFacesDto,
-    @Req() req: Request,
-  ) {
+  async reassign(@Param('id') id: string, @Body() dto: ReassignFacesDto, @Req() req: Request) {
     const result = await this.proxy.forward(SERVICE_URLS['media-service'], {
       method: 'POST',
       path: `v1/persons/${id}/reassign`,
@@ -130,11 +124,7 @@ export class PersonsProxyController {
   @ApiOperation({ summary: 'Set the cover face for a person' })
   @ApiResponse({ status: 200, description: 'Cover set' })
   @ApiResponse({ status: 404, description: 'Person or face not found' })
-  async setCover(
-    @Param('id') id: string,
-    @Body() dto: CoverPersonDto,
-    @Req() req: Request,
-  ) {
+  async setCover(@Param('id') id: string, @Body() dto: CoverPersonDto, @Req() req: Request) {
     const result = await this.proxy.forward(SERVICE_URLS['media-service'], {
       method: 'PATCH',
       path: `v1/persons/${id}/cover`,

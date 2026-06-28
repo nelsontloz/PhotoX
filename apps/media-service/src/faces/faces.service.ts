@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { Face } from './entities/face.entity'
+import { Person } from '../persons/entities/person.entity'
 import { FaceResponseDto } from './dto/face.dto'
 import type { DetectedFaceInput } from '@photox/shared-types'
 
@@ -10,6 +11,8 @@ export class FacesService {
   constructor(
     @InjectRepository(Face)
     private readonly repo: Repository<Face>,
+    @InjectRepository(Person)
+    private readonly personRepo: Repository<Person>,
   ) {}
 
   async registerFaces(
@@ -48,7 +51,16 @@ export class FacesService {
   async assignPerson(userId: string, faceId: string, personId: string | null): Promise<void> {
     const face = await this.repo.findOne({ where: { id: faceId, userId } })
     if (!face) throw new NotFoundException('Face not found')
+    const oldPersonId = face.personId
     face.personId = personId
     await this.repo.save(face)
+    // ponytail: keep Person.faceCount in sync after assign/unassign (cluster job + manual edits both route here)
+    if (oldPersonId) await this.refreshFaceCount(oldPersonId, userId)
+    if (personId) await this.refreshFaceCount(personId, userId)
+  }
+
+  private async refreshFaceCount(personId: string, userId: string): Promise<void> {
+    const count = await this.repo.count({ where: { personId, userId } })
+    await this.personRepo.update({ id: personId, userId }, { faceCount: count })
   }
 }
