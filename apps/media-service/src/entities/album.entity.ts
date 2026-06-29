@@ -5,9 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
-  OneToMany,
 } from 'typeorm'
-import { AlbumAsset } from './album-asset.entity'
 
 @Entity('albums')
 export class Album {
@@ -29,7 +27,4 @@ export class Album {
 
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date
-
-  @OneToMany(() => AlbumAsset, (aa) => aa.album)
-  assets?: AlbumAsset[]
 }

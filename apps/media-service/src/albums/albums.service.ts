@@ -83,7 +83,7 @@ export class AlbumsService {
       return this.toDto(album, count)
     }
 
-    await this.repo.update(id, patch as Record<string, unknown>)
+    await this.repo.update(id, patch)
     const updated = await this.repo.findOne({ where: { id } })
     const count = await this.countAssets(id)
     return this.toDto(updated!, count)

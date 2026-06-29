@@ -31,20 +31,10 @@ export async function getPersonAssets(
   return data
 }
 
-export async function setPersonCover(personId: string, faceId: string): Promise<unknown> {
-  const { data } = await api.patch<unknown>(`/v1/persons/${personId}/cover`, { faceId })
-  return data
-}
-
 export async function reassignFaces(
   personId: string,
-  body: { fromPersonId: string | null; toPersonId: string | null; faceIds: string[] },
+  body: { toPersonId: string | null; faceIds: string[] },
 ): Promise<ReassignFacesResponse> {
   const { data } = await api.post<ReassignFacesResponse>(`/v1/persons/${personId}/reassign`, body)
-  return data
-}
-
-export async function triggerCluster(): Promise<{ queued: boolean; jobId: string }> {
-  const { data } = await api.post<{ queued: boolean; jobId: string }>('/v1/persons/cluster')
   return data
 }

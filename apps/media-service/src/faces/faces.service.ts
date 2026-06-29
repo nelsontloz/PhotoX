@@ -35,7 +35,13 @@ export class FacesService {
 
   async getForAsset(assetId: string): Promise<FaceResponseDto[]> {
     const faces = await this.repo.find({ where: { assetId } })
-    return faces.map(FaceResponseDto.fromEntity)
+    return faces.map((f) => ({
+      id: f.id,
+      assetId: f.assetId,
+      box: f.box,
+      confidence: f.confidence,
+      personId: f.personId ?? null,
+    }))
   }
 
   async listForUser(userId: string, includeEmbeddings: boolean) {
