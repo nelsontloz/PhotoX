@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { Asset } from '@photox/shared-types'
-import { restoreAsset, trashAsset } from '../api/assets'
+import { restoreAsset, trashAsset, updateAsset } from '../api/assets'
 
 interface UseAssetNavigationOptions {
   assets: Asset[]
@@ -18,6 +18,7 @@ interface UseAssetNavigationResult {
   hasNext: boolean
   trash: () => Promise<void>
   restore: () => Promise<void>
+  toggleFavorite: (assetId: string, nextValue: boolean) => Promise<void>
 }
 
 export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNavigationResult {
@@ -78,5 +79,14 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
     }
   }
 
-  return { selected, open, close, goPrev, goNext, hasPrev, hasNext, trash, restore }
+  const toggleFavorite = async (assetId: string, nextValue: boolean) => {
+    try {
+      await updateAsset(assetId, { favorite: nextValue })
+      await opts.onAfterAction?.()
+    } catch {
+      window.alert('Failed to update favorite. Please try again.')
+    }
+  }
+
+  return { selected, open, close, goPrev, goNext, hasPrev, hasNext, trash, restore, toggleFavorite }
 }

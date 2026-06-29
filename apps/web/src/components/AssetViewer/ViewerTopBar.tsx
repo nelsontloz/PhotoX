@@ -1,6 +1,7 @@
 import {
   FaArrowLeft,
   FaHeart,
+  FaRegHeart,
   FaDownload,
   FaShare,
   FaPen,
@@ -19,6 +20,7 @@ interface ViewerTopBarProps {
   onClose: () => void
   onTrash?: () => void
   onRestore?: () => void
+  onToggleFavorite?: () => void
 }
 
 function formatDate(dateStr: string): string {
@@ -36,6 +38,7 @@ export function ViewerTopBar({
   onClose,
   onTrash,
   onRestore,
+  onToggleFavorite,
 }: ViewerTopBarProps) {
   const title = asset.originalName ?? asset.title ?? 'Untitled'
   const dateStr = asset.takenAt ?? asset.uploadedAt
@@ -74,8 +77,16 @@ export function ViewerTopBar({
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <button className="p-2 text-white/80 hover:text-white transition-colors" title="Favorite">
-          <FaHeart className={`text-base ${asset.favorite ? 'fill-red-500 text-red-500' : ''}`} />
+        <button
+          onClick={onToggleFavorite}
+          className="p-2 text-white/80 hover:text-white transition-colors"
+          title="Favorite"
+        >
+          {asset.favorite ? (
+            <FaHeart className="text-base fill-red-500 text-red-500" />
+          ) : (
+            <FaRegHeart className="text-base" />
+          )}
         </button>
         <button
           onClick={() => void handleDownload()}

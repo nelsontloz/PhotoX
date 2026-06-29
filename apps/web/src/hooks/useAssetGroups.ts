@@ -12,9 +12,9 @@ export interface AssetGroup {
 const PAGE_SIZE = 50
 
 export function useAssetGroups(
-  opts: { isTrashed?: boolean; dateField?: 'takenAt' | 'trashedAt' } = {},
+  opts: { isTrashed?: boolean; favorite?: boolean; dateField?: 'takenAt' | 'trashedAt' } = {},
 ) {
-  const { isTrashed, dateField = 'takenAt' } = opts
+  const { isTrashed, favorite, dateField = 'takenAt' } = opts
   const [groups, setGroups] = useState<AssetGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -32,7 +32,7 @@ export function useAssetGroups(
       let total = 0
 
       do {
-        const res = await listAssets({ limit: PAGE_SIZE, offset, isTrashed })
+        const res = await listAssets({ limit: PAGE_SIZE, offset, isTrashed, favorite })
         all.push(...res.items)
         total = res.total
         offset += PAGE_SIZE

@@ -113,6 +113,7 @@ export interface Asset {
   thumbnailStatus: ThumbnailStatus
   faceStatus: 'pending' | 'ready' | 'failed' | null
   faceCount: number | null
+  faces?: FaceDto[]
 }
 
 export interface AssetListResponse {
@@ -163,3 +164,83 @@ export interface AdminAssetCountsResponse {
   photos: AssetFailureCounts
   videos: AssetFailureCounts
 }
+
+export interface FaceBox {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export interface FaceDto {
+  id: string
+  assetId: string
+  box: FaceBox
+  confidence: number
+  personId?: string | null
+}
+
+export interface DetectedFaceInput {
+  box: FaceBox
+  confidence: number
+  embedding: number[]
+}
+
+export interface RegisterFacesRequestDto {
+  faces: DetectedFaceInput[]
+}
+
+export interface RegisterFacesResponseDto {
+  count: number
+}
+
+export interface PersonDto {
+  id: string
+  userId: string
+  name: string | null
+  coverFaceId: string | null
+  coverFaceUrl: string | null
+  clusterLabel: string | null
+  faceCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PersonListResponse {
+  items: PersonDto[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface PersonAssetItem {
+  assetId: string
+  faceId: string
+  thumbnailUrl: string | null
+  uploadedAt: string
+  faceCount: number
+}
+
+export interface PersonAssetsResponse {
+  personId: string
+  items: PersonAssetItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface UpdatePersonRequest {
+  name: string | null
+}
+
+export interface ReassignFacesRequest {
+  fromPersonId: string | null
+  toPersonId: string | null
+  faceIds: string[]
+}
+
+export interface ReassignFacesResponse {
+  moved: number
+}
+
+export * from './albums'

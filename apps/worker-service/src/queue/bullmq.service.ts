@@ -1,13 +1,14 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import Redis from 'ioredis'
-import { Worker, type Job, type WorkerOptions } from 'bullmq'
+import { Queue, Worker, type Job, type WorkerOptions } from 'bullmq'
 
 @Injectable()
 export class BullMqService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BullMqService.name)
   private connection!: Redis
   private readonly workers: Worker[] = []
+  private readonly queues = new Map<string, Queue>()
 
   constructor(private readonly config: ConfigService) {}
 
@@ -24,8 +25,18 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy() {
     await Promise.all(this.workers.map((w) => w.close()))
+    await Promise.all([...this.queues.values()].map((q) => q.close()))
     await this.connection.quit()
     this.logger.log('BullMQ connection closed')
+  }
+
+  getQueue(name: string): Queue {
+    let queue = this.queues.get(name)
+    if (!queue) {
+      queue = new Queue(name, { connection: this.connection })
+      this.queues.set(name, queue)
+    }
+    return queue
   }
 
   createWorker<T>(

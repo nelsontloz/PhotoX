@@ -52,14 +52,6 @@ export class AssetsController {
     return this.assets.updateMetadata(id, dto)
   }
 
-  @Get(':id/faces')
-  @ApiOperation({ summary: 'Get detected faces for an asset' })
-  @ApiResponse({ status: 200, description: 'Face list (may be empty)' })
-  @ApiResponse({ status: 404, description: 'Asset not found' })
-  async getFaces(@Param('id') id: string, @Query('userId') userId: string) {
-    return this.assets.getFaces(userId, id)
-  }
-
   @Get(':id')
   @ApiOperation({ summary: 'Get a single asset' })
   @ApiResponse({ status: 200, description: 'Asset found' })

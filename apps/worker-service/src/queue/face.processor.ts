@@ -3,7 +3,6 @@ import { HttpService } from '@nestjs/axios'
 import sharp from 'sharp'
 import { firstValueFrom } from 'rxjs'
 import type { Job } from 'bullmq'
-import { randomUUID } from 'crypto'
 import { BullMqService } from './bullmq.service'
 import { FaceDetectorService } from './face.detector'
 import { SERVICE_URLS } from '@photox/shared-config'
@@ -66,7 +65,6 @@ export class FaceProcessor {
 
       const detections = await this.faceDetector.detect(resized)
       const faces = detections.map((d) => ({
-        id: randomUUID(),
         box: {
           x: Math.round(d.box.x * scaleX),
           y: Math.round(d.box.y * scaleY),
@@ -74,27 +72,29 @@ export class FaceProcessor {
           h: Math.round(d.box.h * scaleY),
         },
         confidence: Math.round(d.confidence * 10000) / 10000,
+        embedding: d.embedding,
       }))
 
-      let existingMetadata: Record<string, unknown> = {}
-      try {
-        const assetUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}?userId=${encodeURIComponent(userId)}`
-        const assetRes = await firstValueFrom(this.http.get(assetUrl, { timeout: 5_000 }))
-        const asset = assetRes.data as { metadata?: Record<string, unknown> }
-        existingMetadata = asset.metadata ?? {}
-      } catch {
-        // ponytail: metadata may not exist yet; default to empty
-      }
+      const facesUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/faces`
+      await firstValueFrom(this.http.post(facesUrl, { userId, faces }, { timeout: 30_000 }))
 
       await firstValueFrom(
         this.http.patch(patchUrl, {
           faceStatus: 'ready',
           faceCount: faces.length,
-          metadata: { ...existingMetadata, faces },
         }),
       )
 
       this.logger.log(`Faces complete: asset=${assetId}, count=${faces.length}`)
+
+      try {
+        await this.bullMq
+          .getQueue('process-faces-cluster')
+          .add('cluster', { userId, reason: 'face-detected' }, { jobId: `cluster-${userId}` })
+      } catch (clusterErr) {
+        const clusterMsg = clusterErr instanceof Error ? clusterErr.message : String(clusterErr)
+        this.logger.warn(`Failed to enqueue cluster job for user=${userId}: ${clusterMsg}`)
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       this.logger.error(`Faces failed: asset=${assetId} — ${message}`)

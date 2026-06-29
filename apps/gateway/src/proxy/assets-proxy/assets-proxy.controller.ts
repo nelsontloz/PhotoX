@@ -177,4 +177,26 @@ export class AssetsProxyController {
     })
     return result.data
   }
+
+  @Post(':id/faces')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Register detected faces for an asset' })
+  @ApiResponse({ status: 201, description: 'Faces registered' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  async registerFaces(
+    @Param('id') id: string,
+    @Body() body: { userId: string; faces: unknown[] },
+    @Req() req: Request,
+  ) {
+    const result = await this.proxy.forward(SERVICE_URLS['media-service'], {
+      method: 'POST',
+      path: `v1/assets/${id}/faces`,
+      body,
+      headers: {
+        'x-request-id': (req.headers['x-request-id'] as string) ?? '',
+      },
+      timeout: 30_000,
+    })
+    return result.data
+  }
 }

@@ -1,39 +1,8 @@
 import type { CSSProperties } from 'react'
-
-export interface Face {
-  id: string
-  box: { x: number; y: number; w: number; h: number }
-  confidence: number
-}
-
-function isFace(v: unknown): v is Face {
-  if (typeof v !== 'object' || v === null) return false
-  const f = v as Record<string, unknown>
-  const box = f.box
-  if (typeof box !== 'object' || box === null) return false
-  const b = box as Record<string, unknown>
-  return (
-    typeof f.id === 'string' &&
-    typeof f.confidence === 'number' &&
-    Number.isFinite(f.confidence) &&
-    typeof b.x === 'number' &&
-    typeof b.y === 'number' &&
-    typeof b.w === 'number' &&
-    typeof b.h === 'number' &&
-    b.w > 0 &&
-    b.h > 0
-  )
-}
-
-export function parseFaces(metadata: Record<string, unknown> | null): Face[] {
-  if (!metadata) return []
-  const raw = metadata.faces
-  if (!Array.isArray(raw)) return []
-  return raw.filter(isFace)
-}
+import type { FaceDto } from '@photox/shared-types'
 
 export interface FaceOverlayProps {
-  faces: Face[]
+  faces: FaceDto[]
   imageWidth: number
   imageHeight: number
 }
