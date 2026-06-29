@@ -6,6 +6,7 @@ interface ListAssetsParams {
   offset?: number
   kind?: 'photo' | 'video'
   isTrashed?: boolean
+  favorite?: boolean
 }
 
 export async function listAssets(params: ListAssetsParams = {}): Promise<AssetListResponse> {
@@ -65,6 +66,14 @@ export async function uploadFile(
       }
     },
   })
+  return data
+}
+
+export async function updateAsset(
+  id: string,
+  body: { favorite?: boolean; title?: string; description?: string; takenAt?: string },
+): Promise<Asset> {
+  const { data } = await api.patch<Asset>(`/v1/assets/${id}`, body)
   return data
 }
 

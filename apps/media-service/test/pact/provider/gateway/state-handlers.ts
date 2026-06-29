@@ -7,6 +7,8 @@ const FILE_ID = '550e8400-e29b-41d4-a716-446655440000'
 const PERSON_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33'
 const FACE_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44'
 const PERSON_ASSET_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a77'
+const ALBUM_ID = 'b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a33'
+const ALBUM_ASSET_ID = 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a44'
 
 const baseAsset = {
   id: ASSET_ID,
@@ -179,6 +181,8 @@ export function buildStateHandlers(repos: MockRepos): Record<string, () => Promi
         orderBy: vi.fn().mockReturnThis(),
         skip: vi.fn().mockReturnThis(),
         take: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        offset: vi.fn().mockReturnThis(),
         getRawMany: vi
           .fn()
           .mockResolvedValue([{ assetId: PERSON_ASSET_ID, faceId: FACE_ID, faceCount: '2' }]),
@@ -215,5 +219,54 @@ export function buildStateHandlers(repos: MockRepos): Record<string, () => Promi
       })
       return Promise.resolve()
     },
+
+    'an album can be created': () => Promise.resolve(),
+
+    'user has no albums': () => {
+      repos.mockAlbumRepo.findAndCount.mockResolvedValue([[], 0])
+      return Promise.resolve()
+    },
+
+    'album exists with id b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a33': () => {
+      repos.mockAlbumRepo.save({
+        id: ALBUM_ID,
+        userId: USER_ID,
+        name: 'Summer 2024',
+        description: null,
+        createdAt: new Date('2024-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+      })
+      repos.mockAlbumAssetRepo.createQueryBuilder.mockReturnValue({
+        where: vi.fn().mockReturnThis(),
+        andWhere: vi.fn().mockReturnThis(),
+        getCount: vi.fn().mockResolvedValue(0),
+        insert: vi.fn().mockReturnThis(),
+        into: vi.fn().mockReturnThis(),
+        values: vi.fn().mockReturnThis(),
+        orIgnore: vi.fn().mockReturnThis(),
+        execute: vi.fn().mockResolvedValue({}),
+      })
+      repos.mockAssetRepo.save({
+        id: ALBUM_ASSET_ID,
+        userId: USER_ID,
+        kind: 'photo',
+        fileId: FILE_ID,
+        isTrashed: false,
+      })
+      return Promise.resolve()
+    },
+
+    'asset c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a44 is in album b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a33':
+      () => {
+        repos.mockAlbumRepo.save({
+          id: ALBUM_ID,
+          userId: USER_ID,
+          name: 'Summer 2024',
+          description: null,
+          createdAt: new Date('2024-01-01T00:00:00.000Z'),
+          updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+        })
+        return Promise.resolve()
+      },
   }
 }

@@ -29,6 +29,8 @@ export interface MockRepos {
   mockThumbnailRepo: ReturnType<typeof createBasicRepo>
   mockFaceRepo: ReturnType<typeof createBasicRepo>
   mockPersonRepo: ReturnType<typeof createPersonRepo>
+  mockAlbumRepo: ReturnType<typeof createAlbumRepo>
+  mockAlbumAssetRepo: ReturnType<typeof createAlbumAssetRepo>
 }
 
 export function createAssetRepo() {
@@ -69,6 +71,7 @@ export function createAssetRepo() {
       addOrderBy: vi.fn().mockReturnThis(),
       skip: vi.fn().mockReturnThis(),
       take: vi.fn().mockReturnThis(),
+      innerJoin: vi.fn().mockReturnThis(),
       getManyAndCount: vi.fn().mockResolvedValue([[], 0]),
     }),
   }
@@ -151,6 +154,68 @@ export function createPersonRepo() {
       innerJoin: vi.fn().mockReturnThis(),
       addGroupBy: vi.fn().mockReturnThis(),
       groupBy: vi.fn().mockReturnThis(),
+    }),
+  }
+}
+
+export function createAlbumRepo() {
+  const store: Record<string, any> = {}
+
+  return {
+    findOne: vi.fn().mockImplementation((opts: any) => {
+      const id = opts?.where?.id
+      if (!id) return Promise.resolve(null)
+      const album = store[id]
+      if (!album) return Promise.resolve(null)
+      if (opts.where.userId && album.userId !== opts.where.userId) return Promise.resolve(null)
+      return Promise.resolve(album)
+    }),
+    findAndCount: vi.fn().mockResolvedValue([[], 0]),
+    save: vi.fn().mockImplementation((data: any) => {
+      const id = data.id ?? 'b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a33'
+      store[id] = {
+        ...data,
+        id,
+        description: data.description ?? null,
+        createdAt: data.createdAt ?? new Date('2024-01-01T00:00:00.000Z'),
+        updatedAt: data.updatedAt ?? new Date('2024-01-01T00:00:00.000Z'),
+      }
+      return Promise.resolve(store[id])
+    }),
+    update: vi.fn().mockImplementation((id: string, patch: any) => {
+      if (store[id]) {
+        store[id] = { ...store[id], ...patch }
+      }
+      return Promise.resolve({ affected: 1 })
+    }),
+    delete: vi.fn().mockResolvedValue({ affected: 1 }),
+    createQueryBuilder: vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      addSelect: vi.fn().mockReturnThis(),
+      innerJoin: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      andWhere: vi.fn().mockReturnThis(),
+      groupBy: vi.fn().mockReturnThis(),
+      getRawMany: vi.fn().mockResolvedValue([]),
+      getManyAndCount: vi.fn().mockResolvedValue([[], 0]),
+    }),
+  }
+}
+
+export function createAlbumAssetRepo() {
+  return {
+    findOne: vi.fn().mockResolvedValue(null),
+    save: vi.fn().mockImplementation((data: any) => Promise.resolve(data)),
+    delete: vi.fn().mockResolvedValue({ affected: 1 }),
+    createQueryBuilder: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnThis(),
+      andWhere: vi.fn().mockReturnThis(),
+      getCount: vi.fn().mockResolvedValue(0),
+      insert: vi.fn().mockReturnThis(),
+      into: vi.fn().mockReturnThis(),
+      values: vi.fn().mockReturnThis(),
+      orIgnore: vi.fn().mockReturnThis(),
+      execute: vi.fn().mockResolvedValue({}),
     }),
   }
 }

@@ -242,3 +242,5 @@ export interface ReassignFacesRequest {
 export interface ReassignFacesResponse {
   moved: number
 }
+
+export * from './albums'

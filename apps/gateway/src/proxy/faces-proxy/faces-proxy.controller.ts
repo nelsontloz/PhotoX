@@ -45,7 +45,7 @@ export class FacesProxyController {
       let parsed: unknown = body
       if (body instanceof Buffer || body instanceof ArrayBuffer) {
         try {
-          parsed = JSON.parse(Buffer.from(body as ArrayBuffer).toString('utf8'))
+          parsed = JSON.parse(Buffer.from(body).toString('utf8'))
         } catch {
           parsed = { message: 'Upstream error' }
         }
@@ -53,7 +53,7 @@ export class FacesProxyController {
       throw new HttpException(parsed as string | Record<string, unknown>, upstream.status)
     }
 
-    const buf = Buffer.from(upstream.data as ArrayBuffer)
+    const buf = Buffer.from(upstream.data)
     res.set({
       'Content-Type': (upstream.headers['content-type'] as string) ?? 'image/jpeg',
       'Content-Length': String(buf.byteLength),

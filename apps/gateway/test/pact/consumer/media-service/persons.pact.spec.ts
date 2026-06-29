@@ -32,7 +32,7 @@ const personMatcher = {
 const personAssetMatcher = {
   assetId: MatchersV3.uuid(ASSET_ID),
   faceId: MatchersV3.uuid(FACE_ID),
-  thumbnailUrl: MatchersV3.like('https://minio.example.com/thumb.jpg'),
+  thumbnailUrl: null,
   uploadedAt: MatchersV3.datetime("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", '2024-01-01T00:00:00.000Z'),
   faceCount: MatchersV3.integer(1),
 }

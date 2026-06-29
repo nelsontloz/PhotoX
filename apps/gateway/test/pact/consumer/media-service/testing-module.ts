@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core'
 import { Test } from '@nestjs/testing'
 import { HttpModule } from '@nestjs/axios'
 import { AssetsProxyController } from '../../../../src/proxy/assets-proxy/assets-proxy.controller'
+import { AlbumsProxyController } from '../../../../src/proxy/albums-proxy/albums-proxy.controller'
 import { PersonsProxyController } from '../../../../src/proxy/persons-proxy/persons-proxy.controller'
 import { requestIdMiddleware } from '../../../../src/common/middleware/request-id.middleware'
 import { ProxyService } from '../../../../src/proxy/proxy.service'
@@ -28,7 +29,7 @@ export async function setupMediaServicePactModule(): Promise<{
 
   const module = await Test.createTestingModule({
     imports: [HttpModule],
-    controllers: [AssetsProxyController, PersonsProxyController],
+    controllers: [AssetsProxyController, AlbumsProxyController, PersonsProxyController],
     providers: [
       { provide: ProxyService, useValue: stub },
       {

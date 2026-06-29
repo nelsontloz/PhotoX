@@ -35,6 +35,7 @@ export interface MockRepos {
   mockAssetRepo: ReturnType<typeof createAssetRepo>
   mockThumbnailRepo: ReturnType<typeof createBasicRepo>
   mockFaceRepo: ReturnType<typeof createBasicRepo>
+  mockPersonRepo: ReturnType<typeof createBasicRepo>
 }
 
 export function createAssetRepo() {

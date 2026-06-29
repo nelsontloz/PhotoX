@@ -45,6 +45,10 @@ function TimelineContent() {
             onTrash={() => {
               void nav.trash()
             }}
+            onToggleFavorite={() => {
+              const cur = nav.selected
+              if (cur) void nav.toggleFavorite(cur.id, !cur.favorite)
+            }}
           />
         </Suspense>
       )}

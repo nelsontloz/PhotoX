@@ -6,6 +6,7 @@ import { getRepositoryToken } from '@nestjs/typeorm'
 import { Asset } from '../../../../src/entities/asset.entity'
 import { AssetThumbnail } from '../../../../src/entities/asset-thumbnail.entity'
 import { Face } from '../../../../src/faces/entities/face.entity'
+import { Person } from '../../../../src/persons/entities/person.entity'
 import { AssetsModule } from '../../../../src/assets/assets.module'
 import { createAssetRepo, createBasicRepo } from './mock-repos'
 import type { MockRepos } from './mock-repos'
@@ -22,6 +23,7 @@ export async function setupMockedApp(): Promise<{
   const mockAssetRepo = createAssetRepo()
   const mockThumbnailRepo = createBasicRepo()
   const mockFaceRepo = createBasicRepo()
+  const mockPersonRepo = createBasicRepo()
 
   const module = await Test.createTestingModule({
     imports: [AssetsModule],
@@ -32,6 +34,8 @@ export async function setupMockedApp(): Promise<{
     .useValue(mockThumbnailRepo)
     .overrideProvider(getRepositoryToken(Face))
     .useValue(mockFaceRepo)
+    .overrideProvider(getRepositoryToken(Person))
+    .useValue(mockPersonRepo)
     .compile()
 
   const app = module.createNestApplication()
@@ -45,6 +49,6 @@ export async function setupMockedApp(): Promise<{
   return {
     app,
     url,
-    repos: { mockAssetRepo, mockThumbnailRepo, mockFaceRepo },
+    repos: { mockAssetRepo, mockThumbnailRepo, mockFaceRepo, mockPersonRepo },
   }
 }

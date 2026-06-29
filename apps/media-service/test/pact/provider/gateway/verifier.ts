@@ -8,8 +8,17 @@ import { AssetThumbnail } from '../../../../src/entities/asset-thumbnail.entity'
 import { Face } from '../../../../src/faces/entities/face.entity'
 import { Person } from '../../../../src/persons/entities/person.entity'
 import { AssetsModule } from '../../../../src/assets/assets.module'
+import { AlbumsModule } from '../../../../src/albums/albums.module'
 import { PersonsModule } from '../../../../src/persons/persons.module'
-import { createAssetRepo, createBasicRepo, createPersonRepo } from './mock-repos'
+import { Album } from '../../../../src/entities/album.entity'
+import { AlbumAsset } from '../../../../src/entities/album-asset.entity'
+import {
+  createAssetRepo,
+  createBasicRepo,
+  createPersonRepo,
+  createAlbumRepo,
+  createAlbumAssetRepo,
+} from './mock-repos'
 import type { MockRepos } from './mock-repos'
 
 export const PACT_DIR = path.resolve(__dirname, '../../../../../../pacts')
@@ -25,9 +34,11 @@ export async function setupMockedApp(): Promise<{
   const mockThumbnailRepo = createBasicRepo()
   const mockFaceRepo = createBasicRepo()
   const mockPersonRepo = createPersonRepo()
+  const mockAlbumRepo = createAlbumRepo()
+  const mockAlbumAssetRepo = createAlbumAssetRepo()
 
   const module = await Test.createTestingModule({
-    imports: [AssetsModule, PersonsModule],
+    imports: [AssetsModule, AlbumsModule, PersonsModule],
   })
     .overrideProvider(getRepositoryToken(Asset))
     .useValue(mockAssetRepo)
@@ -37,6 +48,10 @@ export async function setupMockedApp(): Promise<{
     .useValue(mockFaceRepo)
     .overrideProvider(getRepositoryToken(Person))
     .useValue(mockPersonRepo)
+    .overrideProvider(getRepositoryToken(Album))
+    .useValue(mockAlbumRepo)
+    .overrideProvider(getRepositoryToken(AlbumAsset))
+    .useValue(mockAlbumAssetRepo)
     .compile()
 
   const app = module.createNestApplication()
@@ -50,6 +65,13 @@ export async function setupMockedApp(): Promise<{
   return {
     app,
     url,
-    repos: { mockAssetRepo, mockThumbnailRepo, mockFaceRepo, mockPersonRepo },
+    repos: {
+      mockAssetRepo,
+      mockThumbnailRepo,
+      mockFaceRepo,
+      mockPersonRepo,
+      mockAlbumRepo,
+      mockAlbumAssetRepo,
+    },
   }
 }

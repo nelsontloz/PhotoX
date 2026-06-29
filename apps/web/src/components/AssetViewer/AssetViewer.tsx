@@ -18,6 +18,7 @@ interface AssetViewerProps {
   hasNext: boolean
   onTrash?: () => void
   onRestore?: () => void
+  onToggleFavorite?: () => void
 }
 
 export function AssetViewer({
@@ -29,6 +30,7 @@ export function AssetViewer({
   hasNext,
   onTrash,
   onRestore,
+  onToggleFavorite,
 }: AssetViewerProps) {
   const [currentAsset, setCurrentAsset] = useState<Asset>(asset)
   const [infoOpen, setInfoOpen] = useState(false)
@@ -87,6 +89,7 @@ export function AssetViewer({
           onClose={onClose}
           onTrash={onTrash}
           onRestore={onRestore}
+          onToggleFavorite={onToggleFavorite}
         />
         <ViewerMedia
           isVideo={isVideo}
