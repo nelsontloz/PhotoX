@@ -8,6 +8,8 @@ import {
   FaCircleInfo,
   FaTrash,
   FaRotateLeft,
+  FaFolderPlus,
+  FaFolderMinus,
 } from 'react-icons/fa6'
 import { downloadFile } from '../../api/assets'
 import type { Asset } from '@photox/shared-types'
@@ -21,6 +23,8 @@ interface ViewerTopBarProps {
   onTrash?: () => void
   onRestore?: () => void
   onToggleFavorite?: () => void
+  onAddToAlbum?: () => void
+  onRemoveFromAlbum?: () => void
 }
 
 function formatDate(dateStr: string): string {
@@ -39,6 +43,8 @@ export function ViewerTopBar({
   onTrash,
   onRestore,
   onToggleFavorite,
+  onAddToAlbum,
+  onRemoveFromAlbum,
 }: ViewerTopBarProps) {
   const title = asset.originalName ?? asset.title ?? 'Untitled'
   const dateStr = asset.takenAt ?? asset.uploadedAt
@@ -107,6 +113,26 @@ export function ViewerTopBar({
             <button className="p-2 text-white/80 hover:text-white transition-colors" title="Edit">
               <FaPen className="text-base" />
             </button>
+            {onAddToAlbum && (
+              <button
+                onClick={onAddToAlbum}
+                className="p-2 text-white/80 hover:text-white transition-colors"
+                title="Add to album"
+                aria-label="Add to album"
+              >
+                <FaFolderPlus className="text-base" />
+              </button>
+            )}
+            {onRemoveFromAlbum && (
+              <button
+                onClick={onRemoveFromAlbum}
+                className="p-2 text-white/80 hover:text-white transition-colors"
+                title="Remove from this album"
+                aria-label="Remove from this album"
+              >
+                <FaFolderMinus className="text-base" />
+              </button>
+            )}
           </>
         )}
         {onTrash && (

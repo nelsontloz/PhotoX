@@ -19,6 +19,8 @@ interface AssetViewerProps {
   onTrash?: () => void
   onRestore?: () => void
   onToggleFavorite?: () => void
+  onAddToAlbum?: () => void
+  onRemoveFromAlbum?: () => void
 }
 
 export function AssetViewer({
@@ -31,6 +33,8 @@ export function AssetViewer({
   onTrash,
   onRestore,
   onToggleFavorite,
+  onAddToAlbum,
+  onRemoveFromAlbum,
 }: AssetViewerProps) {
   const [currentAsset, setCurrentAsset] = useState<Asset>(asset)
   const [infoOpen, setInfoOpen] = useState(false)
@@ -90,6 +94,8 @@ export function AssetViewer({
           onTrash={onTrash}
           onRestore={onRestore}
           onToggleFavorite={onToggleFavorite}
+          onAddToAlbum={onAddToAlbum}
+          onRemoveFromAlbum={onRemoveFromAlbum}
         />
         <ViewerMedia
           isVideo={isVideo}

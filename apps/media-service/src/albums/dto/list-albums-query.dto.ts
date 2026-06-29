@@ -11,8 +11,8 @@ export class ListAlbumsQueryDto implements IListAlbumsQueryDto {
   @IsOptional()
   @Type(() => Number)
   @Min(1)
-  @Max(100)
-  @ApiProperty({ default: 20, required: false })
+  @Max(1000)
+  @ApiProperty({ default: 20, required: false, maximum: 1000 })
   limit?: number
 
   @IsOptional()
