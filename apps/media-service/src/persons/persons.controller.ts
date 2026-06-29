@@ -88,7 +88,6 @@ export class PersonsController {
   @ApiOperation({ summary: 'Reassign faces between persons' })
   @ApiResponse({ status: 200, description: 'Faces reassigned' })
   async reassign(
-    @Param('id') _id: string,
     @Query('userId') userId: string,
     @Body() dto: ReassignFacesDto,
   ): Promise<ReassignFacesResponse> {

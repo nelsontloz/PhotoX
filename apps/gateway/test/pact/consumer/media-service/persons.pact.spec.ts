@@ -13,7 +13,6 @@ let stub: StubProxy
 const USER_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
 const PERSON_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33'
 const FACE_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44'
-const FROM_PERSON_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55'
 const TO_PERSON_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a66'
 const ASSET_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a77'
 
@@ -32,7 +31,6 @@ const personMatcher = {
 const personAssetMatcher = {
   assetId: MatchersV3.uuid(ASSET_ID),
   faceId: MatchersV3.uuid(FACE_ID),
-  thumbnailUrl: null,
   uploadedAt: MatchersV3.datetime("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", '2024-01-01T00:00:00.000Z'),
   faceCount: MatchersV3.integer(1),
 }
@@ -172,7 +170,6 @@ describe('Gateway → media-service persons pact', () => {
         query: { userId: USER_ID },
         headers: { 'Content-Type': 'application/json' },
         body: {
-          fromPersonId: FROM_PERSON_ID,
           toPersonId: TO_PERSON_ID,
           faceIds: MatchersV3.eachLike(MatchersV3.uuid(FACE_ID)),
         },
@@ -187,7 +184,6 @@ describe('Gateway → media-service persons pact', () => {
         const res = await request(app.getHttpServer())
           .post(`/api/v1/persons/${PERSON_ID}/reassign`)
           .send({
-            fromPersonId: FROM_PERSON_ID,
             toPersonId: TO_PERSON_ID,
             faceIds: [FACE_ID],
           })

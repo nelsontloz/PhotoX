@@ -113,40 +113,37 @@ export class PersonsService {
       .getRawOne<{ count: string }>()
       .then((r) => Number(r?.count ?? 0))
 
-    // ponytail: thumbnailUrl left null — page fetches thumbs via listThumbnails+downloadFile (auth) and overlays the face box from the fetched asset
+    if (rows.length === 0) {
+      return { personId: id, items: [], total, limit, offset }
+    }
+
+    const assets = await this.assetRepo
+      .createQueryBuilder('a')
+      .select('a.id', 'id')
+      .addSelect('a."uploadedAt"', 'uploadedAt')
+      .where('a.id IN (:...assetIds)', { assetIds: rows.map((r) => r.assetId) })
+      .getRawMany<{ id: string; uploadedAt: Date }>()
+
+    const uploadedById = new Map(
+      assets.map((a) => [
+        a.id,
+        a.uploadedAt instanceof Date ? a.uploadedAt.toISOString() : String(a.uploadedAt),
+      ]),
+    )
+
     const items = rows.map((r) => ({
       assetId: r.assetId,
       faceId: r.faceId,
-      thumbnailUrl: null,
-      uploadedAt: '',
+      uploadedAt: uploadedById.get(r.assetId) ?? '',
       faceCount: Number(r.faceCount),
     }))
-
-    if (items.length > 0) {
-      const assetIds = items.map((i) => i.assetId)
-      const assets = await this.assetRepo
-        .createQueryBuilder('a')
-        .select('a.id', 'id')
-        .addSelect('a."uploadedAt"', 'uploadedAt')
-        .where('a.id IN (:...assetIds)', { assetIds })
-        .getRawMany<{ id: string; uploadedAt: Date }>()
-
-      const byId = new Map(assets.map((a) => [a.id, a]))
-      for (const item of items) {
-        const a = byId.get(item.assetId)
-        if (a) {
-          item.uploadedAt =
-            a.uploadedAt instanceof Date ? a.uploadedAt.toISOString() : String(a.uploadedAt)
-        }
-      }
-    }
 
     return { personId: id, items, total, limit, offset }
   }
 
   async reassignFaces(
     userId: string,
-    body: { fromPersonId: string | null; toPersonId: string | null; faceIds: string[] },
+    body: { toPersonId: string | null; faceIds: string[] },
   ): Promise<ReassignFacesResponse> {
     const toUpdate = await this.faceRepo.find({
       where: body.faceIds.map((fid) => ({ id: fid, userId })),
@@ -169,12 +166,6 @@ export class PersonsService {
     }
 
     return { moved: toUpdate.length }
-  }
-
-  // ponytail: denormalized count, re-synced after assign/unassign/reassign
-  async refreshFaceCount(personId: string, userId: string): Promise<void> {
-    const count = await this.faceRepo.count({ where: { personId, userId } })
-    await this.personRepo.update(personId, { faceCount: count })
   }
 
   private toListItem(person: Person): PersonDto {

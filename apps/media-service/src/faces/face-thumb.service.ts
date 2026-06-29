@@ -23,7 +23,10 @@ export class FaceThumbService {
 
   // ponytail: synchronous crop on demand. Caching the resulting jpeg (e.g. via a `face_thumbs` table or MinIO) is the upgrade path when traffic warrants.
   async getThumb(faceId: string, userId: string, size: number): Promise<Buffer> {
-    const target = clamp(size, 32, MAX_SIZE)
+    const target = Math.max(
+      32,
+      Math.min(MAX_SIZE, Math.floor(Number.isFinite(size) ? size : DEFAULT_SIZE)),
+    )
     const face = await this.faceRepo.findOne({ where: { id: faceId, userId } })
     if (!face) throw new NotFoundException('Face not found')
 
@@ -54,9 +57,4 @@ export class FaceThumbService {
       .jpeg({ quality: 82 })
       .toBuffer()
   }
-}
-
-function clamp(n: number, min: number, max: number): number {
-  if (!Number.isFinite(n)) return DEFAULT_SIZE
-  return Math.max(min, Math.min(max, Math.floor(n)))
 }

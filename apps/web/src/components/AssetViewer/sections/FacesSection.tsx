@@ -85,7 +85,6 @@ export function FacesSection({ asset }: FacesSectionProps) {
 
     try {
       const result = await reassignFaces(targetPerson?.id ?? '', {
-        fromPersonId: face.personId ?? null,
         toPersonId,
         faceIds: [faceId],
       })

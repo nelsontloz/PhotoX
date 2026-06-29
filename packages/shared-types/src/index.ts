@@ -216,7 +216,6 @@ export interface PersonListResponse {
 export interface PersonAssetItem {
   assetId: string
   faceId: string
-  thumbnailUrl: string | null
   uploadedAt: string
   faceCount: number
 }
@@ -234,7 +233,6 @@ export interface UpdatePersonRequest {
 }
 
 export interface ReassignFacesRequest {
-  fromPersonId: string | null
   toPersonId: string | null
   faceIds: string[]
 }
