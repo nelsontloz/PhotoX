@@ -35,7 +35,7 @@ export default function PeoplePage() {
         elapsed += 3000
         listPersons()
           .then((res) => setPersons(res.items))
-          .catch(() => {})
+          .catch(() => undefined)
         if (elapsed >= 30000) window.clearInterval(interval)
       }, 3000)
     } catch {
