@@ -38,3 +38,8 @@ export async function reassignFaces(
   const { data } = await api.post<ReassignFacesResponse>(`/v1/persons/${personId}/reassign`, body)
   return data
 }
+
+export async function triggerCluster(): Promise<{ queued: boolean; jobId: string }> {
+  const { data } = await api.post<{ queued: boolean; jobId: string }>('/v1/persons/cluster')
+  return data
+}

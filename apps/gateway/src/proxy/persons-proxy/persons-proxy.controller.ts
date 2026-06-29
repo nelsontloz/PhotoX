@@ -33,7 +33,8 @@ export class PersonsProxyController {
   @ApiResponse({ status: 202, description: 'Cluster job queued' })
   async triggerCluster(@Req() req: Request) {
     const userId = (req.user as { id: string }).id
-    const jobId = `cluster-${userId}-manual`
+    // ponytail: unique jobId per click — fixed jobId would dedupe via BullMQ and silently drop re-runs
+    const jobId = `cluster-${userId}-manual-${Date.now()}`
     await this.bullmq
       .getQueue('process-faces-cluster')
       .add('cluster', { userId, reason: 'manual' }, { jobId })

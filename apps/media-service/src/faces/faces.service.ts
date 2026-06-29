@@ -50,6 +50,7 @@ export class FacesService {
       id: f.id,
       assetId: f.assetId,
       box: f.box,
+      personId: f.personId ?? null,
       ...(includeEmbeddings ? { embedding: f.embedding } : {}),
     }))
   }
