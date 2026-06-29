@@ -6,12 +6,15 @@ import { SERVICE_URLS } from '@photox/shared-config'
 // ponytail: eps/minPts tunable; eps=0.4 cosine distance ≈ cosine similarity 0.6 — empirically good for human face embeddings
 const DBSCAN_EPS = 0.4
 const DBSCAN_MIN_PTS = 2
+// ponytail: slightly more lenient than DBSCAN_EPS — lets singleton noise faces match an existing person centroid when they're "close enough" to be the same person
+const NOISE_ASSIGN_EPS = 0.5
 
 interface FaceItem {
   id: string
   assetId: string
   box: { x: number; y: number; w: number; h: number }
   embedding: number[]
+  personId: string | null
 }
 
 interface PersonItem {
@@ -115,9 +118,13 @@ export class FaceClusterService {
     const labels = dbscan(embeddings, DBSCAN_EPS, DBSCAN_MIN_PTS)
 
     const clusters = new Map<number, FaceItem[]>()
+    const noiseFaces: FaceItem[] = []
     for (let i = 0; i < faces.length; i++) {
       const label = labels[i]!
-      if (label === -1) continue
+      if (label === -1) {
+        noiseFaces.push(faces[i]!)
+        continue
+      }
       const arr = clusters.get(label) ?? []
       arr.push(faces[i]!)
       clusters.set(label, arr)
@@ -125,7 +132,44 @@ export class FaceClusterService {
 
     if (clusters.size === 0) {
       this.logger.log(`No clusters for user=${userId}, all faces are noise`)
-      return
+    }
+
+    // ponytail: post-DBSCAN noise reassignment — singleton faces with no close neighbor get matched to the nearest existing person centroid within NOISE_ASSIGN_EPS. This catches the common case where one photo of an already-known person has no nearby face to chain off.
+    const personCentroids = new Map<string, number[]>()
+    const facesByPerson = new Map<string, FaceItem[]>()
+    for (const f of faces) {
+      if (f.personId === null) continue
+      const arr = facesByPerson.get(f.personId) ?? []
+      arr.push(f)
+      facesByPerson.set(f.personId, arr)
+    }
+    for (const [pid, pfs] of facesByPerson) {
+      if (pfs.length === 0) continue
+      const dim = pfs[0]!.embedding.length
+      const centroid = new Array<number>(dim).fill(0)
+      for (const f of pfs) {
+        for (let i = 0; i < dim; i++) centroid[i]! += f.embedding[i]!
+      }
+      for (let i = 0; i < dim; i++) centroid[i]! /= pfs.length
+      personCentroids.set(pid, centroid)
+    }
+
+    let noiseReassigned = 0
+    for (const face of noiseFaces) {
+      let bestPersonId: string | null = null
+      let bestDist = Infinity
+      for (const [pid, centroid] of personCentroids) {
+        const d = cosineDistance(face.embedding, centroid)
+        if (d < bestDist) {
+          bestDist = d
+          bestPersonId = pid
+        }
+      }
+      if (bestPersonId !== null && bestDist <= NOISE_ASSIGN_EPS) {
+        const patchFaceUrl = `${SERVICE_URLS['media-service']}/v1/faces/${face.id}/person`
+        await firstValueFrom(this.http.patch(patchFaceUrl, { userId, personId: bestPersonId }))
+        noiseReassigned++
+      }
     }
 
     const personsUrl = `${SERVICE_URLS['media-service']}/v1/persons?userId=${encodeURIComponent(userId)}`
@@ -166,7 +210,7 @@ export class FaceClusterService {
     }
 
     this.logger.log(
-      `Clustered ${faces.length} faces into ${clusters.size} groups for user=${userId}`,
+      `Clustered ${faces.length} faces into ${clusters.size} groups (${noiseReassigned} noise faces reassigned to existing persons) for user=${userId}`,
     )
   }
 }
