@@ -78,7 +78,7 @@ function TimelineContent() {
         selectedIds={selectedIds}
         onToggleSelect={toggle}
         onLongPress={isMobile ? onLongPress : undefined}
-        showCheckbox={!isMobile}
+        showCheckbox
       />
       {nav.selected && (
         <Suspense fallback={null}>

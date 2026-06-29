@@ -16,12 +16,18 @@ export class ThumbnailOrchestratorService {
 
   constructor(private readonly bullMq: BullMqService) {}
 
-  async enqueueThumbnails(assetId: string, fileId: string, userId: string): Promise<void> {
+  async enqueueThumbnails(
+    assetId: string,
+    fileId: string,
+    userId: string,
+    opts: { force?: boolean } = {},
+  ): Promise<void> {
     for (const size of STANDARD_SIZES) {
       const job: ThumbnailJob = { assetId, fileId, userId, size }
+      const jobId = opts.force ? `reprocess:${assetId}:${size}` : `thumb:${assetId}:${size}`
       try {
         await this.bullMq.getQueue('process-thumbnail').add('process-thumbnail', job, {
-          jobId: `thumb:${assetId}:${size}`,
+          jobId,
         })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)

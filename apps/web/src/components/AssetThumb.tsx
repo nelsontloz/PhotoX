@@ -11,7 +11,7 @@ interface AssetThumbProps {
   onThumbPicked?: (thumb: AssetThumbnail) => void
 }
 
-const THUMB_SIZES = ['md', 'lg', 'sm']
+const THUMB_SIZES = ['md']
 
 function pickThumbnail(thumbs: AssetThumbnail[]): AssetThumbnail | undefined {
   for (const size of THUMB_SIZES) {

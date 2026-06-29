@@ -165,6 +165,26 @@ export interface AdminAssetCountsResponse {
   videos: AssetFailureCounts
 }
 
+export interface AdminReprocessThumbnailsRequest {
+  kind: 'photo' | 'video'
+}
+
+export interface AdminReprocessThumbnailsResponse {
+  enqueued: number
+  totalAssets: number
+}
+
+export interface AdminAssetReprocessRow {
+  id: string
+  userId: string
+  fileId: string
+}
+
+export interface AdminAssetReprocessListResponse {
+  items: AdminAssetReprocessRow[]
+  total: number
+}
+
 export interface FaceBox {
   x: number
   y: number

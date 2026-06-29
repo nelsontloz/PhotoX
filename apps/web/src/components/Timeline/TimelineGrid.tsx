@@ -20,6 +20,7 @@ export function TimelineGrid({
   onLongPress,
   showCheckbox = true,
 }: TimelineGridProps) {
+  const selectionMode = selectedIds.size > 0
   return (
     <DropZone className="h-full">
       {groups.map((group) => {
@@ -57,6 +58,7 @@ export function TimelineGrid({
                     onToggleSelect={onToggleSelect}
                     onLongPress={onLongPress}
                     showCheckbox={showCheckbox}
+                    selectionMode={selectionMode}
                   />
                 )
               })}

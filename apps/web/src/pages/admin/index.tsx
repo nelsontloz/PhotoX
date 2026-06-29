@@ -14,7 +14,12 @@ import {
 import { RequireAuth } from '../../components/RequireAuth'
 import { RequireAdmin } from '../../components/RequireAdmin'
 import { AppShell } from '../../components/AppShell'
-import { listAdminUsers, getAdminAssetCounts, type ListAdminUsersParams } from '../../api/admin'
+import {
+  listAdminUsers,
+  getAdminAssetCounts,
+  reprocessThumbnails,
+  type ListAdminUsersParams,
+} from '../../api/admin'
 import { formatBytes } from '../../lib/format'
 import type {
   AdminUserListResponse,
@@ -174,6 +179,93 @@ function AssetHealthSection() {
   )
 }
 
+function ThumbnailReprocessSection() {
+  const [confirming, setConfirming] = useState(false)
+  const [inFlight, setInFlight] = useState(false)
+  const [result, setResult] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const onConfirm = async () => {
+    setConfirming(false)
+    setInFlight(true)
+    setError(null)
+    setResult(null)
+    try {
+      const res = await reprocessThumbnails('photo')
+      setResult(
+        `Enqueued ${res.enqueued.toLocaleString()} jobs for ${res.totalAssets.toLocaleString()} pictures.`,
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Reprocess failed')
+    } finally {
+      setInFlight(false)
+    }
+  }
+
+  return (
+    <section>
+      <div className="bg-card-dark border border-border-dark rounded-xl p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-200">Maintenance</h2>
+            <p className="text-xs text-slate-400 mt-1">
+              Regenerate thumbnails for all pictures. Existing thumbs are replaced.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            disabled={inFlight}
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors"
+          >
+            {inFlight ? (
+              <>
+                <FaSpinner className="animate-spin" />
+                Enqueuing…
+              </>
+            ) : (
+              'Reprocess pictures'
+            )}
+          </button>
+        </div>
+        {result && <p className="text-xs text-emerald-400 mt-3">{result}</p>}
+        {error && <p className="text-xs text-red-400 mt-3">{error}</p>}
+      </div>
+
+      {confirming && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-card-dark border border-border-dark rounded-xl p-5 max-w-md w-full">
+            <h3 className="text-base font-semibold text-slate-100">Reprocess all pictures?</h3>
+            <p className="text-sm text-slate-400 mt-2">
+              This regenerates thumbnails for every non-trashed picture and replaces the existing
+              ones. The worker processes one job at a time, so this can take a while on large
+              libraries.
+            </p>
+            <div className="flex justify-end gap-2 mt-5">
+              <button
+                type="button"
+                onClick={() => setConfirming(false)}
+                className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void onConfirm()
+                }}
+                className="text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-3 py-2 transition-colors"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function AdminPageContent() {
   const [searchInput, setSearchInput] = useState('')
   const [debouncedQ, setDebouncedQ] = useState('')
@@ -238,6 +330,7 @@ function AdminPageContent() {
   return (
     <div className="space-y-6">
       <AssetHealthSection />
+      <ThumbnailReprocessSection />
 
       <header className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">

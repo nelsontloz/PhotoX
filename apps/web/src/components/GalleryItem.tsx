@@ -15,6 +15,7 @@ interface GalleryItemProps {
   showCheckbox?: boolean
   onToggleSelect?: (id: string) => void
   selected?: boolean
+  selectionMode?: boolean
 }
 
 export function GalleryItem({
@@ -26,6 +27,7 @@ export function GalleryItem({
   showCheckbox = true,
   onToggleSelect,
   selected = false,
+  selectionMode = false,
 }: GalleryItemProps) {
   const [dims, setDims] = useState<{ width: number; height: number } | null>(null)
   const lp = useLongPress(() => onLongPress?.(asset))
@@ -134,7 +136,9 @@ export function GalleryItem({
             e.stopPropagation()
             onToggleSelect(asset.id)
           }}
-          className={`absolute top-2 left-2 size-6 rounded-md z-10 flex items-center justify-center transition-colors ${
+          className={`absolute top-2 left-2 size-6 rounded-full z-10 flex items-center justify-center transition-opacity transition-colors ${
+            selectionMode || selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          } ${
             selected
               ? 'bg-primary ring-2 ring-primary text-white'
               : 'bg-black/60 backdrop-blur-sm ring-1 ring-border-dark hover:bg-black/75'

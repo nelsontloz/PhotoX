@@ -2,7 +2,11 @@ import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { Asset } from '../entities/asset.entity'
-import type { AdminAssetCountsResponse, AssetFailureCounts } from '@photox/shared-types'
+import type {
+  AdminAssetCountsResponse,
+  AdminAssetReprocessListResponse,
+  AssetFailureCounts,
+} from '@photox/shared-types'
 
 const STUCK_PROCESSING_HOURS = 12
 
@@ -45,5 +49,28 @@ export class AdminAssetsService {
     }
 
     return result
+  }
+
+  async listForReprocess(
+    kind: 'photo' | 'video',
+    limit: number,
+    offset: number,
+  ): Promise<AdminAssetReprocessListResponse> {
+    const qb = this.repo
+      .createQueryBuilder('a')
+      .select(['a.id AS id', 'a."userId" AS "userId"', 'a."fileId" AS "fileId"'])
+      .where('a.kind = :kind', { kind })
+      .andWhere('a."isTrashed" = false')
+
+    const [rows, total] = await Promise.all([
+      qb
+        .orderBy('a."uploadedAt"', 'ASC')
+        .limit(limit)
+        .offset(offset)
+        .getRawMany<{ id: string; userId: string; fileId: string }>(),
+      qb.getCount(),
+    ])
+
+    return { items: rows, total }
   }
 }
