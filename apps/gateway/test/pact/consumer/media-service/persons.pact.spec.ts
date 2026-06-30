@@ -6,7 +6,7 @@ import { createPact } from '../setup'
 import { setupMediaServicePactModule } from './testing-module'
 import type { StubProxy } from '../stub'
 
-const mediaService = createPact('media-service')
+const mediaService = createPact('media-service', 'persons')
 let app: INestApplication
 let stub: StubProxy
 

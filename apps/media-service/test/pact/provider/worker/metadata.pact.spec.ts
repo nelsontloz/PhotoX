@@ -65,7 +65,7 @@ describe('Pact verification — media-service (worker metadata)', () => {
     await new Verifier({
       provider: 'media-service',
       providerBaseUrl: url,
-      pactUrls: [path.join(PACT_DIR, 'worker-service-media-service.json')],
+      pactUrls: [path.join(PACT_DIR, 'worker-service-metadata-media-service.json')],
       logLevel: 'error',
       stateHandlers: {
         [`asset exists with id ${ASSET_ID}`]: () => {

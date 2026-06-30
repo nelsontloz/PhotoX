@@ -24,7 +24,7 @@ describe('Pact verification — media-service persons', () => {
     await new Verifier({
       provider: 'media-service',
       providerBaseUrl: url,
-      pactUrls: [path.join(PACT_DIR, 'gateway-media-service.json')],
+      pactUrls: [path.join(PACT_DIR, 'gateway-persons-media-service.json')],
       logLevel: 'error',
       stateHandlers: buildStateHandlers(repos),
     }).verifyProvider()
