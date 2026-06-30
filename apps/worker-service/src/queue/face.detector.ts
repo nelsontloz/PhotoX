@@ -2,15 +2,20 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { dirname, join } from 'path'
 import { pathToFileURL } from 'url'
 import sharp from 'sharp'
-import * as tf from '@tensorflow/tfjs-node'
-import { Human, type FaceResult } from '@vladmandic/human'
+import type { FaceResult } from '@vladmandic/human'
 
 @Injectable()
 export class FaceDetectorService implements OnModuleInit {
   private readonly logger = new Logger(FaceDetectorService.name)
-  private human!: Human
+  // ponytail: lazy-loaded in onModuleInit so importing this file doesn't dlopen libtensorflow —
+  // thumbnail/video processor tests override this provider and never touch face detection;
+  // eager import crashes them on Alpine (musl, no ld-linux-x86-64.so.2)
+  private tf!: typeof import('@tensorflow/tfjs-node')
+  private human!: import('@vladmandic/human').Human
 
   async onModuleInit() {
+    this.tf = await import('@tensorflow/tfjs-node')
+    const { Human } = await import('@vladmandic/human')
     const humanEntry = require.resolve('@vladmandic/human')
     const modelsDir = join(dirname(humanEntry), '..', 'models')
     this.human = new Human({
@@ -40,7 +45,7 @@ export class FaceDetectorService implements OnModuleInit {
     }[]
   > {
     const jpeg = await sharp(buffer).jpeg({ quality: 90 }).toBuffer()
-    const tensor = tf.node.decodeJpeg(jpeg)
+    const tensor = this.tf.node.decodeJpeg(jpeg)
     try {
       const result = await this.human.detect(tensor)
       // ponytail: human may not return embedding for very small/blurry faces; skip rather than store zero-vector
