@@ -17,9 +17,11 @@ interface AssetViewerProps {
   hasNext: boolean
   onTrash?: () => void
   onRestore?: () => void
-  onToggleFavorite?: () => void
+  onToggleFavorite?: (nextValue: boolean) => void
   onAddToAlbum?: () => void
   onRemoveFromAlbum?: () => void
+  siblingAssets?: Asset[]
+  onSelectSibling?: (asset: Asset) => void
 }
 
 export function AssetViewer({
@@ -34,13 +36,17 @@ export function AssetViewer({
   onToggleFavorite,
   onAddToAlbum,
   onRemoveFromAlbum,
+  siblingAssets,
+  onSelectSibling,
 }: AssetViewerProps) {
   const [currentAsset, setCurrentAsset] = useState<Asset>(asset)
   const [infoOpen, setInfoOpen] = useState(false)
+  const [favOverride, setFavOverride] = useState<boolean | null>(null)
   const userId = useAuthStore((s) => s.user?.id)
 
   useEffect(() => {
     setCurrentAsset(asset)
+    setFavOverride(null)
     let cancelled = false
     void getAsset(asset.id)
       .then((fresh) => {
@@ -75,6 +81,14 @@ export function AssetViewer({
       : undefined
   const imageAlt = currentAsset.originalName ?? currentAsset.title ?? 'Photo'
   const videoTitle = currentAsset.title ?? currentAsset.originalName ?? undefined
+  const displayAsset =
+    favOverride !== null ? { ...currentAsset, favorite: favOverride } : currentAsset
+
+  const handleToggleFavorite = () => {
+    const next = !(favOverride ?? currentAsset.favorite)
+    setFavOverride(next)
+    onToggleFavorite?.(next)
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex overflow-hidden bg-black">
@@ -91,7 +105,7 @@ export function AssetViewer({
       )}
       <div className="relative flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         <ViewerTopBar
-          asset={currentAsset}
+          asset={displayAsset}
           infoOpen={infoOpen}
           onToggleInfo={() => {
             setInfoOpen((v) => !v)
@@ -99,7 +113,7 @@ export function AssetViewer({
           onClose={onClose}
           onTrash={onTrash}
           onRestore={onRestore}
-          onToggleFavorite={onToggleFavorite}
+          onToggleFavorite={handleToggleFavorite}
           onAddToAlbum={onAddToAlbum}
           onRemoveFromAlbum={onRemoveFromAlbum}
         />
@@ -118,6 +132,8 @@ export function AssetViewer({
           asset={currentAsset}
           onPrev={onPrev}
           onNext={onNext}
+          siblingAssets={siblingAssets}
+          onSelectSibling={onSelectSibling}
         />
       </div>
       {infoOpen && (

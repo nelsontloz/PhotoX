@@ -2,6 +2,7 @@ import { FaChevronLeft, FaChevronRight, FaImage, FaSpinner } from 'react-icons/f
 import type { Asset, FaceDto } from '@photox/shared-types'
 import { VideoPlayer } from '../VideoPlayer'
 import { FaceOverlay } from './FaceOverlay'
+import { ViewerThumbnailStrip } from './ViewerThumbnailStrip'
 
 interface ViewerMediaProps {
   isVideo: boolean
@@ -18,6 +19,8 @@ interface ViewerMediaProps {
   asset: Asset
   onPrev?: () => void
   onNext?: () => void
+  siblingAssets?: Asset[]
+  onSelectSibling?: (asset: Asset) => void
 }
 
 export function ViewerMedia({
@@ -35,6 +38,8 @@ export function ViewerMedia({
   asset,
   onPrev,
   onNext,
+  siblingAssets,
+  onSelectSibling,
 }: ViewerMediaProps) {
   const faces: FaceDto[] = asset.faces ?? []
   const dims =
@@ -42,7 +47,7 @@ export function ViewerMedia({
   const showOverlay = infoOpen && !isVideo && imageUrl != null && dims != null && faces.length > 0
 
   return (
-    <div className="flex-1 flex items-center justify-center p-8 relative min-h-0">
+    <div className="flex-1 flex items-center justify-center p-8 pt-20 pb-24 relative min-h-0">
       {hasPrev && onPrev && (
         <button
           onClick={onPrev}
@@ -99,6 +104,13 @@ export function ViewerMedia({
         >
           <FaChevronRight className="text-2xl" />
         </button>
+      )}
+      {siblingAssets && onSelectSibling && (
+        <ViewerThumbnailStrip
+          assets={siblingAssets}
+          currentAssetId={asset.id}
+          onSelect={onSelectSibling}
+        />
       )}
     </div>
   )

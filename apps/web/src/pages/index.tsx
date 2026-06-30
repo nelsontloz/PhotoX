@@ -129,9 +129,9 @@ function TimelineContent() {
             onTrash={() => {
               void nav.trash()
             }}
-            onToggleFavorite={() => {
+            onToggleFavorite={(nextValue) => {
               const cur = nav.selected
-              if (cur) void nav.toggleFavorite(cur.id, !cur.favorite)
+              if (cur) void nav.toggleFavorite(cur.id, nextValue)
             }}
             onAddToAlbum={() => {
               const cur = nav.selected
@@ -140,6 +140,8 @@ function TimelineContent() {
                 setPickerOpen(true)
               }
             }}
+            siblingAssets={groups.flatMap((g) => g.items)}
+            onSelectSibling={(asset) => nav.open(asset)}
           />
         </Suspense>
       )}
