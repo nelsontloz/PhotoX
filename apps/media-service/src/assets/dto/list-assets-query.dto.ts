@@ -9,7 +9,7 @@ import {
   IsBoolean,
   IsUUID,
 } from 'class-validator'
-import { Type } from 'class-transformer'
+import { Transform, Type } from 'class-transformer'
 
 export class ListAssetsQueryDto {
   @IsUUID()
@@ -40,7 +40,8 @@ export class ListAssetsQueryDto {
   mimeType?: string
 
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
   @ApiProperty({ default: false, required: false })
   isTrashed?: boolean
 
@@ -55,7 +56,7 @@ export class ListAssetsQueryDto {
   toDate?: string
 
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
   @ApiProperty({ required: false })
   favorite?: boolean
@@ -66,7 +67,7 @@ export class ListAssetsQueryDto {
   metadataStatus?: 'pending' | 'ready' | 'failed'
 
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
   @ApiProperty({ required: false })
   hasFaces?: boolean

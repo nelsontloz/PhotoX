@@ -1,13 +1,16 @@
+import { useState } from 'react'
 import { FaHeart, FaSpinner } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { GalleryItem } from '../../components/GalleryItem'
 import { AssetViewer } from '../../components/AssetViewer/AssetViewer'
+import { AlbumPickerDialog } from '../../components/AlbumPickerDialog'
 import { useAssetGroups } from '../../hooks/useAssetGroups'
 import { useAssetNavigation } from '../../hooks/useAssetNavigation'
 
 function FavoritesContent() {
   const { groups, loading, error, refresh } = useAssetGroups({ favorite: true })
+  const [pickerOpen, setPickerOpen] = useState(false)
   const nav = useAssetNavigation({
     assets: groups.flatMap((g) => g.items),
     onAfterAction: refresh,
@@ -68,18 +71,26 @@ function FavoritesContent() {
         </section>
       ))}
       {nav.selected && (
-        <AssetViewer
-          asset={nav.selected}
-          onClose={nav.close}
-          onPrev={nav.goPrev}
-          onNext={nav.goNext}
-          hasPrev={nav.hasPrev}
-          hasNext={nav.hasNext}
-          onToggleFavorite={() => {
-            const cur = nav.selected
-            if (cur) void nav.toggleFavorite(cur.id, !cur.favorite)
-          }}
-        />
+        <>
+          <AssetViewer
+            asset={nav.selected}
+            onClose={nav.close}
+            onPrev={nav.goPrev}
+            onNext={nav.goNext}
+            hasPrev={nav.hasPrev}
+            hasNext={nav.hasNext}
+            onToggleFavorite={() => {
+              const cur = nav.selected
+              if (cur) void nav.toggleFavorite(cur.id, !cur.favorite)
+            }}
+            onAddToAlbum={() => setPickerOpen(true)}
+          />
+          <AlbumPickerDialog
+            open={pickerOpen}
+            onClose={() => setPickerOpen(false)}
+            assetIds={[nav.selected.id]}
+          />
+        </>
       )}
     </div>
   )

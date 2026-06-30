@@ -1,7 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
 import { firstValueFrom } from 'rxjs'
+import type { Job } from 'bullmq'
 import { SERVICE_URLS } from '@photox/shared-config'
+import { BullMqService } from './bullmq.service'
+
+interface ClusterJob {
+  userId: string
+  reason?: 'face-detected' | 'manual'
+}
 
 // ponytail: eps/minPts tunable; eps=0.4 cosine distance ≈ cosine similarity 0.6 — empirically good for human face embeddings
 const DBSCAN_EPS = 0.4
@@ -100,7 +107,24 @@ function dbscan(points: number[][], eps: number, minPts: number): number[] {
 export class FaceClusterService {
   private readonly logger = new Logger(FaceClusterService.name)
 
-  constructor(private readonly http: HttpService) {}
+  constructor(
+    private readonly http: HttpService,
+    private readonly bullMq: BullMqService,
+  ) {}
+
+  start() {
+    this.bullMq.createWorker<ClusterJob>('process-faces-cluster', (job) => this.processJob(job), {
+      concurrency: 1,
+    })
+    this.logger.log('Face cluster processor listening for jobs')
+  }
+
+  private async processJob(job: Job<ClusterJob>) {
+    const { userId, reason } = job.data
+    this.logger.log(`Clustering faces: user=${userId}, reason=${reason ?? 'unknown'}`)
+    await this.cluster(userId)
+    this.logger.log(`Clustering complete: user=${userId}`)
+  }
 
   async cluster(userId: string): Promise<void> {
     const facesUrl = `${SERVICE_URLS['media-service']}/v1/faces?userId=${encodeURIComponent(userId)}&includeEmbeddings=true`

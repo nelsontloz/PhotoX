@@ -21,10 +21,7 @@ import type { Request, Response } from 'express'
 import { firstValueFrom } from 'rxjs'
 import { ProxyService } from '../proxy.service'
 import { SERVICE_URLS } from '@photox/shared-config'
-import { ThumbnailOrchestratorService } from '../../orchestrator/thumbnail-orchestrator.service'
-import { VideoOrchestratorService } from '../../orchestrator/video-orchestrator.service'
-import { MetadataOrchestratorService } from '../../orchestrator/metadata-orchestrator.service'
-import { FaceOrchestratorService } from '../../orchestrator/face-orchestrator.service'
+import { BullMqService } from '../../queue/bullmq.service'
 import { Public } from '../../auth/public.decorator'
 import type { FileListResponse, FileRecord, Asset } from '@photox/shared-types'
 
@@ -34,10 +31,7 @@ export class FilesProxyController {
   constructor(
     private readonly proxy: ProxyService,
     private readonly http: HttpService,
-    private readonly thumbnails: ThumbnailOrchestratorService,
-    private readonly videoTranscode: VideoOrchestratorService,
-    private readonly metadataOrchestrator: MetadataOrchestratorService,
-    private readonly faceOrchestrator: FaceOrchestratorService,
+    private readonly bullmq: BullMqService,
   ) {}
 
   @Post()
@@ -140,13 +134,57 @@ export class FilesProxyController {
         },
         timeout: 5_000,
       })
-      void this.metadataOrchestrator.enqueueMetadata(assetResult.data.id, record.id, userId, kind)
-      void this.thumbnails.enqueueThumbnails(assetResult.data.id, record.id, userId)
+      for (const size of ['sm', 'md', 'lg', 'xl']) {
+        void this.bullmq.enqueue(
+          'process-thumbnail',
+          'process-thumbnail',
+          {
+            assetId: assetResult.data.id,
+            fileId: record.id,
+            userId,
+            size,
+          },
+          { jobId: `thumb:${assetResult.data.id}:${size}` },
+        )
+      }
+      void this.bullmq.enqueue(
+        'process-metadata',
+        'process-metadata',
+        {
+          assetId: assetResult.data.id,
+          fileId: record.id,
+          userId,
+          kind,
+        },
+        { jobId: assetResult.data.id, attempts: 3, backoff: { type: 'exponential' } },
+      )
       if (kind === 'video') {
-        void this.videoTranscode.enqueueVideo(assetResult.data.id, record.id, userId)
+        void this.bullmq.enqueue(
+          'process-video',
+          'process-video',
+          {
+            assetId: assetResult.data.id,
+            fileId: record.id,
+            userId,
+          },
+          {
+            jobId: `video:${assetResult.data.id}:v`,
+            attempts: 3,
+            backoff: { type: 'exponential' },
+          },
+        )
       }
       if (kind === 'photo') {
-        void this.faceOrchestrator.enqueueFaces(assetResult.data.id, record.id, userId)
+        void this.bullmq.enqueue(
+          'process-faces',
+          'process-faces',
+          {
+            assetId: assetResult.data.id,
+            fileId: record.id,
+            userId,
+          },
+          { jobId: `face:${assetResult.data.id}:detect` },
+        )
       }
       return assetResult.data
     } catch (assetErr) {

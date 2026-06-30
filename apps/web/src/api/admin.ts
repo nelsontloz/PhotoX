@@ -3,6 +3,7 @@ import type {
   AdminUserListResponse,
   AdminUserSortField,
   AdminAssetCountsResponse,
+  AdminReprocessThumbnailsResponse,
 } from '@photox/shared-types'
 
 export interface ListAdminUsersParams {
@@ -32,5 +33,15 @@ export async function listAdminUsers(
 
 export async function getAdminAssetCounts(): Promise<AdminAssetCountsResponse> {
   const { data } = await api.get<AdminAssetCountsResponse>('/v1/admin/assets/counts')
+  return data
+}
+
+export async function reprocessThumbnails(
+  kind: 'photo' | 'video',
+): Promise<AdminReprocessThumbnailsResponse> {
+  const { data } = await api.post<AdminReprocessThumbnailsResponse>(
+    '/v1/admin/thumbnails/reprocess',
+    { kind },
+  )
   return data
 }

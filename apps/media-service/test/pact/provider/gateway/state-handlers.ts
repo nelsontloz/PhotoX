@@ -237,8 +237,14 @@ export function buildStateHandlers(repos: MockRepos): Record<string, () => Promi
         updatedAt: new Date('2024-01-01T00:00:00.000Z'),
       })
       repos.mockAlbumAssetRepo.createQueryBuilder.mockReturnValue({
+        select: vi.fn().mockReturnThis(),
+        addSelect: vi.fn().mockReturnThis(),
         where: vi.fn().mockReturnThis(),
         andWhere: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        offset: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        getRawMany: vi.fn().mockResolvedValue([]),
         getCount: vi.fn().mockResolvedValue(0),
         insert: vi.fn().mockReturnThis(),
         into: vi.fn().mockReturnThis(),

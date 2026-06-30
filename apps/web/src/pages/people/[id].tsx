@@ -5,6 +5,7 @@ import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { GalleryItem } from '../../components/GalleryItem'
 import { FaceOverlay } from '../../components/AssetViewer/FaceOverlay'
+import { AlbumPickerDialog } from '../../components/AlbumPickerDialog'
 import { getPerson, getPersonAssets, renamePerson } from '../../api/persons'
 import { getAsset } from '../../api/assets'
 import type { Asset, FaceDto, PersonDto } from '@photox/shared-types'
@@ -24,6 +25,7 @@ export default function PersonDetailPage() {
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState('')
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -175,14 +177,22 @@ export default function PersonDetailPage() {
         </div>
 
         {selectedAsset && (
-          <Suspense fallback={null}>
-            <AssetViewer
-              asset={selectedAsset}
-              onClose={() => setSelectedAsset(null)}
-              hasPrev={false}
-              hasNext={false}
+          <>
+            <Suspense fallback={null}>
+              <AssetViewer
+                asset={selectedAsset}
+                onClose={() => setSelectedAsset(null)}
+                hasPrev={false}
+                hasNext={false}
+                onAddToAlbum={() => setPickerOpen(true)}
+              />
+            </Suspense>
+            <AlbumPickerDialog
+              open={pickerOpen}
+              onClose={() => setPickerOpen(false)}
+              assetIds={[selectedAsset.id]}
             />
-          </Suspense>
+          </>
         )}
       </AppShell>
     </RequireAuth>

@@ -35,9 +35,12 @@ export class PersonsProxyController {
     const userId = (req.user as { id: string }).id
     // ponytail: unique jobId per click — fixed jobId would dedupe via BullMQ and silently drop re-runs
     const jobId = `cluster-${userId}-manual-${Date.now()}`
-    await this.bullmq
-      .getQueue('process-faces-cluster')
-      .add('cluster', { userId, reason: 'manual' }, { jobId })
+    await this.bullmq.enqueue(
+      'process-faces-cluster',
+      'cluster',
+      { userId, reason: 'manual' },
+      { jobId },
+    )
     return { queued: true, jobId }
   }
 

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
+import { In, Repository } from 'typeorm'
 import { Album } from '../entities/album.entity'
 import { AlbumAsset } from '../entities/album-asset.entity'
 import { Asset } from '../entities/asset.entity'
@@ -138,17 +138,36 @@ export class AlbumsService {
     const limit = q.limit ?? 20
     const offset = q.offset ?? 0
 
-    const qb = this.assetRepo
-      .createQueryBuilder('a')
-      .innerJoin('album_assets', 'aa', 'aa."assetId" = a.id')
-      .where('aa."albumId" = :albumId', { albumId })
-      .andWhere('a."userId" = :userId', { userId })
-      .andWhere('a."isTrashed" = false')
-      .orderBy('aa."addedAt"', 'DESC')
-      .skip(offset)
-      .take(limit)
+    const joins = await this.albumAssetRepo
+      .createQueryBuilder('aa')
+      .select('aa.assetId', 'assetId')
+      .addSelect('aa.addedAt', 'addedAt')
+      .where('aa.albumId = :albumId', { albumId })
+      .orderBy('aa.addedAt', 'DESC')
+      .offset(offset)
+      .limit(limit)
+      .getRawMany<{ assetId: string }>()
 
-    const [items, total] = await qb.getManyAndCount()
+    if (joins.length === 0) {
+      return { items: [], total: 0 }
+    }
+
+    const ids = joins.map((j) => j.assetId)
+    const fetched = await this.assetRepo.find({
+      where: { id: In(ids), userId, isTrashed: false },
+    })
+    const orderMap = new Map(ids.map((id, i) => [id, i]))
+    const items = fetched.sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0))
+
+    const total = await this.assetRepo
+      .createQueryBuilder('a')
+      .where('a.id IN (SELECT aa."assetId" FROM album_assets aa WHERE aa."albumId" = :albumId)', {
+        albumId,
+      })
+      .andWhere('a.userId = :userId', { userId })
+      .andWhere('a.isTrashed = false')
+      .getCount()
+
     return { items, total }
   }
 

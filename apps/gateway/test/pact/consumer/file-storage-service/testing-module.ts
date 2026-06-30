@@ -6,10 +6,7 @@ import { HttpModule } from '@nestjs/axios'
 import { FilesProxyController } from '../../../../src/proxy/files-proxy/files-proxy.controller'
 import { requestIdMiddleware } from '../../../../src/common/middleware/request-id.middleware'
 import { ProxyService } from '../../../../src/proxy/proxy.service'
-import { ThumbnailOrchestratorService } from '../../../../src/orchestrator/thumbnail-orchestrator.service'
-import { VideoOrchestratorService } from '../../../../src/orchestrator/video-orchestrator.service'
-import { MetadataOrchestratorService } from '../../../../src/orchestrator/metadata-orchestrator.service'
-import { FaceOrchestratorService } from '../../../../src/orchestrator/face-orchestrator.service'
+import { BullMqService } from '../../../../src/queue/bullmq.service'
 import { createStubProxy } from '../stub'
 import type { StubProxy } from '../stub'
 
@@ -28,20 +25,8 @@ export async function setupFileStorageServicePactModule(): Promise<{
     providers: [
       { provide: ProxyService, useValue: stub },
       {
-        provide: ThumbnailOrchestratorService,
-        useValue: { enqueueThumbnails: vi.fn().mockResolvedValue(undefined) },
-      },
-      {
-        provide: VideoOrchestratorService,
-        useValue: { enqueueVideo: vi.fn().mockResolvedValue(undefined) },
-      },
-      {
-        provide: MetadataOrchestratorService,
-        useValue: { enqueueMetadata: vi.fn().mockResolvedValue(undefined) },
-      },
-      {
-        provide: FaceOrchestratorService,
-        useValue: { enqueueFaces: vi.fn().mockResolvedValue(undefined) },
+        provide: BullMqService,
+        useValue: { enqueue: vi.fn().mockResolvedValue(undefined) },
       },
       {
         provide: APP_GUARD,

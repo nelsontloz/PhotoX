@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { FaSpinner, FaTrash } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { GalleryItem } from '../../components/GalleryItem'
 import { AssetViewer } from '../../components/AssetViewer/AssetViewer'
+import { AlbumPickerDialog } from '../../components/AlbumPickerDialog'
 import { useAssetGroups } from '../../hooks/useAssetGroups'
 import { useAssetNavigation } from '../../hooks/useAssetNavigation'
 
@@ -15,6 +17,7 @@ function TrashContent() {
     assets: groups.flatMap((g) => g.items),
     onAfterAction: refresh,
   })
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   if (loading) {
     return (
@@ -71,17 +74,25 @@ function TrashContent() {
         </section>
       ))}
       {nav.selected && (
-        <AssetViewer
-          asset={nav.selected}
-          onClose={nav.close}
-          onPrev={nav.goPrev}
-          onNext={nav.goNext}
-          hasPrev={nav.hasPrev}
-          hasNext={nav.hasNext}
-          onRestore={() => {
-            void nav.restore()
-          }}
-        />
+        <>
+          <AssetViewer
+            asset={nav.selected}
+            onClose={nav.close}
+            onPrev={nav.goPrev}
+            onNext={nav.goNext}
+            hasPrev={nav.hasPrev}
+            hasNext={nav.hasNext}
+            onAddToAlbum={!nav.selected.isTrashed ? () => setPickerOpen(true) : undefined}
+            onRestore={() => {
+              void nav.restore()
+            }}
+          />
+          <AlbumPickerDialog
+            open={pickerOpen}
+            onClose={() => setPickerOpen(false)}
+            assetIds={[nav.selected.id]}
+          />
+        </>
       )}
     </div>
   )

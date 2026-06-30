@@ -11,7 +11,7 @@ interface AssetThumbProps {
   onThumbPicked?: (thumb: AssetThumbnail) => void
 }
 
-const THUMB_SIZES = ['md', 'lg', 'sm']
+const THUMB_SIZES = ['md']
 
 function pickThumbnail(thumbs: AssetThumbnail[]): AssetThumbnail | undefined {
   for (const size of THUMB_SIZES) {
@@ -99,6 +99,7 @@ export function AssetThumb({ asset, className = '', onThumbPicked }: AssetThumbP
             }
             className="absolute inset-0 w-full h-full object-cover"
             loading="lazy"
+            draggable={false}
           />
           {isVideo && transcodeStatus === 'pending' && (
             <div className="absolute top-2 left-2 pointer-events-none" aria-label="Transcoding">

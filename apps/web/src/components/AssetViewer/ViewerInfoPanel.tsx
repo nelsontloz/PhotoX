@@ -1,7 +1,6 @@
-import { FaXmark } from 'react-icons/fa6'
+import { FaNoteSticky, FaXmark } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
 import { AssetMetadataPanel } from './sections/AssetMetadataPanel'
-import { DescriptionSection } from './sections/DescriptionSection'
 import { FacesSection } from './sections/FacesSection'
 import { LocationSection } from './sections/LocationSection'
 
@@ -25,7 +24,19 @@ export function ViewerInfoPanel({ asset, onClose }: ViewerInfoPanelProps) {
       </div>
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
         <AssetMetadataPanel asset={asset} />
-        <DescriptionSection asset={asset} />
+        <section>
+          <div className="flex items-center gap-2 text-slate-400 mb-2">
+            <FaNoteSticky className="text-[18px]" />
+            <h4 className="text-xs font-bold uppercase tracking-wider">Description</h4>
+          </div>
+          {asset.description ? (
+            <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
+              {asset.description}
+            </p>
+          ) : (
+            <p className="text-sm text-slate-600 italic">No description</p>
+          )}
+        </section>
         <FacesSection asset={asset} />
         <LocationSection asset={asset} />
       </div>

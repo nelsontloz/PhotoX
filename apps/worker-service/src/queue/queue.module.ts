@@ -8,7 +8,6 @@ import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor'
 import { FaceDetectorService } from './face.detector'
 import { FaceProcessor } from './face.processor'
 import { FaceClusterService } from './face.cluster'
-import { FaceClusterProcessor } from './face.cluster.processor'
 
 @Module({
   imports: [HttpModule],
@@ -22,7 +21,6 @@ import { FaceClusterProcessor } from './face.cluster.processor'
     FaceDetectorService,
     FaceProcessor,
     FaceClusterService,
-    FaceClusterProcessor,
   ],
   exports: [BullMqService],
 })
@@ -32,7 +30,7 @@ export class QueueModule implements OnModuleInit {
     private readonly videoProcessor: VideoProcessor,
     private readonly metadataProcessor: MetadataProcessor,
     private readonly faceProcessor: FaceProcessor,
-    private readonly faceClusterProcessor: FaceClusterProcessor,
+    private readonly faceClusterService: FaceClusterService,
   ) {}
 
   onModuleInit() {
@@ -40,6 +38,6 @@ export class QueueModule implements OnModuleInit {
     this.videoProcessor.start()
     this.metadataProcessor.start()
     this.faceProcessor.start()
-    this.faceClusterProcessor.start()
+    this.faceClusterService.start()
   }
 }
