@@ -119,27 +119,6 @@ export const useUploadStore = create<UploadState>()(
         items: state.items.map(partializeItem),
         dismissed: state.dismissed,
       }),
-      migrate: (persistedState: unknown, version: number) => {
-        if (version === 0) {
-          const raw = persistedState as Record<string, unknown>
-          const oldItems = Array.isArray(raw.items) ? (raw.items as UploadItem[]) : []
-          return {
-            items: oldItems.map((item) => {
-              if (item.status === 'uploading' || item.status === 'queued') {
-                return {
-                  ...item,
-                  progress: 0,
-                  status: 'error' as const,
-                  error: 'Interrupted by reload — please retry',
-                }
-              }
-              return item
-            }),
-            dismissed: typeof raw.dismissed === 'boolean' ? raw.dismissed : false,
-          }
-        }
-        return persistedState as UploadState
-      },
     },
   ),
 )

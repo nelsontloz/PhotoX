@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   FaCheck,
   FaCircleExclamation,
@@ -8,58 +8,15 @@ import {
   FaSpinner,
   FaXmark,
 } from 'react-icons/fa6'
-import type { AlbumDto, Asset } from '@photox/shared-types'
-import { addAssetsToAlbum, createAlbum, listAlbums, listAlbumAssets } from '../api/albums'
-import { AssetThumb } from './AssetThumb'
+import type { AlbumDto } from '@photox/shared-types'
+import { addAssetsToAlbum, createAlbum, listAlbums } from '../api/albums'
+import { AlbumCover } from './AlbumCover'
 
 interface AlbumPickerDialogProps {
   open: boolean
   onClose: () => void
   assetIds: string[]
   onDone?: () => void
-}
-
-function AlbumCover({ albumId }: { albumId: string }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [cover, setCover] = useState<Asset | null>(null)
-  const started = useRef(false)
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((e) => e.isIntersecting)) return
-        io.disconnect()
-        if (started.current) return
-        started.current = true
-        listAlbumAssets(albumId, { limit: 1 })
-          .then((res) => setCover(res.items[0] ?? null))
-          .catch(() => setCover(null))
-      },
-      { rootMargin: '200px' },
-    )
-    io.observe(el)
-    return () => {
-      io.disconnect()
-    }
-  }, [albumId])
-
-  if (cover) {
-    return (
-      <div
-        ref={ref}
-        className="absolute inset-0 [&_img]:w-full [&_img]:h-full [&_img]:object-cover"
-      >
-        <AssetThumb asset={cover} />
-      </div>
-    )
-  }
-  return (
-    <div ref={ref} className="absolute inset-0 flex items-center justify-center">
-      <FaPhotoFilm className="text-2xl text-slate-700" />
-    </div>
-  )
 }
 
 const fieldClass =
@@ -296,7 +253,10 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
                     aria-pressed={isSelected}
                   >
                     <div className="size-14 rounded overflow-hidden bg-card-dark relative shrink-0 ring-1 ring-border-dark">
-                      <AlbumCover albumId={album.id} />
+                      <AlbumCover
+                        albumId={album.id}
+                        className="[&_img]:w-full [&_img]:h-full [&_img]:object-cover"
+                      />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-white truncate">{album.name}</p>

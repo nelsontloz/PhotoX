@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   FaCircleExclamation,
@@ -8,57 +8,12 @@ import {
   FaSpinner,
   FaXmark,
 } from 'react-icons/fa6'
-import type { Asset } from '@photox/shared-types'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
-import { AssetThumb } from '../../components/AssetThumb'
+import { AlbumCover } from '../../components/AlbumCover'
 import { useAlbums } from '../../hooks/useAlbums'
-import { listAlbumAssets } from '../../api/albums'
 
 const NEW_ALBUM_NAME_MAX = 255
-
-function AlbumCover({ albumId }: { albumId: string }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [cover, setCover] = useState<Asset | null>(null)
-  const started = useRef(false)
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((e) => e.isIntersecting)) return
-        io.disconnect()
-        if (started.current) return
-        started.current = true
-        listAlbumAssets(albumId, { limit: 1 })
-          .then((res) => setCover(res.items[0] ?? null))
-          .catch(() => setCover(null))
-      },
-      { rootMargin: '200px' },
-    )
-    io.observe(el)
-    return () => {
-      io.disconnect()
-    }
-  }, [albumId])
-
-  if (cover) {
-    return (
-      <div
-        ref={ref}
-        className="absolute inset-0 [&_img]:transition-transform [&_img]:duration-500 [&_img]:ease-out [&_img]:group-hover/cover:scale-110"
-      >
-        <AssetThumb asset={cover} />
-      </div>
-    )
-  }
-  return (
-    <div ref={ref} className="absolute inset-0 flex items-center justify-center">
-      <FaPhotoFilm className="text-5xl text-slate-700" />
-    </div>
-  )
-}
 
 interface NewAlbumDialogProps {
   onClose: () => void
@@ -268,7 +223,11 @@ function AlbumsListContent() {
               className="group/cover block focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 rounded"
             >
               <div className="aspect-square w-full rounded overflow-hidden bg-card-dark relative shadow-sm transition-shadow group-hover/cover:shadow-xl">
-                <AlbumCover albumId={album.id} />
+                <AlbumCover
+                  albumId={album.id}
+                  className="[&_img]:transition-transform [&_img]:duration-500 [&_img]:ease-out [&_img]:group-hover/cover:scale-110"
+                  emptyIconClassName="text-5xl text-slate-700"
+                />
                 <div className="absolute inset-0 bg-black/5 opacity-0 group-hover/cover:opacity-100 transition-opacity pointer-events-none" />
               </div>
               <h3 className="font-bold text-slate-100 truncate mt-3">{album.name}</h3>

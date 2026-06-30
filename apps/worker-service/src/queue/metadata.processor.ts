@@ -125,7 +125,7 @@ export class MetadataProcessor {
               videoMeta.latitude,
               videoMeta.longitude,
               videoMeta.altitude,
-            ] as const
+            ]
           ).some((v) => v !== null)
           const videoMetadataStatus = hasAnyVideoField ? 'ready' : 'failed'
           await firstValueFrom(
