@@ -7,7 +7,7 @@ import type {
   AdminReprocessThumbnailsResponse,
 } from '@photox/shared-types'
 import { ProxyService } from '../proxy.service'
-import { ThumbnailOrchestratorService } from '../../orchestrator/thumbnail-orchestrator.service'
+import { BullMqService } from '../../queue/bullmq.service'
 import { AdminGuard } from '../../auth/admin.guard'
 import { ReprocessThumbnailsDto } from './dto/reprocess-thumbnails.dto'
 
@@ -21,7 +21,7 @@ export class AdminThumbnailsProxyController {
 
   constructor(
     private readonly proxy: ProxyService,
-    private readonly thumbnails: ThumbnailOrchestratorService,
+    private readonly bullmq: BullMqService,
   ) {}
 
   @Post('reprocess')
@@ -61,7 +61,19 @@ export class AdminThumbnailsProxyController {
       if (offset === 0) totalAssets = page.data.total
 
       for (const a of items) {
-        await this.thumbnails.enqueueThumbnails(a.id, a.fileId, a.userId, { force: true })
+        for (const size of ['sm', 'md', 'lg', 'xl']) {
+          void this.bullmq.enqueue(
+            'process-thumbnail',
+            'process-thumbnail',
+            {
+              assetId: a.id,
+              fileId: a.fileId,
+              userId: a.userId,
+              size,
+            },
+            { jobId: `reprocess:${a.id}:${size}` },
+          )
+        }
         enqueued += 1
       }
 

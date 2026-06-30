@@ -4,7 +4,6 @@ import type { User } from '@photox/shared-types'
 import type { AuthResponse } from '@photox/shared-types'
 import * as authApi from '../api/auth'
 import { jwtDecode } from 'jwt-decode'
-import { registerAuthAccess } from '../lib/authToken'
 import type { JwtPayload } from '@photox/shared-auth'
 
 const REFRESH_LEAD_MS = 5 * 60 * 1000
@@ -172,8 +171,3 @@ export function subscribeAuthFailure(cb: () => void): () => void {
     authFailureListeners.delete(cb)
   }
 }
-
-registerAuthAccess(
-  () => useAuthStore.getState().accessToken,
-  () => useAuthStore.getState().refresh(),
-)

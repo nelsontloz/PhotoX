@@ -1,10 +1,11 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Queue } from 'bullmq'
 import Redis from 'ioredis'
 
 @Injectable()
 export class BullMqService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(BullMqService.name)
   private connection!: Redis
   private readonly queues = new Map<string, Queue>()
 
@@ -25,6 +26,20 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
       this.queues.set(name, queue)
     }
     return queue
+  }
+
+  async enqueue(
+    queueName: string,
+    jobName: string,
+    data: Record<string, unknown>,
+    opts: { jobId?: string; attempts?: number; backoff?: { type: string } } = {},
+  ): Promise<void> {
+    try {
+      await this.getQueue(queueName).add(jobName, data, opts)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      this.logger.error(`Failed to enqueue ${queueName} job: ${msg}`)
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

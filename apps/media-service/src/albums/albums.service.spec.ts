@@ -22,6 +22,7 @@ function makeAlbum(overrides: Partial<Album> = {}): Album {
 function makeCountQb(count: number) {
   return {
     where: vi.fn().mockReturnThis(),
+    andWhere: vi.fn().mockReturnThis(),
     getCount: vi.fn().mockResolvedValue(count),
   }
 }
@@ -69,6 +70,7 @@ interface AlbumAssetRepoMock {
 
 interface AssetRepoMock {
   findOne: MockFn
+  find: MockFn
   createQueryBuilder: MockFn
 }
 
@@ -97,6 +99,7 @@ describe('AlbumsService', () => {
     }
     assetRepo = {
       findOne: vi.fn(),
+      find: vi.fn(),
       createQueryBuilder: vi.fn(),
     }
 
@@ -301,19 +304,23 @@ describe('AlbumsService', () => {
 
     it('returns paginated assets filtered by isTrashed=false', async () => {
       albumRepo.findOne.mockResolvedValue(makeAlbum())
-      const mockAssets = [{ id: 'asset-1' }] as Asset[]
-      const qb = {
-        innerJoin: vi.fn().mockReturnThis(),
+      const joinsQb = {
+        select: vi.fn().mockReturnThis(),
+        addSelect: vi.fn().mockReturnThis(),
         where: vi.fn().mockReturnThis(),
-        andWhere: vi.fn().mockReturnThis(),
         orderBy: vi.fn().mockReturnThis(),
-        skip: vi.fn().mockReturnThis(),
-        take: vi.fn().mockReturnThis(),
-        getManyAndCount: vi.fn().mockResolvedValue([mockAssets, 1]),
+        offset: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        getRawMany: vi
+          .fn()
+          .mockResolvedValue([
+            { assetId: 'asset-1', addedAt: new Date('2024-01-01T00:00:00.000Z') },
+          ]),
       }
-      ;(assetRepo as { createQueryBuilder: MockFn }).createQueryBuilder = vi
-        .fn()
-        .mockReturnValue(qb)
+      albumAssetRepo.createQueryBuilder.mockReturnValue(joinsQb)
+      const mockAssets = [{ id: 'asset-1', userId: 'user-1', isTrashed: false }] as Asset[]
+      assetRepo.find.mockResolvedValue(mockAssets)
+      assetRepo.createQueryBuilder.mockReturnValue(makeCountQb(1))
 
       const result = await service.listAssets('user-1', 'album-1', { limit: 10, offset: 0 })
 

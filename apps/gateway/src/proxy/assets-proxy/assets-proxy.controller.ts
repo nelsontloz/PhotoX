@@ -16,16 +16,14 @@ import { ProxyService } from '../proxy.service'
 import { CreateAssetDto } from './dto/create-asset.dto'
 import { UpdateAssetDto } from './dto/update-asset.dto'
 import { SERVICE_URLS } from '@photox/shared-config'
-import { ThumbnailOrchestratorService } from '../../orchestrator/thumbnail-orchestrator.service'
-import { VideoOrchestratorService } from '../../orchestrator/video-orchestrator.service'
+import { BullMqService } from '../../queue/bullmq.service'
 
 @ApiTags('assets')
 @Controller('api/v1/assets')
 export class AssetsProxyController {
   constructor(
     private readonly proxy: ProxyService,
-    private readonly thumbnails: ThumbnailOrchestratorService,
-    private readonly videoTranscode: VideoOrchestratorService,
+    private readonly bullmq: BullMqService,
   ) {}
 
   @Post()
@@ -45,16 +43,30 @@ export class AssetsProxyController {
         timeout: 30_000,
       },
     )
-    void this.thumbnails.enqueueThumbnails(
-      result.data.id,
-      result.data.fileId,
-      (req.user as { id: string }).id,
-    )
+    const userId = (req.user as { id: string }).id
+    for (const size of ['sm', 'md', 'lg', 'xl']) {
+      void this.bullmq.enqueue(
+        'process-thumbnail',
+        'process-thumbnail',
+        {
+          assetId: result.data.id,
+          fileId: result.data.fileId,
+          userId,
+          size,
+        },
+        { jobId: `thumb:${result.data.id}:${size}` },
+      )
+    }
     if (dto.kind === 'video') {
-      void this.videoTranscode.enqueueVideo(
-        result.data.id,
-        result.data.fileId,
-        (req.user as { id: string }).id,
+      void this.bullmq.enqueue(
+        'process-video',
+        'process-video',
+        {
+          assetId: result.data.id,
+          fileId: result.data.fileId,
+          userId,
+        },
+        { jobId: `video:${result.data.id}:v`, attempts: 3, backoff: { type: 'exponential' } },
       )
     }
     return result.data

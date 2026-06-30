@@ -9,8 +9,6 @@ import { PersonsProxyController } from '../../../../src/proxy/persons-proxy/pers
 import { requestIdMiddleware } from '../../../../src/common/middleware/request-id.middleware'
 import { ProxyService } from '../../../../src/proxy/proxy.service'
 import { BullMqService } from '../../../../src/queue/bullmq.service'
-import { ThumbnailOrchestratorService } from '../../../../src/orchestrator/thumbnail-orchestrator.service'
-import { VideoOrchestratorService } from '../../../../src/orchestrator/video-orchestrator.service'
 import { createStubProxy } from '../stub'
 import type { StubProxy } from '../stub'
 
@@ -23,10 +21,6 @@ export async function setupMediaServicePactModule(): Promise<{
 
   const stub = createStubProxy()
 
-  const mockQueue = {
-    add: vi.fn().mockResolvedValue({ id: 'job-1' }),
-  }
-
   const module = await Test.createTestingModule({
     imports: [HttpModule],
     controllers: [AssetsProxyController, AlbumsProxyController, PersonsProxyController],
@@ -34,15 +28,7 @@ export async function setupMediaServicePactModule(): Promise<{
       { provide: ProxyService, useValue: stub },
       {
         provide: BullMqService,
-        useValue: { getQueue: vi.fn().mockReturnValue(mockQueue) },
-      },
-      {
-        provide: ThumbnailOrchestratorService,
-        useValue: { enqueueThumbnails: vi.fn().mockResolvedValue(undefined) },
-      },
-      {
-        provide: VideoOrchestratorService,
-        useValue: { enqueueVideo: vi.fn().mockResolvedValue(undefined) },
+        useValue: { enqueue: vi.fn().mockResolvedValue(undefined) },
       },
       {
         provide: APP_GUARD,

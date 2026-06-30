@@ -4,7 +4,6 @@ import { useAuthStore } from '../../store/auth-store'
 import { getAsset, getVideoStreamUrl } from '../../api/assets'
 import { ViewerTopBar } from './ViewerTopBar'
 import { useAssetMedia } from './useAssetMedia'
-import { useBodyScrollLock } from './useBodyScrollLock'
 import { useViewerKeyboard } from './useViewerKeyboard'
 import { ViewerMedia } from './ViewerMedia'
 import { ViewerInfoPanel } from './ViewerInfoPanel'
@@ -56,7 +55,14 @@ export function AssetViewer({
   }, [asset])
   const { imageUrl, videoPosterUrl, loading } = useAssetMedia(currentAsset)
   useViewerKeyboard({ onClose, onPrev, onNext, hasPrev, hasNext })
-  useBodyScrollLock()
+
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [])
 
   const isVideo = currentAsset.kind === 'video'
   const primaryVideoSrc =

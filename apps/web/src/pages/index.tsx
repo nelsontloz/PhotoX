@@ -1,15 +1,13 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import type { Asset } from '@photox/shared-types'
-import { FaFolderPlus } from 'react-icons/fa6'
+import { FaFolderPlus, FaImage, FaMountain, FaSpinner, FaWandMagicSparkles } from 'react-icons/fa6'
 import { RequireAuth } from '../components/RequireAuth'
 import { AppShell } from '../components/AppShell'
 import { useAssetGroups } from '../hooks/useAssetGroups'
 import { useAssetNavigation } from '../hooks/useAssetNavigation'
-import { TimelineSkeleton } from '../components/Timeline/TimelineSkeleton'
-import { TimelineError } from '../components/Timeline/TimelineError'
-import { TimelineEmpty } from '../components/Timeline/TimelineEmpty'
 import { TimelineGrid } from '../components/Timeline/TimelineGrid'
 import { AlbumPickerDialog } from '../components/AlbumPickerDialog'
+import { UploadButton } from '../components/UploadButton'
 
 function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(() =>
@@ -59,15 +57,54 @@ function TimelineContent() {
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(10)
   }
 
-  if (loading) return <TimelineSkeleton />
-  if (error) return <TimelineError message={error} onRetry={() => window.location.reload()} />
+  if (loading)
+    return (
+      <div className="flex items-center justify-center py-32">
+        <FaSpinner className="text-2xl text-primary animate-spin" />
+      </div>
+    )
+  if (error)
+    return (
+      <div className="flex flex-col items-center justify-center py-32 gap-4">
+        <p className="text-red-500 text-sm">{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="text-primary text-sm font-medium hover:underline"
+        >
+          Retry
+        </button>
+      </div>
+    )
   if (groups.length === 0)
     return (
-      <TimelineEmpty
-        onUploadComplete={() => {
-          void refresh()
-        }}
-      />
+      <div className="flex flex-col items-center justify-center py-24 px-4 text-center max-w-lg mx-auto">
+        <div className="mb-12 relative w-64 h-64 flex items-center justify-center">
+          <div className="absolute inset-0 bg-primary/5 blur-[100px] rounded-full animate-pulse" />
+          <div className="relative w-32 h-32">
+            <div className="absolute inset-0 rounded-[32px] bg-[#272a32] border border-[#424754]/20 rotate-12 shadow-2xl flex items-center justify-center">
+              <FaImage className="text-6xl text-primary opacity-20" />
+            </div>
+            <div className="absolute -top-4 -left-4 w-32 h-32 rounded-[32px] bg-[#1d1f27] border border-[#424754]/20 -rotate-6 shadow-2xl flex items-center justify-center">
+              <FaMountain className="text-6xl text-primary opacity-40" />
+            </div>
+            <div className="absolute -top-8 left-2 w-32 h-32 rounded-[32px] bg-[#32353d] border border-primary/30 shadow-2xl flex items-center justify-center">
+              <FaWandMagicSparkles className="text-6xl text-primary" />
+            </div>
+          </div>
+        </div>
+        <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-slate-100 mb-6">
+          No memories yet
+        </h1>
+        <p className="text-slate-400 text-lg leading-relaxed max-w-sm mx-auto mb-10">
+          Your timeline is currently empty. Start preserving your life's moments by uploading your
+          first batch of photos.
+        </p>
+        <UploadButton
+          onComplete={() => {
+            void refresh()
+          }}
+        />
+      </div>
     )
 
   return (

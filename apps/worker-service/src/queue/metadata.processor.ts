@@ -70,21 +70,7 @@ export class MetadataProcessor {
 
       if (kind === 'photo' || mimeType?.startsWith('image/')) {
         const metadata = this.metadataExtractor.extract(buffer)
-        const hasAnyField =
-          metadata.takenAt !== null ||
-          metadata.cameraMake !== null ||
-          metadata.cameraModel !== null ||
-          metadata.lensModel !== null ||
-          metadata.orientation !== null ||
-          metadata.width !== null ||
-          metadata.height !== null ||
-          metadata.latitude !== null ||
-          metadata.longitude !== null ||
-          metadata.altitude !== null ||
-          metadata.iso !== null ||
-          metadata.fNumber !== null ||
-          metadata.exposureTime !== null ||
-          metadata.focalLength !== null
+        const hasAnyField = Object.values(metadata).some((v) => v !== null)
         const metadataStatus = hasAnyField ? 'ready' : 'failed'
 
         await firstValueFrom(
@@ -123,21 +109,24 @@ export class MetadataProcessor {
           await writeFile(tmpPath, buffer)
 
           const videoMeta = await this.videoMetadataExtractor.extract(tmpPath)
-          const hasAnyVideoField =
-            videoMeta.durationSeconds !== null ||
-            videoMeta.width !== null ||
-            videoMeta.height !== null ||
-            videoMeta.codec !== null ||
-            videoMeta.fps !== null ||
-            videoMeta.hasAudio !== null ||
-            videoMeta.orientation !== null ||
-            videoMeta.takenAt !== null ||
-            videoMeta.cameraMake !== null ||
-            videoMeta.cameraModel !== null ||
-            videoMeta.lensModel !== null ||
-            videoMeta.latitude !== null ||
-            videoMeta.longitude !== null ||
-            videoMeta.altitude !== null
+          const hasAnyVideoField = (
+            [
+              videoMeta.durationSeconds,
+              videoMeta.width,
+              videoMeta.height,
+              videoMeta.codec,
+              videoMeta.fps,
+              videoMeta.hasAudio,
+              videoMeta.orientation,
+              videoMeta.takenAt,
+              videoMeta.cameraMake,
+              videoMeta.cameraModel,
+              videoMeta.lensModel,
+              videoMeta.latitude,
+              videoMeta.longitude,
+              videoMeta.altitude,
+            ] as const
+          ).some((v) => v !== null)
           const videoMetadataStatus = hasAnyVideoField ? 'ready' : 'failed'
           await firstValueFrom(
             this.http.patch(patchUrl, {
