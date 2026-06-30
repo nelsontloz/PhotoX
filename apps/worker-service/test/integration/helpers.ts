@@ -45,26 +45,28 @@ export function startStubServer(): Promise<StubServer> {
   const calls: StubCall[] = []
   const routes: StubRoute[] = []
 
-  const server = http.createServer(async (req, res) => {
-    const body = await collectBody(req)
-    const call: StubCall = {
-      method: req.method!,
-      url: req.url!,
-      headers: req.headers,
-      body,
-    }
-    calls.push(call)
-
-    for (let i = routes.length - 1; i >= 0; i--) {
-      const route = routes[i]!
-      if (route.method === call.method && route.match(call.url)) {
-        route.handler(call, res)
-        return
+  const server = http.createServer((req, res) => {
+    void (async () => {
+      const body = await collectBody(req)
+      const call: StubCall = {
+        method: req.method!,
+        url: req.url!,
+        headers: req.headers,
+        body,
       }
-    }
+      calls.push(call)
 
-    res.writeHead(404)
-    res.end('Not Found')
+      for (let i = routes.length - 1; i >= 0; i--) {
+        const route = routes[i]!
+        if (route.method === call.method && route.match(call.url)) {
+          route.handler(call, res)
+          return
+        }
+      }
+
+      res.writeHead(404)
+      res.end('Not Found')
+    })()
   })
 
   return new Promise((resolve) => {

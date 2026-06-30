@@ -81,7 +81,7 @@ describe('ThumbnailProcessor (integration)', () => {
         url: '/v1/assets/test-asset-id/metadata',
       })
 
-      const patchBody = JSON.parse(calls[3]!.body.toString())
+      const patchBody = JSON.parse(calls[3]!.body.toString()) as { thumbnailStatus: string }
       expect(patchBody).toEqual({ thumbnailStatus: 'ready' })
     })
   })
@@ -125,7 +125,7 @@ describe('ThumbnailProcessor (integration)', () => {
       )
       expect(patchCalls.length).toBeGreaterThanOrEqual(1)
 
-      const patchBody = JSON.parse(patchCalls[0]!.body.toString())
+      const patchBody = JSON.parse(patchCalls[0]!.body.toString()) as { thumbnailStatus: string }
       expect(patchBody).toEqual({ thumbnailStatus: 'failed' })
     })
   })

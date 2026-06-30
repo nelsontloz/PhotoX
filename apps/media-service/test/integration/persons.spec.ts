@@ -44,7 +44,7 @@ async function registerFaceForAsset(userId: string, assetId: string): Promise<st
     .expect(201)
 
   const facesRes = await supertest(httpServer).get(`/v1/assets/${assetId}/faces`).expect(200)
-  return (facesRes.body as { faces: Array<{ id: string }> }).faces[0]!.id
+  return (facesRes.body as { faces: { id: string }[] }).faces[0]!.id
 }
 
 describe('Persons — create', () => {
@@ -81,7 +81,7 @@ describe('Persons — list', () => {
     const res = await supertest(httpServer).get('/v1/persons').query({ userId }).expect(200)
 
     const body = res.body as {
-      items: Array<{ id: string }>
+      items: { id: string }[]
       total: number
       limit: number
       offset: number
@@ -101,7 +101,7 @@ describe('Persons — list', () => {
       .query({ userId, limit: 2, offset: 0 })
       .expect(200)
 
-    const body = res.body as { items: Array<{ id: string }>; total: number }
+    const body = res.body as { items: { id: string }[]; total: number }
     expect(body.items).toHaveLength(2)
     expect(body.total).toBe(3)
   })
@@ -110,7 +110,7 @@ describe('Persons — list', () => {
     const userId = mintUserId()
     const res = await supertest(httpServer).get('/v1/persons').query({ userId }).expect(200)
 
-    const body = res.body as { items: Array<{ id: string }>; total: number }
+    const body = res.body as { items: { id: string }[]; total: number }
     expect(body.items).toHaveLength(0)
     expect(body.total).toBe(0)
   })
@@ -246,7 +246,7 @@ describe('Persons — reassign faces', () => {
     expect(res.body).toEqual({ moved: 1 })
   })
 
-  it('returns 400 when toPersonId is null (DTO requires UUID)', async () => {
+  it('unassigns faces when toPersonId is null', async () => {
     const userId = mintUserId()
     const personA = await createPerson(userId, 'a')
     const asset = await createAssetForUser(httpServer, userId)
@@ -257,11 +257,21 @@ describe('Persons — reassign faces', () => {
       .send({ userId, personId: personA })
       .expect(200)
 
-    await supertest(httpServer)
+    const res = await supertest(httpServer)
       .post(`/v1/persons/${personA}/reassign`)
       .query({ userId })
       .send({ toPersonId: null, faceIds: [faceId] })
-      .expect(400)
+      .expect(200)
+
+    expect(res.body).toEqual({ moved: 1 })
+
+    const facesRes = await supertest(httpServer)
+      .get(`/v1/assets/${asset.id}/faces`)
+      .expect(200)
+
+    const face = (facesRes.body as { faces: { id: string; personId: string | null }[] })
+      .faces[0]!
+    expect(face.personId).toBeNull()
   })
 
   it('returns moved: 0 for empty faceIds', async () => {
@@ -297,7 +307,7 @@ describe('Persons — get assets for person', () => {
       .query({ userId })
       .expect(200)
 
-    const body = res.body as { personId: string; items: Array<{ assetId: string }>; total: number }
+    const body = res.body as { personId: string; items: { assetId: string }[]; total: number }
     expect(body.personId).toBe(personId)
     expect(body.items).toHaveLength(1)
     expect(body.items[0]!.assetId).toBe(asset.id)
@@ -313,7 +323,7 @@ describe('Persons — get assets for person', () => {
       .query({ userId })
       .expect(200)
 
-    const body = res.body as { items: Array<{ assetId: string }>; total: number }
+    const body = res.body as { items: { assetId: string }[]; total: number }
     expect(body.items).toHaveLength(0)
     expect(body.total).toBe(0)
   })

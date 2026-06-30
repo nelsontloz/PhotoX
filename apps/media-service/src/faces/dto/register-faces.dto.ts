@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
-import { IsArray, IsNumber, IsUUID, ArrayMinSize, ValidateNested } from 'class-validator'
+import { IsArray, IsDefined, IsNumber, IsUUID, ArrayMinSize, ValidateNested } from 'class-validator'
 import type { RegisterFacesRequestDto, DetectedFaceInput } from '@photox/shared-types'
 import { FaceBoxResponseDto } from './face.dto'
 
@@ -8,6 +8,7 @@ import { FaceBoxResponseDto } from './face.dto'
 
 export class DetectedFaceDto implements DetectedFaceInput {
   @ApiProperty({ type: FaceBoxResponseDto })
+  @IsDefined()
   @ValidateNested()
   @Type(() => FaceBoxResponseDto)
   box!: FaceBoxResponseDto

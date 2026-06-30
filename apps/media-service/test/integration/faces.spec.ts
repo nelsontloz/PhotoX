@@ -88,7 +88,7 @@ describe('Faces — register & get', () => {
     const res = await supertest(httpServer).get(`/v1/assets/${asset.id}/faces`).expect(200)
 
     const body = res.body as {
-      faces: Array<{ id: string; assetId: string; box: object; confidence: number; personId: null }>
+      faces: { id: string; assetId: string; box: object; confidence: number; personId: null }[]
     }
     const face0 = body.faces[0]!
     expect(body.faces).toHaveLength(1)
@@ -127,7 +127,7 @@ describe('Faces — list for user', () => {
 
     const res = await supertest(httpServer).get('/v1/faces').query({ userId: userA }).expect(200)
 
-    const body = res.body as { items: Array<{ assetId: string }> }
+    const body = res.body as { items: { assetId: string }[] }
     expect(body.items).toHaveLength(1)
     expect(body.items[0]!.assetId).toBe(assetA.id)
   })
@@ -146,7 +146,7 @@ describe('Faces — list for user', () => {
       .query({ userId, includeEmbeddings: 'true' })
       .expect(200)
 
-    const body = res.body as { items: Array<{ embedding?: number[] }> }
+    const body = res.body as { items: { embedding?: number[] }[] }
     expect(body.items[0]!.embedding).toEqual([0.1, 0.2, 0.3])
   })
 
@@ -161,7 +161,7 @@ describe('Faces — list for user', () => {
 
     const res = await supertest(httpServer).get('/v1/faces').query({ userId }).expect(200)
 
-    const body = res.body as { items: Array<{ embedding?: number[] }> }
+    const body = res.body as { items: { embedding?: number[] }[] }
     expect(body.items[0]!.embedding).toBeUndefined()
   })
 })
@@ -177,7 +177,7 @@ describe('Faces — assign / unassign person', () => {
       .expect(201)
 
     const facesRes = await supertest(httpServer).get(`/v1/assets/${asset.id}/faces`).expect(200)
-    const faceId = (facesRes.body as { faces: Array<{ id: string }> }).faces[0]!.id
+    const faceId = (facesRes.body as { faces: { id: string }[] }).faces[0]!.id
 
     const personRes = await supertest(httpServer)
       .post('/v1/persons')
@@ -191,7 +191,7 @@ describe('Faces — assign / unassign person', () => {
       .expect(200)
 
     const verify = await supertest(httpServer).get(`/v1/assets/${asset.id}/faces`).expect(200)
-    const face = (verify.body as { faces: Array<{ id: string; personId: string | null }> })
+    const face = (verify.body as { faces: { id: string; personId: string | null }[] })
       .faces[0]!
     expect(face.personId).toBe(personId)
   })
@@ -206,7 +206,7 @@ describe('Faces — assign / unassign person', () => {
       .expect(201)
 
     const facesRes = await supertest(httpServer).get(`/v1/assets/${asset.id}/faces`).expect(200)
-    const faceId = (facesRes.body as { faces: Array<{ id: string }> }).faces[0]!.id
+    const faceId = (facesRes.body as { faces: { id: string }[] }).faces[0]!.id
 
     const personRes = await supertest(httpServer)
       .post('/v1/persons')
@@ -225,7 +225,7 @@ describe('Faces — assign / unassign person', () => {
       .expect(200)
 
     const verify = await supertest(httpServer).get(`/v1/assets/${asset.id}/faces`).expect(200)
-    const face = (verify.body as { faces: Array<{ personId: string | null }> }).faces[0]!
+    const face = (verify.body as { faces: { personId: string | null }[] }).faces[0]!
     expect(face.personId).toBeNull()
   })
 
@@ -248,7 +248,7 @@ describe('Faces — assign / unassign person', () => {
       .expect(201)
 
     const facesRes = await supertest(httpServer).get(`/v1/assets/${asset.id}/faces`).expect(200)
-    const faceId = (facesRes.body as { faces: Array<{ id: string }> }).faces[0]!.id
+    const faceId = (facesRes.body as { faces: { id: string }[] }).faces[0]!.id
 
     await supertest(httpServer)
       .patch(`/v1/faces/${faceId}/person`)
@@ -278,13 +278,13 @@ describe('Faces — validation', () => {
       .expect(400)
   })
 
-  it('returns 400 when face has invalid nested box', async () => {
+  it('returns 400 when box is missing', async () => {
     const userId = mintUserId()
     const asset = await createAssetForUser(httpServer, userId)
 
     await supertest(httpServer)
       .post(`/v1/assets/${asset.id}/faces`)
-      .send({ userId, faces: [{ box: 'not-an-object', confidence: 0.9, embedding: [0.1] }] })
+      .send({ userId, faces: [{ confidence: 0.9, embedding: [0.1] }] })
       .expect(400)
   })
 
@@ -321,7 +321,7 @@ describe('Faces — thumbnail', () => {
       .expect(201)
 
     const facesRes = await supertest(httpServer).get(`/v1/assets/${asset.id}/faces`).expect(200)
-    const faceId = (facesRes.body as { faces: Array<{ id: string }> }).faces[0]!.id
+    const faceId = (facesRes.body as { faces: { id: string }[] }).faces[0]!.id
 
     const res = await supertest(httpServer)
       .get(`/v1/faces/${faceId}/thumb`)
@@ -329,7 +329,7 @@ describe('Faces — thumbnail', () => {
       .expect(200)
 
     expect(res.headers['content-type']).toContain('image/jpeg')
-    expect(res.body.length).toBeGreaterThan(0)
+    expect((res.body as Buffer).length).toBeGreaterThan(0)
   })
 
   it('returns 404 for non-existent face', async () => {
@@ -359,7 +359,7 @@ describe('Faces — thumbnail', () => {
       .expect(201)
 
     const facesRes = await supertest(httpServer).get(`/v1/assets/${asset.id}/faces`).expect(200)
-    const faceId = (facesRes.body as { faces: Array<{ id: string }> }).faces[0]!.id
+    const faceId = (facesRes.body as { faces: { id: string }[] }).faces[0]!.id
 
     await supertest(httpServer)
       .get(`/v1/faces/${faceId}/thumb`)

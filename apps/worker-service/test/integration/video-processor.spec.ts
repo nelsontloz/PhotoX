@@ -37,7 +37,7 @@ describe('VideoProcessor (integration)', () => {
     await closeTestApp(testApp)
     if (existsSync(H264_AAC_PATH)) unlinkSync(H264_AAC_PATH)
     try {
-      import('node:fs').then((fs) => fs.rmdirSync(TEST_VIDEO_DIR))
+      void import('node:fs').then((fs) => fs.rmdirSync(TEST_VIDEO_DIR))
     } catch {
       // ignore
     }
