@@ -16,7 +16,7 @@ The gateway publishes thumbnail and video jobs directly to Redis BullMQ queues (
 
 ## Video processing
 
-Worker-service uses ffmpeg/ffprobe at runtime and consumes `process-video` jobs from BullMQ. The Docker base-builder installs ffmpeg automatically. For local dev without Docker, install via `apt install ffmpeg` (Debian/Ubuntu) or `brew install ffmpeg` (macOS).
+Worker-service uses ffmpeg/ffprobe at runtime via `ffmpeg-static` and `ffprobe-static` npm packages. No system install needed — binaries ship with `npm install`.
 
 **Pipeline (single-pass, no HLS):** the gateway publishes a `process-video` job after asset creation. The worker downloads the source via a presigned MinIO URL (`ttl=600`), ffprobes the codec, and:
 

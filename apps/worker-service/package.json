@@ -26,6 +26,8 @@
     "axios": "^1.7.0",
     "bullmq": "^5.0.0",
     "exifreader": "^4.41.0",
+    "ffmpeg-static": "^5.2.0",
+    "ffprobe-static": "^3.1.0",
     "form-data": "^4.0.0",
     "ioredis": "^5.0.0",
     "reflect-metadata": "^0.2.2",

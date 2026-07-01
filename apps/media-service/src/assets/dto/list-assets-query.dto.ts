@@ -71,4 +71,10 @@ export class ListAssetsQueryDto {
   @IsBoolean()
   @ApiProperty({ required: false })
   hasFaces?: boolean
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  @ApiProperty({ required: false, description: 'Filter to only assets with GPS coordinates' })
+  hasLocations?: boolean
 }

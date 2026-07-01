@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process'
 import { readFileSync, unlinkSync, existsSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { FFMPEG_PATH } from '../../src/queue/ffmpeg'
 import { createTestApp, closeTestApp, waitForJob, type TestApp } from './helpers'
 
 const TEST_VIDEO_DIR = mkdtempSync(join(tmpdir(), 'video-test-'))
@@ -9,15 +10,15 @@ const H264_AAC_PATH = join(TEST_VIDEO_DIR, 'h264-aac.mp4')
 
 function createH264AacVideo() {
   execSync(
-    `ffmpeg -f lavfi -i color=c=black:s=320x240:d=1 -f lavfi -i anullsrc=r=44100:cl=mono -c:v libx264 -c:a aac -t 1 -y "${H264_AAC_PATH}"`,
+    `"${FFMPEG_PATH}" -f lavfi -i color=c=black:s=320x240:d=1 -f lavfi -i anullsrc=r=44100:cl=mono -c:v libx264 -c:a aac -t 1 -y "${H264_AAC_PATH}"`,
     { timeout: 30_000, stdio: 'pipe' },
   )
   return readFileSync(H264_AAC_PATH)
 }
 
-function hasSvtAv1(): boolean {
+function hasAomAv1(): boolean {
   try {
-    execSync('ffmpeg -encoders 2>/dev/null | grep libsvtav1', { stdio: 'ignore' })
+    execSync(`"${FFMPEG_PATH}" -encoders 2>/dev/null | grep libaom-av1`, { stdio: 'ignore' })
     return true
   } catch {
     return false
@@ -113,12 +114,12 @@ describe('VideoProcessor (integration)', () => {
   })
 
   describe('transcode path', () => {
-    it.skipIf(!hasSvtAv1())(
+    it.skipIf(!hasAomAv1())(
       'transcodes non-h264 video and uploads derivative',
       async () => {
         const transcodePath = join(TEST_VIDEO_DIR, 'mjpeg.avi')
         execSync(
-          `ffmpeg -f lavfi -i color=c=black:s=320x240:d=1 -c:v mjpeg -pix_fmt yuvj420p -t 1 -y "${transcodePath}"`,
+          `"${FFMPEG_PATH}" -f lavfi -i color=c=black:s=320x240:d=1 -c:v mjpeg -pix_fmt yuvj420p -t 1 -y "${transcodePath}"`,
           { timeout: 30_000, stdio: 'pipe' },
         )
         const transcodeBuffer = readFileSync(transcodePath)

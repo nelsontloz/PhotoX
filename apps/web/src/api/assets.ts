@@ -7,6 +7,7 @@ interface ListAssetsParams {
   kind?: 'photo' | 'video'
   isTrashed?: boolean
   favorite?: boolean
+  hasLocations?: boolean
 }
 
 export async function listAssets(params: ListAssetsParams = {}): Promise<AssetListResponse> {

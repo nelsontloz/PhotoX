@@ -1,7 +1,13 @@
 import { spawn, type ChildProcess } from 'child_process'
 
-export const FFMPEG_PATH: string = process.env.FFMPEG_PATH ?? '/usr/bin/ffmpeg'
-export const FFPROBE_PATH: string = process.env.FFPROBE_PATH ?? '/usr/bin/ffprobe'
+// ponytail: ffmpeg-static/ffprobe-static ship binaries, not code — no types
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const ffmpegStatic: string | null = (require('ffmpeg-static') as string | null) ?? null
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
+const ffprobeBin: { path: string } | null = (require('ffprobe-static') as { path: string } | null) ?? null
+
+export const FFMPEG_PATH: string | null = process.env.FFMPEG_PATH ?? ffmpegStatic
+export const FFPROBE_PATH: string | null = process.env.FFPROBE_PATH ?? ffprobeBin?.path ?? null
 
 export interface FfprobeStream {
   index: number
@@ -72,6 +78,7 @@ export async function runFfmpeg(
   args: string[],
   options?: { input?: Buffer; timeoutMs?: number },
 ): Promise<{ stdout: Buffer; stderr: string; code: number }> {
+  if (!FFMPEG_PATH) throw new Error('ffmpeg-static not found — install ffmpeg-static or set FFMPEG_PATH')
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const useStdioInput = options?.input !== undefined
 
@@ -121,6 +128,7 @@ export async function runFfmpeg(
 }
 
 export async function runFfprobeJson(input: string): Promise<FfprobeResult> {
+  if (!FFPROBE_PATH) throw new Error('ffprobe-static not found — install ffprobe-static or set FFPROBE_PATH')
   const proc = spawn(
     FFPROBE_PATH,
     ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', input],
