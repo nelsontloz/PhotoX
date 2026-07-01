@@ -3,10 +3,10 @@ import { PactV3 } from '@pact-foundation/pact'
 
 export const PACT_DIR = path.resolve(__dirname, '../../../../../pacts')
 
-export function createPact(providerName: string): PactV3 {
+export function createPact(providerName: string, consumerSuffix?: string): PactV3 {
   return new PactV3({
     dir: PACT_DIR,
-    consumer: 'gateway',
+    consumer: consumerSuffix ? `gateway-${consumerSuffix}` : 'gateway',
     provider: providerName,
     logLevel: 'error',
   })

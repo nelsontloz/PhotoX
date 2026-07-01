@@ -1,9 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { IsArray, ArrayMinSize, IsUUID } from 'class-validator'
+import { IsArray, ArrayMinSize, IsOptional, IsUUID } from 'class-validator'
 import type { ReassignFacesRequest } from '@photox/shared-types'
 
 export class ReassignFacesDto implements Omit<ReassignFacesRequest, 'fromPersonId'> {
-  @ApiProperty()
+  @ApiProperty({ nullable: true })
+  @IsOptional()
   @IsUUID()
   toPersonId!: string | null
 

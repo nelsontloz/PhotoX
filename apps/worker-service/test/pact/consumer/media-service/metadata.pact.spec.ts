@@ -3,7 +3,7 @@ import { MatchersV3 } from '@pact-foundation/pact'
 import axios from 'axios'
 import { createPact } from '../setup'
 
-const mediaService = createPact('media-service')
+const mediaService = createPact('media-service', 'metadata')
 
 const ASSET_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22'
 
