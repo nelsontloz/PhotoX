@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import {
   FaArrowLeft,
   FaHeart,
   FaRegHeart,
   FaDownload,
   FaShare,
+  FaCheck,
   FaPen,
   FaCircleInfo,
   FaTrash,
@@ -14,6 +16,7 @@ import {
   FaFilm,
 } from 'react-icons/fa6'
 import { downloadFile } from '../../api/assets'
+import { createShare, getShareUrl } from '../../api/shares'
 import type { Asset } from '@photox/shared-types'
 import { formatBytes } from '../../lib/format'
 
@@ -70,8 +73,22 @@ export function ViewerTopBar({
     }
   }
 
-  const handleShare = () => {
-    void navigator.clipboard.writeText(window.location.href)
+  const [shareLoading, setShareLoading] = useState(false)
+  const [shareCopied, setShareCopied] = useState(false)
+
+  const handleShare = async () => {
+    setShareLoading(true)
+    try {
+      const share = await createShare(asset.id)
+      const url = getShareUrl(share.token)
+      await navigator.clipboard.writeText(url)
+      setShareCopied(true)
+      setTimeout(() => setShareCopied(false), 2000)
+    } catch {
+      /* ignore */
+    } finally {
+      setShareLoading(false)
+    }
   }
 
   return (
@@ -110,11 +127,16 @@ export function ViewerTopBar({
         {!asset.isTrashed && (
           <>
             <button
-              onClick={() => handleShare()}
+              onClick={() => void handleShare()}
               className="p-2 text-white/80 hover:text-white transition-colors"
               title="Share"
+              disabled={shareLoading}
             >
-              <FaShare className="text-base" />
+              {shareCopied ? (
+                <FaCheck className="text-base text-green-400" />
+              ) : (
+                <FaShare className="text-base" />
+              )}
             </button>
             <button className="p-2 text-white/80 hover:text-white transition-colors" title="Edit">
               <FaPen className="text-base" />

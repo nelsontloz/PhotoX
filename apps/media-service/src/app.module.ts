@@ -6,6 +6,7 @@ import { AssetsModule } from './assets/assets.module'
 import { AlbumsModule } from './albums/albums.module'
 import { AdminModule } from './admin/admin.module'
 import { PersonsModule } from './persons/persons.module'
+import { SharesModule } from './shares/shares.module'
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { PersonsModule } from './persons/persons.module'
     AlbumsModule,
     AdminModule,
     PersonsModule,
+    SharesModule,
     HealthModule,
   ],
 })

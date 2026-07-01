@@ -139,9 +139,19 @@ export function AssetViewer({
           onToggleFavorite={handleToggleFavorite}
           onAddToAlbum={onAddToAlbum}
           onRemoveFromAlbum={onRemoveFromAlbum}
-          onReprocessThumbnails={!reprocessLoading ? () => { void handleReprocessThumbnails() } : undefined}
+          onReprocessThumbnails={
+            !reprocessLoading
+              ? () => {
+                  void handleReprocessThumbnails()
+                }
+              : undefined
+          }
           onReprocessVideo={
-            currentAsset.kind === 'video' && !reprocessLoading ? () => { void handleReprocessVideo() } : undefined
+            currentAsset.kind === 'video' && !reprocessLoading
+              ? () => {
+                  void handleReprocessVideo()
+                }
+              : undefined
           }
         />
         <ViewerMedia
