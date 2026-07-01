@@ -9,6 +9,8 @@ const FACE_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44'
 const PERSON_ASSET_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a77'
 const ALBUM_ID = 'b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a33'
 const ALBUM_ASSET_ID = 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a44'
+const SHARE_ID = 'd3eebc99-9c0b-4ef8-bb6d-6bb9bd380a55'
+const SHARE_TOKEN = 'sharetoken1234567890ab'
 
 const baseAsset = {
   id: ASSET_ID,
@@ -274,5 +276,59 @@ export function buildStateHandlers(repos: MockRepos): Record<string, () => Promi
         })
         return Promise.resolve()
       },
+
+    'a share can be created for asset a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22': () => {
+      repos.mockAssetRepo.save(baseAsset)
+      repos.mockShareRepo.findOne.mockResolvedValue(null)
+      repos.mockShareRepo.save.mockImplementation((data: any) => {
+        return Promise.resolve({
+          ...data,
+          id: SHARE_ID,
+          token: SHARE_TOKEN,
+          createdAt: new Date('2024-01-01T00:00:00.000Z'),
+          asset: { ...baseAsset },
+        })
+      })
+      return Promise.resolve()
+    },
+
+    'user has no shares': () => {
+      repos.mockShareRepo.find.mockResolvedValue([])
+      return Promise.resolve()
+    },
+
+    'a share exists with id d3eebc99-9c0b-4ef8-bb6d-6bb9bd380a55': () => {
+      const shareData = {
+        id: SHARE_ID,
+        userId: USER_ID,
+        assetId: ASSET_ID,
+        token: SHARE_TOKEN,
+        createdAt: new Date('2024-01-01T00:00:00.000Z'),
+        asset: { ...baseAsset, isTrashed: false },
+      }
+      repos.mockShareRepo.findOne.mockImplementation((opts: any) => {
+        if (opts?.where?.id === SHARE_ID) return Promise.resolve(shareData)
+        return Promise.resolve(null)
+      })
+      repos.mockShareRepo.delete.mockResolvedValue({ affected: 1 })
+      return Promise.resolve()
+    },
+
+    'a share exists with token sharetoken1234567890ab': () => {
+      repos.mockShareRepo.findOne.mockImplementation((opts: any) => {
+        if (opts?.where?.token === SHARE_TOKEN) {
+          return Promise.resolve({
+            id: SHARE_ID,
+            userId: USER_ID,
+            assetId: ASSET_ID,
+            token: SHARE_TOKEN,
+            createdAt: new Date('2024-01-01T00:00:00.000Z'),
+            asset: { ...baseAsset },
+          })
+        }
+        return Promise.resolve(null)
+      })
+      return Promise.resolve()
+    },
   }
 }

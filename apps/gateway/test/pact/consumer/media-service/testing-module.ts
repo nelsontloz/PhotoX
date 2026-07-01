@@ -6,6 +6,8 @@ import { HttpModule } from '@nestjs/axios'
 import { AssetsProxyController } from '../../../../src/proxy/assets-proxy/assets-proxy.controller'
 import { AlbumsProxyController } from '../../../../src/proxy/albums-proxy/albums-proxy.controller'
 import { PersonsProxyController } from '../../../../src/proxy/persons-proxy/persons-proxy.controller'
+import { SharesProxyController } from '../../../../src/proxy/shares-proxy/shares-proxy.controller'
+import { PublicSharesProxyController } from '../../../../src/proxy/shares-proxy/public-shares-proxy.controller'
 import { requestIdMiddleware } from '../../../../src/common/middleware/request-id.middleware'
 import { ProxyService } from '../../../../src/proxy/proxy.service'
 import { BullMqService } from '../../../../src/queue/bullmq.service'
@@ -23,7 +25,13 @@ export async function setupMediaServicePactModule(): Promise<{
 
   const module = await Test.createTestingModule({
     imports: [HttpModule],
-    controllers: [AssetsProxyController, AlbumsProxyController, PersonsProxyController],
+    controllers: [
+      AssetsProxyController,
+      AlbumsProxyController,
+      PersonsProxyController,
+      SharesProxyController,
+      PublicSharesProxyController,
+    ],
     providers: [
       { provide: ProxyService, useValue: stub },
       {

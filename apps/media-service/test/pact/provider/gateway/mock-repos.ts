@@ -31,6 +31,7 @@ export interface MockRepos {
   mockPersonRepo: ReturnType<typeof createPersonRepo>
   mockAlbumRepo: ReturnType<typeof createAlbumRepo>
   mockAlbumAssetRepo: ReturnType<typeof createAlbumAssetRepo>
+  mockShareRepo: ReturnType<typeof createShareRepo>
 }
 
 export function createAssetRepo() {
@@ -216,6 +217,58 @@ export function createAlbumAssetRepo() {
       values: vi.fn().mockReturnThis(),
       orIgnore: vi.fn().mockReturnThis(),
       execute: vi.fn().mockResolvedValue({}),
+    }),
+  }
+}
+
+export function createShareRepo() {
+  const store: Record<string, any> = {}
+
+  return {
+    findOne: vi.fn().mockImplementation((opts: any) => {
+      const id = opts?.where?.id
+      const token = opts?.where?.token
+      const userId = opts?.where?.userId
+      const assetId = opts?.where?.assetId
+
+      if (token) {
+        const share = Object.values(store).find((s) => s.token === token)
+        return Promise.resolve(share ?? null)
+      }
+
+      if (id) {
+        const share = store[id]
+        if (!share) return Promise.resolve(null)
+        if (userId && share.userId !== userId) return Promise.resolve(null)
+        return Promise.resolve(share)
+      }
+
+      if (userId && assetId) {
+        const share = Object.values(store).find((s) => s.userId === userId && s.assetId === assetId)
+        return Promise.resolve(share ?? null)
+      }
+
+      return Promise.resolve(null)
+    }),
+    find: vi.fn().mockImplementation((opts: any) => {
+      const userId = opts?.where?.userId
+      if (!userId) return Promise.resolve([])
+      const shares = Object.values(store).filter((s) => s.userId === userId)
+      return Promise.resolve(shares)
+    }),
+    save: vi.fn().mockImplementation((data: any) => {
+      const id = data.id ?? 'd3eebc99-9c0b-4ef8-bb6d-6bb9bd380a55'
+      store[id] = {
+        ...data,
+        id,
+        token: data.token ?? 'sharetoken1234567890ab',
+        createdAt: data.createdAt ?? new Date('2024-01-01T00:00:00.000Z'),
+      }
+      return Promise.resolve(store[id])
+    }),
+    delete: vi.fn().mockImplementation((id: string) => {
+      delete store[id]
+      return Promise.resolve({ affected: 1 })
     }),
   }
 }

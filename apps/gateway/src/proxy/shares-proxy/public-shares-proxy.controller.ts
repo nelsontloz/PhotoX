@@ -14,7 +14,7 @@ export class PublicSharesProxyController {
   @Get(':token')
   @ApiOperation({ summary: 'View a shared asset by public token' })
   @ApiResponse({ status: 200, description: 'Shared asset info' })
-  @ApiResponse({ status: 404, description: 'Share not found or expired' })
+  @ApiResponse({ status: 404, description: 'Share not found' })
   async getByToken(@Param('token') token: string, @Req() req: Request) {
     const result = await this.proxy.forward(SERVICE_URLS['media-service'], {
       method: 'GET',
