@@ -10,6 +10,8 @@ import {
   FaRotateLeft,
   FaFolderPlus,
   FaFolderMinus,
+  FaArrowsRotate,
+  FaFilm,
 } from 'react-icons/fa6'
 import { downloadFile } from '../../api/assets'
 import type { Asset } from '@photox/shared-types'
@@ -25,6 +27,8 @@ interface ViewerTopBarProps {
   onToggleFavorite?: () => void
   onAddToAlbum?: () => void
   onRemoveFromAlbum?: () => void
+  onReprocessThumbnails?: () => void
+  onReprocessVideo?: () => void
 }
 
 function formatDate(dateStr: string): string {
@@ -45,6 +49,8 @@ export function ViewerTopBar({
   onToggleFavorite,
   onAddToAlbum,
   onRemoveFromAlbum,
+  onReprocessThumbnails,
+  onReprocessVideo,
 }: ViewerTopBarProps) {
   const title = asset.originalName ?? asset.title ?? 'Untitled'
   const dateStr = asset.takenAt ?? asset.uploadedAt
@@ -113,6 +119,26 @@ export function ViewerTopBar({
             <button className="p-2 text-white/80 hover:text-white transition-colors" title="Edit">
               <FaPen className="text-base" />
             </button>
+            {onReprocessThumbnails && (
+              <button
+                onClick={onReprocessThumbnails}
+                className="p-2 text-white/80 hover:text-white transition-colors"
+                title="Reprocess thumbnails"
+                aria-label="Reprocess thumbnails"
+              >
+                <FaArrowsRotate className="text-base" />
+              </button>
+            )}
+            {onReprocessVideo && (
+              <button
+                onClick={onReprocessVideo}
+                className="p-2 text-white/80 hover:text-white transition-colors"
+                title="Reprocess video"
+                aria-label="Reprocess video"
+              >
+                <FaFilm className="text-base" />
+              </button>
+            )}
             {onAddToAlbum && (
               <button
                 onClick={onAddToAlbum}

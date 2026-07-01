@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Asset } from '@photox/shared-types'
 import { useAuthStore } from '../../store/auth-store'
-import { getAsset, getVideoStreamUrl } from '../../api/assets'
+import { getAsset, getVideoStreamUrl, reprocessThumbnails, reprocessVideo } from '../../api/assets'
 import { ViewerTopBar } from './ViewerTopBar'
 import { useAssetMedia } from './useAssetMedia'
 import { useViewerKeyboard } from './useViewerKeyboard'
@@ -42,6 +42,7 @@ export function AssetViewer({
   const [currentAsset, setCurrentAsset] = useState<Asset>(asset)
   const [infoOpen, setInfoOpen] = useState(false)
   const [favOverride, setFavOverride] = useState<boolean | null>(null)
+  const [reprocessLoading, setReprocessLoading] = useState(false)
   const userId = useAuthStore((s) => s.user?.id)
 
   useEffect(() => {
@@ -90,6 +91,28 @@ export function AssetViewer({
     onToggleFavorite?.(next)
   }
 
+  const handleReprocessThumbnails = async () => {
+    setReprocessLoading(true)
+    try {
+      await reprocessThumbnails(currentAsset.id)
+    } catch {
+      // ignore
+    } finally {
+      setReprocessLoading(false)
+    }
+  }
+
+  const handleReprocessVideo = async () => {
+    setReprocessLoading(true)
+    try {
+      await reprocessVideo(currentAsset.id)
+    } catch {
+      // ignore
+    } finally {
+      setReprocessLoading(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex overflow-hidden bg-black">
       {imageUrl && !isVideo && (
@@ -116,6 +139,10 @@ export function AssetViewer({
           onToggleFavorite={handleToggleFavorite}
           onAddToAlbum={onAddToAlbum}
           onRemoveFromAlbum={onRemoveFromAlbum}
+          onReprocessThumbnails={!reprocessLoading ? () => { void handleReprocessThumbnails() } : undefined}
+          onReprocessVideo={
+            currentAsset.kind === 'video' && !reprocessLoading ? () => { void handleReprocessVideo() } : undefined
+          }
         />
         <ViewerMedia
           isVideo={isVideo}

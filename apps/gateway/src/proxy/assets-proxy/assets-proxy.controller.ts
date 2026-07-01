@@ -156,6 +156,64 @@ export class AssetsProxyController {
     })
   }
 
+  @Post(':id/reprocess-thumbnails')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Re-enqueue thumbnail generation for all sizes' })
+  @ApiResponse({ status: 200, description: 'Thumbnail jobs enqueued' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  async reprocessThumbnails(@Param('id') id: string, @Req() req: Request) {
+    const userId = (req.user as { id: string }).id
+    const result = await this.proxy.forward<{ id: string; fileId: string }>(
+      SERVICE_URLS['media-service'],
+      {
+        method: 'GET',
+        path: `v1/assets/${id}`,
+        query: { userId },
+        headers: {
+          'x-request-id': (req.headers['x-request-id'] as string) ?? '',
+        },
+        timeout: 30_000,
+      },
+    )
+    for (const size of ['sm', 'md', 'lg', 'xl']) {
+      void this.bullmq.enqueue(
+        'process-thumbnail',
+        'process-thumbnail',
+        { assetId: result.data.id, fileId: result.data.fileId, userId, size },
+        { jobId: `reprocess:${result.data.id}:${size}` },
+      )
+    }
+    return { enqueued: true }
+  }
+
+  @Post(':id/reprocess-video')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Re-enqueue video transcoding' })
+  @ApiResponse({ status: 200, description: 'Video job enqueued' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  async reprocessVideo(@Param('id') id: string, @Req() req: Request) {
+    const userId = (req.user as { id: string }).id
+    const result = await this.proxy.forward<{ id: string; fileId: string }>(
+      SERVICE_URLS['media-service'],
+      {
+        method: 'GET',
+        path: `v1/assets/${id}`,
+        query: { userId },
+        headers: {
+          'x-request-id': (req.headers['x-request-id'] as string) ?? '',
+        },
+        timeout: 30_000,
+      },
+    )
+    void this.bullmq.enqueue(
+      'process-video',
+      'process-video',
+      { assetId: result.data.id, fileId: result.data.fileId, userId },
+      { jobId: `video:reprocess:${result.data.id}`, attempts: 3, backoff: { type: 'exponential' } },
+    )
+    return { enqueued: true }
+  }
+
   @Get(':id/thumbnails')
   @ApiOperation({ summary: 'List thumbnails for an asset' })
   @ApiResponse({ status: 200, description: 'Thumbnail list' })

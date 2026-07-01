@@ -85,3 +85,11 @@ export async function trashAsset(assetId: string): Promise<void> {
 export async function restoreAsset(assetId: string): Promise<void> {
   await api.post(`/v1/assets/${assetId}/restore`)
 }
+
+export async function reprocessThumbnails(assetId: string): Promise<void> {
+  await api.post(`/v1/assets/${assetId}/reprocess-thumbnails`)
+}
+
+export async function reprocessVideo(assetId: string): Promise<void> {
+  await api.post(`/v1/assets/${assetId}/reprocess-video`)
+}

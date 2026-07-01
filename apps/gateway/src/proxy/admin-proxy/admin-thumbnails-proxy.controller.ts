@@ -26,7 +26,8 @@ export class AdminThumbnailsProxyController {
 
   @Post('reprocess')
   @ApiOperation({
-    summary: 'Enqueue thumbnail regeneration jobs for every asset of a kind (admin only)',
+    summary:
+      'Enqueue thumbnail regeneration jobs for every asset of a kind, or a single asset (admin only)',
   })
   @ApiResponse({ status: 200, description: 'Number of assets enqueued and total' })
   @ApiResponse({ status: 403, description: 'Admin role required' })
@@ -35,6 +36,30 @@ export class AdminThumbnailsProxyController {
     @Req() req: Request,
   ): Promise<AdminReprocessThumbnailsResponse> {
     const requestId = (req.headers['x-request-id'] as string) ?? ''
+
+    if (dto.assetId) {
+      const asset = await this.proxy.forward<{ id: string; fileId: string; userId: string }>(
+        SERVICE_URLS['media-service'],
+        {
+          method: 'GET',
+          path: `v1/assets/${dto.assetId}`,
+          headers: { 'x-request-id': requestId },
+          timeout: 10_000,
+        },
+      )
+      const a = asset.data
+      for (const size of ['sm', 'md', 'lg', 'xl']) {
+        void this.bullmq.enqueue(
+          'process-thumbnail',
+          'process-thumbnail',
+          { assetId: a.id, fileId: a.fileId, userId: a.userId, size },
+          { jobId: `reprocess:${a.id}:${size}` },
+        )
+      }
+      this.logger.log({ msg: 'single-asset thumbnail reprocess', assetId: a.id, requestId })
+      return { enqueued: 1, totalAssets: 1 }
+    }
+
     let totalAssets = 0
     let enqueued = 0
     let offset = 0

@@ -59,6 +59,7 @@ export function ViewerMedia({
       )}
       {isVideo && videoSrc ? (
         <VideoPlayer
+          key={asset.id}
           src={videoSrc}
           fallbackSrc={videoFallbackSrc}
           poster={videoPoster}

@@ -151,6 +151,7 @@ export class ThumbnailProcessor {
         const frameBuffer = (
           await runFfmpeg([
             '-y',
+            '-noautorotate',
             '-ss',
             String(seekSec),
             '-i',
@@ -163,9 +164,8 @@ export class ThumbnailProcessor {
           ])
         ).stdout
 
-        // ponytail: per-rotation step is image metadata's job now
         let framePipeline = sharp(frameBuffer)
-        if (orientation > 1) {
+        if (orientation !== 0 && orientation !== 1 && orientation !== 360) {
           framePipeline = framePipeline.rotate(orientation)
         }
         const { data: thumbBuffer, info } = await framePipeline
