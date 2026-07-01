@@ -78,35 +78,31 @@ export function GalleryItem({
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
       {isVideo && transcodeStatus === 'ready' && (
-        <div
-          className={`absolute top-3 left-3 transition-opacity duration-200 pointer-events-none ${
-            selected ? 'opacity-0' : 'opacity-100 group-hover:opacity-0'
-          }`}
-        >
-          <div className="bg-black/60 backdrop-blur-sm rounded-full w-7 h-7 flex items-center justify-center">
-            <FaPlay className="text-white text-[10px] ml-0.5" />
+        <div className="absolute inset-0 flex items-center justify-center transition-opacity duration-200 pointer-events-none opacity-100">
+          <div className="bg-black/40 backdrop-blur-sm rounded-full w-10 h-10 flex items-center justify-center">
+            <FaPlay className="text-white/80 text-base ml-0.5" />
           </div>
         </div>
       )}
       {isVideo && transcodeStatus === 'pending' && (
         <div
-          className={`absolute top-3 left-3 pointer-events-none transition-opacity duration-200 ${
+          className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-200 ${
             selected ? 'opacity-0' : 'opacity-100'
           }`}
         >
-          <div className="bg-black/60 backdrop-blur-sm rounded-full w-7 h-7 flex items-center justify-center">
-            <FaSpinner className="text-white text-[12px] animate-spin" />
+          <div className="bg-black/60 backdrop-blur-sm rounded-full w-10 h-10 flex items-center justify-center">
+            <FaSpinner className="text-white text-base animate-spin" />
           </div>
         </div>
       )}
       {isVideo && transcodeStatus === 'failed' && (
         <div
-          className={`absolute top-3 left-3 pointer-events-none transition-opacity duration-200 ${
+          className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-200 ${
             selected ? 'opacity-0' : 'opacity-100'
           }`}
         >
-          <div className="bg-amber-500/90 backdrop-blur-sm rounded-full w-7 h-7 flex items-center justify-center">
-            <FaTriangleExclamation className="text-white text-[12px]" />
+          <div className="bg-amber-500/90 backdrop-blur-sm rounded-full w-10 h-10 flex items-center justify-center">
+            <FaTriangleExclamation className="text-white text-base" />
           </div>
         </div>
       )}
