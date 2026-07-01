@@ -24,12 +24,13 @@ interface UseAssetNavigationResult {
 export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNavigationResult {
   const [searchParams, setSearchParams] = useSearchParams()
   const id = searchParams.get('asset')
+  const allAssets = opts.assets
+
   const selected = useMemo(
-    () => (id ? (opts.assets.find((a) => a.id === id) ?? null) : null),
-    [id, opts.assets],
+    () => (id ? (allAssets.find((a) => a.id === id) ?? null) : null),
+    [id, allAssets],
   )
 
-  const allAssets = opts.assets
   const currentIndex = selected ? allAssets.findIndex((a) => a.id === selected.id) : -1
   const hasPrev = currentIndex > 0
   const hasNext = currentIndex >= 0 && currentIndex < allAssets.length - 1
@@ -82,7 +83,6 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
   const toggleFavorite = async (assetId: string, nextValue: boolean) => {
     try {
       await updateAsset(assetId, { favorite: nextValue })
-      await opts.onAfterAction?.()
     } catch {
       window.alert('Failed to update favorite. Please try again.')
     }

@@ -185,6 +185,8 @@ export default function PersonDetailPage() {
                 hasPrev={false}
                 hasNext={false}
                 onAddToAlbum={() => setPickerOpen(true)}
+                siblingAssets={assets}
+                onSelectSibling={setSelectedAsset}
               />
             </Suspense>
             <AlbumPickerDialog

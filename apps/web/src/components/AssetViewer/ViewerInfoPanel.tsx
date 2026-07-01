@@ -1,4 +1,4 @@
-import { FaNoteSticky, FaXmark } from 'react-icons/fa6'
+import { FaFolder, FaTag, FaClockRotateLeft, FaNoteSticky, FaPlus, FaXmark } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
 import { AssetMetadataPanel } from './sections/AssetMetadataPanel'
 import { FacesSection } from './sections/FacesSection'
@@ -39,6 +39,28 @@ export function ViewerInfoPanel({ asset, onClose }: ViewerInfoPanelProps) {
         </section>
         <FacesSection asset={asset} />
         <LocationSection asset={asset} />
+        <section>
+          <div className="flex items-center gap-2 text-slate-400 mb-3">
+            <FaFolder className="text-[18px]" />
+            <h4 className="text-xs font-bold uppercase tracking-wider">Albums</h4>
+          </div>
+          <p className="text-sm text-slate-600 italic mb-2">No albums</p>
+          <button className="flex items-center gap-2 text-xs text-slate-500 hover:text-primary border border-dashed border-border-dark hover:border-primary/40 rounded px-3 py-1.5 transition-colors">
+            <FaPlus className="text-[10px]" />
+            Add to album
+          </button>
+        </section>
+        <section>
+          <div className="flex items-center gap-2 text-slate-400 mb-3">
+            <FaTag className="text-[18px]" />
+            <h4 className="text-xs font-bold uppercase tracking-wider">Keywords</h4>
+          </div>
+          <p className="text-sm text-slate-600 italic">No keywords</p>
+        </section>
+        <button className="w-full flex items-center justify-center gap-2 text-xs text-slate-500 hover:text-slate-300 border border-border-dark hover:border-slate-600 rounded px-3 py-2 transition-colors">
+          <FaClockRotateLeft className="text-[12px]" />
+          View Revision History
+        </button>
       </div>
     </aside>
   )

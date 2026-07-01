@@ -191,8 +191,7 @@ describe('Faces — assign / unassign person', () => {
       .expect(200)
 
     const verify = await supertest(httpServer).get(`/v1/assets/${asset.id}/faces`).expect(200)
-    const face = (verify.body as { faces: { id: string; personId: string | null }[] })
-      .faces[0]!
+    const face = (verify.body as { faces: { id: string; personId: string | null }[] }).faces[0]!
     expect(face.personId).toBe(personId)
   })
 

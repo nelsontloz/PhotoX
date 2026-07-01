@@ -101,6 +101,12 @@ export class AssetsService {
       qb.andWhere('(asset.faceCount IS NULL OR asset.faceCount = 0)')
     }
 
+    if (q.hasLocations === true) {
+      qb.andWhere('asset.latitude IS NOT NULL AND asset.longitude IS NOT NULL')
+    } else if (q.hasLocations === false) {
+      qb.andWhere('(asset.latitude IS NULL OR asset.longitude IS NULL)')
+    }
+
     const [items, total] = await qb
       .orderBy(`COALESCE(asset.takenAt, asset.uploadedAt)`, 'DESC')
       .addOrderBy('asset.uploadedAt', 'DESC')

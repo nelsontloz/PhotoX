@@ -265,12 +265,9 @@ describe('Persons — reassign faces', () => {
 
     expect(res.body).toEqual({ moved: 1 })
 
-    const facesRes = await supertest(httpServer)
-      .get(`/v1/assets/${asset.id}/faces`)
-      .expect(200)
+    const facesRes = await supertest(httpServer).get(`/v1/assets/${asset.id}/faces`).expect(200)
 
-    const face = (facesRes.body as { faces: { id: string; personId: string | null }[] })
-      .faces[0]!
+    const face = (facesRes.body as { faces: { id: string; personId: string | null }[] }).faces[0]!
     expect(face.personId).toBeNull()
   })
 

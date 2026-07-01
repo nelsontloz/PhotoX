@@ -159,7 +159,7 @@ function AlbumsListContent() {
   }
 
   return (
-    <div>
+    <div className="max-w-6xl mx-auto">
       <header className="flex items-end justify-between gap-4 flex-wrap mb-8">
         <div>
           <h1 className="text-3xl font-bold text-slate-100 tracking-tight">Albums</h1>

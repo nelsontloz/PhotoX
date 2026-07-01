@@ -333,9 +333,9 @@ function AlbumDetailContent() {
             onTrash={() => {
               void nav.trash()
             }}
-            onToggleFavorite={() => {
+            onToggleFavorite={(nextValue) => {
               const cur = nav.selected
-              if (cur) void nav.toggleFavorite(cur.id, !cur.favorite)
+              if (cur) void nav.toggleFavorite(cur.id, nextValue)
             }}
             onAddToAlbum={() => setPickerOpen(true)}
             onRemoveFromAlbum={() => {
@@ -349,6 +349,8 @@ function AlbumDetailContent() {
                 nav.close()
               })()
             }}
+            siblingAssets={assets}
+            onSelectSibling={(asset) => nav.open(asset)}
           />
         </Suspense>
       )}

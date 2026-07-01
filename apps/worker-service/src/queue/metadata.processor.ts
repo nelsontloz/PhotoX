@@ -109,24 +109,22 @@ export class MetadataProcessor {
           await writeFile(tmpPath, buffer)
 
           const videoMeta = await this.videoMetadataExtractor.extract(tmpPath)
-          const hasAnyVideoField = (
-            [
-              videoMeta.durationSeconds,
-              videoMeta.width,
-              videoMeta.height,
-              videoMeta.codec,
-              videoMeta.fps,
-              videoMeta.hasAudio,
-              videoMeta.orientation,
-              videoMeta.takenAt,
-              videoMeta.cameraMake,
-              videoMeta.cameraModel,
-              videoMeta.lensModel,
-              videoMeta.latitude,
-              videoMeta.longitude,
-              videoMeta.altitude,
-            ]
-          ).some((v) => v !== null)
+          const hasAnyVideoField = [
+            videoMeta.durationSeconds,
+            videoMeta.width,
+            videoMeta.height,
+            videoMeta.codec,
+            videoMeta.fps,
+            videoMeta.hasAudio,
+            videoMeta.orientation,
+            videoMeta.takenAt,
+            videoMeta.cameraMake,
+            videoMeta.cameraModel,
+            videoMeta.lensModel,
+            videoMeta.latitude,
+            videoMeta.longitude,
+            videoMeta.altitude,
+          ].some((v) => v !== null)
           const videoMetadataStatus = hasAnyVideoField ? 'ready' : 'failed'
           await firstValueFrom(
             this.http.patch(patchUrl, {
