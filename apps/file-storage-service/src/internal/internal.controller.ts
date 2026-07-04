@@ -18,7 +18,7 @@ export class InternalController {
   @ApiOperation({ summary: 'List all file record IDs (internal)' })
   async getAllFileIds(): Promise<string[]> {
     const rows = await this.fileRepo.find({ select: ['id'] })
-    return rows.map(r => r.id)
+    return rows.map((r) => r.id)
   }
 
   @Delete('files/:fileId')

@@ -100,6 +100,12 @@ export function createBasicRepo() {
       addOrderBy: vi.fn().mockReturnThis(),
       skip: vi.fn().mockReturnThis(),
       take: vi.fn().mockReturnThis(),
+      innerJoin: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      addSelect: vi.fn().mockReturnThis(),
+      groupBy: vi.fn().mockReturnThis(),
+      getRawMany: vi.fn().mockResolvedValue([]),
+      getRawOne: vi.fn().mockResolvedValue({ count: '0' }),
       getManyAndCount: vi.fn().mockResolvedValue([[], 0]),
     }),
   }
@@ -144,6 +150,7 @@ export function createPersonRepo() {
     }),
     count: vi.fn().mockResolvedValue(0),
     remove: vi.fn().mockResolvedValue(undefined),
+    query: vi.fn().mockResolvedValue([]),
     createQueryBuilder: vi.fn().mockReturnValue({
       where: vi.fn().mockReturnThis(),
       andWhere: vi.fn().mockReturnThis(),

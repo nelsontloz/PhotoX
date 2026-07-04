@@ -200,7 +200,7 @@ export class AssetsService {
 
     const thumbRows = await this.thumbRepo.find({ where: { assetId: id } })
     const fileIds = [
-      ...[asset.fileId, asset.transcodeFileId].filter(Boolean) as string[],
+      ...([asset.fileId, asset.transcodeFileId].filter(Boolean) as string[]),
       ...thumbRows.map((t) => t.fileId),
     ]
 

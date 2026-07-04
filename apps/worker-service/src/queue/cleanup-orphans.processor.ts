@@ -19,11 +19,9 @@ export class CleanupOrphansProcessor {
   ) {}
 
   start() {
-    this.bullMq.createWorker<OrphanCleanupJob>(
-      'cleanup-orphans',
-      (job) => this.processJob(job),
-      { concurrency: 1 },
-    )
+    this.bullMq.createWorker<OrphanCleanupJob>('cleanup-orphans', (job) => this.processJob(job), {
+      concurrency: 1,
+    })
     this.logger.log('Cleanup orphans processor listening for jobs')
   }
 
@@ -107,6 +105,8 @@ export class CleanupOrphansProcessor {
       }
     }
 
-    this.logger.log(`Orphan cleanup complete: deleted ${deleted} files, ${orphanThumbRows.length} thumbnail rows`)
+    this.logger.log(
+      `Orphan cleanup complete: deleted ${deleted} files, ${orphanThumbRows.length} thumbnail rows`,
+    )
   }
 }

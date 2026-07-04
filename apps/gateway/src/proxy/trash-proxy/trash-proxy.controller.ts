@@ -46,18 +46,15 @@ export class TrashProxyController {
   async emptyTrash(@Req() req: Request) {
     const userId = (req.user as { id: string }).id
 
-    const result = await this.proxy.forward<{ fileIds: string[] }>(
-      SERVICE_URLS['media-service'],
-      {
-        method: 'DELETE',
-        path: 'v1/assets/trashed',
-        query: { userId },
-        headers: {
-          'x-request-id': (req.headers['x-request-id'] as string) ?? '',
-        },
-        timeout: 60_000,
+    const result = await this.proxy.forward<{ fileIds: string[] }>(SERVICE_URLS['media-service'], {
+      method: 'DELETE',
+      path: 'v1/assets/trashed',
+      query: { userId },
+      headers: {
+        'x-request-id': (req.headers['x-request-id'] as string) ?? '',
       },
-    )
+      timeout: 60_000,
+    })
 
     for (const fileId of result.data.fileIds) {
       void this.bullmq.enqueue('cleanup-asset', `cleanup:${fileId}`, { fileId })
@@ -71,18 +68,15 @@ export class TrashProxyController {
   @ApiResponse({ status: 400, description: 'Asset is not trashed' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async delete(@Param('id') id: string, @Req() req: Request) {
-    const result = await this.proxy.forward<{ fileIds: string[] }>(
-      SERVICE_URLS['media-service'],
-      {
-        method: 'DELETE',
-        path: `v1/assets/trashed/${id}`,
-        query: { userId: (req.user as { id: string }).id },
-        headers: {
-          'x-request-id': (req.headers['x-request-id'] as string) ?? '',
-        },
-        timeout: 30_000,
+    const result = await this.proxy.forward<{ fileIds: string[] }>(SERVICE_URLS['media-service'], {
+      method: 'DELETE',
+      path: `v1/assets/trashed/${id}`,
+      query: { userId: (req.user as { id: string }).id },
+      headers: {
+        'x-request-id': (req.headers['x-request-id'] as string) ?? '',
       },
-    )
+      timeout: 30_000,
+    })
 
     for (const fileId of result.data.fileIds) {
       void this.bullmq.enqueue('cleanup-asset', `cleanup:${fileId}`, { fileId })
