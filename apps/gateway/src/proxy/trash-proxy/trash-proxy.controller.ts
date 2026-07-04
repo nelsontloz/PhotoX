@@ -46,7 +46,7 @@ export class TrashProxyController {
   async emptyTrash(@Req() req: Request) {
     const userId = (req.user as { id: string }).id
 
-    const result = await this.proxy.forward<{ fileId: string; transcodeFileId: string | null }[]>(
+    const result = await this.proxy.forward<{ fileIds: string[] }>(
       SERVICE_URLS['media-service'],
       {
         method: 'DELETE',
@@ -59,11 +59,8 @@ export class TrashProxyController {
       },
     )
 
-    for (const { fileId, transcodeFileId } of result.data) {
-      void this.bullmq.enqueue('cleanup-asset', 'cleanup-asset', {
-        fileId,
-        transcodeFileId,
-      })
+    for (const fileId of result.data.fileIds) {
+      void this.bullmq.enqueue('cleanup-asset', `cleanup:${fileId}`, { fileId })
     }
   }
 
@@ -74,7 +71,7 @@ export class TrashProxyController {
   @ApiResponse({ status: 400, description: 'Asset is not trashed' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async delete(@Param('id') id: string, @Req() req: Request) {
-    const result = await this.proxy.forward<{ fileId: string; transcodeFileId: string | null }>(
+    const result = await this.proxy.forward<{ fileIds: string[] }>(
       SERVICE_URLS['media-service'],
       {
         method: 'DELETE',
@@ -87,10 +84,9 @@ export class TrashProxyController {
       },
     )
 
-    void this.bullmq.enqueue('cleanup-asset', 'cleanup-asset', {
-      fileId: result.data.fileId,
-      transcodeFileId: result.data.transcodeFileId,
-    })
+    for (const fileId of result.data.fileIds) {
+      void this.bullmq.enqueue('cleanup-asset', `cleanup:${fileId}`, { fileId })
+    }
   }
 
   @Post('trashed/:id/restore')

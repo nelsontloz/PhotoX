@@ -4,6 +4,7 @@ import { AdminGuard } from '../../auth/admin.guard'
 import { AdminUsersProxyController } from './admin-users-proxy.controller'
 import { AdminAssetsProxyController } from './admin-assets-proxy.controller'
 import { AdminThumbnailsProxyController } from './admin-thumbnails-proxy.controller'
+import { AdminProxyController } from './admin-proxy.controller'
 
 @Module({
   imports: [ProxyModule],
@@ -11,6 +12,7 @@ import { AdminThumbnailsProxyController } from './admin-thumbnails-proxy.control
     AdminUsersProxyController,
     AdminAssetsProxyController,
     AdminThumbnailsProxyController,
+    AdminProxyController,
   ],
   providers: [AdminGuard],
 })

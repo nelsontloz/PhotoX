@@ -7,7 +7,6 @@ import { SERVICE_URLS } from '@photox/shared-config'
 
 interface CleanupJob {
   fileId: string
-  transcodeFileId: string | null
 }
 
 @Injectable()
@@ -28,9 +27,9 @@ export class CleanupProcessor {
   }
 
   private async processJob(job: Job<CleanupJob>) {
-    const { fileId, transcodeFileId } = job.data
+    const { fileId } = job.data
 
-    this.logger.log(`Cleaning up files: fileId=${fileId}`)
+    this.logger.log(`Cleaning up file: fileId=${fileId}`)
 
     await firstValueFrom(
       this.http.delete(`${SERVICE_URLS['file-storage-service']}/v1/files/${fileId}`, {
@@ -41,18 +40,6 @@ export class CleanupProcessor {
         `Failed to delete file ${fileId}: ${err instanceof Error ? err.message : String(err)}`,
       )
     })
-
-    if (transcodeFileId) {
-      await firstValueFrom(
-        this.http.delete(`${SERVICE_URLS['file-storage-service']}/v1/files/${transcodeFileId}`, {
-          timeout: 30_000,
-        }),
-      ).catch((err) => {
-        this.logger.warn(
-          `Failed to delete transcode ${transcodeFileId}: ${err instanceof Error ? err.message : String(err)}`,
-        )
-      })
-    }
 
     this.logger.log(`Cleanup complete: fileId=${fileId}`)
   }

@@ -39,6 +39,24 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     return queue
   }
 
+  async enqueue(
+    queueName: string,
+    jobName: string,
+    data: Record<string, unknown>,
+    opts: { jobId?: string; attempts?: number; backoff?: { type: string } } = {},
+  ): Promise<void> {
+    try {
+      await this.getQueue(queueName).add(jobName, data, opts)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      this.logger.error(`Failed to enqueue ${queueName} job: ${msg}`)
+    }
+  }
+
+  async enqueueOrphanCleanup(dryRun = false): Promise<void> {
+    await this.enqueue('cleanup-orphans', 'cleanup-orphans', { dryRun })
+  }
+
   createWorker<T>(
     name: string,
     processor: (job: Job<T>) => Promise<void>,

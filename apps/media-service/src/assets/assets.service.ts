@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, Brackets } from 'typeorm'
 import { Asset } from '../entities/asset.entity'
+import { AssetThumbnail } from '../entities/asset-thumbnail.entity'
 import { CreateAssetDto } from './dto/create-asset.dto'
 import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
@@ -14,6 +15,8 @@ export class AssetsService {
   constructor(
     @InjectRepository(Asset)
     private readonly repo: Repository<Asset>,
+    @InjectRepository(AssetThumbnail)
+    private readonly thumbRepo: Repository<AssetThumbnail>,
     private readonly facesService: FacesService,
   ) {}
 
@@ -172,32 +175,37 @@ export class AssetsService {
     }
   }
 
-  async emptyTrash(userId: string): Promise<{ fileId: string; transcodeFileId: string | null }[]> {
+  async emptyTrash(userId: string): Promise<{ fileIds: string[] }> {
     const assets = await this.repo.find({ where: { userId, isTrashed: true } })
-    if (assets.length === 0) return []
+    if (assets.length === 0) return { fileIds: [] }
 
-    const fileIds = assets.map((a) => ({
-      fileId: a.fileId,
-      transcodeFileId: a.transcodeFileId,
-    }))
+    const assetIds = assets.map((a) => a.id)
+    const thumbRows = await this.thumbRepo.find({
+      where: assetIds.map((id) => ({ assetId: id })),
+    })
+    const fileIds = [
+      ...assets.flatMap((a) => [a.fileId, a.transcodeFileId].filter(Boolean) as string[]),
+      ...thumbRows.map((t) => t.fileId),
+    ]
 
     await this.repo.remove(assets)
-    return fileIds
+    return { fileIds }
   }
 
-  async delete(
-    userId: string,
-    id: string,
-  ): Promise<{ fileId: string; transcodeFileId: string | null }> {
+  async delete(userId: string, id: string): Promise<{ fileIds: string[] }> {
     const asset = await this.repo.findOne({ where: { id, userId } })
     if (!asset) throw new NotFoundException('Asset not found')
     if (!asset.isTrashed)
       throw new BadRequestException('Asset must be trashed before permanent deletion')
 
-    const fileId = asset.fileId
-    const transcodeFileId = asset.transcodeFileId
+    const thumbRows = await this.thumbRepo.find({ where: { assetId: id } })
+    const fileIds = [
+      ...[asset.fileId, asset.transcodeFileId].filter(Boolean) as string[],
+      ...thumbRows.map((t) => t.fileId),
+    ]
+
     await this.repo.remove(asset)
-    return { fileId, transcodeFileId }
+    return { fileIds }
   }
 
   async getByFileId(fileId: string): Promise<AssetResponse> {
