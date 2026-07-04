@@ -50,7 +50,9 @@ export class AlbumsService {
       .select('aa.albumId', 'albumId')
       .addSelect('COUNT(*)', 'count')
       .innerJoin('album_assets', 'aa', 'aa.albumId = a.id')
+      .innerJoin('assets', 'asset', 'asset.id = aa."assetId"')
       .where('aa.albumId IN (:...ids)', { ids })
+      .andWhere('asset.isTrashed = false')
       .groupBy('aa.albumId')
       .getRawMany<{ albumId: string; count: string }>()
 
