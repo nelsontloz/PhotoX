@@ -53,12 +53,10 @@ export class CleanupOrphansProcessor {
     let orphanThumbRows: { assetId: string; size: string; fileId: string }[] = []
     if (storageFileIds.length > 0) {
       const thumbRes = await firstValueFrom(
-        this.http.get<{ assetId: string; size: string; fileId: string }[]>(
+        this.http.post<{ assetId: string; size: string; fileId: string }[]>(
           `${SERVICE_URLS['media-service']}/v1/internal/thumbnails/orphan-rows`,
-          {
-            params: { existingFileIds: storageFileIds.join(',') },
-            timeout: 30_000,
-          },
+          { existingFileIds: storageFileIds },
+          { timeout: 30_000 },
         ),
       )
       orphanThumbRows = thumbRes.data

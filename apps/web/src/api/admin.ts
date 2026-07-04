@@ -45,3 +45,13 @@ export async function reprocessThumbnails(
   )
   return data
 }
+
+export async function cleanupOrphans(
+  dryRun: boolean,
+): Promise<{ enqueued: boolean; dryRun: boolean }> {
+  const { data } = await api.post<{ enqueued: boolean; dryRun: boolean }>(
+    '/v1/admin/cleanup-orphans',
+    { dryRun },
+  )
+  return data
+}

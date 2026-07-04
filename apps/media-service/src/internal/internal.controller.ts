@@ -1,9 +1,10 @@
 import {
   Controller,
   Get,
+  Post,
   Delete,
   Param,
-  Query,
+  Body,
   HttpCode,
   HttpStatus,
   SetMetadata,
@@ -29,7 +30,7 @@ export class InternalController {
   @Get('file-ids')
   async getFileIds(): Promise<string[]> {
     const rows: { fileId: string }[] = await this.dataSource.query(`
-      SELECT fileId AS "fileId" FROM assets
+      SELECT "fileId" AS "fileId" FROM assets
       UNION
       SELECT "transcodeFileId" AS "fileId" FROM assets WHERE "transcodeFileId" IS NOT NULL
       UNION
@@ -38,12 +39,11 @@ export class InternalController {
     return rows.map((r) => r.fileId)
   }
 
-  @Get('thumbnails/orphan-rows')
+  @Post('thumbnails/orphan-rows')
   async getOrphanThumbnailRows(
-    @Query('existingFileIds') existingFileIds?: string,
+    @Body() body: { existingFileIds: string[] },
   ): Promise<{ assetId: string; size: string; fileId: string }[]> {
-    if (!existingFileIds) return []
-    const ids = existingFileIds.split(',').filter(Boolean)
+    const ids = body.existingFileIds?.filter(Boolean) ?? []
     if (ids.length === 0) return []
     return this.thumbRepo
       .createQueryBuilder('t')

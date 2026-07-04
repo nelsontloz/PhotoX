@@ -18,6 +18,7 @@ import {
   listAdminUsers,
   getAdminAssetCounts,
   reprocessThumbnails,
+  cleanupOrphans,
   type ListAdminUsersParams,
 } from '../../api/admin'
 import { formatBytes } from '../../lib/format'
@@ -266,6 +267,98 @@ function ThumbnailReprocessSection() {
   )
 }
 
+function OrphanCleanupSection() {
+  const [confirming, setConfirming] = useState(false)
+  const [inFlight, setInFlight] = useState(false)
+  const [result, setResult] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const run = async (dryRun: boolean) => {
+    setConfirming(false)
+    setInFlight(true)
+    setError(null)
+    setResult(null)
+    try {
+      await cleanupOrphans(dryRun)
+      setResult(
+        dryRun
+          ? 'Dry run job enqueued — check worker logs for details.'
+          : 'Cleanup job enqueued — check worker logs for details.',
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Cleanup failed')
+    } finally {
+      setInFlight(false)
+    }
+  }
+
+  return (
+    <section>
+      <div className="bg-card-dark border border-border-dark rounded-xl p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-200">Orphan cleanup</h2>
+            <p className="text-xs text-slate-400 mt-1">
+              Remove files and thumbnail rows that exist in storage but aren't referenced by any
+              asset. Dry run logs what would be deleted without removing anything.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void run(true)}
+              disabled={inFlight}
+              className="inline-flex items-center gap-2 text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-4 py-2 border border-border-dark hover:border-primary/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {inFlight ? <FaSpinner className="animate-spin" /> : null}
+              Dry run
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirming(true)}
+              disabled={inFlight}
+              className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors"
+            >
+              {inFlight ? <FaSpinner className="animate-spin" /> : null}
+              Clean up
+            </button>
+          </div>
+        </div>
+        {result && <p className="text-xs text-emerald-400 mt-3">{result}</p>}
+        {error && <p className="text-xs text-red-400 mt-3">{error}</p>}
+      </div>
+
+      {confirming && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-card-dark border border-border-dark rounded-xl p-5 max-w-md w-full">
+            <h3 className="text-base font-semibold text-slate-100">Run orphan cleanup?</h3>
+            <p className="text-sm text-slate-400 mt-2">
+              This scans all files and thumbnails, then deletes anything not referenced by an asset.
+              The worker processes this in the background.
+            </p>
+            <div className="flex justify-end gap-2 mt-5">
+              <button
+                type="button"
+                onClick={() => setConfirming(false)}
+                className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void run(false)}
+                className="text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-3 py-2 transition-colors"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function AdminPageContent() {
   const [searchInput, setSearchInput] = useState('')
   const [debouncedQ, setDebouncedQ] = useState('')
@@ -331,6 +424,7 @@ function AdminPageContent() {
     <div className="space-y-6">
       <AssetHealthSection />
       <ThumbnailReprocessSection />
+      <OrphanCleanupSection />
 
       <header className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
