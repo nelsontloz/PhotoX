@@ -44,30 +44,9 @@ export class AssetsProxyController {
       },
     )
     const userId = (req.user as { id: string }).id
-    for (const size of ['sm', 'md', 'lg', 'xl']) {
-      void this.bullmq.enqueue(
-        'process-thumbnail',
-        'process-thumbnail',
-        {
-          assetId: result.data.id,
-          fileId: result.data.fileId,
-          userId,
-          size,
-        },
-        { jobId: `thumb:${result.data.id}:${size}` },
-      )
-    }
+    this.bullmq.enqueueThumbnails(result.data.id, result.data.fileId, userId)
     if (dto.kind === 'video') {
-      void this.bullmq.enqueue(
-        'process-video',
-        'process-video',
-        {
-          assetId: result.data.id,
-          fileId: result.data.fileId,
-          userId,
-        },
-        { jobId: `video:${result.data.id}:v`, attempts: 3, backoff: { type: 'exponential' } },
-      )
+      this.bullmq.enqueueVideo(result.data.id, result.data.fileId, userId)
     }
     return result.data
   }
@@ -175,14 +154,7 @@ export class AssetsProxyController {
         timeout: 30_000,
       },
     )
-    for (const size of ['sm', 'md', 'lg', 'xl']) {
-      void this.bullmq.enqueue(
-        'process-thumbnail',
-        'process-thumbnail',
-        { assetId: result.data.id, fileId: result.data.fileId, userId, size },
-        { jobId: `reprocess:${result.data.id}:${size}` },
-      )
-    }
+    this.bullmq.enqueueThumbnails(result.data.id, result.data.fileId, userId, 'reprocess')
     return { enqueued: true }
   }
 
@@ -205,12 +177,7 @@ export class AssetsProxyController {
         timeout: 30_000,
       },
     )
-    void this.bullmq.enqueue(
-      'process-video',
-      'process-video',
-      { assetId: result.data.id, fileId: result.data.fileId, userId },
-      { jobId: `video:reprocess:${result.data.id}`, attempts: 3, backoff: { type: 'exponential' } },
-    )
+    this.bullmq.enqueueVideo(result.data.id, result.data.fileId, userId, { reprocess: true })
     return { enqueued: true }
   }
 

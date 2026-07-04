@@ -21,6 +21,7 @@ function makeAlbum(overrides: Partial<Album> = {}): Album {
 
 function makeCountQb(count: number) {
   return {
+    innerJoin: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
     andWhere: vi.fn().mockReturnThis(),
     getCount: vi.fn().mockResolvedValue(count),
@@ -33,6 +34,7 @@ function makeRawCountQb(rows: { albumId: string; count: string }[]) {
     addSelect: vi.fn().mockReturnThis(),
     innerJoin: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
+    andWhere: vi.fn().mockReturnThis(),
     groupBy: vi.fn().mockReturnThis(),
     getRawMany: vi.fn().mockResolvedValue(rows),
   }
@@ -178,7 +180,7 @@ describe('AlbumsService', () => {
     it('returns DTO with assetCount when found', async () => {
       const album = makeAlbum()
       albumRepo.findOne.mockResolvedValue(album)
-      albumAssetRepo.createQueryBuilder.mockReturnValue(makeCountQb(2))
+      assetRepo.createQueryBuilder.mockReturnValue(makeCountQb(2))
 
       const result = await service.getOne('user-1', 'album-1')
 
@@ -202,7 +204,7 @@ describe('AlbumsService', () => {
       albumRepo.findOne.mockResolvedValueOnce(album)
       albumRepo.update.mockResolvedValue(undefined)
       albumRepo.findOne.mockResolvedValueOnce({ ...album, name: 'Updated' })
-      albumAssetRepo.createQueryBuilder.mockReturnValue(makeCountQb(0))
+      assetRepo.createQueryBuilder.mockReturnValue(makeCountQb(0))
 
       const dto: UpdateAlbumDto = { userId: 'user-1', name: 'Updated' }
       const result = await service.update('user-1', 'album-1', dto)
@@ -257,7 +259,8 @@ describe('AlbumsService', () => {
 
       albumRepo.findOne.mockResolvedValue(album)
       assetRepo.findOne.mockResolvedValue({ id: 'asset-1', userId: 'user-1', isTrashed: false })
-      albumAssetRepo.createQueryBuilder.mockReturnValueOnce(insertQb).mockReturnValue(countQb)
+      albumAssetRepo.createQueryBuilder.mockReturnValueOnce(insertQb)
+      assetRepo.createQueryBuilder.mockReturnValue(countQb)
 
       const result = await service.addAssets('user-1', 'album-1', ['asset-1'])
 

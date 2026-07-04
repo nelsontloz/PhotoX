@@ -42,6 +42,37 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  enqueueThumbnails(assetId: string, fileId: string, userId: string, prefix = 'thumb'): void {
+    for (const size of ['sm', 'md', 'lg', 'xl']) {
+      void this.enqueue(
+        'process-thumbnail',
+        'process-thumbnail',
+        { assetId, fileId, userId, size },
+        {
+          jobId: `${prefix}:${assetId}:${size}`,
+        },
+      )
+    }
+  }
+
+  enqueueVideo(
+    assetId: string,
+    fileId: string,
+    userId: string,
+    opts?: { reprocess?: boolean },
+  ): void {
+    void this.enqueue(
+      'process-video',
+      'process-video',
+      { assetId, fileId, userId },
+      {
+        jobId: `${opts?.reprocess ? 'video:reprocess' : 'video'}:${assetId}:v`,
+        attempts: 3,
+        backoff: { type: 'exponential' },
+      },
+    )
+  }
+
   async onModuleDestroy(): Promise<void> {
     for (const queue of this.queues.values()) {
       await queue.close()

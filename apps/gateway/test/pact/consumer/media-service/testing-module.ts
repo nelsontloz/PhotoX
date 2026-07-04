@@ -38,7 +38,11 @@ export async function setupMediaServicePactModule(): Promise<{
       { provide: ProxyService, useValue: stub },
       {
         provide: BullMqService,
-        useValue: { enqueue: vi.fn().mockResolvedValue(undefined) },
+        useValue: {
+          enqueue: vi.fn().mockResolvedValue(undefined),
+          enqueueThumbnails: vi.fn(),
+          enqueueVideo: vi.fn(),
+        },
       },
       {
         provide: APP_GUARD,

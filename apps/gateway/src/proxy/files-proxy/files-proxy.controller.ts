@@ -134,19 +134,7 @@ export class FilesProxyController {
         },
         timeout: 5_000,
       })
-      for (const size of ['sm', 'md', 'lg', 'xl']) {
-        void this.bullmq.enqueue(
-          'process-thumbnail',
-          'process-thumbnail',
-          {
-            assetId: assetResult.data.id,
-            fileId: record.id,
-            userId,
-            size,
-          },
-          { jobId: `thumb:${assetResult.data.id}:${size}` },
-        )
-      }
+      this.bullmq.enqueueThumbnails(assetResult.data.id, record.id, userId)
       void this.bullmq.enqueue(
         'process-metadata',
         'process-metadata',
@@ -159,20 +147,7 @@ export class FilesProxyController {
         { jobId: assetResult.data.id, attempts: 3, backoff: { type: 'exponential' } },
       )
       if (kind === 'video') {
-        void this.bullmq.enqueue(
-          'process-video',
-          'process-video',
-          {
-            assetId: assetResult.data.id,
-            fileId: record.id,
-            userId,
-          },
-          {
-            jobId: `video:${assetResult.data.id}:v`,
-            attempts: 3,
-            backoff: { type: 'exponential' },
-          },
-        )
+        this.bullmq.enqueueVideo(assetResult.data.id, record.id, userId)
       }
       if (kind === 'photo') {
         void this.bullmq.enqueue(
@@ -228,6 +203,41 @@ export class FilesProxyController {
         timeout: 30_000,
       },
     )
+    return result.data
+  }
+
+  @Post('derivatives')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 4 * 1024 * 1024 * 1024 } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Register a derivative file (e.g. transcoded video) for an existing asset',
+  })
+  @ApiResponse({ status: 201, description: 'Derivative file record created' })
+  @ApiResponse({ status: 400, description: 'No file or invalid request' })
+  @ApiResponse({ status: 502, description: 'Upstream server error' })
+  async uploadDerivative(
+    @Req() req: Request,
+    @UploadedFile() file: { buffer: Buffer; originalname: string; mimetype: string },
+  ) {
+    const userId = (req.user as { id: string }).id
+    const requestId = (req.headers['x-request-id'] as string) ?? ''
+    const assetId = (req.body as { assetId?: string }).assetId
+
+    const form = new FormData()
+    form.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname)
+    form.append('userId', userId)
+    form.append('assetId', assetId ?? '')
+
+    const result = await this.proxy.forward<FileRecord>(SERVICE_URLS['file-storage-service'], {
+      method: 'POST',
+      path: 'v1/files/derivatives',
+      body: form,
+      headers: {
+        'x-request-id': requestId,
+      },
+      timeout: 3_600_000,
+    })
+
     return result.data
   }
 

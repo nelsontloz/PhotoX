@@ -48,14 +48,7 @@ export class AdminThumbnailsProxyController {
         },
       )
       const a = asset.data
-      for (const size of ['sm', 'md', 'lg', 'xl']) {
-        void this.bullmq.enqueue(
-          'process-thumbnail',
-          'process-thumbnail',
-          { assetId: a.id, fileId: a.fileId, userId: a.userId, size },
-          { jobId: `reprocess:${a.id}:${size}` },
-        )
-      }
+      this.bullmq.enqueueThumbnails(a.id, a.fileId, a.userId, 'reprocess')
       this.logger.log({ msg: 'single-asset thumbnail reprocess', assetId: a.id, requestId })
       return { enqueued: 1, totalAssets: 1 }
     }
@@ -86,19 +79,7 @@ export class AdminThumbnailsProxyController {
       if (offset === 0) totalAssets = page.data.total
 
       for (const a of items) {
-        for (const size of ['sm', 'md', 'lg', 'xl']) {
-          void this.bullmq.enqueue(
-            'process-thumbnail',
-            'process-thumbnail',
-            {
-              assetId: a.id,
-              fileId: a.fileId,
-              userId: a.userId,
-              size,
-            },
-            { jobId: `reprocess:${a.id}:${size}` },
-          )
-        }
+        this.bullmq.enqueueThumbnails(a.id, a.fileId, a.userId, 'reprocess')
         enqueued += 1
       }
 

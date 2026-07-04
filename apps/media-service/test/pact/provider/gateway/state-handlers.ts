@@ -72,6 +72,14 @@ export function buildStateHandlers(repos: MockRepos): Record<string, () => Promi
     },
 
     'user has trashed assets': () => {
+      repos.mockAssetRepo.find.mockResolvedValue([
+        {
+          ...baseAsset,
+          isTrashed: true,
+          trashedAt: new Date('2024-01-02T00:00:00.000Z'),
+          transcodeFileId: null,
+        },
+      ])
       repos.mockAssetRepo.createQueryBuilder.mockReturnValue({
         where: vi.fn().mockReturnThis(),
         andWhere: vi.fn().mockReturnThis(),
@@ -95,14 +103,22 @@ export function buildStateHandlers(repos: MockRepos): Record<string, () => Promi
 
     'asset exists with id a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22': () => {
       repos.mockAssetRepo.save(baseAsset)
+      repos.mockAssetRepo.resetFindOne()
       return Promise.resolve()
     },
 
     'trashed asset exists with id a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22': () => {
-      repos.mockAssetRepo.save({
+      const trashedAsset = {
         ...baseAsset,
         isTrashed: true,
         trashedAt: new Date('2024-01-02T00:00:00.000Z'),
+        transcodeFileId: null,
+      }
+      repos.mockAssetRepo.findOne.mockImplementation((opts: any) => {
+        if (opts?.where?.id === ASSET_ID && (!opts.where.userId || opts.where.userId === USER_ID)) {
+          return Promise.resolve(trashedAsset)
+        }
+        return Promise.resolve(null)
       })
       return Promise.resolve()
     },

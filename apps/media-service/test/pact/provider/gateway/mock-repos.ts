@@ -37,15 +37,17 @@ export interface MockRepos {
 export function createAssetRepo() {
   const store: Record<string, any> = {}
 
-  return {
-    findOne: vi.fn().mockImplementation((opts: any) => {
-      const id = opts?.where?.id
-      if (!id) return Promise.resolve(null)
-      const asset = store[id]
-      if (!asset) return Promise.resolve(null)
-      if (opts.where.userId && asset.userId !== opts.where.userId) return Promise.resolve(null)
-      return Promise.resolve(asset)
-    }),
+  const defaultFindOne = (opts: any) => {
+    const id = opts?.where?.id
+    if (!id) return Promise.resolve(null)
+    const asset = store[id]
+    if (!asset) return Promise.resolve(null)
+    if (opts.where.userId && asset.userId !== opts.where.userId) return Promise.resolve(null)
+    return Promise.resolve(asset)
+  }
+
+  const repo = {
+    findOne: vi.fn().mockImplementation(defaultFindOne),
     save: vi.fn().mockImplementation((data: any) => {
       const id = data.id ?? 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22'
       store[id] = {
@@ -74,8 +76,12 @@ export function createAssetRepo() {
       take: vi.fn().mockReturnThis(),
       innerJoin: vi.fn().mockReturnThis(),
       getManyAndCount: vi.fn().mockResolvedValue([[], 0]),
+      getCount: vi.fn().mockResolvedValue(0),
     }),
+    resetFindOne: () => repo.findOne.mockImplementation(defaultFindOne),
   }
+
+  return repo
 }
 
 export function createBasicRepo() {
@@ -269,6 +275,13 @@ export function createShareRepo() {
     delete: vi.fn().mockImplementation((id: string) => {
       delete store[id]
       return Promise.resolve({ affected: 1 })
+    }),
+    createQueryBuilder: vi.fn().mockReturnValue({
+      leftJoinAndSelect: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      andWhere: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      getMany: vi.fn().mockResolvedValue([]),
     }),
   }
 }
