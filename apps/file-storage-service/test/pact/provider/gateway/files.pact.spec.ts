@@ -27,7 +27,7 @@ describe('Pact verification — file-storage-service', () => {
     await new Verifier({
       provider: 'file-storage-service',
       providerBaseUrl: url,
-      pactUrls: [path.join(PACT_DIR, 'gateway-file-storage-service.json')],
+      pactUrls: [path.join(PACT_DIR, 'gateway-files-file-storage-service.json')],
       logLevel: 'error',
       stateHandlers: {
         'user has no files': () => {

@@ -15,6 +15,7 @@ import { CreateAssetDto } from './dto/create-asset.dto'
 import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
 import { UpdateMetadataDto } from './dto/update-metadata.dto'
+import { TrashAssetsDto } from './dto/trash-assets.dto'
 
 @ApiTags('assets')
 @Controller('v1/assets')
@@ -77,12 +78,11 @@ export class AssetsController {
     await this.assets.trash(userId, id)
   }
 
-  @Post(':id/restore')
+  @Post('bulk-trash')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Restore a trashed asset. Idempotent.' })
-  @ApiResponse({ status: 204, description: 'Asset restored' })
-  @ApiResponse({ status: 404, description: 'Asset not found' })
-  async restore(@Param('id') id: string, @Query('userId') userId: string) {
-    await this.assets.restore(userId, id)
+  @ApiOperation({ summary: 'Bulk soft-delete (trash) assets. Idempotent.' })
+  @ApiResponse({ status: 204, description: 'Assets trashed' })
+  async bulkTrash(@Body() dto: TrashAssetsDto, @Query('userId') userId: string) {
+    await this.assets.bulkTrash(userId, dto.assetIds)
   }
 }

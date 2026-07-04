@@ -7,13 +7,15 @@ import { createPact } from '../setup'
 import { setupFileStorageServicePactModule } from './testing-module'
 import type { StubProxy } from '../stub'
 
-const fileStorage = createPact('file-storage-service')
+const fileStorage = createPact('file-storage-service', 'files')
 let app: INestApplication
 let stub: StubProxy
 
 const USER_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
 const ASSET_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22'
 const FILE_ID = '550e8400-e29b-41d4-a716-446655440000'
+
+const DERIVATIVE_FILE_ID = '660e8400-e29b-41d4-a716-446655440001'
 
 const fileRecordMatcher = {
   id: MatchersV3.uuid(FILE_ID),
@@ -240,6 +242,44 @@ describe('Gateway → file-storage-service files pact', () => {
     expect(cascadeVerified).toBe(true)
     expect(stub.calls.some((c) => c.path.startsWith('v1/assets/by-file/'))).toBe(true)
     expect(stub.calls.some((c) => c.method === 'POST' && c.path === 'v1/assets')).toBe(true)
+  })
+
+  it('POST /v1/files/derivatives — register a derivative file', async () => {
+    stub.interceptFn = (_serviceUrl, opts) => {
+      if (opts.method === 'POST' && opts.path === 'v1/files/derivatives') {
+        return {
+          status: 201,
+          data: {
+            id: DERIVATIVE_FILE_ID,
+            userId: USER_ID,
+            assetId: ASSET_ID,
+            purpose: 'transcode',
+            storageKey: `${USER_ID}/${DERIVATIVE_FILE_ID}.mp4`,
+            originalName: 'out.mp4',
+            mimeType: 'video/mp4',
+            sizeBytes: 123,
+            checksumSha256: 'abc123def456',
+            createdAt: '2024-01-01T00:00:00.000Z',
+          },
+        }
+      }
+      return null
+    }
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/files/derivatives')
+      .field('userId', USER_ID)
+      .field('assetId', ASSET_ID)
+      .attach('file', Buffer.from('fake-video-bytes'), {
+        filename: 'out.mp4',
+        contentType: 'video/mp4',
+      })
+    expect(res.status).toBe(201)
+    expect(res.body.id).toBe(DERIVATIVE_FILE_ID)
+    expect(res.body.purpose).toBe('transcode')
+    expect(res.body.assetId).toBe(ASSET_ID)
+    expect(stub.calls.some((c) => c.method === 'POST' && c.path === 'v1/files/derivatives')).toBe(
+      true,
+    )
   })
 
   it('GET /v1/files/:fileId/download — download a file', async () => {

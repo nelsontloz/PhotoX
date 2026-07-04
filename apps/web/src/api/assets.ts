@@ -11,7 +11,12 @@ interface ListAssetsParams {
 }
 
 export async function listAssets(params: ListAssetsParams = {}): Promise<AssetListResponse> {
-  const { data } = await api.get<AssetListResponse>('/v1/assets', { params })
+  const { isTrashed, ...rest } = params
+  if (isTrashed) {
+    const { data } = await api.get<AssetListResponse>('/v1/assets/trashed', { params: rest })
+    return data
+  }
+  const { data } = await api.get<AssetListResponse>('/v1/assets', { params: rest })
   return data
 }
 
@@ -83,7 +88,15 @@ export async function trashAsset(assetId: string): Promise<void> {
 }
 
 export async function restoreAsset(assetId: string): Promise<void> {
-  await api.post(`/v1/assets/${assetId}/restore`)
+  await api.post(`/v1/assets/trashed/${assetId}/restore`)
+}
+
+export async function deleteAsset(assetId: string): Promise<void> {
+  await api.delete(`/v1/assets/trashed/${assetId}`)
+}
+
+export async function emptyTrash(): Promise<void> {
+  await api.delete('/v1/assets/trashed')
 }
 
 export async function reprocessThumbnails(assetId: string): Promise<void> {
@@ -92,4 +105,8 @@ export async function reprocessThumbnails(assetId: string): Promise<void> {
 
 export async function reprocessVideo(assetId: string): Promise<void> {
   await api.post(`/v1/assets/${assetId}/reprocess-video`)
+}
+
+export async function trashAssets(assetIds: string[]): Promise<void> {
+  await api.post('/v1/assets/bulk-trash', { assetIds })
 }

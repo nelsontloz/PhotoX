@@ -262,3 +262,4 @@ export interface ReassignFacesResponse {
 }
 
 export * from './albums'
+export * from './shares'

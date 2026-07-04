@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { Asset } from '@photox/shared-types'
-import { restoreAsset, trashAsset, updateAsset } from '../api/assets'
+import { restoreAsset, trashAsset, updateAsset, deleteAsset } from '../api/assets'
 
 interface UseAssetNavigationOptions {
   assets: Asset[]
@@ -18,6 +18,7 @@ interface UseAssetNavigationResult {
   hasNext: boolean
   trash: () => Promise<void>
   restore: () => Promise<void>
+  permanentlyDelete: () => Promise<void>
   toggleFavorite: (assetId: string, nextValue: boolean) => Promise<void>
 }
 
@@ -80,6 +81,24 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
     }
   }
 
+  const permanentlyDelete = async () => {
+    if (!selected) return
+    const kindLabel = selected.kind === 'video' ? 'video' : 'photo'
+    if (
+      !window.confirm(
+        `Permanently delete "${selected.originalName ?? selected.title ?? `this ${kindLabel}`}"? This cannot be undone.`,
+      )
+    )
+      return
+    try {
+      await deleteAsset(selected.id)
+      setSearchParams({}, { replace: true })
+      await opts.onAfterAction?.()
+    } catch {
+      window.alert('Failed to permanently delete. Please try again.')
+    }
+  }
+
   const toggleFavorite = async (assetId: string, nextValue: boolean) => {
     try {
       await updateAsset(assetId, { favorite: nextValue })
@@ -88,5 +107,17 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
     }
   }
 
-  return { selected, open, close, goPrev, goNext, hasPrev, hasNext, trash, restore, toggleFavorite }
+  return {
+    selected,
+    open,
+    close,
+    goPrev,
+    goNext,
+    hasPrev,
+    hasNext,
+    trash,
+    restore,
+    permanentlyDelete,
+    toggleFavorite,
+  }
 }

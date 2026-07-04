@@ -4,8 +4,11 @@ import { APP_GUARD } from '@nestjs/core'
 import { Test } from '@nestjs/testing'
 import { HttpModule } from '@nestjs/axios'
 import { AssetsProxyController } from '../../../../src/proxy/assets-proxy/assets-proxy.controller'
+import { TrashProxyController } from '../../../../src/proxy/trash-proxy/trash-proxy.controller'
 import { AlbumsProxyController } from '../../../../src/proxy/albums-proxy/albums-proxy.controller'
 import { PersonsProxyController } from '../../../../src/proxy/persons-proxy/persons-proxy.controller'
+import { SharesProxyController } from '../../../../src/proxy/shares-proxy/shares-proxy.controller'
+import { PublicSharesProxyController } from '../../../../src/proxy/shares-proxy/public-shares-proxy.controller'
 import { requestIdMiddleware } from '../../../../src/common/middleware/request-id.middleware'
 import { ProxyService } from '../../../../src/proxy/proxy.service'
 import { BullMqService } from '../../../../src/queue/bullmq.service'
@@ -23,12 +26,23 @@ export async function setupMediaServicePactModule(): Promise<{
 
   const module = await Test.createTestingModule({
     imports: [HttpModule],
-    controllers: [AssetsProxyController, AlbumsProxyController, PersonsProxyController],
+    controllers: [
+      TrashProxyController,
+      AssetsProxyController,
+      AlbumsProxyController,
+      PersonsProxyController,
+      SharesProxyController,
+      PublicSharesProxyController,
+    ],
     providers: [
       { provide: ProxyService, useValue: stub },
       {
         provide: BullMqService,
-        useValue: { enqueue: vi.fn().mockResolvedValue(undefined) },
+        useValue: {
+          enqueue: vi.fn().mockResolvedValue(undefined),
+          enqueueThumbnails: vi.fn(),
+          enqueueVideo: vi.fn(),
+        },
       },
       {
         provide: APP_GUARD,

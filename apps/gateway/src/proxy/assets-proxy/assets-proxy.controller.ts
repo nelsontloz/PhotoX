@@ -44,30 +44,9 @@ export class AssetsProxyController {
       },
     )
     const userId = (req.user as { id: string }).id
-    for (const size of ['sm', 'md', 'lg', 'xl']) {
-      void this.bullmq.enqueue(
-        'process-thumbnail',
-        'process-thumbnail',
-        {
-          assetId: result.data.id,
-          fileId: result.data.fileId,
-          userId,
-          size,
-        },
-        { jobId: `thumb:${result.data.id}:${size}` },
-      )
-    }
+    this.bullmq.enqueueThumbnails(result.data.id, result.data.fileId, userId)
     if (dto.kind === 'video') {
-      void this.bullmq.enqueue(
-        'process-video',
-        'process-video',
-        {
-          assetId: result.data.id,
-          fileId: result.data.fileId,
-          userId,
-        },
-        { jobId: `video:${result.data.id}:v`, attempts: 3, backoff: { type: 'exponential' } },
-      )
+      this.bullmq.enqueueVideo(result.data.id, result.data.fileId, userId)
     }
     return result.data
   }
@@ -139,16 +118,16 @@ export class AssetsProxyController {
     })
   }
 
-  @Post(':id/restore')
+  @Post('bulk-trash')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Restore a trashed asset' })
-  @ApiResponse({ status: 204, description: 'Asset restored' })
-  @ApiResponse({ status: 404, description: 'Asset not found' })
-  async restore(@Param('id') id: string, @Req() req: Request) {
+  @ApiOperation({ summary: 'Bulk soft-delete (trash) assets' })
+  @ApiResponse({ status: 204, description: 'Assets trashed' })
+  async bulkTrash(@Body() body: { assetIds: string[] }, @Req() req: Request) {
     await this.proxy.forward(SERVICE_URLS['media-service'], {
       method: 'POST',
-      path: `v1/assets/${id}/restore`,
+      path: 'v1/assets/bulk-trash',
       query: { userId: (req.user as { id: string }).id },
+      body,
       headers: {
         'x-request-id': (req.headers['x-request-id'] as string) ?? '',
       },
@@ -175,14 +154,7 @@ export class AssetsProxyController {
         timeout: 30_000,
       },
     )
-    for (const size of ['sm', 'md', 'lg', 'xl']) {
-      void this.bullmq.enqueue(
-        'process-thumbnail',
-        'process-thumbnail',
-        { assetId: result.data.id, fileId: result.data.fileId, userId, size },
-        { jobId: `reprocess:${result.data.id}:${size}` },
-      )
-    }
+    this.bullmq.enqueueThumbnails(result.data.id, result.data.fileId, userId, 'reprocess')
     return { enqueued: true }
   }
 
@@ -205,12 +177,7 @@ export class AssetsProxyController {
         timeout: 30_000,
       },
     )
-    void this.bullmq.enqueue(
-      'process-video',
-      'process-video',
-      { assetId: result.data.id, fileId: result.data.fileId, userId },
-      { jobId: `video:reprocess:${result.data.id}`, attempts: 3, backoff: { type: 'exponential' } },
-    )
+    this.bullmq.enqueueVideo(result.data.id, result.data.fileId, userId, { reprocess: true })
     return { enqueued: true }
   }
 

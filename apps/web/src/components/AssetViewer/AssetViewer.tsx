@@ -17,6 +17,7 @@ interface AssetViewerProps {
   hasNext: boolean
   onTrash?: () => void
   onRestore?: () => void
+  onDelete?: () => void
   onToggleFavorite?: (nextValue: boolean) => void
   onAddToAlbum?: () => void
   onRemoveFromAlbum?: () => void
@@ -33,6 +34,7 @@ export function AssetViewer({
   hasNext,
   onTrash,
   onRestore,
+  onDelete,
   onToggleFavorite,
   onAddToAlbum,
   onRemoveFromAlbum,
@@ -136,12 +138,23 @@ export function AssetViewer({
           onClose={onClose}
           onTrash={onTrash}
           onRestore={onRestore}
+          onDelete={onDelete}
           onToggleFavorite={handleToggleFavorite}
           onAddToAlbum={onAddToAlbum}
           onRemoveFromAlbum={onRemoveFromAlbum}
-          onReprocessThumbnails={!reprocessLoading ? () => { void handleReprocessThumbnails() } : undefined}
+          onReprocessThumbnails={
+            !reprocessLoading
+              ? () => {
+                  void handleReprocessThumbnails()
+                }
+              : undefined
+          }
           onReprocessVideo={
-            currentAsset.kind === 'video' && !reprocessLoading ? () => { void handleReprocessVideo() } : undefined
+            currentAsset.kind === 'video' && !reprocessLoading
+              ? () => {
+                  void handleReprocessVideo()
+                }
+              : undefined
           }
         />
         <ViewerMedia

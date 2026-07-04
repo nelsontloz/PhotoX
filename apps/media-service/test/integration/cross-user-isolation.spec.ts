@@ -62,13 +62,13 @@ describe('Cross-user isolation', () => {
     expect(body.message).toBeDefined()
   })
 
-  it("UC-U14: POST /v1/assets/:id/restore returns 404 for another user's asset", async () => {
+  it("UC-U14: POST /v1/assets/trashed/:id/restore returns 404 for another user's asset", async () => {
     const owner = mintUserId()
     const other = mintUserId()
     const asset = await createAssetForUser(httpServer, owner)
 
     const res = await supertest(httpServer)
-      .post(`/v1/assets/${asset.id}/restore`)
+      .post(`/v1/assets/trashed/${asset.id}/restore`)
       .query({ userId: other })
       .expect(404)
 

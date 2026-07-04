@@ -165,10 +165,7 @@ describe('GET /v1/assets', () => {
     const b = await createAssetForUser(httpServer, userId)
     await assetRepo.update(b.id, { isTrashed: true, trashedAt: new Date() })
 
-    const res = await supertest(httpServer)
-      .get('/v1/assets?isTrashed=true')
-      .query({ userId })
-      .expect(200)
+    const res = await supertest(httpServer).get('/v1/assets/trashed').query({ userId }).expect(200)
 
     const body = res.body as AssetListResponse
     expect(body.total).toBe(1)

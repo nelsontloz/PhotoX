@@ -12,5 +12,6 @@ import { FacesModule } from '../faces/faces.module'
   imports: [TypeOrmModule.forFeature([Asset, AssetThumbnail]), FacesModule],
   controllers: [AssetsController, ThumbnailsController],
   providers: [AssetsService, ThumbnailsService],
+  exports: [AssetsService],
 })
 export class AssetsModule {}

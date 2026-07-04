@@ -51,14 +51,14 @@ describe('POST /v1/assets/:id/trash', () => {
     expect(listBody.items).toHaveLength(0)
   })
 
-  it('UC-U10: trashed asset appears in isTrashed=true list', async () => {
+  it('UC-U10: trashed asset appears in /v1/assets/trashed list', async () => {
     const userId = mintUserId()
     const created = await createAssetForUser(httpServer, userId)
 
     await supertest(httpServer).post(`/v1/assets/${created.id}/trash`).query({ userId }).expect(204)
 
     const listRes = await supertest(httpServer)
-      .get('/v1/assets?isTrashed=true')
+      .get('/v1/assets/trashed')
       .query({ userId })
       .expect(200)
 
@@ -106,7 +106,7 @@ describe('POST /v1/assets/:id/trash', () => {
   })
 })
 
-describe('POST /v1/assets/:id/restore', () => {
+describe('POST /v1/assets/trashed/:id/restore', () => {
   it('UC-U12: restore a trashed asset — 204, isTrashed=false, trashedAt=null', async () => {
     const userId = mintUserId()
     const created = await createAssetForUser(httpServer, userId)
@@ -114,7 +114,7 @@ describe('POST /v1/assets/:id/restore', () => {
     await supertest(httpServer).post(`/v1/assets/${created.id}/trash`).query({ userId }).expect(204)
 
     await supertest(httpServer)
-      .post(`/v1/assets/${created.id}/restore`)
+      .post(`/v1/assets/trashed/${created.id}/restore`)
       .query({ userId })
       .expect(204)
 
@@ -135,7 +135,7 @@ describe('POST /v1/assets/:id/restore', () => {
     await supertest(httpServer).post(`/v1/assets/${created.id}/trash`).query({ userId }).expect(204)
 
     await supertest(httpServer)
-      .post(`/v1/assets/${created.id}/restore`)
+      .post(`/v1/assets/trashed/${created.id}/restore`)
       .query({ userId })
       .expect(204)
 
@@ -151,7 +151,7 @@ describe('POST /v1/assets/:id/restore', () => {
     const created = await createAssetForUser(httpServer, userId)
 
     await supertest(httpServer)
-      .post(`/v1/assets/${created.id}/restore`)
+      .post(`/v1/assets/trashed/${created.id}/restore`)
       .query({ userId })
       .expect(204)
 
@@ -170,7 +170,7 @@ describe('POST /v1/assets/:id/restore', () => {
     const fakeId = '00000000-0000-0000-0000-000000000000'
 
     const res = await supertest(httpServer)
-      .post(`/v1/assets/${fakeId}/restore`)
+      .post(`/v1/assets/trashed/${fakeId}/restore`)
       .query({ userId })
       .expect(404)
 

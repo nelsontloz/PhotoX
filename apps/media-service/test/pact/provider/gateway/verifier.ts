@@ -10,14 +10,18 @@ import { Person } from '../../../../src/persons/entities/person.entity'
 import { AssetsModule } from '../../../../src/assets/assets.module'
 import { AlbumsModule } from '../../../../src/albums/albums.module'
 import { PersonsModule } from '../../../../src/persons/persons.module'
+import { TrashModule } from '../../../../src/trash/trash.module'
+import { SharesModule } from '../../../../src/shares/shares.module'
 import { Album } from '../../../../src/entities/album.entity'
 import { AlbumAsset } from '../../../../src/entities/album-asset.entity'
+import { AssetShare } from '../../../../src/entities/asset-share.entity'
 import {
   createAssetRepo,
   createBasicRepo,
   createPersonRepo,
   createAlbumRepo,
   createAlbumAssetRepo,
+  createShareRepo,
 } from './mock-repos'
 import type { MockRepos } from './mock-repos'
 
@@ -36,9 +40,10 @@ export async function setupMockedApp(): Promise<{
   const mockPersonRepo = createPersonRepo()
   const mockAlbumRepo = createAlbumRepo()
   const mockAlbumAssetRepo = createAlbumAssetRepo()
+  const mockShareRepo = createShareRepo()
 
   const module = await Test.createTestingModule({
-    imports: [AssetsModule, AlbumsModule, PersonsModule],
+    imports: [TrashModule, AssetsModule, AlbumsModule, PersonsModule, SharesModule],
   })
     .overrideProvider(getRepositoryToken(Asset))
     .useValue(mockAssetRepo)
@@ -52,6 +57,8 @@ export async function setupMockedApp(): Promise<{
     .useValue(mockAlbumRepo)
     .overrideProvider(getRepositoryToken(AlbumAsset))
     .useValue(mockAlbumAssetRepo)
+    .overrideProvider(getRepositoryToken(AssetShare))
+    .useValue(mockShareRepo)
     .compile()
 
   const app = module.createNestApplication()
@@ -72,6 +79,7 @@ export async function setupMockedApp(): Promise<{
       mockPersonRepo,
       mockAlbumRepo,
       mockAlbumAssetRepo,
+      mockShareRepo,
     },
   }
 }

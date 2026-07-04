@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useReducer, useCallback } from 'react'
 import {
   FaCheck,
   FaCircleExclamation,
@@ -22,45 +22,87 @@ interface AlbumPickerDialogProps {
 const fieldClass =
   'w-full bg-background-dark border border-border-dark focus:border-primary/50 focus:ring-0 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 transition-colors'
 
+interface State {
+  albums: AlbumDto[]
+  loading: boolean
+  error: string | null
+  selected: Set<string>
+  busy: boolean
+  creating: boolean
+  newName: string
+  newDesc: string
+}
+
+type Action =
+  | { type: 'reset' }
+  | { type: 'loaded'; albums: AlbumDto[] }
+  | { type: 'loadError'; error: string }
+  | { type: 'toggle'; id: string }
+  | { type: 'busy'; busy: boolean }
+  | { type: 'error'; error: string | null }
+  | { type: 'startCreate' }
+  | { type: 'cancelCreate' }
+  | { type: 'setName'; name: string }
+  | { type: 'setDesc'; desc: string }
+
+const initial: State = {
+  albums: [],
+  loading: true,
+  error: null,
+  selected: new Set(),
+  busy: false,
+  creating: false,
+  newName: '',
+  newDesc: '',
+}
+
+function reducer(state: State, action: Action): State {
+  switch (action.type) {
+    case 'reset':
+      return { ...initial, loading: false }
+    case 'loaded':
+      return { ...state, albums: action.albums, loading: false }
+    case 'loadError':
+      return { ...state, error: action.error, loading: false }
+    case 'toggle': {
+      const next = new Set(state.selected)
+      if (next.has(action.id)) next.delete(action.id)
+      else next.add(action.id)
+      return { ...state, selected: next }
+    }
+    case 'busy':
+      return { ...state, busy: action.busy }
+    case 'error':
+      return { ...state, error: action.error, busy: false }
+    case 'startCreate':
+      return { ...state, creating: true, error: null }
+    case 'cancelCreate':
+      return { ...state, creating: false, error: null, newName: '', newDesc: '' }
+    case 'setName':
+      return { ...state, newName: action.name }
+    case 'setDesc':
+      return { ...state, newDesc: action.desc }
+  }
+}
+
 export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPickerDialogProps) {
-  const [albums, setAlbums] = useState<AlbumDto[]>([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
-  const [newName, setNewName] = useState('')
-  const [newDesc, setNewDesc] = useState('')
-  const [createError, setCreateError] = useState<string | null>(null)
-  const [creatingSubmit, setCreatingSubmit] = useState(false)
+  const [state, dispatch] = useReducer(reducer, initial)
 
   useEffect(() => {
     if (!open) return
-    let cancelled = false
-    setLoading(true)
-    setLoadError(null)
-    setSelected(new Set())
-    setCreating(false)
-    setNewName('')
-    setNewDesc('')
-    setCreateError(null)
-    setSubmitError(null)
+    dispatch({ type: 'reset' })
+    const ac = new AbortController()
     void (async () => {
       try {
         const res = await listAlbums({ limit: 1000 })
-        if (cancelled) return
-        setAlbums(res.items)
+        if (ac.signal.aborted) return
+        dispatch({ type: 'loaded', albums: res.items })
       } catch (err) {
-        if (cancelled) return
-        setLoadError((err as Error).message ?? 'Failed to load albums')
-      } finally {
-        if (!cancelled) setLoading(false)
+        if (ac.signal.aborted) return
+        dispatch({ type: 'loadError', error: (err as Error).message ?? 'Failed to load albums' })
       }
     })()
-    return () => {
-      cancelled = true
-    }
+    return () => ac.abort()
   }, [open])
 
   useEffect(() => {
@@ -72,55 +114,45 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
     return () => document.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
-  const toggle = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  const handleAdd = async () => {
-    if (selected.size === 0) return
-    setSubmitting(true)
-    setSubmitError(null)
+  const handleAdd = useCallback(async () => {
+    if (state.selected.size === 0) return
+    dispatch({ type: 'busy', busy: true })
+    dispatch({ type: 'error', error: null })
     try {
-      await Promise.all(Array.from(selected).map((albumId) => addAssetsToAlbum(albumId, assetIds)))
+      await Promise.all(Array.from(state.selected).map((id) => addAssetsToAlbum(id, assetIds)))
       onDone?.()
       onClose()
     } catch (err) {
-      setSubmitError((err as Error).message ?? 'Failed to add to one or more albums')
-    } finally {
-      setSubmitting(false)
+      dispatch({
+        type: 'error',
+        error: (err as Error).message ?? 'Failed to add to one or more albums',
+      })
     }
-  }
+  }, [state.selected, assetIds, onDone, onClose])
 
-  const handleCreateAndAdd = async () => {
-    const trimmed = newName.trim()
+  const handleCreateAndAdd = useCallback(async () => {
+    const trimmed = state.newName.trim()
     if (!trimmed) return
-    setCreatingSubmit(true)
-    setCreateError(null)
+    dispatch({ type: 'busy', busy: true })
+    dispatch({ type: 'error', error: null })
     try {
       const album = await createAlbum({
         name: trimmed,
-        ...(newDesc.trim() ? { description: newDesc.trim() } : {}),
+        ...(state.newDesc.trim() ? { description: state.newDesc.trim() } : {}),
       })
       await addAssetsToAlbum(album.id, assetIds)
       onDone?.()
       onClose()
     } catch (err) {
-      setCreateError((err as Error).message ?? 'Failed to create album')
-    } finally {
-      setCreatingSubmit(false)
+      dispatch({ type: 'error', error: (err as Error).message ?? 'Failed to create album' })
     }
-  }
+  }, [state.newName, state.newDesc, assetIds, onDone, onClose])
 
   if (!open) return null
 
   const count = assetIds.length
-  const hasAlbums = albums.length > 0
-  const trimmedName = newName.trim()
+  const hasAlbums = state.albums.length > 0
+  const trimmedName = state.newName.trim()
 
   return (
     <div
@@ -152,24 +184,19 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
           Adding {count} {count === 1 ? 'photo' : 'photos'} to {count === 1 ? 'album' : 'albums'}
         </p>
 
-        {submitError && (
+        {state.error && (
           <div className="flex items-center gap-2 text-rose-400 text-sm mb-3 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
             <FaCircleExclamation />
-            <span>{submitError}</span>
+            <span>{state.error}</span>
           </div>
         )}
 
         <div className="flex-1 overflow-y-auto min-h-0 -mx-1 px-1">
-          {loading ? (
+          {state.loading ? (
             <div className="flex justify-center py-16">
               <FaSpinner className="text-primary text-2xl animate-spin" />
             </div>
-          ) : loadError ? (
-            <div className="flex items-center justify-center gap-2 text-rose-400 text-sm py-12">
-              <FaCircleExclamation />
-              <span>{loadError}</span>
-            </div>
-          ) : creating ? (
+          ) : state.creating ? (
             <div className="py-4">
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
                 Name
@@ -177,15 +204,15 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
               <input
                 autoFocus
                 type="text"
-                value={newName}
+                value={state.newName}
                 maxLength={255}
-                onChange={(e) => setNewName(e.target.value)}
+                onChange={(e) => dispatch({ type: 'setName', name: e.target.value })}
                 placeholder="e.g. Summer 2025"
                 className={fieldClass}
               />
               <div className="mt-1 flex justify-between text-[11px] text-slate-500">
                 <span>Required</span>
-                <span className="tabular-nums">{newName.length}/255</span>
+                <span className="tabular-nums">{state.newName.length}/255</span>
               </div>
 
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5 mt-4">
@@ -193,19 +220,12 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
                 <span className="text-slate-500 normal-case font-normal">(optional)</span>
               </label>
               <textarea
-                value={newDesc}
+                value={state.newDesc}
                 rows={3}
-                onChange={(e) => setNewDesc(e.target.value)}
+                onChange={(e) => dispatch({ type: 'setDesc', desc: e.target.value })}
                 placeholder="What's this album about?"
                 className={`${fieldClass} resize-none`}
               />
-
-              {createError && (
-                <div className="mt-4 flex items-start gap-2 text-sm text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
-                  <FaCircleExclamation className="text-base mt-0.5 shrink-0" />
-                  <span>{createError}</span>
-                </div>
-              )}
             </div>
           ) : !hasAlbums ? (
             <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
@@ -215,7 +235,7 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
               <p className="text-slate-300 text-sm font-medium mb-4">No albums yet</p>
               <button
                 type="button"
-                onClick={() => setCreating(true)}
+                onClick={() => dispatch({ type: 'startCreate' })}
                 className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-lg shadow-primary/20"
               >
                 <FaPlus className="text-xs" />
@@ -226,7 +246,7 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => setCreating(true)}
+                onClick={() => dispatch({ type: 'startCreate' })}
                 className="flex items-center gap-3 p-2 rounded-lg text-left ring-1 ring-border-dark bg-white/5 hover:bg-white/10 transition-colors"
               >
                 <div className="size-14 rounded bg-primary/10 flex items-center justify-center shrink-0">
@@ -237,13 +257,13 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
                   <p className="text-xs text-slate-500">Create a new one</p>
                 </div>
               </button>
-              {albums.map((album) => {
-                const isSelected = selected.has(album.id)
+              {state.albums.map((album) => {
+                const isSelected = state.selected.has(album.id)
                 return (
                   <button
                     key={album.id}
                     type="button"
-                    onClick={() => toggle(album.id)}
+                    onClick={() => dispatch({ type: 'toggle', id: album.id })}
                     className={[
                       'flex items-center gap-3 p-2 rounded-lg text-left transition-colors',
                       isSelected
@@ -282,28 +302,23 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
           )}
         </div>
 
-        {creating ? (
+        {state.creating ? (
           <div className="flex items-center justify-end gap-2 mt-4 pt-4 border-t border-border-dark">
             <button
               type="button"
-              onClick={() => {
-                setCreating(false)
-                setCreateError(null)
-              }}
-              disabled={creatingSubmit}
+              onClick={() => dispatch({ type: 'cancelCreate' })}
+              disabled={state.busy}
               className="text-slate-300 hover:text-white text-sm font-semibold px-3 py-1.5 rounded-md transition-colors disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="button"
-              onClick={() => {
-                void handleCreateAndAdd()
-              }}
-              disabled={!trimmedName || creatingSubmit}
+              onClick={() => void handleCreateAndAdd()}
+              disabled={!trimmedName || state.busy}
               className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 disabled:bg-primary/40 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-lg shadow-primary/20"
             >
-              {creatingSubmit ? (
+              {state.busy ? (
                 <FaSpinner className="text-xs animate-spin" />
               ) : (
                 <FaPlus className="text-xs" />
@@ -314,33 +329,31 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
         ) : hasAlbums ? (
           <div className="flex items-center justify-between gap-2 mt-4 pt-4 border-t border-border-dark">
             <span className="text-xs text-slate-500">
-              {selected.size > 0
-                ? `${selected.size} ${selected.size === 1 ? 'album' : 'albums'} selected`
+              {state.selected.size > 0
+                ? `${state.selected.size} ${state.selected.size === 1 ? 'album' : 'albums'} selected`
                 : 'Select albums to add to'}
             </span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={onClose}
-                disabled={submitting}
+                disabled={state.busy}
                 className="text-slate-300 hover:text-white text-sm font-semibold px-3 py-1.5 rounded-md transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  void handleAdd()
-                }}
-                disabled={selected.size === 0 || submitting}
+                onClick={() => void handleAdd()}
+                disabled={state.selected.size === 0 || state.busy}
                 className="bg-primary hover:bg-primary/90 text-white text-sm font-semibold px-3 py-1.5 rounded-md inline-flex items-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {submitting ? (
+                {state.busy ? (
                   <FaSpinner className="text-xs animate-spin" />
                 ) : (
                   <FaPlus className="text-xs" />
                 )}
-                Add to {selected.size} album{selected.size === 1 ? '' : 's'}
+                Add to {state.selected.size} album{state.selected.size === 1 ? '' : 's'}
               </button>
             </div>
           </div>

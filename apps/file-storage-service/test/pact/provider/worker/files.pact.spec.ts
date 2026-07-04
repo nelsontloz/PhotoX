@@ -11,6 +11,8 @@ let minio: Awaited<ReturnType<typeof setupMockedApp>>['minio']
 
 const USER_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
 const FILE_ID = '550e8400-e29b-41d4-a716-446655440000'
+const CLEANUP_FILE_ID = '123e4567-e89b-12d3-a456-426614174000'
+const TRANSCODE_FILE_ID = '987e6543-e21b-34f5-c678-526614174000'
 
 const baseFileRecord = {
   id: FILE_ID,
@@ -40,7 +42,10 @@ describe('Pact verification — file-storage-service (worker)', () => {
     await new Verifier({
       provider: 'file-storage-service',
       providerBaseUrl: url,
-      pactUrls: [path.join(PACT_DIR, 'worker-service-file-storage-service.json')],
+      pactUrls: [
+        path.join(PACT_DIR, 'worker-service-file-storage-service.json'),
+        path.join(PACT_DIR, 'worker-service-cleanup-file-storage-service.json'),
+      ],
       logLevel: 'error',
       stateHandlers: {
         [`file exists with id ${FILE_ID}`]: () => {
@@ -50,6 +55,28 @@ describe('Pact verification — file-storage-service (worker)', () => {
             }
             return Promise.resolve(null)
           })
+          return Promise.resolve()
+        },
+        [`file ${CLEANUP_FILE_ID} exists`]: () => {
+          repos.mockFileRepo.findOne.mockImplementation((opts: { where?: { id?: string } }) => {
+            if (opts?.where?.id === CLEANUP_FILE_ID) {
+              return Promise.resolve({ ...baseFileRecord, id: CLEANUP_FILE_ID })
+            }
+            return Promise.resolve(null)
+          })
+          repos.mockFileRepo.remove.mockResolvedValue(undefined)
+          minio.deleteFile.mockResolvedValue(undefined)
+          return Promise.resolve()
+        },
+        [`file ${TRANSCODE_FILE_ID} exists`]: () => {
+          repos.mockFileRepo.findOne.mockImplementation((opts: { where?: { id?: string } }) => {
+            if (opts?.where?.id === TRANSCODE_FILE_ID) {
+              return Promise.resolve({ ...baseFileRecord, id: TRANSCODE_FILE_ID })
+            }
+            return Promise.resolve(null)
+          })
+          repos.mockFileRepo.remove.mockResolvedValue(undefined)
+          minio.deleteFile.mockResolvedValue(undefined)
           return Promise.resolve()
         },
         'file does not exist': () => {
