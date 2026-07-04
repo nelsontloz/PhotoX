@@ -57,7 +57,33 @@ export function buildStateHandlers(repos: MockRepos): Record<string, () => Promi
   return {
     'a photo asset can be created': () => Promise.resolve(),
 
-    'user has no assets': () => Promise.resolve(),
+    'user has no assets': () => {
+      repos.mockAssetRepo.createQueryBuilder.mockReturnValue({
+        where: vi.fn().mockReturnThis(),
+        andWhere: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        addOrderBy: vi.fn().mockReturnThis(),
+        skip: vi.fn().mockReturnThis(),
+        take: vi.fn().mockReturnThis(),
+        innerJoin: vi.fn().mockReturnThis(),
+        getManyAndCount: vi.fn().mockResolvedValue([[], 0]),
+      })
+      return Promise.resolve()
+    },
+
+    'user has trashed assets': () => {
+      repos.mockAssetRepo.createQueryBuilder.mockReturnValue({
+        where: vi.fn().mockReturnThis(),
+        andWhere: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        addOrderBy: vi.fn().mockReturnThis(),
+        skip: vi.fn().mockReturnThis(),
+        take: vi.fn().mockReturnThis(),
+        innerJoin: vi.fn().mockReturnThis(),
+        getManyAndCount: vi.fn().mockResolvedValue([[], 0]),
+      })
+      return Promise.resolve()
+    },
 
     'asset exists with id a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22 owned by another user': () => {
       repos.mockAssetRepo.save({

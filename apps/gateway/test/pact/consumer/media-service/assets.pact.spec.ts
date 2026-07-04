@@ -187,13 +187,13 @@ describe('Gateway → media-service assets pact', () => {
       })
   })
 
-  it('POST /v1/assets/trash — bulk trash assets', async () => {
+  it('POST /v1/assets/bulk-trash — bulk trash assets', async () => {
     await mediaService
       .given('assets exist for bulk trash')
       .uponReceiving('a bulk trash assets request')
       .withRequest({
         method: 'POST',
-        path: '/v1/assets/trash',
+        path: '/v1/assets/bulk-trash',
         headers: { 'Content-Type': 'application/json' },
         query: { userId: USER_ID },
         body: { assetIds: [ASSET_ID] },
@@ -202,26 +202,56 @@ describe('Gateway → media-service assets pact', () => {
       .executeTest(async (mockserver) => {
         stub.targetUrl = mockserver.url
         const res = await request(app.getHttpServer())
-          .post('/api/v1/assets/trash')
+          .post('/api/v1/assets/bulk-trash')
           .send({ assetIds: [ASSET_ID] })
         expect(res.status).toBe(204)
       })
   })
 
-  it('POST /v1/assets/:id/restore — restore an asset', async () => {
+  it('POST /v1/assets/trashed/:id/restore — restore an asset', async () => {
     await mediaService
       .given('trashed asset exists with id ' + ASSET_ID)
       .uponReceiving('a restore asset request')
       .withRequest({
         method: 'POST',
-        path: `/v1/assets/${ASSET_ID}/restore`,
+        path: `/v1/assets/trashed/${ASSET_ID}/restore`,
         query: { userId: USER_ID },
       })
       .willRespondWith({ status: 204 })
       .executeTest(async (mockserver) => {
         stub.targetUrl = mockserver.url
-        const res = await request(app.getHttpServer()).post(`/api/v1/assets/${ASSET_ID}/restore`)
+        const res = await request(app.getHttpServer()).post(
+          `/api/v1/assets/trashed/${ASSET_ID}/restore`,
+        )
         expect(res.status).toBe(204)
+      })
+  })
+
+  it('GET /v1/assets/trashed — list trashed assets', async () => {
+    await mediaService
+      .given('user has trashed assets')
+      .uponReceiving('a list trashed assets request')
+      .withRequest({
+        method: 'GET',
+        path: '/v1/assets/trashed',
+        query: { userId: USER_ID },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: {
+          items: [],
+          total: 0,
+          limit: 20,
+          offset: 0,
+        },
+      })
+      .executeTest(async (mockserver) => {
+        stub.targetUrl = mockserver.url
+        const res = await request(app.getHttpServer()).get('/api/v1/assets/trashed')
+        expect(res.status).toBe(200)
+        expect(res.body.items).toEqual([])
+        expect(res.body.total).toBe(0)
       })
   })
 
