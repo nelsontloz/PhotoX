@@ -10,6 +10,7 @@ import { Person } from '../../../../src/persons/entities/person.entity'
 import { AssetsModule } from '../../../../src/assets/assets.module'
 import { AlbumsModule } from '../../../../src/albums/albums.module'
 import { PersonsModule } from '../../../../src/persons/persons.module'
+import { TrashModule } from '../../../../src/trash/trash.module'
 import { SharesModule } from '../../../../src/shares/shares.module'
 import { Album } from '../../../../src/entities/album.entity'
 import { AlbumAsset } from '../../../../src/entities/album-asset.entity'
@@ -42,7 +43,7 @@ export async function setupMockedApp(): Promise<{
   const mockShareRepo = createShareRepo()
 
   const module = await Test.createTestingModule({
-    imports: [AssetsModule, AlbumsModule, PersonsModule, SharesModule],
+    imports: [TrashModule, AssetsModule, AlbumsModule, PersonsModule, SharesModule],
   })
     .overrideProvider(getRepositoryToken(Asset))
     .useValue(mockAssetRepo)

@@ -6,7 +6,6 @@ import {
   Param,
   Query,
   Req,
-  Body,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common'
@@ -16,7 +15,7 @@ import { ProxyService } from '../proxy.service'
 import { SERVICE_URLS } from '@photox/shared-config'
 import { BullMqService } from '../../queue/bullmq.service'
 
-@ApiTags('assets')
+@ApiTags('trashed')
 @Controller('api/v1/assets')
 export class TrashProxyController {
   constructor(
@@ -38,23 +37,6 @@ export class TrashProxyController {
       timeout: 30_000,
     })
     return result.data
-  }
-
-  @Post('bulk-trash')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Bulk soft-delete (trash) assets' })
-  @ApiResponse({ status: 204, description: 'Assets trashed' })
-  async bulkTrash(@Body() body: { assetIds: string[] }, @Req() req: Request) {
-    await this.proxy.forward(SERVICE_URLS['media-service'], {
-      method: 'POST',
-      path: 'v1/assets/bulk-trash',
-      query: { userId: (req.user as { id: string }).id },
-      body,
-      headers: {
-        'x-request-id': (req.headers['x-request-id'] as string) ?? '',
-      },
-      timeout: 30_000,
-    })
   }
 
   @Delete('trashed')

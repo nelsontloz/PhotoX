@@ -4,14 +4,14 @@ import { Asset } from '../entities/asset.entity'
 import { AssetThumbnail } from '../entities/asset-thumbnail.entity'
 import { AssetsService } from './assets.service'
 import { AssetsController } from './assets.controller'
-import { TrashController } from './trash.controller'
 import { ThumbnailsService } from './thumbnails.service'
 import { ThumbnailsController } from './thumbnails.controller'
 import { FacesModule } from '../faces/faces.module'
 
 @Module({
   imports: [TypeOrmModule.forFeature([Asset, AssetThumbnail]), FacesModule],
-  controllers: [TrashController, AssetsController, ThumbnailsController],
+  controllers: [AssetsController, ThumbnailsController],
   providers: [AssetsService, ThumbnailsService],
+  exports: [AssetsService],
 })
 export class AssetsModule {}

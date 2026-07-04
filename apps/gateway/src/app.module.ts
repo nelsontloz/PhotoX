@@ -5,6 +5,7 @@ import { HealthModule } from './health/health.module'
 import { AuthModule } from './auth/auth.module'
 import { AuthProxyModule } from './proxy/auth-proxy/auth-proxy.module'
 import { AlbumsProxyModule } from './proxy/albums-proxy/albums-proxy.module'
+import { TrashProxyModule } from './proxy/trash-proxy/trash-proxy.module'
 import { AssetsProxyModule } from './proxy/assets-proxy/assets-proxy.module'
 import { FilesProxyModule } from './proxy/files-proxy/files-proxy.module'
 import { AdminProxyModule } from './proxy/admin-proxy/admin-proxy.module'
@@ -24,6 +25,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard'
     AuthModule,
     AuthProxyModule,
     AlbumsProxyModule,
+    TrashProxyModule,
     AssetsProxyModule,
     FilesProxyModule,
     AdminProxyModule,

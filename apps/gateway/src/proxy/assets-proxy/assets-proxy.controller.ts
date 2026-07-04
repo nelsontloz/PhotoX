@@ -139,6 +139,23 @@ export class AssetsProxyController {
     })
   }
 
+  @Post('bulk-trash')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Bulk soft-delete (trash) assets' })
+  @ApiResponse({ status: 204, description: 'Assets trashed' })
+  async bulkTrash(@Body() body: { assetIds: string[] }, @Req() req: Request) {
+    await this.proxy.forward(SERVICE_URLS['media-service'], {
+      method: 'POST',
+      path: 'v1/assets/bulk-trash',
+      query: { userId: (req.user as { id: string }).id },
+      body,
+      headers: {
+        'x-request-id': (req.headers['x-request-id'] as string) ?? '',
+      },
+      timeout: 30_000,
+    })
+  }
+
   @Post(':id/reprocess-thumbnails')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Re-enqueue thumbnail generation for all sizes' })
