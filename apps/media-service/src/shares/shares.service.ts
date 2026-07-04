@@ -36,11 +36,14 @@ export class SharesService {
   }
 
   async list(userId: string): Promise<ShareListResponse> {
-    const items = await this.shareRepo.find({
-      where: { userId },
-      relations: ['asset', 'asset.thumbnails'],
-      order: { createdAt: 'DESC' },
-    })
+    const items = await this.shareRepo
+      .createQueryBuilder('share')
+      .leftJoinAndSelect('share.asset', 'asset')
+      .leftJoinAndSelect('asset.thumbnails', 'thumb')
+      .where('share.userId = :userId', { userId })
+      .andWhere('asset.isTrashed = false')
+      .orderBy('share.createdAt', 'DESC')
+      .getMany()
 
     return { items: items.map((s) => this.toDto(s)) }
   }

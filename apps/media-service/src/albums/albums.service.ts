@@ -172,9 +172,11 @@ export class AlbumsService {
   }
 
   private async countAssets(albumId: string): Promise<number> {
-    const result = await this.albumAssetRepo
-      .createQueryBuilder('aa')
+    const result = await this.assetRepo
+      .createQueryBuilder('a')
+      .innerJoin('album_assets', 'aa', 'aa."assetId" = a.id')
       .where('aa."albumId" = :albumId', { albumId })
+      .andWhere('a.isTrashed = false')
       .getCount()
     return result
   }
