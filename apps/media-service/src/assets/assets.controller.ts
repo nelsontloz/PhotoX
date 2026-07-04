@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Get,
   Post,
   Patch,
@@ -15,6 +16,7 @@ import { CreateAssetDto } from './dto/create-asset.dto'
 import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
 import { UpdateMetadataDto } from './dto/update-metadata.dto'
+import { TrashAssetsDto } from './dto/trash-assets.dto'
 
 @ApiTags('assets')
 @Controller('v1/assets')
@@ -68,6 +70,14 @@ export class AssetsController {
     return this.assets.update(dto.userId, id, dto)
   }
 
+  @Post('trash')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Bulk soft-delete (trash) assets. Idempotent.' })
+  @ApiResponse({ status: 204, description: 'Assets trashed' })
+  async bulkTrash(@Body() dto: TrashAssetsDto, @Query('userId') userId: string) {
+    await this.assets.bulkTrash(userId, dto.assetIds)
+  }
+
   @Post(':id/trash')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Soft-delete (trash) an asset. Idempotent.' })
@@ -84,5 +94,21 @@ export class AssetsController {
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async restore(@Param('id') id: string, @Query('userId') userId: string) {
     await this.assets.restore(userId, id)
+  }
+
+  @Delete('trash')
+  @ApiOperation({ summary: 'Permanently delete all trashed assets. Returns file IDs for cleanup.' })
+  @ApiResponse({ status: 200, description: 'Trash emptied' })
+  async emptyTrash(@Query('userId') userId: string) {
+    return this.assets.emptyTrash(userId)
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Permanently delete a trashed asset. Returns file IDs for cleanup.' })
+  @ApiResponse({ status: 200, description: 'Asset deleted' })
+  @ApiResponse({ status: 400, description: 'Asset is not trashed' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  async delete(@Param('id') id: string, @Query('userId') userId: string) {
+    return this.assets.delete(userId, id)
   }
 }

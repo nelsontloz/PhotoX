@@ -81,6 +81,16 @@ export function buildStateHandlers(repos: MockRepos): Record<string, () => Promi
       return Promise.resolve()
     },
 
+    'assets exist for bulk trash': () => {
+      repos.mockAssetRepo.createQueryBuilder.mockReturnValue({
+        update: vi.fn().mockReturnThis(),
+        set: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        execute: vi.fn().mockResolvedValue({ affected: 1 }),
+      })
+      return Promise.resolve()
+    },
+
     'a get asset request for a user that does not own it': () => {
       repos.mockAssetRepo.save(baseAsset)
       return Promise.resolve()

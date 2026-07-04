@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, Brackets } from 'typeorm'
 import { Asset } from '../entities/asset.entity'
@@ -153,6 +153,16 @@ export class AssetsService {
     }
   }
 
+  async bulkTrash(userId: string, assetIds: string[]): Promise<void> {
+    if (assetIds.length === 0) return
+    await this.repo
+      .createQueryBuilder()
+      .update(Asset)
+      .set({ isTrashed: true, trashedAt: new Date() })
+      .where('id IN (:...assetIds) AND userId = :userId', { assetIds, userId })
+      .execute()
+  }
+
   async restore(userId: string, id: string): Promise<void> {
     const asset = await this.repo.findOne({ where: { id, userId } })
     if (!asset) throw new NotFoundException('Asset not found')
@@ -160,6 +170,34 @@ export class AssetsService {
     if (asset.isTrashed) {
       await this.repo.update(id, { isTrashed: false, trashedAt: null })
     }
+  }
+
+  async emptyTrash(userId: string): Promise<{ fileId: string; transcodeFileId: string | null }[]> {
+    const assets = await this.repo.find({ where: { userId, isTrashed: true } })
+    if (assets.length === 0) return []
+
+    const fileIds = assets.map((a) => ({
+      fileId: a.fileId,
+      transcodeFileId: a.transcodeFileId,
+    }))
+
+    await this.repo.remove(assets)
+    return fileIds
+  }
+
+  async delete(
+    userId: string,
+    id: string,
+  ): Promise<{ fileId: string; transcodeFileId: string | null }> {
+    const asset = await this.repo.findOne({ where: { id, userId } })
+    if (!asset) throw new NotFoundException('Asset not found')
+    if (!asset.isTrashed)
+      throw new BadRequestException('Asset must be trashed before permanent deletion')
+
+    const fileId = asset.fileId
+    const transcodeFileId = asset.transcodeFileId
+    await this.repo.remove(asset)
+    return { fileId, transcodeFileId }
   }
 
   async getByFileId(fileId: string): Promise<AssetResponse> {

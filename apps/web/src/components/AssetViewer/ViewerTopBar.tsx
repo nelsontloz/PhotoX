@@ -9,6 +9,7 @@ import {
   FaPen,
   FaCircleInfo,
   FaTrash,
+  FaTrashCan,
   FaRotateLeft,
   FaFolderPlus,
   FaFolderMinus,
@@ -27,6 +28,7 @@ interface ViewerTopBarProps {
   onClose: () => void
   onTrash?: () => void
   onRestore?: () => void
+  onDelete?: () => void
   onToggleFavorite?: () => void
   onAddToAlbum?: () => void
   onRemoveFromAlbum?: () => void
@@ -49,6 +51,7 @@ export function ViewerTopBar({
   onClose,
   onTrash,
   onRestore,
+  onDelete,
   onToggleFavorite,
   onAddToAlbum,
   onRemoveFromAlbum,
@@ -201,6 +204,16 @@ export function ViewerTopBar({
             aria-label="Restore from trash"
           >
             <FaRotateLeft className="text-base" />
+          </button>
+        )}
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            className="p-2 text-red-400 hover:text-red-300 transition-colors"
+            title="Permanently delete"
+            aria-label="Permanently delete"
+          >
+            <FaTrashCan className="text-base" />
           </button>
         )}
         <div className="w-px h-4 bg-white/20 mx-2" />

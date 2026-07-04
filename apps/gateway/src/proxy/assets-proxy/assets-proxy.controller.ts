@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Get,
   Post,
   Patch,
@@ -122,6 +123,23 @@ export class AssetsProxyController {
     return result.data
   }
 
+  @Post('trash')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Bulk soft-delete (trash) assets' })
+  @ApiResponse({ status: 204, description: 'Assets trashed' })
+  async bulkTrash(@Body() body: { assetIds: string[] }, @Req() req: Request) {
+    await this.proxy.forward(SERVICE_URLS['media-service'], {
+      method: 'POST',
+      path: 'v1/assets/trash',
+      query: { userId: (req.user as { id: string }).id },
+      body,
+      headers: {
+        'x-request-id': (req.headers['x-request-id'] as string) ?? '',
+      },
+      timeout: 30_000,
+    })
+  }
+
   @Post(':id/trash')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Soft-delete (trash) an asset' })
@@ -153,6 +171,60 @@ export class AssetsProxyController {
         'x-request-id': (req.headers['x-request-id'] as string) ?? '',
       },
       timeout: 30_000,
+    })
+  }
+
+  @Delete('trash')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Permanently delete all trashed assets' })
+  @ApiResponse({ status: 204, description: 'Trash emptied' })
+  async emptyTrash(@Req() req: Request) {
+    const userId = (req.user as { id: string }).id
+
+    const result = await this.proxy.forward<{ fileId: string; transcodeFileId: string | null }[]>(
+      SERVICE_URLS['media-service'],
+      {
+        method: 'DELETE',
+        path: 'v1/assets/trash',
+        query: { userId },
+        headers: {
+          'x-request-id': (req.headers['x-request-id'] as string) ?? '',
+        },
+        timeout: 60_000,
+      },
+    )
+
+    for (const { fileId, transcodeFileId } of result.data) {
+      void this.bullmq.enqueue('cleanup-asset', 'cleanup-asset', {
+        fileId,
+        transcodeFileId,
+      })
+    }
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Permanently delete a trashed asset' })
+  @ApiResponse({ status: 204, description: 'Asset deleted' })
+  @ApiResponse({ status: 400, description: 'Asset is not trashed' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  async delete(@Param('id') id: string, @Req() req: Request) {
+    const result = await this.proxy.forward<{ fileId: string; transcodeFileId: string | null }>(
+      SERVICE_URLS['media-service'],
+      {
+        method: 'DELETE',
+        path: `v1/assets/${id}`,
+        query: { userId: (req.user as { id: string }).id },
+        headers: {
+          'x-request-id': (req.headers['x-request-id'] as string) ?? '',
+        },
+        timeout: 30_000,
+      },
+    )
+
+    void this.bullmq.enqueue('cleanup-asset', 'cleanup-asset', {
+      fileId: result.data.fileId,
+      transcodeFileId: result.data.transcodeFileId,
     })
   }
 

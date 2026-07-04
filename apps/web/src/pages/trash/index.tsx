@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FaSpinner, FaTrash } from 'react-icons/fa6'
+import { FaSpinner, FaTrash, FaTrashCan } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { GalleryItem } from '../../components/GalleryItem'
@@ -7,6 +7,7 @@ import { AssetViewer } from '../../components/AssetViewer/AssetViewer'
 import { AlbumPickerDialog } from '../../components/AlbumPickerDialog'
 import { useAssetGroups } from '../../hooks/useAssetGroups'
 import { useAssetNavigation } from '../../hooks/useAssetNavigation'
+import { emptyTrash } from '../../api/assets'
 
 function TrashContent() {
   const { groups, loading, error, refresh } = useAssetGroups({
@@ -18,6 +19,20 @@ function TrashContent() {
     onAfterAction: refresh,
   })
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [emptying, setEmptying] = useState(false)
+
+  const handleEmptyTrash = async () => {
+    if (!window.confirm('Permanently delete all items in trash? This cannot be undone.')) return
+    setEmptying(true)
+    try {
+      await emptyTrash()
+      await refresh()
+    } catch {
+      window.alert('Failed to empty trash. Please try again.')
+    } finally {
+      setEmptying(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -59,6 +74,17 @@ function TrashContent() {
 
   return (
     <div className="max-w-6xl mx-auto">
+      <div className="flex items-center justify-between mb-8">
+        <div />
+        <button
+          onClick={() => void handleEmptyTrash()}
+          disabled={emptying}
+          className="text-sm font-semibold bg-red-600 hover:bg-red-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors rounded-md px-3 py-1.5 inline-flex items-center gap-2"
+        >
+          {emptying ? <FaSpinner className="animate-spin" /> : <FaTrashCan />}
+          Empty trash
+        </button>
+      </div>
       {groups.map((group) => (
         <section key={group.sortKey} className="mb-10">
           <div className="flex items-end gap-3 mb-4 sticky top-0 bg-background-light/95 dark:bg-background-dark/95 backdrop-blur z-30 py-2 -mx-4 px-4 sm:-mx-8 sm:px-8 border-b border-transparent dark:border-transparent transition-all">
@@ -85,6 +111,9 @@ function TrashContent() {
             onAddToAlbum={!nav.selected.isTrashed ? () => setPickerOpen(true) : undefined}
             onRestore={() => {
               void nav.restore()
+            }}
+            onDelete={() => {
+              void nav.permanentlyDelete()
             }}
             siblingAssets={groups.flatMap((g) => g.items)}
             onSelectSibling={(asset) => nav.open(asset)}

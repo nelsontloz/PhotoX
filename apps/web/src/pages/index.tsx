@@ -1,6 +1,13 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import type { Asset } from '@photox/shared-types'
-import { FaFolderPlus, FaImage, FaMountain, FaSpinner, FaWandMagicSparkles } from 'react-icons/fa6'
+import {
+  FaFolderPlus,
+  FaImage,
+  FaMountain,
+  FaSpinner,
+  FaTrash,
+  FaWandMagicSparkles,
+} from 'react-icons/fa6'
 import { RequireAuth } from '../components/RequireAuth'
 import { AppShell } from '../components/AppShell'
 import { useAssetGroups } from '../hooks/useAssetGroups'
@@ -8,6 +15,7 @@ import { useAssetNavigation } from '../hooks/useAssetNavigation'
 import { TimelineGrid } from '../components/Timeline/TimelineGrid'
 import { AlbumPickerDialog } from '../components/AlbumPickerDialog'
 import { UploadButton } from '../components/UploadButton'
+import { trashAssets } from '../api/assets'
 
 function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(() =>
@@ -46,6 +54,14 @@ function TimelineContent() {
   }
 
   const clearSelection = () => setSelectedIds(new Set())
+
+  const handleBulkTrash = async () => {
+    const ids = Array.from(selectedIds)
+    if (!window.confirm(`Move ${ids.length} item${ids.length > 1 ? 's' : ''} to trash?`)) return
+    await trashAssets(ids)
+    clearSelection()
+    void refresh()
+  }
 
   const onClickAsset = (asset: Asset) => {
     if (selectedIds.size > 0) toggle(asset.id)
@@ -172,6 +188,16 @@ function TimelineContent() {
           className="text-sm text-slate-400 hover:text-white transition-colors px-3 py-1.5 shrink-0"
         >
           Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            void handleBulkTrash()
+          }}
+          className="text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 font-medium px-3 py-1.5 rounded-md inline-flex items-center gap-1.5 transition-colors shrink-0"
+        >
+          <FaTrash className="text-xs" />
+          Trash
         </button>
         <button
           type="button"

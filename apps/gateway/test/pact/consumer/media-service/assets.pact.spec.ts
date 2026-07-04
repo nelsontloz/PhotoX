@@ -187,6 +187,27 @@ describe('Gateway → media-service assets pact', () => {
       })
   })
 
+  it('POST /v1/assets/trash — bulk trash assets', async () => {
+    await mediaService
+      .given('assets exist for bulk trash')
+      .uponReceiving('a bulk trash assets request')
+      .withRequest({
+        method: 'POST',
+        path: '/v1/assets/trash',
+        headers: { 'Content-Type': 'application/json' },
+        query: { userId: USER_ID },
+        body: { assetIds: [ASSET_ID] },
+      })
+      .willRespondWith({ status: 204 })
+      .executeTest(async (mockserver) => {
+        stub.targetUrl = mockserver.url
+        const res = await request(app.getHttpServer())
+          .post('/api/v1/assets/trash')
+          .send({ assetIds: [ASSET_ID] })
+        expect(res.status).toBe(204)
+      })
+  })
+
   it('POST /v1/assets/:id/restore — restore an asset', async () => {
     await mediaService
       .given('trashed asset exists with id ' + ASSET_ID)
