@@ -23,16 +23,53 @@ export class PersonsService {
   ) {}
 
   async list(userId: string, limit = 20, offset = 0): Promise<PersonListResponse> {
-    const qb = this.personRepo.createQueryBuilder('p').where('p.userId = :userId', { userId })
+    const total = await this.personRepo
+      .createQueryBuilder('p')
+      .where('p.userId = :userId', { userId })
+      .getCount()
 
-    const total = await qb.getCount()
+    interface PersonRow {
+      id: string
+      userId: string
+      name: string | null
+      coverFaceId: string | null
+      clusterLabel: string | null
+      faceCount: number
+      createdAt: Date
+      updatedAt: Date
+      liveFaceCount: string
+    }
 
-    const persons = await qb
-      .orderBy('p.faceCount', 'DESC')
-      .addOrderBy('p.updatedAt', 'DESC')
-      .skip(offset)
-      .take(limit)
-      .getMany()
+    const rows: PersonRow[] = await this.personRepo.query(
+      `SELECT p.id, p."userId", p.name, p."coverFaceId", p."clusterLabel",
+              p."faceCount", p."createdAt", p."updatedAt",
+              COALESCE(fc.cnt, 0) AS "liveFaceCount"
+       FROM persons p
+       LEFT JOIN (
+         SELECT f."personId" AS pid, COUNT(*)::int AS cnt
+         FROM faces f
+         INNER JOIN assets a ON a.id = f."assetId"
+         WHERE f."userId" = $1 AND a."isTrashed" = false
+         GROUP BY f."personId"
+       ) fc ON fc.pid = p.id
+       WHERE p."userId" = $1
+       ORDER BY "liveFaceCount" DESC, p."updatedAt" DESC
+       LIMIT $2 OFFSET $3`,
+      [userId, limit, offset],
+    )
+
+    const persons = rows.map((r) => {
+      const p = new Person()
+      p.id = r.id
+      p.userId = r.userId
+      p.name = r.name
+      p.coverFaceId = r.coverFaceId
+      p.clusterLabel = r.clusterLabel
+      p.faceCount = Number(r.liveFaceCount ?? 0)
+      p.createdAt = r.createdAt
+      p.updatedAt = r.updatedAt
+      return p
+    })
 
     return {
       items: persons.map((p) => this.toListItem(p)),
@@ -45,6 +82,15 @@ export class PersonsService {
   async getOne(userId: string, id: string): Promise<PersonDto> {
     const person = await this.personRepo.findOne({ where: { id, userId } })
     if (!person) throw new NotFoundException('Person not found')
+    const result = await this.faceRepo
+      .createQueryBuilder('f')
+      .innerJoin('assets', 'a', 'a.id = f."assetId"')
+      .select('COUNT(*)')
+      .where('f."personId" = :personId', { personId: id })
+      .andWhere('f."userId" = :userId', { userId })
+      .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
+      .getRawOne<{ count: string }>()
+    person.faceCount = Number(result?.count ?? 0)
     return this.toListItem(person)
   }
 
@@ -93,12 +139,14 @@ export class PersonsService {
     // ponytail: per-asset rollup — one row per asset containing this person; faceId is any of the person's faces in that asset (used to fetch the face box for overlay)
     const rows = await this.faceRepo
       .createQueryBuilder('f')
+      .innerJoin('assets', 'a', 'a.id = f."assetId"')
       .select('f."assetId"', 'assetId')
       .addSelect(`MIN(f.id::text)::uuid`, 'faceId')
       .addSelect('COUNT(*)', 'faceCount')
       .addSelect('MAX(f."createdAt")', 'lastSeen')
       .where('f."personId" = :personId', { personId: id })
       .andWhere('f."userId" = :userId', { userId })
+      .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
       .groupBy('f."assetId"')
       .orderBy('"lastSeen"', 'DESC')
       .limit(limit)
@@ -107,9 +155,11 @@ export class PersonsService {
 
     const total = await this.faceRepo
       .createQueryBuilder('f')
+      .innerJoin('assets', 'a', 'a.id = f."assetId"')
       .select('COUNT(DISTINCT f."assetId")')
       .where('f."personId" = :personId', { personId: id })
       .andWhere('f."userId" = :userId', { userId })
+      .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
       .getRawOne<{ count: string }>()
       .then((r) => Number(r?.count ?? 0))
 
@@ -161,7 +211,15 @@ export class PersonsService {
     if (body.toPersonId) affectedPersonIds.add(body.toPersonId)
 
     for (const pid of affectedPersonIds) {
-      const count = await this.faceRepo.count({ where: { personId: pid, userId } })
+      const result = await this.faceRepo
+        .createQueryBuilder('f')
+        .innerJoin('assets', 'a', 'a.id = f."assetId"')
+        .select('COUNT(*)')
+        .where('f."personId" = :personId', { personId: pid })
+        .andWhere('f."userId" = :userId', { userId })
+        .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
+        .getRawOne<{ count: string }>()
+      const count = Number(result?.count ?? 0)
       await this.personRepo.update(pid, { faceCount: count })
     }
 

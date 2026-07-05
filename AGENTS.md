@@ -12,18 +12,72 @@ Personal photo/video hosting. NestJS microservices monorepo with a Vite React we
 
 ## Async jobs (BullMQ)
 
-The gateway publishes thumbnail and video jobs directly to Redis BullMQ queues (`process-thumbnail`, `process-video`); the worker-service consumes them. There is no longer a `pg-boss` queue, no `worker_db`, and no `/v1/jobs/*` HTTP enqueue endpoint. `BullMqService` in `apps/gateway/src/queue/bullmq.service.ts` (publisher) and `apps/worker-service/src/queue/bullmq.service.ts` (worker registration, with `createWorker(name, processor, opts)`) share the same `REDIS_HOST` / `REDIS_PORT` env (defaults `localhost` / `6379`) declared in `shared-config/src/env.ts`. Thumbnail jobs are deduped via `jobId: 'thumb:<assetId>:<size>'`; video jobs use `attempts: 3` with exponential backoff.
+The gateway publishes jobs to Redis BullMQ queues; the worker-service consumes them. `BullMqService` in `apps/gateway/src/queue/bullmq.service.ts` (publisher) and `apps/worker-service/src/queue/bullmq.service.ts` (worker registration, with `createWorker(name, processor, opts)`) share the same `REDIS_HOST` / `REDIS_PORT` env (defaults `localhost` / `6379`) declared in `shared-config/src/env.ts`.
+
+**Queues (7 total):**
+
+| Queue                   | Published by                                                    | Consumed by               | Dedup / retry                                                 |
+| ----------------------- | --------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------- |
+| `process-thumbnail`     | gateway (`enqueueThumbnails`)                                   | `ThumbnailProcessor`      | `jobId: 'thumb-<assetId>-<size>'` — dedupes per size          |
+| `process-video`         | gateway (`enqueueVideo`)                                        | `VideoProcessor`          | `jobId: 'video-<assetId>'`, `attempts: 3` exponential backoff |
+| `process-metadata`      | gateway                                                         | `MetadataProcessor`       | —                                                             |
+| `process-faces`         | gateway                                                         | `FaceProcessor`           | —                                                             |
+| `cleanup-orphans`       | gateway (`enqueueOrphanCleanup`)                                | `CleanupOrphansProcessor` | —                                                             |
+| `process-faces-cluster` | gateway (manual recluster) + worker (auto after face detection) | `FaceClusterService`      | —                                                             |
+| `cleanup-asset`         | gateway (trash-proxy)                                           | `CleanupProcessor`        | `attempts: 3` exponential backoff                             |
 
 ## Video processing
 
 Worker-service uses ffmpeg/ffprobe at runtime via `ffmpeg-static` and `ffprobe-static` npm packages. No system install needed — binaries ship with `npm install`.
 
-**Pipeline (single-pass, no HLS):** the gateway publishes a `process-video` job after asset creation. The worker downloads the source via a presigned MinIO URL (`ttl=600`), ffprobes the codec, and:
+**Pipeline:** the gateway publishes a `process-video` job after asset creation. The worker downloads the source via a presigned MinIO URL (`ttl=600`), ffprobes the codec, and:
 
 - if video is already `h264` AND (no audio OR audio is `aac`) → skip transcode, set `transcodeStatus='ready'`, return;
-- else → single ffmpeg pass to `h264 yuv420p aac 128k -movflags +faststart`, capped at 720p height, then POSTs the bytes to `file-storage-service /v1/files/:fileId/replace` which overwrites the MinIO object at the same storage key. The original upload is always playable immediately; the transcode is an in-place byte optimization.
+- else → single ffmpeg pass to **AV1 webm** (`libaom-av1 -crf 32 -cpu-used 6`, `libopus 96k`), capped at 720p height. The transcoded file is registered as a **separate derivative** via `POST /v1/files/derivatives` (`purpose: 'transcode'`). The original upload is always playable immediately; the derivative lives as its own `FileRecord`. The asset's `transcodeFileId` field points to the derivative.
+
+**Limits:** 4-hour max duration, 7680px max dimension, 1-hour transcode timeout.
 
 **Playback:** web `<video src="/api/v1/files/:fileId/stream?userId=...">` hits a `@Public()` gateway route that proxies to `file-storage-service /v1/files/:fileId/stream` (no auth — capability URL model on the trusted network). Range requests are forwarded for seeking.
+
+## Worker processors
+
+The worker-service runs 7 BullMQ processors, all registered in `QueueModule.onModuleInit()`. Key libraries: `sharp` (image resize/thumbnail), `@vladmandic/human` + `@tensorflow/tfjs-node` (face detection), `exifreader` (EXIF metadata), `ffmpeg-static`/`ffprobe-static` (video probe/transcode).
+
+**`ThumbnailProcessor`:** Downloads file via stream, resizes with `sharp` (images) or ffmpeg frame-seek (videos) to 4 standard sizes (`sm`/`md`/`lg`/`xl`), uploads as webp to file-storage, registers in media-service. Videos seek to 25% of duration for the thumbnail frame. `fit: 'inside'` preserves aspect ratio.
+
+**`MetadataProcessor`:** Downloads file, extracts metadata. Photos: `exifreader` for EXIF (takenAt, camera, GPS, ISO, f-number, etc). Videos: `ffprobe` for codec, duration, dimensions, fps, audio, orientation, QuickTime tags for camera/GPS. Patches asset in media-service with extracted fields.
+
+**`FaceProcessor`:** Downloads image, resizes to ≤1024px, runs `@vladmandic/human` face detection (lazy-loaded in `FaceDetectorService.onModuleInit` to avoid dlopen issues on Alpine). Detects faces with confidence scores and 512-dim embeddings. Registers faces in media-service, then enqueues a `process-faces-cluster` job.
+
+**`FaceClusterService`:** In-memory DBSCAN clustering on face embeddings (`eps=0.4` cosine distance, `minPts=2`). After clustering, noise faces are reassigned to the nearest existing person centroid within `NOISE_ASSIGN_EPS=0.5`. Creates new `Person` entities for new clusters, assigns faces, selects cover face (largest bounding box). O(n²) — fine for personal photo libraries; upgrade path is pgvector HNSW for >~10k faces per user.
+
+**`CleanupProcessor`:** Deletes a single file record from file-storage by `fileId`. Triggered on trash/delete operations.
+
+**`CleanupOrphansProcessor`:** Cross-references file IDs between media-service and file-storage-service. Deletes files in storage not referenced by any asset, and orphan thumbnail rows in media-service. Triggered from gateway admin endpoint.
+
+## Face detection & persons
+
+Faces are detected in the worker via `@vladmandic/human` (512-dim embeddings, pgvector storage in `library_db`). The `FaceClusterService` runs in-memory DBSCAN clustering (`eps=0.4`, `minPts=2`) and creates `Person` entities for new clusters. Noise faces (singletons) are reassigned to the nearest existing person centroid within `eps=0.5`. Cover face is selected by largest bounding box area. Faces and persons are managed via `FacesController`/`PersonsController` in media-service, exposed through `FacesProxyController`/`PersonsProxyController` in the gateway.
+
+## Albums
+
+CRUD + asset membership in media-service (`AlbumsController`). Gateway exposes `api/v1/albums` via `AlbumsProxyController`. Albums have a name, optional description, and a many-to-many relationship with assets through `album_assets`.
+
+## Shares
+
+Token-based public share links for single assets. Media-service (`SharesController`) creates share records with a random token. Gateway exposes `api/v1/shares` for list/create/delete and `api/share/:token` (marked `@Public()`) for public access. The public route returns the share record with a subset of asset fields.
+
+## Places
+
+Map view page using Leaflet. Reads asset latitude/longitude from EXIF metadata (extracted by `MetadataProcessor`). No backend changes — purely frontend rendering of geo-tagged assets on an interactive map.
+
+## Favorites
+
+Standalone favorites page. Assets have a `favorite` boolean flag. Filtering is done client-side from the asset list.
+
+## Admin
+
+Admin subsystem with user list (cross-service stats join from user-service + media-service + file-storage-service), asset failure counts, bulk thumbnail reprocess (enqueues `process-thumbnail` jobs), and orphan cleanup (enqueues `cleanup-orphans` job). Protected by `@AdminGuard()` in the gateway. Pages: `/admin` in the web app.
 
 ## Repository layout
 
@@ -36,7 +90,7 @@ apps/
   worker-service/       NestJS, port 3004 (BullMQ worker; no DB)
   web/                  Vite + React, port 5173
 packages/
-  shared-types/         DTOs (sparse for now)
+  shared-types/         Shared types (47 interfaces: auth, files, assets, thumbnails, admin, faces/people, albums, shares)
   shared-auth/          Auth types (JwtPayload, TokenPair)
   shared-config/        Zod env loader (loadEnv)
 docker/
@@ -107,7 +161,7 @@ After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
 ## API conventions (apply to all NestJS services)
 
 - **Path versioning lives on the service.** Each backend service exposes its public routes under `/v1/...` declared on the controller, e.g. `@Controller('v1/auth')` in user-service. Do NOT use a global `app.setGlobalPrefix` — keep version routes explicit per controller.
-- **Gateway BFF routes live under `api/`.** The gateway exposes `api/services`, `api/v1/auth`, `api/v1/assets`, `api/v1/files`, and `api/v1/videos` via proxy controllers that forward to backend services. `ProxyService` strips hop-by-hop headers, maps downstream 4xx to `HttpException`, 5xx / connection failures to `BadGatewayException` (502). The gateway extracts the user id from the verified JWT (`req.user.id`) and passes it as a query parameter (GET/DELETE) or body field (POST/PATCH) to the backend — it does not send any custom auth headers. The `api/v1/files/:fileId/stream?userId=...` route is marked `@Public()` because the web `<video>` element issues sub-requests for media bytes that don't carry the Authorization header; the path encodes the file id and is treated as a capability URL signed by the gateway session.
+- **Gateway BFF routes live under `api/`.** The gateway exposes `api/services`, `api/v1/auth`, `api/v1/assets`, `api/v1/files`, `api/v1/albums`, `api/v1/shares`, `api/v1/faces`, `api/v1/persons`, and `api/v1/admin/*` via proxy controllers that forward to backend services. `ProxyService` strips hop-by-hop headers, maps downstream 4xx to `HttpException`, 5xx / connection failures to `BadGatewayException` (502). The gateway extracts the user id from the verified JWT (`req.user.id`) and passes it as a query parameter (GET/DELETE) or body field (POST/PATCH) to the backend — it does not send any custom auth headers. The `api/v1/files/:fileId/stream?userId=...` route is marked `@Public()` because the web `<video>` element issues sub-requests for media bytes that don't carry the Authorization header; the path encodes the file id and is treated as a capability URL signed by the gateway session.
 - **Health is unversioned.** Each service exposes `GET /health` (no `v1` prefix) because the web app calls it directly on the service port for the status grid.
 - **Global pipes & filters are mandatory.** Every `main.ts` must include: `app.useGlobalPipes(new ValidationPipe({ whitelist, forbidNonWhitelisted, transform }))` and `app.useGlobalFilters(new HttpExceptionFilter())`. The shared `HttpExceptionFilter` lives at `apps/<service>/src/common/filters/http-exception.filter.ts`.
 - **Validation uses class-validator + class-transformer.** DTOs live next to the controller in `apps/<service>/src/<feature>/dto/*.dto.ts`. `class-validator` and `class-transformer` must be added to the service's `package.json` even though they are optional peers of `@nestjs/common` — do not rely on hoisting.
@@ -127,7 +181,7 @@ After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
 
 ## Service-to-service communication: trust the network
 
-**No guards, no `x-user-id` header, no `/v1/internal/` path prefix.** Backend services trust the network boundary. The gateway is the only auth surface.
+**No guards, no `x-user-id` header, no path prefix distinguishing internal vs external.** Backend services trust the network boundary. The gateway is the only auth surface.
 
 ### How identity flows
 
@@ -217,4 +271,7 @@ Pre-commit order: `pnpm verify` (wipes `pacts/` and runs lint → `pact-consumer
 
 ## Implemented / out of scope
 
-- **Implemented:** photo + video upload end-to-end (file-storage upload → gateway → web timeline page), media-service assets CRUD + trash/restore + thumbnails, gateway BFF layer (`api/` and `api/v1/*` proxy routes, including the public video stream route) with JWT guard + `ProxyService`, BullMQ async jobs (gateway publishes thumbnail + single-pass video jobs to Redis; worker-service consumes them with no DB of its own), web auth, login/register, timeline, and upload UI. Video playback uses a single mp4 streamed through the gateway (capability URL); ffmpeg transcode is an in-place byte replacement, not a transcode-to-HLS pipeline.
+- **Implemented:** photo + video upload end-to-end (file-storage upload → gateway → web timeline page), media-service assets CRUD + trash/restore + thumbnails, gateway BFF layer (`api/` and `api/v1/*` proxy routes, including the public video stream route) with JWT guard + `ProxyService`, BullMQ async jobs (gateway publishes thumbnail + single-pass video jobs to Redis; worker-service consumes them with no DB of its own), web auth, login/register, timeline, and upload UI. Video playback uses a single mp4 streamed through the gateway (capability URL); ffmpeg transcode produces an AV1 webm derivative, not a transcode-to-HLS pipeline.
+- **Implemented:** face detection and clustering (worker-side @vladmandic/human + DBSCAN, pgvector embeddings), persons management (create/rename/reassign faces/set cover), albums (CRUD + asset membership), shares (token-based public links), trash/restore, admin (user stats, asset counts, bulk reprocess, orphan cleanup), metadata extraction (EXIF for photos, ffprobe for videos).
+- **Implemented:** frontend pages — timeline, login/register, albums, trash, favorites, people (list + detail), places (Leaflet map), share (public), shared links, admin dashboard. AssetViewer with info panel, face overlay, location section, keyboard nav.
+- **Not yet:** multi-user sharing (album/person share), batch upload, search, tagging, EXIF editing, mobile app, backup/restore.

@@ -49,7 +49,7 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
         'process-thumbnail',
         { assetId, fileId, userId, size },
         {
-          jobId: `${prefix}:${assetId}:${size}`,
+          jobId: `${prefix}-${assetId}-${size}`,
         },
       )
     }
@@ -66,7 +66,7 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
       'process-video',
       { assetId, fileId, userId },
       {
-        jobId: `${opts?.reprocess ? 'video:reprocess' : 'video'}:${assetId}:v`,
+        jobId: `${opts?.reprocess ? 'video-reprocess' : 'video'}-${assetId}`,
         attempts: 3,
         backoff: { type: 'exponential' },
       },

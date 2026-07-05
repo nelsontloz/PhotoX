@@ -2,6 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 
 
 @Entity('files')
 @Index(['userId', 'checksumSha256'])
+@Index(['userId', 'purpose', 'createdAt'])
 export class FileRecord {
   @PrimaryGeneratedColumn('uuid')
   id!: string

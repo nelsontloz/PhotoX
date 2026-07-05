@@ -8,6 +8,7 @@ import {
   FaFilm,
   FaMagnifyingGlass,
   FaSpinner,
+  FaTrashCan,
   FaTriangleExclamation,
   FaUserShield,
 } from 'react-icons/fa6'
@@ -18,6 +19,8 @@ import {
   listAdminUsers,
   getAdminAssetCounts,
   reprocessThumbnails,
+  cleanupOrphans,
+  getOrphanCounts,
   type ListAdminUsersParams,
 } from '../../api/admin'
 import { formatBytes } from '../../lib/format'
@@ -266,6 +269,149 @@ function ThumbnailReprocessSection() {
   )
 }
 
+function OrphanCleanupSection() {
+  const [data, setData] = useState<{ orphanFiles: number; orphanThumbnails: number } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState(false)
+  const [inFlight, setInFlight] = useState(false)
+  const [result, setResult] = useState<string | null>(null)
+  const [version, setVersion] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    getOrphanCounts()
+      .then((res) => {
+        if (cancelled) return
+        setData(res)
+      })
+      .catch((err: Error) => {
+        if (cancelled) return
+        setError(err.message ?? 'Failed to load orphan counts')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [version])
+
+  const runCleanup = async () => {
+    setConfirming(false)
+    setInFlight(true)
+    setError(null)
+    setResult(null)
+    try {
+      await cleanupOrphans()
+      setResult('Cleanup job enqueued — check worker logs for details.')
+      setVersion((v) => v + 1)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Cleanup failed')
+    } finally {
+      setInFlight(false)
+    }
+  }
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <FaTrashCan className="text-slate-400" />
+          <h2 className="text-sm font-semibold text-slate-200">Orphan cleanup</h2>
+        </div>
+        <button
+          type="button"
+          onClick={() => setVersion((v) => v + 1)}
+          disabled={inFlight}
+          className="text-slate-400 hover:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          <FaArrowsRotate />
+        </button>
+      </div>
+      <div className="bg-card-dark border border-border-dark rounded-xl p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-xs text-slate-400">
+              Files and thumbnail rows in storage not referenced by any asset.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            disabled={inFlight || (data?.orphanFiles === 0 && data?.orphanThumbnails === 0)}
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors"
+          >
+            {inFlight ? <FaSpinner className="animate-spin" /> : null}
+            Clean up
+          </button>
+        </div>
+        {loading ? (
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <SkeletonCard tileCount={2} />
+          </div>
+        ) : error ? (
+          <p className="text-xs text-red-400 mt-3">{error}</p>
+        ) : data ? (
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <div className="bg-slate-900/50 rounded-lg p-4 text-center">
+              <span
+                className={`text-2xl font-bold tabular-nums ${data.orphanFiles > 0 ? 'text-red-400' : 'text-slate-500'}`}
+              >
+                {data.orphanFiles.toLocaleString()}
+              </span>
+              <p className="text-[10px] uppercase tracking-wider text-slate-400 mt-1">
+                Orphan files
+              </p>
+            </div>
+            <div className="bg-slate-900/50 rounded-lg p-4 text-center">
+              <span
+                className={`text-2xl font-bold tabular-nums ${data.orphanThumbnails > 0 ? 'text-red-400' : 'text-slate-500'}`}
+              >
+                {data.orphanThumbnails.toLocaleString()}
+              </span>
+              <p className="text-[10px] uppercase tracking-wider text-slate-400 mt-1">
+                Orphan thumbnails
+              </p>
+            </div>
+          </div>
+        ) : null}
+        {result && <p className="text-xs text-emerald-400 mt-3">{result}</p>}
+      </div>
+
+      {confirming && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-card-dark border border-border-dark rounded-xl p-5 max-w-md w-full">
+            <h3 className="text-base font-semibold text-slate-100">Run orphan cleanup?</h3>
+            <p className="text-sm text-slate-400 mt-2">
+              This scans all files and thumbnails, then deletes anything not referenced by an asset.
+              The worker processes this in the background.
+            </p>
+            <div className="flex justify-end gap-2 mt-5">
+              <button
+                type="button"
+                onClick={() => setConfirming(false)}
+                className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void runCleanup()}
+                className="text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-3 py-2 transition-colors"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function AdminPageContent() {
   const [searchInput, setSearchInput] = useState('')
   const [debouncedQ, setDebouncedQ] = useState('')
@@ -331,6 +477,7 @@ function AdminPageContent() {
     <div className="space-y-6">
       <AssetHealthSection />
       <ThumbnailReprocessSection />
+      <OrphanCleanupSection />
 
       <header className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">

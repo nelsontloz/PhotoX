@@ -67,7 +67,15 @@ export class FacesService {
   }
 
   private async refreshFaceCount(personId: string, userId: string): Promise<void> {
-    const count = await this.repo.count({ where: { personId, userId } })
+    const result = await this.repo
+      .createQueryBuilder('f')
+      .innerJoin('assets', 'a', 'a.id = f."assetId"')
+      .select('COUNT(*)')
+      .where('f."personId" = :personId', { personId })
+      .andWhere('f."userId" = :userId', { userId })
+      .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
+      .getRawOne<{ count: string }>()
+    const count = Number(result?.count ?? 0)
     await this.personRepo.update({ id: personId, userId }, { faceCount: count })
   }
 }

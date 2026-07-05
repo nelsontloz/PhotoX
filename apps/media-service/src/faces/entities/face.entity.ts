@@ -5,14 +5,17 @@ const toVectorString = (v: number[]): string => pgToSql(v) as string
 const fromVectorString = (v: string): number[] => pgFromSql(v) as number[]
 
 @Entity('faces')
+@Index(['personId', 'userId'])
 export class Face {
   @PrimaryGeneratedColumn('uuid')
   id!: string
 
   @Column('uuid')
+  @Index()
   assetId!: string
 
   @Column('uuid')
+  @Index()
   userId!: string
 
   @Column('jsonb')

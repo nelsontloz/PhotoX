@@ -45,3 +45,18 @@ export async function reprocessThumbnails(
   )
   return data
 }
+
+export async function cleanupOrphans(): Promise<{ enqueued: boolean }> {
+  const { data } = await api.post<{ enqueued: boolean }>('/v1/admin/cleanup-orphans')
+  return data
+}
+
+export async function getOrphanCounts(): Promise<{
+  orphanFiles: number
+  orphanThumbnails: number
+}> {
+  const { data } = await api.get<{ orphanFiles: number; orphanThumbnails: number }>(
+    '/v1/admin/orphan-counts',
+  )
+  return data
+}

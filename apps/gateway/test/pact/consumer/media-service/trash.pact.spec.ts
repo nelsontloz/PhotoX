@@ -15,8 +15,7 @@ const ASSET_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22'
 const FILE_ID = '550e8400-e29b-41d4-a716-446655440000'
 
 const trashItemMatcher = {
-  fileId: MatchersV3.uuid(FILE_ID),
-  transcodeFileId: null,
+  fileIds: MatchersV3.eachLike(MatchersV3.uuid(FILE_ID)),
 }
 
 beforeAll(async () => {
@@ -75,7 +74,7 @@ describe('Gateway → media-service trash pact', () => {
       .willRespondWith({
         status: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: MatchersV3.eachLike(trashItemMatcher),
+        body: trashItemMatcher,
       })
       .executeTest(async (mockserver) => {
         stub.targetUrl = mockserver.url

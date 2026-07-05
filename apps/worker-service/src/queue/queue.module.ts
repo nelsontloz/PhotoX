@@ -9,6 +9,7 @@ import { FaceDetectorService } from './face.detector'
 import { FaceProcessor } from './face.processor'
 import { FaceClusterService } from './face.cluster'
 import { CleanupProcessor } from './cleanup.processor'
+import { CleanupOrphansProcessor } from './cleanup-orphans.processor'
 
 @Module({
   imports: [HttpModule],
@@ -23,6 +24,7 @@ import { CleanupProcessor } from './cleanup.processor'
     FaceProcessor,
     FaceClusterService,
     CleanupProcessor,
+    CleanupOrphansProcessor,
   ],
   exports: [BullMqService],
 })
@@ -34,6 +36,7 @@ export class QueueModule implements OnModuleInit {
     private readonly faceProcessor: FaceProcessor,
     private readonly faceClusterService: FaceClusterService,
     private readonly cleanupProcessor: CleanupProcessor,
+    private readonly cleanupOrphansProcessor: CleanupOrphansProcessor,
   ) {}
 
   onModuleInit() {
@@ -43,5 +46,6 @@ export class QueueModule implements OnModuleInit {
     this.faceProcessor.start()
     this.faceClusterService.start()
     this.cleanupProcessor.start()
+    this.cleanupOrphansProcessor.start()
   }
 }

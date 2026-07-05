@@ -197,15 +197,19 @@ export function buildStateHandlers(repos: MockRepos): Record<string, () => Promi
     },
 
     'persons exist for user': () => {
-      repos.mockPersonRepo.createQueryBuilder.mockReturnValue({
-        where: vi.fn().mockReturnThis(),
-        orderBy: vi.fn().mockReturnThis(),
-        addOrderBy: vi.fn().mockReturnThis(),
-        skip: vi.fn().mockReturnThis(),
-        take: vi.fn().mockReturnThis(),
-        getCount: vi.fn().mockResolvedValue(1),
-        getMany: vi.fn().mockResolvedValue([{ ...basePerson }]),
-      })
+      repos.mockPersonRepo.query.mockResolvedValue([
+        {
+          id: PERSON_ID,
+          userId: USER_ID,
+          name: 'Alice',
+          coverFaceId: FACE_ID,
+          clusterLabel: 'cluster-1',
+          faceCount: 2,
+          createdAt: new Date('2024-01-01T00:00:00.000Z'),
+          updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+          liveFaceCount: '2',
+        },
+      ])
       return Promise.resolve()
     },
 
