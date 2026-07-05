@@ -127,7 +127,7 @@ After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
 
 ## Service-to-service communication: trust the network
 
-**No guards, no `x-user-id` header, no `/v1/internal/` path prefix.** Backend services trust the network boundary. The gateway is the only auth surface.
+**No guards, no `x-user-id` header, no path prefix distinguishing internal vs external.** Backend services trust the network boundary. The gateway is the only auth surface.
 
 ### How identity flows
 

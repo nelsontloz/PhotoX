@@ -1,25 +1,11 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Delete,
-  Param,
-  Body,
-  HttpCode,
-  HttpStatus,
-  SetMetadata,
-} from '@nestjs/common'
+import { Controller, Get, Post, Delete, Param, Body, HttpCode, HttpStatus } from '@nestjs/common'
 import { ApiTags } from '@nestjs/swagger'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, DataSource } from 'typeorm'
 import { AssetThumbnail } from '../entities/asset-thumbnail.entity'
 
-const IS_PUBLIC_KEY = 'IS_PUBLIC_KEY'
-const Public = () => SetMetadata(IS_PUBLIC_KEY, true)
-
 @ApiTags('internal')
-@Controller('v1/internal')
-@Public()
+@Controller('v1')
 export class InternalController {
   constructor(
     private readonly dataSource: DataSource,

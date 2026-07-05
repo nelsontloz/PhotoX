@@ -30,7 +30,7 @@ export class CleanupProcessor {
     const { fileId } = job.data
 
     await firstValueFrom(
-      this.http.delete(`${SERVICE_URLS['file-storage-service']}/v1/internal/files/${fileId}`, {
+      this.http.delete(`${SERVICE_URLS['file-storage-service']}/v1/files/${fileId}`, {
         timeout: 30_000,
       }),
     )

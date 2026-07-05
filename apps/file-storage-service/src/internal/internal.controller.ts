@@ -6,7 +6,7 @@ import { FileRecord } from '../entities/file-record.entity'
 import { MinioService } from '../storage/minio.service'
 
 @ApiTags('internal')
-@Controller('v1/internal')
+@Controller('v1')
 export class InternalController {
   constructor(
     @InjectRepository(FileRecord)

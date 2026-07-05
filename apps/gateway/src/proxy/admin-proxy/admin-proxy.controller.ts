@@ -22,14 +22,14 @@ export class AdminProxyController {
   async orphanCounts() {
     try {
       const mediaRes = await firstValueFrom(
-        this.http.get<string[]>(`${SERVICE_URLS['media-service']}/v1/internal/file-ids`, {
+        this.http.get<string[]>(`${SERVICE_URLS['media-service']}/v1/file-ids`, {
           timeout: 30_000,
         }),
       )
       const mediaFileIds = new Set(mediaRes.data)
 
       const storageRes = await firstValueFrom(
-        this.http.get<string[]>(`${SERVICE_URLS['file-storage-service']}/v1/internal/file-ids`, {
+        this.http.get<string[]>(`${SERVICE_URLS['file-storage-service']}/v1/file-ids`, {
           timeout: 30_000,
         }),
       )
@@ -41,7 +41,7 @@ export class AdminProxyController {
       if (storageFileIds.length > 0) {
         const thumbRes = await firstValueFrom(
           this.http.post<{ assetId: string; size: string; fileId: string }[]>(
-            `${SERVICE_URLS['media-service']}/v1/internal/thumbnails/orphan-rows`,
+            `${SERVICE_URLS['media-service']}/v1/thumbnails/orphan-rows`,
             { existingFileIds: storageFileIds },
             { timeout: 30_000 },
           ),
