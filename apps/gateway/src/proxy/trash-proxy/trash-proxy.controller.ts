@@ -57,7 +57,15 @@ export class TrashProxyController {
     })
 
     for (const fileId of result.data.fileIds) {
-      void this.bullmq.enqueue('cleanup-asset', `cleanup:${fileId}`, { fileId })
+      void this.bullmq.enqueue(
+        'cleanup-asset',
+        `cleanup:${fileId}`,
+        { fileId },
+        {
+          attempts: 3,
+          backoff: { type: 'exponential' },
+        },
+      )
     }
   }
 
@@ -79,7 +87,15 @@ export class TrashProxyController {
     })
 
     for (const fileId of result.data.fileIds) {
-      void this.bullmq.enqueue('cleanup-asset', `cleanup:${fileId}`, { fileId })
+      void this.bullmq.enqueue(
+        'cleanup-asset',
+        `cleanup:${fileId}`,
+        { fileId },
+        {
+          attempts: 3,
+          backoff: { type: 'exponential' },
+        },
+      )
     }
   }
 

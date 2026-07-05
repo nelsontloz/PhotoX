@@ -1,13 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
 import { firstValueFrom } from 'rxjs'
-import type { Job } from 'bullmq'
 import { BullMqService } from './bullmq.service'
 import { SERVICE_URLS } from '@photox/shared-config'
-
-interface OrphanCleanupJob {
-  dryRun?: boolean
-}
 
 @Injectable()
 export class CleanupOrphansProcessor {
@@ -19,17 +14,15 @@ export class CleanupOrphansProcessor {
   ) {}
 
   start() {
-    this.bullMq.createWorker<OrphanCleanupJob>('cleanup-orphans', (job) => this.processJob(job), {
+    this.bullMq.createWorker('cleanup-orphans', () => this.processJob(), {
       concurrency: 1,
     })
     this.logger.log('Cleanup orphans processor listening for jobs')
   }
 
-  private async processJob(job: Job<OrphanCleanupJob>) {
-    const dryRun = job.data.dryRun ?? false
-    this.logger.log(`Orphan cleanup starting (dryRun=${dryRun})`)
+  private async processJob() {
+    this.logger.log('Orphan cleanup starting')
 
-    // 1. Get fileIds referenced by media-service
     const mediaRes = await firstValueFrom(
       this.http.get<string[]>(`${SERVICE_URLS['media-service']}/v1/internal/file-ids`, {
         timeout: 30_000,
@@ -37,7 +30,6 @@ export class CleanupOrphansProcessor {
     )
     const mediaFileIds = new Set(mediaRes.data)
 
-    // 2. Get all FileRecord IDs from file-storage-service
     const storageRes = await firstValueFrom(
       this.http.get<string[]>(`${SERVICE_URLS['file-storage-service']}/v1/internal/file-ids`, {
         timeout: 30_000,
@@ -45,11 +37,9 @@ export class CleanupOrphansProcessor {
     )
     const storageFileIds = storageRes.data
 
-    // 3. Find orphan files (in storage but not referenced by media)
     const orphanFileIds = storageFileIds.filter((id) => !mediaFileIds.has(id))
     this.logger.log(`Found ${orphanFileIds.length} orphan files`)
 
-    // 4. Find orphan thumbnail rows (media rows pointing to missing storage files)
     let orphanThumbRows: { assetId: string; size: string; fileId: string }[] = []
     if (storageFileIds.length > 0) {
       const thumbRes = await firstValueFrom(
@@ -63,14 +53,6 @@ export class CleanupOrphansProcessor {
     }
     this.logger.log(`Found ${orphanThumbRows.length} orphan thumbnail rows`)
 
-    if (dryRun) {
-      this.logger.log(
-        `Dry run — would delete ${orphanFileIds.length} files and ${orphanThumbRows.length} thumbnail rows`,
-      )
-      return
-    }
-
-    // 5. Delete orphan files
     let deleted = 0
     for (const fileId of orphanFileIds) {
       try {
@@ -87,7 +69,6 @@ export class CleanupOrphansProcessor {
       }
     }
 
-    // 6. Delete orphan thumbnail rows
     for (const { assetId, size } of orphanThumbRows) {
       try {
         await firstValueFrom(

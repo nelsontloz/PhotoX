@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common'
+import { HttpModule } from '@nestjs/axios'
 import { ProxyModule } from '../proxy.module'
 import { AdminGuard } from '../../auth/admin.guard'
 import { AdminUsersProxyController } from './admin-users-proxy.controller'
@@ -7,7 +8,7 @@ import { AdminThumbnailsProxyController } from './admin-thumbnails-proxy.control
 import { AdminProxyController } from './admin-proxy.controller'
 
 @Module({
-  imports: [ProxyModule],
+  imports: [ProxyModule, HttpModule],
   controllers: [
     AdminUsersProxyController,
     AdminAssetsProxyController,

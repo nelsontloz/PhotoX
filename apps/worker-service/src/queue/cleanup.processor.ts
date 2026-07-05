@@ -29,18 +29,10 @@ export class CleanupProcessor {
   private async processJob(job: Job<CleanupJob>) {
     const { fileId } = job.data
 
-    this.logger.log(`Cleaning up file: fileId=${fileId}`)
-
     await firstValueFrom(
-      this.http.delete(`${SERVICE_URLS['file-storage-service']}/v1/files/${fileId}`, {
+      this.http.delete(`${SERVICE_URLS['file-storage-service']}/v1/internal/files/${fileId}`, {
         timeout: 30_000,
       }),
-    ).catch((err) => {
-      this.logger.warn(
-        `Failed to delete file ${fileId}: ${err instanceof Error ? err.message : String(err)}`,
-      )
-    })
-
-    this.logger.log(`Cleanup complete: fileId=${fileId}`)
+    )
   }
 }
