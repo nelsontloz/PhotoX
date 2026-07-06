@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "pact-consumer": "vitest run --config vitest.consumer.config.ts"
   },
   "dependencies": {
     "@photox/shared-auth": "workspace:*",
@@ -26,6 +27,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@pact-foundation/pact": "^13.0.0",
     "@tailwindcss/vite": "^4.3.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
