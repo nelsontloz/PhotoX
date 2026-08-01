@@ -12,6 +12,7 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  BadGatewayException,
   ConflictException,
 } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
@@ -19,11 +20,23 @@ import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
 import { firstValueFrom } from 'rxjs'
+import { randomUUID } from 'crypto'
+import { createReadStream } from 'fs'
+import { unlink } from 'fs/promises'
+import { tmpdir } from 'os'
+import type { Readable } from 'stream'
+import FormData from 'form-data'
+import { diskStorage } from 'multer'
 import { ProxyService } from '../proxy.service'
 import { SERVICE_URLS } from '@photox/shared-config'
 import { BullMqService } from '../../queue/bullmq.service'
 import { Public } from '../../auth/public.decorator'
 import type { FileListResponse, FileRecord, Asset } from '@photox/shared-types'
+
+const tmpStorage = diskStorage({
+  destination: tmpdir(),
+  filename: (_req, _file, cb) => cb(null, randomUUID()),
+})
 
 @ApiTags('files')
 @Controller('api/v1/files')
@@ -35,7 +48,9 @@ export class FilesProxyController {
   ) {}
 
   @Post()
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 4 * 1024 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileInterceptor('file', { storage: tmpStorage, limits: { fileSize: 4 * 1024 * 1024 * 1024 } }),
+  )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Upload a file and create an asset' })
   @ApiResponse({ status: 201, description: 'File uploaded and asset created' })
@@ -43,44 +58,52 @@ export class FilesProxyController {
   @ApiResponse({ status: 502, description: 'Upstream server error' })
   async upload(
     @Req() req: Request,
-    @UploadedFile() file: { buffer: Buffer; originalname: string; mimetype: string },
+    @UploadedFile() file: { path: string; originalname: string; mimetype: string },
   ) {
     const userId = (req.user as { id: string }).id
     const requestId = (req.headers['x-request-id'] as string) ?? ''
-
-    const kindFromClient = (req.body as { kind?: string }).kind
-    let kind: 'photo' | 'video' | undefined
-    if (kindFromClient === 'photo' || kindFromClient === 'video') {
-      kind = kindFromClient
-    } else if (file.mimetype.startsWith('image/')) {
-      kind = 'photo'
-    } else if (file.mimetype.startsWith('video/')) {
-      kind = 'video'
-    }
-
-    if (!kind) {
-      throw new BadRequestException(
-        'Invalid or missing kind. Provide kind as form field or ensure file is image/video',
-      )
-    }
 
     const title = (req.body as { title?: string }).title
     const description = (req.body as { description?: string }).description
     const takenAt = (req.body as { takenAt?: string }).takenAt
 
-    const form = new FormData()
-    form.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname)
-    form.append('userId', userId)
+    let kind: 'photo' | 'video' | undefined
+    let fileResult: { status: number; data: FileRecord }
+    try {
+      const kindFromClient = (req.body as { kind?: string }).kind
+      if (kindFromClient === 'photo' || kindFromClient === 'video') {
+        kind = kindFromClient
+      } else if (file.mimetype.startsWith('image/')) {
+        kind = 'photo'
+      } else if (file.mimetype.startsWith('video/')) {
+        kind = 'video'
+      }
 
-    const fileResult = await this.proxy.forward<FileRecord>(SERVICE_URLS['file-storage-service'], {
-      method: 'POST',
-      path: 'v1/files',
-      body: form,
-      headers: {
-        'x-request-id': requestId,
-      },
-      timeout: 3_600_000,
-    })
+      if (!kind) {
+        throw new BadRequestException(
+          'Invalid or missing kind. Provide kind as form field or ensure file is image/video',
+        )
+      }
+
+      const form = new FormData()
+      form.append('file', createReadStream(file.path), {
+        filename: file.originalname,
+        contentType: file.mimetype,
+      })
+      form.append('userId', userId)
+
+      fileResult = await this.proxy.forward<FileRecord>(SERVICE_URLS['file-storage-service'], {
+        method: 'POST',
+        path: 'v1/files',
+        body: form,
+        headers: {
+          'x-request-id': requestId,
+        },
+        timeout: 3_600_000,
+      })
+    } finally {
+      await unlink(file.path).catch(() => undefined)
+    }
 
     const record = fileResult.data
 
@@ -207,7 +230,9 @@ export class FilesProxyController {
   }
 
   @Post('derivatives')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 4 * 1024 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileInterceptor('file', { storage: tmpStorage, limits: { fileSize: 4 * 1024 * 1024 * 1024 } }),
+  )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: 'Register a derivative file (e.g. transcoded video) for an existing asset',
@@ -217,26 +242,34 @@ export class FilesProxyController {
   @ApiResponse({ status: 502, description: 'Upstream server error' })
   async uploadDerivative(
     @Req() req: Request,
-    @UploadedFile() file: { buffer: Buffer; originalname: string; mimetype: string },
+    @UploadedFile() file: { path: string; originalname: string; mimetype: string },
   ) {
     const userId = (req.user as { id: string }).id
     const requestId = (req.headers['x-request-id'] as string) ?? ''
     const assetId = (req.body as { assetId?: string }).assetId
 
-    const form = new FormData()
-    form.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname)
-    form.append('userId', userId)
-    form.append('assetId', assetId ?? '')
+    let result: { status: number; data: FileRecord }
+    try {
+      const form = new FormData()
+      form.append('file', createReadStream(file.path), {
+        filename: file.originalname,
+        contentType: file.mimetype,
+      })
+      form.append('userId', userId)
+      form.append('assetId', assetId ?? '')
 
-    const result = await this.proxy.forward<FileRecord>(SERVICE_URLS['file-storage-service'], {
-      method: 'POST',
-      path: 'v1/files/derivatives',
-      body: form,
-      headers: {
-        'x-request-id': requestId,
-      },
-      timeout: 3_600_000,
-    })
+      result = await this.proxy.forward<FileRecord>(SERVICE_URLS['file-storage-service'], {
+        method: 'POST',
+        path: 'v1/files/derivatives',
+        body: form,
+        headers: {
+          'x-request-id': requestId,
+        },
+        timeout: 3_600_000,
+      })
+    } finally {
+      await unlink(file.path).catch(() => undefined)
+    }
 
     return result.data
   }
@@ -262,29 +295,53 @@ export class FilesProxyController {
   @ApiOperation({ summary: 'Download file bytes' })
   @ApiResponse({ status: 200, description: 'File stream' })
   @ApiResponse({ status: 404, description: 'File not found' })
+  @ApiResponse({ status: 502, description: 'Upstream server error' })
   async download(@Param('fileId') fileId: string, @Req() req: Request, @Res() res: Response) {
     const url = `${SERVICE_URLS['file-storage-service']}/v1/files/${fileId}/download`
     const upstream = await firstValueFrom(
       this.http.get(url, {
-        responseType: 'arraybuffer',
+        responseType: 'stream',
         params: { userId: (req.user as { id: string }).id },
         headers: {
           'x-request-id': (req.headers['x-request-id'] as string) ?? '',
         },
-        timeout: 30_000,
+        timeout: 300_000,
         validateStatus: () => true,
       }),
     )
+    const stream = upstream.data as Readable
+    if (upstream.status >= 500) {
+      stream.destroy()
+      throw new BadGatewayException({
+        statusCode: 502,
+        upstream: SERVICE_URLS['file-storage-service'],
+        message: 'Upstream server error',
+      })
+    }
     if (upstream.status >= 400) {
-      res.status(upstream.status).json({ statusCode: upstream.status, message: 'File not found' })
+      stream.destroy()
+      res.status(upstream.status).json({
+        statusCode: upstream.status,
+        message: upstream.statusText || 'Request failed',
+      })
       return
     }
-    const buf = Buffer.from(upstream.data as ArrayBuffer)
     res.set({
       'Content-Type': upstream.headers['content-type'] as string,
-      'Content-Length': String(buf.byteLength),
+      ...(upstream.headers['content-length']
+        ? { 'Content-Length': upstream.headers['content-length'] as string }
+        : {}),
+      ...(upstream.headers['content-disposition']
+        ? { 'Content-Disposition': upstream.headers['content-disposition'] as string }
+        : {}),
     })
-    res.send(buf)
+    stream.on('error', (err) => {
+      res.destroy(err)
+    })
+    res.on('close', () => {
+      stream.destroy()
+    })
+    stream.pipe(res)
   }
 
   @Public()

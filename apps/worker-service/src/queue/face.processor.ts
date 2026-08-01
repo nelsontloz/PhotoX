@@ -3,9 +3,12 @@ import { HttpService } from '@nestjs/axios'
 import sharp from 'sharp'
 import { firstValueFrom } from 'rxjs'
 import type { Job } from 'bullmq'
+import { tmpdir } from 'os'
+import { unlink } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
 import { FaceDetectorService } from './face.detector'
 import { SERVICE_URLS } from '@photox/shared-config'
+import { downloadToTemp } from './download'
 
 interface FaceJob {
   assetId: string
@@ -41,51 +44,56 @@ export class FaceProcessor {
       await firstValueFrom(this.http.patch(patchUrl, { faceStatus: 'pending' }))
 
       const streamUrl = `${SERVICE_URLS['file-storage-service']}/v1/files/${fileId}/stream`
-      const upstream = await firstValueFrom(
-        this.http.get(streamUrl, { responseType: 'arraybuffer', timeout: 30_000 }),
-      )
-      const buffer = Buffer.from(upstream.data as ArrayBuffer)
+      const { path: filePath } = await downloadToTemp(this.http, streamUrl, tmpdir())
 
-      const metadata = await sharp(buffer).metadata()
-      if (!metadata.width || !metadata.height) {
-        throw new Error('Could not read image dimensions')
+      try {
+        const metadata = await sharp(filePath).metadata()
+        if (!metadata.width || !metadata.height) {
+          throw new Error('Could not read image dimensions')
+        }
+        const origW = metadata.width
+        const origH = metadata.height
+
+        const resized = await sharp(filePath)
+          .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
+          .toBuffer()
+        const resizedMeta = await sharp(resized).metadata()
+        const resizedW = resizedMeta.width ?? origW
+        const resizedH = resizedMeta.height ?? origH
+
+        const scaleX = origW / resizedW
+        const scaleY = origH / resizedH
+
+        const detections = await this.faceDetector.detect(resized)
+        const faces = detections.map((d) => ({
+          box: {
+            x: Math.round(d.box.x * scaleX),
+            y: Math.round(d.box.y * scaleY),
+            w: Math.round(d.box.w * scaleX),
+            h: Math.round(d.box.h * scaleY),
+          },
+          confidence: Math.round(d.confidence * 10000) / 10000,
+          embedding: d.embedding,
+        }))
+
+        const facesUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/faces`
+        await firstValueFrom(this.http.post(facesUrl, { userId, faces }, { timeout: 30_000 }))
+
+        await firstValueFrom(
+          this.http.patch(patchUrl, {
+            faceStatus: 'ready',
+            faceCount: faces.length,
+          }),
+        )
+
+        this.logger.log(`Faces complete: asset=${assetId}, count=${faces.length}`)
+      } finally {
+        try {
+          await unlink(filePath)
+        } catch {
+          // file may already be removed
+        }
       }
-      const origW = metadata.width
-      const origH = metadata.height
-
-      const resized = await sharp(buffer)
-        .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
-        .toBuffer()
-      const resizedMeta = await sharp(resized).metadata()
-      const resizedW = resizedMeta.width ?? origW
-      const resizedH = resizedMeta.height ?? origH
-
-      const scaleX = origW / resizedW
-      const scaleY = origH / resizedH
-
-      const detections = await this.faceDetector.detect(resized)
-      const faces = detections.map((d) => ({
-        box: {
-          x: Math.round(d.box.x * scaleX),
-          y: Math.round(d.box.y * scaleY),
-          w: Math.round(d.box.w * scaleX),
-          h: Math.round(d.box.h * scaleY),
-        },
-        confidence: Math.round(d.confidence * 10000) / 10000,
-        embedding: d.embedding,
-      }))
-
-      const facesUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/faces`
-      await firstValueFrom(this.http.post(facesUrl, { userId, faces }, { timeout: 30_000 }))
-
-      await firstValueFrom(
-        this.http.patch(patchUrl, {
-          faceStatus: 'ready',
-          faceCount: faces.length,
-        }),
-      )
-
-      this.logger.log(`Faces complete: asset=${assetId}, count=${faces.length}`)
 
       try {
         await this.bullMq

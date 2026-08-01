@@ -22,12 +22,8 @@ FROM node:20-alpine AS runtime
 RUN corepack enable
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/packages/shared-types/dist ./packages/shared-types/dist
-COPY --from=build /app/packages/shared-types/package.json ./packages/shared-types/
-COPY --from=build /app/packages/shared-config/dist ./packages/shared-config/dist
-COPY --from=build /app/packages/shared-config/package.json ./packages/shared-config/
-COPY --from=build /app/apps/file-storage-service/dist ./apps/file-storage-service/dist
-COPY --from=build /app/apps/file-storage-service/package.json ./apps/file-storage-service/
+COPY --from=build /app/packages ./packages
+COPY --from=build /app/apps/file-storage-service ./apps/file-storage-service
 ENV NODE_ENV=production
 EXPOSE 3003
 CMD ["node", "apps/file-storage-service/dist/main.js"]

@@ -1,3 +1,10 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+
+onlyBuiltDependencies:
+  - '@tensorflow/tfjs-node'
+  - 'sharp'
+  - 'ffmpeg-static'
+  - 'ffprobe-static'
+  - 'argon2'

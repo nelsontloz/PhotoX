@@ -1,7 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "concurrency": "100%",
-  "globalPassThroughEnv": ["DEBUG"],
+  "globalPassThroughEnv": ["DEBUG", "AUTH_TOKEN_SECRET", "AUTH_ACCESS_TTL", "AUTH_REFRESH_TTL", "AUTH_CLOCK_TOLERANCE_SEC"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
