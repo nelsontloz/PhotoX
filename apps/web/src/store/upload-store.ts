@@ -62,7 +62,6 @@ interface UploadState {
   setStatus: (id: string, status: UploadStatus, patch?: Partial<UploadItem>) => void
   setDismissed: (b: boolean) => void
   clearDone: () => void
-  clearAll: () => void
 }
 
 let nextId = 0
@@ -109,8 +108,6 @@ export const useUploadStore = create<UploadState>()(
       setDismissed: (b) => set({ dismissed: b }),
 
       clearDone: () => set((s) => ({ items: s.items.filter((i) => i.status !== 'done') })),
-
-      clearAll: () => set({ items: [] }),
     }),
     {
       name: 'photox.upload-queue.v1',

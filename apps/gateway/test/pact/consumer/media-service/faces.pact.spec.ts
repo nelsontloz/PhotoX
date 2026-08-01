@@ -56,7 +56,6 @@ describe('Gateway → media-service faces pact', () => {
         const res = await request(app.getHttpServer())
           .post(`/api/v1/assets/${ASSET_ID}/faces`)
           .send({
-            userId: USER_ID,
             faces: [
               {
                 box: { x: 10, y: 20, w: 100, h: 100 },

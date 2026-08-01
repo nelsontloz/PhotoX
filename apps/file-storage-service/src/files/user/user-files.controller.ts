@@ -50,13 +50,6 @@ export class UserFilesController {
     return this.userFilesService.upload(userId, file)
   }
 
-  @Post('batch')
-  @ApiOperation({ summary: 'Get multiple file records' })
-  @ApiResponse({ status: 200, description: 'Found and missing files' })
-  async getBatch(@Body() dto: { fileIds: string[] }) {
-    return this.userFilesService.getBatch(dto.fileIds)
-  }
-
   @Post('derivatives')
   @UseInterceptors(FileInterceptor('file', uploadOptions))
   @ApiConsumes('multipart/form-data')
@@ -95,8 +88,7 @@ export class UserFilesController {
     const rangeHeader = req.headers.range
 
     if (rangeHeader) {
-      const preflight = await this.userFilesService.stream(fileId)
-      const totalSize = preflight.totalSize
+      const { totalSize } = await this.userFilesService.getFileStat(fileId)
 
       const range = parseRangeHeader(rangeHeader, totalSize)
       if (!range) {

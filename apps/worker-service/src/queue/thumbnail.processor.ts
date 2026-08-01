@@ -91,7 +91,8 @@ export class ThumbnailProcessor {
     userId: string,
   ): Promise<void> {
     const dims = STANDARD_SIZES[size]
-    const [width, height] = dims ?? size.split('x').map(Number)
+    if (!dims) throw new Error(`Unknown thumbnail size: ${size}`)
+    const [width, height] = dims
 
     const streamUrl = `${SERVICE_URLS['file-storage-service']}/v1/files/${fileId}/stream`
     let tmpPath: string | null = null

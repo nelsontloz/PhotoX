@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return */
 import path from 'node:path'
-import { type INestApplication, ValidationPipe } from '@nestjs/common'
+import { Global, Module, type INestApplication, ValidationPipe } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { getRepositoryToken } from '@nestjs/typeorm'
+import { DataSource } from 'typeorm'
 import { Asset } from '../../../../src/entities/asset.entity'
 import { AssetThumbnail } from '../../../../src/entities/asset-thumbnail.entity'
 import { Face } from '../../../../src/faces/entities/face.entity'
@@ -12,6 +13,21 @@ import { createAssetRepo, createBasicRepo } from './mock-repos'
 import type { MockRepos } from './mock-repos'
 
 export const PACT_DIR = path.resolve(__dirname, '../../../../../../pacts')
+
+@Global()
+@Module({
+  providers: [
+    {
+      provide: DataSource,
+      useValue: {
+        transaction: async (cb: (em: unknown) => Promise<unknown>) =>
+          cb({ delete: () => ({ affected: 1 }) }),
+      },
+    },
+  ],
+  exports: [DataSource],
+})
+class MockDataSourceModule {}
 
 export async function setupMockedApp(): Promise<{
   app: INestApplication
@@ -26,7 +42,7 @@ export async function setupMockedApp(): Promise<{
   const mockPersonRepo = createBasicRepo()
 
   const module = await Test.createTestingModule({
-    imports: [AssetsModule],
+    imports: [MockDataSourceModule, AssetsModule],
   })
     .overrideProvider(getRepositoryToken(Asset))
     .useValue(mockAssetRepo)

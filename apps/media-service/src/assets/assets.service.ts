@@ -1,8 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository, Brackets } from 'typeorm'
+import { Repository, Brackets, DataSource, In } from 'typeorm'
 import { Asset } from '../entities/asset.entity'
 import { AssetThumbnail } from '../entities/asset-thumbnail.entity'
+import { AlbumAsset } from '../entities/album-asset.entity'
+import { Face } from '../faces/entities/face.entity'
 import { CreateAssetDto } from './dto/create-asset.dto'
 import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
@@ -17,6 +19,7 @@ export class AssetsService {
     private readonly repo: Repository<Asset>,
     @InjectRepository(AssetThumbnail)
     private readonly thumbRepo: Repository<AssetThumbnail>,
+    private readonly dataSource: DataSource,
     private readonly facesService: FacesService,
   ) {}
 
@@ -188,7 +191,11 @@ export class AssetsService {
       ...thumbRows.map((t) => t.fileId),
     ]
 
-    await this.repo.remove(assets)
+    await this.dataSource.transaction(async (em) => {
+      await em.delete(Face, { assetId: In(assetIds) })
+      await em.delete(AlbumAsset, { assetId: In(assetIds) })
+      await em.delete(Asset, { id: In(assetIds) })
+    })
     return { fileIds }
   }
 
@@ -204,7 +211,11 @@ export class AssetsService {
       ...thumbRows.map((t) => t.fileId),
     ]
 
-    await this.repo.remove(asset)
+    await this.dataSource.transaction(async (em) => {
+      await em.delete(Face, { assetId: id })
+      await em.delete(AlbumAsset, { assetId: id })
+      await em.delete(Asset, { id })
+    })
     return { fileIds }
   }
 

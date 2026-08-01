@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
+import { IsNull, Repository } from 'typeorm'
 import * as argon2 from 'argon2'
 import { User } from '../entities/user.entity'
 import { RefreshToken } from '../entities/refresh-token.entity'
@@ -50,10 +50,13 @@ export class AuthService {
       where: { tokenHash: hash, purpose: 'refresh' as const },
     })
     if (!row) throw new UnauthorizedException('Invalid refresh token')
-    if (row.revokedAt) throw new UnauthorizedException('Refresh token revoked')
     if (new Date() > row.expiresAt) throw new UnauthorizedException('Refresh token expired')
 
-    await this.tokenRepo.update(row.id, { revokedAt: new Date() })
+    const result = await this.tokenRepo.update(
+      { tokenHash: hash, revokedAt: IsNull() },
+      { revokedAt: () => 'now()' },
+    )
+    if (!result.affected) throw new UnauthorizedException('Refresh token revoked')
 
     const user = await this.userRepo.findOne({ where: { id: row.userId } })
     if (!user) throw new NotFoundException('User not found')

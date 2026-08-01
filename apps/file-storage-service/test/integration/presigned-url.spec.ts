@@ -119,17 +119,14 @@ describe('GET /v1/files/:fileId/url', () => {
     expect((res.body as ErrorBody).message).toBeDefined()
   })
 
-  it('UC-PRE-7: any userId returns presigned URL (no ownership check on internal endpoint)', async () => {
+  it('UC-PRE-7: another user cannot mint a presigned URL for someone else\u2019s file', async () => {
     const owner = mintUserId()
     const other = mintUserId()
     const record = await uploadForUser(httpServer, owner, 'h.png', Buffer.from('h'), 'image/png')
 
-    const res = await supertest(httpServer)
+    await supertest(httpServer)
       .get(`/v1/files/${record.id}/url`)
       .query({ userId: other, ttl: 60 })
-      .expect(200)
-
-    const body = res.body as UrlResponse
-    expect(body.url).toContain(record.storageKey)
+      .expect(404)
   })
 })

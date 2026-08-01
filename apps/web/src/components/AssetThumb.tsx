@@ -80,6 +80,12 @@ export function AssetThumb({ asset, className = '', onThumbPicked }: AssetThumbP
   const isVideo = asset.kind === 'video'
   const transcodeStatus = isVideo ? asset.transcodeStatus : null
 
+  useEffect(() => {
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [objectUrl])
+
   return (
     <div ref={ref} className={`relative w-full h-full ${className}`}>
       {error && !src ? (

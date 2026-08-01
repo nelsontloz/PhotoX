@@ -164,7 +164,7 @@ export class VideoProcessor {
         `${SERVICE_URLS['file-storage-service']}/v1/files/derivatives`,
         form,
         {
-          timeout: 300_000,
+          timeout: 3_600_000,
           maxBodyLength: Infinity,
           maxContentLength: Infinity,
         },

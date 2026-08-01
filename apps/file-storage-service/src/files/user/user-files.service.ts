@@ -9,7 +9,7 @@ import { Readable } from 'stream'
 import { FileRecord } from '../../entities/file-record.entity'
 import { MinioService } from '../../storage/minio.service'
 import { toFileRecordResponse } from '../file-record.mapper'
-import type { FileListResponse, BatchFilesResponse } from '@photox/shared-types'
+import type { FileListResponse } from '@photox/shared-types'
 
 interface UploadedDiskFile {
   path: string
@@ -172,23 +172,6 @@ export class UserFilesService {
     await this.fileRepo.remove(record)
   }
 
-  async getBatch(fileIds: string[]): Promise<BatchFilesResponse> {
-    if (fileIds.length === 0) return { items: [], missing: [] }
-
-    const found = await this.fileRepo
-      .createQueryBuilder('f')
-      .where('f.id IN (:...fileIds)', { fileIds })
-      .getMany()
-
-    const foundIds = new Set(found.map((f) => f.id))
-    const missing = fileIds.filter((id) => !foundIds.has(id))
-
-    return {
-      items: found.map((f) => toFileRecordResponse(f)),
-      missing,
-    }
-  }
-
   async stream(
     fileId: string,
     opts?: { range: { start: number; end: number } },
@@ -208,10 +191,16 @@ export class UserFilesService {
     return { stream, record, totalSize }
   }
 
-  async getFileUrl(userId: string, fileId: string, ttlSeconds = 300): Promise<string> {
+  async getFileStat(fileId: string): Promise<{ totalSize: number }> {
     const record = await this.fileRepo.findOne({ where: { id: fileId } })
     if (!record) throw new NotFoundException('File not found')
-    void userId
+    const stat = await this.minio.statFile(record.storageKey)
+    return { totalSize: stat.size }
+  }
+
+  async getFileUrl(userId: string, fileId: string, ttlSeconds = 300): Promise<string> {
+    const record = await this.fileRepo.findOne({ where: { id: fileId, userId } })
+    if (!record) throw new NotFoundException('File not found')
     return this.minio.presignedGetUrl(record.storageKey, ttlSeconds)
   }
 

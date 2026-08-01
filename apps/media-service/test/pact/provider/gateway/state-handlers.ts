@@ -185,6 +185,7 @@ export function buildStateHandlers(repos: MockRepos): Record<string, () => Promi
     },
 
     [`faces can be registered for asset ${ASSET_ID}`]: () => {
+      repos.mockAssetRepo.save(baseAsset)
       repos.mockFaceRepo.save.mockImplementation((entities: unknown[]) =>
         Promise.resolve(
           (entities as { assetId: string; userId: string }[]).map((e, i) => ({
@@ -297,6 +298,7 @@ export function buildStateHandlers(repos: MockRepos): Record<string, () => Promi
       repos.mockAlbumAssetRepo.createQueryBuilder.mockReturnValue({
         select: vi.fn().mockReturnThis(),
         addSelect: vi.fn().mockReturnThis(),
+        innerJoin: vi.fn().mockReturnThis(),
         where: vi.fn().mockReturnThis(),
         andWhere: vi.fn().mockReturnThis(),
         orderBy: vi.fn().mockReturnThis(),

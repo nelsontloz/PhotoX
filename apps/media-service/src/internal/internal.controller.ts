@@ -31,10 +31,12 @@ export class InternalController {
   ): Promise<{ assetId: string; size: string; fileId: string }[]> {
     const ids = body.existingFileIds?.filter(Boolean) ?? []
     if (ids.length === 0) return []
+    const cutoff = new Date(Date.now() - 10 * 60 * 1000)
     return this.thumbRepo
       .createQueryBuilder('t')
       .select(['t."assetId"', 't.size', 't."fileId"'])
       .where('t."fileId" NOT IN (:...ids)', { ids })
+      .andWhere('t."createdAt" < :cutoff', { cutoff })
       .getRawMany()
   }
 

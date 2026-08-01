@@ -335,8 +335,8 @@ export class FilesProxyController {
         ? { 'Content-Disposition': upstream.headers['content-disposition'] as string }
         : {}),
     })
-    stream.on('error', (err) => {
-      res.destroy(err)
+    stream.on('error', () => {
+      res.destroy()
     })
     res.on('close', () => {
       stream.destroy()
@@ -359,16 +359,35 @@ export class FilesProxyController {
           'x-request-id': (req.headers['x-request-id'] as string) ?? '',
           ...(req.headers.range ? { range: req.headers.range } : {}),
         },
-        timeout: 30_000,
+        timeout: 300_000,
         validateStatus: () => true,
       }),
     )
+    const stream = upstream.data as Readable
+    if (upstream.status >= 500) {
+      stream.destroy()
+      throw new BadGatewayException({
+        statusCode: 502,
+        upstream: SERVICE_URLS['file-storage-service'],
+        message: 'Upstream server error',
+      })
+    }
     if (upstream.status >= 400) {
-      res.status(upstream.status).json({ statusCode: upstream.status, message: 'File not found' })
+      stream.destroy()
+      res.status(upstream.status).json({
+        statusCode: upstream.status,
+        message: upstream.statusText || 'Request failed',
+      })
       return
     }
     res.set({
       'Content-Type': upstream.headers['content-type'] as string,
+      ...(upstream.headers['content-length']
+        ? { 'Content-Length': upstream.headers['content-length'] as string }
+        : {}),
+      ...(upstream.headers['content-disposition']
+        ? { 'Content-Disposition': upstream.headers['content-disposition'] as string }
+        : {}),
       ...(upstream.headers['content-range']
         ? { 'content-range': upstream.headers['content-range'] as string }
         : {}),
@@ -377,7 +396,13 @@ export class FilesProxyController {
         : {}),
     })
     res.status(upstream.status)
-    ;(upstream.data as NodeJS.ReadableStream).pipe(res)
+    stream.on('error', () => {
+      res.destroy()
+    })
+    res.on('close', () => {
+      stream.destroy()
+    })
+    stream.pipe(res)
   }
 
   @Delete(':fileId')

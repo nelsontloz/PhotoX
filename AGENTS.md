@@ -269,6 +269,8 @@ After editing a service, `pnpm dev` (or the single-package filter) hot-reloads. 
 
 Pre-commit order: `pnpm verify` (wipes `pacts/` and runs lint → `pact-consumer` → `pact-provider` → `pact-coverage` → test → typecheck → build in sequence). Alternatively, run individual steps: `pnpm pact-consumer && pnpm pact-provider && pnpm pact-coverage && pnpm typecheck && pnpm lint && pnpm test`.
 
+**Podman note:** on machines running Podman instead of Docker (`/var/run/docker.sock` → podman.sock), the testcontainers Ryuk sidecar cannot reach the Docker daemon socket and every integration suite fails (`Log stream ended and message "/.*Started.*/" was not received`). Run `TESTCONTAINERS_RYUK_DISABLED=true pnpm verify` (the var is in turbo.json `globalPassThroughEnv`; the test suites tear down their own containers, so Ryuk isn't needed). Alternatively, use a rootful Podman machine so plain `pnpm verify` works.
+
 ## Implemented / out of scope
 
 - **Implemented:** photo + video upload end-to-end (file-storage upload → gateway → web timeline page), media-service assets CRUD + trash/restore + thumbnails, gateway BFF layer (`api/` and `api/v1/*` proxy routes, including the public video stream route) with JWT guard + `ProxyService`, BullMQ async jobs (gateway publishes thumbnail + single-pass video jobs to Redis; worker-service consumes them with no DB of its own), web auth, login/register, timeline, and upload UI. Video playback uses a single mp4 streamed through the gateway (capability URL); ffmpeg transcode produces an AV1 webm derivative, not a transcode-to-HLS pipeline.

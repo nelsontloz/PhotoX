@@ -5,6 +5,7 @@ WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/shared-config/package.json ./packages/shared-config/
+COPY packages/shared-auth/package.json ./packages/shared-auth/
 COPY apps/user-service/package.json ./apps/user-service/
 RUN pnpm install --frozen-lockfile || pnpm install
 
@@ -16,6 +17,7 @@ COPY packages/ ./packages/
 COPY apps/user-service/ ./apps/user-service/
 RUN pnpm --filter @photox/shared-config build && \
     pnpm --filter @photox/shared-types build && \
+    pnpm --filter @photox/shared-auth build && \
     pnpm --filter @photox/user-service build
 
 # -- runtime --

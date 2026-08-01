@@ -57,7 +57,7 @@ export class CleanupOrphansProcessor {
     for (const fileId of orphanFileIds) {
       try {
         await firstValueFrom(
-          this.http.delete(`${SERVICE_URLS['file-storage-service']}/v1/files/${fileId}`, {
+          this.http.delete(`${SERVICE_URLS['file-storage-service']}/v1/internal/files/${fileId}`, {
             timeout: 30_000,
           }),
         )

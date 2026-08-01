@@ -16,6 +16,12 @@ interface MetadataJob {
   kind: 'photo' | 'video'
 }
 
+export function branchFor(mimeType: string | null): 'photo' | 'video' | null {
+  if (mimeType?.startsWith('image/')) return 'photo'
+  if (mimeType?.startsWith('video/')) return 'video'
+  return null
+}
+
 @Injectable()
 export class MetadataProcessor {
   private readonly logger = new Logger(MetadataProcessor.name)
@@ -55,8 +61,14 @@ export class MetadataProcessor {
 
       const patchUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
 
+      const branch = branchFor(mimeType)
+      if (!branch) {
+        this.logger.warn(`Unknown mime type ${mimeType}, skipping metadata: asset=${assetId}`)
+        return
+      }
+
       try {
-        if (kind === 'photo' || mimeType?.startsWith('image/')) {
+        if (branch === 'photo') {
           const metadata = this.metadataExtractor.extract(await readFile(filePath))
           const hasAnyField = Object.values(metadata).some((v) => v !== null)
           const metadataStatus = hasAnyField ? 'ready' : 'failed'
@@ -84,7 +96,7 @@ export class MetadataProcessor {
               metadata: null,
             }),
           )
-        } else if (kind === 'video' || mimeType?.startsWith('video/')) {
+        } else if (branch === 'video') {
           const videoMeta = await this.videoMetadataExtractor.extract(filePath)
           const hasAnyVideoField = [
             videoMeta.durationSeconds,

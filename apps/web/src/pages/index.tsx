@@ -57,10 +57,15 @@ function TimelineContent() {
 
   const handleBulkTrash = async () => {
     const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
     if (!window.confirm(`Move ${ids.length} item${ids.length > 1 ? 's' : ''} to trash?`)) return
-    await trashAssets(ids)
-    clearSelection()
-    void refresh()
+    try {
+      await trashAssets(ids)
+      clearSelection()
+      void refresh()
+    } catch {
+      window.alert('Failed to move items to trash. Please try again.')
+    }
   }
 
   const onClickAsset = (asset: Asset) => {

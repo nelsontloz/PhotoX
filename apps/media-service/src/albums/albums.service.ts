@@ -144,22 +144,13 @@ export class AlbumsService {
       .createQueryBuilder('aa')
       .select('aa.assetId', 'assetId')
       .addSelect('aa.addedAt', 'addedAt')
+      .innerJoin('assets', 'asset', 'asset.id = aa."assetId"')
       .where('aa.albumId = :albumId', { albumId })
+      .andWhere('asset.isTrashed = false')
       .orderBy('aa.addedAt', 'DESC')
       .offset(offset)
       .limit(limit)
       .getRawMany<{ assetId: string }>()
-
-    if (joins.length === 0) {
-      return { items: [], total: 0 }
-    }
-
-    const ids = joins.map((j) => j.assetId)
-    const fetched = await this.assetRepo.find({
-      where: { id: In(ids), userId, isTrashed: false },
-    })
-    const orderMap = new Map(ids.map((id, i) => [id, i]))
-    const items = fetched.sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0))
 
     const total = await this.assetRepo
       .createQueryBuilder('a')
@@ -169,6 +160,17 @@ export class AlbumsService {
       .andWhere('a.userId = :userId', { userId })
       .andWhere('a.isTrashed = false')
       .getCount()
+
+    if (joins.length === 0) {
+      return { items: [], total }
+    }
+
+    const ids = joins.map((j) => j.assetId)
+    const fetched = await this.assetRepo.find({
+      where: { id: In(ids), userId, isTrashed: false },
+    })
+    const orderMap = new Map(ids.map((id, i) => [id, i]))
+    const items = fetched.sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0))
 
     return { items, total }
   }

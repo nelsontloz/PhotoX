@@ -60,10 +60,14 @@ function FaceRow({
 }
 
 export function FacesSection({ asset }: FacesSectionProps) {
-  const faces: FaceDto[] = asset.faces ?? []
   const status = asset.faceStatus
+  const [faces, setFaces] = useState<FaceDto[]>(asset.faces ?? [])
   const [persons, setPersons] = useState<PersonDto[]>([])
   const [personMap, setPersonMap] = useState<Map<string, PersonDto>>(new Map())
+
+  useEffect(() => {
+    setFaces(asset.faces ?? [])
+  }, [asset])
 
   useEffect(() => {
     if (faces.length === 0) return
@@ -81,14 +85,15 @@ export function FacesSection({ asset }: FacesSectionProps) {
     const face = faces.find((f) => f.id === faceId)
     if (!face) return
 
-    const targetPerson = toPersonId ? persons.find((p) => p.id === toPersonId) : null
-
     try {
-      const result = await reassignFaces(targetPerson?.id ?? '', {
+      const result = await reassignFaces(face.personId ?? 'none', {
         toPersonId,
         faceIds: [faceId],
       })
       if (result.moved > 0) {
+        setFaces((prev) =>
+          prev.map((f) => (f.id === faceId ? { ...f, personId: toPersonId } : f)),
+        )
         setPersonMap((prev) => {
           const next = new Map(prev)
           if (toPersonId) {
@@ -103,7 +108,7 @@ export function FacesSection({ asset }: FacesSectionProps) {
         })
       }
     } catch {
-      // ponytail: silent fail on reassign
+      window.alert('Failed to reassign face. Please try again.')
     }
   }
 

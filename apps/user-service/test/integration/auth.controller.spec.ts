@@ -425,6 +425,18 @@ describe('POST /v1/auth/refresh', () => {
     expect(body.user.id).toBe(reg.user.id)
     expect(body.user.email).toBe(email)
   })
+
+  it('REF-08: parallel refresh with same token — exactly one 200, other 401', async () => {
+    const email = randomEmail()
+    const reg = await registerUser(email, randomPassword())
+
+    const [res1, res2] = await Promise.all([
+      supertest(httpServer).post('/v1/auth/refresh').send({ refreshToken: reg.refreshToken }),
+      supertest(httpServer).post('/v1/auth/refresh').send({ refreshToken: reg.refreshToken }),
+    ])
+
+    expect([res1.status, res2.status].sort()).toEqual([200, 401])
+  })
 })
 
 describe('POST /v1/auth/logout', () => {

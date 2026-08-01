@@ -15,3 +15,6 @@ pacts/
 .tmp/
 .slim/
 .worktrees/
+
+# deepwork state (git-local, OpenCode-readable)
+.slim/deepwork/

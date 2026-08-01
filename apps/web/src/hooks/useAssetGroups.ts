@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Asset } from '@photox/shared-types'
 import { listAssets } from '../api/assets'
 import { groupDateLabel, groupDateSortKey } from '../lib/dateFormat'
+import { useAppStore } from '../store/app-store'
 
 export interface AssetGroup {
   label: string
@@ -15,11 +16,14 @@ export function useAssetGroups(
   opts: { isTrashed?: boolean; favorite?: boolean; dateField?: 'takenAt' | 'trashedAt' } = {},
 ) {
   const { isTrashed, favorite, dateField = 'takenAt' } = opts
+  const timelineRefreshKey = useAppStore((s) => s.timelineRefreshKey)
   const [groups, setGroups] = useState<AssetGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const fetchIdRef = useRef(0)
 
   const fetchAssets = async () => {
+    const fetchId = ++fetchIdRef.current
     try {
       setLoading(true)
       setError(null)
@@ -37,6 +41,8 @@ export function useAssetGroups(
         total = res.total
         offset += PAGE_SIZE
       } while (offset < total)
+
+      if (fetchId !== fetchIdRef.current) return
 
       const sorted = all
         .filter((a) => dateOf(a))
@@ -68,15 +74,16 @@ export function useAssetGroups(
 
       setGroups(grouped)
     } catch (err) {
+      if (fetchId !== fetchIdRef.current) return
       setError((err as Error).message ?? 'Failed to load assets')
     } finally {
-      setLoading(false)
+      if (fetchId === fetchIdRef.current) setLoading(false)
     }
   }
 
   useEffect(() => {
     void fetchAssets()
-  }, [])
+  }, [timelineRefreshKey])
 
   return { groups, loading, error, refresh: fetchAssets }
 }
