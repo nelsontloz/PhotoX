@@ -141,10 +141,22 @@ export async function runFfprobeJson(input: string): Promise<FfprobeResult> {
   const stdoutPromise = collect(proc.stdout, 'binary') as Promise<Buffer>
   const stderrPromise = collect(proc.stderr, 'text') as Promise<string>
 
+  let timer: ReturnType<typeof setTimeout> | undefined
+
   const result = await new Promise<{ stdout: Buffer; stderr: string; code: number | null }>(
     (resolve, reject) => {
-      proc.on('error', reject)
+      timer = setTimeout(() => {
+        killWithDelay(proc)
+        reject(new Error(`ffprobe timed out after ${DEFAULT_TIMEOUT_MS}ms`))
+      }, DEFAULT_TIMEOUT_MS)
+
+      proc.on('error', (err) => {
+        clearTimeout(timer)
+        reject(err)
+      })
+
       proc.on('close', (code) => {
+        clearTimeout(timer)
         void (async () => {
           const stdout = await stdoutPromise
           const stderr = await stderrPromise

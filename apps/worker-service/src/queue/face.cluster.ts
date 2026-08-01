@@ -138,19 +138,26 @@ export class FaceClusterService {
       return
     }
 
-    const embeddings = faces.map((f) => f.embedding)
+    const unassigned = faces.filter((f) => f.personId === null)
+
+    if (unassigned.length === 0) {
+      this.logger.log(`No unassigned faces for user=${userId}, skipping clustering`)
+      return
+    }
+
+    const embeddings = unassigned.map((f) => f.embedding)
     const labels = dbscan(embeddings, DBSCAN_EPS, DBSCAN_MIN_PTS)
 
     const clusters = new Map<number, FaceItem[]>()
     const noiseFaces: FaceItem[] = []
-    for (let i = 0; i < faces.length; i++) {
+    for (let i = 0; i < unassigned.length; i++) {
       const label = labels[i]!
       if (label === -1) {
-        noiseFaces.push(faces[i]!)
+        noiseFaces.push(unassigned[i]!)
         continue
       }
       const arr = clusters.get(label) ?? []
-      arr.push(faces[i]!)
+      arr.push(unassigned[i]!)
       clusters.set(label, arr)
     }
 
@@ -234,7 +241,7 @@ export class FaceClusterService {
     }
 
     this.logger.log(
-      `Clustered ${faces.length} faces into ${clusters.size} groups (${noiseReassigned} noise faces reassigned to existing persons) for user=${userId}`,
+      `Clustered ${unassigned.length} unassigned faces into ${clusters.size} groups (${noiseReassigned} noise faces reassigned to existing persons) for user=${userId}`,
     )
   }
 }

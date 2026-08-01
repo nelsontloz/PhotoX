@@ -4,8 +4,8 @@ import { FaSpinner, FaCircleExclamation } from 'react-icons/fa6'
 import { api } from '../../api/client'
 import type { PublicShareResponse } from '@photox/shared-types'
 
-function getStreamUrl(fileId: string, userId: string): string {
-  return `/api/v1/files/${fileId}/stream?userId=${encodeURIComponent(userId)}`
+function getStreamUrl(token: string): string {
+  return `/api/share/${encodeURIComponent(token)}/stream`
 }
 
 export default function PublicSharePage() {
@@ -52,12 +52,13 @@ export default function PublicSharePage() {
 
   const { asset } = data
   const isVideo = asset.kind === 'video'
+  const streamUrl = token ? getStreamUrl(token) : ''
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-black">
       {isVideo ? (
         <video
-          src={getStreamUrl(asset.fileId, asset.userId)}
+          src={streamUrl}
           controls
           autoPlay
           className="max-w-full max-h-screen object-contain"
@@ -65,7 +66,7 @@ export default function PublicSharePage() {
         />
       ) : (
         <img
-          src={getStreamUrl(asset.fileId, asset.userId)}
+          src={streamUrl}
           alt={asset.originalName ?? asset.title ?? 'Photo'}
           className="max-w-full max-h-screen object-contain"
         />

@@ -4,6 +4,7 @@ import { Repository, Brackets, DataSource, In } from 'typeorm'
 import { Asset } from '../entities/asset.entity'
 import { AssetThumbnail } from '../entities/asset-thumbnail.entity'
 import { AlbumAsset } from '../entities/album-asset.entity'
+import { AssetShare } from '../entities/asset-share.entity'
 import { Face } from '../faces/entities/face.entity'
 import { CreateAssetDto } from './dto/create-asset.dto'
 import { UpdateAssetDto } from './dto/update-asset.dto'
@@ -194,6 +195,7 @@ export class AssetsService {
     await this.dataSource.transaction(async (em) => {
       await em.delete(Face, { assetId: In(assetIds) })
       await em.delete(AlbumAsset, { assetId: In(assetIds) })
+      await em.delete(AssetShare, { assetId: In(assetIds) })
       await em.delete(Asset, { id: In(assetIds) })
     })
     return { fileIds }
@@ -214,6 +216,7 @@ export class AssetsService {
     await this.dataSource.transaction(async (em) => {
       await em.delete(Face, { assetId: id })
       await em.delete(AlbumAsset, { assetId: id })
+      await em.delete(AssetShare, { assetId: id })
       await em.delete(Asset, { id })
     })
     return { fileIds }

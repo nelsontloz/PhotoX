@@ -1,5 +1,5 @@
 # -- deps --
-FROM node:20-bookworm-slim AS deps
+FROM node:22-bookworm-slim AS deps
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /app
@@ -21,7 +21,7 @@ RUN pnpm --filter @photox/shared-config build && \
     pnpm --filter @photox/worker-service build
 
 # -- runtime --
-FROM node:20-bookworm-slim AS runtime
+FROM node:22-bookworm-slim AS runtime
 RUN corepack enable
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules

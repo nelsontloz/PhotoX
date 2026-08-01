@@ -167,7 +167,12 @@ export class FilesProxyController {
           userId,
           kind,
         },
-        { jobId: assetResult.data.id, attempts: 3, backoff: { type: 'exponential' } },
+        {
+          jobId: assetResult.data.id,
+          attempts: 3,
+          backoff: { type: 'exponential' },
+          removeOnFail: true,
+        },
       )
       if (kind === 'video') {
         this.bullmq.enqueueVideo(assetResult.data.id, record.id, userId)
@@ -181,7 +186,12 @@ export class FilesProxyController {
             fileId: record.id,
             userId,
           },
-          { jobId: `face:${assetResult.data.id}:detect` },
+          {
+            jobId: `face:${assetResult.data.id}:detect`,
+            attempts: 3,
+            backoff: { type: 'exponential' },
+            removeOnFail: true,
+          },
         )
       }
       return assetResult.data
