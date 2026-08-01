@@ -143,10 +143,6 @@ services:
     environment:
       NODE_ENV: production
       WORKER_SERVICE_PORT: 3004
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: photox
-      POSTGRES_PASSWORD: photox_dev
       FILE_STORAGE_SERVICE_URL: http://file-storage-service:3003
       MEDIA_SERVICE_URL: http://media-service:3002
       REDIS_HOST: redis

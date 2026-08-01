@@ -310,7 +310,9 @@ describe('AlbumsService', () => {
       const joinsQb = {
         select: vi.fn().mockReturnThis(),
         addSelect: vi.fn().mockReturnThis(),
+        innerJoin: vi.fn().mockReturnThis(),
         where: vi.fn().mockReturnThis(),
+        andWhere: vi.fn().mockReturnThis(),
         orderBy: vi.fn().mockReturnThis(),
         offset: vi.fn().mockReturnThis(),
         limit: vi.fn().mockReturnThis(),

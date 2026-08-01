@@ -224,6 +224,7 @@ export function createAlbumAssetRepo() {
     createQueryBuilder: vi.fn().mockReturnValue({
       where: vi.fn().mockReturnThis(),
       andWhere: vi.fn().mockReturnThis(),
+      innerJoin: vi.fn().mockReturnThis(),
       getCount: vi.fn().mockResolvedValue(0),
       insert: vi.fn().mockReturnThis(),
       into: vi.fn().mockReturnThis(),

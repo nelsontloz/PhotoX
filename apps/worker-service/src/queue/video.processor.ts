@@ -4,10 +4,13 @@ import { firstValueFrom } from 'rxjs'
 import type { Job } from 'bullmq'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { writeFile, rm, mkdir, readFile } from 'fs/promises'
+import { createReadStream } from 'fs'
+import { rm, mkdir } from 'fs/promises'
+import FormData from 'form-data'
 import { BullMqService } from './bullmq.service'
 import { SERVICE_URLS } from '@photox/shared-config'
 import { runFfmpeg, runFfprobeJson } from './ffmpeg'
+import { downloadToTemp } from './download'
 
 interface ProcessVideoJob {
   assetId: string
@@ -97,8 +100,7 @@ export class VideoProcessor {
 
       await runFfmpeg(ffmpegArgs, { timeoutMs: TRANSCODE_TIMEOUT_MS })
 
-      const transcoded = await readFile(outPath)
-      const derivativeFileId = await this.registerDerivative(assetId, userId, transcoded)
+      const derivativeFileId = await this.registerDerivative(assetId, userId, outPath)
 
       await this.patchAsset(assetId, {
         transcodeStatus: 'ready',
@@ -140,41 +142,29 @@ export class VideoProcessor {
         { timeout: 5_000 },
       ),
     )
-    const presignedUrl = urlRes.data.url
-
-    const fileRes = await firstValueFrom(
-      this.http.get(presignedUrl, {
-        responseType: 'arraybuffer',
-        timeout: 300_000,
-      }),
-    )
-
-    const buffer = Buffer.from(fileRes.data as ArrayBuffer)
-    const contentType = (fileRes.headers['content-type'] as string) ?? 'video/mp4'
-    const ext = contentType.includes('webm')
-      ? 'webm'
-      : contentType.includes('quicktime')
-        ? 'mov'
-        : 'mp4'
-    const destPath = join(destDir, `source.${ext}`)
-    await mkdir(destDir, { recursive: true })
-    await writeFile(destPath, buffer)
-    return destPath
+    const { path } = await downloadToTemp(this.http, urlRes.data.url, destDir)
+    return path
   }
 
   // ponytail: this exists. Replaces the older in-place replace path that overwrote the original bytes; originals are now immutable and derivatives live as separate FileRecord rows.
-  private async registerDerivative(assetId: string, userId: string, body: Buffer): Promise<string> {
+  private async registerDerivative(
+    assetId: string,
+    userId: string,
+    outPath: string,
+  ): Promise<string> {
     const form = new FormData()
     form.append('userId', userId)
     form.append('assetId', assetId)
-    const blob = new Blob([body], { type: 'video/webm' })
-    form.append('file', blob, 'video.webm')
+    form.append('file', createReadStream(outPath), {
+      filename: 'video.webm',
+      contentType: 'video/webm',
+    })
     const res = await firstValueFrom(
       this.http.post<{ id: string }>(
         `${SERVICE_URLS['file-storage-service']}/v1/files/derivatives`,
         form,
         {
-          timeout: 300_000,
+          timeout: 3_600_000,
           maxBodyLength: Infinity,
           maxContentLength: Infinity,
         },

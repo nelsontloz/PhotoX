@@ -2,11 +2,21 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { randomUUID, createHash } from 'crypto'
+import { createReadStream } from 'fs'
+import { unlink } from 'fs/promises'
+import { pipeline } from 'stream/promises'
 import { Readable } from 'stream'
 import { FileRecord } from '../../entities/file-record.entity'
 import { MinioService } from '../../storage/minio.service'
 import { toFileRecordResponse } from '../file-record.mapper'
-import type { FileListResponse, BatchFilesResponse } from '@photox/shared-types'
+import type { FileListResponse } from '@photox/shared-types'
+
+interface UploadedDiskFile {
+  path: string
+  originalname: string
+  mimetype: string
+  size: number
+}
 
 @Injectable()
 export class UserFilesService {
@@ -16,61 +26,87 @@ export class UserFilesService {
     private readonly minio: MinioService,
   ) {}
 
-  async upload(
+  async upload(userId: string, file: UploadedDiskFile): Promise<FileRecord> {
+    return this.storeFile(userId, file, 'original', null)
+  }
+
+  async uploadDerivative(
     userId: string,
-    file: { buffer: Buffer; originalname: string; mimetype: string; size: number },
+    assetId: string,
+    file: UploadedDiskFile,
+  ): Promise<FileRecord> {
+    return this.storeFile(userId, file, 'transcode', assetId)
+  }
+
+  private async storeFile(
+    userId: string,
+    file: UploadedDiskFile,
+    purpose: 'original' | 'transcode',
+    assetId: string | null,
   ): Promise<FileRecord> {
     if (!file) {
       throw new BadRequestException('No file provided')
     }
 
-    const checksum = createHash('sha256').update(file.buffer).digest('hex')
-
-    const existing = await this.fileRepo.findOne({
-      where: { userId, checksumSha256: checksum, purpose: 'original' },
-    })
-    if (existing) return existing
-
-    const ext = this.getExtension(file.originalname)
-    const fileId = randomUUID()
-    const storageKey = `${userId}/${fileId}.${ext}`
+    const label = purpose === 'transcode' ? 'derivative' : 'file'
 
     try {
-      await this.minio.uploadFile(
-        storageKey,
-        Readable.from(file.buffer),
-        file.buffer.length,
-        file.mimetype,
-      )
-    } catch (err) {
-      console.error('[UserFilesService] MinIO upload failed', err)
-      throw new BadRequestException('Failed to upload file to storage')
-    }
+      const checksum = await this.computeChecksum(file.path)
 
-    const record = this.fileRepo.create({
-      userId,
-      storageKey,
-      originalName: file.originalname,
-      mimeType: file.mimetype,
-      sizeBytes: file.size,
-      checksumSha256: checksum,
-      purpose: 'original',
-      assetId: null,
-    })
+      const existing = await this.fileRepo.findOne({
+        where: { userId, checksumSha256: checksum, purpose, ...(assetId ? { assetId } : {}) },
+      })
+      if (existing) return existing
 
-    try {
-      await this.fileRepo.save(record)
-    } catch (err) {
-      console.error('[UserFilesService] DB save failed, cleaning up MinIO object', err)
+      const ext = this.getExtension(file.originalname)
+      const fileId = randomUUID()
+      const storageKey = `${userId}/${fileId}.${ext}`
+
       try {
-        await this.minio.deleteFile(storageKey)
-      } catch (cleanupErr) {
-        console.error('[UserFilesService] Orphan cleanup failed', cleanupErr)
+        const stream = createReadStream(file.path)
+        stream.on('error', () => undefined)
+        await this.minio.uploadFile(storageKey, stream, file.size, file.mimetype)
+      } catch (err) {
+        console.error(`[UserFilesService] MinIO ${label} upload failed`, err)
+        throw new BadRequestException(`Failed to upload ${label} to storage`)
       }
-      throw new BadRequestException('Failed to save file record')
-    }
 
-    return record
+      const record = this.fileRepo.create({
+        userId,
+        storageKey,
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        sizeBytes: file.size,
+        checksumSha256: checksum,
+        purpose,
+        assetId,
+      })
+
+      try {
+        await this.fileRepo.save(record)
+      } catch (err) {
+        console.error(`[UserFilesService] DB save failed, cleaning up ${label} object`, err)
+        try {
+          await this.minio.deleteFile(storageKey)
+        } catch (cleanupErr) {
+          console.error(
+            `[UserFilesService] ${label.charAt(0).toUpperCase()}${label.slice(1)} cleanup failed`,
+            cleanupErr,
+          )
+        }
+        throw new BadRequestException(`Failed to save ${label} record`)
+      }
+
+      return record
+    } finally {
+      await unlink(file.path).catch(() => undefined)
+    }
+  }
+
+  private async computeChecksum(path: string): Promise<string> {
+    const hash = createHash('sha256')
+    await pipeline(createReadStream(path), hash)
+    return hash.digest('hex')
   }
 
   async list(userId: string, limit = 20, offset = 0, mimeType?: string): Promise<FileListResponse> {
@@ -102,64 +138,6 @@ export class UserFilesService {
       limit,
       offset,
     }
-  }
-
-  async uploadDerivative(
-    userId: string,
-    assetId: string,
-    file: { buffer: Buffer; originalname: string; mimetype: string; size: number },
-  ): Promise<FileRecord> {
-    if (!file) {
-      throw new BadRequestException('No file provided')
-    }
-
-    const checksum = createHash('sha256').update(file.buffer).digest('hex')
-
-    const existing = await this.fileRepo.findOne({
-      where: { userId, checksumSha256: checksum, assetId, purpose: 'transcode' },
-    })
-    if (existing) return existing
-
-    const ext = this.getExtension(file.originalname)
-    const fileId = randomUUID()
-    const storageKey = `${userId}/${fileId}.${ext}`
-
-    try {
-      await this.minio.uploadFile(
-        storageKey,
-        Readable.from(file.buffer),
-        file.buffer.length,
-        file.mimetype,
-      )
-    } catch (err) {
-      console.error('[UserFilesService] MinIO derivative upload failed', err)
-      throw new BadRequestException('Failed to upload derivative to storage')
-    }
-
-    const record = this.fileRepo.create({
-      userId,
-      storageKey,
-      originalName: file.originalname,
-      mimeType: file.mimetype,
-      sizeBytes: file.size,
-      checksumSha256: checksum,
-      purpose: 'transcode',
-      assetId,
-    })
-
-    try {
-      await this.fileRepo.save(record)
-    } catch (err) {
-      console.error('[UserFilesService] DB save failed, cleaning up derivative object', err)
-      try {
-        await this.minio.deleteFile(storageKey)
-      } catch (cleanupErr) {
-        console.error('[UserFilesService] Derivative cleanup failed', cleanupErr)
-      }
-      throw new BadRequestException('Failed to save derivative record')
-    }
-
-    return record
   }
 
   async getOne(userId: string, fileId: string) {
@@ -194,23 +172,6 @@ export class UserFilesService {
     await this.fileRepo.remove(record)
   }
 
-  async getBatch(fileIds: string[]): Promise<BatchFilesResponse> {
-    if (fileIds.length === 0) return { items: [], missing: [] }
-
-    const found = await this.fileRepo
-      .createQueryBuilder('f')
-      .where('f.id IN (:...fileIds)', { fileIds })
-      .getMany()
-
-    const foundIds = new Set(found.map((f) => f.id))
-    const missing = fileIds.filter((id) => !foundIds.has(id))
-
-    return {
-      items: found.map((f) => toFileRecordResponse(f)),
-      missing,
-    }
-  }
-
   async stream(
     fileId: string,
     opts?: { range: { start: number; end: number } },
@@ -230,10 +191,16 @@ export class UserFilesService {
     return { stream, record, totalSize }
   }
 
-  async getFileUrl(userId: string, fileId: string, ttlSeconds = 300): Promise<string> {
+  async getFileStat(fileId: string): Promise<{ totalSize: number }> {
     const record = await this.fileRepo.findOne({ where: { id: fileId } })
     if (!record) throw new NotFoundException('File not found')
-    void userId
+    const stat = await this.minio.statFile(record.storageKey)
+    return { totalSize: stat.size }
+  }
+
+  async getFileUrl(userId: string, fileId: string, ttlSeconds = 300): Promise<string> {
+    const record = await this.fileRepo.findOne({ where: { id: fileId, userId } })
+    if (!record) throw new NotFoundException('File not found')
     return this.minio.presignedGetUrl(record.storageKey, ttlSeconds)
   }
 

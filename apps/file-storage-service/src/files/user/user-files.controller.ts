@@ -17,10 +17,20 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
+import { randomUUID } from 'crypto'
+import { tmpdir } from 'os'
+import multer from 'multer'
 import { UserFilesService } from './user-files.service'
 import { FileRecordDto } from '../file-record.dto'
 import { FileListResponseDto, ListFilesQueryDto } from './dto/list-files-query.dto'
 import { parseRangeHeader } from '../streaming.util'
+
+const diskStorage = multer.diskStorage({
+  destination: tmpdir(),
+  filename: (_req, _file, cb) => cb(null, randomUUID()),
+})
+
+const uploadOptions = { storage: diskStorage, limits: { fileSize: 4 * 1024 * 1024 * 1024 } }
 
 @ApiTags('files')
 @Controller('v1/files')
@@ -28,27 +38,20 @@ export class UserFilesController {
   constructor(private readonly userFilesService: UserFilesService) {}
 
   @Post()
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 4 * 1024 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', uploadOptions))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Upload a file' })
   @ApiResponse({ status: 201, description: 'File uploaded', type: FileRecordDto })
   @ApiResponse({ status: 400, description: 'No file or invalid request' })
   async upload(
     @Body('userId') userId: string,
-    @UploadedFile() file: { buffer: Buffer; originalname: string; mimetype: string; size: number },
+    @UploadedFile() file: { path: string; originalname: string; mimetype: string; size: number },
   ) {
     return this.userFilesService.upload(userId, file)
   }
 
-  @Post('batch')
-  @ApiOperation({ summary: 'Get multiple file records' })
-  @ApiResponse({ status: 200, description: 'Found and missing files' })
-  async getBatch(@Body() dto: { fileIds: string[] }) {
-    return this.userFilesService.getBatch(dto.fileIds)
-  }
-
   @Post('derivatives')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 4 * 1024 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', uploadOptions))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: 'Register a derivative file (e.g. transcoded video) for an existing asset',
@@ -58,7 +61,7 @@ export class UserFilesController {
   async uploadDerivative(
     @Body('userId') userId: string,
     @Body('assetId') assetId: string,
-    @UploadedFile() file: { buffer: Buffer; originalname: string; mimetype: string; size: number },
+    @UploadedFile() file: { path: string; originalname: string; mimetype: string; size: number },
   ) {
     return this.userFilesService.uploadDerivative(userId, assetId, file)
   }
@@ -85,8 +88,7 @@ export class UserFilesController {
     const rangeHeader = req.headers.range
 
     if (rangeHeader) {
-      const preflight = await this.userFilesService.stream(fileId)
-      const totalSize = preflight.totalSize
+      const { totalSize } = await this.userFilesService.getFileStat(fileId)
 
       const range = parseRangeHeader(rangeHeader, totalSize)
       if (!range) {

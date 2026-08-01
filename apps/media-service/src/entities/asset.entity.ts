@@ -4,7 +4,6 @@ import {
   Column,
   CreateDateColumn,
   Index,
-  Unique,
   OneToMany,
 } from 'typeorm'
 import { AssetThumbnail } from './asset-thumbnail.entity'
@@ -14,7 +13,6 @@ import { AssetThumbnail } from './asset-thumbnail.entity'
 @Index(['userId', 'takenAt'])
 @Index(['userId', 'kind', 'uploadedAt'])
 @Index(['userId'], { where: '"isTrashed" = false' })
-@Unique(['fileId'])
 export class Asset {
   @PrimaryGeneratedColumn('uuid')
   id!: string

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { Face } from './entities/face.entity'
 import { Person } from '../persons/entities/person.entity'
+import { Asset } from '../entities/asset.entity'
 import { FaceResponseDto } from './dto/face.dto'
 import type { DetectedFaceInput } from '@photox/shared-types'
 
@@ -13,6 +14,8 @@ export class FacesService {
     private readonly repo: Repository<Face>,
     @InjectRepository(Person)
     private readonly personRepo: Repository<Person>,
+    @InjectRepository(Asset)
+    private readonly assetRepo: Repository<Asset>,
   ) {}
 
   async registerFaces(
@@ -20,6 +23,7 @@ export class FacesService {
     userId: string,
     faces: DetectedFaceInput[],
   ): Promise<{ count: number }> {
+    await this.assertAssetOwned(userId, assetId)
     const entities = faces.map((f) => {
       const face = new Face()
       face.assetId = assetId
@@ -58,12 +62,21 @@ export class FacesService {
   async assignPerson(userId: string, faceId: string, personId: string | null): Promise<void> {
     const face = await this.repo.findOne({ where: { id: faceId, userId } })
     if (!face) throw new NotFoundException('Face not found')
+    if (personId) {
+      const person = await this.personRepo.findOne({ where: { id: personId, userId } })
+      if (!person) throw new NotFoundException('Person not found')
+    }
     const oldPersonId = face.personId
     face.personId = personId
     await this.repo.save(face)
     // ponytail: keep Person.faceCount in sync after assign/unassign (cluster job + manual edits both route here)
     if (oldPersonId) await this.refreshFaceCount(oldPersonId, userId)
     if (personId) await this.refreshFaceCount(personId, userId)
+  }
+
+  private async assertAssetOwned(userId: string, assetId: string): Promise<void> {
+    const asset = await this.assetRepo.findOne({ where: { id: assetId, userId } })
+    if (!asset) throw new NotFoundException('Asset not found')
   }
 
   private async refreshFaceCount(personId: string, userId: string): Promise<void> {

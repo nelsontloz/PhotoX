@@ -2,19 +2,24 @@ import { Injectable, Logger } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
 import { firstValueFrom } from 'rxjs'
 import type { Job } from 'bullmq'
-import { writeFile, unlink } from 'fs/promises'
-import { randomUUID } from 'crypto'
+import { readFile, stat, unlink } from 'fs/promises'
 import { tmpdir } from 'os'
-import { join } from 'path'
 import { BullMqService } from './bullmq.service'
 import { SERVICE_URLS } from '@photox/shared-config'
 import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor'
+import { downloadToTemp } from './download'
 
 interface MetadataJob {
   assetId: string
   fileId: string
   userId: string
   kind: 'photo' | 'video'
+}
+
+export function branchFor(mimeType: string | null): 'photo' | 'video' | null {
+  if (mimeType?.startsWith('image/')) return 'photo'
+  if (mimeType?.startsWith('video/')) return 'video'
+  return null
 }
 
 @Injectable()
@@ -43,72 +48,56 @@ export class MetadataProcessor {
 
     try {
       const streamUrl = `${SERVICE_URLS['file-storage-service']}/v1/files/${fileId}/stream`
-      const upstream = await firstValueFrom(
-        this.http.get(streamUrl, { responseType: 'arraybuffer', timeout: 30_000 }),
-      )
-      const buffer = Buffer.from(upstream.data as ArrayBuffer)
-
-      const ctHeader = upstream.headers['content-type']
-      const rawContentType =
-        typeof ctHeader === 'string'
-          ? ctHeader
-          : ((Array.isArray(ctHeader) ? ctHeader[0] : '') ?? '')
+      const {
+        path: filePath,
+        contentType: rawContentType,
+        contentDisposition: rawDisposition,
+      } = await downloadToTemp(this.http, streamUrl, tmpdir())
       const mimeType = rawContentType.split(';')[0]?.trim() ?? null
+      const sizeBytes = (await stat(filePath)).size
 
-      const clHeader = upstream.headers['content-length']
-      const rawContentLength =
-        typeof clHeader === 'string'
-          ? clHeader
-          : ((Array.isArray(clHeader) ? clHeader[0] : '') ?? '')
-      const sizeBytes = Number(rawContentLength) || buffer.length
-
-      const rawDisposition = String(upstream.headers['content-disposition'] ?? '')
       const nameMatch = /filename\*?=(?:UTF-8'')?"?([^";]+)/i.exec(rawDisposition)
       const originalName = nameMatch ? decodeURIComponent(nameMatch[1]!.trim()) : null
 
       const patchUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
 
-      if (kind === 'photo' || mimeType?.startsWith('image/')) {
-        const metadata = this.metadataExtractor.extract(buffer)
-        const hasAnyField = Object.values(metadata).some((v) => v !== null)
-        const metadataStatus = hasAnyField ? 'ready' : 'failed'
+      const branch = branchFor(mimeType)
+      if (!branch) {
+        this.logger.warn(`Unknown mime type ${mimeType}, skipping metadata: asset=${assetId}`)
+        return
+      }
 
-        await firstValueFrom(
-          this.http.patch(patchUrl, {
-            takenAt: metadata.takenAt,
-            cameraMake: metadata.cameraMake,
-            cameraModel: metadata.cameraModel,
-            lensModel: metadata.lensModel,
-            orientation: metadata.orientation,
-            latitude: metadata.latitude,
-            longitude: metadata.longitude,
-            iso: metadata.iso,
-            fNumber: metadata.fNumber,
-            exposureTime: metadata.exposureTime,
-            focalLength: metadata.focalLength,
-            altitude: metadata.altitude,
-            mimeType,
-            sizeBytes,
-            originalName,
-            status: metadataStatus,
-            width: metadata.width,
-            height: metadata.height,
-            metadata: null,
-          }),
-        )
-      } else if (kind === 'video' || mimeType?.startsWith('video/')) {
-        const ext = mimeType?.includes('mp4')
-          ? 'mp4'
-          : mimeType?.includes('webm')
-            ? 'webm'
-            : mimeType?.includes('quicktime')
-              ? 'mov'
-              : 'bin'
-        const tmpPath = join(tmpdir(), `${fileId}-${randomUUID()}.${ext}`)
-        try {
-          await writeFile(tmpPath, buffer)
+      try {
+        if (branch === 'photo') {
+          const metadata = this.metadataExtractor.extract(await readFile(filePath))
+          const hasAnyField = Object.values(metadata).some((v) => v !== null)
+          const metadataStatus = hasAnyField ? 'ready' : 'failed'
 
-          const videoMeta = await this.videoMetadataExtractor.extract(tmpPath)
+          await firstValueFrom(
+            this.http.patch(patchUrl, {
+              takenAt: metadata.takenAt,
+              cameraMake: metadata.cameraMake,
+              cameraModel: metadata.cameraModel,
+              lensModel: metadata.lensModel,
+              orientation: metadata.orientation,
+              latitude: metadata.latitude,
+              longitude: metadata.longitude,
+              iso: metadata.iso,
+              fNumber: metadata.fNumber,
+              exposureTime: metadata.exposureTime,
+              focalLength: metadata.focalLength,
+              altitude: metadata.altitude,
+              mimeType,
+              sizeBytes,
+              originalName,
+              status: metadataStatus,
+              width: metadata.width,
+              height: metadata.height,
+              metadata: null,
+            }),
+          )
+        } else if (branch === 'video') {
+          const videoMeta = await this.videoMetadataExtractor.extract(filePath)
           const hasAnyVideoField = [
             videoMeta.durationSeconds,
             videoMeta.width,
@@ -149,12 +138,12 @@ export class MetadataProcessor {
               metadata: null,
             }),
           )
-        } finally {
-          try {
-            await unlink(tmpPath)
-          } catch {
-            // file may already be removed
-          }
+        }
+      } finally {
+        try {
+          await unlink(filePath)
+        } catch {
+          // file may already be removed
         }
       }
 

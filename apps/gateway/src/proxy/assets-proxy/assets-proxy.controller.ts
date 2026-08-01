@@ -228,7 +228,7 @@ export class AssetsProxyController {
     const result = await this.proxy.forward(SERVICE_URLS['media-service'], {
       method: 'POST',
       path: `v1/assets/${id}/faces`,
-      body,
+      body: { ...body, userId: (req.user as { id: string }).id },
       headers: {
         'x-request-id': (req.headers['x-request-id'] as string) ?? '',
       },

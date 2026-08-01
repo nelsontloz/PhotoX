@@ -22,12 +22,8 @@ FROM node:20-alpine AS runtime
 RUN corepack enable
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/packages/shared-types/dist ./packages/shared-types/dist
-COPY --from=build /app/packages/shared-types/package.json ./packages/shared-types/
-COPY --from=build /app/packages/shared-config/dist ./packages/shared-config/dist
-COPY --from=build /app/packages/shared-config/package.json ./packages/shared-config/
-COPY --from=build /app/apps/media-service/dist ./apps/media-service/dist
-COPY --from=build /app/apps/media-service/package.json ./apps/media-service/
+COPY --from=build /app/packages ./packages
+COPY --from=build /app/apps/media-service ./apps/media-service
 ENV NODE_ENV=production
 EXPOSE 3002
 CMD ["node", "apps/media-service/dist/main.js"]

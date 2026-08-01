@@ -26,14 +26,8 @@ FROM node:20-alpine AS runtime
 RUN corepack enable
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/packages/shared-types/dist ./packages/shared-types/dist
-COPY --from=build /app/packages/shared-types/package.json ./packages/shared-types/
-COPY --from=build /app/packages/shared-config/dist ./packages/shared-config/dist
-COPY --from=build /app/packages/shared-config/package.json ./packages/shared-config/
-COPY --from=build /app/packages/shared-auth/dist ./packages/shared-auth/dist
-COPY --from=build /app/packages/shared-auth/package.json ./packages/shared-auth/
-COPY --from=build /app/apps/gateway/dist ./apps/gateway/dist
-COPY --from=build /app/apps/gateway/package.json ./apps/gateway/
+COPY --from=build /app/packages ./packages
+COPY --from=build /app/apps/gateway ./apps/gateway
 ENV NODE_ENV=production
 EXPOSE 3000
 CMD ["node", "apps/gateway/dist/main.js"]

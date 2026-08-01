@@ -201,6 +201,11 @@ export class PersonsService {
 
     if (toUpdate.length === 0) return { moved: 0 }
 
+    if (body.toPersonId) {
+      const person = await this.personRepo.findOne({ where: { id: body.toPersonId, userId } })
+      if (!person) throw new NotFoundException('Person not found')
+    }
+
     const affectedPersonIds = new Set<string>()
     for (const face of toUpdate) {
       if (face.personId) affectedPersonIds.add(face.personId)
@@ -220,7 +225,7 @@ export class PersonsService {
         .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
         .getRawOne<{ count: string }>()
       const count = Number(result?.count ?? 0)
-      await this.personRepo.update(pid, { faceCount: count })
+      await this.personRepo.update({ id: pid, userId }, { faceCount: count })
     }
 
     return { moved: toUpdate.length }

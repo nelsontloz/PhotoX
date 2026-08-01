@@ -41,7 +41,3 @@ api.interceptors.response.use(
     return api(originalRequest)
   },
 )
-
-export const healthApi = axios.create({
-  timeout: 5000,
-})

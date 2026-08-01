@@ -12,7 +12,7 @@ describe('UserFilesController – Range streaming', () => {
     getOne: ReturnType<typeof vi.fn>
     download: ReturnType<typeof vi.fn>
     delete: ReturnType<typeof vi.fn>
-    getBatch: ReturnType<typeof vi.fn>
+    getFileStat: ReturnType<typeof vi.fn>
   }
 
   beforeEach(async () => {
@@ -23,7 +23,7 @@ describe('UserFilesController – Range streaming', () => {
       getOne: vi.fn(),
       download: vi.fn(),
       delete: vi.fn(),
-      getBatch: vi.fn(),
+      getFileStat: vi.fn(),
     }
 
     const module: TestingModule = await Test.createTestingModule({
@@ -78,17 +78,12 @@ describe('UserFilesController – Range streaming', () => {
   })
 
   it('returns 206 with Content-Range when Range header present', async () => {
-    service.stream
-      .mockResolvedValueOnce({
-        stream: { pipe: vi.fn() },
-        record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
-        totalSize: 1000,
-      })
-      .mockResolvedValueOnce({
-        stream: { pipe: vi.fn() },
-        record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
-        totalSize: 1000,
-      })
+    service.getFileStat.mockResolvedValue({ totalSize: 1000 })
+    service.stream.mockResolvedValue({
+      stream: { pipe: vi.fn() },
+      record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
+      totalSize: 1000,
+    })
 
     const { res, headers, getStatus } = mockRes()
     const req = mockReq({ range: 'bytes=0-4' })
@@ -102,17 +97,12 @@ describe('UserFilesController – Range streaming', () => {
   })
 
   it('returns 206 with open-ended Range', async () => {
-    service.stream
-      .mockResolvedValueOnce({
-        stream: { pipe: vi.fn() },
-        record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
-        totalSize: 1000,
-      })
-      .mockResolvedValueOnce({
-        stream: { pipe: vi.fn() },
-        record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
-        totalSize: 1000,
-      })
+    service.getFileStat.mockResolvedValue({ totalSize: 1000 })
+    service.stream.mockResolvedValue({
+      stream: { pipe: vi.fn() },
+      record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
+      totalSize: 1000,
+    })
 
     const { res, headers, getStatus } = mockRes()
     const req = mockReq({ range: 'bytes=997-' })
@@ -125,6 +115,7 @@ describe('UserFilesController – Range streaming', () => {
   })
 
   it('returns 416 for out-of-range start', async () => {
+    service.getFileStat.mockResolvedValue({ totalSize: 100 })
     service.stream.mockResolvedValue({
       stream: { pipe: vi.fn() },
       record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
@@ -141,6 +132,7 @@ describe('UserFilesController – Range streaming', () => {
   })
 
   it('returns 416 for invalid Range format', async () => {
+    service.getFileStat.mockResolvedValue({ totalSize: 100 })
     service.stream.mockResolvedValue({
       stream: { pipe: vi.fn() },
       record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
@@ -157,17 +149,12 @@ describe('UserFilesController – Range streaming', () => {
   })
 
   it('clamps end byte to totalSize-1 when Range exceeds total', async () => {
-    service.stream
-      .mockResolvedValueOnce({
-        stream: { pipe: vi.fn() },
-        record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
-        totalSize: 100,
-      })
-      .mockResolvedValueOnce({
-        stream: { pipe: vi.fn() },
-        record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
-        totalSize: 100,
-      })
+    service.getFileStat.mockResolvedValue({ totalSize: 100 })
+    service.stream.mockResolvedValue({
+      stream: { pipe: vi.fn() },
+      record: { mimeType: 'video/mp4', originalName: 'test.mp4' },
+      totalSize: 100,
+    })
 
     const { res, headers, getStatus } = mockRes()
     const req = mockReq({ range: 'bytes=90-200' })

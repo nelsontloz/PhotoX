@@ -102,6 +102,7 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
   const toggleFavorite = async (assetId: string, nextValue: boolean) => {
     try {
       await updateAsset(assetId, { favorite: nextValue })
+      await opts.onAfterAction?.()
     } catch {
       window.alert('Failed to update favorite. Please try again.')
     }

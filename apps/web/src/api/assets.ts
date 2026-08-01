@@ -39,6 +39,7 @@ export async function downloadFile(fileId: string, signal?: AbortSignal): Promis
   const { data } = await api.get<Blob>(`/v1/files/${fileId}/download`, {
     responseType: 'blob',
     signal,
+    timeout: 300_000,
   })
   return data
 }
