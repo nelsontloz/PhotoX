@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common'
-import { JwtModule } from '@nestjs/jwt'
+import { JwtModule, type JwtSignOptions } from '@nestjs/jwt'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { loadEnv } from '@photox/shared-config'
 import { AuthController } from './auth.controller'
@@ -20,7 +20,7 @@ import { loadAuthEnv } from '@photox/shared-auth'
           secret: authEnv.AUTH_TOKEN_SECRET,
           signOptions: {
             algorithm: 'HS256',
-            expiresIn: sharedEnv.AUTH_ACCESS_TTL,
+            expiresIn: sharedEnv.AUTH_ACCESS_TTL as JwtSignOptions['expiresIn'],
           },
         }
       },

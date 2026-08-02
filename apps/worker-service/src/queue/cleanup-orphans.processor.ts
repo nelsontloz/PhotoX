@@ -40,6 +40,14 @@ export class CleanupOrphansProcessor {
     const orphanFileIds = storageFileIds.filter((id) => !mediaFileIds.has(id))
     this.logger.log(`Found ${orphanFileIds.length} orphan files`)
 
+    const freshMediaRes = await firstValueFrom(
+      this.http.get<string[]>(`${SERVICE_URLS['media-service']}/v1/file-ids`, {
+        timeout: 30_000,
+      }),
+    )
+    const freshMediaFileIds = new Set(freshMediaRes.data)
+    const toDelete = orphanFileIds.filter((id) => !freshMediaFileIds.has(id))
+
     let orphanThumbRows: { assetId: string; size: string; fileId: string }[] = []
     if (storageFileIds.length > 0) {
       const thumbRes = await firstValueFrom(
@@ -54,7 +62,7 @@ export class CleanupOrphansProcessor {
     this.logger.log(`Found ${orphanThumbRows.length} orphan thumbnail rows`)
 
     let deleted = 0
-    for (const fileId of orphanFileIds) {
+    for (const fileId of toDelete) {
       try {
         await firstValueFrom(
           this.http.delete(`${SERVICE_URLS['file-storage-service']}/v1/internal/files/${fileId}`, {

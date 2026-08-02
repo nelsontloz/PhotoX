@@ -7,7 +7,7 @@ kind: Pod
 spec:
   containers:
   - name: node
-    image: registry.int.zerg91.com/photox/node-builder:20-alpine
+    image: registry.int.zerg91.com/photox/node-builder:22-alpine
     command: ["cat"]
     tty: true
     env:

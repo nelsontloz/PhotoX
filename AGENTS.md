@@ -5,10 +5,10 @@ Personal photo/video hosting. NestJS microservices monorepo with a Vite React we
 ## Stack
 
 - **Monorepo:** Turborepo + pnpm workspaces (`apps/*`, `packages/*`)
-- **Backend:** NestJS 10, TypeORM, PostgreSQL, MinIO, Redis (BullMQ)
+- **Backend:** NestJS 11, TypeORM, PostgreSQL, MinIO, Redis (BullMQ)
 - **Frontend:** Vite + React + TypeScript
 - **Single PG instance, 3 databases:** `users_db`, `library_db`, `files_db` (see `docker/postgres/init.sql`)
-- **Node:** 20 (see `.nvmrc`), **pnpm:** 9.15.0 (see `packageManager` in root `package.json`)
+- **Node:** 22 (see `.nvmrc`), **pnpm:** 9.15.0 (see `packageManager` in root `package.json`)
 
 ## Async jobs (BullMQ)
 
@@ -94,7 +94,7 @@ packages/
   shared-auth/          Auth types (JwtPayload, TokenPair)
   shared-config/        Zod env loader (loadEnv)
 docker/
-  base-builder/Dockerfile  Base image (node 20 + python3 make g++ + pnpm) for CI
+  base-builder/Dockerfile  Base image (node 22 + python3 make g++ + pnpm) for CI
   postgres/init.sql        Creates the 3 databases
 Jenkinsfile                CI pipeline (k8s pod; testcontainers)
 scripts/                   Root tooling (pact-coverage.ts)

@@ -32,7 +32,12 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     queueName: string,
     jobName: string,
     data: Record<string, unknown>,
-    opts: { jobId?: string; attempts?: number; backoff?: { type: string } } = {},
+    opts: {
+      jobId?: string
+      attempts?: number
+      backoff?: { type: string }
+      removeOnFail?: boolean
+    } = {},
   ): Promise<void> {
     try {
       await this.getQueue(queueName).add(jobName, data, opts)
@@ -50,6 +55,9 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
         { assetId, fileId, userId, size },
         {
           jobId: `${prefix}-${assetId}-${size}`,
+          attempts: 3,
+          backoff: { type: 'exponential' },
+          removeOnFail: true,
         },
       )
     }
@@ -69,6 +77,7 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
         jobId: `${opts?.reprocess ? 'video-reprocess' : 'video'}-${assetId}`,
         attempts: 3,
         backoff: { type: 'exponential' },
+        removeOnFail: true,
       },
     )
   }

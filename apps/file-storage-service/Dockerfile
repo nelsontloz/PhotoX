@@ -1,5 +1,5 @@
 # -- deps --
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 RUN corepack enable
 WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
@@ -18,7 +18,7 @@ RUN pnpm --filter @photox/shared-config build && \
     pnpm --filter @photox/file-storage-service build
 
 # -- runtime --
-FROM node:20-alpine AS runtime
+FROM node:22-alpine AS runtime
 RUN corepack enable
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
