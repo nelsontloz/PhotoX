@@ -30,10 +30,10 @@ services:
     networks:
       - photox-net
 
-  api:
+  core:
     build:
       context: .
-      dockerfile: apps/api/Dockerfile
+      dockerfile: apps/core/Dockerfile
     ports:
       - '3000:3000'
     environment:
@@ -83,7 +83,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      api:
+      core:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -103,9 +103,9 @@ services:
     ports:
       - '5173:5173'
     environment:
-      VITE_API_URL: http://api:3000
+      VITE_API_URL: http://core:3000
     depends_on:
-      api:
+      core:
         condition: service_healthy
     networks:
       - photox-net

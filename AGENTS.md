@@ -1,22 +1,22 @@
 # PhotoX — Agent Notes
 
-Personal photo/video hosting. One NestJS `api` + one BullMQ `worker-service` + Vite `web`, sharing a single Postgres DB, Redis, and local-disk storage. (No gateway/microservice split, no MinIO, no multi-DB — old docs claiming those are stale.)
+Personal photo/video hosting. One NestJS `core` + one BullMQ `worker-service` + Vite `web`, sharing a single Postgres DB, Redis, and local-disk storage. (No gateway/microservice split, no MinIO, no multi-DB — old docs claiming those are stale.)
 
 ## Layout
 
-- `apps/api/` (`@photox/api`, :3000) — all HTTP: auth, assets, files, albums, shares, faces/persons, trash, admin
+- `apps/core/` (`@photox/core`, :3000) — all HTTP: auth, assets, files, albums, shares, faces/persons, trash, admin
 - `apps/worker-service/` (`@photox/worker-service`, :3004) — BullMQ consumers only, writes Postgres directly
 - `apps/web/` (`@photox/web`, :5173) — Vite + React
 - `packages/data-access/` — TypeORM entities, `SharedDatabaseModule`, `LocalStorageService`
 - `packages/shared-auth/` — `JwtPayload`, `loadAuthEnv()`; `packages/shared-config/` — zod `loadEnv()`; `packages/shared-types/` — wire interfaces
-- `docker-compose.yml` services: `postgres` (pgvector image, single `photox` DB), `redis`, `api`, `worker-service`, `web`
+- `docker-compose.yml` services: `postgres` (pgvector image, single `photox` DB), `redis`, `core`, `worker-service`, `web`
 
 ## Commands
 
 ```bash
 docker compose up -d postgres redis   # infra FIRST; there is no minio service
-pnpm dev                              # turbo persistent: api + worker + web
-pnpm --filter @photox/api dev         # single package (@photox/api | @photox/worker-service | @photox/web)
+pnpm dev                              # turbo persistent: core + worker + web
+pnpm --filter @photox/core dev         # single package (@photox/core | @photox/worker-service | @photox/web)
 pnpm verify                           # lint && test --force && typecheck && build (no pact stages)
 curl localhost:3000/health localhost:3004/health
 ```
@@ -25,27 +25,27 @@ Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 
 ## Env / config
 
-- `packages/shared-config/src/env.ts` (`loadEnv`, zod): `API_PORT` 3000, `WORKER_SERVICE_PORT` 3004, `POSTGRES_*`/`REDIS_*` (localhost defaults), `STORAGE_DIR` (default `./data/storage`, anchored at workspace root — api and worker run with different cwds), `AUTH_ACCESS_TTL` 30m, `AUTH_REFRESH_TTL` 30d, `AUTH_CLOCK_TOLERANCE_SEC` 60. `GATEWAY_PORT` key is legacy, ignore it.
+- `packages/shared-config/src/env.ts` (`loadEnv`, zod): `API_PORT` 3000, `WORKER_SERVICE_PORT` 3004, `POSTGRES_*`/`REDIS_*` (localhost defaults), `STORAGE_DIR` (default `./data/storage`, anchored at workspace root — core and worker run with different cwds), `AUTH_ACCESS_TTL` 30m, `AUTH_REFRESH_TTL` 30d, `AUTH_CLOCK_TOLERANCE_SEC` 60. `GATEWAY_PORT` key is legacy, ignore it.
 - `packages/shared-auth/src/env.ts` (`loadAuthEnv`): `AUTH_TOKEN_SECRET` required, ≥32 chars.
 - Compose shares one `storage-data` volume at `/data/storage`; local dev uses `./data/storage`.
 
 ## API conventions
 
 - Controllers serve `api/v1/...` directly (e.g. `@Controller('api/v1/assets')`) — no gateway/proxy layer. Public share at `api/share/:token`. Health is unversioned (`health`). No global prefix.
-- `apps/api/src/main.ts` (mandatory, keep in sync): `ValidationPipe({whitelist, forbidNonWhitelisted, transform})` + `HttpExceptionFilter` + `requestIdMiddleware` + CORS for `localhost:5173` only + Swagger `/docs` + `/docs-json`. Worker `main.ts` is intentionally bare.
+- `apps/core/src/main.ts` (mandatory, keep in sync): `ValidationPipe({whitelist, forbidNonWhitelisted, transform})` + `HttpExceptionFilter` + `requestIdMiddleware` + CORS for `localhost:5173` only + Swagger `/docs` + `/docs-json`. Worker `main.ts` is intentionally bare.
 - DTOs live next to controllers with class-validator decorators; the wire interface lives in `shared-types`.
 
 ## Auth
 
-- `argon2` (api dependency only — never add bcrypt). HS256 access JWT + opaque rotated refresh token.
+- `argon2` (core dependency only — never add bcrypt). HS256 access JWT + opaque rotated refresh token.
 - `JwtPayload` is `{ sub, email, role, iat, exp, jti? }`; `JwtStrategy` maps it to `{ id, email, role }`. Global `JwtAuthGuard`, opt out with `@Public()`.
 
 ## Jobs (BullMQ over Redis)
 
-- Publisher: `apps/api/src/queue/bullmq.service.ts` (typed `enqueueThumbnails`/`enqueueVideo` + generic `enqueue`). Consumers: `QueueModule.onModuleInit()` starts 7 workers: `process-thumbnail`, `process-video`, `process-metadata`, `process-faces`, `process-faces-cluster`, `cleanup-asset`, `cleanup-orphans`. `FaceProcessor` auto-enqueues `process-faces-cluster`.
+- Publisher: `apps/core/src/queue/bullmq.service.ts` (typed `enqueueThumbnails`/`enqueueVideo` + generic `enqueue`). Consumers: `QueueModule.onModuleInit()` starts 7 workers: `process-thumbnail`, `process-video`, `process-metadata`, `process-faces`, `process-faces-cluster`, `cleanup-asset`, `cleanup-orphans`. `FaceProcessor` auto-enqueues `process-faces-cluster`.
 - Dedup/retry: thumbnails `jobId: '<prefix>-<assetId>-<size>'` over `sm/md/lg/xl`, attempts 3 exponential backoff; video `jobId: 'video-<assetId>'` (or `video-reprocess-*`), attempts 3.
 - Video (`video.processor.ts`): reads source from local disk via `LocalStorageService` (no presigned URLs). h264+aac → skip, mark `ready`. Else single pass to AV1 webm (`libaom-av1 -crf 32 -cpu-used 6`, `libopus 96k`), capped 720p, registered as separate `FileRecord` (`purpose: 'transcode'`); originals immutable. Limits: 4h duration, 7680px, 1h ffmpeg timeout.
-- Faces: `@vladmandic/human`, **1024-dim** `faceres` embeddings (not 512). HNSW index `faces_embedding_hnsw` built at api bootstrap, warn-caught. In-memory DBSCAN `eps=0.4 minPts=2`, noise reassign `0.5`, O(n²) — fine for personal libraries.
+- Faces: `@vladmandic/human`, **1024-dim** `faceres` embeddings (not 512). HNSW index `faces_embedding_hnsw` built at core bootstrap, warn-caught. In-memory DBSCAN `eps=0.4 minPts=2`, noise reassign `0.5`, O(n²) — fine for personal libraries.
 
 ## DB / storage
 

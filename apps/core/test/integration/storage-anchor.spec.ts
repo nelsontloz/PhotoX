@@ -19,7 +19,7 @@ function findWorkspaceRoot(start: string): string {
 describe('storage dir anchoring', () => {
   it('resolves relative STORAGE_DIR at workspace root', async () => {
     const workspaceRoot = findWorkspaceRoot(__dirname)
-    const apiDir = join(workspaceRoot, 'apps', 'api')
+    const apiDir = join(workspaceRoot, 'apps', 'core')
     const name = `test-storage-anchor-${randomBytes(4).toString('hex')}`
     const prevCwd = process.cwd()
     const prevStorage = process.env.STORAGE_DIR
