@@ -1,0 +1,44 @@
+import { Controller, Delete, Get, Post, Param, Query, Req, HttpCode, HttpStatus } from '@nestjs/common'
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
+import type { Request } from 'express'
+import { AssetsService } from '../assets/assets.service'
+import { ListAssetsQueryDto } from '../assets/dto/list-assets-query.dto'
+
+@ApiTags('trashed')
+@Controller('api/v1/assets')
+export class TrashController {
+  constructor(private readonly assets: AssetsService) {}
+
+  @Get('trashed')
+  @ApiOperation({ summary: 'List trashed assets' })
+  @ApiResponse({ status: 200, description: 'Paginated trashed asset list' })
+  async listTrashed(@Query() q: ListAssetsQueryDto, @Req() req: Request) {
+    const userId = (req.user as { id: string }).id ?? q.userId
+    return this.assets.list(userId, { ...q, isTrashed: true })
+  }
+
+  @Delete('trashed')
+  @ApiOperation({ summary: 'Permanently delete all trashed assets. Returns file IDs for cleanup.' })
+  @ApiResponse({ status: 200, description: 'Trash emptied' })
+  async emptyTrash(@Query('userId') userId: string) {
+    return this.assets.emptyTrash(userId)
+  }
+
+  @Delete('trashed/:id')
+  @ApiOperation({ summary: 'Permanently delete a trashed asset. Returns file IDs for cleanup.' })
+  @ApiResponse({ status: 200, description: 'Asset deleted' })
+  @ApiResponse({ status: 400, description: 'Asset is not trashed' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  async delete(@Param('id') id: string, @Query('userId') userId: string) {
+    return this.assets.delete(userId, id)
+  }
+
+  @Post('trashed/:id/restore')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Restore a trashed asset. Idempotent.' })
+  @ApiResponse({ status: 204, description: 'Asset restored' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  async restore(@Param('id') id: string, @Query('userId') userId: string) {
+    await this.assets.restore(userId, id)
+  }
+}

@@ -1,13 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { HttpService } from '@nestjs/axios'
-import { firstValueFrom } from 'rxjs'
+import { InjectRepository } from '@nestjs/typeorm'
+import { Repository } from 'typeorm'
 import type { Job } from 'bullmq'
-import { readFile, stat, unlink } from 'fs/promises'
+import { readFile, stat, copyFile, unlink } from 'fs/promises'
 import { tmpdir } from 'os'
+import { join } from 'path'
+import { randomUUID } from 'crypto'
 import { BullMqService } from './bullmq.service'
-import { SERVICE_URLS } from '@photox/shared-config'
+import { Asset, FileRecord, LocalStorageService } from '@photox/data-access'
 import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor'
-import { downloadToTemp } from './download'
 
 interface MetadataJob {
   assetId: string
@@ -28,7 +29,11 @@ export class MetadataProcessor {
 
   constructor(
     private readonly bullMq: BullMqService,
-    private readonly http: HttpService,
+    @InjectRepository(FileRecord)
+    private readonly fileRepo: Repository<FileRecord>,
+    @InjectRepository(Asset)
+    private readonly assetRepo: Repository<Asset>,
+    private readonly storage: LocalStorageService,
     private readonly metadataExtractor: MetadataExtractor,
     private readonly videoMetadataExtractor: VideoMetadataExtractor,
   ) {}
@@ -46,20 +51,14 @@ export class MetadataProcessor {
 
     this.logger.log(`Processing metadata: asset=${assetId}, kind=${kind}`)
 
+    const filePath = join(tmpdir(), `metadata-${randomUUID()}`)
     try {
-      const streamUrl = `${SERVICE_URLS['file-storage-service']}/v1/files/${fileId}/stream`
-      const {
-        path: filePath,
-        contentType: rawContentType,
-        contentDisposition: rawDisposition,
-      } = await downloadToTemp(this.http, streamUrl, tmpdir())
-      const mimeType = rawContentType.split(';')[0]?.trim() ?? null
+      const record = await this.fileRepo.findOne({ where: { id: fileId } })
+      if (!record) throw new Error(`File not found: ${fileId}`)
+      await copyFile(this.storage.pathFor(record.storageKey), filePath)
+      const mimeType = record.mimeType ?? null
       const sizeBytes = (await stat(filePath)).size
-
-      const nameMatch = /filename\*?=(?:UTF-8'')?"?([^";]+)/i.exec(rawDisposition)
-      const originalName = nameMatch ? decodeURIComponent(nameMatch[1]!.trim()) : null
-
-      const patchUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
+      const originalName = record.originalName ?? null
 
       const branch = branchFor(mimeType)
       if (!branch) {
@@ -67,84 +66,74 @@ export class MetadataProcessor {
         return
       }
 
-      try {
-        if (branch === 'photo') {
-          const metadata = this.metadataExtractor.extract(await readFile(filePath))
-          const hasAnyField = Object.values(metadata).some((v) => v !== null)
-          const metadataStatus = hasAnyField ? 'ready' : 'failed'
+      if (branch === 'photo') {
+        const metadata = this.metadataExtractor.extract(await readFile(filePath))
+        const hasAnyField = Object.values(metadata).some((v) => v !== null)
+        const metadataStatus = hasAnyField ? 'ready' : 'failed'
 
-          await firstValueFrom(
-            this.http.patch(patchUrl, {
-              takenAt: metadata.takenAt,
-              cameraMake: metadata.cameraMake,
-              cameraModel: metadata.cameraModel,
-              lensModel: metadata.lensModel,
-              orientation: metadata.orientation,
-              latitude: metadata.latitude,
-              longitude: metadata.longitude,
-              iso: metadata.iso,
-              fNumber: metadata.fNumber,
-              exposureTime: metadata.exposureTime,
-              focalLength: metadata.focalLength,
-              altitude: metadata.altitude,
-              mimeType,
-              sizeBytes,
-              originalName,
-              status: metadataStatus,
-              width: metadata.width,
-              height: metadata.height,
-              metadata: null,
-            }),
-          )
-        } else if (branch === 'video') {
-          const videoMeta = await this.videoMetadataExtractor.extract(filePath)
-          const hasAnyVideoField = [
-            videoMeta.durationSeconds,
-            videoMeta.width,
-            videoMeta.height,
-            videoMeta.codec,
-            videoMeta.fps,
-            videoMeta.hasAudio,
-            videoMeta.orientation,
-            videoMeta.takenAt,
-            videoMeta.cameraMake,
-            videoMeta.cameraModel,
-            videoMeta.lensModel,
-            videoMeta.latitude,
-            videoMeta.longitude,
-            videoMeta.altitude,
-          ].some((v) => v !== null)
-          const videoMetadataStatus = hasAnyVideoField ? 'ready' : 'failed'
-          await firstValueFrom(
-            this.http.patch(patchUrl, {
-              status: videoMetadataStatus,
-              mimeType,
-              durationSeconds: videoMeta.durationSeconds,
-              width: videoMeta.width,
-              height: videoMeta.height,
-              codec: videoMeta.codec,
-              fps: videoMeta.fps,
-              hasAudio: videoMeta.hasAudio,
-              orientation: videoMeta.orientation,
-              sizeBytes,
-              originalName,
-              takenAt: videoMeta.takenAt,
-              cameraMake: videoMeta.cameraMake,
-              cameraModel: videoMeta.cameraModel,
-              lensModel: videoMeta.lensModel,
-              latitude: videoMeta.latitude,
-              longitude: videoMeta.longitude,
-              altitude: videoMeta.altitude,
-              metadata: null,
-            }),
-          )
-        }
-      } finally {
-        try {
-          await unlink(filePath)
-        } catch {
-          // file may already be removed
-        }
+        await this.assetRepo.update(assetId, {
+          takenAt: metadata.takenAt,
+          cameraMake: metadata.cameraMake,
+          cameraModel: metadata.cameraModel,
+          lensModel: metadata.lensModel,
+          orientation: metadata.orientation,
+          latitude: metadata.latitude,
+          longitude: metadata.longitude,
+          iso: metadata.iso,
+          fNumber: metadata.fNumber,
+          exposureTime: metadata.exposureTime,
+          focalLength: metadata.focalLength,
+          altitude: metadata.altitude,
+          mimeType,
+          sizeBytes,
+          originalName,
+          metadataStatus,
+          metadataExtractedAt: new Date(),
+          width: metadata.width,
+          height: metadata.height,
+          metadata: null,
+        })
+      } else if (branch === 'video') {
+        const videoMeta = await this.videoMetadataExtractor.extract(filePath)
+        const hasAnyVideoField = [
+          videoMeta.durationSeconds,
+          videoMeta.width,
+          videoMeta.height,
+          videoMeta.codec,
+          videoMeta.fps,
+          videoMeta.hasAudio,
+          videoMeta.orientation,
+          videoMeta.takenAt,
+          videoMeta.cameraMake,
+          videoMeta.cameraModel,
+          videoMeta.lensModel,
+          videoMeta.latitude,
+          videoMeta.longitude,
+          videoMeta.altitude,
+        ].some((v) => v !== null)
+        const videoMetadataStatus = hasAnyVideoField ? 'ready' : 'failed'
+        await this.assetRepo.update(assetId, {
+          metadataStatus: videoMetadataStatus,
+          metadataExtractedAt: new Date(),
+          mimeType,
+          durationSeconds: videoMeta.durationSeconds,
+          width: videoMeta.width,
+          height: videoMeta.height,
+          codec: videoMeta.codec,
+          fps: videoMeta.fps,
+          hasAudio: videoMeta.hasAudio,
+          orientation: videoMeta.orientation,
+          sizeBytes,
+          originalName,
+          takenAt: videoMeta.takenAt,
+          cameraMake: videoMeta.cameraMake,
+          cameraModel: videoMeta.cameraModel,
+          lensModel: videoMeta.lensModel,
+          latitude: videoMeta.latitude,
+          longitude: videoMeta.longitude,
+          altitude: videoMeta.altitude,
+          metadata: null,
+        })
       }
 
       this.logger.log(`Metadata complete: asset=${assetId}`)
@@ -153,8 +142,10 @@ export class MetadataProcessor {
       this.logger.error(`Metadata failed: asset=${assetId} — ${message}`)
 
       try {
-        const statusUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
-        await firstValueFrom(this.http.patch(statusUrl, { status: 'failed' }))
+        await this.assetRepo.update(assetId, {
+          metadataStatus: 'failed',
+          metadataExtractedAt: new Date(),
+        })
       } catch (patchErr) {
         const patchMsg = patchErr instanceof Error ? patchErr.message : String(patchErr)
         this.logger.warn(
@@ -163,6 +154,8 @@ export class MetadataProcessor {
       }
 
       throw err
+    } finally {
+      await unlink(filePath).catch(() => undefined)
     }
   }
 }

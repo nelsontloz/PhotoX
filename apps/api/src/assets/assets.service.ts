@@ -1,0 +1,319 @@
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { InjectRepository } from '@nestjs/typeorm'
+import { Repository, Brackets, DataSource, In } from 'typeorm'
+import { Asset } from '@photox/data-access'
+import { AssetThumbnail } from '@photox/data-access'
+import { AlbumAsset } from '../albums/entities/album-asset.entity'
+import { AssetShare } from '../shares/entities/asset-share.entity'
+import { Face } from '@photox/data-access'
+import { CreateAssetDto } from './dto/create-asset.dto'
+import { UpdateAssetDto } from './dto/update-asset.dto'
+import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
+import { UpdateMetadataDto } from './dto/update-metadata.dto'
+import { FacesService } from '../faces/faces.service'
+import type { Asset as AssetResponse, AssetListResponse } from '@photox/shared-types'
+
+@Injectable()
+export class AssetsService {
+  constructor(
+    @InjectRepository(Asset)
+    private readonly repo: Repository<Asset>,
+    @InjectRepository(AssetThumbnail)
+    private readonly thumbRepo: Repository<AssetThumbnail>,
+    private readonly dataSource: DataSource,
+    private readonly facesService: FacesService,
+  ) {}
+
+  async create(userId: string, dto: CreateAssetDto): Promise<AssetResponse> {
+    const asset = new Asset()
+    asset.userId = userId
+    asset.fileId = dto.fileId
+    asset.kind = dto.kind
+    asset.title = dto.title ?? null
+    asset.description = dto.description ?? null
+    asset.takenAt = dto.takenAt ? new Date(dto.takenAt) : null
+    asset.mimeType = dto.mimeType ?? null
+    asset.sizeBytes = dto.sizeBytes ?? null
+    asset.originalName = dto.originalName ?? null
+    asset.transcodeStatus = dto.kind === 'video' ? 'pending' : null
+    asset.thumbnailStatus = 'pending'
+    const saved = await this.repo.save(asset)
+    return this.toResponse(saved)
+  }
+
+  async list(userId: string, q: ListAssetsQueryDto): Promise<AssetListResponse> {
+    const limit = q.limit ?? 20
+    const offset = q.offset ?? 0
+    const isTrashed = q.isTrashed ?? false
+
+    const qb = this.repo.createQueryBuilder('asset').where('asset.userId = :userId', { userId })
+
+    qb.andWhere('asset.isTrashed = :isTrashed', { isTrashed })
+
+    if (q.kind) {
+      qb.andWhere('asset.kind = :kind', { kind: q.kind })
+    }
+
+    if (q.mimeType) {
+      qb.andWhere('asset.mimeType LIKE :mimeType', { mimeType: `${q.mimeType}%` })
+    }
+
+    if (q.fromDate && q.toDate) {
+      qb.andWhere(
+        new Brackets((sub) =>
+          sub
+            .where('asset.takenAt BETWEEN :fromDate AND :toDate', {
+              fromDate: q.fromDate,
+              toDate: q.toDate,
+            })
+            .orWhere('asset.takenAt IS NULL AND asset.uploadedAt BETWEEN :fromDate AND :toDate', {
+              fromDate: q.fromDate,
+              toDate: q.toDate,
+            }),
+        ),
+      )
+    } else if (q.fromDate) {
+      qb.andWhere(
+        new Brackets((sub) =>
+          sub
+            .where('asset.takenAt >= :fromDate', { fromDate: q.fromDate })
+            .orWhere('asset.takenAt IS NULL AND asset.uploadedAt >= :fromDate', {
+              fromDate: q.fromDate,
+            }),
+        ),
+      )
+    } else if (q.toDate) {
+      qb.andWhere(
+        new Brackets((sub) =>
+          sub
+            .where('asset.takenAt <= :toDate', { toDate: q.toDate })
+            .orWhere('asset.takenAt IS NULL AND asset.uploadedAt <= :toDate', {
+              toDate: q.toDate,
+            }),
+        ),
+      )
+    }
+
+    if (q.favorite !== undefined) {
+      qb.andWhere('asset.favorite = :favorite', { favorite: q.favorite })
+    }
+
+    if (q.metadataStatus) {
+      qb.andWhere('asset.metadataStatus = :metadataStatus', { metadataStatus: q.metadataStatus })
+    }
+
+    if (q.hasFaces === true) {
+      qb.andWhere('asset.faceCount > 0')
+    } else if (q.hasFaces === false) {
+      qb.andWhere('(asset.faceCount IS NULL OR asset.faceCount = 0)')
+    }
+
+    if (q.hasLocations === true) {
+      qb.andWhere('asset.latitude IS NOT NULL AND asset.longitude IS NOT NULL')
+    } else if (q.hasLocations === false) {
+      qb.andWhere('(asset.latitude IS NULL OR asset.longitude IS NULL)')
+    }
+
+    const [items, total] = await qb
+      .orderBy(`COALESCE(asset.takenAt, asset.uploadedAt)`, 'DESC')
+      .addOrderBy('asset.uploadedAt', 'DESC')
+      .skip(offset)
+      .take(limit)
+      .getManyAndCount()
+
+    return { items: items.map((a) => this.toResponse(a)), total, limit, offset }
+  }
+
+  async getOne(userId: string | undefined, id: string): Promise<AssetResponse> {
+    const where = userId ? { id, userId } : { id }
+    const asset = await this.repo.findOne({ where })
+    if (!asset) throw new NotFoundException('Asset not found')
+    const faces = await this.facesService.getForAsset(id)
+    return { ...this.toResponse(asset), faces }
+  }
+
+  async update(userId: string, id: string, dto: UpdateAssetDto): Promise<AssetResponse> {
+    const asset = await this.repo.findOne({ where: { id, userId } })
+    if (!asset) throw new NotFoundException('Asset not found')
+
+    const patch: Partial<Asset> = {}
+    if (dto.title !== undefined) patch.title = dto.title
+    if (dto.description !== undefined) patch.description = dto.description
+    if (dto.takenAt !== undefined) patch.takenAt = dto.takenAt ? new Date(dto.takenAt) : null
+    if (dto.favorite !== undefined) patch.favorite = dto.favorite
+
+    if (Object.keys(patch).length === 0) {
+      return this.toResponse(asset)
+    }
+
+    await this.repo.update(id, patch as Record<string, unknown>)
+    const updated = await this.repo.findOne({ where: { id } })
+    return this.toResponse(updated!)
+  }
+
+  async trash(userId: string, id: string): Promise<void> {
+    const asset = await this.repo.findOne({ where: { id, userId } })
+    if (!asset) throw new NotFoundException('Asset not found')
+
+    if (!asset.isTrashed) {
+      await this.repo.update(id, { isTrashed: true, trashedAt: new Date() })
+    }
+  }
+
+  async bulkTrash(userId: string, assetIds: string[]): Promise<void> {
+    if (assetIds.length === 0) return
+    await this.repo
+      .createQueryBuilder()
+      .update(Asset)
+      .set({ isTrashed: true, trashedAt: new Date() })
+      .where('id IN (:...assetIds) AND userId = :userId', { assetIds, userId })
+      .execute()
+  }
+
+  async restore(userId: string, id: string): Promise<void> {
+    const asset = await this.repo.findOne({ where: { id, userId } })
+    if (!asset) throw new NotFoundException('Asset not found')
+
+    if (asset.isTrashed) {
+      await this.repo.update(id, { isTrashed: false, trashedAt: null })
+    }
+  }
+
+  async emptyTrash(userId: string): Promise<{ fileIds: string[] }> {
+    const assets = await this.repo.find({ where: { userId, isTrashed: true } })
+    if (assets.length === 0) return { fileIds: [] }
+
+    const assetIds = assets.map((a) => a.id)
+    const thumbRows = await this.thumbRepo.find({
+      where: assetIds.map((id) => ({ assetId: id })),
+    })
+    const fileIds = [
+      ...assets.flatMap((a) => [a.fileId, a.transcodeFileId].filter(Boolean) as string[]),
+      ...thumbRows.map((t) => t.fileId),
+    ]
+
+    await this.dataSource.transaction(async (em) => {
+      await em.delete(Face, { assetId: In(assetIds) })
+      await em.delete(AlbumAsset, { assetId: In(assetIds) })
+      await em.delete(AssetShare, { assetId: In(assetIds) })
+      await em.delete(Asset, { id: In(assetIds) })
+    })
+    return { fileIds }
+  }
+
+  async delete(userId: string, id: string): Promise<{ fileIds: string[] }> {
+    const asset = await this.repo.findOne({ where: { id, userId } })
+    if (!asset) throw new NotFoundException('Asset not found')
+    if (!asset.isTrashed)
+      throw new BadRequestException('Asset must be trashed before permanent deletion')
+
+    const thumbRows = await this.thumbRepo.find({ where: { assetId: id } })
+    const fileIds = [
+      ...([asset.fileId, asset.transcodeFileId].filter(Boolean) as string[]),
+      ...thumbRows.map((t) => t.fileId),
+    ]
+
+    await this.dataSource.transaction(async (em) => {
+      await em.delete(Face, { assetId: id })
+      await em.delete(AlbumAsset, { assetId: id })
+      await em.delete(AssetShare, { assetId: id })
+      await em.delete(Asset, { id })
+    })
+    return { fileIds }
+  }
+
+  async getByFileId(fileId: string): Promise<AssetResponse> {
+    const asset = await this.repo.findOne({ where: { fileId } })
+    if (!asset) throw new NotFoundException('Asset not found for fileId')
+    return this.toResponse(asset)
+  }
+
+  async updateMetadata(id: string, dto: UpdateMetadataDto): Promise<AssetResponse> {
+    const asset = await this.repo.findOne({ where: { id } })
+    if (!asset) throw new NotFoundException('Asset not found')
+
+    const patch: Partial<Asset> = {}
+    if (dto.status !== undefined) {
+      patch.metadataStatus = dto.status
+      patch.metadataExtractedAt = new Date()
+    }
+
+    if (dto.takenAt !== undefined) patch.takenAt = dto.takenAt
+    if (dto.mimeType !== undefined) patch.mimeType = dto.mimeType
+    if (dto.sizeBytes !== undefined) patch.sizeBytes = dto.sizeBytes
+    if (dto.originalName !== undefined) patch.originalName = dto.originalName
+    if (dto.width !== undefined) patch.width = dto.width
+    if (dto.height !== undefined) patch.height = dto.height
+    if (dto.durationSeconds !== undefined) patch.durationSeconds = dto.durationSeconds
+    if (dto.fps !== undefined) patch.fps = dto.fps
+    if (dto.codec !== undefined) patch.codec = dto.codec
+    if (dto.hasAudio !== undefined) patch.hasAudio = dto.hasAudio
+    if (dto.cameraMake !== undefined) patch.cameraMake = dto.cameraMake
+    if (dto.cameraModel !== undefined) patch.cameraModel = dto.cameraModel
+    if (dto.lensModel !== undefined) patch.lensModel = dto.lensModel
+    if (dto.orientation !== undefined) patch.orientation = dto.orientation
+    if (dto.iso !== undefined) patch.iso = dto.iso
+    if (dto.fNumber !== undefined) patch.fNumber = dto.fNumber
+    if (dto.exposureTime !== undefined) patch.exposureTime = dto.exposureTime
+    if (dto.focalLength !== undefined) patch.focalLength = dto.focalLength
+    if (dto.latitude !== undefined) patch.latitude = dto.latitude
+    if (dto.longitude !== undefined) patch.longitude = dto.longitude
+    if (dto.altitude !== undefined) patch.altitude = dto.altitude
+    if (dto.metadata !== undefined) patch.metadata = dto.metadata
+    if (dto.transcodeStatus !== undefined) patch.transcodeStatus = dto.transcodeStatus
+    if (dto.thumbnailStatus !== undefined) patch.thumbnailStatus = dto.thumbnailStatus
+    if (dto.transcodeFileId !== undefined) patch.transcodeFileId = dto.transcodeFileId
+    if (dto.faceStatus !== undefined) patch.faceStatus = dto.faceStatus
+    if (dto.faceCount !== undefined) patch.faceCount = dto.faceCount
+
+    await this.repo.update(id, patch as Record<string, unknown>)
+    const updated = await this.repo.findOne({ where: { id } })
+    return this.toResponse(updated!)
+  }
+
+  private toResponse(asset: Asset): AssetResponse {
+    return {
+      id: asset.id,
+      userId: asset.userId,
+      kind: asset.kind,
+      fileId: asset.fileId,
+      uploadedAt:
+        asset.uploadedAt instanceof Date ? asset.uploadedAt.toISOString() : asset.uploadedAt,
+      isTrashed: asset.isTrashed,
+      trashedAt: asset.trashedAt instanceof Date ? asset.trashedAt.toISOString() : null,
+      title: asset.title,
+      description: asset.description,
+      takenAt: asset.takenAt instanceof Date ? asset.takenAt.toISOString() : null,
+      favorite: asset.favorite,
+      mimeType: asset.mimeType,
+      sizeBytes: asset.sizeBytes !== null ? Number(asset.sizeBytes) : null,
+      originalName: asset.originalName,
+      width: asset.width,
+      height: asset.height,
+      durationSeconds: asset.durationSeconds !== null ? Number(asset.durationSeconds) : null,
+      cameraMake: asset.cameraMake,
+      cameraModel: asset.cameraModel,
+      lensModel: asset.lensModel,
+      orientation: asset.orientation,
+      iso: asset.iso,
+      fNumber: asset.fNumber !== null ? Number(asset.fNumber) : null,
+      exposureTime: asset.exposureTime !== null ? Number(asset.exposureTime) : null,
+      focalLength: asset.focalLength !== null ? Number(asset.focalLength) : null,
+      latitude: asset.latitude !== null ? Number(asset.latitude) : null,
+      longitude: asset.longitude !== null ? Number(asset.longitude) : null,
+      altitude: asset.altitude !== null ? Number(asset.altitude) : null,
+      fps: asset.fps !== null ? Number(asset.fps) : null,
+      codec: asset.codec,
+      hasAudio: asset.hasAudio,
+      metadata: asset.metadata,
+      metadataStatus: asset.metadataStatus,
+      metadataExtractedAt:
+        asset.metadataExtractedAt instanceof Date ? asset.metadataExtractedAt.toISOString() : null,
+      transcodeStatus: asset.transcodeStatus,
+      transcodeFileId: asset.transcodeFileId,
+      thumbnailStatus: asset.thumbnailStatus,
+      faceStatus: asset.faceStatus,
+      faceCount: asset.faceCount,
+    }
+  }
+}

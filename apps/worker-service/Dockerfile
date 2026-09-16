@@ -6,6 +6,7 @@ WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/shared-config/package.json ./packages/shared-config/
+COPY packages/data-access/package.json ./packages/data-access/
 COPY apps/worker-service/package.json ./apps/worker-service/
 # tfjs-node ships no linux-arm64 prebuilt (x64-only tarball) — rebuild its binding from source on arm64
 RUN pnpm install --frozen-lockfile || pnpm install
@@ -18,6 +19,7 @@ COPY packages/ ./packages/
 COPY apps/worker-service/ ./apps/worker-service/
 RUN pnpm --filter @photox/shared-config build && \
     pnpm --filter @photox/shared-types build && \
+    pnpm --filter @photox/data-access build && \
     pnpm --filter @photox/worker-service build
 
 # -- runtime --

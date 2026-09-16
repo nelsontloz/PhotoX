@@ -1,0 +1,111 @@
+import {
+  Injectable,
+  ConflictException,
+  UnauthorizedException,
+  NotFoundException,
+} from '@nestjs/common'
+import { InjectRepository } from '@nestjs/typeorm'
+import { IsNull, Repository } from 'typeorm'
+import * as argon2 from 'argon2'
+import { User } from './entities/user.entity'
+import { RefreshToken } from './entities/refresh-token.entity'
+import { TokenService } from './tokens/token.service'
+import type { AuthResponse } from '@photox/shared-types'
+
+@Injectable()
+export class AuthService {
+  constructor(
+    @InjectRepository(User) private readonly userRepo: Repository<User>,
+    @InjectRepository(RefreshToken) private readonly tokenRepo: Repository<RefreshToken>,
+    private readonly tokenService: TokenService,
+  ) {}
+
+  async register(email: string, password: string, displayName: string): Promise<AuthResponse> {
+    const existing = await this.userRepo.findOne({ where: { email } })
+    if (existing) throw new ConflictException('Email already registered')
+
+    const existingCount = await this.userRepo.count()
+    const role = existingCount === 0 ? 'admin' : 'user'
+    const passwordHash = await argon2.hash(password)
+    const user = this.userRepo.create({ email, passwordHash, displayName, role })
+    const saved = await this.userRepo.save(user)
+
+    return this.issueTokens(saved)
+  }
+
+  async login(email: string, password: string): Promise<AuthResponse> {
+    const user = await this.userRepo.findOne({ where: { email } })
+    if (!user) throw new UnauthorizedException('Invalid credentials')
+
+    const valid = await argon2.verify(user.passwordHash, password)
+    if (!valid) throw new UnauthorizedException('Invalid credentials')
+
+    return this.issueTokens(user)
+  }
+
+  async refresh(refreshToken: string): Promise<AuthResponse> {
+    const hash = this.tokenService.hash(refreshToken)
+
+    const row = await this.tokenRepo.findOne({
+      where: { tokenHash: hash, purpose: 'refresh' as const },
+    })
+    if (!row) throw new UnauthorizedException('Invalid refresh token')
+    if (new Date() > row.expiresAt) throw new UnauthorizedException('Refresh token expired')
+
+    const result = await this.tokenRepo.update(
+      { tokenHash: hash, revokedAt: IsNull() },
+      { revokedAt: () => 'now()' },
+    )
+    if (!result.affected) throw new UnauthorizedException('Refresh token revoked')
+
+    const user = await this.userRepo.findOne({ where: { id: row.userId } })
+    if (!user) throw new NotFoundException('User not found')
+
+    return this.issueTokens(user)
+  }
+
+  async logout(refreshToken: string): Promise<void> {
+    const hash = this.tokenService.hash(refreshToken)
+
+    const row = await this.tokenRepo.findOne({
+      where: { tokenHash: hash, purpose: 'refresh' as const },
+    })
+    if (row && !row.revokedAt) {
+      await this.tokenRepo.update(row.id, { revokedAt: new Date() })
+    }
+  }
+
+  private async issueTokens(user: User): Promise<AuthResponse> {
+    const accessToken = await this.tokenService.signAccessToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    })
+
+    const refreshRaw = this.tokenService.generate()
+    const refreshHash = this.tokenService.hash(refreshRaw)
+
+    await this.tokenRepo.save(
+      this.tokenRepo.create({
+        userId: user.id,
+        tokenHash: refreshHash,
+        purpose: 'refresh' as const,
+        expiresAt: this.tokenService.getRefreshExpiresAt(),
+      }),
+    )
+
+    return {
+      accessToken,
+      refreshToken: refreshRaw,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl ?? undefined,
+        createdAt: user.createdAt.toISOString(),
+        updatedAt: user.updatedAt.toISOString(),
+      },
+    }
+  }
+}

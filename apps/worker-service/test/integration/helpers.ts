@@ -1,140 +1,135 @@
-import * as http from 'node:http'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Test } from '@nestjs/testing'
+import { ConfigModule } from '@nestjs/config'
+import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm'
 import type { INestApplicationContext } from '@nestjs/common'
 import type { Queue } from 'bullmq'
-import { SERVICE_URLS } from '@photox/shared-config'
-import { AppModule } from '../../src/app.module'
+import { DataSource, Repository } from 'typeorm'
+import {
+  Asset,
+  AssetThumbnail,
+  Face,
+  FileRecord,
+  LocalStorageService,
+  Person,
+} from '@photox/data-access'
 import { BullMqService } from '../../src/queue/bullmq.service'
+import { ThumbnailProcessor } from '../../src/queue/thumbnail.processor'
+import { VideoProcessor } from '../../src/queue/video.processor'
+import { MetadataProcessor } from '../../src/queue/metadata.processor'
+import {
+  MetadataExtractor,
+  VideoMetadataExtractor,
+} from '../../src/queue/metadata.extractor'
 import { FaceDetectorService } from '../../src/queue/face.detector'
+import { FaceProcessor } from '../../src/queue/face.processor'
+import { FaceClusterService } from '../../src/queue/face.cluster'
+import { CleanupProcessor } from '../../src/queue/cleanup.processor'
+import { CleanupOrphansProcessor } from '../../src/queue/cleanup-orphans.processor'
 import { setupTestInfra, teardownTestInfra } from './test-setup'
-
-export interface StubCall {
-  method: string
-  url: string
-  headers: http.IncomingHttpHeaders
-  body: Buffer
-}
-
-type ResponseFn = (call: StubCall, res: http.ServerResponse) => void
-
-interface StubRoute {
-  method: string
-  match: (url: string) => boolean
-  handler: ResponseFn
-}
-
-export interface StubServer {
-  server: http.Server
-  port: number
-  calls: StubCall[]
-  setResponse(method: string, pattern: string | RegExp, handler: ResponseFn): void
-  clearRoutes(): void
-  resetCalls(): void
-  stop(): Promise<void>
-}
-
-function collectBody(req: http.IncomingMessage): Promise<Buffer> {
-  return new Promise((resolve) => {
-    const chunks: Buffer[] = []
-    req.on('data', (chunk: Buffer) => chunks.push(chunk))
-    req.on('end', () => resolve(Buffer.concat(chunks)))
-  })
-}
-
-export function startStubServer(): Promise<StubServer> {
-  const calls: StubCall[] = []
-  const routes: StubRoute[] = []
-
-  const server = http.createServer((req, res) => {
-    void (async () => {
-      const body = await collectBody(req)
-      const call: StubCall = {
-        method: req.method!,
-        url: req.url!,
-        headers: req.headers,
-        body,
-      }
-      calls.push(call)
-
-      for (let i = routes.length - 1; i >= 0; i--) {
-        const route = routes[i]!
-        if (route.method === call.method && route.match(call.url)) {
-          route.handler(call, res)
-          return
-        }
-      }
-
-      res.writeHead(404)
-      res.end('Not Found')
-    })()
-  })
-
-  return new Promise((resolve) => {
-    server.listen(0, () => {
-      const addr = server.address()
-      const port = typeof addr === 'object' && addr ? addr.port : 0
-      resolve({
-        server,
-        port,
-        calls,
-        setResponse(method, pattern, handler) {
-          const match =
-            typeof pattern === 'string'
-              ? (url: string) => url.split('?')[0] === pattern
-              : (url: string) => pattern.test(url)
-          routes.push({ method, match, handler })
-        },
-        clearRoutes() {
-          routes.length = 0
-        },
-        resetCalls() {
-          calls.length = 0
-        },
-        stop() {
-          return new Promise<void>((r) => server.close(() => r()))
-        },
-      })
-    })
-  })
-}
 
 export interface TestApp {
   app: INestApplicationContext
-  stub: StubServer
+  dataSource: DataSource
+  storage: LocalStorageService
+  storageDir: string
+  fileRepo: Repository<FileRecord>
+  assetRepo: Repository<Asset>
+  thumbRepo: Repository<AssetThumbnail>
+  faceRepo: Repository<Face>
+  personRepo: Repository<Person>
   getQueue(name: string): Queue
 }
 
+// ponytail: explicit module instead of AppModule — SharedDatabaseModule.forRoot() reads env at import time, before the testcontainer ports exist; explicit TypeOrmModule.forRoot gets the mapped ports directly
 export async function createTestApp(): Promise<TestApp> {
-  await setupTestInfra()
-  const stub = await startStubServer()
+  const { pgHost, pgPort } = await setupTestInfra()
 
-  const port = stub.port
-  Object.assign(SERVICE_URLS, {
-    'media-service': `http://localhost:${port}`,
-    'file-storage-service': `http://localhost:${port}`,
-  })
+  const storageDir = mkdtempSync(join(tmpdir(), 'worker-int-storage-'))
+  const prevStorageDir = process.env.STORAGE_DIR
+  process.env.STORAGE_DIR = storageDir
 
-  const moduleRef = await Test.createTestingModule({
-    imports: [AppModule],
-  })
-    .overrideProvider(FaceDetectorService)
-    .useValue({ detect: vi.fn().mockResolvedValue([]) })
-    .compile()
+  try {
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
+        TypeOrmModule.forRoot({
+          type: 'postgres',
+          host: pgHost,
+          port: pgPort,
+          username: 'photox',
+          password: 'photox',
+          database: 'photox',
+          entities: [FileRecord, Asset, AssetThumbnail, Face, Person],
+          synchronize: true,
+        }),
+        TypeOrmModule.forFeature([FileRecord, Asset, AssetThumbnail, Face, Person]),
+      ],
+      providers: [
+        BullMqService,
+        LocalStorageService,
+        ThumbnailProcessor,
+        VideoProcessor,
+        MetadataProcessor,
+        MetadataExtractor,
+        VideoMetadataExtractor,
+        { provide: FaceDetectorService, useValue: { detect: vi.fn().mockResolvedValue([]) } },
+        FaceProcessor,
+        FaceClusterService,
+        CleanupProcessor,
+        CleanupOrphansProcessor,
+      ],
+    }).compile()
 
-  const app = await moduleRef.init()
-  const bullMq = app.get(BullMqService)
+    await moduleRef.init()
+    const app = moduleRef as unknown as INestApplicationContext
 
-  return {
-    app,
-    stub,
-    getQueue: (name: string) => bullMq.getQueue(name),
+    for (const p of [
+      app.get(ThumbnailProcessor),
+      app.get(VideoProcessor),
+      app.get(MetadataProcessor),
+      app.get(FaceProcessor),
+      app.get(FaceClusterService),
+      app.get(CleanupProcessor),
+      app.get(CleanupOrphansProcessor),
+    ]) {
+      p.start()
+    }
+
+    const bullMq = app.get(BullMqService)
+    return {
+      app,
+      dataSource: app.get(DataSource),
+      storage: app.get(LocalStorageService),
+      storageDir,
+      fileRepo: app.get(getRepositoryToken(FileRecord)),
+      assetRepo: app.get(getRepositoryToken(Asset)),
+      thumbRepo: app.get(getRepositoryToken(AssetThumbnail)),
+      faceRepo: app.get(getRepositoryToken(Face)),
+      personRepo: app.get(getRepositoryToken(Person)),
+      getQueue: (name: string) => bullMq.getQueue(name),
+    }
+  } catch (err) {
+    if (prevStorageDir === undefined) delete process.env.STORAGE_DIR
+    else process.env.STORAGE_DIR = prevStorageDir
+    throw err
   }
+}
+
+export async function resetDb(testApp: TestApp): Promise<void> {
+  await testApp.dataSource.query(
+    'TRUNCATE faces, persons, asset_thumbnails, assets, files RESTART IDENTITY CASCADE',
+  )
+  rmSync(testApp.storageDir, { recursive: true, force: true })
+  await testApp.storage.ensureDir()
 }
 
 export async function closeTestApp(testApp: TestApp): Promise<void> {
   await testApp.app.close()
-  await testApp.stub.stop()
   await teardownTestInfra()
+  rmSync(testApp.storageDir, { recursive: true, force: true })
 }
 
 export async function waitForJob(

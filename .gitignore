@@ -12,6 +12,7 @@ coverage
 pnpm-debug.log*
 .codegraph/
 pacts/
+data/
 .tmp/
 .slim/
 .worktrees/

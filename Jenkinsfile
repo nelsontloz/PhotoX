@@ -49,36 +49,10 @@ spec:
                         container('dind') {
                             sh 'timeout 30 sh -c "until docker info >/dev/null 2>&1; do sleep 1; done"'
                             sh 'docker pull postgres:16-alpine'
-                            sh 'docker pull minio/minio:RELEASE.2025-09-07T16-13-09Z'
+                            sh 'docker pull redis:7-alpine'
                         }
                         container('node') {
                             sh 'DEBUG=testcontainers pnpm test'
-                        }
-                    }
-                }
-                stage('Pact') {
-                    stages {
-                        stage('Consumer') {
-                            steps {
-                                container('node') {
-                                    sh 'rm -rf pacts'
-                                    sh 'pnpm pact-consumer'
-                                }
-                            }
-                        }
-                        stage('Provider') {
-                            steps {
-                                container('node') {
-                                    sh 'pnpm pact-provider'
-                                }
-                            }
-                        }
-                        stage('Coverage') {
-                            steps {
-                                container('node') {
-                                    sh 'pnpm pact-coverage'
-                                }
-                            }
                         }
                     }
                 }

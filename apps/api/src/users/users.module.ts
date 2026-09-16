@@ -1,0 +1,34 @@
+import { Module } from '@nestjs/common'
+import { JwtModule, type JwtSignOptions } from '@nestjs/jwt'
+import { TypeOrmModule } from '@nestjs/typeorm'
+import { loadEnv } from '@photox/shared-config'
+import { loadAuthEnv } from '@photox/shared-auth'
+import { User } from './entities/user.entity'
+import { RefreshToken } from './entities/refresh-token.entity'
+import { AuthController } from './auth.controller'
+import { AuthService } from './auth.service'
+import { TokenService } from './tokens/token.service'
+import { AdminController } from './admin/admin.controller'
+import { AdminService } from './admin/admin.service'
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([User, RefreshToken]),
+    JwtModule.registerAsync({
+      useFactory: () => {
+        const authEnv = loadAuthEnv()
+        const sharedEnv = loadEnv()
+        return {
+          secret: authEnv.AUTH_TOKEN_SECRET,
+          signOptions: {
+            algorithm: 'HS256',
+            expiresIn: sharedEnv.AUTH_ACCESS_TTL as JwtSignOptions['expiresIn'],
+          },
+        }
+      },
+    }),
+  ],
+  controllers: [AuthController, AdminController],
+  providers: [AuthService, AdminService, TokenService],
+})
+export class UsersModule {}

@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { HttpService } from '@nestjs/axios'
-import { firstValueFrom } from 'rxjs'
+import { InjectRepository } from '@nestjs/typeorm'
+import { Repository } from 'typeorm'
 import type { Job } from 'bullmq'
-import { SERVICE_URLS } from '@photox/shared-config'
+import { Face, Person } from '@photox/data-access'
 import { BullMqService } from './bullmq.service'
 
 interface ClusterJob {
@@ -13,7 +13,7 @@ interface ClusterJob {
 // ponytail: eps/minPts tunable; eps=0.4 cosine distance ≈ cosine similarity 0.6 — empirically good for human face embeddings
 const DBSCAN_EPS = 0.4
 const DBSCAN_MIN_PTS = 2
-// ponytail: slightly more lenient than DBSCAN_EPS — lets singleton noise faces match an existing person centroid when they're "close enough" to be the same person
+// ponytail: slightly more lenient than DBSCAN_EPS — lets singleton noise faces match an existing person centroid within NOISE_ASSIGN_EPS. This catches the common case where one photo of an already-known person has no nearby face to chain off.
 const NOISE_ASSIGN_EPS = 0.5
 
 interface FaceItem {
@@ -108,7 +108,10 @@ export class FaceClusterService {
   private readonly logger = new Logger(FaceClusterService.name)
 
   constructor(
-    private readonly http: HttpService,
+    @InjectRepository(Face)
+    private readonly faceRepo: Repository<Face>,
+    @InjectRepository(Person)
+    private readonly personRepo: Repository<Person>,
     private readonly bullMq: BullMqService,
   ) {}
 
@@ -127,11 +130,14 @@ export class FaceClusterService {
   }
 
   async cluster(userId: string): Promise<void> {
-    const facesUrl = `${SERVICE_URLS['media-service']}/v1/faces?userId=${encodeURIComponent(userId)}&includeEmbeddings=true`
-    const res = await firstValueFrom(
-      this.http.get<{ items: FaceItem[] }>(facesUrl, { timeout: 30_000 }),
-    )
-    const faces = res.data.items
+    const rows = await this.faceRepo.find({ where: { userId } })
+    const faces: FaceItem[] = rows.map((f) => ({
+      id: f.id,
+      assetId: f.assetId,
+      box: f.box,
+      embedding: f.embedding,
+      personId: f.personId ?? null,
+    }))
 
     if (faces.length === 0) {
       this.logger.log(`No faces for user=${userId}`)
@@ -197,17 +203,15 @@ export class FaceClusterService {
         }
       }
       if (bestPersonId !== null && bestDist <= NOISE_ASSIGN_EPS) {
-        const patchFaceUrl = `${SERVICE_URLS['media-service']}/v1/faces/${face.id}/person`
-        await firstValueFrom(this.http.patch(patchFaceUrl, { userId, personId: bestPersonId }))
+        await this.faceRepo.update({ id: face.id, userId }, { personId: bestPersonId })
+        await this.refreshFaceCount(bestPersonId, userId)
         noiseReassigned++
       }
     }
 
-    const personsUrl = `${SERVICE_URLS['media-service']}/v1/persons?userId=${encodeURIComponent(userId)}`
-    const personsRes = await firstValueFrom(
-      this.http.get<{ items: PersonItem[] }>(personsUrl, { timeout: 10_000 }),
-    )
-    const existingPersons = personsRes.data.items
+    const existingPersons: PersonItem[] = (
+      await this.personRepo.find({ where: { userId } })
+    ).map((p) => ({ id: p.id, clusterLabel: p.clusterLabel ?? '' }))
 
     const labelToPersonId = new Map<string, string>()
     for (const p of existingPersons) {
@@ -219,29 +223,38 @@ export class FaceClusterService {
       let personId = labelToPersonId.get(key)
 
       if (!personId) {
-        const createUrl = `${SERVICE_URLS['media-service']}/v1/persons`
-        // ponytail: CreatePersonDto uses forbidNonWhitelisted, so only declared fields are accepted. Service sets name=null from clusterLabel, so no need to send it.
-        const createRes = await firstValueFrom(
-          this.http.post<{ id: string }>(createUrl, { userId, clusterLabel: key }),
+        const saved = await this.personRepo.save(
+          this.personRepo.create({ userId, name: null, clusterLabel: key, faceCount: 0 }),
         )
-        personId = createRes.data.id
+        personId = saved.id
         labelToPersonId.set(key, personId)
       }
 
       for (const face of facesInCluster) {
-        const patchFaceUrl = `${SERVICE_URLS['media-service']}/v1/faces/${face.id}/person`
-        await firstValueFrom(this.http.patch(patchFaceUrl, { userId, personId }))
+        await this.faceRepo.update({ id: face.id, userId }, { personId })
       }
+      await this.refreshFaceCount(personId, userId)
 
       const coverFace = facesInCluster.reduce((best, f) =>
         f.box.w * f.box.h > best.box.w * best.box.h ? f : best,
       )
-      const coverUrl = `${SERVICE_URLS['media-service']}/v1/persons/${personId}/cover`
-      await firstValueFrom(this.http.patch(coverUrl, { userId, faceId: coverFace.id }))
+      await this.personRepo.update({ id: personId, userId }, { coverFaceId: coverFace.id })
     }
 
     this.logger.log(
       `Clustered ${unassigned.length} unassigned faces into ${clusters.size} groups (${noiseReassigned} noise faces reassigned to existing persons) for user=${userId}`,
     )
+  }
+
+  private async refreshFaceCount(personId: string, userId: string): Promise<void> {
+    const result = await this.faceRepo
+      .createQueryBuilder('f')
+      .innerJoin('assets', 'a', 'a.id = f."assetId"')
+      .select('COUNT(*)')
+      .where('f."personId" = :personId', { personId })
+      .andWhere('f."userId" = :userId', { userId })
+      .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
+      .getRawOne<{ count: string }>()
+    await this.personRepo.update({ id: personId, userId }, { faceCount: Number(result?.count ?? 0) })
   }
 }
