@@ -1,6 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
-import { IsArray, IsDefined, IsNumber, IsUUID, ArrayMinSize, ValidateNested } from 'class-validator'
+import {
+  IsArray,
+  IsDefined,
+  IsNumber,
+  IsUUID,
+  ArrayMaxSize,
+  ArrayMinSize,
+  ValidateNested,
+} from 'class-validator'
 import type { RegisterFacesRequestDto, DetectedFaceInput } from '@photox/shared-types'
 import { FaceBoxResponseDto } from './face.dto'
 
@@ -19,7 +27,8 @@ export class DetectedFaceDto implements DetectedFaceInput {
 
   @ApiProperty({ type: [Number] })
   @IsArray()
-  @ArrayMinSize(1)
+  @ArrayMinSize(512)
+  @ArrayMaxSize(512)
   @IsNumber({}, { each: true })
   embedding!: number[]
 }

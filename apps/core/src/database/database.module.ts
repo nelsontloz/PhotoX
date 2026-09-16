@@ -3,7 +3,8 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 import { DataSource } from 'typeorm'
 import { SharedDatabaseModule } from '@photox/data-access'
 
-// ponytail: 1024 is the `faceres` model output (apps/worker-service/node_modules/@vladmandic/human/models/faceres.json). If the model changes, drop and recreate the index with the new dim.
+// ponytail: 512 is the InsightFace buffalo_l w600k_r50 output dim (replaced human faceres 1024).
+// Index rebuild fails while legacy 1024-dim rows remain (warn-caught) — the cluster re-embed backfill converts them.
 const VECTOR_INIT_PROVIDER = {
   provide: 'VECTOR_INIT',
   useFactory: (dataSource: DataSource) => {
@@ -13,7 +14,7 @@ const VECTOR_INIT_PROVIDER = {
           await dataSource.query('CREATE EXTENSION IF NOT EXISTS vector')
           await dataSource.query('DROP INDEX IF EXISTS faces_embedding_hnsw')
           await dataSource.query(
-            'CREATE INDEX faces_embedding_hnsw ON faces USING hnsw ((embedding::vector(1024)) vector_cosine_ops)',
+            'CREATE INDEX faces_embedding_hnsw ON faces USING hnsw ((embedding::vector(512)) vector_cosine_ops)',
           )
         } catch {
           new Logger('DatabaseModule').warn(

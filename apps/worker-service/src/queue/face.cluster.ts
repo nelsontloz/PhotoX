@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
+import { In, Repository } from 'typeorm'
+import { randomUUID } from 'crypto'
 import type { Job } from 'bullmq'
-import { Face, Person } from '@photox/data-access'
+import { Asset, Face, FACE_EMBEDDING_DIM, Person } from '@photox/data-access'
 import { BullMqService } from './bullmq.service'
 
 interface ClusterJob {
@@ -10,26 +11,31 @@ interface ClusterJob {
   reason?: 'face-detected' | 'manual'
 }
 
-// ponytail: eps/minPts tunable; eps=0.4 cosine distance ≈ cosine similarity 0.6 — empirically good for human face embeddings
-const DBSCAN_EPS = 0.4
+// ponytail: ArcFace-family tuning — same-person cosine distance typically ~0.3-0.6, so eps sits
+// above the old faceres 0.3x values; centroid matching (not tighter eps) is the merge guard now
+const DBSCAN_EPS = 0.55
 const DBSCAN_MIN_PTS = 2
-// ponytail: slightly more lenient than DBSCAN_EPS — lets singleton noise faces match an existing person centroid within NOISE_ASSIGN_EPS. This catches the common case where one photo of an already-known person has no nearby face to chain off.
+// ponytail: NOISE_ASSIGN_EPS <= DBSCAN_EPS invariant — singleton noise faces only join an existing person centroid strictly inside the clustering radius; looser values re-merged distinct people
 const NOISE_ASSIGN_EPS = 0.5
+// ponytail: new clusters attach to the nearest existing person centroid within CLUSTER_MATCH_EPS, else get a random label — run-local `cluster-N` labels merged different people across runs
+const CLUSTER_MATCH_EPS = 0.5
+// ponytail: low-confidence detections stay stored but don't vote in clustering or centroids
+const CLUSTER_MIN_CONFIDENCE = 0.4
+// ponytail: cap legacy re-embed enqueues per run — rest follow on later runs, no storm on big libraries
+const LEGACY_REEMBED_PER_RUN = 100
 
 interface FaceItem {
   id: string
   assetId: string
   box: { x: number; y: number; w: number; h: number }
   embedding: number[]
+  confidence: number
   personId: string | null
 }
 
-interface PersonItem {
-  id: string
-  clusterLabel: string
-}
-
 function cosineDistance(a: number[], b: number[]): number {
+  // ponytail: cross-dim rows (legacy 1024-dim vs current 512-dim) are incomparable — max distance, never match
+  if (a.length !== b.length || a.length === 0) return 1
   let dot = 0
   let normA = 0
   let normB = 0
@@ -43,6 +49,16 @@ function cosineDistance(a: number[], b: number[]): number {
   const denom = Math.sqrt(normA) * Math.sqrt(normB)
   if (denom === 0) return 1
   return 1 - dot / denom
+}
+
+function centroidOf(embeddings: number[][]): number[] {
+  const dim = embeddings[0]!.length
+  const centroid = new Array<number>(dim).fill(0)
+  for (const e of embeddings) {
+    for (let i = 0; i < dim; i++) centroid[i]! += e[i]!
+  }
+  for (let i = 0; i < dim; i++) centroid[i]! /= embeddings.length
+  return centroid
 }
 
 // ponytail: O(n²) in-memory DBSCAN — fine for v1 personal photo library (hundreds, not thousands of faces).
@@ -113,6 +129,8 @@ export class FaceClusterService {
     @InjectRepository(Person)
     private readonly personRepo: Repository<Person>,
     private readonly bullMq: BullMqService,
+    @InjectRepository(Asset)
+    private readonly assetRepo: Repository<Asset>,
   ) {}
 
   start() {
@@ -130,12 +148,19 @@ export class FaceClusterService {
   }
 
   async cluster(userId: string): Promise<void> {
-    const rows = await this.faceRepo.find({ where: { userId } })
+    // ponytail: innerJoin drops trashed assets — trashed faces stay stored, just don't vote
+    const rows = await this.faceRepo
+      .createQueryBuilder('f')
+      .innerJoin('assets', 'a', 'a.id = f."assetId"')
+      .where('f."userId" = :userId', { userId })
+      .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
+      .getMany()
     const faces: FaceItem[] = rows.map((f) => ({
       id: f.id,
       assetId: f.assetId,
       box: f.box,
       embedding: f.embedding,
+      confidence: f.confidence,
       personId: f.personId ?? null,
     }))
 
@@ -144,7 +169,30 @@ export class FaceClusterService {
       return
     }
 
-    const unassigned = faces.filter((f) => f.personId === null)
+    // ponytail: legacy-dim rows (pre-buffalo_l 1024-dim) are incomparable — never cluster or cast
+    // in place; unassigned ones get their assets re-enqueued for re-embed (processor deletes +
+    // re-saves at 512-dim), assigned ones stay frozen until their asset re-embeds
+    const legacyUnassigned = faces.filter(
+      (f) => f.personId === null && f.embedding.length !== FACE_EMBEDDING_DIM,
+    )
+    if (legacyUnassigned.length > 0) {
+      const assetIds = [...new Set(legacyUnassigned.map((f) => f.assetId))].slice(
+        0,
+        LEGACY_REEMBED_PER_RUN,
+      )
+      await this.enqueueReembed(assetIds, userId)
+      this.logger.log(
+        `Skipped ${legacyUnassigned.length} legacy-dim faces, re-embed enqueued for ` +
+          `${assetIds.length} assets: user=${userId}`,
+      )
+    }
+
+    const unassigned = faces.filter(
+      (f) =>
+        f.personId === null &&
+        f.confidence >= CLUSTER_MIN_CONFIDENCE &&
+        f.embedding.length === FACE_EMBEDDING_DIM,
+    )
 
     if (unassigned.length === 0) {
       this.logger.log(`No unassigned faces for user=${userId}, skipping clustering`)
@@ -171,72 +219,81 @@ export class FaceClusterService {
       this.logger.log(`No clusters for user=${userId}, all faces are noise`)
     }
 
-    // ponytail: post-DBSCAN noise reassignment — singleton faces with no close neighbor get matched to the nearest existing person centroid within NOISE_ASSIGN_EPS. This catches the common case where one photo of an already-known person has no nearby face to chain off.
+    // ponytail: centroids from high-confidence current-dim faces only — low-conf and legacy
+    // faces stay stored, just don't vote
     const personCentroids = new Map<string, number[]>()
     const facesByPerson = new Map<string, FaceItem[]>()
     for (const f of faces) {
-      if (f.personId === null) continue
+      if (
+        f.personId === null ||
+        f.confidence < CLUSTER_MIN_CONFIDENCE ||
+        f.embedding.length !== FACE_EMBEDDING_DIM
+      )
+        continue
       const arr = facesByPerson.get(f.personId) ?? []
       arr.push(f)
       facesByPerson.set(f.personId, arr)
     }
-    for (const [pid, pfs] of facesByPerson) {
-      if (pfs.length === 0) continue
-      const dim = pfs[0]!.embedding.length
-      const centroid = new Array<number>(dim).fill(0)
-      for (const f of pfs) {
-        for (let i = 0; i < dim; i++) centroid[i]! += f.embedding[i]!
+    const refreshCentroid = (pid: string) => {
+      const pfs = facesByPerson.get(pid) ?? []
+      if (pfs.length === 0) personCentroids.delete(pid)
+      else personCentroids.set(pid, centroidOf(pfs.map((f) => f.embedding)))
+    }
+    for (const pid of facesByPerson.keys()) refreshCentroid(pid)
+
+    const nearestPerson = (embedding: number[]): { id: string; dist: number } | null => {
+      let best: { id: string; dist: number } | null = null
+      for (const [pid, centroid] of personCentroids) {
+        const d = cosineDistance(embedding, centroid)
+        if (best === null || d < best.dist) best = { id: pid, dist: d }
       }
-      for (let i = 0; i < dim; i++) centroid[i]! /= pfs.length
-      personCentroids.set(pid, centroid)
+      return best
     }
 
+    // ponytail: post-DBSCAN noise reassignment — singleton faces with no close neighbor get matched to the nearest existing person centroid within NOISE_ASSIGN_EPS. This catches the common case where one photo of an already-known person has no nearby face to chain off.
     let noiseReassigned = 0
     for (const face of noiseFaces) {
-      let bestPersonId: string | null = null
-      let bestDist = Infinity
-      for (const [pid, centroid] of personCentroids) {
-        const d = cosineDistance(face.embedding, centroid)
-        if (d < bestDist) {
-          bestDist = d
-          bestPersonId = pid
-        }
-      }
-      if (bestPersonId !== null && bestDist <= NOISE_ASSIGN_EPS) {
-        await this.faceRepo.update({ id: face.id, userId }, { personId: bestPersonId })
-        await this.refreshFaceCount(bestPersonId, userId)
+      const best = nearestPerson(face.embedding)
+      if (best !== null && best.dist <= NOISE_ASSIGN_EPS) {
+        await this.faceRepo.update({ id: face.id, userId }, { personId: best.id })
+        face.personId = best.id
+        facesByPerson.get(best.id)!.push(face)
+        refreshCentroid(best.id)
+        await this.refreshFaceCount(best.id, userId)
         noiseReassigned++
       }
     }
 
-    const existingPersons: PersonItem[] = (await this.personRepo.find({ where: { userId } })).map(
-      (p) => ({ id: p.id, clusterLabel: p.clusterLabel ?? '' }),
-    )
+    for (const facesInCluster of clusters.values()) {
+      const newCentroid = centroidOf(facesInCluster.map((f) => f.embedding))
+      const best = nearestPerson(newCentroid)
+      let personId: string | null = best !== null && best.dist <= CLUSTER_MATCH_EPS ? best.id : null
 
-    const labelToPersonId = new Map<string, string>()
-    for (const p of existingPersons) {
-      labelToPersonId.set(p.clusterLabel, p.id)
-    }
-
-    for (const [clusterLabel, facesInCluster] of clusters) {
-      const key = `cluster-${clusterLabel}`
-      let personId = labelToPersonId.get(key)
-
-      if (!personId) {
+      if (personId === null) {
         const saved = await this.personRepo.save(
-          this.personRepo.create({ userId, name: null, clusterLabel: key, faceCount: 0 }),
+          this.personRepo.create({
+            userId,
+            name: null,
+            clusterLabel: `cluster-${randomUUID()}`,
+            faceCount: 0,
+          }),
         )
         personId = saved.id
-        labelToPersonId.set(key, personId)
+        personCentroids.set(personId, newCentroid)
+        facesByPerson.set(personId, [])
       }
 
       for (const face of facesInCluster) {
         await this.faceRepo.update({ id: face.id, userId }, { personId })
+        face.personId = personId
+        facesByPerson.get(personId)!.push(face)
       }
+      // ponytail: refresh so later clusters in the same run match against faces attached earlier
+      refreshCentroid(personId)
       await this.refreshFaceCount(personId, userId)
 
-      const coverFace = facesInCluster.reduce((best, f) =>
-        f.box.w * f.box.h > best.box.w * best.box.h ? f : best,
+      const coverFace = facesInCluster.reduce((bestFace, f) =>
+        f.box.w * f.box.h > bestFace.box.w * bestFace.box.h ? f : bestFace,
       )
       await this.personRepo.update({ id: personId, userId }, { coverFaceId: coverFace.id })
     }
@@ -244,6 +301,23 @@ export class FaceClusterService {
     this.logger.log(
       `Clustered ${unassigned.length} unassigned faces into ${clusters.size} groups (${noiseReassigned} noise faces reassigned to existing persons) for user=${userId}`,
     )
+  }
+
+  private async enqueueReembed(assetIds: string[], userId: string): Promise<void> {
+    const assets = await this.assetRepo.find({ where: { id: In(assetIds), userId } })
+    for (const a of assets) {
+      await this.bullMq.enqueue(
+        'process-faces',
+        're-embed',
+        { assetId: a.id, fileId: a.fileId, userId, reason: 're-embed' },
+        {
+          jobId: `face-reembed-${a.id}`,
+          attempts: 3,
+          backoff: { type: 'exponential' },
+          removeOnFail: true,
+        },
+      )
+    }
   }
 
   private async refreshFaceCount(personId: string, userId: string): Promise<void> {

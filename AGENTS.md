@@ -45,7 +45,7 @@ Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 - Publisher: `apps/core/src/queue/bullmq.service.ts` (typed `enqueueThumbnails`/`enqueueVideo` + generic `enqueue`). Consumers: `QueueModule.onModuleInit()` starts 7 workers: `process-thumbnail`, `process-video`, `process-metadata`, `process-faces`, `process-faces-cluster`, `cleanup-asset`, `cleanup-orphans`. `FaceProcessor` auto-enqueues `process-faces-cluster`.
 - Dedup/retry: thumbnails `jobId: '<prefix>-<assetId>-<size>'` over `sm/md/lg/xl`, attempts 3 exponential backoff; video `jobId: 'video-<assetId>'` (or `video-reprocess-*`), attempts 3.
 - Video (`video.processor.ts`): reads source from local disk via `LocalStorageService` (no presigned URLs). h264+aac → skip, mark `ready`. Else single pass to AV1 webm (`libaom-av1 -crf 32 -cpu-used 6`, `libopus 96k`), capped 720p, registered as separate `FileRecord` (`purpose: 'transcode'`); originals immutable. Limits: 4h duration, 7680px, 1h ffmpeg timeout.
-- Faces: `@vladmandic/human`, **1024-dim** `faceres` embeddings (not 512). HNSW index `faces_embedding_hnsw` built at core bootstrap, warn-caught. In-memory DBSCAN `eps=0.4 minPts=2`, noise reassign `0.5`, O(n²) — fine for personal libraries.
+- Faces: `@vladmandic/human` boxes+mesh only (faceres off), InsightFace `buffalo_l` `w600k_r50.onnx` **512-dim** embeddings via `onnxruntime-node` (`FACE_EMBEDDING_DIM`, model provisioned under `STORAGE_DIR/models`, never committed). HNSW index `faces_embedding_hnsw` built at core bootstrap, warn-caught. In-memory DBSCAN `eps=0.55 minPts=2`, noise reassign `0.5`, centroid matching, O(n²) — fine for personal libraries.
 
 ## DB / storage
 

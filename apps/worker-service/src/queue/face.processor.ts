@@ -9,12 +9,13 @@ import { randomUUID } from 'crypto'
 import { copyFile, unlink } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
 import { FaceDetectorService } from './face.detector'
-import { Asset, Face, FileRecord, LocalStorageService } from '@photox/data-access'
+import { Asset, Face, FileRecord, LocalStorageService, Person } from '@photox/data-access'
 
 interface FaceJob {
   assetId: string
   fileId: string
   userId: string
+  reason?: 'initial' | 're-embed'
 }
 
 @Injectable()
@@ -29,6 +30,8 @@ export class FaceProcessor {
     private readonly assetRepo: Repository<Asset>,
     @InjectRepository(Face)
     private readonly faceRepo: Repository<Face>,
+    @InjectRepository(Person)
+    private readonly personRepo: Repository<Person>,
     private readonly storage: LocalStorageService,
     private readonly faceDetector: FaceDetectorService,
   ) {}
@@ -42,7 +45,7 @@ export class FaceProcessor {
   }
 
   private async processJob(job: Job<FaceJob>) {
-    const { assetId, fileId, userId } = job.data
+    const { assetId, fileId, userId, reason } = job.data
 
     this.logger.log(`Processing faces: asset=${assetId}`)
 
@@ -72,16 +75,23 @@ export class FaceProcessor {
       const scaleY = origH / resizedH
 
       const detections = await this.faceDetector.detect(resized)
-      const faces = detections.map((d) => ({
-        box: {
-          x: Math.round(d.box.x * scaleX),
-          y: Math.round(d.box.y * scaleY),
-          w: Math.round(d.box.w * scaleX),
-          h: Math.round(d.box.h * scaleY),
-        },
-        confidence: Math.round(d.confidence * 10000) / 10000,
-        embedding: d.embedding,
-      }))
+      // ponytail: drop low-confidence detections before save — clustering separately ignores conf < 0.4
+      const faces = detections
+        .filter((d) => d.confidence >= 0.5)
+        .map((d) => ({
+          box: {
+            x: Math.round(d.box.x * scaleX),
+            y: Math.round(d.box.y * scaleY),
+            w: Math.round(d.box.w * scaleX),
+            h: Math.round(d.box.h * scaleY),
+          },
+          confidence: Math.round(d.confidence * 10000) / 10000,
+          embedding: d.embedding,
+        }))
+
+      // ponytail: re-embed resets one asset — legacy-dim rows are incomparable, so delete +
+      // re-save after a successful detect (never before, to avoid data loss on failure)
+      if (reason === 're-embed') await this.clearAssetFaces(assetId, userId)
 
       if (faces.length > 0) {
         await this.faceRepo.save(
@@ -135,5 +145,33 @@ export class FaceProcessor {
     } finally {
       await unlink(filePath).catch(() => undefined)
     }
+  }
+
+  // ponytail: full reset for one asset — stale person links get counts refreshed and dangling
+  // covers nulled; the next cluster run re-links covers (same count query as face.cluster)
+  private async clearAssetFaces(assetId: string, userId: string): Promise<void> {
+    const existing = await this.faceRepo.find({ where: { assetId, userId } })
+    if (existing.length === 0) return
+    const deletedIds = new Set(existing.map((f) => f.id))
+    const personIds = [
+      ...new Set(existing.map((f) => f.personId).filter((p): p is string => p !== null)),
+    ]
+    await this.faceRepo.delete({ assetId, userId })
+    for (const pid of personIds) {
+      const person = await this.personRepo.findOne({ where: { id: pid, userId } })
+      if (person?.coverFaceId && deletedIds.has(person.coverFaceId)) {
+        await this.personRepo.update({ id: pid, userId }, { coverFaceId: null })
+      }
+      const result = await this.faceRepo
+        .createQueryBuilder('f')
+        .innerJoin('assets', 'a', 'a.id = f."assetId"')
+        .select('COUNT(*)')
+        .where('f."personId" = :personId', { personId: pid })
+        .andWhere('f."userId" = :userId', { userId })
+        .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
+        .getRawOne<{ count: string }>()
+      await this.personRepo.update({ id: pid, userId }, { faceCount: Number(result?.count ?? 0) })
+    }
+    this.logger.log(`Re-embed cleared ${existing.length} stale faces: asset=${assetId}`)
   }
 }

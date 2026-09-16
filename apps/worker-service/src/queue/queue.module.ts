@@ -15,6 +15,7 @@ import { VideoProcessor } from './video.processor'
 import { MetadataProcessor } from './metadata.processor'
 import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor'
 import { FaceDetectorService } from './face.detector'
+import { FaceEmbedderService } from './face.embedder'
 import { FaceProcessor } from './face.processor'
 import { FaceClusterService } from './face.cluster'
 import { CleanupProcessor } from './cleanup.processor'
@@ -34,6 +35,7 @@ import { CleanupOrphansProcessor } from './cleanup-orphans.processor'
     MetadataExtractor,
     VideoMetadataExtractor,
     FaceDetectorService,
+    FaceEmbedderService,
     FaceProcessor,
     FaceClusterService,
     CleanupProcessor,

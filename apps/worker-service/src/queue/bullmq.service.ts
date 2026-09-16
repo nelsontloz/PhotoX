@@ -43,7 +43,12 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     queueName: string,
     jobName: string,
     data: Record<string, unknown>,
-    opts: { jobId?: string; attempts?: number; backoff?: { type: string } } = {},
+    opts: {
+      jobId?: string
+      attempts?: number
+      backoff?: { type: string }
+      removeOnFail?: boolean
+    } = {},
   ): Promise<void> {
     try {
       await this.getQueue(queueName).add(jobName, data, opts)
