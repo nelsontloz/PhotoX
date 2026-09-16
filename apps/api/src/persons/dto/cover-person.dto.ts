@@ -1,10 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { IsUUID } from 'class-validator'
+import { IsOptional, IsUUID } from 'class-validator'
 
 export class CoverPersonDto {
-  @ApiProperty()
+  @ApiProperty({ required: false })
+  @IsOptional()
   @IsUUID()
-  userId!: string
+  userId?: string
 
   @ApiProperty()
   @IsUUID()

@@ -1,3 +1,5 @@
+import { existsSync } from 'fs'
+import { dirname, isAbsolute, join, resolve } from 'path'
 import { z } from 'zod'
 
 const envSchema = z.object({
@@ -19,6 +21,16 @@ const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>
 
+function findWorkspaceRoot(start: string): string {
+  let dir = start
+  for (;;) {
+    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return dir
+    const parent = dirname(dir)
+    if (parent === dir) return start
+    dir = parent
+  }
+}
+
 export function loadEnv(): Env {
   const parsed = envSchema.safeParse(process.env)
 
@@ -27,5 +39,12 @@ export function loadEnv(): Env {
     throw new Error(`Invalid environment variables: ${JSON.stringify(errors)}`)
   }
 
-  return parsed.data
+  // ponytail: anchor relative STORAGE_DIR at the workspace root — api and worker run with different cwds, so a bare relative default pointed each at its own package dir
+  const storageDir = parsed.data.STORAGE_DIR
+  return {
+    ...parsed.data,
+    STORAGE_DIR: isAbsolute(storageDir)
+      ? storageDir
+      : resolve(findWorkspaceRoot(process.cwd()), storageDir),
+  }
 }

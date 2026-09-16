@@ -1,10 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { IsUUID, IsString, MaxLength } from 'class-validator'
+import { IsOptional, IsUUID, IsString, MaxLength } from 'class-validator'
 
 export class CreatePersonDto {
-  @ApiProperty()
+  @ApiProperty({ required: false })
+  @IsOptional()
   @IsUUID()
-  userId!: string
+  userId?: string
 
   @ApiProperty()
   @IsString()

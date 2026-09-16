@@ -4,9 +4,10 @@ import { Type } from 'class-transformer'
 import type { FileListResponse } from '@photox/shared-types'
 
 export class ListFilesQueryDto {
+  @IsOptional()
   @IsUUID()
-  @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
-  userId!: string
+  @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000', required: false })
+  userId?: string
 
   @IsOptional()
   @Type(() => Number)

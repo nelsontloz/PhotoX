@@ -2,9 +2,10 @@ import { ApiProperty } from '@nestjs/swagger'
 import { IsOptional, IsString, MaxLength, IsDateString, IsBoolean, IsUUID } from 'class-validator'
 
 export class UpdateAssetDto {
-  @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
+  @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000', required: false })
+  @IsOptional()
   @IsUUID()
-  userId!: string
+  userId?: string
 
   @ApiProperty({ required: false, maxLength: 255 })
   @IsOptional()

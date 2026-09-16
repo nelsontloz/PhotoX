@@ -3,9 +3,10 @@ import { IsString, IsNotEmpty, MaxLength, IsOptional, IsUUID } from 'class-valid
 import type { CreateAlbumDto as ICreateAlbumDto } from '@photox/shared-types'
 
 export class CreateAlbumDto implements ICreateAlbumDto {
-  @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
+  @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000', required: false })
+  @IsOptional()
   @IsUUID()
-  userId!: string
+  userId?: string
 
   @ApiProperty({ example: 'Summer 2026', maxLength: 255 })
   @IsString()

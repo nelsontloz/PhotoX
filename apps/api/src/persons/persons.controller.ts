@@ -66,15 +66,21 @@ export class PersonsController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a person from a face cluster' })
   @ApiResponse({ status: 201, description: 'Person created' })
-  async create(@Body() dto: CreatePersonDto) {
-    return this.persons.create(dto.userId, dto.clusterLabel)
+  async create(@Body() dto: CreatePersonDto, @Req() req: Request) {
+    const userId = (req.user as { id: string }).id ?? dto.userId
+    return this.persons.create(userId, dto.clusterLabel)
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a single person' })
   @ApiResponse({ status: 200, description: 'Person found' })
   @ApiResponse({ status: 404, description: 'Person not found' })
-  async getOne(@Param('id') id: string, @Query('userId') userId: string): Promise<PersonDto> {
+  async getOne(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Query('userId') queryUserId?: string,
+  ): Promise<PersonDto> {
+    const userId = (req.user as { id: string }).id ?? queryUserId
     return this.persons.getOne(userId, id)
   }
 
@@ -84,9 +90,11 @@ export class PersonsController {
   @ApiResponse({ status: 404, description: 'Person not found' })
   async update(
     @Param('id') id: string,
-    @Query('userId') userId: string,
+    @Req() req: Request,
     @Body() dto: UpdatePersonDto,
+    @Query('userId') queryUserId?: string,
   ): Promise<PersonDto> {
+    const userId = (req.user as { id: string }).id ?? queryUserId
     return this.persons.update(userId, id, dto.name)
   }
 
@@ -108,8 +116,9 @@ export class PersonsController {
   @ApiOperation({ summary: 'Set the cover face for a person' })
   @ApiResponse({ status: 200, description: 'Cover set' })
   @ApiResponse({ status: 404, description: 'Person or face not found' })
-  async setCover(@Param('id') id: string, @Body() dto: CoverPersonDto) {
-    return this.persons.setCover(dto.userId, id, dto.faceId)
+  async setCover(@Param('id') id: string, @Body() dto: CoverPersonDto, @Req() req: Request) {
+    const userId = (req.user as { id: string }).id ?? dto.userId
+    return this.persons.setCover(userId, id, dto.faceId)
   }
 
   @Post(':id/reassign')
@@ -117,9 +126,11 @@ export class PersonsController {
   @ApiOperation({ summary: 'Reassign faces between persons' })
   @ApiResponse({ status: 200, description: 'Faces reassigned' })
   async reassign(
-    @Query('userId') userId: string,
+    @Req() req: Request,
     @Body() dto: ReassignFacesDto,
+    @Query('userId') queryUserId?: string,
   ): Promise<ReassignFacesResponse> {
+    const userId = (req.user as { id: string }).id ?? queryUserId
     return this.persons.reassignFaces(userId, dto)
   }
 }

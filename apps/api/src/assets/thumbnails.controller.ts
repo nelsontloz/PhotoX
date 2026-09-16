@@ -6,10 +6,12 @@ import {
   Param,
   Query,
   Body,
+  Req,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
+import type { Request } from 'express'
 import { ThumbnailsService } from './thumbnails.service'
 import { RegisterThumbnailDto } from './dto/register-thumbnail.dto'
 
@@ -42,7 +44,12 @@ export class ThumbnailsController {
   @ApiOperation({ summary: 'List all thumbnails for an asset' })
   @ApiResponse({ status: 200, description: 'Thumbnail list' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async list(@Param('id') id: string, @Query('userId') userId: string) {
+  async list(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Query('userId') queryUserId?: string,
+  ) {
+    const userId = (req.user as { id: string }).id ?? queryUserId
     return this.thumbs.listForAsset(userId, id)
   }
 
@@ -53,8 +60,10 @@ export class ThumbnailsController {
   async getOne(
     @Param('id') id: string,
     @Param('size') size: string,
-    @Query('userId') userId: string,
+    @Req() req: Request,
+    @Query('userId') queryUserId?: string,
   ) {
+    const userId = (req.user as { id: string }).id ?? queryUserId
     return this.thumbs.getForAsset(userId, id, size)
   }
 }

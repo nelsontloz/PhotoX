@@ -22,6 +22,7 @@ import multer from 'multer'
 import { UserFilesService } from './user-files.service'
 import { FileRecordDto } from '../file-record.dto'
 import { FileListResponseDto, ListFilesQueryDto } from './dto/list-files-query.dto'
+import { UploadFileBodyDto } from './dto/upload-file.body.dto'
 import { parseRangeHeader } from '../streaming.util'
 import { Public } from '../../auth/public.decorator'
 
@@ -40,22 +41,31 @@ export class UserFilesController {
   @Post()
   @UseInterceptors(FileInterceptor('file', uploadOptions))
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Upload a file' })
-  @ApiResponse({ status: 201, description: 'File uploaded', type: FileRecordDto })
+  @ApiOperation({ summary: 'Upload a file, create its asset and enqueue processing' })
+  @ApiResponse({ status: 201, description: 'File uploaded, asset created' })
   @ApiResponse({ status: 400, description: 'No file or invalid request' })
+  @ApiResponse({ status: 409, description: 'File already uploaded' })
   async upload(
-    @Body('userId') userId: string,
+    @Req() req: Request,
     @UploadedFile() file: { path: string; originalname: string; mimetype: string; size: number },
+    @Body() body: UploadFileBodyDto,
   ) {
-    return this.userFilesService.upload(userId, file)
+    const userId = (req.user as { id: string }).id ?? body.userId
+    return this.userFilesService.upload(userId, file, {
+      kind: body.kind,
+      title: body.title,
+      description: body.description,
+      takenAt: body.takenAt,
+    })
   }
 
   @Get()
   @ApiOperation({ summary: "List the authenticated user's files" })
   @ApiResponse({ status: 200, description: 'Paginated file list', type: FileListResponseDto })
-  async list(@Query() query: ListFilesQueryDto) {
+  async list(@Query() query: ListFilesQueryDto, @Req() req: Request) {
+    const userId = (req.user as { id: string }).id ?? query.userId
     return this.userFilesService.list(
-      query.userId,
+      userId,
       query.limit ?? 20,
       query.offset ?? 0,
       query.mimeType,
@@ -125,7 +135,12 @@ export class UserFilesController {
   @ApiOperation({ summary: 'Get file metadata' })
   @ApiResponse({ status: 200, description: 'File record', type: FileRecordDto })
   @ApiResponse({ status: 404, description: 'File not found' })
-  async getOne(@Param('fileId') fileId: string, @Query('userId') userId: string) {
+  async getOne(
+    @Param('fileId') fileId: string,
+    @Req() req: Request,
+    @Query('userId') queryUserId?: string,
+  ) {
+    const userId = (req.user as { id: string }).id ?? queryUserId
     return this.userFilesService.getOne(userId, fileId)
   }
 
@@ -136,8 +151,10 @@ export class UserFilesController {
   async download(
     @Res() res: Response,
     @Param('fileId') fileId: string,
-    @Query('userId') userId: string,
+    @Req() req: Request,
+    @Query('userId') queryUserId?: string,
   ) {
+    const userId = (req.user as { id: string }).id ?? queryUserId
     const { stream, record } = await this.userFilesService.download(userId, fileId)
     res.set({
       'Content-Type': record.mimeType,
@@ -156,7 +173,12 @@ export class UserFilesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a file (idempotent)' })
   @ApiResponse({ status: 204, description: 'File deleted' })
-  async delete(@Param('fileId') fileId: string, @Query('userId') userId: string) {
+  async delete(
+    @Param('fileId') fileId: string,
+    @Req() req: Request,
+    @Query('userId') queryUserId?: string,
+  ) {
+    const userId = (req.user as { id: string }).id ?? queryUserId
     await this.userFilesService.delete(userId, fileId)
   }
 }
