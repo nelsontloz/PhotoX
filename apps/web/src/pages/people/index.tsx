@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { FaArrowsRotate, FaCheck, FaSpinner, FaUsers, FaFaceSmile } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
+import { FaceThumb } from '../../components/FaceThumb'
 import { listPersons, triggerCluster } from '../../api/persons'
 import type { PersonDto } from '@photox/shared-types'
 
@@ -89,9 +90,9 @@ export default function PeoplePage() {
                   className="group flex flex-col items-center rounded-xl overflow-hidden bg-card-dark border border-border-dark hover:border-primary/50 transition-colors"
                 >
                   <div className="w-full aspect-square bg-slate-800 flex items-center justify-center overflow-hidden">
-                    {person.coverFaceUrl ? (
-                      <img
-                        src={person.coverFaceUrl}
+                    {person.coverFaceId ? (
+                      <FaceThumb
+                        faceId={person.coverFaceId}
                         alt={person.name ?? person.clusterLabel ?? 'Person'}
                         className="w-full h-full object-cover"
                       />

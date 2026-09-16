@@ -1,6 +1,6 @@
-import { Controller, Get, Param, Query, Res } from '@nestjs/common'
+import { BadRequestException, Controller, Get, Param, Query, Req, Res } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import type { Response } from 'express'
+import type { Request, Response } from 'express'
 import { FaceThumbService } from './face-thumb.service'
 
 @ApiTags('faces')
@@ -14,10 +14,13 @@ export class FaceThumbController {
   @ApiResponse({ status: 404, description: 'Face, asset, or source bytes not found' })
   async getThumb(
     @Param('id') id: string,
-    @Query('userId') userId: string,
-    @Query('size') size: string | undefined,
+    @Req() req: Request,
     @Res() res: Response,
+    @Query('userId') queryUserId?: string,
+    @Query('size') size?: string,
   ): Promise<void> {
+    const userId = (req.user as { id: string } | undefined)?.id ?? queryUserId
+    if (!userId) throw new BadRequestException('userId required')
     const bytes = await this.thumbs.getThumb(id, userId, size ? Number(size) : Number.NaN)
     res.set({
       'Content-Type': 'image/jpeg',
