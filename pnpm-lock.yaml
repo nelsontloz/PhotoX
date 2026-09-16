@@ -150,9 +150,21 @@ importers:
       '@types/supertest':
         specifier: ^6.0.2
         version: 6.0.3
+      exifreader:
+        specifier: ^4.41.0
+        version: 4.41.0
+      ffmpeg-static:
+        specifier: ^5.2.0
+        version: 5.3.0
+      ffprobe-static:
+        specifier: ^3.1.0
+        version: 3.1.0
       supertest:
         specifier: ^7.0.0
         version: 7.2.2
+      testcontainers:
+        specifier: ^10.0.0
+        version: 10.28.0
       typescript:
         specifier: ^5.7.0
         version: 5.9.3

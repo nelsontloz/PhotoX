@@ -1,0 +1,140 @@
+import request from 'supertest'
+import { closeTestApp, createApiTestApp, resetDb, seedAsset, seedFile, seedUser, apiServer } from './helpers'
+import type { ApiTestApp } from './helpers'
+
+describe('albums JWT identity', () => {
+  let t: ApiTestApp
+
+  beforeAll(async () => {
+    t = await createApiTestApp({ mockUser: null })
+  }, 120_000)
+
+  afterAll(async () => {
+    await closeTestApp(t)
+  })
+
+  beforeEach(async () => {
+    await resetDb(t)
+  })
+
+  it('creates without userId and ignores body userId', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
+    const res = await request(apiServer(t))
+      .post('/api/v1/albums')
+      .set(t.authHeader(tokenA))
+      .send({ name: 'Trip', userId: b.id })
+    expect(res.status).toBe(201)
+    const body = res.body as unknown as { userId: string; name: string }
+    expect(body.userId).toBe(a.id)
+    expect(body.name).toBe('Trip')
+  })
+
+  it('lists without userId and ignores query userId', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
+    await request(apiServer(t))
+      .post('/api/v1/albums')
+      .set(t.authHeader(tokenA))
+      .send({ name: 'Mine' })
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    await request(apiServer(t))
+      .post('/api/v1/albums')
+      .set(t.authHeader(tokenB))
+      .send({ name: 'Theirs' })
+    const res = await request(apiServer(t))
+      .get('/api/v1/albums')
+      .query({ userId: b.id })
+      .set(t.authHeader(tokenA))
+    expect(res.status).toBe(200)
+    const body = res.body as unknown as { items: { userId: string }[]; total: number }
+    expect(body.total).toBe(1)
+    expect(body.items[0]?.userId).toBe(a.id)
+  })
+
+  it('scopes get, update and delete to JWT user', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    const created = await request(apiServer(t))
+      .post('/api/v1/albums')
+      .set(t.authHeader(tokenA))
+      .send({ name: 'Mine' })
+    const album = created.body as unknown as { id: string }
+    const crossGet = await request(apiServer(t))
+      .get(`/api/v1/albums/${album.id}`)
+      .query({ userId: a.id })
+      .set(t.authHeader(tokenB))
+    expect(crossGet.status).toBe(404)
+    const ownGet = await request(apiServer(t))
+      .get(`/api/v1/albums/${album.id}`)
+      .set(t.authHeader(tokenA))
+    expect(ownGet.status).toBe(200)
+    const crossPatch = await request(apiServer(t))
+      .patch(`/api/v1/albums/${album.id}`)
+      .set(t.authHeader(tokenB))
+      .send({ name: 'Hijack' })
+    expect(crossPatch.status).toBe(404)
+    const ownPatch = await request(apiServer(t))
+      .patch(`/api/v1/albums/${album.id}`)
+      .set(t.authHeader(tokenA))
+      .send({ name: 'Renamed' })
+    expect(ownPatch.status).toBe(200)
+    const crossDelete = await request(apiServer(t))
+      .delete(`/api/v1/albums/${album.id}`)
+      .set(t.authHeader(tokenB))
+    expect(crossDelete.status).toBe(404)
+  })
+
+  it('adds, lists and removes album assets without userId', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const file = await seedFile(t, user.id)
+    const asset = await seedAsset(t, user.id, file.id)
+    const created = await request(apiServer(t))
+      .post('/api/v1/albums')
+      .set(t.authHeader(token))
+      .send({ name: 'Trip' })
+    const album = created.body as unknown as { id: string }
+    const add = await request(apiServer(t))
+      .post(`/api/v1/albums/${album.id}/assets`)
+      .set(t.authHeader(token))
+      .send({ assetIds: [asset.id] })
+    expect(add.status).toBe(201)
+    const list = await request(apiServer(t))
+      .get(`/api/v1/albums/${album.id}/assets`)
+      .set(t.authHeader(token))
+    expect(list.status).toBe(200)
+    const listBody = list.body as unknown as { items: { id: string }[]; total: number }
+    expect(listBody.total).toBe(1)
+    const remove = await request(apiServer(t))
+      .delete(`/api/v1/albums/${album.id}/assets/${asset.id}`)
+      .set(t.authHeader(token))
+    expect(remove.status).toBe(204)
+  })
+
+  it('rejects invalid album body with 400', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const res = await request(apiServer(t))
+      .post('/api/v1/albums')
+      .set(t.authHeader(token))
+      .send({})
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 401 without token', async () => {
+    const res = await request(apiServer(t)).get('/api/v1/albums')
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 401 for malformed token', async () => {
+    const res = await request(apiServer(t))
+      .get('/api/v1/albums')
+      .set({ Authorization: 'Bearer not-a-token' })
+    expect(res.status).toBe(401)
+  })
+})
