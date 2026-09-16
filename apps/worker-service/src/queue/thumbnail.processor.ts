@@ -111,21 +111,22 @@ export class ThumbnailProcessor {
         let orientation: number | null = null
         let durationSeconds: number | null = null
 
-        // ponytail: 5x1s wait for metadata to land; race is rare
+        // ponytail: thumbnail and metadata jobs race after upload — wait for metadata to land instead of thumbnailing blind (unrotated, frame 0)
         for (let attempt = 0; attempt < 5; attempt++) {
           try {
             const asset = await this.assetRepo.findOne({ where: { id: assetId } })
             if (!asset) break
             orientation = asset.orientation ?? null
             durationSeconds = asset.durationSeconds !== null ? Number(asset.durationSeconds) : null
-            break
+            if (asset.metadataStatus !== 'pending') break
           } catch {
-            if (attempt < 4) {
-              await new Promise((r) => setTimeout(r, 1000))
-            }
+            // transient DB error; retry below
+          }
+          if (attempt < 4) {
+            await new Promise((r) => setTimeout(r, 1000))
           }
         }
-        orientation ??= 1
+        const degrees = orientation === null ? 0 : ((orientation % 360) + 360) % 360
         if (durationSeconds === null || !Number.isFinite(durationSeconds)) durationSeconds = 0
 
         const seekSec =
@@ -150,8 +151,8 @@ export class ThumbnailProcessor {
         ).stdout
 
         let framePipeline = sharp(frameBuffer)
-        if (orientation !== 0 && orientation !== 1 && orientation !== 360) {
-          framePipeline = framePipeline.rotate(orientation)
+        if (degrees !== 0) {
+          framePipeline = framePipeline.rotate(degrees)
         }
         const { data: thumbBuffer, info } = await framePipeline
           .resize(width, height, RESIZE_OPTIONS[size] ?? { fit: 'inside' })
