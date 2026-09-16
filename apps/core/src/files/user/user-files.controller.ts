@@ -64,12 +64,7 @@ export class UserFilesController {
   @ApiResponse({ status: 200, description: 'Paginated file list', type: FileListResponseDto })
   async list(@Query() query: ListFilesQueryDto, @Req() req: Request) {
     const userId = (req.user as { id: string }).id ?? query.userId
-    return this.userFilesService.list(
-      userId,
-      query.limit ?? 20,
-      query.offset ?? 0,
-      query.mimeType,
-    )
+    return this.userFilesService.list(userId, query.limit ?? 20, query.offset ?? 0, query.mimeType)
   }
 
   @Public()
@@ -79,11 +74,7 @@ export class UserFilesController {
   @ApiResponse({ status: 206, description: 'Partial content' })
   @ApiResponse({ status: 404, description: 'File not found' })
   @ApiResponse({ status: 416, description: 'Range not satisfiable' })
-  async stream(
-    @Param('fileId') fileId: string,
-    @Res() res: Response,
-    @Req() req: Request,
-  ) {
+  async stream(@Param('fileId') fileId: string, @Res() res: Response, @Req() req: Request) {
     const rangeHeader = req.headers.range
 
     if (rangeHeader) {

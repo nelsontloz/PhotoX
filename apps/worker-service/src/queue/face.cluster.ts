@@ -209,9 +209,9 @@ export class FaceClusterService {
       }
     }
 
-    const existingPersons: PersonItem[] = (
-      await this.personRepo.find({ where: { userId } })
-    ).map((p) => ({ id: p.id, clusterLabel: p.clusterLabel ?? '' }))
+    const existingPersons: PersonItem[] = (await this.personRepo.find({ where: { userId } })).map(
+      (p) => ({ id: p.id, clusterLabel: p.clusterLabel ?? '' }),
+    )
 
     const labelToPersonId = new Map<string, string>()
     for (const p of existingPersons) {
@@ -255,6 +255,9 @@ export class FaceClusterService {
       .andWhere('f."userId" = :userId', { userId })
       .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
       .getRawOne<{ count: string }>()
-    await this.personRepo.update({ id: personId, userId }, { faceCount: Number(result?.count ?? 0) })
+    await this.personRepo.update(
+      { id: personId, userId },
+      { faceCount: Number(result?.count ?? 0) },
+    )
   }
 }

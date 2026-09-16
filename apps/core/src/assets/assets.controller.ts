@@ -92,11 +92,7 @@ export class AssetsController {
   @ApiOperation({ summary: 'Soft-delete (trash) an asset. Idempotent.' })
   @ApiResponse({ status: 204, description: 'Asset trashed' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async trash(
-    @Param('id') id: string,
-    @Req() req: Request,
-    @Query('userId') queryUserId?: string,
-  ) {
+  async trash(@Param('id') id: string, @Req() req: Request, @Query('userId') queryUserId?: string) {
     const userId = (req.user as { id: string }).id ?? queryUserId
     await this.assets.trash(userId, id)
   }

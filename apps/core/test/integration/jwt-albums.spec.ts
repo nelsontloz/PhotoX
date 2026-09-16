@@ -1,5 +1,13 @@
 import request from 'supertest'
-import { closeTestApp, createApiTestApp, resetDb, seedAsset, seedFile, seedUser, apiServer } from './helpers'
+import {
+  closeTestApp,
+  createApiTestApp,
+  resetDb,
+  seedAsset,
+  seedFile,
+  seedUser,
+  apiServer,
+} from './helpers'
 import type { ApiTestApp } from './helpers'
 
 describe('albums JWT identity', () => {
@@ -119,10 +127,7 @@ describe('albums JWT identity', () => {
   it('rejects invalid album body with 400', async () => {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const res = await request(apiServer(t))
-      .post('/api/v1/albums')
-      .set(t.authHeader(token))
-      .send({})
+    const res = await request(apiServer(t)).post('/api/v1/albums').set(t.authHeader(token)).send({})
     expect(res.status).toBe(400)
   })
 

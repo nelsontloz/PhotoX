@@ -121,7 +121,10 @@ describe('upload pipeline', () => {
     const res = await request(apiServer(t))
       .post('/api/v1/files')
       .set(t.authHeader(token))
-      .attach('file', Buffer.from('pdf-bytes'), { filename: 'doc.pdf', contentType: 'application/pdf' })
+      .attach('file', Buffer.from('pdf-bytes'), {
+        filename: 'doc.pdf',
+        contentType: 'application/pdf',
+      })
     expect(res.status).toBe(400)
   })
 })

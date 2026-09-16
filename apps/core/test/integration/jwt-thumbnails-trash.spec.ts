@@ -1,6 +1,14 @@
 import request from 'supertest'
 import { randomUUID } from 'node:crypto'
-import { closeTestApp, createApiTestApp, resetDb, seedAsset, seedFile, seedUser, apiServer } from './helpers'
+import {
+  closeTestApp,
+  createApiTestApp,
+  resetDb,
+  seedAsset,
+  seedFile,
+  seedUser,
+  apiServer,
+} from './helpers'
 import type { ApiTestApp } from './helpers'
 
 describe('thumbnails and trash JWT identity', () => {
@@ -25,7 +33,14 @@ describe('thumbnails and trash JWT identity', () => {
     const file = await seedFile(t, a.id)
     const asset = await seedAsset(t, a.id, file.id)
     await t.thumbRepo.save(
-      t.thumbRepo.create({ assetId: asset.id, size: 'sm', fileId: randomUUID(), width: 10, height: 10, bytes: 5 }),
+      t.thumbRepo.create({
+        assetId: asset.id,
+        size: 'sm',
+        fileId: randomUUID(),
+        width: 10,
+        height: 10,
+        bytes: 5,
+      }),
     )
     const res = await request(apiServer(t))
       .get(`/api/v1/assets/${asset.id}/thumbnails`)
@@ -55,25 +70,19 @@ describe('thumbnails and trash JWT identity', () => {
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })
     const fileOne = await seedFile(t, user.id)
     const assetOne = await seedAsset(t, user.id, fileOne.id)
-    await request(apiServer(t))
-      .post(`/api/v1/assets/${assetOne.id}/trash`)
-      .set(t.authHeader(token))
+    await request(apiServer(t)).post(`/api/v1/assets/${assetOne.id}/trash`).set(t.authHeader(token))
     const restore = await request(apiServer(t))
       .post(`/api/v1/assets/trashed/${assetOne.id}/restore`)
       .set(t.authHeader(token))
     expect(restore.status).toBe(204)
-    await request(apiServer(t))
-      .post(`/api/v1/assets/${assetOne.id}/trash`)
-      .set(t.authHeader(token))
+    await request(apiServer(t)).post(`/api/v1/assets/${assetOne.id}/trash`).set(t.authHeader(token))
     const del = await request(apiServer(t))
       .delete(`/api/v1/assets/trashed/${assetOne.id}`)
       .set(t.authHeader(token))
     expect(del.status).toBe(200)
     const fileTwo = await seedFile(t, user.id)
     const assetTwo = await seedAsset(t, user.id, fileTwo.id)
-    await request(apiServer(t))
-      .post(`/api/v1/assets/${assetTwo.id}/trash`)
-      .set(t.authHeader(token))
+    await request(apiServer(t)).post(`/api/v1/assets/${assetTwo.id}/trash`).set(t.authHeader(token))
     const empty = await request(apiServer(t))
       .delete('/api/v1/assets/trashed')
       .set(t.authHeader(token))

@@ -44,11 +44,7 @@ export class ThumbnailsController {
   @ApiOperation({ summary: 'List all thumbnails for an asset' })
   @ApiResponse({ status: 200, description: 'Thumbnail list' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async list(
-    @Param('id') id: string,
-    @Req() req: Request,
-    @Query('userId') queryUserId?: string,
-  ) {
+  async list(@Param('id') id: string, @Req() req: Request, @Query('userId') queryUserId?: string) {
     const userId = (req.user as { id: string }).id ?? queryUserId
     return this.thumbs.listForAsset(userId, id)
   }

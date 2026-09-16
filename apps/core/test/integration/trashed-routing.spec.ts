@@ -1,5 +1,13 @@
 import request from 'supertest'
-import { closeTestApp, createApiTestApp, resetDb, seedAsset, seedFile, seedUser, apiServer } from './helpers'
+import {
+  closeTestApp,
+  createApiTestApp,
+  resetDb,
+  seedAsset,
+  seedFile,
+  seedUser,
+  apiServer,
+} from './helpers'
 import type { ApiTestApp } from './helpers'
 
 describe('trashed routing', () => {
@@ -30,7 +38,9 @@ describe('trashed routing', () => {
     expect(body.items).toHaveLength(1)
     expect(body.items[0]?.id).toBe(trashed.id)
     expect(body.items[0]?.isTrashed).toBe(true)
-    const one = await request(apiServer(t)).get(`/api/v1/assets/${active.id}`).set(t.authHeader(token))
+    const one = await request(apiServer(t))
+      .get(`/api/v1/assets/${active.id}`)
+      .set(t.authHeader(token))
     expect(one.status).toBe(200)
     const oneBody = one.body as unknown as { id: string }
     expect(oneBody.id).toBe(active.id)

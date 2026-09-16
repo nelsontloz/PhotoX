@@ -19,10 +19,7 @@ import { BullMqService } from '../../src/queue/bullmq.service'
 import { ThumbnailProcessor } from '../../src/queue/thumbnail.processor'
 import { VideoProcessor } from '../../src/queue/video.processor'
 import { MetadataProcessor } from '../../src/queue/metadata.processor'
-import {
-  MetadataExtractor,
-  VideoMetadataExtractor,
-} from '../../src/queue/metadata.extractor'
+import { MetadataExtractor, VideoMetadataExtractor } from '../../src/queue/metadata.extractor'
 import { FaceDetectorService } from '../../src/queue/face.detector'
 import { FaceProcessor } from '../../src/queue/face.processor'
 import { FaceClusterService } from '../../src/queue/face.cluster'

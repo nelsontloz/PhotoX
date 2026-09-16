@@ -158,7 +158,10 @@ describe('upload e2e pipeline', () => {
     })
       .jpeg()
       .toBuffer()
-    const res = await request(expressApp).post('/api/v1/files').set(auth).attach('file', bytes, 'e2e.jpg')
+    const res = await request(expressApp)
+      .post('/api/v1/files')
+      .set(auth)
+      .attach('file', bytes, 'e2e.jpg')
     expect(res.status).toBe(201)
     const asset = res.body as unknown as { id: string }
     const start = Date.now()

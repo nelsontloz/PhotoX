@@ -21,7 +21,11 @@ export class TrashController {
   @ApiResponse({ status: 200, description: 'Asset deleted' })
   @ApiResponse({ status: 400, description: 'Asset is not trashed' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async delete(@Param('id') id: string, @Req() req: Request, @Query('userId') queryUserId?: string) {
+  async delete(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Query('userId') queryUserId?: string,
+  ) {
     const userId = (req.user as { id: string }).id ?? queryUserId
     return this.assets.delete(userId, id)
   }
@@ -31,7 +35,11 @@ export class TrashController {
   @ApiOperation({ summary: 'Restore a trashed asset. Idempotent.' })
   @ApiResponse({ status: 204, description: 'Asset restored' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async restore(@Param('id') id: string, @Req() req: Request, @Query('userId') queryUserId?: string) {
+  async restore(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Query('userId') queryUserId?: string,
+  ) {
     const userId = (req.user as { id: string }).id ?? queryUserId
     await this.assets.restore(userId, id)
   }

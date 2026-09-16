@@ -211,7 +211,16 @@ export class ThumbnailProcessor {
     }
 
     await this.thumbRepo.upsert(
-      [{ assetId, size, fileId, width: info.width, height: info.height, bytes: thumbBuffer.length }],
+      [
+        {
+          assetId,
+          size,
+          fileId,
+          width: info.width,
+          height: info.height,
+          bytes: thumbBuffer.length,
+        },
+      ],
       ['assetId', 'size'],
     )
 

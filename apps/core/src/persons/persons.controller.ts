@@ -54,10 +54,7 @@ export class PersonsController {
   @Get()
   @ApiOperation({ summary: 'List persons for a user' })
   @ApiResponse({ status: 200, description: 'Paginated person list' })
-  async list(
-    @Query() q: ListPersonsQueryDto,
-    @Req() req: Request,
-  ): Promise<PersonListResponse> {
+  async list(@Query() q: ListPersonsQueryDto, @Req() req: Request): Promise<PersonListResponse> {
     const userId = (req.user as { id: string }).id ?? q.userId
     return this.persons.list(userId, q.limit ?? 20, q.offset ?? 0)
   }

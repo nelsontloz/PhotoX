@@ -59,8 +59,7 @@ export class SharesService {
       where: { token },
       relations: ['asset'],
     })
-    if (!share?.asset || share.asset.isTrashed)
-      throw new NotFoundException('Share not found')
+    if (!share?.asset || share.asset.isTrashed) throw new NotFoundException('Share not found')
 
     return {
       share: this.toDto(share),

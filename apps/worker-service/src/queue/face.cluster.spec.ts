@@ -26,7 +26,7 @@ describe('FaceClusterService.cluster', () => {
     personId: null,
   }
 
-  let faceRows: typeof assignedFace[] & { personId: string | null }[]
+  let faceRows: (typeof assignedFace)[] & { personId: string | null }[]
   let personRows: { id: string; userId: string; clusterLabel: string | null }[]
   let faceUpdates: { where: unknown; patch: unknown }[]
   let personUpdates: { where: unknown; patch: unknown }[]
@@ -72,11 +72,7 @@ describe('FaceClusterService.cluster', () => {
         personUpdates.push({ where, patch })
       }),
     }
-    service = new FaceClusterService(
-      faceRepo as never,
-      personRepo as never,
-      {} as BullMqService,
-    )
+    service = new FaceClusterService(faceRepo as never, personRepo as never, {} as BullMqService)
   })
 
   it('clusters only unassigned faces and never touches manually assigned ones', async () => {

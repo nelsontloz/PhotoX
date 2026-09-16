@@ -1,6 +1,14 @@
 import request from 'supertest'
 import { randomUUID } from 'node:crypto'
-import { closeTestApp, createApiTestApp, resetDb, seedAsset, seedFile, seedUser, apiServer } from './helpers'
+import {
+  closeTestApp,
+  createApiTestApp,
+  resetDb,
+  seedAsset,
+  seedFile,
+  seedUser,
+  apiServer,
+} from './helpers'
 import type { ApiTestApp } from './helpers'
 
 describe('persons JWT identity', () => {
@@ -109,9 +117,7 @@ describe('persons JWT identity', () => {
   it('queues cluster without userId', async () => {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const res = await request(apiServer(t))
-      .post('/api/v1/persons/cluster')
-      .set(t.authHeader(token))
+    const res = await request(apiServer(t)).post('/api/v1/persons/cluster').set(t.authHeader(token))
     expect(res.status).toBe(202)
     const body = res.body as unknown as { queued: boolean }
     expect(body.queued).toBe(true)

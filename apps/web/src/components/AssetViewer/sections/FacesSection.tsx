@@ -91,9 +91,7 @@ export function FacesSection({ asset }: FacesSectionProps) {
         faceIds: [faceId],
       })
       if (result.moved > 0) {
-        setFaces((prev) =>
-          prev.map((f) => (f.id === faceId ? { ...f, personId: toPersonId } : f)),
-        )
+        setFaces((prev) => prev.map((f) => (f.id === faceId ? { ...f, personId: toPersonId } : f)))
         setPersonMap((prev) => {
           const next = new Map(prev)
           if (toPersonId) {

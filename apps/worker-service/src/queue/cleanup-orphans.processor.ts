@@ -100,7 +100,9 @@ export class CleanupOrphansProcessor {
     }
 
     // ponytail: disk strays — files under STORAGE_DIR with no FileRecord row (crashed uploads, manual copies); *.tmp staging files are mid-write, leave them
-    const knownKeys = new Set((await this.fileRepo.find({ select: ['storageKey'] })).map((r) => r.storageKey))
+    const knownKeys = new Set(
+      (await this.fileRepo.find({ select: ['storageKey'] })).map((r) => r.storageKey),
+    )
     let strayDeleted = 0
     for (const key of await this.listDiskKeys()) {
       if (!knownKeys.has(key)) {

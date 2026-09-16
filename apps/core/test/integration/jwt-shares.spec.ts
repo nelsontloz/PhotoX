@@ -1,5 +1,13 @@
 import request from 'supertest'
-import { closeTestApp, createApiTestApp, resetDb, seedAsset, seedFile, seedUser, apiServer } from './helpers'
+import {
+  closeTestApp,
+  createApiTestApp,
+  resetDb,
+  seedAsset,
+  seedFile,
+  seedUser,
+  apiServer,
+} from './helpers'
 import type { ApiTestApp } from './helpers'
 
 describe('shares JWT identity', () => {

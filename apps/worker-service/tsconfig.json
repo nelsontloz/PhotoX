@@ -6,5 +6,8 @@
     "types": ["vitest/globals", "node"]
   },
   "include": ["src", "test"],
-  "references": [{ "path": "../../packages/shared-config" }, { "path": "../../packages/data-access" }]
+  "references": [
+    { "path": "../../packages/shared-config" },
+    { "path": "../../packages/data-access" }
+  ]
 }

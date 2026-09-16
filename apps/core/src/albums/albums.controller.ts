@@ -81,11 +81,7 @@ export class AlbumsController {
   @ApiOperation({ summary: 'Add assets to an album' })
   @ApiResponse({ status: 201, description: 'Assets added, returns refreshed album' })
   @ApiResponse({ status: 404, description: 'Album or asset not found' })
-  async addAssets(
-    @Param('id') id: string,
-    @Body() dto: AddAssetsBodyDto,
-    @Req() req: Request,
-  ) {
+  async addAssets(@Param('id') id: string, @Body() dto: AddAssetsBodyDto, @Req() req: Request) {
     const userId = (req.user as { id: string }).id ?? dto.userId
     await this.albums.addAssets(userId, id, dto.assetIds)
     return { added: dto.assetIds.length }

@@ -185,9 +185,7 @@ export class VideoProcessor {
     const { status, ...rest } = patch
     await this.assetRepo.update(assetId, {
       ...rest,
-      ...(status !== undefined
-        ? { metadataStatus: status, metadataExtractedAt: new Date() }
-        : {}),
+      ...(status !== undefined ? { metadataStatus: status, metadataExtractedAt: new Date() } : {}),
     } as Record<string, unknown>)
   }
 }

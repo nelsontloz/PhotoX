@@ -42,7 +42,12 @@ describe('VideoProcessor disk paths', () => {
       }),
     }
     const assetRepo = { update: vi.fn().mockResolvedValue({}) }
-    processor = new VideoProcessor({} as BullMqService, fileRepo as never, assetRepo as never, storage)
+    processor = new VideoProcessor(
+      {} as BullMqService,
+      fileRepo as never,
+      assetRepo as never,
+      storage,
+    )
   })
 
   afterEach(() => {
