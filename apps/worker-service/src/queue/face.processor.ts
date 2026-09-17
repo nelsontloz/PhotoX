@@ -120,7 +120,10 @@ export class FaceProcessor {
           'cluster',
           { userId, reason: 'face-detected' },
           {
-            jobId: `cluster-${userId}`,
+            // ponytail: unique jobId per asset — fixed `cluster-<userId>` deduped on completed
+            // jobs in Redis, so only the first-ever upload clustered
+            jobId: `cluster-${userId}-${assetId}-${randomUUID()}`,
+            removeOnComplete: true,
             removeOnFail: true,
             attempts: 3,
             backoff: { type: 'exponential' },
