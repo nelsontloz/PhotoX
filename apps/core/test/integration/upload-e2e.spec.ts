@@ -152,7 +152,13 @@ describe('upload e2e pipeline', () => {
       }),
     )
     const token = jwt.sign({ sub: user.id, email: user.email, role: user.role })
-    const auth = { Authorization: `Bearer ${token}` }
+    // ponytail: core trusts gateway identity headers (Bearer ignored) — same mapping as helpers
+    const auth = {
+      Authorization: `Bearer ${token}`,
+      'x-user-id': user.id,
+      'x-user-email': user.email,
+      'x-user-role': user.role,
+    }
     const bytes = await sharp({
       create: { width: 128, height: 128, channels: 3, background: 'green' },
     })

@@ -21,20 +21,21 @@ async function bootstrap() {
   )
   app.useGlobalFilters(new HttpExceptionFilter())
 
-  // ponytail: no CORS — browsers hit the gateway, gateway→core is server-to-server
+  app.enableCors({
+    origin: ['http://localhost:5173', 'http://0.0.0.0:5173'],
+    credentials: true,
+  })
+
   const config = new DocumentBuilder()
-    .setTitle('Photox API')
-    .setDescription('Photo hosting API')
+    .setTitle('PhotoX Gateway')
+    .setDescription('PhotoX gateway API')
     .setVersion('1.0')
-    .addTag('auth')
-    .addTag('users')
-    .addTag('admin')
     .build()
   const document = SwaggerModule.createDocument(app, config)
   SwaggerModule.setup('docs', app, document, { jsonDocumentUrl: 'docs-json' })
 
-  await app.listen(env.API_PORT)
-  console.log(`API running on port ${env.API_PORT}`)
+  await app.listen(env.GATEWAY_PORT)
+  console.log(`Gateway running on port ${env.GATEWAY_PORT}`)
 }
 
 void bootstrap()

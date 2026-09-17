@@ -24,7 +24,6 @@ import { FileRecordDto } from '../file-record.dto'
 import { FileListResponseDto, ListFilesQueryDto } from './dto/list-files-query.dto'
 import { UploadFileBodyDto } from './dto/upload-file.body.dto'
 import { parseRangeHeader } from '../streaming.util'
-import { Public } from '../../auth/public.decorator'
 
 const diskStorage = multer.diskStorage({
   destination: tmpdir(),
@@ -67,7 +66,6 @@ export class UserFilesController {
     return this.userFilesService.list(userId, query.limit ?? 20, query.offset ?? 0, query.mimeType)
   }
 
-  @Public()
   @Get(':fileId/stream')
   @ApiOperation({ summary: 'Stream file bytes for video playback (public, capability URL)' })
   @ApiResponse({ status: 200, description: 'File stream' })

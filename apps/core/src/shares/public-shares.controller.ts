@@ -1,7 +1,6 @@
 import { Controller, Get, Param, Req, Res } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
-import { Public } from '../auth/public.decorator'
 import { SharesService } from './shares.service'
 import { UserFilesService } from '../files/user/user-files.service'
 import { parseRangeHeader } from '../files/streaming.util'
@@ -14,7 +13,6 @@ export class PublicSharesController {
     private readonly files: UserFilesService,
   ) {}
 
-  @Public()
   @Get(':token')
   @ApiOperation({ summary: 'Get a shared asset by public token' })
   @ApiResponse({ status: 200, description: 'Shared asset info' })
@@ -23,7 +21,6 @@ export class PublicSharesController {
     return this.shares.getByToken(token)
   }
 
-  @Public()
   @Get(':token/stream')
   @ApiOperation({ summary: 'Stream a shared asset by public token (capability URL)' })
   @ApiResponse({ status: 200, description: 'File stream' })

@@ -2,6 +2,7 @@ import { defineWorkspace } from 'vitest/config'
 
 export default defineWorkspace([
   'apps/core',
+  'apps/gateway',
   'apps/worker-service',
   'apps/web',
   'packages/shared-auth',

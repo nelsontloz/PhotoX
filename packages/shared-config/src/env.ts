@@ -5,6 +5,8 @@ import { z } from 'zod'
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   API_PORT: z.coerce.number().default(3000),
+  GATEWAY_PORT: z.coerce.number().default(3001),
+  CORE_BASE_URL: z.string().default('http://localhost:3000'),
   WORKER_SERVICE_PORT: z.coerce.number().default(3004),
   POSTGRES_HOST: z.string().default('localhost'),
   POSTGRES_PORT: z.coerce.number().default(5432),

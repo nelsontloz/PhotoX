@@ -64,7 +64,7 @@ export interface ApiTestApp {
   personRepo: Repository<Person>
   getQueue: (name: string) => Queue
   signToken: (user: MockUser) => string
-  authHeader: (token: string) => { Authorization: string }
+  authHeader: (token: string) => Record<string, string>
 }
 
 const DEFAULT_MOCK_USER: MockUser = {
@@ -151,9 +151,22 @@ export async function createApiTestApp(opts?: {
     const jwt = app.get<JwtService>(JwtService)
     const signToken = (user: MockUser): string =>
       jwt.sign({ sub: user.id, email: user.email, role: user.role })
-    const authHeader = (token: string): { Authorization: string } => ({
-      Authorization: `Bearer ${token}`,
-    })
+    // ponytail: core trusts gateway identity headers (Bearer ignored) — mirror the
+    // gateway mapping so integration tests exercise the same identity path;
+    // undecodable tokens fall back to Bearer-only, preserving the 401 cases
+    const authHeader = (token: string): Record<string, string> => {
+      try {
+        const payload = jwt.verify<{ sub: string; email: string; role: string }>(token)
+        return {
+          Authorization: `Bearer ${token}`,
+          'x-user-id': payload.sub,
+          'x-user-email': payload.email,
+          'x-user-role': payload.role,
+        }
+      } catch {
+        return { Authorization: `Bearer ${token}` }
+      }
+    }
 
     return {
       app,
