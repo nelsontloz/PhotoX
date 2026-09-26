@@ -9,6 +9,7 @@ The core app's BullMQ **publisher**: a global service that owns the Redis connec
 `BullMqModule` is `@Global()` and exports `BullMqService`, so every feature module can inject the publisher without importing it.
 
 `BullMqService implements OnModuleInit, OnModuleDestroy`:
+
 - `onModuleInit` creates one shared `ioredis` connection from `ConfigService` (`REDIS_HOST`/`REDIS_PORT`, defaults `localhost`/`6379`) with `maxRetriesPerRequest: null` (required by BullMQ).
 - `getQueue(name)` lazily creates and caches one `Queue` per name in a `Map`.
 - `enqueue(queueName, jobName, data, opts)` — generic surface with options `{ jobId?, attempts?, backoff?, removeOnFail? }`. Errors (Redis down) are caught and `Logger.error`-ed: **fire-and-forget by contract**, callers use `void` and an HTTP request never fails because enqueueing failed.

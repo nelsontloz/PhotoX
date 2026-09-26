@@ -151,22 +151,11 @@ export async function createApiTestApp(opts?: {
     const jwt = app.get<JwtService>(JwtService)
     const signToken = (user: MockUser): string =>
       jwt.sign({ sub: user.id, email: user.email, role: user.role })
-    // ponytail: core trusts gateway identity headers (Bearer ignored) — mirror the
-    // gateway mapping so integration tests exercise the same identity path;
-    // undecodable tokens fall back to Bearer-only, preserving the 401 cases
-    const authHeader = (token: string): Record<string, string> => {
-      try {
-        const payload = jwt.verify<{ sub: string; email: string; role: string }>(token)
-        return {
-          Authorization: `Bearer ${token}`,
-          'x-user-id': payload.sub,
-          'x-user-email': payload.email,
-          'x-user-role': payload.role,
-        }
-      } catch {
-        return { Authorization: `Bearer ${token}` }
-      }
-    }
+    // ponytail: core verifies the Bearer JWT itself — no x-user-* mirror needed;
+    // malformed tokens keep the Authorization header and hit the 401 path
+    const authHeader = (token: string): Record<string, string> => ({
+      Authorization: `Bearer ${token}`,
+    })
 
     return {
       app,

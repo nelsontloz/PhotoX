@@ -12,13 +12,15 @@ import { type JwtPayload } from '@photox/shared-auth'
 import type { Role } from '@photox/shared-types'
 import { isAdminRoute, isOpenRoute } from './open-routes'
 
-export interface GatewayIdentity {
-  id: string
-  email: string
-  role: Role
+declare global {
+  // ponytail: replaces the passport Request.user augmentation removed with passport
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      user?: { id: string; email: string; role: Role }
+    }
+  }
 }
-
-export type IdentityRequest = Request & { user?: GatewayIdentity }
 
 function bearerToken(req: Request): string | undefined {
   const header = req.headers.authorization
@@ -28,7 +30,7 @@ function bearerToken(req: Request): string | undefined {
 }
 
 @Injectable()
-export class GatewayAuthGuard implements CanActivate {
+export class JwtAuthGuard implements CanActivate {
   private readonly clockTolerance: number
 
   constructor(private readonly jwt: JwtService) {
@@ -36,7 +38,7 @@ export class GatewayAuthGuard implements CanActivate {
   }
 
   canActivate(context: ExecutionContext): boolean {
-    const req = context.switchToHttp().getRequest<IdentityRequest>()
+    const req = context.switchToHttp().getRequest<Request>()
     const { method, path } = req
     if (isOpenRoute(method, path)) return true
 
@@ -53,7 +55,7 @@ export class GatewayAuthGuard implements CanActivate {
       throw new UnauthorizedException()
     }
 
-    const user: GatewayIdentity = { id: payload.sub, email: payload.email, role: payload.role }
+    const user = { id: payload.sub, email: payload.email, role: payload.role }
     req.user = user
     if (isAdminRoute(path) && user.role !== 'admin') throw new ForbiddenException('Admin only')
     return true

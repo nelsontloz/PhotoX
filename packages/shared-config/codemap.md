@@ -22,8 +22,7 @@ and normalizes it. All apps and `data-access` call `loadEnv()`; nothing else rea
 Schema keys and defaults:
 
 - `NODE_ENV` — `development` (`development | production | test`)
-- `API_PORT` — 3000; `GATEWAY_PORT` — 3001; `WORKER_SERVICE_PORT` — 3004
-- `CORE_BASE_URL` — `http://localhost:3000`
+- `API_PORT` — 3000; `WORKER_SERVICE_PORT` — 3004
 - `POSTGRES_HOST` — localhost; `POSTGRES_PORT` — 5432; `POSTGRES_USER` — photox;
   `POSTGRES_PASSWORD` — photox_dev
 - `REDIS_HOST` — localhost; `REDIS_PORT` — 6379
@@ -35,14 +34,14 @@ vitest workspace.
 
 ## Flow
 
-App/package startup (Nest `main.ts`, `SharedDatabaseModule.forRoot()`, gateway proxy/health,
+App/package startup (Nest `main.ts`, `SharedDatabaseModule.forRoot()`,
 `LocalStorageService` method calls) → `loadEnv()` → validated plain object; callers
 destructure the keys they need. Invalid config fails bootstrap fast with the complete field
 error map instead of surfacing later as a connection error.
 
 ## Integration
 
-Consumed by `apps/core` (`main.ts`, health, token service), `apps/gateway` (main, proxy,
-health), `apps/worker-service` (queue module + face embedder), and `packages/data-access`
+Consumed by `apps/core` (`main.ts`, health, token service),
+`apps/worker-service` (queue module + face embedder), and `packages/data-access`
 (`database.module.ts`, `local-storage.service.ts`). `docker-compose.yml` and the root
 `.env` are expected to use the same names; defaults are dev-localhost-friendly.

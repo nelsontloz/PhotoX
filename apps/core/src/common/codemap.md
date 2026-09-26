@@ -7,6 +7,7 @@ Process-wide HTTP plumbing with no domain knowledge: the catch-all exception fil
 ## Design
 
 Contents:
+
 - `filters/http-exception.filter.ts` — `HttpExceptionFilter`, `@Catch()` everything.
 - `middleware/request-id.middleware.ts` — exported plain function (not an `@Injectable` class), used via `app.use(...)`.
 
@@ -16,10 +17,10 @@ Both pieces are stateless and dependency-free (express types + `node:crypto` onl
 
 ## Flow
 
-Every request: `requestIdMiddleware` runs first → global `GatewayIdentityGuard` → `ValidationPipe` → controller → service. Every thrown error unwinds to `HttpExceptionFilter`, which serializes the status/body for the gateway to forward.
+Every request: `requestIdMiddleware` runs first → global `JwtAuthGuard` → `ValidationPipe` → controller → service. Every thrown error unwinds to `HttpExceptionFilter`, which serializes the final status/body.
 
 ## Integration
 
 - `main.ts` registers middleware before pipes/filter; integration tests (`test/integration/helpers.ts`) apply the same `HttpExceptionFilter` so test error shapes match production.
-- Mirrors the gateway's `common/` conventions (identical request-id middleware; same error passthrough) so proxied responses look uniform; core deliberately adds no CORS.
-- Filter output is what the gateway forwards verbatim; only an unreachable core becomes a gateway 502.
+- Same request-id and error-shape conventions as the rest of the workspace; core deliberately adds no CORS.
+- Filter output is the final error shape clients see; 4xx bodies pass through verbatim, unexpected errors become the generic 500 body.

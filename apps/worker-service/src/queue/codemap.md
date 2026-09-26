@@ -13,11 +13,11 @@ Reads bytes from local disk via `LocalStorageService`; writes Postgres directly;
   (producers must never fail uploads); `createWorker()` defaults `concurrency: 1` + failed/error logging;
   `onModuleDestroy` closes workers → queues → connection; `isHealthy()` = Redis `PING`.
 - `QueueModule` imports `SharedDatabaseModule.forRoot()` + `TypeOrmModule.forFeature([FileRecord, Asset,
-  AssetThumbnail, Face, Person])` and starts **7 workers** in `onModuleInit()`: `process-thumbnail`,
+AssetThumbnail, Face, Person])` and starts **7 workers** in `onModuleInit()`: `process-thumbnail`,
   `process-video`, `process-metadata`, `process-faces`, `process-faces-cluster`, `cleanup-asset`, `cleanup-orphans`.
 - Payloads: thumbnail `{ assetId, fileId, size, userId }`; video `{ assetId, fileId, userId }`; metadata
   `{ assetId, fileId, userId, kind: 'photo' | 'video' }`; faces `{ assetId, fileId, userId, reason?:
-  'initial' | 're-embed' }`; cluster `{ userId, reason? }`; cleanup-asset `{ fileId }`; cleanup-orphans `{}` (ignores `dryRun`).
+'initial' | 're-embed' }`; cluster `{ userId, reason? }`; cleanup-asset `{ fileId }`; cleanup-orphans `{}` (ignores `dryRun`).
 - Dedup/retry set by the core publisher: thumbnail `jobId: '<prefix>-<assetId>-<size>'`, video `'video-<assetId>'`/
   `'video-reprocess-<assetId>'`, `attempts: 3` exponential, `removeOnFail: true`; this side rethrows so BullMQ retries;
   face re-embed uses `jobId: face-reembed-<assetId>`.
@@ -25,10 +25,10 @@ Reads bytes from local disk via `LocalStorageService`; writes Postgres directly;
   WebP q80 (xl q85). Video branch waits up to 5×1s for `asset.metadataStatus !== 'pending'` for
   orientation/duration, grabs one frame (`-noautorotate -ss <25% duration> -vframes 1 image2pipe`), rotates
   then sharp. Stores content-addressed `FileRecord` (sha256 dedupe, `purpose: 'original'`, `assetId: null`)
-  + `AssetThumbnail` upsert on `(assetId, size)`; patches `thumbnailStatus` ready/failed.
+  - `AssetThumbnail` upsert on `(assetId, size)`; patches `thumbnailStatus` ready/failed.
 - `process-video` (concurrency 1): ffprobe → reject >4h or dimension >7680px; h264 + (no audio or aac) →
   `transcodeStatus: 'ready'`, `transcodeFileId: null`. Else single-pass AV1 `-c:v libaom-av1 -crf 32
-  -cpu-used 6 -pix_fmt yuv420p`, `-vf scale=-2:min(720\,ih)` only when height >720, `-c:a libopus -b:a 96k`
+-cpu-used 6 -pix_fmt yuv420p`, `-vf scale=-2:min(720\,ih)` only when height >720, `-c:a libopus -b:a 96k`
   only with audio, 1h ffmpeg timeout. Output = separate `FileRecord` (`purpose: 'transcode'`, sha256 dedupe,
   `assetId` set), originals immutable; failure → `transcodeStatus: 'failed'` + `metadata.transcodeError` +
   rethrow; tmp dirs always removed.
@@ -66,14 +66,14 @@ Reads bytes from local disk via `LocalStorageService`; writes Postgres directly;
 ## Flow
 
 upload (core) → core enqueues metadata/faces + thumbnail×4 (+ video) → Redis → one job at a time per queue
-(cleanup-asset ×5) → bytes from `STORAGE_DIR` → rows/status written → face job enqueues cluster → `ready` via gateway → core.
+(cleanup-asset ×5) → bytes from `STORAGE_DIR` → rows/status written → face job enqueues cluster → status read back by core/web.
 
 ## Integration
 
 - Upstream producer: `apps/core/src/queue/bullmq.service.ts` (`enqueueThumbnails`, `enqueueVideo`) plus
   core's asset module for metadata/faces; jobIds/attempts/backoff are defined there.
 - Shares Postgres (entities + `SharedDatabaseModule` from `@photox/data-access`), Redis, and the storage volume
-  with core; `STORAGE_DIR` via `@photox/shared-config` `loadEnv()`; no callbacks — web polls status via gateway → core.
+  with core; `STORAGE_DIR` via `@photox/shared-config` `loadEnv()`; no callbacks — web polls status from core.
 - `cleanup-asset`/`cleanup-orphans` are enqueued from core's trash/admin flows (core exports `enqueueOrphanCleanup(dryRun)`).
 - Tests: `face.cluster.spec`, `face.embedder.spec`, `ffmpeg.spec`, `metadata.processor.spec`,
   `video.processor.spec`, `test/integration/*` (testcontainers Redis+Postgres; face providers lazy so Alpine CI skips TF/ONNX).

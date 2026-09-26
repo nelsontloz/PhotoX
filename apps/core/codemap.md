@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-`@photox/core` is the internal NestJS API (:3000, no published Docker port) owning every HTTP domain: auth/users, assets, albums, files (user/admin), shares, faces/persons, trash, admin, health. It is the only process that mutates domain tables through TypeORM and the main BullMQ producer into Redis. Exterior traffic reaches it only through the gateway.
+`@photox/core` is the NestJS API (:3000, no published Docker port) owning every HTTP domain: auth/users, assets, albums, files (user/admin), shares, faces/persons, trash, admin, health. It is the only process that mutates domain tables through TypeORM and the main BullMQ producer into Redis. It is the sole API app; a reverse proxy sits in front of it when external exposure is needed.
 
 ## Design
 
@@ -15,11 +15,11 @@
 
 ## Flow
 
-`pnpm dev` (turbo) or compose starts `src/main.ts` → `loadEnv()` (zod) → Nest app on `API_PORT` (3000). Requests: gateway proxy → `src/main.ts` conventions → feature controller → service → TypeORM / `BullMqService`. Jobs are consumed by `apps/worker-service`; core never processes them. Integration tests (`test/integration/`) boot feature modules against testcontainers Redis + plain `postgres:16-alpine` (no pgvector, so the HNSW bootstrap only warns).
+`pnpm dev` (turbo) or compose starts `src/main.ts` → `loadEnv()` (zod) → Nest app on `API_PORT` (3000). Requests: `src/main.ts` conventions → feature controller → service → TypeORM / `BullMqService`. Jobs are consumed by `apps/worker-service`; core never processes them. Integration tests (`test/integration/`) boot feature modules against testcontainers Redis + plain `postgres:16-alpine` (no pgvector, so the HNSW bootstrap only warns).
 
 ## Integration
 
-- Inbound: only the gateway (`CORE_BASE_URL`, default `http://localhost:3000`). No CORS; Bearer tokens are ignored, identity arrives as `x-user-*` headers.
+- Inbound: direct HTTP on `API_PORT` (3000; no published Docker port). No CORS; the global `JwtAuthGuard` verifies Bearer HS256 tokens on every route outside the open table.
 - Shared state: single Postgres DB `photox`, shared Redis, `STORAGE_DIR` local disk (both core and worker resolve it from the workspace root).
 - `pnpm verify` (lint && test && typecheck && build) is the CI gate; `apps/core` is a compose service.
-- Core's Swagger at `docs` / `docs-json` is internal-only (port not published); the gateway exposes its own docs at the edge.
+- Core's Swagger at `docs` / `docs-json` is internal-only in compose (port not published); a reverse proxy can expose it when needed.

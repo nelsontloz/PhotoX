@@ -21,7 +21,7 @@ async function bootstrap() {
   )
   app.useGlobalFilters(new HttpExceptionFilter())
 
-  // ponytail: no CORS — browsers hit the gateway, gateway→core is server-to-server
+  // ponytail: no CORS — browsers reach the API same-origin via the Vite proxy / reverse proxy
   const config = new DocumentBuilder()
     .setTitle('Photox API')
     .setDescription('Photo hosting API')

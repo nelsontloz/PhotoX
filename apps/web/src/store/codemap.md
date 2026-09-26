@@ -27,4 +27,4 @@ Client-side state via zustand `create` stores — session, timeline refresh sign
 - `src/api/client.ts` reads/writes auth state (request/response interceptors).
 - `src/lib/upload.ts` drives upload + thumb stores and bumps app-store.
 - `RequireAuth`/`RequireAdmin`, `AppHeader`/`Sidebar`, login/register pages read auth; `AssetThumb`/`UploadNotification` read thumb; timeline/favorites/trash read the app-store refresh key.
-- Auth API calls are the only store → gateway path; everything else reaches the gateway through hooks/components.
+- Auth API calls are the only store → API path; everything else reaches the API through hooks/components.

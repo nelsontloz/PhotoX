@@ -16,13 +16,13 @@ Docker mounts one `storage-data` volume at `/data/storage`, local dev uses
   - `original` → `originals/<userId>/<fileId>.<ext>`
   - `thumbnail` → `derivatives/thumbnails/<userId>/<fileId>.<ext>`
   - `transcode` → `derivatives/transcodes/<userId>/<fileId>.<ext>`
-  Leading dots in `ext` are stripped (`replace(/^\.+/, '')`).
+    Leading dots in `ext` are stripped (`replace(/^\.+/, '')`).
 - `pathFor(storageKey)` — `join(loadEnv().STORAGE_DIR, storageKey)`.
 - `ensureDir()` — `mkdir(STORAGE_DIR, { recursive: true })` for startup.
 - `save(key, tmpPath)` — atomic publish: `mkdir -p` the destination directory, then
-  `rename(tmpPath, \`${dest}.<uuid>.tmp\`)`; on `EXDEV` (tmp on another filesystem, e.g.
-  multer temp dir vs volume) it falls back to `copyFile` + best-effort `unlink(tmpPath)`,
-  then `rename(tmp, dest)`. A reader never observes a partial file at `dest`.
+  `rename(tmpPath, \`${dest}.<uuid>.tmp\`)`; on `EXDEV`(tmp on another filesystem, e.g.
+multer temp dir vs volume) it falls back to`copyFile`+ best-effort`unlink(tmpPath)`,
+then `rename(tmp, dest)`. A reader never observes a partial file at `dest`.
 - `createReadStream(key, range?)` — `fs.createReadStream` with optional `{start,end}` for
   HTTP Range/206 serving.
 - `stat(key)` — `fs/promises.stat` for size/etag headers.

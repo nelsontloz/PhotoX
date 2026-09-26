@@ -33,5 +33,5 @@ a worker that cannot consume jobs.
 
 - Depends on `../queue/bullmq.service` for the shared Redis connection — health is queue-scoped by
   design; Postgres/ffmpeg/model availability are validated per-job, not here.
-- Nothing else in the app calls this endpoint; gateway does not proxy worker-service.
+- Nothing else in the app calls this endpoint; it is reachable only in-network.
 - Sibling of `apps/core/src/health/` but with a different check key (`queue` vs core's DB check).

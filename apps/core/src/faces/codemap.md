@@ -24,5 +24,5 @@ Face detection results for assets: storing detected faces (box, confidence, 512-
 
 - `FacesModule` is imported by `AssetsModule` (face list on `GET api/v1/assets/:id`) and exports `FacesService`.
 - Entities live in `packages/data-access`; the HNSW vector index `faces_embedding_hnsw` is created at core bootstrap.
-- Gateway: `api/v1/faces*` and `api/v1/assets/:id/faces` require JWT; `FaceThumbController` uses `req.user?.id ?? queryUserId` so internal calls can pass `userId`.
+- Access: `api/v1/faces*` and `api/v1/assets/:id/faces` require a Bearer JWT; `FaceThumbController` uses `req.user?.id ?? queryUserId` so internal calls can pass `userId`.
 - Permitted request shapes live in `apps/core/src/faces/dto/`; the wire types come from `@photox/shared-types` (`FaceDto`, `DetectedFaceInput`, `RegisterFacesRequestDto`).

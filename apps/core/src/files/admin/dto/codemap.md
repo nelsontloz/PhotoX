@@ -22,4 +22,4 @@ The single admin query shape: `UserIdsQueryDto` for `GET api/v1/admin/files/stor
 ## Integration
 
 - Consumed only by `AdminController (api/v1/admin/files)`.
-- Enforced admin-only at the gateway (`/api/v1/admin/*`), not by core; core never sees unauthenticated traffic (no published port).
+- Enforced admin-only centrally by `JwtAuthGuard` (`/api/v1/admin/*`); the controller itself has no guard.

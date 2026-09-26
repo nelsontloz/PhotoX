@@ -14,7 +14,7 @@ The upload and file-bytes surface for signed-in users: multipart upload (which a
   4. `AssetsService.create(...)` (fileId, kind, title, description, takenAt, mimeType, sizeBytes, originalName).
   5. Enqueue: `enqueueThumbnails` (jobId `thumb-<assetId>-<size>` for sm/md/lg/xl, 3 attempts exponential backoff — awaited), `process-metadata` and (photo) `process-faces`, or `enqueueVideo` (jobId `video-<assetId>`) for videos (fire-and-forget `void`).
 - Ownership: `getOne`, `download`, `delete` compare `record.userId` to the request user and return 404 on mismatch (delete silently returns for missing/wrong-owner rows — idempotent 204).
-- `stream(fileId, range?)` deliberately takes **no userId**: `GET /:fileId/stream` is a public capability URL (gateway open table matches exactly `GET /api/v1/files/:fileId/stream`), used for `<video>` playback. It stats the storage key and opens a ranged read stream.
+- `stream(fileId, range?)` deliberately takes **no userId**: `GET /:fileId/stream` is a public capability URL (the open-route table matches exactly `GET /api/v1/files/:fileId/stream`), used for `<video>` playback. It stats the storage key and opens a ranged read stream.
 - Range handling lives in the controller: invalid/unsatisfiable range → `416` with `Content-Range: bytes */<total>`; valid → `206` with `Content-Range`, `Content-Length`, `Accept-Ranges: bytes`; no header → `200` with full `Content-Length` + `Content-Disposition: attachment`. Stream errors destroy the response; response `close` destroys the read stream (no leaked fds).
 - `GET /` lists only `purpose = 'original'` rows, optional MIME prefix (`LIKE 'prefix%'`), ordered `createdAt DESC`, paginated; inline response subset (no storageKey/checksum).
 
@@ -31,4 +31,4 @@ The upload and file-bytes surface for signed-in users: multipart upload (which a
 - `UserFilesModule` imports `TypeOrmModule.forFeature([FileRecord])`, `StorageModule`, and `AssetsModule`; exports `UserFilesService`, which `SharesModule` reuses for public streaming.
 - Queue contracts: `BullMqService.enqueueThumbnails/enqueueVideo` in `apps/core/src/queue/bullmq.service.ts`; consumers live in `apps/worker-service/src/queue`.
 - Depends on `LocalStorageService` (shared with worker-service through the `storage-data` volume) and `toFileRecordResponse`/`parseRangeHeader` from the parent `files/` folder.
-- Exterior: every route except `GET :fileId/stream` requires JWT at the gateway; the proxy pipes multipart uploads and preserves Range/206/416 on streams.
+- Every route except `GET :fileId/stream` requires a Bearer JWT (`JwtAuthGuard`); uploads and Range/206/416 streams are handled directly, never buffered.

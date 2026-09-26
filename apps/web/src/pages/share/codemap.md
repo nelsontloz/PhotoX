@@ -6,7 +6,7 @@
 
 ## Design
 
-- `token` comes from `useParams`; an effect fetches `api.get<PublicShareResponse>('/share/' + token)` once per token with a cancellation flag. Since `api/client`'s baseURL is `/api`, this hits gateway `/api/share/:token` — part of the gateway's open table, so no JWT is needed and no `auth-store` involvement.
+- `token` comes from `useParams`; an effect fetches `api.get<PublicShareResponse>('/share/' + token)` once per token with a cancellation flag. Since `api/client`'s baseURL is `/api`, this hits core `/api/share/:token` — part of the open-route table, so no JWT is needed and no `auth-store` involvement.
 - A single local fetch state drives three renders: spinner, error/not-found (icon + "link may have been revoked or expired"), or media. There is no `AppShell`, sidebar, or upload UI — just a black full-screen container.
 - Media URL is `/api/share/:token/stream`; photos use a plain `<img>`, videos a plain `<video controls autoPlay>` rather than `VideoPlayer` (no transcode fallback needed — the public endpoint serves the sharable file).
 - 404s from the API surface as the not-found state because the API throws on missing/revoked tokens.
@@ -18,7 +18,7 @@
 
 ## Flow
 
-Open link (possibly in a logged-out browser) → token parsed → GET `/api/share/:token` through the gateway proxy (core resolves the share, no auth) → media streamed from `/api/share/:token/stream` → done. No refresh, selection, or viewer overlay.
+Open link (possibly in a logged-out browser) → token parsed → GET `/api/share/:token` (core resolves the share, no auth) → media streamed from `/api/share/:token/stream` → done. No refresh, selection, or viewer overlay.
 
 ## Integration
 

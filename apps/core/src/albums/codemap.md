@@ -2,11 +2,11 @@
 
 ## Responsibility
 
-`AlbumsModule` owns user-curated albums over existing assets: album CRUD plus membership add/remove/list. Public surface is `api/v1/albums` (internal :3000; gateway requires a JWT). Albums are strictly per-user (`Album.userId`); there is no cross-user membership or album sharing.
+`AlbumsModule` owns user-curated albums over existing assets: album CRUD plus membership add/remove/list. Public surface is `api/v1/albums` (:3000; requires a Bearer JWT). Albums are strictly per-user (`Album.userId`); there is no cross-user membership or album sharing.
 
 ## Design
 
-- `AlbumsController` is thin: extracts `req.user.id` (set globally by `GatewayIdentityGuard` from `x-user-id`) with `?? dto.userId` / `?? queryUserId` fallbacks so worker/service callers can pass an explicit user.
+- `AlbumsController` is thin: extracts `req.user.id` (set globally by `JwtAuthGuard`) with `?? dto.userId` / `?? queryUserId` fallbacks so worker/service callers can pass an explicit user.
 - `AlbumsService` is the only owner of the two repositories; every read/write scopes by `userId`, returning `NotFoundException` on mismatch (not 403).
 - `Album` rows store name/description only. `assetCount` is never persisted: `list` runs one grouped join over `album_assets` + `assets` filtered by `asset.isTrashed = false`; `getOne`/`update` call `countAssets`; `create` returns 0.
 - `AlbumAsset` uses a composite PK (`albumId`, `assetId`) so membership is deduplicated at the DB level; `addAssets` additionally uses `.orIgnore()` for idempotent re-adds. There are no TypeORM relations — joins are done with raw table names (`album_assets`, `assets`).
@@ -25,5 +25,5 @@
 ## Integration
 
 - `AlbumsModule` imports `TypeOrmModule.forFeature([Album, AlbumAsset, Asset])` and exports `AlbumsService` (currently no other module consumes it).
-- Exterior access only via the gateway proxy: `/api/v1/albums*` is JWT-protected (not in the open table).
+- `/api/v1/albums*` is JWT-protected (not in the open-route table).
 - Asset-side cascade cleanup lives in `apps/core/src/assets/assets.service.ts`, not in this module; worker-service never touches album tables.

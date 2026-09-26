@@ -7,11 +7,11 @@ function authedReq(): Request {
 }
 
 describe('FacesQueryController identity resolution', () => {
-  it('list resolves stripped query userId to identity', async () => {
+  it('list scopes to the verified JWT identity', async () => {
     const listForUser = vi.fn().mockResolvedValue([])
     const faces = { listForUser } as unknown as FacesService
     const controller = new FacesQueryController(faces)
-    // ponytail: gateway strips ?userId= — handler must scope by verified identity, never undefined
+    // ponytail: identity comes from the verified JWT — handler must scope by it, never undefined
     await controller.list(undefined, undefined, authedReq())
     expect(listForUser).toHaveBeenCalledWith('u1', false)
   })

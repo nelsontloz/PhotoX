@@ -36,7 +36,7 @@ the only process besides `core` that writes Postgres directly. Compose publishes
 source bytes read from local disk via `LocalStorageService` (`STORAGE_DIR`) → derivatives written as
 new `FileRecord` rows and per-asset status columns (`thumbnailStatus`, `transcodeStatus`,
 `metadataStatus`, `faceStatus`) patched in Postgres. There is no callback/return path to core; the
-web UI observes results by polling status through gateway → core. A successful face job auto-enqueues
+web UI observes results by polling status from core. A successful face job auto-enqueues
 a per-user clustering job. `GET /health` reports Redis liveness only.
 
 ## Integration
@@ -47,5 +47,5 @@ a per-user clustering job. `GET /health` reports Redis liveness only.
   compose `storage-data` at `/data/storage`, local dev `./data/storage` (resolved by
   `@photox/shared-config` `loadEnv`).
 - Depends on `@photox/data-access` for entities, database module, and `LocalStorageService`; no
-  dependency on gateway or web.
-- The gateway never proxies worker-service; only compose/ops hit its health port.
+  dependency on core's HTTP surface or web.
+- No app proxies worker-service; only compose/ops hit its health port.

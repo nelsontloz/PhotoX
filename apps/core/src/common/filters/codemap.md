@@ -22,4 +22,4 @@ Exception thrown anywhere in the pipeline → Nest global filter (`app.useGlobal
 ## Integration
 
 - Integration tests construct the filter the same way (`test/integration/helpers.ts`) so error shapes match production.
-- The gateway proxy preserves core status and body downstream; the 500-body convention is what the web client sees through the gateway.
+- The filter's output is the final status/body the web client sees; 4xx bodies pass through verbatim.

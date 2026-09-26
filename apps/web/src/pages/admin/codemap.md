@@ -15,7 +15,7 @@
 - All state is local (`useState`/`useEffect` + cancellation flags); no zustand, no extracted hook.
 - Search is debounced 250ms via `setTimeout`; changing the query or sort resets `offset` to 0 through a separate effect.
 - Sort defaults: `createdAt`/`email` start desc, other columns asc; clicking the active header flips direction.
-- The route has no params and only the `Sidebar` links to it; the gateway enforces admin on `api/v1/admin/*` as defense in depth.
+- The route has no params and only the `Sidebar` links to it; the global `JwtAuthGuard` enforces admin on `api/v1/admin/*` centrally.
 
 ## Flow
 
@@ -23,4 +23,4 @@ Mount → health, orphan counts, and users fetch in parallel → operator trigge
 
 ## Integration
 
-`api/admin` (`listAdminUsers`, `getAdminAssetCounts`, `reprocessThumbnails`, `cleanupOrphans`, `getOrphanCounts`) through gateway/core `api/v1/admin/*`, where the gateway enforces the admin role. Types: `AdminUserListResponse`, `AdminUserSortField`, `AdminAssetCountsResponse`. Shell: `AppShell`, guards: `RequireAuth` + `RequireAdmin`.
+`api/admin` (`listAdminUsers`, `getAdminAssetCounts`, `reprocessThumbnails`, `cleanupOrphans`, `getOrphanCounts`) through core `api/v1/admin/*`, where `JwtAuthGuard` enforces the admin role. Types: `AdminUserListResponse`, `AdminUserSortField`, `AdminAssetCountsResponse`. Shell: `AppShell`, guards: `RequireAuth` + `RequireAdmin`.

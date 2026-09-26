@@ -7,6 +7,7 @@ Core's database bootstrap: wraps the shared TypeORM module and adds the pgvector
 ## Design
 
 `DatabaseModule` is `@Global()` and constructed via `forRoot()`:
+
 - Reuses `SharedDatabaseModule.forRoot()` from `@photox/data-access` — Postgres from `loadEnv()` (`POSTGRES_HOST/PORT/USER/PASSWORD`), database hard-coded `photox`, `autoLoadEntities: true`, `synchronize: true`, `connectTimeoutMS: 3000`, `retryAttempts: 3`, `retryDelay: 3000` (intentional for booting alongside compose; AGENTS.md forbids `retryAttempts: 0`).
 - Adds provider `'VECTOR_INIT'` with an `onApplicationBootstrap` hook running raw SQL:
   1. `CREATE EXTENSION IF NOT EXISTS vector`

@@ -9,6 +9,7 @@ type-only; no values, no validation logic (validation lives in core DTOs).
 ## Design
 
 `index.ts` (also the package barrel):
+
 - Core unions: `Role = 'user' | 'admin'`, `AssetKind`, `MetadataStatus`, `TranscodeStatus`,
   `ThumbnailStatus`.
 - Auth/user: `User`, `RegisterRequest`, `LoginRequest`, `RefreshRequest`, `AuthResponse`.
@@ -44,6 +45,6 @@ and the legacy pact consumer test uses the same response shapes. No runtime effe
 
 ## Integration
 
-Consumed by `apps/core`, `apps/gateway` (`Role`), `apps/web`, `packages/shared-auth`
+Consumed by `apps/core`, `apps/web`, `packages/shared-auth`
 (`Role`), and the legacy pact consumer under `apps/web/test/pact/consumer/`. Kept
 dependency-free so any layer may import it.

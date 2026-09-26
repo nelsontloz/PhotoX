@@ -4,7 +4,7 @@
 
 The wire contract between backend and frontend: plain TypeScript interfaces for every API
 request/response shape (auth, users, files, assets, faces/persons, admin, albums, shares).
-Core DTOs implement these types, the gateway only needs `Role`, and the web app imports them
+Core DTOs implement these types and the web app imports them
 over HTTP responses.
 
 ## Design
@@ -25,14 +25,13 @@ over HTTP responses.
 
 Core controllers and DTOs type themselves from these interfaces → JSON responses → web hooks
 and components (`useAlbums`, `TimelineGrid`, `AssetViewer`, `people/*`, `shared/*`) consume
-the same names via `import type`. The gateway does not transform payloads, so drift shows up
+the same names via `import type`. Drift between core DTOs and web consumers shows up
 as a type error in one of the consumers rather than at runtime.
 
 ## Integration
 
 - `apps/core` — DTO classes (`file-record.dto`, `register-faces.dto`, `face.dto`, admin
   controllers/services) and mappers.
-- `apps/gateway` — `Role` for guard checks.
 - `apps/web` — nearly every API-touching module; `apps/web/test/pact/consumer/` still uses
   these types in the legacy consumer pact.
 - `packages/shared-auth` — `Role` for `JwtPayload`.

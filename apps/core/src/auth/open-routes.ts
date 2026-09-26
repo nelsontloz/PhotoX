@@ -1,5 +1,4 @@
-// ponytail: open-route table duplicated in apps/core/src/auth/gateway-identity.guard.ts
-// (no cross-app runtime imports) — keep in sync
+// ponytail: single source of truth for API access rules (formerly the gateway's table)
 export function isOpenRoute(method: string, path: string): boolean {
   if (path.startsWith('/docs')) return true
   if (path === '/health') return true

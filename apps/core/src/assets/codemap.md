@@ -29,4 +29,4 @@
 
 - `AssetsModule` imports `TypeOrmModule.forFeature([Asset, AssetThumbnail])` + `FacesModule`, exports `AssetsService` consumed by `UserFilesModule` (upload), `TrashModule` / `apps/core/src/trash`, and `SharesModule` (asset lookups).
 - Deletion is coordinated with the queue: `cleanup-asset` / `cleanup-orphans` consumers in worker-service physically delete storage keys; core only returns ids. `admin-maintenance.controller.ts` can enqueue `cleanup-orphans`.
-- Exterior traffic reaches these routes through the gateway (`/api/v1/assets*` requires JWT); `GET api/v1/assets/by-file/:fileId` and `PATCH :id/metadata` are intended for internal/service callers, but they sit on the same JWT-protected external path.
+- These routes require a Bearer JWT (`/api/v1/assets*` is not in the open-route table); `GET api/v1/assets/by-file/:fileId` and `PATCH :id/metadata` are intended for internal/service callers, but they sit on the same JWT-protected path.

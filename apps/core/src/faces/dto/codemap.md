@@ -17,7 +17,7 @@ Validation shapes for face registration, assignment, and the box/embedding outpu
 
 - Global `ValidationPipe({ whitelist, forbidNonWhitelisted, transform })` applies; `embedding` arrays shorter/longer than 512 are rejected with 400 before any DB work.
 - `FaceBoxResponseDto` doubles as the request nested type because class-validator cannot validate plain object literals without a class.
-- `RegisterFacesRequestDto.userId` being required means worker/service callers always supply it; browser traffic through the gateway hits the route with identity headers and the controller prefers `req.user.id` anyway.
+- `RegisterFacesRequestDto.userId` being required means worker/service callers always supply it; browser traffic hits the route with a Bearer token and the controller prefers `req.user.id` anyway.
 
 ## Integration
 

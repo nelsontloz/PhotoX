@@ -10,8 +10,8 @@ pipes, filters, middleware, or Swagger because nothing user-facing is served.
 ## Design
 
 - `AppModule` = `ConfigModule.forRoot({ isGlobal: true, envFilePath: ['../../.env', '.env'] })`
-  + `QueueModule` + `HealthModule`. Config is global so `ConfigService` is injectable in
-  `BullMqService` (for `REDIS_HOST`/`REDIS_PORT`) without re-importing.
+  - `QueueModule` + `HealthModule`. Config is global so `ConfigService` is injectable in
+    `BullMqService` (for `REDIS_HOST`/`REDIS_PORT`) without re-importing.
 - `envFilePath` order matters: `pnpm --filter @photox/worker-service dev` uses cwd
   `apps/worker-service`, so `../../.env` is the repo-root file and `.env` a local override.
 - `main.ts` is a 12-line bootstrap: `NestFactory.create(AppModule)`, port

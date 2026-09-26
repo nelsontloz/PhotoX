@@ -7,6 +7,7 @@ TypeORM entities for the two auth-owned tables, `users` and `refresh_tokens`. Sc
 ## Design
 
 `User` (`users`):
+
 - `id` uuid PK (`@PrimaryGeneratedColumn('uuid')`)
 - `email` unique
 - `role` Postgres enum `['user', 'admin']` — the first registered user is promoted to `admin` inside `AuthService.register`
@@ -15,6 +16,7 @@ TypeORM entities for the two auth-owned tables, `users` and `refresh_tokens`. Sc
 - `createdAt` / `updatedAt` via `@CreateDateColumn` / `@UpdateDateColumn`
 
 `RefreshToken` (`refresh_tokens`):
+
 - `id` uuid PK; `userId` plain uuid column — no FK or relation object, services join/filter manually
 - `tokenHash` unique — sha256 hex of the opaque token; the raw token is never persisted
 - `purpose` enum `['refresh']` — single-purpose today, the enum leaves room for other token kinds

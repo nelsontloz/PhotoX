@@ -27,4 +27,4 @@ Named people built from face clusters. `PersonsModule` owns the `persons` table 
 - `PersonsModule` registers `TypeOrmModule.forFeature([Person, Face, Asset])` and exports `PersonsService` (no current importer).
 - `Face`/`Person` entities are shared through `@photox/data-access`; `face.personId` is a plain column, so joins and count refresh are explicit SQL, not ORM relations.
 - Queue integration via `BullMqService.enqueue('process-faces-cluster', ...)`; consumers run in worker-service and write the same tables directly.
-- Exterior via gateway (`/api/v1/persons*` JWT-protected); `coverFaceUrl` thumbnails hit `api/v1/faces/:id/thumb` which is also JWT-protected but keyed by the embedded `userId`.
+- `/api/v1/persons*` requires a Bearer JWT; `coverFaceUrl` thumbnails hit `api/v1/faces/:id/thumb` which is also JWT-protected but keyed by the embedded `userId`.

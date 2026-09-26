@@ -18,7 +18,7 @@ const PACT_DIR = path.resolve(__dirname, '../../../../../pacts')
 const provider = new PactV3({
   dir: PACT_DIR,
   consumer: 'web',
-  provider: 'gateway',
+  provider: 'core',
   logLevel: 'error',
 })
 
@@ -76,7 +76,7 @@ const minimalAsset = MatchersV3.like({
   faceCount: null,
 })
 
-describe('Web → Gateway pact', () => {
+describe('Web → Core pact', () => {
   it('POST /api/v1/auth/login — happy path', async () => {
     await provider
       .uponReceiving('a login request')

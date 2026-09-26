@@ -7,10 +7,12 @@ Query validation for the admin endpoints in `src/admin/`. One DTO per parameter 
 ## Design
 
 `UserIdsQueryDto` (for `GET api/v1/admin/users/asset-stats`):
+
 - optional `userIds`: `@Transform` splits a comma-separated query string into an array (array values pass through untouched), then `@IsArray`, `@ArrayMinSize(1)`, `@ArrayMaxSize(50)`, `@IsString({ each: true })`.
 - No default: the controller passes `q.userIds ?? []`, and `AdminService.getAssetStatsByUser` short-circuits to `{}` for an empty list.
 
 `ListAdminAssetsQueryDto` (for `GET api/v1/admin/assets`):
+
 - `kind` required `@IsIn(['photo', 'video'])`.
 - `limit` optional int 1–500 (`@Type(() => Number)`); controller default 200.
 - `offset` optional int ≥ 0.

@@ -13,7 +13,7 @@ Four packages, each with one concern, no duplication across apps:
 
 - `packages/shared-config` — zod `loadEnv()` for every env var (ports, Postgres/Redis,
   `STORAGE_DIR`, TTLs); depends on zod only.
-- `packages/shared-types` — pure type-only wire interfaces used by core, gateway, and web;
+- `packages/shared-types` — pure type-only wire interfaces used by core and web;
   zero runtime deps.
 - `packages/shared-auth` — `JwtPayload` + `loadAuthEnv()` (`AUTH_TOKEN_SECRET` ≥32 chars);
   depends on shared-types for `Role`.
@@ -37,7 +37,6 @@ storage service are exercised by core and worker-service integration tests inste
 
 - `apps/core` — all four packages (DB module + storage, auth env, config, wire DTO types).
 - `apps/worker-service` — `data-access` (entities, storage) + `shared-config`.
-- `apps/gateway` — `shared-auth`, `shared-config`, `shared-types` (stateless; no data-access).
 - `apps/web` — type-only imports of `shared-types` and `shared-auth` (`JwtPayload`).
 
 No package imports from `apps/`; the dependency arrow only points downward.

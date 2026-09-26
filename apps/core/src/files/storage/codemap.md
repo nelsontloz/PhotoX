@@ -12,7 +12,7 @@ DI wiring for local-disk storage. `StorageModule` provides and exports `LocalSto
   - `originals/<userId>/<fileId>.<ext>`
   - `derivatives/thumbnails/<userId>/<fileId>.<ext>`
   - `derivatives/transcodes/<userId>/<fileId>.<ext>`
-  The first path segment doubles as the `kind`.
+    The first path segment doubles as the `kind`.
 - `save(key, tmpPath)` is atomic: `mkdir -p` destination dir, `rename(tmp → dest.uuid.tmp)`, then `rename(tmp → dest)`; on `EXDEV` (tmp on a different filesystem, e.g. container `/tmp` vs volume) it falls back to `copyFile` + unlink of the source. Multer writes uploads into `os.tmpdir()`, so the EXDEV path is a real laptop/container case.
 - `createReadStream(key, range)` wraps `fs.createReadStream` with optional `{start,end}` for HTTP Range streaming; `stat(key)` supports `Content-Length`/416 decisions; `delete(key)` swallows `ENOENT` (idempotent) but rethrows other errors.
 - `ensureDir()` exists but is not called by core consumers.

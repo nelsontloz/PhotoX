@@ -6,7 +6,7 @@ Liveness/readiness endpoint for the core process, unversioned at `GET /health`, 
 
 ## Design
 
-- `HealthController` — `@Controller('health')`, single `@Get() check()`; no guards, no Swagger tag. `/health` is an exact open route in `GatewayIdentityGuard`, and the gateway proxies it, so it is reachable without identity.
+- `HealthController` — `@Controller('health')`, single `@Get() check()`; no guards, no Swagger tag. `/health` is an exact open route in `JwtAuthGuard` (`open-routes.ts`), so it is reachable without a token.
 - `HealthService` injects `DataSource` directly (not `@InjectRepository` — avoids `forFeature` coupling, per AGENTS.md) and returns:
   `{ status: 'ok' | 'degraded', service: 'core', uptime: process.uptime(), timestamp: ISO, checks: { database: { status, latencyMs }, redis: { status, latencyMs } } }`.
 - Database check: `dataSource.query('SELECT 1')`, latency measured with `Date.now()`.
@@ -16,7 +16,7 @@ Liveness/readiness endpoint for the core process, unversioned at `GET /health`, 
 
 ## Flow
 
-`GET /health` → gateway proxy (open route) → core controller → service runs the DB query then the Redis ping → JSON status. Docker/compose and tooling use this as the upstream liveness signal; the gateway also has its own `/health` at the edge.
+`GET /health` → open route (no Bearer needed) → core controller → service runs the DB query then the Redis ping → JSON status. Docker/compose and tooling use this as the liveness signal.
 
 ## Integration
 

@@ -24,4 +24,4 @@ Upload: `enqueueFiles` (`lib/upload`) → `useUploadStore.enqueue` → 3 concurr
 
 ## Integration
 
-Pages under `src/pages/` import these directly: `TimelineGrid` only on `/`; `GalleryItem` on favorites, trash, albums detail, people detail; `AlbumPickerDialog` + lazy `AssetViewer` on timeline, favorites, albums detail, people detail, trash. Data APIs: `api/assets`, `api/albums`, `api/faces`, `api/shares`. Stores: `auth-store`, `upload-store`, `thumb-store`, `app-store`. Hooks: `useLongPress`. All requests go through `api/client` (baseURL `/api`) to the gateway.
+Pages under `src/pages/` import these directly: `TimelineGrid` only on `/`; `GalleryItem` on favorites, trash, albums detail, people detail; `AlbumPickerDialog` + lazy `AssetViewer` on timeline, favorites, albums detail, people detail, trash. Data APIs: `api/assets`, `api/albums`, `api/faces`, `api/shares`. Stores: `auth-store`, `upload-store`, `thumb-store`, `app-store`. Hooks: `useLongPress`. All requests go through `api/client` (baseURL `/api`) to the core API.

@@ -18,7 +18,7 @@
 
 ## Flow
 
-Mount → `Navigate` if session exists → fill form → mismatch short-circuits locally → `api/auth.register` POST `/api/v1/auth/register` through the gateway → `auth-store` persists tokens/user → `navigate('/')` → protected pages pass `RequireAuth`. The endpoint is in the open table, so no prior session is required.
+Mount → `Navigate` if session exists → fill form → mismatch short-circuits locally → `api/auth.register` POST `/api/v1/auth/register` → `auth-store` persists tokens/user → `navigate('/')` → protected pages pass `RequireAuth`. The endpoint is in the open table, so no prior session is required.
 
 ## Integration
 

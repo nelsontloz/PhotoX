@@ -18,7 +18,7 @@ Public capability-URL sharing of single assets. Two controllers: authenticated m
 ## Flow
 
 - Share: `POST api/v1/shares { assetId }` (JWT) → dedupe/create → `AssetShareDto` containing the token.
-- Consume: `GET api/share/:token` (no auth; gateway whitelists the whole `/api/share/*` prefix) → public asset projection; `GET api/share/:token/stream` → file bytes with Range support, used directly as a media URL.
+- Consume: `GET api/share/:token` (no auth; `JwtAuthGuard` whitelists the whole `/api/share/*` prefix) → public asset projection; `GET api/share/:token/stream` → file bytes with Range support, used directly as a media URL.
 - Manage: `GET api/v1/shares` (list with thumbnail info), `DELETE api/v1/shares/:id` (revoke). Revoking deletes only the share row; asset/file bytes are untouched.
 - Trashing or permanently deleting an asset removes visibility: trashed assets are excluded by `list`/`getByToken`; permanent delete removes `AssetShare` rows inside `AssetsService`'s transaction (also covered by the FK cascade).
 
@@ -26,5 +26,5 @@ Public capability-URL sharing of single assets. Two controllers: authenticated m
 
 - `SharesModule` imports `TypeOrmModule.forFeature([AssetShare, Asset])` + `UserFilesModule` (for `UserFilesService` streaming) and registers both controllers.
 - `Asset` entity and `LocalStorageService` come from `@photox/data-access`.
-- Gateway wiring: `api/share` and `api/share/:token/stream` are open routes (`apps/gateway/src/auth/open-routes.ts`); `api/v1/shares*` requires JWT. The proxy passes Range/206/416 through.
+- Open routes: `api/share` and `api/share/:token/stream` (`apps/core/src/auth/open-routes.ts`); `api/v1/shares*` requires a Bearer JWT. Range/206/416 pass through.
 - DTOs in `shares/dto/`; entity in `shares/entities/`; wire types `AssetShareDto`, `ShareListResponse`, `PublicShareResponse` in `@photox/shared-types`.

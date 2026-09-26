@@ -23,4 +23,4 @@ Route mount → fetch through `api/client` (axios, baseURL `/api`, Bearer from `
 
 ## Integration
 
-Consumes `components/*` (shell, guards, grids, dialogs, viewer), `hooks/*`, `store/{auth,app,upload,thumb}-store`, and `api/{assets,albums,persons,shares,admin}`; all traffic goes to the gateway at `/api` (proxy `/share` is public at the gateway's open table). `places` additionally pulls in `leaflet`. Types come from `@photox/shared-types`.
+Consumes `components/*` (shell, guards, grids, dialogs, viewer), `hooks/*`, `store/{auth,app,upload,thumb}-store`, and `api/{assets,albums,persons,shares,admin}`; all traffic goes to core at `/api` (the `/api/share/*` prefix is public in the open-route table). `places` additionally pulls in `leaflet`. Types come from `@photox/shared-types`.

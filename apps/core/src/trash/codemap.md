@@ -12,9 +12,10 @@ Permanent-deletion and restore endpoints for trashed assets. Soft-delete (trashi
 - `DELETE api/v1/assets/trashed/:id` → `AssetsService.delete(userId, id)` — 404 if absent/foreign, 400 `Asset must be trashed before permanent deletion` if `!asset.isTrashed`; returns `{ fileIds }`.
 - `POST api/v1/assets/trashed/:id/restore` → 204, idempotent (`restore` only updates when `isTrashed`).
 
-Every handler resolves `userId` from `(req.user as { id: string }).id` (populated by the global `GatewayIdentityGuard`) with a `@Query('userId')` fallback for service-to-service/legacy calls. Swagger tag `trashed`.
+Every handler resolves `userId` from `(req.user as { id: string }).id` (populated by the global `JwtAuthGuard`) with a `@Query('userId')` fallback for service-to-service/legacy calls. Swagger tag `trashed`.
 
 `AssetsService` permanent deletion (the real logic):
+
 - Collects file ids **before** deleting: asset `fileId`, optional `transcodeFileId`, and every `AssetThumbnail.fileId`.
 - One transaction deletes `Face`, `AlbumAsset`, `AssetShare`, then the `Asset` rows.
 - Returns the file ids to the caller; it does **not** enqueue a `cleanup-asset` job (worker-service has the consumer, but trash doesn't use it) and does not touch local storage — blob reclamation is the caller's/admin's job.
@@ -22,7 +23,7 @@ Every handler resolves `userId` from `(req.user as { id: string }).id` (populate
 
 ## Flow
 
-Gateway (JWT) → global identity guard → `TrashController` → `AssetsService` → Postgres transaction → `{ fileIds }` response. Listing trashed items is NOT here: `GET api/v1/assets/trashed` lives in `assets/assets.controller.ts` (`listTrashed`).
+Bearer JWT → global `JwtAuthGuard` → `TrashController` → `AssetsService` → Postgres transaction → `{ fileIds }` response. Listing trashed items is NOT here: `GET api/v1/assets/trashed` lives in `assets/assets.controller.ts` (`listTrashed`).
 
 ## Integration
 

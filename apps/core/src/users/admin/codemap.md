@@ -6,7 +6,7 @@ Admin-only, paginated listing of user accounts for the web admin console: `GET /
 
 ## Design
 
-- `AdminController` is `@UseGuards(AdminGuard)` + `@Controller('api/v1/admin/users')`, Swagger tag `admin`. Its operation summary says "trusts the network" — the gateway is the JWT/admin boundary, core's guard is defence in depth.
+- `AdminController` is `@UseGuards(AdminGuard)` + `@Controller('api/v1/admin/users')`, Swagger tag `admin`. Its operation summary says "trusts the network" — the global `JwtAuthGuard` is the JWT/admin boundary; this controller-level guard is redundant defence in depth.
 - Swagger: `@ApiTags('admin')` at controller level, one `@ApiOperation`/`@ApiResponse({ status: 200 })` on the single route (403/`Admin only` comes from the guard, not documented).
 - `AdminService.listUsers` builds a `SelectQueryBuilder<User>` selecting only `id, displayName, email, role, createdAt`, applies filters, sorts, then `take(limit).skip(offset)` with `getManyAndCount()`.
 - `AdminService.parseSort(sort)` static helper parses `field:dir` (e.g. `createdAt:desc`), defaulting to `{ createdAt, desc }`. The field is interpolated directly into `orderBy(\`u.${field}\`)`; this is safe only because `ListAdminUsersQueryDto` regex-whitelists the four allowed fields.
@@ -15,7 +15,7 @@ Admin-only, paginated listing of user accounts for the web admin console: `GET /
 
 ## Flow
 
-Gateway admin JWT → `x-user-role: admin` → global `GatewayIdentityGuard` populates `req.user` → `AdminGuard` passes → controller parses sort → `AdminService.listUsers` → Postgres → `getManyAndCount()` → rows mapped to wire shape with `createdAt.toISOString()`.
+Admin Bearer JWT → global `JwtAuthGuard` verifies and populates `req.user` → `AdminGuard` passes → controller parses sort → `AdminService.listUsers` → Postgres → `getManyAndCount()` → rows mapped to wire shape with `createdAt.toISOString()`.
 
 ## Integration
 

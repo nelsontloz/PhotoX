@@ -12,16 +12,15 @@ Compose topology (`docker-compose.yml`), one bridge network `photox-net`:
 - `redis` — `redis:7-alpine`, publishes `6379`, healthcheck `redis-cli ping`. BullMQ transport.
 - `core` — built from `apps/core/Dockerfile`, context is repo root. Ports not published; `depends_on` postgres+redis (healthy). `/data/storage` from named volume `storage-data`. Healthcheck hits `http://localhost:3000/health`.
 - `worker-service` — built from `apps/worker-service/Dockerfile`; shares the same `storage-data` volume at `/data/storage`; depends on postgres+core+redis healthy; healthcheck `:3004/health`.
-- `gateway` — built from `apps/gateway/Dockerfile`; publishes `3001` (sole exterior API); `CORE_BASE_URL=http://core:3000`; depends on core healthy.
-- `web` — built from `apps/web/Dockerfile`; publishes `5173`; `VITE_API_URL=http://gateway:3001`; depends on gateway healthy. Image runs the Vite dev server (`pnpm dev --host 0.0.0.0`), not a static build.
+- `web` — built from `apps/web/Dockerfile`; publishes `5173`; `VITE_API_URL=http://core:3000`; depends on core healthy. Image runs the Vite dev server (`pnpm dev --host 0.0.0.0`), not a static build.
 
-Only `gateway` and `web` publish ports for normal use; `postgres`/`redis` are published so host-run `pnpm dev` processes can reach them. Core and gateway share one `AUTH_TOKEN_SECRET` (dev literal in compose) — the gateway verifies tokens at the edge, core trusts the forwarded identity headers.
+Only `web` publishes a port for normal use; `postgres`/`redis` are published so host-run `pnpm dev` processes can reach them (core and worker-service publish none). Core receives the shared `AUTH_TOKEN_SECRET` (dev literal in compose) and verifies tokens itself.
 
-App Dockerfiles are multi-stage: `deps` (workspace manifests only + `pnpm install --frozen-lockfile`), `build` (`tsc`/`nest build` for shared packages then the app), `runtime` (node:22-alpine, copies node_modules + packages + app, `CMD node apps/<app>/dist/main.js`). `apps/core` and `apps/gateway` stay on alpine; `worker-service` uses bookworm-slim and rebuilds `@tensorflow/tfjs-node` from source on arm64. `web` is single-stage.
+App Dockerfiles are multi-stage: `deps` (workspace manifests only + `pnpm install --frozen-lockfile`), `build` (`tsc`/`nest build` for shared packages then the app), `runtime` (node:22-alpine, copies node_modules + packages + app, `CMD node apps/<app>/dist/main.js`). `apps/core` stays on alpine; `worker-service` uses bookworm-slim and rebuilds `@tensorflow/tfjs-node` from source on arm64. `web` is single-stage.
 
 ## Flow
 
-`docker compose up -d postgres redis` first (infra), then `docker compose up --build` for the stack. Entry order is enforced by `depends_on: condition: service_healthy` gates, not just startup order: postgres+redis → core → worker/gateway → web. On first boot, Postgres runs `init.sql` to create the DB and extension; after that the named volumes make it a no-op.
+`docker compose up -d postgres redis` first (infra), then `docker compose up --build` for the stack. Entry order is enforced by `depends_on: condition: service_healthy` gates, not just startup order: postgres+redis → core → worker → web. On first boot, Postgres runs `init.sql` to create the DB and extension; after that the named volumes make it a no-op.
 
 ## Integration
 

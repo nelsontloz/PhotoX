@@ -16,10 +16,10 @@ Request validation for creating asset shares; consumes an optional `userId` fall
 
 - `POST api/v1/shares` body → global `ValidationPipe` (`whitelist`, `forbidNonWhitelisted`, `transform`) → `CreateShareDto` → `SharesService.create(userId, dto)`.
 - A missing/invalid `assetId` fails with 400 before any DB query; a valid but unowned/trashed asset yields 404 from the service.
-- The `userId` field is only a fallback for direct service-to-service calls; gateway traffic uses `req.user.id` and therefore ignores any client-supplied `userId` (the proxy strips client `userId` and injects identity headers).
+- The `userId` field is only a fallback for direct service-to-service calls; authenticated traffic uses `req.user.id` and therefore ignores any client-supplied `userId`.
 
 ## Integration
 
 - Consumed by `SharesController` (`api/v1/shares`).
 - `CreateShareRequest` wire contract comes from `@photox/shared-types`; the response type `AssetShareDto` includes token and thumbnail/file ids and is built in `SharesService.toDto`.
-- Swagger schema is exposed on core's `/docs` (`/docs*` is an open route at the gateway).
+- Swagger schema is exposed on core's `/docs` (`/docs*` is an open route).

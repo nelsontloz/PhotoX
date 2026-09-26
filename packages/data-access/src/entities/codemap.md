@@ -9,6 +9,7 @@ columns, enums, FKs, and indexes — there are no migration files.
 ## Design
 
 **`Asset` → `assets`** (`asset.entity.ts`)
+
 - Indexes: `(userId, uploadedAt)`, `(userId, takenAt)`, `(userId, kind, uploadedAt)`,
   partial `(userId)` `WHERE "isTrashed" = false`; `userId` and `kind` also indexed alone.
 - Columns: `id` uuid PK; `userId`; `kind` enum `photo|video`; unique `fileId` uuid;
@@ -24,12 +25,14 @@ columns, enums, FKs, and indexes — there are no migration files.
 - Relation: `OneToMany` → `AssetThumbnail.thumbnails`.
 
 **`AssetThumbnail` → `asset_thumbnails`** (`asset-thumbnail.entity.ts`)
+
 - `@Unique(['assetId', 'size'])`; `assetId` indexed and a `ManyToOne` → `Asset` with
   `onDelete: 'CASCADE'` (deleting an asset drops its thumbnails).
 - Columns: `size` text (sm/md/lg/xl), `fileId` uuid, `width`, `height`, `bytes` bigint,
   `createdAt`.
 
 **`FileRecord` → `files`** (`file-record.entity.ts`)
+
 - Indexes: `(userId, checksumSha256)` for dedup lookups, `(userId, purpose, createdAt)`,
   and `assetId` indexed.
 - Columns: `storageKey` (relative path under `STORAGE_DIR`), `originalName`, `mimeType`,
@@ -38,6 +41,7 @@ columns, enums, FKs, and indexes — there are no migration files.
   a transcode is a separate row with `purpose: 'transcode'`.
 
 **`Face` → `faces`** (`face.entity.ts`)
+
 - Exports `FACE_EMBEDDING_DIM = 512` (InsightFace buffalo_l w600k_r50 output) — the single
   source of truth used by detector validation, DTOs, and cluster filters.
 - Indexes: `(personId, userId)` plus `assetId`, `userId`, `personId` individually.

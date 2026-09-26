@@ -19,8 +19,8 @@
 
 ## Flow
 
-Mount (already logged in → redirect `/`) → credentials submitted → `api/auth.login` POST `/api/v1/auth/login` via the gateway → tokens persisted by `auth-store` (`persist`, refresh rotation scheduled ~5 min before expiry) → `navigate('/')` → timeline fetches attach `Authorization: Bearer` via `api/client` interceptor.
+Mount (already logged in → redirect `/`) → credentials submitted → `api/auth.login` POST `/api/v1/auth/login` → tokens persisted by `auth-store` (`persist`, refresh rotation scheduled ~5 min before expiry) → `navigate('/')` → timeline fetches attach `Authorization: Bearer` via `api/client` interceptor.
 
 ## Integration
 
-`store/auth-store` (only store used), `api/auth` through it, `react-router-dom` `Link`/`Navigate`/`useNavigate`. The route is in the gateway/core open table (`api/v1/auth/*`), so it works without a token. Register page shares this exact layout/structure.
+`store/auth-store` (only store used), `api/auth` through it, `react-router-dom` `Link`/`Navigate`/`useNavigate`. The route is in the open table (`api/v1/auth/*`), so it works without a token. Register page shares this exact layout/structure.
