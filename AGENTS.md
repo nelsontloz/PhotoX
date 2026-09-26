@@ -77,3 +77,14 @@ Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 ## Stale-doc warning
 
 `README.md` still references `minio` and gateway/user-service/media/file-storage ports. Trust `docker-compose.yml` + `apps/` layout over prose.
+
+## Repository Map
+
+A full codemap is available at `codemap.md` in the project root.
+
+Before working on any task, read `codemap.md` to understand:
+- Project architecture and entry points
+- Directory responsibilities and design patterns
+- Data flow and integration points between modules
+
+For deep work on a specific folder, also read that folder's `codemap.md`.
