@@ -123,7 +123,9 @@ export function buildProxyBody(req: Request): string | Request | undefined {
   const ct = firstHeader(req.headers['content-type'])
   if (ct.toLowerCase().includes('application/json')) {
     const body = req.body as unknown
-    return body === undefined || body === null ? undefined : JSON.stringify(stripUserIdFromJsonBody(body))
+    return body === undefined || body === null
+      ? undefined
+      : JSON.stringify(stripUserIdFromJsonBody(body))
   }
   if (ct.toLowerCase().includes('application/x-www-form-urlencoded')) {
     return serializeFormWithoutUserId(req.body)

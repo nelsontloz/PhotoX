@@ -51,7 +51,7 @@ describe('VideoProcessor (integration)', () => {
   })
 
   async function seedVideo(userId: string, bytes: Buffer, mimeType: string) {
-    const storageKey = `${userId}/${randomUUID()}.mp4`
+    const storageKey = testApp.storage.buildKey('original', userId, randomUUID(), 'mp4')
     await mkdir(dirname(testApp.storage.pathFor(storageKey)), { recursive: true })
     await writeFile(testApp.storage.pathFor(storageKey), bytes)
     const record = await testApp.fileRepo.save(

@@ -191,7 +191,7 @@ export class ThumbnailProcessor {
       fileId = existing.id
     } else {
       fileId = randomUUID()
-      const storageKey = `${userId}/${fileId}.webp`
+      const storageKey = this.storage.buildKey('thumbnail', userId, fileId, 'webp')
       const staging = join(tmpdir(), `thumb-upload-${randomUUID()}.webp`)
       await writeFile(staging, thumbBuffer)
       await this.storage.save(storageKey, staging)

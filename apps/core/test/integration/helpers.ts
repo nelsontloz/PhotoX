@@ -229,7 +229,7 @@ export async function seedFile(
   const bytes = opts?.bytes ?? Buffer.from(`file-${randomUUID()}`)
   const mimeType = opts?.mimeType ?? 'image/png'
   const originalName = opts?.originalName ?? 'photo.png'
-  const storageKey = `${userId}/${randomUUID()}.bin`
+  const storageKey = `originals/${userId}/${randomUUID()}.bin`
   await mkdir(dirname(t.storage.pathFor(storageKey)), { recursive: true })
   await writeFile(t.storage.pathFor(storageKey), bytes)
   const record = t.fileRepo.create({

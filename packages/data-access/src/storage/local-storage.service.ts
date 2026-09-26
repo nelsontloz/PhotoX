@@ -8,6 +8,18 @@ import { loadEnv } from '@photox/shared-config'
 
 @Injectable()
 export class LocalStorageService {
+  buildKey(
+    kind: 'original' | 'thumbnail' | 'transcode',
+    userId: string,
+    fileId: string,
+    ext: string,
+  ): string {
+    const cleanExt = ext.replace(/^\.+/, '')
+    if (kind === 'original') return `originals/${userId}/${fileId}.${cleanExt}`
+    if (kind === 'thumbnail') return `derivatives/thumbnails/${userId}/${fileId}.${cleanExt}`
+    return `derivatives/transcodes/${userId}/${fileId}.${cleanExt}`
+  }
+
   pathFor(storageKey: string): string {
     return join(loadEnv().STORAGE_DIR, storageKey)
   }

@@ -6,6 +6,11 @@ set -euo pipefail
 URL="${FACE_MODEL_URL:-https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip}"
 DEST="${FACE_MODEL_PATH:-$(cd "$(dirname "$0")/../../.." && pwd)/data/storage/models/w600k_r50.onnx}"
 
+if [ "${1:-}" != '--force' ] && [ -s "$DEST" ]; then
+  echo "Model already present at $DEST (use --force to re-fetch)"
+  exit 0
+fi
+
 mkdir -p "$(dirname "$DEST")"
 TMP="$(mktemp -t buffalo_l.XXXXXX.zip)"
 trap 'rm -f "$TMP"' EXIT

@@ -135,6 +135,21 @@ export class FaceProcessor {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
+      // ponytail: missing onnx weights is provisioning, not a job bug — warn + no retry
+      if (message.includes('Face embedding model not found')) {
+        this.logger.warn(`Faces skipped (missing model): asset=${assetId} — ${message}`)
+
+        try {
+          await this.assetRepo.update(assetId, { faceStatus: 'failed' })
+        } catch (patchErr) {
+          const patchMsg = patchErr instanceof Error ? patchErr.message : String(patchErr)
+          this.logger.warn(
+            `Failed to patch face status to failed for asset=${assetId}: ${patchMsg}`,
+          )
+        }
+
+        return
+      }
       this.logger.error(`Faces failed: asset=${assetId} — ${message}`)
 
       try {

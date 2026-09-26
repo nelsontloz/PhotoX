@@ -28,7 +28,7 @@ describe('ThumbnailProcessor (integration)', () => {
         .png()
         .toBuffer()
 
-      const storageKey = `${userId}/${randomUUID()}.png`
+      const storageKey = testApp.storage.buildKey('original', userId, randomUUID(), 'png')
       await mkdir(dirname(testApp.storage.pathFor(storageKey)), { recursive: true })
       await writeFile(testApp.storage.pathFor(storageKey), imageBuffer)
       const record = await testApp.fileRepo.save(

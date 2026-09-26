@@ -164,7 +164,7 @@ export class VideoProcessor {
     })
     if (existing) return existing.id
     const fileId = randomUUID()
-    const storageKey = `${userId}/${fileId}.webm`
+    const storageKey = this.storage.buildKey('transcode', userId, fileId, 'webm')
     await this.storage.save(storageKey, outPath)
     const saved = await this.fileRepo.save(
       this.fileRepo.create({

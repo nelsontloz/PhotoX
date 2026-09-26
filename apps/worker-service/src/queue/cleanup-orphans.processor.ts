@@ -134,12 +134,14 @@ export class CleanupOrphansProcessor {
       }
       for (const entry of entries) {
         const full = join(dir, entry)
+        const key = relative(root, full)
+        if (key === 'models' || key.startsWith('models/')) continue
         const s = await stat(full).catch(() => null)
         if (!s) continue
         if (s.isDirectory()) {
           await walk(full)
         } else if (!entry.endsWith('.tmp')) {
-          keys.push(relative(root, full))
+          keys.push(key)
         }
       }
     }

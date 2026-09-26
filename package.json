@@ -11,7 +11,8 @@
     "clean": "turbo run clean && rm -rf node_modules",
     "test": "turbo run test",
     "test:watch": "turbo run test:watch",
-    "verify": "pnpm run lint && turbo run test --force && pnpm run typecheck && pnpm run build"
+    "verify": "pnpm run lint && turbo run test --force && pnpm run typecheck && pnpm run build",
+    "postinstall": "test \"${FACE_MODEL_SKIP:-}\" = 1 || test -f data/storage/models/w600k_r50.onnx || bash apps/worker-service/scripts/download-face-model.sh"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.0.0",

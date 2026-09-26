@@ -58,7 +58,7 @@ describe('VideoProcessor disk paths', () => {
 
   it('copies the stored source bytes to the destination directory', async () => {
     const fileBytes = Buffer.from([0, 1, 2, 3, 4, 5, 6, 7])
-    const storageKey = `${userId}/${fileId}.mp4`
+    const storageKey = storage.buildKey('original', userId, fileId, 'mp4')
     const staging = join(storageDir, 'staging.mp4')
     await writeFile(staging, fileBytes)
     await storage.save(storageKey, staging)

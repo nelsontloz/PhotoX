@@ -124,7 +124,7 @@ export class UserFilesService {
 
       const ext = this.getExtension(file.originalname)
       const fileId = randomUUID()
-      const storageKey = `${userId}/${fileId}.${ext}`
+      const storageKey = this.storage.buildKey('original', userId, fileId, ext)
 
       try {
         await this.storage.save(storageKey, file.path)
