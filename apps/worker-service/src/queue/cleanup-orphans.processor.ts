@@ -1,10 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, LessThan, Repository } from 'typeorm'
+import type { Job } from 'bullmq'
 import { readdir, stat } from 'fs/promises'
 import { join, relative } from 'path'
 import { loadEnv } from '@photox/shared-config'
 import { BullMqService } from './bullmq.service'
+import { parseJobData, cleanupOrphansJobSchema, type CleanupOrphansJob } from './job-schemas'
 import { AssetThumbnail, FileRecord, LocalStorageService } from '@photox/data-access'
 
 const ORPHAN_GRACE_MS = 10 * 60 * 1000
@@ -24,13 +26,14 @@ export class CleanupOrphansProcessor {
   ) {}
 
   start() {
-    this.bullMq.createWorker('cleanup-orphans', () => this.processJob(), {
+    this.bullMq.createWorker<CleanupOrphansJob>('cleanup-orphans', (job) => this.processJob(job), {
       concurrency: 1,
     })
     this.logger.log('Cleanup orphans processor listening for jobs')
   }
 
-  private async processJob() {
+  private async processJob(job: Job<CleanupOrphansJob>) {
+    parseJobData(cleanupOrphansJobSchema, job.data, 'cleanup-orphans')
     this.logger.log('Orphan cleanup starting')
 
     const mediaRows: { fileId: string }[] = await this.dataSource.query(`

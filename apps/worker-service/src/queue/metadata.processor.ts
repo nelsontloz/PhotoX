@@ -7,15 +7,9 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { BullMqService } from './bullmq.service'
+import { assertOwnership, parseJobData, metadataJobSchema, type MetadataJob } from './job-schemas'
 import { Asset, FileRecord, LocalStorageService } from '@photox/data-access'
 import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor'
-
-interface MetadataJob {
-  assetId: string
-  fileId: string
-  userId: string
-  kind: 'photo' | 'video'
-}
 
 export function branchFor(mimeType: string | null): 'photo' | 'video' | null {
   if (mimeType?.startsWith('image/')) return 'photo'
@@ -47,13 +41,20 @@ export class MetadataProcessor {
   }
 
   private async processJob(job: Job<MetadataJob>) {
-    const { assetId, fileId, kind } = job.data
+    const { assetId, fileId, kind, userId } = parseJobData(
+      metadataJobSchema,
+      job.data,
+      'process-metadata',
+    )
 
     this.logger.log(`Processing metadata: asset=${assetId}, kind=${kind}`)
 
+    const record = await this.fileRepo.findOne({ where: { id: fileId } })
+    const asset = await this.assetRepo.findOne({ where: { id: assetId } })
+    assertOwnership({ assetId, fileId, userId }, { record, asset })
+
     const filePath = join(tmpdir(), `metadata-${randomUUID()}`)
     try {
-      const record = await this.fileRepo.findOne({ where: { id: fileId } })
       if (!record) throw new Error(`File not found: ${fileId}`)
       await copyFile(this.storage.pathFor(record.storageKey), filePath)
       const mimeType = record.mimeType ?? null

@@ -12,6 +12,7 @@ const envSchema = z.object({
   POSTGRES_PASSWORD: z.string().default('photox_dev'),
   REDIS_HOST: z.string().default('localhost'),
   REDIS_PORT: z.coerce.number().default(6379),
+  REDIS_PASSWORD: z.string().optional(),
   STORAGE_DIR: z.string().default('./data/storage'),
   AUTH_ACCESS_TTL: z.string().default('30m'),
   AUTH_REFRESH_TTL: z.string().default('30d'),

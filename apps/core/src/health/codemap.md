@@ -10,7 +10,7 @@ Liveness/readiness endpoint for the core process, unversioned at `GET /health`, 
 - `HealthService` injects `DataSource` directly (not `@InjectRepository` — avoids `forFeature` coupling, per AGENTS.md) and returns:
   `{ status: 'ok' | 'degraded', service: 'core', uptime: process.uptime(), timestamp: ISO, checks: { database: { status, latencyMs }, redis: { status, latencyMs } } }`.
 - Database check: `dataSource.query('SELECT 1')`, latency measured with `Date.now()`.
-- Redis check: a **short-lived `ioredis` client per call** (`REDIS_HOST`/`REDIS_PORT` from `loadEnv()`, `maxRetriesPerRequest: 1`, `enableReadyCheck: true`), `PING`, then `disconnect()` in `finally`. ponytail ceiling: one connection per health request — fine at personal scale; swap for a shared client if polling ever matters.
+- Redis check: a **short-lived `ioredis` client per call** (`REDIS_HOST`/`REDIS_PORT` and optional `REDIS_PASSWORD` from `loadEnv()`, `maxRetriesPerRequest: 1`, `enableReadyCheck: true`), `PING`, then `disconnect()` in `finally`. ponytail ceiling: one connection per health request — fine at personal scale; swap for a shared client if polling ever matters.
 - Failures are captured per check and never thrown: HTTP stays **200** and the top-level `status` flips to `degraded`. That behaviour is deliberate per AGENTS.md.
 - No shared-types response interface: `HealthService.check()`'s returned object literal is the de-facto contract (the controller has no return annotation).
 
@@ -21,5 +21,5 @@ Liveness/readiness endpoint for the core process, unversioned at `GET /health`, 
 ## Integration
 
 - Redis is the same instance BullMQ uses; a down Redis shows as `degraded` while the publisher still swallows enqueue failures.
-- Env: `REDIS_HOST`, `REDIS_PORT` from `@photox/shared-config`; Postgres connection comes from the shared TypeORM DataSource.
+- Env: `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` (optional) from `@photox/shared-config`; Postgres connection comes from the shared TypeORM DataSource.
 - Core's port :3000 is not published, so this endpoint is internal-only in compose.

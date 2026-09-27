@@ -10,10 +10,11 @@ TypeORM, or any app.
 
 `env.ts`
 
-- `envSchema` (zod object, 13 keys): `NODE_ENV` enum default `development`; `API_PORT` 3000;
+- `envSchema` (zod object, 14 keys): `NODE_ENV` enum default `development`; `API_PORT` 3000;
   `WORKER_SERVICE_PORT` 3004;
   `POSTGRES_HOST` localhost; `POSTGRES_PORT` 5432; `POSTGRES_USER` photox;
-  `POSTGRES_PASSWORD` photox_dev; `REDIS_HOST` localhost; `REDIS_PORT` 6379; `STORAGE_DIR`
+  `POSTGRES_PASSWORD` photox_dev; `REDIS_HOST` localhost; `REDIS_PORT` 6379;
+  `REDIS_PASSWORD` optional (no default; compose sets `photox_dev`); `STORAGE_DIR`
   `./data/storage`; `AUTH_ACCESS_TTL` `30m`; `AUTH_REFRESH_TTL` `30d`;
   `AUTH_CLOCK_TOLERANCE_SEC` 60. Numeric keys use `z.coerce.number()`, so env strings work.
 - `export type Env = z.infer<typeof envSchema>` — the schema is the type.

@@ -22,7 +22,7 @@ Run by the official Postgres entrypoint on first initialization of the data dire
 ## Flow
 
 1. `docker compose up -d postgres` starts the pgvector image; the entrypoint detects an empty `pgdata` volume.
-2. It executes `init.sql`: creates `photox`, reconnects (`\c photox`), creates the `vector` extension.
+2. It executes `init.sql`: reconnects to `photox` (created beforehand by the entrypoint from `POSTGRES_DB`), creates the `vector` extension.
 3. Postgres starts serving; compose's `pg_isready -U photox` healthcheck turns healthy.
 4. Core (then worker) connects and TypeORM `synchronize` materializes the schema.
 

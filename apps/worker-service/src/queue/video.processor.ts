@@ -7,14 +7,9 @@ import { join } from 'path'
 import { randomUUID, createHash } from 'crypto'
 import { copyFile, rm, mkdir, readFile } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
+import { assertOwnership, parseJobData, videoJobSchema, type VideoJob } from './job-schemas'
 import { Asset, FileRecord, LocalStorageService } from '@photox/data-access'
 import { runFfmpeg, runFfprobeJson } from './ffmpeg'
-
-interface ProcessVideoJob {
-  assetId: string
-  fileId: string
-  userId: string
-}
 
 const MAX_DURATION_SEC = 4 * 60 * 60
 const MAX_DIMENSION = 7680
@@ -34,20 +29,24 @@ export class VideoProcessor {
   ) {}
 
   start() {
-    this.bullMq.createWorker<ProcessVideoJob>('process-video', (job) => this.processJob(job), {
+    this.bullMq.createWorker<VideoJob>('process-video', (job) => this.processJob(job), {
       concurrency: 1,
     })
 
     this.logger.log('Video processor listening for jobs')
   }
 
-  private async processJob(job: Job<ProcessVideoJob>) {
-    const { assetId, fileId, userId } = job.data
+  private async processJob(job: Job<VideoJob>) {
+    const { assetId, fileId, userId } = parseJobData(videoJobSchema, job.data, 'process-video')
 
     this.logger.log(`Processing video transcode: asset=${assetId}`)
 
     const srcDir = join(tmpdir(), fileId)
     const outDir = `${srcDir}-transcode`
+
+    const record = await this.fileRepo.findOne({ where: { id: fileId } })
+    const asset = await this.assetRepo.findOne({ where: { id: assetId } })
+    assertOwnership({ assetId, fileId, userId }, { record, asset })
 
     try {
       await this.patchAsset(assetId, { transcodeStatus: 'pending' })

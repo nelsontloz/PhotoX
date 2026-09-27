@@ -8,6 +8,7 @@ import { join } from 'path'
 import { randomUUID, createHash } from 'crypto'
 import { copyFile, unlink, writeFile } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
+import { assertOwnership, parseJobData, thumbnailJobSchema, type ThumbnailJob } from './job-schemas'
 import { Asset, AssetThumbnail, FileRecord, LocalStorageService } from '@photox/data-access'
 import { runFfmpeg } from './ffmpeg'
 
@@ -31,13 +32,6 @@ const WEBP_QUALITY: Record<string, number> = {
   md: 80,
   lg: 80,
   xl: 85,
-}
-
-interface ThumbnailJob {
-  assetId: string
-  fileId: string
-  size: string
-  userId: string
 }
 
 @Injectable()
@@ -64,12 +58,21 @@ export class ThumbnailProcessor {
   }
 
   private async processJob(job: Job<ThumbnailJob>) {
-    const { assetId, fileId, size, userId } = job.data
+    const { assetId, fileId, size, userId } = parseJobData(
+      thumbnailJobSchema,
+      job.data,
+      'process-thumbnail',
+    )
 
     this.logger.log(`Processing thumbnail: asset=${assetId}, size=${size}`)
 
+    const record = await this.fileRepo.findOne({ where: { id: fileId } })
+    const asset = await this.assetRepo.findOne({ where: { id: assetId } })
+    assertOwnership({ assetId, fileId, userId }, { record, asset })
+
     try {
-      await this.generateThumbnail(fileId, assetId, size, userId)
+      if (!record) throw new Error(`File not found: ${fileId}`)
+      await this.generateThumbnail(record, assetId, size, userId)
 
       this.logger.log(`Thumbnail complete: asset=${assetId}, size=${size}`)
     } catch (err) {
@@ -90,7 +93,7 @@ export class ThumbnailProcessor {
   }
 
   private async generateThumbnail(
-    fileId: string,
+    record: FileRecord,
     assetId: string,
     size: string,
     userId: string,
@@ -99,8 +102,6 @@ export class ThumbnailProcessor {
     if (!dims) throw new Error(`Unknown thumbnail size: ${size}`)
     const [width, height] = dims
 
-    const record = await this.fileRepo.findOne({ where: { id: fileId } })
-    if (!record) throw new Error(`File not found: ${fileId}`)
     const mimeType = record.mimeType
 
     const tmpPath = join(tmpdir(), `thumb-${randomUUID()}`)

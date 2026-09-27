@@ -8,4 +8,5 @@ export default defineWorkspace([
   'packages/shared-config',
   'packages/shared-types',
   'scripts',
+  'packages/data-access',
 ])

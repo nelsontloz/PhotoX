@@ -25,7 +25,8 @@ Schema keys and defaults:
 - `API_PORT` — 3000; `WORKER_SERVICE_PORT` — 3004
 - `POSTGRES_HOST` — localhost; `POSTGRES_PORT` — 5432; `POSTGRES_USER` — photox;
   `POSTGRES_PASSWORD` — photox_dev
-- `REDIS_HOST` — localhost; `REDIS_PORT` — 6379
+- `REDIS_HOST` — localhost; `REDIS_PORT` — 6379; `REDIS_PASSWORD` — optional, no default
+  (compose and `.env.example` set `photox_dev`)
 - `STORAGE_DIR` — `./data/storage`, anchored at the workspace root
 - `AUTH_ACCESS_TTL` — `30m`; `AUTH_REFRESH_TTL` — `30d`; `AUTH_CLOCK_TOLERANCE_SEC` — 60
 

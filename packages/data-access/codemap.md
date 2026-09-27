@@ -24,8 +24,9 @@ Three layers, exported through `src/index.ts`:
   `STORAGE_DIR`, with atomic writes and EXDEV fallback.
 
 Dependencies: `@nestjs/common`, `@nestjs/typeorm`, `typeorm`, `pgvector`,
-`@photox/shared-config`. Composite `tsc -b` build; no test script, so excluded from the
-vitest workspace — consumers' integration tests exercise it against testcontainers.
+`@photox/shared-config`. Composite `tsc -b` build; has its own `test` script and Vitest
+project (in the root workspace) alongside consumers' integration tests, which exercise it
+against testcontainers.
 
 ## Flow
 

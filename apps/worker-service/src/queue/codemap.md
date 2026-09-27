@@ -8,7 +8,8 @@ Reads bytes from local disk via `LocalStorageService`; writes Postgres directly;
 
 ## Design
 
-- `BullMqService`: one shared ioredis connection (`REDIS_HOST`/`REDIS_PORT`, `maxRetriesPerRequest: null`),
+- `BullMqService`: one shared ioredis connection (`REDIS_HOST`/`REDIS_PORT` plus
+  `REDIS_PASSWORD` when set, `maxRetriesPerRequest: null`),
   lazy `Map<string, Queue>` for enqueues, tracked worker list. `enqueue()` logs-and-swallows add failures
   (producers must never fail uploads); `createWorker()` defaults `concurrency: 1` + failed/error logging;
   `onModuleDestroy` closes workers → queues → connection; `isHealthy()` = Redis `PING`.
@@ -18,6 +19,10 @@ AssetThumbnail, Face, Person])` and starts **7 workers** in `onModuleInit()`: `p
 - Payloads: thumbnail `{ assetId, fileId, size, userId }`; video `{ assetId, fileId, userId }`; metadata
   `{ assetId, fileId, userId, kind: 'photo' | 'video' }`; faces `{ assetId, fileId, userId, reason?:
 'initial' | 're-embed' }`; cluster `{ userId, reason? }`; cleanup-asset `{ fileId }`; cleanup-orphans `{}` (ignores `dryRun`).
+- Every consumed payload is runtime-validated with zod (`job-schemas.ts`, `parseJobData`); invalid data
+  throws `UnrecoverableError` (no retries). Thumbnail/video/metadata/face jobs additionally assert
+  ownership before per-file mutations: the loaded `FileRecord`/`Asset` must belong to the job's `userId`
+  and match its `assetId`/`fileId`. `cleanup-asset` carries only `{ fileId }`, so it is shape-validated only.
 - Dedup/retry set by the core publisher: thumbnail `jobId: '<prefix>-<assetId>-<size>'`, video `'video-<assetId>'`/
   `'video-reprocess-<assetId>'`, `attempts: 3` exponential, `removeOnFail: true`; this side rethrows so BullMQ retries;
   face re-embed uses `jobId: face-reembed-<assetId>`.
@@ -75,5 +80,6 @@ upload (core) → core enqueues metadata/faces + thumbnail×4 (+ video) → Redi
 - Shares Postgres (entities + `SharedDatabaseModule` from `@photox/data-access`), Redis, and the storage volume
   with core; `STORAGE_DIR` via `@photox/shared-config` `loadEnv()`; no callbacks — web polls status from core.
 - `cleanup-asset`/`cleanup-orphans` are enqueued from core's trash/admin flows (core exports `enqueueOrphanCleanup(dryRun)`).
-- Tests: `face.cluster.spec`, `face.embedder.spec`, `ffmpeg.spec`, `metadata.processor.spec`,
-  `video.processor.spec`, `test/integration/*` (testcontainers Redis+Postgres; face providers lazy so Alpine CI skips TF/ONNX).
+- Tests: `job-schemas.spec`, `face.cluster.spec`, `face.embedder.spec`, `ffmpeg.spec`,
+  `metadata.processor.spec`, `thumbnail.processor.spec`, `video.processor.spec`,
+  `test/integration/*` (testcontainers Redis+Postgres; face providers lazy so Alpine CI skips TF/ONNX).

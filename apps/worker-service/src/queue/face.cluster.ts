@@ -5,11 +5,7 @@ import { randomUUID } from 'crypto'
 import type { Job } from 'bullmq'
 import { Asset, Face, FACE_EMBEDDING_DIM, Person } from '@photox/data-access'
 import { BullMqService } from './bullmq.service'
-
-interface ClusterJob {
-  userId: string
-  reason?: 'face-detected' | 'manual'
-}
+import { parseJobData, clusterJobSchema, type ClusterJob } from './job-schemas'
 
 // ponytail: ArcFace-family tuning — same-person cosine distance typically ~0.3-0.6, so eps sits
 // above the old faceres 0.3x values; centroid matching (not tighter eps) is the merge guard now
@@ -141,7 +137,7 @@ export class FaceClusterService {
   }
 
   private async processJob(job: Job<ClusterJob>) {
-    const { userId, reason } = job.data
+    const { userId, reason } = parseJobData(clusterJobSchema, job.data, 'process-faces-cluster')
     this.logger.log(`Clustering faces: user=${userId}, reason=${reason ?? 'unknown'}`)
     await this.cluster(userId)
     this.logger.log(`Clustering complete: user=${userId}`)

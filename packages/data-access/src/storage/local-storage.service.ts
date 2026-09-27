@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { createReadStream } from 'fs'
 import { Readable } from 'stream'
 import { copyFile, mkdir, rename, stat, unlink } from 'fs/promises'
-import { dirname, join } from 'path'
+import { dirname, resolve, sep } from 'path'
 import { randomUUID } from 'crypto'
 import { loadEnv } from '@photox/shared-config'
 
@@ -21,7 +21,11 @@ export class LocalStorageService {
   }
 
   pathFor(storageKey: string): string {
-    return join(loadEnv().STORAGE_DIR, storageKey)
+    const root = resolve(loadEnv().STORAGE_DIR)
+    const full = resolve(root, storageKey)
+    // ponytail: single containment choke point; all fs methods route through here
+    if (!full.startsWith(root + sep)) throw new Error(`Invalid storage key: ${storageKey}`)
+    return full
   }
 
   async ensureDir(): Promise<void> {

@@ -15,8 +15,9 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     const host = this.config.get<string>('REDIS_HOST', 'localhost')
     const port = this.config.get<number>('REDIS_PORT', 6379)
+    const password = this.config.get<string>('REDIS_PASSWORD')
     await new Promise<void>((resolve, reject) => {
-      this.connection = new Redis({ host, port, maxRetriesPerRequest: null })
+      this.connection = new Redis({ host, port, password, maxRetriesPerRequest: null })
       this.connection.once('ready', () => resolve())
       this.connection.once('error', (err) => reject(err))
     })

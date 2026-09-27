@@ -3,11 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import type { Job } from 'bullmq'
 import { BullMqService } from './bullmq.service'
+import { parseJobData, cleanupJobSchema, type CleanupJob } from './job-schemas'
 import { FileRecord, LocalStorageService } from '@photox/data-access'
-
-interface CleanupJob {
-  fileId: string
-}
 
 @Injectable()
 export class CleanupProcessor {
@@ -29,7 +26,7 @@ export class CleanupProcessor {
   }
 
   private async processJob(job: Job<CleanupJob>) {
-    const { fileId } = job.data
+    const { fileId } = parseJobData(cleanupJobSchema, job.data, 'cleanup-asset')
 
     const record = await this.fileRepo.findOne({ where: { id: fileId } })
     if (!record) return

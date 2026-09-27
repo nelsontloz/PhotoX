@@ -9,7 +9,7 @@ Build assets for the containerized stack. The compose file itself lives at the r
 Compose topology (`docker-compose.yml`), one bridge network `photox-net`:
 
 - `postgres` — `pgvector/pgvector:0.8.3-pg16-bookworm`, single `photox` DB. Publishes `5432` for host dev; named volume `pgdata` for data; mounts `./docker/postgres/init.sql` into `/docker-entrypoint-initdb.d/`. Healthcheck `pg_isready -U photox` (5s/3s/5 retries).
-- `redis` — `redis:7-alpine`, publishes `6379`, healthcheck `redis-cli ping`. BullMQ transport.
+- `redis` — `redis:7-alpine`, publishes `6379`, runs `redis-server --requirepass ${REDIS_PASSWORD:-photox_dev}`; healthcheck authenticates (`redis-cli --no-auth-warning -a "$$REDIS_PASSWORD" ping | grep PONG`). BullMQ transport.
 - `core` — built from `apps/core/Dockerfile`, context is repo root. Ports not published; `depends_on` postgres+redis (healthy). `/data/storage` from named volume `storage-data`. Healthcheck hits `http://localhost:3000/health`.
 - `worker-service` — built from `apps/worker-service/Dockerfile`; shares the same `storage-data` volume at `/data/storage`; depends on postgres+core+redis healthy; healthcheck `:3004/health`.
 - `web` — built from `apps/web/Dockerfile`; publishes `5173`; `VITE_API_URL=http://core:3000`; depends on core healthy. Image runs the Vite dev server (`pnpm dev --host 0.0.0.0`), not a static build.
@@ -20,7 +20,7 @@ App Dockerfiles are multi-stage: `deps` (workspace manifests only + `pnpm instal
 
 ## Flow
 
-`docker compose up -d postgres redis` first (infra), then `docker compose up --build` for the stack. Entry order is enforced by `depends_on: condition: service_healthy` gates, not just startup order: postgres+redis → core → worker → web. On first boot, Postgres runs `init.sql` to create the DB and extension; after that the named volumes make it a no-op.
+`docker compose up -d postgres redis` first (infra), then `docker compose up --build` for the stack. Entry order is enforced by `depends_on: condition: service_healthy` gates, not just startup order: postgres+redis → core → worker → web. On first boot, the entrypoint creates the DB from `POSTGRES_DB` and runs `init.sql` to install the extension; after that the named volumes make it a no-op.
 
 ## Integration
 

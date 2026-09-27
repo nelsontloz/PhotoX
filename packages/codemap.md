@@ -29,9 +29,9 @@ in each `tsconfig.json` make `tsc -b` respect that order; Docker builds run
 
 `pnpm install` (workspace link) → turbo `build` compiles packages in reference order → apps
 consume `dist/index.d.ts` / `dist/index.js` at dev time and inside Docker images.
-`pnpm verify` typechecks/lints/tests the packages; `packages/data-access` is intentionally
-excluded from `vitest.workspace.ts` because it has no `test` script — its entities and
-storage service are exercised by core and worker-service integration tests instead.
+`pnpm verify` typechecks/lints/tests the packages, including `packages/data-access` (its own
+`test` script and Vitest project); its entities and storage service are also exercised by core
+and worker-service integration tests.
 
 ## Integration
 

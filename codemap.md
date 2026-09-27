@@ -13,7 +13,7 @@ proxy in front of core — not part of this repo.
 - `package.json` — pnpm workspace root scripts (`dev`, `verify`, `build`, `lint`, `typecheck`, `test`); `postinstall` seeds the InsightFace ONNX model.
 - `turbo.json` — task graph (`build`/`test`/`lint`/`typecheck` depend on `^build`) + global env passthrough.
 - `tsconfig.base.json` — strict TS baseline (`noUncheckedIndexedAccess`, `noUnusedLocals`, NodeNext).
-- `vitest.workspace.ts` — workspace test projects (api, worker-service, web, 3 shared packages, scripts); `data-access` excluded.
+- `vitest.workspace.ts` — workspace test projects (api, worker-service, web, 4 shared packages, scripts).
 - `docker-compose.yml` — full stack: postgres (pgvector), redis, core, worker-service, web.
 - `Jenkinsfile` — CI: frozen install → build `packages/*` → parallel typecheck/lint/test → build.
 - `apps/core/src/main.ts`, `apps/worker-service/src/main.ts`, `apps/web/src/main.tsx` — per-app bootstraps.
@@ -96,10 +96,10 @@ verifies Bearer HS256 tokens, sets `req.user`, and ignores incoming identity hea
 
 ### Operations
 
-| Folder     | Responsibility                                                                                                  | Map                                      |
-| ---------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| `docker/`  | Compose/build assets; subfolders: `base-builder/` (CI builder image), `postgres/` (`init.sql`: DB + vector ext) | [map](docker/codemap.md)                 |
-| `scripts/` | Manual maintenance scripts (`migrate-storage-layout.ts`, dry-run by default)                                    | [scripts/codemap.md](scripts/codemap.md) |
+| Folder     | Responsibility                                                                                             | Map                                      |
+| ---------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `docker/`  | Compose/build assets; subfolders: `base-builder/` (CI builder image), `postgres/` (`init.sql`: vector ext) | [map](docker/codemap.md)                 |
+| `scripts/` | Manual maintenance scripts (`migrate-storage-layout.ts`, dry-run by default)                               | [scripts/codemap.md](scripts/codemap.md) |
 
 ## Cross-Cutting Conventions
 

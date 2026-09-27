@@ -297,6 +297,9 @@ importers:
       typeorm:
         specifier: ^0.3.31
         version: 0.3.31(ioredis@5.11.1)(pg@8.21.0)
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
     devDependencies:
       '@nestjs/cli':
         specifier: ^11.0.24

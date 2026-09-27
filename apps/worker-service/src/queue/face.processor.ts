@@ -8,15 +8,9 @@ import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { copyFile, unlink } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
+import { assertOwnership, parseJobData, faceJobSchema, type FaceJob } from './job-schemas'
 import { FaceDetectorService } from './face.detector'
 import { Asset, Face, FileRecord, LocalStorageService, Person } from '@photox/data-access'
-
-interface FaceJob {
-  assetId: string
-  fileId: string
-  userId: string
-  reason?: 'initial' | 're-embed'
-}
 
 @Injectable()
 export class FaceProcessor {
@@ -45,15 +39,22 @@ export class FaceProcessor {
   }
 
   private async processJob(job: Job<FaceJob>) {
-    const { assetId, fileId, userId, reason } = job.data
+    const { assetId, fileId, userId, reason } = parseJobData(
+      faceJobSchema,
+      job.data,
+      'process-faces',
+    )
 
     this.logger.log(`Processing faces: asset=${assetId}`)
+
+    const record = await this.fileRepo.findOne({ where: { id: fileId } })
+    const asset = await this.assetRepo.findOne({ where: { id: assetId } })
+    assertOwnership({ assetId, fileId, userId }, { record, asset })
 
     const filePath = join(tmpdir(), `face-${randomUUID()}`)
     try {
       await this.assetRepo.update(assetId, { faceStatus: 'pending' })
 
-      const record = await this.fileRepo.findOne({ where: { id: fileId } })
       if (!record) throw new Error(`File not found: ${fileId}`)
       await copyFile(this.storage.pathFor(record.storageKey), filePath)
 

@@ -1,4 +1,2 @@
-CREATE DATABASE photox;
-
 \c photox
 CREATE EXTENSION IF NOT EXISTS vector;

@@ -107,7 +107,10 @@ export const useUploadStore = create<UploadState>()(
 
       setDismissed: (b) => set({ dismissed: b }),
 
-      clearDone: () => set((s) => ({ items: s.items.filter((i) => i.status !== 'done') })),
+      clearDone: () =>
+        set((s) => ({
+          items: s.items.filter((i) => i.status !== 'done' && i.status !== 'error'),
+        })),
     }),
     {
       name: 'photox.upload-queue.v1',

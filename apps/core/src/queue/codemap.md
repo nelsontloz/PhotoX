@@ -10,7 +10,7 @@ The core app's BullMQ **publisher**: a global service that owns the Redis connec
 
 `BullMqService implements OnModuleInit, OnModuleDestroy`:
 
-- `onModuleInit` creates one shared `ioredis` connection from `ConfigService` (`REDIS_HOST`/`REDIS_PORT`, defaults `localhost`/`6379`) with `maxRetriesPerRequest: null` (required by BullMQ).
+- `onModuleInit` creates one shared `ioredis` connection from `ConfigService` (`REDIS_HOST`/`REDIS_PORT`, defaults `localhost`/`6379`, plus `REDIS_PASSWORD` when set) with `maxRetriesPerRequest: null` (required by BullMQ).
 - `getQueue(name)` lazily creates and caches one `Queue` per name in a `Map`.
 - `enqueue(queueName, jobName, data, opts)` — generic surface with options `{ jobId?, attempts?, backoff?, removeOnFail? }`. Errors (Redis down) are caught and `Logger.error`-ed: **fire-and-forget by contract**, callers use `void` and an HTTP request never fails because enqueueing failed.
 - `enqueueThumbnails(assetId, fileId, userId, prefix = 'thumb')` fans out 4 `process-thumbnail` jobs for sizes `sm/md/lg/xl`, each `jobId: '<prefix>-<assetId>-<size>'`, attempts 3, exponential backoff, `removeOnFail: true`.
@@ -27,4 +27,4 @@ Upload/API action → `enqueue*` → Redis queue → worker-service consumers (`
 
 - Queue names and payload shapes (`{ assetId, fileId, userId, size? }` etc.) must match `apps/worker-service/src/queue/*.processor.ts`; the seven consumer names are the contract listed in AGENTS.md.
 - `cleanup-asset` (worker `cleanup.processor.ts`, payload `{ fileId }`, deletes the storage blob + `FileRecord`) has no core caller today — reachable through the generic `enqueue`.
-- Payloads are validated by consumer-side extraction, not by DTOs; publishers pass plain objects.
+- Payloads are runtime-validated consumer-side with zod (`job-schemas.ts`); invalid payloads fail with `UnrecoverableError` (no retries). Publishers pass plain objects matching those schemas.

@@ -22,8 +22,11 @@ services:
     image: redis:7-alpine
     ports:
       - '6379:6379'
+    command: ['redis-server', '--requirepass', '${REDIS_PASSWORD:-photox_dev}']
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-photox_dev}
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      test: ['CMD-SHELL', 'redis-cli --no-auth-warning -a "$$REDIS_PASSWORD" ping | grep PONG']
       interval: 5s
       timeout: 3s
       retries: 5
@@ -45,6 +48,7 @@ services:
       STORAGE_DIR: /data/storage
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-photox_dev}
       AUTH_ACCESS_TTL: 30m
       AUTH_REFRESH_TTL: 30d
       AUTH_TOKEN_SECRET: dev-auth-secret-32-characters-minimum!!
@@ -79,6 +83,7 @@ services:
       STORAGE_DIR: /data/storage
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-photox_dev}
     volumes:
       - storage-data:/data/storage
     depends_on:

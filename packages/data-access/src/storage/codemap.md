@@ -17,7 +17,9 @@ Docker mounts one `storage-data` volume at `/data/storage`, local dev uses
   - `thumbnail` → `derivatives/thumbnails/<userId>/<fileId>.<ext>`
   - `transcode` → `derivatives/transcodes/<userId>/<fileId>.<ext>`
     Leading dots in `ext` are stripped (`replace(/^\.+/, '')`).
-- `pathFor(storageKey)` — `join(loadEnv().STORAGE_DIR, storageKey)`.
+- `pathFor(storageKey)` — resolves `storageKey` against `loadEnv().STORAGE_DIR` and rejects keys
+  escaping that root (`Error: Invalid storage key`); it is the single containment guard every fs
+  method routes through (a bare `join` would let `..`/absolute keys out).
 - `ensureDir()` — `mkdir(STORAGE_DIR, { recursive: true })` for startup.
 - `save(key, tmpPath)` — atomic publish: `mkdir -p` the destination directory, then
   `rename(tmpPath, \`${dest}.<uuid>.tmp\`)`; on `EXDEV`(tmp on another filesystem, e.g.
@@ -41,4 +43,5 @@ Provided by `apps/core/src/files/storage/storage.module.ts` (re-exported to core
 and directly in `apps/worker-service/src/queue/queue.module.ts`; injected by the thumbnail,
 video, metadata, face, cleanup, and cleanup-orphans processors plus core's user-files /
 face-thumb / admin services. `save` is the only sanctioned writer, and `STORAGE_DIR`
-resolution (workspace-root anchoring) comes from `@photox/shared-config`.
+resolution (workspace-root anchoring) comes from `@photox/shared-config`. Covered by
+`local-storage.service.spec.ts` (the package's own Vitest project).
