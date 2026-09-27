@@ -65,6 +65,53 @@ describe('thumbnails and trash JWT identity', () => {
     expect(res.status).toBe(404)
   })
 
+  it('rejects cross-user thumbnail register/unregister and keeps owner writes working', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    const file = await seedFile(t, a.id)
+    const asset = await seedAsset(t, a.id, file.id)
+    const thumbFileId = randomUUID()
+    const body = { size: 'sm', fileId: thumbFileId, width: 10, height: 10, bytes: 5 }
+
+    const crossRegister = await request(apiServer(t))
+      .post(`/api/v1/assets/${asset.id}/thumbnails`)
+      .set(t.authHeader(tokenB))
+      .send(body)
+    expect(crossRegister.status).toBe(404)
+    expect(await t.thumbRepo.findOne({ where: { assetId: asset.id, size: 'sm' } })).toBeNull()
+
+    const ownRegister = await request(apiServer(t))
+      .post(`/api/v1/assets/${asset.id}/thumbnails`)
+      .set(t.authHeader(tokenA))
+      .send(body)
+    expect(ownRegister.status).toBe(201)
+
+    const crossOverwrite = await request(apiServer(t))
+      .post(`/api/v1/assets/${asset.id}/thumbnails`)
+      .set(t.authHeader(tokenB))
+      .send({ ...body, fileId: randomUUID(), width: 99 })
+    expect(crossOverwrite.status).toBe(404)
+    const afterCross = await t.thumbRepo.findOneOrFail({
+      where: { assetId: asset.id, size: 'sm' },
+    })
+    expect(afterCross.fileId).toBe(thumbFileId)
+    expect(afterCross.width).toBe(10)
+
+    const crossDelete = await request(apiServer(t))
+      .delete(`/api/v1/assets/${asset.id}/thumbnails/sm`)
+      .set(t.authHeader(tokenB))
+    expect(crossDelete.status).toBe(404)
+    expect(await t.thumbRepo.findOne({ where: { assetId: asset.id, size: 'sm' } })).toBeTruthy()
+
+    const ownDelete = await request(apiServer(t))
+      .delete(`/api/v1/assets/${asset.id}/thumbnails/sm`)
+      .set(t.authHeader(tokenA))
+    expect(ownDelete.status).toBe(204)
+    expect(await t.thumbRepo.findOne({ where: { assetId: asset.id, size: 'sm' } })).toBeNull()
+  })
+
   it('restores, deletes and empties trash without userId', async () => {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })

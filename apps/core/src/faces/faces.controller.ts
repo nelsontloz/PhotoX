@@ -12,8 +12,8 @@ export class FacesController {
   @Get(':id/faces')
   @ApiOperation({ summary: 'Get detected faces for an asset' })
   @ApiResponse({ status: 200, description: 'Face list (may be empty)' })
-  async getFaces(@Param('id') id: string) {
-    const faces = await this.faces.getForAsset(id)
+  async getFaces(@Param('id') id: string, @Req() req: Request) {
+    const faces = await this.faces.getForAsset((req.user as { id: string }).id, id)
     return { faces }
   }
 

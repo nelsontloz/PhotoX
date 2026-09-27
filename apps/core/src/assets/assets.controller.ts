@@ -42,19 +42,23 @@ export class AssetsController {
   }
 
   @Get('by-file/:fileId')
-  @ApiOperation({ summary: 'Find asset by fileId (service-to-service)' })
+  @ApiOperation({ summary: 'Find an asset by fileId' })
   @ApiResponse({ status: 200 })
   @ApiResponse({ status: 404, description: 'Asset not found for this fileId' })
-  async getByFileId(@Param('fileId') fileId: string) {
-    return this.assets.getByFileId(fileId)
+  async getByFileId(@Param('fileId') fileId: string, @Req() req: Request) {
+    return this.assets.getByFileId(fileId, (req.user as { id: string }).id)
   }
 
   @Patch(':id/metadata')
   @ApiOperation({ summary: 'Update extracted metadata (called by metadata process)' })
   @ApiResponse({ status: 200 })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async updateMetadata(@Param('id') id: string, @Body() dto: UpdateMetadataDto) {
-    return this.assets.updateMetadata(id, dto)
+  async updateMetadata(
+    @Param('id') id: string,
+    @Body() dto: UpdateMetadataDto,
+    @Req() req: Request,
+  ) {
+    return this.assets.updateMetadata(id, (req.user as { id: string }).id, dto)
   }
 
   @Get('trashed')
@@ -108,5 +112,24 @@ export class AssetsController {
   ) {
     const userId = (req.user as { id: string }).id ?? queryUserId
     await this.assets.bulkTrash(userId, dto.assetIds)
+  }
+
+  @Post(':id/reprocess-thumbnails')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Re-process thumbnails for an asset' })
+  @ApiResponse({ status: 202, description: 'Thumbnail jobs enqueued' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  async reprocessThumbnails(@Param('id') id: string, @Req() req: Request) {
+    return this.assets.reprocessThumbnails((req.user as { id: string }).id, id)
+  }
+
+  @Post(':id/reprocess-video')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Re-process video transcoding for an asset' })
+  @ApiResponse({ status: 202, description: 'Video job enqueued' })
+  @ApiResponse({ status: 400, description: 'Not a video asset' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  async reprocessVideo(@Param('id') id: string, @Req() req: Request) {
+    return this.assets.reprocessVideo((req.user as { id: string }).id, id)
   }
 }

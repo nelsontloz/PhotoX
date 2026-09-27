@@ -55,7 +55,7 @@ export class UserFilesService {
       throw new BadRequestException('Unsupported file type')
     }
     if (!created) {
-      const existing = await this.assets.getByFileId(record.id).catch((err: unknown) => {
+      const existing = await this.assets.getByFileId(record.id, userId).catch((err: unknown) => {
         if (err instanceof NotFoundException) return null
         throw err
       })

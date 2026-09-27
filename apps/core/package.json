@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:pact:provider": "vitest run --config vitest.pact.config.ts"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",

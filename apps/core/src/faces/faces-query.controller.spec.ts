@@ -20,7 +20,7 @@ describe('FacesQueryController identity resolution', () => {
     const assignPerson = vi.fn().mockResolvedValue(undefined)
     const faces = { assignPerson } as unknown as FacesService
     const controller = new FacesQueryController(faces)
-    await controller.assignPerson('face-1', { personId: null } as never, authedReq())
+    await controller.assignPerson('face-1', { personId: null }, authedReq())
     expect(assignPerson).toHaveBeenCalledWith('u1', 'face-1', null)
   })
 })

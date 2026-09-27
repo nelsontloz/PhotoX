@@ -35,8 +35,12 @@ export class ThumbnailsService {
     return this.toResponse(row)
   }
 
-  async register(assetId: string, dto: RegisterThumbnailDto): Promise<AssetThumbnailResponse> {
-    await this.assertAssetExists(assetId)
+  async register(
+    userId: string,
+    assetId: string,
+    dto: RegisterThumbnailDto,
+  ): Promise<AssetThumbnailResponse> {
+    await this.assertAssetOwned(userId, assetId)
     await this.thumbRepo.upsert(
       [
         {
@@ -54,18 +58,13 @@ export class ThumbnailsService {
     return this.toResponse(row)
   }
 
-  async unregister(assetId: string, size: string): Promise<void> {
-    await this.assertAssetExists(assetId)
+  async unregister(userId: string, assetId: string, size: string): Promise<void> {
+    await this.assertAssetOwned(userId, assetId)
     await this.thumbRepo.delete({ assetId, size })
   }
 
   private async assertAssetOwned(userId: string, assetId: string): Promise<void> {
     const asset = await this.assetRepo.findOne({ where: { id: assetId, userId } })
-    if (!asset) throw new NotFoundException('Asset not found')
-  }
-
-  private async assertAssetExists(assetId: string): Promise<void> {
-    const asset = await this.assetRepo.findOne({ where: { id: assetId } })
     if (!asset) throw new NotFoundException('Asset not found')
   }
 

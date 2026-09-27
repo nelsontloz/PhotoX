@@ -1,0 +1,96 @@
+import request from 'supertest'
+import {
+  apiServer,
+  closeTestApp,
+  createApiTestApp,
+  resetDb,
+  seedAsset,
+  seedFile,
+  seedUser,
+} from './helpers'
+import type { ApiTestApp } from './helpers'
+
+const FILE_BYTES = Buffer.from('0123456789')
+
+function expectBytes(body: unknown, expected: string) {
+  expect(Buffer.isBuffer(body)).toBe(true)
+  expect((body as Buffer).toString('utf8')).toBe(expected)
+}
+
+describe('HTTP range streaming', () => {
+  let t: ApiTestApp
+
+  beforeAll(async () => {
+    t = await createApiTestApp({ mockUser: null })
+  }, 120_000)
+
+  afterAll(async () => {
+    await closeTestApp(t)
+  })
+
+  beforeEach(async () => {
+    await resetDb(t)
+  })
+
+  async function seedStreamableFile() {
+    const user = await seedUser(t)
+    const file = await seedFile(t, user.id, {
+      bytes: FILE_BYTES,
+      mimeType: 'application/octet-stream',
+    })
+    return { user, file }
+  }
+
+  it('serves the full body without auth or Range (200)', async () => {
+    const { file } = await seedStreamableFile()
+    const res = await request(apiServer(t)).get(`/api/v1/files/${file.id}/stream`)
+    expect(res.status).toBe(200)
+    expect(res.headers['accept-ranges']).toBe('bytes')
+    expect(res.headers['content-length']).toBe('10')
+    expectBytes(res.body, '0123456789')
+  })
+
+  it('serves bytes=0-3 as 206 with Content-Range', async () => {
+    const { file } = await seedStreamableFile()
+    const res = await request(apiServer(t))
+      .get(`/api/v1/files/${file.id}/stream`)
+      .set('Range', 'bytes=0-3')
+    expect(res.status).toBe(206)
+    expect(res.headers['content-range']).toBe('bytes 0-3/10')
+    expect(res.headers['content-length']).toBe('4')
+    expectBytes(res.body, '0123')
+  })
+
+  it('serves an open-ended bytes=5- range to end of file', async () => {
+    const { file } = await seedStreamableFile()
+    const res = await request(apiServer(t))
+      .get(`/api/v1/files/${file.id}/stream`)
+      .set('Range', 'bytes=5-')
+    expect(res.status).toBe(206)
+    expect(res.headers['content-range']).toBe('bytes 5-9/10')
+    expectBytes(res.body, '56789')
+  })
+
+  it('returns 416 for an unsatisfiable bytes=999- range', async () => {
+    const { file } = await seedStreamableFile()
+    const res = await request(apiServer(t))
+      .get(`/api/v1/files/${file.id}/stream`)
+      .set('Range', 'bytes=999-')
+    expect(res.status).toBe(416)
+    expect(res.headers['content-range']).toBe('bytes */10')
+  })
+
+  it('streams a shared asset publicly with Range (206)', async () => {
+    const { user, file } = await seedStreamableFile()
+    const asset = await seedAsset(t, user.id, file.id)
+    const share = await t.shareRepo.save(
+      t.shareRepo.create({ userId: user.id, assetId: asset.id, token: 'share-token-123' }),
+    )
+    const res = await request(apiServer(t))
+      .get(`/api/share/${share.token}/stream`)
+      .set('Range', 'bytes=2-4')
+    expect(res.status).toBe(206)
+    expect(res.headers['content-range']).toBe('bytes 2-4/10')
+    expectBytes(res.body, '234')
+  })
+})

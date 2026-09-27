@@ -27,8 +27,8 @@ export class ThumbnailsController {
   })
   @ApiResponse({ status: 201, description: 'Thumbnail registered' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async register(@Param('id') id: string, @Body() dto: RegisterThumbnailDto) {
-    return this.thumbs.register(id, dto)
+  async register(@Param('id') id: string, @Body() dto: RegisterThumbnailDto, @Req() req: Request) {
+    return this.thumbs.register((req.user as { id: string }).id, id, dto)
   }
 
   @Delete(':id/thumbnails/:size')
@@ -36,8 +36,8 @@ export class ThumbnailsController {
   @ApiOperation({ summary: 'Remove a thumbnail registration. Idempotent.' })
   @ApiResponse({ status: 204, description: 'Thumbnail unregistered' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async unregister(@Param('id') id: string, @Param('size') size: string) {
-    await this.thumbs.unregister(id, size)
+  async unregister(@Param('id') id: string, @Param('size') size: string, @Req() req: Request) {
+    await this.thumbs.unregister((req.user as { id: string }).id, id, size)
   }
 
   @Get(':id/thumbnails')

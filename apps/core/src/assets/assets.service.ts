@@ -11,6 +11,7 @@ import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
 import { UpdateMetadataDto } from './dto/update-metadata.dto'
 import { FacesService } from '../faces/faces.service'
+import { BullMqService } from '../queue/bullmq.service'
 import type { Asset as AssetResponse, AssetListResponse } from '@photox/shared-types'
 
 @Injectable()
@@ -22,6 +23,7 @@ export class AssetsService {
     private readonly thumbRepo: Repository<AssetThumbnail>,
     private readonly dataSource: DataSource,
     private readonly facesService: FacesService,
+    private readonly bullMq: BullMqService,
   ) {}
 
   async create(userId: string, dto: CreateAssetDto): Promise<AssetResponse> {
@@ -128,7 +130,7 @@ export class AssetsService {
     const where = userId ? { id, userId } : { id }
     const asset = await this.repo.findOne({ where })
     if (!asset) throw new NotFoundException('Asset not found')
-    const faces = await this.facesService.getForAsset(id)
+    const faces = await this.facesService.getForAsset(asset.userId, id)
     return { ...this.toResponse(asset), faces }
   }
 
@@ -222,14 +224,14 @@ export class AssetsService {
     return { fileIds }
   }
 
-  async getByFileId(fileId: string): Promise<AssetResponse> {
-    const asset = await this.repo.findOne({ where: { fileId } })
+  async getByFileId(fileId: string, userId: string): Promise<AssetResponse> {
+    const asset = await this.repo.findOne({ where: { fileId, userId } })
     if (!asset) throw new NotFoundException('Asset not found for fileId')
     return this.toResponse(asset)
   }
 
-  async updateMetadata(id: string, dto: UpdateMetadataDto): Promise<AssetResponse> {
-    const asset = await this.repo.findOne({ where: { id } })
+  async updateMetadata(id: string, userId: string, dto: UpdateMetadataDto): Promise<AssetResponse> {
+    const asset = await this.repo.findOne({ where: { id, userId } })
     if (!asset) throw new NotFoundException('Asset not found')
 
     const patch: Partial<Asset> = {}
@@ -269,6 +271,21 @@ export class AssetsService {
     await this.repo.update(id, patch as Record<string, unknown>)
     const updated = await this.repo.findOne({ where: { id } })
     return this.toResponse(updated!)
+  }
+
+  async reprocessThumbnails(userId: string, id: string): Promise<{ enqueued: number }> {
+    const asset = await this.repo.findOne({ where: { id, userId } })
+    if (!asset) throw new NotFoundException('Asset not found')
+    this.bullMq.enqueueThumbnails(asset.id, asset.fileId, asset.userId, 'thumb-reprocess')
+    return { enqueued: 4 }
+  }
+
+  async reprocessVideo(userId: string, id: string): Promise<{ enqueued: number }> {
+    const asset = await this.repo.findOne({ where: { id, userId } })
+    if (!asset) throw new NotFoundException('Asset not found')
+    if (asset.kind !== 'video') throw new BadRequestException('Not a video asset')
+    this.bullMq.enqueueVideo(asset.id, asset.fileId, asset.userId, { reprocess: true })
+    return { enqueued: 1 }
   }
 
   private toResponse(asset: Asset): AssetResponse {

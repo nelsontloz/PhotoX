@@ -37,7 +37,8 @@ export class FacesService {
     return { count: entities.length }
   }
 
-  async getForAsset(assetId: string): Promise<FaceResponseDto[]> {
+  async getForAsset(userId: string, assetId: string): Promise<FaceResponseDto[]> {
+    await this.assertAssetOwned(userId, assetId)
     const faces = await this.repo.find({ where: { assetId } })
     return faces.map((f) => ({
       id: f.id,
