@@ -1,15 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { HttpService } from '@nestjs/axios'
+import { InjectRepository } from '@nestjs/typeorm'
+import { Repository } from 'typeorm'
 import sharp from 'sharp'
-import { firstValueFrom } from 'rxjs'
-import FormData from 'form-data'
 import type { Job } from 'bullmq'
 import { tmpdir } from 'os'
-import { unlink } from 'fs/promises'
+import { join } from 'path'
+import { randomUUID, createHash } from 'crypto'
+import { copyFile, unlink, writeFile } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
-import { SERVICE_URLS } from '@photox/shared-config'
+import { assertOwnership, parseJobData, thumbnailJobSchema, type ThumbnailJob } from './job-schemas'
+import { Asset, AssetThumbnail, FileRecord, LocalStorageService } from '@photox/data-access'
 import { runFfmpeg } from './ffmpeg'
-import { downloadToTemp } from './download'
 
 const STANDARD_SIZES: Record<string, [number, number]> = {
   sm: [150, 150],
@@ -33,20 +34,19 @@ const WEBP_QUALITY: Record<string, number> = {
   xl: 85,
 }
 
-interface ThumbnailJob {
-  assetId: string
-  fileId: string
-  size: string
-  userId: string
-}
-
 @Injectable()
 export class ThumbnailProcessor {
   private readonly logger = new Logger(ThumbnailProcessor.name)
 
   constructor(
     private readonly bullMq: BullMqService,
-    private readonly http: HttpService,
+    @InjectRepository(FileRecord)
+    private readonly fileRepo: Repository<FileRecord>,
+    @InjectRepository(Asset)
+    private readonly assetRepo: Repository<Asset>,
+    @InjectRepository(AssetThumbnail)
+    private readonly thumbRepo: Repository<AssetThumbnail>,
+    private readonly storage: LocalStorageService,
   ) {}
 
   start() {
@@ -58,12 +58,21 @@ export class ThumbnailProcessor {
   }
 
   private async processJob(job: Job<ThumbnailJob>) {
-    const { assetId, fileId, size, userId } = job.data
+    const { assetId, fileId, size, userId } = parseJobData(
+      thumbnailJobSchema,
+      job.data,
+      'process-thumbnail',
+    )
 
     this.logger.log(`Processing thumbnail: asset=${assetId}, size=${size}`)
 
+    const record = await this.fileRepo.findOne({ where: { id: fileId } })
+    const asset = await this.assetRepo.findOne({ where: { id: assetId } })
+    assertOwnership({ assetId, fileId, userId }, { record, asset })
+
     try {
-      await this.generateThumbnail(fileId, assetId, size, userId)
+      if (!record) throw new Error(`File not found: ${fileId}`)
+      await this.generateThumbnail(record, assetId, size, userId)
 
       this.logger.log(`Thumbnail complete: asset=${assetId}, size=${size}`)
     } catch (err) {
@@ -71,8 +80,7 @@ export class ThumbnailProcessor {
       this.logger.error(`Thumbnail failed: asset=${assetId}, size=${size} — ${message}`)
 
       try {
-        const statusUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
-        await firstValueFrom(this.http.patch(statusUrl, { thumbnailStatus: 'failed' }))
+        await this.assetRepo.update(assetId, { thumbnailStatus: 'failed' })
       } catch (patchErr) {
         const patchMsg = patchErr instanceof Error ? patchErr.message : String(patchErr)
         this.logger.warn(
@@ -85,7 +93,7 @@ export class ThumbnailProcessor {
   }
 
   private async generateThumbnail(
-    fileId: string,
+    record: FileRecord,
     assetId: string,
     size: string,
     userId: string,
@@ -94,41 +102,32 @@ export class ThumbnailProcessor {
     if (!dims) throw new Error(`Unknown thumbnail size: ${size}`)
     const [width, height] = dims
 
-    const streamUrl = `${SERVICE_URLS['file-storage-service']}/v1/files/${fileId}/stream`
-    let tmpPath: string | null = null
+    const mimeType = record.mimeType
+
+    const tmpPath = join(tmpdir(), `thumb-${randomUUID()}`)
     try {
-      const { path, contentType: rawContentType } = await downloadToTemp(
-        this.http,
-        streamUrl,
-        tmpdir(),
-      )
-      tmpPath = path
-      const mimeType = rawContentType.split(';')[0]?.trim() ?? null
+      await copyFile(this.storage.pathFor(record.storageKey), tmpPath)
 
       if (mimeType?.startsWith('video/')) {
         let orientation: number | null = null
         let durationSeconds: number | null = null
 
-        // ponytail: 5x1s wait for metadata to land; race is rare
+        // ponytail: thumbnail and metadata jobs race after upload — wait for metadata to land instead of thumbnailing blind (unrotated, frame 0)
         for (let attempt = 0; attempt < 5; attempt++) {
           try {
-            const assetUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}?userId=${encodeURIComponent(userId)}`
-            const assetRes = await firstValueFrom(this.http.get(assetUrl))
-            const asset = assetRes.data as {
-              orientation?: number | null
-              durationSeconds?: number | null
-              mimeType?: string | null
-            }
+            const asset = await this.assetRepo.findOne({ where: { id: assetId } })
+            if (!asset) break
             orientation = asset.orientation ?? null
-            durationSeconds = asset.durationSeconds ?? null
-            break
+            durationSeconds = asset.durationSeconds !== null ? Number(asset.durationSeconds) : null
+            if (asset.metadataStatus !== 'pending') break
           } catch {
-            if (attempt < 4) {
-              await new Promise((r) => setTimeout(r, 1000))
-            }
+            // transient DB error; retry below
+          }
+          if (attempt < 4) {
+            await new Promise((r) => setTimeout(r, 1000))
           }
         }
-        orientation ??= 1
+        const degrees = orientation === null ? 0 : ((orientation % 360) + 360) % 360
         if (durationSeconds === null || !Number.isFinite(durationSeconds)) durationSeconds = 0
 
         const seekSec =
@@ -153,49 +152,15 @@ export class ThumbnailProcessor {
         ).stdout
 
         let framePipeline = sharp(frameBuffer)
-        if (orientation !== 0 && orientation !== 1 && orientation !== 360) {
-          framePipeline = framePipeline.rotate(orientation)
+        if (degrees !== 0) {
+          framePipeline = framePipeline.rotate(degrees)
         }
         const { data: thumbBuffer, info } = await framePipeline
           .resize(width, height, RESIZE_OPTIONS[size] ?? { fit: 'inside' })
           .webp({ quality: WEBP_QUALITY[size] ?? 80 })
           .toBuffer({ resolveWithObject: true })
 
-        const uploadUrl = `${SERVICE_URLS['file-storage-service']}/v1/files`
-        const form = new FormData()
-        form.append('file', thumbBuffer, {
-          filename: `thumb-${size}.webp`,
-          contentType: 'image/webp',
-        })
-        form.append('userId', userId)
-
-        const uploadRes = await firstValueFrom(
-          this.http.post(uploadUrl, form, {
-            headers: form.getHeaders(),
-            maxContentLength: Infinity,
-            maxBodyLength: Infinity,
-          }),
-        )
-        const newFileRecord = uploadRes.data as { id: string }
-
-        const registerUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/thumbnails`
-        await firstValueFrom(
-          this.http.post(registerUrl, {
-            size,
-            fileId: newFileRecord.id,
-            width: info.width,
-            height: info.height,
-            bytes: thumbBuffer.length,
-          }),
-        )
-
-        try {
-          const statusUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
-          await firstValueFrom(this.http.patch(statusUrl, { thumbnailStatus: 'ready' }))
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
-          this.logger.warn(`Thumbnail status update failed for asset=${assetId}: ${msg}`)
-        }
+        await this.storeThumbnail(userId, assetId, size, thumbBuffer, info)
 
         return
       }
@@ -205,49 +170,66 @@ export class ThumbnailProcessor {
         .webp({ quality: WEBP_QUALITY[size] ?? 80 })
         .toBuffer({ resolveWithObject: true })
 
-      const uploadUrl = `${SERVICE_URLS['file-storage-service']}/v1/files`
-      const form = new FormData()
-      form.append('file', thumbBuffer, {
-        filename: `thumb-${size}.webp`,
-        contentType: 'image/webp',
-      })
-      form.append('userId', userId)
+      await this.storeThumbnail(userId, assetId, size, thumbBuffer, info)
+    } finally {
+      await unlink(tmpPath).catch(() => undefined)
+    }
+  }
 
-      const uploadRes = await firstValueFrom(
-        this.http.post(uploadUrl, form, {
-          headers: form.getHeaders(),
-          maxContentLength: Infinity,
-          maxBodyLength: Infinity,
+  private async storeThumbnail(
+    userId: string,
+    assetId: string,
+    size: string,
+    thumbBuffer: Buffer,
+    info: { width: number; height: number },
+  ): Promise<void> {
+    const checksum = createHash('sha256').update(thumbBuffer).digest('hex')
+    let fileId: string
+    const existing = await this.fileRepo.findOne({
+      where: { userId, checksumSha256: checksum, purpose: 'original' },
+    })
+    if (existing) {
+      fileId = existing.id
+    } else {
+      fileId = randomUUID()
+      const storageKey = this.storage.buildKey('thumbnail', userId, fileId, 'webp')
+      const staging = join(tmpdir(), `thumb-upload-${randomUUID()}.webp`)
+      await writeFile(staging, thumbBuffer)
+      await this.storage.save(storageKey, staging)
+      await this.fileRepo.save(
+        this.fileRepo.create({
+          id: fileId,
+          userId,
+          storageKey,
+          originalName: `thumb-${size}.webp`,
+          mimeType: 'image/webp',
+          sizeBytes: thumbBuffer.length,
+          checksumSha256: checksum,
+          purpose: 'original',
+          assetId: null,
         }),
       )
-      const newFileRecord = uploadRes.data as { id: string }
+    }
 
-      const registerUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/thumbnails`
-      await firstValueFrom(
-        this.http.post(registerUrl, {
+    await this.thumbRepo.upsert(
+      [
+        {
+          assetId,
           size,
-          fileId: newFileRecord.id,
+          fileId,
           width: info.width,
           height: info.height,
           bytes: thumbBuffer.length,
-        }),
-      )
+        },
+      ],
+      ['assetId', 'size'],
+    )
 
-      try {
-        const statusUrl = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
-        await firstValueFrom(this.http.patch(statusUrl, { thumbnailStatus: 'ready' }))
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        this.logger.warn(`Thumbnail status update failed for asset=${assetId}: ${msg}`)
-      }
-    } finally {
-      if (tmpPath) {
-        try {
-          await unlink(tmpPath)
-        } catch {
-          // file may already be removed
-        }
-      }
+    try {
+      await this.assetRepo.update(assetId, { thumbnailStatus: 'ready' })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      this.logger.warn(`Thumbnail status update failed for asset=${assetId}: ${msg}`)
     }
   }
 }

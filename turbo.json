@@ -1,7 +1,14 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "concurrency": "100%",
-  "globalPassThroughEnv": ["DEBUG", "AUTH_TOKEN_SECRET", "AUTH_ACCESS_TTL", "AUTH_REFRESH_TTL", "AUTH_CLOCK_TOLERANCE_SEC", "TESTCONTAINERS_RYUK_DISABLED"],
+  "globalPassThroughEnv": [
+    "DEBUG",
+    "AUTH_TOKEN_SECRET",
+    "AUTH_ACCESS_TTL",
+    "AUTH_REFRESH_TTL",
+    "AUTH_CLOCK_TOLERANCE_SEC",
+    "TESTCONTAINERS_RYUK_DISABLED"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -28,14 +35,6 @@
       "dependsOn": ["^build"],
       "cache": false,
       "persistent": true
-    },
-    "pact-consumer": {
-      "dependsOn": ["^build"],
-      "cache": false
-    },
-    "pact-provider": {
-      "dependsOn": ["pact-consumer", "^pact-consumer", "^build"],
-      "cache": false
     }
   }
 }

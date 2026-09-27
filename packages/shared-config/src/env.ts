@@ -1,11 +1,10 @@
+import { existsSync } from 'fs'
+import { dirname, isAbsolute, join, resolve } from 'path'
 import { z } from 'zod'
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  GATEWAY_PORT: z.coerce.number().default(3000),
-  USER_SERVICE_PORT: z.coerce.number().default(3001),
-  MEDIA_SERVICE_PORT: z.coerce.number().default(3002),
-  FILE_STORAGE_SERVICE_PORT: z.coerce.number().default(3003),
+  API_PORT: z.coerce.number().default(3000),
   WORKER_SERVICE_PORT: z.coerce.number().default(3004),
   POSTGRES_HOST: z.string().default('localhost'),
   POSTGRES_PORT: z.coerce.number().default(5432),
@@ -13,17 +12,24 @@ const envSchema = z.object({
   POSTGRES_PASSWORD: z.string().default('photox_dev'),
   REDIS_HOST: z.string().default('localhost'),
   REDIS_PORT: z.coerce.number().default(6379),
-  MINIO_ENDPOINT: z.string().default('localhost'),
-  MINIO_PORT: z.coerce.number().default(9000),
-  MINIO_ROOT_USER: z.string().default('photox'),
-  MINIO_ROOT_PASSWORD: z.string().default('photox_dev'),
-  MINIO_BUCKET: z.string().default('photox-files'),
+  REDIS_PASSWORD: z.string().optional(),
+  STORAGE_DIR: z.string().default('./data/storage'),
   AUTH_ACCESS_TTL: z.string().default('30m'),
   AUTH_REFRESH_TTL: z.string().default('30d'),
   AUTH_CLOCK_TOLERANCE_SEC: z.coerce.number().default(60),
 })
 
 export type Env = z.infer<typeof envSchema>
+
+function findWorkspaceRoot(start: string): string {
+  let dir = start
+  for (;;) {
+    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return dir
+    const parent = dirname(dir)
+    if (parent === dir) return start
+    dir = parent
+  }
+}
 
 export function loadEnv(): Env {
   const parsed = envSchema.safeParse(process.env)
@@ -33,5 +39,12 @@ export function loadEnv(): Env {
     throw new Error(`Invalid environment variables: ${JSON.stringify(errors)}`)
   }
 
-  return parsed.data
+  // ponytail: anchor relative STORAGE_DIR at the workspace root — api and worker run with different cwds, so a bare relative default pointed each at its own package dir
+  const storageDir = parsed.data.STORAGE_DIR
+  return {
+    ...parsed.data,
+    STORAGE_DIR: isAbsolute(storageDir)
+      ? storageDir
+      : resolve(findWorkspaceRoot(process.cwd()), storageDir),
+  }
 }

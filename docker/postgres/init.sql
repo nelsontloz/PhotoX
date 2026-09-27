@@ -1,6 +1,2 @@
-CREATE DATABASE users_db;
-CREATE DATABASE library_db;
-CREATE DATABASE files_db;
-
-\c library_db
+\c photox
 CREATE EXTENSION IF NOT EXISTS vector;

@@ -15,8 +15,9 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     const host = this.config.get<string>('REDIS_HOST', 'localhost')
     const port = this.config.get<number>('REDIS_PORT', 6379)
+    const password = this.config.get<string>('REDIS_PASSWORD')
     await new Promise<void>((resolve, reject) => {
-      this.connection = new Redis({ host, port, maxRetriesPerRequest: null })
+      this.connection = new Redis({ host, port, password, maxRetriesPerRequest: null })
       this.connection.once('ready', () => resolve())
       this.connection.once('error', (err) => reject(err))
     })
@@ -43,7 +44,12 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     queueName: string,
     jobName: string,
     data: Record<string, unknown>,
-    opts: { jobId?: string; attempts?: number; backoff?: { type: string } } = {},
+    opts: {
+      jobId?: string
+      attempts?: number
+      backoff?: { type: string }
+      removeOnFail?: boolean
+    } = {},
   ): Promise<void> {
     try {
       await this.getQueue(queueName).add(jobName, data, opts)

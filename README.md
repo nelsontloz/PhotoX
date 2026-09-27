@@ -34,12 +34,12 @@ pnpm --filter user-service dev
 
 ## Services
 
-| Service              | Port      | Description                       |
-| -------------------- | --------- | --------------------------------- |
-| gateway              | 3000      | API Gateway                       |
-| user-service         | 3001      | User management & auth            |
-| media-service        | 3002      | Photo & album metadata            |
-| file-storage-service | 3003      | File upload, storage & thumbnails |
-| web                  | 5173      | React frontend                    |
-| postgres             | 5432      | PostgreSQL database               |
-| minio                | 9000/9001 | S3-compatible object storage      |
+| Service              | Port      | Description                                       |
+| -------------------- | --------- | ------------------------------------------------- |
+| core                 | 3000      | API (internal; reverse proxy for external access) |
+| user-service         | 3001      | User management & auth                            |
+| media-service        | 3002      | Photo & album metadata                            |
+| file-storage-service | 3003      | File upload, storage & thumbnails                 |
+| web                  | 5173      | React frontend                                    |
+| postgres             | 5432      | PostgreSQL database                               |
+| minio                | 9000/9001 | S3-compatible object storage                      |

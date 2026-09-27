@@ -1,0 +1,269 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
+import { InjectRepository } from '@nestjs/typeorm'
+import { Repository } from 'typeorm'
+import { randomUUID, createHash } from 'crypto'
+import { createReadStream } from 'fs'
+import { unlink } from 'fs/promises'
+import { pipeline } from 'stream/promises'
+import { Readable } from 'stream'
+import { FileRecord, LocalStorageService } from '@photox/data-access'
+import { toFileRecordResponse } from '../file-record.mapper'
+import { AssetsService } from '../../assets/assets.service'
+import { BullMqService } from '../../queue/bullmq.service'
+import type { Asset as AssetResponse, FileListResponse } from '@photox/shared-types'
+
+interface UploadedDiskFile {
+  path: string
+  originalname: string
+  mimetype: string
+  size: number
+}
+
+export interface UploadMeta {
+  kind?: 'photo' | 'video'
+  title?: string
+  description?: string
+  takenAt?: string
+}
+
+@Injectable()
+export class UserFilesService {
+  constructor(
+    @InjectRepository(FileRecord)
+    private readonly fileRepo: Repository<FileRecord>,
+    private readonly storage: LocalStorageService,
+    private readonly assets: AssetsService,
+    private readonly bullMq: BullMqService,
+  ) {}
+
+  async upload(
+    userId: string,
+    file: UploadedDiskFile,
+    meta: UploadMeta = {},
+  ): Promise<AssetResponse> {
+    if (!file) {
+      throw new BadRequestException('No file provided')
+    }
+    const { record, created } = await this.storeFile(userId, file, 'original', null)
+    const kind = meta.kind ?? this.kindFromMime(file.mimetype)
+    if (!kind) {
+      throw new BadRequestException('Unsupported file type')
+    }
+    if (!created) {
+      const existing = await this.assets.getByFileId(record.id, userId).catch((err: unknown) => {
+        if (err instanceof NotFoundException) return null
+        throw err
+      })
+      if (existing) {
+        throw new ConflictException({
+          existingAssetId: existing.id,
+          existingFileId: record.id,
+        })
+      }
+    }
+    const asset = await this.assets.create(userId, {
+      userId,
+      fileId: record.id,
+      kind,
+      title: meta.title,
+      description: meta.description,
+      takenAt: meta.takenAt,
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      originalName: file.originalname,
+    })
+    this.bullMq.enqueueThumbnails(asset.id, record.id, userId)
+    void this.bullMq.enqueue('process-metadata', 'process-metadata', {
+      assetId: asset.id,
+      fileId: record.id,
+      userId,
+      kind,
+    })
+    if (kind === 'photo') {
+      void this.bullMq.enqueue('process-faces', 'process-faces', {
+        assetId: asset.id,
+        fileId: record.id,
+        userId,
+      })
+    } else {
+      this.bullMq.enqueueVideo(asset.id, record.id, userId)
+    }
+    return asset
+  }
+
+  private kindFromMime(mimetype: string): 'photo' | 'video' | null {
+    if (mimetype.startsWith('image/')) return 'photo'
+    if (mimetype.startsWith('video/')) return 'video'
+    return null
+  }
+
+  private async storeFile(
+    userId: string,
+    file: UploadedDiskFile,
+    purpose: 'original' | 'transcode',
+    assetId: string | null,
+  ): Promise<{ record: FileRecord; created: boolean }> {
+    if (!file) {
+      throw new BadRequestException('No file provided')
+    }
+
+    const label = purpose === 'transcode' ? 'derivative' : 'file'
+
+    try {
+      const checksum = await this.computeChecksum(file.path)
+
+      const existing = await this.fileRepo.findOne({
+        where: { userId, checksumSha256: checksum, purpose, ...(assetId ? { assetId } : {}) },
+      })
+      if (existing) return { record: existing, created: false }
+
+      const ext = this.getExtension(file.originalname)
+      const fileId = randomUUID()
+      const storageKey = this.storage.buildKey('original', userId, fileId, ext)
+
+      try {
+        await this.storage.save(storageKey, file.path)
+      } catch (err) {
+        console.error(`[UserFilesService] Local storage ${label} save failed`, err)
+        throw new BadRequestException(`Failed to upload ${label} to storage`)
+      }
+
+      const record = this.fileRepo.create({
+        userId,
+        storageKey,
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        sizeBytes: file.size,
+        checksumSha256: checksum,
+        purpose,
+        assetId,
+      })
+
+      try {
+        await this.fileRepo.save(record)
+      } catch (err) {
+        console.error(`[UserFilesService] DB save failed, cleaning up ${label} object`, err)
+        try {
+          await this.storage.delete(storageKey)
+        } catch (cleanupErr) {
+          console.error(
+            `[UserFilesService] ${label.charAt(0).toUpperCase()}${label.slice(1)} cleanup failed`,
+            cleanupErr,
+          )
+        }
+        throw new BadRequestException(`Failed to save ${label} record`)
+      }
+
+      return { record, created: true }
+    } finally {
+      await unlink(file.path).catch(() => undefined)
+    }
+  }
+
+  private async computeChecksum(path: string): Promise<string> {
+    const hash = createHash('sha256')
+    await pipeline(createReadStream(path), hash)
+    return hash.digest('hex')
+  }
+
+  async list(userId: string, limit = 20, offset = 0, mimeType?: string): Promise<FileListResponse> {
+    const qb = this.fileRepo
+      .createQueryBuilder('f')
+      .where('f.userId = :userId', { userId })
+      .andWhere('f.purpose = :purpose', { purpose: 'original' })
+
+    if (mimeType) {
+      qb.andWhere('f.mimeType LIKE :mimeType', { mimeType: `${mimeType}%` })
+    }
+
+    const [items, total] = await qb
+      .orderBy('f.createdAt', 'DESC')
+      .skip(offset)
+      .take(limit)
+      .getManyAndCount()
+
+    return {
+      items: items.map((f) => ({
+        id: f.id,
+        userId: f.userId,
+        originalName: f.originalName,
+        mimeType: f.mimeType,
+        sizeBytes: f.sizeBytes,
+        createdAt: f.createdAt.toISOString(),
+      })),
+      total,
+      limit,
+      offset,
+    }
+  }
+
+  async getOne(userId: string, fileId: string) {
+    const record = await this.fileRepo.findOne({ where: { id: fileId } })
+    if (!record) throw new NotFoundException('File not found')
+    if (record.userId !== userId) throw new NotFoundException('File not found')
+    return toFileRecordResponse(record)
+  }
+
+  async download(
+    userId: string,
+    fileId: string,
+  ): Promise<{ stream: Readable; record: FileRecord }> {
+    const record = await this.fileRepo.findOne({ where: { id: fileId } })
+    if (!record) throw new NotFoundException('File not found')
+    if (record.userId !== userId) throw new NotFoundException('File not found')
+    const stream = this.storage.createReadStream(record.storageKey)
+    return { stream, record }
+  }
+
+  async delete(userId: string, fileId: string): Promise<void> {
+    const record = await this.fileRepo.findOne({ where: { id: fileId } })
+    if (!record) return
+    if (record.userId !== userId) return
+
+    try {
+      await this.storage.delete(record.storageKey)
+    } catch (err) {
+      console.error('[UserFilesService] Local storage delete failed', err)
+    }
+
+    await this.fileRepo.remove(record)
+  }
+
+  async stream(
+    fileId: string,
+    opts?: { range: { start: number; end: number } },
+  ): Promise<{ stream: Readable; record: FileRecord; totalSize: number }> {
+    const record = await this.fileRepo.findOne({ where: { id: fileId } })
+    if (!record) throw new NotFoundException('File not found')
+    const fileStat = await this.storage.stat(record.storageKey)
+    const totalSize = fileStat.size
+
+    if (opts) {
+      const stream = this.storage.createReadStream(record.storageKey, {
+        start: opts.range.start,
+        end: opts.range.end,
+      })
+      return { stream, record, totalSize }
+    }
+
+    const stream = this.storage.createReadStream(record.storageKey)
+    return { stream, record, totalSize }
+  }
+
+  async getFileStat(fileId: string): Promise<{ totalSize: number }> {
+    const record = await this.fileRepo.findOne({ where: { id: fileId } })
+    if (!record) throw new NotFoundException('File not found')
+    const fileStat = await this.storage.stat(record.storageKey)
+    return { totalSize: fileStat.size }
+  }
+
+  private getExtension(filename: string): string {
+    const dot = filename.lastIndexOf('.')
+    return dot >= 0 ? filename.slice(dot + 1) : 'bin'
+  }
+}

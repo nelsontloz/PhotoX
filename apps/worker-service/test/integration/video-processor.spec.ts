@@ -1,9 +1,11 @@
 import { execSync } from 'node:child_process'
-import { readFileSync, unlinkSync, existsSync, mkdtempSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync, unlinkSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { createHash, randomUUID } from 'node:crypto'
 import { FFMPEG_PATH } from '../../src/queue/ffmpeg'
-import { createTestApp, closeTestApp, waitForJob, type TestApp } from './helpers'
+import { createTestApp, closeTestApp, resetDb, waitForJob, type TestApp } from './helpers'
 
 const TEST_VIDEO_DIR = mkdtempSync(join(tmpdir(), 'video-test-'))
 const H264_AAC_PATH = join(TEST_VIDEO_DIR, 'h264-aac.mp4')
@@ -32,90 +34,73 @@ describe('VideoProcessor (integration)', () => {
   beforeAll(async () => {
     h264AacBuffer = createH264AacVideo()
     testApp = await createTestApp()
-  }, 120_000)
+  }, 180_000)
 
   afterAll(async () => {
     await closeTestApp(testApp)
     if (existsSync(H264_AAC_PATH)) unlinkSync(H264_AAC_PATH)
     try {
-      void import('node:fs').then((fs) => fs.rmdirSync(TEST_VIDEO_DIR))
+      rmSync(TEST_VIDEO_DIR, { recursive: true, force: true })
     } catch {
       // ignore
     }
   })
 
-  beforeEach(() => {
-    testApp.stub.clearRoutes()
-    testApp.stub.resetCalls()
+  beforeEach(async () => {
+    await resetDb(testApp)
   })
+
+  async function seedVideo(userId: string, bytes: Buffer, mimeType: string) {
+    const storageKey = testApp.storage.buildKey('original', userId, randomUUID(), 'mp4')
+    await mkdir(dirname(testApp.storage.pathFor(storageKey)), { recursive: true })
+    await writeFile(testApp.storage.pathFor(storageKey), bytes)
+    const record = await testApp.fileRepo.save(
+      testApp.fileRepo.create({
+        userId,
+        storageKey,
+        originalName: 'video.mp4',
+        mimeType,
+        sizeBytes: bytes.length,
+        checksumSha256: createHash('sha256').update(bytes).digest('hex'),
+        purpose: 'original',
+        assetId: null,
+      }),
+    )
+    const asset = await testApp.assetRepo.save(
+      testApp.assetRepo.create({ userId, kind: 'video', fileId: record.id }),
+    )
+    return { record, asset }
+  }
 
   describe('skip transcode (h264+aac)', () => {
     it('skips transcode and marks ready', async () => {
-      const port = testApp.stub.port
-
-      testApp.stub.setResponse('GET', '/v1/files/test-file-id/url', (_call, res) => {
-        res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ url: `http://localhost:${port}/test-video.mp4` }))
-      })
-
-      testApp.stub.setResponse('GET', '/test-video.mp4', (_call, res) => {
-        res.writeHead(200, {
-          'Content-Type': 'video/mp4',
-          'Content-Length': String(h264AacBuffer.length),
-        })
-        res.end(h264AacBuffer)
-      })
-
-      testApp.stub.setResponse('PATCH', /\/v1\/assets\/[^/]+\/metadata/, (_call, res) => {
-        res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({}))
-      })
-
-      testApp.stub.setResponse('POST', '/v1/files/derivatives', (_call, res) => {
-        res.writeHead(201, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ id: 'derivative-file-id' }))
-      })
+      const userId = randomUUID()
+      const { record, asset } = await seedVideo(userId, h264AacBuffer, 'video/mp4')
 
       const queue = testApp.getQueue('process-video')
       const job = await queue.add('video', {
-        assetId: 'test-asset-id',
-        fileId: 'test-file-id',
-        userId: 'test-user-id',
+        assetId: asset.id,
+        fileId: record.id,
+        userId,
       })
 
       const state = await waitForJob(queue, job.id!)
       expect(state).toBe('completed')
 
-      const calls = testApp.stub.calls
+      const updated = await testApp.assetRepo.findOne({ where: { id: asset.id } })
+      expect(updated!.transcodeStatus).toBe('ready')
+      expect(updated!.transcodeFileId).toBeNull()
 
-      const getUrlCalls = calls.filter(
-        (c) => c.method === 'GET' && c.url.startsWith('/v1/files/test-file-id/url'),
-      )
-      expect(getUrlCalls).toHaveLength(1)
-
-      const downloadCalls = calls.filter((c) => c.method === 'GET' && c.url === '/test-video.mp4')
-      expect(downloadCalls).toHaveLength(1)
-
-      const patchCalls = calls.filter(
-        (c) => c.method === 'PATCH' && /\/v1\/assets\/[^/]+\/metadata/.test(c.url),
-      )
-      expect(patchCalls).toHaveLength(2)
-      expect(JSON.parse(patchCalls[0]!.body.toString())).toEqual({ transcodeStatus: 'pending' })
-      expect(JSON.parse(patchCalls[1]!.body.toString())).toEqual({
-        transcodeStatus: 'ready',
-        transcodeFileId: null,
+      const derivatives = await testApp.fileRepo.find({
+        where: { purpose: 'transcode', assetId: asset.id },
       })
-
-      const derivativeCalls = calls.filter(
-        (c) => c.method === 'POST' && c.url === '/v1/files/derivatives',
-      )
-      expect(derivativeCalls).toHaveLength(0)
+      expect(derivatives).toHaveLength(0)
     })
   })
 
   describe('transcode path', () => {
     it.skipIf(!hasAomAv1())(
-      'transcodes non-h264 video and uploads derivative',
+      'transcodes non-h264 video and stores derivative',
       async () => {
         const transcodePath = join(TEST_VIDEO_DIR, 'mjpeg.avi')
         execSync(
@@ -124,57 +109,31 @@ describe('VideoProcessor (integration)', () => {
         )
         const transcodeBuffer = readFileSync(transcodePath)
 
-        const port = testApp.stub.port
-
-        testApp.stub.setResponse('GET', '/v1/files/transcode-file-id/url', (_call, res) => {
-          res.writeHead(200, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ url: `http://localhost:${port}/source-video.avi` }))
-        })
-
-        testApp.stub.setResponse('GET', '/source-video.avi', (_call, res) => {
-          res.writeHead(200, {
-            'Content-Type': 'video/avi',
-            'Content-Length': String(transcodeBuffer.length),
-          })
-          res.end(transcodeBuffer)
-        })
-
-        testApp.stub.setResponse('PATCH', /\/v1\/assets\/[^/]+\/metadata/, (_call, res) => {
-          res.writeHead(200, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({}))
-        })
-
-        testApp.stub.setResponse('POST', '/v1/files/derivatives', (_call, res) => {
-          res.writeHead(201, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ id: 'derivative-file-id' }))
-        })
+        const userId = randomUUID()
+        const { record, asset } = await seedVideo(userId, transcodeBuffer, 'video/avi')
 
         const queue = testApp.getQueue('process-video')
         const job = await queue.add('video', {
-          assetId: 'test-asset-id',
-          fileId: 'transcode-file-id',
-          userId: 'test-user-id',
+          assetId: asset.id,
+          fileId: record.id,
+          userId,
         })
 
         const state = await waitForJob(queue, job.id!)
         expect(state).toBe('completed')
 
-        const calls = testApp.stub.calls
+        const updated = await testApp.assetRepo.findOne({ where: { id: asset.id } })
+        expect(updated!.transcodeStatus).toBe('ready')
+        expect(updated!.transcodeFileId).toBeTruthy()
 
-        const derivativeCalls = calls.filter(
-          (c) => c.method === 'POST' && c.url === '/v1/files/derivatives',
-        )
-        expect(derivativeCalls).toHaveLength(1)
-
-        const patchCalls = calls.filter(
-          (c) => c.method === 'PATCH' && /\/v1\/assets\/[^/]+\/metadata/.test(c.url),
-        )
-        expect(patchCalls).toHaveLength(2)
-        expect(JSON.parse(patchCalls[0]!.body.toString())).toEqual({ transcodeStatus: 'pending' })
-        expect(JSON.parse(patchCalls[1]!.body.toString())).toEqual({
-          transcodeStatus: 'ready',
-          transcodeFileId: 'derivative-file-id',
+        const derivative = await testApp.fileRepo.findOne({
+          where: { id: updated!.transcodeFileId! },
         })
+        expect(derivative).toBeTruthy()
+        expect(derivative!.purpose).toBe('transcode')
+        expect(derivative!.mimeType).toBe('video/webm')
+        const derivativeStat = await testApp.storage.stat(derivative!.storageKey)
+        expect(derivativeStat.size).toBeGreaterThan(0)
 
         unlinkSync(transcodePath)
       },

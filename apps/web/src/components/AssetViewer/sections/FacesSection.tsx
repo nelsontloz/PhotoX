@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { FaSpinner, FaTriangleExclamation, FaUser } from 'react-icons/fa6'
 import type { Asset, FaceDto, PersonDto } from '@photox/shared-types'
-import { listPersons, reassignFaces } from '../../../api/persons'
+import { listPersons } from '../../../api/persons'
+import { assignFace } from '../../../api/faces'
 
 export interface FacesSectionProps {
   asset: Asset
@@ -86,27 +87,20 @@ export function FacesSection({ asset }: FacesSectionProps) {
     if (!face) return
 
     try {
-      const result = await reassignFaces(face.personId ?? 'none', {
-        toPersonId,
-        faceIds: [faceId],
+      await assignFace(faceId, toPersonId)
+      setFaces((prev) => prev.map((f) => (f.id === faceId ? { ...f, personId: toPersonId } : f)))
+      setPersonMap((prev) => {
+        const next = new Map(prev)
+        if (toPersonId) {
+          const p = next.get(toPersonId)
+          if (p) next.set(toPersonId, { ...p, faceCount: p.faceCount + 1 })
+        }
+        if (face.personId) {
+          const p = next.get(face.personId)
+          if (p) next.set(face.personId, { ...p, faceCount: Math.max(0, p.faceCount - 1) })
+        }
+        return next
       })
-      if (result.moved > 0) {
-        setFaces((prev) =>
-          prev.map((f) => (f.id === faceId ? { ...f, personId: toPersonId } : f)),
-        )
-        setPersonMap((prev) => {
-          const next = new Map(prev)
-          if (toPersonId) {
-            const p = next.get(toPersonId)
-            if (p) next.set(toPersonId, { ...p, faceCount: p.faceCount + 1 })
-          }
-          if (face.personId) {
-            const p = next.get(face.personId)
-            if (p) next.set(face.personId, { ...p, faceCount: Math.max(0, p.faceCount - 1) })
-          }
-          return next
-        })
-      }
     } catch {
       window.alert('Failed to reassign face. Please try again.')
     }

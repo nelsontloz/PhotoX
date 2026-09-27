@@ -1,279 +1,90 @@
-# Photox — Agent Notes
+# PhotoX — Agent Notes
 
-Personal photo/video hosting. NestJS microservices monorepo with a Vite React web app.
+Personal photo/video hosting. One NestJS `core` API (the only HTTP app; when external exposure is needed, a reverse proxy sits in front of it — not part of this repo) + one BullMQ `worker-service` + Vite `web`, sharing a single Postgres DB, Redis, and local-disk storage. (No MinIO, no multi-DB — old docs claiming those are stale.)
 
-## Stack
+## Layout
 
-- **Monorepo:** Turborepo + pnpm workspaces (`apps/*`, `packages/*`)
-- **Backend:** NestJS 11, TypeORM, PostgreSQL, MinIO, Redis (BullMQ)
-- **Frontend:** Vite + React + TypeScript
-- **Single PG instance, 3 databases:** `users_db`, `library_db`, `files_db` (see `docker/postgres/init.sql`)
-- **Node:** 22 (see `.nvmrc`), **pnpm:** 9.15.0 (see `packageManager` in root `package.json`)
+- `apps/core/` (`@photox/core`, :3000, no published port in compose) — the sole API app: auth, assets, files, albums, shares, faces/persons, trash, admin
+- `apps/worker-service/` (`@photox/worker-service`, internal-only, no published port) — BullMQ consumers only, writes Postgres directly
+- `apps/web/` (`@photox/web`, :5173) — Vite + React, talks to core only (same-origin `/api`)
+- `packages/data-access/` — TypeORM entities, `SharedDatabaseModule`, `LocalStorageService`
+- `packages/shared-auth/` — `JwtPayload`, `loadAuthEnv()`; `packages/shared-config/` — zod `loadEnv()`; `packages/shared-types/` — wire interfaces
+- `docker-compose.yml` services: `postgres` (pgvector image, single `photox` DB), `redis`, `core`, `worker-service`, `web`. Only `web` (:5173) publishes a port, plus `postgres`/`redis` for host `pnpm dev`; core and worker-service publish none.
 
-## Async jobs (BullMQ)
-
-The gateway publishes jobs to Redis BullMQ queues; the worker-service consumes them. `BullMqService` in `apps/gateway/src/queue/bullmq.service.ts` (publisher) and `apps/worker-service/src/queue/bullmq.service.ts` (worker registration, with `createWorker(name, processor, opts)`) share the same `REDIS_HOST` / `REDIS_PORT` env (defaults `localhost` / `6379`) declared in `shared-config/src/env.ts`.
-
-**Queues (7 total):**
-
-| Queue                   | Published by                                                    | Consumed by               | Dedup / retry                                                 |
-| ----------------------- | --------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------- |
-| `process-thumbnail`     | gateway (`enqueueThumbnails`)                                   | `ThumbnailProcessor`      | `jobId: 'thumb-<assetId>-<size>'` — dedupes per size          |
-| `process-video`         | gateway (`enqueueVideo`)                                        | `VideoProcessor`          | `jobId: 'video-<assetId>'`, `attempts: 3` exponential backoff |
-| `process-metadata`      | gateway                                                         | `MetadataProcessor`       | —                                                             |
-| `process-faces`         | gateway                                                         | `FaceProcessor`           | —                                                             |
-| `cleanup-orphans`       | gateway (`enqueueOrphanCleanup`)                                | `CleanupOrphansProcessor` | —                                                             |
-| `process-faces-cluster` | gateway (manual recluster) + worker (auto after face detection) | `FaceClusterService`      | —                                                             |
-| `cleanup-asset`         | gateway (trash-proxy)                                           | `CleanupProcessor`        | `attempts: 3` exponential backoff                             |
-
-## Video processing
-
-Worker-service uses ffmpeg/ffprobe at runtime via `ffmpeg-static` and `ffprobe-static` npm packages. No system install needed — binaries ship with `npm install`.
-
-**Pipeline:** the gateway publishes a `process-video` job after asset creation. The worker downloads the source via a presigned MinIO URL (`ttl=600`), ffprobes the codec, and:
-
-- if video is already `h264` AND (no audio OR audio is `aac`) → skip transcode, set `transcodeStatus='ready'`, return;
-- else → single ffmpeg pass to **AV1 webm** (`libaom-av1 -crf 32 -cpu-used 6`, `libopus 96k`), capped at 720p height. The transcoded file is registered as a **separate derivative** via `POST /v1/files/derivatives` (`purpose: 'transcode'`). The original upload is always playable immediately; the derivative lives as its own `FileRecord`. The asset's `transcodeFileId` field points to the derivative.
-
-**Limits:** 4-hour max duration, 7680px max dimension, 1-hour transcode timeout.
-
-**Playback:** web `<video src="/api/v1/files/:fileId/stream?userId=...">` hits a `@Public()` gateway route that proxies to `file-storage-service /v1/files/:fileId/stream` (no auth — capability URL model on the trusted network). Range requests are forwarded for seeking.
-
-## Worker processors
-
-The worker-service runs 7 BullMQ processors, all registered in `QueueModule.onModuleInit()`. Key libraries: `sharp` (image resize/thumbnail), `@vladmandic/human` + `@tensorflow/tfjs-node` (face detection), `exifreader` (EXIF metadata), `ffmpeg-static`/`ffprobe-static` (video probe/transcode).
-
-**`ThumbnailProcessor`:** Downloads file via stream, resizes with `sharp` (images) or ffmpeg frame-seek (videos) to 4 standard sizes (`sm`/`md`/`lg`/`xl`), uploads as webp to file-storage, registers in media-service. Videos seek to 25% of duration for the thumbnail frame. `fit: 'inside'` preserves aspect ratio.
-
-**`MetadataProcessor`:** Downloads file, extracts metadata. Photos: `exifreader` for EXIF (takenAt, camera, GPS, ISO, f-number, etc). Videos: `ffprobe` for codec, duration, dimensions, fps, audio, orientation, QuickTime tags for camera/GPS. Patches asset in media-service with extracted fields.
-
-**`FaceProcessor`:** Downloads image, resizes to ≤1024px, runs `@vladmandic/human` face detection (lazy-loaded in `FaceDetectorService.onModuleInit` to avoid dlopen issues on Alpine). Detects faces with confidence scores and 512-dim embeddings. Registers faces in media-service, then enqueues a `process-faces-cluster` job.
-
-**`FaceClusterService`:** In-memory DBSCAN clustering on face embeddings (`eps=0.4` cosine distance, `minPts=2`). After clustering, noise faces are reassigned to the nearest existing person centroid within `NOISE_ASSIGN_EPS=0.5`. Creates new `Person` entities for new clusters, assigns faces, selects cover face (largest bounding box). O(n²) — fine for personal photo libraries; upgrade path is pgvector HNSW for >~10k faces per user.
-
-**`CleanupProcessor`:** Deletes a single file record from file-storage by `fileId`. Triggered on trash/delete operations.
-
-**`CleanupOrphansProcessor`:** Cross-references file IDs between media-service and file-storage-service. Deletes files in storage not referenced by any asset, and orphan thumbnail rows in media-service. Triggered from gateway admin endpoint.
-
-## Face detection & persons
-
-Faces are detected in the worker via `@vladmandic/human` (512-dim embeddings, pgvector storage in `library_db`). The `FaceClusterService` runs in-memory DBSCAN clustering (`eps=0.4`, `minPts=2`) and creates `Person` entities for new clusters. Noise faces (singletons) are reassigned to the nearest existing person centroid within `eps=0.5`. Cover face is selected by largest bounding box area. Faces and persons are managed via `FacesController`/`PersonsController` in media-service, exposed through `FacesProxyController`/`PersonsProxyController` in the gateway.
-
-## Albums
-
-CRUD + asset membership in media-service (`AlbumsController`). Gateway exposes `api/v1/albums` via `AlbumsProxyController`. Albums have a name, optional description, and a many-to-many relationship with assets through `album_assets`.
-
-## Shares
-
-Token-based public share links for single assets. Media-service (`SharesController`) creates share records with a random token. Gateway exposes `api/v1/shares` for list/create/delete and `api/share/:token` (marked `@Public()`) for public access. The public route returns the share record with a subset of asset fields.
-
-## Places
-
-Map view page using Leaflet. Reads asset latitude/longitude from EXIF metadata (extracted by `MetadataProcessor`). No backend changes — purely frontend rendering of geo-tagged assets on an interactive map.
-
-## Favorites
-
-Standalone favorites page. Assets have a `favorite` boolean flag. Filtering is done client-side from the asset list.
-
-## Admin
-
-Admin subsystem with user list (cross-service stats join from user-service + media-service + file-storage-service), asset failure counts, bulk thumbnail reprocess (enqueues `process-thumbnail` jobs), and orphan cleanup (enqueues `cleanup-orphans` job). Protected by `@AdminGuard()` in the gateway. Pages: `/admin` in the web app.
-
-## Repository layout
-
-```
-apps/
-  gateway/              NestJS, port 3000 (BFF + BullMQ publisher)
-  user-service/         NestJS, port 3001
-  media-service/        NestJS, port 3002
-  file-storage-service/ NestJS, port 3003
-  worker-service/       NestJS, port 3004 (BullMQ worker; no DB)
-  web/                  Vite + React, port 5173
-packages/
-  shared-types/         Shared types (47 interfaces: auth, files, assets, thumbnails, admin, faces/people, albums, shares)
-  shared-auth/          Auth types (JwtPayload, TokenPair)
-  shared-config/        Zod env loader (loadEnv)
-docker/
-  base-builder/Dockerfile  Base image (node 22 + python3 make g++ + pnpm) for CI
-  postgres/init.sql        Creates the 3 databases
-Jenkinsfile                CI pipeline (k8s pod; testcontainers)
-scripts/                   Root tooling (pact-coverage.ts)
-docker-compose.yml         9 services: postgres, minio, redis, 5 nestjs, web
-```
-
-## Essential commands
+## Commands
 
 ```bash
-# 1. Start infrastructure FIRST (services need postgres/minio/redis)
-docker compose up -d postgres minio redis
-
-# 2. Then start apps
-pnpm dev              # runs the 5 backend apps + web in watch mode via turbo (shared packages have no `dev`)
-pnpm build            # builds all packages (turbo pipeline)
-pnpm typecheck        # tsc --noEmit across packages
-pnpm lint
-pnpm test             # vitest run across all packages
-pnpm test:watch       # vitest watch across all packages
-pnpm format           # prettier --write across the repo
-pnpm clean            # turbo clean + remove node_modules
-pnpm validate         # runs lint via turbo
-pnpm verify           # rm -rf pacts && lint && pact-consumer && pact-provider && pact-coverage && test --force && typecheck && build (full pre-commit check)
+docker compose up -d postgres redis   # infra FIRST; there is no minio service
+pnpm dev                              # turbo persistent: core + worker + web
+pnpm --filter @photox/core dev           # single package (@photox/core | @photox/worker-service | @photox/web)
+pnpm verify                           # lint && test --force && typecheck && build (no pact stages)
+curl localhost:3000/health            # core (host dev); compose publishes no core port
 ```
 
-Single package:
+Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install`, then compose, then `pnpm dev`.
 
-```bash
-pnpm --filter @photox/user-service dev
-pnpm --filter @photox/gateway build
-pnpm --filter @photox/user-service test
-```
+## Env / config
 
-After pulling: `pnpm install` once, then docker compose, then `pnpm dev`.
+- `packages/shared-config/src/env.ts` (`loadEnv`, zod): `API_PORT` 3000, `WORKER_SERVICE_PORT` 3004, `POSTGRES_*`/`REDIS_*` (localhost defaults), `REDIS_PASSWORD` (optional, no default — integration tests use passwordless testcontainers Redis; compose and `.env.example` default it to `photox_dev`, compose redis runs `--requirepass`, and core/worker/health clients send it when set), `STORAGE_DIR` (default `./data/storage`, anchored at workspace root — core and worker run with different cwds), `AUTH_ACCESS_TTL` 30m, `AUTH_REFRESH_TTL` 30d, `AUTH_CLOCK_TOLERANCE_SEC` 60.
+- `packages/shared-auth/src/env.ts` (`loadAuthEnv`): `AUTH_TOKEN_SECRET` required, ≥32 chars.
+- Compose shares one `storage-data` volume at `/data/storage`; local dev uses `./data/storage`.
 
-## tsconfig rules that bite
+## API conventions
 
-- Root `tsconfig.base.json` has `experimentalDecorators` + `emitDecoratorMetadata` enabled (NestJS requires these).
-- `composite` + `incremental` are set ONLY in the 5 shared package tsconfigs (which use `tsc -b`). They are NOT in the base — NestJS apps use `nest build` (composite breaks it). If a new shared package is added, it must set `composite: true` in its tsconfig or it will build but produce no dist output.
-- All NestJS apps have `"@types/node": "^22.0.0"` and `"typescript": "^5.7.0"` in **devDependencies**. Do NOT use `workspace:*` for typescript — it doesn't resolve. Use the version number.
-
-## Testing
-
-- **Runner:** Vitest 3 everywhere (backend + web). Configs: `vitest.workspace.ts` at root lists 10 workspaces (5 apps + web + 3 shared packages + `scripts`); each app/package has its own `vitest.config.ts` with `globals: true` and `passWithNoTests: true`. The web app's vitest config lives inside `vite.config.ts` (single `defineConfig` with a `test` block) because Vite is its only build tool there.
-- **Globals are on.** `describe`, `it`, `expect`, `vi` are available without imports. The `tsconfig.vitest.json` at root extends the base and adds `vitest/globals` to `types` for IDE support — point test files at it if your editor complains.
-- **Conventions:** `*.spec.ts` co-located with source files for unit tests. Integration tests that spin up testcontainers go in `test/integration/` (e.g. `apps/user-service/test/integration/`). Web tests get `jsdom`; backend/shared tests get `node`.
-- **Backend extras installed:** `@nestjs/testing` + `supertest` + `@types/supertest` are devDeps in every backend service for integration tests of controllers.
-- **Web extras installed:** `jsdom`, `@testing-library/react`, `@testing-library/jest-dom` are devDeps of `apps/web` for component tests.
-- **`passWithNoTests: true`** is set on every vitest config so `pnpm test` succeeds before any test files are written. Remove it once you have real tests and want CI to fail on missing suites.
-- **Turbo pipeline:** `test` and `test:watch` tasks in `turbo.json` both `dependsOn: ["^build"]`, so shared packages build first. `test:watch` is `persistent: true`; keep `concurrency: "100%"` at the top of `turbo.json` so turbo allows all persistent watch processes to run.
-
-## NestJS module gotchas (verified the hard way)
-
-**`HealthService` uses `DataSource.query('SELECT 1')`, not `@InjectRepository()`.** A repository injection requires `TypeOrmModule.forFeature()` in the module — too much coupling for a health check. `DataSource` is globally available because the DB `TypeOrmModule.forRoot()` is imported in `AppModule`.
-
-**`file-storage-service` HealthModule must import `StorageModule`** so `MinioService` is in scope. The `HealthService` also pings MinIO directly.
-
-**Gateway has no DB.** Its `HealthService` only checks downstream services via `HttpService` — no `DataSource` injection. It runs its own JWT verification (`PassportModule` + `JwtModule`, passport-jwt, HS256) with a global `APP_GUARD = JwtAuthGuard`; routes can opt out with `@Public()`.
-
-**`worker-service` has no DB.** It does not import `TypeOrmModule`; its `HealthService` only pings Redis via `BullMqService.isHealthy()`. It does not expose any HTTP job enqueue endpoint — jobs arrive via BullMQ only.
-
-**TypeORM config:** Each backend service has `retryAttempts: 3, retryDelay: 3000, connectTimeoutMS: 3000` in `DatabaseModule.forRoot()`. Do NOT set `retryAttempts: 0` — it makes the process crash immediately on connection failure instead of waiting briefly.
-
-## API conventions (apply to all NestJS services)
-
-- **Path versioning lives on the service.** Each backend service exposes its public routes under `/v1/...` declared on the controller, e.g. `@Controller('v1/auth')` in user-service. Do NOT use a global `app.setGlobalPrefix` — keep version routes explicit per controller.
-- **Gateway BFF routes live under `api/`.** The gateway exposes `api/services`, `api/v1/auth`, `api/v1/assets`, `api/v1/files`, `api/v1/albums`, `api/v1/shares`, `api/v1/faces`, `api/v1/persons`, and `api/v1/admin/*` via proxy controllers that forward to backend services. `ProxyService` strips hop-by-hop headers, maps downstream 4xx to `HttpException`, 5xx / connection failures to `BadGatewayException` (502). The gateway extracts the user id from the verified JWT (`req.user.id`) and passes it as a query parameter (GET/DELETE) or body field (POST/PATCH) to the backend — it does not send any custom auth headers. The `api/v1/files/:fileId/stream?userId=...` route is marked `@Public()` because the web `<video>` element issues sub-requests for media bytes that don't carry the Authorization header; the path encodes the file id and is treated as a capability URL signed by the gateway session.
-- **Health is unversioned.** Each service exposes `GET /health` (no `v1` prefix) because the web app calls it directly on the service port for the status grid.
-- **Global pipes & filters are mandatory.** Every `main.ts` must include: `app.useGlobalPipes(new ValidationPipe({ whitelist, forbidNonWhitelisted, transform }))` and `app.useGlobalFilters(new HttpExceptionFilter())`. The shared `HttpExceptionFilter` lives at `apps/<service>/src/common/filters/http-exception.filter.ts`.
-- **Validation uses class-validator + class-transformer.** DTOs live next to the controller in `apps/<service>/src/<feature>/dto/*.dto.ts`. `class-validator` and `class-transformer` must be added to the service's `package.json` even though they are optional peers of `@nestjs/common` — do not rely on hoisting.
-- **Cross-service request/response shapes live in `shared-types`.** Service-local DTOs may carry class-validator decorators, but the _interface_ that crosses the wire is in `shared-types`. DTOs implement the corresponding `shared-types` interface where one exists (e.g. `RegisterDto`, `LoginDto`, `RefreshDto`, `LogoutDto`, `AuthResponseDto`, `FileRecordDto`, `BatchFilesResponseDto`).
-- **CORS lives at the gateway, not on individual services.** Backend services do not call `enableCors()`. Only the gateway does, and only for the web origin(s).
-- **Each backend service exposes Swagger UI at `/docs` and the raw OpenAPI JSON at `/docs-json`** (both at the service root, unversioned, always public within `photox-net`). `main.ts` configures `SwaggerModule` with `DocumentBuilder`. Every backend service has a `nest-cli.json` that enables `@nestjs/swagger/plugin` for auto-inference from TS types. Service-local DTOs are decorated with `@ApiProperty` and `implements` the corresponding `shared-types` interface. `shared-types` itself never imports `@nestjs/swagger` — the decorators live in the service.
+- Controllers serve `api/v1/...` directly (e.g. `@Controller('api/v1/assets')`). Public share at `api/share/:token`. Health is unversioned (`health`, 200 even when degraded). No global prefix.
+- `apps/core/src/main.ts` (mandatory, keep in sync): `ValidationPipe({whitelist, forbidNonWhitelisted, transform})` + `HttpExceptionFilter` + `requestIdMiddleware` + Swagger `/docs` + `/docs-json`. No CORS on core (browsers reach it same-origin through the Vite dev proxy or a reverse proxy). Worker `main.ts` is intentionally bare.
+- DTOs live next to controllers with class-validator decorators; the wire interface lives in `shared-types`.
 
 ## Auth
 
-**Password hashing: argon2 only.** Use `argon2` (not bcrypt, not `bcryptjs`). Native binding needs `python3 make g++` in the Docker build stages (`deps` + `build`). If a service does not need passwords (gateway, file-storage), don't add the dep.
+- `argon2` (core dependency only — never add bcrypt). HS256 access JWT + opaque rotated refresh token.
+- `JwtPayload` is `{ sub, email, role, iat, exp, jti? }`.
+- Global `JwtAuthGuard` (`apps/core/src/auth/jwt-auth.guard.ts`) verifies the Bearer HS256 token (clock tolerance `AUTH_CLOCK_TOLERANCE_SEC`), sets `req.user`, and ignores incoming identity headers entirely. Open routes (`apps/core/src/auth/open-routes.ts`): `/docs*`, `/health`, `api/v1/auth*`, `api/share*`, `GET /api/v1/files/:fileId/stream`. `api/v1/admin*` requires the admin role, enforced centrally by the guard (`AdminGuard` still exists on some controllers as redundant defence).
 
-**Token model: split.** **Access tokens** are HS256 JWTs (`@nestjs/jwt`), self-describing, locally verifiable, default 30m TTL (`AUTH_ACCESS_TTL`). **Refresh tokens** are opaque, persisted, rotated: 32 random bytes hashed (sha256) and stored in the `refresh_tokens` table with `purpose = 'refresh'` and `expiresAt`. `/refresh` rotates (revokes the old row, issues a new pair). `/logout` revokes the refresh row. A JWT access token cannot be revoked before its `exp` — the refresh token is the only revocation surface.
+## Jobs (BullMQ over Redis)
 
-**Token TTLs and secrets come from env.** `AUTH_ACCESS_TTL` (default `30m`) and `AUTH_REFRESH_TTL` (default `30d`) live in `shared-config/src/env.ts`. `AUTH_TOKEN_SECRET` (required, ≥32 characters) and `AUTH_CLOCK_TOLERANCE_SEC` (default `60`) live in `packages/shared-auth/src/env.ts` via `loadAuthEnv()`, shared by user-service and the gateway.
+- Publisher: `apps/core/src/queue/bullmq.service.ts` (typed `enqueueThumbnails`/`enqueueVideo` + generic `enqueue`). Consumers: `QueueModule.onModuleInit()` starts 7 workers: `process-thumbnail`, `process-video`, `process-metadata`, `process-faces`, `process-faces-cluster`, `cleanup-asset`, `cleanup-orphans`. `FaceProcessor` auto-enqueues `process-faces-cluster`.
+- Dedup/retry: thumbnails `jobId: '<prefix>-<assetId>-<size>'` over `sm/md/lg/xl`, attempts 3 exponential backoff; video `jobId: 'video-<assetId>'` (or `video-reprocess-*`), attempts 3.
+- Worker runtime-validates every consumed job payload with zod (`job-schemas.ts`); invalid payloads throw `UnrecoverableError` (no retries). Thumbnail/video/metadata/face processors also enforce ownership before per-file mutations (`userId`/`assetId` match on the loaded record + asset); `cleanup-asset` carries only `{ fileId }`, so it is shape-validated only.
+- Video (`video.processor.ts`): reads source from local disk via `LocalStorageService` (no presigned URLs). h264+aac → skip, mark `ready`. Else single pass to AV1 webm (`libaom-av1 -crf 32 -cpu-used 6`, `libopus 96k`), capped 720p, registered as separate `FileRecord` (`purpose: 'transcode'`); originals immutable. Limits: 4h duration, 7680px, 1h ffmpeg timeout.
+- Faces: `@vladmandic/human` boxes+mesh only (faceres off), InsightFace `buffalo_l` `w600k_r50.onnx` **512-dim** embeddings via `onnxruntime-node` (`FACE_EMBEDDING_DIM`, model provisioned under `STORAGE_DIR/models`, never committed). HNSW index `faces_embedding_hnsw` built at core bootstrap, warn-caught. In-memory DBSCAN `eps=0.55 minPts=2`, noise reassign `0.5`, centroid matching, O(n²) — fine for personal libraries. Model auto-seeds on `pnpm install` (skip-if-present); `FACE_MODEL_SKIP=1` skips it.
 
-**Jwt payload shape.** `JwtPayload` in `shared-auth` is `{ sub, email, iat, exp, jti? }`. The gateway's `JwtStrategy` maps `payload.sub` to a request user of `{ id, email }` and passes `id` as a query/body parameter to backend services.
+## DB / storage
 
-## Service-to-service communication: trust the network
+- Single `photox` DB (created by the image entrypoint from `POSTGRES_DB`; `docker/postgres/init.sql` installs the `vector` ext). `SharedDatabaseModule.forRoot()`: `synchronize: true`, `autoLoadEntities: true`, `retryAttempts: 3, retryDelay: 3000, connectTimeoutMS: 3000` — do not set `retryAttempts: 0`.
+- `LocalStorageService`: files at `STORAGE_DIR/<storageKey>`, atomic save via tmp+rename (EXDEV-safe copy fallback).
+- `HealthService` uses `DataSource.query('SELECT 1')`, not `@InjectRepository()` (avoids `forFeature` coupling).
 
-**No guards, no `x-user-id` header, no path prefix distinguishing internal vs external.** Backend services trust the network boundary. The gateway is the only auth surface.
+## Web
 
-### How identity flows
+- File routes (`vite-plugin-pages`), `react-router-dom@7`, `zustand`, `axios`. Vite proxies `/api` + `/health` to `VITE_API_URL || http://localhost:3000` (core).
+- Dark by default (`<html class="dark">`). Tailwind v4 CSS config (`@import "tailwindcss"` + `@theme` in `app.css`) — no `tailwind.config.*`. Icons: `react-icons/fa6` only.
 
-- **User requests (gateway → backend):** The gateway extracts `userId` from the verified JWT (`req.user.id`) and passes it as a regular CRUD parameter:
-  - `userId` as a **query parameter** for GET and DELETE (e.g. `GET /v1/assets?userId=...`)
-  - `userId` in the **request body** for POST and PATCH (e.g. `POST /v1/assets` body `{ fileId, kind, userId }`)
-  - `userId` as a **form field** for multipart upload (e.g. `POST /v1/files` with `userId` in the multipart body alongside the file)
-- **System calls (worker → backend):** The worker has `userId` in the BullMQ job payload (put there by the gateway when enqueueing). It passes it as a form field on upload, and the thumbnail register endpoint doesn't need it.
-- **No custom auth headers between services.** No `x-user-id`, no `x-internal-token`, no `Authorization: Bearer <service-jwt>`. The `x-request-id` header is passed through for tracing only — it's not auth.
+## Style
 
-### How endpoints are structured
+- Prettier: no semicolons, single quotes, trailing commas, 100-col, 2-space. Strict TS (`noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters`). ESLint type-aware (`project: true`) — don't add files it can't typecheck without updating `.eslintrc.cjs`.
+- `typescript` + `@types/node` pinned versions in devDeps — never `workspace:*`. Workspace deps use `workspace:*`.
+- Deliberate simplifications are marked `ponytail:` with ceiling + upgrade path — keep the convention, don't "clean them up".
 
-- **One controller per resource, no path-based split.** `AssetsController` handles all asset routes (user CRUD + by-file lookup + metadata update). `ThumbnailsController` handles all thumbnail routes (list, get, register, unregister). `UserFilesController` handles all file routes (upload, list, get, download, delete, stream, batch).
-- **Route ordering matters.** Specific routes (`by-file/:fileId`, `by-user/:userId`, `:fileId/stream`) must be declared BEFORE parameterized routes (`:id`, `:fileId`) to avoid being matched as a path parameter.
-- **`userId` in a query/body parameter is a data access concern, not a guard.** Service methods like `getOne(userId, id)` do `WHERE id = ? AND userId = ?` in the DB. This is enforced by the service layer, not by a guard or middleware.
+## Tests / CI
 
-### Trust boundary (non-negotiable for prod)
+- Vitest 3, `globals: true`. Workspace (`vitest.workspace.ts`): api, worker-service, web, 4 shared packages, `scripts` — including `data-access`, which now has a test script.
+- Api runs `src/**/*.spec.ts` + `test/integration/**/*.spec.ts`. Integration spins testcontainers `redis:7-alpine` + plain `postgres:16-alpine` (no pgvector — index creation just warns). Needs Docker; on Podman run `TESTCONTAINERS_RYUK_DISABLED=true pnpm verify` (key already in `turbo.json` passthrough).
+- Only pact left is `apps/web/test/pact/consumer/core.pact.spec.ts` (consumer `web` → provider `core`) writing `pacts/web-core.json`. No provider verification, no coverage script, not part of `verify` — don't resurrect the old pact pipeline.
+- Jenkins (k8s pod): `install --frozen-lockfile` → build `packages/*` → parallel typecheck/lint/test (dind, pulls pg+redis images) → build.
 
-**In production, only the gateway is reachable from outside the trusted network.** Backend services (media-service, file-storage-service, worker-service) run on a private network and are not exposed to the internet. This is the only thing that makes "no auth between services" safe. The `docker-compose.yml` setup publishes backend ports for dev convenience — that's fine because dev runs on localhost, but in prod, backend ports must not be published.
+## Stale-doc warning
 
-If you ever misconfigure the prod network (accidentally publish a backend port, wrong ingress rule, etc.), there is zero auth backstop. The gateway is the only door. For a personal photo app, this is an acceptable bet — just make the deployment boundary explicit and don't forget it.
+`README.md` still references `minio` and user-service/media/file-storage services. Trust `docker-compose.yml` + `apps/` layout over prose.
 
-## Frontend conventions (web)
+## Repository Map
 
-- **Icons: use Font Awesome only.** Import from `react-icons/fa6` (e.g. `FaCamera`, `FaLock`, `FaSpinner`). Do NOT use Material Symbols (`<span class="material-symbols-outlined">`) or any other icon set in the web app. The Material Symbols font link in `index.html` is legacy — ignore it.
-- **Dark mode:** Default to dark (`<html class="dark">`). Uses Tailwind v4 with CSS-based config (`@import "tailwindcss"` + `@theme { ... }` in `apps/web/src/app.css`); there is no `tailwind.config.*` file.
-- **Routing / state / client:** File-based routes via `vite-plugin-pages`, client-side routing via `react-router-dom@7`, state via `zustand`, HTTP client via `axios`. `vite.config.ts` proxies `/api` and `/health` to `http://localhost:3000` in dev.
+A full codemap is available at `codemap.md` in the project root.
 
-## Code style
+Before working on any task, read `codemap.md` to understand:
 
-- No comments in code (per repo convention).
-- 2-space indent, single quotes, no semicolons, 100-col print width, trailing commas (Prettier defaults in `.prettierrc`).
-- Strict TS: `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters` are on. `exactOptionalPropertyTypes` is `false`.
-- ESLint (`@typescript-eslint/recommended-type-checked` + `stylistic-type-checked`) is type-aware — it reads each `tsconfig.json` via `project: true`. Don't add files that ESLint can't typecheck (e.g. random `*.cjs` outside the configured include) without updating `.eslintrc.cjs`.
-- Workspace deps: `"@photox/shared-*": "workspace:*"`.
+- Project architecture and entry points
+- Directory responsibilities and design patterns
+- Data flow and integration points between modules
 
-## Pact contract testing
-
-- **Consumers:** One service has consumer pact tests:
-  - **Gateway** (`apps/gateway/test/pact/consumer/`) — calls user-service, media-service, file-storage-service
-    Uses `PactV3` from `@pact-foundation/pact`. ~18 interactions total: 7 auth, 6 assets, 5 files.
-- **Providers:** Each backend service has pact verification tests at `test/pact/provider/gateway/` (for the gateway consumer). Uses `Verifier` from `@pact-foundation/pact`. Provider tests use mocked repositories (no testcontainers) — `Test.createTestingModule` with `overrideProvider(getRepositoryToken(Entity))`. Non-repository external services (e.g. `MinioService` in file-storage) are mocked via `overrideProvider(Token).useValue(...)`.
-- **Pacts stored at repo root** `pacts/<consumer>-<provider>.json`. Not committed (in `.gitignore`). Regenerated fresh on every `pnpm verify`.
-- **Commands per service:** `pnpm pact-consumer` runs `vitest run --config vitest.consumer.config.ts` (includes `test/pact/consumer/**`). `pnpm pact-provider` runs `vitest run --config vitest.provider.config.ts` (includes `test/pact/provider/**`). Both use `passWithNoTests: true`.
-- **Root commands:** `pnpm pact-consumer` / `pnpm pact-provider` / `pnpm pact-coverage` run across all services via turbo. `pact-provider` depends on `pact-consumer` in `turbo.json` so consumers always run first.
-- **`pnpm pact-coverage`** (`tsx scripts/pact-coverage.ts`) checks that every `pacts/*.json` is verified by a provider spec and that no provider spec references a missing pact; fails the build otherwise.
-- **`pnpm verify`** wipes `pacts/`, then runs lint → `pact-consumer` → `pact-provider` → `pact-coverage` → test → typecheck → build.
-- **File layout:**
-
-  ```
-  # Gateway (consumer) — apps/gateway/test/pact/consumer/
-  setup.ts                                  # createPact(providerName) factory + PACT_DIR
-  stub.ts                                   # StubProxy: captures + forwards to a PactV3 mockserver
-  user-service/
-    testing-module.ts                       # NestJS test module wired with AuthProxyController + stubbed ProxyService + APP_GUARD
-    auth.pact.spec.ts
-  media-service/
-    testing-module.ts                       # ditto, AssetsProxyController
-    assets.pact.spec.ts
-  file-storage-service/
-    testing-module.ts                       # ditto, FilesProxyController + HttpModule
-    files.pact.spec.ts
-
-  # Each backend service (provider) — apps/<service>/test/pact/provider/
-  gateway/
-    verifier.ts                             # setupMockedApp(): Test.createTestingModule with overrideProvider(...) for repos (and MinioService for file-storage); computes argon2 hash for auth flow
-    mock-repos.ts                           # vi.fn()-backed repos for each entity
-    <feature>.pact.spec.ts                  # user-service: auth | media-service: assets | file-storage-service: files
-
-  # Per-service vitest configs
-  vitest.consumer.config.ts                 # gateway has non-empty include set; others pass via passWithNoTests
-  vitest.provider.config.ts                 # only backend services have matching spec files; gateway provider config exists for symmetry
-  ```
-
-## Verifying changes
-
-After editing a service, `pnpm dev` (or the single-package filter) hot-reloads. Hit the health endpoint to confirm:
-
-- `curl localhost:3000/health` — gateway (aggregates downstream)
-- `curl localhost:3001/health` — user-service
-- `curl localhost:3002/health` — media-service
-- `curl localhost:3003/health` — file-storage-service
-- `curl localhost:3004/health` — worker-service (Redis ping)
-- `http://localhost:5173` — web app (timeline, login/register, upload, status grid)
-
-Pre-commit order: `pnpm verify` (wipes `pacts/` and runs lint → `pact-consumer` → `pact-provider` → `pact-coverage` → test → typecheck → build in sequence). Alternatively, run individual steps: `pnpm pact-consumer && pnpm pact-provider && pnpm pact-coverage && pnpm typecheck && pnpm lint && pnpm test`.
-
-**Podman note:** on machines running Podman instead of Docker (`/var/run/docker.sock` → podman.sock), the testcontainers Ryuk sidecar cannot reach the Docker daemon socket and every integration suite fails (`Log stream ended and message "/.*Started.*/" was not received`). Run `TESTCONTAINERS_RYUK_DISABLED=true pnpm verify` (the var is in turbo.json `globalPassThroughEnv`; the test suites tear down their own containers, so Ryuk isn't needed). Alternatively, use a rootful Podman machine so plain `pnpm verify` works.
-
-## Implemented / out of scope
-
-- **Implemented:** photo + video upload end-to-end (file-storage upload → gateway → web timeline page), media-service assets CRUD + trash/restore + thumbnails, gateway BFF layer (`api/` and `api/v1/*` proxy routes, including the public video stream route) with JWT guard + `ProxyService`, BullMQ async jobs (gateway publishes thumbnail + single-pass video jobs to Redis; worker-service consumes them with no DB of its own), web auth, login/register, timeline, and upload UI. Video playback uses a single mp4 streamed through the gateway (capability URL); ffmpeg transcode produces an AV1 webm derivative, not a transcode-to-HLS pipeline.
-- **Implemented:** face detection and clustering (worker-side @vladmandic/human + DBSCAN, pgvector embeddings), persons management (create/rename/reassign faces/set cover), albums (CRUD + asset membership), shares (token-based public links), trash/restore, admin (user stats, asset counts, bulk reprocess, orphan cleanup), metadata extraction (EXIF for photos, ffprobe for videos).
-- **Implemented:** frontend pages — timeline, login/register, albums, trash, favorites, people (list + detail), places (Leaflet map), share (public), shared links, admin dashboard. AssetViewer with info panel, face overlay, location section, keyboard nav.
-- **Not yet:** multi-user sharing (album/person share), batch upload, search, tagging, EXIF editing, mobile app, backup/restore.
+For deep work on a specific folder, also read that folder's `codemap.md`.

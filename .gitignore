@@ -12,6 +12,9 @@ coverage
 pnpm-debug.log*
 .codegraph/
 pacts/
+data/
+# ponytail: InsightFace recognition weights (non-commercial research use) — provisioned, never committed
+*.onnx
 .tmp/
 .slim/
 .worktrees/

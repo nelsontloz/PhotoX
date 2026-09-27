@@ -1,5 +1,8 @@
+import { mkdir, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
+import { createHash, randomUUID } from 'node:crypto'
 import sharp from 'sharp'
-import { createTestApp, closeTestApp, waitForJob, type TestApp } from './helpers'
+import { createTestApp, closeTestApp, resetDb, waitForJob, type TestApp } from './helpers'
 
 describe('ThumbnailProcessor (integration)', () => {
   let testApp: TestApp
@@ -12,121 +15,83 @@ describe('ThumbnailProcessor (integration)', () => {
     await closeTestApp(testApp)
   })
 
-  beforeEach(() => {
-    testApp.stub.clearRoutes()
-    testApp.stub.resetCalls()
+  beforeEach(async () => {
+    await resetDb(testApp)
   })
 
   describe('happy path (image)', () => {
     it('generates thumbnail and registers it', async () => {
+      const userId = randomUUID()
       const imageBuffer = await sharp({
         create: { width: 100, height: 100, channels: 3, background: 'red' },
       })
         .png()
         .toBuffer()
 
-      testApp.stub.setResponse('GET', '/v1/files/test-file-id/stream', (_call, res) => {
-        res.writeHead(200, {
-          'Content-Type': 'image/png',
-          'Content-Length': String(imageBuffer.length),
-        })
-        res.end(imageBuffer)
-      })
-
-      testApp.stub.setResponse('POST', '/v1/files', (_call, res) => {
-        res.writeHead(201, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ id: 'new-file-id' }))
-      })
-
-      testApp.stub.setResponse('POST', '/v1/assets/test-asset-id/thumbnails', (_call, res) => {
-        res.writeHead(201, { 'Content-Type': 'application/json' })
-        res.end(
-          JSON.stringify({
-            size: 'sm',
-            fileId: 'new-file-id',
-            width: 100,
-            height: 100,
-            bytes: 1234,
-          }),
-        )
-      })
-
-      testApp.stub.setResponse('PATCH', '/v1/assets/test-asset-id/metadata', (_call, res) => {
-        res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({}))
-      })
+      const storageKey = testApp.storage.buildKey('original', userId, randomUUID(), 'png')
+      await mkdir(dirname(testApp.storage.pathFor(storageKey)), { recursive: true })
+      await writeFile(testApp.storage.pathFor(storageKey), imageBuffer)
+      const record = await testApp.fileRepo.save(
+        testApp.fileRepo.create({
+          userId,
+          storageKey,
+          originalName: 'photo.png',
+          mimeType: 'image/png',
+          sizeBytes: imageBuffer.length,
+          checksumSha256: createHash('sha256').update(imageBuffer).digest('hex'),
+          purpose: 'original',
+          assetId: null,
+        }),
+      )
+      const asset = await testApp.assetRepo.save(
+        testApp.assetRepo.create({ userId, kind: 'photo', fileId: record.id }),
+      )
 
       const queue = testApp.getQueue('process-thumbnail')
       const job = await queue.add('thumbnail', {
-        assetId: 'test-asset-id',
-        fileId: 'test-file-id',
+        assetId: asset.id,
+        fileId: record.id,
         size: 'sm',
-        userId: 'test-user-id',
+        userId,
       })
 
       const state = await waitForJob(queue, job.id!)
       expect(state).toBe('completed')
 
-      const calls = testApp.stub.calls
-      expect(calls).toHaveLength(4)
+      const thumb = await testApp.thumbRepo.findOne({ where: { assetId: asset.id, size: 'sm' } })
+      expect(thumb).toBeTruthy()
+      const thumbFile = await testApp.fileRepo.findOne({ where: { id: thumb!.fileId } })
+      expect(thumbFile).toBeTruthy()
+      expect(thumbFile!.mimeType).toBe('image/webp')
+      const thumbStat = await testApp.storage.stat(thumbFile!.storageKey)
+      expect(thumbStat.size).toBeGreaterThan(0)
+      expect(Number(thumb!.bytes)).toBe(thumbStat.size)
 
-      expect(calls[0]).toMatchObject({ method: 'GET', url: '/v1/files/test-file-id/stream' })
-      expect(calls[1]).toMatchObject({ method: 'POST', url: '/v1/files' })
-      expect(calls[2]).toMatchObject({
-        method: 'POST',
-        url: '/v1/assets/test-asset-id/thumbnails',
-      })
-      expect(calls[3]).toMatchObject({
-        method: 'PATCH',
-        url: '/v1/assets/test-asset-id/metadata',
-      })
-
-      const patchBody = JSON.parse(calls[3]!.body.toString()) as { thumbnailStatus: string }
-      expect(patchBody).toEqual({ thumbnailStatus: 'ready' })
+      const updated = await testApp.assetRepo.findOne({ where: { id: asset.id } })
+      expect(updated!.thumbnailStatus).toBe('ready')
     })
   })
 
   describe('error path', () => {
-    it('marks thumbnail as failed when upload fails', async () => {
-      const imageBuffer = await sharp({
-        create: { width: 100, height: 100, channels: 3, background: 'red' },
-      })
-        .png()
-        .toBuffer()
-
-      testApp.stub.setResponse('GET', '/v1/files/test-file-id/stream', (_call, res) => {
-        res.writeHead(200, { 'Content-Type': 'image/png' })
-        res.end(imageBuffer)
-      })
-
-      testApp.stub.setResponse('POST', '/v1/files', (_call, res) => {
-        res.writeHead(500, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ message: 'Internal Server Error' }))
-      })
-
-      testApp.stub.setResponse('PATCH', '/v1/assets/test-asset-id/metadata', (_call, res) => {
-        res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({}))
-      })
+    it('marks thumbnail as failed when the source file is missing', async () => {
+      const userId = randomUUID()
+      const asset = await testApp.assetRepo.save(
+        testApp.assetRepo.create({ userId, kind: 'photo', fileId: randomUUID() }),
+      )
 
       const queue = testApp.getQueue('process-thumbnail')
       const job = await queue.add('thumbnail', {
-        assetId: 'test-asset-id',
-        fileId: 'test-file-id',
+        assetId: asset.id,
+        fileId: randomUUID(),
         size: 'sm',
-        userId: 'test-user-id',
+        userId,
       })
 
       const state = await waitForJob(queue, job.id!)
       expect(state).toBe('failed')
 
-      const patchCalls = testApp.stub.calls.filter(
-        (c) => c.method === 'PATCH' && c.url === '/v1/assets/test-asset-id/metadata',
-      )
-      expect(patchCalls.length).toBeGreaterThanOrEqual(1)
-
-      const patchBody = JSON.parse(patchCalls[0]!.body.toString()) as { thumbnailStatus: string }
-      expect(patchBody).toEqual({ thumbnailStatus: 'failed' })
+      const updated = await testApp.assetRepo.findOne({ where: { id: asset.id } })
+      expect(updated!.thumbnailStatus).toBe('failed')
     })
   })
 })

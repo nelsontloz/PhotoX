@@ -1,26 +1,41 @@
 import { Module, OnModuleInit } from '@nestjs/common'
-import { HttpModule } from '@nestjs/axios'
+import { TypeOrmModule } from '@nestjs/typeorm'
+import {
+  Asset,
+  AssetThumbnail,
+  Face,
+  FileRecord,
+  LocalStorageService,
+  Person,
+  SharedDatabaseModule,
+} from '@photox/data-access'
 import { BullMqService } from './bullmq.service'
 import { ThumbnailProcessor } from './thumbnail.processor'
 import { VideoProcessor } from './video.processor'
 import { MetadataProcessor } from './metadata.processor'
 import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor'
 import { FaceDetectorService } from './face.detector'
+import { FaceEmbedderService } from './face.embedder'
 import { FaceProcessor } from './face.processor'
 import { FaceClusterService } from './face.cluster'
 import { CleanupProcessor } from './cleanup.processor'
 import { CleanupOrphansProcessor } from './cleanup-orphans.processor'
 
 @Module({
-  imports: [HttpModule],
+  imports: [
+    SharedDatabaseModule.forRoot(),
+    TypeOrmModule.forFeature([FileRecord, Asset, AssetThumbnail, Face, Person]),
+  ],
   providers: [
     BullMqService,
+    LocalStorageService,
     ThumbnailProcessor,
     VideoProcessor,
     MetadataProcessor,
     MetadataExtractor,
     VideoMetadataExtractor,
     FaceDetectorService,
+    FaceEmbedderService,
     FaceProcessor,
     FaceClusterService,
     CleanupProcessor,

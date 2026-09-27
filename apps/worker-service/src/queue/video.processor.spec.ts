@@ -1,37 +1,70 @@
-import { describe, it, expect, vi } from 'vitest'
-import { of } from 'rxjs'
-import { Readable } from 'stream'
-import { rm, stat } from 'fs/promises'
-import { join, sep } from 'path'
-import { tmpdir } from 'os'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { writeFile, readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { HttpService } from '@nestjs/axios'
+import { LocalStorageService } from '@photox/data-access'
 import { VideoProcessor } from './video.processor'
 import { BullMqService } from './bullmq.service'
 
-describe('VideoProcessor.downloadSource', () => {
-  it('streams the source to a temp file in the destination directory', async () => {
-    const fileId = randomUUID()
-    const userId = randomUUID()
-    const destDir = join(tmpdir(), `photox-vp-test-${fileId}`)
+describe('VideoProcessor disk paths', () => {
+  const fileId = randomUUID()
+  const userId = randomUUID()
+  let storageDir: string
+  let prevStorageDir: string | undefined
+  let storage: LocalStorageService
+  let records: Record<string, Record<string, unknown>>
+  let fileRepo: {
+    findOne: ReturnType<typeof vi.fn>
+    save: ReturnType<typeof vi.fn>
+    create: ReturnType<typeof vi.fn>
+  }
+  let processor: VideoProcessor
+
+  beforeEach(() => {
+    storageDir = mkdtempSync(join(tmpdir(), 'photox-vp-test-'))
+    prevStorageDir = process.env.STORAGE_DIR
+    process.env.STORAGE_DIR = storageDir
+    storage = new LocalStorageService()
+    records = {}
+    fileRepo = {
+      findOne: vi.fn().mockImplementation(({ where }: { where: { id: string } }) => {
+        const r = records[where.id]
+        return r ? { ...r } : null
+      }),
+      create: vi.fn().mockImplementation((e: unknown) => ({ ...(e as object) })),
+      save: vi.fn().mockImplementation((e: Record<string, unknown>) => {
+        const id = (e.id as string) ?? randomUUID()
+        const row = { ...e, id }
+        records[id] = row
+        return row
+      }),
+    }
+    const assetRepo = { update: vi.fn().mockResolvedValue({}) }
+    processor = new VideoProcessor(
+      {} as BullMqService,
+      fileRepo as never,
+      assetRepo as never,
+      storage,
+    )
+  })
+
+  afterEach(() => {
+    if (prevStorageDir === undefined) delete process.env.STORAGE_DIR
+    else process.env.STORAGE_DIR = prevStorageDir
+    rmSync(storageDir, { recursive: true, force: true })
+  })
+
+  it('copies the stored source bytes to the destination directory', async () => {
     const fileBytes = Buffer.from([0, 1, 2, 3, 4, 5, 6, 7])
-    const presignedUrl = 'http://127.0.0.1:1/never-fetched.mp4'
+    const storageKey = storage.buildKey('original', userId, fileId, 'mp4')
+    const staging = join(storageDir, 'staging.mp4')
+    await writeFile(staging, fileBytes)
+    await storage.save(storageKey, staging)
+    records[fileId] = { id: fileId, userId, mimeType: 'video/mp4', storageKey }
 
-    const http = {
-      get: vi
-        .fn()
-        .mockReturnValueOnce(of({ data: { url: presignedUrl }, headers: {}, status: 200 } as never))
-        .mockReturnValueOnce(
-          of({
-            data: Readable.from([fileBytes]),
-            headers: { 'content-type': 'video/mp4' },
-            status: 200,
-          } as never),
-        ),
-    } as unknown as HttpService
-
-    const processor = new VideoProcessor({} as BullMqService, http)
-
+    const destDir = join(storageDir, 'dest')
     const downloadSource = (
       processor as unknown as {
         downloadSource: (id: string, uid: string, dir: string) => Promise<string>
@@ -40,21 +73,36 @@ describe('VideoProcessor.downloadSource', () => {
 
     const result = await downloadSource(fileId, userId, destDir)
 
-    expect(result.startsWith(destDir + sep)).toBe(true)
+    expect(result.startsWith(destDir)).toBe(true)
     expect(result.endsWith('.mp4')).toBe(true)
-    const fileStat = await stat(result)
-    expect(fileStat.isFile()).toBe(true)
-    expect(fileStat.size).toBe(fileBytes.length)
+    expect(await readFile(result)).toEqual(fileBytes)
+  })
 
-    const expectedUrl = `http://localhost:3003/v1/files/${fileId}/url?userId=${userId}&ttl=600`
-    type MockFn = ReturnType<typeof vi.fn>
-    const getMock = (http as unknown as { get: MockFn }).get
-    expect(getMock).toHaveBeenCalledWith(expectedUrl, expect.objectContaining({ timeout: 5_000 }))
-    expect(getMock).toHaveBeenCalledWith(
-      presignedUrl,
-      expect.objectContaining({ responseType: 'stream', timeout: 300_000 }),
-    )
+  it('registers a derivative as a transcode FileRecord with bytes on disk', async () => {
+    const outPath = join(storageDir, 'output.webm')
+    const webmBytes = Buffer.from([9, 8, 7, 6])
+    await writeFile(outPath, webmBytes)
 
-    await rm(destDir, { recursive: true, force: true })
+    const registerDerivative = (
+      processor as unknown as {
+        registerDerivative: (assetId: string, uid: string, out: string) => Promise<string>
+      }
+    ).registerDerivative.bind(processor)
+
+    const assetId = randomUUID()
+    const derivativeId = await registerDerivative(assetId, userId, outPath)
+
+    const row = records[derivativeId] as unknown as {
+      purpose: string
+      assetId: string
+      mimeType: string
+      storageKey: string
+      sizeBytes: number
+    }
+    expect(row.purpose).toBe('transcode')
+    expect(row.assetId).toBe(assetId)
+    expect(row.mimeType).toBe('video/webm')
+    expect(await readFile(storage.pathFor(row.storageKey))).toEqual(webmBytes)
+    expect(row.sizeBytes).toBe(webmBytes.length)
   })
 })

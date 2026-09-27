@@ -1,22 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { HttpService } from '@nestjs/axios'
-import { firstValueFrom } from 'rxjs'
+import { InjectRepository } from '@nestjs/typeorm'
+import { Repository } from 'typeorm'
 import type { Job } from 'bullmq'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { createReadStream } from 'fs'
-import { rm, mkdir } from 'fs/promises'
-import FormData from 'form-data'
+import { randomUUID, createHash } from 'crypto'
+import { copyFile, rm, mkdir, readFile } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
-import { SERVICE_URLS } from '@photox/shared-config'
+import { assertOwnership, parseJobData, videoJobSchema, type VideoJob } from './job-schemas'
+import { Asset, FileRecord, LocalStorageService } from '@photox/data-access'
 import { runFfmpeg, runFfprobeJson } from './ffmpeg'
-import { downloadToTemp } from './download'
-
-interface ProcessVideoJob {
-  assetId: string
-  fileId: string
-  userId: string
-}
 
 const MAX_DURATION_SEC = 4 * 60 * 60
 const MAX_DIMENSION = 7680
@@ -28,24 +21,32 @@ export class VideoProcessor {
 
   constructor(
     private readonly bullMq: BullMqService,
-    private readonly http: HttpService,
+    @InjectRepository(FileRecord)
+    private readonly fileRepo: Repository<FileRecord>,
+    @InjectRepository(Asset)
+    private readonly assetRepo: Repository<Asset>,
+    private readonly storage: LocalStorageService,
   ) {}
 
   start() {
-    this.bullMq.createWorker<ProcessVideoJob>('process-video', (job) => this.processJob(job), {
+    this.bullMq.createWorker<VideoJob>('process-video', (job) => this.processJob(job), {
       concurrency: 1,
     })
 
     this.logger.log('Video processor listening for jobs')
   }
 
-  private async processJob(job: Job<ProcessVideoJob>) {
-    const { assetId, fileId, userId } = job.data
+  private async processJob(job: Job<VideoJob>) {
+    const { assetId, fileId, userId } = parseJobData(videoJobSchema, job.data, 'process-video')
 
     this.logger.log(`Processing video transcode: asset=${assetId}`)
 
     const srcDir = join(tmpdir(), fileId)
     const outDir = `${srcDir}-transcode`
+
+    const record = await this.fileRepo.findOne({ where: { id: fileId } })
+    const asset = await this.assetRepo.findOne({ where: { id: assetId } })
+    assertOwnership({ assetId, fileId, userId }, { record, asset })
 
     try {
       await this.patchAsset(assetId, { transcodeStatus: 'pending' })
@@ -136,14 +137,17 @@ export class VideoProcessor {
   }
 
   private async downloadSource(fileId: string, userId: string, destDir: string): Promise<string> {
-    const urlRes = await firstValueFrom(
-      this.http.get<{ url: string }>(
-        `${SERVICE_URLS['file-storage-service']}/v1/files/${fileId}/url?userId=${encodeURIComponent(userId)}&ttl=600`,
-        { timeout: 5_000 },
-      ),
-    )
-    const { path } = await downloadToTemp(this.http, urlRes.data.url, destDir)
-    return path
+    const record = await this.fileRepo.findOne({ where: { id: fileId, userId } })
+    if (!record) throw new Error(`File not found: ${fileId}`)
+    const ext = record.mimeType.includes('webm')
+      ? 'webm'
+      : record.mimeType.includes('quicktime')
+        ? 'mov'
+        : 'mp4'
+    await mkdir(destDir, { recursive: true })
+    const destPath = join(destDir, `${randomUUID()}.${ext}`)
+    await copyFile(this.storage.pathFor(record.storageKey), destPath)
+    return destPath
   }
 
   // ponytail: this exists. Replaces the older in-place replace path that overwrote the original bytes; originals are now immutable and derivatives live as separate FileRecord rows.
@@ -152,29 +156,35 @@ export class VideoProcessor {
     userId: string,
     outPath: string,
   ): Promise<string> {
-    const form = new FormData()
-    form.append('userId', userId)
-    form.append('assetId', assetId)
-    form.append('file', createReadStream(outPath), {
-      filename: 'video.webm',
-      contentType: 'video/webm',
+    const bytes = await readFile(outPath)
+    const checksum = createHash('sha256').update(bytes).digest('hex')
+    const existing = await this.fileRepo.findOne({
+      where: { userId, checksumSha256: checksum, purpose: 'transcode', assetId },
     })
-    const res = await firstValueFrom(
-      this.http.post<{ id: string }>(
-        `${SERVICE_URLS['file-storage-service']}/v1/files/derivatives`,
-        form,
-        {
-          timeout: 3_600_000,
-          maxBodyLength: Infinity,
-          maxContentLength: Infinity,
-        },
-      ),
+    if (existing) return existing.id
+    const fileId = randomUUID()
+    const storageKey = this.storage.buildKey('transcode', userId, fileId, 'webm')
+    await this.storage.save(storageKey, outPath)
+    const saved = await this.fileRepo.save(
+      this.fileRepo.create({
+        userId,
+        storageKey,
+        originalName: 'video.webm',
+        mimeType: 'video/webm',
+        sizeBytes: bytes.length,
+        checksumSha256: checksum,
+        purpose: 'transcode',
+        assetId,
+      }),
     )
-    return res.data.id
+    return saved.id
   }
 
   private async patchAsset(assetId: string, patch: Record<string, unknown>): Promise<void> {
-    const url = `${SERVICE_URLS['media-service']}/v1/assets/${assetId}/metadata`
-    await firstValueFrom(this.http.patch(url, patch, { timeout: 5_000 }))
+    const { status, ...rest } = patch
+    await this.assetRepo.update(assetId, {
+      ...rest,
+      ...(status !== undefined ? { metadataStatus: status, metadataExtractedAt: new Date() } : {}),
+    } as Record<string, unknown>)
   }
 }

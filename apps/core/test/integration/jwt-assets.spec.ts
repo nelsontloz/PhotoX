@@ -1,0 +1,253 @@
+import request from 'supertest'
+import {
+  closeTestApp,
+  createApiTestApp,
+  resetDb,
+  seedAsset,
+  seedFile,
+  seedUser,
+  apiServer,
+} from './helpers'
+import type { ApiTestApp } from './helpers'
+
+describe('assets JWT identity', () => {
+  let t: ApiTestApp
+
+  beforeAll(async () => {
+    t = await createApiTestApp({ mockUser: null })
+  }, 120_000)
+
+  afterAll(async () => {
+    await closeTestApp(t)
+  })
+
+  beforeEach(async () => {
+    await resetDb(t)
+  })
+
+  it('lists without userId', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const file = await seedFile(t, user.id)
+    await seedAsset(t, user.id, file.id)
+    const res = await request(apiServer(t)).get('/api/v1/assets').set(t.authHeader(token))
+    expect(res.status).toBe(200)
+    const body = res.body as unknown as { items: { id: string }[]; total: number }
+    expect(body.total).toBe(1)
+    expect(body.items).toHaveLength(1)
+  })
+
+  it('ignores supplied userId on list', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
+    const fileA = await seedFile(t, a.id)
+    await seedAsset(t, a.id, fileA.id)
+    const fileB = await seedFile(t, b.id)
+    await seedAsset(t, b.id, fileB.id)
+    const res = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .query({ userId: b.id })
+      .set(t.authHeader(tokenA))
+    expect(res.status).toBe(200)
+    const body = res.body as unknown as { items: { userId: string }[]; total: number }
+    expect(body.total).toBe(1)
+    expect(body.items[0]?.userId).toBe(a.id)
+  })
+
+  it('gets own asset without userId and 404s cross-user even with userId query', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    const file = await seedFile(t, a.id)
+    const asset = await seedAsset(t, a.id, file.id)
+    const own = await request(apiServer(t))
+      .get(`/api/v1/assets/${asset.id}`)
+      .set(t.authHeader(tokenA))
+    expect(own.status).toBe(200)
+    const cross = await request(apiServer(t))
+      .get(`/api/v1/assets/${asset.id}`)
+      .query({ userId: a.id })
+      .set(t.authHeader(tokenB))
+    expect(cross.status).toBe(404)
+  })
+
+  it('updates without userId and ignores body userId', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
+    const file = await seedFile(t, a.id)
+    const asset = await seedAsset(t, a.id, file.id)
+    const res = await request(apiServer(t))
+      .patch(`/api/v1/assets/${asset.id}`)
+      .set(t.authHeader(tokenA))
+      .send({ favorite: true, userId: b.id })
+    expect(res.status).toBe(200)
+    const body = res.body as unknown as { userId: string; favorite: boolean }
+    expect(body.userId).toBe(a.id)
+    expect(body.favorite).toBe(true)
+  })
+
+  it('rejects cross-user update', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    const file = await seedFile(t, a.id)
+    const asset = await seedAsset(t, a.id, file.id)
+    const res = await request(apiServer(t))
+      .patch(`/api/v1/assets/${asset.id}`)
+      .set(t.authHeader(tokenB))
+      .send({ favorite: true })
+    expect(res.status).toBe(404)
+  })
+
+  it('trashes and bulk-trashes without userId', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const fileOne = await seedFile(t, user.id)
+    const assetOne = await seedAsset(t, user.id, fileOne.id)
+    const fileTwo = await seedFile(t, user.id)
+    const assetTwo = await seedAsset(t, user.id, fileTwo.id)
+    const trash = await request(apiServer(t))
+      .post(`/api/v1/assets/${assetOne.id}/trash`)
+      .set(t.authHeader(token))
+    expect(trash.status).toBe(204)
+    const bulk = await request(apiServer(t))
+      .post('/api/v1/assets/bulk-trash')
+      .set(t.authHeader(token))
+      .send({ assetIds: [assetTwo.id] })
+    expect(bulk.status).toBe(204)
+  })
+
+  it('rejects invalid asset update body with 400', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const file = await seedFile(t, user.id)
+    const asset = await seedAsset(t, user.id, file.id)
+    const res = await request(apiServer(t))
+      .patch(`/api/v1/assets/${asset.id}`)
+      .set(t.authHeader(token))
+      .send({ favorite: 'yes' })
+    expect(res.status).toBe(400)
+  })
+
+  it('scopes by-file lookup to the JWT owner', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    const file = await seedFile(t, a.id)
+    const asset = await seedAsset(t, a.id, file.id)
+    const own = await request(apiServer(t))
+      .get(`/api/v1/assets/by-file/${file.id}`)
+      .set(t.authHeader(tokenA))
+    expect(own.status).toBe(200)
+    expect((own.body as unknown as { id: string }).id).toBe(asset.id)
+    const cross = await request(apiServer(t))
+      .get(`/api/v1/assets/by-file/${file.id}`)
+      .set(t.authHeader(tokenB))
+    expect(cross.status).toBe(404)
+  })
+
+  it('rejects cross-user metadata update without mutating the asset', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    const file = await seedFile(t, a.id)
+    const asset = await seedAsset(t, a.id, file.id)
+    const cross = await request(apiServer(t))
+      .patch(`/api/v1/assets/${asset.id}/metadata`)
+      .set(t.authHeader(tokenB))
+      .send({ width: 100 })
+    expect(cross.status).toBe(404)
+    const untouched = await t.assetRepo.findOneByOrFail({ id: asset.id })
+    expect(untouched.width).toBeNull()
+    const own = await request(apiServer(t))
+      .patch(`/api/v1/assets/${asset.id}/metadata`)
+      .set(t.authHeader(tokenA))
+      .send({ width: 100 })
+    expect(own.status).toBe(200)
+    expect((own.body as unknown as { width: number }).width).toBe(100)
+  })
+
+  it('rejects cross-user face listing', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    const file = await seedFile(t, a.id)
+    const asset = await seedAsset(t, a.id, file.id)
+    const own = await request(apiServer(t))
+      .get(`/api/v1/assets/${asset.id}/faces`)
+      .set(t.authHeader(tokenA))
+    expect(own.status).toBe(200)
+    const cross = await request(apiServer(t))
+      .get(`/api/v1/assets/${asset.id}/faces`)
+      .set(t.authHeader(tokenB))
+    expect(cross.status).toBe(404)
+  })
+
+  it('reprocesses owner thumbnails with thumb-reprocess jobIds and rejects cross-user', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    const file = await seedFile(t, a.id)
+    const asset = await seedAsset(t, a.id, file.id)
+    const res = await request(apiServer(t))
+      .post(`/api/v1/assets/${asset.id}/reprocess-thumbnails`)
+      .set(t.authHeader(tokenA))
+    expect(res.status).toBe(202)
+    expect((res.body as unknown as { enqueued: number }).enqueued).toBe(4)
+    const queue = t.getQueue('process-thumbnail')
+    for (const size of ['sm', 'md', 'lg', 'xl']) {
+      const job = await queue.getJob(`thumb-reprocess-${asset.id}-${size}`)
+      expect(job).toBeTruthy()
+    }
+    const cross = await request(apiServer(t))
+      .post(`/api/v1/assets/${asset.id}/reprocess-thumbnails`)
+      .set(t.authHeader(tokenB))
+    expect(cross.status).toBe(404)
+  })
+
+  it('rejects reprocess-video on photos and enqueues for owner videos', async () => {
+    const user = await seedUser(t)
+    const other = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const otherToken = t.signToken({ id: other.id, email: other.email, role: other.role })
+    const photoFile = await seedFile(t, user.id)
+    const photo = await seedAsset(t, user.id, photoFile.id, { kind: 'photo' })
+    const videoFile = await seedFile(t, user.id, { mimeType: 'video/mp4' })
+    const video = await seedAsset(t, user.id, videoFile.id, { kind: 'video' })
+    const notVideo = await request(apiServer(t))
+      .post(`/api/v1/assets/${photo.id}/reprocess-video`)
+      .set(t.authHeader(token))
+    expect(notVideo.status).toBe(400)
+    const res = await request(apiServer(t))
+      .post(`/api/v1/assets/${video.id}/reprocess-video`)
+      .set(t.authHeader(token))
+    expect(res.status).toBe(202)
+    expect((res.body as unknown as { enqueued: number }).enqueued).toBe(1)
+    const queue = t.getQueue('process-video')
+    const job = await queue.getJob(`video-reprocess-${video.id}`)
+    expect(job).toBeTruthy()
+    const cross = await request(apiServer(t))
+      .post(`/api/v1/assets/${video.id}/reprocess-video`)
+      .set(t.authHeader(otherToken))
+    expect(cross.status).toBe(404)
+  })
+
+  it('returns 401 without token', async () => {
+    const res = await request(apiServer(t)).get('/api/v1/assets')
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 401 for malformed token', async () => {
+    const res = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .set({ Authorization: 'Bearer not-a-token' })
+    expect(res.status).toBe(401)
+  })
+})
