@@ -22,10 +22,5 @@
     "prettier": "^3.4.0",
     "tsx": "^4.22.4",
     "turbo": "^2.3.0"
-  },
-  "pnpm": {
-    "overrides": {
-      "ioredis": "^5.4.2"
-    }
   }
 }

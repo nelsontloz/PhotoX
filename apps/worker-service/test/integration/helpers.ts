@@ -40,8 +40,12 @@ export interface TestApp {
   getQueue(name: string): Queue
 }
 
+export interface CreateTestAppOptions {
+  detect?: FaceDetectorService['detect']
+}
+
 // ponytail: explicit module instead of AppModule — SharedDatabaseModule.forRoot() reads env at import time, before the testcontainer ports exist; explicit TypeOrmModule.forRoot gets the mapped ports directly
-export async function createTestApp(): Promise<TestApp> {
+export async function createTestApp(opts: CreateTestAppOptions = {}): Promise<TestApp> {
   const { pgHost, pgPort } = await setupTestInfra()
 
   const storageDir = mkdtempSync(join(tmpdir(), 'worker-int-storage-'))
@@ -72,7 +76,10 @@ export async function createTestApp(): Promise<TestApp> {
         MetadataProcessor,
         MetadataExtractor,
         VideoMetadataExtractor,
-        { provide: FaceDetectorService, useValue: { detect: vi.fn().mockResolvedValue([]) } },
+        {
+          provide: FaceDetectorService,
+          useValue: { detect: opts.detect ?? vi.fn().mockResolvedValue([]) },
+        },
         FaceProcessor,
         FaceClusterService,
         CleanupProcessor,

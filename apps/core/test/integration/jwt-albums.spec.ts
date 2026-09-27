@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import request from 'supertest'
 import {
   closeTestApp,
@@ -141,5 +142,51 @@ describe('albums JWT identity', () => {
       .get('/api/v1/albums')
       .set({ Authorization: 'Bearer not-a-token' })
     expect(res.status).toBe(401)
+  })
+
+  it('returns 404 for an unknown album on get, patch and delete', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const missing = randomUUID()
+
+    const get = await request(apiServer(t))
+      .get(`/api/v1/albums/${missing}`)
+      .set(t.authHeader(token))
+    expect(get.status).toBe(404)
+
+    const patch = await request(apiServer(t))
+      .patch(`/api/v1/albums/${missing}`)
+      .set(t.authHeader(token))
+      .send({ name: 'Nope' })
+    expect(patch.status).toBe(404)
+
+    const del = await request(apiServer(t))
+      .delete(`/api/v1/albums/${missing}`)
+      .set(t.authHeader(token))
+    expect(del.status).toBe(404)
+  })
+
+  it('returns 404 when adding assets to an unknown album or asset', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+
+    const unknownAlbum = await request(apiServer(t))
+      .post(`/api/v1/albums/${randomUUID()}/assets`)
+      .set(t.authHeader(token))
+      .send({ assetIds: [randomUUID()] })
+    expect(unknownAlbum.status).toBe(404)
+
+    const created = await request(apiServer(t))
+      .post('/api/v1/albums')
+      .set(t.authHeader(token))
+      .send({ name: 'Trip' })
+    expect(created.status).toBe(201)
+    const album = created.body as unknown as { id: string }
+
+    const unknownAsset = await request(apiServer(t))
+      .post(`/api/v1/albums/${album.id}/assets`)
+      .set(t.authHeader(token))
+      .send({ assetIds: [randomUUID()] })
+    expect(unknownAsset.status).toBe(404)
   })
 })

@@ -26,7 +26,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@pact-foundation/pact": "^13.0.0",
+    "@pact-foundation/pact": "^17.1.4",
     "@tailwindcss/vite": "^4.3.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",

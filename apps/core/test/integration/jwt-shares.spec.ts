@@ -116,4 +116,151 @@ describe('shares JWT identity', () => {
       .set({ Authorization: 'Bearer not-a-token' })
     expect(res.status).toBe(401)
   })
+
+  it('serves the v1 public share route only with a JWT', async () => {
+    const owner = await seedUser(t)
+    const viewer = await seedUser(t)
+    const ownerToken = t.signToken({ id: owner.id, email: owner.email, role: owner.role })
+    const file = await seedFile(t, owner.id)
+    const asset = await seedAsset(t, owner.id, file.id)
+    const created = await request(apiServer(t))
+      .post('/api/v1/shares')
+      .set(t.authHeader(ownerToken))
+      .send({ assetId: asset.id })
+    const share = created.body as unknown as { token: string }
+
+    const anonymous = await request(apiServer(t)).get(`/api/v1/shares/public/${share.token}`)
+    expect(anonymous.status).toBe(401)
+
+    const viewerToken = t.signToken({ id: viewer.id, email: viewer.email, role: viewer.role })
+    const authed = await request(apiServer(t))
+      .get(`/api/v1/shares/public/${share.token}`)
+      .set(t.authHeader(viewerToken))
+    expect(authed.status).toBe(200)
+    const body = authed.body as unknown as { share: { token: string }; asset: { id: string } }
+    expect(body.share.token).toBe(share.token)
+    expect(body.asset.id).toBe(asset.id)
+  })
+
+  it('returns the same token when sharing the same asset twice', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const file = await seedFile(t, user.id)
+    const asset = await seedAsset(t, user.id, file.id)
+
+    const first = await request(apiServer(t))
+      .post('/api/v1/shares')
+      .set(t.authHeader(token))
+      .send({ assetId: asset.id })
+    const second = await request(apiServer(t))
+      .post('/api/v1/shares')
+      .set(t.authHeader(token))
+      .send({ assetId: asset.id })
+    expect(first.status).toBe(201)
+    expect(second.status).toBe(201)
+    const firstBody = first.body as unknown as { id: string; token: string }
+    const secondBody = second.body as unknown as { id: string; token: string }
+    expect(secondBody.id).toBe(firstBody.id)
+    expect(secondBody.token).toBe(firstBody.token)
+    expect(await t.shareRepo.count({ where: { assetId: asset.id } })).toBe(1)
+  })
+
+  it('404s the public route after revoke', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const file = await seedFile(t, user.id)
+    const asset = await seedAsset(t, user.id, file.id)
+    const created = await request(apiServer(t))
+      .post('/api/v1/shares')
+      .set(t.authHeader(token))
+      .send({ assetId: asset.id })
+    const share = created.body as unknown as { id: string; token: string }
+
+    const revoked = await request(apiServer(t))
+      .delete(`/api/v1/shares/${share.id}`)
+      .set(t.authHeader(token))
+    expect(revoked.status).toBe(204)
+    const res = await request(apiServer(t)).get(`/api/share/${share.token}`)
+    expect(res.status).toBe(404)
+  })
+
+  it('excludes trashed assets from the share list and the public route', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const file = await seedFile(t, user.id)
+    const asset = await seedAsset(t, user.id, file.id)
+    const created = await request(apiServer(t))
+      .post('/api/v1/shares')
+      .set(t.authHeader(token))
+      .send({ assetId: asset.id })
+    const share = created.body as unknown as { token: string }
+
+    const trashed = await request(apiServer(t))
+      .post(`/api/v1/assets/${asset.id}/trash`)
+      .set(t.authHeader(token))
+    expect(trashed.status).toBe(204)
+
+    const list = await request(apiServer(t)).get('/api/v1/shares').set(t.authHeader(token))
+    expect(list.status).toBe(200)
+    expect((list.body as unknown as { items: unknown[] }).items).toHaveLength(0)
+
+    const pub = await request(apiServer(t)).get(`/api/share/${share.token}`)
+    expect(pub.status).toBe(404)
+  })
+
+  it('does not leak exif, gps or faces through the public projection', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const file = await seedFile(t, user.id)
+    const asset = await seedAsset(t, user.id, file.id)
+    await t.assetRepo.update(asset.id, {
+      latitude: 48.8584,
+      longitude: 2.2945,
+      altitude: 35,
+      cameraMake: 'Leica',
+      cameraModel: 'M11',
+      lensModel: 'Summicron',
+      iso: 400,
+      fNumber: 2,
+      exposureTime: 0.008,
+      focalLength: 35,
+      metadata: { gps: { lat: 48.8584, lon: 2.2945 }, exif: { Make: 'Leica' } },
+      faceCount: 2,
+    })
+    const created = await request(apiServer(t))
+      .post('/api/v1/shares')
+      .set(t.authHeader(token))
+      .send({ assetId: asset.id })
+    const share = created.body as unknown as { token: string }
+
+    const res = await request(apiServer(t)).get(`/api/share/${share.token}`)
+    expect(res.status).toBe(200)
+    const body = res.body as unknown as {
+      share: Record<string, unknown>
+      asset: Record<string, unknown>
+    }
+    const forbidden = [
+      'latitude',
+      'longitude',
+      'altitude',
+      'cameraMake',
+      'cameraModel',
+      'lensModel',
+      'iso',
+      'fNumber',
+      'exposureTime',
+      'focalLength',
+      'metadata',
+      'faceCount',
+      'faces',
+      'gps',
+      'exif',
+    ]
+    for (const key of forbidden) {
+      expect(body.asset).not.toHaveProperty(key)
+      expect(body.share).not.toHaveProperty(key)
+    }
+    expect(JSON.stringify(body)).not.toContain('48.8584')
+    expect(JSON.stringify(body)).not.toContain('Summicron')
+  })
 })

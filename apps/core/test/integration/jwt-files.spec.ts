@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import request from 'supertest'
 import { closeTestApp, createApiTestApp, resetDb, seedFile, seedUser, apiServer } from './helpers'
 import type { ApiTestApp } from './helpers'
@@ -86,5 +87,23 @@ describe('files JWT identity', () => {
       .get('/api/v1/files')
       .set({ Authorization: 'Bearer not-a-token' })
     expect(res.status).toBe(401)
+  })
+
+  it('returns 404 for an unknown file id', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const res = await request(apiServer(t))
+      .get(`/api/v1/files/${randomUUID()}`)
+      .set(t.authHeader(token))
+    expect(res.status).toBe(404)
+  })
+
+  it('deletes an unknown file id idempotently with 204', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const res = await request(apiServer(t))
+      .delete(`/api/v1/files/${randomUUID()}`)
+      .set(t.authHeader(token))
+    expect(res.status).toBe(204)
   })
 })

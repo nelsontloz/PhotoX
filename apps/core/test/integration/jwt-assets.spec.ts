@@ -1,4 +1,5 @@
 import request from 'supertest'
+import { randomUUID } from 'node:crypto'
 import {
   closeTestApp,
   createApiTestApp,
@@ -249,5 +250,97 @@ describe('assets JWT identity', () => {
       .get('/api/v1/assets')
       .set({ Authorization: 'Bearer not-a-token' })
     expect(res.status).toBe(401)
+  })
+
+  it('creates an asset scoped to the JWT user with defaults', async () => {
+    const owner = await seedUser(t)
+    const other = await seedUser(t)
+    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role })
+    const file = await seedFile(t, owner.id)
+    const res = await request(apiServer(t))
+      .post('/api/v1/assets')
+      .set(t.authHeader(token))
+      .send({ fileId: file.id, kind: 'photo', userId: other.id })
+    expect(res.status).toBe(201)
+    const body = res.body as unknown as {
+      id: string
+      userId: string
+      fileId: string
+      kind: string
+      favorite: boolean
+      isTrashed: boolean
+      thumbnailStatus: string
+      transcodeStatus: string | null
+    }
+    expect(body.userId).toBe(owner.id)
+    expect(body.fileId).toBe(file.id)
+    expect(body.kind).toBe('photo')
+    expect(body.favorite).toBe(false)
+    expect(body.isTrashed).toBe(false)
+    expect(body.thumbnailStatus).toBe('pending')
+    expect(body.transcodeStatus).toBeNull()
+    const row = await t.assetRepo.findOneByOrFail({ id: body.id })
+    expect(row.userId).toBe(owner.id)
+  })
+
+  it('rejects invalid create asset bodies with 400', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const file = await seedFile(t, user.id)
+    const badFile = await request(apiServer(t))
+      .post('/api/v1/assets')
+      .set(t.authHeader(token))
+      .send({ fileId: 'not-a-uuid', kind: 'photo' })
+    expect(badFile.status).toBe(400)
+    const badKind = await request(apiServer(t))
+      .post('/api/v1/assets')
+      .set(t.authHeader(token))
+      .send({ fileId: file.id, kind: 'audio' })
+    expect(badKind.status).toBe(400)
+  })
+
+  it('returns 404 for get and patch of an unknown asset id', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const id = randomUUID()
+    const get = await request(apiServer(t)).get(`/api/v1/assets/${id}`).set(t.authHeader(token))
+    expect(get.status).toBe(404)
+    const patch = await request(apiServer(t))
+      .patch(`/api/v1/assets/${id}`)
+      .set(t.authHeader(token))
+      .send({ favorite: true })
+    expect(patch.status).toBe(404)
+  })
+
+  it('paginates assets with limit and offset', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    for (let i = 0; i < 3; i++) {
+      const file = await seedFile(t, user.id)
+      await seedAsset(t, user.id, file.id)
+    }
+    const first = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .query({ limit: 2 })
+      .set(t.authHeader(token))
+    expect(first.status).toBe(200)
+    const firstBody = first.body as unknown as {
+      items: { id: string }[]
+      total: number
+      limit: number
+      offset: number
+    }
+    expect(firstBody.total).toBe(3)
+    expect(firstBody.limit).toBe(2)
+    expect(firstBody.offset).toBe(0)
+    expect(firstBody.items).toHaveLength(2)
+    const second = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .query({ limit: 2, offset: 2 })
+      .set(t.authHeader(token))
+    expect(second.status).toBe(200)
+    const secondBody = second.body as unknown as { items: { id: string }[]; total: number }
+    expect(secondBody.total).toBe(3)
+    expect(secondBody.items).toHaveLength(1)
   })
 })

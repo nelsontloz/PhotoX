@@ -73,6 +73,11 @@ Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 - Only pact left is `apps/web/test/pact/consumer/core.pact.spec.ts` (consumer `web` → provider `core`) writing `pacts/web-core.json`. No provider verification, no coverage script, not part of `verify` — don't resurrect the old pact pipeline.
 - Jenkins (k8s pod): `install --frozen-lockfile` → build `packages/*` → parallel typecheck/lint/test (dind, pulls pg+redis images) → build.
 
+## Security / audit
+
+- Accepted exception in `pnpm audit`: `tar` (critical) + `adm-zip` (high) inside `@tensorflow/tfjs-node@4.22.0` (latest; pins `tar ^6.2.1`, `adm-zip ^0.5.2`). Only reachable at install time (`@mapbox/node-pre-gyp` extracts the official libtensorflow tarball) and in tfjs-node's unused `scripts/resources.js` — never from HTTP or job payloads. Upgrade path: swap the face-detector backend to pure `@tensorflow/tfjs` (much slower faces) or vendor a fork.
+- The pnpm in use here **silently ignores all override mechanisms** (`pnpm.overrides` in package.json is warned-and-ignored, `overrides`/`packageExtensions`/`patchedDependencies` in `pnpm-workspace.yaml` and `pnpmfile.cjs` are no-ops — verified empirically). Transitive fixes must come from bumping the parent package.
+
 ## Stale-doc warning
 
 `README.md` still references `minio` and user-service/media/file-storage services. Trust `docker-compose.yml` + `apps/` layout over prose.

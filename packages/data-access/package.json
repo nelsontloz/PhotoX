@@ -12,7 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@nestjs/common": "^11.1.28",
+    "@nestjs/common": "^11.2.6",
     "@nestjs/typeorm": "^11.0.3",
     "@photox/shared-config": "workspace:*",
     "pgvector": "0.2.1",
