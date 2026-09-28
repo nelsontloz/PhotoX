@@ -48,7 +48,7 @@ export function TimelineGrid({
                   </button>
                 </div>
               </div>
-              <div className="justified-grid-gallery">
+              <div className="justified-grid-gallery fixed-row-gallery">
                 {group.items.map((asset) => {
                   return (
                     <GalleryItem

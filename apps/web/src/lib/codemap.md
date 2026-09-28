@@ -14,7 +14,7 @@ Framework-free helpers: the client-side upload queue, optimistic thumbnail gener
   - Failures set `status: 'error'` + message; retry is manual (re-drop/re-pick). When the whole batch settles it bumps `useAppStore.timelineRefreshKey` and calls `onComplete`.
   - `upload.spec.ts` verifies the pool keeps processing after 409s.
 - `clientThumbnail.ts` — `makeThumbnail(file, maxSide = 256)`: `image/*` only; loads via `createObjectURL` + `Image`, draws scaled into a canvas (never upscales), exports WebP quality 0.8; returns `null` on any failure and always revokes its own object URLs. Deliberately lazy preview for files that aren't on the server yet.
-- `dateFormat.ts` — Intl-based `formatShortDate` ("Monday, Jan 5"), `formatMonthYear` ("January 2025"), `groupDateLabel` ("Today" / "Yesterday" / short date within 6 days / else month-year) and `groupDateSortKey` (`YYYY-MM-DD`, local time) used to bucket the timeline.
+- `dateFormat.ts` — Intl-based `formatShortDate` ("Monday, Jan 5"), `groupDateLabel` ("Today" / "Yesterday" / short date within 6 days / else "Dec 15, 2025") and `groupDateSortKey` (`YYYY-MM-DD`, local time) used to bucket the timeline. Labels are day-granular to match the day-granular sort key (a month-year fallback repeated one header per day).
 - `format.ts` — `formatDuration(seconds)` → `h:mm:ss` or `m:ss`, null-safe (null/NaN/negative → null); `formatBytes(bytes)` → `B/KB/MB/GB/TB` with adaptive decimals, null for ≤ 0.
 
 ## Flow

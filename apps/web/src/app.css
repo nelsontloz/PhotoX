@@ -66,3 +66,32 @@
   flex-grow: 1000000000;
   background: var(--last-row-background);
 }
+
+/* Fixed-row modifier (timeline only): every row is exactly --row-height tall, so a month
+   section's height is computable from data alone — see components/Timeline/codemap.md. */
+.justified-grid-gallery.fixed-row-gallery {
+  --row-height: 200px;
+}
+
+@media (width < 40rem) {
+  .justified-grid-gallery.fixed-row-gallery {
+    --row-height: 140px;
+  }
+}
+
+.justified-grid-gallery.fixed-row-gallery > figure {
+  /* ponytail: extreme-aspect images (panoramas) get center-cropped to --row-height instead of
+     becoming short rows — the cost of predictable height. Grow/shrink stay aspect-proportional
+     (inherited from the base rule), so each line justifies to exactly the container width.
+     Upgrade path: a JS justified-layout packer if uncropped short rows ever matter. */
+  height: var(--row-height);
+  flex-basis: calc(var(--row-height) * (var(--width) / var(--height)));
+  aspect-ratio: auto;
+}
+
+/* The filler must never wrap onto its own flex line (it would add a phantom row and break the
+   height formula): zero basis + a negative gap margin keep its outer hypothetical size <= 0. */
+.justified-grid-gallery.fixed-row-gallery::after {
+  flex-basis: 0;
+  margin-left: calc(-1 * var(--space));
+}

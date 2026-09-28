@@ -1,11 +1,7 @@
 const SHORT = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
-const LONG = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' })
+const DATED = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 export function formatShortDate(d: Date): string {
   return SHORT.format(d)
-}
-
-export function formatMonthYear(d: Date): string {
-  return LONG.format(d)
 }
 
 function startOfDay(d: Date): Date {
@@ -29,7 +25,9 @@ export function groupDateLabel(dateStr: string): string {
   if (diff === 0) return 'Today'
   if (diff === 1) return 'Yesterday'
   if (diff > 1 && diff <= 6) return formatShortDate(date)
-  return formatMonthYear(date)
+  // ponytail: one section per day (see groupDateSortKey), so the label must be day-granular too —
+  // a month-year fallback repeated the same header for every day of the month
+  return DATED.format(date)
 }
 
 export function groupDateSortKey(dateStr: string): string {
