@@ -31,6 +31,13 @@ export class AssetsController {
     return this.assets.list(userId, q)
   }
 
+  @Get('layout')
+  @ApiOperation({ summary: 'Compact timeline layout: timestamps and aspect dimensions only' })
+  @ApiResponse({ status: 200, description: 'Asset layout list' })
+  async layout(@Req() req: Request) {
+    return this.assets.layout((req.user as { id: string }).id)
+  }
+
   @Patch(':id/metadata')
   @ApiOperation({ summary: 'Update extracted metadata (called by metadata process)' })
   @ApiResponse({ status: 200 })

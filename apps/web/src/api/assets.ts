@@ -1,5 +1,10 @@
 import { api } from './client'
-import type { Asset, AssetListResponse, AssetThumbnailListResponse } from '@photox/shared-types'
+import type {
+  Asset,
+  AssetLayout,
+  AssetListResponse,
+  AssetThumbnailListResponse,
+} from '@photox/shared-types'
 
 interface ListAssetsParams {
   limit?: number
@@ -8,6 +13,9 @@ interface ListAssetsParams {
   isTrashed?: boolean
   favorite?: boolean
   hasLocations?: boolean
+  // half-open range on COALESCE(takenAt, uploadedAt) — the timeline's per-month window
+  dateFrom?: string
+  dateTo?: string
 }
 
 export async function listAssets(params: ListAssetsParams = {}): Promise<AssetListResponse> {
@@ -22,6 +30,11 @@ export async function listAssets(params: ListAssetsParams = {}): Promise<AssetLi
 
 export async function getAsset(assetId: string): Promise<Asset> {
   const { data } = await api.get<Asset>(`/v1/assets/${assetId}`)
+  return data
+}
+
+export async function getAssetLayout(): Promise<AssetLayout> {
+  const { data } = await api.get<AssetLayout>('/v1/assets/layout')
   return data
 }
 

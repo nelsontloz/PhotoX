@@ -123,6 +123,16 @@ export interface AssetListResponse {
   offset: number
 }
 
+export interface AssetLayoutItem {
+  t: string
+  w: number
+  h: number
+}
+
+export interface AssetLayout {
+  items: AssetLayoutItem[]
+}
+
 export interface AssetThumbnail {
   size: string
   fileId: string

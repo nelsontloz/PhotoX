@@ -13,6 +13,10 @@ interface AssetThumbProps {
 
 const THUMB_SIZES = ['md']
 
+// ponytail: session-long objectURL cache keyed by thumb fileId — timeline virtualization remounts
+// tiles constantly and a blob must download once per session, LRU if memory ever matters
+const blobUrlCache = new Map<string, string>()
+
 function pickThumbnail(thumbs: AssetThumbnail[]): AssetThumbnail | undefined {
   for (const size of THUMB_SIZES) {
     const match = thumbs.find((t) => t.size === size)
@@ -60,12 +64,17 @@ export function AssetThumb({ asset, className = '', onThumbPicked }: AssetThumbP
         const thumb = pickThumbnail(thumbs)
         if (!thumb) return
         onThumbPicked?.(thumb)
-        return downloadFile(thumb.fileId)
-      })
-      .then((blob) => {
-        if (cancelled || !blob) return
-        const url = URL.createObjectURL(blob)
-        setObjectUrl(url)
+        const cachedUrl = blobUrlCache.get(thumb.fileId)
+        if (cachedUrl) {
+          setObjectUrl(cachedUrl)
+          return
+        }
+        return downloadFile(thumb.fileId).then((blob) => {
+          if (cancelled) return
+          const url = URL.createObjectURL(blob)
+          blobUrlCache.set(thumb.fileId, url)
+          setObjectUrl(url)
+        })
       })
       .catch(() => {
         if (!cancelled) setError(true)
@@ -79,12 +88,6 @@ export function AssetThumb({ asset, className = '', onThumbPicked }: AssetThumbP
   const src = localThumb ?? objectUrl
   const isVideo = asset.kind === 'video'
   const transcodeStatus = isVideo ? asset.transcodeStatus : null
-
-  useEffect(() => {
-    return () => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-    }
-  }, [objectUrl])
 
   return (
     <div ref={ref} className={`relative w-full h-full ${className}`}>

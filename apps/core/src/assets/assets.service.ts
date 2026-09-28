@@ -12,7 +12,7 @@ import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
 import { UpdateMetadataDto } from './dto/update-metadata.dto'
 import { FacesService } from '../faces/faces.service'
 import { BullMqService } from '../queue/bullmq.service'
-import type { Asset as AssetResponse, AssetListResponse } from '@photox/shared-types'
+import type { Asset as AssetResponse, AssetLayout, AssetListResponse } from '@photox/shared-types'
 
 @Injectable()
 export class AssetsService {
@@ -101,6 +101,16 @@ export class AssetsService {
       )
     }
 
+    if (q.dateFrom) {
+      qb.andWhere('COALESCE(asset.takenAt, asset.uploadedAt) >= :dateFrom', {
+        dateFrom: q.dateFrom,
+      })
+    }
+
+    if (q.dateTo) {
+      qb.andWhere('COALESCE(asset.takenAt, asset.uploadedAt) < :dateTo', { dateTo: q.dateTo })
+    }
+
     if (q.favorite !== undefined) {
       qb.andWhere('asset.favorite = :favorite', { favorite: q.favorite })
     }
@@ -129,6 +139,26 @@ export class AssetsService {
       .getManyAndCount()
 
     return { items: items.map((a) => this.toResponse(a)), total, limit, offset }
+  }
+
+  async layout(userId: string): Promise<AssetLayout> {
+    const rows = await this.repo
+      .createQueryBuilder('asset')
+      .select('COALESCE(asset.takenAt, asset.uploadedAt)', 't')
+      .addSelect('COALESCE(asset.width, 1)', 'w')
+      .addSelect('COALESCE(asset.height, 1)', 'h')
+      .where('asset.userId = :userId', { userId })
+      .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false })
+      .orderBy('COALESCE(asset.takenAt, asset.uploadedAt)', 'DESC')
+      .getRawMany<{ t: Date | string; w: number; h: number }>()
+
+    return {
+      items: rows.map((r) => ({
+        t: r.t instanceof Date ? r.t.toISOString() : new Date(r.t).toISOString(),
+        w: Number(r.w),
+        h: Number(r.h),
+      })),
+    }
   }
 
   async getOne(userId: string | undefined, id: string): Promise<AssetResponse> {

@@ -15,6 +15,7 @@ import { login, register, refresh, logout } from '../../../src/api/auth'
 import {
   listAssets,
   getAsset,
+  getAssetLayout,
   listThumbnails,
   uploadFile,
   updateAsset,
@@ -297,6 +298,32 @@ describe('Web → Core pact', () => {
         const res = await listAssets({})
         expect(res.items.length).toBeGreaterThan(0)
         expect(res.total).toBe(1)
+      })
+  })
+
+  it('GET /api/v1/assets/layout — compact timeline layout', async () => {
+    await provider
+      .uponReceiving('a request to get the asset layout')
+      .withRequest({
+        method: 'GET',
+        path: '/api/v1/assets/layout',
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: MatchersV3.like({
+          items: [
+            { t: '2025-12-25T10:11:12.000Z', w: 4032, h: 3024 },
+            { t: '2025-12-24T09:00:00.000Z', w: 1, h: 1 },
+          ],
+        }),
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await getAssetLayout()
+        expect(res.items.length).toBe(2)
+        expect(res.items[1]?.w).toBe(1)
+        expect(res.items[1]?.h).toBe(1)
       })
   })
 
