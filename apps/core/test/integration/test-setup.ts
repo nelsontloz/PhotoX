@@ -40,9 +40,20 @@ export async function setupTestInfra() {
   return { redisHost, redisPort, pgHost, pgPort }
 }
 
+/** Stops only the Redis container, e.g. for degraded-health tests. */
+export async function stopRedisContainer() {
+  if (redis) await redis.stop()
+}
+
 export async function teardownTestInfra() {
   if (redis) {
-    await redis.stop()
+    try {
+      // testcontainers' stop() is cached per instance, but be tolerant if the
+      // container was already stopped/removed elsewhere (degraded-health test)
+      await redis.stop()
+    } catch {
+      // already stopped — nothing to clean up
+    }
     redis = null
   }
   if (postgres) {

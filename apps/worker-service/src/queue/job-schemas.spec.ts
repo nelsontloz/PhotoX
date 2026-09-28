@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { UnrecoverableError } from 'bullmq'
 import { randomUUID } from 'crypto'
-import { cleanupOrphansJobSchema, parseJobData, thumbnailJobSchema } from './job-schemas'
+import {
+  assertOwnership,
+  cleanupOrphansJobSchema,
+  parseJobData,
+  thumbnailJobSchema,
+} from './job-schemas'
 
 describe('job payload schemas', () => {
   it('passes a valid producer payload through', () => {
@@ -40,6 +45,56 @@ describe('job payload schemas', () => {
     })
     expect(() =>
       parseJobData(cleanupOrphansJobSchema, { dryRun: 'yes' }, 'cleanup-orphans'),
+    ).toThrow(UnrecoverableError)
+  })
+})
+
+describe('assertOwnership', () => {
+  const job = { assetId: randomUUID(), fileId: randomUUID(), userId: randomUUID() }
+
+  it('accepts matching DTO-shaped records', () => {
+    expect(() =>
+      assertOwnership(job, {
+        record: { userId: job.userId },
+        asset: { userId: job.userId, fileId: job.fileId },
+      }),
+    ).not.toThrow()
+  })
+
+  it('accepts matching entity-shaped records', () => {
+    const record = { id: job.fileId, userId: job.userId }
+    const asset = { id: job.assetId, userId: job.userId, fileId: job.fileId }
+    expect(() => assertOwnership(job, { record, asset })).not.toThrow()
+  })
+
+  it('rejects a mismatched user on either record', () => {
+    const other = randomUUID()
+    expect(() =>
+      assertOwnership(job, {
+        record: { userId: other },
+        asset: { userId: job.userId, fileId: job.fileId },
+      }),
+    ).toThrow(UnrecoverableError)
+    expect(() =>
+      assertOwnership(job, {
+        record: { userId: job.userId },
+        asset: { userId: other, fileId: job.fileId },
+      }),
+    ).toThrow(UnrecoverableError)
+  })
+
+  it('rejects an asset that points at a different file', () => {
+    expect(() =>
+      assertOwnership(job, {
+        record: { userId: job.userId },
+        asset: { userId: job.userId, fileId: randomUUID() },
+      }),
+    ).toThrow(UnrecoverableError)
+    expect(() =>
+      assertOwnership(job, {
+        record: { userId: job.userId },
+        asset: { userId: job.userId },
+      }),
     ).toThrow(UnrecoverableError)
   })
 })

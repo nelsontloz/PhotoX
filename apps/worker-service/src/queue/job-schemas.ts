@@ -65,14 +65,15 @@ export function parseJobData<T>(schema: z.ZodType<T>, data: unknown, queue: stri
 export function assertOwnership(
   job: { assetId: string; fileId: string; userId: string },
   loaded: {
+    // structural shapes — accept CoreClient DTOs and data-access entities alike
     record: { userId: string } | null
-    asset: { userId: string; fileId: string } | null
+    asset: { userId: string; fileId?: string } | null
   },
 ): void {
   const mismatch =
     (loaded.record !== null && loaded.record.userId !== job.userId) ||
     (loaded.asset !== null && loaded.asset.userId !== job.userId) ||
-    (loaded.record !== null && loaded.asset !== null && loaded.asset.fileId !== job.fileId)
+    (loaded.asset !== null && loaded.asset.fileId !== job.fileId)
   if (mismatch) {
     throw new UnrecoverableError(
       `Ownership mismatch: asset=${job.assetId} file=${job.fileId} user=${job.userId}`,

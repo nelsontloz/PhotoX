@@ -1,10 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
 import type { Job } from 'bullmq'
 import { BullMqService } from './bullmq.service'
 import { parseJobData, cleanupJobSchema, type CleanupJob } from './job-schemas'
-import { FileRecord, LocalStorageService } from '@photox/data-access'
+import { CoreClient } from '../core/core-client.service'
 
 @Injectable()
 export class CleanupProcessor {
@@ -12,9 +10,7 @@ export class CleanupProcessor {
 
   constructor(
     private readonly bullMq: BullMqService,
-    @InjectRepository(FileRecord)
-    private readonly fileRepo: Repository<FileRecord>,
-    private readonly storage: LocalStorageService,
+    private readonly core: CoreClient,
   ) {}
 
   start() {
@@ -28,16 +24,8 @@ export class CleanupProcessor {
   private async processJob(job: Job<CleanupJob>) {
     const { fileId } = parseJobData(cleanupJobSchema, job.data, 'cleanup-asset')
 
-    const record = await this.fileRepo.findOne({ where: { id: fileId } })
-    if (!record) return
-    try {
-      await this.storage.delete(record.storageKey)
-    } catch (err) {
-      this.logger.error(
-        `Storage delete failed for ${fileId}`,
-        err instanceof Error ? err.stack : undefined,
-      )
-    }
-    await this.fileRepo.remove(record)
+    // endpoint deletes blob + row and is idempotent (204 even when missing)
+    await this.core.adminDeleteFile(fileId)
+    this.logger.log(`Cleanup complete: file=${fileId}`)
   }
 }

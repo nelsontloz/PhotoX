@@ -1,8 +1,8 @@
-import { mkdtempSync } from 'fs'
+import { mkdtempSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { LocalStorageService } from './local-storage.service'
+import { LocalStorageService } from './storage'
 
 describe('LocalStorageService.pathFor', () => {
   const storage = new LocalStorageService()
@@ -24,5 +24,11 @@ describe('LocalStorageService.pathFor', () => {
     for (const key of escaped) {
       expect(() => storage.pathFor(key)).toThrow('Invalid storage key')
     }
+  })
+
+  it('reports whether bytes exist at a key', async () => {
+    expect(await storage.exists('originals/user-1/absent.jpg')).toBe(false)
+    writeFileSync(join(root, 'present.jpg'), 'bytes')
+    expect(await storage.exists('present.jpg')).toBe(true)
   })
 })

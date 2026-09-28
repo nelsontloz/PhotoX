@@ -1,10 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
+import { DataSource, Repository } from 'typeorm'
 import { Face } from '@photox/data-access'
 import { Person } from '@photox/data-access'
 import { Asset } from '@photox/data-access'
 import { FaceResponseDto } from './dto/face.dto'
+import { refreshPersonFaceCount } from './face-count'
 import type { DetectedFaceInput } from '@photox/shared-types'
 
 @Injectable()
@@ -16,6 +17,7 @@ export class FacesService {
     private readonly personRepo: Repository<Person>,
     @InjectRepository(Asset)
     private readonly assetRepo: Repository<Asset>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async registerFaces(
@@ -37,6 +39,31 @@ export class FacesService {
     return { count: entities.length }
   }
 
+  // ponytail: transactional companion to registerFaces — worker re-embed does DELETE then POST,
+  // so a retry never duplicates stale rows
+  async deleteForAsset(userId: string, assetId: string): Promise<{ deleted: number }> {
+    await this.assertAssetOwned(userId, assetId)
+    return this.dataSource.transaction(async (em) => {
+      const existing = await em.find(Face, { where: { assetId, userId } })
+      if (existing.length === 0) return { deleted: 0 }
+
+      const deletedIds = new Set(existing.map((f) => f.id))
+      const personIds = [
+        ...new Set(existing.map((f) => f.personId).filter((p): p is string => p !== null)),
+      ]
+      await em.delete(Face, { assetId, userId })
+
+      for (const pid of personIds) {
+        const person = await em.findOne(Person, { where: { id: pid, userId } })
+        if (person?.coverFaceId && deletedIds.has(person.coverFaceId)) {
+          await em.update(Person, { id: pid, userId }, { coverFaceId: null })
+        }
+        await refreshPersonFaceCount(em.getRepository(Face), em.getRepository(Person), pid, userId)
+      }
+      return { deleted: existing.length }
+    })
+  }
+
   async getForAsset(userId: string, assetId: string): Promise<FaceResponseDto[]> {
     await this.assertAssetOwned(userId, assetId)
     const faces = await this.repo.find({ where: { assetId } })
@@ -49,15 +76,25 @@ export class FacesService {
     }))
   }
 
-  async listForUser(userId: string, includeEmbeddings: boolean) {
+  async listForUser(userId: string, includeEmbeddings: boolean, excludeTrashed = false) {
     const faces = await this.repo.find({ where: { userId } })
-    return faces.map((f) => ({
-      id: f.id,
-      assetId: f.assetId,
-      box: f.box,
-      personId: f.personId ?? null,
-      ...(includeEmbeddings ? { embedding: f.embedding } : {}),
-    }))
+    const trashedAssetIds = excludeTrashed
+      ? new Set(
+          (await this.assetRepo.find({ where: { userId, isTrashed: true }, select: ['id'] })).map(
+            (a) => a.id,
+          ),
+        )
+      : null
+    return faces
+      .filter((f) => !trashedAssetIds?.has(f.assetId))
+      .map((f) => ({
+        id: f.id,
+        assetId: f.assetId,
+        box: f.box,
+        confidence: f.confidence,
+        personId: f.personId ?? null,
+        ...(includeEmbeddings ? { embedding: f.embedding } : {}),
+      }))
   }
 
   async assignPerson(userId: string, faceId: string, personId: string | null): Promise<void> {
@@ -71,25 +108,12 @@ export class FacesService {
     face.personId = personId
     await this.repo.save(face)
     // ponytail: keep Person.faceCount in sync after assign/unassign (cluster job + manual edits both route here)
-    if (oldPersonId) await this.refreshFaceCount(oldPersonId, userId)
-    if (personId) await this.refreshFaceCount(personId, userId)
+    if (oldPersonId) await refreshPersonFaceCount(this.repo, this.personRepo, oldPersonId, userId)
+    if (personId) await refreshPersonFaceCount(this.repo, this.personRepo, personId, userId)
   }
 
   private async assertAssetOwned(userId: string, assetId: string): Promise<void> {
     const asset = await this.assetRepo.findOne({ where: { id: assetId, userId } })
     if (!asset) throw new NotFoundException('Asset not found')
-  }
-
-  private async refreshFaceCount(personId: string, userId: string): Promise<void> {
-    const result = await this.repo
-      .createQueryBuilder('f')
-      .innerJoin('assets', 'a', 'a.id = f."assetId"')
-      .select('COUNT(*)')
-      .where('f."personId" = :personId', { personId })
-      .andWhere('f."userId" = :userId', { userId })
-      .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
-      .getRawOne<{ count: string }>()
-    const count = Number(result?.count ?? 0)
-    await this.personRepo.update({ id: personId, userId }, { faceCount: count })
   }
 }

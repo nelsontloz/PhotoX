@@ -21,11 +21,13 @@ export function useAssetGroups(
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const fetchIdRef = useRef(0)
+  const loadedOnceRef = useRef(false)
 
   const fetchAssets = async () => {
     const fetchId = ++fetchIdRef.current
     try {
-      setLoading(true)
+      // ponytail: only the first load blocks the page; refreshes update in place so the viewer isn't unmounted
+      if (!loadedOnceRef.current) setLoading(true)
       setError(null)
 
       const dateOf = (a: Asset) =>
@@ -77,7 +79,10 @@ export function useAssetGroups(
       if (fetchId !== fetchIdRef.current) return
       setError((err as Error).message ?? 'Failed to load assets')
     } finally {
-      if (fetchId === fetchIdRef.current) setLoading(false)
+      if (fetchId === fetchIdRef.current) {
+        loadedOnceRef.current = true
+        setLoading(false)
+      }
     }
   }
 

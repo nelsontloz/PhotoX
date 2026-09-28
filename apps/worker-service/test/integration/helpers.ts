@@ -3,19 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Test } from '@nestjs/testing'
 import { ConfigModule } from '@nestjs/config'
-import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm'
 import type { INestApplicationContext } from '@nestjs/common'
 import type { Queue } from 'bullmq'
-import { DataSource, Repository } from 'typeorm'
-import {
-  Asset,
-  AssetThumbnail,
-  Face,
-  FileRecord,
-  LocalStorageService,
-  Person,
-} from '@photox/data-access'
+import { LocalStorageService } from '@photox/shared-config'
 import { BullMqService } from '../../src/queue/bullmq.service'
+import { CoreClient } from '../../src/core/core-client.service'
 import { ThumbnailProcessor } from '../../src/queue/thumbnail.processor'
 import { VideoProcessor } from '../../src/queue/video.processor'
 import { MetadataProcessor } from '../../src/queue/metadata.processor'
@@ -25,54 +17,46 @@ import { FaceProcessor } from '../../src/queue/face.processor'
 import { FaceClusterService } from '../../src/queue/face.cluster'
 import { CleanupProcessor } from '../../src/queue/cleanup.processor'
 import { CleanupOrphansProcessor } from '../../src/queue/cleanup-orphans.processor'
-import { setupTestInfra, teardownTestInfra } from './test-setup'
+import { FakeCoreClient } from '../fake-core-client'
+import { setupRedis, teardownRedis } from './test-setup'
 
 export interface TestApp {
   app: INestApplicationContext
-  dataSource: DataSource
   storage: LocalStorageService
   storageDir: string
-  fileRepo: Repository<FileRecord>
-  assetRepo: Repository<Asset>
-  thumbRepo: Repository<AssetThumbnail>
-  faceRepo: Repository<Face>
-  personRepo: Repository<Person>
+  fake: FakeCoreClient
   getQueue(name: string): Queue
 }
 
-// ponytail: explicit module instead of AppModule — SharedDatabaseModule.forRoot() reads env at import time, before the testcontainer ports exist; explicit TypeOrmModule.forRoot gets the mapped ports directly
-export async function createTestApp(): Promise<TestApp> {
-  const { pgHost, pgPort } = await setupTestInfra()
+export interface CreateTestAppOptions {
+  detect?: FaceDetectorService['detect']
+}
+
+// ponytail: Redis-only harness for all 7 processors — no Postgres anywhere in the worker
+export async function createTestApp(opts: CreateTestAppOptions = {}): Promise<TestApp> {
+  await setupRedis()
 
   const storageDir = mkdtempSync(join(tmpdir(), 'worker-int-storage-'))
-  const prevStorageDir = process.env.STORAGE_DIR
   process.env.STORAGE_DIR = storageDir
 
   try {
+    const storage = new LocalStorageService()
+    const fake = new FakeCoreClient(storage)
     const moduleRef = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
-        TypeOrmModule.forRoot({
-          type: 'postgres',
-          host: pgHost,
-          port: pgPort,
-          username: 'photox',
-          password: 'photox',
-          database: 'photox',
-          entities: [FileRecord, Asset, AssetThumbnail, Face, Person],
-          synchronize: true,
-        }),
-        TypeOrmModule.forFeature([FileRecord, Asset, AssetThumbnail, Face, Person]),
-      ],
+      imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true })],
       providers: [
         BullMqService,
-        LocalStorageService,
+        { provide: LocalStorageService, useValue: storage },
+        { provide: CoreClient, useValue: fake },
         ThumbnailProcessor,
         VideoProcessor,
         MetadataProcessor,
         MetadataExtractor,
         VideoMetadataExtractor,
-        { provide: FaceDetectorService, useValue: { detect: vi.fn().mockResolvedValue([]) } },
+        {
+          provide: FaceDetectorService,
+          useValue: { detect: opts.detect ?? vi.fn().mockResolvedValue([]) },
+        },
         FaceProcessor,
         FaceClusterService,
         CleanupProcessor,
@@ -98,34 +82,26 @@ export async function createTestApp(): Promise<TestApp> {
     const bullMq = app.get(BullMqService)
     return {
       app,
-      dataSource: app.get(DataSource),
-      storage: app.get(LocalStorageService),
+      storage,
       storageDir,
-      fileRepo: app.get(getRepositoryToken(FileRecord)),
-      assetRepo: app.get(getRepositoryToken(Asset)),
-      thumbRepo: app.get(getRepositoryToken(AssetThumbnail)),
-      faceRepo: app.get(getRepositoryToken(Face)),
-      personRepo: app.get(getRepositoryToken(Person)),
+      fake,
       getQueue: (name: string) => bullMq.getQueue(name),
     }
   } catch (err) {
-    if (prevStorageDir === undefined) delete process.env.STORAGE_DIR
-    else process.env.STORAGE_DIR = prevStorageDir
+    await teardownRedis()
     throw err
   }
 }
 
-export async function resetDb(testApp: TestApp): Promise<void> {
-  await testApp.dataSource.query(
-    'TRUNCATE faces, persons, asset_thumbnails, assets, files RESTART IDENTITY CASCADE',
-  )
+export async function resetTestApp(testApp: TestApp): Promise<void> {
+  testApp.fake.reset()
   rmSync(testApp.storageDir, { recursive: true, force: true })
   await testApp.storage.ensureDir()
 }
 
 export async function closeTestApp(testApp: TestApp): Promise<void> {
   await testApp.app.close()
-  await teardownTestInfra()
+  await teardownRedis()
   rmSync(testApp.storageDir, { recursive: true, force: true })
 }
 

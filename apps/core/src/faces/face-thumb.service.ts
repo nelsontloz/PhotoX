@@ -5,7 +5,8 @@ import { readFile } from 'fs/promises'
 import sharp from 'sharp'
 import { Face } from '@photox/data-access'
 import { Asset } from '@photox/data-access'
-import { FileRecord, LocalStorageService } from '@photox/data-access'
+import { FileRecord } from '@photox/data-access'
+import { LocalStorageService } from '@photox/shared-config'
 
 const DEFAULT_SIZE = 240
 const MAX_SIZE = 600

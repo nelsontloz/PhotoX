@@ -1,11 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { In, Repository } from 'typeorm'
 import { randomUUID } from 'crypto'
 import type { Job } from 'bullmq'
-import { Asset, Face, FACE_EMBEDDING_DIM, Person } from '@photox/data-access'
+import { FACE_EMBEDDING_DIM } from '@photox/shared-types'
 import { BullMqService } from './bullmq.service'
 import { parseJobData, clusterJobSchema, type ClusterJob } from './job-schemas'
+import type {
+  ApplyClusterAttach,
+  ApplyClusterCreate,
+  ClusterFace,
+} from '../core/core-client.service'
+import { CoreClient } from '../core/core-client.service'
 
 // ponytail: ArcFace-family tuning — same-person cosine distance typically ~0.3-0.6, so eps sits
 // above the old faceres 0.3x values; centroid matching (not tighter eps) is the merge guard now
@@ -19,15 +23,6 @@ const CLUSTER_MATCH_EPS = 0.5
 const CLUSTER_MIN_CONFIDENCE = 0.4
 // ponytail: cap legacy re-embed enqueues per run — rest follow on later runs, no storm on big libraries
 const LEGACY_REEMBED_PER_RUN = 100
-
-interface FaceItem {
-  id: string
-  assetId: string
-  box: { x: number; y: number; w: number; h: number }
-  embedding: number[]
-  confidence: number
-  personId: string | null
-}
 
 function cosineDistance(a: number[], b: number[]): number {
   // ponytail: cross-dim rows (legacy 1024-dim vs current 512-dim) are incomparable — max distance, never match
@@ -120,13 +115,8 @@ export class FaceClusterService {
   private readonly logger = new Logger(FaceClusterService.name)
 
   constructor(
-    @InjectRepository(Face)
-    private readonly faceRepo: Repository<Face>,
-    @InjectRepository(Person)
-    private readonly personRepo: Repository<Person>,
     private readonly bullMq: BullMqService,
-    @InjectRepository(Asset)
-    private readonly assetRepo: Repository<Asset>,
+    private readonly core: CoreClient,
   ) {}
 
   start() {
@@ -144,21 +134,8 @@ export class FaceClusterService {
   }
 
   async cluster(userId: string): Promise<void> {
-    // ponytail: innerJoin drops trashed assets — trashed faces stay stored, just don't vote
-    const rows = await this.faceRepo
-      .createQueryBuilder('f')
-      .innerJoin('assets', 'a', 'a.id = f."assetId"')
-      .where('f."userId" = :userId', { userId })
-      .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
-      .getMany()
-    const faces: FaceItem[] = rows.map((f) => ({
-      id: f.id,
-      assetId: f.assetId,
-      box: f.box,
-      embedding: f.embedding,
-      confidence: f.confidence,
-      personId: f.personId ?? null,
-    }))
+    // core's E1 endpoint excludes trashed assets (trashed faces stay stored, just don't vote)
+    const faces = await this.core.getFacesForCluster(userId)
 
     if (faces.length === 0) {
       this.logger.log(`No faces for user=${userId}`)
@@ -198,8 +175,8 @@ export class FaceClusterService {
     const embeddings = unassigned.map((f) => f.embedding)
     const labels = dbscan(embeddings, DBSCAN_EPS, DBSCAN_MIN_PTS)
 
-    const clusters = new Map<number, FaceItem[]>()
-    const noiseFaces: FaceItem[] = []
+    const clusters = new Map<number, ClusterFace[]>()
+    const noiseFaces: ClusterFace[] = []
     for (let i = 0; i < unassigned.length; i++) {
       const label = labels[i]!
       if (label === -1) {
@@ -218,7 +195,7 @@ export class FaceClusterService {
     // ponytail: centroids from high-confidence current-dim faces only — low-conf and legacy
     // faces stay stored, just don't vote
     const personCentroids = new Map<string, number[]>()
-    const facesByPerson = new Map<string, FaceItem[]>()
+    const facesByPerson = new Map<string, ClusterFace[]>()
     for (const f of faces) {
       if (
         f.personId === null ||
@@ -246,16 +223,24 @@ export class FaceClusterService {
       return best
     }
 
+    // write phase: build one atomic plan for E3 instead of per-face DB writes
+    const creates: ApplyClusterCreate[] = []
+    const attaches: ApplyClusterAttach[] = []
+    // ponytail: a create's label doubles as its in-run centroid key — E3 creates have no DB id yet
+    const pendingCreates = new Map<string, ApplyClusterCreate>()
+
     // ponytail: post-DBSCAN noise reassignment — singleton faces with no close neighbor get matched to the nearest existing person centroid within NOISE_ASSIGN_EPS. This catches the common case where one photo of an already-known person has no nearby face to chain off.
     let noiseReassigned = 0
     for (const face of noiseFaces) {
       const best = nearestPerson(face.embedding)
       if (best !== null && best.dist <= NOISE_ASSIGN_EPS) {
-        await this.faceRepo.update({ id: face.id, userId }, { personId: best.id })
         face.personId = best.id
         facesByPerson.get(best.id)!.push(face)
         refreshCentroid(best.id)
-        await this.refreshFaceCount(best.id, userId)
+        // noise attaches carry no cover (parity with the old per-face update)
+        const attach = attaches.find((a) => a.personId === best.id && a.coverFaceId === undefined)
+        if (attach) attach.faceIds.push(face.id)
+        else attaches.push({ personId: best.id, faceIds: [face.id] })
         noiseReassigned++
       }
     }
@@ -263,44 +248,68 @@ export class FaceClusterService {
     for (const facesInCluster of clusters.values()) {
       const newCentroid = centroidOf(facesInCluster.map((f) => f.embedding))
       const best = nearestPerson(newCentroid)
-      let personId: string | null = best !== null && best.dist <= CLUSTER_MATCH_EPS ? best.id : null
+      const personId = best !== null && best.dist <= CLUSTER_MATCH_EPS ? best.id : null
+
+      const coverFace = facesInCluster.reduce((bestFace, f) =>
+        f.box.w * f.box.h > bestFace.box.w * bestFace.box.h ? f : bestFace,
+      )
 
       if (personId === null) {
-        const saved = await this.personRepo.save(
-          this.personRepo.create({
-            userId,
-            name: null,
-            clusterLabel: `cluster-${randomUUID()}`,
-            faceCount: 0,
-          }),
-        )
-        personId = saved.id
-        personCentroids.set(personId, newCentroid)
-        facesByPerson.set(personId, [])
+        const clusterLabel = `cluster-${randomUUID()}`
+        const create: ApplyClusterCreate = {
+          clusterLabel,
+          faceIds: facesInCluster.map((f) => f.id),
+          coverFaceId: coverFace.id,
+        }
+        creates.push(create)
+        pendingCreates.set(clusterLabel, create)
+        personCentroids.set(clusterLabel, newCentroid)
+        facesByPerson.set(clusterLabel, [])
+        for (const face of facesInCluster) {
+          face.personId = clusterLabel
+          facesByPerson.get(clusterLabel)!.push(face)
+        }
+        refreshCentroid(clusterLabel)
+        continue
+      }
+
+      const pending = pendingCreates.get(personId)
+      if (pending) {
+        // ponytail: old code attached to the person created earlier in the same run; E3 can't
+        // reference a create's id, so merge into that create — same final DB state
+        pending.faceIds.push(...facesInCluster.map((f) => f.id))
+        pending.coverFaceId = coverFace.id
+      } else {
+        attaches.push({
+          personId,
+          faceIds: facesInCluster.map((f) => f.id),
+          coverFaceId: coverFace.id,
+        })
       }
 
       for (const face of facesInCluster) {
-        await this.faceRepo.update({ id: face.id, userId }, { personId })
         face.personId = personId
         facesByPerson.get(personId)!.push(face)
       }
       // ponytail: refresh so later clusters in the same run match against faces attached earlier
       refreshCentroid(personId)
-      await this.refreshFaceCount(personId, userId)
-
-      const coverFace = facesInCluster.reduce((bestFace, f) =>
-        f.box.w * f.box.h > bestFace.box.w * bestFace.box.h ? f : bestFace,
-      )
-      await this.personRepo.update({ id: personId, userId }, { coverFaceId: coverFace.id })
     }
 
+    if (creates.length === 0 && attaches.length === 0) {
+      this.logger.log(`No cluster plan for user=${userId}, nothing to apply`)
+      return
+    }
+
+    const result = await this.core.applyClusters(userId, { creates, attaches })
     this.logger.log(
-      `Clustered ${unassigned.length} unassigned faces into ${clusters.size} groups (${noiseReassigned} noise faces reassigned to existing persons) for user=${userId}`,
+      `Clustered ${unassigned.length} unassigned faces into ${clusters.size} groups ` +
+        `(${noiseReassigned} noise faces reassigned to existing persons) for user=${userId}; ` +
+        `applied created=${result.created}, assigned=${result.assigned}`,
     )
   }
 
   private async enqueueReembed(assetIds: string[], userId: string): Promise<void> {
-    const assets = await this.assetRepo.find({ where: { id: In(assetIds), userId } })
+    const assets = await this.core.getAssetsByIds(userId, assetIds)
     for (const a of assets) {
       await this.bullMq.enqueue(
         'process-faces',
@@ -314,20 +323,5 @@ export class FaceClusterService {
         },
       )
     }
-  }
-
-  private async refreshFaceCount(personId: string, userId: string): Promise<void> {
-    const result = await this.faceRepo
-      .createQueryBuilder('f')
-      .innerJoin('assets', 'a', 'a.id = f."assetId"')
-      .select('COUNT(*)')
-      .where('f."personId" = :personId', { personId })
-      .andWhere('f."userId" = :userId', { userId })
-      .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
-      .getRawOne<{ count: string }>()
-    await this.personRepo.update(
-      { id: personId, userId },
-      { faceCount: Number(result?.count ?? 0) },
-    )
   }
 }

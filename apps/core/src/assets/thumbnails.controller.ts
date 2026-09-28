@@ -2,7 +2,6 @@ import {
   Controller,
   Get,
   Post,
-  Delete,
   Param,
   Query,
   Body,
@@ -31,15 +30,6 @@ export class ThumbnailsController {
     return this.thumbs.register((req.user as { id: string }).id, id, dto)
   }
 
-  @Delete(':id/thumbnails/:size')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Remove a thumbnail registration. Idempotent.' })
-  @ApiResponse({ status: 204, description: 'Thumbnail unregistered' })
-  @ApiResponse({ status: 404, description: 'Asset not found' })
-  async unregister(@Param('id') id: string, @Param('size') size: string, @Req() req: Request) {
-    await this.thumbs.unregister((req.user as { id: string }).id, id, size)
-  }
-
   @Get(':id/thumbnails')
   @ApiOperation({ summary: 'List all thumbnails for an asset' })
   @ApiResponse({ status: 200, description: 'Thumbnail list' })
@@ -47,19 +37,5 @@ export class ThumbnailsController {
   async list(@Param('id') id: string, @Req() req: Request, @Query('userId') queryUserId?: string) {
     const userId = (req.user as { id: string }).id ?? queryUserId
     return this.thumbs.listForAsset(userId, id)
-  }
-
-  @Get(':id/thumbnails/:size')
-  @ApiOperation({ summary: 'Get a specific thumbnail metadata by size' })
-  @ApiResponse({ status: 200, description: 'Thumbnail details' })
-  @ApiResponse({ status: 404, description: 'Asset or thumbnail not found' })
-  async getOne(
-    @Param('id') id: string,
-    @Param('size') size: string,
-    @Req() req: Request,
-    @Query('userId') queryUserId?: string,
-  ) {
-    const userId = (req.user as { id: string }).id ?? queryUserId
-    return this.thumbs.getForAsset(userId, id, size)
   }
 }

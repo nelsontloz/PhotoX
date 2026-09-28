@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
@@ -11,11 +12,13 @@ import { createReadStream } from 'fs'
 import { unlink } from 'fs/promises'
 import { pipeline } from 'stream/promises'
 import { Readable } from 'stream'
-import { FileRecord, LocalStorageService } from '@photox/data-access'
+import { Asset, FileRecord } from '@photox/data-access'
+import { LocalStorageService } from '@photox/shared-config'
 import { toFileRecordResponse } from '../file-record.mapper'
+import { RegisterFileBodyDto } from './dto/register-file.body.dto'
 import { AssetsService } from '../../assets/assets.service'
 import { BullMqService } from '../../queue/bullmq.service'
-import type { Asset as AssetResponse, FileListResponse } from '@photox/shared-types'
+import type { Asset as AssetResponse } from '@photox/shared-types'
 
 interface UploadedDiskFile {
   path: string
@@ -36,6 +39,8 @@ export class UserFilesService {
   constructor(
     @InjectRepository(FileRecord)
     private readonly fileRepo: Repository<FileRecord>,
+    @InjectRepository(Asset)
+    private readonly assetRepo: Repository<Asset>,
     private readonly storage: LocalStorageService,
     private readonly assets: AssetsService,
     private readonly bullMq: BullMqService,
@@ -94,6 +99,52 @@ export class UserFilesService {
       this.bullMq.enqueueVideo(asset.id, record.id, userId)
     }
     return asset
+  }
+
+  // ponytail: workers write bytes first, then register the row; core recomputes the
+  // storageKey from (kind, user, id, ext) so a client can never point at another user's bytes
+  async register(
+    userId: string,
+    dto: RegisterFileBodyDto,
+  ): Promise<{ file: ReturnType<typeof toFileRecordResponse>; created: boolean }> {
+    const purpose = dto.kind === 'transcode' ? 'transcode' : 'original'
+    const existing = await this.fileRepo.findOne({
+      where: {
+        userId,
+        checksumSha256: dto.checksumSha256,
+        purpose,
+        ...(dto.assetId ? { assetId: dto.assetId } : {}),
+      },
+    })
+    if (existing) return { file: toFileRecordResponse(existing), created: false }
+
+    if (await this.fileRepo.exists({ where: { id: dto.id } })) {
+      throw new ConflictException('File id already exists')
+    }
+
+    if (dto.assetId) {
+      const asset = await this.assetRepo.findOne({ where: { id: dto.assetId, userId } })
+      if (!asset) throw new NotFoundException('Asset not found')
+    }
+
+    const storageKey = this.storage.buildKey(dto.kind, userId, dto.id, dto.ext)
+    if (!(await this.storage.exists(storageKey))) {
+      throw new UnprocessableEntityException('File bytes not found in storage')
+    }
+
+    const record = this.fileRepo.create({
+      id: dto.id,
+      userId,
+      storageKey,
+      originalName: dto.originalName,
+      mimeType: dto.mimeType,
+      sizeBytes: dto.sizeBytes,
+      checksumSha256: dto.checksumSha256,
+      purpose,
+      assetId: dto.assetId ?? null,
+    })
+    await this.fileRepo.save(record)
+    return { file: toFileRecordResponse(record), created: true }
   }
 
   private kindFromMime(mimetype: string): 'photo' | 'video' | null {
@@ -171,37 +222,6 @@ export class UserFilesService {
     return hash.digest('hex')
   }
 
-  async list(userId: string, limit = 20, offset = 0, mimeType?: string): Promise<FileListResponse> {
-    const qb = this.fileRepo
-      .createQueryBuilder('f')
-      .where('f.userId = :userId', { userId })
-      .andWhere('f.purpose = :purpose', { purpose: 'original' })
-
-    if (mimeType) {
-      qb.andWhere('f.mimeType LIKE :mimeType', { mimeType: `${mimeType}%` })
-    }
-
-    const [items, total] = await qb
-      .orderBy('f.createdAt', 'DESC')
-      .skip(offset)
-      .take(limit)
-      .getManyAndCount()
-
-    return {
-      items: items.map((f) => ({
-        id: f.id,
-        userId: f.userId,
-        originalName: f.originalName,
-        mimeType: f.mimeType,
-        sizeBytes: f.sizeBytes,
-        createdAt: f.createdAt.toISOString(),
-      })),
-      total,
-      limit,
-      offset,
-    }
-  }
-
   async getOne(userId: string, fileId: string) {
     const record = await this.fileRepo.findOne({ where: { id: fileId } })
     if (!record) throw new NotFoundException('File not found')
@@ -218,20 +238,6 @@ export class UserFilesService {
     if (record.userId !== userId) throw new NotFoundException('File not found')
     const stream = this.storage.createReadStream(record.storageKey)
     return { stream, record }
-  }
-
-  async delete(userId: string, fileId: string): Promise<void> {
-    const record = await this.fileRepo.findOne({ where: { id: fileId } })
-    if (!record) return
-    if (record.userId !== userId) return
-
-    try {
-      await this.storage.delete(record.storageKey)
-    } catch (err) {
-      console.error('[UserFilesService] Local storage delete failed', err)
-    }
-
-    await this.fileRepo.remove(record)
   }
 
   async stream(

@@ -26,5 +26,5 @@ Upload/API action → `enqueue*` → Redis queue → worker-service consumers (`
 ## Integration
 
 - Queue names and payload shapes (`{ assetId, fileId, userId, size? }` etc.) must match `apps/worker-service/src/queue/*.processor.ts`; the seven consumer names are the contract listed in AGENTS.md.
-- `cleanup-asset` (worker `cleanup.processor.ts`, payload `{ fileId }`, deletes the storage blob + `FileRecord`) has no core caller today — reachable through the generic `enqueue`.
+- `cleanup-asset` (worker `cleanup.processor.ts`, payload `{ fileId }`, proxies to admin `DELETE /api/v1/admin/files/:fileId` which deletes the storage blob + `FileRecord`) has no core caller today — reachable through the generic `enqueue`.
 - Payloads are runtime-validated consumer-side with zod (`job-schemas.ts`); invalid payloads fail with `UnrecoverableError` (no retries). Publishers pass plain objects matching those schemas.

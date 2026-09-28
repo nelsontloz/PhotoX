@@ -1,5 +1,8 @@
 import request from 'supertest'
+import { existsSync } from 'node:fs'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
 import {
   closeTestApp,
   createApiTestApp,
@@ -123,7 +126,7 @@ describe('admin maintenance', () => {
     }
   })
 
-  it('rejects non-admin on all three', async () => {
+  it('rejects non-admin on admin endpoints', async () => {
     const user = await seedUser(t, { role: 'user' })
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })
     const counts = await request(apiServer(t))
@@ -139,5 +142,205 @@ describe('admin maintenance', () => {
       .set(t.authHeader(token))
       .send({ kind: 'photo' })
     expect(reprocess.status).toBe(403)
+    const users = await request(apiServer(t)).get('/api/v1/admin/users').set(t.authHeader(token))
+    expect(users.status).toBe(403)
+    const assets = await request(apiServer(t))
+      .get('/api/v1/admin/assets/counts')
+      .set(t.authHeader(token))
+    expect(assets.status).toBe(403)
+  })
+
+  it('lists users with pagination, q search, sort and role filter', async () => {
+    const admin = await seedUser(t, { role: 'admin', email: 'alpha-admin@example.com' })
+    await seedUser(t, { email: 'bravo-user@example.com' })
+    await seedUser(t, { email: 'charlie-user@example.com' })
+    const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
+    const auth = t.authHeader(token)
+
+    const page = await request(apiServer(t))
+      .get('/api/v1/admin/users')
+      .query({ limit: 2, offset: 1 })
+      .set(auth)
+    expect(page.status).toBe(200)
+    const pageBody = page.body as unknown as {
+      items: { assetCount: number; bytesUsed: number }[]
+      total: number
+      limit: number
+      offset: number
+    }
+    expect(pageBody.total).toBe(3)
+    expect(pageBody.items).toHaveLength(2)
+    expect(pageBody.limit).toBe(2)
+    expect(pageBody.offset).toBe(1)
+    expect(pageBody.items[0]?.assetCount).toBe(0)
+    expect(pageBody.items[0]?.bytesUsed).toBe(0)
+
+    const search = await request(apiServer(t))
+      .get('/api/v1/admin/users')
+      .query({ q: 'bravo' })
+      .set(auth)
+    expect(search.status).toBe(200)
+    const searchBody = search.body as unknown as { items: { email: string }[]; total: number }
+    expect(searchBody.total).toBe(1)
+    expect(searchBody.items[0]?.email).toBe('bravo-user@example.com')
+
+    const sorted = await request(apiServer(t))
+      .get('/api/v1/admin/users')
+      .query({ sort: 'email:asc' })
+      .set(auth)
+    expect(sorted.status).toBe(200)
+    const emails = (sorted.body as unknown as { items: { email: string }[] }).items.map(
+      (i) => i.email,
+    )
+    expect(emails).toEqual([
+      'alpha-admin@example.com',
+      'bravo-user@example.com',
+      'charlie-user@example.com',
+    ])
+
+    const admins = await request(apiServer(t))
+      .get('/api/v1/admin/users')
+      .query({ role: 'admin' })
+      .set(auth)
+    expect(admins.status).toBe(200)
+    const adminsBody = admins.body as unknown as { items: { role: string }[]; total: number }
+    expect(adminsBody.total).toBe(1)
+    expect(adminsBody.items[0]?.role).toBe('admin')
+  })
+
+  it('rejects invalid user list queries', async () => {
+    const admin = await seedUser(t, { role: 'admin' })
+    const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
+    const queries = [{ role: 'owner' }, { sort: 'email:sideways' }, { limit: 51 }, { offset: -1 }]
+    for (const query of queries) {
+      const res = await request(apiServer(t))
+        .get('/api/v1/admin/users')
+        .query(query)
+        .set(t.authHeader(token))
+      expect(res.status).toBe(400)
+    }
+  })
+
+  it('deletes any file record and blob as admin, idempotently', async () => {
+    const admin = await seedUser(t, { role: 'admin' })
+    const owner = await seedUser(t)
+    const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
+    const record = await seedFile(t, owner.id, { bytes: Buffer.from('admin-delete-bytes') })
+
+    const first = await request(apiServer(t))
+      .delete(`/api/v1/admin/files/${record.id}`)
+      .set(t.authHeader(token))
+    expect(first.status).toBe(204)
+    expect(await t.fileRepo.findOne({ where: { id: record.id } })).toBeNull()
+    expect(await t.storage.exists(record.storageKey)).toBe(false)
+
+    const repeat = await request(apiServer(t))
+      .delete(`/api/v1/admin/files/${record.id}`)
+      .set(t.authHeader(token))
+    expect(repeat.status).toBe(204)
+
+    const unknown = await request(apiServer(t))
+      .delete(`/api/v1/admin/files/${randomUUID()}`)
+      .set(t.authHeader(token))
+    expect(unknown.status).toBe(204)
+  })
+
+  it('runs orphan cleanup inline with exact counts', async () => {
+    const admin = await seedUser(t, { role: 'admin' })
+    const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
+    const old = new Date(Date.now() - 60 * 60 * 1000)
+
+    const referenced = await seedFile(t, admin.id)
+    await t.fileRepo.update(referenced.id, { createdAt: old })
+    const asset = await seedAsset(t, admin.id, referenced.id, { kind: 'photo' })
+
+    const orphan = await seedFile(t, admin.id)
+    await t.fileRepo.update(orphan.id, { createdAt: old })
+
+    const fresh = await seedFile(t, admin.id)
+    await t.fileRepo.update(fresh.id, { createdAt: new Date() })
+
+    const thumb = await t.thumbRepo.save(
+      t.thumbRepo.create({
+        assetId: asset.id,
+        size: 'sm',
+        fileId: randomUUID(),
+        width: 10,
+        height: 10,
+        bytes: 5,
+      }),
+    )
+    await t.thumbRepo.update(thumb.id, { createdAt: old })
+
+    await mkdir(join(t.storageDir, 'models'), { recursive: true })
+    await writeFile(join(t.storageDir, 'models', 'keep.onnx'), Buffer.from('model'))
+    await writeFile(join(t.storageDir, 'stray.bin'), Buffer.from('stray'))
+    await writeFile(join(t.storageDir, 'staging.tmp'), Buffer.from('tmp'))
+
+    const res = await request(apiServer(t))
+      .post('/api/v1/admin/cleanup-orphans/run')
+      .set(t.authHeader(token))
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ deletedFiles: 1, deletedThumbnails: 1, deletedStrays: 1 })
+
+    expect(await t.fileRepo.findOne({ where: { id: orphan.id } })).toBeNull()
+    expect(await t.storage.exists(orphan.storageKey)).toBe(false)
+    expect(await t.fileRepo.findOne({ where: { id: referenced.id } })).not.toBeNull()
+    expect(await t.storage.exists(referenced.storageKey)).toBe(true)
+    expect(await t.fileRepo.findOne({ where: { id: fresh.id } })).not.toBeNull()
+    expect(await t.thumbRepo.findOne({ where: { id: thumb.id } })).toBeNull()
+    expect(existsSync(join(t.storageDir, 'models', 'keep.onnx'))).toBe(true)
+    expect(existsSync(join(t.storageDir, 'staging.tmp'))).toBe(true)
+    expect(existsSync(join(t.storageDir, 'stray.bin'))).toBe(false)
+
+    const again = await request(apiServer(t))
+      .post('/api/v1/admin/cleanup-orphans/run')
+      .set(t.authHeader(token))
+    expect(again.status).toBe(200)
+    expect(again.body).toEqual({ deletedFiles: 0, deletedThumbnails: 0, deletedStrays: 0 })
+  })
+
+  it('rejects non-admin on file delete and cleanup run', async () => {
+    const user = await seedUser(t, { role: 'user' })
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const record = await seedFile(t, user.id)
+
+    const del = await request(apiServer(t))
+      .delete(`/api/v1/admin/files/${record.id}`)
+      .set(t.authHeader(token))
+    expect(del.status).toBe(403)
+    expect(await t.fileRepo.findOne({ where: { id: record.id } })).not.toBeNull()
+
+    const run = await request(apiServer(t))
+      .post('/api/v1/admin/cleanup-orphans/run')
+      .set(t.authHeader(token))
+    expect(run.status).toBe(403)
+  })
+
+  it('reports asset failure counts by kind', async () => {
+    const admin = await seedUser(t, { role: 'admin' })
+    const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
+    const photoFile = await seedFile(t, admin.id)
+    const photo = await seedAsset(t, admin.id, photoFile.id, { kind: 'photo' })
+    await t.assetRepo.update(photo.id, { thumbnailStatus: 'failed' })
+    const videoFile = await seedFile(t, admin.id, { mimeType: 'video/mp4' })
+    const video = await seedAsset(t, admin.id, videoFile.id, { kind: 'video' })
+    await t.assetRepo.update(video.id, { transcodeStatus: 'failed' })
+    const trashedFile = await seedFile(t, admin.id)
+    const trashed = await seedAsset(t, admin.id, trashedFile.id, { kind: 'photo', isTrashed: true })
+    await t.assetRepo.update(trashed.id, { thumbnailStatus: 'failed' })
+
+    const res = await request(apiServer(t))
+      .get('/api/v1/admin/assets/counts')
+      .set(t.authHeader(token))
+    expect(res.status).toBe(200)
+    const body = res.body as unknown as {
+      photos: { processing: number; metadata: number; thumbnails: number; encoding: number }
+      videos: { processing: number; metadata: number; thumbnails: number; encoding: number }
+    }
+    expect(body.photos.thumbnails).toBe(1)
+    expect(body.videos.encoding).toBe(1)
+    expect(body.photos.processing).toBe(0)
+    expect(body.videos.metadata).toBe(0)
   })
 })

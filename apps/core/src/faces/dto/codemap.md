@@ -11,7 +11,7 @@ Validation shapes for face registration, assignment, and the box/embedding outpu
 - `DetectedFaceDto implements DetectedFaceInput`: required nested `box` (`@ValidateNested` + `@Type`), `confidence` (`@IsNumber`), and `embedding` as `number[]` with `@ArrayMinSize(512)` + `@ArrayMaxSize(512)` + `@IsNumber({}, { each: true })` — the exact `FACE_EMBEDDING_DIM` is enforced at the HTTP boundary.
 - `RegisterFacesDto implements RegisterFacesRequestDto`: `faces: DetectedFaceDto[]` (nested validation) plus a **required** `userId` UUID. The array may be empty (no faces found) — the service handles that as a valid no-op and the worker patches `faceStatus=ready, faceCount=0`.
 - `AssignPersonDto`: required `userId` UUID (fallback; `req.user.id` wins) and optional nullable `personId` UUID — omitting/null unassigns the face.
-- There is no separate DTO for `FacesQueryController.list`; it reads raw `userId`/`includeEmbeddings` query strings.
+- There is no separate DTO for `FacesQueryController.list`; it reads raw `userId`/`includeEmbeddings`/`excludeTrashed` query strings.
 
 ## Flow
 
@@ -21,6 +21,6 @@ Validation shapes for face registration, assignment, and the box/embedding outpu
 
 ## Integration
 
-- Consumed by `FacesController` (`GET/POST api/v1/assets/:id/faces`), `FacesQueryController` (`PATCH api/v1/faces/:id/person`), and `FacesService.registerFaces`.
+- Consumed by `FacesController` (`POST/DELETE api/v1/assets/:id/faces`), `FacesQueryController` (`GET api/v1/faces`, `PATCH api/v1/faces/:id/person`), and `FacesService` (`registerFaces`, `deleteForAsset`, `assignPerson`).
 - `FaceDto` / `DetectedFaceInput` / `RegisterFacesRequestDto` wire contracts live in `@photox/shared-types`.
 - Swagger schemas surface through core's `/docs` / `/docs-json`.

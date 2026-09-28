@@ -5,7 +5,7 @@ import type { Express } from 'express'
 import type { INestApplication } from '@nestjs/common'
 import { AuthModule } from '../../src/auth/auth.module'
 import { HealthModule } from '../../src/health/health.module'
-import { setupTestInfra, teardownTestInfra } from './test-setup'
+import { setupTestInfra, stopRedisContainer, teardownTestInfra } from './test-setup'
 
 interface HealthBody {
   status: string
@@ -57,4 +57,17 @@ describe('health endpoint', () => {
     expect(body.checks.database?.status).toBe('up')
     expect(body.checks.redis?.status).toBe('up')
   })
+
+  // must stay LAST: this stops the shared Redis container for the rest of the file
+  it('reports degraded with Redis down while Postgres stays up', async () => {
+    await stopRedisContainer()
+    const server = app.getHttpServer() as Express
+    const res = await request(server).get('/health')
+    expect(res.status).toBe(200)
+    const body = res.body as HealthBody
+    expect(body.status).toBe('degraded')
+    expect(body.service).toBe('core')
+    expect(body.checks.database?.status).toBe('up')
+    expect(body.checks.redis?.status).toBe('down')
+  }, 60_000)
 })

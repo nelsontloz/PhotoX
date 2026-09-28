@@ -9,10 +9,10 @@
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@nestjs/common": "^11.1.28",
+    "@nestjs/common": "^11.2.6",
     "@nestjs/typeorm": "^11.0.3",
     "@photox/shared-config": "workspace:*",
     "pgvector": "0.2.1",

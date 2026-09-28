@@ -1,14 +1,7 @@
 import { Module, OnModuleInit } from '@nestjs/common'
-import { TypeOrmModule } from '@nestjs/typeorm'
-import {
-  Asset,
-  AssetThumbnail,
-  Face,
-  FileRecord,
-  LocalStorageService,
-  Person,
-  SharedDatabaseModule,
-} from '@photox/data-access'
+import { JwtModule } from '@nestjs/jwt'
+import { loadAuthEnv } from '@photox/shared-auth'
+import { LocalStorageService } from '@photox/shared-config'
 import { BullMqService } from './bullmq.service'
 import { ThumbnailProcessor } from './thumbnail.processor'
 import { VideoProcessor } from './video.processor'
@@ -20,15 +13,20 @@ import { FaceProcessor } from './face.processor'
 import { FaceClusterService } from './face.cluster'
 import { CleanupProcessor } from './cleanup.processor'
 import { CleanupOrphansProcessor } from './cleanup-orphans.processor'
+import { CoreClient } from '../core/core-client.service'
 
 @Module({
   imports: [
-    SharedDatabaseModule.forRoot(),
-    TypeOrmModule.forFeature([FileRecord, Asset, AssetThumbnail, Face, Person]),
+    // ponytail: registerAsync (not register) — defers loadAuthEnv() until ConfigModule has
+    // loaded root .env; matches apps/core's auth/users modules
+    JwtModule.registerAsync({
+      useFactory: () => ({ secret: loadAuthEnv().AUTH_TOKEN_SECRET }),
+    }),
   ],
   providers: [
     BullMqService,
     LocalStorageService,
+    CoreClient,
     ThumbnailProcessor,
     VideoProcessor,
     MetadataProcessor,

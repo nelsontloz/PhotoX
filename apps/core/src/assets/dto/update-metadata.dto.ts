@@ -132,7 +132,7 @@ export class UpdateMetadataDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsNumber()
-  @Min(0)
+  // no @Min(0): GPS altitude is legitimately negative (below sea level)
   altitude?: number
 
   @ApiProperty({ required: false })

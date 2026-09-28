@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Asset } from '@photox/shared-types'
 import { listAlbumAssets, addAssetsToAlbum, removeAssetFromAlbum } from '../api/albums'
 
@@ -7,10 +7,12 @@ export function useAlbumAssets(albumId: string, pageSize = 60) {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const loadedOnceRef = useRef(false)
 
   const fetchAssets = async () => {
     try {
-      setLoading(true)
+      // ponytail: only the first load blocks the page; refreshes update in place so the viewer isn't unmounted
+      if (!loadedOnceRef.current) setLoading(true)
       setError(null)
       const res = await listAlbumAssets(albumId, { limit: pageSize })
       setAssets(res.items)
@@ -18,6 +20,7 @@ export function useAlbumAssets(albumId: string, pageSize = 60) {
     } catch (err) {
       setError((err as Error).message ?? 'Failed to load album assets')
     } finally {
+      loadedOnceRef.current = true
       setLoading(false)
     }
   }

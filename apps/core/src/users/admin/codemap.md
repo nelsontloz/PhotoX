@@ -11,7 +11,7 @@ Admin-only, paginated listing of user accounts for the web admin console: `GET /
 - `AdminService.listUsers` builds a `SelectQueryBuilder<User>` selecting only `id, displayName, email, role, createdAt`, applies filters, sorts, then `take(limit).skip(offset)` with `getManyAndCount()`.
 - `AdminService.parseSort(sort)` static helper parses `field:dir` (e.g. `createdAt:desc`), defaulting to `{ createdAt, desc }`. The field is interpolated directly into `orderBy(\`u.${field}\`)`; this is safe only because `ListAdminUsersQueryDto` regex-whitelists the four allowed fields.
 - Filters: `q` → `(u.email ILIKE :like OR u.displayName ILIKE :like)` with `%q%`; `role` → exact match. Controller defaults `limit=20`, `offset=0`.
-- Response `AdminUserListResponse` (`{ items, total, limit, offset }`); each `AdminUserRow` carries `assetCount: 0` and `bytesUsed: 0` placeholders. Real per-user counts come from `GET /api/v1/admin/users/asset-stats` in `src/admin/`, which the client combines with this list.
+- Response `AdminUserListResponse` (`{ items, total, limit, offset }`); each `AdminUserRow` carries `assetCount: 0` and `bytesUsed: 0` hardcoded placeholders (the web table renders `bytesUsed` as `0 B`). Real per-user counts exist at `GET /api/v1/admin/users/asset-stats` (in `src/admin/`) and bytes at `GET /api/v1/admin/files/storage-stats`, but no client calls either today — test-only.
 
 ## Flow
 

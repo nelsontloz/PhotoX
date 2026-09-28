@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-The single admin query shape: `UserIdsQueryDto` for `GET api/v1/admin/files/storage-stats`.
+The single admin query shape: `UserIdsQueryDto` for `GET api/v1/admin/files/storage-stats` (`DELETE /api/v1/admin/files/:fileId` takes a path param only).
 
 ## Design
 

@@ -8,6 +8,9 @@ import {
   IsDateString,
   IsBoolean,
   IsUUID,
+  IsArray,
+  ArrayMinSize,
+  ArrayMaxSize,
 } from 'class-validator'
 import { Transform, Type } from 'class-transformer'
 
@@ -16,6 +19,22 @@ export class ListAssetsQueryDto {
   @IsUUID()
   @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000', required: false })
   userId?: string
+
+  @IsOptional()
+  @Transform(({ value }): string[] =>
+    typeof value === 'string' ? value.split(',').filter(Boolean) : value,
+  )
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsUUID('4', { each: true })
+  @ApiProperty({
+    required: false,
+    type: String,
+    example: 'uuid1,uuid2',
+    description: 'Comma-separated asset IDs. Maximum 100.',
+  })
+  ids?: string[]
 
   @IsOptional()
   @Type(() => Number)

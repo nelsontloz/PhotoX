@@ -4,7 +4,7 @@ import { Readable } from 'stream'
 import { copyFile, mkdir, rename, stat, unlink } from 'fs/promises'
 import { dirname, resolve, sep } from 'path'
 import { randomUUID } from 'crypto'
-import { loadEnv } from '@photox/shared-config'
+import { loadEnv } from './env'
 
 @Injectable()
 export class LocalStorageService {
@@ -52,6 +52,15 @@ export class LocalStorageService {
 
   async stat(key: string) {
     return stat(this.pathFor(key))
+  }
+
+  async exists(key: string): Promise<boolean> {
+    try {
+      await stat(this.pathFor(key))
+      return true
+    } catch {
+      return false
+    }
   }
 
   async delete(key: string): Promise<void> {

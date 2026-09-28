@@ -50,12 +50,4 @@ export class SharesController {
     const userId = (req.user as { id: string }).id ?? queryUserId
     await this.shares.revoke(userId, id)
   }
-
-  @Get('public/:token')
-  @ApiOperation({ summary: 'Get a shared asset by public token' })
-  @ApiResponse({ status: 200, description: 'Shared asset info' })
-  @ApiResponse({ status: 404, description: 'Share not found' })
-  async getByToken(@Param('token') token: string) {
-    return this.shares.getByToken(token)
-  }
 }

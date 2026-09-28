@@ -25,11 +25,12 @@ export class FacesQueryController {
   async list(
     @Query('userId') queryUserId: string | undefined,
     @Query('includeEmbeddings') includeEmbeddings: string | undefined,
+    @Query('excludeTrashed') excludeTrashed: string | undefined,
     @Req() req: Request,
   ) {
     const userId = (req.user as { id: string }).id ?? queryUserId
     const wantEmbeddings = includeEmbeddings === 'true'
-    const items = await this.faces.listForUser(userId, wantEmbeddings)
+    const items = await this.faces.listForUser(userId, wantEmbeddings, excludeTrashed === 'true')
     return { items }
   }
 

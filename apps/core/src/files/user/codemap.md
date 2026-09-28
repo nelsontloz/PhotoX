@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-The upload and file-bytes surface for signed-in users: multipart upload (which also creates the `Asset` and fans out processing jobs), file metadata/list, Range-capable streaming, download, and delete. Routes: `api/v1/files` for collection ops and `api/v1/files/:fileId/...` for item ops.
+The upload and file-bytes surface for signed-in users: multipart upload (which also creates the `Asset` and fans out processing jobs), worker file registration, file metadata/list, Range-capable streaming, download, and delete. Routes: `api/v1/files` for collection ops and `api/v1/files/:fileId/...` for item ops.
 
 ## Design
 
@@ -13,6 +13,7 @@ The upload and file-bytes surface for signed-in users: multipart upload (which a
   3. On dedupe hit (`created === false`) it looks up an existing asset by `fileId`; if found → 409 `{ existingAssetId, existingFileId }`.
   4. `AssetsService.create(...)` (fileId, kind, title, description, takenAt, mimeType, sizeBytes, originalName).
   5. Enqueue: `enqueueThumbnails` (jobId `thumb-<assetId>-<size>` for sm/md/lg/xl, 3 attempts exponential backoff — awaited), `process-metadata` and (photo) `process-faces`, or `enqueueVideo` (jobId `video-<assetId>`) for videos (fire-and-forget `void`).
+- `POST /register` (`RegisterFileBodyDto`) is the worker path: bytes are already on disk (`storageKey` is **never** client-supplied), core recomputes it via `storage.buildKey(kind, sub, id, ext)`, dedupes on `(userId, checksumSha256, purpose[, assetId])` → 200 existing row, checks the id isn't taken → 409, asserts `assetId` ownership → 404, requires the bytes to exist → 422, else 201 with the `FileRecord`. No enqueue, no status writes.
 - Ownership: `getOne`, `download`, `delete` compare `record.userId` to the request user and return 404 on mismatch (delete silently returns for missing/wrong-owner rows — idempotent 204).
 - `stream(fileId, range?)` deliberately takes **no userId**: `GET /:fileId/stream` is a public capability URL (the open-route table matches exactly `GET /api/v1/files/:fileId/stream`), used for `<video>` playback. It stats the storage key and opens a ranged read stream.
 - Range handling lives in the controller: invalid/unsatisfiable range → `416` with `Content-Range: bytes */<total>`; valid → `206` with `Content-Range`, `Content-Length`, `Accept-Ranges: bytes`; no header → `200` with full `Content-Length` + `Content-Disposition: attachment`. Stream errors destroy the response; response `close` destroys the read stream (no leaked fds).
@@ -23,12 +24,13 @@ The upload and file-bytes surface for signed-in users: multipart upload (which a
 - Browser: `POST /api/v1/files` (multipart) → file stored → asset created → response is the `AssetResponse`; jobs run asynchronously in worker-service against the same DB/volume.
 - Playback: `GET api/v1/files/:fileId/stream` (open route) with or without `Range` → 200/206/416 as above.
 - Download: `GET api/v1/files/:fileId/download` (JWT + owner) → stream with attachment filename.
-- Cleanup: after the asset is purged (`DELETE api/v1/assets/trashed/:id` returns `{fileIds}`), the worker's `cleanup-asset` consumer deletes the storage objects; `DELETE api/v1/files/:fileId` is the direct per-file path.
+- Worker registration: `POST api/v1/files/register` — the worker saved the derivative to disk, core records the row and returns it (checksum dedupe may return an existing row, in which case the worker deletes its now-unreferenced copy).
+- Cleanup: after the asset is purged (`DELETE api/v1/assets/trashed/:id` returns `{fileIds}`), the worker's `cleanup-asset` consumer proxies to admin `DELETE api/v1/admin/files/:fileId` (blob + row); `DELETE api/v1/files/:fileId` is the direct per-file path.
 - `GET api/v1/files` exposes uploaded originals for the file-manager view; derivative rows never appear in this list.
 
 ## Integration
 
 - `UserFilesModule` imports `TypeOrmModule.forFeature([FileRecord])`, `StorageModule`, and `AssetsModule`; exports `UserFilesService`, which `SharesModule` reuses for public streaming.
 - Queue contracts: `BullMqService.enqueueThumbnails/enqueueVideo` in `apps/core/src/queue/bullmq.service.ts`; consumers live in `apps/worker-service/src/queue`.
-- Depends on `LocalStorageService` (shared with worker-service through the `storage-data` volume) and `toFileRecordResponse`/`parseRangeHeader` from the parent `files/` folder.
+- Depends on `LocalStorageService` (from `@photox/shared-config`, shared with worker-service through the `storage-data` volume) and `toFileRecordResponse`/`parseRangeHeader` from the parent `files/` folder.
 - Every route except `GET :fileId/stream` requires a Bearer JWT (`JwtAuthGuard`); uploads and Range/206/416 streams are handled directly, never buffered.

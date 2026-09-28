@@ -13,7 +13,6 @@ import {
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Request } from 'express'
 import { AssetsService } from './assets.service'
-import { CreateAssetDto } from './dto/create-asset.dto'
 import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
 import { UpdateMetadataDto } from './dto/update-metadata.dto'
@@ -24,29 +23,12 @@ import { TrashAssetsDto } from './dto/trash-assets.dto'
 export class AssetsController {
   constructor(private readonly assets: AssetsService) {}
 
-  @Post()
-  @ApiOperation({ summary: 'Create an asset from an uploaded fileId' })
-  @ApiResponse({ status: 201, description: 'Asset created' })
-  @ApiResponse({ status: 400, description: 'Invalid request body' })
-  async create(@Body() dto: CreateAssetDto, @Req() req: Request) {
-    const userId = (req.user as { id: string }).id ?? dto.userId
-    return this.assets.create(userId, dto)
-  }
-
   @Get()
   @ApiOperation({ summary: 'List assets with filters' })
   @ApiResponse({ status: 200, description: 'Paginated asset list' })
   async list(@Query() q: ListAssetsQueryDto, @Req() req: Request) {
     const userId = (req.user as { id: string }).id ?? q.userId
     return this.assets.list(userId, q)
-  }
-
-  @Get('by-file/:fileId')
-  @ApiOperation({ summary: 'Find an asset by fileId' })
-  @ApiResponse({ status: 200 })
-  @ApiResponse({ status: 404, description: 'Asset not found for this fileId' })
-  async getByFileId(@Param('fileId') fileId: string, @Req() req: Request) {
-    return this.assets.getByFileId(fileId, (req.user as { id: string }).id)
   }
 
   @Patch(':id/metadata')

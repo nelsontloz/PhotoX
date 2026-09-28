@@ -4,8 +4,9 @@
 
 Bootstrap layer of worker-service: define the Nest module graph (`app.module.ts`) and start the HTTP
 listener (`main.ts`). No business logic lives here — everything delegates to `queue/` (BullMQ
-consumers) and `health/` (liveness). Intentionally bare per the repo's worker convention: no global
-pipes, filters, middleware, or Swagger because nothing user-facing is served.
+consumers), `core/` (`CoreClient`: all DB reads/writes as core HTTP calls), and `health/`
+(liveness). Intentionally bare per the repo's worker convention: no global pipes, filters,
+middleware, or Swagger because nothing user-facing is served.
 
 ## Design
 
@@ -21,6 +22,8 @@ pipes, filters, middleware, or Swagger because nothing user-facing is served.
   workers); `FaceDetectorService.onModuleInit()` lazy-imports tfjs-node/human, and
   `FaceEmbedderService` lazy-loads onnxruntime-node on first embed. "App started" therefore means
   consumers are listening; face models load on first face job.
+- `QueueModule` registers `JwtModule.registerAsync` with `loadAuthEnv().AUTH_TOKEN_SECRET` — the
+  worker mints delegated per-job tokens in `CoreClient` (never verifies incoming tokens).
 - Deliberately absent vs `apps/core/src/main.ts`: `ValidationPipe`, `HttpExceptionFilter`,
   `requestIdMiddleware`, Swagger `/docs` + `/docs-json`. Keep the divergence intentional.
 
@@ -34,9 +37,10 @@ pipes, filters, middleware, or Swagger because nothing user-facing is served.
 
 ## Integration
 
-- Imports only `./queue/queue.module` and `./health/health.module`; shared logic comes from
-  `@photox/data-access` (entities, `SharedDatabaseModule`, `LocalStorageService`) and
-  `@photox/shared-config` (`loadEnv()` for `STORAGE_DIR`).
+- Imports only `./queue/queue.module` and `./health/health.module`; DB access is indirect through
+  `./core/core-client.service.ts` (`CoreClient`), which signs per-job delegated JWTs with
+  `@photox/shared-auth` and calls core at `CORE_URL`. `LocalStorageService` and `loadEnv()` come from
+  `@photox/shared-config`; wire types from `@photox/shared-types`. No `@photox/data-access` import.
 - Counterpart of `apps/core/src/app.module.ts` (full HTTP conventions) and the consumer side of
   `apps/core/src/queue/` (publisher).
 - Job payload shapes, retry/dedup semantics, ffmpeg invocation, and the face pipeline are documented

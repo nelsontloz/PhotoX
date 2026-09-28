@@ -12,14 +12,8 @@ import { JwtModule, JwtService } from '@nestjs/jwt'
 import type { Queue } from 'bullmq'
 import type { Express } from 'express'
 import { DataSource, type Repository } from 'typeorm'
-import {
-  Asset,
-  AssetThumbnail,
-  Face,
-  FileRecord,
-  LocalStorageService,
-  Person,
-} from '@photox/data-access'
+import { Asset, AssetThumbnail, Face, FileRecord, Person } from '@photox/data-access'
+import { LocalStorageService } from '@photox/shared-config'
 import { User } from '../../src/users/entities/user.entity'
 import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
 import { Album } from '../../src/albums/entities/album.entity'
@@ -34,6 +28,7 @@ import { TrashModule } from '../../src/trash/trash.module'
 import { UserFilesModule } from '../../src/files/user/user-files.module'
 import { StorageModule } from '../../src/files/storage/storage.module'
 import { AdminModule } from '../../src/admin/admin.module'
+import { AdminModule as FilesAdminModule } from '../../src/files/admin/admin.module'
 import { UsersModule } from '../../src/users/users.module'
 import { AuthModule } from '../../src/auth/auth.module'
 import { BullMqModule } from '../../src/queue/bullmq.module'
@@ -125,6 +120,7 @@ export async function createApiTestApp(opts?: {
         TrashModule,
         UserFilesModule,
         AdminModule,
+        FilesAdminModule,
       ],
     })
 

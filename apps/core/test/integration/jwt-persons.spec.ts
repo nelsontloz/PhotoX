@@ -85,6 +85,25 @@ describe('persons JWT identity', () => {
     expect(renameBody.name).toBe('Ada')
   })
 
+  it('rejects cross-user rename and person assets', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const { person } = await seedPersonWithFace(a.id)
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+
+    const crossPatch = await request(apiServer(t))
+      .patch(`/api/v1/persons/${person.id}`)
+      .set(t.authHeader(tokenB))
+      .send({ name: 'Hijack' })
+    expect(crossPatch.status).toBe(404)
+    expect((await t.personRepo.findOneByOrFail({ id: person.id })).name).toBeNull()
+
+    const crossAssets = await request(apiServer(t))
+      .get(`/api/v1/persons/${person.id}/assets`)
+      .set(t.authHeader(tokenB))
+    expect(crossAssets.status).toBe(404)
+  })
+
   it('gets person assets without userId', async () => {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })
@@ -96,22 +115,6 @@ describe('persons JWT identity', () => {
     const body = res.body as unknown as { personId: string; total: number }
     expect(body.personId).toBe(person.id)
     expect(body.total).toBe(1)
-  })
-
-  it('reassigns faces without userId', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const first = await seedPersonWithFace(user.id)
-    const second = await t.personRepo.save(
-      t.personRepo.create({ userId: user.id, name: null, clusterLabel: `c-${randomUUID()}` }),
-    )
-    const res = await request(apiServer(t))
-      .post(`/api/v1/persons/${first.person.id}/reassign`)
-      .set(t.authHeader(token))
-      .send({ toPersonId: second.id, faceIds: [first.face.id] })
-    expect(res.status).toBe(200)
-    const body = res.body as unknown as { moved: number }
-    expect(body.moved).toBe(1)
   })
 
   it('queues cluster without userId', async () => {
@@ -133,5 +136,182 @@ describe('persons JWT identity', () => {
       .get('/api/v1/persons')
       .set({ Authorization: 'Bearer not-a-token' })
     expect(res.status).toBe(401)
+  })
+
+  it.each([
+    ['post', '/api/v1/persons/cluster'],
+    ['post', '/api/v1/persons/apply-clusters', { creates: [], attaches: [] }],
+    ['get', `/api/v1/persons/${randomUUID()}`],
+    ['patch', `/api/v1/persons/${randomUUID()}`, { name: 'Nope' }],
+    ['get', `/api/v1/persons/${randomUUID()}/assets`],
+  ] as ['get' | 'post' | 'patch', string, object?][])(
+    'returns 401 for %s %s without token',
+    async (method, path, body) => {
+      const agent = request(apiServer(t))
+      const req = agent[method](path)
+      const res = await (body ? req.send(body) : req)
+      expect(res.status).toBe(401)
+    },
+  )
+
+  it('returns 404 for an unknown person id', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const res = await request(apiServer(t))
+      .get(`/api/v1/persons/${randomUUID()}`)
+      .set(t.authHeader(token))
+    expect(res.status).toBe(404)
+  })
+
+  async function seedFace(userId: string) {
+    const file = await seedFile(t, userId)
+    const asset = await seedAsset(t, userId, file.id)
+    const face = await t.faceRepo.save(
+      t.faceRepo.create({
+        assetId: asset.id,
+        userId,
+        box: { x: 1, y: 1, w: 10, h: 10 },
+        confidence: 0.9,
+        embedding: [0.1, 0.2, 0.3],
+      }),
+    )
+    return { asset, face }
+  }
+
+  it('applies a cluster plan with creates, attaches and covers', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const createFaceA = await seedFace(user.id)
+    const createFaceB = await seedFace(user.id)
+    const existing = await seedPersonWithFace(user.id)
+    const attachFace = await seedFace(user.id)
+
+    const res = await request(apiServer(t))
+      .post('/api/v1/persons/apply-clusters')
+      .set(t.authHeader(token))
+      .send({
+        creates: [
+          {
+            clusterLabel: 'cluster-new',
+            faceIds: [createFaceA.face.id, createFaceB.face.id],
+            coverFaceId: createFaceA.face.id,
+          },
+        ],
+        attaches: [
+          {
+            personId: existing.person.id,
+            faceIds: [attachFace.face.id],
+            coverFaceId: attachFace.face.id,
+          },
+        ],
+      })
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ created: 1, assigned: 3 })
+
+    const created = await t.personRepo.findOneByOrFail({ clusterLabel: 'cluster-new' })
+    expect(created.userId).toBe(user.id)
+    expect(created.name).toBeNull()
+    expect(created.coverFaceId).toBe(createFaceA.face.id)
+    expect(created.faceCount).toBe(2)
+    expect((await t.faceRepo.findOneByOrFail({ id: createFaceA.face.id })).personId).toBe(
+      created.id,
+    )
+    expect((await t.faceRepo.findOneByOrFail({ id: createFaceB.face.id })).personId).toBe(
+      created.id,
+    )
+    expect((await t.faceRepo.findOneByOrFail({ id: attachFace.face.id })).personId).toBe(
+      existing.person.id,
+    )
+    const existingUpdated = await t.personRepo.findOneByOrFail({ id: existing.person.id })
+    expect(existingUpdated.coverFaceId).toBe(attachFace.face.id)
+    expect(existingUpdated.faceCount).toBe(2)
+  })
+
+  it('404s a cluster plan referencing cross-user faces or persons without mutating', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    const faceA = await seedFace(a.id)
+    const { person: personA } = await seedPersonWithFace(a.id)
+    const faceB = await seedFace(b.id)
+
+    const foreignFace = await request(apiServer(t))
+      .post('/api/v1/persons/apply-clusters')
+      .set(t.authHeader(tokenB))
+      .send({ creates: [{ clusterLabel: 'x', faceIds: [faceA.face.id] }], attaches: [] })
+    expect(foreignFace.status).toBe(404)
+
+    const foreignPerson = await request(apiServer(t))
+      .post('/api/v1/persons/apply-clusters')
+      .set(t.authHeader(tokenB))
+      .send({ creates: [], attaches: [{ personId: personA.id, faceIds: [faceB.face.id] }] })
+    expect(foreignPerson.status).toBe(404)
+
+    expect(await t.personRepo.count()).toBe(1)
+    expect((await t.faceRepo.findOneByOrFail({ id: faceA.face.id })).personId).toBeNull()
+    expect((await t.faceRepo.findOneByOrFail({ id: faceB.face.id })).personId).toBeNull()
+  })
+
+  it('400s a cluster plan whose coverFaceId is not in its faceIds', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const first = await seedFace(user.id)
+    const second = await seedFace(user.id)
+    const res = await request(apiServer(t))
+      .post('/api/v1/persons/apply-clusters')
+      .set(t.authHeader(token))
+      .send({
+        creates: [{ clusterLabel: 'x', faceIds: [first.face.id], coverFaceId: second.face.id }],
+        attaches: [],
+      })
+    expect(res.status).toBe(400)
+    expect(await t.personRepo.count()).toBe(0)
+    expect((await t.faceRepo.findOneByOrFail({ id: first.face.id })).personId).toBeNull()
+  })
+
+  it('refreshes both counts when apply-clusters moves a face off its current person', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const from = await seedPersonWithFace(user.id)
+    const to = await t.personRepo.save(
+      t.personRepo.create({ userId: user.id, name: null, clusterLabel: `c-${randomUUID()}` }),
+    )
+    const res = await request(apiServer(t))
+      .post('/api/v1/persons/apply-clusters')
+      .set(t.authHeader(token))
+      .send({ creates: [], attaches: [{ personId: to.id, faceIds: [from.face.id] }] })
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ created: 0, assigned: 1 })
+    expect((await t.faceRepo.findOneByOrFail({ id: from.face.id })).personId).toBe(to.id)
+    expect((await t.personRepo.findOneByOrFail({ id: from.person.id })).faceCount).toBe(0)
+    expect((await t.personRepo.findOneByOrFail({ id: to.id })).faceCount).toBe(1)
+  })
+
+  it('rejects missing or garbage cluster payloads with 400 and accepts empty arrays', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const { face } = await seedFace(user.id)
+
+    const missing = await request(apiServer(t))
+      .post('/api/v1/persons/apply-clusters')
+      .set(t.authHeader(token))
+      .send({})
+    expect(missing.status).toBe(400)
+
+    const garbage = await request(apiServer(t))
+      .post('/api/v1/persons/apply-clusters')
+      .set(t.authHeader(token))
+      .send({
+        creates: [{ clusterLabel: 'x', faceIds: [face.id], junk: true }],
+        attaches: [],
+      })
+    expect(garbage.status).toBe(400)
+
+    const empty = await request(apiServer(t))
+      .post('/api/v1/persons/apply-clusters')
+      .set(t.authHeader(token))
+      .send({ creates: [], attaches: [] })
+    expect(empty.status).toBe(200)
+    expect(empty.body).toEqual({ created: 0, assigned: 0 })
   })
 })

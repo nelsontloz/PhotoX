@@ -1,4 +1,5 @@
 import request from 'supertest'
+import { JwtService } from '@nestjs/jwt'
 import { closeTestApp, createApiTestApp, resetDb, apiServer } from './helpers'
 import type { ApiTestApp } from './helpers'
 
@@ -177,6 +178,59 @@ describe('auth HTTP surface', () => {
 
       const anonymous = await request(apiServer(t)).get('/api/v1/assets')
       expect(anonymous.status).toBe(401)
+    })
+  })
+
+  describe('expiry and identity spoofing', () => {
+    const signExpired = (secondsAgo: number) =>
+      t.app.get(JwtService).sign(
+        {
+          sub: '22222222-2222-4222-8222-222222222222',
+          email: 'expired@example.com',
+          role: 'user',
+        },
+        { expiresIn: -secondsAgo },
+      )
+
+    it('accepts a token expired within AUTH_CLOCK_TOLERANCE_SEC (60s default)', async () => {
+      const res = await request(apiServer(t))
+        .get('/api/v1/assets')
+        .set(t.authHeader(signExpired(30)))
+      expect(res.status).toBe(200)
+    })
+
+    it('returns 401 for a token expired beyond the clock tolerance', async () => {
+      const res = await request(apiServer(t))
+        .get('/api/v1/assets')
+        .set(t.authHeader(signExpired(120)))
+      expect(res.status).toBe(401)
+    })
+
+    it('takes identity from the JWT when x-user-* headers are spoofed', async () => {
+      const registered = await registerUser('spoof@example.com')
+      expect(registered.status).toBe(201)
+      const { accessToken, user } = registered.body as unknown as AuthBody
+
+      const res = await request(apiServer(t))
+        .post('/api/v1/albums')
+        .set(t.authHeader(accessToken))
+        .set({
+          'x-user-id': '33333333-3333-4333-8333-333333333333',
+          'x-user-role': 'admin',
+        })
+        .send({ name: 'Spoofed' })
+      expect(res.status).toBe(201)
+      const album = res.body as unknown as { userId: string; name: string }
+      expect(album.userId).toBe(user.id)
+      expect(album.name).toBe('Spoofed')
+    })
+
+    it('returns 401 for spoofed x-user-* headers without a token', async () => {
+      const res = await request(apiServer(t)).get('/api/v1/albums').set({
+        'x-user-id': '33333333-3333-4333-8333-333333333333',
+        'x-user-role': 'admin',
+      })
+      expect(res.status).toBe(401)
     })
   })
 })

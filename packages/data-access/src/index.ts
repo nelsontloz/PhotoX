@@ -1,7 +1,6 @@
 export { FileRecord } from './entities/file-record.entity'
 export { Asset } from './entities/asset.entity'
 export { AssetThumbnail } from './entities/asset-thumbnail.entity'
-export { Face, FACE_EMBEDDING_DIM } from './entities/face.entity'
+export { Face } from './entities/face.entity'
 export { Person } from './entities/person.entity'
 export { SharedDatabaseModule } from './database.module'
-export { LocalStorageService } from './storage/local-storage.service'

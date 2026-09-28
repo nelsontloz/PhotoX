@@ -20,6 +20,6 @@
 ## Integration
 
 - Inbound: direct HTTP on `API_PORT` (3000; no published Docker port). No CORS; the global `JwtAuthGuard` verifies Bearer HS256 tokens on every route outside the open table.
-- Shared state: single Postgres DB `photox`, shared Redis, `STORAGE_DIR` local disk (both core and worker resolve it from the workspace root).
+- Shared state: single Postgres DB `photox` (core-only), shared Redis, `STORAGE_DIR` local disk (both core and worker resolve it from the workspace root).
 - `pnpm verify` (lint && test && typecheck && build) is the CI gate; `apps/core` is a compose service.
 - Core's Swagger at `docs` / `docs-json` is internal-only in compose (port not published); a reverse proxy can expose it when needed.

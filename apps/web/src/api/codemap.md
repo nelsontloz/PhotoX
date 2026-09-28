@@ -9,7 +9,7 @@ Typed HTTP boundary between the SPA and the core API. One Axios instance plus on
 - `client.ts` exports `api = axios.create({ baseURL: '/api', timeout: 10_000 })`.
 - Request interceptor attaches `Authorization: Bearer <accessToken>` read from `useAuthStore.getState()`; nothing is attached when unauthenticated.
 - Response interceptor refreshes on 401: skips URLs containing `/v1/auth/`, retries each request at most once via an `X-Auth-Retry` header. It `await`s `useAuthStore.getState().refresh()` and replays the original request with the new token; if there is still no token it rejects.
-- Modules mirror core route groups under `/v1/`: `auth.ts` (login/register/refresh/logout), `assets.ts`, `albums.ts`, `faces.ts`, `persons.ts`, `shares.ts`, `admin.ts`.
+- Modules mirror core route groups under `/v1/`: `auth.ts` (login/register/refresh/logout), `assets.ts`, `albums.ts`, `faces.ts`, `persons.ts`, `shares.ts`, `admin.ts`. (`persons.reassignFaces` — batch `POST /v1/persons/:id/reassign` — is unused dead code; single-face edits go through `faces.assignFace`.)
 - Conventions: types come from `@photox/shared-types`; functions `return data` (no AxiosResponse leakage); list params passed as an object `params`; reads accept optional `AbortSignal`; blob endpoints use `responseType: 'blob'`.
 - Timeout overrides for long calls: `downloadFile` 300s, `uploadFile` 3_600_000ms (1h) with `onUploadProgress` → `onProgress(pct)`.
 - URL builders (no request): `getVideoStreamUrl(fileId, userId)` → `/api/v1/files/:id/stream?userId=...` for `<video src>` (browser can't send headers; the stream route is in the open-route table, and core ignores the `userId` param), `getShareUrl(token)` → `${origin}/share/:token`.

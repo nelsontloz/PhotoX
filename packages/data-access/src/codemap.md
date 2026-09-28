@@ -4,13 +4,15 @@
 
 The package entry point and Nest wiring. `index.ts` is the public barrel through which
 every consumer imports; `database.module.ts` builds the global Postgres connection from
-`loadEnv()`; subfolders own entities (`entities/`) and disk access (`storage/`).
+`loadEnv()`; the `entities/` subfolder owns the entity classes. Storage and
+`FACE_EMBEDDING_DIM` moved out: `LocalStorageService` now lives in `@photox/shared-config`,
+the embedding-dim constant in `@photox/shared-types`.
 
 ## Design
 
-`src/index.ts` exports exactly `FileRecord`, `Asset`, `AssetThumbnail`, `Face`,
-`FACE_EMBEDDING_DIM`, `Person`, `SharedDatabaseModule`, `LocalStorageService`. Entity
-classes double as both TypeORM metadata and the type used in repositories.
+`src/index.ts` exports exactly `FileRecord`, `Asset`, `AssetThumbnail`, `Face`, `Person`, and
+`SharedDatabaseModule`. Entity classes double as both TypeORM metadata and the type used in
+repositories.
 
 `SharedDatabaseModule` is a `@Global()` Nest module whose static `forRoot()` returns a
 `DynamicModule`:
@@ -28,16 +30,15 @@ classes double as both TypeORM metadata and the type used in repositories.
 ## Flow
 
 `forRoot()` is invoked once per app at module-definition time, and `loadEnv()` validates
-`process.env` right then, so a bad env fails fast during Nest bootstrap. Apps then declare
-their own `TypeOrmModule.forFeature([...])` (core per domain module; worker-service all
-five in `queue.module.ts`), and the shared `DataSource` is available process-wide via the
-`@Global` export.
+`process.env` right then, so a bad env fails fast during Nest bootstrap. Core then declares
+its own `TypeOrmModule.forFeature([...])` per domain module, and the shared `DataSource` is
+available process-wide via the `@Global` export. The worker-service boots without any
+TypeORM/DataSource at all — its tables are reached only over core HTTP.
 
 ## Integration
 
 - `apps/core/src/database/database.module.ts` composes `SharedDatabaseModule.forRoot()`'s
   imports with its `VECTOR_INIT` provider (pgvector extension + HNSW index bootstrap).
-- `apps/worker-service/src/queue/queue.module.ts` uses `forRoot()` directly.
-- Test helpers (`apps/core/test/integration/helpers.ts`,
-  `apps/worker-service/test/integration/helpers.ts`) import entity classes and the storage
-  service to seed/verify against throwaway Postgres + Redis containers.
+- Core test helpers (`apps/core/test/integration/helpers.ts`) import entity classes to
+  seed/verify against throwaway Postgres + Redis containers; worker integration tests no
+  longer touch Postgres.

@@ -1,15 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
 import sharp from 'sharp'
-import type { Job } from 'bullmq'
+import { UnrecoverableError, type Job } from 'bullmq'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { randomUUID, createHash } from 'crypto'
 import { copyFile, unlink, writeFile } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
 import { assertOwnership, parseJobData, thumbnailJobSchema, type ThumbnailJob } from './job-schemas'
-import { Asset, AssetThumbnail, FileRecord, LocalStorageService } from '@photox/data-access'
+import { CoreClient } from '../core/core-client.service'
+import { LocalStorageService } from '@photox/shared-config'
+import type { FileRecord } from '@photox/shared-types'
 import { runFfmpeg } from './ffmpeg'
 
 const STANDARD_SIZES: Record<string, [number, number]> = {
@@ -40,12 +40,7 @@ export class ThumbnailProcessor {
 
   constructor(
     private readonly bullMq: BullMqService,
-    @InjectRepository(FileRecord)
-    private readonly fileRepo: Repository<FileRecord>,
-    @InjectRepository(Asset)
-    private readonly assetRepo: Repository<Asset>,
-    @InjectRepository(AssetThumbnail)
-    private readonly thumbRepo: Repository<AssetThumbnail>,
+    private readonly core: CoreClient,
     private readonly storage: LocalStorageService,
   ) {}
 
@@ -66,12 +61,11 @@ export class ThumbnailProcessor {
 
     this.logger.log(`Processing thumbnail: asset=${assetId}, size=${size}`)
 
-    const record = await this.fileRepo.findOne({ where: { id: fileId } })
-    const asset = await this.assetRepo.findOne({ where: { id: assetId } })
+    const record = await this.core.getFile(userId, fileId)
+    const asset = await this.core.getAsset(userId, assetId)
     assertOwnership({ assetId, fileId, userId }, { record, asset })
 
     try {
-      if (!record) throw new Error(`File not found: ${fileId}`)
       await this.generateThumbnail(record, assetId, size, userId)
 
       this.logger.log(`Thumbnail complete: asset=${assetId}, size=${size}`)
@@ -80,7 +74,7 @@ export class ThumbnailProcessor {
       this.logger.error(`Thumbnail failed: asset=${assetId}, size=${size} — ${message}`)
 
       try {
-        await this.assetRepo.update(assetId, { thumbnailStatus: 'failed' })
+        await this.core.patchMetadata(userId, assetId, { thumbnailStatus: 'failed' })
       } catch (patchErr) {
         const patchMsg = patchErr instanceof Error ? patchErr.message : String(patchErr)
         this.logger.warn(
@@ -115,13 +109,14 @@ export class ThumbnailProcessor {
         // ponytail: thumbnail and metadata jobs race after upload — wait for metadata to land instead of thumbnailing blind (unrotated, frame 0)
         for (let attempt = 0; attempt < 5; attempt++) {
           try {
-            const asset = await this.assetRepo.findOne({ where: { id: assetId } })
-            if (!asset) break
+            const asset = await this.core.getAsset(userId, assetId)
             orientation = asset.orientation ?? null
             durationSeconds = asset.durationSeconds !== null ? Number(asset.durationSeconds) : null
             if (asset.metadataStatus !== 'pending') break
-          } catch {
-            // transient DB error; retry below
+          } catch (err) {
+            // asset is gone (404 → UnrecoverableError) — polling cannot fix it, fail fast
+            if (err instanceof UnrecoverableError) throw err
+            // transient core error; retry below
           }
           if (attempt < 4) {
             await new Promise((r) => setTimeout(r, 1000))
@@ -184,49 +179,34 @@ export class ThumbnailProcessor {
     info: { width: number; height: number },
   ): Promise<void> {
     const checksum = createHash('sha256').update(thumbBuffer).digest('hex')
-    let fileId: string
-    const existing = await this.fileRepo.findOne({
-      where: { userId, checksumSha256: checksum, purpose: 'original' },
-    })
-    if (existing) {
-      fileId = existing.id
-    } else {
-      fileId = randomUUID()
-      const storageKey = this.storage.buildKey('thumbnail', userId, fileId, 'webp')
-      const staging = join(tmpdir(), `thumb-upload-${randomUUID()}.webp`)
-      await writeFile(staging, thumbBuffer)
-      await this.storage.save(storageKey, staging)
-      await this.fileRepo.save(
-        this.fileRepo.create({
-          id: fileId,
-          userId,
-          storageKey,
-          originalName: `thumb-${size}.webp`,
-          mimeType: 'image/webp',
-          sizeBytes: thumbBuffer.length,
-          checksumSha256: checksum,
-          purpose: 'original',
-          assetId: null,
-        }),
-      )
-    }
+    const fileId = randomUUID()
+    const storageKey = this.storage.buildKey('thumbnail', userId, fileId, 'webp')
+    const staging = join(tmpdir(), `thumb-upload-${randomUUID()}.webp`)
+    await writeFile(staging, thumbBuffer)
+    await this.storage.save(storageKey, staging)
 
-    await this.thumbRepo.upsert(
-      [
-        {
-          assetId,
-          size,
-          fileId,
-          width: info.width,
-          height: info.height,
-          bytes: thumbBuffer.length,
-        },
-      ],
-      ['assetId', 'size'],
-    )
+    const saved = await this.core.registerFile(userId, {
+      id: fileId,
+      kind: 'thumbnail',
+      ext: 'webp',
+      checksumSha256: checksum,
+      originalName: `thumb-${size}.webp`,
+      mimeType: 'image/webp',
+      sizeBytes: thumbBuffer.length,
+    })
+    // ponytail: checksum dedupe returned another row's id — this uniquely-keyed copy is unreferenced
+    if (saved.id !== fileId) await this.storage.delete(storageKey).catch(() => undefined)
+
+    await this.core.registerThumbnail(userId, assetId, {
+      size,
+      fileId: saved.id,
+      width: info.width,
+      height: info.height,
+      bytes: thumbBuffer.length,
+    })
 
     try {
-      await this.assetRepo.update(assetId, { thumbnailStatus: 'ready' })
+      await this.core.patchMetadata(userId, assetId, { thumbnailStatus: 'ready' })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       this.logger.warn(`Thumbnail status update failed for asset=${assetId}: ${msg}`)

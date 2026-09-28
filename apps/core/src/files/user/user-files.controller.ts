@@ -2,7 +2,6 @@ import {
   Controller,
   Get,
   Post,
-  Delete,
   Param,
   Query,
   Body,
@@ -10,7 +9,6 @@ import {
   Req,
   UseInterceptors,
   UploadedFile,
-  HttpCode,
   HttpStatus,
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
@@ -21,7 +19,7 @@ import { tmpdir } from 'os'
 import multer from 'multer'
 import { UserFilesService } from './user-files.service'
 import { FileRecordDto } from '../file-record.dto'
-import { FileListResponseDto, ListFilesQueryDto } from './dto/list-files-query.dto'
+import { RegisterFileBodyDto } from './dto/register-file.body.dto'
 import { UploadFileBodyDto } from './dto/upload-file.body.dto'
 import { parseRangeHeader } from '../streaming.util'
 
@@ -58,12 +56,23 @@ export class UserFilesController {
     })
   }
 
-  @Get()
-  @ApiOperation({ summary: "List the authenticated user's files" })
-  @ApiResponse({ status: 200, description: 'Paginated file list', type: FileListResponseDto })
-  async list(@Query() query: ListFilesQueryDto, @Req() req: Request) {
-    const userId = (req.user as { id: string }).id ?? query.userId
-    return this.userFilesService.list(userId, query.limit ?? 20, query.offset ?? 0, query.mimeType)
+  @Post('register')
+  @ApiOperation({ summary: 'Register a file whose bytes a worker already wrote to storage' })
+  @ApiResponse({ status: 201, description: 'File registered' })
+  @ApiResponse({ status: 200, description: 'Existing file returned for the same checksum' })
+  @ApiResponse({ status: 400, description: 'Invalid registration payload' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  @ApiResponse({ status: 409, description: 'File id already exists' })
+  @ApiResponse({ status: 422, description: 'Bytes missing from storage' })
+  async register(
+    @Req() req: Request,
+    @Body() body: RegisterFileBodyDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const userId = (req.user as { id: string }).id
+    const { file, created } = await this.userFilesService.register(userId, body)
+    res.status(created ? HttpStatus.CREATED : HttpStatus.OK)
+    return file
   }
 
   @Get(':fileId/stream')
@@ -156,18 +165,5 @@ export class UserFilesController {
       stream.destroy()
     })
     stream.pipe(res)
-  }
-
-  @Delete(':fileId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete a file (idempotent)' })
-  @ApiResponse({ status: 204, description: 'File deleted' })
-  async delete(
-    @Param('fileId') fileId: string,
-    @Req() req: Request,
-    @Query('userId') queryUserId?: string,
-  ) {
-    const userId = (req.user as { id: string }).id ?? queryUserId
-    await this.userFilesService.delete(userId, fileId)
   }
 }

@@ -1,12 +1,20 @@
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
+import type { RegisterFileInput } from '../../src/core/core-client.service'
 import { FFMPEG_PATH } from '../../src/queue/ffmpeg'
-import { createTestApp, closeTestApp, resetDb, waitForJob, type TestApp } from './helpers'
+import { waitForJob } from './helpers'
+import {
+  closeMediaTestApp,
+  createMediaTestApp,
+  resetMediaTestApp,
+  seedOriginal,
+  type MediaTestApp,
+} from './media-helpers'
 
 const FIXTURE_DIR = mkdtempSync(join(tmpdir(), 'video-thumb-rot-'))
 const LANDSCAPE_PATH = join(FIXTURE_DIR, 'landscape.mp4')
@@ -35,55 +43,36 @@ function makeLandscapeMp4(): Buffer {
 }
 
 describe('VideoThumbnailRotation (integration)', () => {
-  let testApp: TestApp
+  let testApp: MediaTestApp
   let landscapeBuffer: Buffer
 
   beforeAll(async () => {
     landscapeBuffer = makeLandscapeMp4()
-    testApp = await createTestApp()
+    testApp = await createMediaTestApp()
   }, 120_000)
 
   afterAll(async () => {
-    await closeTestApp(testApp)
+    await closeMediaTestApp(testApp)
     rmSync(FIXTURE_DIR, { recursive: true, force: true })
   })
 
-  beforeEach(async () => {
-    await resetDb(testApp)
+  beforeEach(() => {
+    resetMediaTestApp(testApp)
   })
 
-  async function seedVideo(
+  function seedVideo(
     userId: string,
     orientation: number | null,
     metadataStatus: 'pending' | 'ready',
     durationSeconds: number | null,
   ) {
-    const storageKey = testApp.storage.buildKey('original', userId, randomUUID(), 'mp4')
-    await mkdir(dirname(testApp.storage.pathFor(storageKey)), { recursive: true })
-    await writeFile(testApp.storage.pathFor(storageKey), landscapeBuffer)
-    const record = await testApp.fileRepo.save(
-      testApp.fileRepo.create({
-        userId,
-        storageKey,
-        originalName: 'video.mp4',
-        mimeType: 'video/mp4',
-        sizeBytes: landscapeBuffer.length,
-        checksumSha256: createHash('sha256').update(landscapeBuffer).digest('hex'),
-        purpose: 'original',
-        assetId: null,
-      }),
-    )
-    const asset = await testApp.assetRepo.save(
-      testApp.assetRepo.create({
-        userId,
-        kind: 'video',
-        fileId: record.id,
-        orientation,
-        metadataStatus,
-        durationSeconds,
-      }),
-    )
-    return { record, asset }
+    return seedOriginal(testApp, {
+      userId,
+      bytes: landscapeBuffer,
+      mimeType: 'video/mp4',
+      ext: 'mp4',
+      asset: { kind: 'video', orientation, metadataStatus, durationSeconds },
+    })
   }
 
   async function runLgThumbnail(assetId: string, fileId: string, userId: string) {
@@ -91,13 +80,11 @@ describe('VideoThumbnailRotation (integration)', () => {
     const job = await queue.add('thumbnail', { assetId, fileId, size: 'lg', userId })
     const state = await waitForJob(queue, job.id!)
     expect(state).toBe('completed')
-    const updated = await testApp.assetRepo.findOne({ where: { id: assetId } })
-    expect(updated!.thumbnailStatus).toBe('ready')
-    const thumb = await testApp.thumbRepo.findOne({ where: { assetId, size: 'lg' } })
-    expect(thumb).toBeTruthy()
-    const thumbFile = await testApp.fileRepo.findOne({ where: { id: thumb!.fileId } })
-    expect(thumbFile).toBeTruthy()
-    const bytes = await readFile(testApp.storage.pathFor(thumbFile!.storageKey))
+    const updated = testApp.fake.assets.get(assetId)!
+    expect(updated.thumbnailStatus).toBe('ready')
+    const dto = testApp.fake.callsOf('registerFile').at(-1)!.args[0] as RegisterFileInput
+    const key = testApp.storage.buildKey('thumbnail', userId, dto.id, dto.ext)
+    const bytes = await readFile(testApp.storage.pathFor(key))
     return sharp(bytes).metadata()
   }
 
@@ -122,10 +109,51 @@ describe('VideoThumbnailRotation (integration)', () => {
     expect(meta.width).toBeGreaterThan(meta.height)
   })
 
-  it('completes unrotated when metadata stays pending', async () => {
+  it('waits for a pending metadata job and picks up the orientation it writes', async () => {
     const userId = randomUUID()
     const { record, asset } = await seedVideo(userId, null, 'pending', null)
-    const meta = await runLgThumbnail(asset.id, record.id, userId)
-    expect(meta.width).toBeGreaterThan(meta.height)
+
+    const queue = testApp.getQueue('process-thumbnail')
+    const jobPromise = queue
+      .add('thumbnail', { assetId: asset.id, fileId: record.id, size: 'lg', userId })
+      .then((job) => waitForJob(queue, job.id!))
+
+    // flip the fake asset after the first poll so the second poll sees ready + orientation
+    await new Promise((r) => setTimeout(r, 500))
+    Object.assign(testApp.fake.assets.get(asset.id)!, {
+      metadataStatus: 'ready',
+      orientation: 90,
+      durationSeconds: 1,
+    })
+
+    expect(await jobPromise).toBe('completed')
+    expect(testApp.fake.callsOf('getAsset').length).toBeGreaterThanOrEqual(2)
+
+    const dto = testApp.fake.callsOf('registerFile').at(-1)!.args[0] as RegisterFileInput
+    const key = testApp.storage.buildKey('thumbnail', userId, dto.id, dto.ext)
+    const meta = await sharp(await readFile(testApp.storage.pathFor(key))).metadata()
+    expect(meta.height).toBeGreaterThan(meta.width)
+  }, 30_000)
+
+  it('fails fast when the asset disappears during the metadata poll', async () => {
+    const userId = randomUUID()
+    const { record, asset } = await seedVideo(userId, null, 'pending', null)
+
+    const queue = testApp.getQueue('process-thumbnail')
+    const jobPromise = queue
+      .add('thumbnail', { assetId: asset.id, fileId: record.id, size: 'lg', userId })
+      .then((job) => waitForJob(queue, job.id!))
+
+    // wait for the initial getAsset plus the first poll, then remove the asset mid-poll
+    while (testApp.fake.callsOf('getAsset').length < 2) {
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    const deletedAt = Date.now()
+    testApp.fake.assets.delete(asset.id)
+
+    expect(await jobPromise).toBe('failed')
+    // without the fail-fast rethrow the poll burns 4 × 1s and only then fails
+    expect(Date.now() - deletedAt).toBeLessThan(3500)
+    expect(testApp.fake.callsOf('getAsset')).toHaveLength(3)
   }, 30_000)
 })

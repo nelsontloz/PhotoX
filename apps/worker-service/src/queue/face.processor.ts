@@ -1,6 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
 import sharp from 'sharp'
 import type { Job } from 'bullmq'
 import { tmpdir } from 'os'
@@ -10,7 +8,8 @@ import { copyFile, unlink } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
 import { assertOwnership, parseJobData, faceJobSchema, type FaceJob } from './job-schemas'
 import { FaceDetectorService } from './face.detector'
-import { Asset, Face, FileRecord, LocalStorageService, Person } from '@photox/data-access'
+import { CoreClient } from '../core/core-client.service'
+import { LocalStorageService } from '@photox/shared-config'
 
 @Injectable()
 export class FaceProcessor {
@@ -18,14 +17,7 @@ export class FaceProcessor {
 
   constructor(
     private readonly bullMq: BullMqService,
-    @InjectRepository(FileRecord)
-    private readonly fileRepo: Repository<FileRecord>,
-    @InjectRepository(Asset)
-    private readonly assetRepo: Repository<Asset>,
-    @InjectRepository(Face)
-    private readonly faceRepo: Repository<Face>,
-    @InjectRepository(Person)
-    private readonly personRepo: Repository<Person>,
+    private readonly core: CoreClient,
     private readonly storage: LocalStorageService,
     private readonly faceDetector: FaceDetectorService,
   ) {}
@@ -39,23 +31,18 @@ export class FaceProcessor {
   }
 
   private async processJob(job: Job<FaceJob>) {
-    const { assetId, fileId, userId, reason } = parseJobData(
-      faceJobSchema,
-      job.data,
-      'process-faces',
-    )
+    const { assetId, fileId, userId } = parseJobData(faceJobSchema, job.data, 'process-faces')
 
     this.logger.log(`Processing faces: asset=${assetId}`)
 
-    const record = await this.fileRepo.findOne({ where: { id: fileId } })
-    const asset = await this.assetRepo.findOne({ where: { id: assetId } })
+    const record = await this.core.getFile(userId, fileId)
+    const asset = await this.core.getAsset(userId, assetId)
     assertOwnership({ assetId, fileId, userId }, { record, asset })
 
     const filePath = join(tmpdir(), `face-${randomUUID()}`)
     try {
-      await this.assetRepo.update(assetId, { faceStatus: 'pending' })
+      await this.core.patchMetadata(userId, assetId, { faceStatus: 'pending' })
 
-      if (!record) throw new Error(`File not found: ${fileId}`)
       await copyFile(this.storage.pathFor(record.storageKey), filePath)
 
       const metadata = await sharp(filePath).metadata()
@@ -90,26 +77,14 @@ export class FaceProcessor {
           embedding: d.embedding,
         }))
 
-      // ponytail: re-embed resets one asset — legacy-dim rows are incomparable, so delete +
-      // re-save after a successful detect (never before, to avoid data loss on failure)
-      if (reason === 're-embed') await this.clearAssetFaces(assetId, userId)
-
+      // ponytail: unconditional delete + re-save after a successful detect — retry-safe replace
+      // (was re-embed-only, so a retried job duplicated faces); never before detect, to avoid data loss
+      await this.core.deleteAssetFaces(userId, assetId)
       if (faces.length > 0) {
-        await this.faceRepo.save(
-          faces.map((f) =>
-            this.faceRepo.create({
-              assetId,
-              userId,
-              box: f.box,
-              confidence: f.confidence,
-              embedding: f.embedding,
-              personId: null,
-            }),
-          ),
-        )
+        await this.core.registerFaces(userId, assetId, faces)
       }
 
-      await this.assetRepo.update(assetId, {
+      await this.core.patchMetadata(userId, assetId, {
         faceStatus: 'ready',
         faceCount: faces.length,
       })
@@ -141,7 +116,7 @@ export class FaceProcessor {
         this.logger.warn(`Faces skipped (missing model): asset=${assetId} — ${message}`)
 
         try {
-          await this.assetRepo.update(assetId, { faceStatus: 'failed' })
+          await this.core.patchMetadata(userId, assetId, { faceStatus: 'failed' })
         } catch (patchErr) {
           const patchMsg = patchErr instanceof Error ? patchErr.message : String(patchErr)
           this.logger.warn(
@@ -154,7 +129,7 @@ export class FaceProcessor {
       this.logger.error(`Faces failed: asset=${assetId} — ${message}`)
 
       try {
-        await this.assetRepo.update(assetId, { faceStatus: 'failed' })
+        await this.core.patchMetadata(userId, assetId, { faceStatus: 'failed' })
       } catch (patchErr) {
         const patchMsg = patchErr instanceof Error ? patchErr.message : String(patchErr)
         this.logger.warn(`Failed to patch face status to failed for asset=${assetId}: ${patchMsg}`)
@@ -164,33 +139,5 @@ export class FaceProcessor {
     } finally {
       await unlink(filePath).catch(() => undefined)
     }
-  }
-
-  // ponytail: full reset for one asset — stale person links get counts refreshed and dangling
-  // covers nulled; the next cluster run re-links covers (same count query as face.cluster)
-  private async clearAssetFaces(assetId: string, userId: string): Promise<void> {
-    const existing = await this.faceRepo.find({ where: { assetId, userId } })
-    if (existing.length === 0) return
-    const deletedIds = new Set(existing.map((f) => f.id))
-    const personIds = [
-      ...new Set(existing.map((f) => f.personId).filter((p): p is string => p !== null)),
-    ]
-    await this.faceRepo.delete({ assetId, userId })
-    for (const pid of personIds) {
-      const person = await this.personRepo.findOne({ where: { id: pid, userId } })
-      if (person?.coverFaceId && deletedIds.has(person.coverFaceId)) {
-        await this.personRepo.update({ id: pid, userId }, { coverFaceId: null })
-      }
-      const result = await this.faceRepo
-        .createQueryBuilder('f')
-        .innerJoin('assets', 'a', 'a.id = f."assetId"')
-        .select('COUNT(*)')
-        .where('f."personId" = :personId', { personId: pid })
-        .andWhere('f."userId" = :userId', { userId })
-        .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
-        .getRawOne<{ count: string }>()
-      await this.personRepo.update({ id: pid, userId }, { faceCount: Number(result?.count ?? 0) })
-    }
-    this.logger.log(`Re-embed cleared ${existing.length} stale faces: asset=${assetId}`)
   }
 }
