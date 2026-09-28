@@ -301,6 +301,34 @@ describe('Web → Core pact', () => {
       })
   })
 
+  it('GET /api/v1/assets — list assets within a date range', async () => {
+    const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+    const dateFrom = '2026-06-01T00:00:00.000Z'
+    const dateTo = '2026-07-01T00:00:00.000Z'
+    await provider
+      .uponReceiving('a request to list assets within a date range')
+      .withRequest({
+        method: 'GET',
+        path: '/api/v1/assets',
+        query: {
+          limit: '50',
+          offset: '0',
+          dateFrom: MatchersV3.regex(ISO_INSTANT, dateFrom),
+          dateTo: MatchersV3.regex(ISO_INSTANT, dateTo),
+        },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: assetListResponse,
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await listAssets({ limit: 50, offset: 0, dateFrom, dateTo })
+        expect(res.items.length).toBeGreaterThan(0)
+      })
+  })
+
   it('GET /api/v1/assets/layout — compact timeline layout', async () => {
     await provider
       .uponReceiving('a request to get the asset layout')
