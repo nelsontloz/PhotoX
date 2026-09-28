@@ -138,6 +138,37 @@ describe('thumbnails and trash JWT identity', () => {
     expect(own.status).toBe(204)
   })
 
+  it('rejects cross-user permanent delete and keeps the asset', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    const file = await seedFile(t, a.id)
+    const asset = await seedAsset(t, a.id, file.id, { isTrashed: true })
+    const res = await request(apiServer(t))
+      .delete(`/api/v1/assets/trashed/${asset.id}`)
+      .set(t.authHeader(tokenB))
+    expect(res.status).toBe(404)
+    expect(await t.assetRepo.findOne({ where: { id: asset.id } })).not.toBeNull()
+  })
+
+  it('empties only the caller trash', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    const fileA = await seedFile(t, a.id)
+    const assetA = await seedAsset(t, a.id, fileA.id, { isTrashed: true })
+    const fileB = await seedFile(t, b.id)
+    await seedAsset(t, b.id, fileB.id, { isTrashed: true })
+    // emptyTrash filters by owner (200); the negative is that A's row survives
+    const res = await request(apiServer(t))
+      .delete('/api/v1/assets/trashed')
+      .set(t.authHeader(tokenB))
+    expect(res.status).toBe(200)
+    expect((res.body as unknown as { fileIds: string[] }).fileIds).toEqual([fileB.id])
+    expect(await t.assetRepo.findOne({ where: { id: assetA.id } })).not.toBeNull()
+    expect(await t.assetRepo.count({ where: { userId: b.id, isTrashed: true } })).toBe(0)
+  })
+
   it('returns 401 without token', async () => {
     const user = await seedUser(t)
     const file = await seedFile(t, user.id)
@@ -150,6 +181,19 @@ describe('thumbnails and trash JWT identity', () => {
     const res = await request(apiServer(t))
       .get('/api/v1/assets/trashed')
       .set({ Authorization: 'Bearer not-a-token' })
+    expect(res.status).toBe(401)
+  })
+
+  // GET /api/v1/assets/:id/thumbnails already has explicit no-token coverage above
+  const noTokenRoutes: ['post' | 'delete', string][] = [
+    ['post', `/api/v1/assets/${randomUUID()}/thumbnails`],
+    ['post', `/api/v1/assets/trashed/${randomUUID()}/restore`],
+    ['delete', `/api/v1/assets/trashed/${randomUUID()}`],
+    ['delete', '/api/v1/assets/trashed'],
+  ]
+
+  it.each(noTokenRoutes)('returns 401 without token for %s %s', async (method, path) => {
+    const res = await request(apiServer(t))[method](path)
     expect(res.status).toBe(401)
   })
 

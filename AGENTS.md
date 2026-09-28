@@ -72,7 +72,7 @@ Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 
 - Vitest 3, `globals: true`. Workspace (`vitest.workspace.ts`): api, worker-service, web, 4 shared packages, `scripts` — including `data-access`, which now has a test script.
 - Api runs `src/**/*.spec.ts` + `test/integration/**/*.spec.ts`. Integration spins testcontainers `redis:7-alpine` + plain `postgres:16-alpine` (no pgvector — index creation just warns). Needs Docker; on Podman run `TESTCONTAINERS_RYUK_DISABLED=true pnpm verify` (key already in `turbo.json` passthrough). Worker integration tests are Redis-only (fake `CoreClient`, no Postgres).
-- Only pact left is `apps/web/test/pact/consumer/core.pact.spec.ts` (consumer `web` → provider `core`) writing `pacts/web-core.json`. No provider verification, no coverage script, not part of `verify` — don't resurrect the old pact pipeline.
+- Consumer pact: `apps/web/test/pact/consumer/core.pact.spec.ts` (consumer `web` → provider `core`) writing `pacts/web-core.json` (~41 interactions, all web→core calls). It runs inside `verify` because it's a plain vitest spec. Provider verification exists but is opt-in only: `pnpm --filter @photox/core test:pact:provider` (`test/pact/core.provider.spec.ts` via `vitest.pact.config.ts`) — not part of `verify`. No coverage script; don't resurrect the old pact pipeline (the old `worker-service-*.json` pacts are deleted).
 - Jenkins (k8s pod): `install --frozen-lockfile` → build `packages/*` → parallel typecheck/lint/test (dind, pulls pg+redis images) → build.
 
 ## Security / audit

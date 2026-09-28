@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import request from 'supertest'
 import {
   closeTestApp,
@@ -69,6 +70,38 @@ describe('shares JWT identity', () => {
     expect(body.items[0]?.userId).toBe(a.id)
   })
 
+  it('keeps share lists isolated per user', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    const fileA = await seedFile(t, a.id)
+    const assetA = await seedAsset(t, a.id, fileA.id)
+    const fileB = await seedFile(t, b.id)
+    const assetB = await seedAsset(t, b.id, fileB.id)
+    await request(apiServer(t))
+      .post('/api/v1/shares')
+      .set(t.authHeader(tokenA))
+      .send({ assetId: assetA.id })
+    await request(apiServer(t))
+      .post('/api/v1/shares')
+      .set(t.authHeader(tokenB))
+      .send({ assetId: assetB.id })
+
+    const listA = await request(apiServer(t)).get('/api/v1/shares').set(t.authHeader(tokenA))
+    const listB = await request(apiServer(t)).get('/api/v1/shares').set(t.authHeader(tokenB))
+    expect(listA.status).toBe(200)
+    expect(listB.status).toBe(200)
+    const itemsA = (listA.body as unknown as { items: { userId: string; assetId: string }[] }).items
+    const itemsB = (listB.body as unknown as { items: { userId: string; assetId: string }[] }).items
+    expect(itemsA).toHaveLength(1)
+    expect(itemsA[0]?.userId).toBe(a.id)
+    expect(itemsA[0]?.assetId).toBe(assetA.id)
+    expect(itemsB).toHaveLength(1)
+    expect(itemsB[0]?.userId).toBe(b.id)
+    expect(itemsB[0]?.assetId).toBe(assetB.id)
+  })
+
   it('rejects cross-user revoke', async () => {
     const a = await seedUser(t)
     const b = await seedUser(t)
@@ -116,6 +149,19 @@ describe('shares JWT identity', () => {
       .set({ Authorization: 'Bearer not-a-token' })
     expect(res.status).toBe(401)
   })
+
+  it.each([
+    ['post', '/api/v1/shares', { assetId: randomUUID() }],
+    ['delete', `/api/v1/shares/${randomUUID()}`],
+  ] as ['get' | 'post' | 'delete', string, object?][])(
+    'returns 401 for %s %s without token',
+    async (method, path, body) => {
+      const agent = request(apiServer(t))
+      const req = agent[method](path)
+      const res = await (body ? req.send(body) : req)
+      expect(res.status).toBe(401)
+    },
+  )
 
   it('returns the same token when sharing the same asset twice', async () => {
     const user = await seedUser(t)

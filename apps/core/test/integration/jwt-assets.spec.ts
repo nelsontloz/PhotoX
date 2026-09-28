@@ -56,6 +56,29 @@ describe('assets JWT identity', () => {
     expect(body.items[0]?.userId).toBe(a.id)
   })
 
+  it('isolates list results between two users', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    const fileA = await seedFile(t, a.id)
+    const assetA = await seedAsset(t, a.id, fileA.id)
+    const fileB = await seedFile(t, b.id)
+    const assetB = await seedAsset(t, b.id, fileB.id)
+
+    const listA = await request(apiServer(t)).get('/api/v1/assets').set(t.authHeader(tokenA))
+    expect(listA.status).toBe(200)
+    const bodyA = listA.body as unknown as { items: { id: string }[]; total: number }
+    expect(bodyA.total).toBe(1)
+    expect(bodyA.items.map((i) => i.id)).toEqual([assetA.id])
+
+    const listB = await request(apiServer(t)).get('/api/v1/assets').set(t.authHeader(tokenB))
+    expect(listB.status).toBe(200)
+    const bodyB = listB.body as unknown as { items: { id: string }[]; total: number }
+    expect(bodyB.total).toBe(1)
+    expect(bodyB.items.map((i) => i.id)).toEqual([assetB.id])
+  })
+
   it('gets own asset without userId and 404s cross-user even with userId query', async () => {
     const a = await seedUser(t)
     const b = await seedUser(t)
@@ -119,6 +142,36 @@ describe('assets JWT identity', () => {
       .set(t.authHeader(token))
       .send({ assetIds: [assetTwo.id] })
     expect(bulk.status).toBe(204)
+  })
+
+  it('rejects cross-user trash and leaves the asset untrashed', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    const file = await seedFile(t, a.id)
+    const asset = await seedAsset(t, a.id, file.id)
+    const res = await request(apiServer(t))
+      .post(`/api/v1/assets/${asset.id}/trash`)
+      .set(t.authHeader(tokenB))
+    expect(res.status).toBe(404)
+    const untouched = await t.assetRepo.findOneByOrFail({ id: asset.id })
+    expect(untouched.isTrashed).toBe(false)
+  })
+
+  it('does not bulk-trash another user assets', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    const file = await seedFile(t, a.id)
+    const asset = await seedAsset(t, a.id, file.id)
+    // bulk-trash silently filters by owner (idempotent 204); the negative is "no mutation"
+    const res = await request(apiServer(t))
+      .post('/api/v1/assets/bulk-trash')
+      .set(t.authHeader(tokenB))
+      .send({ assetIds: [asset.id] })
+    expect(res.status).toBe(204)
+    const untouched = await t.assetRepo.findOneByOrFail({ id: asset.id })
+    expect(untouched.isTrashed).toBe(false)
   })
 
   it('rejects invalid asset update body with 400', async () => {
@@ -229,6 +282,23 @@ describe('assets JWT identity', () => {
     const res = await request(apiServer(t))
       .get('/api/v1/assets')
       .set({ Authorization: 'Bearer not-a-token' })
+    expect(res.status).toBe(401)
+  })
+
+  // GET /api/v1/assets already has explicit no-token coverage above
+  const noTokenRoutes: ['get' | 'patch' | 'post', string][] = [
+    ['get', '/api/v1/assets/trashed'],
+    ['get', `/api/v1/assets/${randomUUID()}`],
+    ['patch', `/api/v1/assets/${randomUUID()}`],
+    ['patch', `/api/v1/assets/${randomUUID()}/metadata`],
+    ['post', `/api/v1/assets/${randomUUID()}/trash`],
+    ['post', '/api/v1/assets/bulk-trash'],
+    ['post', `/api/v1/assets/${randomUUID()}/reprocess-thumbnails`],
+    ['post', `/api/v1/assets/${randomUUID()}/reprocess-video`],
+  ]
+
+  it.each(noTokenRoutes)('returns 401 without token for %s %s', async (method, path) => {
+    const res = await request(apiServer(t))[method](path)
     expect(res.status).toBe(401)
   })
 

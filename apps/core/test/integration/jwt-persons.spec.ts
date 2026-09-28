@@ -85,6 +85,25 @@ describe('persons JWT identity', () => {
     expect(renameBody.name).toBe('Ada')
   })
 
+  it('rejects cross-user rename and person assets', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const { person } = await seedPersonWithFace(a.id)
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+
+    const crossPatch = await request(apiServer(t))
+      .patch(`/api/v1/persons/${person.id}`)
+      .set(t.authHeader(tokenB))
+      .send({ name: 'Hijack' })
+    expect(crossPatch.status).toBe(404)
+    expect((await t.personRepo.findOneByOrFail({ id: person.id })).name).toBeNull()
+
+    const crossAssets = await request(apiServer(t))
+      .get(`/api/v1/persons/${person.id}/assets`)
+      .set(t.authHeader(tokenB))
+    expect(crossAssets.status).toBe(404)
+  })
+
   it('gets person assets without userId', async () => {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })
@@ -118,6 +137,22 @@ describe('persons JWT identity', () => {
       .set({ Authorization: 'Bearer not-a-token' })
     expect(res.status).toBe(401)
   })
+
+  it.each([
+    ['post', '/api/v1/persons/cluster'],
+    ['post', '/api/v1/persons/apply-clusters', { creates: [], attaches: [] }],
+    ['get', `/api/v1/persons/${randomUUID()}`],
+    ['patch', `/api/v1/persons/${randomUUID()}`, { name: 'Nope' }],
+    ['get', `/api/v1/persons/${randomUUID()}/assets`],
+  ] as ['get' | 'post' | 'patch', string, object?][])(
+    'returns 401 for %s %s without token',
+    async (method, path, body) => {
+      const agent = request(apiServer(t))
+      const req = agent[method](path)
+      const res = await (body ? req.send(body) : req)
+      expect(res.status).toBe(401)
+    },
+  )
 
   it('returns 404 for an unknown person id', async () => {
     const user = await seedUser(t)
