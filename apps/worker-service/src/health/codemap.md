@@ -12,8 +12,9 @@ a worker that cannot consume jobs.
   exists only to inject the singleton `BullMqService`; Nest module dedupe prevents double worker
   registration. `QueueModule` exports `BullMqService`.
 - `HealthService.check()` probes exactly one dependency: `bullMq.isHealthy()` → ioredis
-  `PING === 'PONG'`. No Postgres probe here — if Redis is down the worker consumes nothing, which is
-  the actionable failure. (`apps/core/src/health` does the `SELECT 1` DB probe instead.)
+  `PING === 'PONG'`. No Postgres probe here — the worker has no DB connection at all (core owns it);
+  if Redis is down the worker consumes nothing, which is the actionable failure. (`apps/core/src/health`
+  does the `SELECT 1` DB probe instead.)
 - Healthy response (HTTP 200):
   `{ status: 'ok', service: 'worker-service', uptime: process.uptime(), timestamp, checks: { queue: 'ok' } }`.
 - Unhealthy: `ServiceUnavailableException` → HTTP 503 with
@@ -32,6 +33,6 @@ a worker that cannot consume jobs.
 ## Integration
 
 - Depends on `../queue/bullmq.service` for the shared Redis connection — health is queue-scoped by
-  design; Postgres/ffmpeg/model availability are validated per-job, not here.
+  design; ffmpeg/model availability and core reachability are validated per-job, not here.
 - Nothing else in the app calls this endpoint; it is reachable only in-network.
 - Sibling of `apps/core/src/health/` but with a different check key (`queue` vs core's DB check).

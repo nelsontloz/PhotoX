@@ -2,8 +2,11 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import sharp from 'sharp'
-import { FACE_EMBEDDING_DIM } from '@photox/data-access'
-import { createTestApp, closeTestApp, resetDb, waitForJob, type TestApp } from './helpers'
+import { FACE_EMBEDDING_DIM } from '@photox/shared-types'
+import { makeAsset, makeFileRecord } from '../fake-core-client'
+import type { ClusterFace } from '../../src/core/core-client.service'
+import { BullMqService } from '../../src/queue/bullmq.service'
+import { createTestApp, closeTestApp, resetTestApp, waitForJob, type TestApp } from './helpers'
 
 const emb512 = (...pairs: [number, number][]): number[] => {
   const v = new Array<number>(FACE_EMBEDDING_DIM).fill(0)
@@ -24,54 +27,62 @@ describe('Face pipeline (integration)', () => {
   })
 
   beforeEach(async () => {
-    await resetDb(testApp)
+    await resetTestApp(testApp)
     detect.mockReset()
   })
 
-  async function seedPhoto(userId: string) {
+  // face-processor cases run entirely through the fake CoreClient (no DB rows)
+  async function seedPhotoInFake(userId: string) {
     const bytes = await sharp({
       create: { width: 200, height: 150, channels: 3, background: 'red' },
     })
       .jpeg()
       .toBuffer()
-    const storageKey = testApp.storage.buildKey('original', userId, randomUUID(), 'jpg')
+    const fileId = randomUUID()
+    const storageKey = testApp.storage.buildKey('original', userId, fileId, 'jpg')
     await mkdir(dirname(testApp.storage.pathFor(storageKey)), { recursive: true })
     await writeFile(testApp.storage.pathFor(storageKey), bytes)
-    const record = await testApp.fileRepo.save(
-      testApp.fileRepo.create({
-        userId,
-        storageKey,
-        originalName: 'face.jpg',
-        mimeType: 'image/jpeg',
-        sizeBytes: bytes.length,
-        checksumSha256: createHash('sha256').update(bytes).digest('hex'),
-        purpose: 'original',
-        assetId: null,
-      }),
-    )
-    const asset = await testApp.assetRepo.save(
-      testApp.assetRepo.create({ userId, kind: 'photo', fileId: record.id }),
-    )
+    const record = makeFileRecord({
+      id: fileId,
+      userId,
+      storageKey,
+      mimeType: 'image/jpeg',
+      sizeBytes: bytes.length,
+      checksumSha256: createHash('sha256').update(bytes).digest('hex'),
+    })
+    testApp.fake.files.set(record.id, record)
+    const asset = makeAsset({ id: randomUUID(), userId, fileId: record.id, kind: 'photo' })
+    testApp.fake.assets.set(asset.id, asset)
     return { record, asset }
   }
 
-  function seedAsset(userId: string, isTrashed = false) {
-    return testApp.assetRepo.save(
-      testApp.assetRepo.create({ userId, kind: 'photo', fileId: randomUUID(), isTrashed }),
-    )
-  }
-
-  function seedFace(
-    userId: string,
+  // cluster cases seed the E1 face list directly — core owns trashed filtering + persistence
+  function seedClusterFace(
     assetId: string,
     embedding: number[],
-    box: { x: number; y: number; w: number; h: number } = { x: 0, y: 0, w: 100, h: 100 },
-    personId: string | null = null,
-    confidence = 0.9,
-  ) {
-    return testApp.faceRepo.save(
-      testApp.faceRepo.create({ assetId, userId, box, confidence, embedding, personId }),
-    )
+    opts: {
+      box?: { x: number; y: number; w: number; h: number }
+      personId?: string | null
+      confidence?: number
+      id?: string
+    } = {},
+  ): ClusterFace {
+    const face: ClusterFace = {
+      id: opts.id ?? randomUUID(),
+      assetId,
+      box: opts.box ?? { x: 0, y: 0, w: 100, h: 100 },
+      confidence: opts.confidence ?? 0.9,
+      personId: opts.personId ?? null,
+      embedding,
+    }
+    testApp.fake.clusterFaces.push(face)
+    return face
+  }
+
+  async function runClusterJob(userId: string) {
+    const queue = testApp.getQueue('process-faces-cluster')
+    const job = await queue.add('cluster', { userId })
+    expect(await waitForJob(queue, job.id!)).toBe('completed')
   }
 
   async function runFaceJob(
@@ -87,7 +98,7 @@ describe('Face pipeline (integration)', () => {
 
   it('saves a detected face and auto-enqueues clustering for the asset', async () => {
     const userId = randomUUID()
-    const { record, asset } = await seedPhoto(userId)
+    const { record, asset } = await seedPhotoInFake(userId)
     detect.mockResolvedValue([
       { box: { x: 10, y: 20, w: 30, h: 40 }, confidence: 0.92, embedding: emb512([1, 1]) },
     ])
@@ -97,16 +108,15 @@ describe('Face pipeline (integration)', () => {
     const { queue, job } = await runFaceJob(asset.id, record.id, userId)
     expect(await waitForJob(queue, job.id!)).toBe('completed')
 
-    const faces = await testApp.faceRepo.find({ where: { assetId: asset.id } })
+    const faces = testApp.fake.faces.get(asset.id)!
     expect(faces).toHaveLength(1)
     expect(faces[0]!.embedding).toHaveLength(FACE_EMBEDDING_DIM)
-    expect(faces[0]!.personId).toBeNull()
     expect(faces[0]!.confidence).toBeCloseTo(0.92, 4)
     expect(faces[0]!.box).toEqual({ x: 10, y: 20, w: 30, h: 40 })
 
-    const updated = await testApp.assetRepo.findOne({ where: { id: asset.id } })
-    expect(updated!.faceStatus).toBe('ready')
-    expect(updated!.faceCount).toBe(1)
+    const updated = testApp.fake.assets.get(asset.id)!
+    expect(updated.faceStatus).toBe('ready')
+    expect(updated.faceCount).toBe(1)
 
     const jobOptions = clusterAdd.mock.calls.map((call) => call[2] as { jobId?: string })
     expect(jobOptions.some((o) => o.jobId?.startsWith(`cluster-${userId}-${asset.id}-`))).toBe(true)
@@ -114,14 +124,12 @@ describe('Face pipeline (integration)', () => {
     clusterAdd.mockRestore()
   })
 
-  it('re-embed clears existing faces and recomputes dangling person state', async () => {
+  it('unconditionally replaces existing faces after a successful detect', async () => {
     const userId = randomUUID()
-    const { record, asset } = await seedPhoto(userId)
-    const person = await testApp.personRepo.save(
-      testApp.personRepo.create({ userId, name: null, clusterLabel: 'cluster-old', faceCount: 1 }),
-    )
-    const oldFace = await seedFace(userId, asset.id, emb512([1, 1]), undefined, person.id)
-    await testApp.personRepo.update(person.id, { coverFaceId: oldFace.id })
+    const { record, asset } = await seedPhotoInFake(userId)
+    testApp.fake.faces.set(asset.id, [
+      { box: { x: 1, y: 1, w: 10, h: 10 }, confidence: 0.8, embedding: emb512([1, 1]) },
+    ])
 
     detect.mockResolvedValue([
       { box: { x: 5, y: 5, w: 50, h: 50 }, confidence: 0.8, embedding: emb512([0, 1]) },
@@ -130,112 +138,135 @@ describe('Face pipeline (integration)', () => {
     const { queue, job } = await runFaceJob(asset.id, record.id, userId, 're-embed')
     expect(await waitForJob(queue, job.id!)).toBe('completed')
 
-    const faces = await testApp.faceRepo.find({ where: { assetId: asset.id } })
+    expect(testApp.fake.deleteFacesCalls).toEqual([asset.id])
+    const faces = testApp.fake.faces.get(asset.id)!
     expect(faces).toHaveLength(1)
-    expect(faces[0]!.id).not.toBe(oldFace.id)
-    expect(faces[0]!.personId).toBeNull()
+    expect(faces[0]!.box).toEqual({ x: 5, y: 5, w: 50, h: 50 })
+    expect(faces[0]!.embedding).toEqual(emb512([0, 1]))
 
-    const refreshed = await testApp.personRepo.findOne({ where: { id: person.id } })
-    expect(refreshed!.coverFaceId).toBeNull()
-    expect(refreshed!.faceCount).toBe(0)
+    const updated = testApp.fake.assets.get(asset.id)!
+    expect(updated.faceStatus).toBe('ready')
+    expect(updated.faceCount).toBe(1)
   })
 
   it('marks faceStatus ready with zero faces when nothing is detected', async () => {
     const userId = randomUUID()
-    const { record, asset } = await seedPhoto(userId)
+    const { record, asset } = await seedPhotoInFake(userId)
     detect.mockResolvedValue([])
 
     const { queue, job } = await runFaceJob(asset.id, record.id, userId)
     expect(await waitForJob(queue, job.id!)).toBe('completed')
 
-    expect(await testApp.faceRepo.count({ where: { assetId: asset.id } })).toBe(0)
-    const updated = await testApp.assetRepo.findOne({ where: { id: asset.id } })
-    expect(updated!.faceStatus).toBe('ready')
-    expect(updated!.faceCount).toBe(0)
+    expect(testApp.fake.faces.get(asset.id)).toBeUndefined()
+    const updated = testApp.fake.assets.get(asset.id)!
+    expect(updated.faceStatus).toBe('ready')
+    expect(updated.faceCount).toBe(0)
   })
 
   it('creates one person from close unassigned faces and uses the largest box as cover', async () => {
     const userId = randomUUID()
-    const assetA = await seedAsset(userId)
-    const assetB = await seedAsset(userId)
-    const faceA = await seedFace(userId, assetA.id, emb512([1, 1]), { x: 0, y: 0, w: 120, h: 120 })
-    await seedFace(userId, assetB.id, emb512([1, 1]), { x: 0, y: 0, w: 100, h: 100 })
+    const faceA = seedClusterFace(randomUUID(), emb512([1, 1]), {
+      box: { x: 0, y: 0, w: 120, h: 120 },
+    })
+    const faceB = seedClusterFace(randomUUID(), emb512([1, 1]))
 
-    const queue = testApp.getQueue('process-faces-cluster')
-    const job = await queue.add('cluster', { userId })
-    expect(await waitForJob(queue, job.id!)).toBe('completed')
+    await runClusterJob(userId)
 
-    const faces = await testApp.faceRepo.find({ where: { userId } })
-    expect(faces).toHaveLength(2)
-    expect(faces.every((f) => f.personId !== null)).toBe(true)
-    expect(new Set(faces.map((f) => f.personId)).size).toBe(1)
-
-    const persons = await testApp.personRepo.find({ where: { userId } })
-    expect(persons).toHaveLength(1)
-    expect(persons[0]!.faceCount).toBe(2)
-    expect(persons[0]!.coverFaceId).toBe(faceA.id)
+    expect(testApp.fake.callsOf('getFacesForCluster').map((c) => c.args[0])).toEqual([userId])
+    expect(testApp.fake.applyClustersCalls).toHaveLength(1)
+    const plan = testApp.fake.applyClustersCalls[0]!
+    expect(plan.attaches).toEqual([])
+    expect(plan).toHaveProperty('creates')
+    expect(plan).toHaveProperty('attaches')
+    expect(plan.creates).toHaveLength(1)
+    const create = plan.creates[0]!
+    expect(create.clusterLabel).toMatch(/^cluster-[0-9a-f-]{36}$/)
+    expect(new Set(create.faceIds)).toEqual(new Set([faceA.id, faceB.id]))
+    expect(create.coverFaceId).toBe(faceA.id)
   })
 
-  it('ignores faces of trashed assets when clustering', async () => {
+  it('skips clustering entirely when core returns no faces (trashed filtered upstream)', async () => {
+    // core's E1 excludeTrashed coverage lives in jwt-persons.spec.ts; the worker just sees []
     const userId = randomUUID()
-    const asset = await seedAsset(userId, true)
-    await seedFace(userId, asset.id, emb512([1, 1]))
-    await seedFace(userId, asset.id, emb512([1, 1]))
 
-    const queue = testApp.getQueue('process-faces-cluster')
-    const job = await queue.add('cluster', { userId })
-    expect(await waitForJob(queue, job.id!)).toBe('completed')
+    await runClusterJob(userId)
 
-    const faces = await testApp.faceRepo.find({ where: { userId } })
-    expect(faces).toHaveLength(2)
-    expect(faces.every((f) => f.personId === null)).toBe(true)
-    expect(await testApp.personRepo.count({ where: { userId } })).toBe(0)
+    expect(testApp.fake.callsOf('getFacesForCluster')).toHaveLength(1)
+    expect(testApp.fake.callsOf('applyClusters')).toHaveLength(0)
   })
 
-  it('leaves manually assigned faces untouched', async () => {
+  it('leaves manually assigned faces untouched and only plans unassigned ones', async () => {
     const userId = randomUUID()
-    const assetA = await seedAsset(userId)
-    const assetB = await seedAsset(userId)
-    const assetC = await seedAsset(userId)
-    const assetD = await seedAsset(userId)
-    const person = await testApp.personRepo.save(
-      testApp.personRepo.create({ userId, name: 'Alice', clusterLabel: null, faceCount: 2 }),
-    )
-    const assignedA = await seedFace(
-      userId,
-      assetA.id,
-      emb512([0, 1]),
-      { x: 0, y: 0, w: 90, h: 90 },
-      person.id,
-    )
-    const assignedB = await seedFace(
-      userId,
-      assetB.id,
-      emb512([0, 1]),
-      { x: 0, y: 0, w: 80, h: 80 },
-      person.id,
-    )
-    await testApp.personRepo.update(person.id, { coverFaceId: assignedA.id })
-    const freeA = await seedFace(userId, assetC.id, emb512([1, 1]))
-    const freeB = await seedFace(userId, assetD.id, emb512([1, 1]))
+    const personId = randomUUID()
+    const assignedA = seedClusterFace(randomUUID(), emb512([0, 1]), { personId })
+    const assignedB = seedClusterFace(randomUUID(), emb512([0, 1]), { personId })
+    const freeA = seedClusterFace(randomUUID(), emb512([1, 1]))
+    const freeB = seedClusterFace(randomUUID(), emb512([1, 1]))
 
-    const queue = testApp.getQueue('process-faces-cluster')
-    const job = await queue.add('cluster', { userId })
-    expect(await waitForJob(queue, job.id!)).toBe('completed')
+    await runClusterJob(userId)
 
-    const byId = new Map((await testApp.faceRepo.find({ where: { userId } })).map((f) => [f.id, f]))
-    expect(byId.get(assignedA.id)!.personId).toBe(person.id)
-    expect(byId.get(assignedB.id)!.personId).toBe(person.id)
-    const newPersonId = byId.get(freeA.id)!.personId
-    expect(newPersonId).toBeTruthy()
-    expect(newPersonId).not.toBe(person.id)
-    expect(byId.get(freeB.id)!.personId).toBe(newPersonId)
+    const plan = testApp.fake.applyClustersCalls[0]!
+    const planned = [...plan.creates, ...plan.attaches].flatMap((i) => i.faceIds)
+    expect(planned).not.toContain(assignedA.id)
+    expect(planned).not.toContain(assignedB.id)
+    expect(plan.creates).toHaveLength(1)
+    expect(new Set(plan.creates[0]!.faceIds)).toEqual(new Set([freeA.id, freeB.id]))
+    expect(plan.attaches).toEqual([])
+  })
 
-    const persons = await testApp.personRepo.find({ where: { userId } })
-    expect(persons).toHaveLength(2)
-    const original = persons.find((p) => p.id === person.id)!
-    expect(original.faceCount).toBe(2)
-    expect(original.coverFaceId).toBe(assignedA.id)
-    expect(persons.find((p) => p.id === newPersonId)!.faceCount).toBe(2)
+  it('attaches a noise singleton to an existing person without sending a null cover', async () => {
+    const userId = randomUUID()
+    const personId = randomUUID()
+    seedClusterFace(randomUUID(), emb512([0, 1]), { personId })
+    const noise = seedClusterFace(randomUUID(), emb512([0, 1]))
+
+    await runClusterJob(userId)
+
+    const plan = testApp.fake.applyClustersCalls[0]!
+    expect(plan.creates).toEqual([])
+    expect(plan.attaches).toHaveLength(1)
+    expect(plan.attaches[0]!.personId).toBe(personId)
+    expect(plan.attaches[0]!.faceIds).toEqual([noise.id])
+    expect('coverFaceId' in plan.attaches[0]!).toBe(false)
+  })
+
+  it('skips the apply call when there is nothing to apply (low-confidence only)', async () => {
+    const userId = randomUUID()
+    seedClusterFace(randomUUID(), emb512([1, 1]), { confidence: 0.2 })
+    seedClusterFace(randomUUID(), emb512([1, 1]), { confidence: 0.2 })
+
+    await runClusterJob(userId)
+
+    expect(testApp.fake.callsOf('getFacesForCluster')).toHaveLength(1)
+    expect(testApp.fake.callsOf('applyClusters')).toHaveLength(0)
+  })
+
+  it('re-enqueues legacy-dim unassigned assets for re-embed and skips apply', async () => {
+    const userId = randomUUID()
+    const assetId = randomUUID()
+    const fileId = randomUUID()
+    testApp.fake.assets.set(assetId, makeAsset({ id: assetId, userId, fileId }))
+    seedClusterFace(assetId, [1, 0, 0, 0])
+    seedClusterFace(assetId, [0, 1, 0, 0])
+
+    const enqueueSpy = vi.spyOn(testApp.app.get(BullMqService), 'enqueue')
+
+    await runClusterJob(userId)
+
+    expect(testApp.fake.callsOf('getAssetsByIds').map((c) => c.args[1])).toEqual([[assetId]])
+    expect(enqueueSpy).toHaveBeenCalledWith(
+      'process-faces',
+      're-embed',
+      { assetId, fileId, userId, reason: 're-embed' },
+      expect.objectContaining({
+        jobId: `face-reembed-${assetId}`,
+        attempts: 3,
+        backoff: { type: 'exponential' },
+        removeOnFail: true,
+      }),
+    )
+    expect(testApp.fake.callsOf('applyClusters')).toHaveLength(0)
+
+    enqueueSpy.mockRestore()
   })
 })

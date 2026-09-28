@@ -34,6 +34,18 @@ export class AdminMaintenanceController {
     return { enqueued: true }
   }
 
+  @Post('cleanup-orphans/run')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Run orphan cleanup inline (admin-only)' })
+  @ApiResponse({ status: 200, description: 'Deleted orphan file, thumbnail and stray counts' })
+  async runCleanupOrphans(): Promise<{
+    deletedFiles: number
+    deletedThumbnails: number
+    deletedStrays: number
+  }> {
+    return this.admin.cleanupOrphans()
+  }
+
   @Post('thumbnails/reprocess')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Enqueue thumbnail reprocess jobs for all assets of a kind' })

@@ -75,20 +75,15 @@ services:
     environment:
       NODE_ENV: production
       WORKER_SERVICE_PORT: 3004
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: photox
-      POSTGRES_PASSWORD: photox_dev
-      POSTGRES_DB: photox
+      CORE_URL: http://core:3000
       STORAGE_DIR: /data/storage
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-photox_dev}
+      AUTH_TOKEN_SECRET: dev-auth-secret-32-characters-minimum!!
     volumes:
       - storage-data:/data/storage
     depends_on:
-      postgres:
-        condition: service_healthy
       core:
         condition: service_healthy
       redis:

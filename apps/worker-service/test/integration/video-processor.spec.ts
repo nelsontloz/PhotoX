@@ -1,11 +1,18 @@
 import { execSync } from 'node:child_process'
 import { readFileSync, unlinkSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
+import type { MetadataPatch, RegisterFileInput } from '../../src/core/core-client.service'
 import { FFMPEG_PATH } from '../../src/queue/ffmpeg'
-import { createTestApp, closeTestApp, resetDb, waitForJob, type TestApp } from './helpers'
+import { waitForJob } from './helpers'
+import {
+  closeMediaTestApp,
+  createMediaTestApp,
+  resetMediaTestApp,
+  seedOriginal,
+  type MediaTestApp,
+} from './media-helpers'
 
 const TEST_VIDEO_DIR = mkdtempSync(join(tmpdir(), 'video-test-'))
 const H264_AAC_PATH = join(TEST_VIDEO_DIR, 'h264-aac.mp4')
@@ -28,16 +35,16 @@ function hasAomAv1(): boolean {
 }
 
 describe('VideoProcessor (integration)', () => {
-  let testApp: TestApp
+  let testApp: MediaTestApp
   let h264AacBuffer: Buffer
 
   beforeAll(async () => {
     h264AacBuffer = createH264AacVideo()
-    testApp = await createTestApp()
+    testApp = await createMediaTestApp()
   }, 180_000)
 
   afterAll(async () => {
-    await closeTestApp(testApp)
+    await closeMediaTestApp(testApp)
     if (existsSync(H264_AAC_PATH)) unlinkSync(H264_AAC_PATH)
     try {
       rmSync(TEST_VIDEO_DIR, { recursive: true, force: true })
@@ -46,61 +53,43 @@ describe('VideoProcessor (integration)', () => {
     }
   })
 
-  beforeEach(async () => {
-    await resetDb(testApp)
+  beforeEach(() => {
+    resetMediaTestApp(testApp)
   })
 
-  async function seedVideo(userId: string, bytes: Buffer, mimeType: string) {
-    const storageKey = testApp.storage.buildKey('original', userId, randomUUID(), 'mp4')
-    await mkdir(dirname(testApp.storage.pathFor(storageKey)), { recursive: true })
-    await writeFile(testApp.storage.pathFor(storageKey), bytes)
-    const record = await testApp.fileRepo.save(
-      testApp.fileRepo.create({
-        userId,
-        storageKey,
-        originalName: 'video.mp4',
-        mimeType,
-        sizeBytes: bytes.length,
-        checksumSha256: createHash('sha256').update(bytes).digest('hex'),
-        purpose: 'original',
-        assetId: null,
-      }),
-    )
-    const asset = await testApp.assetRepo.save(
-      testApp.assetRepo.create({ userId, kind: 'video', fileId: record.id }),
-    )
-    return { record, asset }
+  function patchDtos(): MetadataPatch[] {
+    return testApp.fake.callsOf('patchMetadata').map((c) => c.args[1] as MetadataPatch)
   }
 
   describe('skip transcode (h264+aac)', () => {
     it('skips transcode and marks ready', async () => {
       const userId = randomUUID()
-      const { record, asset } = await seedVideo(userId, h264AacBuffer, 'video/mp4')
+      const { record, asset } = await seedOriginal(testApp, {
+        userId,
+        bytes: h264AacBuffer,
+        mimeType: 'video/mp4',
+        ext: 'mp4',
+      })
 
       const queue = testApp.getQueue('process-video')
-      const job = await queue.add('video', {
-        assetId: asset.id,
-        fileId: record.id,
-        userId,
-      })
+      const job = await queue.add('video', { assetId: asset.id, fileId: record.id, userId })
 
-      const state = await waitForJob(queue, job.id!)
-      expect(state).toBe('completed')
+      expect(await waitForJob(queue, job.id!)).toBe('completed')
 
-      const updated = await testApp.assetRepo.findOne({ where: { id: asset.id } })
-      expect(updated!.transcodeStatus).toBe('ready')
-      expect(updated!.transcodeFileId).toBeNull()
-
-      const derivatives = await testApp.fileRepo.find({
-        where: { purpose: 'transcode', assetId: asset.id },
-      })
-      expect(derivatives).toHaveLength(0)
+      const updated = testApp.fake.assets.get(asset.id)!
+      expect(updated.transcodeStatus).toBe('ready')
+      expect(updated.transcodeFileId).toBeNull()
+      expect(patchDtos()).toEqual([
+        { transcodeStatus: 'pending' },
+        { transcodeStatus: 'ready', transcodeFileId: null },
+      ])
+      expect(testApp.fake.callsOf('registerFile')).toHaveLength(0)
     })
   })
 
   describe('transcode path', () => {
     it.skipIf(!hasAomAv1())(
-      'transcodes non-h264 video and stores derivative',
+      'transcodes non-h264 video and registers the derivative before marking ready',
       async () => {
         const transcodePath = join(TEST_VIDEO_DIR, 'mjpeg.avi')
         execSync(
@@ -110,34 +99,68 @@ describe('VideoProcessor (integration)', () => {
         const transcodeBuffer = readFileSync(transcodePath)
 
         const userId = randomUUID()
-        const { record, asset } = await seedVideo(userId, transcodeBuffer, 'video/avi')
+        const { record, asset } = await seedOriginal(testApp, {
+          userId,
+          bytes: transcodeBuffer,
+          mimeType: 'video/avi',
+          ext: 'avi',
+        })
 
         const queue = testApp.getQueue('process-video')
-        const job = await queue.add('video', {
+        const job = await queue.add('video', { assetId: asset.id, fileId: record.id, userId })
+
+        expect(await waitForJob(queue, job.id!)).toBe('completed')
+
+        const updated = testApp.fake.assets.get(asset.id)!
+        expect(updated.transcodeStatus).toBe('ready')
+        expect(updated.transcodeFileId).toBeTruthy()
+
+        const dto = testApp.fake.callsOf('registerFile')[0]!.args[0] as RegisterFileInput
+        expect(dto).toMatchObject({
+          id: updated.transcodeFileId,
+          kind: 'transcode',
+          ext: 'webm',
           assetId: asset.id,
-          fileId: record.id,
-          userId,
         })
-
-        const state = await waitForJob(queue, job.id!)
-        expect(state).toBe('completed')
-
-        const updated = await testApp.assetRepo.findOne({ where: { id: asset.id } })
-        expect(updated!.transcodeStatus).toBe('ready')
-        expect(updated!.transcodeFileId).toBeTruthy()
-
-        const derivative = await testApp.fileRepo.findOne({
-          where: { id: updated!.transcodeFileId! },
-        })
-        expect(derivative).toBeTruthy()
-        expect(derivative!.purpose).toBe('transcode')
-        expect(derivative!.mimeType).toBe('video/webm')
-        const derivativeStat = await testApp.storage.stat(derivative!.storageKey)
+        const derivative = testApp.fake.files.get(updated.transcodeFileId!)!
+        expect(derivative.purpose).toBe('transcode')
+        expect(derivative.mimeType).toBe('video/webm')
+        const derivativeStat = await testApp.storage.stat(derivative.storageKey)
         expect(derivativeStat.size).toBeGreaterThan(0)
+
+        // register-before-patch ordering: ready patch carries the registered id
+        const lastPatch = patchDtos().at(-1)!
+        expect(lastPatch).toEqual({
+          transcodeStatus: 'ready',
+          transcodeFileId: updated.transcodeFileId,
+        })
 
         unlinkSync(transcodePath)
       },
       120_000,
     )
+  })
+
+  describe('failure path', () => {
+    it('marks transcode failed with the error message when probing fails', async () => {
+      const userId = randomUUID()
+      const { record, asset } = await seedOriginal(testApp, {
+        userId,
+        bytes: Buffer.from('not a video'),
+        mimeType: 'video/mp4',
+        ext: 'mp4',
+      })
+
+      const queue = testApp.getQueue('process-video')
+      const job = await queue.add('video', { assetId: asset.id, fileId: record.id, userId })
+
+      expect(await waitForJob(queue, job.id!)).toBe('failed')
+
+      const updated = testApp.fake.assets.get(asset.id)!
+      expect(updated.transcodeStatus).toBe('failed')
+      const errorPatch = patchDtos().at(-1)!
+      expect(errorPatch.transcodeStatus).toBe('failed')
+      expect(errorPatch.metadata?.transcodeError).toEqual(expect.any(String))
+    })
   })
 })

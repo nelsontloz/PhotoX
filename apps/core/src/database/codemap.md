@@ -26,4 +26,4 @@ Exports `TypeOrmModule` and re-exports the shared module's imports so every feat
 
 - Entities: `packages/data-access` (Asset, FileRecord, AssetThumbnail, Face, Person) plus feature-local `User`, `RefreshToken`, `Album`, `AlbumAsset`, `AssetShare`.
 - Integration tests use plain `postgres:16-alpine` (no pgvector), so the bootstrap path is expected to warn rather than fail.
-- worker-service uses `SharedDatabaseModule` directly, without the vector bootstrap.
+- The worker-service has no Postgres connection at all (it goes through core HTTP), so this is the only TypeORM bootstrap in the repo besides plain `SharedDatabaseModule` consumers in tests.

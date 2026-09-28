@@ -276,4 +276,90 @@ describe('faces HTTP', () => {
       .set(t.authHeader(tokenB))
     expect(unknown.status).toBe(404)
   })
+
+  it('includes confidence in the face list', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const { face } = await seedFace(user.id)
+    const res = await request(apiServer(t)).get('/api/v1/faces').set(t.authHeader(token))
+    expect(res.status).toBe(200)
+    const body = res.body as { items: { id: string; confidence: number }[] }
+    expect(body.items[0]?.id).toBe(face.id)
+    expect(body.items[0]?.confidence).toBe(0.9)
+  })
+
+  it('excludeTrashed=true drops faces whose asset is soft-deleted', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const alive = await seedFace(user.id)
+    const trashed = await seedFace(user.id)
+    const trash = await request(apiServer(t))
+      .post(`/api/v1/assets/${trashed.asset.id}/trash`)
+      .set(t.authHeader(token))
+    expect(trash.status).toBe(204)
+
+    const all = await request(apiServer(t)).get('/api/v1/faces').set(t.authHeader(token))
+    expect((all.body as { items: unknown[] }).items).toHaveLength(2)
+
+    const filtered = await request(apiServer(t))
+      .get('/api/v1/faces')
+      .query({ excludeTrashed: 'true' })
+      .set(t.authHeader(token))
+    expect(filtered.status).toBe(200)
+    const items = (filtered.body as { items: { assetId: string }[] }).items
+    expect(items).toHaveLength(1)
+    expect(items[0]?.assetId).toBe(alive.asset.id)
+  })
+
+  it('deletes all faces for an asset, nulls dangling cover and refreshes faceCount', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const person = await t.personRepo.save(
+      t.personRepo.create({ userId: user.id, name: null, clusterLabel: 'c-del', faceCount: 2 }),
+    )
+    const { asset, face: cover } = await seedFace(user.id, { personId: person.id })
+    await t.faceRepo.save(
+      t.faceRepo.create({
+        assetId: asset.id,
+        userId: user.id,
+        box: { x: 5, y: 5, w: 10, h: 10 },
+        confidence: 0.8,
+        embedding: [0.4, 0.5, 0.6],
+        personId: person.id,
+      }),
+    )
+    await t.personRepo.update(person.id, { coverFaceId: cover.id })
+
+    const res = await request(apiServer(t))
+      .delete(`/api/v1/assets/${asset.id}/faces`)
+      .set(t.authHeader(token))
+    expect(res.status).toBe(200)
+    expect((res.body as { deleted: number }).deleted).toBe(2)
+    expect(await t.faceRepo.count()).toBe(0)
+    const updated = await t.personRepo.findOneByOrFail({ id: person.id })
+    expect(updated.coverFaceId).toBeNull()
+    expect(updated.faceCount).toBe(0)
+
+    const again = await request(apiServer(t))
+      .delete(`/api/v1/assets/${asset.id}/faces`)
+      .set(t.authHeader(token))
+    expect(again.status).toBe(200)
+    expect((again.body as { deleted: number }).deleted).toBe(0)
+  })
+
+  it('404s face deletion on cross-user or unknown assets without deleting rows', async () => {
+    const a = await seedUser(t)
+    const b = await seedUser(t)
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    const { asset, face } = await seedFace(a.id)
+    const cross = await request(apiServer(t))
+      .delete(`/api/v1/assets/${asset.id}/faces`)
+      .set(t.authHeader(tokenB))
+    expect(cross.status).toBe(404)
+    const unknown = await request(apiServer(t))
+      .delete(`/api/v1/assets/${randomUUID()}/faces`)
+      .set(t.authHeader(tokenB))
+    expect(unknown.status).toBe(404)
+    expect(await t.faceRepo.count({ where: { id: face.id } })).toBe(1)
+  })
 })

@@ -12,14 +12,8 @@ import { JwtModule, JwtService } from '@nestjs/jwt'
 import type { Queue } from 'bullmq'
 import type { Express } from 'express'
 import { DataSource, type Repository } from 'typeorm'
-import {
-  Asset,
-  AssetThumbnail,
-  Face,
-  FileRecord,
-  LocalStorageService,
-  Person,
-} from '@photox/data-access'
+import { Asset, AssetThumbnail, Face, FileRecord, Person } from '@photox/data-access'
+import { LocalStorageService } from '@photox/shared-config'
 import { User } from '../../src/users/entities/user.entity'
 import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
 import { Album } from '../../src/albums/entities/album.entity'

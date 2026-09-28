@@ -1,9 +1,16 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common'
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
+import { DataSource, In, Repository } from 'typeorm'
 import { Person } from '@photox/data-access'
 import { Face } from '@photox/data-access'
 import { Asset } from '@photox/data-access'
+import { refreshPersonFaceCount } from '../faces/face-count'
+import type { ApplyClustersDto } from './dto/apply-clusters.dto'
 import type {
   PersonDto,
   PersonListResponse,
@@ -20,6 +27,7 @@ export class PersonsService {
     private readonly faceRepo: Repository<Face>,
     @InjectRepository(Asset)
     private readonly assetRepo: Repository<Asset>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async list(userId: string, limit = 20, offset = 0): Promise<PersonListResponse> {
@@ -216,19 +224,86 @@ export class PersonsService {
     if (body.toPersonId) affectedPersonIds.add(body.toPersonId)
 
     for (const pid of affectedPersonIds) {
-      const result = await this.faceRepo
-        .createQueryBuilder('f')
-        .innerJoin('assets', 'a', 'a.id = f."assetId"')
-        .select('COUNT(*)')
-        .where('f."personId" = :personId', { personId: pid })
-        .andWhere('f."userId" = :userId', { userId })
-        .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
-        .getRawOne<{ count: string }>()
-      const count = Number(result?.count ?? 0)
-      await this.personRepo.update({ id: pid, userId }, { faceCount: count })
+      await refreshPersonFaceCount(this.faceRepo, this.personRepo, pid, userId)
     }
 
     return { moved: toUpdate.length }
+  }
+
+  // ponytail: worker cluster job applies its whole plan atomically; re-running after a success is a
+  // no-op because the worker re-derives the plan and only sends unassigned faces
+  async applyClusters(
+    userId: string,
+    dto: ApplyClustersDto,
+  ): Promise<{ created: number; assigned: number }> {
+    const items = [...dto.creates, ...dto.attaches]
+    const totalFaces = items.reduce((sum, item) => sum + item.faceIds.length, 0)
+    if (totalFaces > 5000) throw new BadRequestException('Too many faces (max 5000)')
+    for (const item of items) {
+      if (item.coverFaceId && !item.faceIds.includes(item.coverFaceId)) {
+        throw new BadRequestException('coverFaceId must be one of the item faceIds')
+      }
+    }
+
+    const allFaceIds = [...new Set(items.flatMap((item) => item.faceIds))]
+    const attachPersonIds = [...new Set(dto.attaches.map((a) => a.personId))]
+
+    return this.dataSource.transaction(async (em) => {
+      const faces = allFaceIds.length
+        ? await em.find(Face, { where: { id: In(allFaceIds), userId } })
+        : []
+      if (faces.length !== allFaceIds.length) throw new NotFoundException('Face not found')
+
+      const attachPersons = attachPersonIds.length
+        ? await em.find(Person, { where: { id: In(attachPersonIds), userId } })
+        : []
+      if (attachPersons.length !== attachPersonIds.length) {
+        throw new NotFoundException('Person not found')
+      }
+
+      const createdPersons = dto.creates.length
+        ? await em.save(
+            dto.creates.map((c) =>
+              em.create(Person, { userId, name: null, clusterLabel: c.clusterLabel, faceCount: 0 }),
+            ),
+          )
+        : []
+
+      const faceById = new Map(faces.map((f) => [f.id, f]))
+      const touchedPersonIds = new Set<string>()
+      const assignFace = (faceId: string, personId: string) => {
+        const face = faceById.get(faceId)!
+        if (face.personId && face.personId !== personId) touchedPersonIds.add(face.personId)
+        face.personId = personId
+        touchedPersonIds.add(personId)
+      }
+      dto.creates.forEach((c, i) =>
+        c.faceIds.forEach((fid) => assignFace(fid, createdPersons[i]!.id)),
+      )
+      dto.attaches.forEach((a) => a.faceIds.forEach((fid) => assignFace(fid, a.personId)))
+      if (faces.length) await em.save(faces)
+
+      for (const [i, c] of dto.creates.entries()) {
+        if (c.coverFaceId) {
+          await em.update(
+            Person,
+            { id: createdPersons[i]!.id, userId },
+            { coverFaceId: c.coverFaceId },
+          )
+        }
+      }
+      for (const a of dto.attaches) {
+        if (a.coverFaceId) {
+          await em.update(Person, { id: a.personId, userId }, { coverFaceId: a.coverFaceId })
+        }
+      }
+
+      for (const pid of touchedPersonIds) {
+        await refreshPersonFaceCount(em.getRepository(Face), em.getRepository(Person), pid, userId)
+      }
+
+      return { created: createdPersons.length, assigned: allFaceIds.length }
+    })
   }
 
   private toListItem(person: Person): PersonDto {

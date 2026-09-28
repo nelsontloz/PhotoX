@@ -18,6 +18,7 @@ import { CreatePersonDto } from './dto/create-person.dto'
 import { UpdatePersonDto } from './dto/update-person.dto'
 import { CoverPersonDto } from './dto/cover-person.dto'
 import { ReassignFacesDto } from './dto/reassign-faces.dto'
+import { ApplyClustersDto } from './dto/apply-clusters.dto'
 import { ListPersonsQueryDto } from './dto/list-persons-query.dto'
 import type {
   PersonListResponse,
@@ -49,6 +50,18 @@ export class PersonsController {
       { jobId },
     )
     return { queued: true, jobId }
+  }
+
+  @Post('apply-clusters')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Apply a face clustering plan (create persons, assign faces, set covers)',
+  })
+  @ApiResponse({ status: 200, description: 'Plan applied' })
+  @ApiResponse({ status: 400, description: 'Invalid plan (cover not in faceIds, too many faces)' })
+  @ApiResponse({ status: 404, description: 'Face or person not found' })
+  async applyClusters(@Req() req: Request, @Body() dto: ApplyClustersDto) {
+    return this.persons.applyClusters((req.user as { id: string }).id, dto)
   }
 
   @Get()

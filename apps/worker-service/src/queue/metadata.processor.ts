@@ -1,14 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
 import type { Job } from 'bullmq'
-import { readFile, stat, copyFile, unlink } from 'fs/promises'
+import { readFile, copyFile, unlink } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { BullMqService } from './bullmq.service'
 import { assertOwnership, parseJobData, metadataJobSchema, type MetadataJob } from './job-schemas'
-import { Asset, FileRecord, LocalStorageService } from '@photox/data-access'
+import { CoreClient } from '../core/core-client.service'
+import { LocalStorageService } from '@photox/shared-config'
 import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor'
 
 export function branchFor(mimeType: string | null): 'photo' | 'video' | null {
@@ -23,10 +22,7 @@ export class MetadataProcessor {
 
   constructor(
     private readonly bullMq: BullMqService,
-    @InjectRepository(FileRecord)
-    private readonly fileRepo: Repository<FileRecord>,
-    @InjectRepository(Asset)
-    private readonly assetRepo: Repository<Asset>,
+    private readonly core: CoreClient,
     private readonly storage: LocalStorageService,
     private readonly metadataExtractor: MetadataExtractor,
     private readonly videoMetadataExtractor: VideoMetadataExtractor,
@@ -49,16 +45,15 @@ export class MetadataProcessor {
 
     this.logger.log(`Processing metadata: asset=${assetId}, kind=${kind}`)
 
-    const record = await this.fileRepo.findOne({ where: { id: fileId } })
-    const asset = await this.assetRepo.findOne({ where: { id: assetId } })
+    const record = await this.core.getFile(userId, fileId)
+    const asset = await this.core.getAsset(userId, assetId)
     assertOwnership({ assetId, fileId, userId }, { record, asset })
 
     const filePath = join(tmpdir(), `metadata-${randomUUID()}`)
     try {
-      if (!record) throw new Error(`File not found: ${fileId}`)
       await copyFile(this.storage.pathFor(record.storageKey), filePath)
       const mimeType = record.mimeType ?? null
-      const sizeBytes = (await stat(filePath)).size
+      const sizeBytes = record.sizeBytes
       const originalName = record.originalName ?? null
 
       const branch = branchFor(mimeType)
@@ -72,26 +67,14 @@ export class MetadataProcessor {
         const hasAnyField = Object.values(metadata).some((v) => v !== null)
         const metadataStatus = hasAnyField ? 'ready' : 'failed'
 
-        await this.assetRepo.update(assetId, {
-          takenAt: metadata.takenAt,
-          cameraMake: metadata.cameraMake,
-          cameraModel: metadata.cameraModel,
-          lensModel: metadata.lensModel,
-          orientation: metadata.orientation,
-          latitude: metadata.latitude,
-          longitude: metadata.longitude,
-          iso: metadata.iso,
-          fNumber: metadata.fNumber,
-          exposureTime: metadata.exposureTime,
-          focalLength: metadata.focalLength,
-          altitude: metadata.altitude,
+        await this.core.patchMetadata(userId, assetId, {
+          ...metadata,
+          // EXIF iso can be rational (e.g. 201/2) — the DTO gates iso with @IsInt
+          iso: metadata.iso === null ? null : Math.round(metadata.iso),
           mimeType,
           sizeBytes,
           originalName,
-          metadataStatus,
-          metadataExtractedAt: new Date(),
-          width: metadata.width,
-          height: metadata.height,
+          status: metadataStatus,
           metadata: null,
         })
       } else if (branch === 'video') {
@@ -113,9 +96,8 @@ export class MetadataProcessor {
           videoMeta.altitude,
         ].some((v) => v !== null)
         const videoMetadataStatus = hasAnyVideoField ? 'ready' : 'failed'
-        await this.assetRepo.update(assetId, {
-          metadataStatus: videoMetadataStatus,
-          metadataExtractedAt: new Date(),
+        await this.core.patchMetadata(userId, assetId, {
+          status: videoMetadataStatus,
           mimeType,
           durationSeconds: videoMeta.durationSeconds,
           width: videoMeta.width,
@@ -143,10 +125,7 @@ export class MetadataProcessor {
       this.logger.error(`Metadata failed: asset=${assetId} — ${message}`)
 
       try {
-        await this.assetRepo.update(assetId, {
-          metadataStatus: 'failed',
-          metadataExtractedAt: new Date(),
-        })
+        await this.core.patchMetadata(userId, assetId, { status: 'failed' })
       } catch (patchErr) {
         const patchMsg = patchErr instanceof Error ? patchErr.message : String(patchErr)
         this.logger.warn(

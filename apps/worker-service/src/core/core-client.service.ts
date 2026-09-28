@@ -1,0 +1,253 @@
+import { Injectable } from '@nestjs/common'
+import { JwtService, type JwtSignOptions } from '@nestjs/jwt'
+import { UnrecoverableError } from 'bullmq'
+import { loadEnv } from '@photox/shared-config'
+import type {
+  Asset,
+  AssetListResponse,
+  DetectedFaceInput,
+  FaceBox,
+  FileRecord,
+  Role,
+} from '@photox/shared-types'
+
+export interface MetadataPatch {
+  status?: 'pending' | 'ready' | 'failed'
+  takenAt?: Date | null
+  mimeType?: string | null
+  sizeBytes?: number
+  originalName?: string | null
+  width?: number | null
+  height?: number | null
+  durationSeconds?: number | null
+  fps?: number | null
+  codec?: string | null
+  hasAudio?: boolean | null
+  cameraMake?: string | null
+  cameraModel?: string | null
+  lensModel?: string | null
+  orientation?: number | null
+  iso?: number | null
+  fNumber?: number | null
+  exposureTime?: number | null
+  focalLength?: number | null
+  latitude?: number | null
+  longitude?: number | null
+  altitude?: number | null
+  metadata?: Record<string, unknown> | null
+  transcodeStatus?: 'pending' | 'ready' | 'failed'
+  thumbnailStatus?: 'pending' | 'ready' | 'failed' | null
+  transcodeFileId?: string | null
+  faceStatus?: 'pending' | 'ready' | 'failed' | null
+  faceCount?: number | null
+}
+
+export interface RegisterFileInput {
+  id: string
+  kind: 'original' | 'thumbnail' | 'transcode'
+  ext: string
+  checksumSha256: string
+  originalName: string
+  mimeType: string
+  sizeBytes: number
+  assetId?: string
+}
+
+export interface RegisterThumbnailInput {
+  size: string
+  fileId: string
+  width: number
+  height: number
+  bytes: number
+}
+
+export interface ClusterFace {
+  id: string
+  assetId: string
+  box: FaceBox
+  confidence: number
+  personId: string | null
+  embedding: number[]
+}
+
+export interface ApplyClusterCreate {
+  clusterLabel: string
+  faceIds: string[]
+  coverFaceId?: string
+}
+
+export interface ApplyClusterAttach {
+  personId: string
+  faceIds: string[]
+  coverFaceId?: string
+}
+
+export interface ApplyClustersPayload {
+  creates: ApplyClusterCreate[]
+  attaches: ApplyClusterAttach[]
+}
+
+export interface ApplyClustersResult {
+  created: number
+  assigned: number
+}
+
+export interface OrphanCleanupResult {
+  deletedFiles: number
+  deletedThumbnails: number
+  deletedStrays: number
+}
+
+const RETRY_DELAYS_MS = [1000, 2000, 4000]
+const REQUEST_TIMEOUT_MS = 30_000
+const ASSET_IDS_CHUNK = 100
+
+@Injectable()
+export class CoreClient {
+  constructor(private readonly jwt: JwtService) {}
+
+  // ponytail: per-job delegated JWT — core's guard scopes every call by sub, so worker
+  // never needs DB access; 2b passes role 'admin' with sub 'worker-service' for cleanup
+  private signToken(sub: string, role: Role): string {
+    return this.jwt.sign(
+      { sub, email: 'worker@internal', role },
+      {
+        algorithm: 'HS256',
+        expiresIn: loadEnv().AUTH_ACCESS_TTL as JwtSignOptions['expiresIn'],
+      },
+    )
+  }
+
+  async getFile(userId: string, fileId: string): Promise<FileRecord> {
+    return this.request('GET', `/api/v1/files/${fileId}`, { sub: userId })
+  }
+
+  async getAsset(userId: string, assetId: string): Promise<Asset> {
+    return this.request('GET', `/api/v1/assets/${assetId}`, { sub: userId })
+  }
+
+  async patchMetadata(userId: string, assetId: string, dto: MetadataPatch): Promise<void> {
+    await this.request('PATCH', `/api/v1/assets/${assetId}/metadata`, { sub: userId, body: dto })
+  }
+
+  async registerFile(userId: string, dto: RegisterFileInput): Promise<FileRecord> {
+    return this.request('POST', '/api/v1/files/register', { sub: userId, body: dto })
+  }
+
+  async registerThumbnail(
+    userId: string,
+    assetId: string,
+    dto: RegisterThumbnailInput,
+  ): Promise<void> {
+    await this.request('POST', `/api/v1/assets/${assetId}/thumbnails`, { sub: userId, body: dto })
+  }
+
+  async registerFaces(
+    userId: string,
+    assetId: string,
+    faces: DetectedFaceInput[],
+  ): Promise<{ count: number }> {
+    // userId is part of the wire DTO (required @IsUUID); the token sub stays authoritative
+    return this.request('POST', `/api/v1/assets/${assetId}/faces`, {
+      sub: userId,
+      body: { faces, userId },
+    })
+  }
+
+  async deleteAssetFaces(userId: string, assetId: string): Promise<{ deleted: number }> {
+    return this.request('DELETE', `/api/v1/assets/${assetId}/faces`, { sub: userId })
+  }
+
+  async getFacesForCluster(userId: string): Promise<ClusterFace[]> {
+    const res = await this.request<{ items: ClusterFace[] }>(
+      'GET',
+      '/api/v1/faces?includeEmbeddings=true&excludeTrashed=true',
+      { sub: userId },
+    )
+    return res.items
+  }
+
+  // ponytail: E2 caps ids at 100 (header size); LEGACY_REEMBED_PER_RUN matches, chunk anyway for safety
+  async getAssetsByIds(userId: string, ids: string[]): Promise<Pick<Asset, 'id' | 'fileId'>[]> {
+    const assets: Pick<Asset, 'id' | 'fileId'>[] = []
+    for (let i = 0; i < ids.length; i += ASSET_IDS_CHUNK) {
+      const res = await this.request<AssetListResponse>(
+        'GET',
+        `/api/v1/assets?ids=${ids.slice(i, i + ASSET_IDS_CHUNK).join(',')}`,
+        { sub: userId },
+      )
+      assets.push(...res.items)
+    }
+    return assets
+  }
+
+  async applyClusters(userId: string, payload: ApplyClustersPayload): Promise<ApplyClustersResult> {
+    return this.request('POST', '/api/v1/persons/apply-clusters', { sub: userId, body: payload })
+  }
+
+  async adminDeleteFile(fileId: string): Promise<void> {
+    await this.request('DELETE', `/api/v1/admin/files/${fileId}`, {
+      sub: 'worker-service',
+      role: 'admin',
+    })
+  }
+
+  async adminRunOrphanCleanup(): Promise<OrphanCleanupResult> {
+    // disk walk can exceed the default 30s — endpoint runs the whole scan inline
+    return this.request(
+      'POST',
+      '/api/v1/admin/cleanup-orphans/run',
+      { sub: 'worker-service', role: 'admin' },
+      { timeoutMs: 120_000 },
+    )
+  }
+
+  private async request<T>(
+    method: 'GET' | 'PATCH' | 'POST' | 'DELETE',
+    path: string,
+    opts: { sub: string; role?: Role; body?: unknown },
+    extra: { timeoutMs?: number } = {},
+  ): Promise<T> {
+    const token = this.signToken(opts.sub, opts.role ?? 'user')
+    let lastError = new Error(`Core ${method} ${path} failed`)
+
+    for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt - 1]))
+
+      let res: Response
+      try {
+        res = await fetch(`${loadEnv().CORE_URL}${path}`, {
+          method,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            ...(opts.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+          },
+          body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+          signal: AbortSignal.timeout(extra.timeoutMs ?? REQUEST_TIMEOUT_MS),
+        })
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err))
+        continue
+      }
+
+      if (res.ok) {
+        if (res.status === 204) return undefined as T
+        return (await res.json()) as T
+      }
+
+      const detail = await res.text().catch(() => '')
+      const message = `Core ${method} ${path} failed: ${res.status}${detail ? ` — ${detail.slice(0, 300)}` : ''}`
+
+      // bad payload / unknown or foreign resource: retrying cannot help
+      if (res.status === 400 || res.status === 404 || res.status === 422) {
+        throw new UnrecoverableError(message)
+      }
+      // secret rotation / clock skew is environmental — surface it, don't burn in-process retries
+      if (res.status === 401 || res.status === 403) throw new Error(message)
+
+      lastError = new Error(message)
+    }
+
+    throw lastError
+  }
+}

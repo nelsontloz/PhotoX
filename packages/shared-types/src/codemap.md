@@ -2,9 +2,9 @@
 
 ## Responsibility
 
-Three files define every client/server payload: `index.ts` (auth/user/files/assets/faces/
+Three files define every client/server payload plus one shared constant: `index.ts` (auth/user/files/assets/faces/
 persons/admin plus the barrel), `albums.ts`, and `shares.ts`. Everything is exported
-type-only; no values, no validation logic (validation lives in core DTOs).
+type-only except `FACE_EMBEDDING_DIM`; no validation logic lives here (validation lives in core DTOs).
 
 ## Design
 
@@ -24,6 +24,9 @@ type-only; no values, no validation logic (validation lives in core DTOs).
   `RegisterFacesResponseDto`, `PersonDto`, `PersonListResponse`, `PersonAssetItem`,
   `PersonAssetsResponse`, `UpdatePersonRequest`, `ReassignFacesRequest`,
   `ReassignFacesResponse`.
+- `export const FACE_EMBEDDING_DIM = 512` — the only runtime value (moved here from
+  `data-access`); imported by the worker embedder/cluster and specs, enforced at the HTTP
+  boundary by core's `DetectedFaceDto`.
 - Ends with `export * from './albums'` and `export * from './shares'`, so those names are
   reachable from the barrel.
 
@@ -40,11 +43,12 @@ to `| null`; dates are ISO strings; `DetectedFaceInput.embedding` is `number[]` 
 
 ## Flow
 
-Compile-time only: core DTOs implement these interfaces, web imports them via `import type`,
-and the legacy pact consumer test uses the same response shapes. No runtime effect anywhere.
+Compile-time contract for core DTOs and web consumers, plus one runtime constant
+(`FACE_EMBEDDING_DIM`) used by the worker's face code. The legacy pact consumer test uses the
+same response shapes.
 
 ## Integration
 
-Consumed by `apps/core`, `apps/web`, `packages/shared-auth`
-(`Role`), and the legacy pact consumer under `apps/web/test/pact/consumer/`. Kept
-dependency-free so any layer may import it.
+Consumed by `apps/core`, `apps/web`, `apps/worker-service`, `packages/shared-auth`
+(`Role`), and the legacy pact consumer under `apps/web/test/pact/consumer/`. No dependencies
+of its own, so any layer may import it.

@@ -44,13 +44,18 @@ export class AssetsService {
   }
 
   async list(userId: string, q: ListAssetsQueryDto): Promise<AssetListResponse> {
-    const limit = q.limit ?? 20
+    // ponytail: ids requests need every match (legacy re-embed ≤100/run); 100 mirrors the DTO @Max
+    const limit = q.limit ?? (q.ids ? Math.min(q.ids.length, 100) : 20)
     const offset = q.offset ?? 0
     const isTrashed = q.isTrashed ?? false
 
     const qb = this.repo.createQueryBuilder('asset').where('asset.userId = :userId', { userId })
 
     qb.andWhere('asset.isTrashed = :isTrashed', { isTrashed })
+
+    if (q.ids) {
+      qb.andWhere('asset.id IN (:...ids)', { ids: q.ids })
+    }
 
     if (q.kind) {
       qb.andWhere('asset.kind = :kind', { kind: q.kind })

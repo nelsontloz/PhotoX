@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
@@ -11,8 +12,10 @@ import { createReadStream } from 'fs'
 import { unlink } from 'fs/promises'
 import { pipeline } from 'stream/promises'
 import { Readable } from 'stream'
-import { FileRecord, LocalStorageService } from '@photox/data-access'
+import { Asset, FileRecord } from '@photox/data-access'
+import { LocalStorageService } from '@photox/shared-config'
 import { toFileRecordResponse } from '../file-record.mapper'
+import { RegisterFileBodyDto } from './dto/register-file.body.dto'
 import { AssetsService } from '../../assets/assets.service'
 import { BullMqService } from '../../queue/bullmq.service'
 import type { Asset as AssetResponse, FileListResponse } from '@photox/shared-types'
@@ -36,6 +39,8 @@ export class UserFilesService {
   constructor(
     @InjectRepository(FileRecord)
     private readonly fileRepo: Repository<FileRecord>,
+    @InjectRepository(Asset)
+    private readonly assetRepo: Repository<Asset>,
     private readonly storage: LocalStorageService,
     private readonly assets: AssetsService,
     private readonly bullMq: BullMqService,
@@ -94,6 +99,52 @@ export class UserFilesService {
       this.bullMq.enqueueVideo(asset.id, record.id, userId)
     }
     return asset
+  }
+
+  // ponytail: workers write bytes first, then register the row; core recomputes the
+  // storageKey from (kind, user, id, ext) so a client can never point at another user's bytes
+  async register(
+    userId: string,
+    dto: RegisterFileBodyDto,
+  ): Promise<{ file: ReturnType<typeof toFileRecordResponse>; created: boolean }> {
+    const purpose = dto.kind === 'transcode' ? 'transcode' : 'original'
+    const existing = await this.fileRepo.findOne({
+      where: {
+        userId,
+        checksumSha256: dto.checksumSha256,
+        purpose,
+        ...(dto.assetId ? { assetId: dto.assetId } : {}),
+      },
+    })
+    if (existing) return { file: toFileRecordResponse(existing), created: false }
+
+    if (await this.fileRepo.exists({ where: { id: dto.id } })) {
+      throw new ConflictException('File id already exists')
+    }
+
+    if (dto.assetId) {
+      const asset = await this.assetRepo.findOne({ where: { id: dto.assetId, userId } })
+      if (!asset) throw new NotFoundException('Asset not found')
+    }
+
+    const storageKey = this.storage.buildKey(dto.kind, userId, dto.id, dto.ext)
+    if (!(await this.storage.exists(storageKey))) {
+      throw new UnprocessableEntityException('File bytes not found in storage')
+    }
+
+    const record = this.fileRepo.create({
+      id: dto.id,
+      userId,
+      storageKey,
+      originalName: dto.originalName,
+      mimeType: dto.mimeType,
+      sizeBytes: dto.sizeBytes,
+      checksumSha256: dto.checksumSha256,
+      purpose,
+      assetId: dto.assetId ?? null,
+    })
+    await this.fileRepo.save(record)
+    return { file: toFileRecordResponse(record), created: true }
   }
 
   private kindFromMime(mimetype: string): 'photo' | 'video' | null {
@@ -193,7 +244,8 @@ export class UserFilesService {
         userId: f.userId,
         originalName: f.originalName,
         mimeType: f.mimeType,
-        sizeBytes: f.sizeBytes,
+        // bigint → pg returns string; the wire type says number
+        sizeBytes: Number(f.sizeBytes),
         createdAt: f.createdAt.toISOString(),
       })),
       total,

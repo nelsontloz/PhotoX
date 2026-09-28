@@ -22,6 +22,7 @@ import multer from 'multer'
 import { UserFilesService } from './user-files.service'
 import { FileRecordDto } from '../file-record.dto'
 import { FileListResponseDto, ListFilesQueryDto } from './dto/list-files-query.dto'
+import { RegisterFileBodyDto } from './dto/register-file.body.dto'
 import { UploadFileBodyDto } from './dto/upload-file.body.dto'
 import { parseRangeHeader } from '../streaming.util'
 
@@ -56,6 +57,25 @@ export class UserFilesController {
       description: body.description,
       takenAt: body.takenAt,
     })
+  }
+
+  @Post('register')
+  @ApiOperation({ summary: 'Register a file whose bytes a worker already wrote to storage' })
+  @ApiResponse({ status: 201, description: 'File registered' })
+  @ApiResponse({ status: 200, description: 'Existing file returned for the same checksum' })
+  @ApiResponse({ status: 400, description: 'Invalid registration payload' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  @ApiResponse({ status: 409, description: 'File id already exists' })
+  @ApiResponse({ status: 422, description: 'Bytes missing from storage' })
+  async register(
+    @Req() req: Request,
+    @Body() body: RegisterFileBodyDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const userId = (req.user as { id: string }).id
+    const { file, created } = await this.userFilesService.register(userId, body)
+    res.status(created ? HttpStatus.CREATED : HttpStatus.OK)
+    return file
   }
 
   @Get()

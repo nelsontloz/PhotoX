@@ -185,6 +185,10 @@ export interface AdminAssetReprocessListResponse {
   total: number
 }
 
+// ponytail: single source of truth for the embedding dim (InsightFace buffalo_l w600k_r50) —
+// detector output, DTO validation, cluster filters, and the HNSW index cast all reference this
+export const FACE_EMBEDDING_DIM = 512
+
 export interface FaceBox {
   x: number
   y: number

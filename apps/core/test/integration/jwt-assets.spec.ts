@@ -173,6 +173,21 @@ describe('assets JWT identity', () => {
     expect((own.body as unknown as { width: number }).width).toBe(100)
   })
 
+  it('accepts negative GPS altitude on metadata update', async () => {
+    const a = await seedUser(t)
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
+    const file = await seedFile(t, a.id)
+    const asset = await seedAsset(t, a.id, file.id)
+    const res = await request(apiServer(t))
+      .patch(`/api/v1/assets/${asset.id}/metadata`)
+      .set(t.authHeader(tokenA))
+      .send({ altitude: -12.5 })
+    expect(res.status).toBe(200)
+    expect((res.body as unknown as { altitude: number }).altitude).toBe(-12.5)
+    const row = await t.assetRepo.findOneByOrFail({ id: asset.id })
+    expect(Number(row.altitude)).toBe(-12.5)
+  })
+
   it('rejects cross-user face listing', async () => {
     const a = await seedUser(t)
     const b = await seedUser(t)
@@ -342,5 +357,66 @@ describe('assets JWT identity', () => {
     const secondBody = second.body as unknown as { items: { id: string }[]; total: number }
     expect(secondBody.total).toBe(3)
     expect(secondBody.items).toHaveLength(1)
+  })
+
+  it('filters by ids CSV and returns only those assets with fileId', async () => {
+    const user = await seedUser(t)
+    const other = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const fileA = await seedFile(t, user.id)
+    const assetA = await seedAsset(t, user.id, fileA.id)
+    const fileB = await seedFile(t, user.id)
+    const assetB = await seedAsset(t, user.id, fileB.id)
+    const otherFile = await seedFile(t, other.id)
+    await seedAsset(t, other.id, otherFile.id)
+
+    const res = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .query({ ids: `${assetA.id},${assetB.id}` })
+      .set(t.authHeader(token))
+    expect(res.status).toBe(200)
+    const body = res.body as unknown as { items: { id: string; fileId: string }[]; total: number }
+    expect(body.total).toBe(2)
+    expect(body.items.map((i) => i.id).sort()).toEqual([assetA.id, assetB.id].sort())
+    expect(body.items.find((i) => i.id === assetA.id)?.fileId).toBe(fileA.id)
+  })
+
+  it('rejects a malformed ids filter with 400', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const res = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .query({ ids: 'not-a-uuid' })
+      .set(t.authHeader(token))
+    expect(res.status).toBe(400)
+  })
+
+  it('returns all matched ids without an explicit limit', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const assetIds: string[] = []
+    for (let i = 0; i < 22; i++) {
+      const file = await seedFile(t, user.id)
+      assetIds.push((await seedAsset(t, user.id, file.id)).id)
+    }
+    const res = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .query({ ids: assetIds.join(',') })
+      .set(t.authHeader(token))
+    expect(res.status).toBe(200)
+    const body = res.body as unknown as { items: { id: string }[]; total: number }
+    expect(body.total).toBe(22)
+    expect(body.items).toHaveLength(22)
+  })
+
+  it('rejects more than 100 ids with 400', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const ids = Array.from({ length: 101 }, () => randomUUID()).join(',')
+    const res = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .query({ ids })
+      .set(t.authHeader(token))
+    expect(res.status).toBe(400)
   })
 })

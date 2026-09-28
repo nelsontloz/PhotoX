@@ -1,6 +1,16 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
 import request from 'supertest'
-import { closeTestApp, createApiTestApp, resetDb, seedFile, seedUser, apiServer } from './helpers'
+import {
+  closeTestApp,
+  createApiTestApp,
+  resetDb,
+  seedAsset,
+  seedFile,
+  seedUser,
+  apiServer,
+} from './helpers'
 import type { ApiTestApp } from './helpers'
 
 describe('files JWT identity', () => {
@@ -105,5 +115,168 @@ describe('files JWT identity', () => {
       .delete(`/api/v1/files/${randomUUID()}`)
       .set(t.authHeader(token))
     expect(res.status).toBe(204)
+  })
+
+  async function writeBytes(
+    kind: 'original' | 'thumbnail' | 'transcode',
+    userId: string,
+    id: string,
+    ext: string,
+    bytes: Buffer,
+  ): Promise<string> {
+    const storageKey = t.storage.buildKey(kind, userId, id, ext)
+    await mkdir(dirname(t.storage.pathFor(storageKey)), { recursive: true })
+    await writeFile(t.storage.pathFor(storageKey), bytes)
+    return storageKey
+  }
+
+  function registerBody(bytes: Buffer, overrides: Record<string, unknown> = {}) {
+    return {
+      id: randomUUID(),
+      kind: 'original',
+      ext: 'jpg',
+      checksumSha256: createHash('sha256').update(bytes).digest('hex'),
+      originalName: 'photo.jpg',
+      mimeType: 'image/jpeg',
+      sizeBytes: bytes.length,
+      ...overrides,
+    }
+  }
+
+  it('registers a file with a core-computed storage key', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const bytes = Buffer.from('register-thumb-bytes')
+    const id = randomUUID()
+    const storageKey = await writeBytes('thumbnail', user.id, id, 'webp', bytes)
+
+    const res = await request(apiServer(t))
+      .post('/api/v1/files/register')
+      .set(t.authHeader(token))
+      .send(
+        registerBody(bytes, {
+          id,
+          kind: 'thumbnail',
+          ext: 'webp',
+          originalName: 'thumb.webp',
+          mimeType: 'image/webp',
+        }),
+      )
+    expect(res.status).toBe(201)
+    const row = await t.fileRepo.findOne({ where: { id } })
+    expect(row?.storageKey).toBe(storageKey)
+    expect(row?.purpose).toBe('original')
+    expect(row?.userId).toBe(user.id)
+    expect(row?.assetId).toBeNull()
+    expect(res.body).toMatchObject({ id, storageKey, purpose: 'original', userId: user.id })
+  })
+
+  it('registers a transcode against an owned asset', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const source = await seedFile(t, user.id)
+    const asset = await seedAsset(t, user.id, source.id, { kind: 'video' })
+    const bytes = Buffer.from('register-transcode-bytes')
+    const id = randomUUID()
+    const storageKey = await writeBytes('transcode', user.id, id, 'webm', bytes)
+
+    const res = await request(apiServer(t))
+      .post('/api/v1/files/register')
+      .set(t.authHeader(token))
+      .send(registerBody(bytes, { id, kind: 'transcode', ext: 'webm', assetId: asset.id }))
+    expect(res.status).toBe(201)
+    const row = await t.fileRepo.findOne({ where: { id } })
+    expect(row?.storageKey).toBe(storageKey)
+    expect(row?.purpose).toBe('transcode')
+    expect(row?.assetId).toBe(asset.id)
+  })
+
+  it('returns the existing file for a duplicate checksum', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const bytes = Buffer.from('register-dedupe-bytes')
+    const firstId = randomUUID()
+    await writeBytes('original', user.id, firstId, 'jpg', bytes)
+
+    const first = await request(apiServer(t))
+      .post('/api/v1/files/register')
+      .set(t.authHeader(token))
+      .send(registerBody(bytes, { id: firstId }))
+    expect(first.status).toBe(201)
+
+    const second = await request(apiServer(t))
+      .post('/api/v1/files/register')
+      .set(t.authHeader(token))
+      .send(registerBody(bytes))
+    expect(second.status).toBe(200)
+    const body = second.body as unknown as { id: string }
+    expect(body.id).toBe(firstId)
+    expect(await t.fileRepo.count()).toBe(1)
+  })
+
+  it('rejects a re-used file id with 409', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const id = randomUUID()
+    const bytes = Buffer.from('register-collision-bytes')
+    await writeBytes('original', user.id, id, 'jpg', bytes)
+
+    const first = await request(apiServer(t))
+      .post('/api/v1/files/register')
+      .set(t.authHeader(token))
+      .send(registerBody(bytes, { id }))
+    expect(first.status).toBe(201)
+
+    const second = await request(apiServer(t))
+      .post('/api/v1/files/register')
+      .set(t.authHeader(token))
+      .send(registerBody(Buffer.from('different-bytes'), { id }))
+    expect(second.status).toBe(409)
+  })
+
+  it('rejects a foreign asset with 404', async () => {
+    const owner = await seedUser(t)
+    const other = await seedUser(t)
+    const token = t.signToken({ id: other.id, email: other.email, role: other.role })
+    const source = await seedFile(t, owner.id)
+    const asset = await seedAsset(t, owner.id, source.id)
+
+    const res = await request(apiServer(t))
+      .post('/api/v1/files/register')
+      .set(t.authHeader(token))
+      .send(registerBody(Buffer.from('foreign-asset-bytes'), { assetId: asset.id }))
+    expect(res.status).toBe(404)
+  })
+
+  it('rejects invalid registration payloads with 400', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const valid = registerBody(Buffer.from('register-validation-bytes'))
+    const payloads = [
+      { ...valid, checksumSha256: 'z'.repeat(64) },
+      { ...valid, checksumSha256: 'a'.repeat(63) },
+      { ...valid, ext: 'JPEG' },
+      { ...valid, ext: 'toolongext' },
+      { ...valid, kind: 'sidecar' },
+      { ...valid, sizeBytes: -1 },
+      { ...valid, unknownField: 'nope' },
+    ]
+    for (const payload of payloads) {
+      const res = await request(apiServer(t))
+        .post('/api/v1/files/register')
+        .set(t.authHeader(token))
+        .send(payload)
+      expect(res.status).toBe(400)
+    }
+  })
+
+  it('returns 422 when registered bytes are missing from storage', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const res = await request(apiServer(t))
+      .post('/api/v1/files/register')
+      .set(t.authHeader(token))
+      .send(registerBody(Buffer.from('register-missing-bytes')))
+    expect(res.status).toBe(422)
   })
 })

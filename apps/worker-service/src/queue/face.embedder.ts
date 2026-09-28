@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { access } from 'fs/promises'
 import { join } from 'path'
 import { loadEnv } from '@photox/shared-config'
-import { FACE_EMBEDDING_DIM } from '@photox/data-access'
+import { FACE_EMBEDDING_DIM } from '@photox/shared-types'
 import type * as ort from 'onnxruntime-node'
 
 // ponytail: InsightFace buffalo_l recognition weights (w600k_r50.onnx, ~174MB) are for

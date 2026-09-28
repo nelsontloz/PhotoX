@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-DI wiring for local-disk storage. `StorageModule` provides and exports `LocalStorageService` from `@photox/data-access`; there is no code in this folder beyond the module definition.
+DI wiring for local-disk storage. `StorageModule` provides and exports `LocalStorageService` from `@photox/shared-config`; there is no code in this folder beyond the module definition.
 
 ## Design
 

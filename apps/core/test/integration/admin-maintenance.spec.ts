@@ -1,5 +1,8 @@
 import request from 'supertest'
+import { existsSync } from 'node:fs'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
 import {
   closeTestApp,
   createApiTestApp,
@@ -217,6 +220,102 @@ describe('admin maintenance', () => {
         .set(t.authHeader(token))
       expect(res.status).toBe(400)
     }
+  })
+
+  it('deletes any file record and blob as admin, idempotently', async () => {
+    const admin = await seedUser(t, { role: 'admin' })
+    const owner = await seedUser(t)
+    const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
+    const record = await seedFile(t, owner.id, { bytes: Buffer.from('admin-delete-bytes') })
+
+    const first = await request(apiServer(t))
+      .delete(`/api/v1/admin/files/${record.id}`)
+      .set(t.authHeader(token))
+    expect(first.status).toBe(204)
+    expect(await t.fileRepo.findOne({ where: { id: record.id } })).toBeNull()
+    expect(await t.storage.exists(record.storageKey)).toBe(false)
+
+    const repeat = await request(apiServer(t))
+      .delete(`/api/v1/admin/files/${record.id}`)
+      .set(t.authHeader(token))
+    expect(repeat.status).toBe(204)
+
+    const unknown = await request(apiServer(t))
+      .delete(`/api/v1/admin/files/${randomUUID()}`)
+      .set(t.authHeader(token))
+    expect(unknown.status).toBe(204)
+  })
+
+  it('runs orphan cleanup inline with exact counts', async () => {
+    const admin = await seedUser(t, { role: 'admin' })
+    const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
+    const old = new Date(Date.now() - 60 * 60 * 1000)
+
+    const referenced = await seedFile(t, admin.id)
+    await t.fileRepo.update(referenced.id, { createdAt: old })
+    const asset = await seedAsset(t, admin.id, referenced.id, { kind: 'photo' })
+
+    const orphan = await seedFile(t, admin.id)
+    await t.fileRepo.update(orphan.id, { createdAt: old })
+
+    const fresh = await seedFile(t, admin.id)
+    await t.fileRepo.update(fresh.id, { createdAt: new Date() })
+
+    const thumb = await t.thumbRepo.save(
+      t.thumbRepo.create({
+        assetId: asset.id,
+        size: 'sm',
+        fileId: randomUUID(),
+        width: 10,
+        height: 10,
+        bytes: 5,
+      }),
+    )
+    await t.thumbRepo.update(thumb.id, { createdAt: old })
+
+    await mkdir(join(t.storageDir, 'models'), { recursive: true })
+    await writeFile(join(t.storageDir, 'models', 'keep.onnx'), Buffer.from('model'))
+    await writeFile(join(t.storageDir, 'stray.bin'), Buffer.from('stray'))
+    await writeFile(join(t.storageDir, 'staging.tmp'), Buffer.from('tmp'))
+
+    const res = await request(apiServer(t))
+      .post('/api/v1/admin/cleanup-orphans/run')
+      .set(t.authHeader(token))
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ deletedFiles: 1, deletedThumbnails: 1, deletedStrays: 1 })
+
+    expect(await t.fileRepo.findOne({ where: { id: orphan.id } })).toBeNull()
+    expect(await t.storage.exists(orphan.storageKey)).toBe(false)
+    expect(await t.fileRepo.findOne({ where: { id: referenced.id } })).not.toBeNull()
+    expect(await t.storage.exists(referenced.storageKey)).toBe(true)
+    expect(await t.fileRepo.findOne({ where: { id: fresh.id } })).not.toBeNull()
+    expect(await t.thumbRepo.findOne({ where: { id: thumb.id } })).toBeNull()
+    expect(existsSync(join(t.storageDir, 'models', 'keep.onnx'))).toBe(true)
+    expect(existsSync(join(t.storageDir, 'staging.tmp'))).toBe(true)
+    expect(existsSync(join(t.storageDir, 'stray.bin'))).toBe(false)
+
+    const again = await request(apiServer(t))
+      .post('/api/v1/admin/cleanup-orphans/run')
+      .set(t.authHeader(token))
+    expect(again.status).toBe(200)
+    expect(again.body).toEqual({ deletedFiles: 0, deletedThumbnails: 0, deletedStrays: 0 })
+  })
+
+  it('rejects non-admin on file delete and cleanup run', async () => {
+    const user = await seedUser(t, { role: 'user' })
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const record = await seedFile(t, user.id)
+
+    const del = await request(apiServer(t))
+      .delete(`/api/v1/admin/files/${record.id}`)
+      .set(t.authHeader(token))
+    expect(del.status).toBe(403)
+    expect(await t.fileRepo.findOne({ where: { id: record.id } })).not.toBeNull()
+
+    const run = await request(apiServer(t))
+      .post('/api/v1/admin/cleanup-orphans/run')
+      .set(t.authHeader(token))
+    expect(run.status).toBe(403)
   })
 
   it('counts assets per user via asset-stats', async () => {

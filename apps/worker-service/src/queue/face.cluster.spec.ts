@@ -1,15 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { FACE_EMBEDDING_DIM } from '@photox/data-access'
+import { FACE_EMBEDDING_DIM } from '@photox/shared-types'
 import { FaceClusterService } from './face.cluster'
-
-interface FaceRow {
-  id: string
-  assetId: string
-  box: { x: number; y: number; w: number; h: number }
-  embedding: number[]
-  confidence: number
-  personId: string | null
-}
+import type { ApplyClustersPayload, ClusterFace } from '../core/core-client.service'
 
 const emb512 = (...pairs: [number, number][]): number[] => {
   const v = new Array<number>(FACE_EMBEDDING_DIM).fill(0)
@@ -25,7 +17,7 @@ describe('FaceClusterService.cluster', () => {
     personId: string | null = null,
     confidence = 0.9,
     size = 100,
-  ): FaceRow => ({
+  ): ClusterFace => ({
     id,
     assetId: `asset-${id}`,
     box: { x: 0, y: 0, w: size, h: size },
@@ -34,109 +26,127 @@ describe('FaceClusterService.cluster', () => {
     personId,
   })
 
-  let faceRows: FaceRow[]
-  let faceUpdates: { where: unknown; patch: unknown }[]
-  let personUpdates: { where: unknown; patch: unknown }[]
-  let created: { userId: string; clusterLabel: string }[]
-  let andWhereMock: ReturnType<typeof vi.fn>
+  let faces: ClusterFace[]
+  let plans: ApplyClustersPayload[]
   let enqueueMock: ReturnType<typeof vi.fn>
+  let getAssetsByIdsMock: ReturnType<typeof vi.fn>
   let service: FaceClusterService
 
   beforeEach(() => {
-    faceRows = [
-      { ...face('face-assigned', emb512([0, 1]), 'person-existing') },
-      { ...face('face-a', emb512([1, 1]), null, 0.9, 120) },
-      { ...face('face-b', emb512([1, 1])) },
+    faces = [
+      face('face-assigned', emb512([0, 1]), 'person-existing'),
+      face('face-a', emb512([1, 1]), null, 0.9, 120),
+      face('face-b', emb512([1, 1])),
     ]
-    faceUpdates = []
-    personUpdates = []
-    created = []
+    plans = []
     let personSeq = 0
 
-    andWhereMock = vi.fn().mockReturnThis()
     enqueueMock = vi.fn().mockResolvedValue(undefined)
-    const qb = {
-      innerJoin: vi.fn().mockReturnThis(),
-      select: vi.fn().mockReturnThis(),
-      where: vi.fn().mockReturnThis(),
-      andWhere: andWhereMock,
-      getMany: vi.fn().mockImplementation(() => Promise.resolve(faceRows)),
-      getRawOne: vi.fn().mockResolvedValue({ count: '2' }),
-    }
-    const faceRepo = {
-      createQueryBuilder: vi.fn().mockReturnValue(qb),
-      update: vi.fn().mockImplementation((where: unknown, patch: unknown) => {
-        faceUpdates.push({ where, patch })
-        const row = faceRows.find((f) => f.id === (where as { id: string }).id)
-        if (row) Object.assign(row, patch)
-      }),
-    }
-    const personRepo = {
-      create: vi.fn().mockImplementation((e: unknown) => ({ ...(e as object) })),
-      save: vi.fn().mockImplementation((e: { userId: string; clusterLabel: string }) => {
-        created.push(e)
-        personSeq++
-        const row = {
-          id: `person-new-${personSeq}`,
-          userId: e.userId,
-          clusterLabel: e.clusterLabel,
+    getAssetsByIdsMock = vi.fn().mockResolvedValue([{ id: 'asset-legacy', fileId: 'file-legacy' }])
+    const core = {
+      getFacesForCluster: vi.fn().mockImplementation(() =>
+        Promise.resolve(
+          faces.map((f) => ({
+            ...f,
+            box: { ...f.box },
+            embedding: [...f.embedding],
+          })),
+        ),
+      ),
+      getAssetsByIds: getAssetsByIdsMock,
+      // mirror core's writes so a second run observes the applied plan
+      applyClusters: vi.fn().mockImplementation((_uid: string, payload: ApplyClustersPayload) => {
+        plans.push(payload)
+        const assign = (faceId: string, personId: string) => {
+          const row = faces.find((f) => f.id === faceId)
+          if (row) row.personId = personId
         }
-        return row
-      }),
-      update: vi.fn().mockImplementation((where: unknown, patch: unknown) => {
-        personUpdates.push({ where, patch })
+        for (const create of payload.creates) {
+          personSeq++
+          for (const faceId of create.faceIds) assign(faceId, `person-new-${personSeq}`)
+        }
+        for (const attach of payload.attaches) {
+          for (const faceId of attach.faceIds) assign(faceId, attach.personId)
+        }
+        const faceIds = [...payload.creates, ...payload.attaches].flatMap((i) => i.faceIds)
+        return Promise.resolve({ created: payload.creates.length, assigned: new Set(faceIds).size })
       }),
     }
-    const bullMq = { enqueue: enqueueMock }
-    const assetRepo = {
-      find: vi.fn().mockResolvedValue([{ id: 'asset-legacy', fileId: 'file-legacy', userId }]),
-    }
-    service = new FaceClusterService(
-      faceRepo as never,
-      personRepo as never,
-      bullMq as never,
-      assetRepo as never,
-    )
+    service = new FaceClusterService({ enqueue: enqueueMock } as never, core as never)
   })
 
   it('clusters only unassigned faces and never touches manually assigned ones', async () => {
     await service.cluster(userId)
 
-    expect(faceUpdates.some((u) => (u.where as { id: string }).id === 'face-assigned')).toBe(false)
-    const targets = faceUpdates.map((u) => (u.patch as { personId: string }).personId)
-    expect(targets).toHaveLength(2)
-    expect(new Set(targets).size).toBe(1)
-    expect(targets[0]).not.toBe('person-existing')
-
-    expect(created).toHaveLength(1)
-    expect(created[0]!.userId).toBe(userId)
-    expect(created[0]!.clusterLabel).toMatch(
+    expect(plans).toHaveLength(1)
+    const plan = plans[0]!
+    expect(plan.attaches).toEqual([])
+    expect(plan.creates).toHaveLength(1)
+    expect(plan.creates[0]!.faceIds).toEqual(['face-a', 'face-b'])
+    expect(plan.creates[0]!.coverFaceId).toBe('face-a')
+    expect(plan.creates[0]!.clusterLabel).toMatch(
       /^cluster-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     )
+    expect(faces.find((f) => f.id === 'face-assigned')!.personId).toBe('person-existing')
+  })
 
-    expect(JSON.stringify(andWhereMock.mock.calls)).toContain('isTrashed')
+  it('attaches a cluster to the nearest existing person with the largest-box cover', async () => {
+    faces = [
+      face('face-known-a', emb512([1, 1]), 'person-existing', 0.9, 50),
+      face('face-known-b', emb512([1, 1]), 'person-existing', 0.9, 50),
+      face('face-a', emb512([1, 1]), null, 0.9, 120),
+      face('face-b', emb512([1, 1])),
+    ]
 
-    expect(
-      personUpdates.some(
-        (u) =>
-          (u.where as { id: string }).id === targets[0] &&
-          (u.patch as { coverFaceId: string }).coverFaceId === 'face-a',
-      ),
-    ).toBe(true)
+    await service.cluster(userId)
+
+    const plan = plans[0]!
+    expect(plan.creates).toEqual([])
+    expect(plan.attaches).toEqual([
+      { personId: 'person-existing', faceIds: ['face-a', 'face-b'], coverFaceId: 'face-a' },
+    ])
+  })
+
+  it('merges a later cluster into an earlier pending create instead of attaching by fake id', async () => {
+    // two DBSCAN clusters (cross distances ~0.6 > eps) with centroids within CLUSTER_MATCH_EPS:
+    // old code attached cluster B to the person created for cluster A; E3 cannot reference creates
+    const dir = (deg: number) => {
+      const rad = (deg * Math.PI) / 180
+      return emb512([0, Math.cos(rad)], [1, Math.sin(rad)])
+    }
+    faces = [
+      face('face-a1', dir(-10), null, 0.9, 100),
+      face('face-a2', dir(10), null, 0.9, 100),
+      face('face-b1', dir(45), null, 0.9, 120),
+      face('face-b2', dir(65), null, 0.9, 90),
+    ]
+
+    await service.cluster(userId)
+
+    expect(plans).toHaveLength(1)
+    const plan = plans[0]!
+    expect(plan.attaches).toEqual([])
+    expect(plan.creates).toHaveLength(1)
+    expect(new Set(plan.creates[0]!.faceIds)).toEqual(
+      new Set(['face-a1', 'face-a2', 'face-b1', 'face-b2']),
+    )
+    expect(plan.creates[0]!.coverFaceId).toBe('face-b1')
   })
 
   it('does not merge different people across runs', async () => {
-    faceRows = [face('face-a1', emb512([0, 1])), face('face-a2', emb512([0, 1]))]
+    faces = [face('face-a1', emb512([0, 1])), face('face-a2', emb512([0, 1]))]
     await service.cluster(userId)
-    expect(created).toHaveLength(1)
-    const firstPersonId = faceRows[0]!.personId
+    expect(plans).toHaveLength(1)
+    const firstPersonId = faces[0]!.personId
     expect(firstPersonId).not.toBeNull()
 
-    faceRows.push(face('face-b1', emb512([1, 1])), face('face-b2', emb512([1, 1])))
+    faces.push(face('face-b1', emb512([1, 1])), face('face-b2', emb512([1, 1])))
     await service.cluster(userId)
 
-    expect(created).toHaveLength(2)
-    const bFaces = faceRows.filter((f) => f.id === 'face-b1' || f.id === 'face-b2')
+    expect(plans).toHaveLength(2)
+    expect(plans[1]!.creates).toHaveLength(1)
+    expect(plans[1]!.attaches).toEqual([])
+    const bFaces = faces.filter((f) => f.id === 'face-b1' || f.id === 'face-b2')
     expect(bFaces[0]!.personId).not.toBeNull()
     expect(bFaces[0]!.personId).toBe(bFaces[1]!.personId)
     expect(bFaces[0]!.personId).not.toBe(firstPersonId)
@@ -144,39 +154,38 @@ describe('FaceClusterService.cluster', () => {
 
   it('keeps singleton noise faces unassigned beyond the tight noise threshold', async () => {
     // cosine distance 0.6 from the existing centroid: outside NOISE_ASSIGN_EPS 0.5 and DBSCAN 0.55
-    faceRows = [
+    faces = [
       face('face-known', emb512([0, 1]), 'person-existing'),
       face('face-noise', emb512([0, 0.4], [1, 0.9165])),
     ]
     await service.cluster(userId)
 
-    expect(faceUpdates.some((u) => (u.where as { id: string }).id === 'face-noise')).toBe(false)
-    expect(created).toHaveLength(0)
+    expect(plans).toHaveLength(0)
+    expect(faces.find((f) => f.id === 'face-noise')!.personId).toBeNull()
   })
 
   it('ignores low-confidence faces for clustering but leaves them stored', async () => {
-    faceRows = [
+    faces = [
       face('face-lo-a', emb512([1, 1]), null, 0.2),
       face('face-lo-b', emb512([1, 1]), null, 0.2),
     ]
     await service.cluster(userId)
 
-    expect(created).toHaveLength(0)
-    expect(faceUpdates).toHaveLength(0)
-    expect(faceRows.every((f) => f.personId === null)).toBe(true)
+    expect(plans).toHaveLength(0)
+    expect(faces.every((f) => f.personId === null)).toBe(true)
   })
 
   it('skips legacy-dim rows and re-enqueues their assets for re-embed', async () => {
-    faceRows = [
+    faces = [
       { ...face('face-old-assigned', [1, 0, 0, 0], 'person-existing') },
       { ...face('face-old-a', [0, 1, 0, 0]), assetId: 'asset-legacy' },
       { ...face('face-old-b', [0, 1, 0, 0]), assetId: 'asset-legacy' },
     ]
     await service.cluster(userId)
 
-    expect(faceUpdates).toHaveLength(0)
-    expect(created).toHaveLength(0)
-    expect(faceRows.every((f) => f.personId === null || f.id === 'face-old-assigned')).toBe(true)
+    expect(plans).toHaveLength(0)
+    expect(faces.every((f) => f.personId === null || f.id === 'face-old-assigned')).toBe(true)
+    expect(getAssetsByIdsMock).toHaveBeenCalledWith(userId, ['asset-legacy'])
     expect(enqueueMock).toHaveBeenCalledTimes(1)
     expect(enqueueMock).toHaveBeenCalledWith(
       'process-faces',

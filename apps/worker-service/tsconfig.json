@@ -8,6 +8,7 @@
   "include": ["src", "test"],
   "references": [
     { "path": "../../packages/shared-config" },
-    { "path": "../../packages/data-access" }
+    { "path": "../../packages/shared-auth" },
+    { "path": "../../packages/shared-types" }
   ]
 }

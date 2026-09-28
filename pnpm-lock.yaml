@@ -246,18 +246,21 @@ importers:
       '@nestjs/core':
         specifier: ^11.2.6
         version: 11.2.6(@nestjs/common@11.2.6(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.2.6)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/jwt':
+        specifier: ^11.0.2
+        version: 11.0.2(@nestjs/common@11.2.6(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))
       '@nestjs/platform-express':
         specifier: ^11.2.6
         version: 11.2.6(@nestjs/common@11.2.6(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.6)
-      '@nestjs/typeorm':
-        specifier: ^11.0.3
-        version: 11.0.3(@nestjs/common@11.2.6(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.6)(reflect-metadata@0.2.2)(rxjs@7.8.2)(typeorm@0.3.31(ioredis@5.11.1)(pg@8.21.0))
-      '@photox/data-access':
+      '@photox/shared-auth':
         specifier: workspace:*
-        version: link:../../packages/data-access
+        version: link:../../packages/shared-auth
       '@photox/shared-config':
         specifier: workspace:*
         version: link:../../packages/shared-config
+      '@photox/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
       '@tensorflow/tfjs-node':
         specifier: ^4.22.0
         version: 4.22.0(seedrandom@3.0.5)
@@ -282,18 +285,12 @@ importers:
       onnxruntime-node:
         specifier: ^1.30.0
         version: 1.30.0
-      pg:
-        specifier: ^8.13.0
-        version: 8.21.0
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
       sharp:
         specifier: ^0.35.4
         version: 0.35.4(@types/node@22.19.21)
-      typeorm:
-        specifier: ^0.3.31
-        version: 0.3.31(ioredis@5.11.1)(pg@8.21.0)
       zod:
         specifier: ^3.24.0
         version: 3.25.76
@@ -378,6 +375,9 @@ importers:
 
   packages/shared-config:
     dependencies:
+      '@nestjs/common':
+        specifier: ^11.2.6
+        version: 11.2.6(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       zod:
         specifier: ^3.24.0
         version: 3.25.76

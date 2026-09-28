@@ -7,7 +7,8 @@ export function toFileRecordResponse(record: FileRecord) {
     storageKey: record.storageKey,
     originalName: record.originalName,
     mimeType: record.mimeType,
-    sizeBytes: record.sizeBytes,
+    // bigint columns come back as strings from pg — the wire type says number
+    sizeBytes: Number(record.sizeBytes),
     checksumSha256: record.checksumSha256,
     purpose: record.purpose,
     assetId: record.assetId,

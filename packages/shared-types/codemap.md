@@ -9,8 +9,8 @@ over HTTP responses.
 
 ## Design
 
-- Zero runtime code and zero runtime dependencies — the package compiles to declarations
-  plus empty JS, so importing it never pulls code into a bundle. All unions are string
+- No runtime dependencies — the package is almost entirely erased types plus the single runtime
+  constant `FACE_EMBEDDING_DIM = 512` (moved here from `data-access`). All unions are string
   literal types (`AssetKind`, `MetadataStatus`, statuses) rather than enums.
 - `src/index.ts` is the primary barrel and re-exports the side modules with
   `export * from './albums'` and `export * from './shares'`.
@@ -35,3 +35,5 @@ as a type error in one of the consumers rather than at runtime.
 - `apps/web` — nearly every API-touching module; `apps/web/test/pact/consumer/` still uses
   these types in the legacy consumer pact.
 - `packages/shared-auth` — `Role` for `JwtPayload`.
+- `apps/worker-service` — `loadAuthEnv` wire types for `CoreClient` plus `FACE_EMBEDDING_DIM`
+  in the face embedder/cluster filters.

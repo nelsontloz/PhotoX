@@ -1,6 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
 import type { Job } from 'bullmq'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -8,7 +6,9 @@ import { randomUUID, createHash } from 'crypto'
 import { copyFile, rm, mkdir, readFile } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
 import { assertOwnership, parseJobData, videoJobSchema, type VideoJob } from './job-schemas'
-import { Asset, FileRecord, LocalStorageService } from '@photox/data-access'
+import { CoreClient } from '../core/core-client.service'
+import { LocalStorageService } from '@photox/shared-config'
+import type { FileRecord } from '@photox/shared-types'
 import { runFfmpeg, runFfprobeJson } from './ffmpeg'
 
 const MAX_DURATION_SEC = 4 * 60 * 60
@@ -21,10 +21,7 @@ export class VideoProcessor {
 
   constructor(
     private readonly bullMq: BullMqService,
-    @InjectRepository(FileRecord)
-    private readonly fileRepo: Repository<FileRecord>,
-    @InjectRepository(Asset)
-    private readonly assetRepo: Repository<Asset>,
+    private readonly core: CoreClient,
     private readonly storage: LocalStorageService,
   ) {}
 
@@ -44,14 +41,14 @@ export class VideoProcessor {
     const srcDir = join(tmpdir(), fileId)
     const outDir = `${srcDir}-transcode`
 
-    const record = await this.fileRepo.findOne({ where: { id: fileId } })
-    const asset = await this.assetRepo.findOne({ where: { id: assetId } })
+    const record = await this.core.getFile(userId, fileId)
+    const asset = await this.core.getAsset(userId, assetId)
     assertOwnership({ assetId, fileId, userId }, { record, asset })
 
     try {
-      await this.patchAsset(assetId, { transcodeStatus: 'pending' })
+      await this.core.patchMetadata(userId, assetId, { transcodeStatus: 'pending' })
 
-      const srcPath = await this.downloadSource(fileId, userId, srcDir)
+      const srcPath = await this.downloadSource(record, srcDir)
 
       const probe = await runFfprobeJson(srcPath)
       const duration = probe.format.duration ? Number.parseFloat(probe.format.duration) : 0
@@ -72,7 +69,10 @@ export class VideoProcessor {
       const needsTranscode = videoCodec !== 'h264' || (audioStream && audioCodec !== 'aac')
 
       if (!needsTranscode) {
-        await this.patchAsset(assetId, { transcodeStatus: 'ready', transcodeFileId: null })
+        await this.core.patchMetadata(userId, assetId, {
+          transcodeStatus: 'ready',
+          transcodeFileId: null,
+        })
         this.logger.log(`Video already browser-safe, skipping transcode: asset=${assetId}`)
         return
       }
@@ -103,7 +103,7 @@ export class VideoProcessor {
 
       const derivativeFileId = await this.registerDerivative(assetId, userId, outPath)
 
-      await this.patchAsset(assetId, {
+      await this.core.patchMetadata(userId, assetId, {
         transcodeStatus: 'ready',
         transcodeFileId: derivativeFileId,
       })
@@ -113,7 +113,7 @@ export class VideoProcessor {
       this.logger.error(`Video transcode failed: asset=${assetId} — ${message}`)
 
       try {
-        await this.patchAsset(assetId, {
+        await this.core.patchMetadata(userId, assetId, {
           transcodeStatus: 'failed',
           metadata: { transcodeError: message },
         })
@@ -136,9 +136,7 @@ export class VideoProcessor {
     }
   }
 
-  private async downloadSource(fileId: string, userId: string, destDir: string): Promise<string> {
-    const record = await this.fileRepo.findOne({ where: { id: fileId, userId } })
-    if (!record) throw new Error(`File not found: ${fileId}`)
+  private async downloadSource(record: FileRecord, destDir: string): Promise<string> {
     const ext = record.mimeType.includes('webm')
       ? 'webm'
       : record.mimeType.includes('quicktime')
@@ -158,33 +156,22 @@ export class VideoProcessor {
   ): Promise<string> {
     const bytes = await readFile(outPath)
     const checksum = createHash('sha256').update(bytes).digest('hex')
-    const existing = await this.fileRepo.findOne({
-      where: { userId, checksumSha256: checksum, purpose: 'transcode', assetId },
-    })
-    if (existing) return existing.id
     const fileId = randomUUID()
     const storageKey = this.storage.buildKey('transcode', userId, fileId, 'webm')
     await this.storage.save(storageKey, outPath)
-    const saved = await this.fileRepo.save(
-      this.fileRepo.create({
-        userId,
-        storageKey,
-        originalName: 'video.webm',
-        mimeType: 'video/webm',
-        sizeBytes: bytes.length,
-        checksumSha256: checksum,
-        purpose: 'transcode',
-        assetId,
-      }),
-    )
-    return saved.id
-  }
 
-  private async patchAsset(assetId: string, patch: Record<string, unknown>): Promise<void> {
-    const { status, ...rest } = patch
-    await this.assetRepo.update(assetId, {
-      ...rest,
-      ...(status !== undefined ? { metadataStatus: status, metadataExtractedAt: new Date() } : {}),
-    } as Record<string, unknown>)
+    const saved = await this.core.registerFile(userId, {
+      id: fileId,
+      kind: 'transcode',
+      ext: 'webm',
+      checksumSha256: checksum,
+      originalName: 'video.webm',
+      mimeType: 'video/webm',
+      sizeBytes: bytes.length,
+      assetId,
+    })
+    // ponytail: checksum+assetId dedupe returned an existing derivative — drop our unreferenced copy
+    if (saved.id !== fileId) await this.storage.delete(storageKey).catch(() => undefined)
+    return saved.id
   }
 }

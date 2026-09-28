@@ -42,8 +42,8 @@ columns, enums, FKs, and indexes — there are no migration files.
 
 **`Face` → `faces`** (`face.entity.ts`)
 
-- Exports `FACE_EMBEDDING_DIM = 512` (InsightFace buffalo_l w600k_r50 output) — the single
-  source of truth used by detector validation, DTOs, and cluster filters.
+- The 512-dim embedding constant (`FACE_EMBEDDING_DIM`, InsightFace buffalo_l w600k_r50 output)
+  moved to `@photox/shared-types`; this entity only stores the vector.
 - Indexes: `(personId, userId)` plus `assetId`, `userId`, `personId` individually.
 - Columns: `box` jsonb `{x,y,w,h}`, `confidence` real, `embedding` text with a pgvector
   transformer (`toSql`/`fromSql`), `personId` nullable uuid **without** a TypeORM relation
@@ -57,17 +57,20 @@ columns, enums, FKs, and indexes — there are no migration files.
 
 ## Flow
 
-Core writes assets/files from HTTP handlers; worker processors update status columns
-(metadata, thumbnails, transcode, faces) and insert derived `FileRecord`s,
-`AssetThumbnail`s, and `Face`s. `Face.embedding` round-trips `number[]` ↔ pgvector text via
-the transformer; clustering reads raw embeddings (in-memory DBSCAN, O(n²)) and writes
-`personId`.
+Core writes all rows from HTTP handlers: upload/assets flows insert `FileRecord`s, `Asset`s and
+`AssetThumbnail`s, the metadata/thumbnail/video/face endpoints patch status columns (metadata,
+thumbnails, transcode, faces) and register worker-written derivative rows (`POST /files/register`),
+and face endpoints insert `Face`s (`DELETE`+`POST .../faces` replace) and apply cluster plans
+(`POST /persons/apply-clusters`). `Face.embedding` round-trips `number[]` ↔ pgvector text via
+the transformer; the worker computes clusters in memory (O(n²) DBSCAN) and ships the resulting
+plan to core.
 
 ## Integration
 
-Registered by consumers with `TypeOrmModule.forFeature`: core per domain module (e.g.
-`faces.module.ts`, `albums.module.ts`, `files/user/user-files.module.ts`) and worker in
-`queue.module.ts`. Wire counterparts live in `@photox/shared-types` (`Asset`, `FileRecord`,
-`FaceDto`, `PersonDto`); `FACE_EMBEDDING_DIM` is imported by `face.embedder.ts`,
-`face.cluster.ts`, and their specs. Runtime needs a Postgres with the `vector` extension for
-the HNSW index (plain `postgres:16` testcontainers only produce a warning).
+Registered by core with `TypeOrmModule.forFeature` per domain module (e.g.
+`faces.module.ts`, `albums.module.ts`, `files/user/user-files.module.ts`). The worker-service
+never connects to Postgres and does not import this package. Wire counterparts live in
+`@photox/shared-types` (`Asset`, `FileRecord`, `FaceDto`, `PersonDto`); `FACE_EMBEDDING_DIM` is
+also exported there and imported by `face.embedder.ts`, `face.cluster.ts`, and their specs.
+Runtime needs a Postgres with the `vector` extension for the HNSW index (plain `postgres:16`
+testcontainers only produce a warning).
