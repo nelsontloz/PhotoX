@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-  BadRequestException,
-} from '@nestjs/common'
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, In, Repository } from 'typeorm'
 import { Person } from '@photox/data-access'
@@ -11,12 +6,7 @@ import { Face } from '@photox/data-access'
 import { Asset } from '@photox/data-access'
 import { refreshPersonFaceCount } from '../faces/face-count'
 import type { ApplyClustersDto } from './dto/apply-clusters.dto'
-import type {
-  PersonDto,
-  PersonListResponse,
-  PersonAssetsResponse,
-  ReassignFacesResponse,
-} from '@photox/shared-types'
+import type { PersonDto, PersonListResponse, PersonAssetsResponse } from '@photox/shared-types'
 
 @Injectable()
 export class PersonsService {
@@ -102,37 +92,12 @@ export class PersonsService {
     return this.toListItem(person)
   }
 
-  async create(userId: string, clusterLabel: string): Promise<{ id: string }> {
-    const person = new Person()
-    person.userId = userId
-    person.name = null
-    person.clusterLabel = clusterLabel
-    person.faceCount = 0
-    const saved = await this.personRepo.save(person)
-    return { id: saved.id }
-  }
-
   async update(userId: string, id: string, name: string | null): Promise<PersonDto> {
     const person = await this.personRepo.findOne({ where: { id, userId } })
     if (!person) throw new NotFoundException('Person not found')
     await this.personRepo.update(id, { name })
     const updated = await this.personRepo.findOne({ where: { id } })
     return this.toListItem(updated!)
-  }
-
-  async setCover(userId: string, id: string, faceId: string): Promise<{ ok: true }> {
-    const person = await this.personRepo.findOne({ where: { id, userId } })
-    if (!person) throw new NotFoundException('Person not found')
-
-    const face = await this.faceRepo.findOne({ where: { id: faceId, userId } })
-    if (!face) throw new NotFoundException('Face not found')
-
-    if (face.personId !== id) {
-      throw new ForbiddenException('Face does not belong to this person')
-    }
-
-    await this.personRepo.update(id, { coverFaceId: faceId })
-    return { ok: true }
   }
 
   async getAssetsForPerson(
@@ -197,37 +162,6 @@ export class PersonsService {
     }))
 
     return { personId: id, items, total, limit, offset }
-  }
-
-  async reassignFaces(
-    userId: string,
-    body: { toPersonId: string | null; faceIds: string[] },
-  ): Promise<ReassignFacesResponse> {
-    const toUpdate = await this.faceRepo.find({
-      where: body.faceIds.map((fid) => ({ id: fid, userId })),
-    })
-
-    if (toUpdate.length === 0) return { moved: 0 }
-
-    if (body.toPersonId) {
-      const person = await this.personRepo.findOne({ where: { id: body.toPersonId, userId } })
-      if (!person) throw new NotFoundException('Person not found')
-    }
-
-    const affectedPersonIds = new Set<string>()
-    for (const face of toUpdate) {
-      if (face.personId) affectedPersonIds.add(face.personId)
-      face.personId = body.toPersonId
-    }
-    await this.faceRepo.save(toUpdate)
-
-    if (body.toPersonId) affectedPersonIds.add(body.toPersonId)
-
-    for (const pid of affectedPersonIds) {
-      await refreshPersonFaceCount(this.faceRepo, this.personRepo, pid, userId)
-    }
-
-    return { moved: toUpdate.length }
   }
 
   // ponytail: worker cluster job applies its whole plan atomically; re-running after a success is a

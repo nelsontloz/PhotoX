@@ -349,10 +349,14 @@ describe('upload e2e pipeline', () => {
     let ready = false
     while (Date.now() - start < 90_000) {
       const row = await assetRepo.findOne({ where: { id: asset.id } })
+      // thumbnailStatus is patched 'ready' by each size job after its own register, so 'ready'
+      // only means ≥1 thumbnail — poll the actual 4 rows to avoid racing the serial job queue
+      const thumbCount = await thumbRepo.count({ where: { assetId: asset.id } })
       if (
         row?.thumbnailStatus === 'ready' &&
         row?.metadataStatus === 'ready' &&
-        row?.faceStatus === 'ready'
+        row?.faceStatus === 'ready' &&
+        thumbCount === 4
       ) {
         ready = true
         break

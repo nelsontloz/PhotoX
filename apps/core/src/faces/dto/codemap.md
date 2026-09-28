@@ -21,6 +21,6 @@ Validation shapes for face registration, assignment, and the box/embedding outpu
 
 ## Integration
 
-- Consumed by `FacesController` (`GET/POST/DELETE api/v1/assets/:id/faces`), `FacesQueryController` (`GET api/v1/faces`, `PATCH api/v1/faces/:id/person`), and `FacesService` (`registerFaces`, `deleteForAsset`, `assignPerson`).
+- Consumed by `FacesController` (`POST/DELETE api/v1/assets/:id/faces`), `FacesQueryController` (`GET api/v1/faces`, `PATCH api/v1/faces/:id/person`), and `FacesService` (`registerFaces`, `deleteForAsset`, `assignPerson`).
 - `FaceDto` / `DetectedFaceInput` / `RegisterFacesRequestDto` wire contracts live in `@photox/shared-types`.
 - Swagger schemas surface through core's `/docs` / `/docs-json`.

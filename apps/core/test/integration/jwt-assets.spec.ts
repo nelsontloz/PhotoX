@@ -133,24 +133,6 @@ describe('assets JWT identity', () => {
     expect(res.status).toBe(400)
   })
 
-  it('scopes by-file lookup to the JWT owner', async () => {
-    const a = await seedUser(t)
-    const b = await seedUser(t)
-    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
-    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
-    const file = await seedFile(t, a.id)
-    const asset = await seedAsset(t, a.id, file.id)
-    const own = await request(apiServer(t))
-      .get(`/api/v1/assets/by-file/${file.id}`)
-      .set(t.authHeader(tokenA))
-    expect(own.status).toBe(200)
-    expect((own.body as unknown as { id: string }).id).toBe(asset.id)
-    const cross = await request(apiServer(t))
-      .get(`/api/v1/assets/by-file/${file.id}`)
-      .set(t.authHeader(tokenB))
-    expect(cross.status).toBe(404)
-  })
-
   it('rejects cross-user metadata update without mutating the asset', async () => {
     const a = await seedUser(t)
     const b = await seedUser(t)
@@ -186,23 +168,6 @@ describe('assets JWT identity', () => {
     expect((res.body as unknown as { altitude: number }).altitude).toBe(-12.5)
     const row = await t.assetRepo.findOneByOrFail({ id: asset.id })
     expect(Number(row.altitude)).toBe(-12.5)
-  })
-
-  it('rejects cross-user face listing', async () => {
-    const a = await seedUser(t)
-    const b = await seedUser(t)
-    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
-    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
-    const file = await seedFile(t, a.id)
-    const asset = await seedAsset(t, a.id, file.id)
-    const own = await request(apiServer(t))
-      .get(`/api/v1/assets/${asset.id}/faces`)
-      .set(t.authHeader(tokenA))
-    expect(own.status).toBe(200)
-    const cross = await request(apiServer(t))
-      .get(`/api/v1/assets/${asset.id}/faces`)
-      .set(t.authHeader(tokenB))
-    expect(cross.status).toBe(404)
   })
 
   it('reprocesses owner thumbnails with thumb-reprocess jobIds and rejects cross-user', async () => {
@@ -265,53 +230,6 @@ describe('assets JWT identity', () => {
       .get('/api/v1/assets')
       .set({ Authorization: 'Bearer not-a-token' })
     expect(res.status).toBe(401)
-  })
-
-  it('creates an asset scoped to the JWT user with defaults', async () => {
-    const owner = await seedUser(t)
-    const other = await seedUser(t)
-    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role })
-    const file = await seedFile(t, owner.id)
-    const res = await request(apiServer(t))
-      .post('/api/v1/assets')
-      .set(t.authHeader(token))
-      .send({ fileId: file.id, kind: 'photo', userId: other.id })
-    expect(res.status).toBe(201)
-    const body = res.body as unknown as {
-      id: string
-      userId: string
-      fileId: string
-      kind: string
-      favorite: boolean
-      isTrashed: boolean
-      thumbnailStatus: string
-      transcodeStatus: string | null
-    }
-    expect(body.userId).toBe(owner.id)
-    expect(body.fileId).toBe(file.id)
-    expect(body.kind).toBe('photo')
-    expect(body.favorite).toBe(false)
-    expect(body.isTrashed).toBe(false)
-    expect(body.thumbnailStatus).toBe('pending')
-    expect(body.transcodeStatus).toBeNull()
-    const row = await t.assetRepo.findOneByOrFail({ id: body.id })
-    expect(row.userId).toBe(owner.id)
-  })
-
-  it('rejects invalid create asset bodies with 400', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const file = await seedFile(t, user.id)
-    const badFile = await request(apiServer(t))
-      .post('/api/v1/assets')
-      .set(t.authHeader(token))
-      .send({ fileId: 'not-a-uuid', kind: 'photo' })
-    expect(badFile.status).toBe(400)
-    const badKind = await request(apiServer(t))
-      .post('/api/v1/assets')
-      .set(t.authHeader(token))
-      .send({ fileId: file.id, kind: 'audio' })
-    expect(badKind.status).toBe(400)
   })
 
   it('returns 404 for get and patch of an unknown asset id', async () => {

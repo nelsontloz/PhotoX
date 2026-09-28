@@ -47,10 +47,6 @@ describe('thumbnails and trash JWT identity', () => {
       .query({ userId: b.id })
       .set(t.authHeader(tokenA))
     expect(res.status).toBe(200)
-    const single = await request(apiServer(t))
-      .get(`/api/v1/assets/${asset.id}/thumbnails/sm`)
-      .set(t.authHeader(tokenA))
-    expect(single.status).toBe(200)
   })
 
   it('rejects cross-user thumbnail access', async () => {
@@ -65,7 +61,7 @@ describe('thumbnails and trash JWT identity', () => {
     expect(res.status).toBe(404)
   })
 
-  it('rejects cross-user thumbnail register/unregister and keeps owner writes working', async () => {
+  it('rejects cross-user thumbnail register and keeps owner writes working', async () => {
     const a = await seedUser(t)
     const b = await seedUser(t)
     const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
@@ -98,18 +94,6 @@ describe('thumbnails and trash JWT identity', () => {
     })
     expect(afterCross.fileId).toBe(thumbFileId)
     expect(afterCross.width).toBe(10)
-
-    const crossDelete = await request(apiServer(t))
-      .delete(`/api/v1/assets/${asset.id}/thumbnails/sm`)
-      .set(t.authHeader(tokenB))
-    expect(crossDelete.status).toBe(404)
-    expect(await t.thumbRepo.findOne({ where: { assetId: asset.id, size: 'sm' } })).toBeTruthy()
-
-    const ownDelete = await request(apiServer(t))
-      .delete(`/api/v1/assets/${asset.id}/thumbnails/sm`)
-      .set(t.authHeader(tokenA))
-    expect(ownDelete.status).toBe(204)
-    expect(await t.thumbRepo.findOne({ where: { assetId: asset.id, size: 'sm' } })).toBeNull()
   })
 
   it('restores, deletes and empties trash without userId', async () => {

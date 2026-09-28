@@ -14,18 +14,10 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Request } from 'express'
 import { PersonsService } from './persons.service'
 import { BullMqService } from '../queue/bullmq.service'
-import { CreatePersonDto } from './dto/create-person.dto'
 import { UpdatePersonDto } from './dto/update-person.dto'
-import { CoverPersonDto } from './dto/cover-person.dto'
-import { ReassignFacesDto } from './dto/reassign-faces.dto'
 import { ApplyClustersDto } from './dto/apply-clusters.dto'
 import { ListPersonsQueryDto } from './dto/list-persons-query.dto'
-import type {
-  PersonListResponse,
-  PersonDto,
-  PersonAssetsResponse,
-  ReassignFacesResponse,
-} from '@photox/shared-types'
+import type { PersonListResponse, PersonDto, PersonAssetsResponse } from '@photox/shared-types'
 
 @ApiTags('persons')
 @Controller('api/v1/persons')
@@ -72,15 +64,6 @@ export class PersonsController {
     return this.persons.list(userId, q.limit ?? 20, q.offset ?? 0)
   }
 
-  @Post()
-  @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create a person from a face cluster' })
-  @ApiResponse({ status: 201, description: 'Person created' })
-  async create(@Body() dto: CreatePersonDto, @Req() req: Request) {
-    const userId = (req.user as { id: string }).id ?? dto.userId
-    return this.persons.create(userId, dto.clusterLabel)
-  }
-
   @Get(':id')
   @ApiOperation({ summary: 'Get a single person' })
   @ApiResponse({ status: 200, description: 'Person found' })
@@ -119,28 +102,5 @@ export class PersonsController {
   ): Promise<PersonAssetsResponse> {
     const userId = (req.user as { id: string }).id ?? q.userId
     return this.persons.getAssetsForPerson(userId, id, q.limit ?? 20, q.offset ?? 0)
-  }
-
-  @Patch(':id/cover')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Set the cover face for a person' })
-  @ApiResponse({ status: 200, description: 'Cover set' })
-  @ApiResponse({ status: 404, description: 'Person or face not found' })
-  async setCover(@Param('id') id: string, @Body() dto: CoverPersonDto, @Req() req: Request) {
-    const userId = (req.user as { id: string }).id ?? dto.userId
-    return this.persons.setCover(userId, id, dto.faceId)
-  }
-
-  @Post(':id/reassign')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Reassign faces between persons' })
-  @ApiResponse({ status: 200, description: 'Faces reassigned' })
-  async reassign(
-    @Req() req: Request,
-    @Body() dto: ReassignFacesDto,
-    @Query('userId') queryUserId?: string,
-  ): Promise<ReassignFacesResponse> {
-    const userId = (req.user as { id: string }).id ?? queryUserId
-    return this.persons.reassignFaces(userId, dto)
   }
 }

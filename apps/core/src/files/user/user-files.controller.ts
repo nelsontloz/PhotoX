@@ -2,7 +2,6 @@ import {
   Controller,
   Get,
   Post,
-  Delete,
   Param,
   Query,
   Body,
@@ -10,7 +9,6 @@ import {
   Req,
   UseInterceptors,
   UploadedFile,
-  HttpCode,
   HttpStatus,
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
@@ -21,7 +19,6 @@ import { tmpdir } from 'os'
 import multer from 'multer'
 import { UserFilesService } from './user-files.service'
 import { FileRecordDto } from '../file-record.dto'
-import { FileListResponseDto, ListFilesQueryDto } from './dto/list-files-query.dto'
 import { RegisterFileBodyDto } from './dto/register-file.body.dto'
 import { UploadFileBodyDto } from './dto/upload-file.body.dto'
 import { parseRangeHeader } from '../streaming.util'
@@ -76,14 +73,6 @@ export class UserFilesController {
     const { file, created } = await this.userFilesService.register(userId, body)
     res.status(created ? HttpStatus.CREATED : HttpStatus.OK)
     return file
-  }
-
-  @Get()
-  @ApiOperation({ summary: "List the authenticated user's files" })
-  @ApiResponse({ status: 200, description: 'Paginated file list', type: FileListResponseDto })
-  async list(@Query() query: ListFilesQueryDto, @Req() req: Request) {
-    const userId = (req.user as { id: string }).id ?? query.userId
-    return this.userFilesService.list(userId, query.limit ?? 20, query.offset ?? 0, query.mimeType)
   }
 
   @Get(':fileId/stream')
@@ -176,18 +165,5 @@ export class UserFilesController {
       stream.destroy()
     })
     stream.pipe(res)
-  }
-
-  @Delete(':fileId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete a file (idempotent)' })
-  @ApiResponse({ status: 204, description: 'File deleted' })
-  async delete(
-    @Param('fileId') fileId: string,
-    @Req() req: Request,
-    @Query('userId') queryUserId?: string,
-  ) {
-    const userId = (req.user as { id: string }).id ?? queryUserId
-    await this.userFilesService.delete(userId, fileId)
   }
 }

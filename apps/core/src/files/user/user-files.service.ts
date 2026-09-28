@@ -18,7 +18,7 @@ import { toFileRecordResponse } from '../file-record.mapper'
 import { RegisterFileBodyDto } from './dto/register-file.body.dto'
 import { AssetsService } from '../../assets/assets.service'
 import { BullMqService } from '../../queue/bullmq.service'
-import type { Asset as AssetResponse, FileListResponse } from '@photox/shared-types'
+import type { Asset as AssetResponse } from '@photox/shared-types'
 
 interface UploadedDiskFile {
   path: string
@@ -222,38 +222,6 @@ export class UserFilesService {
     return hash.digest('hex')
   }
 
-  async list(userId: string, limit = 20, offset = 0, mimeType?: string): Promise<FileListResponse> {
-    const qb = this.fileRepo
-      .createQueryBuilder('f')
-      .where('f.userId = :userId', { userId })
-      .andWhere('f.purpose = :purpose', { purpose: 'original' })
-
-    if (mimeType) {
-      qb.andWhere('f.mimeType LIKE :mimeType', { mimeType: `${mimeType}%` })
-    }
-
-    const [items, total] = await qb
-      .orderBy('f.createdAt', 'DESC')
-      .skip(offset)
-      .take(limit)
-      .getManyAndCount()
-
-    return {
-      items: items.map((f) => ({
-        id: f.id,
-        userId: f.userId,
-        originalName: f.originalName,
-        mimeType: f.mimeType,
-        // bigint → pg returns string; the wire type says number
-        sizeBytes: Number(f.sizeBytes),
-        createdAt: f.createdAt.toISOString(),
-      })),
-      total,
-      limit,
-      offset,
-    }
-  }
-
   async getOne(userId: string, fileId: string) {
     const record = await this.fileRepo.findOne({ where: { id: fileId } })
     if (!record) throw new NotFoundException('File not found')
@@ -270,20 +238,6 @@ export class UserFilesService {
     if (record.userId !== userId) throw new NotFoundException('File not found')
     const stream = this.storage.createReadStream(record.storageKey)
     return { stream, record }
-  }
-
-  async delete(userId: string, fileId: string): Promise<void> {
-    const record = await this.fileRepo.findOne({ where: { id: fileId } })
-    if (!record) return
-    if (record.userId !== userId) return
-
-    try {
-      await this.storage.delete(record.storageKey)
-    } catch (err) {
-      console.error('[UserFilesService] Local storage delete failed', err)
-    }
-
-    await this.fileRepo.remove(record)
   }
 
   async stream(

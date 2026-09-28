@@ -24,17 +24,6 @@ export class ThumbnailsService {
     return rows.map((r) => this.toResponse(r))
   }
 
-  async getForAsset(
-    userId: string,
-    assetId: string,
-    size: string,
-  ): Promise<AssetThumbnailResponse> {
-    await this.assertAssetOwned(userId, assetId)
-    const row = await this.thumbRepo.findOne({ where: { assetId, size } })
-    if (!row) throw new NotFoundException('Thumbnail not found')
-    return this.toResponse(row)
-  }
-
   async register(
     userId: string,
     assetId: string,
@@ -56,11 +45,6 @@ export class ThumbnailsService {
     )
     const row = await this.thumbRepo.findOneOrFail({ where: { assetId, size: dto.size } })
     return this.toResponse(row)
-  }
-
-  async unregister(userId: string, assetId: string, size: string): Promise<void> {
-    await this.assertAssetOwned(userId, assetId)
-    await this.thumbRepo.delete({ assetId, size })
   }
 
   private async assertAssetOwned(userId: string, assetId: string): Promise<void> {

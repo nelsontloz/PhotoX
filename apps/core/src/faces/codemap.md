@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-Face detection results for assets: storing detected faces (box, confidence, 512-dim embedding, optional person assignment) and serving face crops. Controllers are mounted on `api/v1/assets/:id/faces` (read/register/delete), `api/v1/faces` (user-wide listing, person assignment) and `api/v1/faces/:id/thumb` (on-demand crop).
+Face detection results for assets: storing detected faces (box, confidence, 512-dim embedding, optional person assignment) and serving face crops. Controllers are mounted on `api/v1/assets/:id/faces` (register/delete), `api/v1/faces` (user-wide listing, person assignment) and `api/v1/faces/:id/thumb` (on-demand crop).
 
 ## Design
 
@@ -11,7 +11,7 @@ Face detection results for assets: storing detected faces (box, confidence, 512-
 - `FacesService.registerFaces(assetId, userId, faces)` verifies asset ownership, then bulk-saves one `Face` per detected face. Empty arrays are valid (worker still patches `faceStatus=ready, faceCount=0`).
 - `FacesService.deleteForAsset(userId, assetId)` (N2, `DELETE .../faces`) is the transactional replace companion: verifies ownership, deletes the asset's faces, nulls any `Person.coverFaceId` pointing at a deleted face, and refreshes `faceCount` for affected persons; idempotent, returns `{ deleted }`. The worker calls DELETE then POST so a retry cannot duplicate rows.
 - `FacesService.assignPerson(userId, faceId, personId|null)` validates face + target person ownership, saves, then refreshes the denormalized `Person.faceCount` for the old and new person via the shared `faces/face-count.ts` helper (count over that person's faces whose asset is not trashed; also used by persons `apply-clusters` and `reassignFaces`).
-- Reads: `getForAsset(userId, assetId)` ownership-checked, used internally by `AssetsService.getOne` and the `api/v1/assets/:id/faces` route; `listForUser(userId, includeEmbeddings, excludeTrashed?)` filters by user, optionally returns embeddings for the cluster job, and with `excludeTrashed=true` drops faces on trashed assets (fetch-trashed-asset-ids then filter; no join). Items always include `confidence`.
+- Reads: `getForAsset(userId, assetId)` ownership-checked, used internally by `AssetsService.getOne`; `listForUser(userId, includeEmbeddings, excludeTrashed?)` filters by user, optionally returns embeddings for the cluster job, and with `excludeTrashed=true` drops faces on trashed assets (fetch-trashed-asset-ids then filter; no join). Items always include `confidence`.
 - `FaceThumbService.getThumb(faceId, userId, size)` crops synchronously with `sharp`: clamps size to 32..600 (default 240), reads the original `FileRecord` from `LocalStorageService.pathFor(storageKey)`, pads the box by 35%, clamps to image bounds, resizes cover, JPEG q82. It requires the caller's `userId` (face + asset + file are all ownership-checked) and sets `Cache-Control: private, max-age=86400`. Crop results are not cached (`ponytail:` comment names a `face_thumbs` table/disk cache as the upgrade path).
 
 ## Flow

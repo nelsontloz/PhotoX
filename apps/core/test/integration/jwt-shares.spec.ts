@@ -117,31 +117,6 @@ describe('shares JWT identity', () => {
     expect(res.status).toBe(401)
   })
 
-  it('serves the v1 public share route only with a JWT', async () => {
-    const owner = await seedUser(t)
-    const viewer = await seedUser(t)
-    const ownerToken = t.signToken({ id: owner.id, email: owner.email, role: owner.role })
-    const file = await seedFile(t, owner.id)
-    const asset = await seedAsset(t, owner.id, file.id)
-    const created = await request(apiServer(t))
-      .post('/api/v1/shares')
-      .set(t.authHeader(ownerToken))
-      .send({ assetId: asset.id })
-    const share = created.body as unknown as { token: string }
-
-    const anonymous = await request(apiServer(t)).get(`/api/v1/shares/public/${share.token}`)
-    expect(anonymous.status).toBe(401)
-
-    const viewerToken = t.signToken({ id: viewer.id, email: viewer.email, role: viewer.role })
-    const authed = await request(apiServer(t))
-      .get(`/api/v1/shares/public/${share.token}`)
-      .set(t.authHeader(viewerToken))
-    expect(authed.status).toBe(200)
-    const body = authed.body as unknown as { share: { token: string }; asset: { id: string } }
-    expect(body.share.token).toBe(share.token)
-    expect(body.asset.id).toBe(asset.id)
-  })
-
   it('returns the same token when sharing the same asset twice', async () => {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })

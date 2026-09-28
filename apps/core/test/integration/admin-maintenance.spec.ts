@@ -145,8 +145,7 @@ describe('admin maintenance', () => {
     const users = await request(apiServer(t)).get('/api/v1/admin/users').set(t.authHeader(token))
     expect(users.status).toBe(403)
     const assets = await request(apiServer(t))
-      .get('/api/v1/admin/assets')
-      .query({ kind: 'photo' })
+      .get('/api/v1/admin/assets/counts')
       .set(t.authHeader(token))
     expect(assets.status).toBe(403)
   })
@@ -318,67 +317,6 @@ describe('admin maintenance', () => {
     expect(run.status).toBe(403)
   })
 
-  it('counts assets per user via asset-stats', async () => {
-    const admin = await seedUser(t, { role: 'admin' })
-    const a = await seedUser(t)
-    const b = await seedUser(t)
-    const aOne = await seedFile(t, a.id)
-    await seedAsset(t, a.id, aOne.id)
-    const aTwo = await seedFile(t, a.id)
-    await seedAsset(t, a.id, aTwo.id)
-    const bOne = await seedFile(t, b.id)
-    await seedAsset(t, b.id, bOne.id)
-    const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
-
-    const res = await request(apiServer(t))
-      .get('/api/v1/admin/users/asset-stats')
-      .query({ userIds: `${a.id},${b.id}` })
-      .set(t.authHeader(token))
-    expect(res.status).toBe(200)
-    expect(res.body).toEqual({ [a.id]: 2, [b.id]: 1 })
-
-    const none = await request(apiServer(t))
-      .get('/api/v1/admin/users/asset-stats')
-      .set(t.authHeader(token))
-    expect(none.status).toBe(200)
-    expect(none.body).toEqual({})
-  })
-
-  it('rejects more than 50 userIds on asset-stats', async () => {
-    const admin = await seedUser(t, { role: 'admin' })
-    const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
-    const res = await request(apiServer(t))
-      .get('/api/v1/admin/users/asset-stats')
-      .query({ userIds: Array.from({ length: 51 }, () => randomUUID()).join(',') })
-      .set(t.authHeader(token))
-    expect(res.status).toBe(400)
-  })
-
-  it('sums storage bytes per user on files storage-stats', async () => {
-    const admin = await seedUser(t, { role: 'admin' })
-    const owner = await seedUser(t)
-    await seedFile(t, owner.id, { bytes: Buffer.alloc(11) })
-    await seedFile(t, owner.id, { bytes: Buffer.alloc(7) })
-    const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
-
-    const res = await request(apiServer(t))
-      .get('/api/v1/admin/files/storage-stats')
-      .query({ userIds: owner.id })
-      .set(t.authHeader(token))
-    expect(res.status).toBe(200)
-    expect(res.body).toEqual({ [owner.id]: 18 })
-  })
-
-  it('rejects more than 50 userIds on storage-stats', async () => {
-    const admin = await seedUser(t, { role: 'admin' })
-    const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
-    const res = await request(apiServer(t))
-      .get('/api/v1/admin/files/storage-stats')
-      .query({ userIds: Array.from({ length: 51 }, () => randomUUID()).join(',') })
-      .set(t.authHeader(token))
-    expect(res.status).toBe(400)
-  })
-
   it('reports asset failure counts by kind', async () => {
     const admin = await seedUser(t, { role: 'admin' })
     const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
@@ -404,30 +342,5 @@ describe('admin maintenance', () => {
     expect(body.videos.encoding).toBe(1)
     expect(body.photos.processing).toBe(0)
     expect(body.videos.metadata).toBe(0)
-  })
-
-  it('lists assets for reprocess and requires a kind', async () => {
-    const admin = await seedUser(t, { role: 'admin' })
-    const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
-    const photoFile = await seedFile(t, admin.id)
-    const photo = await seedAsset(t, admin.id, photoFile.id, { kind: 'photo' })
-    const videoFile = await seedFile(t, admin.id, { mimeType: 'video/mp4' })
-    await seedAsset(t, admin.id, videoFile.id, { kind: 'video' })
-
-    const missing = await request(apiServer(t)).get('/api/v1/admin/assets').set(t.authHeader(token))
-    expect(missing.status).toBe(400)
-
-    const res = await request(apiServer(t))
-      .get('/api/v1/admin/assets')
-      .query({ kind: 'photo' })
-      .set(t.authHeader(token))
-    expect(res.status).toBe(200)
-    const body = res.body as unknown as {
-      items: { id: string; userId: string; fileId: string }[]
-      total: number
-    }
-    expect(body.total).toBe(1)
-    expect(body.items).toHaveLength(1)
-    expect(body.items[0]).toEqual({ id: photo.id, userId: admin.id, fileId: photoFile.id })
   })
 })
