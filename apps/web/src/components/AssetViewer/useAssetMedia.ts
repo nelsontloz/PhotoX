@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Asset } from '@photox/shared-types'
-import { downloadFile, listThumbnails } from '../../api/assets'
+import type { Asset, AssetThumbnail } from '@photox/shared-types'
+import { downloadFile } from '../../api/assets'
 
 async function loadAssetThumbBlob(
-  id: string,
+  thumbs: AssetThumbnail[] | undefined,
   preferSize: 'xl' | 'lg',
   signal?: AbortSignal,
 ): Promise<string | null> {
-  const thumbs = await listThumbnails(id, signal)
-  const picked = thumbs.find((t) => t.size === preferSize) ?? thumbs[0]
+  const picked = thumbs?.find((t) => t.size === preferSize) ?? thumbs?.[0]
   if (!picked) return null
   const blob = await downloadFile(picked.fileId, signal)
   return URL.createObjectURL(blob)
@@ -33,7 +32,7 @@ export function useAssetMedia(asset: Asset): {
     setVideoPosterUrl(null)
 
     if (asset.kind === 'photo') {
-      loadAssetThumbBlob(asset.id, 'xl', controller.signal)
+      loadAssetThumbBlob(asset.thumbnails, 'xl', controller.signal)
         .then((url) => {
           if (cancelled || !url) {
             if (!cancelled) setLoading(false)
@@ -46,7 +45,7 @@ export function useAssetMedia(asset: Asset): {
           if (!cancelled) setLoading(false)
         })
     } else {
-      loadAssetThumbBlob(asset.id, 'lg', controller.signal)
+      loadAssetThumbBlob(asset.thumbnails, 'lg', controller.signal)
         .then((url) => {
           if (cancelled || !url) {
             if (!cancelled) setLoading(false)

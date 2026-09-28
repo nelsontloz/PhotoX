@@ -16,7 +16,6 @@ import {
   listAssets,
   getAsset,
   getAssetLayout,
-  listThumbnails,
   uploadFile,
   updateAsset,
   trashAsset,
@@ -391,32 +390,6 @@ describe('Web → Core pact', () => {
         const res = await listAssets({ isTrashed: true })
         expect(res.items.length).toBeGreaterThan(0)
         expect(res.limit).toBe(20)
-      })
-  })
-
-  it('GET /api/v1/assets/:id/thumbnails — list asset thumbnails', async () => {
-    await provider
-      .uponReceiving('a request to list asset thumbnails')
-      .withRequest({
-        method: 'GET',
-        path: `/api/v1/assets/${ASSET_ID}/thumbnails`,
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: MatchersV3.eachLike({
-          size: 'md',
-          fileId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22',
-          width: 1024,
-          height: 768,
-          bytes: 12345,
-          createdAt: '2024-01-01T00:00:00.000Z',
-        }),
-      })
-      .executeTest(async (mockserver) => {
-        api.defaults.baseURL = mockserver.url + '/api'
-        const res = await listThumbnails(ASSET_ID)
-        expect(Array.isArray(res)).toBe(true)
       })
   })
 

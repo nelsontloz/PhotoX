@@ -1,10 +1,5 @@
 import { api } from './client'
-import type {
-  Asset,
-  AssetLayout,
-  AssetListResponse,
-  AssetThumbnailListResponse,
-} from '@photox/shared-types'
+import type { Asset, AssetLayout, AssetListResponse } from '@photox/shared-types'
 
 interface ListAssetsParams {
   limit?: number
@@ -35,16 +30,6 @@ export async function getAsset(assetId: string): Promise<Asset> {
 
 export async function getAssetLayout(): Promise<AssetLayout> {
   const { data } = await api.get<AssetLayout>('/v1/assets/layout')
-  return data
-}
-
-export async function listThumbnails(
-  assetId: string,
-  signal?: AbortSignal,
-): Promise<AssetThumbnailListResponse> {
-  const { data } = await api.get<AssetThumbnailListResponse>(`/v1/assets/${assetId}/thumbnails`, {
-    signal,
-  })
   return data
 }
 

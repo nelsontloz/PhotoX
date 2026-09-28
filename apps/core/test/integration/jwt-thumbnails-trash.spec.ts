@@ -10,6 +10,7 @@ import {
   apiServer,
 } from './helpers'
 import type { ApiTestApp } from './helpers'
+import type { Asset, AssetListResponse } from '@photox/shared-types'
 
 describe('thumbnails and trash JWT identity', () => {
   let t: ApiTestApp
@@ -26,39 +27,69 @@ describe('thumbnails and trash JWT identity', () => {
     await resetDb(t)
   })
 
-  it('lists thumbnails without userId and ignores query userId', async () => {
+  it('embeds thumbnails in getOne without userId and ignores query userId', async () => {
     const a = await seedUser(t)
     const b = await seedUser(t)
     const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
     const file = await seedFile(t, a.id)
     const asset = await seedAsset(t, a.id, file.id)
+    const thumbFileId = randomUUID()
     await t.thumbRepo.save(
       t.thumbRepo.create({
         assetId: asset.id,
         size: 'sm',
-        fileId: randomUUID(),
+        fileId: thumbFileId,
         width: 10,
         height: 10,
         bytes: 5,
       }),
     )
     const res = await request(apiServer(t))
-      .get(`/api/v1/assets/${asset.id}/thumbnails`)
+      .get(`/api/v1/assets/${asset.id}`)
       .query({ userId: b.id })
       .set(t.authHeader(tokenA))
     expect(res.status).toBe(200)
+    const body = res.body as unknown as Asset
+    const thumb = body.thumbnails?.[0]
+    expect(thumb).toMatchObject({
+      size: 'sm',
+      fileId: thumbFileId,
+      width: 10,
+      height: 10,
+      bytes: 5,
+    })
+    expect(thumb?.createdAt).toEqual(expect.any(String))
   })
 
-  it('rejects cross-user thumbnail access', async () => {
-    const a = await seedUser(t)
-    const b = await seedUser(t)
-    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
-    const file = await seedFile(t, a.id)
-    const asset = await seedAsset(t, a.id, file.id)
-    const res = await request(apiServer(t))
-      .get(`/api/v1/assets/${asset.id}/thumbnails`)
-      .set(t.authHeader(tokenB))
-    expect(res.status).toBe(404)
+  it('embeds thumbnails in the asset list response', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const file = await seedFile(t, user.id)
+    const asset = await seedAsset(t, user.id, file.id)
+    const thumbFileId = randomUUID()
+    await t.thumbRepo.save(
+      t.thumbRepo.create({
+        assetId: asset.id,
+        size: 'md',
+        fileId: thumbFileId,
+        width: 20,
+        height: 20,
+        bytes: 7,
+      }),
+    )
+    const res = await request(apiServer(t)).get('/api/v1/assets').set(t.authHeader(token))
+    expect(res.status).toBe(200)
+    const body = res.body as unknown as AssetListResponse
+    expect(body.items).toHaveLength(1)
+    const thumb = body.items[0]?.thumbnails?.[0]
+    expect(thumb).toMatchObject({
+      size: 'md',
+      fileId: thumbFileId,
+      width: 20,
+      height: 20,
+      bytes: 7,
+    })
+    expect(thumb?.createdAt).toEqual(expect.any(String))
   })
 
   it('rejects cross-user thumbnail register and keeps owner writes working', async () => {
@@ -173,7 +204,7 @@ describe('thumbnails and trash JWT identity', () => {
     const user = await seedUser(t)
     const file = await seedFile(t, user.id)
     const asset = await seedAsset(t, user.id, file.id)
-    const res = await request(apiServer(t)).get(`/api/v1/assets/${asset.id}/thumbnails`)
+    const res = await request(apiServer(t)).get(`/api/v1/assets/${asset.id}`)
     expect(res.status).toBe(401)
   })
 
@@ -184,7 +215,6 @@ describe('thumbnails and trash JWT identity', () => {
     expect(res.status).toBe(401)
   })
 
-  // GET /api/v1/assets/:id/thumbnails already has explicit no-token coverage above
   const noTokenRoutes: ['post' | 'delete', string][] = [
     ['post', `/api/v1/assets/${randomUUID()}/thumbnails`],
     ['post', `/api/v1/assets/trashed/${randomUUID()}/restore`],

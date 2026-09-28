@@ -15,15 +15,6 @@ export class ThumbnailsService {
     private readonly thumbRepo: Repository<AssetThumbnail>,
   ) {}
 
-  async listForAsset(userId: string, assetId: string): Promise<AssetThumbnailResponse[]> {
-    await this.assertAssetOwned(userId, assetId)
-    const rows = await this.thumbRepo.find({
-      where: { assetId },
-      order: { createdAt: 'ASC' },
-    })
-    return rows.map((r) => this.toResponse(r))
-  }
-
   async register(
     userId: string,
     assetId: string,
@@ -44,22 +35,22 @@ export class ThumbnailsService {
       ['assetId', 'size'],
     )
     const row = await this.thumbRepo.findOneOrFail({ where: { assetId, size: dto.size } })
-    return this.toResponse(row)
+    return toThumbnailResponse(row)
   }
 
   private async assertAssetOwned(userId: string, assetId: string): Promise<void> {
     const asset = await this.assetRepo.findOne({ where: { id: assetId, userId } })
     if (!asset) throw new NotFoundException('Asset not found')
   }
+}
 
-  private toResponse(t: AssetThumbnail): AssetThumbnailResponse {
-    return {
-      size: t.size,
-      fileId: t.fileId,
-      width: t.width,
-      height: t.height,
-      bytes: Number(t.bytes),
-      createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : t.createdAt,
-    }
+export function toThumbnailResponse(t: AssetThumbnail): AssetThumbnailResponse {
+  return {
+    size: t.size,
+    fileId: t.fileId,
+    width: t.width,
+    height: t.height,
+    bytes: Number(t.bytes),
+    createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : t.createdAt,
   }
 }

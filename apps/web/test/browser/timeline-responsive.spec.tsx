@@ -28,15 +28,14 @@ const FIXTURE: TimelineItem[] = [
   { t: '2026-02-10T12:00:00', w: 8000, h: 1000 },
 ]
 
-// The layout endpoint is the hook's only network call. listThumbnails returns [] so loaded
-// GalleryItems keep --width/--height from the asset dims — identical to the skeleton inputs, and
-// no onThumbPicked dims override (thumb geometry is not what this spec tests).
+// The layout endpoint is the hook's only network call. Fixture assets carry no `thumbnails`, so
+// AssetThumb never calls onThumbPicked and loaded GalleryItems keep --width/--height from the
+// asset dims — identical to the skeleton inputs (thumb geometry is not what this spec tests).
 vi.mock('../../src/api/assets', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/api/assets')>()
   return {
     ...actual,
     getAssetLayout: async () => ({ items: FIXTURE }),
-    listThumbnails: async () => [],
   }
 })
 

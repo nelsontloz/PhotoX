@@ -22,7 +22,7 @@ Framework-free helpers: the client-side upload queue, optimistic thumbnail gener
 
 Upload: pick/drop (`UploadButton`/`DropZone`) → `enqueueFiles` → store rows appear (`UploadNotification`) → ≤ 3 concurrent: local thumb first, then `POST /api/v1/files` with progress → item `done` (or 409-as-done, or `error`) → timeline refresh signal.
 
-Display: `AssetThumb` first checks `thumb-store` (assets uploaded this session) before fetching `/v1/assets/:id/thumbnails` + blob download; viewer/pages format metadata with `format.ts`/`dateFormat.ts`.
+Display: `AssetThumb` first checks `thumb-store` (assets uploaded this session) before downloading the `asset.thumbnails` blob embedded in list/getOne responses; viewer/pages format metadata with `format.ts`/`dateFormat.ts`.
 
 ## Integration
 
