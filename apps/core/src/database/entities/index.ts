@@ -1,0 +1,5 @@
+export { FileRecord } from './file-record.entity'
+export { Asset } from './asset.entity'
+export { AssetThumbnail } from './asset-thumbnail.entity'
+export { Face } from './face.entity'
+export { Person } from './person.entity'

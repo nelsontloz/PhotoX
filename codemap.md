@@ -61,7 +61,7 @@ verifies Bearer HS256 tokens, sets `req.user`, and ignores incoming identity hea
 | `shares/`        | Public capability-URL sharing: authenticated mgmt + `api/share/:token` (`dto/`, `entities/`)                                     | [map](apps/core/src/shares/codemap.md)   |
 | `trash/`         | Permanent delete / restore of trashed assets                                                                                     | [map](apps/core/src/trash/codemap.md)    |
 | `common/`        | Exception filter (`filters/`)                                                                                                     | [map](apps/core/src/common/codemap.md)   |
-| `database/`      | TypeORM bootstrap + pgvector/HNSW index lifecycle                                                                                | [map](apps/core/src/database/codemap.md) |
+| `database/`      | TypeORM bootstrap + entities (`entities/`) + pgvector/HNSW index lifecycle                                                       | [map](apps/core/src/database/codemap.md) |
 | `health/`        | Unversioned `GET /health` (Postgres + Redis)                                                                                     | [map](apps/core/src/health/codemap.md)   |
 | `queue/`         | BullMQ publisher (`BullMqService`); core never consumes                                                                          | [map](apps/core/src/queue/codemap.md)    |
 
@@ -90,11 +90,9 @@ verifies Bearer HS256 tokens, sets `req.user`, and ignores incoming identity hea
 
 | Folder                    | Responsibility                                                                  | Map                                      |
 | ------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------- |
-| `packages/`               | Workspace overview: shared-config/types → shared-auth → data-access             | [map](packages/codemap.md)               |
-| `packages/data-access/`   | TypeORM entities + `SharedDatabaseModule` (core-only DB substrate)              | [map](packages/data-access/codemap.md)   |
-| `packages/shared-auth/`   | `JwtPayload` + `loadAuthEnv()` (HS256 secret)                                   | [map](packages/shared-auth/codemap.md)   |
-| `packages/shared-config/` | Zod `loadEnv()` + `LocalStorageService`, workspace-root `STORAGE_DIR` anchoring | [map](packages/shared-config/codemap.md) |
-| `packages/shared-types/`  | Wire contracts shared with the SPA + `FACE_EMBEDDING_DIM`                       | [map](packages/shared-types/codemap.md)  |
+| `packages/`               | Workspace overview: shared-config + shared-types                                | [map](packages/codemap.md)               |
+| `packages/shared-config/` | Zod `loadEnv()`/`loadAuthEnv()` + `loadRootEnvFile()`, `LocalStorageService`   | [map](packages/shared-config/codemap.md) |
+| `packages/shared-types/`  | Wire contracts shared with the SPA + `JwtPayload` + `FACE_EMBEDDING_DIM`        | [map](packages/shared-types/codemap.md)  |
 
 ### Operations
 

@@ -9,7 +9,7 @@ Composition root of the core API: `app.module.ts` wires all feature modules; `ma
 `AppModule` imports, in order:
 
 1. `ConfigModule.forRoot({ isGlobal: true, envFilePath: ['../../.env', '.env'] })` — workspace-root `.env` first (core/worker run with different cwds).
-2. `DatabaseModule.forRoot()` — TypeORM via `SharedDatabaseModule` + pgvector HNSW bootstrap.
+2. `DatabaseModule.forRoot()` — TypeORM via `DatabaseModule` + pgvector HNSW bootstrap.
 3. `HealthModule`, `AuthModule` (registers the global `JwtAuthGuard` via `APP_GUARD`), `BullMqModule` (global publisher), `UsersModule`, `StorageModule`, `UserFilesModule`, `FilesAdminModule`, `TrashModule`, `AssetsModule`, `AlbumsModule`, `SharesModule`, `FacesModule`, `PersonsModule`, `AdminModule`.
 
 `main.ts` bootstrap:

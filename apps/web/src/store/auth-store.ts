@@ -1,15 +1,19 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import type { User } from '@photox/shared-types'
-import type { AuthResponse } from '@photox/shared-types'
+import type { User, AuthResponse, JwtPayload } from '@photox/shared-types'
 import * as authApi from '../api/auth'
-import { jwtDecode } from 'jwt-decode'
-import type { JwtPayload } from '@photox/shared-auth'
 
 const REFRESH_LEAD_MS = 5 * 60 * 1000
 let refreshTimer: ReturnType<typeof setTimeout> | null = null
 let refreshInFlight: Promise<AuthResponse> | null = null
 const authFailureListeners = new Set<() => void>()
+
+// jwt payloads are base64url — atob needs the url-safe chars swapped back
+function decodeJwtPayload(token: string): JwtPayload {
+  const part = token.split('.')[1]
+  if (!part) throw new Error('malformed JWT')
+  return JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/'))) as JwtPayload
+}
 
 interface AuthState {
   user: User | null
@@ -143,7 +147,7 @@ function scheduleRefresh(accessToken: string | null) {
 
   let exp: number | null = null
   try {
-    const payload = jwtDecode<JwtPayload>(accessToken)
+    const payload = decodeJwtPayload(accessToken)
     if (typeof payload.exp === 'number') exp = payload.exp
   } catch {
     /* invalid token */

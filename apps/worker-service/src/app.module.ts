@@ -1,16 +1,12 @@
 import { Module } from '@nestjs/common'
-import { ConfigModule } from '@nestjs/config'
+import { loadRootEnvFile } from '@photox/shared-config'
 import { HealthModule } from './health/health.module'
 import { QueueModule } from './queue/queue.module'
 
+// replicates @nestjs/config's envFilePath ['../../.env', '.env'] for host dev; compose/CI env wins
+loadRootEnvFile()
+
 @Module({
-  imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-      envFilePath: ['../../.env', '.env'],
-    }),
-    QueueModule,
-    HealthModule,
-  ],
+  imports: [QueueModule, HealthModule],
 })
 export class AppModule {}

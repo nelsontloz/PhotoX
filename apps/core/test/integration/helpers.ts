@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { Test } from '@nestjs/testing'
-import { ConfigModule } from '@nestjs/config'
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm'
 import { ValidationPipe, type ExecutionContext, type INestApplication } from '@nestjs/common'
 import { APP_GUARD } from '@nestjs/core'
@@ -12,7 +11,7 @@ import { JwtModule, JwtService } from '@nestjs/jwt'
 import type { Queue } from 'bullmq'
 import type { Express } from 'express'
 import { DataSource, type Repository } from 'typeorm'
-import { Asset, AssetThumbnail, Face, FileRecord, Person } from '@photox/data-access'
+import { Asset, AssetThumbnail, Face, FileRecord, Person } from '../../src/database/entities'
 import { LocalStorageService } from '@photox/shared-config'
 import { User } from '../../src/users/entities/user.entity'
 import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
@@ -94,7 +93,6 @@ export async function createApiTestApp(opts?: {
   try {
     const builder = Test.createTestingModule({
       imports: [
-        ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
         TypeOrmModule.forRoot({
           type: 'postgres',
           host: pgHost,

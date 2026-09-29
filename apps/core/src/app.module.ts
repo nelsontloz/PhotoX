@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common'
-import { ConfigModule } from '@nestjs/config'
+import { loadRootEnvFile } from '@photox/shared-config'
 import { DatabaseModule } from './database/database.module'
 import { HealthModule } from './health/health.module'
 import { AuthModule } from './auth/auth.module'
@@ -15,12 +15,11 @@ import { FacesModule } from './faces/faces.module'
 import { PersonsModule } from './persons/persons.module'
 import { AdminModule } from './admin/admin.module'
 
+// runs before DatabaseModule.forRoot()'s loadEnv() below — replicates @nestjs/config's envFilePath
+loadRootEnvFile()
+
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-      envFilePath: ['../../.env', '.env'],
-    }),
     DatabaseModule.forRoot(),
     HealthModule,
     AuthModule,

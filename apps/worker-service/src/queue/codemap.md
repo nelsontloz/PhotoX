@@ -112,8 +112,8 @@ by core/web.
 - Upstream producer: `apps/core/src/queue/bullmq.service.ts` (`enqueueThumbnails`, `enqueueVideo`) plus
   core's asset module for metadata/faces; jobIds/attempts/backoff are defined there.
 - Reaches core at `CORE_URL` (default `http://localhost:3000`, compose `http://core:3000`) with delegated
-  per-job JWTs from `@photox/shared-auth`; shares Redis and the storage volume with core; `STORAGE_DIR`
-  and `LocalStorageService` via `@photox/shared-config`; no Postgres connection or `@photox/data-access`
+  per-job JWTs from `@photox/shared-config`; shares Redis and the storage volume with core; `STORAGE_DIR`
+  and `LocalStorageService` via `@photox/shared-config`; no Postgres connection
   import. No callbacks — web polls status from core.
 - `cleanup-orphans` is enqueued from core's admin maintenance controller (`POST /api/v1/admin/cleanup-orphans`); `cleanup-asset` has no core producer today (reachable only through the generic `enqueue`).
 - Tests: unit specs next to sources (`job-schemas.spec`, `face.cluster.spec`, `face.processor.spec`,

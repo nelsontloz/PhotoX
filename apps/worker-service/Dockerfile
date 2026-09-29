@@ -6,7 +6,6 @@ WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/shared-config/package.json ./packages/shared-config/
-COPY packages/shared-auth/package.json ./packages/shared-auth/
 COPY apps/worker-service/package.json ./apps/worker-service/
 # tfjs-node ships no linux-arm64 prebuilt (x64-only tarball) — rebuild its binding from source on arm64
 # face model is provisioned into the runtime storage volume, not baked into the image
@@ -18,11 +17,9 @@ FROM deps AS build
 COPY tsconfig.base.json ./
 COPY packages/shared-types/ ./packages/shared-types/
 COPY packages/shared-config/ ./packages/shared-config/
-COPY packages/shared-auth/ ./packages/shared-auth/
 COPY apps/worker-service/ ./apps/worker-service/
 RUN pnpm --filter @photox/shared-config build && \
     pnpm --filter @photox/shared-types build && \
-    pnpm --filter @photox/shared-auth build && \
     pnpm --filter @photox/worker-service build
 
 # -- runtime --
@@ -32,7 +29,6 @@ WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages/shared-types ./packages/shared-types
 COPY --from=build /app/packages/shared-config ./packages/shared-config
-COPY --from=build /app/packages/shared-auth ./packages/shared-auth
 COPY --from=build /app/apps/worker-service ./apps/worker-service
 ENV NODE_ENV=production
 EXPOSE 3004

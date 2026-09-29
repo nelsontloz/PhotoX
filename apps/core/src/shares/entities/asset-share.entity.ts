@@ -7,7 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm'
-import { Asset } from '@photox/data-access'
+import { Asset } from '../../database/entities'
 
 @Entity('asset_shares')
 @Index(['token'], { unique: true })

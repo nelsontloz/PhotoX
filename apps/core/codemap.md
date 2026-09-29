@@ -6,8 +6,8 @@
 
 ## Design
 
-- NestJS 11 + Express, TypeORM 0.3 (`SharedDatabaseModule` from `@photox/data-access`), class-validator DTOs, Swagger, argon2 passwords.
-- Workspace deps: `@photox/data-access`, `@photox/shared-auth`, `@photox/shared-config`, `@photox/shared-types` (`workspace:*`). Notable runtime deps: `bullmq` 5.81, `ioredis`, `pg`, `pgvector` 0.2.1, `sharp`, `multer`, `zod`.
+- NestJS 11 + Express, TypeORM 0.3 (`DatabaseModule` + entities under `src/database/`), class-validator DTOs, Swagger, argon2 passwords.
+- Workspace deps: `@photox/shared-config`, `@photox/shared-types` (`workspace:*`). Notable runtime deps: `bullmq` 5.81, `ioredis`, `pg`, `pgvector` 0.2.1, `sharp`, `multer`.
 - Scripts: `build` (`nest build`), `dev` (`nest start --watch`), `start` (`node dist/main.js`), `clean`, `lint`, `typecheck`, `test` (`vitest run`), `test:watch`. SWC is used by tests only; production build is the Nest CLI.
 - `tsconfig.json` extends `../../tsconfig.base.json`, `types: ["vitest/globals", "node"]`, project references to shared-types/config/auth. `tsconfig.build.json` narrows `rootDir: ./src` and excludes `test` + `**/*spec.ts`.
 - `vitest.config.ts`: `unplugin-swc` with `parser: { syntax: 'typescript', decorators: true }` (Nest DI needs decorator metadata), `globals: true`, node env, `include: ['src/**/*.spec.ts', 'test/integration/**/*.spec.ts']`.

@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-TypeORM entities for the two auth-owned tables, `users` and `refresh_tokens`. Schema is created by `synchronize: true` from `SharedDatabaseModule` — this repo has no migrations.
+TypeORM entities for the two auth-owned tables, `users` and `refresh_tokens`. Schema is created by `synchronize: true` from `DatabaseModule` — this repo has no migrations.
 
 ## Design
 

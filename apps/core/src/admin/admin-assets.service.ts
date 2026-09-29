@@ -4,7 +4,7 @@ import { DataSource, LessThan, Repository } from 'typeorm'
 import { readdir, stat } from 'fs/promises'
 import { join, relative } from 'path'
 import { loadEnv, LocalStorageService } from '@photox/shared-config'
-import { Asset, AssetThumbnail, FileRecord } from '@photox/data-access'
+import { Asset, AssetThumbnail, FileRecord } from '../database/entities'
 import type {
   AdminAssetCountsResponse,
   AdminAssetReprocessListResponse,

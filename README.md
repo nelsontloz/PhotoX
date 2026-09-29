@@ -60,7 +60,7 @@ Storage is local disk (`STORAGE_DIR`, default `./data/storage`) shared by core a
 - `apps/core` — NestJS API (`@photox/core`)
 - `apps/worker-service` — BullMQ consumers (`@photox/worker-service`), no DB access — talks to core over HTTP
 - `apps/web` — Vite + React (`@photox/web`)
-- `packages/data-access` — TypeORM entities + shared DB module (core only)
-- `packages/shared-auth` / `shared-config` / `shared-types` — JWT/auth env, zod env + local storage, wire types
+- `apps/core/src/database` — TypeORM entities + DB module (core only)
+- `packages/shared-config` / `shared-types` — zod env + local storage, JWT payload/wire types
 
 See `AGENTS.md` for architecture details and `codemap.md` for the full repository map.

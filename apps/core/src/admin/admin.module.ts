@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
-import { Asset, AssetThumbnail, FileRecord } from '@photox/data-access'
+import { Asset, AssetThumbnail, FileRecord } from '../database/entities'
 import { StorageModule } from '../files/storage/storage.module'
 import { AdminAssetsController } from './admin-assets.controller'
 import { AdminAssetsService } from './admin-assets.service'

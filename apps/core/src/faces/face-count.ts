@@ -1,6 +1,6 @@
 import type { Repository } from 'typeorm'
-import { Face } from '@photox/data-access'
-import { Person } from '@photox/data-access'
+import { Face } from '../database/entities'
+import { Person } from '../database/entities'
 
 // ponytail: one shared non-trashed count (faces on non-trashed assets only)
 export async function countLiveFaces(

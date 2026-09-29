@@ -10,11 +10,9 @@ middleware, or Swagger because nothing user-facing is served.
 
 ## Design
 
-- `AppModule` = `ConfigModule.forRoot({ isGlobal: true, envFilePath: ['../../.env', '.env'] })`
-  - `QueueModule` + `HealthModule`. Config is global so `ConfigService` is injectable in
-    `BullMqService` (for `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD`) without re-importing.
-- `envFilePath` order matters: `pnpm --filter @photox/worker-service dev` uses cwd
-  `apps/worker-service`, so `../../.env` is the repo-root file and `.env` a local override.
+- `AppModule` = `loadRootEnvFile()` (Node's native `.env` loader, workspace-root file; process env
+  wins) then `QueueModule` + `HealthModule`. No `@nestjs/config`; `BullMqService` reads `REDIS_*`
+  from `loadEnv()` at `onModuleInit`.
 - `main.ts` is a 12-line bootstrap: `NestFactory.create(AppModule)`, port
   `Number(process.env.WORKER_SERVICE_PORT) || 3004`, `app.listen(port)`. No composed port, mirroring
   core's internal-only posture.
@@ -29,7 +27,7 @@ middleware, or Swagger because nothing user-facing is served.
 
 ## Flow
 
-1. Process start → ConfigModule loads `.env` (repo root, then local) → providers instantiate.
+1. Process start → `loadRootEnvFile()` loads `.env` (repo root, then local) → providers instantiate.
 2. `BullMqService.onModuleInit()` opens the shared ioredis connection and waits for `ready`.
 3. `QueueModule.onModuleInit()` calls `.start()` on each of the 7 processors → BullMQ workers register.
 4. `main.ts` listens on 3004 for health probes, then blocks forever consuming jobs.
@@ -39,8 +37,8 @@ middleware, or Swagger because nothing user-facing is served.
 
 - Imports only `./queue/queue.module` and `./health/health.module`; DB access is indirect through
   `./core/core-client.service.ts` (`CoreClient`), which signs per-job delegated JWTs with
-  `@photox/shared-auth` and calls core at `CORE_URL`. `LocalStorageService` and `loadEnv()` come from
-  `@photox/shared-config`; wire types from `@photox/shared-types`. No `@photox/data-access` import.
+  `loadAuthEnv` from `@photox/shared-config` and calls core at `CORE_URL`. `LocalStorageService` and `loadEnv()` come from
+  `@photox/shared-config`; wire types from `@photox/shared-types`. No Postgres/TypeORM import.
 - Counterpart of `apps/core/src/app.module.ts` (full HTTP conventions) and the consumer side of
   `apps/core/src/queue/` (publisher).
 - Job payload shapes, retry/dedup semantics, ffmpeg invocation, and the face pipeline are documented

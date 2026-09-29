@@ -19,7 +19,7 @@ Shared file primitives used by the file HTTP surface: the wire DTO, the entityâ†
 
 ## Integration
 
-- `FileRecord` entity lives in `packages/data-access` (`files` table, unique-ish `(userId, checksumSha256)` index and `(userId, purpose, createdAt)` index; `purpose` defaults to `'original'`).
+- `FileRecord` entity lives in `apps/core/src/database/entities` (`files` table, unique-ish `(userId, checksumSha256)` index and `(userId, purpose, createdAt)` index; `purpose` defaults to `'original'`).
 - Physical bytes are laid out by `LocalStorageService.buildKey`: `originals/<userId>/<fileId>.<ext>`, `derivatives/thumbnails/<userId>/<fileId>.<ext>`, `derivatives/transcodes/<userId>/<fileId>.<ext>` under `STORAGE_DIR`.
 - Worker-service no longer writes these rows: it saves bytes to disk then registers them through core `POST api/v1/files/register` (thumbnails as `purpose: 'original'` with a `derivatives/thumbnails/...` key; videos as `purpose: 'transcode'`), and core recomputes the `storageKey` server-side. The `admin/` subfolder adds the admin `DELETE /api/v1/admin/files/:fileId` cleanup endpoint.
 - `FileRecordDto`/mapper are consumed by `files/user`; `parseRangeHeader` is consumed by `files/user` and `shares`.

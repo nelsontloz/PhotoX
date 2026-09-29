@@ -25,6 +25,15 @@ export interface RefreshRequest {
   refreshToken: string
 }
 
+export interface JwtPayload {
+  sub: string
+  email: string
+  role: Role
+  iat: number
+  exp: number
+  jti?: string
+}
+
 export interface AuthResponse {
   accessToken: string
   refreshToken: string

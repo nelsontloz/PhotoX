@@ -28,4 +28,4 @@ Core identity and authorization. The global `JwtAuthGuard` verifies the Bearer H
 ## Integration
 
 - Guard dependencies: `JwtService` from `AuthModule`'s `JwtModule.registerAsync`, plus `loadEnv()` for the clock tolerance.
-- Depends on `JwtPayload` from `@photox/shared-auth` and `Role` from `@photox/shared-types`; no DB or Redis.
+- Depends on `JwtPayload` from `@photox/shared-types` and `Role` from `@photox/shared-types`; no DB or Redis.

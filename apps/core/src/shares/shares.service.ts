@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import * as crypto from 'crypto'
 import { AssetShare } from './entities/asset-share.entity'
-import { Asset } from '@photox/data-access'
+import { Asset } from '../database/entities'
 import { CreateShareDto } from './dto/create-share.dto'
 import type { AssetShareDto, ShareListResponse, PublicShareResponse } from '@photox/shared-types'
 

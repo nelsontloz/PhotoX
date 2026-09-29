@@ -1,6 +1,6 @@
 import type { Readable } from 'stream'
 import type { Response } from 'express'
-import type { FileRecord } from '@photox/data-access'
+import type { FileRecord } from '../database/entities'
 
 export const RANGE_RE = /^bytes=(\d+)-(\d*)$/
 

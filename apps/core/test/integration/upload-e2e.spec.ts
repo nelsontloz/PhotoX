@@ -6,13 +6,12 @@ import { join } from 'node:path'
 import request from 'supertest'
 import sharp from 'sharp'
 import { Test } from '@nestjs/testing'
-import { ConfigModule } from '@nestjs/config'
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm'
 import { ValidationPipe, type INestApplication } from '@nestjs/common'
 import { JwtModule, JwtService } from '@nestjs/jwt'
 import type { Express } from 'express'
 import type { Repository } from 'typeorm'
-import { Asset, AssetThumbnail, Face, FileRecord, Person } from '@photox/data-access'
+import { Asset, AssetThumbnail, Face, FileRecord, Person } from '../../src/database/entities'
 import { LocalStorageService, loadEnv } from '@photox/shared-config'
 import { FACE_EMBEDDING_DIM } from '@photox/shared-types'
 import { User } from '../../src/users/entities/user.entity'
@@ -232,7 +231,6 @@ describe('upload e2e pipeline', () => {
     try {
       const moduleRef = await Test.createTestingModule({
         imports: [
-          ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
           TypeOrmModule.forRoot({
             type: 'postgres',
             host: pgHost,

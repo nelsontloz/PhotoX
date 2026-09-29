@@ -49,6 +49,18 @@ function findWorkspaceRoot(start: string): string {
   }
 }
 
+/**
+ * Loads `.env` from the workspace root (or cwd) into `process.env`, replacing the envFilePath
+ * `['../../.env', '.env']` that @nestjs/config used to provide. Existing process env wins —
+ * same precedence as node --env-file — so compose/CI env and tests are untouched.
+ */
+export function loadRootEnvFile(): void {
+  const root = findWorkspaceRoot(process.cwd())
+  for (const candidate of [join(root, '.env'), join(process.cwd(), '.env')]) {
+    if (existsSync(candidate)) process.loadEnvFile(candidate)
+  }
+}
+
 export function loadEnv(): Env {
   const parsed = envSchema.safeParse(process.env)
 
@@ -65,4 +77,21 @@ export function loadEnv(): Env {
       ? storageDir
       : resolve(findWorkspaceRoot(process.cwd()), storageDir),
   }
+}
+
+const authEnvSchema = z.object({
+  AUTH_TOKEN_SECRET: z.string().min(32, 'AUTH_TOKEN_SECRET must be at least 32 characters'),
+})
+
+export type AuthEnv = z.infer<typeof authEnvSchema>
+
+export function loadAuthEnv(): AuthEnv {
+  const parsed = authEnvSchema.safeParse(process.env)
+
+  if (!parsed.success) {
+    const errors = parsed.error.flatten().fieldErrors
+    throw new Error(`Invalid auth environment: ${JSON.stringify(errors)}`)
+  }
+
+  return parsed.data
 }

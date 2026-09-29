@@ -25,6 +25,6 @@ Public capability-URL sharing of single assets. Two controllers: authenticated m
 ## Integration
 
 - `SharesModule` imports `TypeOrmModule.forFeature([AssetShare, Asset])` + `UserFilesModule` (for `UserFilesService` streaming) and registers both controllers.
-- `Asset` entity comes from `@photox/data-access`; `LocalStorageService` (used indirectly through `UserFilesService`) from `@photox/shared-config`.
+- `Asset` entity comes from `../database/entities`; `LocalStorageService` (used indirectly through `UserFilesService`) from `@photox/shared-config`.
 - Open routes: `api/share` and `api/share/:token/stream` (`apps/core/src/auth/open-routes.ts`); `api/v1/shares*` requires a Bearer JWT. Range/206/416 pass through.
 - DTOs in `shares/dto/`; entity in `shares/entities/`; wire types `AssetShareDto`, `ShareListResponse`, `PublicShareResponse` in `@photox/shared-types`.

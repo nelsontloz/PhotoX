@@ -24,4 +24,4 @@ Validation shapes for the user file endpoints: the multipart upload body, the wo
 
 - Consumed by `UserFilesController` (`api/v1/files`).
 - `UploadFileBodyDto` fields are forwarded into `UserFilesService.upload` as `UploadMeta` and then into `AssetsService.create`.
-- `FileListResponse` wire type comes from `@photox/shared-types`; the entity comes from `@photox/data-access`.
+- `FileListResponse` wire type comes from `@photox/shared-types`; the entity comes from `../../../../database/entities`.

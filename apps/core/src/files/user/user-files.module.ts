@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
-import { Asset, FileRecord } from '@photox/data-access'
+import { Asset, FileRecord } from '../../database/entities'
 import { StorageModule } from '../storage/storage.module'
 import { AssetsModule } from '../../assets/assets.module'
 import { UserFilesService } from './user-files.service'

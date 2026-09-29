@@ -26,7 +26,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom', 'zustand', 'axios', 'jwt-decode'],
+          vendor: ['react', 'react-dom', 'react-router-dom', 'zustand', 'axios'],
         },
       },
     },

@@ -22,6 +22,6 @@ Admin-only file introspection and cleanup: aggregate storage usage per user, and
 
 ## Integration
 
-- Consumes the shared `FileRecord` entity from `@photox/data-access` (`files` table) and `LocalStorageService` from `@photox/shared-config`.
+- Consumes the shared `FileRecord` entity from `../../database/entities` (`files` table) and `LocalStorageService` from `@photox/shared-config`.
 - The `/api/v1/admin/*` prefix is in the admin-only branch of the global `JwtAuthGuard`.
 - Request shape comes from `files/admin/dto/user-ids.query.dto.ts`; no response DTO exists (inline record).

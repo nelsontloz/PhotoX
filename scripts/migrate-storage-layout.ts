@@ -7,7 +7,7 @@ import { loadEnv } from '../packages/shared-config/src/env.js'
 
 // ponytail: scripts/ is no workspace package, so bare @photox/typeorm imports fail here;
 // relative imports + createRequire reuse the existing installs, no new deps
-const requirePkg = createRequire(join(process.cwd(), 'packages/data-access/package.json'))
+const requirePkg = createRequire(join(process.cwd(), 'apps/core/package.json'))
 const Orm = requirePkg('typeorm') as { DataSource: new (options: object) => Db }
 
 interface Db {
@@ -52,7 +52,7 @@ async function main(): Promise<void> {
   const parsed = raw === undefined ? Number.NaN : Number.parseInt(raw, 10)
   const batch = Number.isInteger(parsed) && parsed > 0 ? parsed : 500
   const env = loadEnv()
-  // ponytail: mirrors SharedDatabaseModule.forRoot() but synchronize:false,
+  // ponytail: mirrors DatabaseModule.forRoot() but synchronize:false,
   // scripts must not touch schema
   const ds = new Orm.DataSource({
     type: 'postgres',

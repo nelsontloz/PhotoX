@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
+import { loadEnv } from '@photox/shared-config'
 import Redis from 'ioredis'
 import { Queue, Worker, type Job, type JobsOptions, type WorkerOptions } from 'bullmq'
 
@@ -10,14 +10,15 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
   private readonly workers: Worker[] = []
   private readonly queues = new Map<string, Queue>()
 
-  constructor(private readonly config: ConfigService) {}
-
   async onModuleInit() {
-    const host = this.config.get<string>('REDIS_HOST', 'localhost')
-    const port = this.config.get<number>('REDIS_PORT', 6379)
-    const password = this.config.get<string>('REDIS_PASSWORD')
+    const env = loadEnv()
     await new Promise<void>((resolve, reject) => {
-      this.connection = new Redis({ host, port, password, maxRetriesPerRequest: null })
+      this.connection = new Redis({
+        host: env.REDIS_HOST,
+        port: env.REDIS_PORT,
+        password: env.REDIS_PASSWORD,
+        maxRetriesPerRequest: null,
+      })
       this.connection.once('ready', () => resolve())
       this.connection.once('error', (err) => reject(err))
     })

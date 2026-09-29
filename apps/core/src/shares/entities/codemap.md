@@ -25,5 +25,5 @@ The `AssetShare` TypeORM entity — the persistence model for public share links
 
 ## Integration
 
-- Imports `Asset` from `@photox/data-access` so the FK target and table metadata stay in sync with the shared entity package; registered by `SharesModule` via `TypeOrmModule.forFeature([AssetShare, Asset])`.
+- Imports `Asset` from `../../database/entities` so the FK target and table metadata stay in sync with the core entity folder; registered by `SharesModule` via `TypeOrmModule.forFeature([AssetShare, Asset])`.
 - Schema created by TypeORM `synchronize: true`; no migrations in the repo.
