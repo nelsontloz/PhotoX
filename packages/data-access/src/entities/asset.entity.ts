@@ -1,4 +1,12 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index, OneToMany } from 'typeorm'
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  Index,
+  OneToMany,
+} from 'typeorm'
 import { AssetThumbnail } from './asset-thumbnail.entity'
 
 @Entity('assets')
@@ -23,6 +31,11 @@ export class Asset {
 
   @CreateDateColumn({ type: 'timestamptz' })
   uploadedAt!: Date
+
+  // layout fingerprint source: any save()/update() on the row bumps this (default covers
+  // legacy rows when synchronize ALTERs a non-empty table)
+  @UpdateDateColumn({ type: 'timestamptz', default: () => 'now()' })
+  updatedAt!: Date
 
   @Column({ default: false })
   isTrashed!: boolean

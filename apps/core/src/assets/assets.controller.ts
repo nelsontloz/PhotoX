@@ -7,16 +7,30 @@ import {
   Query,
   Body,
   Req,
+  Res,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import type { Request } from 'express'
+import type { Request, Response } from 'express'
 import { AssetsService } from './assets.service'
 import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
 import { UpdateMetadataDto } from './dto/update-metadata.dto'
 import { TrashAssetsDto } from './dto/trash-assets.dto'
+
+/** Weak-safe ETag matching: handles W/ prefixes, comma lists, and `*`. */
+export function etagMatches(ifNoneMatch: string | undefined, etag: string): boolean {
+  if (!ifNoneMatch) return false
+  return ifNoneMatch
+    .split(',')
+    .map((candidate) => candidate.trim().replace(/^W\//, ''))
+    .some((candidate) => candidate === '*' || candidate === etag)
+}
+
+export function layoutEtag(fingerprint: { count: number; maxUpdatedAtMs: number }): string {
+  return `"layout-${fingerprint.count}-${fingerprint.maxUpdatedAtMs}"`
+}
 
 @ApiTags('assets')
 @Controller('api/v1/assets')
@@ -34,8 +48,22 @@ export class AssetsController {
   @Get('layout')
   @ApiOperation({ summary: 'Compact timeline layout: timestamps and aspect dimensions only' })
   @ApiResponse({ status: 200, description: 'Asset layout list' })
-  async layout(@Req() req: Request) {
-    return this.assets.layout((req.user as { id: string }).id)
+  @ApiResponse({ status: 304, description: 'ETag match — layout unchanged' })
+  async layout(@Req() req: Request, @Res() res: Response) {
+    const userId = (req.user as { id: string }).id
+    const fingerprint = await this.assets.layoutFingerprint(userId)
+    const etag = layoutEtag(fingerprint)
+    if (etagMatches(req.get('If-None-Match'), etag)) {
+      res.status(HttpStatus.NOT_MODIFIED).setHeader('ETag', etag).end()
+      return
+    }
+    const body = await this.assets.layout(userId)
+    // private, no-cache: browser stores the body but must revalidate (conditional GET → 304)
+    // every load; Vary: Authorization keeps per-user bodies out of each other's cache slots.
+    res.setHeader('ETag', etag)
+    res.setHeader('Cache-Control', 'private, no-cache')
+    res.setHeader('Vary', 'Authorization')
+    res.json(body)
   }
 
   @Patch(':id/metadata')

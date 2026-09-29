@@ -135,11 +135,23 @@ export function TimelineScrollbar({ layout, scrollPos }: TimelineScrollbarProps)
     Math.max(RAIL_INSET + thumb.top + thumb.height / 2, 14),
     Math.max(14, m.clientH - 14),
   )
-  const ticks = layout.buckets.map((bucket) => ({
-    key: bucket.key,
-    y: RAIL_INSET + railYForContentY(bucket.top, m),
-    year: bucket.key.endsWith('-01'),
-  }))
+  // Month ticks mark each bucket's top edge. The year line (January, blue) marks the year FLIP —
+  // the Jan bucket's bottom edge, where Jan 1's photos meet the prior year's December.
+  const ticks = layout.buckets.flatMap((bucket) => {
+    // December's start tick coincides with the blue year line — the year tick covers it
+    if (bucket.key.endsWith('-12')) return []
+    const start = { key: bucket.key, y: RAIL_INSET + railYForContentY(bucket.top, m), year: false }
+    return bucket.key.endsWith('-01')
+      ? [
+          start,
+          {
+            key: `${bucket.key}-year`,
+            y: RAIL_INSET + railYForContentY(bucket.top + bucket.height, m),
+            year: true,
+          },
+        ]
+      : [start]
+  })
 
   const railYFromClient = (clientY: number): number => {
     const rect = stripRef.current?.getBoundingClientRect()
@@ -154,6 +166,8 @@ export function TimelineScrollbar({ layout, scrollPos }: TimelineScrollbarProps)
   }
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    // secondary buttons would orphan the drag — the context menu swallows their pointerup
+    if (e.button !== 0 || e.buttons !== 1) return
     const railY = railYFromClient(e.clientY)
     const center = thumb.top + thumb.height / 2
     // pointerdown on the thumb keeps the grab offset; on the track it centers the viewport there
@@ -167,6 +181,13 @@ export function TimelineScrollbar({ layout, scrollPos }: TimelineScrollbarProps)
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     const grab = dragRef.current?.grab
     if (grab === undefined) return
+    if (e.buttons === 0) {
+      // orphaned drag: the pointerup was swallowed (context menu, capture lost off-window) —
+      // self-heal on the next hover-move instead of scrubbing the scroll on hover
+      dragRef.current = null
+      setDragging(false)
+      return
+    }
     applyRailY(railYFromClient(e.clientY) - grab)
   }
 
@@ -231,6 +252,7 @@ export function TimelineScrollbar({ layout, scrollPos }: TimelineScrollbarProps)
       onPointerMove={onPointerMove}
       onPointerUp={onPointerDone}
       onPointerCancel={onPointerDone}
+      onLostPointerCapture={onPointerDone}
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
       onKeyDown={onKeyDown}
