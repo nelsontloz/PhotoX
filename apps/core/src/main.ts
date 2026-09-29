@@ -3,14 +3,11 @@ import { ValidationPipe } from '@nestjs/common'
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
 import { AppModule } from './app.module'
 import { HttpExceptionFilter } from './common/filters/http-exception.filter'
-import { requestIdMiddleware } from './common/middleware/request-id.middleware'
 import { loadEnv } from '@photox/shared-config'
 
 async function bootstrap() {
   const env = loadEnv()
   const app = await NestFactory.create(AppModule, { rawBody: true })
-
-  app.use(requestIdMiddleware)
 
   app.useGlobalPipes(
     new ValidationPipe({

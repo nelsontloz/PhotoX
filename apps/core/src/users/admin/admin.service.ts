@@ -34,8 +34,6 @@ export class AdminService {
       email: u.email,
       role: u.role,
       createdAt: u.createdAt.toISOString(),
-      assetCount: 0,
-      bytesUsed: 0,
     }))
 
     return { items, total, limit: params.limit, offset: params.offset }

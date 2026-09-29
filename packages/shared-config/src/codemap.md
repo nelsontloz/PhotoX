@@ -11,9 +11,8 @@ its `@Injectable()` decorator).
 
 `env.ts`
 
-- `envSchema` (zod object, 15 keys): `NODE_ENV` enum default `development`; `API_PORT` 3000;
+- `envSchema` (zod object, 13 keys): `API_PORT` 3000;
   `CORE_URL` `http://localhost:3000` (worker → core; compose `http://core:3000`);
-  `WORKER_SERVICE_PORT` 3004;
   `POSTGRES_HOST` localhost; `POSTGRES_PORT` 5432; `POSTGRES_USER` photox;
   `POSTGRES_PASSWORD` photox_dev; `REDIS_HOST` localhost; `REDIS_PORT` 6379;
   `REDIS_PASSWORD` optional (no default; compose sets `photox_dev`); `STORAGE_DIR`

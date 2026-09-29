@@ -47,7 +47,7 @@ export class AuthService {
     const hash = this.tokenService.hash(refreshToken)
 
     const row = await this.tokenRepo.findOne({
-      where: { tokenHash: hash, purpose: 'refresh' as const },
+      where: { tokenHash: hash },
     })
     if (!row) throw new UnauthorizedException('Invalid refresh token')
     if (new Date() > row.expiresAt) throw new UnauthorizedException('Refresh token expired')
@@ -68,7 +68,7 @@ export class AuthService {
     const hash = this.tokenService.hash(refreshToken)
 
     const row = await this.tokenRepo.findOne({
-      where: { tokenHash: hash, purpose: 'refresh' as const },
+      where: { tokenHash: hash },
     })
     if (row && !row.revokedAt) {
       await this.tokenRepo.update(row.id, { revokedAt: new Date() })
@@ -89,7 +89,6 @@ export class AuthService {
       this.tokenRepo.create({
         userId: user.id,
         tokenHash: refreshHash,
-        purpose: 'refresh' as const,
         expiresAt: this.tokenService.getRefreshExpiresAt(),
       }),
     )

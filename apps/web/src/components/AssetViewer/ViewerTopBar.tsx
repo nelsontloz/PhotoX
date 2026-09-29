@@ -6,7 +6,6 @@ import {
   FaDownload,
   FaShare,
   FaCheck,
-  FaPen,
   FaCircleInfo,
   FaTrash,
   FaTrashCan,
@@ -140,9 +139,6 @@ export function ViewerTopBar({
               ) : (
                 <FaShare className="text-base" />
               )}
-            </button>
-            <button className="p-2 text-white/80 hover:text-white transition-colors" title="Edit">
-              <FaPen className="text-base" />
             </button>
             {onReprocessThumbnails && (
               <button

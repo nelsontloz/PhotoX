@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { Asset } from '@photox/shared-types'
 import {
   FaFolderPlus,
@@ -10,6 +10,7 @@ import {
 } from 'react-icons/fa6'
 import { RequireAuth } from '../components/RequireAuth'
 import { AppShell } from '../components/AppShell'
+import { AssetViewer } from '../components/AssetViewer/AssetViewer'
 import { useTimelineMonths } from '../hooks/useTimelineMonths'
 import { useAssetNavigation } from '../hooks/useAssetNavigation'
 import { useTimelineLayout } from '../hooks/useTimelineLayout'
@@ -19,23 +20,6 @@ import { UploadButton } from '../components/UploadButton'
 import { getAsset, trashAssets } from '../api/assets'
 import { effectiveAssetDate, monthKeyOf } from '../lib/dateFormat'
 import { useAppStore } from '../store/app-store'
-
-function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(() =>
-    typeof window !== 'undefined' ? window.matchMedia(query).matches : false,
-  )
-  useEffect(() => {
-    const mql = window.matchMedia(query)
-    const onChange = () => setMatches(mql.matches)
-    mql.addEventListener('change', onChange)
-    return () => mql.removeEventListener('change', onChange)
-  }, [query])
-  return matches
-}
-
-const AssetViewer = lazy(() =>
-  import('../components/AssetViewer/AssetViewer').then((m) => ({ default: m.AssetViewer })),
-)
 
 function TimelineContent() {
   // Structure (buckets, heights, order) comes from the layout endpoint; months fill it in.
@@ -96,7 +80,6 @@ function TimelineContent() {
   })
   const [pickerOpen, setPickerOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const isMobile = useMediaQuery('(pointer: coarse)')
 
   const toggle = (id: string) => {
     setSelectedIds((prev) => {
@@ -194,36 +177,34 @@ function TimelineContent() {
         onSelect={onClickAsset}
         selectedIds={selectedIds}
         onToggleSelect={toggle}
-        onLongPress={isMobile ? onLongPress : undefined}
+        onLongPress={onLongPress}
         showCheckbox
       />
       {nav.selected && (
-        <Suspense fallback={null}>
-          <AssetViewer
-            asset={nav.selected}
-            onClose={nav.close}
-            onPrev={nav.goPrev}
-            onNext={nav.goNext}
-            hasPrev={nav.hasPrev}
-            hasNext={nav.hasNext}
-            onTrash={() => {
-              void nav.trash()
-            }}
-            onToggleFavorite={(nextValue) => {
-              const cur = nav.selected
-              if (cur) void nav.toggleFavorite(cur.id, nextValue)
-            }}
-            onAddToAlbum={() => {
-              const cur = nav.selected
-              if (cur) {
-                setSelectedIds((prev) => new Set(prev).add(cur.id))
-                setPickerOpen(true)
-              }
-            }}
-            siblingAssets={loadedAssets}
-            onSelectSibling={(asset) => nav.open(asset)}
-          />
-        </Suspense>
+        <AssetViewer
+          asset={nav.selected}
+          onClose={nav.close}
+          onPrev={nav.goPrev}
+          onNext={nav.goNext}
+          hasPrev={nav.hasPrev}
+          hasNext={nav.hasNext}
+          onTrash={() => {
+            void nav.trash()
+          }}
+          onToggleFavorite={(nextValue) => {
+            const cur = nav.selected
+            if (cur) void nav.toggleFavorite(cur.id, nextValue)
+          }}
+          onAddToAlbum={() => {
+            const cur = nav.selected
+            if (cur) {
+              setSelectedIds((prev) => new Set(prev).add(cur.id))
+              setPickerOpen(true)
+            }
+          }}
+          siblingAssets={loadedAssets}
+          onSelectSibling={(asset) => nav.open(asset)}
+        />
       )}
       <AlbumPickerDialog
         open={selectedIds.size > 0 && pickerOpen}

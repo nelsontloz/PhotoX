@@ -23,7 +23,6 @@ export interface AddAssetsToAlbumDto {
 }
 
 export interface ListAlbumsQueryDto {
-  userId?: string
   limit?: number
   offset?: number
 }

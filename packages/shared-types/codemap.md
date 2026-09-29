@@ -19,7 +19,7 @@ over HTTP responses.
   `transcodeStatus`, `thumbnailStatus`, `faceStatus`) so polling clients can watch jobs.
 - `FileRecord` here is the API shape of the entity (dates stringified); `data-access`
   exports the class — same name, different layer, so imports must be deliberate.
-- Build: composite `tsc -b` to `dist/`; listed in `vitest.workspace.ts` (no spec files).
+- Build: composite `tsc -b` to `dist/` (no spec files).
 
 ## Flow
 

@@ -72,7 +72,6 @@ export class UserFilesService {
       }
     }
     const asset = await this.assets.create(userId, {
-      userId,
       fileId: record.id,
       kind,
       title: meta.title,

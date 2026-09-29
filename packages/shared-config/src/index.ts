@@ -1,2 +1,2 @@
-export { loadEnv, type Env } from './env'
+export { loadEnv } from './env'
 export { LocalStorageService } from './storage'

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository, Brackets, DataSource, In } from 'typeorm'
+import { Repository, DataSource, In } from 'typeorm'
 import { Asset } from '@photox/data-access'
 import { AssetThumbnail } from '@photox/data-access'
 import { AlbumAsset } from '../albums/entities/album-asset.entity'
@@ -58,50 +58,6 @@ export class AssetsService {
       qb.andWhere('asset.id IN (:...ids)', { ids: q.ids })
     }
 
-    if (q.kind) {
-      qb.andWhere('asset.kind = :kind', { kind: q.kind })
-    }
-
-    if (q.mimeType) {
-      qb.andWhere('asset.mimeType LIKE :mimeType', { mimeType: `${q.mimeType}%` })
-    }
-
-    if (q.fromDate && q.toDate) {
-      qb.andWhere(
-        new Brackets((sub) =>
-          sub
-            .where('asset.takenAt BETWEEN :fromDate AND :toDate', {
-              fromDate: q.fromDate,
-              toDate: q.toDate,
-            })
-            .orWhere('asset.takenAt IS NULL AND asset.uploadedAt BETWEEN :fromDate AND :toDate', {
-              fromDate: q.fromDate,
-              toDate: q.toDate,
-            }),
-        ),
-      )
-    } else if (q.fromDate) {
-      qb.andWhere(
-        new Brackets((sub) =>
-          sub
-            .where('asset.takenAt >= :fromDate', { fromDate: q.fromDate })
-            .orWhere('asset.takenAt IS NULL AND asset.uploadedAt >= :fromDate', {
-              fromDate: q.fromDate,
-            }),
-        ),
-      )
-    } else if (q.toDate) {
-      qb.andWhere(
-        new Brackets((sub) =>
-          sub
-            .where('asset.takenAt <= :toDate', { toDate: q.toDate })
-            .orWhere('asset.takenAt IS NULL AND asset.uploadedAt <= :toDate', {
-              toDate: q.toDate,
-            }),
-        ),
-      )
-    }
-
     if (q.dateFrom) {
       qb.andWhere('COALESCE(asset.takenAt, asset.uploadedAt) >= :dateFrom', {
         dateFrom: q.dateFrom,
@@ -114,16 +70,6 @@ export class AssetsService {
 
     if (q.favorite !== undefined) {
       qb.andWhere('asset.favorite = :favorite', { favorite: q.favorite })
-    }
-
-    if (q.metadataStatus) {
-      qb.andWhere('asset.metadataStatus = :metadataStatus', { metadataStatus: q.metadataStatus })
-    }
-
-    if (q.hasFaces === true) {
-      qb.andWhere('asset.faceCount > 0')
-    } else if (q.hasFaces === false) {
-      qb.andWhere('(asset.faceCount IS NULL OR asset.faceCount = 0)')
     }
 
     if (q.hasLocations === true) {
@@ -202,9 +148,8 @@ export class AssetsService {
     }
   }
 
-  async getOne(userId: string | undefined, id: string): Promise<AssetResponse> {
-    const where = userId ? { id, userId } : { id }
-    const asset = await this.repo.findOne({ where })
+  async getOne(userId: string, id: string): Promise<AssetResponse> {
+    const asset = await this.repo.findOne({ where: { id, userId } })
     if (!asset) throw new NotFoundException('Asset not found')
     const faces = await this.facesService.getForAsset(asset.userId, id)
     const thumbRows = await this.thumbRepo.find({

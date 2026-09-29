@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-Composition root of the core API: `app.module.ts` wires all feature modules; `main.ts` applies the process-wide HTTP conventions (request id, validation, error shape, Swagger, port).
+Composition root of the core API: `app.module.ts` wires all feature modules; `main.ts` applies the process-wide HTTP conventions (validation, error shape, Swagger, port).
 
 ## Design
 
@@ -15,7 +15,7 @@ Composition root of the core API: `app.module.ts` wires all feature modules; `ma
 `main.ts` bootstrap:
 
 - `const env = loadEnv()` from `@photox/shared-config`; `NestFactory.create(AppModule, { rawBody: true })` keeps raw bodies available while multipart streams stay unparsed.
-- `app.use(requestIdMiddleware)` first, then global `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })` and `HttpExceptionFilter`.
+- Global `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })` and `HttpExceptionFilter` registered via `useGlobalPipes`/`useGlobalFilters`.
 - Deliberately **no CORS** (browsers reach core same-origin through the Vite dev proxy or a reverse proxy).
 - Swagger: `DocumentBuilder` ("Photox API", v1.0, tags `auth`/`users`/`admin`) served at `docs` with `jsonDocumentUrl: 'docs-json'` (both open routes).
 - `app.listen(env.API_PORT)`, single `console.log` on boot, `void bootstrap()`.
@@ -24,7 +24,7 @@ Controllers own their full versioned paths (`@Controller('api/v1/...')`); there 
 
 ## Flow
 
-Request: `requestIdMiddleware` → global `JwtAuthGuard` (open-route table, Bearer verify) → `ValidationPipe` → controller → service → TypeORM / `BullMqService`. Exceptions unwind through `HttpExceptionFilter`. Boot: ConfigModule → TypeORM connect (retry ×3) → all modules init → `VECTOR_INIT` HNSW rebuild → listen.
+Request: global `JwtAuthGuard` (open-route table, Bearer verify) → `ValidationPipe` → controller → service → TypeORM / `BullMqService`. Exceptions unwind through `HttpExceptionFilter`. Boot: ConfigModule → TypeORM connect (retry ×3) → all modules init → `VECTOR_INIT` HNSW rebuild → listen.
 
 ## Integration
 

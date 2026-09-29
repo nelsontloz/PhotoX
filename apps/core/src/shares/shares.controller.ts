@@ -4,7 +4,6 @@ import {
   Post,
   Delete,
   Param,
-  Query,
   Body,
   Req,
   HttpCode,
@@ -25,15 +24,14 @@ export class SharesController {
   @ApiResponse({ status: 201, description: 'Share created' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async create(@Body() dto: CreateShareDto, @Req() req: Request) {
-    const userId = (req.user as { id: string }).id ?? dto.userId
-    return this.shares.create(userId, dto)
+    return this.shares.create((req.user as { id: string }).id, dto)
   }
 
   @Get()
   @ApiOperation({ summary: 'List all shares created by a user' })
   @ApiResponse({ status: 200, description: 'Paginated share list' })
-  async list(@Req() req: Request, @Query('userId') queryUserId?: string) {
-    const userId = (req.user as { id: string }).id ?? queryUserId
+  async list(@Req() req: Request) {
+    const userId = (req.user as { id: string }).id
     return this.shares.list(userId)
   }
 
@@ -42,12 +40,7 @@ export class SharesController {
   @ApiOperation({ summary: 'Revoke a share link' })
   @ApiResponse({ status: 204, description: 'Share revoked' })
   @ApiResponse({ status: 404, description: 'Share not found' })
-  async revoke(
-    @Param('id') id: string,
-    @Req() req: Request,
-    @Query('userId') queryUserId?: string,
-  ) {
-    const userId = (req.user as { id: string }).id ?? queryUserId
-    await this.shares.revoke(userId, id)
+  async revoke(@Param('id') id: string, @Req() req: Request) {
+    await this.shares.revoke((req.user as { id: string }).id, id)
   }
 }

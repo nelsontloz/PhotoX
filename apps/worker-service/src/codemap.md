@@ -25,7 +25,7 @@ middleware, or Swagger because nothing user-facing is served.
 - `QueueModule` registers `JwtModule.registerAsync` with `loadAuthEnv().AUTH_TOKEN_SECRET` — the
   worker mints delegated per-job tokens in `CoreClient` (never verifies incoming tokens).
 - Deliberately absent vs `apps/core/src/main.ts`: `ValidationPipe`, `HttpExceptionFilter`,
-  `requestIdMiddleware`, Swagger `/docs` + `/docs-json`. Keep the divergence intentional.
+  Swagger `/docs` + `/docs-json`. Keep the divergence intentional.
 
 ## Flow
 

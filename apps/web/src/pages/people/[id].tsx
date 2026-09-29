@@ -1,8 +1,9 @@
-import { Suspense, lazy, useState } from 'react'
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { FaArrowLeft, FaSpinner, FaFaceSmile } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
+import { AssetViewer } from '../../components/AssetViewer/AssetViewer'
 import { GalleryItem } from '../../components/GalleryItem'
 import { FaceOverlay } from '../../components/AssetViewer/FaceOverlay'
 import { AlbumPickerDialog } from '../../components/AlbumPickerDialog'
@@ -10,10 +11,6 @@ import { renamePerson } from '../../api/persons'
 import { usePersonDetail } from '../../hooks/usePersonDetail'
 import { useInlineRename } from '../../hooks/useInlineRename'
 import type { Asset } from '@photox/shared-types'
-
-const AssetViewer = lazy(() =>
-  import('../../components/AssetViewer/AssetViewer').then((m) => ({ default: m.AssetViewer })),
-)
 
 export default function PersonDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -136,17 +133,15 @@ export default function PersonDetailPage() {
 
         {selectedAsset && (
           <>
-            <Suspense fallback={null}>
-              <AssetViewer
-                asset={selectedAsset}
-                onClose={() => setSelectedAsset(null)}
-                hasPrev={false}
-                hasNext={false}
-                onAddToAlbum={() => setPickerOpen(true)}
-                siblingAssets={assets}
-                onSelectSibling={setSelectedAsset}
-              />
-            </Suspense>
+            <AssetViewer
+              asset={selectedAsset}
+              onClose={() => setSelectedAsset(null)}
+              hasPrev={false}
+              hasNext={false}
+              onAddToAlbum={() => setPickerOpen(true)}
+              siblingAssets={assets}
+              onSelectSibling={setSelectedAsset}
+            />
             <AlbumPickerDialog
               open={pickerOpen}
               onClose={() => setPickerOpen(false)}

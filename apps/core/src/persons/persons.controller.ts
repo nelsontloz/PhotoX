@@ -60,21 +60,15 @@ export class PersonsController {
   @ApiOperation({ summary: 'List persons for a user' })
   @ApiResponse({ status: 200, description: 'Paginated person list' })
   async list(@Query() q: ListPersonsQueryDto, @Req() req: Request): Promise<PersonListResponse> {
-    const userId = (req.user as { id: string }).id ?? q.userId
-    return this.persons.list(userId, q.limit ?? 20, q.offset ?? 0)
+    return this.persons.list((req.user as { id: string }).id, q.limit ?? 20, q.offset ?? 0)
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a single person' })
   @ApiResponse({ status: 200, description: 'Person found' })
   @ApiResponse({ status: 404, description: 'Person not found' })
-  async getOne(
-    @Param('id') id: string,
-    @Req() req: Request,
-    @Query('userId') queryUserId?: string,
-  ): Promise<PersonDto> {
-    const userId = (req.user as { id: string }).id ?? queryUserId
-    return this.persons.getOne(userId, id)
+  async getOne(@Param('id') id: string, @Req() req: Request): Promise<PersonDto> {
+    return this.persons.getOne((req.user as { id: string }).id, id)
   }
 
   @Patch(':id')
@@ -85,10 +79,8 @@ export class PersonsController {
     @Param('id') id: string,
     @Req() req: Request,
     @Body() dto: UpdatePersonDto,
-    @Query('userId') queryUserId?: string,
   ): Promise<PersonDto> {
-    const userId = (req.user as { id: string }).id ?? queryUserId
-    return this.persons.update(userId, id, dto.name)
+    return this.persons.update((req.user as { id: string }).id, id, dto.name)
   }
 
   @Get(':id/assets')
@@ -100,7 +92,11 @@ export class PersonsController {
     @Query() q: ListPersonsQueryDto,
     @Req() req: Request,
   ): Promise<PersonAssetsResponse> {
-    const userId = (req.user as { id: string }).id ?? q.userId
-    return this.persons.getAssetsForPerson(userId, id, q.limit ?? 20, q.offset ?? 0)
+    return this.persons.getAssetsForPerson(
+      (req.user as { id: string }).id,
+      id,
+      q.limit ?? 20,
+      q.offset ?? 0,
+    )
   }
 }

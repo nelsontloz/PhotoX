@@ -121,7 +121,6 @@ describe.skipIf(!pactExists)('core provider pact verification (opt-in)', () => {
       t.refreshRepo.create({
         userId: USER_ID,
         tokenHash: refreshTokenHash,
-        purpose: 'refresh',
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         revokedAt: null,
       }),

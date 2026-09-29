@@ -20,7 +20,7 @@ be at least 32 characters') })`.
 
 `index.ts`:
 
-- `export { loadAuthEnv, type AuthEnv } from './env'`.
+- `export { loadAuthEnv } from './env'`.
 - `export interface JwtPayload { sub: string; email: string; role: Role; iat: number;
 exp: number; jti?: string }` — `Role` imported type-only from `@photox/shared-types`.
 
@@ -38,5 +38,5 @@ compile time; it only shapes `jwt.sign` / `jwt.verify` / `jwtDecode` call sites.
 ## Integration
 
 Imported by `apps/core` (secret for signing + verification) and
-`apps/web` (payload decode, type-only). The package is part of the vitest workspace but has
-no spec files; validation behavior is covered indirectly by app bootstrap.
+`apps/web` (payload decode, type-only). No spec files; validation behavior is covered
+indirectly by app bootstrap.

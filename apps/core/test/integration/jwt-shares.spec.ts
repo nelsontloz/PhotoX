@@ -26,16 +26,15 @@ describe('shares JWT identity', () => {
     await resetDb(t)
   })
 
-  it('creates without userId and ignores body userId', async () => {
+  it('creates a share for the JWT user', async () => {
     const a = await seedUser(t)
-    const b = await seedUser(t)
     const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
     const file = await seedFile(t, a.id)
     const asset = await seedAsset(t, a.id, file.id)
     const res = await request(apiServer(t))
       .post('/api/v1/shares')
       .set(t.authHeader(tokenA))
-      .send({ assetId: asset.id, userId: b.id })
+      .send({ assetId: asset.id })
     expect(res.status).toBe(201)
     const body = res.body as unknown as { userId: string; assetId: string; token: string }
     expect(body.userId).toBe(a.id)

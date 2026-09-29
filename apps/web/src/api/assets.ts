@@ -4,7 +4,6 @@ import type { Asset, AssetLayout, AssetListResponse } from '@photox/shared-types
 interface ListAssetsParams {
   limit?: number
   offset?: number
-  kind?: 'photo' | 'video'
   isTrashed?: boolean
   favorite?: boolean
   hasLocations?: boolean

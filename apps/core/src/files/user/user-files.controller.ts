@@ -3,7 +3,6 @@ import {
   Get,
   Post,
   Param,
-  Query,
   Body,
   Res,
   Req,
@@ -47,8 +46,7 @@ export class UserFilesController {
     @UploadedFile() file: { path: string; originalname: string; mimetype: string; size: number },
     @Body() body: UploadFileBodyDto,
   ) {
-    const userId = (req.user as { id: string }).id ?? body.userId
-    return this.userFilesService.upload(userId, file, {
+    return this.userFilesService.upload((req.user as { id: string }).id, file, {
       kind: body.kind,
       title: body.title,
       description: body.description,
@@ -133,26 +131,16 @@ export class UserFilesController {
   @ApiOperation({ summary: 'Get file metadata' })
   @ApiResponse({ status: 200, description: 'File record', type: FileRecordDto })
   @ApiResponse({ status: 404, description: 'File not found' })
-  async getOne(
-    @Param('fileId') fileId: string,
-    @Req() req: Request,
-    @Query('userId') queryUserId?: string,
-  ) {
-    const userId = (req.user as { id: string }).id ?? queryUserId
-    return this.userFilesService.getOne(userId, fileId)
+  async getOne(@Param('fileId') fileId: string, @Req() req: Request) {
+    return this.userFilesService.getOne((req.user as { id: string }).id, fileId)
   }
 
   @Get(':fileId/download')
   @ApiOperation({ summary: 'Download file bytes' })
   @ApiResponse({ status: 200, description: 'File stream' })
   @ApiResponse({ status: 404, description: 'File not found' })
-  async download(
-    @Res() res: Response,
-    @Param('fileId') fileId: string,
-    @Req() req: Request,
-    @Query('userId') queryUserId?: string,
-  ) {
-    const userId = (req.user as { id: string }).id ?? queryUserId
+  async download(@Res() res: Response, @Param('fileId') fileId: string, @Req() req: Request) {
+    const userId = (req.user as { id: string }).id
     const { stream, record } = await this.userFilesService.download(userId, fileId)
     res.set({
       'Content-Type': record.mimeType,

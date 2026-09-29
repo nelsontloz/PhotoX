@@ -59,10 +59,6 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async enqueueOrphanCleanup(dryRun = false): Promise<void> {
-    await this.enqueue('cleanup-orphans', 'cleanup-orphans', { dryRun })
-  }
-
   createWorker<T>(
     name: string,
     processor: (job: Job<T>) => Promise<void>,

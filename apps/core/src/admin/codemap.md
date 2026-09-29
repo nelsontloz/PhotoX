@@ -8,9 +8,9 @@ Cross-user administrative reads and maintenance triggers: per-user asset counts,
 
 `AdminModule` imports `TypeOrmModule.forFeature([Asset, FileRecord, AssetThumbnail])`; three controllers:
 
-- `AdminController` — `GET api/v1/admin/users/asset-stats`. `UserIdsQueryDto` (comma-separated, max 50); `AdminService.getAssetStatsByUser` groupBy `userId` COUNT via `getRawMany` → `Record<userId, count>`. No controller-level `AdminGuard` ("trusts the network"; the global `JwtAuthGuard` enforces admin on the `api/v1/admin/*` prefix).
-- `AdminAssetsController` — `GET api/v1/admin/assets/counts` and `GET api/v1/admin/assets` (also unguarded in core).
-- `AdminMaintenanceController` — `@UseGuards(AdminGuard)` + `@Controller('api/v1/admin')`.
+- `AdminController` — `GET api/v1/admin/users/asset-stats`. `UserIdsQueryDto` (comma-separated, max 50); `AdminService.getAssetStatsByUser` groupBy `userId` COUNT via `getRawMany` → `Record<userId, count>`. Admin is enforced centrally by the global `JwtAuthGuard` on the `api/v1/admin/*` prefix; there is no controller-level guard.
+- `AdminAssetsController` — `GET api/v1/admin/assets/counts` and `GET api/v1/admin/assets`.
+- `AdminMaintenanceController` — `@Controller('api/v1/admin')`.
 
 `AdminAssetsService`:
 
@@ -28,10 +28,10 @@ Cross-user administrative reads and maintenance triggers: per-user asset counts,
 
 ## Flow
 
-Admin Bearer JWT → global `JwtAuthGuard` (verify + admin role) → (maintenance only) `AdminGuard` → service → Postgres / storage. The enqueue endpoint only hands work to BullMQ (`cleanup-orphans`); the `run` endpoint executes the scan inline for the worker proxy; thumbnail reprocess enqueues `process-thumbnail` with `thumb-reprocess-<assetId>-<size>` jobIds.
+Admin Bearer JWT → global `JwtAuthGuard` (verify + admin role) → service → Postgres / storage. The enqueue endpoint only hands work to BullMQ (`cleanup-orphans`); the `run` endpoint executes the scan inline for the worker proxy; thumbnail reprocess enqueues `process-thumbnail` with `thumb-reprocess-<assetId>-<size>` jobIds.
 
 ## Integration
 
 - Consumers live in worker-service (`cleanup-orphans.processor.ts`, `thumbnail.processor.ts`): the cleanup queues are thin proxies back to this module's admin endpoints.
 - Wire types `AdminAssetCountsResponse`, `AdminAssetReprocessListResponse`, `AssetFailureCounts` from `@photox/shared-types`; the web admin dashboard consumes the asset-counts/reprocess/orphan-counts endpoints. `GET admin/users/asset-stats` has no client caller (covered by integration tests only).
-- `AdminGuard` from `src/auth/`, `BullMqService` from `src/queue/`.
+- `BullMqService` from `src/queue/`.

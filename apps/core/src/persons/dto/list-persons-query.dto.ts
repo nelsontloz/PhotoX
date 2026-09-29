@@ -1,13 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { IsOptional, IsUUID, Min, Max } from 'class-validator'
+import { IsOptional, Min, Max } from 'class-validator'
 import { Type } from 'class-transformer'
 
 export class ListPersonsQueryDto {
-  @IsOptional()
-  @IsUUID()
-  @ApiProperty({ required: false })
-  userId?: string
-
   @IsOptional()
   @Type(() => Number)
   @Min(1)

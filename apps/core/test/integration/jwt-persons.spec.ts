@@ -45,16 +45,13 @@ describe('persons JWT identity', () => {
     return { asset, person, face }
   }
 
-  it('lists without userId and ignores query userId', async () => {
+  it('lists only the JWT user persons', async () => {
     const a = await seedUser(t)
     const b = await seedUser(t)
     await seedPersonWithFace(a.id)
     await seedPersonWithFace(b.id)
     const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
-    const res = await request(apiServer(t))
-      .get('/api/v1/persons')
-      .query({ userId: b.id })
-      .set(t.authHeader(tokenA))
+    const res = await request(apiServer(t)).get('/api/v1/persons').set(t.authHeader(tokenA))
     expect(res.status).toBe(200)
     const body = res.body as unknown as { items: { userId: string }[]; total: number }
     expect(body.total).toBe(1)

@@ -153,8 +153,6 @@ export interface AdminUserRow {
   email: string
   role: Role
   createdAt: string
-  assetCount: number
-  bytesUsed: number
 }
 
 export interface AdminUserListResponse {

@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-Workspace-level maintenance scripts run manually (or from CI/ops), not imported by any app. Currently one script, `migrate-storage-layout.ts`: a one-off backfill that moves legacy flat storage files into the current `originals/` + `derivatives/` layout and updates `files.storageKey` to match. `tsconfig.json` and `vitest.config.ts` make the folder a typed, testable workspace member.
+Workspace-level maintenance scripts run manually (or from CI/ops), not imported by any app. Currently one script, `migrate-storage-layout.ts`: a one-off backfill that moves legacy flat storage files into the current `originals/` + `derivatives/` layout and updates `files.storageKey` to match. `tsconfig.json` makes the folder a typed workspace member.
 
 ## Design
 
@@ -17,8 +17,6 @@ Workspace-level maintenance scripts run manually (or from CI/ops), not imported 
 - Marked `ponytail: one-off … remove once every env has migrated`.
 
 `tsconfig.json`: extends `../tsconfig.base.json`, disables declarations, adds `typeRoots` for both `packages/data-access/node_modules/@types` and root `@types`, includes `*.ts` only.
-
-`vitest.config.ts`: node environment, `globals: true`, includes `*.spec.ts`. The folder is a member of root `vitest.workspace.ts`, so `pnpm test`/CI picks up any spec added here automatically.
 
 ## Flow
 

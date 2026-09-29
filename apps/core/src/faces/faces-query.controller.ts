@@ -23,12 +23,11 @@ export class FacesQueryController {
   @ApiOperation({ summary: 'List faces for a user (used by cluster job)' })
   @ApiResponse({ status: 200, description: 'Face list' })
   async list(
-    @Query('userId') queryUserId: string | undefined,
     @Query('includeEmbeddings') includeEmbeddings: string | undefined,
     @Query('excludeTrashed') excludeTrashed: string | undefined,
     @Req() req: Request,
   ) {
-    const userId = (req.user as { id: string }).id ?? queryUserId
+    const userId = (req.user as { id: string }).id
     const wantEmbeddings = includeEmbeddings === 'true'
     const items = await this.faces.listForUser(userId, wantEmbeddings, excludeTrashed === 'true')
     return { items }
@@ -40,7 +39,7 @@ export class FacesQueryController {
   @ApiResponse({ status: 200, description: 'Face updated' })
   @ApiResponse({ status: 404, description: 'Face not found or userId mismatch' })
   async assignPerson(@Param('id') id: string, @Body() dto: AssignPersonDto, @Req() req: Request) {
-    const userId = (req.user as { id: string }).id ?? dto.userId
+    const userId = (req.user as { id: string }).id
     await this.faces.assignPerson(userId, id, dto.personId)
     return { ok: true }
   }

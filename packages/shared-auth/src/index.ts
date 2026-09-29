@@ -1,6 +1,6 @@
 import type { Role } from '@photox/shared-types'
 
-export { loadAuthEnv, type AuthEnv } from './env'
+export { loadAuthEnv } from './env'
 
 export interface JwtPayload {
   sub: string

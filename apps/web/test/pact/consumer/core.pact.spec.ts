@@ -996,8 +996,6 @@ describe('Web → Core pact', () => {
             email: 'user@test.com',
             role: 'user',
             createdAt: '2024-01-01T00:00:00.000Z',
-            assetCount: 3,
-            bytesUsed: 10240,
           }),
           total: 1,
           limit: 20,

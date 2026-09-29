@@ -23,7 +23,6 @@ import {
   getOrphanCounts,
   type ListAdminUsersParams,
 } from '../../api/admin'
-import { formatBytes } from '../../lib/format'
 import type {
   AdminUserListResponse,
   AdminUserSortField,
@@ -527,8 +526,6 @@ function AdminPageContent() {
                   <SortHeader field="displayName" label="Name" sort={sort} onSort={onSort} />
                   <SortHeader field="email" label="Email" sort={sort} onSort={onSort} />
                   <SortHeader field="role" label="Role" sort={sort} onSort={onSort} />
-                  <th className="text-right font-semibold px-4 py-3">Assets</th>
-                  <th className="text-right font-semibold px-4 py-3">Space</th>
                   <SortHeader field="createdAt" label="Created" sort={sort} onSort={onSort} />
                 </tr>
               </thead>
@@ -539,12 +536,6 @@ function AdminPageContent() {
                     <td className="px-4 py-3 text-slate-300">{u.email}</td>
                     <td className="px-4 py-3">
                       <RoleBadge role={u.role} />
-                    </td>
-                    <td className="px-4 py-3 text-right text-slate-300 tabular-nums">
-                      {u.assetCount.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 text-right text-slate-300 tabular-nums">
-                      {formatBytes(u.bytesUsed) ?? '0 B'}
                     </td>
                     <td className="px-4 py-3 text-slate-400 text-xs">
                       {new Date(u.createdAt).toLocaleDateString()}

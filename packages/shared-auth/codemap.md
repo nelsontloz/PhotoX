@@ -16,8 +16,7 @@ verification live in core; only the payload type and env contract are shared.
   No default — a missing or too-short secret throws `Invalid auth environment: {…}` with
   flattened field errors. TTLs (`AUTH_ACCESS_TTL`, `AUTH_REFRESH_TTL`,
   `AUTH_CLOCK_TOLERANCE_SEC`) intentionally live in `shared-config`, not here.
-- Dependencies: zod + `@photox/shared-types`. Builds via `tsc -b` to `dist/`; listed in
-  `vitest.workspace.ts` (no spec files today).
+- Dependencies: zod + `@photox/shared-types`. Builds via `tsc -b` to `dist/` (no spec files today).
 
 ## Flow
 
