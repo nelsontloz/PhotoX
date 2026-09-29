@@ -31,6 +31,16 @@
   width: 4px;
 }
 
+/* Timeline only: Timeline/TimelineScrollbar replaces the native bar with its own chronological
+   indicator — the class is toggled on <main> while the timeline view is mounted (removed on
+   unmount), so every other view keeps the global rules above. */
+.timeline-scroll {
+  scrollbar-width: none;
+}
+.timeline-scroll::-webkit-scrollbar {
+  width: 0;
+}
+
 .justified-grid-gallery {
   --space: 4px;
   --min-height: 200px;

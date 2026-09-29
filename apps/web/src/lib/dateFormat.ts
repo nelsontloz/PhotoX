@@ -73,3 +73,17 @@ export function groupDateLabelFromSortKey(sortKey: string): string {
   if (!y || !m || !d || Number.isNaN(date.getTime())) return sortKey
   return groupDateLabel(date.toISOString())
 }
+
+const MONTH_LONG = new Intl.DateTimeFormat('en-US', { month: 'long' })
+
+// "March 2024" pieces for the timeline scrubber popup — groupDateLabel is day-granular
+// (Today / "Mar 1"), so a YYYY-MM bucket key formats straight from its own components.
+export function monthYearLabel(monthKey: string): { month: string; year: string } {
+  const [y, m] = monthKey.split('-')
+  const year = Number(y)
+  const month = Number(m)
+  if (!y || !m || !Number.isInteger(year) || month < 1 || month > 12) {
+    return { month: monthKey, year: '' }
+  }
+  return { month: MONTH_LONG.format(new Date(year, month - 1, 1)), year: String(year) }
+}

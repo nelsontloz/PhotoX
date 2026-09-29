@@ -15,6 +15,7 @@ import { GalleryItem } from '../GalleryItem'
 import { Skeleton } from '../Skeleton'
 import { DropZone } from '../DropZone'
 import { ScrollContainerContext } from '../AppShell'
+import { TimelineScrollbar } from './TimelineScrollbar'
 
 interface TimelineGridProps {
   layout: TimelineLayout
@@ -98,6 +99,8 @@ export function TimelineGrid({
 
   return (
     <DropZone className="h-full">
+      {/* fixed overlay — inside DropZone so file drops onto the strip still reach its handlers */}
+      <TimelineScrollbar layout={layout} scrollPos={scrollPos} />
       <div
         ref={containerRef}
         className="max-w-6xl mx-auto relative"
