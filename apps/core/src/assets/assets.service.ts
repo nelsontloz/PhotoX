@@ -12,7 +12,8 @@ import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
 import { UpdateMetadataDto } from './dto/update-metadata.dto'
 import { FacesService } from '../faces/faces.service'
 import { BullMqService } from '../queue/bullmq.service'
-import type { Asset as AssetResponse, AssetListResponse } from '@photox/shared-types'
+import { toThumbnailResponse } from './thumbnails.service'
+import type { Asset as AssetResponse, AssetLayout, AssetListResponse } from '@photox/shared-types'
 
 @Injectable()
 export class AssetsService {
@@ -101,6 +102,16 @@ export class AssetsService {
       )
     }
 
+    if (q.dateFrom) {
+      qb.andWhere('COALESCE(asset.takenAt, asset.uploadedAt) >= :dateFrom', {
+        dateFrom: q.dateFrom,
+      })
+    }
+
+    if (q.dateTo) {
+      qb.andWhere('COALESCE(asset.takenAt, asset.uploadedAt) < :dateTo', { dateTo: q.dateTo })
+    }
+
     if (q.favorite !== undefined) {
       qb.andWhere('asset.favorite = :favorite', { favorite: q.favorite })
     }
@@ -128,7 +139,46 @@ export class AssetsService {
       .take(limit)
       .getManyAndCount()
 
-    return { items: items.map((a) => this.toResponse(a)), total, limit, offset }
+    const pageIds = items.map((a) => a.id)
+    const thumbRows = pageIds.length
+      ? await this.thumbRepo.find({
+          where: { assetId: In(pageIds) },
+          order: { createdAt: 'ASC' },
+        })
+      : []
+    const thumbsByAsset = new Map<string, AssetThumbnail[]>()
+    for (const row of thumbRows) {
+      const list = thumbsByAsset.get(row.assetId) ?? []
+      list.push(row)
+      thumbsByAsset.set(row.assetId, list)
+    }
+
+    return {
+      items: items.map((a) => this.toResponse(a, thumbsByAsset.get(a.id) ?? [])),
+      total,
+      limit,
+      offset,
+    }
+  }
+
+  async layout(userId: string): Promise<AssetLayout> {
+    const rows = await this.repo
+      .createQueryBuilder('asset')
+      .select('COALESCE(asset.takenAt, asset.uploadedAt)', 't')
+      .addSelect('COALESCE(asset.width, 1)', 'w')
+      .addSelect('COALESCE(asset.height, 1)', 'h')
+      .where('asset.userId = :userId', { userId })
+      .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false })
+      .orderBy('COALESCE(asset.takenAt, asset.uploadedAt)', 'DESC')
+      .getRawMany<{ t: Date | string; w: number; h: number }>()
+
+    return {
+      items: rows.map((r) => ({
+        t: r.t instanceof Date ? r.t.toISOString() : new Date(r.t).toISOString(),
+        w: Number(r.w),
+        h: Number(r.h),
+      })),
+    }
   }
 
   async getOne(userId: string | undefined, id: string): Promise<AssetResponse> {
@@ -136,7 +186,11 @@ export class AssetsService {
     const asset = await this.repo.findOne({ where })
     if (!asset) throw new NotFoundException('Asset not found')
     const faces = await this.facesService.getForAsset(asset.userId, id)
-    return { ...this.toResponse(asset), faces }
+    const thumbRows = await this.thumbRepo.find({
+      where: { assetId: id },
+      order: { createdAt: 'ASC' },
+    })
+    return { ...this.toResponse(asset, thumbRows), faces }
   }
 
   async update(userId: string, id: string, dto: UpdateAssetDto): Promise<AssetResponse> {
@@ -293,7 +347,7 @@ export class AssetsService {
     return { enqueued: 1 }
   }
 
-  private toResponse(asset: Asset): AssetResponse {
+  private toResponse(asset: Asset, thumbnails?: AssetThumbnail[]): AssetResponse {
     return {
       id: asset.id,
       userId: asset.userId,
@@ -336,6 +390,7 @@ export class AssetsService {
       thumbnailStatus: asset.thumbnailStatus,
       faceStatus: asset.faceStatus,
       faceCount: asset.faceCount,
+      ...(thumbnails ? { thumbnails: thumbnails.map((t) => toThumbnailResponse(t)) } : {}),
     }
   }
 }

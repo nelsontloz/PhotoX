@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import type { Asset } from '@photox/shared-types'
 import {
   FaFolderPlus,
@@ -10,12 +10,15 @@ import {
 } from 'react-icons/fa6'
 import { RequireAuth } from '../components/RequireAuth'
 import { AppShell } from '../components/AppShell'
-import { useAssetGroups } from '../hooks/useAssetGroups'
+import { useTimelineMonths } from '../hooks/useTimelineMonths'
 import { useAssetNavigation } from '../hooks/useAssetNavigation'
+import { useTimelineLayout } from '../hooks/useTimelineLayout'
 import { TimelineGrid } from '../components/Timeline/TimelineGrid'
 import { AlbumPickerDialog } from '../components/AlbumPickerDialog'
 import { UploadButton } from '../components/UploadButton'
-import { trashAssets } from '../api/assets'
+import { getAsset, trashAssets } from '../api/assets'
+import { effectiveAssetDate, monthKeyOf } from '../lib/dateFormat'
+import { useAppStore } from '../store/app-store'
 
 function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(() =>
@@ -35,9 +38,60 @@ const AssetViewer = lazy(() =>
 )
 
 function TimelineContent() {
-  const { groups, loading, error, refresh } = useAssetGroups()
+  // Structure (buckets, heights, order) comes from the layout endpoint; months fill it in.
+  const { groups, monthStatus, ensureMonth, refreshKey } = useTimelineMonths()
+  const timeline = useTimelineLayout()
+  const bumpTimelineRefresh = useAppStore((s) => s.bumpTimelineRefresh)
+  const loadedAssets = useMemo(() => groups.flatMap((g) => g.items), [groups])
+
+  // One refresh signal: layout refetches itself, months re-check their stamps and the grid
+  // re-triggers ensureMonth for whatever is on screen (uploads bump this too, via lib/upload).
+  const refresh = bumpTimelineRefresh
+
+  // The layout list is effective-date desc over the WHOLE library — its ends tell us whether
+  // more items exist beyond the loaded set, and its ordered timestamps pick the adjacent month.
+  const newestT = timeline.layoutItems[0]?.t ?? null
+  const oldestT = timeline.layoutItems[timeline.layoutItems.length - 1]?.t ?? null
+
+  const hasBeyond = useCallback(
+    (dir: 'prev' | 'next', fromT: string) =>
+      dir === 'next' ? oldestT !== null && oldestT < fromT : newestT !== null && newestT > fromT,
+    [newestT, oldestT],
+  )
+
+  const resolveBeyond = useCallback(
+    async (dir: 'prev' | 'next', fromT: string): Promise<Asset | null> => {
+      // layout is effective-date desc → closest older = first below, closest newer = last above
+      const candidates = timeline.layoutItems.filter((item) =>
+        dir === 'next' ? item.t < fromT : item.t > fromT,
+      )
+      const boundaryItem = dir === 'next' ? candidates[0] : candidates.at(-1)
+      if (!boundaryItem) return null
+      const monthItems = await ensureMonth(monthKeyOf(boundaryItem.t))
+      if (!monthItems) return null
+      // the adjacent item inside the freshly loaded month = the one right next to `fromT`
+      return dir === 'next'
+        ? (monthItems.find((a) => effectiveAssetDate(a) < fromT) ?? null)
+        : (monthItems.filter((a) => effectiveAssetDate(a) > fromT).at(-1) ?? null)
+    },
+    [timeline.layoutItems, ensureMonth],
+  )
+
+  // Deep link (?asset=<id>) to an asset whose month isn't fetched: fetch the asset itself so
+  // the viewer opens instead of waiting for a month that may never enter the mount window.
+  const resolveMissing = useCallback(async (id: string): Promise<Asset | null> => {
+    try {
+      return await getAsset(id)
+    } catch {
+      return null
+    }
+  }, [])
+
   const nav = useAssetNavigation({
-    assets: groups.flatMap((g) => g.items),
+    assets: loadedAssets,
+    hasBeyond,
+    resolveBeyond,
+    resolveMissing,
     onAfterAction: refresh,
   })
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -62,7 +116,7 @@ function TimelineContent() {
     try {
       await trashAssets(ids)
       clearSelection()
-      void refresh()
+      refresh()
     } catch {
       window.alert('Failed to move items to trash. Please try again.')
     }
@@ -78,16 +132,12 @@ function TimelineContent() {
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(10)
   }
 
-  if (loading)
-    return (
-      <div className="flex items-center justify-center py-32">
-        <FaSpinner className="text-2xl text-primary animate-spin" />
-      </div>
-    )
-  if (error)
+  // Gate: layout drives structure. ponytail: a layout failure (first load OR refresh) lands on
+  // the error state — no partial-track fallback, since every height depends on it; Reload retries.
+  if (timeline.error)
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-4">
-        <p className="text-red-500 text-sm">{error}</p>
+        <p className="text-red-500 text-sm">{timeline.error}</p>
         <button
           onClick={() => window.location.reload()}
           className="text-primary text-sm font-medium hover:underline"
@@ -96,16 +146,24 @@ function TimelineContent() {
         </button>
       </div>
     )
-  if (groups.length === 0)
+
+  if (timeline.loading)
+    return (
+      <div className="flex items-center justify-center py-32">
+        <FaSpinner className="text-2xl text-primary animate-spin" />
+      </div>
+    )
+
+  if (timeline.layout.buckets.length === 0)
     return (
       <div className="flex flex-col items-center justify-center py-24 px-4 text-center max-w-lg mx-auto">
         <div className="mb-12 relative w-64 h-64 flex items-center justify-center">
           <div className="absolute inset-0 bg-primary/5 blur-[100px] rounded-full animate-pulse" />
           <div className="relative w-32 h-32">
-            <div className="absolute inset-0 rounded-[32px] bg-[#272a32] border border-[#424754]/20 rotate-12 shadow-2xl flex items-center justify-center">
+            <div className="absolute inset-0 rounded-[32px] bg-[#272a32] border-[#424754]/20 rotate-12 shadow-2xl flex items-center justify-center">
               <FaImage className="text-6xl text-primary opacity-20" />
             </div>
-            <div className="absolute -top-4 -left-4 w-32 h-32 rounded-[32px] bg-[#1d1f27] border border-[#424754]/20 -rotate-6 shadow-2xl flex items-center justify-center">
+            <div className="absolute -top-4 -left-4 w-32 h-32 rounded-[32px] bg-[#1d1f27] border-[#424754]/20 -rotate-6 shadow-2xl flex items-center justify-center">
               <FaMountain className="text-6xl text-primary opacity-40" />
             </div>
             <div className="absolute -top-8 left-2 w-32 h-32 rounded-[32px] bg-[#32353d] border border-primary/30 shadow-2xl flex items-center justify-center">
@@ -120,18 +178,19 @@ function TimelineContent() {
           Your timeline is currently empty. Start preserving your life's moments by uploading your
           first batch of photos.
         </p>
-        <UploadButton
-          onComplete={() => {
-            void refresh()
-          }}
-        />
+        <UploadButton />
       </div>
     )
 
   return (
     <>
       <TimelineGrid
+        layout={timeline.layout}
+        containerRef={timeline.containerRef}
         groups={groups}
+        monthStatus={monthStatus}
+        ensureMonth={ensureMonth}
+        refreshKey={refreshKey}
         onSelect={onClickAsset}
         selectedIds={selectedIds}
         onToggleSelect={toggle}
@@ -161,7 +220,7 @@ function TimelineContent() {
                 setPickerOpen(true)
               }
             }}
-            siblingAssets={groups.flatMap((g) => g.items)}
+            siblingAssets={loadedAssets}
             onSelectSibling={(asset) => nav.open(asset)}
           />
         </Suspense>

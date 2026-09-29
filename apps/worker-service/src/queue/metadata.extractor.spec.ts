@@ -1,11 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import ExifReader from 'exifreader'
-import { MetadataExtractor } from './metadata.extractor'
+import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor'
+import { runFfprobeJson, type FfprobeResult } from './ffmpeg'
 
 vi.mock('exifreader', () => ({
   default: {
     load: vi.fn(),
   },
+}))
+
+vi.mock('./ffmpeg', () => ({
+  runFfprobeJson: vi.fn(),
 }))
 
 describe('MetadataExtractor', () => {
@@ -149,5 +154,69 @@ describe('MetadataExtractor', () => {
     expect(result.fNumber).toBeNull()
     expect(result.exposureTime).toBeNull()
     expect(result.focalLength).toBeNull()
+  })
+})
+
+describe('VideoMetadataExtractor', () => {
+  let extractor: VideoMetadataExtractor
+
+  function probeWith(dims: { width?: number; height?: number }, rotation?: number): FfprobeResult {
+    return {
+      streams: [
+        {
+          index: 0,
+          codec_name: 'h264',
+          codec_type: 'video',
+          ...dims,
+          tags: rotation === undefined ? {} : { rotate: String(rotation) },
+        },
+      ],
+      format: { filename: 'video.mp4' },
+    }
+  }
+
+  beforeEach(() => {
+    vi.resetAllMocks()
+    extractor = new VideoMetadataExtractor()
+  })
+
+  it('swaps width/height for a 90°-rotated video and preserves orientation', async () => {
+    vi.mocked(runFfprobeJson).mockResolvedValue(probeWith({ width: 1920, height: 1080 }, 90))
+
+    const result = await extractor.extract('/tmp/rotated.mp4')
+
+    expect(result.width).toBe(1080)
+    expect(result.height).toBe(1920)
+    expect(result.orientation).toBe(90)
+  })
+
+  it('swaps width/height for a 270°-rotated video and preserves orientation', async () => {
+    vi.mocked(runFfprobeJson).mockResolvedValue(probeWith({ width: 1920, height: 1080 }, 270))
+
+    const result = await extractor.extract('/tmp/rotated.mp4')
+
+    expect(result.width).toBe(1080)
+    expect(result.height).toBe(1920)
+    expect(result.orientation).toBe(270)
+  })
+
+  it.each([0, 180])('keeps width/height for a rotation-%i video', async (rotation) => {
+    vi.mocked(runFfprobeJson).mockResolvedValue(probeWith({ width: 1920, height: 1080 }, rotation))
+
+    const result = await extractor.extract('/tmp/unrotated.mp4')
+
+    expect(result.width).toBe(1920)
+    expect(result.height).toBe(1080)
+    expect(result.orientation).toBe(rotation)
+  })
+
+  it('keeps null dims for a rotated video missing stream dimensions', async () => {
+    vi.mocked(runFfprobeJson).mockResolvedValue(probeWith({}, 90))
+
+    const result = await extractor.extract('/tmp/rotated.mp4')
+
+    expect(result.width).toBeNull()
+    expect(result.height).toBeNull()
+    expect(result.orientation).toBe(90)
   })
 })

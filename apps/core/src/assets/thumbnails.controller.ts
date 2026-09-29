@@ -1,14 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Param,
-  Query,
-  Body,
-  Req,
-  HttpCode,
-  HttpStatus,
-} from '@nestjs/common'
+import { Controller, Post, Param, Body, Req, HttpCode, HttpStatus } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Request } from 'express'
 import { ThumbnailsService } from './thumbnails.service'
@@ -28,14 +18,5 @@ export class ThumbnailsController {
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async register(@Param('id') id: string, @Body() dto: RegisterThumbnailDto, @Req() req: Request) {
     return this.thumbs.register((req.user as { id: string }).id, id, dto)
-  }
-
-  @Get(':id/thumbnails')
-  @ApiOperation({ summary: 'List all thumbnails for an asset' })
-  @ApiResponse({ status: 200, description: 'Thumbnail list' })
-  @ApiResponse({ status: 404, description: 'Asset not found' })
-  async list(@Param('id') id: string, @Req() req: Request, @Query('userId') queryUserId?: string) {
-    const userId = (req.user as { id: string }).id ?? queryUserId
-    return this.thumbs.listForAsset(userId, id)
   }
 }

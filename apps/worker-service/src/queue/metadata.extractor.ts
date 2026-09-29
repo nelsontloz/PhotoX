@@ -263,11 +263,21 @@ export class VideoMetadataExtractor {
     const locationTag = result.format.tags?.location
     const location = locationTag ? parseIso6709(locationTag) : null
 
+    const orientation = readOrientation(result)
+    const rotation = orientation === null ? null : ((orientation % 360) + 360) % 360
+    const rawWidth = videoStream?.width
+    const rawHeight = videoStream?.height
+    // ponytail: swap raw stream dims for rotated videos — display aspect, not coded aspect
+    const swapDims =
+      (rotation === 90 || rotation === 270) &&
+      typeof rawWidth === 'number' &&
+      typeof rawHeight === 'number'
+
     return {
       durationSeconds:
         duration !== null && Number.isFinite(duration) ? Math.round(duration * 1000) / 1000 : null,
-      width: videoStream?.width ?? null,
-      height: videoStream?.height ?? null,
+      width: swapDims ? (rawHeight ?? null) : (rawWidth ?? null),
+      height: swapDims ? (rawWidth ?? null) : (rawHeight ?? null),
       codec: videoStream?.codec_name ?? null,
       fps: (() => {
         const rate = videoStream?.avg_frame_rate
@@ -281,7 +291,7 @@ export class VideoMetadataExtractor {
         return Number.isFinite(fps) && fps > 0 ? Math.round(fps * 100) / 100 : null
       })(),
       hasAudio,
-      orientation: readOrientation(result),
+      orientation,
       takenAt,
       cameraMake,
       cameraModel,

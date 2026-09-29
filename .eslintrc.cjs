@@ -21,5 +21,6 @@ module.exports = {
     'vitest.*.config.ts',
     'vite.config.ts',
     'apps/web/test/pact/**',
+    'apps/web/test/browser/**',
   ],
 }

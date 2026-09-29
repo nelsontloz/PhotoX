@@ -111,6 +111,7 @@ export interface Asset {
   transcodeStatus: TranscodeStatus
   transcodeFileId: string | null
   thumbnailStatus: ThumbnailStatus
+  thumbnails?: AssetThumbnail[]
   faceStatus: 'pending' | 'ready' | 'failed' | null
   faceCount: number | null
   faces?: FaceDto[]
@@ -121,6 +122,16 @@ export interface AssetListResponse {
   total: number
   limit: number
   offset: number
+}
+
+export interface AssetLayoutItem {
+  t: string
+  w: number
+  h: number
+}
+
+export interface AssetLayout {
+  items: AssetLayoutItem[]
 }
 
 export interface AssetThumbnail {

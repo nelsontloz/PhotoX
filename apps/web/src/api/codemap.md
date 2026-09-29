@@ -13,7 +13,7 @@ Typed HTTP boundary between the SPA and the core API. One Axios instance plus on
 - Conventions: types come from `@photox/shared-types`; functions `return data` (no AxiosResponse leakage); list params passed as an object `params`; reads accept optional `AbortSignal`; blob endpoints use `responseType: 'blob'`.
 - Timeout overrides for long calls: `downloadFile` 300s, `uploadFile` 3_600_000ms (1h) with `onUploadProgress` → `onProgress(pct)`.
 - URL builders (no request): `getVideoStreamUrl(fileId, userId)` → `/api/v1/files/:id/stream?userId=...` for `<video src>` (browser can't send headers; the stream route is in the open-route table, and core ignores the `userId` param), `getShareUrl(token)` → `${origin}/share/:token`.
-- `assets.ts` notable: `listAssets` branches to `/v1/assets/trashed` when `isTrashed`; `uploadFile` posts `FormData` (file, kind, title, description, takenAt); bulk trash via `POST /v1/assets/bulk-trash`; trash/restore/delete/empty-trash + reprocess endpoints.
+- `assets.ts` notable: `listAssets` branches to `/v1/assets/trashed` when `isTrashed` and accepts optional `dateFrom`/`dateTo` (half-open range on `COALESCE(takenAt, uploadedAt)` — the timeline's per-month window, composed with the other filters); `getAssetLayout` reads `GET /v1/assets/layout` (compact `{ t, w, h }` list backing timeline virtualization); `uploadFile` posts `FormData` (file, kind, title, description, takenAt); bulk trash via `POST /v1/assets/bulk-trash`; trash/restore/delete/empty-trash + reprocess endpoints.
 - `admin.ts` serializes `sortField`/`sortDir` into `sort=field:dir` and wraps `/v1/admin/*` (users, asset counts, thumbnail reprocess, orphan cleanup/counts).
 - Only unit test here: `assets.spec.ts` asserts `getVideoStreamUrl` path + param encoding.
 

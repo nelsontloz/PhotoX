@@ -6,6 +6,7 @@ import {
   Max,
   IsIn,
   IsDateString,
+  IsISO8601,
   IsBoolean,
   IsUUID,
   IsArray,
@@ -74,6 +75,24 @@ export class ListAssetsQueryDto {
   @IsDateString()
   @ApiProperty({ required: false })
   toDate?: string
+
+  @IsOptional()
+  @IsISO8601()
+  @ApiProperty({
+    required: false,
+    example: '2026-06-01T00:00:00.000Z',
+    description: 'Half-open range start (inclusive) on COALESCE(takenAt, uploadedAt)',
+  })
+  dateFrom?: string
+
+  @IsOptional()
+  @IsISO8601()
+  @ApiProperty({
+    required: false,
+    example: '2026-07-01T00:00:00.000Z',
+    description: 'Half-open range end (exclusive) on COALESCE(takenAt, uploadedAt)',
+  })
+  dateTo?: string
 
   @IsOptional()
   @Transform(({ value }) => value === true || value === 'true')

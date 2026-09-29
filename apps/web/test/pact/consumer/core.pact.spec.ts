@@ -15,7 +15,7 @@ import { login, register, refresh, logout } from '../../../src/api/auth'
 import {
   listAssets,
   getAsset,
-  listThumbnails,
+  getAssetLayout,
   uploadFile,
   updateAsset,
   trashAsset,
@@ -300,6 +300,60 @@ describe('Web → Core pact', () => {
       })
   })
 
+  it('GET /api/v1/assets — list assets within a date range', async () => {
+    const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+    const dateFrom = '2026-06-01T00:00:00.000Z'
+    const dateTo = '2026-07-01T00:00:00.000Z'
+    await provider
+      .uponReceiving('a request to list assets within a date range')
+      .withRequest({
+        method: 'GET',
+        path: '/api/v1/assets',
+        query: {
+          limit: '50',
+          offset: '0',
+          dateFrom: MatchersV3.regex(ISO_INSTANT, dateFrom),
+          dateTo: MatchersV3.regex(ISO_INSTANT, dateTo),
+        },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: assetListResponse,
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await listAssets({ limit: 50, offset: 0, dateFrom, dateTo })
+        expect(res.items.length).toBeGreaterThan(0)
+      })
+  })
+
+  it('GET /api/v1/assets/layout — compact timeline layout', async () => {
+    await provider
+      .uponReceiving('a request to get the asset layout')
+      .withRequest({
+        method: 'GET',
+        path: '/api/v1/assets/layout',
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: MatchersV3.like({
+          items: [
+            { t: '2025-12-25T10:11:12.000Z', w: 4032, h: 3024 },
+            { t: '2025-12-24T09:00:00.000Z', w: 1, h: 1 },
+          ],
+        }),
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await getAssetLayout()
+        expect(res.items.length).toBe(2)
+        expect(res.items[1]?.w).toBe(1)
+        expect(res.items[1]?.h).toBe(1)
+      })
+  })
+
   it('GET /api/v1/assets/:id — get single asset', async () => {
     await provider
       .uponReceiving('a request to get a single asset')
@@ -336,32 +390,6 @@ describe('Web → Core pact', () => {
         const res = await listAssets({ isTrashed: true })
         expect(res.items.length).toBeGreaterThan(0)
         expect(res.limit).toBe(20)
-      })
-  })
-
-  it('GET /api/v1/assets/:id/thumbnails — list asset thumbnails', async () => {
-    await provider
-      .uponReceiving('a request to list asset thumbnails')
-      .withRequest({
-        method: 'GET',
-        path: `/api/v1/assets/${ASSET_ID}/thumbnails`,
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: MatchersV3.eachLike({
-          size: 'md',
-          fileId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22',
-          width: 1024,
-          height: 768,
-          bytes: 12345,
-          createdAt: '2024-01-01T00:00:00.000Z',
-        }),
-      })
-      .executeTest(async (mockserver) => {
-        api.defaults.baseURL = mockserver.url + '/api'
-        const res = await listThumbnails(ASSET_ID)
-        expect(Array.isArray(res)).toBe(true)
       })
   })
 

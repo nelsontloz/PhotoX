@@ -1,5 +1,6 @@
 import type { Plugin } from 'vite'
 import { defineConfig } from 'vite'
+import { configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import Pages from 'vite-plugin-pages'
@@ -48,5 +49,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     passWithNoTests: true,
+    // real-browser lane is opt-in: `pnpm --filter @photox/web test:browser` (needs Chromium)
+    exclude: [...configDefaults.exclude, 'test/browser/**'],
   },
 })
