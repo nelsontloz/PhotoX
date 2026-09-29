@@ -103,6 +103,17 @@ describe('albums JWT identity', () => {
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })
     const file = await seedFile(t, user.id)
     const asset = await seedAsset(t, user.id, file.id)
+    const thumbFile = await seedFile(t, user.id)
+    await t.thumbRepo.save(
+      t.thumbRepo.create({
+        assetId: asset.id,
+        fileId: thumbFile.id,
+        size: 'md',
+        width: 512,
+        height: 512,
+        bytes: 4096,
+      }),
+    )
     const created = await request(apiServer(t))
       .post('/api/v1/albums')
       .set(t.authHeader(token))
@@ -117,8 +128,15 @@ describe('albums JWT identity', () => {
       .get(`/api/v1/albums/${album.id}/assets`)
       .set(t.authHeader(token))
     expect(list.status).toBe(200)
-    const listBody = list.body as unknown as { items: { id: string }[]; total: number }
+    const listBody = list.body as unknown as {
+      items: { id: string; thumbnails?: { size: string; fileId: string }[]; uploadedAt: string }[]
+      total: number
+    }
     expect(listBody.total).toBe(1)
+    expect(listBody.items[0]?.thumbnails).toEqual(
+      expect.arrayContaining([expect.objectContaining({ size: 'md', fileId: thumbFile.id })]),
+    )
+    expect(listBody.items[0]?.uploadedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
     const remove = await request(apiServer(t))
       .delete(`/api/v1/albums/${album.id}/assets/${asset.id}`)
       .set(t.authHeader(token))

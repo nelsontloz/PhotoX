@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from 'react'
+import { Suspense, lazy, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { FaArrowLeft, FaSpinner, FaFaceSmile } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
@@ -6,9 +6,10 @@ import { AppShell } from '../../components/AppShell'
 import { GalleryItem } from '../../components/GalleryItem'
 import { FaceOverlay } from '../../components/AssetViewer/FaceOverlay'
 import { AlbumPickerDialog } from '../../components/AlbumPickerDialog'
-import { getPerson, getPersonAssets, renamePerson } from '../../api/persons'
-import { getAsset } from '../../api/assets'
-import type { Asset, FaceDto, PersonDto } from '@photox/shared-types'
+import { renamePerson } from '../../api/persons'
+import { usePersonDetail } from '../../hooks/usePersonDetail'
+import { useInlineRename } from '../../hooks/useInlineRename'
+import type { Asset } from '@photox/shared-types'
 
 const AssetViewer = lazy(() =>
   import('../../components/AssetViewer/AssetViewer').then((m) => ({ default: m.AssetViewer })),
@@ -17,58 +18,18 @@ const AssetViewer = lazy(() =>
 export default function PersonDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const [person, setPerson] = useState<PersonDto | null>(null)
-  const [assets, setAssets] = useState<Asset[]>([])
-  const [faceMap, setFaceMap] = useState<Map<string, FaceDto>>(new Map())
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [editingName, setEditingName] = useState(false)
-  const [nameValue, setNameValue] = useState('')
+  const { person, setPerson, assets, faceMap, total, loading } = usePersonDetail(id)
+  const { editing, nameValue, setNameValue, start, save } = useInlineRename(
+    person?.name ?? '',
+    async (name) => {
+      if (!id) return
+      const updated = await renamePerson(id, name || null)
+      setPerson(updated)
+    },
+    { allowEmpty: true },
+  )
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
-
-  useEffect(() => {
-    if (!id) return
-    void (async () => {
-      try {
-        const [p, personAssets] = await Promise.all([
-          getPerson(id),
-          getPersonAssets(id, { limit: 100 }),
-        ])
-        setPerson(p)
-        setTotal(personAssets.total)
-        // ponytail: fetch full assets in parallel to get faces (for box overlay) + original dims
-        const fetched = await Promise.all(
-          personAssets.items.map((item) => getAsset(item.assetId).catch(() => null)),
-        )
-        const valid = fetched.filter((a): a is Asset => a !== null)
-        const fm = new Map<string, FaceDto>()
-        personAssets.items.forEach((item, i) => {
-          const a = fetched[i]
-          if (!a?.faces) return
-          const face = a.faces.find((f) => f.id === item.faceId)
-          if (face) fm.set(item.assetId, face)
-        })
-        setAssets(valid)
-        setFaceMap(fm)
-      } catch {
-        /* ponytail: silent fail */
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [id])
-
-  const handleRename = async () => {
-    if (!id) return
-    try {
-      const updated = await renamePerson(id, nameValue || null)
-      setPerson(updated)
-      setEditingName(false)
-    } catch {
-      setEditingName(false)
-    }
-  }
 
   if (loading) {
     return (
@@ -108,25 +69,22 @@ export default function PersonDetailPage() {
             >
               <FaArrowLeft className="text-xl" />
             </button>
-            {editingName ? (
+            {editing ? (
               <input
                 autoFocus
                 value={nameValue}
                 onChange={(e) => setNameValue(e.target.value)}
                 onBlur={() => {
-                  void handleRename()
+                  void save()
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') void handleRename()
+                  if (e.key === 'Enter') void save()
                 }}
                 className="text-2xl font-bold text-white bg-transparent border-b border-primary outline-none"
               />
             ) : (
               <h1
-                onClick={() => {
-                  setEditingName(true)
-                  setNameValue(person.name ?? '')
-                }}
+                onClick={start}
                 className="text-2xl font-bold text-white cursor-pointer hover:text-primary transition-colors"
                 title="Click to rename"
               >

@@ -1,13 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { In, Repository } from 'typeorm'
+import { Repository } from 'typeorm'
 import { Album } from './entities/album.entity'
 import { AlbumAsset } from './entities/album-asset.entity'
 import { Asset } from '@photox/data-access'
 import { CreateAlbumDto } from './dto/create-album.dto'
 import { UpdateAlbumDto } from './dto/update-album.dto'
 import { ListAlbumsQueryDto } from './dto/list-albums-query.dto'
-import type { AlbumDto } from '@photox/shared-types'
+import { AssetsService } from '../assets/assets.service'
+import type { AlbumDto, Asset as AssetResponse } from '@photox/shared-types'
 
 @Injectable()
 export class AlbumsService {
@@ -18,6 +19,7 @@ export class AlbumsService {
     private readonly albumAssetRepo: Repository<AlbumAsset>,
     @InjectRepository(Asset)
     private readonly assetRepo: Repository<Asset>,
+    private readonly assets: AssetsService,
   ) {}
 
   async create(userId: string, dto: CreateAlbumDto): Promise<AlbumDto> {
@@ -133,7 +135,7 @@ export class AlbumsService {
     userId: string,
     albumId: string,
     q: { limit?: number; offset?: number },
-  ): Promise<{ items: Asset[]; total: number }> {
+  ): Promise<{ items: AssetResponse[]; total: number }> {
     const album = await this.repo.findOne({ where: { id: albumId, userId } })
     if (!album) throw new NotFoundException('Album not found')
 
@@ -166,9 +168,7 @@ export class AlbumsService {
     }
 
     const ids = joins.map((j) => j.assetId)
-    const fetched = await this.assetRepo.find({
-      where: { id: In(ids), userId, isTrashed: false },
-    })
+    const { items: fetched } = await this.assets.list(userId, { ids, limit: ids.length })
     const orderMap = new Map(ids.map((id, i) => [id, i]))
     const items = fetched.sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0))
 
