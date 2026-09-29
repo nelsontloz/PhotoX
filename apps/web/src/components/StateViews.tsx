@@ -29,7 +29,11 @@ export function ErrorState({
   return (
     <div className={className}>
       <p className={`text-sm ${messageClassName}`}>{message}</p>
-      <button type="button" onClick={onRetry} className="text-primary text-sm font-medium hover:underline">
+      <button
+        type="button"
+        onClick={onRetry}
+        className="text-primary text-sm font-medium hover:underline"
+      >
         Retry
       </button>
     </div>

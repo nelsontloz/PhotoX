@@ -50,7 +50,7 @@ verifies Bearer HS256 tokens, sets `req.user`, and ignores incoming identity hea
 | Folder           | Responsibility                                                                                                                   | Map                                      |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
 | `apps/core/src/` | Composition root: `AppModule` wiring + `main.ts` HTTP conventions                                                                | [map](apps/core/src/codemap.md)          |
-| `auth/`          | `JwtAuthGuard` (global): Bearer HS256 verify, open/admin route tables                                                             | [map](apps/core/src/auth/codemap.md)     |
+| `auth/`          | `JwtAuthGuard` (global): Bearer HS256 verify, open/admin route tables                                                            | [map](apps/core/src/auth/codemap.md)     |
 | `users/`         | Accounts, 4 public auth endpoints, refresh rotation; subfolders: `admin/`, `admin/dto/`, `dto/`, `entities/`, `tokens/`          | [map](apps/core/src/users/codemap.md)    |
 | `admin/`         | Cross-user stats, failure counts, orphan detection + cleanup (enqueue & inline run) (`dto/`)                                     | [map](apps/core/src/admin/codemap.md)    |
 | `albums/`        | Album CRUD + asset membership (`dto/`, `entities/`)                                                                              | [map](apps/core/src/albums/codemap.md)   |
@@ -60,7 +60,7 @@ verifies Bearer HS256 tokens, sets `req.user`, and ignores incoming identity hea
 | `persons/`       | Named people from face clusters: CRUD, cover, apply-clusters, reassignment (`dto/`)                                              | [map](apps/core/src/persons/codemap.md)  |
 | `shares/`        | Public capability-URL sharing: authenticated mgmt + `api/share/:token` (`dto/`, `entities/`)                                     | [map](apps/core/src/shares/codemap.md)   |
 | `trash/`         | Permanent delete / restore of trashed assets                                                                                     | [map](apps/core/src/trash/codemap.md)    |
-| `common/`        | Exception filter (`filters/`)                                                                                                     | [map](apps/core/src/common/codemap.md)   |
+| `common/`        | Exception filter (`filters/`)                                                                                                    | [map](apps/core/src/common/codemap.md)   |
 | `database/`      | TypeORM bootstrap + entities (`entities/`) + pgvector/HNSW index lifecycle                                                       | [map](apps/core/src/database/codemap.md) |
 | `health/`        | Unversioned `GET /health` (Postgres + Redis)                                                                                     | [map](apps/core/src/health/codemap.md)   |
 | `queue/`         | BullMQ publisher (`BullMqService`); core never consumes                                                                          | [map](apps/core/src/queue/codemap.md)    |
@@ -88,11 +88,11 @@ verifies Bearer HS256 tokens, sets `req.user`, and ignores incoming identity hea
 
 ### packages/ (shared libraries)
 
-| Folder                    | Responsibility                                                                  | Map                                      |
-| ------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------- |
-| `packages/`               | Workspace overview: shared-config + shared-types                                | [map](packages/codemap.md)               |
-| `packages/shared-config/` | Zod `loadEnv()`/`loadAuthEnv()` + `loadRootEnvFile()`, `LocalStorageService`   | [map](packages/shared-config/codemap.md) |
-| `packages/shared-types/`  | Wire contracts shared with the SPA + `JwtPayload` + `FACE_EMBEDDING_DIM`        | [map](packages/shared-types/codemap.md)  |
+| Folder                    | Responsibility                                                               | Map                                      |
+| ------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------- |
+| `packages/`               | Workspace overview: shared-config + shared-types                             | [map](packages/codemap.md)               |
+| `packages/shared-config/` | Zod `loadEnv()`/`loadAuthEnv()` + `loadRootEnvFile()`, `LocalStorageService` | [map](packages/shared-config/codemap.md) |
+| `packages/shared-types/`  | Wire contracts shared with the SPA + `JwtPayload` + `FACE_EMBEDDING_DIM`     | [map](packages/shared-types/codemap.md)  |
 
 ### Operations
 
