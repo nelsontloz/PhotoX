@@ -101,12 +101,12 @@ async function uploadAsset(
 }
 
 // ponytail: ffmpeg-static fixture generation (via the worker's own helper so it resolves the
-// worker's binary) — 2 frames of 16x16, AV1 encode stays in the tens of milliseconds
+// worker's binary) — 2 frames of 64x64 (SVT-AV1 min width), AV1 encode stays fast
 async function writeVideoFixture(
   path: string,
   opts: { videoCodec: 'libx264' | 'mpeg4'; withAudio: boolean },
 ): Promise<void> {
-  const frameBytes = 16 * 16 * 3
+  const frameBytes = 64 * 64 * 3
   const input = Buffer.concat([Buffer.alloc(frameBytes, 0x20), Buffer.alloc(frameBytes, 0x80)])
   const args = [
     '-y',
@@ -115,7 +115,7 @@ async function writeVideoFixture(
     '-pix_fmt',
     'rgb24',
     '-s',
-    '16x16',
+    '64x64',
     '-r',
     '10',
     '-i',
