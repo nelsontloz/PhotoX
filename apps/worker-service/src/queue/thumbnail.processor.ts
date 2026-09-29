@@ -21,10 +21,10 @@ const STANDARD_SIZES: Record<string, [number, number]> = {
 
 // ponytail: fit: 'inside' preserves the source aspect ratio (landscape/portrait); 'cover' was cropping to a square, which broke the downstream masonry grid.
 const RESIZE_OPTIONS: Record<string, sharp.ResizeOptions> = {
-  sm: { fit: 'inside' },
-  md: { fit: 'inside' },
-  lg: { fit: 'inside' },
-  xl: { fit: 'inside' },
+  sm: { fit: 'inside', withoutEnlargement: true },
+  md: { fit: 'inside', withoutEnlargement: true },
+  lg: { fit: 'inside', withoutEnlargement: true },
+  xl: { fit: 'inside', withoutEnlargement: true },
 }
 
 const WEBP_QUALITY: Record<string, number> = {
@@ -158,6 +158,27 @@ export class ThumbnailProcessor {
         await this.storeThumbnail(userId, assetId, size, thumbBuffer, info)
 
         return
+      }
+
+      // ponytail: stock sharp prebuilds have no HEIC (HEVC) decoder — route iPhone photos
+      // through ffmpeg (has libde265), upgrade to a libheif-capable sharp build if it lands
+      if (mimeType === 'image/heic' || mimeType === 'image/heif') {
+        try {
+          const frameBuffer = (
+            await runFfmpeg(['-y', '-i', tmpPath, '-vframes', '1', '-f', 'image2pipe', '-'])
+          ).stdout
+          const { data: thumbBuffer, info } = await sharp(frameBuffer)
+            .resize(width, height, RESIZE_OPTIONS[size] ?? { fit: 'inside' })
+            .webp({ quality: WEBP_QUALITY[size] ?? 80 })
+            .toBuffer({ resolveWithObject: true })
+          await this.storeThumbnail(userId, assetId, size, thumbBuffer, info)
+          return
+        } catch (err) {
+          this.logger.warn(
+            `ffmpeg HEIC decode failed for asset=${assetId} — falling back to sharp: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`,
+          )
+          // fall through to sharp path, which throws a normal thumbnail failure if HEIC is unsupported
+        }
       }
 
       const { data: thumbBuffer, info } = await sharp(tmpPath)
