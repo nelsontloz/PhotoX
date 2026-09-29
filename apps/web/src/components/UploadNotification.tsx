@@ -22,7 +22,7 @@ export function UploadNotification() {
   const items = useUploadStore((s) => s.items)
   const dismissed = useUploadStore((s) => s.dismissed)
   const setDismissed = useUploadStore((s) => s.setDismissed)
-  const thumbGet = useThumbStore((s) => s.get)
+  const thumbUrls = useThumbStore((s) => s.urls)
 
   const [collapsed, setCollapsed] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -132,7 +132,7 @@ export function UploadNotification() {
                 <UploadListItem
                   key={item.id}
                   item={item}
-                  thumbUrl={item.localThumbUrl ?? thumbGet(item.id)}
+                  thumbUrl={item.localThumbUrl ?? thumbUrls[item.id]}
                 />
               ))}
           </ul>

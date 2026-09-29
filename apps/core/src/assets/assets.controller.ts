@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Get,
   Post,
   Patch,
@@ -18,6 +19,7 @@ import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
 import { UpdateMetadataDto } from './dto/update-metadata.dto'
 import { TrashAssetsDto } from './dto/trash-assets.dto'
+import { RegisterThumbnailDto } from './dto/register-thumbnail.dto'
 
 /** Weak-safe ETag matching: handles W/ prefixes, comma lists, and `*`. */
 export function etagMatches(ifNoneMatch: string | undefined, etag: string): boolean {
@@ -84,6 +86,31 @@ export class AssetsController {
     return this.assets.list((req.user as { id: string }).id, { ...q, isTrashed: true })
   }
 
+  @Delete('trashed')
+  @ApiOperation({ summary: 'Permanently delete all trashed assets. Returns file IDs for cleanup.' })
+  @ApiResponse({ status: 200, description: 'Trash emptied' })
+  async emptyTrash(@Req() req: Request) {
+    return this.assets.emptyTrash((req.user as { id: string }).id)
+  }
+
+  @Delete('trashed/:id')
+  @ApiOperation({ summary: 'Permanently delete a trashed asset. Returns file IDs for cleanup.' })
+  @ApiResponse({ status: 200, description: 'Asset deleted' })
+  @ApiResponse({ status: 400, description: 'Asset is not trashed' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  async deleteTrashed(@Param('id') id: string, @Req() req: Request) {
+    return this.assets.delete((req.user as { id: string }).id, id)
+  }
+
+  @Post('trashed/:id/restore')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Restore a trashed asset. Idempotent.' })
+  @ApiResponse({ status: 204, description: 'Asset restored' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  async restore(@Param('id') id: string, @Req() req: Request) {
+    await this.assets.restore((req.user as { id: string }).id, id)
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a single asset' })
   @ApiResponse({ status: 200, description: 'Asset found' })
@@ -134,5 +161,20 @@ export class AssetsController {
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async reprocessVideo(@Param('id') id: string, @Req() req: Request) {
     return this.assets.reprocessVideo((req.user as { id: string }).id, id)
+  }
+
+  @Post(':id/thumbnails')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Register a thumbnail (idempotent upsert on assetId+size)',
+  })
+  @ApiResponse({ status: 201, description: 'Thumbnail registered' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  async registerThumbnail(
+    @Param('id') id: string,
+    @Body() dto: RegisterThumbnailDto,
+    @Req() req: Request,
+  ) {
+    return this.assets.registerThumbnail((req.user as { id: string }).id, id, dto)
   }
 }

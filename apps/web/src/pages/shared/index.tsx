@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { FaSpinner, FaUsers, FaTrash, FaCopy, FaCheck } from 'react-icons/fa6'
+import { FaUsers, FaTrash, FaCopy, FaCheck } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
+import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
 import { listShares, revokeShare, getShareUrl } from '../../api/shares'
+import { getVideoStreamUrl } from '../../api/assets'
 import type { AssetShareDto } from '@photox/shared-types'
 
 function SharedContent() {
@@ -51,40 +53,21 @@ function SharedContent() {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <FaSpinner className="text-2xl text-primary animate-spin" />
-      </div>
-    )
+    return <LoadingState />
   }
 
   if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center py-32 gap-4">
-        <p className="text-red-500 text-sm">{error}</p>
-        <button
-          onClick={() => void fetchShares()}
-          className="text-primary text-sm font-medium hover:underline"
-        >
-          Retry
-        </button>
-      </div>
-    )
+    return <ErrorState message={error} onRetry={() => void fetchShares()} />
   }
 
   if (shares.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 px-4 text-center max-w-lg mx-auto">
-        <div className="mb-8 w-20 h-20 rounded-full bg-primary/10 dark:bg-primary/20 ring-1 ring-primary/20 flex items-center justify-center">
-          <FaUsers className="text-4xl text-primary" />
-        </div>
-        <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 dark:text-white">
-          No shared photos yet
-        </h1>
-        <p className="mt-4 text-slate-500 dark:text-slate-400 text-base sm:text-lg leading-relaxed max-w-md">
-          Open a photo and tap the share icon to create a public link.
-        </p>
-      </div>
+      <EmptyState
+        icon={<FaUsers className="text-4xl text-primary" />}
+        circleClassName="bg-primary/10 dark:bg-primary/20 ring-1 ring-primary/20"
+        title="No shared photos yet"
+        body="Open a photo and tap the share icon to create a public link."
+      />
     )
   }
 
@@ -105,7 +88,7 @@ function SharedContent() {
           >
             {share.assetThumbFileId && (
               <img
-                src={`/api/v1/files/${share.assetThumbFileId}/stream?userId=${encodeURIComponent(share.userId)}`}
+                src={getVideoStreamUrl(share.assetThumbFileId, share.userId)}
                 alt=""
                 className="w-12 h-12 rounded object-cover bg-slate-800 shrink-0"
               />

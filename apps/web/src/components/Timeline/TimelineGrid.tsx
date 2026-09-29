@@ -83,6 +83,8 @@ export function TimelineGrid({
   const mountedBuckets = layout.buckets.filter(
     (bucket) => bucket.top < max && bucket.top + bucket.height > min,
   )
+  // ponytail: key the effect off the mounted SET, not the per-render array — ensureMonth
+  // re-commits a failed month to 'loading', so a per-render effect would retry it forever.
   const mountedKeys = useMemo(() => mountedBuckets.map((b) => b.key).join(','), [mountedBuckets])
 
   // Fetch rule: every bucket in the mount window, on first measure and whenever refreshKey

@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
 import { SharesService } from './shares.service'
 import { UserFilesService } from '../files/user/user-files.service'
-import { parseRangeHeader } from '../files/streaming.util'
+import { parseRangeHeader, pipeFileResponse } from '../files/streaming.util'
 
 @ApiTags('shares')
 @Controller('api/share')
@@ -34,45 +34,18 @@ export class PublicSharesController {
 
     if (rangeHeader) {
       const { totalSize } = await this.files.getFileStat(fileId)
-
       const range = parseRangeHeader(rangeHeader, totalSize)
       if (!range) {
-        res.set('Content-Range', `bytes */${totalSize}`)
-        res.status(416).end()
+        pipeFileResponse(res, { range: null, totalSize })
         return
       }
 
       const { stream, record } = await this.files.stream(fileId, { range })
-
-      res.set({
-        'Content-Type': record.mimeType,
-        'Content-Range': `bytes ${range.start}-${range.end}/${totalSize}`,
-        'Content-Length': String(range.end - range.start + 1),
-        'Accept-Ranges': 'bytes',
-      })
-      res.status(206)
-      stream.on('error', () => {
-        res.destroy()
-      })
-      res.on('close', () => {
-        stream.destroy()
-      })
-      stream.pipe(res)
+      pipeFileResponse(res, { stream, record, range, totalSize })
       return
     }
 
     const { stream, record, totalSize } = await this.files.stream(fileId)
-    res.set({
-      'Content-Type': record.mimeType,
-      'Content-Length': String(totalSize),
-      'Accept-Ranges': 'bytes',
-    })
-    stream.on('error', () => {
-      res.destroy()
-    })
-    res.on('close', () => {
-      stream.destroy()
-    })
-    stream.pipe(res)
+    pipeFileResponse(res, { stream, record, totalSize })
   }
 }

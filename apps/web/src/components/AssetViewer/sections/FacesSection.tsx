@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { FaSpinner, FaTriangleExclamation, FaUser } from 'react-icons/fa6'
 import type { Asset, FaceDto, PersonDto } from '@photox/shared-types'
 import { listPersons } from '../../../api/persons'
@@ -64,7 +64,7 @@ export function FacesSection({ asset }: FacesSectionProps) {
   const status = asset.faceStatus
   const [faces, setFaces] = useState<FaceDto[]>(asset.faces ?? [])
   const [persons, setPersons] = useState<PersonDto[]>([])
-  const [personMap, setPersonMap] = useState<Map<string, PersonDto>>(new Map())
+  const personMap = useMemo(() => new Map(persons.map((p) => [p.id, p])), [persons])
 
   useEffect(() => {
     setFaces(asset.faces ?? [])
@@ -73,10 +73,7 @@ export function FacesSection({ asset }: FacesSectionProps) {
   useEffect(() => {
     if (faces.length === 0) return
     listPersons({ limit: 200 })
-      .then((res) => {
-        setPersons(res.items)
-        setPersonMap(new Map(res.items.map((p) => [p.id, p])))
-      })
+      .then((res) => setPersons(res.items))
       .catch(() => {
         /* ponytail: silent fail */
       })
@@ -89,18 +86,6 @@ export function FacesSection({ asset }: FacesSectionProps) {
     try {
       await assignFace(faceId, toPersonId)
       setFaces((prev) => prev.map((f) => (f.id === faceId ? { ...f, personId: toPersonId } : f)))
-      setPersonMap((prev) => {
-        const next = new Map(prev)
-        if (toPersonId) {
-          const p = next.get(toPersonId)
-          if (p) next.set(toPersonId, { ...p, faceCount: p.faceCount + 1 })
-        }
-        if (face.personId) {
-          const p = next.get(face.personId)
-          if (p) next.set(face.personId, { ...p, faceCount: Math.max(0, p.faceCount - 1) })
-        }
-        return next
-      })
     } catch {
       window.alert('Failed to reassign face. Please try again.')
     }

@@ -15,6 +15,8 @@ import {
 import { RequireAuth } from '../../components/RequireAuth'
 import { RequireAdmin } from '../../components/RequireAdmin'
 import { AppShell } from '../../components/AppShell'
+import { Dialog } from '../../components/Dialog'
+import { LoadingState } from '../../components/StateViews'
 import {
   listAdminUsers,
   getAdminAssetCounts,
@@ -235,34 +237,40 @@ function ThumbnailReprocessSection() {
       </div>
 
       {confirming && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-card-dark border border-border-dark rounded-xl p-5 max-w-md w-full">
-            <h3 className="text-base font-semibold text-slate-100">Reprocess all pictures?</h3>
-            <p className="text-sm text-slate-400 mt-2">
-              This regenerates thumbnails for every non-trashed picture and replaces the existing
-              ones. The worker processes one job at a time, so this can take a while on large
-              libraries.
-            </p>
-            <div className="flex justify-end gap-2 mt-5">
-              <button
-                type="button"
-                onClick={() => setConfirming(false)}
-                className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  void onConfirm()
-                }}
-                className="text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-3 py-2 transition-colors"
-              >
-                Confirm
-              </button>
-            </div>
+        <Dialog
+          title="Reprocess all pictures?"
+          onClose={() => setConfirming(false)}
+          panelClassName="bg-card-dark border border-border-dark rounded-xl p-5 max-w-md w-full"
+          titleTag="h3"
+          titleClassName="text-base font-semibold text-slate-100"
+          headerClassName=""
+          closeOnOverlay={false}
+          escapeKey={false}
+        >
+          <p className="text-sm text-slate-400 mt-2">
+            This regenerates thumbnails for every non-trashed picture and replaces the existing
+            ones. The worker processes one job at a time, so this can take a while on large
+            libraries.
+          </p>
+          <div className="flex justify-end gap-2 mt-5">
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void onConfirm()
+              }}
+              className="text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-3 py-2 transition-colors"
+            >
+              Confirm
+            </button>
           </div>
-        </div>
+        </Dialog>
       )}
     </section>
   )
@@ -381,31 +389,37 @@ function OrphanCleanupSection() {
       </div>
 
       {confirming && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-card-dark border border-border-dark rounded-xl p-5 max-w-md w-full">
-            <h3 className="text-base font-semibold text-slate-100">Run orphan cleanup?</h3>
-            <p className="text-sm text-slate-400 mt-2">
-              This scans all files and thumbnails, then deletes anything not referenced by an asset.
-              The worker processes this in the background.
-            </p>
-            <div className="flex justify-end gap-2 mt-5">
-              <button
-                type="button"
-                onClick={() => setConfirming(false)}
-                className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void runCleanup()}
-                className="text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-3 py-2 transition-colors"
-              >
-                Confirm
-              </button>
-            </div>
+        <Dialog
+          title="Run orphan cleanup?"
+          onClose={() => setConfirming(false)}
+          panelClassName="bg-card-dark border border-border-dark rounded-xl p-5 max-w-md w-full"
+          titleTag="h3"
+          titleClassName="text-base font-semibold text-slate-100"
+          headerClassName=""
+          closeOnOverlay={false}
+          escapeKey={false}
+        >
+          <p className="text-sm text-slate-400 mt-2">
+            This scans all files and thumbnails, then deletes anything not referenced by an asset.
+            The worker processes this in the background.
+          </p>
+          <div className="flex justify-end gap-2 mt-5">
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void runCleanup()}
+              className="text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-3 py-2 transition-colors"
+            >
+              Confirm
+            </button>
           </div>
-        </div>
+        </Dialog>
       )}
     </section>
   )
@@ -499,9 +513,7 @@ function AdminPageContent() {
       </header>
 
       {loading ? (
-        <div className="flex items-center justify-center py-24">
-          <FaSpinner className="text-2xl text-primary animate-spin" />
-        </div>
+        <LoadingState className="flex items-center justify-center py-24" />
       ) : error ? (
         <div className="bg-card-dark border border-border-dark rounded-xl p-6 text-center">
           <p className="text-sm text-red-400 mb-3">{error}</p>

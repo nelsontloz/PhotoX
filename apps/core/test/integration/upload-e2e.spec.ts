@@ -25,7 +25,6 @@ import { AlbumsModule } from '../../src/albums/albums.module'
 import { SharesModule } from '../../src/shares/shares.module'
 import { PersonsModule } from '../../src/persons/persons.module'
 import { FacesModule } from '../../src/faces/faces.module'
-import { TrashModule } from '../../src/trash/trash.module'
 import { UserFilesModule } from '../../src/files/user/user-files.module'
 import { StorageModule } from '../../src/files/storage/storage.module'
 import { AdminModule } from '../../src/admin/admin.module'
@@ -255,7 +254,6 @@ describe('upload e2e pipeline', () => {
           SharesModule,
           PersonsModule,
           FacesModule,
-          TrashModule,
           UserFilesModule,
           AdminModule,
         ],

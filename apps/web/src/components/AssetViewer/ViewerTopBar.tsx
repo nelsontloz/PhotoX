@@ -19,6 +19,7 @@ import { downloadFile } from '../../api/assets'
 import { createShare, getShareUrl } from '../../api/shares'
 import type { Asset } from '@photox/shared-types'
 import { formatBytes } from '../../lib/format'
+import { formatDate } from '../../lib/dateFormat'
 
 interface ViewerTopBarProps {
   asset: Asset
@@ -33,14 +34,6 @@ interface ViewerTopBarProps {
   onRemoveFromAlbum?: () => void
   onReprocessThumbnails?: () => void
   onReprocessVideo?: () => void
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
 }
 
 export function ViewerTopBar({

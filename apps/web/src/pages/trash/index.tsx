@@ -8,6 +8,7 @@ import { AlbumPickerDialog } from '../../components/AlbumPickerDialog'
 import { useAssetGroups } from '../../hooks/useAssetGroups'
 import { useAssetNavigation } from '../../hooks/useAssetNavigation'
 import { emptyTrash } from '../../api/assets'
+import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
 
 function TrashContent() {
   const { groups, loading, error, refresh } = useAssetGroups({
@@ -35,40 +36,21 @@ function TrashContent() {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <FaSpinner className="text-2xl text-primary animate-spin" />
-      </div>
-    )
+    return <LoadingState />
   }
 
   if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center py-32 gap-4">
-        <p className="text-red-500 text-sm">{error}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="text-primary text-sm font-medium hover:underline"
-        >
-          Retry
-        </button>
-      </div>
-    )
+    return <ErrorState message={error} onRetry={() => window.location.reload()} />
   }
 
   if (groups.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 px-4 text-center max-w-lg mx-auto">
-        <div className="mb-8 w-20 h-20 rounded-full bg-red-500/10 dark:bg-red-500/15 ring-1 ring-red-500/25 flex items-center justify-center">
-          <FaTrash className="text-4xl text-red-500 dark:text-red-400" />
-        </div>
-        <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 dark:text-white">
-          Trash is empty
-        </h1>
-        <p className="mt-4 text-slate-500 dark:text-slate-400 text-base sm:text-lg leading-relaxed max-w-md">
-          Photos you delete from your timeline will appear here.
-        </p>
-      </div>
+      <EmptyState
+        icon={<FaTrash className="text-4xl text-red-500 dark:text-red-400" />}
+        circleClassName="bg-red-500/10 dark:bg-red-500/15 ring-1 ring-red-500/25"
+        title="Trash is empty"
+        body="Photos you delete from your timeline will appear here."
+      />
     )
   }
 

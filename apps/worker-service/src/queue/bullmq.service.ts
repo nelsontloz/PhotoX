@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import Redis from 'ioredis'
-import { Queue, Worker, type Job, type WorkerOptions } from 'bullmq'
+import { Queue, Worker, type Job, type JobsOptions, type WorkerOptions } from 'bullmq'
 
 @Injectable()
 export class BullMqService implements OnModuleInit, OnModuleDestroy {
@@ -44,12 +44,10 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     queueName: string,
     jobName: string,
     data: Record<string, unknown>,
-    opts: {
-      jobId?: string
-      attempts?: number
-      backoff?: { type: string }
-      removeOnFail?: boolean
-    } = {},
+    opts: Pick<
+      JobsOptions,
+      'jobId' | 'attempts' | 'backoff' | 'removeOnFail' | 'removeOnComplete'
+    > = {},
   ): Promise<void> {
     try {
       await this.getQueue(queueName).add(jobName, data, opts)

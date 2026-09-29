@@ -6,22 +6,18 @@ export class HealthService {
   constructor(private readonly bullMq: BullMqService) {}
 
   async check() {
-    const checks: Record<string, string> = {}
-
+    let queue: string
     try {
-      const ok = await this.bullMq.isHealthy()
-      checks.queue = ok ? 'ok' : 'down'
+      queue = (await this.bullMq.isHealthy()) ? 'ok' : 'down'
     } catch {
-      checks.queue = 'error'
+      queue = 'error'
     }
 
-    const healthy = Object.values(checks).every((s) => s === 'ok')
-
-    if (!healthy) {
+    if (queue !== 'ok') {
       throw new ServiceUnavailableException({
         status: 'unhealthy',
         service: 'worker-service',
-        checks,
+        checks: { queue },
       })
     }
 
@@ -30,7 +26,7 @@ export class HealthService {
       service: 'worker-service',
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
-      checks,
+      checks: { queue },
     }
   }
 }

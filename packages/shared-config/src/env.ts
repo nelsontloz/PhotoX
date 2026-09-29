@@ -2,6 +2,24 @@ import { existsSync } from 'fs'
 import { dirname, isAbsolute, join, resolve } from 'path'
 import { z } from 'zod'
 
+/** `15m`/`2h`/`30d` -> milliseconds; unparseable values fall back to 15 minutes. */
+function parseDurationMs(duration: string): number {
+  const match = /^(\d+)([mhd])$/.exec(duration)
+  if (!match) return 15 * 60 * 1000
+
+  const value = parseInt(match[1]!, 10)
+  switch (match[2]) {
+    case 'm':
+      return value * 60 * 1000
+    case 'h':
+      return value * 60 * 60 * 1000
+    case 'd':
+      return value * 24 * 60 * 60 * 1000
+    default:
+      return 15 * 60 * 1000
+  }
+}
+
 const envSchema = z.object({
   API_PORT: z.coerce.number().default(3000),
   CORE_URL: z.string().default('http://localhost:3000'),
@@ -14,7 +32,8 @@ const envSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   STORAGE_DIR: z.string().default('./data/storage'),
   AUTH_ACCESS_TTL: z.string().default('30m'),
-  AUTH_REFRESH_TTL: z.string().default('30d'),
+  // raw env value is a duration string; consumers get milliseconds, parsed exactly once
+  AUTH_REFRESH_TTL: z.string().default('30d').transform(parseDurationMs),
   AUTH_CLOCK_TOLERANCE_SEC: z.coerce.number().default(60),
 })
 

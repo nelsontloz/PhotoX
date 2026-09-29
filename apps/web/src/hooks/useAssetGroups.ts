@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Asset } from '@photox/shared-types'
-import { listAssets } from '../api/assets'
+import { listAllAssets } from '../api/assets'
 import { groupDateLabel, groupDateSortKey } from '../lib/dateFormat'
 import { useAppStore } from '../store/app-store'
 
@@ -75,16 +75,7 @@ export function useAssetGroups(
       const dateOf = (a: Asset) =>
         dateField === 'trashedAt' ? a.trashedAt : (a.takenAt ?? a.uploadedAt)
 
-      const all: Asset[] = []
-      let offset = 0
-      let total = 0
-
-      do {
-        const res = await listAssets({ limit: PAGE_SIZE, offset, isTrashed, favorite })
-        all.push(...res.items)
-        total = res.total
-        offset += PAGE_SIZE
-      } while (offset < total)
+      const all = await listAllAssets({ limit: PAGE_SIZE, isTrashed, favorite })
 
       if (fetchId !== fetchIdRef.current) return
 

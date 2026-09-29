@@ -26,26 +26,6 @@ export class TokenService {
   }
 
   getRefreshExpiresAt(): Date {
-    const env = loadEnv()
-    const ms = this.parseDuration(env.AUTH_REFRESH_TTL)
-    return new Date(Date.now() + ms)
-  }
-
-  private parseDuration(duration: string): number {
-    const match = /^(\d+)([mhd])$/.exec(duration)
-    if (!match) return 15 * 60 * 1000
-
-    const [, valueStr, unit] = match
-    const value = parseInt(valueStr!, 10)
-    switch (unit) {
-      case 'm':
-        return value * 60 * 1000
-      case 'h':
-        return value * 60 * 60 * 1000
-      case 'd':
-        return value * 24 * 60 * 60 * 1000
-      default:
-        return 15 * 60 * 1000
-    }
+    return new Date(Date.now() + loadEnv().AUTH_REFRESH_TTL)
   }
 }

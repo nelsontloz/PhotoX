@@ -11,35 +11,40 @@ import type {
   Role,
 } from '@photox/shared-types'
 
-export interface MetadataPatch {
-  status?: 'pending' | 'ready' | 'failed'
+export type MetadataPatch = Partial<
+  Pick<
+    Asset,
+    | 'mimeType'
+    | 'sizeBytes'
+    | 'originalName'
+    | 'width'
+    | 'height'
+    | 'durationSeconds'
+    | 'fps'
+    | 'codec'
+    | 'hasAudio'
+    | 'cameraMake'
+    | 'cameraModel'
+    | 'lensModel'
+    | 'orientation'
+    | 'iso'
+    | 'fNumber'
+    | 'exposureTime'
+    | 'focalLength'
+    | 'latitude'
+    | 'longitude'
+    | 'altitude'
+    | 'metadata'
+    | 'transcodeStatus'
+    | 'thumbnailStatus'
+    | 'transcodeFileId'
+    | 'faceStatus'
+    | 'faceCount'
+  >
+> & {
+  // Date is not an Asset field: metadata jobs pass Date, JSON.stringify sends the same ISO wire string
   takenAt?: Date | null
-  mimeType?: string | null
-  sizeBytes?: number
-  originalName?: string | null
-  width?: number | null
-  height?: number | null
-  durationSeconds?: number | null
-  fps?: number | null
-  codec?: string | null
-  hasAudio?: boolean | null
-  cameraMake?: string | null
-  cameraModel?: string | null
-  lensModel?: string | null
-  orientation?: number | null
-  iso?: number | null
-  fNumber?: number | null
-  exposureTime?: number | null
-  focalLength?: number | null
-  latitude?: number | null
-  longitude?: number | null
-  altitude?: number | null
-  metadata?: Record<string, unknown> | null
-  transcodeStatus?: 'pending' | 'ready' | 'failed'
-  thumbnailStatus?: 'pending' | 'ready' | 'failed' | null
-  transcodeFileId?: string | null
-  faceStatus?: 'pending' | 'ready' | 'failed' | null
-  faceCount?: number | null
+  status?: 'pending' | 'ready' | 'failed'
 }
 
 export interface RegisterFileInput {

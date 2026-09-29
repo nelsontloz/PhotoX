@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'child_process'
+import { buffer, text } from 'stream/consumers'
 
 // ponytail: ffmpeg-static/ffprobe-static ship binaries, not code — no types
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -35,26 +36,61 @@ export interface FfprobeResult {
 const DEFAULT_TIMEOUT_MS = 120_000
 const SIGKILL_DELAY_MS = 5_000
 
-function collect(
-  stream: NodeJS.ReadableStream | null,
-  mode: 'binary' | 'text',
-): Promise<Buffer | string> {
-  return new Promise((resolve, reject) => {
-    if (!stream) {
-      resolve(mode === 'binary' ? Buffer.alloc(0) : '')
-      return
-    }
-    if (mode === 'binary') {
-      const chunks: Buffer[] = []
-      stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-      stream.on('end', () => resolve(Buffer.concat(chunks)))
-    } else {
-      const chunks: string[] = []
-      stream.on('data', (chunk: Buffer | string) => chunks.push(String(chunk)))
-      stream.on('end', () => resolve(chunks.join('')))
-    }
-    stream.on('error', reject)
+interface RunOptions {
+  input?: Buffer
+  timeoutMs?: number
+  label?: string
+}
+
+// ponytail: ffmpeg and ffprobe share the spawn/timeout/kill loop; label keeps the two error texts exact
+async function runBin(
+  bin: string,
+  args: string[],
+  { input, timeoutMs = DEFAULT_TIMEOUT_MS, label = 'process' }: RunOptions = {},
+): Promise<{ stdout: Buffer; stderr: string; code: number }> {
+  const useStdioInput = input !== undefined
+
+  const proc = spawn(bin, args, {
+    stdio: useStdioInput ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
   })
+
+  const stdoutPromise = proc.stdout ? buffer(proc.stdout) : Promise.resolve(Buffer.alloc(0))
+  const stderrPromise = proc.stderr ? text(proc.stderr) : Promise.resolve('')
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  const result = await new Promise<{ stdout: Buffer; stderr: string; code: number }>(
+    (resolve, reject) => {
+      timer = setTimeout(() => {
+        killWithDelay(proc)
+        reject(new Error(`${label} timed out after ${timeoutMs}ms`))
+      }, timeoutMs)
+
+      proc.on('error', (err) => {
+        clearTimeout(timer)
+        reject(err)
+      })
+
+      proc.on('close', (code) => {
+        clearTimeout(timer)
+        void (async () => {
+          const stdout = await stdoutPromise
+          const stderr = await stderrPromise
+          resolve({ stdout, stderr, code: code ?? 1 })
+        })()
+      })
+
+      if (useStdioInput && proc.stdin) {
+        proc.stdin.end(input)
+      }
+    },
+  )
+
+  if (result.code !== 0) {
+    throw new Error(`${label} exited with code ${result.code}: ${result.stderr.slice(-2000)}`)
+  }
+
+  return result
 }
 
 function killWithDelay(proc: ChildProcess) {
@@ -81,96 +117,20 @@ export async function runFfmpeg(
 ): Promise<{ stdout: Buffer; stderr: string; code: number }> {
   if (!FFMPEG_PATH)
     throw new Error('ffmpeg-static not found — install ffmpeg-static or set FFMPEG_PATH')
-  const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  const useStdioInput = options?.input !== undefined
-
-  const stdio: ('ignore' | 'pipe')[] = useStdioInput
-    ? ['pipe', 'pipe', 'pipe']
-    : ['ignore', 'pipe', 'pipe']
-
-  const proc = spawn(FFMPEG_PATH, args, { stdio })
-
-  const stdoutPromise = collect(proc.stdout, 'binary') as Promise<Buffer>
-  const stderrPromise = collect(proc.stderr, 'text') as Promise<string>
-
-  let timer: ReturnType<typeof setTimeout> | undefined
-
-  const result = await new Promise<{ stdout: Buffer; stderr: string; code: number }>(
-    (resolve, reject) => {
-      timer = setTimeout(() => {
-        killWithDelay(proc)
-        reject(new Error(`ffmpeg timed out after ${timeoutMs}ms`))
-      }, timeoutMs)
-
-      proc.on('error', (err) => {
-        clearTimeout(timer)
-        reject(err)
-      })
-
-      proc.on('close', (code) => {
-        clearTimeout(timer)
-        void (async () => {
-          const stdout = await stdoutPromise
-          const stderr = await stderrPromise
-          resolve({ stdout, stderr, code: code ?? 1 })
-        })()
-      })
-
-      if (useStdioInput && proc.stdin) {
-        proc.stdin.end(options?.input)
-      }
-    },
-  )
-
-  if (result.code !== 0) {
-    throw new Error(`ffmpeg exited with code ${result.code}: ${result.stderr.slice(-2000)}`)
-  }
-
-  return result
+  return runBin(FFMPEG_PATH, args, { ...options, label: 'ffmpeg' })
 }
 
 export async function runFfprobeJson(input: string): Promise<FfprobeResult> {
   if (!FFPROBE_PATH)
     throw new Error('ffprobe-static not found — install ffprobe-static or set FFPROBE_PATH')
-  const proc = spawn(
+
+  const { stdout } = await runBin(
     FFPROBE_PATH,
     ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', input],
-    { stdio: ['ignore', 'pipe', 'pipe'] },
+    { label: 'ffprobe' },
   )
 
-  const stdoutPromise = collect(proc.stdout, 'binary') as Promise<Buffer>
-  const stderrPromise = collect(proc.stderr, 'text') as Promise<string>
-
-  let timer: ReturnType<typeof setTimeout> | undefined
-
-  const result = await new Promise<{ stdout: Buffer; stderr: string; code: number | null }>(
-    (resolve, reject) => {
-      timer = setTimeout(() => {
-        killWithDelay(proc)
-        reject(new Error(`ffprobe timed out after ${DEFAULT_TIMEOUT_MS}ms`))
-      }, DEFAULT_TIMEOUT_MS)
-
-      proc.on('error', (err) => {
-        clearTimeout(timer)
-        reject(err)
-      })
-
-      proc.on('close', (code) => {
-        clearTimeout(timer)
-        void (async () => {
-          const stdout = await stdoutPromise
-          const stderr = await stderrPromise
-          resolve({ stdout, stderr, code })
-        })()
-      })
-    },
-  )
-
-  if (result.code !== 0) {
-    throw new Error(`ffprobe exited with code ${result.code}: ${result.stderr.slice(-2000)}`)
-  }
-
-  const raw = result.stdout.toString('utf-8')
+  const raw = stdout.toString('utf-8')
   const parsed = JSON.parse(raw) as Partial<FfprobeResult>
 
   return {

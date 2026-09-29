@@ -7,11 +7,11 @@ import {
   FaPenToSquare,
   FaPhotoFilm,
   FaPlus,
-  FaSpinner,
   FaTrash,
 } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
+import { LoadingState } from '../../components/StateViews'
 import { AssetViewer } from '../../components/AssetViewer/AssetViewer'
 import { GalleryItem } from '../../components/GalleryItem'
 import { AlbumPickerDialog } from '../../components/AlbumPickerDialog'
@@ -156,11 +156,7 @@ function AlbumDetailContent() {
   }
 
   if (loadingAlbum || loadingAssets) {
-    return (
-      <div className="flex justify-center py-20">
-        <FaSpinner className="text-primary text-2xl animate-spin" />
-      </div>
-    )
+    return <LoadingState className="flex justify-center py-20" />
   }
 
   if (!album) return null

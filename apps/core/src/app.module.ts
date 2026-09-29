@@ -8,7 +8,6 @@ import { UsersModule } from './users/users.module'
 import { StorageModule } from './files/storage/storage.module'
 import { UserFilesModule } from './files/user/user-files.module'
 import { AdminModule as FilesAdminModule } from './files/admin/admin.module'
-import { TrashModule } from './trash/trash.module'
 import { AssetsModule } from './assets/assets.module'
 import { AlbumsModule } from './albums/albums.module'
 import { SharesModule } from './shares/shares.module'
@@ -30,7 +29,6 @@ import { AdminModule } from './admin/admin.module'
     StorageModule,
     UserFilesModule,
     FilesAdminModule,
-    TrashModule,
     AssetsModule,
     AlbumsModule,
     SharesModule,

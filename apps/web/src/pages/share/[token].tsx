@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { FaSpinner, FaCircleExclamation } from 'react-icons/fa6'
+import { FaCircleExclamation } from 'react-icons/fa6'
 import { api } from '../../api/client'
+import { LoadingState } from '../../components/StateViews'
 import type { PublicShareResponse } from '@photox/shared-types'
 
 function getStreamUrl(token: string): string {
@@ -34,9 +35,7 @@ export default function PublicSharePage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-background-dark">
-        <FaSpinner className="text-2xl text-primary animate-spin" />
-      </div>
+      <LoadingState className="flex items-center justify-center min-h-screen bg-background-dark" />
     )
   }
 

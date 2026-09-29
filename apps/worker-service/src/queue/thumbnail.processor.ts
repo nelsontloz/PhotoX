@@ -20,19 +20,7 @@ const STANDARD_SIZES: Record<string, [number, number]> = {
 }
 
 // ponytail: fit: 'inside' preserves the source aspect ratio (landscape/portrait); 'cover' was cropping to a square, which broke the downstream masonry grid.
-const RESIZE_OPTIONS: Record<string, sharp.ResizeOptions> = {
-  sm: { fit: 'inside', withoutEnlargement: true },
-  md: { fit: 'inside', withoutEnlargement: true },
-  lg: { fit: 'inside', withoutEnlargement: true },
-  xl: { fit: 'inside', withoutEnlargement: true },
-}
-
-const WEBP_QUALITY: Record<string, number> = {
-  sm: 80,
-  md: 80,
-  lg: 80,
-  xl: 85,
-}
+const RESIZE_OPTIONS: sharp.ResizeOptions = { fit: 'inside', withoutEnlargement: true }
 
 @Injectable()
 export class ThumbnailProcessor {
@@ -146,14 +134,13 @@ export class ThumbnailProcessor {
           ])
         ).stdout
 
-        let framePipeline = sharp(frameBuffer)
-        if (degrees !== 0) {
-          framePipeline = framePipeline.rotate(degrees)
-        }
-        const { data: thumbBuffer, info } = await framePipeline
-          .resize(width, height, RESIZE_OPTIONS[size] ?? { fit: 'inside' })
-          .webp({ quality: WEBP_QUALITY[size] ?? 80 })
-          .toBuffer({ resolveWithObject: true })
+        const { data: thumbBuffer, info } = await this.encodeWebp(
+          frameBuffer,
+          size,
+          width,
+          height,
+          degrees,
+        )
 
         await this.storeThumbnail(userId, assetId, size, thumbBuffer, info)
 
@@ -167,10 +154,12 @@ export class ThumbnailProcessor {
           const frameBuffer = (
             await runFfmpeg(['-y', '-i', tmpPath, '-vframes', '1', '-f', 'image2pipe', '-'])
           ).stdout
-          const { data: thumbBuffer, info } = await sharp(frameBuffer)
-            .resize(width, height, RESIZE_OPTIONS[size] ?? { fit: 'inside' })
-            .webp({ quality: WEBP_QUALITY[size] ?? 80 })
-            .toBuffer({ resolveWithObject: true })
+          const { data: thumbBuffer, info } = await this.encodeWebp(
+            frameBuffer,
+            size,
+            width,
+            height,
+          )
           await this.storeThumbnail(userId, assetId, size, thumbBuffer, info)
           return
         } catch (err) {
@@ -181,15 +170,27 @@ export class ThumbnailProcessor {
         }
       }
 
-      const { data: thumbBuffer, info } = await sharp(tmpPath)
-        .resize(width, height, RESIZE_OPTIONS[size] ?? { fit: 'inside' })
-        .webp({ quality: WEBP_QUALITY[size] ?? 80 })
-        .toBuffer({ resolveWithObject: true })
+      const { data: thumbBuffer, info } = await this.encodeWebp(tmpPath, size, width, height)
 
       await this.storeThumbnail(userId, assetId, size, thumbBuffer, info)
     } finally {
       await unlink(tmpPath).catch(() => undefined)
     }
+  }
+
+  private async encodeWebp(
+    source: Buffer | string,
+    size: string,
+    width: number,
+    height: number,
+    rotateDegrees = 0,
+  ) {
+    let pipeline = sharp(source)
+    if (rotateDegrees !== 0) pipeline = pipeline.rotate(rotateDegrees)
+    return pipeline
+      .resize(width, height, RESIZE_OPTIONS)
+      .webp({ quality: size === 'xl' ? 85 : 80 })
+      .toBuffer({ resolveWithObject: true })
   }
 
   private async storeThumbnail(

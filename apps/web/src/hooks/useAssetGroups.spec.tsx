@@ -3,13 +3,13 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import type { Asset } from '@photox/shared-types'
 
 vi.mock('../api/assets', () => ({
-  listAssets: vi.fn(),
+  listAllAssets: vi.fn(),
 }))
 
 import { useAssetGroups } from './useAssetGroups'
-import { listAssets } from '../api/assets'
+import { listAllAssets } from '../api/assets'
 
-const listAssetsMock = vi.mocked(listAssets)
+const listAllAssetsMock = vi.mocked(listAllAssets)
 
 function makeAsset(id: string): Asset {
   return { id, kind: 'photo', uploadedAt: '2024-01-01T00:00:00Z' } as Asset
@@ -17,11 +17,11 @@ function makeAsset(id: string): Asset {
 
 describe('useAssetGroups', () => {
   beforeEach(() => {
-    listAssetsMock.mockReset()
+    listAllAssetsMock.mockReset()
   })
 
   it('keeps loading=false while a refresh is in flight', async () => {
-    listAssetsMock.mockResolvedValue({ items: [makeAsset('a')], total: 1, limit: 50, offset: 0 })
+    listAllAssetsMock.mockResolvedValue([makeAsset('a')])
     const { result } = renderHook(() => useAssetGroups())
 
     expect(result.current.loading).toBe(true)
@@ -30,12 +30,12 @@ describe('useAssetGroups', () => {
     })
     expect(result.current.groups).toHaveLength(1)
 
-    let resolveRefresh: (value: unknown) => void = vi.fn()
-    listAssetsMock.mockImplementation(
+    let resolveRefresh: (value: Asset[]) => void = vi.fn()
+    listAllAssetsMock.mockImplementation(
       () =>
         new Promise((resolve) => {
           resolveRefresh = resolve
-        }) as never,
+        }),
     )
     let refreshPromise!: Promise<void>
     act(() => {
@@ -45,7 +45,7 @@ describe('useAssetGroups', () => {
     expect(result.current.loading).toBe(false)
 
     await act(async () => {
-      resolveRefresh({ items: [makeAsset('a')], total: 1, limit: 50, offset: 0 })
+      resolveRefresh([makeAsset('a')])
       await refreshPromise
     })
     expect(result.current.loading).toBe(false)

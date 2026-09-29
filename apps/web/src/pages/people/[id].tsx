@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { FaArrowLeft, FaSpinner, FaFaceSmile } from 'react-icons/fa6'
+import { FaArrowLeft, FaFaceSmile } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
+import { LoadingState } from '../../components/StateViews'
 import { AssetViewer } from '../../components/AssetViewer/AssetViewer'
 import { GalleryItem } from '../../components/GalleryItem'
 import { FaceOverlay } from '../../components/AssetViewer/FaceOverlay'
@@ -28,34 +29,19 @@ export default function PersonDetailPage() {
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
 
+  let content: ReactNode
   if (loading) {
-    return (
-      <RequireAuth>
-        <AppShell>
-          <div className="flex justify-center py-20">
-            <FaSpinner className="text-primary text-2xl animate-spin" />
-          </div>
-        </AppShell>
-      </RequireAuth>
+    content = <LoadingState className="flex justify-center py-20" />
+  } else if (!person) {
+    content = (
+      <div className="flex flex-col items-center justify-center py-20">
+        <FaFaceSmile className="text-4xl text-slate-500 mb-4" />
+        <p className="text-slate-400">Person not found</p>
+      </div>
     )
-  }
-
-  if (!person) {
-    return (
-      <RequireAuth>
-        <AppShell>
-          <div className="flex flex-col items-center justify-center py-20">
-            <FaFaceSmile className="text-4xl text-slate-500 mb-4" />
-            <p className="text-slate-400">Person not found</p>
-          </div>
-        </AppShell>
-      </RequireAuth>
-    )
-  }
-
-  return (
-    <RequireAuth>
-      <AppShell>
+  } else {
+    content = (
+      <>
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center gap-4 mb-6">
             <button
@@ -149,7 +135,13 @@ export default function PersonDetailPage() {
             />
           </>
         )}
-      </AppShell>
+      </>
+    )
+  }
+
+  return (
+    <RequireAuth>
+      <AppShell>{content}</AppShell>
     </RequireAuth>
   )
 }

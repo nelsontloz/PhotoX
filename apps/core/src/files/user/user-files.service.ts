@@ -10,6 +10,7 @@ import { Repository } from 'typeorm'
 import { randomUUID, createHash } from 'crypto'
 import { createReadStream } from 'fs'
 import { unlink } from 'fs/promises'
+import { extname } from 'path'
 import { pipeline } from 'stream/promises'
 import { Readable } from 'stream'
 import { Asset, FileRecord } from '@photox/data-access'
@@ -54,7 +55,7 @@ export class UserFilesService {
     if (!file) {
       throw new BadRequestException('No file provided')
     }
-    const { record, created } = await this.storeFile(userId, file, 'original', null)
+    const { record, created } = await this.storeFile(userId, file)
     const kind = meta.kind ?? this.kindFromMime(file.mimetype)
     if (!kind) {
       throw new BadRequestException('Unsupported file type')
@@ -155,32 +156,28 @@ export class UserFilesService {
   private async storeFile(
     userId: string,
     file: UploadedDiskFile,
-    purpose: 'original' | 'transcode',
-    assetId: string | null,
   ): Promise<{ record: FileRecord; created: boolean }> {
     if (!file) {
       throw new BadRequestException('No file provided')
     }
 
-    const label = purpose === 'transcode' ? 'derivative' : 'file'
-
     try {
       const checksum = await this.computeChecksum(file.path)
 
       const existing = await this.fileRepo.findOne({
-        where: { userId, checksumSha256: checksum, purpose, ...(assetId ? { assetId } : {}) },
+        where: { userId, checksumSha256: checksum, purpose: 'original' },
       })
       if (existing) return { record: existing, created: false }
 
-      const ext = this.getExtension(file.originalname)
+      const ext = extname(file.originalname).slice(1) || 'bin'
       const fileId = randomUUID()
       const storageKey = this.storage.buildKey('original', userId, fileId, ext)
 
       try {
         await this.storage.save(storageKey, file.path)
       } catch (err) {
-        console.error(`[UserFilesService] Local storage ${label} save failed`, err)
-        throw new BadRequestException(`Failed to upload ${label} to storage`)
+        console.error('[UserFilesService] Local storage file save failed', err)
+        throw new BadRequestException('Failed to upload file to storage')
       }
 
       const record = this.fileRepo.create({
@@ -190,23 +187,20 @@ export class UserFilesService {
         mimeType: file.mimetype,
         sizeBytes: file.size,
         checksumSha256: checksum,
-        purpose,
-        assetId,
+        purpose: 'original',
+        assetId: null,
       })
 
       try {
         await this.fileRepo.save(record)
       } catch (err) {
-        console.error(`[UserFilesService] DB save failed, cleaning up ${label} object`, err)
+        console.error('[UserFilesService] DB save failed, cleaning up file object', err)
         try {
           await this.storage.delete(storageKey)
         } catch (cleanupErr) {
-          console.error(
-            `[UserFilesService] ${label.charAt(0).toUpperCase()}${label.slice(1)} cleanup failed`,
-            cleanupErr,
-          )
+          console.error('[UserFilesService] File cleanup failed', cleanupErr)
         }
-        throw new BadRequestException(`Failed to save ${label} record`)
+        throw new BadRequestException('Failed to save file record')
       }
 
       return { record, created: true }
@@ -221,9 +215,14 @@ export class UserFilesService {
     return hash.digest('hex')
   }
 
-  async getOne(userId: string, fileId: string) {
+  private async getRecord(fileId: string): Promise<FileRecord> {
     const record = await this.fileRepo.findOne({ where: { id: fileId } })
     if (!record) throw new NotFoundException('File not found')
+    return record
+  }
+
+  async getOne(userId: string, fileId: string) {
+    const record = await this.getRecord(fileId)
     if (record.userId !== userId) throw new NotFoundException('File not found')
     return toFileRecordResponse(record)
   }
@@ -232,8 +231,7 @@ export class UserFilesService {
     userId: string,
     fileId: string,
   ): Promise<{ stream: Readable; record: FileRecord }> {
-    const record = await this.fileRepo.findOne({ where: { id: fileId } })
-    if (!record) throw new NotFoundException('File not found')
+    const record = await this.getRecord(fileId)
     if (record.userId !== userId) throw new NotFoundException('File not found')
     const stream = this.storage.createReadStream(record.storageKey)
     return { stream, record }
@@ -243,8 +241,7 @@ export class UserFilesService {
     fileId: string,
     opts?: { range: { start: number; end: number } },
   ): Promise<{ stream: Readable; record: FileRecord; totalSize: number }> {
-    const record = await this.fileRepo.findOne({ where: { id: fileId } })
-    if (!record) throw new NotFoundException('File not found')
+    const record = await this.getRecord(fileId)
     const fileStat = await this.storage.stat(record.storageKey)
     const totalSize = fileStat.size
 
@@ -261,14 +258,8 @@ export class UserFilesService {
   }
 
   async getFileStat(fileId: string): Promise<{ totalSize: number }> {
-    const record = await this.fileRepo.findOne({ where: { id: fileId } })
-    if (!record) throw new NotFoundException('File not found')
+    const record = await this.getRecord(fileId)
     const fileStat = await this.storage.stat(record.storageKey)
     return { totalSize: fileStat.size }
-  }
-
-  private getExtension(filename: string): string {
-    const dot = filename.lastIndexOf('.')
-    return dot >= 0 ? filename.slice(dot + 1) : 'bin'
   }
 }
