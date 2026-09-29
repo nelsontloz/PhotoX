@@ -21,6 +21,21 @@ const VECTOR_INIT_PROVIDER = {
             'pgvector extension or index creation failed — faces embedding search will be unavailable',
           )
         }
+
+        try {
+          // covering index for GET /assets/layout: partial (non-trashed) + COALESCE order keys
+          // + INCLUDE makes both the layout fetch and the ETag fingerprint query index-only
+          await dataSource.query(
+            `CREATE INDEX IF NOT EXISTS assets_layout_idx
+             ON assets ("userId", (COALESCE("takenAt", "uploadedAt")) DESC, "uploadedAt" DESC)
+             INCLUDE ("width", "height", "updatedAt")
+             WHERE "isTrashed" = false`,
+          )
+        } catch {
+          new Logger('DatabaseModule').warn(
+            'assets_layout_idx creation failed — layout endpoint falls back to filter+sort',
+          )
+        }
       },
     }
   },

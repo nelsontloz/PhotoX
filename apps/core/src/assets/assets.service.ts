@@ -170,6 +170,7 @@ export class AssetsService {
       .where('asset.userId = :userId', { userId })
       .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false })
       .orderBy('COALESCE(asset.takenAt, asset.uploadedAt)', 'DESC')
+      .addOrderBy('asset.uploadedAt', 'DESC')
       .getRawMany<{ t: Date | string; w: number; h: number }>()
 
     return {
@@ -178,6 +179,26 @@ export class AssetsService {
         w: Number(r.w),
         h: Number(r.h),
       })),
+    }
+  }
+
+  /**
+   * Cheap per-user fingerprint of layout-relevant state (count + latest mutation).
+   * Every add/delete/trash/restore/patch of an asset goes through TypeORM save()/update(),
+   * which bumps `updatedAt`, so the fingerprint changes on any layout-visible mutation.
+   * ponytail: not a hot-path cache — this only powers ETag revalidation for /layout.
+   */
+  async layoutFingerprint(userId: string): Promise<{ count: number; maxUpdatedAtMs: number }> {
+    const row = await this.repo
+      .createQueryBuilder('asset')
+      .select('COUNT(*)', 'count')
+      .addSelect('MAX(asset.updatedAt)', 'maxUpdatedAt')
+      .where('asset.userId = :userId', { userId })
+      .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false })
+      .getRawOne<{ count: string; maxUpdatedAt: Date | string | null }>()
+    return {
+      count: Number(row?.count ?? 0),
+      maxUpdatedAtMs: row?.maxUpdatedAt ? new Date(row.maxUpdatedAt).getTime() : 0,
     }
   }
 
