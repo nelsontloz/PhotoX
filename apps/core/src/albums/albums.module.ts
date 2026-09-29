@@ -5,9 +5,10 @@ import { AlbumAsset } from './entities/album-asset.entity'
 import { Asset } from '@photox/data-access'
 import { AlbumsService } from './albums.service'
 import { AlbumsController } from './albums.controller'
+import { AssetsModule } from '../assets/assets.module'
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Album, AlbumAsset, Asset])],
+  imports: [TypeOrmModule.forFeature([Album, AlbumAsset, Asset]), AssetsModule],
   controllers: [AlbumsController],
   providers: [AlbumsService],
   exports: [AlbumsService],

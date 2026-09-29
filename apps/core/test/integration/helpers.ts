@@ -234,15 +234,50 @@ export async function seedAsset(
   t: ApiTestApp,
   userId: string,
   fileId: string,
-  opts?: { kind?: 'photo' | 'video'; isTrashed?: boolean },
+  opts?: {
+    kind?: 'photo' | 'video'
+    isTrashed?: boolean
+    width?: number
+    height?: number
+    sizeBytes?: number
+    transcodeStatus?: 'pending' | 'ready' | 'failed' | null
+    transcodeFileId?: string
+  },
 ): Promise<Asset> {
   const asset = t.assetRepo.create({
     userId,
     kind: opts?.kind ?? 'photo',
     fileId,
     isTrashed: opts?.isTrashed ?? false,
+    width: opts?.width ?? null,
+    height: opts?.height ?? null,
+    sizeBytes: opts?.sizeBytes ?? null,
+    transcodeStatus: opts?.transcodeStatus ?? null,
+    transcodeFileId: opts?.transcodeFileId ?? null,
   })
   return t.assetRepo.save(asset)
+}
+
+export async function seedThumbnail(
+  t: ApiTestApp,
+  assetId: string,
+  opts?: { size?: string; width?: number; height?: number; bytes?: number; createdAt?: Date },
+): Promise<AssetThumbnail> {
+  const asset = await t.assetRepo.findOneOrFail({ where: { id: assetId } })
+  const file = await seedFile(t, asset.userId, {
+    mimeType: 'image/jpeg',
+    originalName: 'thumb.jpg',
+  })
+  const thumb = t.thumbRepo.create({
+    assetId,
+    fileId: file.id,
+    size: opts?.size ?? 'md',
+    width: opts?.width ?? 512,
+    height: opts?.height ?? 512,
+    bytes: opts?.bytes ?? 4096,
+    createdAt: opts?.createdAt,
+  })
+  return t.thumbRepo.save(thumb)
 }
 
 export function apiServer(t: ApiTestApp): Express {
