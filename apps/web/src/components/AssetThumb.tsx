@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FaSpinner, FaTriangleExclamation } from 'react-icons/fa6'
 import type { Asset, AssetThumbnail } from '@photox/shared-types'
 import { downloadFile } from '../api/assets'
+import { whenScrollIdle } from '../lib/scrollIdle'
 import { useThumbStore } from '../store/thumb-store'
 import { Skeleton } from './Skeleton'
 
@@ -12,7 +13,6 @@ interface AssetThumbProps {
 }
 
 const THUMB_SIZES = ['md']
-const LOAD_DELAY_MS = 300
 
 // ponytail: session-long objectURL cache keyed by thumb fileId — timeline virtualization remounts
 // tiles constantly and a blob must download once per session, LRU if memory ever matters
@@ -36,27 +36,22 @@ export function AssetThumb({ asset, className = '', onThumbPicked }: AssetThumbP
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    let timer: ReturnType<typeof setTimeout> | undefined
+    let cancelIdle: (() => void) | undefined
     const io = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (entry.isIntersecting) {
-            if (timer) continue
-            timer = setTimeout(() => {
-              setVisible(true)
-              io.unobserve(entry.target)
-            }, LOAD_DELAY_MS)
-          } else if (timer) {
-            clearTimeout(timer)
-            timer = undefined
-          }
+          if (!entry.isIntersecting) continue
+          io.unobserve(entry.target)
+          // Arm on scroll settle (shared) rather than per-tile entry: every visible tile starts
+          // its download at the same moment, so thumbs pop in together instead of in scroll order.
+          cancelIdle = whenScrollIdle(() => setVisible(true))
         }
       },
       { rootMargin: '200px' },
     )
     io.observe(el)
     return () => {
-      clearTimeout(timer)
+      cancelIdle?.()
       io.disconnect()
     }
   }, [])
