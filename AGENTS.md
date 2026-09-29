@@ -82,7 +82,7 @@ Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 
 ## Stale-doc warning
 
-`README.md` still references `minio` and user-service/media/file-storage services. Trust `docker-compose.yml` + `apps/` layout over prose.
+Prefer `docker-compose.yml` + `apps/` layout over prose anywhere in the repo (including `README.md`, recently refreshed but still the shallowest source).
 
 ## Repository Map
 
