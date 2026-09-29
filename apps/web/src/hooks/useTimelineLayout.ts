@@ -33,10 +33,15 @@ export function useTimelineLayout(): UseTimelineLayoutResult {
   const [rowHeight, setRowHeight] = useState(0)
   const fetchIdRef = useRef(0)
   const loadedOnceRef = useRef(false)
+  // dedupe same-refresh-key fetches already in flight (StrictMode dev double-mount)
+  const inFlightKeyRef = useRef<number | null>(null)
   const containerElRef = useRef<HTMLDivElement | null>(null)
   const roRef = useRef<ResizeObserver | null>(null)
 
   const fetchLayout = async () => {
+    const key = timelineRefreshKey
+    if (inFlightKeyRef.current === key) return
+    inFlightKeyRef.current = key
     const fetchId = ++fetchIdRef.current
     try {
       // ponytail: only the first load gates the page; refreshes update in place
@@ -52,6 +57,7 @@ export function useTimelineLayout(): UseTimelineLayoutResult {
       if (fetchId === fetchIdRef.current) {
         loadedOnceRef.current = true
         setLoading(false)
+        inFlightKeyRef.current = null
       }
     }
   }

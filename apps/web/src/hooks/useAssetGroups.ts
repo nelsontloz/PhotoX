@@ -59,8 +59,13 @@ export function useAssetGroups(
   const [error, setError] = useState<string | null>(null)
   const fetchIdRef = useRef(0)
   const loadedOnceRef = useRef(false)
+  // dedupe same-refresh-key fetches already in flight (StrictMode dev double-mount)
+  const inFlightKeyRef = useRef<number | null>(null)
 
   const fetchAssets = async () => {
+    const key = timelineRefreshKey
+    if (inFlightKeyRef.current === key) return
+    inFlightKeyRef.current = key
     const fetchId = ++fetchIdRef.current
     try {
       // ponytail: only the first load blocks the page; refreshes update in place so the viewer isn't unmounted
@@ -91,6 +96,7 @@ export function useAssetGroups(
       if (fetchId === fetchIdRef.current) {
         loadedOnceRef.current = true
         setLoading(false)
+        inFlightKeyRef.current = null
       }
     }
   }
