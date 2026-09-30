@@ -6,6 +6,7 @@ import { FACE_EMBEDDING_DIM } from '@photox/shared-types'
 import { makeAsset, makeFileRecord } from '../fake-core-client'
 import type { ClusterFace } from '../../src/core/core-client.service'
 import { BullMqService } from '../../src/queue/bullmq.service'
+import { CLUSTER_DEBOUNCE_MS } from '../../src/queue/face.processor'
 import { createTestApp, closeTestApp, resetTestApp, waitForJob, type TestApp } from './helpers'
 
 const emb512 = (...pairs: [number, number][]): number[] => {
@@ -29,6 +30,9 @@ describe('Face pipeline (integration)', () => {
   beforeEach(async () => {
     await resetTestApp(testApp)
     detect.mockReset()
+
+    const queue = testApp.getQueue('process-faces-cluster')
+    for (const job of await queue.getDelayed()) await job.remove()
   })
 
   // face-processor cases run entirely through the fake CoreClient (no DB rows)
@@ -118,8 +122,18 @@ describe('Face pipeline (integration)', () => {
     expect(updated.faceStatus).toBe('ready')
     expect(updated.faceCount).toBe(1)
 
-    const jobOptions = clusterAdd.mock.calls.map((call) => call[2] as { jobId?: string })
-    expect(jobOptions.some((o) => o.jobId?.startsWith(`cluster-${userId}-${asset.id}-`))).toBe(true)
+    expect(clusterAdd).toHaveBeenCalledExactlyOnceWith(
+      'cluster',
+      { userId, reason: 'face-detected' },
+      {
+        jobId: `cluster-${userId}`,
+        delay: CLUSTER_DEBOUNCE_MS,
+        attempts: 3,
+        backoff: { type: 'exponential' },
+        removeOnComplete: true,
+        removeOnFail: true,
+      },
+    )
 
     clusterAdd.mockRestore()
   })
@@ -154,13 +168,40 @@ describe('Face pipeline (integration)', () => {
     const { record, asset } = await seedPhotoInFake(userId)
     detect.mockResolvedValue([])
 
+    const clusterAdd = vi.spyOn(testApp.getQueue('process-faces-cluster'), 'add')
+
     const { queue, job } = await runFaceJob(asset.id, record.id, userId)
     expect(await waitForJob(queue, job.id!)).toBe('completed')
+
+    expect(clusterAdd).not.toHaveBeenCalled()
 
     expect(testApp.fake.faces.get(asset.id)).toBeUndefined()
     const updated = testApp.fake.assets.get(asset.id)!
     expect(updated.faceStatus).toBe('ready')
     expect(updated.faceCount).toBe(0)
+
+    clusterAdd.mockRestore()
+  })
+
+  it('debounces cluster enqueues per user into a single delayed job', async () => {
+    const userId = randomUUID()
+    const first = await seedPhotoInFake(userId)
+    const second = await seedPhotoInFake(userId)
+    detect.mockResolvedValue([
+      { box: { x: 10, y: 20, w: 30, h: 40 }, confidence: 0.92, embedding: emb512([1, 1]) },
+    ])
+
+    for (const { record, asset } of [first, second]) {
+      const { queue, job } = await runFaceJob(asset.id, record.id, userId)
+      expect(await waitForJob(queue, job.id!)).toBe('completed')
+    }
+
+    const clusterQueue = testApp.getQueue('process-faces-cluster')
+    expect(await clusterQueue.getWaitingCount()).toBe(0)
+    const delayed = await clusterQueue.getDelayed()
+    expect(delayed).toHaveLength(1)
+    expect(delayed[0]!.id).toBe(`cluster-${userId}`)
+    expect(delayed[0]!.opts.delay).toBe(CLUSTER_DEBOUNCE_MS)
   })
 
   it('creates one person from close unassigned faces and uses the largest box as cover', async () => {
