@@ -46,7 +46,13 @@ export const test = base.extend<{ ctx: Ctx }>({
   },
 })
 
-export const { Given, When, Then } = createBdd(test)
+export const { Given, When, Then, AfterStep } = createBdd(test)
+
+// One screenshot per Gherkin step, nested under that step in the HTML report.
+// AfterStep runs inside the step's test.step() — even when the step throws — so failures get a frame.
+AfterStep(async ({ page, $testInfo }) => {
+  await $testInfo.attach('screenshot', { body: await page.screenshot(), contentType: 'image/png' })
+})
 
 /** Registers a user through the API; unique email unless one is given. */
 export async function registerUser(request: APIRequestContext, email?: string): Promise<AuthState> {
