@@ -17,7 +17,7 @@ User accounts, the four public auth endpoints, and the admin user-list endpoint.
 
 - `register(email, password, displayName)`: duplicate email → 409 `ConflictException`; if `userRepo.count() === 0` the new user gets role `admin`, all later users `user` (first-run bootstrap); password hashed with `argon2.hash`; returns tokens.
 - `login`: `argon2.verify`; unknown email and wrong password both → 401 `Invalid credentials` (no user enumeration).
-- `refresh`: sha256-hashes the presented opaque token, loads `tokenHash` + `purpose='refresh'`, rejects if expired, then rotates atomically with `tokenRepo.update({ tokenHash, revokedAt: IsNull() }, { revokedAt: () => 'now()' })`; `affected === 0` means already used/revoked → 401. Rows are never deleted, only revoked.
+- `refresh`: sha256-hashes the presented opaque token, loads the row by `tokenHash` (missing → 401; expired → 401), then rotates atomically with `tokenRepo.update({ tokenHash, revokedAt: IsNull() }, { revokedAt: () => 'now()' })`; `affected === 0` means already used/revoked → 401. Rows are never deleted, only revoked.
 - `logout`: revokes a live row if found, otherwise silent (idempotent 204).
 - `issueTokens` (private): signs the access token, generates the opaque refresh token, persists only its hash plus `TokenService.getRefreshExpiresAt()`, returns `AuthResponse` (tokens + user profile with ISO dates).
 

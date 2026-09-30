@@ -7,8 +7,8 @@ Personal photo/video hosting. One NestJS `core` API (the only HTTP app; when ext
 - `apps/core/` (`@photox/core`, :3000, no published port in compose) — the sole API app: auth, assets, files, albums, shares, faces/persons, trash, admin
 - `apps/worker-service/` (`@photox/worker-service`, internal-only, no published port) — BullMQ consumers only (7 queues); no DB access: all reads/writes go through core HTTP via `CoreClient`, storage bytes go directly to `STORAGE_DIR`
 - `apps/web/` (`@photox/web`, :5173) — Vite + React, talks to core only (same-origin `/api`)
-- `packages/data-access/` — TypeORM entities + `SharedDatabaseModule` (core only)
-- `packages/shared-auth/` — `JwtPayload`, `loadAuthEnv()`; `packages/shared-config/` — zod `loadEnv()` + `LocalStorageService`; `packages/shared-types/` — wire interfaces + `FACE_EMBEDDING_DIM`
+- `apps/core/src/database/` — TypeORM entities + core-only `DatabaseModule` (folded in from the deleted `packages/data-access`)
+- `packages/shared-config/` — zod `loadEnv()`/`loadAuthEnv()`/`loadRootEnvFile()` + `LocalStorageService`; `packages/shared-types/` — wire interfaces + `JwtPayload` + `FACE_EMBEDDING_DIM` (folded in from the deleted `packages/shared-auth`)
 - `docker-compose.yml` services: `postgres` (pgvector image, single `photox` DB), `redis`, `core`, `worker-service`, `web`. Only `web` (:5173) publishes a port, plus `postgres`/`redis` for host `pnpm dev`; core and worker-service publish none.
 
 ## Commands
@@ -25,21 +25,22 @@ Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 
 ## Env / config
 
-- `packages/shared-config/src/env.ts` (`loadEnv`, zod): `API_PORT` 3000, `CORE_URL` (worker → core, default `http://localhost:3000`, compose `http://core:3000`), `WORKER_SERVICE_PORT` 3004, `POSTGRES_*` (core only)/`REDIS_*` (localhost defaults), `REDIS_PASSWORD` (optional, no default — integration tests use passwordless testcontainers Redis; compose and `.env.example` default it to `photox_dev`, compose redis runs `--requirepass`, and core/worker/health clients send it when set), `STORAGE_DIR` (default `./data/storage`, anchored at workspace root — core and worker run with different cwds), `AUTH_ACCESS_TTL` 30m, `AUTH_REFRESH_TTL` 30d, `AUTH_CLOCK_TOLERANCE_SEC` 60.
-- `packages/shared-auth/src/env.ts` (`loadAuthEnv`): `AUTH_TOKEN_SECRET` required, ≥32 chars. Core uses it to verify; worker also needs it (compose passes it) to mint delegated per-job JWTs for `CoreClient`.
+- `packages/shared-config/src/env.ts` (`loadEnv`, zod): `API_PORT` 3000, `CORE_URL` (worker → core, default `http://localhost:3000`, compose `http://core:3000`), `POSTGRES_*` (core only)/`REDIS_*` (localhost defaults), `REDIS_PASSWORD` (optional, no default — integration tests use passwordless testcontainers Redis; compose and `.env.example` default it to `photox_dev`, compose redis runs `--requirepass`, and core/worker/health clients send it when set), `STORAGE_DIR` (default `./data/storage`, anchored at workspace root — core and worker run with different cwds), `AUTH_ACCESS_TTL` 30m, `AUTH_REFRESH_TTL` 30d, `AUTH_CLOCK_TOLERANCE_SEC` 60.
+- `loadAuthEnv` (same file): `AUTH_TOKEN_SECRET` required, ≥32 chars. Core uses it to verify; worker also needs it (compose passes it) to mint delegated per-job JWTs for `CoreClient`.
+- No `@nestjs/config`: each `app.module.ts` calls `loadRootEnvFile()` (Node's native `process.loadEnvFile`, workspace-root `.env`) before module wiring; existing process env wins, so compose/CI are untouched. `WORKER_SERVICE_PORT` stays a direct `process.env` read in worker `main.ts` (intentionally not in the zod schema).
 - Compose shares one `storage-data` volume at `/data/storage`; local dev uses `./data/storage`.
 
 ## API conventions
 
 - Controllers serve `api/v1/...` directly (e.g. `@Controller('api/v1/assets')`). Public share at `api/share/:token`. Health is unversioned (`health`, 200 even when degraded). No global prefix.
-- `apps/core/src/main.ts` (mandatory, keep in sync): `ValidationPipe({whitelist, forbidNonWhitelisted, transform})` + `HttpExceptionFilter` + `requestIdMiddleware` + Swagger `/docs` + `/docs-json`. No CORS on core (browsers reach it same-origin through the Vite dev proxy or a reverse proxy). Worker `main.ts` is intentionally bare.
+- `apps/core/src/main.ts` (mandatory, keep in sync): `ValidationPipe({whitelist, forbidNonWhitelisted, transform})` + `HttpExceptionFilter` + Swagger `/docs` + `/docs-json`. No CORS on core (browsers reach it same-origin through the Vite dev proxy or a reverse proxy). Worker `main.ts` is intentionally bare.
 - DTOs live next to controllers with class-validator decorators; the wire interface lives in `shared-types`.
 
 ## Auth
 
 - `argon2` (core dependency only — never add bcrypt). HS256 access JWT + opaque rotated refresh token.
 - `JwtPayload` is `{ sub, email, role, iat, exp, jti? }`.
-- Global `JwtAuthGuard` (`apps/core/src/auth/jwt-auth.guard.ts`) verifies the Bearer HS256 token (clock tolerance `AUTH_CLOCK_TOLERANCE_SEC`), sets `req.user`, and ignores incoming identity headers entirely. Open routes (`apps/core/src/auth/open-routes.ts`): `/docs*`, `/health`, `api/v1/auth*`, `api/share*`, `GET /api/v1/files/:fileId/stream`. `api/v1/admin*` requires the admin role, enforced centrally by the guard (`AdminGuard` still exists on some controllers as redundant defence).
+- Global `JwtAuthGuard` (`apps/core/src/auth/jwt-auth.guard.ts`) verifies the Bearer HS256 token (clock tolerance `AUTH_CLOCK_TOLERANCE_SEC`), sets `req.user`, and ignores incoming identity headers entirely. Open routes (`apps/core/src/auth/open-routes.ts`): `/docs*`, `/health`, `api/v1/auth*`, `api/share*`, `GET /api/v1/files/:fileId/stream`. `api/v1/admin*` requires the admin role, enforced centrally by the guard.
 
 ## Jobs (BullMQ over Redis)
 
@@ -53,7 +54,7 @@ Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 
 ## DB / storage
 
-- Single `photox` DB (created by the image entrypoint from `POSTGRES_DB`; `docker/postgres/init.sql` installs the `vector` ext) — only core connects to it. `SharedDatabaseModule.forRoot()`: `synchronize: true`, `autoLoadEntities: true`, `retryAttempts: 3, retryDelay: 3000, connectTimeoutMS: 3000` — do not set `retryAttempts: 0`.
+- Single `photox` DB (created by the image entrypoint from `POSTGRES_DB`; `docker/postgres/init.sql` installs the `vector` ext) — only core connects to it. `apps/core/src/database/database.module.ts` (`DatabaseModule.forRoot()`): `synchronize: true`, `autoLoadEntities: true`, `retryAttempts: 3, retryDelay: 3000, connectTimeoutMS: 3000` — do not set `retryAttempts: 0`.
 - `LocalStorageService` (in `packages/shared-config`): files at `STORAGE_DIR/<storageKey>`, atomic save via tmp+rename (EXDEV-safe copy fallback).
 - `HealthService` (core) uses `DataSource.query('SELECT 1')`, not `@InjectRepository()` (avoids `forFeature` coupling); worker health probes Redis only.
 
@@ -70,7 +71,7 @@ Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 
 ## Tests / CI
 
-- Vitest 3, `globals: true`. Workspace (`vitest.workspace.ts`): api, worker-service, web, 4 shared packages, `scripts` — including `data-access`, which now has a test script.
+- Vitest 3, `globals: true`; turbo runs each package's own `test` script (core, worker-service, web, and the `shared-config` shared package).
 - Api runs `src/**/*.spec.ts` + `test/integration/**/*.spec.ts`. Integration spins testcontainers `redis:7-alpine` + plain `postgres:16-alpine` (no pgvector — index creation just warns). Needs Docker; on Podman run `TESTCONTAINERS_RYUK_DISABLED=true pnpm verify` (key already in `turbo.json` passthrough). Worker integration tests are Redis-only (fake `CoreClient`, no Postgres).
 - Consumer pact: `apps/web/test/pact/consumer/core.pact.spec.ts` (consumer `web` → provider `core`) writing `pacts/web-core.json` (~41 interactions, all web→core calls). It runs inside `verify` because it's a plain vitest spec. Provider verification exists but is opt-in only: `pnpm --filter @photox/core test:pact:provider` (`test/pact/core.provider.spec.ts` via `vitest.pact.config.ts`) — not part of `verify`. No coverage script; don't resurrect the old pact pipeline (the old `worker-service-*.json` pacts are deleted).
 - Jenkins (k8s pod): `install --frozen-lockfile` → build `packages/*` → parallel typecheck/lint/test (dind, pulls pg+redis images) → build.

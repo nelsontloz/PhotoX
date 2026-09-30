@@ -5,7 +5,7 @@ import { useAppStore } from '../store/app-store'
 import { uploadFile } from '../api/assets'
 import { makeThumbnail } from './clientThumbnail'
 
-export const MAX_CONCURRENT = 3
+const MAX_CONCURRENT = 3
 
 const filesRef = new Map<string, File>()
 

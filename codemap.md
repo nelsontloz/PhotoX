@@ -14,7 +14,6 @@ a reverse proxy in front of core — not part of this repo.
 - `package.json` — pnpm workspace root scripts (`dev`, `verify`, `build`, `lint`, `typecheck`, `test`); `postinstall` seeds the InsightFace ONNX model.
 - `turbo.json` — task graph (`build`/`test`/`lint`/`typecheck` depend on `^build`) + global env passthrough.
 - `tsconfig.base.json` — strict TS baseline (`noUncheckedIndexedAccess`, `noUnusedLocals`, NodeNext).
-- `vitest.workspace.ts` — workspace test projects (api, worker-service, web, 4 shared packages, scripts).
 - `docker-compose.yml` — full stack: postgres (pgvector), redis, core, worker-service, web.
 - `Jenkinsfile` — CI: frozen install → build `packages/*` → parallel typecheck/lint/test → build.
 - `apps/core/src/main.ts`, `apps/worker-service/src/main.ts`, `apps/web/src/main.tsx` — per-app bootstraps.
@@ -51,7 +50,7 @@ verifies Bearer HS256 tokens, sets `req.user`, and ignores incoming identity hea
 | Folder           | Responsibility                                                                                                                   | Map                                      |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
 | `apps/core/src/` | Composition root: `AppModule` wiring + `main.ts` HTTP conventions                                                                | [map](apps/core/src/codemap.md)          |
-| `auth/`          | `JwtAuthGuard` (global): Bearer HS256 verify, open/admin route tables; opt-in `AdminGuard`                                       | [map](apps/core/src/auth/codemap.md)     |
+| `auth/`          | `JwtAuthGuard` (global): Bearer HS256 verify, open/admin route tables                                                            | [map](apps/core/src/auth/codemap.md)     |
 | `users/`         | Accounts, 4 public auth endpoints, refresh rotation; subfolders: `admin/`, `admin/dto/`, `dto/`, `entities/`, `tokens/`          | [map](apps/core/src/users/codemap.md)    |
 | `admin/`         | Cross-user stats, failure counts, orphan detection + cleanup (enqueue & inline run) (`dto/`)                                     | [map](apps/core/src/admin/codemap.md)    |
 | `albums/`        | Album CRUD + asset membership (`dto/`, `entities/`)                                                                              | [map](apps/core/src/albums/codemap.md)   |
@@ -61,8 +60,8 @@ verifies Bearer HS256 tokens, sets `req.user`, and ignores incoming identity hea
 | `persons/`       | Named people from face clusters: CRUD, cover, apply-clusters, reassignment (`dto/`)                                              | [map](apps/core/src/persons/codemap.md)  |
 | `shares/`        | Public capability-URL sharing: authenticated mgmt + `api/share/:token` (`dto/`, `entities/`)                                     | [map](apps/core/src/shares/codemap.md)   |
 | `trash/`         | Permanent delete / restore of trashed assets                                                                                     | [map](apps/core/src/trash/codemap.md)    |
-| `common/`        | Exception filter + request-id middleware (`filters/`, `middleware/`)                                                             | [map](apps/core/src/common/codemap.md)   |
-| `database/`      | TypeORM bootstrap + pgvector/HNSW index lifecycle                                                                                | [map](apps/core/src/database/codemap.md) |
+| `common/`        | Exception filter (`filters/`)                                                                                                    | [map](apps/core/src/common/codemap.md)   |
+| `database/`      | TypeORM bootstrap + entities (`entities/`) + pgvector/HNSW index lifecycle                                                       | [map](apps/core/src/database/codemap.md) |
 | `health/`        | Unversioned `GET /health` (Postgres + Redis)                                                                                     | [map](apps/core/src/health/codemap.md)   |
 | `queue/`         | BullMQ publisher (`BullMqService`); core never consumes                                                                          | [map](apps/core/src/queue/codemap.md)    |
 
@@ -89,13 +88,11 @@ verifies Bearer HS256 tokens, sets `req.user`, and ignores incoming identity hea
 
 ### packages/ (shared libraries)
 
-| Folder                    | Responsibility                                                                  | Map                                      |
-| ------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------- |
-| `packages/`               | Workspace overview: shared-config/types → shared-auth → data-access             | [map](packages/codemap.md)               |
-| `packages/data-access/`   | TypeORM entities + `SharedDatabaseModule` (core-only DB substrate)              | [map](packages/data-access/codemap.md)   |
-| `packages/shared-auth/`   | `JwtPayload` + `loadAuthEnv()` (HS256 secret)                                   | [map](packages/shared-auth/codemap.md)   |
-| `packages/shared-config/` | Zod `loadEnv()` + `LocalStorageService`, workspace-root `STORAGE_DIR` anchoring | [map](packages/shared-config/codemap.md) |
-| `packages/shared-types/`  | Wire contracts shared with the SPA + `FACE_EMBEDDING_DIM`                       | [map](packages/shared-types/codemap.md)  |
+| Folder                    | Responsibility                                                               | Map                                      |
+| ------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------- |
+| `packages/`               | Workspace overview: shared-config + shared-types                             | [map](packages/codemap.md)               |
+| `packages/shared-config/` | Zod `loadEnv()`/`loadAuthEnv()` + `loadRootEnvFile()`, `LocalStorageService` | [map](packages/shared-config/codemap.md) |
+| `packages/shared-types/`  | Wire contracts shared with the SPA + `JwtPayload` + `FACE_EMBEDDING_DIM`     | [map](packages/shared-types/codemap.md)  |
 
 ### Operations
 
@@ -110,4 +107,4 @@ verifies Bearer HS256 tokens, sets `req.user`, and ignores incoming identity hea
 - **Jobs**: core publishes via `queue/bullmq.service.ts`; worker-service consumes 7 queues and does every DB read/write through core HTTP (`CoreClient`, delegated per-job JWT — ownership enforced core-side by the token `sub`); dedup via deterministic `jobId`s (`<prefix>-<assetId>-<size>`, `video-<assetId>`), attempts 3 with exponential backoff.
 - **Storage**: single `LocalStorageService` (in `packages/shared-config`) maps `storageKey` → `STORAGE_DIR/<key>` with atomic tmp+rename (EXDEV-safe); core and worker share the `storage-data` volume, and worker writes bytes to disk directly.
 - **DB**: single `photox` database, owned exclusively by core, `synchronize: true` (no migrations), pgvector HNSW index `faces_embedding_hnsw` rebuilt at core bootstrap.
-- **Tests**: Vitest 3 workspace; core integration tests use testcontainers (plain Postgres + Redis), worker integration tests are Redis-only. `pnpm verify` = lint + test + typecheck + build.
+- **Tests**: Vitest 3; core integration tests use testcontainers (plain Postgres + Redis), worker integration tests are Redis-only. `pnpm verify` = lint + test + typecheck + build.

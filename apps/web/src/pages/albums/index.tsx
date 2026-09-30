@@ -6,11 +6,12 @@ import {
   FaPhotoFilm,
   FaPlus,
   FaSpinner,
-  FaXmark,
 } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { AlbumCover } from '../../components/AlbumCover'
+import { Dialog, formInputClass } from '../../components/Dialog'
+import { ErrorState, LoadingState } from '../../components/StateViews'
 import { useAlbums } from '../../hooks/useAlbums'
 
 const NEW_ALBUM_NAME_MAX = 255
@@ -46,81 +47,75 @@ function NewAlbumDialog({ onClose, onCreate }: NewAlbumDialogProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-      <div className="bg-card-dark rounded-xl shadow-2xl w-full max-w-md p-6 border border-border-dark">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-slate-100">New Album</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="text-slate-400 hover:text-slate-100 transition-colors disabled:opacity-40"
-            aria-label="Close"
-          >
-            <FaXmark className="text-lg" />
-          </button>
-        </div>
-
-        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-          Name
-        </label>
-        <input
-          autoFocus
-          type="text"
-          value={name}
-          maxLength={NEW_ALBUM_NAME_MAX}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Summer 2025"
-          className="w-full bg-background-dark border border-border-dark focus:border-primary/50 focus:ring-0 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 transition-colors"
-        />
-        <div className="mt-1 flex justify-between text-[11px] text-slate-500">
-          <span>Required</span>
-          <span className="tabular-nums">
-            {trimmed.length}/{NEW_ALBUM_NAME_MAX}
-          </span>
-        </div>
-
-        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5 mt-4">
-          Description <span className="text-slate-500 normal-case font-normal">(optional)</span>
-        </label>
-        <textarea
-          value={description}
-          rows={3}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="What's this album about?"
-          className="w-full bg-background-dark border border-border-dark focus:border-primary/50 focus:ring-0 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 transition-colors resize-none"
-        />
-
-        {error && (
-          <div className="mt-4 flex items-start gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-            <FaCircleExclamation className="text-base mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        <div className="mt-6 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-slate-100 hover:bg-slate-700/40 rounded-lg transition-colors disabled:opacity-40"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              void submit()
-            }}
-            disabled={!canSubmit || submitting}
-            className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 disabled:bg-primary/40 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-lg shadow-primary/20"
-          >
-            {submitting && <FaSpinner className="text-xs animate-spin" />}
-            <span>Create</span>
-          </button>
-        </div>
+    <Dialog
+      title="New Album"
+      onClose={onClose}
+      panelClassName="bg-card-dark rounded-xl shadow-2xl p-6 w-full max-w-md border border-border-dark"
+      titleClassName="text-lg font-bold text-slate-100"
+      closeClassName="text-slate-400 hover:text-slate-100 transition-colors disabled:opacity-40"
+      closeDisabled={submitting}
+      closeOnOverlay={false}
+      escapeKey={false}
+    >
+      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+        Name
+      </label>
+      <input
+        autoFocus
+        type="text"
+        value={name}
+        maxLength={NEW_ALBUM_NAME_MAX}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="e.g. Summer 2025"
+        className={formInputClass}
+      />
+      <div className="mt-1 flex justify-between text-[11px] text-slate-500">
+        <span>Required</span>
+        <span className="tabular-nums">
+          {trimmed.length}/{NEW_ALBUM_NAME_MAX}
+        </span>
       </div>
-    </div>
+
+      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5 mt-4">
+        Description <span className="text-slate-500 normal-case font-normal">(optional)</span>
+      </label>
+      <textarea
+        value={description}
+        rows={3}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder="What's this album about?"
+        className={`${formInputClass} resize-none`}
+      />
+
+      {error && (
+        <div className="mt-4 flex items-start gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+          <FaCircleExclamation className="text-base mt-0.5 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <div className="mt-6 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={submitting}
+          className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-slate-100 hover:bg-slate-700/40 rounded-lg transition-colors disabled:opacity-40"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            void submit()
+          }}
+          disabled={!canSubmit || submitting}
+          className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 disabled:bg-primary/40 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-lg shadow-primary/20"
+        >
+          {submitting && <FaSpinner className="text-xs animate-spin" />}
+          <span>Create</span>
+        </button>
+      </div>
+    </Dialog>
   )
 }
 
@@ -134,27 +129,18 @@ function AlbumsListContent() {
     : albums
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <FaSpinner className="text-2xl text-primary animate-spin" />
-      </div>
-    )
+    return <LoadingState />
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-32 gap-4">
-        <p className="text-red-400 text-sm">{error}</p>
-        <button
-          type="button"
-          onClick={() => {
-            void refresh()
-          }}
-          className="text-primary text-sm font-medium hover:underline"
-        >
-          Retry
-        </button>
-      </div>
+      <ErrorState
+        message={error}
+        messageClassName="text-red-400"
+        onRetry={() => {
+          void refresh()
+        }}
+      />
     )
   }
 

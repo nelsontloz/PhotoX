@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
+import { loadEnv } from '@photox/shared-config'
 import Redis from 'ioredis'
-import { Queue, Worker, type Job, type WorkerOptions } from 'bullmq'
+import { Queue, Worker, type Job, type JobsOptions, type WorkerOptions } from 'bullmq'
 
 @Injectable()
 export class BullMqService implements OnModuleInit, OnModuleDestroy {
@@ -10,14 +10,15 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
   private readonly workers: Worker[] = []
   private readonly queues = new Map<string, Queue>()
 
-  constructor(private readonly config: ConfigService) {}
-
   async onModuleInit() {
-    const host = this.config.get<string>('REDIS_HOST', 'localhost')
-    const port = this.config.get<number>('REDIS_PORT', 6379)
-    const password = this.config.get<string>('REDIS_PASSWORD')
+    const env = loadEnv()
     await new Promise<void>((resolve, reject) => {
-      this.connection = new Redis({ host, port, password, maxRetriesPerRequest: null })
+      this.connection = new Redis({
+        host: env.REDIS_HOST,
+        port: env.REDIS_PORT,
+        password: env.REDIS_PASSWORD,
+        maxRetriesPerRequest: null,
+      })
       this.connection.once('ready', () => resolve())
       this.connection.once('error', (err) => reject(err))
     })
@@ -44,12 +45,10 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     queueName: string,
     jobName: string,
     data: Record<string, unknown>,
-    opts: {
-      jobId?: string
-      attempts?: number
-      backoff?: { type: string }
-      removeOnFail?: boolean
-    } = {},
+    opts: Pick<
+      JobsOptions,
+      'jobId' | 'attempts' | 'backoff' | 'removeOnFail' | 'removeOnComplete'
+    > = {},
   ): Promise<void> {
     try {
       await this.getQueue(queueName).add(jobName, data, opts)
@@ -57,10 +56,6 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
       const msg = err instanceof Error ? err.message : String(err)
       this.logger.error(`Failed to enqueue ${queueName} job: ${msg}`)
     }
-  }
-
-  async enqueueOrphanCleanup(dryRun = false): Promise<void> {
-    await this.enqueue('cleanup-orphans', 'cleanup-orphans', { dryRun })
   }
 
   createWorker<T>(

@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { FaCamera, FaMagnifyingGlass, FaSliders, FaBell } from 'react-icons/fa6'
+import { FaCamera } from 'react-icons/fa6'
 import { useAuthStore } from '../store/auth-store'
 import { UploadButton } from './UploadButton'
 
@@ -34,34 +34,9 @@ export function AppHeader() {
         </div>
       </div>
 
-      <div className="flex-1 max-w-lg mx-auto">
-        <div className="relative flex items-center w-full group">
-          <div className="absolute left-3 text-slate-400 group-focus-within:text-primary transition-colors">
-            <FaMagnifyingGlass className="text-[14px]" />
-          </div>
-          <input
-            className="w-full bg-slate-100 dark:bg-card-dark border-transparent focus:border-primary/50 focus:ring-0 rounded-lg pl-10 pr-4 py-2 text-sm text-slate-900 dark:text-white placeholder-slate-500 transition-all shadow-sm"
-            placeholder="Search memories, places, or dates..."
-            type="text"
-          />
-          <div className="absolute right-2 flex gap-1">
-            <button
-              className="p-1 rounded hover:bg-slate-200 dark:hover:bg-gray-700 text-slate-400 transition-colors"
-              title="Filter options"
-            >
-              <FaSliders className="text-[14px]" />
-            </button>
-          </div>
-        </div>
-      </div>
-
       <div className="flex items-center justify-end gap-4 w-1/4">
         <UploadButton variant="compact" />
         <div className="h-6 w-px bg-gray-200 dark:border-border-dark mx-1 hidden sm:block" />
-        <button className="relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-card-dark text-slate-500 dark:text-slate-400 transition-colors">
-          <FaBell className="text-[18px]" />
-          <span className="absolute top-2 right-2 size-2 bg-red-500 rounded-full border-2 border-white dark:border-background-dark" />
-        </button>
         <button
           onClick={() => {
             void handleLogout()

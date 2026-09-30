@@ -12,19 +12,9 @@ interface AssetThumbProps {
   onThumbPicked?: (thumb: AssetThumbnail) => void
 }
 
-const THUMB_SIZES = ['md']
-
 // ponytail: session-long objectURL cache keyed by thumb fileId — timeline virtualization remounts
 // tiles constantly and a blob must download once per session, LRU if memory ever matters
 const blobUrlCache = new Map<string, string>()
-
-function pickThumbnail(thumbs: AssetThumbnail[]): AssetThumbnail | undefined {
-  for (const size of THUMB_SIZES) {
-    const match = thumbs.find((t) => t.size === size)
-    if (match) return match
-  }
-  return thumbs[0]
-}
 
 export function AssetThumb({ asset, className = '', onThumbPicked }: AssetThumbProps) {
   const ref = useRef<HTMLDivElement>(null)
@@ -63,7 +53,7 @@ export function AssetThumb({ asset, className = '', onThumbPicked }: AssetThumbP
 
     if (asset.kind !== 'photo' && asset.kind !== 'video') return
 
-    const thumb = pickThumbnail(asset.thumbnails ?? [])
+    const thumb = asset.thumbnails?.find((t) => t.size === 'md') ?? asset.thumbnails?.[0]
     if (!thumb) return
 
     onThumbPicked?.(thumb)

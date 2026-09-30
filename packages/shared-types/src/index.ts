@@ -25,6 +25,15 @@ export interface RefreshRequest {
   refreshToken: string
 }
 
+export interface JwtPayload {
+  sub: string
+  email: string
+  role: Role
+  iat: number
+  exp: number
+  jti?: string
+}
+
 export interface AuthResponse {
   accessToken: string
   refreshToken: string
@@ -153,8 +162,6 @@ export interface AdminUserRow {
   email: string
   role: Role
   createdAt: string
-  assetCount: number
-  bytesUsed: number
 }
 
 export interface AdminUserListResponse {

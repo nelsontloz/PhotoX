@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { Asset } from '@photox/shared-types'
-import { listAssets } from '../api/assets'
+import { listAllAssets } from '../api/assets'
 import { groupAssetsByDay, type AssetGroup } from './useAssetGroups'
 import { effectiveAssetDate, monthRange } from '../lib/dateFormat'
 import { useAppStore } from '../store/app-store'
@@ -28,8 +28,8 @@ export interface UseTimelineMonthsResult {
 
 /**
  * Per-month asset cache for the timeline: nothing is fetched at mount, `ensureMonth('YYYY-MM')`
- * pages `listAssets` (limit 50) inside the month's half-open `dateFrom`/`dateTo` range until the
- * month is complete, and entries are stamped with the refresh key so an upload/trash bump
+ * fetches the whole month through `listAllAssets` (limit 50) inside its half-open
+ * `dateFrom`/`dateTo` range, and entries are stamped with the refresh key so an upload/trash bump
  * re-fetches only what's on screen. Favorites/trash keep `useAssetGroups`' fetch-all.
  */
 export function useTimelineMonths(): UseTimelineMonthsResult {
@@ -53,15 +53,7 @@ export function useTimelineMonths(): UseTimelineMonthsResult {
       const stamp = useAppStore.getState().timelineRefreshKey
       try {
         const { dateFrom, dateTo } = monthRange(key)
-        const all: Asset[] = []
-        let offset = 0
-        let total = 0
-        do {
-          const res = await listAssets({ limit: PAGE_SIZE, offset, dateFrom, dateTo })
-          all.push(...res.items)
-          total = res.total
-          offset += PAGE_SIZE
-        } while (offset < total)
+        const all = await listAllAssets({ limit: PAGE_SIZE, dateFrom, dateTo })
         if (stamp !== useAppStore.getState().timelineRefreshKey) return null
         commit(key, { items: all, status: 'ready', stamp })
         return all

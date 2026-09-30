@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Get,
   Post,
   Patch,
@@ -18,6 +19,7 @@ import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
 import { UpdateMetadataDto } from './dto/update-metadata.dto'
 import { TrashAssetsDto } from './dto/trash-assets.dto'
+import { RegisterThumbnailDto } from './dto/register-thumbnail.dto'
 
 /** Weak-safe ETag matching: handles W/ prefixes, comma lists, and `*`. */
 export function etagMatches(ifNoneMatch: string | undefined, etag: string): boolean {
@@ -41,8 +43,7 @@ export class AssetsController {
   @ApiOperation({ summary: 'List assets with filters' })
   @ApiResponse({ status: 200, description: 'Paginated asset list' })
   async list(@Query() q: ListAssetsQueryDto, @Req() req: Request) {
-    const userId = (req.user as { id: string }).id ?? q.userId
-    return this.assets.list(userId, q)
+    return this.assets.list((req.user as { id: string }).id, q)
   }
 
   @Get('layout')
@@ -82,21 +83,40 @@ export class AssetsController {
   @ApiOperation({ summary: 'List trashed assets' })
   @ApiResponse({ status: 200, description: 'Paginated trashed asset list' })
   async listTrashed(@Query() q: ListAssetsQueryDto, @Req() req: Request) {
-    const userId = (req.user as { id: string }).id ?? q.userId
-    return this.assets.list(userId, { ...q, isTrashed: true })
+    return this.assets.list((req.user as { id: string }).id, { ...q, isTrashed: true })
+  }
+
+  @Delete('trashed')
+  @ApiOperation({ summary: 'Permanently delete all trashed assets. Returns file IDs for cleanup.' })
+  @ApiResponse({ status: 200, description: 'Trash emptied' })
+  async emptyTrash(@Req() req: Request) {
+    return this.assets.emptyTrash((req.user as { id: string }).id)
+  }
+
+  @Delete('trashed/:id')
+  @ApiOperation({ summary: 'Permanently delete a trashed asset. Returns file IDs for cleanup.' })
+  @ApiResponse({ status: 200, description: 'Asset deleted' })
+  @ApiResponse({ status: 400, description: 'Asset is not trashed' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  async deleteTrashed(@Param('id') id: string, @Req() req: Request) {
+    return this.assets.delete((req.user as { id: string }).id, id)
+  }
+
+  @Post('trashed/:id/restore')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Restore a trashed asset. Idempotent.' })
+  @ApiResponse({ status: 204, description: 'Asset restored' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  async restore(@Param('id') id: string, @Req() req: Request) {
+    await this.assets.restore((req.user as { id: string }).id, id)
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a single asset' })
   @ApiResponse({ status: 200, description: 'Asset found' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async getOne(
-    @Param('id') id: string,
-    @Req() req: Request,
-    @Query('userId') queryUserId?: string,
-  ) {
-    const userId = (req.user as { id: string }).id ?? queryUserId
-    return this.assets.getOne(userId, id)
+  async getOne(@Param('id') id: string, @Req() req: Request) {
+    return this.assets.getOne((req.user as { id: string }).id, id)
   }
 
   @Patch(':id')
@@ -104,8 +124,7 @@ export class AssetsController {
   @ApiResponse({ status: 200, description: 'Asset updated' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async update(@Param('id') id: string, @Body() dto: UpdateAssetDto, @Req() req: Request) {
-    const userId = (req.user as { id: string }).id ?? dto.userId
-    return this.assets.update(userId, id, dto)
+    return this.assets.update((req.user as { id: string }).id, id, dto)
   }
 
   @Post(':id/trash')
@@ -113,22 +132,16 @@ export class AssetsController {
   @ApiOperation({ summary: 'Soft-delete (trash) an asset. Idempotent.' })
   @ApiResponse({ status: 204, description: 'Asset trashed' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async trash(@Param('id') id: string, @Req() req: Request, @Query('userId') queryUserId?: string) {
-    const userId = (req.user as { id: string }).id ?? queryUserId
-    await this.assets.trash(userId, id)
+  async trash(@Param('id') id: string, @Req() req: Request) {
+    await this.assets.trash((req.user as { id: string }).id, id)
   }
 
   @Post('bulk-trash')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Bulk soft-delete (trash) assets. Idempotent.' })
   @ApiResponse({ status: 204, description: 'Assets trashed' })
-  async bulkTrash(
-    @Body() dto: TrashAssetsDto,
-    @Req() req: Request,
-    @Query('userId') queryUserId?: string,
-  ) {
-    const userId = (req.user as { id: string }).id ?? queryUserId
-    await this.assets.bulkTrash(userId, dto.assetIds)
+  async bulkTrash(@Body() dto: TrashAssetsDto, @Req() req: Request) {
+    await this.assets.bulkTrash((req.user as { id: string }).id, dto.assetIds)
   }
 
   @Post(':id/reprocess-thumbnails')
@@ -148,5 +161,20 @@ export class AssetsController {
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async reprocessVideo(@Param('id') id: string, @Req() req: Request) {
     return this.assets.reprocessVideo((req.user as { id: string }).id, id)
+  }
+
+  @Post(':id/thumbnails')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Register a thumbnail (idempotent upsert on assetId+size)',
+  })
+  @ApiResponse({ status: 201, description: 'Thumbnail registered' })
+  @ApiResponse({ status: 404, description: 'Asset not found' })
+  async registerThumbnail(
+    @Param('id') id: string,
+    @Body() dto: RegisterThumbnailDto,
+    @Req() req: Request,
+  ) {
+    return this.assets.registerThumbnail((req.user as { id: string }).id, id, dto)
   }
 }

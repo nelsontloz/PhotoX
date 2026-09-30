@@ -11,9 +11,8 @@ its `@Injectable()` decorator).
 
 `env.ts`
 
-- `envSchema` (zod object, 15 keys): `NODE_ENV` enum default `development`; `API_PORT` 3000;
+- `envSchema` (zod object, 13 keys): `API_PORT` 3000;
   `CORE_URL` `http://localhost:3000` (worker → core; compose `http://core:3000`);
-  `WORKER_SERVICE_PORT` 3004;
   `POSTGRES_HOST` localhost; `POSTGRES_PORT` 5432; `POSTGRES_USER` photox;
   `POSTGRES_PASSWORD` photox_dev; `REDIS_HOST` localhost; `REDIS_PORT` 6379;
   `REDIS_PASSWORD` optional (no default; compose sets `photox_dev`); `STORAGE_DIR`
@@ -44,7 +43,8 @@ can mutate env between cases and still get correct paths. Besides `process.env`,
 
 ## Integration
 
-Imported by `packages/data-access` (`database.module.ts`) and both backend apps (`core`,
-`worker-service`), plus core integration-test helpers. The `Env` type is used wherever a
+Imported by both backend apps (`core` — including `database.module.ts` and `app.module.ts` — and
+`worker-service`), plus core integration-test helpers. `loadAuthEnv()` provides the shared HS256
+secret; `loadRootEnvFile()` replaces `@nestjs/config`. The `Env` type is used wherever a
 validated config object is passed around (e.g. the core token service); `LocalStorageService`
 is provided per Nest context by `StorageModule` (core) and `QueueModule` (worker).

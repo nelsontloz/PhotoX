@@ -3,9 +3,9 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { readFile } from 'fs/promises'
 import sharp from 'sharp'
-import { Face } from '@photox/data-access'
-import { Asset } from '@photox/data-access'
-import { FileRecord } from '@photox/data-access'
+import { Face } from '../database/entities'
+import { Asset } from '../database/entities'
+import { FileRecord } from '../database/entities'
 import { LocalStorageService } from '@photox/shared-config'
 
 const DEFAULT_SIZE = 240

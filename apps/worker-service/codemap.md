@@ -58,7 +58,7 @@ endpoints. `GET /health` reports Redis liveness only.
   `AUTH_TOKEN_SECRET`; core enforces ownership from the token `sub`.
 - Shares the storage volume with core: compose `storage-data` at `/data/storage`, local dev
   `./data/storage` (resolved by `@photox/shared-config` `loadEnv`).
-- Depends on `@photox/shared-auth` (delegated JWT secret), `@photox/shared-config`
-  (`loadEnv`, `LocalStorageService`), and `@photox/shared-types`; no `@photox/data-access`
+- Depends on `@photox/shared-config` (delegated JWT secret via `loadAuthEnv`, `loadEnv`,
+  `LocalStorageService`) and `@photox/shared-types`; no Postgres/TypeORM
   dependency and no Postgres connection at runtime.
 - No app proxies worker-service; only compose/ops hit its health port.

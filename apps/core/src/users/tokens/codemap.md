@@ -8,7 +8,7 @@ All token cryptography and lifetime math for auth: HS256 access-token signing, o
 
 `TokenService` (one provider, injected into `AuthService`):
 
-- `signAccessToken(user)` → `jwtService.signAsync({ sub, email, role, jti: randomUUID() })`. Secret/algorithm/TTL come from `UsersModule`'s `JwtModule.registerAsync` (`loadAuthEnv().AUTH_TOKEN_SECRET`, HS256, `loadEnv().AUTH_ACCESS_TTL`). Payload matches `JwtPayload` in `@photox/shared-auth`.
+- `signAccessToken(user)` → `jwtService.signAsync({ sub, email, role, jti: randomUUID() })`. Secret/algorithm/TTL come from `UsersModule`'s `JwtModule.registerAsync` (`loadAuthEnv().AUTH_TOKEN_SECRET`, HS256, `loadEnv().AUTH_ACCESS_TTL`). Payload matches `JwtPayload` in `@photox/shared-types`.
 - `generate()` → `randomBytes(32).toString('base64url')` — the opaque refresh token handed to clients.
 - `hash(token)` → sha256 hex, the only form stored in `refresh_tokens.tokenHash`.
 - `getRefreshExpiresAt()` → `new Date(Date.now() + parseDuration(loadEnv().AUTH_REFRESH_TTL))`.
@@ -22,5 +22,5 @@ No JWT verification lives here; verification is `JwtAuthGuard`'s job via the sha
 
 ## Integration
 
-- Env: `AUTH_TOKEN_SECRET` (required, ≥32 chars), `AUTH_ACCESS_TTL` (30m default), `AUTH_REFRESH_TTL` (30d default) from `@photox/shared-config`/`@photox/shared-auth`; `JwtAuthGuard` reads the same secret plus `AUTH_CLOCK_TOLERANCE_SEC` (60s).
+- Env: `AUTH_TOKEN_SECRET` (required, ≥32 chars), `AUTH_ACCESS_TTL` (30m default), `AUTH_REFRESH_TTL` (30d default) from `@photox/shared-config`; `JwtAuthGuard` reads the same secret plus `AUTH_CLOCK_TOLERANCE_SEC` (60s).
 - `UsersModule` supplies `JwtService`; `TokenService` has no repository dependency, keeping hashing/expiry testable in isolation.

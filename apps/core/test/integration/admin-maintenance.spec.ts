@@ -163,7 +163,7 @@ describe('admin maintenance', () => {
       .set(auth)
     expect(page.status).toBe(200)
     const pageBody = page.body as unknown as {
-      items: { assetCount: number; bytesUsed: number }[]
+      items: unknown[]
       total: number
       limit: number
       offset: number
@@ -172,8 +172,6 @@ describe('admin maintenance', () => {
     expect(pageBody.items).toHaveLength(2)
     expect(pageBody.limit).toBe(2)
     expect(pageBody.offset).toBe(1)
-    expect(pageBody.items[0]?.assetCount).toBe(0)
-    expect(pageBody.items[0]?.bytesUsed).toBe(0)
 
     const search = await request(apiServer(t))
       .get('/api/v1/admin/users')

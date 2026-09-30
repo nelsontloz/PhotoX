@@ -16,7 +16,6 @@ module.exports = {
   ignorePatterns: [
     'dist/',
     'node_modules/',
-    'turbo/',
     'vitest.config.ts',
     'vitest.*.config.ts',
     'vite.config.ts',

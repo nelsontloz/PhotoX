@@ -87,9 +87,10 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
 
   const stepTo = (asset: Asset) => setSearchParams({ asset: asset.id }, { replace: true })
 
-  const goPrev = () => {
-    if (!hasPrev) return
-    const target = currentIndex >= 0 ? allAssets[currentIndex - 1] : undefined
+  const step = (dir: NavDirection) => {
+    if (dir === 'prev' ? !hasPrev : !hasNext) return
+    const delta = dir === 'prev' ? -1 : 1
+    const target = currentIndex >= 0 ? allAssets[currentIndex + delta] : undefined
     // plain index walk when the loaded set is contiguous (or when there is no layout info at
     // all — favorites/trash fetch everything, exactly as before)
     const contiguous =
@@ -106,34 +107,14 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
     }
     // at the loaded boundary (or across a gap): load the adjacent month, then step into it
     if (!selected || !opts.resolveBeyond) return
-    void opts.resolveBeyond('prev', effectiveAssetDate(selected)).then((asset) => {
+    void opts.resolveBeyond(dir, effectiveAssetDate(selected)).then((asset) => {
       if (!asset) return
       setFallback(asset)
       stepTo(asset)
     })
   }
-  const goNext = () => {
-    if (!hasNext) return
-    const target = currentIndex >= 0 ? allAssets[currentIndex + 1] : undefined
-    const contiguous =
-      !opts.resolveBeyond ||
-      (target !== undefined &&
-        selected !== null &&
-        monthDistance(
-          monthKeyOf(effectiveAssetDate(target)),
-          monthKeyOf(effectiveAssetDate(selected)),
-        ) <= 1)
-    if (target && contiguous) {
-      stepTo(target)
-      return
-    }
-    if (!selected || !opts.resolveBeyond) return
-    void opts.resolveBeyond('next', effectiveAssetDate(selected)).then((asset) => {
-      if (!asset) return
-      setFallback(asset)
-      stepTo(asset)
-    })
-  }
+  const goPrev = () => step('prev')
+  const goNext = () => step('next')
 
   const trash = async () => {
     if (!selected) return

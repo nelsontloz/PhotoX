@@ -1,7 +1,6 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { IsIn } from 'class-validator'
-import { AdminGuard } from '../auth/admin.guard'
 import { AdminAssetsService } from './admin-assets.service'
 import { BullMqService } from '../queue/bullmq.service'
 
@@ -11,7 +10,6 @@ class ReprocessThumbnailsDto {
 }
 
 @ApiTags('admin')
-@UseGuards(AdminGuard)
 @Controller('api/v1/admin')
 export class AdminMaintenanceController {
   constructor(

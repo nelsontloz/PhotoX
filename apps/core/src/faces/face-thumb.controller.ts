@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Param, Query, Req, Res } from '@nestjs/common'
+import { Controller, Get, Param, Query, Req, Res } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
 import { FaceThumbService } from './face-thumb.service'
@@ -16,11 +16,9 @@ export class FaceThumbController {
     @Param('id') id: string,
     @Req() req: Request,
     @Res() res: Response,
-    @Query('userId') queryUserId?: string,
     @Query('size') size?: string,
   ): Promise<void> {
-    const userId = (req.user as { id: string } | undefined)?.id ?? queryUserId
-    if (!userId) throw new BadRequestException('userId required')
+    const userId = (req.user as { id: string }).id
     const bytes = await this.thumbs.getThumb(id, userId, size ? Number(size) : Number.NaN)
     res.set({
       'Content-Type': 'image/jpeg',

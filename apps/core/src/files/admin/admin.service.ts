@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
-import { FileRecord } from '@photox/data-access'
+import { FileRecord } from '../../database/entities'
 import { LocalStorageService } from '@photox/shared-config'
 
 @Injectable()

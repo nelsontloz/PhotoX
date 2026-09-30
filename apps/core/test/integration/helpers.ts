@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { Test } from '@nestjs/testing'
-import { ConfigModule } from '@nestjs/config'
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm'
 import { ValidationPipe, type ExecutionContext, type INestApplication } from '@nestjs/common'
 import { APP_GUARD } from '@nestjs/core'
@@ -12,7 +11,7 @@ import { JwtModule, JwtService } from '@nestjs/jwt'
 import type { Queue } from 'bullmq'
 import type { Express } from 'express'
 import { DataSource, type Repository } from 'typeorm'
-import { Asset, AssetThumbnail, Face, FileRecord, Person } from '@photox/data-access'
+import { Asset, AssetThumbnail, Face, FileRecord, Person } from '../../src/database/entities'
 import { LocalStorageService } from '@photox/shared-config'
 import { User } from '../../src/users/entities/user.entity'
 import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
@@ -24,7 +23,6 @@ import { AlbumsModule } from '../../src/albums/albums.module'
 import { SharesModule } from '../../src/shares/shares.module'
 import { PersonsModule } from '../../src/persons/persons.module'
 import { FacesModule } from '../../src/faces/faces.module'
-import { TrashModule } from '../../src/trash/trash.module'
 import { UserFilesModule } from '../../src/files/user/user-files.module'
 import { StorageModule } from '../../src/files/storage/storage.module'
 import { AdminModule } from '../../src/admin/admin.module'
@@ -95,7 +93,6 @@ export async function createApiTestApp(opts?: {
   try {
     const builder = Test.createTestingModule({
       imports: [
-        ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
         TypeOrmModule.forRoot({
           type: 'postgres',
           host: pgHost,
@@ -117,7 +114,6 @@ export async function createApiTestApp(opts?: {
         SharesModule,
         PersonsModule,
         FacesModule,
-        TrashModule,
         UserFilesModule,
         AdminModule,
         FilesAdminModule,

@@ -38,7 +38,7 @@ describe('assets JWT identity', () => {
     expect(body.items).toHaveLength(1)
   })
 
-  it('ignores supplied userId on list', async () => {
+  it('lists only the JWT user tokens', async () => {
     const a = await seedUser(t)
     const b = await seedUser(t)
     const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
@@ -46,10 +46,7 @@ describe('assets JWT identity', () => {
     await seedAsset(t, a.id, fileA.id)
     const fileB = await seedFile(t, b.id)
     await seedAsset(t, b.id, fileB.id)
-    const res = await request(apiServer(t))
-      .get('/api/v1/assets')
-      .query({ userId: b.id })
-      .set(t.authHeader(tokenA))
+    const res = await request(apiServer(t)).get('/api/v1/assets').set(t.authHeader(tokenA))
     expect(res.status).toBe(200)
     const body = res.body as unknown as { items: { userId: string }[]; total: number }
     expect(body.total).toBe(1)
@@ -97,16 +94,15 @@ describe('assets JWT identity', () => {
     expect(cross.status).toBe(404)
   })
 
-  it('updates without userId and ignores body userId', async () => {
+  it('updates the JWT user asset', async () => {
     const a = await seedUser(t)
-    const b = await seedUser(t)
     const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
     const file = await seedFile(t, a.id)
     const asset = await seedAsset(t, a.id, file.id)
     const res = await request(apiServer(t))
       .patch(`/api/v1/assets/${asset.id}`)
       .set(t.authHeader(tokenA))
-      .send({ favorite: true, userId: b.id })
+      .send({ favorite: true })
     expect(res.status).toBe(200)
     const body = res.body as unknown as { userId: string; favorite: boolean }
     expect(body.userId).toBe(a.id)

@@ -3,7 +3,6 @@ import {
   Get,
   Post,
   Param,
-  Query,
   Body,
   Res,
   Req,
@@ -21,7 +20,7 @@ import { UserFilesService } from './user-files.service'
 import { FileRecordDto } from '../file-record.dto'
 import { RegisterFileBodyDto } from './dto/register-file.body.dto'
 import { UploadFileBodyDto } from './dto/upload-file.body.dto'
-import { parseRangeHeader } from '../streaming.util'
+import { parseRangeHeader, pipeFileResponse } from '../streaming.util'
 
 const diskStorage = multer.diskStorage({
   destination: tmpdir(),
@@ -47,8 +46,7 @@ export class UserFilesController {
     @UploadedFile() file: { path: string; originalname: string; mimetype: string; size: number },
     @Body() body: UploadFileBodyDto,
   ) {
-    const userId = (req.user as { id: string }).id ?? body.userId
-    return this.userFilesService.upload(userId, file, {
+    return this.userFilesService.upload((req.user as { id: string }).id, file, {
       kind: body.kind,
       title: body.title,
       description: body.description,
@@ -86,84 +84,45 @@ export class UserFilesController {
 
     if (rangeHeader) {
       const { totalSize } = await this.userFilesService.getFileStat(fileId)
-
       const range = parseRangeHeader(rangeHeader, totalSize)
       if (!range) {
-        res.set('Content-Range', `bytes */${totalSize}`)
-        res.status(416).end()
+        pipeFileResponse(res, { range: null, totalSize })
         return
       }
 
       const { stream, record } = await this.userFilesService.stream(fileId, { range })
-
-      res.set({
-        'Content-Type': record.mimeType,
-        'Content-Range': `bytes ${range.start}-${range.end}/${totalSize}`,
-        'Content-Length': String(range.end - range.start + 1),
-        'Accept-Ranges': 'bytes',
-      })
-      res.status(206)
-      stream.on('error', () => {
-        res.destroy()
-      })
-      res.on('close', () => {
-        stream.destroy()
-      })
-      stream.pipe(res)
+      pipeFileResponse(res, { stream, record, range, totalSize })
       return
     }
 
     const { stream, record, totalSize } = await this.userFilesService.stream(fileId)
-    res.set({
-      'Content-Type': record.mimeType,
-      'Content-Length': String(totalSize),
-      'Content-Disposition': `attachment; filename="${record.originalName}"`,
-      'Accept-Ranges': 'bytes',
+    pipeFileResponse(res, {
+      stream,
+      record,
+      totalSize,
+      disposition: `attachment; filename="${record.originalName}"`,
     })
-    stream.on('error', () => {
-      res.destroy()
-    })
-    res.on('close', () => {
-      stream.destroy()
-    })
-    stream.pipe(res)
   }
 
   @Get(':fileId')
   @ApiOperation({ summary: 'Get file metadata' })
   @ApiResponse({ status: 200, description: 'File record', type: FileRecordDto })
   @ApiResponse({ status: 404, description: 'File not found' })
-  async getOne(
-    @Param('fileId') fileId: string,
-    @Req() req: Request,
-    @Query('userId') queryUserId?: string,
-  ) {
-    const userId = (req.user as { id: string }).id ?? queryUserId
-    return this.userFilesService.getOne(userId, fileId)
+  async getOne(@Param('fileId') fileId: string, @Req() req: Request) {
+    return this.userFilesService.getOne((req.user as { id: string }).id, fileId)
   }
 
   @Get(':fileId/download')
   @ApiOperation({ summary: 'Download file bytes' })
   @ApiResponse({ status: 200, description: 'File stream' })
   @ApiResponse({ status: 404, description: 'File not found' })
-  async download(
-    @Res() res: Response,
-    @Param('fileId') fileId: string,
-    @Req() req: Request,
-    @Query('userId') queryUserId?: string,
-  ) {
-    const userId = (req.user as { id: string }).id ?? queryUserId
+  async download(@Res() res: Response, @Param('fileId') fileId: string, @Req() req: Request) {
+    const userId = (req.user as { id: string }).id
     const { stream, record } = await this.userFilesService.download(userId, fileId)
-    res.set({
-      'Content-Type': record.mimeType,
-      'Content-Disposition': `attachment; filename="${record.originalName}"`,
+    pipeFileResponse(res, {
+      stream,
+      record,
+      disposition: `attachment; filename="${record.originalName}"`,
     })
-    stream.on('error', () => {
-      res.destroy()
-    })
-    res.on('close', () => {
-      stream.destroy()
-    })
-    stream.pipe(res)
   }
 }

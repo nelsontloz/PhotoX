@@ -3,11 +3,9 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { FaMapLocationDot, FaSpinner } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
-import { listAssets } from '../../api/assets'
+import { listAllAssets } from '../../api/assets'
 import { RequireAuth } from '../../components/RequireAuth'
-import { AppHeader } from '../../components/AppHeader'
-import { Sidebar } from '../../components/Sidebar'
-import { UploadNotification } from '../../components/UploadNotification'
+import { AppShell } from '../../components/AppShell'
 import { formatShortDate } from '../../lib/dateFormat'
 
 const markerIcon = new L.DivIcon({
@@ -26,34 +24,16 @@ function PlacesContent() {
 
   useEffect(() => {
     let cancelled = false
-    const PAGE = 100
-    const all: Asset[] = []
-    let offset = 0
-    let total = 0
-
-    listAssets({ hasLocations: true, limit: PAGE, offset: 0 })
-      .then(async (first) => {
-        if (cancelled) return
-        all.push(...first.items)
-        total = first.total
-        offset = PAGE
-
-        while (offset < total && !cancelled) {
-          const page = await listAssets({ hasLocations: true, limit: PAGE, offset })
-          if (cancelled) return
-          all.push(...page.items)
-          offset += PAGE
-        }
-
-        if (cancelled) return
-        setAssets([...all])
-      })
-      .catch(() => {
+    void (async () => {
+      try {
+        const all = await listAllAssets({ hasLocations: true })
+        if (!cancelled) setAssets(all)
+      } catch {
         if (!cancelled) setError('Failed to load photos')
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false)
-      })
+      }
+    })()
 
     return () => {
       cancelled = true
@@ -139,16 +119,9 @@ function PlacesContent() {
 export default function PlacesPage() {
   return (
     <RequireAuth>
-      <div className="flex flex-col h-screen overflow-hidden">
-        <AppHeader />
-        <div className="flex flex-1 overflow-hidden">
-          <Sidebar />
-          <main className="flex-1 overflow-hidden relative">
-            <PlacesContent />
-          </main>
-        </div>
-        <UploadNotification />
-      </div>
+      <AppShell mainClassName="flex-1 overflow-hidden relative">
+        <PlacesContent />
+      </AppShell>
     </RequireAuth>
   )
 }

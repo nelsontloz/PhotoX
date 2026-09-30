@@ -1,12 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { IsDateString, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator'
+import { IsDateString, IsIn, IsOptional, IsString, MaxLength } from 'class-validator'
 
 export class UploadFileBodyDto {
-  @IsOptional()
-  @IsUUID()
-  @ApiProperty({ required: false })
-  userId?: string
-
   @IsOptional()
   @IsIn(['photo', 'video'])
   @ApiProperty({ enum: ['photo', 'video'], required: false })

@@ -1,19 +1,24 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository, Brackets, DataSource, In } from 'typeorm'
-import { Asset } from '@photox/data-access'
-import { AssetThumbnail } from '@photox/data-access'
+import { Repository, DataSource, In } from 'typeorm'
+import { Asset } from '../database/entities'
+import { AssetThumbnail } from '../database/entities'
 import { AlbumAsset } from '../albums/entities/album-asset.entity'
 import { AssetShare } from '../shares/entities/asset-share.entity'
-import { Face } from '@photox/data-access'
+import { Face } from '../database/entities'
 import { CreateAssetDto } from './dto/create-asset.dto'
 import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
 import { UpdateMetadataDto } from './dto/update-metadata.dto'
+import { RegisterThumbnailDto } from './dto/register-thumbnail.dto'
 import { FacesService } from '../faces/faces.service'
 import { BullMqService } from '../queue/bullmq.service'
-import { toThumbnailResponse } from './thumbnails.service'
-import type { Asset as AssetResponse, AssetLayout, AssetListResponse } from '@photox/shared-types'
+import type {
+  Asset as AssetResponse,
+  AssetLayout,
+  AssetListResponse,
+  AssetThumbnail as AssetThumbnailResponse,
+} from '@photox/shared-types'
 
 @Injectable()
 export class AssetsService {
@@ -58,50 +63,6 @@ export class AssetsService {
       qb.andWhere('asset.id IN (:...ids)', { ids: q.ids })
     }
 
-    if (q.kind) {
-      qb.andWhere('asset.kind = :kind', { kind: q.kind })
-    }
-
-    if (q.mimeType) {
-      qb.andWhere('asset.mimeType LIKE :mimeType', { mimeType: `${q.mimeType}%` })
-    }
-
-    if (q.fromDate && q.toDate) {
-      qb.andWhere(
-        new Brackets((sub) =>
-          sub
-            .where('asset.takenAt BETWEEN :fromDate AND :toDate', {
-              fromDate: q.fromDate,
-              toDate: q.toDate,
-            })
-            .orWhere('asset.takenAt IS NULL AND asset.uploadedAt BETWEEN :fromDate AND :toDate', {
-              fromDate: q.fromDate,
-              toDate: q.toDate,
-            }),
-        ),
-      )
-    } else if (q.fromDate) {
-      qb.andWhere(
-        new Brackets((sub) =>
-          sub
-            .where('asset.takenAt >= :fromDate', { fromDate: q.fromDate })
-            .orWhere('asset.takenAt IS NULL AND asset.uploadedAt >= :fromDate', {
-              fromDate: q.fromDate,
-            }),
-        ),
-      )
-    } else if (q.toDate) {
-      qb.andWhere(
-        new Brackets((sub) =>
-          sub
-            .where('asset.takenAt <= :toDate', { toDate: q.toDate })
-            .orWhere('asset.takenAt IS NULL AND asset.uploadedAt <= :toDate', {
-              toDate: q.toDate,
-            }),
-        ),
-      )
-    }
-
     if (q.dateFrom) {
       qb.andWhere('COALESCE(asset.takenAt, asset.uploadedAt) >= :dateFrom', {
         dateFrom: q.dateFrom,
@@ -114,16 +75,6 @@ export class AssetsService {
 
     if (q.favorite !== undefined) {
       qb.andWhere('asset.favorite = :favorite', { favorite: q.favorite })
-    }
-
-    if (q.metadataStatus) {
-      qb.andWhere('asset.metadataStatus = :metadataStatus', { metadataStatus: q.metadataStatus })
-    }
-
-    if (q.hasFaces === true) {
-      qb.andWhere('asset.faceCount > 0')
-    } else if (q.hasFaces === false) {
-      qb.andWhere('(asset.faceCount IS NULL OR asset.faceCount = 0)')
     }
 
     if (q.hasLocations === true) {
@@ -202,9 +153,8 @@ export class AssetsService {
     }
   }
 
-  async getOne(userId: string | undefined, id: string): Promise<AssetResponse> {
-    const where = userId ? { id, userId } : { id }
-    const asset = await this.repo.findOne({ where })
+  async getOne(userId: string, id: string): Promise<AssetResponse> {
+    const asset = await this.repo.findOne({ where: { id, userId } })
     if (!asset) throw new NotFoundException('Asset not found')
     const faces = await this.facesService.getForAsset(asset.userId, id)
     const thumbRows = await this.thumbRepo.find({
@@ -264,11 +214,21 @@ export class AssetsService {
   async emptyTrash(userId: string): Promise<{ fileIds: string[] }> {
     const assets = await this.repo.find({ where: { userId, isTrashed: true } })
     if (assets.length === 0) return { fileIds: [] }
+    return this.hardDelete(assets.map((a) => a.id))
+  }
 
-    const assetIds = assets.map((a) => a.id)
-    const thumbRows = await this.thumbRepo.find({
-      where: assetIds.map((id) => ({ assetId: id })),
-    })
+  async delete(userId: string, id: string): Promise<{ fileIds: string[] }> {
+    const asset = await this.repo.findOne({ where: { id, userId } })
+    if (!asset) throw new NotFoundException('Asset not found')
+    if (!asset.isTrashed)
+      throw new BadRequestException('Asset must be trashed before permanent deletion')
+
+    return this.hardDelete([id])
+  }
+
+  private async hardDelete(assetIds: string[]): Promise<{ fileIds: string[] }> {
+    const assets = await this.repo.find({ where: { id: In(assetIds) } })
+    const thumbRows = await this.thumbRepo.find({ where: { assetId: In(assetIds) } })
     const fileIds = [
       ...assets.flatMap((a) => [a.fileId, a.transcodeFileId].filter(Boolean) as string[]),
       ...thumbRows.map((t) => t.fileId),
@@ -283,27 +243,6 @@ export class AssetsService {
     return { fileIds }
   }
 
-  async delete(userId: string, id: string): Promise<{ fileIds: string[] }> {
-    const asset = await this.repo.findOne({ where: { id, userId } })
-    if (!asset) throw new NotFoundException('Asset not found')
-    if (!asset.isTrashed)
-      throw new BadRequestException('Asset must be trashed before permanent deletion')
-
-    const thumbRows = await this.thumbRepo.find({ where: { assetId: id } })
-    const fileIds = [
-      ...([asset.fileId, asset.transcodeFileId].filter(Boolean) as string[]),
-      ...thumbRows.map((t) => t.fileId),
-    ]
-
-    await this.dataSource.transaction(async (em) => {
-      await em.delete(Face, { assetId: id })
-      await em.delete(AlbumAsset, { assetId: id })
-      await em.delete(AssetShare, { assetId: id })
-      await em.delete(Asset, { id })
-    })
-    return { fileIds }
-  }
-
   async getByFileId(fileId: string, userId: string): Promise<AssetResponse> {
     const asset = await this.repo.findOne({ where: { fileId, userId } })
     if (!asset) throw new NotFoundException('Asset not found for fileId')
@@ -314,39 +253,14 @@ export class AssetsService {
     const asset = await this.repo.findOne({ where: { id, userId } })
     if (!asset) throw new NotFoundException('Asset not found')
 
-    const patch: Partial<Asset> = {}
-    if (dto.status !== undefined) {
-      patch.metadataStatus = dto.status
+    // every UpdateMetadataDto field except `status` maps 1:1 to an Asset column; TypeORM
+    // skips undefined values, so absent fields stay untouched
+    const { status, ...fields } = dto
+    const patch: Partial<Asset> = { ...fields }
+    if (status !== undefined) {
+      patch.metadataStatus = status
       patch.metadataExtractedAt = new Date()
     }
-
-    if (dto.takenAt !== undefined) patch.takenAt = dto.takenAt
-    if (dto.mimeType !== undefined) patch.mimeType = dto.mimeType
-    if (dto.sizeBytes !== undefined) patch.sizeBytes = dto.sizeBytes
-    if (dto.originalName !== undefined) patch.originalName = dto.originalName
-    if (dto.width !== undefined) patch.width = dto.width
-    if (dto.height !== undefined) patch.height = dto.height
-    if (dto.durationSeconds !== undefined) patch.durationSeconds = dto.durationSeconds
-    if (dto.fps !== undefined) patch.fps = dto.fps
-    if (dto.codec !== undefined) patch.codec = dto.codec
-    if (dto.hasAudio !== undefined) patch.hasAudio = dto.hasAudio
-    if (dto.cameraMake !== undefined) patch.cameraMake = dto.cameraMake
-    if (dto.cameraModel !== undefined) patch.cameraModel = dto.cameraModel
-    if (dto.lensModel !== undefined) patch.lensModel = dto.lensModel
-    if (dto.orientation !== undefined) patch.orientation = dto.orientation
-    if (dto.iso !== undefined) patch.iso = dto.iso
-    if (dto.fNumber !== undefined) patch.fNumber = dto.fNumber
-    if (dto.exposureTime !== undefined) patch.exposureTime = dto.exposureTime
-    if (dto.focalLength !== undefined) patch.focalLength = dto.focalLength
-    if (dto.latitude !== undefined) patch.latitude = dto.latitude
-    if (dto.longitude !== undefined) patch.longitude = dto.longitude
-    if (dto.altitude !== undefined) patch.altitude = dto.altitude
-    if (dto.metadata !== undefined) patch.metadata = dto.metadata
-    if (dto.transcodeStatus !== undefined) patch.transcodeStatus = dto.transcodeStatus
-    if (dto.thumbnailStatus !== undefined) patch.thumbnailStatus = dto.thumbnailStatus
-    if (dto.transcodeFileId !== undefined) patch.transcodeFileId = dto.transcodeFileId
-    if (dto.faceStatus !== undefined) patch.faceStatus = dto.faceStatus
-    if (dto.faceCount !== undefined) patch.faceCount = dto.faceCount
 
     await this.repo.update(id, patch as Record<string, unknown>)
     const updated = await this.repo.findOne({ where: { id } })
@@ -366,6 +280,30 @@ export class AssetsService {
     if (asset.kind !== 'video') throw new BadRequestException('Not a video asset')
     this.bullMq.enqueueVideo(asset.id, asset.fileId, asset.userId, { reprocess: true })
     return { enqueued: 1 }
+  }
+
+  async registerThumbnail(
+    userId: string,
+    assetId: string,
+    dto: RegisterThumbnailDto,
+  ): Promise<AssetThumbnailResponse> {
+    const asset = await this.repo.findOne({ where: { id: assetId, userId } })
+    if (!asset) throw new NotFoundException('Asset not found')
+    await this.thumbRepo.upsert(
+      [
+        {
+          assetId,
+          size: dto.size,
+          fileId: dto.fileId,
+          width: dto.width,
+          height: dto.height,
+          bytes: dto.bytes,
+        },
+      ],
+      ['assetId', 'size'],
+    )
+    const row = await this.thumbRepo.findOneOrFail({ where: { assetId, size: dto.size } })
+    return toThumbnailResponse(row)
   }
 
   private toResponse(asset: Asset, thumbnails?: AssetThumbnail[]): AssetResponse {
@@ -413,5 +351,16 @@ export class AssetsService {
       faceCount: asset.faceCount,
       ...(thumbnails ? { thumbnails: thumbnails.map((t) => toThumbnailResponse(t)) } : {}),
     }
+  }
+}
+
+export function toThumbnailResponse(t: AssetThumbnail): AssetThumbnailResponse {
+  return {
+    size: t.size,
+    fileId: t.fileId,
+    width: t.width,
+    height: t.height,
+    bytes: Number(t.bytes),
+    createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : t.createdAt,
   }
 }

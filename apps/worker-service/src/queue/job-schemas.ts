@@ -65,7 +65,7 @@ export function parseJobData<T>(schema: z.ZodType<T>, data: unknown, queue: stri
 export function assertOwnership(
   job: { assetId: string; fileId: string; userId: string },
   loaded: {
-    // structural shapes — accept CoreClient DTOs and data-access entities alike
+    // structural shapes — accept CoreClient DTOs and core entity rows alike
     record: { userId: string } | null
     asset: { userId: string; fileId?: string } | null
   },

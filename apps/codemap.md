@@ -25,6 +25,6 @@ Holds the three deployable PhotoX applications. Everything runtime-facing lives 
 
 ## Integration
 
-- Consumes `packages/shared-config` (env + `LocalStorageService`), `packages/shared-auth` (JWT payload/env), `packages/shared-types` (wire interfaces); core additionally consumes `packages/data-access` (entities, DB module).
+- Consumes `packages/shared-config` (env + auth env + `LocalStorageService`, workspace-root `.env` loading) and `packages/shared-types` (wire interfaces + `JwtPayload`); core's entities/DB module live in-tree at `apps/core/src/database/`.
 - `docker-compose.yml` builds each app from its own `apps/<name>/Dockerfile`; Jenkins runs `pnpm verify` + builds packages in parallel.
 - Host dev runs `pnpm dev` (turbo: core + worker + web) with postgres/redis from compose.

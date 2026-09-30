@@ -4,7 +4,6 @@ import type { Asset, AssetLayout, AssetListResponse } from '@photox/shared-types
 interface ListAssetsParams {
   limit?: number
   offset?: number
-  kind?: 'photo' | 'video'
   isTrashed?: boolean
   favorite?: boolean
   hasLocations?: boolean
@@ -21,6 +20,22 @@ export async function listAssets(params: ListAssetsParams = {}): Promise<AssetLi
   }
   const { data } = await api.get<AssetListResponse>('/v1/assets', { params: rest })
   return data
+}
+
+/** Pages `listAssets` until `total` is covered. `limit` is the page size, not a cap. */
+export async function listAllAssets(params: ListAssetsParams = {}): Promise<Asset[]> {
+  const limit = params.limit ?? 100
+  const all: Asset[] = []
+  let offset = 0
+  let total = 0
+  do {
+    const res = await listAssets({ ...params, limit, offset })
+    all.push(...res.items)
+    total = res.total
+    offset += limit
+    if (res.items.length === 0) break
+  } while (offset < total)
+  return all
 }
 
 export async function getAsset(assetId: string): Promise<Asset> {

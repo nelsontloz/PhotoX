@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   FaArrowLeft,
@@ -7,11 +7,12 @@ import {
   FaPenToSquare,
   FaPhotoFilm,
   FaPlus,
-  FaSpinner,
   FaTrash,
 } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
+import { LoadingState } from '../../components/StateViews'
+import { AssetViewer } from '../../components/AssetViewer/AssetViewer'
 import { GalleryItem } from '../../components/GalleryItem'
 import { AlbumPickerDialog } from '../../components/AlbumPickerDialog'
 import { getAlbum, removeAssetFromAlbum } from '../../api/albums'
@@ -21,10 +22,6 @@ import { useAssetNavigation } from '../../hooks/useAssetNavigation'
 import { useInlineRename } from '../../hooks/useInlineRename'
 import { AddPhotosDialog } from './AddPhotosDialog'
 import type { AlbumDto } from '@photox/shared-types'
-
-const AssetViewer = lazy(() =>
-  import('../../components/AssetViewer/AssetViewer').then((m) => ({ default: m.AssetViewer })),
-)
 
 export default function AlbumDetailPage() {
   return (
@@ -159,11 +156,7 @@ function AlbumDetailContent() {
   }
 
   if (loadingAlbum || loadingAssets) {
-    return (
-      <div className="flex justify-center py-20">
-        <FaSpinner className="text-primary text-2xl animate-spin" />
-      </div>
-    )
+    return <LoadingState className="flex justify-center py-20" />
   }
 
   if (!album) return null
@@ -305,37 +298,35 @@ function AlbumDetailContent() {
       )}
 
       {nav.selected && (
-        <Suspense fallback={null}>
-          <AssetViewer
-            asset={nav.selected}
-            onClose={nav.close}
-            onPrev={nav.goPrev}
-            onNext={nav.goNext}
-            hasPrev={nav.hasPrev}
-            hasNext={nav.hasNext}
-            onTrash={() => {
-              void nav.trash()
-            }}
-            onToggleFavorite={(nextValue) => {
+        <AssetViewer
+          asset={nav.selected}
+          onClose={nav.close}
+          onPrev={nav.goPrev}
+          onNext={nav.goNext}
+          hasPrev={nav.hasPrev}
+          hasNext={nav.hasNext}
+          onTrash={() => {
+            void nav.trash()
+          }}
+          onToggleFavorite={(nextValue) => {
+            const cur = nav.selected
+            if (cur) void nav.toggleFavorite(cur.id, nextValue)
+          }}
+          onAddToAlbum={() => setPickerOpen(true)}
+          onRemoveFromAlbum={() => {
+            void (async () => {
               const cur = nav.selected
-              if (cur) void nav.toggleFavorite(cur.id, nextValue)
-            }}
-            onAddToAlbum={() => setPickerOpen(true)}
-            onRemoveFromAlbum={() => {
-              void (async () => {
-                const cur = nav.selected
-                if (!cur) return
-                const assetLabel = cur.originalName ?? cur.title ?? 'this asset'
-                if (!window.confirm(`Remove "${assetLabel}" from "${album.name}"?`)) return
-                await removeAssetFromAlbum(album.id, cur.id)
-                await Promise.all([refresh(), refreshAlbum()])
-                nav.close()
-              })()
-            }}
-            siblingAssets={assets}
-            onSelectSibling={(asset) => nav.open(asset)}
-          />
-        </Suspense>
+              if (!cur) return
+              const assetLabel = cur.originalName ?? cur.title ?? 'this asset'
+              if (!window.confirm(`Remove "${assetLabel}" from "${album.name}"?`)) return
+              await removeAssetFromAlbum(album.id, cur.id)
+              await Promise.all([refresh(), refreshAlbum()])
+              nav.close()
+            })()
+          }}
+          siblingAssets={assets}
+          onSelectSibling={(asset) => nav.open(asset)}
+        />
       )}
 
       {showAddDialog && (

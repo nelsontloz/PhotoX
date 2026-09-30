@@ -1,10 +1,11 @@
-# packages/data-access/src/entities/
+# apps/core/src/database/entities/
 
 ## Responsibility
 
-The five TypeORM entities that define PhotoX's schema. Because `SharedDatabaseModule` runs
+The five TypeORM entities that define PhotoX's schema. Because `DatabaseModule` runs
 with `synchronize: true`, these decorators are the single source of truth for tables,
-columns, enums, FKs, and indexes — there are no migration files.
+columns, enums, FKs, and indexes — there are no migration files. Folded in from the deleted
+`packages/data-access` package.
 
 ## Design
 
@@ -43,7 +44,7 @@ columns, enums, FKs, and indexes — there are no migration files.
 **`Face` → `faces`** (`face.entity.ts`)
 
 - The 512-dim embedding constant (`FACE_EMBEDDING_DIM`, InsightFace buffalo_l w600k_r50 output)
-  moved to `@photox/shared-types`; this entity only stores the vector.
+  lives in `@photox/shared-types`; this entity only stores the vector.
 - Indexes: `(personId, userId)` plus `assetId`, `userId`, `personId` individually.
 - Columns: `box` jsonb `{x,y,w,h}`, `confidence` real, `embedding` text with a pgvector
   transformer (`toSql`/`fromSql`), `personId` nullable uuid **without** a TypeORM relation
@@ -69,7 +70,7 @@ plan to core.
 
 Registered by core with `TypeOrmModule.forFeature` per domain module (e.g.
 `faces.module.ts`, `albums.module.ts`, `files/user/user-files.module.ts`). The worker-service
-never connects to Postgres and does not import this package. Wire counterparts live in
+never connects to Postgres and does not import these classes. Wire counterparts live in
 `@photox/shared-types` (`Asset`, `FileRecord`, `FaceDto`, `PersonDto`); `FACE_EMBEDDING_DIM` is
 also exported there and imported by `face.embedder.ts`, `face.cluster.ts`, and their specs.
 Runtime needs a Postgres with the `vector` extension for the HNSW index (plain `postgres:16`

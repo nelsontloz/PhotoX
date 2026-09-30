@@ -23,5 +23,5 @@ TypeORM entities for the album domain: the album itself and the asset-membership
 ## Integration
 
 - Owned exclusively by `AlbumsModule` / `AlbumsService`; no other module injects these repositories.
-- `Asset` is imported from `@photox/data-access` (shared entity package) for validation queries, not re-declared here.
-- Schema is created by TypeORM `synchronize: true` from `SharedDatabaseModule.forRoot()`; no migrations.
+- `Asset` is imported from `../../database/entities` (core entity folder) for validation queries, not re-declared here.
+- Schema is created by TypeORM `synchronize: true` from `DatabaseModule.forRoot()`; no migrations.

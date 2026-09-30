@@ -1,4 +1,4 @@
-import type { FileRecord } from '@photox/data-access'
+import type { FileRecord } from '../database/entities'
 
 export function toFileRecordResponse(record: FileRecord) {
   return {

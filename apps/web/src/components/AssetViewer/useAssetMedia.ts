@@ -21,8 +21,8 @@ export function useAssetMedia(asset: Asset): {
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [videoPosterUrl, setVideoPosterUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  // only one of imageUrl / videoPosterUrl is set per asset, so one revoke ref covers both
   const urlRef = useRef<string | null>(null)
-  const posterRef = useRef<string | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -30,34 +30,21 @@ export function useAssetMedia(asset: Asset): {
     setLoading(true)
     setImageUrl(null)
     setVideoPosterUrl(null)
+    const isPhoto = asset.kind === 'photo'
 
-    if (asset.kind === 'photo') {
-      loadAssetThumbBlob(asset.thumbnails, 'xl', controller.signal)
-        .then((url) => {
-          if (cancelled || !url) {
-            if (!cancelled) setLoading(false)
-            return
-          }
-          urlRef.current = url
-          setImageUrl(url)
-        })
-        .catch(() => {
+    loadAssetThumbBlob(asset.thumbnails, isPhoto ? 'xl' : 'lg', controller.signal)
+      .then((url) => {
+        if (cancelled || !url) {
           if (!cancelled) setLoading(false)
-        })
-    } else {
-      loadAssetThumbBlob(asset.thumbnails, 'lg', controller.signal)
-        .then((url) => {
-          if (cancelled || !url) {
-            if (!cancelled) setLoading(false)
-            return
-          }
-          posterRef.current = url
-          setVideoPosterUrl(url)
-        })
-        .catch(() => {
-          if (!cancelled) setLoading(false)
-        })
-    }
+          return
+        }
+        urlRef.current = url
+        if (isPhoto) setImageUrl(url)
+        else setVideoPosterUrl(url)
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false)
+      })
 
     return () => {
       cancelled = true
@@ -65,10 +52,6 @@ export function useAssetMedia(asset: Asset): {
       if (urlRef.current) {
         URL.revokeObjectURL(urlRef.current)
         urlRef.current = null
-      }
-      if (posterRef.current) {
-        URL.revokeObjectURL(posterRef.current)
-        posterRef.current = null
       }
     }
   }, [asset.id, asset.kind])

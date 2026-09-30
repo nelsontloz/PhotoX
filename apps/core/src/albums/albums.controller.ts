@@ -29,29 +29,22 @@ export class AlbumsController {
   @ApiResponse({ status: 201, description: 'Album created' })
   @ApiResponse({ status: 400, description: 'Invalid request body' })
   async create(@Body() dto: CreateAlbumDto, @Req() req: Request) {
-    const userId = (req.user as { id: string }).id ?? dto.userId
-    return this.albums.create(userId, dto)
+    return this.albums.create((req.user as { id: string }).id, dto)
   }
 
   @Get()
   @ApiOperation({ summary: 'List albums' })
   @ApiResponse({ status: 200, description: 'Paginated album list' })
   async list(@Query() q: ListAlbumsQueryDto, @Req() req: Request) {
-    const userId = (req.user as { id: string }).id ?? q.userId
-    return this.albums.list(userId, q)
+    return this.albums.list((req.user as { id: string }).id, q)
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a single album' })
   @ApiResponse({ status: 200, description: 'Album found' })
   @ApiResponse({ status: 404, description: 'Album not found' })
-  async getOne(
-    @Param('id') id: string,
-    @Req() req: Request,
-    @Query('userId') queryUserId?: string,
-  ) {
-    const userId = (req.user as { id: string }).id ?? queryUserId
-    return this.albums.getOne(userId, id)
+  async getOne(@Param('id') id: string, @Req() req: Request) {
+    return this.albums.getOne((req.user as { id: string }).id, id)
   }
 
   @Patch(':id')
@@ -59,8 +52,7 @@ export class AlbumsController {
   @ApiResponse({ status: 200, description: 'Album updated' })
   @ApiResponse({ status: 404, description: 'Album not found' })
   async update(@Param('id') id: string, @Body() dto: UpdateAlbumDto, @Req() req: Request) {
-    const userId = (req.user as { id: string }).id ?? dto.userId
-    return this.albums.update(userId, id, dto)
+    return this.albums.update((req.user as { id: string }).id, id, dto)
   }
 
   @Delete(':id')
@@ -68,13 +60,8 @@ export class AlbumsController {
   @ApiOperation({ summary: 'Delete an album' })
   @ApiResponse({ status: 204, description: 'Album deleted' })
   @ApiResponse({ status: 404, description: 'Album not found' })
-  async delete(
-    @Param('id') id: string,
-    @Req() req: Request,
-    @Query('userId') queryUserId?: string,
-  ) {
-    const userId = (req.user as { id: string }).id ?? queryUserId
-    await this.albums.delete(userId, id)
+  async delete(@Param('id') id: string, @Req() req: Request) {
+    await this.albums.delete((req.user as { id: string }).id, id)
   }
 
   @Post(':id/assets')
@@ -82,8 +69,7 @@ export class AlbumsController {
   @ApiResponse({ status: 201, description: 'Assets added, returns refreshed album' })
   @ApiResponse({ status: 404, description: 'Album or asset not found' })
   async addAssets(@Param('id') id: string, @Body() dto: AddAssetsBodyDto, @Req() req: Request) {
-    const userId = (req.user as { id: string }).id ?? dto.userId
-    await this.albums.addAssets(userId, id, dto.assetIds)
+    await this.albums.addAssets((req.user as { id: string }).id, id, dto.assetIds)
     return { added: dto.assetIds.length }
   }
 
@@ -96,10 +82,8 @@ export class AlbumsController {
     @Param('id') id: string,
     @Param('assetId') assetId: string,
     @Req() req: Request,
-    @Query('userId') queryUserId?: string,
   ) {
-    const userId = (req.user as { id: string }).id ?? queryUserId
-    await this.albums.removeAsset(userId, id, assetId)
+    await this.albums.removeAsset((req.user as { id: string }).id, id, assetId)
   }
 
   @Get(':id/assets')
@@ -111,7 +95,7 @@ export class AlbumsController {
     @Req() req: Request,
     @Query() q: Record<string, string | undefined>,
   ) {
-    const userId = (req.user as { id: string }).id ?? q.userId
+    const userId = (req.user as { id: string }).id
     const limit = q.limit ? Number(q.limit) : undefined
     const offset = q.offset ? Number(q.offset) : undefined
     return this.albums.listAssets(userId, id, { limit, offset })

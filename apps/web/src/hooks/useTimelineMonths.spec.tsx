@@ -3,22 +3,18 @@ import { renderHook, act } from '@testing-library/react'
 import type { Asset } from '@photox/shared-types'
 
 vi.mock('../api/assets', () => ({
-  listAssets: vi.fn(),
+  listAllAssets: vi.fn(),
 }))
 
 import { useTimelineMonths } from './useTimelineMonths'
-import { listAssets } from '../api/assets'
+import { listAllAssets } from '../api/assets'
 import { monthKeyOf, monthRange } from '../lib/dateFormat'
 import { useAppStore } from '../store/app-store'
 
-const listAssetsMock = vi.mocked(listAssets)
+const listAllAssetsMock = vi.mocked(listAllAssets)
 
 function makeAsset(id: string, date: string): Asset {
   return { id, kind: 'photo', takenAt: date, uploadedAt: date, width: null, height: null } as Asset
-}
-
-function page(items: Asset[], total: number, offset = 0) {
-  return { items, total, limit: 50, offset }
 }
 
 describe('monthKeyOf / monthRange', () => {
@@ -58,18 +54,12 @@ describe('monthKeyOf / monthRange', () => {
 
 describe('useTimelineMonths', () => {
   beforeEach(() => {
-    listAssetsMock.mockReset()
+    listAllAssetsMock.mockReset()
     useAppStore.setState({ timelineRefreshKey: 0 })
   })
 
   it('fetches a month once for concurrent ensureMonth calls and day-groups the result', async () => {
-    listAssetsMock.mockImplementation((params) =>
-      Promise.resolve(
-        (params?.offset ?? 0) === 0
-          ? page([makeAsset('a', '2024-05-10T10:00:00Z')], 1)
-          : page([], 1, params?.offset ?? 0),
-      ),
-    )
+    listAllAssetsMock.mockResolvedValue([makeAsset('a', '2024-05-10T10:00:00Z')])
     const { result } = renderHook(() => useTimelineMonths())
 
     let first: Promise<Asset[] | null> | undefined
@@ -83,10 +73,9 @@ describe('useTimelineMonths', () => {
     })
 
     // in-flight dedupe: one request, scoped to the month's half-open range
-    expect(listAssetsMock).toHaveBeenCalledTimes(1)
-    expect(listAssetsMock).toHaveBeenCalledWith({
+    expect(listAllAssetsMock).toHaveBeenCalledTimes(1)
+    expect(listAllAssetsMock).toHaveBeenCalledWith({
       limit: 50,
-      offset: 0,
       dateFrom: new Date(2024, 4, 1).toISOString(),
       dateTo: new Date(2024, 5, 1).toISOString(),
     })
@@ -97,33 +86,18 @@ describe('useTimelineMonths', () => {
     await act(async () => {
       await result.current.ensureMonth('2024-05')
     })
-    expect(listAssetsMock).toHaveBeenCalledTimes(1)
-  })
-
-  it('pages within the month at 50 until total is covered', async () => {
-    listAssetsMock.mockImplementation((params) => {
-      const offset = params?.offset ?? 0
-      return Promise.resolve(
-        page(offset < 120 ? [makeAsset('a', '2024-05-10T10:00:00Z')] : [], 120, offset),
-      )
-    })
-    const { result } = renderHook(() => useTimelineMonths())
-    await act(async () => {
-      await result.current.ensureMonth('2024-05')
-    })
-    expect(listAssetsMock.mock.calls.map((call) => call[0]?.offset)).toEqual([0, 50, 100])
-    expect(result.current.monthStatus.get('2024-05')).toBe('ready')
+    expect(listAllAssetsMock).toHaveBeenCalledTimes(1)
   })
 
   it('keeps serving cached items across a refresh-key bump, then refetches the month', async () => {
-    listAssetsMock.mockResolvedValue(page([makeAsset('a', '2024-05-10T10:00:00Z')], 1))
+    listAllAssetsMock.mockResolvedValue([makeAsset('a', '2024-05-10T10:00:00Z')])
     const { result } = renderHook(() => useTimelineMonths())
     await act(async () => {
       await result.current.ensureMonth('2024-05')
     })
-    expect(listAssetsMock).toHaveBeenCalledTimes(1)
+    expect(listAllAssetsMock).toHaveBeenCalledTimes(1)
 
-    listAssetsMock.mockClear()
+    listAllAssetsMock.mockClear()
     // bump: the entry goes stale, but its items stay visible so the viewer doesn't unmount
     act(() => {
       useAppStore.setState({ timelineRefreshKey: 1 })
@@ -131,17 +105,17 @@ describe('useTimelineMonths', () => {
     expect(result.current.refreshKey).toBe(1)
     expect(result.current.groups).toHaveLength(1)
 
-    listAssetsMock.mockResolvedValue(page([makeAsset('b', '2024-05-20T10:00:00Z')], 1))
+    listAllAssetsMock.mockResolvedValue([makeAsset('b', '2024-05-20T10:00:00Z')])
     await act(async () => {
       await result.current.ensureMonth('2024-05')
     })
-    expect(listAssetsMock).toHaveBeenCalledTimes(1)
+    expect(listAllAssetsMock).toHaveBeenCalledTimes(1)
     expect(result.current.groups.flatMap((g) => g.items).map((a) => a.id)).toEqual(['b'])
   })
 
   it('drops a fetch that resolves after the refresh key bumped (per-key staleness guard)', async () => {
     let resolveStale!: (value: unknown) => void
-    listAssetsMock.mockImplementationOnce(
+    listAllAssetsMock.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           resolveStale = resolve
@@ -158,22 +132,22 @@ describe('useTimelineMonths', () => {
     })
 
     // the bump mid-flight: the next ensureMonth starts a fresh fetch instead of joining the stale one
-    listAssetsMock.mockResolvedValueOnce(page([makeAsset('fresh', '2024-05-10T10:00:00Z')], 1))
+    listAllAssetsMock.mockResolvedValueOnce([makeAsset('fresh', '2024-05-10T10:00:00Z')])
     await act(async () => {
       await result.current.ensureMonth('2024-05')
     })
-    expect(listAssetsMock).toHaveBeenCalledTimes(2)
+    expect(listAllAssetsMock).toHaveBeenCalledTimes(2)
 
     // stale fetch finishes with old data → dropped entirely
     await act(async () => {
-      resolveStale(page([makeAsset('stale', '2024-05-11T10:00:00Z')], 1))
+      resolveStale([makeAsset('stale', '2024-05-11T10:00:00Z')])
       await stalePromise
     })
     expect(result.current.groups.flatMap((g) => g.items).map((a) => a.id)).toEqual(['fresh'])
   })
 
   it('resolves null instead of rejecting when the month fetch fails', async () => {
-    listAssetsMock.mockRejectedValue(new Error('boom'))
+    listAllAssetsMock.mockRejectedValue(new Error('boom'))
     const { result } = renderHook(() => useTimelineMonths())
     let out: Asset[] | null = undefined as never
     await act(async () => {

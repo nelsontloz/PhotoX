@@ -1,10 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, In, Repository } from 'typeorm'
-import { Person } from '@photox/data-access'
-import { Face } from '@photox/data-access'
-import { Asset } from '@photox/data-access'
-import { refreshPersonFaceCount } from '../faces/face-count'
+import { Person } from '../database/entities'
+import { Face } from '../database/entities'
+import { Asset } from '../database/entities'
+import { refreshPersonFaceCount, countLiveFaces } from '../faces/face-count'
 import type { ApplyClustersDto } from './dto/apply-clusters.dto'
 import type { PersonDto, PersonListResponse, PersonAssetsResponse } from '@photox/shared-types'
 
@@ -56,21 +56,21 @@ export class PersonsService {
       [userId, limit, offset],
     )
 
-    const persons = rows.map((r) => {
-      const p = new Person()
-      p.id = r.id
-      p.userId = r.userId
-      p.name = r.name
-      p.coverFaceId = r.coverFaceId
-      p.clusterLabel = r.clusterLabel
-      p.faceCount = Number(r.liveFaceCount ?? 0)
-      p.createdAt = r.createdAt
-      p.updatedAt = r.updatedAt
-      return p
-    })
+    const persons = rows.map((r) =>
+      this.toListItem({
+        id: r.id,
+        userId: r.userId,
+        name: r.name,
+        coverFaceId: r.coverFaceId,
+        clusterLabel: r.clusterLabel,
+        faceCount: Number(r.liveFaceCount ?? 0),
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      }),
+    )
 
     return {
-      items: persons.map((p) => this.toListItem(p)),
+      items: persons,
       total,
       limit,
       offset,
@@ -80,15 +80,7 @@ export class PersonsService {
   async getOne(userId: string, id: string): Promise<PersonDto> {
     const person = await this.personRepo.findOne({ where: { id, userId } })
     if (!person) throw new NotFoundException('Person not found')
-    const result = await this.faceRepo
-      .createQueryBuilder('f')
-      .innerJoin('assets', 'a', 'a.id = f."assetId"')
-      .select('COUNT(*)')
-      .where('f."personId" = :personId', { personId: id })
-      .andWhere('f."userId" = :userId', { userId })
-      .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
-      .getRawOne<{ count: string }>()
-    person.faceCount = Number(result?.count ?? 0)
+    person.faceCount = await countLiveFaces(this.faceRepo, id, userId)
     return this.toListItem(person)
   }
 
@@ -240,7 +232,16 @@ export class PersonsService {
     })
   }
 
-  private toListItem(person: Person): PersonDto {
+  private toListItem(person: {
+    id: string
+    userId: string
+    name: string | null
+    coverFaceId: string | null
+    clusterLabel: string | null
+    faceCount: number
+    createdAt: Date | string
+    updatedAt: Date | string
+  }): PersonDto {
     return {
       id: person.id,
       userId: person.userId,

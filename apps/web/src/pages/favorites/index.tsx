@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FaHeart, FaSpinner } from 'react-icons/fa6'
+import { FaHeart } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { GalleryItem } from '../../components/GalleryItem'
@@ -7,6 +7,7 @@ import { AssetViewer } from '../../components/AssetViewer/AssetViewer'
 import { AlbumPickerDialog } from '../../components/AlbumPickerDialog'
 import { useAssetGroups } from '../../hooks/useAssetGroups'
 import { useAssetNavigation } from '../../hooks/useAssetNavigation'
+import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
 
 function FavoritesContent() {
   const { groups, loading, error, refresh } = useAssetGroups({ favorite: true })
@@ -17,40 +18,21 @@ function FavoritesContent() {
   })
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <FaSpinner className="text-2xl text-primary animate-spin" />
-      </div>
-    )
+    return <LoadingState />
   }
 
   if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center py-32 gap-4">
-        <p className="text-red-500 text-sm">{error}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="text-primary text-sm font-medium hover:underline"
-        >
-          Retry
-        </button>
-      </div>
-    )
+    return <ErrorState message={error} onRetry={() => window.location.reload()} />
   }
 
   if (groups.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 px-4 text-center max-w-lg mx-auto">
-        <div className="mb-8 w-20 h-20 rounded-full bg-red-500/10 dark:bg-red-500/15 ring-1 ring-red-500/25 flex items-center justify-center">
-          <FaHeart className="text-4xl text-red-500 dark:text-red-400" />
-        </div>
-        <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 dark:text-white">
-          No favorites yet
-        </h1>
-        <p className="mt-4 text-slate-500 dark:text-slate-400 text-base sm:text-lg leading-relaxed max-w-md">
-          Photos you mark with a heart will appear here.
-        </p>
-      </div>
+      <EmptyState
+        icon={<FaHeart className="text-4xl text-red-500 dark:text-red-400" />}
+        circleClassName="bg-red-500/10 dark:bg-red-500/15 ring-1 ring-red-500/25"
+        title="No favorites yet"
+        body="Photos you mark with a heart will appear here."
+      />
     )
   }
 

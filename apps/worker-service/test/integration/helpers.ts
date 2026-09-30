@@ -2,7 +2,6 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Test } from '@nestjs/testing'
-import { ConfigModule } from '@nestjs/config'
 import type { INestApplicationContext } from '@nestjs/common'
 import type { Queue } from 'bullmq'
 import { LocalStorageService } from '@photox/shared-config'
@@ -43,7 +42,6 @@ export async function createTestApp(opts: CreateTestAppOptions = {}): Promise<Te
     const storage = new LocalStorageService()
     const fake = new FakeCoreClient(storage)
     const moduleRef = await Test.createTestingModule({
-      imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true })],
       providers: [
         BullMqService,
         { provide: LocalStorageService, useValue: storage },

@@ -1,7 +1,6 @@
 import { Module, OnModuleInit } from '@nestjs/common'
 import { JwtModule } from '@nestjs/jwt'
-import { loadAuthEnv } from '@photox/shared-auth'
-import { LocalStorageService } from '@photox/shared-config'
+import { loadAuthEnv, LocalStorageService } from '@photox/shared-config'
 import { BullMqService } from './bullmq.service'
 import { ThumbnailProcessor } from './thumbnail.processor'
 import { VideoProcessor } from './video.processor'
@@ -17,8 +16,8 @@ import { CoreClient } from '../core/core-client.service'
 
 @Module({
   imports: [
-    // ponytail: registerAsync (not register) — defers loadAuthEnv() until ConfigModule has
-    // loaded root .env; matches apps/core's auth/users modules
+    // ponytail: registerAsync (not register) — defers loadAuthEnv() until app.module's
+    // loadRootEnvFile() has loaded root .env; matches apps/core
     JwtModule.registerAsync({
       useFactory: () => ({ secret: loadAuthEnv().AUTH_TOKEN_SECRET }),
     }),

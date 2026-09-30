@@ -4,6 +4,11 @@ export function formatShortDate(d: Date): string {
   return SHORT.format(d)
 }
 
+/** "Mar 1, 2024" — the full date used by the asset viewer top bar. */
+export function formatDate(dateStr: string): string {
+  return DATED.format(new Date(dateStr))
+}
+
 function startOfDay(d: Date): Date {
   const x = new Date(d)
   x.setHours(0, 0, 0, 0)

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { FaArrowsRotate, FaCheck, FaSpinner, FaUsers, FaFaceSmile } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
+import { LoadingState } from '../../components/StateViews'
 import { FaceThumb } from '../../components/FaceThumb'
 import { listPersons, triggerCluster } from '../../api/persons'
 import type { PersonDto } from '@photox/shared-types'
@@ -73,9 +74,7 @@ export default function PeoplePage() {
           </div>
 
           {loading ? (
-            <div className="flex justify-center py-20">
-              <FaSpinner className="text-primary text-2xl animate-spin" />
-            </div>
+            <LoadingState className="flex justify-center py-20" />
           ) : persons.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <FaUsers className="text-4xl text-slate-500 mb-4" />

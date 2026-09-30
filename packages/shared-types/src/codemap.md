@@ -12,7 +12,7 @@ type-only except `FACE_EMBEDDING_DIM`; no validation logic lives here (validatio
 
 - Core unions: `Role = 'user' | 'admin'`, `AssetKind`, `MetadataStatus`, `TranscodeStatus`,
   `ThumbnailStatus`.
-- Auth/user: `User`, `RegisterRequest`, `LoginRequest`, `RefreshRequest`, `AuthResponse`.
+- Auth/user: `User`, `RegisterRequest`, `LoginRequest`, `RefreshRequest`, `JwtPayload`, `AuthResponse`.
 - Files: `FileRecord`, `FileSummary`, `FileListResponse`, `BatchFilesResponse`.
 - Assets: `Asset` (full metadata + pipeline state + optional `faces?: FaceDto[]`),
   `AssetListResponse`, `AssetThumbnail`, `AssetThumbnailListResponse`.
@@ -24,7 +24,7 @@ type-only except `FACE_EMBEDDING_DIM`; no validation logic lives here (validatio
   `RegisterFacesResponseDto`, `PersonDto`, `PersonListResponse`, `PersonAssetItem`,
   `PersonAssetsResponse`, `UpdatePersonRequest`, `ReassignFacesRequest`,
   `ReassignFacesResponse`.
-- `export const FACE_EMBEDDING_DIM = 512` — the only runtime value (moved here from
+- `export const FACE_EMBEDDING_DIM = 512` — the only runtime value (folded in from the deleted
   `data-access`); imported by the worker embedder/cluster and specs, enforced at the HTTP
   boundary by core's `DetectedFaceDto`.
 - Ends with `export * from './albums'` and `export * from './shares'`, so those names are
@@ -49,6 +49,6 @@ same response shapes.
 
 ## Integration
 
-Consumed by `apps/core`, `apps/web`, `apps/worker-service`, `packages/shared-auth`
-(`Role`), and the legacy pact consumer under `apps/web/test/pact/consumer/`. No dependencies
+Consumed by `apps/core`, `apps/web`, `apps/worker-service`, and the legacy pact consumer under
+`apps/web/test/pact/consumer/`. No dependencies
 of its own, so any layer may import it.

@@ -15,10 +15,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@photox/shared-auth": "workspace:*",
     "@photox/shared-types": "workspace:*",
     "axios": "^1.19.0",
-    "jwt-decode": "^4.0.0",
     "leaflet": "^1.9.4",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
@@ -29,7 +27,6 @@
   "devDependencies": {
     "@pact-foundation/pact": "^17.1.4",
     "@tailwindcss/vite": "^4.3.1",
-    "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@types/leaflet": "^1.9.21",
     "@types/react": "^18.3.0",

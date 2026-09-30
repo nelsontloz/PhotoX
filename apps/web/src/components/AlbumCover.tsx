@@ -15,7 +15,6 @@ export function AlbumCover({
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [cover, setCover] = useState<Asset | null>(null)
-  const started = useRef(false)
 
   useEffect(() => {
     const el = ref.current
@@ -24,8 +23,6 @@ export function AlbumCover({
       (entries) => {
         if (!entries.some((e) => e.isIntersecting)) return
         io.disconnect()
-        if (started.current) return
-        started.current = true
         listAlbumAssets(albumId, { limit: 1 })
           .then((res) => setCover(res.items[0] ?? null))
           .catch(() => setCover(null))

@@ -11,9 +11,6 @@ export class RefreshToken {
   @Column({ unique: true })
   tokenHash!: string
 
-  @Column({ type: 'enum', enum: ['refresh'] })
-  purpose!: 'refresh'
-
   @Column({ type: 'timestamptz' })
   expiresAt!: Date
 

@@ -8,8 +8,7 @@ import {
 import { JwtService } from '@nestjs/jwt'
 import type { Request } from 'express'
 import { loadEnv } from '@photox/shared-config'
-import { type JwtPayload } from '@photox/shared-auth'
-import type { Role } from '@photox/shared-types'
+import type { JwtPayload, Role } from '@photox/shared-types'
 import { isAdminRoute, isOpenRoute } from './open-routes'
 
 declare global {

@@ -16,44 +16,6 @@ export interface UploadItem {
   localThumbUrl?: string
 }
 
-interface PersistedItem {
-  id: string
-  fileName: string
-  sizeBytes: number
-  kind: 'photo' | 'video'
-  progress: number
-  status: UploadStatus
-  assetId?: string
-  fileId?: string
-  error?: string
-}
-
-function partializeItem(item: UploadItem): PersistedItem {
-  if (item.status === 'uploading' || item.status === 'queued') {
-    return {
-      id: item.id,
-      fileName: item.fileName,
-      sizeBytes: item.sizeBytes,
-      kind: item.kind,
-      progress: 0,
-      status: 'error',
-      error: 'Interrupted by reload — please retry',
-    }
-  }
-  const out: PersistedItem = {
-    id: item.id,
-    fileName: item.fileName,
-    sizeBytes: item.sizeBytes,
-    kind: item.kind,
-    progress: item.progress,
-    status: item.status,
-  }
-  if (item.assetId !== undefined) out.assetId = item.assetId
-  if (item.fileId !== undefined) out.fileId = item.fileId
-  if (item.error !== undefined) out.error = item.error
-  return out
-}
-
 interface UploadState {
   items: UploadItem[]
   dismissed: boolean
@@ -115,8 +77,20 @@ export const useUploadStore = create<UploadState>()(
     {
       name: 'photox.upload-queue.v1',
       version: 1,
+      // localThumbUrl is a live object URL: drop it (JSON.stringify skips undefined) so a reload
+      // never rehydrates a dead blob; in-flight items become retryable errors.
       partialize: (state) => ({
-        items: state.items.map(partializeItem),
+        items: state.items.map((item) =>
+          item.status === 'uploading' || item.status === 'queued'
+            ? {
+                ...item,
+                progress: 0,
+                status: 'error' as const,
+                error: 'Interrupted by reload — please retry',
+                localThumbUrl: undefined,
+              }
+            : { ...item, localThumbUrl: undefined },
+        ),
         dismissed: state.dismissed,
       }),
     },

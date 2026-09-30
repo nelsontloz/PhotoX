@@ -2,11 +2,27 @@ import { existsSync } from 'fs'
 import { dirname, isAbsolute, join, resolve } from 'path'
 import { z } from 'zod'
 
+/** `15m`/`2h`/`30d` -> milliseconds; unparseable values fall back to 15 minutes. */
+function parseDurationMs(duration: string): number {
+  const match = /^(\d+)([mhd])$/.exec(duration)
+  if (!match) return 15 * 60 * 1000
+
+  const value = parseInt(match[1]!, 10)
+  switch (match[2]) {
+    case 'm':
+      return value * 60 * 1000
+    case 'h':
+      return value * 60 * 60 * 1000
+    case 'd':
+      return value * 24 * 60 * 60 * 1000
+    default:
+      return 15 * 60 * 1000
+  }
+}
+
 const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   API_PORT: z.coerce.number().default(3000),
   CORE_URL: z.string().default('http://localhost:3000'),
-  WORKER_SERVICE_PORT: z.coerce.number().default(3004),
   POSTGRES_HOST: z.string().default('localhost'),
   POSTGRES_PORT: z.coerce.number().default(5432),
   POSTGRES_USER: z.string().default('photox'),
@@ -16,7 +32,8 @@ const envSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   STORAGE_DIR: z.string().default('./data/storage'),
   AUTH_ACCESS_TTL: z.string().default('30m'),
-  AUTH_REFRESH_TTL: z.string().default('30d'),
+  // raw env value is a duration string; consumers get milliseconds, parsed exactly once
+  AUTH_REFRESH_TTL: z.string().default('30d').transform(parseDurationMs),
   AUTH_CLOCK_TOLERANCE_SEC: z.coerce.number().default(60),
 })
 
@@ -29,6 +46,18 @@ function findWorkspaceRoot(start: string): string {
     const parent = dirname(dir)
     if (parent === dir) return start
     dir = parent
+  }
+}
+
+/**
+ * Loads `.env` from the workspace root (or cwd) into `process.env`, replacing the envFilePath
+ * `['../../.env', '.env']` that @nestjs/config used to provide. Existing process env wins —
+ * same precedence as node --env-file — so compose/CI env and tests are untouched.
+ */
+export function loadRootEnvFile(): void {
+  const root = findWorkspaceRoot(process.cwd())
+  for (const candidate of [join(root, '.env'), join(process.cwd(), '.env')]) {
+    if (existsSync(candidate)) process.loadEnvFile(candidate)
   }
 }
 
@@ -48,4 +77,21 @@ export function loadEnv(): Env {
       ? storageDir
       : resolve(findWorkspaceRoot(process.cwd()), storageDir),
   }
+}
+
+const authEnvSchema = z.object({
+  AUTH_TOKEN_SECRET: z.string().min(32, 'AUTH_TOKEN_SECRET must be at least 32 characters'),
+})
+
+export type AuthEnv = z.infer<typeof authEnvSchema>
+
+export function loadAuthEnv(): AuthEnv {
+  const parsed = authEnvSchema.safeParse(process.env)
+
+  if (!parsed.success) {
+    const errors = parsed.error.flatten().fieldErrors
+    throw new Error(`Invalid auth environment: ${JSON.stringify(errors)}`)
+  }
+
+  return parsed.data
 }

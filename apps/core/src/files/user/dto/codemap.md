@@ -6,11 +6,11 @@ Validation shapes for the user file endpoints: the multipart upload body, the wo
 
 ## Design
 
-- `UploadFileBodyDto`: optional `userId?` (UUID fallback), optional `kind` (`'photo' | 'video'`), optional `title` (≤255), `description` (≤2000), `takenAt` (ISO date string). The actual file part is handled by multer, not by this DTO — only the multipart form fields are validated.
+- `UploadFileBodyDto`: optional `kind` (`'photo' | 'video'`), optional `title` (≤255), `description` (≤2000), `takenAt` (ISO date string). The actual file part is handled by multer, not by this DTO — only the multipart form fields are validated.
 - `RegisterFileBodyDto` (worker-only `POST /register`): `id` UUID, `kind` (`original | thumbnail | transcode`), `ext` (1–8 lowercase alphanumerics), `checksumSha256` (64 hex), `originalName`, `mimeType`, `sizeBytes` (≥0), optional `assetId` UUID. Deliberately no `storageKey` — core recomputes it to stop cross-user path injection.
-- `ListFilesQueryDto`: optional `userId?` (UUID), `limit?` (`@Type(() => Number)`, 1..100, default 20 in the service), `offset?` (≥0), `mimeType?` (string, used as a `LIKE 'prefix%'` filter).
+- `ListFilesQueryDto`: `limit?` (`@Type(() => Number)`, 1..100, default 20 in the service), `offset?` (≥0), `mimeType?` (string, used as a `LIKE 'prefix%'` filter).
 - `FileListResponseDto implements FileListResponse` (from `@photox/shared-types`): `items`, `total`, `limit`, `offset` — exists for Swagger typing; the service builds the shape inline with its own item projection (id, userId, originalName, mimeType, sizeBytes, createdAt).
-- No DTO exists for stream/download/delete parameters (raw path params + optional `userId` query string read manually).
+- No DTO exists for stream/download/delete parameters (raw path params only).
 - `fileId` is a path parameter on every item route; the only validated request payload for uploads is the multipart form body, never the file part itself (multer enforces the 4 GiB cap).
 
 ## Flow
@@ -24,4 +24,4 @@ Validation shapes for the user file endpoints: the multipart upload body, the wo
 
 - Consumed by `UserFilesController` (`api/v1/files`).
 - `UploadFileBodyDto` fields are forwarded into `UserFilesService.upload` as `UploadMeta` and then into `AssetsService.create`.
-- `FileListResponse` wire type comes from `@photox/shared-types`; the entity comes from `@photox/data-access`.
+- `FileListResponse` wire type comes from `@photox/shared-types`; the entity comes from `../../../../database/entities`.

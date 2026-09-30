@@ -12,7 +12,7 @@ describe('FacesQueryController identity resolution', () => {
     const faces = { listForUser } as unknown as FacesService
     const controller = new FacesQueryController(faces)
     // ponytail: identity comes from the verified JWT — handler must scope by it, never undefined
-    await controller.list(undefined, undefined, undefined, authedReq())
+    await controller.list(undefined, undefined, authedReq())
     expect(listForUser).toHaveBeenCalledWith('u1', false, false)
   })
 

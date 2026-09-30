@@ -91,24 +91,21 @@ export class FaceProcessor {
 
       this.logger.log(`Faces complete: asset=${assetId}, count=${faces.length}`)
 
-      try {
-        await this.bullMq.getQueue('process-faces-cluster').add(
-          'cluster',
-          { userId, reason: 'face-detected' },
-          {
-            // ponytail: unique jobId per asset — fixed `cluster-<userId>` deduped on completed
-            // jobs in Redis, so only the first-ever upload clustered
-            jobId: `cluster-${userId}-${assetId}-${randomUUID()}`,
-            removeOnComplete: true,
-            removeOnFail: true,
-            attempts: 3,
-            backoff: { type: 'exponential' },
-          },
-        )
-      } catch (clusterErr) {
-        const clusterMsg = clusterErr instanceof Error ? clusterErr.message : String(clusterErr)
-        this.logger.warn(`Failed to enqueue cluster job for user=${userId}: ${clusterMsg}`)
-      }
+      // enqueue() logs-and-swallows add failures, so a Redis hiccup here cannot fail the face job
+      await this.bullMq.enqueue(
+        'process-faces-cluster',
+        'cluster',
+        { userId, reason: 'face-detected' },
+        {
+          // ponytail: unique jobId per asset — fixed `cluster-<userId>` deduped on completed
+          // jobs in Redis, so only the first-ever upload clustered
+          jobId: `cluster-${userId}-${assetId}-${randomUUID()}`,
+          removeOnComplete: true,
+          removeOnFail: true,
+          attempts: 3,
+          backoff: { type: 'exponential' },
+        },
+      )
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       // ponytail: missing onnx weights is provisioning, not a job bug — warn + no retry

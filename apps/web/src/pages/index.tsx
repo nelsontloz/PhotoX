@@ -1,15 +1,10 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { Asset } from '@photox/shared-types'
-import {
-  FaFolderPlus,
-  FaImage,
-  FaMountain,
-  FaSpinner,
-  FaTrash,
-  FaWandMagicSparkles,
-} from 'react-icons/fa6'
+import { FaFolderPlus, FaImage, FaMountain, FaTrash, FaWandMagicSparkles } from 'react-icons/fa6'
 import { RequireAuth } from '../components/RequireAuth'
 import { AppShell } from '../components/AppShell'
+import { ErrorState, LoadingState } from '../components/StateViews'
+import { AssetViewer } from '../components/AssetViewer/AssetViewer'
 import { useTimelineMonths } from '../hooks/useTimelineMonths'
 import { useAssetNavigation } from '../hooks/useAssetNavigation'
 import { useTimelineLayout } from '../hooks/useTimelineLayout'
@@ -19,23 +14,6 @@ import { UploadButton } from '../components/UploadButton'
 import { getAsset, trashAssets } from '../api/assets'
 import { effectiveAssetDate, monthKeyOf } from '../lib/dateFormat'
 import { useAppStore } from '../store/app-store'
-
-function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(() =>
-    typeof window !== 'undefined' ? window.matchMedia(query).matches : false,
-  )
-  useEffect(() => {
-    const mql = window.matchMedia(query)
-    const onChange = () => setMatches(mql.matches)
-    mql.addEventListener('change', onChange)
-    return () => mql.removeEventListener('change', onChange)
-  }, [query])
-  return matches
-}
-
-const AssetViewer = lazy(() =>
-  import('../components/AssetViewer/AssetViewer').then((m) => ({ default: m.AssetViewer })),
-)
 
 function TimelineContent() {
   // Structure (buckets, heights, order) comes from the layout endpoint; months fill it in.
@@ -96,7 +74,6 @@ function TimelineContent() {
   })
   const [pickerOpen, setPickerOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const isMobile = useMediaQuery('(pointer: coarse)')
 
   const toggle = (id: string) => {
     setSelectedIds((prev) => {
@@ -135,24 +112,9 @@ function TimelineContent() {
   // Gate: layout drives structure. ponytail: a layout failure (first load OR refresh) lands on
   // the error state — no partial-track fallback, since every height depends on it; Reload retries.
   if (timeline.error)
-    return (
-      <div className="flex flex-col items-center justify-center py-32 gap-4">
-        <p className="text-red-500 text-sm">{timeline.error}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="text-primary text-sm font-medium hover:underline"
-        >
-          Retry
-        </button>
-      </div>
-    )
+    return <ErrorState message={timeline.error} onRetry={() => window.location.reload()} />
 
-  if (timeline.loading)
-    return (
-      <div className="flex items-center justify-center py-32">
-        <FaSpinner className="text-2xl text-primary animate-spin" />
-      </div>
-    )
+  if (timeline.loading) return <LoadingState />
 
   if (timeline.layout.buckets.length === 0)
     return (
@@ -194,36 +156,34 @@ function TimelineContent() {
         onSelect={onClickAsset}
         selectedIds={selectedIds}
         onToggleSelect={toggle}
-        onLongPress={isMobile ? onLongPress : undefined}
+        onLongPress={onLongPress}
         showCheckbox
       />
       {nav.selected && (
-        <Suspense fallback={null}>
-          <AssetViewer
-            asset={nav.selected}
-            onClose={nav.close}
-            onPrev={nav.goPrev}
-            onNext={nav.goNext}
-            hasPrev={nav.hasPrev}
-            hasNext={nav.hasNext}
-            onTrash={() => {
-              void nav.trash()
-            }}
-            onToggleFavorite={(nextValue) => {
-              const cur = nav.selected
-              if (cur) void nav.toggleFavorite(cur.id, nextValue)
-            }}
-            onAddToAlbum={() => {
-              const cur = nav.selected
-              if (cur) {
-                setSelectedIds((prev) => new Set(prev).add(cur.id))
-                setPickerOpen(true)
-              }
-            }}
-            siblingAssets={loadedAssets}
-            onSelectSibling={(asset) => nav.open(asset)}
-          />
-        </Suspense>
+        <AssetViewer
+          asset={nav.selected}
+          onClose={nav.close}
+          onPrev={nav.goPrev}
+          onNext={nav.goNext}
+          hasPrev={nav.hasPrev}
+          hasNext={nav.hasNext}
+          onTrash={() => {
+            void nav.trash()
+          }}
+          onToggleFavorite={(nextValue) => {
+            const cur = nav.selected
+            if (cur) void nav.toggleFavorite(cur.id, nextValue)
+          }}
+          onAddToAlbum={() => {
+            const cur = nav.selected
+            if (cur) {
+              setSelectedIds((prev) => new Set(prev).add(cur.id))
+              setPickerOpen(true)
+            }
+          }}
+          siblingAssets={loadedAssets}
+          onSelectSibling={(asset) => nav.open(asset)}
+        />
       )}
       <AlbumPickerDialog
         open={selectedIds.size > 0 && pickerOpen}

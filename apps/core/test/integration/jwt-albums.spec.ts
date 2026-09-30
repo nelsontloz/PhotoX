@@ -26,21 +26,20 @@ describe('albums JWT identity', () => {
     await resetDb(t)
   })
 
-  it('creates without userId and ignores body userId', async () => {
+  it('creates an album for the JWT user', async () => {
     const a = await seedUser(t)
-    const b = await seedUser(t)
     const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
     const res = await request(apiServer(t))
       .post('/api/v1/albums')
       .set(t.authHeader(tokenA))
-      .send({ name: 'Trip', userId: b.id })
+      .send({ name: 'Trip' })
     expect(res.status).toBe(201)
     const body = res.body as unknown as { userId: string; name: string }
     expect(body.userId).toBe(a.id)
     expect(body.name).toBe('Trip')
   })
 
-  it('lists without userId and ignores query userId', async () => {
+  it('lists only the JWT user albums', async () => {
     const a = await seedUser(t)
     const b = await seedUser(t)
     const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
@@ -53,10 +52,7 @@ describe('albums JWT identity', () => {
       .post('/api/v1/albums')
       .set(t.authHeader(tokenB))
       .send({ name: 'Theirs' })
-    const res = await request(apiServer(t))
-      .get('/api/v1/albums')
-      .query({ userId: b.id })
-      .set(t.authHeader(tokenA))
+    const res = await request(apiServer(t)).get('/api/v1/albums').set(t.authHeader(tokenA))
     expect(res.status).toBe(200)
     const body = res.body as unknown as { items: { userId: string }[]; total: number }
     expect(body.total).toBe(1)

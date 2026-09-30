@@ -1,12 +1,10 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common'
+import { Controller, Get, Query } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { AdminUserListResponse } from '@photox/shared-types'
-import { AdminGuard } from '../../auth/admin.guard'
 import { AdminService } from './admin.service'
 import { ListAdminUsersQueryDto } from './dto/list-admin-users.query.dto'
 
 @ApiTags('admin')
-@UseGuards(AdminGuard)
 @Controller('api/v1/admin/users')
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
