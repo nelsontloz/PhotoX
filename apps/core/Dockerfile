@@ -6,7 +6,8 @@ COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/shared-config/package.json ./packages/shared-config/
 COPY apps/core/package.json ./apps/core/
-RUN pnpm install --frozen-lockfile
+# face model is provisioned into the runtime storage volume, not baked into the image
+RUN FACE_MODEL_SKIP=1 pnpm install --frozen-lockfile
 
 # -- build --
 FROM deps AS build

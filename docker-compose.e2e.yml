@@ -1,0 +1,15 @@
+services:
+  core:
+    image: photox-e2e-core:latest
+  postgres:
+    ports: !override []
+  redis:
+    ports: !override []
+  web:
+    image: photox-e2e-web:latest
+    ports: !override
+      - '127.0.0.1:${E2E_WEB_PORT:-5273}:5173'
+  worker-service:
+    image: photox-e2e-worker-service:latest
+    volumes:
+      - ./data/storage/models:/data/storage/models:ro
