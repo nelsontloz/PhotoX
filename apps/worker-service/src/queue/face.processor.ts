@@ -11,6 +11,8 @@ import { FaceDetectorService } from './face.detector'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
 
+export const CLUSTER_DEBOUNCE_MS = 30_000
+
 @Injectable()
 export class FaceProcessor {
   private readonly logger = new Logger(FaceProcessor.name)
@@ -92,20 +94,25 @@ export class FaceProcessor {
       this.logger.log(`Faces complete: asset=${assetId}, count=${faces.length}`)
 
       // enqueue() logs-and-swallows add failures, so a Redis hiccup here cannot fail the face job
-      await this.bullMq.enqueue(
-        'process-faces-cluster',
-        'cluster',
-        { userId, reason: 'face-detected' },
-        {
-          // ponytail: unique jobId per asset — fixed `cluster-<userId>` deduped on completed
-          // jobs in Redis, so only the first-ever upload clustered
-          jobId: `cluster-${userId}-${assetId}-${randomUUID()}`,
-          removeOnComplete: true,
-          removeOnFail: true,
-          attempts: 3,
-          backoff: { type: 'exponential' },
-        },
-      )
+      if (faces.length > 0) {
+        await this.bullMq.enqueue(
+          'process-faces-cluster',
+          'cluster',
+          { userId, reason: 'face-detected' },
+          {
+            // ponytail: fixed jobId + delay debounces a detection burst into one trailing run
+            // (BullMQ ignores same jobId while waiting/active). Ceiling: faces uploaded during an
+            // active run are picked up on the next upload or manual trigger — add a trailing re-run
+            // check if that liveness matters
+            jobId: `cluster-${userId}`,
+            delay: CLUSTER_DEBOUNCE_MS,
+            removeOnComplete: true,
+            removeOnFail: true,
+            attempts: 3,
+            backoff: { type: 'exponential' },
+          },
+        )
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       // ponytail: missing onnx weights is provisioning, not a job bug — warn + no retry

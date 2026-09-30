@@ -47,7 +47,7 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     data: Record<string, unknown>,
     opts: Pick<
       JobsOptions,
-      'jobId' | 'attempts' | 'backoff' | 'removeOnFail' | 'removeOnComplete'
+      'jobId' | 'attempts' | 'backoff' | 'removeOnFail' | 'removeOnComplete' | 'delay'
     > = {},
   ): Promise<void> {
     try {
