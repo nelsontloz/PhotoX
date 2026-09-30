@@ -21,5 +21,8 @@ module.exports = {
     'vite.config.ts',
     'apps/web/test/pact/**',
     'apps/web/test/browser/**',
+    'e2e/.features-gen/**',
+    'e2e/playwright-report/**',
+    'e2e/test-results/**',
   ],
 }

@@ -30,6 +30,17 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages/shared-types ./packages/shared-types
 COPY --from=build /app/packages/shared-config ./packages/shared-config
 COPY --from=build /app/apps/worker-service ./apps/worker-service
+# ffprobe-static has no linux/arm64 binary and ffmpeg-static's lacks libsvtav1 — use system ffmpeg
+RUN if [ "$(uname -m)" = "aarch64" ]; then \
+      apt-get update \
+      && apt-get install -y --no-install-recommends ffmpeg \
+      && rm -rf /var/lib/apt/lists/* \
+      && ffprobe="$(cd /app/apps/worker-service && node -p 'require("ffprobe-static").path')" \
+      && mkdir -p "$(dirname "$ffprobe")" \
+      && ln -sf /usr/bin/ffprobe "$ffprobe" \
+      && ffmpeg_bin="$(cd /app/apps/worker-service && node -p 'require("ffmpeg-static")')" \
+      && ln -sf /usr/bin/ffmpeg "$ffmpeg_bin"; \
+    fi
 ENV NODE_ENV=production
 EXPOSE 3004
 CMD ["node", "apps/worker-service/dist/main.js"]

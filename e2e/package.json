@@ -1,0 +1,17 @@
+{
+  "name": "@photox/e2e",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e": "bash run.sh",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.0.0",
+    "playwright-bdd": "^9.2.1",
+    "typescript": "^5.7.0"
+  }
+}
