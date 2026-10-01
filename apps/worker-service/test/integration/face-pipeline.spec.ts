@@ -234,6 +234,8 @@ describe('Face pipeline (integration)', () => {
 
     expect(testApp.fake.callsOf('getFacesForCluster')).toHaveLength(1)
     expect(testApp.fake.callsOf('applyClusters')).toHaveLength(0)
+    // a no-op run still prunes stale empty clusters
+    expect(testApp.fake.callsOf('pruneEmptyPersons').map((c) => c.args[0])).toEqual([userId])
   })
 
   it('leaves manually assigned faces untouched and only plans unassigned ones', async () => {

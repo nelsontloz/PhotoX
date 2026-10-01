@@ -275,6 +275,11 @@ export class FakeCoreClient {
     return Promise.resolve({ created: payload.creates.length, assigned: new Set(faceIds).size })
   }
 
+  pruneEmptyPersons(userId: string): Promise<{ deleted: number }> {
+    this.calls.push({ method: 'pruneEmptyPersons', args: [userId] })
+    return Promise.resolve({ deleted: 0 })
+  }
+
   adminDeleteFile(fileId: string): Promise<void> {
     this.calls.push({ method: 'adminDeleteFile', args: [fileId] })
     if (this.adminDeleteFileFailures > 0) {

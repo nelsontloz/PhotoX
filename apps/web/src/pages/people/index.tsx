@@ -5,7 +5,7 @@ import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { LoadingState } from '../../components/StateViews'
 import { FaceThumb } from '../../components/FaceThumb'
-import { listPersons, triggerCluster } from '../../api/persons'
+import { listAllPersons, triggerCluster } from '../../api/persons'
 import type { PersonDto } from '@photox/shared-types'
 
 export default function PeoplePage() {
@@ -15,8 +15,8 @@ export default function PeoplePage() {
   const [clusterQueued, setClusterQueued] = useState(false)
 
   useEffect(() => {
-    listPersons()
-      .then((res) => setPersons(res.items))
+    listAllPersons()
+      .then(setPersons)
       .catch(() => {
         /* ponytail: silent fail */
       })
@@ -35,8 +35,8 @@ export default function PeoplePage() {
       let elapsed = 0
       const interval = window.setInterval(() => {
         elapsed += 3000
-        listPersons()
-          .then((res) => setPersons(res.items))
+        listAllPersons()
+          .then(setPersons)
           .catch(() => undefined)
         if (elapsed >= 30000) window.clearInterval(interval)
       }, 3000)

@@ -138,6 +138,7 @@ describe('persons JWT identity', () => {
   it.each([
     ['post', '/api/v1/persons/cluster'],
     ['post', '/api/v1/persons/apply-clusters', { creates: [], attaches: [] }],
+    ['post', '/api/v1/persons/prune-empty'],
     ['get', `/api/v1/persons/${randomUUID()}`],
     ['patch', `/api/v1/persons/${randomUUID()}`, { name: 'Nope' }],
     ['get', `/api/v1/persons/${randomUUID()}/assets`],
@@ -282,6 +283,40 @@ describe('persons JWT identity', () => {
     expect((await t.faceRepo.findOneByOrFail({ id: from.face.id })).personId).toBe(to.id)
     expect((await t.personRepo.findOneByOrFail({ id: from.person.id })).faceCount).toBe(0)
     expect((await t.personRepo.findOneByOrFail({ id: to.id })).faceCount).toBe(1)
+  })
+
+  it('prunes persons with no live faces and unassigns faces left behind in trash', async () => {
+    const user = await seedUser(t)
+    const other = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+
+    // never had a face
+    await t.personRepo.save(
+      t.personRepo.create({ userId: user.id, name: null, clusterLabel: `c-${randomUUID()}` }),
+    )
+    // only face sits in a trashed asset
+    const trashedOnly = await seedPersonWithFace(user.id)
+    await t.assetRepo.update({ id: trashedOnly.asset.id }, { isTrashed: true })
+    // still has a live face
+    const kept = await seedPersonWithFace(user.id)
+    // another user's persons are untouched
+    const otherPerson = await seedPersonWithFace(other.id)
+
+    const res = await request(apiServer(t))
+      .post('/api/v1/persons/prune-empty')
+      .set(t.authHeader(token))
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ deleted: 2 })
+
+    const remaining = await t.personRepo.find()
+    expect(new Set(remaining.map((p) => p.id))).toEqual(
+      new Set([kept.person.id, otherPerson.person.id]),
+    )
+    expect((await t.faceRepo.findOneByOrFail({ id: trashedOnly.face.id })).personId).toBeNull()
+    expect((await t.faceRepo.findOneByOrFail({ id: kept.face.id })).personId).toBe(kept.person.id)
+    expect((await t.faceRepo.findOneByOrFail({ id: otherPerson.face.id })).personId).toBe(
+      otherPerson.person.id,
+    )
   })
 
   it('rejects missing or garbage cluster payloads with 400 and accepts empty arrays', async () => {

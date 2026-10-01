@@ -138,6 +138,10 @@ export class FaceClusterService {
     const { userId, reason } = parseJobData(clusterJobSchema, job.data, 'process-faces-cluster')
     this.logger.log(`Clustering faces: user=${userId}, reason=${reason ?? 'unknown'}`)
     await this.cluster(userId)
+    // ponytail: runs even when cluster() skipped (no faces/unassigned faces) — the point is stale
+    // clusters whose last face left, not the plan
+    const { deleted } = await this.core.pruneEmptyPersons(userId)
+    if (deleted > 0) this.logger.log(`Pruned ${deleted} empty persons for user=${userId}`)
     this.logger.log(`Clustering complete: user=${userId}`)
   }
 

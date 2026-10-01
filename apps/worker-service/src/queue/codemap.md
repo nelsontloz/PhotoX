@@ -26,14 +26,14 @@ Reads bytes from local disk via `LocalStorageService`; every DB read/write goes 
   (retried); network/429/5xx retried in-process 3× (1/2/4s) then thrown to BullMQ. Default request
   timeout 30s; the orphan-cleanup call overrides 120s. HTTP methods: `getFile`, `getAsset`,
   `patchMetadata`, `registerFile`, `registerThumbnail`, `registerFaces`, `deleteAssetFaces`,
-  `getFacesForCluster`, `getAssetsByIds` (chunks of 100 ids), `applyClusters`, `adminDeleteFile`,
-  `adminRunOrphanCleanup`.
+  `getFacesForCluster`, `getAssetsByIds` (chunks of 100 ids), `applyClusters`, `pruneEmptyPersons`,
+  `adminDeleteFile`, `adminRunOrphanCleanup`.
 - Per-processor HTTP mapping:
   `process-thumbnail` → `getFile`, `getAsset`, `registerFile` (thumbnail), `registerThumbnail`,
   `patchMetadata`; `process-video` → `getFile`, `getAsset`, `registerFile` (transcode),
   `patchMetadata`; `process-metadata` → `getFile`, `getAsset`, `patchMetadata`;
   `process-faces` → `getFile`, `getAsset`, `deleteAssetFaces`, `registerFaces`, `patchMetadata`;
-  `process-faces-cluster` → `getFacesForCluster`, `getAssetsByIds`, `applyClusters`;
+  `process-faces-cluster` → `getFacesForCluster`, `getAssetsByIds`, `applyClusters`, `pruneEmptyPersons`;
   `cleanup-asset` → `adminDeleteFile`; `cleanup-orphans` → `adminRunOrphanCleanup`.
 - Payloads: thumbnail `{ assetId, fileId, size, userId }`; video `{ assetId, fileId, userId }`; metadata
   `{ assetId, fileId, userId, kind: 'photo' | 'video' }`; faces `{ assetId, fileId, userId,
@@ -104,7 +104,8 @@ detector?: 'human' | 'scrfd', reason?: 'initial' | 're-embed' }`; cluster `{ use
   skipped when empty): core creates persons, assigns `personId`, sets covers and refreshes `faceCount`
   transactionally — atomic, so a re-run re-derives the plan and sees no unassigned faces. A later cluster
   matching an in-run pending create merges into that create (E3 cannot reference a create id; final DB
-  state identical). Legacy-dim unassigned faces: assets fetched via `GET /api/v1/assets?ids=...` (chunks
+  state identical). After every run (even a no-op one) it calls `POST /api/v1/persons/prune-empty` to
+  delete persons with no live faces. Legacy-dim unassigned faces: assets fetched via `GET /api/v1/assets?ids=...` (chunks
   ≤ `LEGACY_REEMBED_PER_RUN = 100`) and re-enqueued as `process-faces` re-embeds.
 - `cleanup-asset` (concurrency 5): thin proxy — validates `{ fileId }` then calls admin
   `DELETE /api/v1/admin/files/:fileId` (deletes blob + row, 204 even when missing, so idempotent).

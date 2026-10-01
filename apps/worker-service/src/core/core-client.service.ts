@@ -193,6 +193,12 @@ export class CoreClient {
     return this.request('POST', '/api/v1/persons/apply-clusters', { sub: userId, body: payload })
   }
 
+  // ponytail: called after every cluster run (even when the plan was empty) — deletes persons whose
+  // last live face left and unassigns any faces left behind in trash
+  async pruneEmptyPersons(userId: string): Promise<{ deleted: number }> {
+    return this.request('POST', '/api/v1/persons/prune-empty', { sub: userId })
+  }
+
   async adminDeleteFile(fileId: string): Promise<void> {
     await this.request('DELETE', `/api/v1/admin/files/${fileId}`, {
       sub: 'worker-service',

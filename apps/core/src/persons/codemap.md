@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-Named people built from face clusters. `PersonsModule` owns the `persons` table CRUD, the manual cluster trigger, the worker cluster-plan apply endpoint, person↔face assignment counts, cover selection, batch reassignment, and the per-person asset rollup. Routes: `api/v1/persons`.
+Named people built from face clusters. `PersonsModule` owns the `persons` table CRUD, the manual cluster trigger, the worker cluster-plan apply endpoint, post-cluster pruning of empty persons, person↔face assignment counts, cover selection, batch reassignment, and the per-person asset rollup. Routes: `api/v1/persons`.
 
 ## Design
 
@@ -12,13 +12,14 @@ Named people built from face clusters. `PersonsModule` owns the `persons` table 
 - `create(userId, clusterLabel)` is intentionally minimal (id + label); the worker's cluster plan normally creates persons itself via `applyClusters`. The controller's summary says "Create a person from a face cluster".
 - `applyClusters(userId, { creates, attaches })` (E3, `POST /apply-clusters`) is the worker's cluster sink: one transaction validates every face/person belongs to the user (404 otherwise) and each cover belongs to its item's `faceIds` (400), creates persons (`name: null`, random `cluster-<uuid>` labels provided by the worker), assigns `personId`, sets covers, and refreshes `faceCount` for every touched person via `faces/face-count.ts`. Response `{ created, assigned }` (`assigned` = distinct face ids); >5000 faces → 400. Atomic, so a retried plan re-derived from fresh state is a no-op.
 - `setCover` validates the person exists, the face exists for that user, and `face.personId === id`, else `ForbiddenException`; it writes `coverFaceId`.
+- `pruneEmpty(userId)` (`POST /prune-empty`, called by the worker after every cluster run) deletes the user's persons with no live faces (raw `NOT EXISTS` over `faces`→non-trashed `assets`, same rule as `countLiveFaces`), and first sets `personId: null` on their leftover face rows (e.g. photos currently in trash) so a restore never dangles at a deleted person. One transaction, returns `{ deleted }`.
 - `reassignFaces(userId, { toPersonId|null, faceIds })` loads the user's faces, sets `personId`, saves in bulk, then recomputes `faceCount` for every affected person via the shared `refreshPersonFaceCount` helper; returns `{ moved }`. No `fromPersonId` — the list of face ids is authoritative.
 - `getAssetsForPerson` produces one row per asset containing the person via `GROUP BY f."assetId"` with `MIN(f.id)` as a representative `faceId`, `COUNT(*)` faces in that asset, `MAX(createdAt)` as `lastSeen`; ordered `lastSeen DESC`, paginated; `total` is `COUNT(DISTINCT assetId)` over non-trashed assets.
 - DTO → response mapping lives in `toListItem`, which builds `coverFaceUrl = /api/v1/faces/<coverFaceId>/thumb?userId=<userId>` (or null).
 
 ## Flow
 
-- Cluster: worker `process-faces-cluster` computes DBSCAN in memory, then calls `POST api/v1/persons/apply-clusters` once; core creates/updates `Person` rows, assigns `face.personId`, sets `coverFaceId`, and refreshes `faceCount` in the same transaction. `POST api/v1/persons/cluster` (202) manually enqueues the same job with a unique `jobId` `cluster-<userId>-manual-<timestamp>` so repeated clicks are not deduped.
+- Cluster: worker `process-faces-cluster` computes DBSCAN in memory, then calls `POST api/v1/persons/apply-clusters` once; core creates/updates `Person` rows, assigns `face.personId`, sets `coverFaceId`, and refreshes `faceCount` in the same transaction. The worker then always calls `POST api/v1/persons/prune-empty` (even when it skipped the apply) so clusters whose last live face left disappear. `POST api/v1/persons/cluster` (202) manually enqueues the same job with a unique `jobId` `cluster-<userId>-manual-<timestamp>` so repeated clicks are not deduped.
 - Browse: `GET api/v1/persons?limit&offset` → raw SQL with live counts; `GET api/v1/persons/:id`; `GET api/v1/persons/:id/assets` → asset rollup with a face id for overlay rendering.
 - Edit: `PATCH api/v1/persons/:id` (name), `PATCH api/v1/persons/:id/cover`, `POST api/v1/persons/:id/reassign`.
 - Face-side edits (`PATCH api/v1/faces/:id/person`) recompute counts in `FacesService`, not here; both paths leave `Person.faceCount` consistent for non-trashed assets.
