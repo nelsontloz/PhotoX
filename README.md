@@ -27,7 +27,7 @@ pnpm dev
 open http://localhost:5173
 ```
 
-To run the full stack in containers instead: `docker compose up -d` (only `web` publishes a port).
+Infrastructure only: `docker-compose.yml` runs `postgres` + `redis`. The e2e stack (`docker-compose.e2e.yml`, used by `pnpm test:e2e`) is self-contained and additionally builds/runs `core`, `worker-service` and `web` in containers.
 
 ## Development
 

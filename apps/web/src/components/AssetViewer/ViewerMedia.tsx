@@ -3,6 +3,7 @@ import type { Asset, FaceDto } from '@photox/shared-types'
 import { VideoPlayer } from '../VideoPlayer'
 import { FaceOverlay } from './FaceOverlay'
 import { ViewerThumbnailStrip } from './ViewerThumbnailStrip'
+import { ZoomableImage } from './ZoomableImage'
 
 interface ViewerMediaProps {
   isVideo: boolean
@@ -17,6 +18,7 @@ interface ViewerMediaProps {
   hasNext: boolean
   infoOpen: boolean
   asset: Asset
+  highlightedFaceId?: string | null
   onPrev?: () => void
   onNext?: () => void
   siblingAssets?: Asset[]
@@ -36,6 +38,7 @@ export function ViewerMedia({
   hasNext,
   infoOpen,
   asset,
+  highlightedFaceId,
   onPrev,
   onNext,
   siblingAssets,
@@ -68,17 +71,22 @@ export function ViewerMedia({
         />
       ) : imageUrl ? (
         dims ? (
-          <div
-            className="relative max-h-full max-w-full"
-            style={{ aspectRatio: `${dims.w} / ${dims.h}` }}
+          <ZoomableImage
+            key={asset.id}
+            src={imageUrl}
+            alt={imageAlt}
+            width={dims.w}
+            height={dims.h}
           >
-            <img
-              src={imageUrl}
-              alt={imageAlt}
-              className="block w-full h-full object-contain shadow-2xl select-none"
-            />
-            {showOverlay && <FaceOverlay faces={faces} imageWidth={dims.w} imageHeight={dims.h} />}
-          </div>
+            {showOverlay && (
+              <FaceOverlay
+                faces={faces}
+                imageWidth={dims.w}
+                imageHeight={dims.h}
+                highlightedFaceId={highlightedFaceId}
+              />
+            )}
+          </ZoomableImage>
         ) : (
           <img
             src={imageUrl}

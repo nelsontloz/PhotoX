@@ -3,9 +3,11 @@ import { FaSpinner, FaTriangleExclamation, FaUser } from 'react-icons/fa6'
 import type { Asset, FaceDto, PersonDto } from '@photox/shared-types'
 import { listPersons } from '../../../api/persons'
 import { assignFace } from '../../../api/faces'
+import { FaceThumb } from '../../FaceThumb'
 
 export interface FacesSectionProps {
   asset: Asset
+  onFaceHover?: (faceId: string | null) => void
 }
 
 function FaceRow({
@@ -14,22 +16,40 @@ function FaceRow({
   persons,
   personMap,
   onReassign,
+  onFaceHover,
 }: {
   face: FaceDto
   index: number
   persons: PersonDto[]
   personMap: Map<string, PersonDto>
   onReassign: (faceId: string, toPersonId: string | null) => void
+  onFaceHover?: (faceId: string | null) => void
 }) {
   const pct = Math.max(0, Math.min(100, Math.round(face.confidence * 100)))
-  const personName = face.personId ? (personMap.get(face.personId)?.name ?? null) : null
+  const person = face.personId ? personMap.get(face.personId) : undefined
+  const personName = person?.name ?? null
+  const coverFaceId = person?.coverFaceId ?? null
 
   return (
     <li className="flex items-center gap-3 text-sm">
       <span className="w-6 h-6 rounded-md bg-amber-400/15 text-amber-300 font-bold text-xs flex items-center justify-center tabular-nums">
         {index + 1}
       </span>
-      <FaUser className="text-amber-300 text-sm shrink-0" />
+      <span
+        className="w-11 h-11 rounded-md overflow-hidden shrink-0 bg-slate-800 flex items-center justify-center"
+        onMouseEnter={() => onFaceHover?.(face.id)}
+        onMouseLeave={() => onFaceHover?.(null)}
+      >
+        {coverFaceId ? (
+          <FaceThumb
+            faceId={coverFaceId}
+            alt={person?.name ?? person?.clusterLabel ?? 'Assigned'}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <FaUser className="text-slate-500 text-xs" />
+        )}
+      </span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between text-[11px]">
           <span className="text-slate-400">Confidence</span>
@@ -60,7 +80,7 @@ function FaceRow({
   )
 }
 
-export function FacesSection({ asset }: FacesSectionProps) {
+export function FacesSection({ asset, onFaceHover }: FacesSectionProps) {
   const status = asset.faceStatus
   const [faces, setFaces] = useState<FaceDto[]>(asset.faces ?? [])
   const [persons, setPersons] = useState<PersonDto[]>([])
@@ -148,6 +168,7 @@ export function FacesSection({ asset }: FacesSectionProps) {
             index={i}
             persons={persons}
             personMap={personMap}
+            onFaceHover={onFaceHover}
             onReassign={(faceId, toPersonId) => {
               void handleReassign(faceId, toPersonId)
             }}

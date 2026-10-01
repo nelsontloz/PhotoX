@@ -9,7 +9,7 @@ Personal photo/video hosting. One NestJS `core` API (the only HTTP app; when ext
 - `apps/web/` (`@photox/web`, :5173) — Vite + React, talks to core only (same-origin `/api`)
 - `apps/core/src/database/` — TypeORM entities + core-only `DatabaseModule` (folded in from the deleted `packages/data-access`)
 - `packages/shared-config/` — zod `loadEnv()`/`loadAuthEnv()`/`loadRootEnvFile()` + `LocalStorageService`; `packages/shared-types/` — wire interfaces + `JwtPayload` + `FACE_EMBEDDING_DIM` (folded in from the deleted `packages/shared-auth`)
-- `docker-compose.yml` services: `postgres` (pgvector image, single `photox` DB), `redis`, `core`, `worker-service`, `web`. Only `web` (:5173) publishes a port, plus `postgres`/`redis` for host `pnpm dev`; core and worker-service publish none.
+- `docker-compose.yml` is infra-only: `postgres` (pgvector image, single `photox` DB) + `redis`, both publishing their ports for host `pnpm dev`. App containers live in `docker-compose.e2e.yml` (self-contained `core`/`worker-service`/`web` with build + env), used only by `e2e/run.sh`; only its `web` publishes a port (`E2E_WEB_PORT`, random per run). No compose service is used by `pnpm dev`.
 
 ## Commands
 
@@ -28,7 +28,7 @@ Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 - `packages/shared-config/src/env.ts` (`loadEnv`, zod): `API_PORT` 3000, `CORE_URL` (worker → core, default `http://localhost:3000`, compose `http://core:3000`), `POSTGRES_*` (core only)/`REDIS_*` (localhost defaults), `REDIS_PASSWORD` (optional, no default — integration tests use passwordless testcontainers Redis; compose and `.env.example` default it to `photox_dev`, compose redis runs `--requirepass`, and core/worker/health clients send it when set), `STORAGE_DIR` (default `./data/storage`, anchored at workspace root — core and worker run with different cwds), `AUTH_ACCESS_TTL` 30m, `AUTH_REFRESH_TTL` 30d, `AUTH_CLOCK_TOLERANCE_SEC` 60.
 - `loadAuthEnv` (same file): `AUTH_TOKEN_SECRET` required, ≥32 chars. Core uses it to verify; worker also needs it (compose passes it) to mint delegated per-job JWTs for `CoreClient`.
 - No `@nestjs/config`: each `app.module.ts` calls `loadRootEnvFile()` (Node's native `process.loadEnvFile`, workspace-root `.env`) before module wiring; existing process env wins, so compose/CI are untouched. `WORKER_SERVICE_PORT` stays a direct `process.env` read in worker `main.ts` (intentionally not in the zod schema).
-- Compose shares one `storage-data` volume at `/data/storage`; local dev uses `./data/storage`.
+- The e2e compose stack shares one `storage-data` volume at `/data/storage`; local dev uses `./data/storage`.
 
 ## API conventions
 

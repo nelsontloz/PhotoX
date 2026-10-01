@@ -1,15 +1,92 @@
+# Self-contained app stack for the e2e suite, merged over the infra-only
+# docker-compose.yml (postgres + redis) by e2e/run.sh — hence the full
+# core/worker-service/web definitions here, not just overrides.
 services:
   core:
+    build:
+      context: .
+      dockerfile: apps/core/Dockerfile
     image: photox-e2e-core:latest
+    environment:
+      NODE_ENV: production
+      API_PORT: 3000
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: photox
+      POSTGRES_PASSWORD: photox_dev
+      POSTGRES_DB: photox
+      STORAGE_DIR: /data/storage
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-photox_dev}
+      AUTH_ACCESS_TTL: 30m
+      AUTH_REFRESH_TTL: 30d
+      AUTH_TOKEN_SECRET: dev-auth-secret-32-characters-minimum!!
+    volumes:
+      - storage-data:/data/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - photox-net
+
+  worker-service:
+    build:
+      context: .
+      dockerfile: apps/worker-service/Dockerfile
+    image: photox-e2e-worker-service:latest
+    environment:
+      NODE_ENV: production
+      WORKER_SERVICE_PORT: 3004
+      CORE_URL: http://core:3000
+      STORAGE_DIR: /data/storage
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-photox_dev}
+      AUTH_TOKEN_SECRET: dev-auth-secret-32-characters-minimum!!
+    volumes:
+      - storage-data:/data/storage
+      - ./data/storage/models:/data/storage/models:ro
+    depends_on:
+      core:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3004/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - photox-net
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: photox-e2e-web:latest
+    ports:
+      - '127.0.0.1:${E2E_WEB_PORT:-5273}:5173'
+    environment:
+      VITE_API_URL: http://core:3000
+    depends_on:
+      core:
+        condition: service_healthy
+    networks:
+      - photox-net
+
+  # keep the e2e stack isolated from the host
   postgres:
     ports: !override []
+
   redis:
     ports: !override []
-  web:
-    image: photox-e2e-web:latest
-    ports: !override
-      - '127.0.0.1:${E2E_WEB_PORT:-5273}:5173'
-  worker-service:
-    image: photox-e2e-worker-service:latest
-    volumes:
-      - ./data/storage/models:/data/storage/models:ro
