@@ -6,7 +6,7 @@ vi.mock('../api/assets', () => ({
   listAllAssets: vi.fn(),
 }))
 
-import { useTimelineMonths } from './useTimelineMonths'
+import { useTimelineMonths, MAX_CACHED_MONTHS } from './useTimelineMonths'
 import { listAllAssets } from '../api/assets'
 import { monthKeyOf, monthRange } from '../lib/dateFormat'
 import { useAppStore } from '../store/app-store'
@@ -144,6 +144,74 @@ describe('useTimelineMonths', () => {
       await stalePromise
     })
     expect(result.current.groups.flatMap((g) => g.items).map((a) => a.id)).toEqual(['fresh'])
+  })
+
+  it('evicts LRU months past the cap and re-fetches them on demand', async () => {
+    // one asset per call, id derived from the month the request is scoped to
+    listAllAssetsMock.mockImplementation(({ dateFrom } = {}) => {
+      const key = monthKeyOf(dateFrom!)
+      return Promise.resolve([makeAsset(`asset-${key}`, dateFrom!)])
+    })
+    const { result } = renderHook(() => useTimelineMonths())
+
+    // 14 distinct months: two more than the cap
+    const months = Array.from({ length: MAX_CACHED_MONTHS + 2 }, (_, i) =>
+      monthKeyOf(new Date(2020, i, 1).toISOString()),
+    )
+    for (const key of months) {
+      await act(async () => {
+        await result.current.ensureMonth(key)
+      })
+    }
+    expect(listAllAssetsMock).toHaveBeenCalledTimes(months.length)
+    // monthStatus is the public view of the cache: the two oldest fell out, the newest stayed
+    expect(result.current.monthStatus.has(months[0]!)).toBe(false)
+    expect(result.current.monthStatus.has(months[1]!)).toBe(false)
+    expect(result.current.monthStatus.has(months.at(-1)!)).toBe(true)
+
+    listAllAssetsMock.mockClear()
+    await act(async () => {
+      await result.current.ensureMonth(months[0]!)
+    })
+    expect(listAllAssetsMock).toHaveBeenCalledTimes(1) // evicted → fresh fetch
+
+    await act(async () => {
+      await result.current.ensureMonth(months.at(-1)!)
+    })
+    expect(listAllAssetsMock).toHaveBeenCalledTimes(1) // still cached → no fetch
+  })
+
+  it('never evicts retained months, even when they are the least recently used', async () => {
+    listAllAssetsMock.mockImplementation(({ dateFrom } = {}) => {
+      const key = monthKeyOf(dateFrom!)
+      return Promise.resolve([makeAsset(`asset-${key}`, dateFrom!)])
+    })
+    const { result } = renderHook(() => useTimelineMonths())
+
+    const oldest = '2020-01'
+    await act(async () => {
+      await result.current.ensureMonth(oldest)
+    })
+    result.current.retainMonths([oldest])
+
+    // one more month than the cap can hold alongside the retained one
+    const others = Array.from({ length: MAX_CACHED_MONTHS + 1 }, (_, i) =>
+      monthKeyOf(new Date(2020, 1 + i, 1).toISOString()),
+    )
+    for (const key of others) {
+      await act(async () => {
+        await result.current.ensureMonth(key)
+      })
+    }
+
+    listAllAssetsMock.mockClear()
+    await act(async () => {
+      await result.current.ensureMonth(oldest)
+    })
+    expect(listAllAssetsMock).not.toHaveBeenCalled()
+    expect(result.current.groups.flatMap((g) => g.items).map((a) => a.id)).toContain(
+      'asset-2020-01',
+    )
   })
 
   it('resolves null instead of rejecting when the month fetch fails', async () => {

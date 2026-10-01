@@ -73,7 +73,10 @@ export function buildBuckets(
   items: readonly TimelineItem[],
   opts: TimelineLayoutOptions,
 ): TimelineLayout {
-  const sorted = [...items].sort((a, b) => new Date(b.t).getTime() - new Date(a.t).getTime())
+  const sorted = items
+    .map((item) => ({ item, time: new Date(item.t).getTime() }))
+    .sort((a, b) => b.time - a.time)
+    .map(({ item }) => item)
 
   const byDay = new Map<string, TimelineItem[]>()
   for (const item of sorted) {

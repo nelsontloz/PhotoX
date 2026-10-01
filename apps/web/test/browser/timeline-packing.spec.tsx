@@ -46,6 +46,7 @@ function Harness() {
         groups={[]}
         monthStatus={new Map()}
         ensureMonth={async () => null}
+        retainMonths={() => {}}
         refreshKey={0}
         onSelect={() => {}}
         selectedIds={new Set()}

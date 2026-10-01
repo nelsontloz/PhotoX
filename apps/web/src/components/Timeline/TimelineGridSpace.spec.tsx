@@ -67,6 +67,7 @@ function stubMeasurement(): void {
 }
 
 const noopEnsureMonth = (): Promise<null> => Promise.resolve(null)
+const noopRetainMonths = vi.fn()
 const onSelectStub = vi.fn()
 const onToggleSelectStub = vi.fn()
 
@@ -80,6 +81,7 @@ function TimelineHarness() {
       groups={[]}
       monthStatus={new Map()}
       ensureMonth={noopEnsureMonth}
+      retainMonths={noopRetainMonths}
       refreshKey={0}
       onSelect={onSelectStub}
       selectedIds={new Set()}

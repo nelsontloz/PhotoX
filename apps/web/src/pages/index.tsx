@@ -19,7 +19,7 @@ import { useAppStore } from '../store/app-store'
 function TimelineContent() {
   const confirm = useConfirm()
   // Structure (buckets, heights, order) comes from the layout endpoint; months fill it in.
-  const { groups, monthStatus, ensureMonth, refreshKey } = useTimelineMonths()
+  const { groups, monthStatus, ensureMonth, retainMonths, refreshKey } = useTimelineMonths()
   const timeline = useTimelineLayout()
   const bumpTimelineRefresh = useAppStore((s) => s.bumpTimelineRefresh)
   const loadedAssets = useMemo(() => groups.flatMap((g) => g.items), [groups])
@@ -77,16 +77,16 @@ function TimelineContent() {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
-  const toggle = (id: string) => {
+  const toggle = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
-  }
+  }, [])
 
-  const clearSelection = () => setSelectedIds(new Set())
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
 
   const handleBulkTrash = async () => {
     const ids = Array.from(selectedIds)
@@ -107,15 +107,20 @@ function TimelineContent() {
     }
   }
 
-  const onClickAsset = (asset: Asset) => {
-    if (selectedIds.size > 0) toggle(asset.id)
-    else nav.open(asset)
-  }
+  // stable handler identities: memoized GalleryItems must bail out on unrelated re-renders
+  const selectionMode = selectedIds.size > 0
+  const onClickAsset = useCallback(
+    (asset: Asset) => {
+      if (selectionMode) toggle(asset.id)
+      else nav.open(asset)
+    },
+    [selectionMode, toggle, nav.open],
+  )
 
-  const onLongPress = (asset: Asset) => {
+  const onLongPress = useCallback((asset: Asset) => {
     setSelectedIds((prev) => new Set(prev).add(asset.id))
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(10)
-  }
+  }, [])
 
   // Gate: layout drives structure. ponytail: a layout failure (first load OR refresh) lands on
   // the error state — no partial-track fallback, since every height depends on it; Reload retries.
@@ -160,6 +165,7 @@ function TimelineContent() {
         groups={groups}
         monthStatus={monthStatus}
         ensureMonth={ensureMonth}
+        retainMonths={retainMonths}
         refreshKey={refreshKey}
         onSelect={onClickAsset}
         selectedIds={selectedIds}
