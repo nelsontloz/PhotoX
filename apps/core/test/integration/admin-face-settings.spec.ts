@@ -63,6 +63,7 @@ describe('admin face detection settings', () => {
     expect(body.detector).toBe(envDefault())
     expect(body.envDefault).toBe(envDefault())
     expect(body.models).toEqual({ scrfd: false })
+    expect(body.facesByDetector).toEqual({ human: 0, scrfd: 0, unset: 0 })
   })
 
   it('persists the detector and reflects it in a following GET', async () => {

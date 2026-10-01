@@ -1,15 +1,22 @@
-import { ApiProperty } from '@nestjs/swagger'
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
 import {
   IsArray,
   IsDefined,
+  IsIn,
   IsNumber,
+  IsOptional,
   IsUUID,
   ArrayMaxSize,
   ArrayMinSize,
   ValidateNested,
 } from 'class-validator'
-import type { RegisterFacesRequestDto, DetectedFaceInput } from '@photox/shared-types'
+import {
+  FACE_DETECTOR_KINDS,
+  type RegisterFacesRequestDto,
+  type DetectedFaceInput,
+  type FaceDetectorKind,
+} from '@photox/shared-types'
 import { FaceBoxResponseDto } from './face.dto'
 
 // ponytail: empty faces array is valid (no faces detected in the image) — service handles it, worker still patches faceStatus=ready+faceCount=0
@@ -43,4 +50,9 @@ export class RegisterFacesDto implements RegisterFacesRequestDto {
   @ApiProperty()
   @IsUUID()
   userId!: string
+
+  @ApiPropertyOptional({ enum: FACE_DETECTOR_KINDS })
+  @IsOptional()
+  @IsIn(FACE_DETECTOR_KINDS)
+  detector?: FaceDetectorKind
 }

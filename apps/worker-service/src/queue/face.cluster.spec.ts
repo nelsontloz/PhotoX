@@ -268,7 +268,7 @@ describe('FaceClusterService.cluster', () => {
         reason: 're-embed',
         detector: 'human',
       },
-      expect.objectContaining({ jobId: 'face-reembed-asset-legacy' }),
+      expect.objectContaining({ jobId: 'face-reembed-asset-legacy', removeOnComplete: true }),
     )
   })
 
@@ -293,7 +293,7 @@ describe('FaceClusterService.cluster', () => {
         reason: 're-embed',
         detector: 'scrfd',
       },
-      expect.objectContaining({ jobId: 'face-reembed-asset-legacy' }),
+      expect.objectContaining({ jobId: 'face-reembed-asset-legacy', removeOnComplete: true }),
     )
   })
 })

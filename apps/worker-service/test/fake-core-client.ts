@@ -4,6 +4,7 @@ import type {
   Asset,
   DetectedFaceInput,
   FaceDetectionSettings,
+  FaceDetectorKind,
   FileRecord,
 } from '@photox/shared-types'
 import type {
@@ -90,6 +91,7 @@ export class FakeCoreClient {
   readonly thumbnails: (RegisterThumbnailInput & { assetId: string })[] = []
   readonly faces = new Map<string, DetectedFaceInput[]>()
   readonly deleteFacesCalls: string[] = []
+  readonly registerFaceDetectors: FaceDetectorKind[] = []
   readonly clusterFaces: ClusterFace[] = []
   readonly applyClustersCalls: ApplyClustersPayload[] = []
   readonly adminDeletedFiles: string[] = []
@@ -102,6 +104,7 @@ export class FakeCoreClient {
     detector: 'human',
     envDefault: 'human',
     models: { scrfd: false },
+    facesByDetector: { human: 0, scrfd: 0, unset: 0 },
   }
   adminDeleteFileFailures = 0
   orphanCleanupFailures = 0
@@ -122,6 +125,7 @@ export class FakeCoreClient {
     this.thumbnails.length = 0
     this.faces.clear()
     this.deleteFacesCalls.length = 0
+    this.registerFaceDetectors.length = 0
     this.clusterFaces.length = 0
     this.applyClustersCalls.length = 0
     this.adminDeletedFiles.length = 0
@@ -130,6 +134,7 @@ export class FakeCoreClient {
       detector: 'human',
       envDefault: 'human',
       models: { scrfd: false },
+      facesByDetector: { human: 0, scrfd: 0, unset: 0 },
     }
     this.adminDeleteFileFailures = 0
     this.orphanCleanupFailures = 0
@@ -219,10 +224,12 @@ export class FakeCoreClient {
     userId: string,
     assetId: string,
     faces: DetectedFaceInput[],
+    detector: FaceDetectorKind,
   ): Promise<{ count: number }> {
-    this.calls.push({ method: 'registerFaces', args: [assetId, faces] })
+    this.calls.push({ method: 'registerFaces', args: [assetId, faces, detector] })
     const err = this.assetError(userId, assetId)
     if (err) return Promise.reject(err)
+    this.registerFaceDetectors.push(detector)
     this.faces.set(assetId, [...(this.faces.get(assetId) ?? []), ...faces])
     return Promise.resolve({ count: faces.length })
   }
@@ -293,6 +300,7 @@ export class FakeCoreClient {
     return Promise.resolve({
       ...this.faceDetectionSettings,
       models: { ...this.faceDetectionSettings.models },
+      facesByDetector: { ...this.faceDetectionSettings.facesByDetector },
     })
   }
 

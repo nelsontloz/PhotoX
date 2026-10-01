@@ -1,5 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm'
 import { toSql as pgToSql, fromSql as pgFromSql } from 'pgvector'
+import type { FaceDetectorKind } from '@photox/shared-types'
 
 const toVectorString = (v: number[]): string => pgToSql(v) as string
 const fromVectorString = (v: string): number[] => pgFromSql(v) as number[]
@@ -37,6 +38,10 @@ export class Face {
   @Column('uuid', { nullable: true })
   @Index()
   personId!: string | null
+
+  // provenance: which detector produced this embedding; null on pre-provenance rows (unknown origin)
+  @Column('text', { nullable: true })
+  detector!: FaceDetectorKind | null
 
   @CreateDateColumn()
   createdAt!: Date

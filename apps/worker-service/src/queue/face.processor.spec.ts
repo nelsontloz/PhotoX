@@ -228,15 +228,38 @@ describe('FaceProcessor', () => {
     expect(fake.assets.get(asset.id)!.faceStatus).toBe('failed')
   })
 
-  it('passes the job detector kind to the face detector', async () => {
+  it('passes the job detector kind to the face detector and registers it', async () => {
     const run = setup()
     const { userId, fileId, asset } = await seedPhoto()
-    detect.mockResolvedValue([])
+    detect.mockResolvedValue([
+      { box: { x: 10, y: 20, w: 30, h: 40 }, confidence: 0.92, embedding: emb512() },
+    ])
 
     await run({ data: { assetId: asset.id, fileId, userId, detector: 'scrfd' } } as Job<FaceJob>)
 
     expect(detect).toHaveBeenCalledTimes(1)
     expect(detect.mock.calls[0]![1]).toBe('scrfd')
+    expect(fake.registerFaceDetectors).toEqual(['scrfd'])
+  })
+
+  it('resolves the env default detector when the payload omits it', async () => {
+    const prev = process.env.FACE_DETECTOR
+    process.env.FACE_DETECTOR = 'scrfd'
+    try {
+      const run = setup()
+      const { userId, fileId, asset } = await seedPhoto()
+      detect.mockResolvedValue([
+        { box: { x: 10, y: 20, w: 30, h: 40 }, confidence: 0.92, embedding: emb512() },
+      ])
+
+      await run({ data: { assetId: asset.id, fileId, userId } } as Job<FaceJob>)
+
+      expect(detect.mock.calls[0]![1]).toBe('scrfd')
+      expect(fake.registerFaceDetectors).toEqual(['scrfd'])
+    } finally {
+      if (prev === undefined) delete process.env.FACE_DETECTOR
+      else process.env.FACE_DETECTOR = prev
+    }
   })
 
   it('marks failed and swallows a missing detector-model error', async () => {

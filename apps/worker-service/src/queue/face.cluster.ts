@@ -352,6 +352,8 @@ export class FaceClusterService {
           attempts: 3,
           backoff: { type: 'exponential' },
           removeOnFail: true,
+          // completed re-embeds must not block future runs: BullMQ dedupes this jobId in any state
+          removeOnComplete: true,
         },
       )
     }

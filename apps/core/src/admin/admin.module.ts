@@ -6,6 +6,7 @@ import { SettingsModule } from '../settings/settings.module'
 import { AdminAssetsController } from './admin-assets.controller'
 import { AdminAssetsService } from './admin-assets.service'
 import { AdminFacesController } from './admin-faces.controller'
+import { AdminFacesService } from './admin-faces.service'
 import { AdminMaintenanceController } from './admin-maintenance.controller'
 
 @Module({
@@ -15,6 +16,6 @@ import { AdminMaintenanceController } from './admin-maintenance.controller'
     SettingsModule,
   ],
   controllers: [AdminAssetsController, AdminMaintenanceController, AdminFacesController],
-  providers: [AdminAssetsService],
+  providers: [AdminAssetsService, AdminFacesService],
 })
 export class AdminModule {}

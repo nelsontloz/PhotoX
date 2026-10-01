@@ -9,7 +9,7 @@ import { BullMqService } from './bullmq.service'
 import { assertOwnership, parseJobData, faceJobSchema, type FaceJob } from './job-schemas'
 import { FaceDetectorService } from './face.detector'
 import { CoreClient } from '../core/core-client.service'
-import { LocalStorageService } from '@photox/shared-config'
+import { LocalStorageService, envFaceDetectorKind } from '@photox/shared-config'
 
 export const CLUSTER_DEBOUNCE_MS = 30_000
 export const FACE_MAX_DIM = 2048
@@ -41,6 +41,9 @@ export class FaceProcessor {
     )
 
     this.logger.log(`Processing faces: asset=${assetId}`)
+
+    // ponytail: resolve once — the same kind drives detection and is persisted as provenance
+    const resolvedDetector = detector ?? envFaceDetectorKind()
 
     const record = await this.core.getFile(userId, fileId)
     const asset = await this.core.getAsset(userId, assetId)
@@ -81,7 +84,7 @@ export class FaceProcessor {
       const scaleX = origW / resizedW
       const scaleY = origH / resizedH
 
-      const detections = await this.faceDetector.detect(resized, detector)
+      const detections = await this.faceDetector.detect(resized, resolvedDetector)
       // ponytail: drop low-confidence detections before save — clustering separately ignores conf < 0.4
       const faces = detections
         .filter((d) => d.confidence >= 0.5)
@@ -100,7 +103,7 @@ export class FaceProcessor {
       // (was re-embed-only, so a retried job duplicated faces); never before detect, to avoid data loss
       await this.core.deleteAssetFaces(userId, assetId)
       if (faces.length > 0) {
-        await this.core.registerFaces(userId, assetId, faces)
+        await this.core.registerFaces(userId, assetId, faces, resolvedDetector)
       }
 
       await this.core.patchMetadata(userId, assetId, {

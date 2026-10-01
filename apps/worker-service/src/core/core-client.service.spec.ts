@@ -137,6 +137,27 @@ describe('CoreClient', () => {
     expect(result).toEqual({ created: 1, assigned: 2 })
   })
 
+  it('registers faces with the resolved detector in the body', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { count: 1 }))
+
+    const result = await makeClient().registerFaces(
+      'user-1',
+      'asset-1',
+      [{ box: { x: 1, y: 2, w: 3, h: 4 }, confidence: 0.9, embedding: [0.1, 0.2] }],
+      'scrfd',
+    )
+
+    expect(result).toEqual({ count: 1 })
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('http://localhost:3000/api/v1/assets/asset-1/faces')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual({
+      userId: 'user-1',
+      detector: 'scrfd',
+      faces: [{ box: { x: 1, y: 2, w: 3, h: 4 }, confidence: 0.9, embedding: [0.1, 0.2] }],
+    })
+  })
+
   it('deletes a file via the admin endpoint with an admin token and no body', async () => {
     fetchMock.mockResolvedValue({
       ok: true,

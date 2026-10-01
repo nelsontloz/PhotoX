@@ -6,7 +6,7 @@ import { Person } from '../database/entities'
 import { Asset } from '../database/entities'
 import { FaceResponseDto } from './dto/face.dto'
 import { refreshPersonFaceCount } from './face-count'
-import type { DetectedFaceInput } from '@photox/shared-types'
+import type { DetectedFaceInput, FaceDetectorKind } from '@photox/shared-types'
 
 @Injectable()
 export class FacesService {
@@ -24,6 +24,7 @@ export class FacesService {
     assetId: string,
     userId: string,
     faces: DetectedFaceInput[],
+    detector: FaceDetectorKind | null = null,
   ): Promise<{ count: number }> {
     await this.assertAssetOwned(userId, assetId)
     const entities = faces.map((f) => {
@@ -33,6 +34,7 @@ export class FacesService {
       face.box = f.box
       face.confidence = f.confidence
       face.embedding = f.embedding
+      face.detector = detector
       return face
     })
     await this.repo.save(entities)

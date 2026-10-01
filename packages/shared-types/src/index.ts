@@ -211,11 +211,13 @@ export const FACE_DETECTOR_KINDS = ['human', 'scrfd'] as const
 export type FaceDetectorKind = (typeof FACE_DETECTOR_KINDS)[number]
 
 // Admin-configurable detector choice: `detector` is the persisted setting, `envDefault` the
-// FACE_DETECTOR env fallback, `models.scrfd` whether det_10g.onnx is provisioned on disk.
+// FACE_DETECTOR env fallback, `models.scrfd` whether det_10g.onnx is provisioned on disk,
+// `facesByDetector` how many stored faces carry each provenance (null -> unset).
 export interface FaceDetectionSettings {
   detector: FaceDetectorKind
   envDefault: FaceDetectorKind
   models: { scrfd: boolean }
+  facesByDetector: { human: number; scrfd: number; unset: number }
 }
 
 export interface FaceBox {
@@ -241,6 +243,7 @@ export interface DetectedFaceInput {
 
 export interface RegisterFacesRequestDto {
   faces: DetectedFaceInput[]
+  detector?: FaceDetectorKind
 }
 
 export interface RegisterFacesResponseDto {

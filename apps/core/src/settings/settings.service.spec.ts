@@ -3,13 +3,29 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Repository } from 'typeorm'
 import { AppSetting } from '../database/entities/app-setting.entity'
-import { FACE_DETECTOR_SETTING_KEY, SettingsService } from './settings.service'
+import { Face } from '../database/entities/face.entity'
+import {
+  FACE_DETECTOR_SETTING_KEY,
+  FACE_REPROCESS_LAST_RUN_KEY,
+  SettingsService,
+} from './settings.service'
 
-function makeService(row?: Partial<AppSetting>) {
+const NO_FACES = { human: 0, scrfd: 0, unset: 0 }
+
+function makeService(
+  row?: Partial<AppSetting>,
+  faces: { human: number; scrfd: number; unset: number } = NO_FACES,
+) {
   const findOne = vi.fn().mockResolvedValue(row ?? null)
   const upsert = vi.fn().mockResolvedValue({})
   const repo = { findOne, upsert } as unknown as Repository<AppSetting>
-  return { service: new SettingsService(repo), findOne, upsert }
+  const count = vi.fn((opts: { where: { detector?: unknown } }) => {
+    if (opts.where.detector === 'human') return Promise.resolve(faces.human)
+    if (opts.where.detector === 'scrfd') return Promise.resolve(faces.scrfd)
+    return Promise.resolve(faces.unset)
+  })
+  const faceRepo = { count } as unknown as Repository<Face>
+  return { service: new SettingsService(repo, faceRepo), findOne, upsert, count }
 }
 
 function envDefault(): 'human' | 'scrfd' {
@@ -101,6 +117,7 @@ describe('SettingsService', () => {
         detector: 'scrfd',
         envDefault: envDefault(),
         models: { scrfd: false },
+        facesByDetector: NO_FACES,
       })
     } finally {
       await rm(dir, { recursive: true, force: true })
@@ -119,6 +136,7 @@ describe('SettingsService', () => {
         detector: envDefault(),
         envDefault: envDefault(),
         models: { scrfd: true },
+        facesByDetector: NO_FACES,
       })
     } finally {
       await rm(dir, { recursive: true, force: true })
@@ -136,5 +154,31 @@ describe('SettingsService', () => {
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
+  })
+
+  it('counts faces by detector provenance, null as unset', async () => {
+    const { service } = makeService(undefined, { human: 2, scrfd: 5, unset: 3 })
+    expect((await service.getSettings()).facesByDetector).toEqual({ human: 2, scrfd: 5, unset: 3 })
+  })
+
+  it('persists the last reprocess run and reads it back', async () => {
+    const run = {
+      startedAt: '2026-10-01T00:00:00.000Z',
+      total: 12,
+      enqueued: 12,
+      detector: 'scrfd' as const,
+    }
+    const { service, upsert } = makeService({ key: FACE_REPROCESS_LAST_RUN_KEY, value: run })
+    await service.setFaceReprocessLastRun(run)
+    expect(upsert).toHaveBeenCalledWith({ key: FACE_REPROCESS_LAST_RUN_KEY, value: run }, ['key'])
+    expect(await service.getFaceReprocessLastRun()).toEqual(run)
+  })
+
+  it('returns null for a malformed last reprocess run', async () => {
+    const { service } = makeService({
+      key: FACE_REPROCESS_LAST_RUN_KEY,
+      value: { startedAt: 'nope', total: 'x' },
+    })
+    expect(await service.getFaceReprocessLastRun()).toBeNull()
   })
 })

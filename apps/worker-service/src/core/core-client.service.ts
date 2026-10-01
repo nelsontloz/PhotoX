@@ -8,6 +8,7 @@ import type {
   DetectedFaceInput,
   FaceBox,
   FaceDetectionSettings,
+  FaceDetectorKind,
   FileRecord,
   Role,
 } from '@photox/shared-types'
@@ -152,11 +153,12 @@ export class CoreClient {
     userId: string,
     assetId: string,
     faces: DetectedFaceInput[],
+    detector: FaceDetectorKind,
   ): Promise<{ count: number }> {
     // userId is part of the wire DTO (required @IsUUID); the token sub stays authoritative
     return this.request('POST', `/api/v1/assets/${assetId}/faces`, {
       sub: userId,
-      body: { faces, userId },
+      body: { faces, userId, detector },
     })
   }
 
