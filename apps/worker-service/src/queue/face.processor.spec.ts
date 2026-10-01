@@ -227,4 +227,27 @@ describe('FaceProcessor', () => {
     expect(fake.deleteFacesCalls).toHaveLength(0)
     expect(fake.assets.get(asset.id)!.faceStatus).toBe('failed')
   })
+
+  it('passes the job detector kind to the face detector', async () => {
+    const run = setup()
+    const { userId, fileId, asset } = await seedPhoto()
+    detect.mockResolvedValue([])
+
+    await run({ data: { assetId: asset.id, fileId, userId, detector: 'scrfd' } } as Job<FaceJob>)
+
+    expect(detect).toHaveBeenCalledTimes(1)
+    expect(detect.mock.calls[0]![1]).toBe('scrfd')
+  })
+
+  it('marks failed and swallows a missing detector-model error', async () => {
+    const run = setup()
+    const { userId, fileId, asset } = await seedPhoto()
+    detect.mockRejectedValue(new Error('Face detector model not found at /models/det_10g.onnx'))
+
+    await expect(
+      run({ data: { assetId: asset.id, fileId, userId, detector: 'scrfd' } } as Job<FaceJob>),
+    ).resolves.toBeUndefined()
+
+    expect(fake.assets.get(asset.id)!.faceStatus).toBe('failed')
+  })
 })

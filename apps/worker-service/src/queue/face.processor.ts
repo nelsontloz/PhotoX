@@ -34,7 +34,11 @@ export class FaceProcessor {
   }
 
   private async processJob(job: Job<FaceJob>) {
-    const { assetId, fileId, userId } = parseJobData(faceJobSchema, job.data, 'process-faces')
+    const { assetId, fileId, userId, detector } = parseJobData(
+      faceJobSchema,
+      job.data,
+      'process-faces',
+    )
 
     this.logger.log(`Processing faces: asset=${assetId}`)
 
@@ -77,7 +81,7 @@ export class FaceProcessor {
       const scaleX = origW / resizedW
       const scaleY = origH / resizedH
 
-      const detections = await this.faceDetector.detect(resized)
+      const detections = await this.faceDetector.detect(resized, detector)
       // ponytail: drop low-confidence detections before save — clustering separately ignores conf < 0.4
       const faces = detections
         .filter((d) => d.confidence >= 0.5)
@@ -128,8 +132,11 @@ export class FaceProcessor {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      // ponytail: missing onnx weights is provisioning, not a job bug — warn + no retry
-      if (message.includes('Face embedding model not found')) {
+      // ponytail: missing model weights are provisioning, not a job bug — warn + no retry
+      if (
+        message.includes('Face embedding model not found') ||
+        message.includes('Face detector model not found')
+      ) {
         this.logger.warn(`Faces skipped (missing model): asset=${assetId} — ${message}`)
 
         try {

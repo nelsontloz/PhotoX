@@ -207,6 +207,9 @@ export interface AdminAssetReprocessListResponse {
 // detector output, DTO validation, cluster filters, and the HNSW index cast all reference this
 export const FACE_EMBEDDING_DIM = 512
 
+export const FACE_DETECTOR_KINDS = ['human', 'scrfd'] as const
+export type FaceDetectorKind = (typeof FACE_DETECTOR_KINDS)[number]
+
 export interface FaceBox {
   x: number
   y: number

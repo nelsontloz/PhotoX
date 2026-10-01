@@ -1,33 +1,64 @@
 #!/usr/bin/env bash
-# ponytail: fetches the official InsightFace buffalo_l bundle and extracts only w600k_r50.onnx (~174MB).
+# ponytail: fetches the official InsightFace buffalo_l recognition weights (w600k_r50.onnx, ~174MB)
+# and the SCRFD det_10g detector (det_10g.onnx, ~17MB, from the community mirror below).
 # Weights are for non-commercial research use and are never committed (see .gitignore *.onnx).
 set -euo pipefail
 
-URL="${FACE_MODEL_URL:-https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip}"
-DEST="${FACE_MODEL_PATH:-$(cd "$(dirname "$0")/../../.." && pwd)/data/storage/models/w600k_r50.onnx}"
+FORCE=''
+if [ "${1:-}" = '--force' ]; then FORCE=1; fi
 
-if [ "${1:-}" != '--force' ] && [ -s "$DEST" ]; then
-  echo "Model already present at $DEST (use --force to re-fetch)"
-  exit 0
-fi
+MODELS_DIR="$(cd "$(dirname "$0")/../../.." && pwd)/data/storage/models"
 
-mkdir -p "$(dirname "$DEST")"
-TMP="$(mktemp -t buffalo_l.XXXXXX.zip)"
-trap 'rm -f "$TMP"' EXIT
+# --- recognition: w600k_r50.onnx (official buffalo_l bundle) ---
+WK_URL="${FACE_MODEL_URL:-https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip}"
+WK_DEST="${FACE_MODEL_PATH:-$MODELS_DIR/w600k_r50.onnx}"
 
-echo "Downloading buffalo_l bundle..."
-curl -fSL --retry 3 -o "$TMP" "$URL"
+if [ -n "$FORCE" ] || [ ! -s "$WK_DEST" ]; then
+  mkdir -p "$(dirname "$WK_DEST")"
+  TMP="$(mktemp -t buffalo_l.XXXXXX.zip)"
+  trap 'rm -f "$TMP"' EXIT
 
-echo "Extracting w600k_r50.onnx to $DEST..."
-if command -v unzip >/dev/null 2>&1; then
-  unzip -j -o "$TMP" 'w600k_r50.onnx' -d "$(dirname "$DEST")"
-else
-  python3 - "$TMP" "$DEST" <<'EOF'
+  echo "Downloading buffalo_l bundle..."
+  curl -fSL --retry 3 -o "$TMP" "$WK_URL"
+
+  echo "Extracting w600k_r50.onnx to $WK_DEST..."
+  if command -v unzip >/dev/null 2>&1; then
+    unzip -j -o "$TMP" 'w600k_r50.onnx' -d "$(dirname "$WK_DEST")"
+  else
+    python3 - "$TMP" "$WK_DEST" <<'EOF'
 import sys, zipfile
 with zipfile.ZipFile(sys.argv[1]) as z:
     with z.open('w600k_r50.onnx') as src, open(sys.argv[2], 'wb') as dst:
         dst.write(src.read())
 EOF
+  fi
+
+  trap - EXIT
+  rm -f "$TMP"
+else
+  echo "Recognition model already present at $WK_DEST (use --force to re-fetch)"
 fi
 
-ls -la "$DEST"
+# --- detection: det_10g.onnx (SCRFD; InsightFace publishes it only inside buffalo_l, mirrored here) ---
+DET_URL="${FACE_DETECTOR_MODEL_URL:-https://huggingface.co/deepghs/insightface/resolve/main/buffalo_l/det_10g.onnx}"
+DET_DEST="${FACE_DETECTOR_MODEL_PATH:-$MODELS_DIR/det_10g.onnx}"
+
+if [ -n "$FORCE" ] || [ ! -s "$DET_DEST" ]; then
+  mkdir -p "$(dirname "$DET_DEST")"
+  TMP="$(mktemp "${DET_DEST}.tmp.XXXXXX")"
+  trap 'rm -f "$TMP"' EXIT
+
+  echo "Downloading det_10g.onnx to $DET_DEST..."
+  # best-effort: human is the default detector, and the runtime/admin UI cover provisioning
+  if curl -fSL --retry 3 -o "$TMP" "$DET_URL"; then
+    mv -f "$TMP" "$DET_DEST"
+    trap - EXIT
+  else
+    echo "WARNING: det_10g.onnx download failed — SCRFD stays unavailable until provisioned" >&2
+  fi
+else
+  echo "Detector model already present at $DET_DEST (use --force to re-fetch)"
+fi
+
+ls -la "$WK_DEST" 2>/dev/null || true
+ls -la "$DET_DEST" 2>/dev/null || true
