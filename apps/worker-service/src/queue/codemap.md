@@ -66,10 +66,13 @@ Reads bytes from local disk via `LocalStorageService`; every DB read/write goes 
   rotation from `tags.rotate`/side-data, QuickTime-iOS make/model/lens, ISO-6709 `location`.
   `metadataStatus` = `ready` if any field non-null else `failed`, patched on error too; raw probe JSON
   not persisted (`metadata: null`); unknown mimes skipped.
-- Face pipeline (`face.detector.ts` → `face.embedder.ts` → `face.processor.ts`): **detect** on ≤1024px
-  `inside` resize with `@vladmandic/human` (tensorflow backend, `mesh` on, `description` off = no faceres,
-  `maxDetected: 20`, `rotation: false`); boxes scaled back to original coords, `confidence < 0.5` dropped.
-  **align+embed**: 5 landmarks (mesh means, box-fraction fallback) → closed-form similarity fit to the
+- Face pipeline (`face.detector.ts` → `face.embedder.ts` → `face.processor.ts`): **detect** on a
+  ≤2048px (`FACE_MAX_DIM`) EXIF-auto-oriented `inside` resize (`.rotate()`) with `@vladmandic/human`
+  (tensorflow backend, `mesh` on with `keepInvalid: false` so mesh-failed faces are rejected instead of
+  box-fraction-aligned, `description` off = no faceres, `maxDetected: 20`, `rotation: false`); boxes
+  smaller than `FACE_MIN_SIZE_PX` (40) are skipped before embedding, the rest scaled back to
+  oriented-original coords, `confidence < 0.5` dropped.
+  **align+embed**: 5 landmarks (mesh means; box-fraction fallback only for partial annotations) → closed-form similarity fit to the
   ArcFace 112×112 template → pure-JS bilinear warp → RGB `(x-127.5)/128` NCHW → `onnxruntime-node`
   InsightFace `w600k_r50.onnx` (CPU) → **512-dim** L2-normalized vector (`FACE_EMBEDDING_DIM` from
   `@photox/shared-types`); model path `FACE_MODEL_PATH` or
@@ -78,12 +81,15 @@ Reads bytes from local disk via `LocalStorageService`; every DB read/write goes 
   replace, never before a successful detect; then `faceStatus: 'ready'` + `faceCount`; missing model
   warns + sets `faceStatus: 'failed'` **without rethrow** (no retry), others patch `failed` + rethrow;
   **hand off**: enqueue cluster `{ userId, reason: 'face-detected' }` via Redis,
-  `jobId: cluster-<userId>-<assetId>-<uuid>`, attempts 3 exponential,
-  removeOnComplete/Fail — a fixed id would dedupe against completed Redis jobs.
+  `jobId: cluster-<userId>` + `CLUSTER_DEBOUNCE_MS` (30s) delay — BullMQ ignores same-id jobs while
+  waiting/active, so a detection burst collapses into one trailing run; removeOnComplete/Fail,
+  attempts 3 exponential.
 - `process-faces-cluster` (concurrency 1): fetches faces via `GET /api/v1/faces?includeEmbeddings=true&excludeTrashed=true`
   (core filters trashed assets); ignores `confidence < 0.4` and embeddings ≠ `FACE_EMBEDDING_DIM` (512).
-  O(n²) in-memory DBSCAN (cosine `eps 0.55`, `minPts 2`); noise reattaches to the nearest person centroid
-  within `0.5`; each cluster centroid matches a person within `0.5` else becomes a create. The whole plan
+  O(n²) in-memory DBSCAN (cosine `eps 0.35`, `minPts 2`); noise reattaches to the nearest person centroid
+  within `0.30`; each cluster centroid matches a person within `0.30` else becomes a create — both
+  assignments also require the nearest centroid to beat the runner-up by `CLUSTER_MATCH_MARGIN` 0.05
+  (near-ties stay over-split; merging people is curated separately). The whole plan
   is sent as ONE `POST /api/v1/persons/apply-clusters` (both `creates` and `attaches` arrays always sent;
   skipped when empty): core creates persons, assigns `personId`, sets covers and refreshes `faceCount`
   transactionally — atomic, so a re-run re-derives the plan and sees no unassigned faces. A later cluster

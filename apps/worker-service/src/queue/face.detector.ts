@@ -19,6 +19,10 @@ export interface DetectedFace {
   embedding: number[]
 }
 
+// Minimum face box side, in resized-input pixels: smaller crops are mush at the embedder's 112px
+// and would waste an ONNX embed.
+export const FACE_MIN_SIZE_PX = 40
+
 function meanXY(points: readonly (readonly number[])[] | undefined): [number, number] | null {
   if (!points || points.length === 0) return null
   let x = 0
@@ -87,8 +91,9 @@ export class FaceDetectorService implements OnModuleInit {
         detector: { rotation: false, maxDetected: 20 },
         // ponytail: mesh on for 5-point alignment landmarks; description (faceres embedding) off —
         // recognition now comes from the InsightFace w600k_r50 ONNX model via FaceEmbedderService.
-        // keepInvalid keeps detections whose mesh failed (box-fraction fallback aligns them).
-        mesh: { enabled: true, keepInvalid: true },
+        // keepInvalid: false rejects detections whose mesh failed instead of aligning them with
+        // guessed landmarks; landmarks5's box-fraction fallback stays for partial annotations.
+        mesh: { enabled: true, keepInvalid: false },
         description: { enabled: false },
       },
       body: { enabled: false },
@@ -119,6 +124,8 @@ export class FaceDetectorService implements OnModuleInit {
       const faces: DetectedFace[] = []
       for (const f of result.face) {
         const box = { x: f.box[0], y: f.box[1], w: f.box[2], h: f.box[3] }
+        // check before alignment/embedding on purpose — skipping here saves the ONNX call
+        if (Math.max(box.w, box.h) < FACE_MIN_SIZE_PX) continue
         const lm = landmarks5(f, box)
         const aligned = alignFaceCrop(src, [
           lm.leftEye,

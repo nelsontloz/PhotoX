@@ -8,7 +8,7 @@ import sharp from 'sharp'
 import { UnrecoverableError, type Job } from 'bullmq'
 import { LocalStorageService } from '@photox/shared-config'
 import { FACE_EMBEDDING_DIM } from '@photox/shared-types'
-import { FaceProcessor } from './face.processor'
+import { FaceProcessor, FACE_MAX_DIM } from './face.processor'
 import { FaceDetectorService } from './face.detector'
 import type { CoreClient } from '../core/core-client.service'
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../../test/fake-core-client'
@@ -60,13 +60,15 @@ describe('FaceProcessor', () => {
     rmSync(storageDir, { recursive: true, force: true })
   })
 
-  async function seedPhoto() {
+  async function seedPhoto(override?: Buffer) {
     const userId = randomUUID()
-    const bytes = await sharp({
-      create: { width: 200, height: 150, channels: 3, background: 'red' },
-    })
-      .jpeg()
-      .toBuffer()
+    const bytes =
+      override ??
+      (await sharp({
+        create: { width: 200, height: 150, channels: 3, background: 'red' },
+      })
+        .jpeg()
+        .toBuffer())
     const fileId = randomUUID()
     const storageKey = storage.buildKey('original', userId, fileId, 'jpg')
     await mkdir(dirname(storage.pathFor(storageKey)), { recursive: true })
@@ -135,6 +137,67 @@ describe('FaceProcessor', () => {
     const assetState = fake.assets.get(asset.id)!
     expect(assetState.faceStatus).toBe('ready')
     expect(assetState.faceCount).toBe(1)
+  })
+
+  it('auto-orients EXIF-rotated photos and stores boxes in oriented space', async () => {
+    const run = setup()
+    const bytes = await sharp({
+      create: { width: 200, height: 150, channels: 3, background: 'red' },
+    })
+      .jpeg()
+      .withMetadata({ orientation: 6 })
+      .toBuffer()
+    const { userId, fileId, asset } = await seedPhoto(bytes)
+
+    let seen: Buffer | undefined
+    detect.mockImplementation((buffer: Buffer) => {
+      seen = buffer
+      return [{ box: { x: 10, y: 20, w: 30, h: 40 }, confidence: 0.92, embedding: emb512() }]
+    })
+
+    await run({ data: { assetId: asset.id, fileId, userId } } as Job<FaceJob>)
+
+    const meta = await sharp(seen).metadata()
+    expect(meta.width).toBe(150)
+    expect(meta.height).toBe(200)
+    expect(meta.orientation).toBeUndefined()
+
+    // the oriented original displays as 150x200 and detection ran at that size, so scale is 1
+    const faces = fake.faces.get(asset.id)!
+    expect(faces).toHaveLength(1)
+    expect(faces[0]!.box).toEqual({ x: 10, y: 20, w: 30, h: 40 })
+    expect(fake.assets.get(asset.id)!.faceStatus).toBe('ready')
+  })
+
+  it('caps the detector input at FACE_MAX_DIM and scales boxes from the actual resized dims', async () => {
+    const run = setup()
+    const bytes = await sharp({
+      create: { width: 3000, height: 1000, channels: 3, background: 'blue' },
+    })
+      .jpeg()
+      .toBuffer()
+    const { userId, fileId, asset } = await seedPhoto(bytes)
+
+    let seen: Buffer | undefined
+    detect.mockImplementation((buffer: Buffer) => {
+      seen = buffer
+      return [{ box: { x: 100, y: 50, w: 200, h: 120 }, confidence: 0.9, embedding: emb512() }]
+    })
+
+    await run({ data: { assetId: asset.id, fileId, userId } } as Job<FaceJob>)
+
+    const meta = await sharp(seen).metadata()
+    expect(Math.max(meta.width, meta.height)).toBe(FACE_MAX_DIM)
+    expect(meta.width / meta.height).toBeCloseTo(3000 / 1000, 2)
+
+    const scaleX = 3000 / meta.width
+    const scaleY = 1000 / meta.height
+    expect(fake.faces.get(asset.id)![0]!.box).toEqual({
+      x: Math.round(100 * scaleX),
+      y: Math.round(50 * scaleY),
+      w: Math.round(200 * scaleX),
+      h: Math.round(120 * scaleY),
+    })
   })
 
   it('clears faces and reports zero when nothing is detected', async () => {

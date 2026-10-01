@@ -108,8 +108,8 @@ describe('FaceClusterService.cluster', () => {
   })
 
   it('merges a later cluster into an earlier pending create instead of attaching by fake id', async () => {
-    // two DBSCAN clusters (cross distances ~0.6 > eps) with centroids within CLUSTER_MATCH_EPS:
-    // old code attached cluster B to the person created for cluster A; E3 cannot reference creates
+    // adjacent vectors chain (-10°→10° ≈ 0.06, 10°→45° ≈ 0.18, 45°→65° ≈ 0.06, each ≤ eps), so all
+    // four faces land in one DBSCAN cluster and a single create — no cross distances above eps
     const dir = (deg: number) => {
       const rad = (deg * Math.PI) / 180
       return emb512([0, Math.cos(rad)], [1, Math.sin(rad)])
@@ -133,6 +133,68 @@ describe('FaceClusterService.cluster', () => {
     expect(plan.creates[0]!.coverFaceId).toBe('face-b1')
   })
 
+  it('blocks attach when two existing persons are near-tied for the candidate', async () => {
+    // candidate sits at 12.5°, equidistant (~0.024) from person-1 at 0° and person-2 at 25°:
+    // runner-up margin ~0 < CLUSTER_MATCH_MARGIN, so the cluster stays a create (over-split)
+    const dir = (deg: number) => {
+      const rad = (deg * Math.PI) / 180
+      return emb512([0, Math.cos(rad)], [1, Math.sin(rad)])
+    }
+    faces = [
+      face('face-p1', dir(0), 'person-1'),
+      face('face-p2', dir(25), 'person-2'),
+      face('face-c1', dir(12.5), null, 0.9, 120),
+      face('face-c2', dir(12.5)),
+    ]
+
+    await service.cluster(userId)
+
+    expect(plans).toHaveLength(1)
+    const plan = plans[0]!
+    expect(plan.attaches).toEqual([])
+    expect(plan.creates).toHaveLength(1)
+    expect(new Set(plan.creates[0]!.faceIds)).toEqual(new Set(['face-c1', 'face-c2']))
+  })
+
+  it('attaches when the nearest person clearly beats the runner-up', async () => {
+    // candidate at 5°: person-1 at 0° is ~0.004 away, person-2 at 60° is ~0.43 away — clear winner
+    const dir = (deg: number) => {
+      const rad = (deg * Math.PI) / 180
+      return emb512([0, Math.cos(rad)], [1, Math.sin(rad)])
+    }
+    faces = [
+      face('face-p1', dir(0), 'person-1'),
+      face('face-p2', dir(60), 'person-2'),
+      face('face-c1', dir(5), null, 0.9, 120),
+      face('face-c2', dir(5)),
+    ]
+
+    await service.cluster(userId)
+
+    expect(plans).toHaveLength(1)
+    const plan = plans[0]!
+    expect(plan.creates).toEqual([])
+    expect(plan.attaches).toEqual([
+      { personId: 'person-1', faceIds: ['face-c1', 'face-c2'], coverFaceId: 'face-c1' },
+    ])
+  })
+
+  it('reassigns a lone noise face just inside the noise threshold', async () => {
+    // cosine distance 1 - cos(41°) ≈ 0.245: inside NOISE_ASSIGN_EPS 0.30, sole person so no runner-up
+    const dir = (deg: number) => {
+      const rad = (deg * Math.PI) / 180
+      return emb512([0, Math.cos(rad)], [1, Math.sin(rad)])
+    }
+    faces = [face('face-known', dir(0), 'person-existing'), face('face-noise', dir(41))]
+
+    await service.cluster(userId)
+
+    expect(plans).toHaveLength(1)
+    const plan = plans[0]!
+    expect(plan.creates).toEqual([])
+    expect(plan.attaches).toEqual([{ personId: 'person-existing', faceIds: ['face-noise'] }])
+  })
+
   it('does not merge different people across runs', async () => {
     faces = [face('face-a1', emb512([0, 1])), face('face-a2', emb512([0, 1]))]
     await service.cluster(userId)
@@ -153,7 +215,7 @@ describe('FaceClusterService.cluster', () => {
   })
 
   it('keeps singleton noise faces unassigned beyond the tight noise threshold', async () => {
-    // cosine distance 0.6 from the existing centroid: outside NOISE_ASSIGN_EPS 0.5 and DBSCAN 0.55
+    // cosine distance 0.6 from the existing centroid: outside NOISE_ASSIGN_EPS 0.30 and DBSCAN 0.35
     faces = [
       face('face-known', emb512([0, 1]), 'person-existing'),
       face('face-noise', emb512([0, 0.4], [1, 0.9165])),

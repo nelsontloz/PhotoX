@@ -12,6 +12,7 @@ import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
 
 export const CLUSTER_DEBOUNCE_MS = 30_000
+export const FACE_MAX_DIM = 2048
 
 @Injectable()
 export class FaceProcessor {
@@ -51,11 +52,23 @@ export class FaceProcessor {
       if (!metadata.width || !metadata.height) {
         throw new Error('Could not read image dimensions')
       }
-      const origW = metadata.width
-      const origH = metadata.height
+      // EXIF orientations 5-8 transpose the stored pixels, so the displayed (oriented) original
+      // swaps axes; boxes must be stored in that oriented space to match the browser/thumbnails.
+      // `.rotate()` below applies the same swap to the detection buffer.
+      const swapped = (metadata.orientation ?? 1) >= 5
+      const origW = swapped ? metadata.height : metadata.width
+      const origH = swapped ? metadata.width : metadata.height
 
+      // ponytail: detection + embedding both run off this downscaled buffer, and the embedder
+      // warps 112px crops from it, so 2048 preserves small-face detail (~12MB raw at that size).
       const resized = await sharp(filePath)
-        .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
+        .rotate()
+        .resize({
+          width: FACE_MAX_DIM,
+          height: FACE_MAX_DIM,
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
         .toBuffer()
       const resizedMeta = await sharp(resized).metadata()
       const resizedW = resizedMeta.width ?? origW
