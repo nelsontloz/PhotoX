@@ -62,7 +62,10 @@ export function zoomTowards(
   )
 }
 
-function frameStart(image: Measurable, frame: RectSource): {
+function frameStart(
+  image: Measurable,
+  frame: RectSource,
+): {
   rect: { left: number; top: number; width: number; height: number }
   left: number
   top: number

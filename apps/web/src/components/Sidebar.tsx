@@ -29,15 +29,15 @@ export function Sidebar() {
   ]
 
   return (
-    <aside className="flex flex-col w-[72px] lg:w-60 bg-white dark:bg-background-dark border-r border-gray-200 dark:border-border-dark transition-[width] duration-300 group shrink-0">
-      <nav className="flex flex-col gap-2 p-3 mt-4">
+    <aside className="flex flex-col w-[50px] lg:w-60 bg-white dark:bg-background-dark border-r border-gray-200 dark:border-border-dark transition-[width] duration-300 group shrink-0">
+      <nav className="flex flex-col gap-2 mt-4 lg:p-3">
         {navItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             end={item.end}
             className={({ isActive }) =>
-              `flex items-center gap-4 px-3 py-3 rounded-lg transition-colors group/item relative overflow-hidden ${
+              `flex items-center justify-center gap-4 h-[50px] lg:h-auto py-3 rounded-lg transition-colors group/item relative overflow-hidden lg:justify-start lg:px-3 ${
                 isActive
                   ? 'bg-primary/10 text-primary font-medium'
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-card-dark hover:text-slate-900 dark:hover:text-white'
@@ -47,9 +47,7 @@ export function Sidebar() {
             {({ isActive }) => (
               <>
                 <item.icon className="shrink-0" />
-                <span className="whitespace-nowrap opacity-0 group-hover:opacity-100 lg:opacity-100 transition-opacity duration-300">
-                  {item.label}
-                </span>
+                <span className="hidden lg:inline whitespace-nowrap">{item.label}</span>
                 {isActive && (
                   <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary rounded-r-full" />
                 )}
@@ -59,17 +57,15 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="mt-auto p-3 mb-4">
+      <div className="mt-auto mb-4 lg:p-3">
         {bottomNavItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
-            className="flex items-center gap-4 px-3 py-3 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-card-dark hover:text-slate-900 dark:hover:text-white transition-colors group/item"
+            className="flex items-center justify-center gap-4 h-[50px] lg:h-auto py-3 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-card-dark hover:text-slate-900 dark:hover:text-white transition-colors group/item lg:justify-start lg:px-3"
           >
             <item.icon className="shrink-0" />
-            <span className="whitespace-nowrap opacity-0 group-hover:opacity-100 lg:opacity-100 transition-opacity duration-300">
-              {item.label}
-            </span>
+            <span className="hidden lg:inline whitespace-nowrap">{item.label}</span>
           </NavLink>
         ))}
       </div>
