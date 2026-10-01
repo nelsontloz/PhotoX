@@ -14,6 +14,10 @@ import { LocalStorageService, envFaceDetectorKind } from '@photox/shared-config'
 export const CLUSTER_DEBOUNCE_MS = 30_000
 export const FACE_MAX_DIM = 2048
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
 @Injectable()
 export class FaceProcessor {
   private readonly logger = new Logger(FaceProcessor.name)
@@ -88,16 +92,21 @@ export class FaceProcessor {
       // ponytail: drop low-confidence detections before save — clustering separately ignores conf < 0.4
       const faces = detections
         .filter((d) => d.confidence >= 0.5)
-        .map((d) => ({
-          box: {
-            x: Math.round(d.box.x * scaleX),
-            y: Math.round(d.box.y * scaleY),
-            w: Math.round(d.box.w * scaleX),
-            h: Math.round(d.box.h * scaleY),
-          },
-          confidence: Math.round(d.confidence * 10000) / 10000,
-          embedding: d.embedding,
-        }))
+        .map((d) => {
+          // ponytail: detector boxes can poke past the frame (SCRFD especially) — clamp each edge
+          // to the oriented original so core's @Min(0) box DTO accepts them and crops stay in-bounds
+          const x1 = clamp(Math.round(d.box.x * scaleX), 0, origW)
+          const y1 = clamp(Math.round(d.box.y * scaleY), 0, origH)
+          const x2 = clamp(Math.round((d.box.x + d.box.w) * scaleX), 0, origW)
+          const y2 = clamp(Math.round((d.box.y + d.box.h) * scaleY), 0, origH)
+          return {
+            box: { x: x1, y: y1, w: x2 - x1, h: y2 - y1 },
+            confidence: Math.round(d.confidence * 10000) / 10000,
+            embedding: d.embedding,
+          }
+        })
+        // a box entirely outside the frame collapses to zero/negative extent — never register it
+        .filter((d) => d.box.w > 0 && d.box.h > 0)
 
       // ponytail: unconditional delete + re-save after a successful detect — retry-safe replace
       // (was re-embed-only, so a retried job duplicated faces); never before detect, to avoid data loss

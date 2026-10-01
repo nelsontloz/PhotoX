@@ -200,6 +200,23 @@ describe('FaceProcessor', () => {
     })
   })
 
+  it('clamps detector boxes to the image bounds and drops fully-outside ones', async () => {
+    const run = setup()
+    const { userId, fileId, asset } = await seedPhoto()
+    detect.mockResolvedValue([
+      { box: { x: -20, y: -30, w: 60, h: 80 }, confidence: 0.9, embedding: emb512() },
+      { box: { x: -100, y: -100, w: 50, h: 50 }, confidence: 0.9, embedding: emb512() },
+      { box: { x: 190, y: 140, w: 50, h: 50 }, confidence: 0.9, embedding: emb512() },
+    ])
+
+    await run({ data: { assetId: asset.id, fileId, userId } } as Job<FaceJob>)
+
+    const faces = fake.faces.get(asset.id)!
+    expect(faces).toHaveLength(2)
+    expect(faces[0]!.box).toEqual({ x: 0, y: 0, w: 40, h: 50 })
+    expect(faces[1]!.box).toEqual({ x: 190, y: 140, w: 10, h: 10 })
+  })
+
   it('clears faces and reports zero when nothing is detected', async () => {
     const run = setup()
     const { userId, fileId, asset } = await seedPhoto()
