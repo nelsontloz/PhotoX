@@ -21,7 +21,12 @@ function suppressEconnreset(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), Pages({ importMode: 'async' }), suppressEconnreset()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    Pages({ importMode: 'async', exclude: ['**/*.spec.*'] }),
+    suppressEconnreset(),
+  ],
   build: {
     rollupOptions: {
       output: {

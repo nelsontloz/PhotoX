@@ -4,7 +4,25 @@ import type {
   AdminUserSortField,
   AdminAssetCountsResponse,
   AdminReprocessThumbnailsResponse,
+  FaceDetectionSettings,
+  FaceDetectorKind,
 } from '@photox/shared-types'
+
+export interface FaceReprocessStatus {
+  lastRun: {
+    startedAt: string
+    total: number
+    enqueued: number
+    detector: FaceDetectorKind
+  } | null
+  queue: { waiting: number; active: number; completed: number; failed: number; delayed: number }
+}
+
+export interface FaceReprocessResponse {
+  enqueued: number
+  total: number
+  detector: FaceDetectorKind
+}
 
 export interface ListAdminUsersParams {
   limit?: number
@@ -58,5 +76,30 @@ export async function getOrphanCounts(): Promise<{
   const { data } = await api.get<{ orphanFiles: number; orphanThumbnails: number }>(
     '/v1/admin/orphan-counts',
   )
+  return data
+}
+
+export async function getFaceDetection(): Promise<FaceDetectionSettings> {
+  const { data } = await api.get<FaceDetectionSettings>('/v1/admin/face-detection')
+  return data
+}
+
+export async function setFaceDetector(detector: FaceDetectorKind): Promise<FaceDetectionSettings> {
+  const { data } = await api.put<FaceDetectionSettings>('/v1/admin/face-detection', { detector })
+  return data
+}
+
+export async function reprocessFaces(): Promise<FaceReprocessResponse> {
+  const { data } = await api.post<FaceReprocessResponse>('/v1/admin/faces/reprocess')
+  return data
+}
+
+export async function getFaceReprocessStatus(): Promise<FaceReprocessStatus> {
+  const { data } = await api.get<FaceReprocessStatus>('/v1/admin/faces/reprocess')
+  return data
+}
+
+export async function reclusterFaces(): Promise<{ enqueued: number }> {
+  const { data } = await api.post<{ enqueued: number }>('/v1/admin/faces/recluster')
   return data
 }
