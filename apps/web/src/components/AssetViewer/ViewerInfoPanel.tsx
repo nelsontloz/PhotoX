@@ -1,15 +1,17 @@
 import { FaFolder, FaNoteSticky, FaXmark } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
 import { AssetMetadataPanel } from './sections/AssetMetadataPanel'
+import { CameraSection } from './sections/CameraSection'
 import { FacesSection } from './sections/FacesSection'
 import { LocationSection } from './sections/LocationSection'
 
 interface ViewerInfoPanelProps {
   asset: Asset
   onClose: () => void
+  onFaceHover?: (faceId: string | null) => void
 }
 
-export function ViewerInfoPanel({ asset, onClose }: ViewerInfoPanelProps) {
+export function ViewerInfoPanel({ asset, onClose, onFaceHover }: ViewerInfoPanelProps) {
   return (
     <aside className="relative w-80 h-full bg-card-dark border-l border-border-dark flex flex-col shrink-0">
       <div className="h-16 flex items-center px-6 border-b border-border-dark shrink-0">
@@ -24,6 +26,7 @@ export function ViewerInfoPanel({ asset, onClose }: ViewerInfoPanelProps) {
       </div>
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
         <AssetMetadataPanel asset={asset} />
+        <CameraSection asset={asset} />
         <section>
           <div className="flex items-center gap-2 text-slate-400 mb-2">
             <FaNoteSticky className="text-[18px]" />
@@ -37,7 +40,7 @@ export function ViewerInfoPanel({ asset, onClose }: ViewerInfoPanelProps) {
             <p className="text-sm text-slate-600 italic">No description</p>
           )}
         </section>
-        <FacesSection asset={asset} />
+        <FacesSection asset={asset} onFaceHover={onFaceHover} />
         <LocationSection asset={asset} />
         <section>
           <div className="flex items-center gap-2 text-slate-400 mb-3">

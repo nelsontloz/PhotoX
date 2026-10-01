@@ -43,6 +43,7 @@ export function AssetViewer({
 }: AssetViewerProps) {
   const [currentAsset, setCurrentAsset] = useState<Asset>(asset)
   const [infoOpen, setInfoOpen] = useState(false)
+  const [hoveredFaceId, setHoveredFaceId] = useState<string | null>(null)
   const [favOverride, setFavOverride] = useState<boolean | null>(null)
   const [reprocessLoading, setReprocessLoading] = useState(false)
   const userId = useAuthStore((s) => s.user?.id)
@@ -50,6 +51,7 @@ export function AssetViewer({
   useEffect(() => {
     setCurrentAsset(asset)
     setFavOverride(null)
+    setHoveredFaceId(null)
     let cancelled = false
     void getAsset(asset.id)
       .then((fresh) => {
@@ -134,6 +136,7 @@ export function AssetViewer({
           infoOpen={infoOpen}
           onToggleInfo={() => {
             setInfoOpen((v) => !v)
+            setHoveredFaceId(null)
           }}
           onClose={onClose}
           onTrash={onTrash}
@@ -170,6 +173,7 @@ export function AssetViewer({
           hasNext={hasNext}
           infoOpen={infoOpen}
           asset={currentAsset}
+          highlightedFaceId={hoveredFaceId}
           onPrev={onPrev}
           onNext={onNext}
           siblingAssets={siblingAssets}
@@ -179,8 +183,10 @@ export function AssetViewer({
       {infoOpen && (
         <ViewerInfoPanel
           asset={currentAsset}
+          onFaceHover={setHoveredFaceId}
           onClose={() => {
             setInfoOpen(false)
+            setHoveredFaceId(null)
           }}
         />
       )}
