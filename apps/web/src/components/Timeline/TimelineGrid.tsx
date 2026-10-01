@@ -115,6 +115,21 @@ export function TimelineGrid({
             style={{ top: bucket.top, height: bucket.height }}
           >
             {bucket.days.map((day) => {
+              // Day-granular window on top of the already-windowed bucket: off-window days keep
+              // their reserved section (same flow/margins) but render no children. min/max are
+              // ±Infinity with no viewport → everything renders (safe fallback).
+              // ponytail: day-granular — a single day with thousands of tiles still mounts them
+              // all; upgrade path = row-granular windowing from the day's packed rows.
+              const dayTop = bucket.top + day.top
+              if (dayTop >= max || dayTop + day.height <= min) {
+                return (
+                  <section
+                    key={day.sortKey}
+                    className="mb-10 last:mb-0"
+                    style={{ height: day.height }}
+                  />
+                )
+              }
               const group = groupsByDay.get(day.sortKey)
               const monthReady = monthStatus.get(day.sortKey.slice(0, 7)) === 'ready'
               const items = group?.items ?? []

@@ -75,7 +75,7 @@ describe('useTimelineMonths', () => {
     // in-flight dedupe: one request, scoped to the month's half-open range
     expect(listAllAssetsMock).toHaveBeenCalledTimes(1)
     expect(listAllAssetsMock).toHaveBeenCalledWith({
-      limit: 50,
+      limit: 100,
       dateFrom: new Date(2024, 4, 1).toISOString(),
       dateTo: new Date(2024, 5, 1).toISOString(),
     })

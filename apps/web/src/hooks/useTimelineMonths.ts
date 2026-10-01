@@ -14,7 +14,7 @@ interface MonthEntry {
   stamp: number
 }
 
-const PAGE_SIZE = 50
+const PAGE_SIZE = 100
 
 export interface UseTimelineMonthsResult {
   /** Day groups merged across every fetched month (stale months included, so refreshes don't unmount the viewer) */
@@ -28,7 +28,7 @@ export interface UseTimelineMonthsResult {
 
 /**
  * Per-month asset cache for the timeline: nothing is fetched at mount, `ensureMonth('YYYY-MM')`
- * fetches the whole month through `listAllAssets` (limit 50) inside its half-open
+ * fetches the whole month through `listAllAssets` (limit 100) inside its half-open
  * `dateFrom`/`dateTo` range, and entries are stamped with the refresh key so an upload/trash bump
  * re-fetches only what's on screen. Favorites/trash keep `useAssetGroups`' fetch-all.
  */

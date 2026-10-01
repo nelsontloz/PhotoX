@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { cleanup, render, waitFor } from '@testing-library/react'
+import type { RefObject } from 'react'
 import type { AssetLayout } from '@photox/shared-types'
 import { buildBuckets, type TimelineItem } from '../../lib/timelineLayout'
+import { ScrollContainerContext } from '../AppShell'
 
 // Pinned measurement inputs — jsdom has no ResizeObserver and resolves no stylesheet vars, so the
 // stubs below must feed useTimelineLayout exactly these values.
@@ -135,5 +137,33 @@ describe('TimelineGrid reserved space', () => {
         expect(dayEls[j]?.style.height).toBe(`${day.height}px`)
       })
     })
+  })
+
+  it('mounts only the days intersecting the scroll window, keeping reserved heights', async () => {
+    const el = document.createElement('div')
+    Object.defineProperty(el, 'scrollTop', { value: 0 })
+    Object.defineProperty(el, 'clientHeight', { value: 100 })
+    const scrollRef: RefObject<HTMLDivElement> = { current: el }
+
+    const { container } = render(
+      <ScrollContainerContext.Provider value={scrollRef}>
+        <TimelineHarness />
+      </ScrollContainerContext.Provider>,
+    )
+
+    // window = [0 − 100, 0 + 2×100] = [−100, 200]: bucket 2026-03 (top 0, height 774) is the only
+    // mounted bucket; its 2026-03-20 day (top 0, height 469) is in-window, 2026-03-15 (top 509) is
+    // not. The unmounted 2026-02 bucket and the off-window day keep their reserved space.
+    await waitFor(() => {
+      expect(container.querySelectorAll('.max-w-6xl > section')).toHaveLength(1)
+    })
+    expect(getAssetLayoutMock).toHaveBeenCalledTimes(1)
+
+    const monthEl = container.querySelector<HTMLElement>('.max-w-6xl > section')
+    const dayEls = Array.from(monthEl?.querySelectorAll<HTMLElement>(':scope > section') ?? [])
+    expect(dayEls).toHaveLength(2)
+    expect(dayEls[0]?.querySelector('.fixed-row-gallery')).not.toBeNull()
+    expect(dayEls[1]?.querySelector('.fixed-row-gallery')).toBeNull()
+    expect(dayEls[1]?.style.height).toBe('265px')
   })
 })

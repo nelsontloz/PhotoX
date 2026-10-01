@@ -22,19 +22,22 @@ export async function listAssets(params: ListAssetsParams = {}): Promise<AssetLi
   return data
 }
 
-/** Pages `listAssets` until `total` is covered. `limit` is the page size, not a cap. */
+/**
+ * Fetches page 1 (offset 0) serially, then all remaining pages in parallel. `limit` is the page
+ * size, not a cap; an empty first page returns [].
+ */
 export async function listAllAssets(params: ListAssetsParams = {}): Promise<Asset[]> {
   const limit = params.limit ?? 100
-  const all: Asset[] = []
-  let offset = 0
-  let total = 0
-  do {
-    const res = await listAssets({ ...params, limit, offset })
-    all.push(...res.items)
-    total = res.total
-    offset += limit
-    if (res.items.length === 0) break
-  } while (offset < total)
+  const first = await listAssets({ ...params, limit, offset: 0 })
+  const all = [...first.items]
+  if (first.items.length === 0 || all.length >= first.total) return all
+  const pages: Promise<AssetListResponse>[] = []
+  // ponytail: all remaining pages fire at once; the browser/HTTP stack caps concurrency.
+  // Cap + retry if a single month ever exceeds a few thousand rows.
+  for (let offset = limit; offset < first.total; offset += limit) {
+    pages.push(listAssets({ ...params, limit, offset }))
+  }
+  for (const page of await Promise.all(pages)) all.push(...page.items)
   return all
 }
 
