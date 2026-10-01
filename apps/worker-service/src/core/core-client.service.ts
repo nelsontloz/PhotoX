@@ -7,6 +7,8 @@ import type {
   AssetListResponse,
   DetectedFaceInput,
   FaceBox,
+  FaceDetectionSettings,
+  FaceDetectorKind,
   FileRecord,
   Role,
 } from '@photox/shared-types'
@@ -151,11 +153,12 @@ export class CoreClient {
     userId: string,
     assetId: string,
     faces: DetectedFaceInput[],
+    detector: FaceDetectorKind,
   ): Promise<{ count: number }> {
     // userId is part of the wire DTO (required @IsUUID); the token sub stays authoritative
     return this.request('POST', `/api/v1/assets/${assetId}/faces`, {
       sub: userId,
-      body: { faces, userId },
+      body: { faces, userId, detector },
     })
   }
 
@@ -190,6 +193,12 @@ export class CoreClient {
     return this.request('POST', '/api/v1/persons/apply-clusters', { sub: userId, body: payload })
   }
 
+  // ponytail: called after every cluster run (even when the plan was empty) — deletes persons whose
+  // last live face left and unassigns any faces left behind in trash
+  async pruneEmptyPersons(userId: string): Promise<{ deleted: number }> {
+    return this.request('POST', '/api/v1/persons/prune-empty', { sub: userId })
+  }
+
   async adminDeleteFile(fileId: string): Promise<void> {
     await this.request('DELETE', `/api/v1/admin/files/${fileId}`, {
       sub: 'worker-service',
@@ -205,6 +214,13 @@ export class CoreClient {
       { sub: 'worker-service', role: 'admin' },
       { timeoutMs: 120_000 },
     )
+  }
+
+  async getFaceDetectionSettings(): Promise<FaceDetectionSettings> {
+    return this.request('GET', '/api/v1/admin/face-detection', {
+      sub: 'worker-service',
+      role: 'admin',
+    })
   }
 
   private async request<T>(

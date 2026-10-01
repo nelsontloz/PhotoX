@@ -232,6 +232,31 @@ export class PersonsService {
     })
   }
 
+  // ponytail: a cluster run prunes persons whose last live face left (manual unassign, re-embed,
+  // asset deletion). Trashed assets don't count — same rule as countLiveFaces/the People page —
+  // and any leftover face rows (e.g. the person's photos are all in trash) are unassigned so a
+  // later restore comes back unassigned instead of dangling at a deleted person.
+  async pruneEmpty(userId: string): Promise<{ deleted: number }> {
+    return this.dataSource.transaction(async (em) => {
+      const rows: { id: string }[] = await em.query(
+        `SELECT p.id FROM persons p
+         WHERE p."userId" = $1
+           AND NOT EXISTS (
+             SELECT 1 FROM faces f
+             INNER JOIN assets a ON a.id = f."assetId"
+             WHERE f."personId" = p.id AND f."userId" = p."userId" AND a."isTrashed" = false
+           )`,
+        [userId],
+      )
+      if (rows.length === 0) return { deleted: 0 }
+
+      const ids = rows.map((r) => r.id)
+      await em.update(Face, { personId: In(ids) }, { personId: null })
+      await em.delete(Person, { id: In(ids), userId })
+      return { deleted: ids.length }
+    })
+  }
+
   private toListItem(person: {
     id: string
     userId: string

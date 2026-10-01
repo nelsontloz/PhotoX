@@ -12,6 +12,6 @@ describe('FacesController identity resolution', () => {
     } as unknown as Request
     // ponytail: identity comes from the verified JWT — handler must scope by it, never undefined
     await controller.registerFaces('asset-1', { faces: [] } as never, req)
-    expect(registerFaces).toHaveBeenCalledWith('asset-1', 'u1', [])
+    expect(registerFaces).toHaveBeenCalledWith('asset-1', 'u1', [], null)
   })
 })

@@ -11,7 +11,14 @@ import { JwtModule, JwtService } from '@nestjs/jwt'
 import type { Queue } from 'bullmq'
 import type { Express } from 'express'
 import { DataSource, type Repository } from 'typeorm'
-import { Asset, AssetThumbnail, Face, FileRecord, Person } from '../../src/database/entities'
+import {
+  Asset,
+  AssetThumbnail,
+  Face,
+  FileRecord,
+  Person,
+  AppSetting,
+} from '../../src/database/entities'
 import { LocalStorageService } from '@photox/shared-config'
 import { User } from '../../src/users/entities/user.entity'
 import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
@@ -77,6 +84,7 @@ const ENTITIES = [
   AssetThumbnail,
   Face,
   Person,
+  AppSetting,
 ]
 
 export async function createApiTestApp(opts?: {
@@ -177,7 +185,7 @@ export async function createApiTestApp(opts?: {
 
 export async function resetDb(t: ApiTestApp): Promise<void> {
   await t.dataSource.query(
-    'TRUNCATE users, refresh_tokens, albums, album_assets, asset_shares, files, assets, asset_thumbnails, faces, persons RESTART IDENTITY CASCADE',
+    'TRUNCATE users, refresh_tokens, albums, album_assets, asset_shares, files, assets, asset_thumbnails, faces, persons, app_settings RESTART IDENTITY CASCADE',
   )
   rmSync(t.storageDir, { recursive: true, force: true })
   await t.storage.ensureDir()

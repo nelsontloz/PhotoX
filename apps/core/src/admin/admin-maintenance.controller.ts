@@ -1,7 +1,10 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { IsIn } from 'class-validator'
+import type { FaceDetectorKind } from '@photox/shared-types'
+import type { FaceReprocessLastRun } from '../settings/settings.service'
 import { AdminAssetsService } from './admin-assets.service'
+import { AdminFacesService } from './admin-faces.service'
 import { BullMqService } from '../queue/bullmq.service'
 
 class ReprocessThumbnailsDto {
@@ -15,6 +18,7 @@ export class AdminMaintenanceController {
   constructor(
     private readonly admin: AdminAssetsService,
     private readonly bullMq: BullMqService,
+    private readonly adminFaces: AdminFacesService,
   ) {}
 
   @Get('orphan-counts')
@@ -66,5 +70,41 @@ export class AdminMaintenanceController {
       if (offset >= total) break
     }
     return { enqueued, totalAssets: total }
+  }
+
+  @Post('faces/reprocess')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Enqueue face re-embed jobs for all non-trashed photos (admin-only)' })
+  @ApiResponse({ status: 200, description: 'Re-embed jobs enqueued and the run recorded' })
+  async reprocessFaces(): Promise<{
+    enqueued: number
+    total: number
+    detector: FaceDetectorKind
+  }> {
+    return this.adminFaces.reprocess()
+  }
+
+  @Get('faces/reprocess')
+  @ApiOperation({ summary: 'Face reprocess last-run record and process-faces queue counts' })
+  @ApiResponse({
+    status: 200,
+    description: 'Last run record (null when never run) and queue counts',
+  })
+  async faceReprocessStatus(): Promise<{
+    lastRun: FaceReprocessLastRun | null
+    queue: Record<string, number>
+  }> {
+    return this.adminFaces.status()
+  }
+
+  @Post('faces/recluster')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Enqueue a manual face cluster job per distinct user with faces' })
+  @ApiResponse({
+    status: 200,
+    description: 'One cluster job enqueued per distinct user with faces',
+  })
+  async reclusterFaces(): Promise<{ enqueued: number }> {
+    return this.adminFaces.recluster()
   }
 }

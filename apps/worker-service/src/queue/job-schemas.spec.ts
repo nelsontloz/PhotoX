@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto'
 import {
   assertOwnership,
   cleanupOrphansJobSchema,
+  faceJobSchema,
   parseJobData,
   thumbnailJobSchema,
 } from './job-schemas'
@@ -36,6 +37,16 @@ describe('job payload schemas', () => {
     expect(() => parseJobData(thumbnailJobSchema, payload, 'process-thumbnail')).toThrow(
       UnrecoverableError,
     )
+  })
+
+  it('rejects an unknown face detector', () => {
+    const payload = {
+      assetId: randomUUID(),
+      fileId: randomUUID(),
+      userId: randomUUID(),
+      detector: 'bogus',
+    }
+    expect(() => parseJobData(faceJobSchema, payload, 'process-faces')).toThrow(UnrecoverableError)
   })
 
   it('accepts cleanup-orphans payloads from both producers', () => {

@@ -63,4 +63,4 @@ Storage is local disk (`STORAGE_DIR`, default `./data/storage`) shared by core a
 - `apps/core/src/database` — TypeORM entities + DB module (core only)
 - `packages/shared-config` / `shared-types` — zod env + local storage, JWT payload/wire types
 
-See `AGENTS.md` for architecture details and `codemap.md` for the full repository map.
+See `AGENTS.md` for architecture details.

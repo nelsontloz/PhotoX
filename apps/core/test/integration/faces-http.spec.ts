@@ -97,6 +97,49 @@ describe('faces HTTP', () => {
     expect(rows[0]?.embedding).toHaveLength(512)
   })
 
+  it('stores detector provenance on registered faces and null when absent', async () => {
+    const owner = await seedUser(t)
+    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role })
+    const face = { box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }
+
+    const fileA = await seedFile(t, owner.id)
+    const assetA = await seedAsset(t, owner.id, fileA.id)
+    const withDetector = await request(apiServer(t))
+      .post(`/api/v1/assets/${assetA.id}/faces`)
+      .set(t.authHeader(token))
+      .send({ userId: owner.id, detector: 'scrfd', faces: [face] })
+    expect(withDetector.status).toBe(201)
+    const rowsA = await t.faceRepo.find({ where: { assetId: assetA.id } })
+    expect(rowsA[0]?.detector).toBe('scrfd')
+
+    const fileB = await seedFile(t, owner.id)
+    const assetB = await seedAsset(t, owner.id, fileB.id)
+    const withoutDetector = await request(apiServer(t))
+      .post(`/api/v1/assets/${assetB.id}/faces`)
+      .set(t.authHeader(token))
+      .send({ userId: owner.id, faces: [face] })
+    expect(withoutDetector.status).toBe(201)
+    const rowsB = await t.faceRepo.find({ where: { assetId: assetB.id } })
+    expect(rowsB[0]?.detector).toBeNull()
+  })
+
+  it('rejects an invalid detector on register with 400', async () => {
+    const owner = await seedUser(t)
+    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role })
+    const file = await seedFile(t, owner.id)
+    const asset = await seedAsset(t, owner.id, file.id)
+    const res = await request(apiServer(t))
+      .post(`/api/v1/assets/${asset.id}/faces`)
+      .set(t.authHeader(token))
+      .send({
+        userId: owner.id,
+        detector: 'bogus',
+        faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }],
+      })
+    expect(res.status).toBe(400)
+    expect(await t.faceRepo.count()).toBe(0)
+  })
+
   it('accepts an empty faces array', async () => {
     const owner = await seedUser(t)
     const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role })

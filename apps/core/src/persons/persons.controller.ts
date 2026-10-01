@@ -56,6 +56,14 @@ export class PersonsController {
     return this.persons.applyClusters((req.user as { id: string }).id, dto)
   }
 
+  @Post('prune-empty')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete persons with no live faces (post-clustering cleanup)' })
+  @ApiResponse({ status: 200, description: 'Empty persons deleted' })
+  async pruneEmpty(@Req() req: Request): Promise<{ deleted: number }> {
+    return this.persons.pruneEmpty((req.user as { id: string }).id)
+  }
+
   @Get()
   @ApiOperation({ summary: 'List persons for a user' })
   @ApiResponse({ status: 200, description: 'Paginated person list' })

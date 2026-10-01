@@ -52,6 +52,11 @@ import {
   reprocessThumbnails,
   cleanupOrphans,
   getOrphanCounts,
+  getFaceDetection,
+  setFaceDetector,
+  reprocessFaces,
+  getFaceReprocessStatus,
+  reclusterFaces,
 } from '../../../src/api/admin'
 
 const PACT_DIR = path.resolve(__dirname, '../../../../../pacts')
@@ -1087,6 +1092,120 @@ describe('Web → Core pact', () => {
         api.defaults.baseURL = mockserver.url + '/api'
         const res = await getOrphanCounts()
         expect(res.orphanFiles).toBe(0)
+      })
+  })
+
+  it('GET /api/v1/admin/face-detection — face detector settings', async () => {
+    await provider
+      .uponReceiving('a request for admin face detection settings')
+      .withRequest({
+        method: 'GET',
+        path: '/api/v1/admin/face-detection',
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: MatchersV3.like({
+          detector: 'human',
+          envDefault: 'human',
+          models: { scrfd: false },
+          facesByDetector: { human: 3, scrfd: 2, unset: 1 },
+        }),
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await getFaceDetection()
+        expect(res.detector).toBe('human')
+        expect(res.facesByDetector.unset).toBe(1)
+      })
+  })
+
+  it('PUT /api/v1/admin/face-detection — switch the detector', async () => {
+    await provider
+      .uponReceiving('a request to switch the admin face detector')
+      .withRequest({
+        method: 'PUT',
+        path: '/api/v1/admin/face-detection',
+        headers: { 'Content-Type': 'application/json' },
+        body: { detector: 'scrfd' },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: MatchersV3.like({
+          detector: 'scrfd',
+          envDefault: 'human',
+          models: { scrfd: true },
+          facesByDetector: { human: 3, scrfd: 2, unset: 1 },
+        }),
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await setFaceDetector('scrfd')
+        expect(res.detector).toBe('scrfd')
+      })
+  })
+
+  it('POST /api/v1/admin/faces/reprocess — enqueue face reprocess', async () => {
+    await provider
+      .uponReceiving('a request to reprocess all faces')
+      .withRequest({
+        method: 'POST',
+        path: '/api/v1/admin/faces/reprocess',
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: MatchersV3.like({ enqueued: 5, total: 5, detector: 'human' }),
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await reprocessFaces()
+        expect(res.enqueued).toBe(5)
+      })
+  })
+
+  it('GET /api/v1/admin/faces/reprocess — last run and queue counts', async () => {
+    await provider
+      .uponReceiving('a request for the face reprocess status')
+      .withRequest({
+        method: 'GET',
+        path: '/api/v1/admin/faces/reprocess',
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        // ponytail: pact-js has no nullable/oneOf matcher (open feature request), and lastRun is
+        // legitimately null on fresh state — leave it out of the expected body so verification
+        // accepts both null and the run object (unexpected response keys are allowed by default).
+        // Ceiling: add a real oneOf matcher if/when pact-js ships one.
+        body: MatchersV3.like({
+          queue: { waiting: 1, active: 1, completed: 3, failed: 0, delayed: 0 },
+        }),
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await getFaceReprocessStatus()
+        expect(res.queue.waiting).toBe(1)
+      })
+  })
+
+  it('POST /api/v1/admin/faces/recluster — enqueue manual clustering', async () => {
+    await provider
+      .uponReceiving('a request to recluster faces manually')
+      .withRequest({
+        method: 'POST',
+        path: '/api/v1/admin/faces/recluster',
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: MatchersV3.like({ enqueued: 2 }),
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await reclusterFaces()
+        expect(res.enqueued).toBe(2)
       })
   })
 

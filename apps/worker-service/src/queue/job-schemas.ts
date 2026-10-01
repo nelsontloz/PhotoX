@@ -1,5 +1,6 @@
 import { UnrecoverableError } from 'bullmq'
 import { z } from 'zod'
+import { FACE_DETECTOR_KINDS } from '@photox/shared-types'
 
 const uuid = z.string().uuid()
 
@@ -28,6 +29,7 @@ export const faceJobSchema = z.object({
   fileId: uuid,
   userId: uuid,
   reason: z.enum(['initial', 're-embed']).optional(),
+  detector: z.enum(FACE_DETECTOR_KINDS).optional(),
 })
 
 export const clusterJobSchema = z.object({

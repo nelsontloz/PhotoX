@@ -95,3 +95,18 @@ export function loadAuthEnv(): AuthEnv {
 
   return parsed.data
 }
+
+export const FACE_DETECTOR_MODEL_FILE = 'det_10g.onnx'
+
+// ponytail: FACE_DETECTOR / FACE_DETECTOR_MODEL_PATH stay direct env reads outside the zod schema
+// (WORKER_SERVICE_PORT precedent) — shared so core and worker resolve the same default model path
+export function resolveFaceDetectorModelPath(): string {
+  return (
+    process.env.FACE_DETECTOR_MODEL_PATH ??
+    join(loadEnv().STORAGE_DIR, 'models', FACE_DETECTOR_MODEL_FILE)
+  )
+}
+
+export function envFaceDetectorKind(): 'human' | 'scrfd' {
+  return process.env.FACE_DETECTOR === 'scrfd' ? 'scrfd' : 'human'
+}

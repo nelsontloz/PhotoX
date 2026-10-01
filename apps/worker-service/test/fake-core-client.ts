@@ -1,6 +1,12 @@
 import { UnrecoverableError } from 'bullmq'
 import type { LocalStorageService } from '@photox/shared-config'
-import type { Asset, DetectedFaceInput, FileRecord } from '@photox/shared-types'
+import type {
+  Asset,
+  DetectedFaceInput,
+  FaceDetectionSettings,
+  FaceDetectorKind,
+  FileRecord,
+} from '@photox/shared-types'
 import type {
   ApplyClustersPayload,
   ApplyClustersResult,
@@ -85,6 +91,7 @@ export class FakeCoreClient {
   readonly thumbnails: (RegisterThumbnailInput & { assetId: string })[] = []
   readonly faces = new Map<string, DetectedFaceInput[]>()
   readonly deleteFacesCalls: string[] = []
+  readonly registerFaceDetectors: FaceDetectorKind[] = []
   readonly clusterFaces: ClusterFace[] = []
   readonly applyClustersCalls: ApplyClustersPayload[] = []
   readonly adminDeletedFiles: string[] = []
@@ -92,6 +99,12 @@ export class FakeCoreClient {
     deletedFiles: 0,
     deletedThumbnails: 0,
     deletedStrays: 0,
+  }
+  faceDetectionSettings: FaceDetectionSettings = {
+    detector: 'human',
+    envDefault: 'human',
+    models: { scrfd: false },
+    facesByDetector: { human: 0, scrfd: 0, unset: 0 },
   }
   adminDeleteFileFailures = 0
   orphanCleanupFailures = 0
@@ -112,10 +125,17 @@ export class FakeCoreClient {
     this.thumbnails.length = 0
     this.faces.clear()
     this.deleteFacesCalls.length = 0
+    this.registerFaceDetectors.length = 0
     this.clusterFaces.length = 0
     this.applyClustersCalls.length = 0
     this.adminDeletedFiles.length = 0
     this.orphanCleanupResult = { deletedFiles: 0, deletedThumbnails: 0, deletedStrays: 0 }
+    this.faceDetectionSettings = {
+      detector: 'human',
+      envDefault: 'human',
+      models: { scrfd: false },
+      facesByDetector: { human: 0, scrfd: 0, unset: 0 },
+    }
     this.adminDeleteFileFailures = 0
     this.orphanCleanupFailures = 0
     this.registeredByChecksum.clear()
@@ -204,10 +224,12 @@ export class FakeCoreClient {
     userId: string,
     assetId: string,
     faces: DetectedFaceInput[],
+    detector: FaceDetectorKind,
   ): Promise<{ count: number }> {
-    this.calls.push({ method: 'registerFaces', args: [assetId, faces] })
+    this.calls.push({ method: 'registerFaces', args: [assetId, faces, detector] })
     const err = this.assetError(userId, assetId)
     if (err) return Promise.reject(err)
+    this.registerFaceDetectors.push(detector)
     this.faces.set(assetId, [...(this.faces.get(assetId) ?? []), ...faces])
     return Promise.resolve({ count: faces.length })
   }
@@ -253,6 +275,11 @@ export class FakeCoreClient {
     return Promise.resolve({ created: payload.creates.length, assigned: new Set(faceIds).size })
   }
 
+  pruneEmptyPersons(userId: string): Promise<{ deleted: number }> {
+    this.calls.push({ method: 'pruneEmptyPersons', args: [userId] })
+    return Promise.resolve({ deleted: 0 })
+  }
+
   adminDeleteFile(fileId: string): Promise<void> {
     this.calls.push({ method: 'adminDeleteFile', args: [fileId] })
     if (this.adminDeleteFileFailures > 0) {
@@ -271,6 +298,15 @@ export class FakeCoreClient {
       return Promise.reject(new Error('core 503'))
     }
     return Promise.resolve({ ...this.orphanCleanupResult })
+  }
+
+  getFaceDetectionSettings(): Promise<FaceDetectionSettings> {
+    this.calls.push({ method: 'getFaceDetectionSettings', args: [] })
+    return Promise.resolve({
+      ...this.faceDetectionSettings,
+      models: { ...this.faceDetectionSettings.models },
+      facesByDetector: { ...this.faceDetectionSettings.facesByDetector },
+    })
   }
 
   private assignClusterFace(faceId: string, personId: string): void {

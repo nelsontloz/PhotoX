@@ -78,7 +78,7 @@
 }
 
 /* Fixed-row modifier (timeline only): every row is exactly --row-height tall, so a month
-   section's height is computable from data alone — see components/Timeline/codemap.md. */
+   section's height is computable from data alone. */
 .justified-grid-gallery.fixed-row-gallery {
   --row-height: 200px;
 }

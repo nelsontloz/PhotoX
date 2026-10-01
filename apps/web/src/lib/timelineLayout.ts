@@ -1,6 +1,6 @@
 import { groupDateSortKey } from './dateFormat'
 
-// Browser-verified fixed-row timeline constants (see components/Timeline/codemap.md).
+// Browser-verified fixed-row timeline constants.
 const HEADER_BLOCK = 65 // 49px sticky header + 16px mb-4
 const GAP = 4 // flex gap between rows
 const SECTION_MARGIN = 40 // section mb-10

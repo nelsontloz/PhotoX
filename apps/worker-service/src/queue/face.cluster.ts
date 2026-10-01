@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { randomUUID } from 'crypto'
 import type { Job } from 'bullmq'
 import { FACE_EMBEDDING_DIM } from '@photox/shared-types'
+import type { FaceDetectorKind } from '@photox/shared-types'
 import { BullMqService } from './bullmq.service'
 import { parseJobData, clusterJobSchema, type ClusterJob } from './job-schemas'
 import type {
@@ -11,14 +12,21 @@ import type {
 } from '../core/core-client.service'
 import { CoreClient } from '../core/core-client.service'
 
-// ponytail: ArcFace-family tuning — same-person cosine distance typically ~0.3-0.6, so eps sits
-// above the old faceres 0.3x values; centroid matching (not tighter eps) is the merge guard now
-const DBSCAN_EPS = 0.55
+// ponytail: ArcFace-family tuning — DBSCAN_EPS 0.35 means similarity >= 0.65; this is a pair radius,
+// not a transitivity radius, so old 0.55 (similarity 0.45) chained different people through
+// near-neighbours. Centroid matching is the merge guard now, not a looser eps
+const DBSCAN_EPS = 0.35
 const DBSCAN_MIN_PTS = 2
-// ponytail: NOISE_ASSIGN_EPS <= DBSCAN_EPS invariant — singleton noise faces only join an existing person centroid strictly inside the clustering radius; looser values re-merged distinct people
-const NOISE_ASSIGN_EPS = 0.5
-// ponytail: new clusters attach to the nearest existing person centroid within CLUSTER_MATCH_EPS, else get a random label — run-local `cluster-N` labels merged different people across runs
-const CLUSTER_MATCH_EPS = 0.5
+// ponytail: NOISE_ASSIGN_EPS 0.30 (similarity 0.70) is stricter than DBSCAN_EPS 0.35 — singleton
+// noise faces only join an existing person centroid when clearly inside the clustering radius;
+// looser values re-merged distinct people
+const NOISE_ASSIGN_EPS = 0.3
+// ponytail: a cluster centroid attaches to the nearest existing person within CLUSTER_MATCH_EPS 0.30
+// (similarity 0.70) AND only if it beats the runner-up by CLUSTER_MATCH_MARGIN — near-ties between two
+// persons stay over-split (merging people is curated separately) instead of silently attaching to the
+// wrong one; no match gets a random run-local label, else `cluster-N` labels merged people across runs
+const CLUSTER_MATCH_EPS = 0.3
+const CLUSTER_MATCH_MARGIN = 0.05
 // ponytail: low-confidence detections stay stored but don't vote in clustering or centroids
 const CLUSTER_MIN_CONFIDENCE = 0.4
 // ponytail: cap legacy re-embed enqueues per run — rest follow on later runs, no storm on big libraries
@@ -130,6 +138,10 @@ export class FaceClusterService {
     const { userId, reason } = parseJobData(clusterJobSchema, job.data, 'process-faces-cluster')
     this.logger.log(`Clustering faces: user=${userId}, reason=${reason ?? 'unknown'}`)
     await this.cluster(userId)
+    // ponytail: runs even when cluster() skipped (no faces/unassigned faces) — the point is stale
+    // clusters whose last face left, not the plan
+    const { deleted } = await this.core.pruneEmptyPersons(userId)
+    if (deleted > 0) this.logger.log(`Pruned ${deleted} empty persons for user=${userId}`)
     this.logger.log(`Clustering complete: user=${userId}`)
   }
 
@@ -153,7 +165,10 @@ export class FaceClusterService {
         0,
         LEGACY_REEMBED_PER_RUN,
       )
-      await this.enqueueReembed(assetIds, userId)
+      // ponytail: stamp the configured detector into re-embed jobs — settings fetched only when
+      // there is re-embed work to enqueue
+      const settings = await this.core.getFaceDetectionSettings()
+      await this.enqueueReembed(assetIds, userId, settings.detector)
       this.logger.log(
         `Skipped ${legacyUnassigned.length} legacy-dim faces, re-embed enqueued for ` +
           `${assetIds.length} assets: user=${userId}`,
@@ -214,11 +229,19 @@ export class FaceClusterService {
     }
     for (const pid of facesByPerson.keys()) refreshCentroid(pid)
 
-    const nearestPerson = (embedding: number[]): { id: string; dist: number } | null => {
-      let best: { id: string; dist: number } | null = null
+    const nearestPerson = (
+      embedding: number[],
+    ): { id: string; dist: number; runnerUp: number } | null => {
+      let best: { id: string; dist: number; runnerUp: number } | null = null
       for (const [pid, centroid] of personCentroids) {
         const d = cosineDistance(embedding, centroid)
-        if (best === null || d < best.dist) best = { id: pid, dist: d }
+        if (best === null) {
+          best = { id: pid, dist: d, runnerUp: Infinity }
+        } else if (d < best.dist) {
+          best = { id: pid, dist: d, runnerUp: best.dist }
+        } else if (d < best.runnerUp) {
+          best.runnerUp = d
+        }
       }
       return best
     }
@@ -233,7 +256,11 @@ export class FaceClusterService {
     let noiseReassigned = 0
     for (const face of noiseFaces) {
       const best = nearestPerson(face.embedding)
-      if (best !== null && best.dist <= NOISE_ASSIGN_EPS) {
+      if (
+        best !== null &&
+        best.dist <= NOISE_ASSIGN_EPS &&
+        best.runnerUp - best.dist >= CLUSTER_MATCH_MARGIN
+      ) {
         face.personId = best.id
         facesByPerson.get(best.id)!.push(face)
         refreshCentroid(best.id)
@@ -248,7 +275,12 @@ export class FaceClusterService {
     for (const facesInCluster of clusters.values()) {
       const newCentroid = centroidOf(facesInCluster.map((f) => f.embedding))
       const best = nearestPerson(newCentroid)
-      const personId = best !== null && best.dist <= CLUSTER_MATCH_EPS ? best.id : null
+      const personId =
+        best !== null &&
+        best.dist <= CLUSTER_MATCH_EPS &&
+        best.runnerUp - best.dist >= CLUSTER_MATCH_MARGIN
+          ? best.id
+          : null
 
       const coverFace = facesInCluster.reduce((bestFace, f) =>
         f.box.w * f.box.h > bestFace.box.w * bestFace.box.h ? f : bestFace,
@@ -308,18 +340,24 @@ export class FaceClusterService {
     )
   }
 
-  private async enqueueReembed(assetIds: string[], userId: string): Promise<void> {
+  private async enqueueReembed(
+    assetIds: string[],
+    userId: string,
+    detector: FaceDetectorKind,
+  ): Promise<void> {
     const assets = await this.core.getAssetsByIds(userId, assetIds)
     for (const a of assets) {
       await this.bullMq.enqueue(
         'process-faces',
         're-embed',
-        { assetId: a.id, fileId: a.fileId, userId, reason: 're-embed' },
+        { assetId: a.id, fileId: a.fileId, userId, reason: 're-embed', detector },
         {
           jobId: `face-reembed-${a.id}`,
           attempts: 3,
           backoff: { type: 'exponential' },
           removeOnFail: true,
+          // completed re-embeds must not block future runs: BullMQ dedupes this jobId in any state
+          removeOnComplete: true,
         },
       )
     }

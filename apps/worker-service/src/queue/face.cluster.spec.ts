@@ -30,6 +30,7 @@ describe('FaceClusterService.cluster', () => {
   let plans: ApplyClustersPayload[]
   let enqueueMock: ReturnType<typeof vi.fn>
   let getAssetsByIdsMock: ReturnType<typeof vi.fn>
+  let settingsMock: ReturnType<typeof vi.fn>
   let service: FaceClusterService
 
   beforeEach(() => {
@@ -43,6 +44,11 @@ describe('FaceClusterService.cluster', () => {
 
     enqueueMock = vi.fn().mockResolvedValue(undefined)
     getAssetsByIdsMock = vi.fn().mockResolvedValue([{ id: 'asset-legacy', fileId: 'file-legacy' }])
+    settingsMock = vi.fn().mockResolvedValue({
+      detector: 'human',
+      envDefault: 'human',
+      models: { scrfd: true },
+    })
     const core = {
       getFacesForCluster: vi.fn().mockImplementation(() =>
         Promise.resolve(
@@ -54,6 +60,7 @@ describe('FaceClusterService.cluster', () => {
         ),
       ),
       getAssetsByIds: getAssetsByIdsMock,
+      getFaceDetectionSettings: settingsMock,
       // mirror core's writes so a second run observes the applied plan
       applyClusters: vi.fn().mockImplementation((_uid: string, payload: ApplyClustersPayload) => {
         plans.push(payload)
@@ -88,6 +95,7 @@ describe('FaceClusterService.cluster', () => {
       /^cluster-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     )
     expect(faces.find((f) => f.id === 'face-assigned')!.personId).toBe('person-existing')
+    expect(settingsMock).not.toHaveBeenCalled()
   })
 
   it('attaches a cluster to the nearest existing person with the largest-box cover', async () => {
@@ -108,8 +116,8 @@ describe('FaceClusterService.cluster', () => {
   })
 
   it('merges a later cluster into an earlier pending create instead of attaching by fake id', async () => {
-    // two DBSCAN clusters (cross distances ~0.6 > eps) with centroids within CLUSTER_MATCH_EPS:
-    // old code attached cluster B to the person created for cluster A; E3 cannot reference creates
+    // adjacent vectors chain (-10°→10° ≈ 0.06, 10°→45° ≈ 0.18, 45°→65° ≈ 0.06, each ≤ eps), so all
+    // four faces land in one DBSCAN cluster and a single create — no cross distances above eps
     const dir = (deg: number) => {
       const rad = (deg * Math.PI) / 180
       return emb512([0, Math.cos(rad)], [1, Math.sin(rad)])
@@ -133,6 +141,68 @@ describe('FaceClusterService.cluster', () => {
     expect(plan.creates[0]!.coverFaceId).toBe('face-b1')
   })
 
+  it('blocks attach when two existing persons are near-tied for the candidate', async () => {
+    // candidate sits at 12.5°, equidistant (~0.024) from person-1 at 0° and person-2 at 25°:
+    // runner-up margin ~0 < CLUSTER_MATCH_MARGIN, so the cluster stays a create (over-split)
+    const dir = (deg: number) => {
+      const rad = (deg * Math.PI) / 180
+      return emb512([0, Math.cos(rad)], [1, Math.sin(rad)])
+    }
+    faces = [
+      face('face-p1', dir(0), 'person-1'),
+      face('face-p2', dir(25), 'person-2'),
+      face('face-c1', dir(12.5), null, 0.9, 120),
+      face('face-c2', dir(12.5)),
+    ]
+
+    await service.cluster(userId)
+
+    expect(plans).toHaveLength(1)
+    const plan = plans[0]!
+    expect(plan.attaches).toEqual([])
+    expect(plan.creates).toHaveLength(1)
+    expect(new Set(plan.creates[0]!.faceIds)).toEqual(new Set(['face-c1', 'face-c2']))
+  })
+
+  it('attaches when the nearest person clearly beats the runner-up', async () => {
+    // candidate at 5°: person-1 at 0° is ~0.004 away, person-2 at 60° is ~0.43 away — clear winner
+    const dir = (deg: number) => {
+      const rad = (deg * Math.PI) / 180
+      return emb512([0, Math.cos(rad)], [1, Math.sin(rad)])
+    }
+    faces = [
+      face('face-p1', dir(0), 'person-1'),
+      face('face-p2', dir(60), 'person-2'),
+      face('face-c1', dir(5), null, 0.9, 120),
+      face('face-c2', dir(5)),
+    ]
+
+    await service.cluster(userId)
+
+    expect(plans).toHaveLength(1)
+    const plan = plans[0]!
+    expect(plan.creates).toEqual([])
+    expect(plan.attaches).toEqual([
+      { personId: 'person-1', faceIds: ['face-c1', 'face-c2'], coverFaceId: 'face-c1' },
+    ])
+  })
+
+  it('reassigns a lone noise face just inside the noise threshold', async () => {
+    // cosine distance 1 - cos(41°) ≈ 0.245: inside NOISE_ASSIGN_EPS 0.30, sole person so no runner-up
+    const dir = (deg: number) => {
+      const rad = (deg * Math.PI) / 180
+      return emb512([0, Math.cos(rad)], [1, Math.sin(rad)])
+    }
+    faces = [face('face-known', dir(0), 'person-existing'), face('face-noise', dir(41))]
+
+    await service.cluster(userId)
+
+    expect(plans).toHaveLength(1)
+    const plan = plans[0]!
+    expect(plan.creates).toEqual([])
+    expect(plan.attaches).toEqual([{ personId: 'person-existing', faceIds: ['face-noise'] }])
+  })
+
   it('does not merge different people across runs', async () => {
     faces = [face('face-a1', emb512([0, 1])), face('face-a2', emb512([0, 1]))]
     await service.cluster(userId)
@@ -153,7 +223,7 @@ describe('FaceClusterService.cluster', () => {
   })
 
   it('keeps singleton noise faces unassigned beyond the tight noise threshold', async () => {
-    // cosine distance 0.6 from the existing centroid: outside NOISE_ASSIGN_EPS 0.5 and DBSCAN 0.55
+    // cosine distance 0.6 from the existing centroid: outside NOISE_ASSIGN_EPS 0.30 and DBSCAN 0.35
     faces = [
       face('face-known', emb512([0, 1]), 'person-existing'),
       face('face-noise', emb512([0, 0.4], [1, 0.9165])),
@@ -186,12 +256,44 @@ describe('FaceClusterService.cluster', () => {
     expect(plans).toHaveLength(0)
     expect(faces.every((f) => f.personId === null || f.id === 'face-old-assigned')).toBe(true)
     expect(getAssetsByIdsMock).toHaveBeenCalledWith(userId, ['asset-legacy'])
+    expect(settingsMock).toHaveBeenCalledTimes(1)
     expect(enqueueMock).toHaveBeenCalledTimes(1)
     expect(enqueueMock).toHaveBeenCalledWith(
       'process-faces',
       're-embed',
-      { assetId: 'asset-legacy', fileId: 'file-legacy', userId, reason: 're-embed' },
-      expect.objectContaining({ jobId: 'face-reembed-asset-legacy' }),
+      {
+        assetId: 'asset-legacy',
+        fileId: 'file-legacy',
+        userId,
+        reason: 're-embed',
+        detector: 'human',
+      },
+      expect.objectContaining({ jobId: 'face-reembed-asset-legacy', removeOnComplete: true }),
+    )
+  })
+
+  it('propagates the configured scrfd detector into re-embed jobs', async () => {
+    settingsMock.mockResolvedValue({
+      detector: 'scrfd',
+      envDefault: 'human',
+      models: { scrfd: true },
+    })
+    faces = [{ ...face('face-old-a', [0, 1, 0, 0]), assetId: 'asset-legacy' }]
+
+    await service.cluster(userId)
+
+    expect(enqueueMock).toHaveBeenCalledTimes(1)
+    expect(enqueueMock).toHaveBeenCalledWith(
+      'process-faces',
+      're-embed',
+      {
+        assetId: 'asset-legacy',
+        fileId: 'file-legacy',
+        userId,
+        reason: 're-embed',
+        detector: 'scrfd',
+      },
+      expect.objectContaining({ jobId: 'face-reembed-asset-legacy', removeOnComplete: true }),
     )
   })
 })

@@ -14,7 +14,7 @@ export class FacesController {
   @ApiResponse({ status: 201, description: 'Faces registered' })
   async registerFaces(@Param('id') id: string, @Body() dto: RegisterFacesDto, @Req() req: Request) {
     const userId = (req.user as { id: string }).id
-    return this.faces.registerFaces(id, userId, dto.faces)
+    return this.faces.registerFaces(id, userId, dto.faces, dto.detector ?? null)
   }
 
   @Delete(':id/faces')
