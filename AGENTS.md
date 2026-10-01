@@ -84,15 +84,3 @@ Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 ## Stale-doc warning
 
 Prefer `docker-compose.yml` + `apps/` layout over prose anywhere in the repo (including `README.md`, recently refreshed but still the shallowest source).
-
-## Repository Map
-
-A full codemap is available at `codemap.md` in the project root.
-
-Before working on any task, read `codemap.md` to understand:
-
-- Project architecture and entry points
-- Directory responsibilities and design patterns
-- Data flow and integration points between modules
-
-For deep work on a specific folder, also read that folder's `codemap.md`.
