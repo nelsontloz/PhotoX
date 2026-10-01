@@ -1,8 +1,11 @@
 import type { Readable } from 'stream'
 import type { Response } from 'express'
 import type { FileRecord } from '../database/entities'
+import { etagMatches } from '../assets/assets.controller'
 
 export const RANGE_RE = /^bytes=(\d+)-(\d*)$/
+
+const BYTES_CACHE_CONTROL = 'private, max-age=31536000, immutable'
 
 export function parseRangeHeader(
   rangeHeader: string,
@@ -20,7 +23,7 @@ export function parseRangeHeader(
   return { start, end: Math.min(end, totalSize - 1) }
 }
 
-type FileStreamRecord = Pick<FileRecord, 'mimeType'>
+type FileStreamRecord = Pick<FileRecord, 'mimeType' | 'checksumSha256'>
 
 /**
  * Sends a file byte stream over an Express response.
@@ -29,6 +32,9 @@ type FileStreamRecord = Pick<FileRecord, 'mimeType'>
  * - `range` omitted: full body, Content-Length/Accept-Ranges only when `totalSize` is
  *   provided (the download route omits it to stream without either header), plus the
  *   optional `Content-Disposition`.
+ * - 206 and full-body responses carry a strong `ETag` (the immutable `checksumSha256`) and
+ *   `Cache-Control: private, max-age=31536000, immutable`. A matching `ifNoneMatch` on a
+ *   full (non-Range) GET short-circuits to 304 with no body headers.
  */
 export type PipeFileResponseOptions =
   | { range: null; totalSize: number }
@@ -45,6 +51,7 @@ export type PipeFileResponseOptions =
       stream: Readable
       record: FileStreamRecord
       disposition?: string
+      ifNoneMatch?: string
     }
 
 export function pipeFileResponse(res: Response, opts: PipeFileResponseOptions): void {
@@ -55,6 +62,8 @@ export function pipeFileResponse(res: Response, opts: PipeFileResponseOptions): 
   }
 
   const { stream, record } = opts
+  const etag = `"${record.checksumSha256}"`
+  res.set({ ETag: etag, 'Cache-Control': BYTES_CACHE_CONTROL })
   if (opts.range) {
     const { start, end } = opts.range
     res.set({
@@ -65,6 +74,11 @@ export function pipeFileResponse(res: Response, opts: PipeFileResponseOptions): 
     })
     res.status(206)
   } else {
+    if (opts.ifNoneMatch && etagMatches(opts.ifNoneMatch, etag)) {
+      stream.destroy()
+      res.status(304).end()
+      return
+    }
     res.set({
       'Content-Type': record.mimeType,
       ...(opts.totalSize !== undefined ? { 'Content-Length': String(opts.totalSize) } : {}),

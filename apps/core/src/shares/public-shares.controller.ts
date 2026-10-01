@@ -46,6 +46,6 @@ export class PublicSharesController {
     }
 
     const { stream, record, totalSize } = await this.files.stream(fileId)
-    pipeFileResponse(res, { stream, record, totalSize })
+    pipeFileResponse(res, { stream, record, totalSize, ifNoneMatch: req.get('If-None-Match') })
   }
 }

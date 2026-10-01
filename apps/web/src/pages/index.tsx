@@ -3,6 +3,7 @@ import type { Asset } from '@photox/shared-types'
 import { FaFolderPlus, FaImage, FaMountain, FaTrash, FaWandMagicSparkles } from 'react-icons/fa6'
 import { RequireAuth } from '../components/RequireAuth'
 import { AppShell } from '../components/AppShell'
+import { useConfirm } from '../components/ConfirmProvider'
 import { ErrorState, LoadingState } from '../components/StateViews'
 import { AssetViewer } from '../components/AssetViewer/AssetViewer'
 import { useTimelineMonths } from '../hooks/useTimelineMonths'
@@ -16,6 +17,7 @@ import { effectiveAssetDate, monthKeyOf } from '../lib/dateFormat'
 import { useAppStore } from '../store/app-store'
 
 function TimelineContent() {
+  const confirm = useConfirm()
   // Structure (buckets, heights, order) comes from the layout endpoint; months fill it in.
   const { groups, monthStatus, ensureMonth, refreshKey } = useTimelineMonths()
   const timeline = useTimelineLayout()
@@ -89,7 +91,13 @@ function TimelineContent() {
   const handleBulkTrash = async () => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
-    if (!window.confirm(`Move ${ids.length} item${ids.length > 1 ? 's' : ''} to trash?`)) return
+    if (
+      !(await confirm({
+        title: `Move ${ids.length} item${ids.length > 1 ? 's' : ''} to trash?`,
+        destructive: true,
+      }))
+    )
+      return
     try {
       await trashAssets(ids)
       clearSelection()

@@ -11,6 +11,7 @@ import {
 } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
+import { useConfirm } from '../../components/ConfirmProvider'
 import { LoadingState } from '../../components/StateViews'
 import { AssetViewer } from '../../components/AssetViewer/AssetViewer'
 import { GalleryItem } from '../../components/GalleryItem'
@@ -36,6 +37,7 @@ export default function AlbumDetailPage() {
 function AlbumDetailContent() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const confirm = useConfirm()
   const [album, setAlbum] = useState<AlbumDto | null>(null)
   const [loadingAlbum, setLoadingAlbum] = useState(true)
   const [albumNotFound, setAlbumNotFound] = useState(false)
@@ -318,7 +320,8 @@ function AlbumDetailContent() {
               const cur = nav.selected
               if (!cur) return
               const assetLabel = cur.originalName ?? cur.title ?? 'this asset'
-              if (!window.confirm(`Remove "${assetLabel}" from "${album.name}"?`)) return
+              if (!(await confirm({ title: `Remove "${assetLabel}" from "${album.name}"?` })))
+                return
               await removeAssetFromAlbum(album.id, cur.id)
               await Promise.all([refresh(), refreshAlbum()])
               nav.close()

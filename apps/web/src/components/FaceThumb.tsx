@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FaFaceSmile } from 'react-icons/fa6'
 import { downloadFaceThumb } from '../api/faces'
+import { getCachedBlobUrl, peekCachedBlobUrl } from '../lib/blob-cache'
 import { Skeleton } from './Skeleton'
 
 interface FaceThumbProps {
@@ -16,23 +17,26 @@ export function FaceThumb({ faceId, alt, className = '' }: FaceThumbProps) {
   useEffect(() => {
     if (!faceId) return
     let cancelled = false
-    let url: string | null = null
     setObjectUrl(null)
     setError(false)
-    const controller = new AbortController()
-    downloadFaceThumb(faceId, undefined, controller.signal)
-      .then((blob) => {
-        if (cancelled) return
-        url = URL.createObjectURL(blob)
-        setObjectUrl(url)
+
+    const key = `face:${faceId}`
+    const cached = peekCachedBlobUrl(key)
+    if (cached) {
+      setObjectUrl(cached)
+      return
+    }
+
+    getCachedBlobUrl(key, () => downloadFaceThumb(faceId))
+      .then((url) => {
+        if (!cancelled) setObjectUrl(url)
       })
       .catch(() => {
         if (!cancelled) setError(true)
       })
+
     return () => {
       cancelled = true
-      controller.abort()
-      if (url) URL.revokeObjectURL(url)
     }
   }, [faceId])
 

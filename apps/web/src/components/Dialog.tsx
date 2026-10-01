@@ -44,9 +44,10 @@ export function Dialog({
   ariaLabel,
 }: DialogProps) {
   useEffect(() => {
-    if (!escapeKey) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      // Modal: keep window-level shortcuts (viewer arrows/Escape) inert while open.
+      e.stopPropagation()
+      if (escapeKey && e.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)

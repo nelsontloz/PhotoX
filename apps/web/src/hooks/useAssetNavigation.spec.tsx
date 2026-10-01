@@ -11,6 +11,7 @@ vi.mock('../api/assets', () => ({
 
 import { useAssetNavigation } from './useAssetNavigation'
 import { restoreAsset, trashAsset } from '../api/assets'
+import { ConfirmProvider } from '../components/ConfirmProvider'
 
 const trashAssetMock = vi.mocked(trashAsset)
 const restoreAssetMock = vi.mocked(restoreAsset)
@@ -21,7 +22,11 @@ function makeAsset(id: string): Asset {
 
 function makeWrapper(initialUrl: string) {
   return function Wrapper({ children }: { children: ReactNode }) {
-    return <MemoryRouter initialEntries={[initialUrl]}>{children}</MemoryRouter>
+    return (
+      <MemoryRouter initialEntries={[initialUrl]}>
+        <ConfirmProvider>{children}</ConfirmProvider>
+      </MemoryRouter>
+    )
   }
 }
 
@@ -29,10 +34,6 @@ describe('useAssetNavigation', () => {
   beforeEach(() => {
     trashAssetMock.mockReset()
     restoreAssetMock.mockReset()
-    vi.stubGlobal(
-      'confirm',
-      vi.fn(() => true),
-    )
     vi.stubGlobal('alert', vi.fn())
   })
 

@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import { FaUsers, FaTrash, FaCopy, FaCheck } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
+import { useConfirm } from '../../components/ConfirmProvider'
 import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
 import { listShares, revokeShare, getShareUrl } from '../../api/shares'
 import { getVideoStreamUrl } from '../../api/assets'
 import type { AssetShareDto } from '@photox/shared-types'
 
 function SharedContent() {
+  const confirm = useConfirm()
   const [shares, setShares] = useState<AssetShareDto[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -39,9 +41,12 @@ function SharedContent() {
 
   const handleRevoke = async (share: AssetShareDto) => {
     if (
-      !window.confirm(
-        'Revoke this share link? Anyone with the link will no longer be able to view it.',
-      )
+      !(await confirm({
+        title: 'Revoke this share link?',
+        body: 'Anyone with the link will no longer be able to view it.',
+        confirmLabel: 'Revoke',
+        destructive: true,
+      }))
     )
       return
     try {
@@ -88,7 +93,7 @@ function SharedContent() {
           >
             {share.assetThumbFileId && (
               <img
-                src={getVideoStreamUrl(share.assetThumbFileId, share.userId)}
+                src={getVideoStreamUrl(share.assetThumbFileId)}
                 alt=""
                 className="w-12 h-12 rounded object-cover bg-slate-800 shrink-0"
               />

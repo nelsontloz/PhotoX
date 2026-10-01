@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { Asset } from '@photox/shared-types'
 import { restoreAsset, trashAsset, updateAsset, deleteAsset } from '../api/assets'
+import { useConfirm } from '../components/ConfirmProvider'
+import { prefetchViewerMedia } from '../lib/asset-media'
 import { effectiveAssetDate, monthKeyOf } from '../lib/dateFormat'
 
 type NavDirection = 'prev' | 'next'
@@ -47,6 +49,7 @@ interface UseAssetNavigationResult {
 }
 
 export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNavigationResult {
+  const confirm = useConfirm()
   const [searchParams, setSearchParams] = useSearchParams()
   const id = searchParams.get('asset')
   const allAssets = opts.assets
@@ -73,6 +76,21 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
       if (asset) setFallback(asset)
     })
   }, [id, allAssets, fallback, opts.resolveMissing])
+
+  // Neighbor prefetch: give the shared blob cache a head start on prev/next so arrow-key
+  // navigation lands on a resolved URL instead of a spinner. Fire-and-forget, no state.
+  useEffect(() => {
+    if (!selected) return
+    const index = allAssets.findIndex((a) => a.id === selected.id)
+    if (index < 0) return
+    const timer = setTimeout(() => {
+      const prev = allAssets[index - 1]
+      const next = allAssets[index + 1]
+      if (prev) prefetchViewerMedia(prev)
+      if (next) prefetchViewerMedia(next)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [selected, allAssets])
 
   // True when the layout endpoint still holds items beyond `fromT` in `dir` (partial-data edge).
   const beyond = (dir: NavDirection): boolean =>
@@ -119,12 +137,8 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
   const trash = async () => {
     if (!selected) return
     const kindLabel = selected.kind === 'video' ? 'video' : 'photo'
-    if (
-      !window.confirm(
-        `Move "${selected.originalName ?? selected.title ?? `this ${kindLabel}`}" to trash?`,
-      )
-    )
-      return
+    const label = selected.originalName ?? selected.title ?? `this ${kindLabel}`
+    if (!(await confirm({ title: `Move "${label}" to trash?`, destructive: true }))) return
     try {
       await trashAsset(selected.id)
       setSearchParams({}, { replace: true })
@@ -148,10 +162,14 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
   const permanentlyDelete = async () => {
     if (!selected) return
     const kindLabel = selected.kind === 'video' ? 'video' : 'photo'
+    const label = selected.originalName ?? selected.title ?? `this ${kindLabel}`
     if (
-      !window.confirm(
-        `Permanently delete "${selected.originalName ?? selected.title ?? `this ${kindLabel}`}"? This cannot be undone.`,
-      )
+      !(await confirm({
+        title: `Permanently delete "${label}"?`,
+        body: 'This cannot be undone.',
+        confirmLabel: 'Delete',
+        destructive: true,
+      }))
     )
       return
     try {

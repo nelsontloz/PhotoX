@@ -57,9 +57,8 @@ export async function downloadFile(fileId: string, signal?: AbortSignal): Promis
   return data
 }
 
-export function getVideoStreamUrl(fileId: string, userId: string): string {
-  const params = new URLSearchParams({ userId })
-  return `/api/v1/files/${fileId}/stream?${params.toString()}`
+export function getVideoStreamUrl(fileId: string): string {
+  return `/api/v1/files/${fileId}/stream`
 }
 
 export async function uploadFile(
