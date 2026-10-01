@@ -11,7 +11,14 @@ import { ValidationPipe, type INestApplication } from '@nestjs/common'
 import { JwtModule, JwtService } from '@nestjs/jwt'
 import type { Express } from 'express'
 import type { Repository } from 'typeorm'
-import { Asset, AssetThumbnail, Face, FileRecord, Person } from '../../src/database/entities'
+import {
+  Asset,
+  AssetThumbnail,
+  Face,
+  FileRecord,
+  Person,
+  AppSetting,
+} from '../../src/database/entities'
 import { LocalStorageService, loadEnv } from '@photox/shared-config'
 import { FACE_EMBEDDING_DIM } from '@photox/shared-types'
 import { User } from '../../src/users/entities/user.entity'
@@ -64,6 +71,7 @@ const ENTITIES = [
   AssetThumbnail,
   Face,
   Person,
+  AppSetting,
 ]
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))

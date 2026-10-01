@@ -176,4 +176,23 @@ describe('CoreClient', () => {
     expect(init.body).toBeUndefined()
     timeoutSpy.mockRestore()
   })
+
+  it('fetches face detection settings with an admin token', async () => {
+    const settings = { detector: 'scrfd', envDefault: 'human', models: { scrfd: true } }
+    fetchMock.mockResolvedValue(jsonResponse(200, settings))
+
+    const result = await makeClient().getFaceDetectionSettings()
+
+    expect(result).toEqual(settings)
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('http://localhost:3000/api/v1/admin/face-detection')
+    expect(init.method).toBe('GET')
+    expect(init.body).toBeUndefined()
+    const token = (init.headers as Record<string, string>).Authorization!.replace('Bearer ', '')
+    const payload = new JwtService({ secret: 'x'.repeat(32) }).verify<{
+      sub: string
+      role: string
+    }>(token)
+    expect(payload).toMatchObject({ sub: 'worker-service', role: 'admin' })
+  })
 })

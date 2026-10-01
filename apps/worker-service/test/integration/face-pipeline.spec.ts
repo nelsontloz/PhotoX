@@ -298,7 +298,7 @@ describe('Face pipeline (integration)', () => {
     expect(enqueueSpy).toHaveBeenCalledWith(
       'process-faces',
       're-embed',
-      { assetId, fileId, userId, reason: 're-embed' },
+      { assetId, fileId, userId, reason: 're-embed', detector: 'human' },
       expect.objectContaining({
         jobId: `face-reembed-${assetId}`,
         attempts: 3,

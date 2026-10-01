@@ -1,13 +1,10 @@
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import sharp from 'sharp'
-import { loadEnv } from '@photox/shared-config'
-import { FACE_DETECTOR_MODEL_FILE, ScrfdFaceDetector } from '../../src/queue/face.detector.scrfd'
+import { resolveFaceDetectorModelPath } from '@photox/shared-config'
+import { ScrfdFaceDetector } from '../../src/queue/face.detector.scrfd'
 
 // not testcontainers: real ONNX session load + run + decode, skipped when the weights are absent
-const modelPath =
-  process.env.FACE_DETECTOR_MODEL_PATH ??
-  join(loadEnv().STORAGE_DIR, 'models', FACE_DETECTOR_MODEL_FILE)
+const modelPath = resolveFaceDetectorModelPath()
 
 describe.skipIf(!existsSync(modelPath))('SCRFD face detector (integration)', () => {
   it('loads the session and decodes an image without throwing', async () => {

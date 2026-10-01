@@ -1,5 +1,6 @@
 import request from 'supertest'
 import sharp from 'sharp'
+import { SettingsService } from '../../src/settings/settings.service'
 import { closeTestApp, createApiTestApp, resetDb, seedUser, apiServer } from './helpers'
 import type { ApiTestApp } from './helpers'
 
@@ -41,6 +42,22 @@ async function waitForJobWithAsset(
   return false
 }
 
+async function waitForFaceJobData(
+  t: ApiTestApp,
+  assetId: string,
+  timeoutMs = 10_000,
+): Promise<{ detector?: string } | undefined> {
+  const start = Date.now()
+  const queue = t.getQueue('process-faces')
+  while (Date.now() - start < timeoutMs) {
+    const jobs = await queue.getJobs(['waiting', 'active', 'delayed'])
+    const job = jobs.find((j) => (j.data as { assetId?: string }).assetId === assetId)
+    if (job) return job.data as { detector?: string }
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  return undefined
+}
+
 describe('upload pipeline', () => {
   let t: ApiTestApp
 
@@ -77,7 +94,52 @@ describe('upload pipeline', () => {
     }
     expect(await waitForJobWithAsset(t, 'process-metadata', asset.id)).toBe(true)
     expect(await waitForJobWithAsset(t, 'process-faces', asset.id)).toBe(true)
+    expect((await waitForFaceJobData(t, asset.id))?.detector).toBe(
+      process.env.FACE_DETECTOR === 'scrfd' ? 'scrfd' : 'human',
+    )
   })
+
+  it('stamps the persisted face detector on process-faces jobs', async () => {
+    const admin = await seedUser(t, { role: 'admin' })
+    const adminToken = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
+    const put = await request(apiServer(t))
+      .put('/api/v1/admin/face-detection')
+      .set(t.authHeader(adminToken))
+      .send({ detector: 'scrfd' })
+    expect(put.status).toBe(200)
+
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const res = await request(apiServer(t))
+      .post('/api/v1/files')
+      .set(t.authHeader(token))
+      .attach('file', await pngBytes(), 'stamp.png')
+      .field('kind', 'photo')
+    expect(res.status).toBe(201)
+    const asset = res.body as unknown as { id: string }
+    expect((await waitForFaceJobData(t, asset.id))?.detector).toBe('scrfd')
+  }, 30_000)
+
+  it('uploads with the env-default detector when the settings read fails', async () => {
+    const settings = t.app.get(SettingsService)
+    const spy = vi.spyOn(settings, 'getFaceDetector').mockRejectedValue(new Error('settings down'))
+    try {
+      const user = await seedUser(t)
+      const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+      const res = await request(apiServer(t))
+        .post('/api/v1/files')
+        .set(t.authHeader(token))
+        .attach('file', await pngBytes(), 'settings-down.png')
+        .field('kind', 'photo')
+      expect(res.status).toBe(201)
+      const asset = res.body as unknown as { id: string }
+      expect((await waitForFaceJobData(t, asset.id))?.detector).toBe(
+        process.env.FACE_DETECTOR === 'scrfd' ? 'scrfd' : 'human',
+      )
+    } finally {
+      spy.mockRestore()
+    }
+  }, 30_000)
 
   it('uploads video with any bytes and enqueues video job', async () => {
     const user = await seedUser(t)

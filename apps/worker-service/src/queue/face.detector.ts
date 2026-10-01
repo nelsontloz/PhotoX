@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import sharp from 'sharp'
+import { envFaceDetectorKind } from '@photox/shared-config'
 import type { FaceDetectorKind } from '@photox/shared-types'
 import { FaceEmbedderService, alignFaceCrop, type RawImage } from './face.embedder'
 import type { FaceDetectionBackend } from './face.detector.types'
@@ -18,11 +19,11 @@ export interface DetectedFace {
 // and would waste an ONNX embed.
 export const FACE_MIN_SIZE_PX = 40
 
-// ponytail: worker-only env read (WORKER_SERVICE_PORT precedent — intentionally outside the zod
-// schema); per-job `detector` overrides this default. Read lazily: .env is loaded in app.module's
+// ponytail: FACE_DETECTOR stays a direct env read outside the zod schema (WORKER_SERVICE_PORT
+// precedent); per-job `detector` overrides this default. Read lazily: .env is loaded in app.module's
 // body, after this module is evaluated.
 function defaultKind(): FaceDetectorKind {
-  return process.env.FACE_DETECTOR === 'scrfd' ? 'scrfd' : 'human'
+  return envFaceDetectorKind()
 }
 
 @Injectable()

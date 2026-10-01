@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { randomUUID } from 'crypto'
 import type { Job } from 'bullmq'
 import { FACE_EMBEDDING_DIM } from '@photox/shared-types'
+import type { FaceDetectorKind } from '@photox/shared-types'
 import { BullMqService } from './bullmq.service'
 import { parseJobData, clusterJobSchema, type ClusterJob } from './job-schemas'
 import type {
@@ -160,7 +161,10 @@ export class FaceClusterService {
         0,
         LEGACY_REEMBED_PER_RUN,
       )
-      await this.enqueueReembed(assetIds, userId)
+      // ponytail: stamp the configured detector into re-embed jobs — settings fetched only when
+      // there is re-embed work to enqueue
+      const settings = await this.core.getFaceDetectionSettings()
+      await this.enqueueReembed(assetIds, userId, settings.detector)
       this.logger.log(
         `Skipped ${legacyUnassigned.length} legacy-dim faces, re-embed enqueued for ` +
           `${assetIds.length} assets: user=${userId}`,
@@ -332,13 +336,17 @@ export class FaceClusterService {
     )
   }
 
-  private async enqueueReembed(assetIds: string[], userId: string): Promise<void> {
+  private async enqueueReembed(
+    assetIds: string[],
+    userId: string,
+    detector: FaceDetectorKind,
+  ): Promise<void> {
     const assets = await this.core.getAssetsByIds(userId, assetIds)
     for (const a of assets) {
       await this.bullMq.enqueue(
         'process-faces',
         're-embed',
-        { assetId: a.id, fileId: a.fileId, userId, reason: 're-embed' },
+        { assetId: a.id, fileId: a.fileId, userId, reason: 're-embed', detector },
         {
           jobId: `face-reembed-${a.id}`,
           attempts: 3,

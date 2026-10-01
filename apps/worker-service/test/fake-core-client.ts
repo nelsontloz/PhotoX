@@ -1,6 +1,11 @@
 import { UnrecoverableError } from 'bullmq'
 import type { LocalStorageService } from '@photox/shared-config'
-import type { Asset, DetectedFaceInput, FileRecord } from '@photox/shared-types'
+import type {
+  Asset,
+  DetectedFaceInput,
+  FaceDetectionSettings,
+  FileRecord,
+} from '@photox/shared-types'
 import type {
   ApplyClustersPayload,
   ApplyClustersResult,
@@ -93,6 +98,11 @@ export class FakeCoreClient {
     deletedThumbnails: 0,
     deletedStrays: 0,
   }
+  faceDetectionSettings: FaceDetectionSettings = {
+    detector: 'human',
+    envDefault: 'human',
+    models: { scrfd: false },
+  }
   adminDeleteFileFailures = 0
   orphanCleanupFailures = 0
   dedupeRegistrations = false
@@ -116,6 +126,11 @@ export class FakeCoreClient {
     this.applyClustersCalls.length = 0
     this.adminDeletedFiles.length = 0
     this.orphanCleanupResult = { deletedFiles: 0, deletedThumbnails: 0, deletedStrays: 0 }
+    this.faceDetectionSettings = {
+      detector: 'human',
+      envDefault: 'human',
+      models: { scrfd: false },
+    }
     this.adminDeleteFileFailures = 0
     this.orphanCleanupFailures = 0
     this.registeredByChecksum.clear()
@@ -271,6 +286,14 @@ export class FakeCoreClient {
       return Promise.reject(new Error('core 503'))
     }
     return Promise.resolve({ ...this.orphanCleanupResult })
+  }
+
+  getFaceDetectionSettings(): Promise<FaceDetectionSettings> {
+    this.calls.push({ method: 'getFaceDetectionSettings', args: [] })
+    return Promise.resolve({
+      ...this.faceDetectionSettings,
+      models: { ...this.faceDetectionSettings.models },
+    })
   }
 
   private assignClusterFace(faceId: string, personId: string): void {

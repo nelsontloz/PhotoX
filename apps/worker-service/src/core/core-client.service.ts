@@ -7,6 +7,7 @@ import type {
   AssetListResponse,
   DetectedFaceInput,
   FaceBox,
+  FaceDetectionSettings,
   FileRecord,
   Role,
 } from '@photox/shared-types'
@@ -205,6 +206,13 @@ export class CoreClient {
       { sub: 'worker-service', role: 'admin' },
       { timeoutMs: 120_000 },
     )
+  }
+
+  async getFaceDetectionSettings(): Promise<FaceDetectionSettings> {
+    return this.request('GET', '/api/v1/admin/face-detection', {
+      sub: 'worker-service',
+      role: 'admin',
+    })
   }
 
   private async request<T>(

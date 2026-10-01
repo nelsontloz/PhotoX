@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common'
@@ -19,6 +20,7 @@ import { toFileRecordResponse } from '../file-record.mapper'
 import { RegisterFileBodyDto } from './dto/register-file.body.dto'
 import { AssetsService } from '../../assets/assets.service'
 import { BullMqService } from '../../queue/bullmq.service'
+import { SettingsService } from '../../settings/settings.service'
 import type { Asset as AssetResponse } from '@photox/shared-types'
 
 interface UploadedDiskFile {
@@ -37,6 +39,8 @@ export interface UploadMeta {
 
 @Injectable()
 export class UserFilesService {
+  private readonly logger = new Logger(UserFilesService.name)
+
   constructor(
     @InjectRepository(FileRecord)
     private readonly fileRepo: Repository<FileRecord>,
@@ -45,6 +49,7 @@ export class UserFilesService {
     private readonly storage: LocalStorageService,
     private readonly assets: AssetsService,
     private readonly bullMq: BullMqService,
+    private readonly settings: SettingsService,
   ) {}
 
   async upload(
@@ -90,10 +95,21 @@ export class UserFilesService {
       kind,
     })
     if (kind === 'photo') {
+      // ponytail: detector stamped at enqueue time — a later admin switch only affects new uploads;
+      // the read is best-effort so a settings outage never fails an upload whose rows already exist
+      const detector = await this.settings.getFaceDetector().catch((err: unknown) => {
+        this.logger.warn(
+          `Face detector setting unavailable, using env default: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        )
+        return this.settings.envDefaultDetector()
+      })
       void this.bullMq.enqueue('process-faces', 'process-faces', {
         assetId: asset.id,
         fileId: record.id,
         userId,
+        detector,
       })
     } else {
       this.bullMq.enqueueVideo(asset.id, record.id, userId)

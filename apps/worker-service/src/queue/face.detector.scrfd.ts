@@ -1,8 +1,7 @@
 import { Logger } from '@nestjs/common'
 import { access } from 'fs/promises'
-import { join } from 'path'
 import sharp from 'sharp'
-import { loadEnv } from '@photox/shared-config'
+import { resolveFaceDetectorModelPath } from '@photox/shared-config'
 import { SCRFD_INPUT_SIZE, decodeScrfdOutputs, scrfdPreprocess } from './scrfd.decode'
 import type { DetectedBox, FaceDetectionBackend } from './face.detector.types'
 import type * as ort from 'onnxruntime-node'
@@ -10,15 +9,12 @@ import type * as ort from 'onnxruntime-node'
 // ponytail: InsightFace SCRFD det_10g detector weights (~17MB) are for non-commercial research
 // use — provision with `pnpm --filter @photox/worker-service face-model` (never committed) or
 // point FACE_DETECTOR_MODEL_PATH at your own copy.
-export const FACE_DETECTOR_MODEL_FILE = 'det_10g.onnx'
-
 export class ScrfdFaceDetector implements FaceDetectionBackend {
   private readonly logger = new Logger(ScrfdFaceDetector.name)
   private sessionPromise?: Promise<ort.InferenceSession>
 
   modelPath(): string {
-    if (process.env.FACE_DETECTOR_MODEL_PATH) return process.env.FACE_DETECTOR_MODEL_PATH
-    return join(loadEnv().STORAGE_DIR, 'models', FACE_DETECTOR_MODEL_FILE)
+    return resolveFaceDetectorModelPath()
   }
 
   private session(): Promise<ort.InferenceSession> {

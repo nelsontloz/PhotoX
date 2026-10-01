@@ -30,6 +30,7 @@ describe('FaceClusterService.cluster', () => {
   let plans: ApplyClustersPayload[]
   let enqueueMock: ReturnType<typeof vi.fn>
   let getAssetsByIdsMock: ReturnType<typeof vi.fn>
+  let settingsMock: ReturnType<typeof vi.fn>
   let service: FaceClusterService
 
   beforeEach(() => {
@@ -43,6 +44,11 @@ describe('FaceClusterService.cluster', () => {
 
     enqueueMock = vi.fn().mockResolvedValue(undefined)
     getAssetsByIdsMock = vi.fn().mockResolvedValue([{ id: 'asset-legacy', fileId: 'file-legacy' }])
+    settingsMock = vi.fn().mockResolvedValue({
+      detector: 'human',
+      envDefault: 'human',
+      models: { scrfd: true },
+    })
     const core = {
       getFacesForCluster: vi.fn().mockImplementation(() =>
         Promise.resolve(
@@ -54,6 +60,7 @@ describe('FaceClusterService.cluster', () => {
         ),
       ),
       getAssetsByIds: getAssetsByIdsMock,
+      getFaceDetectionSettings: settingsMock,
       // mirror core's writes so a second run observes the applied plan
       applyClusters: vi.fn().mockImplementation((_uid: string, payload: ApplyClustersPayload) => {
         plans.push(payload)
@@ -88,6 +95,7 @@ describe('FaceClusterService.cluster', () => {
       /^cluster-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     )
     expect(faces.find((f) => f.id === 'face-assigned')!.personId).toBe('person-existing')
+    expect(settingsMock).not.toHaveBeenCalled()
   })
 
   it('attaches a cluster to the nearest existing person with the largest-box cover', async () => {
@@ -248,11 +256,43 @@ describe('FaceClusterService.cluster', () => {
     expect(plans).toHaveLength(0)
     expect(faces.every((f) => f.personId === null || f.id === 'face-old-assigned')).toBe(true)
     expect(getAssetsByIdsMock).toHaveBeenCalledWith(userId, ['asset-legacy'])
+    expect(settingsMock).toHaveBeenCalledTimes(1)
     expect(enqueueMock).toHaveBeenCalledTimes(1)
     expect(enqueueMock).toHaveBeenCalledWith(
       'process-faces',
       're-embed',
-      { assetId: 'asset-legacy', fileId: 'file-legacy', userId, reason: 're-embed' },
+      {
+        assetId: 'asset-legacy',
+        fileId: 'file-legacy',
+        userId,
+        reason: 're-embed',
+        detector: 'human',
+      },
+      expect.objectContaining({ jobId: 'face-reembed-asset-legacy' }),
+    )
+  })
+
+  it('propagates the configured scrfd detector into re-embed jobs', async () => {
+    settingsMock.mockResolvedValue({
+      detector: 'scrfd',
+      envDefault: 'human',
+      models: { scrfd: true },
+    })
+    faces = [{ ...face('face-old-a', [0, 1, 0, 0]), assetId: 'asset-legacy' }]
+
+    await service.cluster(userId)
+
+    expect(enqueueMock).toHaveBeenCalledTimes(1)
+    expect(enqueueMock).toHaveBeenCalledWith(
+      'process-faces',
+      're-embed',
+      {
+        assetId: 'asset-legacy',
+        fileId: 'file-legacy',
+        userId,
+        reason: 're-embed',
+        detector: 'scrfd',
+      },
       expect.objectContaining({ jobId: 'face-reembed-asset-legacy' }),
     )
   })
