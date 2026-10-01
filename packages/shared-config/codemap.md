@@ -38,6 +38,12 @@ delegated per-job JWTs. `loadRootEnvFile()` loads the workspace-root `.env` with
 `process.loadEnvFile` (existing process env wins) and is called by each `app.module.ts`,
 replacing `@nestjs/config`'s `envFilePath`.
 
+Face-detector env helpers live here too: `FACE_DETECTOR_MODEL_FILE = 'det_10g.onnx'`,
+`resolveFaceDetectorModelPath()` (`FACE_DETECTOR_MODEL_PATH` or
+`STORAGE_DIR/models/det_10g.onnx`) and `envFaceDetectorKind()` (`FACE_DETECTOR === 'scrfd'` else
+`human`) — direct `process.env` reads outside the zod schema (`WORKER_SERVICE_PORT` precedent),
+shared so core (setting fallback/model check) and worker (detection) resolve the same paths.
+
 `src/storage.ts` exports `LocalStorageService` (`@Injectable()`): key layout under `STORAGE_DIR`
 (`originals/…`, `derivatives/thumbnails/…`, `derivatives/transcodes/…`), `save` via tmp+rename with
 an EXDEV copy fallback, `pathFor`/`createReadStream`/`stat`/`delete` (ENOENT-swallowing). This is

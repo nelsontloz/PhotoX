@@ -3,8 +3,8 @@
 ## Responsibility
 
 Internal-only NestJS app that executes asynchronous media work for PhotoX: thumbnails, video
-transcode, EXIF/video metadata extraction, face detect/embed/cluster, and file/disk cleanup. It has
-**no Postgres access**: every DB read/write is a core HTTP call through
+transcode, EXIF/video metadata extraction, face detect (Human/BlazeFace or SCRFD-10G)/embed/cluster,
+and file/disk cleanup. It has **no Postgres access**: every DB read/write is a core HTTP call through
 `src/core/core-client.service.ts` (`CoreClient`), while storage bytes go directly to
 `STORAGE_DIR`. Compose publishes no port for it; `main.ts` still listens on
 `WORKER_SERVICE_PORT` (default 3004) so in-network health probes work.
@@ -30,7 +30,9 @@ transcode, EXIF/video metadata extraction, face detect/embed/cluster, and file/d
   `test/integration/` spins testcontainers Redis only (`test-setup.ts`); the DB is faked with
   `test/fake-core-client.ts`, a stateful in-memory `CoreClient` stand-in.
 - `scripts/download-face-model.sh` (`pnpm face-model`) fetches the InsightFace buffalo_l bundle and
-  extracts only `w600k_r50.onnx` (~174MB) to `STORAGE_DIR/models/`; weights are never committed.
+  extracts `w600k_r50.onnx` (~174MB) plus the SCRFD `det_10g.onnx` (~17MB) to `STORAGE_DIR/models/`;
+  weights are never committed. Detector backend is chosen per job — payload `detector` → `FACE_DETECTOR`
+  env (default `human`) — and `faces.detector` records which one produced each embedding.
 - Dockerfile: node:22-bookworm-slim multi-stage; on arm64 rebuilds the `@tensorflow/tfjs-node`
   binding from source (no linux-arm64 prebuilt); runtime copies built `packages/*` + app and runs
   `node apps/worker-service/dist/main.js` with `EXPOSE 3004`.

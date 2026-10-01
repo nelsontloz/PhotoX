@@ -29,5 +29,5 @@ Request: global `JwtAuthGuard` (open-route table, Bearer verify) → `Validation
 ## Integration
 
 - `AuthModule` supplies the global guard every module implicitly relies on; `DatabaseModule` and `BullMqModule` are `@Global()`.
-- Feature folders are siblings (`assets/`, `albums/`, `shares/`, `faces/`, `persons/`, `files/*`, `admin/`, `trash/`); new modules must be added here to be part of the graph.
+- Feature folders are siblings (`assets/`, `albums/`, `shares/`, `faces/`, `persons/`, `files/*`, `admin/`, `settings/`, `trash/`); new modules must be added here to be part of the graph. `SettingsModule` is non-global (not imported by `AppModule`) and imported explicitly by `UserFilesModule` (stamps the face detector on upload) and `AdminModule` (face-detection admin API + bulk face reprocess/recluster).
 - Public paths: unversioned `health` + `docs*`, versioned `api/v1/*`, public share `api/share/*`.

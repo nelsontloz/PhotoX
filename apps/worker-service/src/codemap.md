@@ -17,9 +17,10 @@ middleware, or Swagger because nothing user-facing is served.
   `Number(process.env.WORKER_SERVICE_PORT) || 3004`, `app.listen(port)`. No composed port, mirroring
   core's internal-only posture.
 - Side effects on init: Nest runs `QueueModule.onModuleInit()` during bootstrap (starts all 7 BullMQ
-  workers); `FaceDetectorService.onModuleInit()` lazy-imports tfjs-node/human, and
-  `FaceEmbedderService` lazy-loads onnxruntime-node on first embed. "App started" therefore means
-  consumers are listening; face models load on first face job.
+  workers); `FaceDetectorService.onModuleInit()` preloads the configured detector backend (`human`
+  default → lazy tfjs-node/human, `scrfd` → lazy onnxruntime-node `det_10g.onnx`) and only warns when
+  weights are missing; `FaceEmbedderService` lazy-loads onnxruntime-node on first embed. "App started"
+  therefore means consumers are listening; the embedder loads on first face job.
 - `QueueModule` registers `JwtModule.registerAsync` with `loadAuthEnv().AUTH_TOKEN_SECRET` — the
   worker mints delegated per-job tokens in `CoreClient` (never verifies incoming tokens).
 - Deliberately absent vs `apps/core/src/main.ts`: `ValidationPipe`, `HttpExceptionFilter`,

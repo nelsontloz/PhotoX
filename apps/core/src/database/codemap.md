@@ -16,7 +16,7 @@ Core's database bootstrap: wraps the shared TypeORM module and adds the pgvector
 - The whole sequence is wrapped in one try/catch that only `Logger.warn`s: "pgvector extension or index creation failed — faces embedding search will be unavailable". Boot never fails on vector problems.
 - `512` is the InsightFace `buffalo_l`/`w600k_r50` embedding dim (`FACE_EMBEDDING_DIM`), replacing the legacy human `faceres` 1024-dim output. The rebuild fails while legacy 1024-dim rows remain (warn-caught); `process-faces-cluster` re-embedding converts them.
 
-Exports `TypeOrmModule` so every feature module can inject repositories. The five entities (`Asset`, `AssetThumbnail`, `FileRecord`, `Face`, `Person`) live in `entities/` (see `entities/codemap.md`).
+Exports `TypeOrmModule` so every feature module can inject repositories. The six entities (`Asset`, `AssetThumbnail`, `FileRecord`, `Face`, `Person`, `AppSetting`) live in `entities/` (see `entities/codemap.md`).
 
 ## Flow
 
@@ -24,6 +24,6 @@ Exports `TypeOrmModule` so every feature module can inject repositories. The fiv
 
 ## Integration
 
-- Entities: `src/database/entities` (Asset, FileRecord, AssetThumbnail, Face, Person) plus feature-local `User`, `RefreshToken`, `Album`, `AlbumAsset`, `AssetShare`.
+- Entities: `src/database/entities` (Asset, FileRecord, AssetThumbnail, Face, Person, AppSetting) plus feature-local `User`, `RefreshToken`, `Album`, `AlbumAsset`, `AssetShare`.
 - Integration tests use plain `postgres:16-alpine` (no pgvector), so the bootstrap path is expected to warn rather than fail.
 - The worker-service has no Postgres connection at all (it goes through core HTTP), so this is the only TypeORM bootstrap in the repo.

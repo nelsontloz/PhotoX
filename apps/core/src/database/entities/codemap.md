@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-The five TypeORM entities that define PhotoX's schema. Because `DatabaseModule` runs
+The six TypeORM entities that define PhotoX's schema. Because `DatabaseModule` runs
 with `synchronize: true`, these decorators are the single source of truth for tables,
 columns, enums, FKs, and indexes — there are no migration files. Folded in from the deleted
 `packages/data-access` package.
@@ -48,13 +48,20 @@ columns, enums, FKs, and indexes — there are no migration files. Folded in fro
 - Indexes: `(personId, userId)` plus `assetId`, `userId`, `personId` individually.
 - Columns: `box` jsonb `{x,y,w,h}`, `confidence` real, `embedding` text with a pgvector
   transformer (`toSql`/`fromSql`), `personId` nullable uuid **without** a TypeORM relation
-  (avoids a circular import between face and person modules).
+  (avoids a circular import between face and person modules), `detector` nullable text
+  provenance (`human`/`scrfd`; null = pre-provenance row, written on register).
 - HNSW index `faces_embedding_hnsw` is NOT declared here — core's bootstrap drops and
   recreates it as `USING hnsw ((embedding::vector(512)) vector_cosine_ops)`; keeping it out
   of the entity avoids `synchronize` fighting the custom index.
 - `Person` → `persons` (`person.entity.ts`): index `(userId, clusterLabel)`, `userId`
   indexed; columns `name` nullable, `coverFaceId` uuid, `clusterLabel`, `faceCount`
   (default 0), `createdAt`/`updatedAt`.
+
+**`AppSetting` → `app_settings`** (`app-setting.entity.ts`)
+
+- Key/value store for runtime settings: `key` text PK, `value` jsonb (unknown), `updatedAt`
+  `UpdateDateColumn`; no relations. Backs the face-detector setting and reprocess last-run
+  record (`settings/` module), upserted by key.
 
 ## Flow
 
@@ -64,7 +71,8 @@ thumbnails, transcode, faces) and register worker-written derivative rows (`POST
 and face endpoints insert `Face`s (`DELETE`+`POST .../faces` replace) and apply cluster plans
 (`POST /persons/apply-clusters`). `Face.embedding` round-trips `number[]` ↔ pgvector text via
 the transformer; the worker computes clusters in memory (O(n²) DBSCAN) and ships the resulting
-plan to core.
+plan to core. `app_settings` rows are upserted by `settings/` (detector choice + face-reprocess
+last-run record).
 
 ## Integration
 

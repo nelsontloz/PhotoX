@@ -9,7 +9,7 @@ Validation shapes for face registration, assignment, and the box/embedding outpu
 - `FaceBoxResponseDto`: `x`, `y`, `w`, `h` numbers, each `@Min(0)`; implements the box half of `FaceDto`. Used both as output (Swagger) and as a nested validation target by `DetectedFaceDto`.
 - `FaceResponseDto`: `id`, `assetId`, `box` (`FaceBoxResponseDto`), `confidence`, nullable `personId`; `implements FaceDto` from `@photox/shared-types`.
 - `DetectedFaceDto implements DetectedFaceInput`: required nested `box` (`@ValidateNested` + `@Type`), `confidence` (`@IsNumber`), and `embedding` as `number[]` with `@ArrayMinSize(512)` + `@ArrayMaxSize(512)` + `@IsNumber({}, { each: true })` — the exact `FACE_EMBEDDING_DIM` is enforced at the HTTP boundary.
-- `RegisterFacesDto implements RegisterFacesRequestDto`: `faces: DetectedFaceDto[]` (nested validation) plus a **required** `userId` UUID. The array may be empty (no faces found) — the service handles that as a valid no-op and the worker patches `faceStatus=ready, faceCount=0`.
+- `RegisterFacesDto implements RegisterFacesRequestDto`: `faces: DetectedFaceDto[]` (nested validation) plus a **required** `userId` UUID and an optional `detector` (`@IsIn(FACE_DETECTOR_KINDS)`) recorded as `Face.detector` provenance. The array may be empty (no faces found) — the service handles that as a valid no-op and the worker patches `faceStatus=ready, faceCount=0`.
 - `AssignPersonDto`: required `userId` UUID (fallback; `req.user.id` wins) and optional nullable `personId` UUID — omitting/null unassigns the face.
 - There is no separate DTO for `FacesQueryController.list`; it reads raw `userId`/`includeEmbeddings`/`excludeTrashed` query strings.
 

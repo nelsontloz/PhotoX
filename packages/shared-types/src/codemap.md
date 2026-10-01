@@ -2,9 +2,9 @@
 
 ## Responsibility
 
-Three files define every client/server payload plus one shared constant: `index.ts` (auth/user/files/assets/faces/
+Three files define every client/server payload plus shared runtime constants: `index.ts` (auth/user/files/assets/faces/
 persons/admin plus the barrel), `albums.ts`, and `shares.ts`. Everything is exported
-type-only except `FACE_EMBEDDING_DIM`; no validation logic lives here (validation lives in core DTOs).
+type-only except `FACE_EMBEDDING_DIM` and `FACE_DETECTOR_KINDS`; no validation logic lives here (validation lives in core DTOs).
 
 ## Design
 
@@ -20,13 +20,17 @@ type-only except `FACE_EMBEDDING_DIM`; no validation logic lives here (validatio
   `AssetFailureCounts`, `AdminAssetCountsResponse`, `AdminReprocessThumbnailsRequest` /
   `AdminReprocessThumbnailsResponse`, `AdminAssetReprocessRow`,
   `AdminAssetReprocessListResponse`.
-- Faces/persons: `FaceBox`, `FaceDto`, `DetectedFaceInput`, `RegisterFacesRequestDto`,
-  `RegisterFacesResponseDto`, `PersonDto`, `PersonListResponse`, `PersonAssetItem`,
+- Faces/persons: `FaceBox`, `FaceDto`, `DetectedFaceInput`, `RegisterFacesRequestDto` (optional
+  `detector` provenance), `RegisterFacesResponseDto`, `FaceDetectorKind` / `FACE_DETECTOR_KINDS`
+  (`'human' | 'scrfd'`), `FaceDetectionSettings` (persisted `detector`, `envDefault`,
+  `models.scrfd`, `facesByDetector`), `PersonDto`, `PersonListResponse`, `PersonAssetItem`,
   `PersonAssetsResponse`, `UpdatePersonRequest`, `ReassignFacesRequest`,
   `ReassignFacesResponse`.
-- `export const FACE_EMBEDDING_DIM = 512` — the only runtime value (folded in from the deleted
+- `export const FACE_EMBEDDING_DIM = 512` — the embedding dim (folded in from the deleted
   `data-access`); imported by the worker embedder/cluster and specs, enforced at the HTTP
-  boundary by core's `DetectedFaceDto`.
+  boundary by core's `DetectedFaceDto`. `export const FACE_DETECTOR_KINDS = ['human', 'scrfd']`
+  is the runtime detector enum behind `FaceDetectorKind`, shared by the core DTO/settings and the
+  worker zod schema.
 - Ends with `export * from './albums'` and `export * from './shares'`, so those names are
   reachable from the barrel.
 

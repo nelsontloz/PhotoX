@@ -36,8 +36,9 @@ Reads bytes from local disk via `LocalStorageService`; every DB read/write goes 
   `process-faces-cluster` → `getFacesForCluster`, `getAssetsByIds`, `applyClusters`;
   `cleanup-asset` → `adminDeleteFile`; `cleanup-orphans` → `adminRunOrphanCleanup`.
 - Payloads: thumbnail `{ assetId, fileId, size, userId }`; video `{ assetId, fileId, userId }`; metadata
-  `{ assetId, fileId, userId, kind: 'photo' | 'video' }`; faces `{ assetId, fileId, userId, reason?:
-'initial' | 're-embed' }`; cluster `{ userId, reason? }`; cleanup-asset `{ fileId }`; cleanup-orphans `{}` (ignores `dryRun`).
+  `{ assetId, fileId, userId, kind: 'photo' | 'video' }`; faces `{ assetId, fileId, userId,
+detector?: 'human' | 'scrfd', reason?: 'initial' | 're-embed' }`; cluster `{ userId, reason? }`;
+  cleanup-asset `{ fileId }`; cleanup-orphans `{}` (ignores `dryRun`).
 - Every consumed payload is runtime-validated with zod (`job-schemas.ts`, `parseJobData`); invalid data
   throws `UnrecoverableError` (no retries). Ownership is enforced core-side by the delegated token;
   thumbnail/video/metadata/face jobs additionally assert the fetched `FileRecord`/`Asset` DTOs belong
@@ -45,7 +46,7 @@ Reads bytes from local disk via `LocalStorageService`; every DB read/write goes 
   `cleanup-asset` carries only `{ fileId }`, so it is shape-validated only.
 - Dedup/retry set by the core publisher: thumbnail `jobId: '<prefix>-<assetId>-<size>'`, video `'video-<assetId>'`/
   `'video-reprocess-<assetId>'`, `attempts: 3` exponential, `removeOnFail: true`; this side rethrows so BullMQ retries;
-  face re-embed uses `jobId: face-reembed-<assetId>`.
+  face re-embed (admin reprocess) uses `jobId: face-reembed-<assetId>` with `removeOnComplete: true` so a later run re-enqueues completed assets.
 - `process-thumbnail` (concurrency 1): sm/md/lg/xl = 150/300/600/1920 px, `fit: 'inside'` (never crop),
   WebP q80 (xl q85). Video branch waits up to 5×1s for `asset.metadataStatus !== 'pending'` for
   orientation/duration (rethrows `UnrecoverableError` immediately on a gone asset), grabs one frame
@@ -66,20 +67,29 @@ Reads bytes from local disk via `LocalStorageService`; every DB read/write goes 
   rotation from `tags.rotate`/side-data, QuickTime-iOS make/model/lens, ISO-6709 `location`.
   `metadataStatus` = `ready` if any field non-null else `failed`, patched on error too; raw probe JSON
   not persisted (`metadata: null`); unknown mimes skipped.
-- Face pipeline (`face.detector.ts` → `face.embedder.ts` → `face.processor.ts`): **detect** on a
-  ≤2048px (`FACE_MAX_DIM`) EXIF-auto-oriented `inside` resize (`.rotate()`) with `@vladmandic/human`
-  (tensorflow backend, `mesh` on with `keepInvalid: false` so mesh-failed faces are rejected instead of
-  box-fraction-aligned, `description` off = no faceres, `maxDetected: 20`, `rotation: false`); boxes
-  smaller than `FACE_MIN_SIZE_PX` (40) are skipped before embedding, the rest scaled back to
-  oriented-original coords, `confidence < 0.5` dropped.
-  **align+embed**: 5 landmarks (mesh means; box-fraction fallback only for partial annotations) → closed-form similarity fit to the
+- Face pipeline (`face.detector.ts` facade + `face.detector.human.ts` / `face.detector.scrfd.ts` /
+  `face.detector.types.ts` → `face.embedder.ts` → `face.processor.ts`): **detect** on a
+  ≤2048px (`FACE_MAX_DIM`) EXIF-auto-oriented `inside` resize (`.rotate()`) with a per-job backend:
+  `human` (default; `@vladmandic/human` tensorflow backend, `mesh` on with `keepInvalid: false` so
+  mesh-failed faces are rejected instead of box-fraction-aligned, `description` off = no faceres,
+  `maxDetected: 20`, `rotation: false`; 5 landmarks from mesh means, box-fraction fallback only for
+  partial annotations) or `scrfd` (InsightFace SCRFD-10G `det_10g.onnx`, lazily-loaded
+  `onnxruntime-node` session; canonical top-left black-pad 640px letterbox then `scrfd.decode.ts`
+  anchor/score/kps decode + greedy class-agnostic NMS 0.4, returning the same 5 kps for ArcFace
+  alignment). Backend = job payload `detector` else `FACE_DETECTOR` env (`envFaceDetectorKind`,
+  default `human`); model path `FACE_DETECTOR_MODEL_PATH` or `STORAGE_DIR/models/det_10g.onnx`
+  (`FACE_DETECTOR_MODEL_FILE`); `FaceDetectorService.onModuleInit` preloads the configured default
+  and only warns when weights are missing. Boxes smaller than `FACE_MIN_SIZE_PX` (40) are skipped
+  before embedding, the rest scaled back to oriented-original coords, `confidence < 0.5` dropped.
+  **align+embed**: 5 landmarks → closed-form similarity fit to the
   ArcFace 112×112 template → pure-JS bilinear warp → RGB `(x-127.5)/128` NCHW → `onnxruntime-node`
   InsightFace `w600k_r50.onnx` (CPU) → **512-dim** L2-normalized vector (`FACE_EMBEDDING_DIM` from
   `@photox/shared-types`); model path `FACE_MODEL_PATH` or
   `STORAGE_DIR/models/w600k_r50.onnx` (`pnpm --filter @photox/worker-service face-model`). **persist**:
-  unconditional `deleteAssetFaces` → `registerFaces` (empty detections skip the POST) — retry-safe
-  replace, never before a successful detect; then `faceStatus: 'ready'` + `faceCount`; missing model
-  warns + sets `faceStatus: 'failed'` **without rethrow** (no retry), others patch `failed` + rethrow;
+  unconditional `deleteAssetFaces` → `registerFaces` carrying the resolved `detector` provenance
+  (empty detections skip the POST) — retry-safe replace, never before a successful detect; then
+  `faceStatus: 'ready'` + `faceCount`; missing model (detector or embedder) warns + sets
+  `faceStatus: 'failed'` **without rethrow** (no retry), others patch `failed` + rethrow;
   **hand off**: enqueue cluster `{ userId, reason: 'face-detected' }` via Redis,
   `jobId: cluster-<userId>` + `CLUSTER_DEBOUNCE_MS` (30s) delay — BullMQ ignores same-id jobs while
   waiting/active, so a detection burst collapses into one trailing run; removeOnComplete/Fail,
@@ -123,7 +133,8 @@ by core/web.
   import. No callbacks — web polls status from core.
 - `cleanup-orphans` is enqueued from core's admin maintenance controller (`POST /api/v1/admin/cleanup-orphans`); `cleanup-asset` has no core producer today (reachable only through the generic `enqueue`).
 - Tests: unit specs next to sources (`job-schemas.spec`, `face.cluster.spec`, `face.processor.spec`,
-  `face.embedder.spec`, `metadata.extractor.spec`, `ffmpeg.spec`, `metadata.processor.spec`,
-  `thumbnail.processor.spec`, `video.processor.spec`) plus `../core/core-client.service.spec`;
-  `test/integration/*` runs against testcontainers Redis only with the fake `CoreClient` from
-  `test/fake-core-client.ts` (face providers lazy so Alpine CI skips TF/ONNX).
+  `face.embedder.spec`, `face.detector.spec`, `scrfd.decode.spec`, `metadata.extractor.spec`,
+  `ffmpeg.spec`, `metadata.processor.spec`, `thumbnail.processor.spec`, `video.processor.spec`)
+  plus `../core/core-client.service.spec`; `test/integration/*` runs against testcontainers Redis
+  only with the fake `CoreClient` from `test/fake-core-client.ts` (face providers lazy so Alpine CI
+  skips TF/ONNX).
