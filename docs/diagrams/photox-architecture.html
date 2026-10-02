@@ -1,0 +1,936 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PhotoX · Architecture</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      :root {
+        --color-paper: #f5f5f5;
+        --color-ink: #2d3142;
+        --color-muted: #4f5d75;
+        --color-accent: #eb6c36;
+        --font-sans: 'Geist', system-ui, sans-serif;
+        --font-serif: 'Instrument Serif', serif;
+        --font-mono: 'Geist Mono', ui-monospace, monospace;
+      }
+
+      body {
+        font-family: var(--font-sans);
+        background: var(--color-paper);
+        color: var(--color-ink);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 3rem 2rem;
+      }
+
+      .frame {
+        max-width: 1360px;
+        width: 100%;
+      }
+      .diagram-container {
+        width: 100%;
+        overflow-x: auto;
+      }
+
+      .eyebrow {
+        font-family: var(--font-mono);
+        font-size: 0.66rem;
+        font-weight: 500;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--color-muted);
+        margin-bottom: 0.5rem;
+      }
+
+      h1 {
+        font-family: var(--font-serif);
+        font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+        font-weight: 400;
+        letter-spacing: -0.02em;
+        line-height: 1.15;
+        color: var(--color-ink);
+        margin-bottom: 1.5rem;
+      }
+
+      svg {
+        width: 100%;
+        min-width: 1280px;
+        display: block;
+      }
+      @media print {
+        .diagram-container {
+          overflow-x: visible;
+        }
+        svg {
+          min-width: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="frame">
+      <p class="eyebrow">Architecture · Secure paved road</p>
+      <h1>PhotoX — permitted ingress and the data zone</h1>
+
+      <div class="diagram-container">
+        <svg
+          viewBox="0 0 1280 720"
+          xmlns="http://www.w3.org/2000/svg"
+          role="img"
+          aria-labelledby="photox-architecture-title photox-architecture-desc"
+        >
+          <title id="photox-architecture-title">PhotoX architecture and trust boundaries</title>
+          <desc id="photox-architecture-desc">
+            Architecture diagram showing the web client reaching core through permitted same-origin
+            and reverse-proxy ingress, core alone touching postgres, redis and local storage, and
+            worker-service blocked from the database while writing back over HTTP.
+          </desc>
+          <defs>
+            <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#4f5d75" />
+            </marker>
+            <marker
+              id="arrow-accent"
+              markerWidth="8"
+              markerHeight="6"
+              refX="7"
+              refY="3"
+              orient="auto"
+            >
+              <polygon points="0 0, 8 3, 0 6" fill="#eb6c36" />
+            </marker>
+            <marker
+              id="arrow-link"
+              markerWidth="8"
+              markerHeight="6"
+              refX="7"
+              refY="3"
+              orient="auto"
+            >
+              <polygon points="0 0, 8 3, 0 6" fill="#2e5aa8" />
+            </marker>
+          </defs>
+
+          <rect width="100%" height="100%" fill="#f5f5f5" />
+
+          <!-- Trust zones (drawn first) -->
+          <rect
+            x="40"
+            y="40"
+            width="256"
+            height="560"
+            rx="8"
+            fill="rgba(45,49,66,0.02)"
+            stroke="rgba(45,49,66,0.20)"
+            stroke-width="0.8"
+            stroke-dasharray="4,4"
+          />
+          <rect x="56" y="44" width="96" height="12" rx="2" fill="#f5f5f5" />
+          <text
+            x="104"
+            y="53"
+            fill="rgba(45,49,66,0.40)"
+            font-size="7"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+            letter-spacing="0.14em"
+          >
+            PUBLIC EDGE
+          </text>
+
+          <rect
+            x="320"
+            y="40"
+            width="424"
+            height="560"
+            rx="8"
+            fill="rgba(45,49,66,0.02)"
+            stroke="rgba(45,49,66,0.20)"
+            stroke-width="0.8"
+            stroke-dasharray="4,4"
+          />
+          <rect x="336" y="44" width="132" height="12" rx="2" fill="#f5f5f5" />
+          <text
+            x="402"
+            y="53"
+            fill="rgba(45,49,66,0.40)"
+            font-size="7"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+            letter-spacing="0.14em"
+          >
+            APPLICATION · PRIVATE
+          </text>
+
+          <rect
+            x="768"
+            y="40"
+            width="472"
+            height="560"
+            rx="8"
+            fill="rgba(45,49,66,0.02)"
+            stroke="rgba(45,49,66,0.20)"
+            stroke-width="0.8"
+            stroke-dasharray="4,4"
+          />
+          <rect x="784" y="44" width="116" height="12" rx="2" fill="#f5f5f5" />
+          <text
+            x="842"
+            y="53"
+            fill="rgba(45,49,66,0.40)"
+            font-size="7"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+            letter-spacing="0.14em"
+          >
+            DATA · CORE ONLY
+          </text>
+
+          <!-- Arrows (before boxes) -->
+          <!-- Permitted ingress: same-origin /api -->
+          <line
+            x1="264"
+            y1="116"
+            x2="352"
+            y2="116"
+            stroke="#2e5aa8"
+            stroke-width="1.2"
+            marker-end="url(#arrow-link)"
+          />
+          <!-- Permitted ingress: optional reverse proxy -->
+          <path
+            d="M 264,280 H 296 Q 304,280 304,272 V 148 Q 304,140 312,140 H 352"
+            fill="none"
+            stroke="#2e5aa8"
+            stroke-width="1.2"
+            marker-end="url(#arrow-link)"
+          />
+          <!-- core -> postgres -->
+          <line
+            x1="608"
+            y1="112"
+            x2="800"
+            y2="112"
+            stroke="#4f5d75"
+            stroke-width="1.2"
+            marker-end="url(#arrow)"
+          />
+          <!-- core -> redis -->
+          <path
+            d="M 608,128 H 708 Q 716,128 716,136 V 260 Q 716,268 724,268 H 800"
+            fill="none"
+            stroke="#4f5d75"
+            stroke-width="1.2"
+            marker-end="url(#arrow)"
+          />
+          <!-- core -> storage (bridged over the queue dequeue at y=292) -->
+          <path
+            d="M 608,144 H 684 Q 692,144 692,152 V 284 a 8,8 0 0,1 0,16 V 412 Q 692,420 700,420 H 800"
+            fill="none"
+            stroke="#4f5d75"
+            stroke-width="1.2"
+            marker-end="url(#arrow)"
+          />
+          <!-- worker -> core (HTTP write-back) -->
+          <line
+            x1="480"
+            y1="400"
+            x2="480"
+            y2="160"
+            stroke="#4f5d75"
+            stroke-width="1.2"
+            marker-end="url(#arrow)"
+          />
+          <!-- redis -> worker (async dequeue) -->
+          <path
+            d="M 800,292 H 668 Q 660,292 660,300 V 412 Q 660,420 652,420 H 608"
+            fill="none"
+            stroke="#4f5d75"
+            stroke-width="1"
+            stroke-dasharray="5,4"
+            marker-end="url(#arrow)"
+          />
+          <!-- worker -> storage -->
+          <line
+            x1="608"
+            y1="444"
+            x2="800"
+            y2="444"
+            stroke="#4f5d75"
+            stroke-width="1.2"
+            marker-end="url(#arrow)"
+          />
+          <!-- Forbidden: worker -> postgres, stopped at the database -->
+          <path
+            d="M 480,464 V 552 Q 480,560 488,560 H 1096 Q 1104,560 1104,552 V 208 Q 1104,200 1096,200 H 924 Q 916,200 916,192 V 184"
+            fill="none"
+            stroke="#eb6c36"
+            stroke-width="1.2"
+            stroke-dasharray="5,4"
+          />
+          <line
+            x1="910"
+            y1="170"
+            x2="922"
+            y2="182"
+            stroke="#eb6c36"
+            stroke-width="1.8"
+            stroke-linecap="round"
+          />
+          <line
+            x1="910"
+            y1="182"
+            x2="922"
+            y2="170"
+            stroke="#eb6c36"
+            stroke-width="1.8"
+            stroke-linecap="round"
+          />
+
+          <!-- Arrow labels -->
+          <rect x="276" y="96" width="64" height="12" rx="2" fill="#f5f5f5" />
+          <text
+            x="308"
+            y="105"
+            fill="#2e5aa8"
+            font-size="8"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+            letter-spacing="0.06em"
+          >
+            PERMITTED
+          </text>
+
+          <rect x="312" y="200" width="56" height="12" rx="2" fill="#f5f5f5" />
+          <text
+            x="340"
+            y="209"
+            fill="#2e5aa8"
+            font-size="8"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+            letter-spacing="0.06em"
+          >
+            TLS :443
+          </text>
+
+          <rect x="676" y="92" width="60" height="12" rx="2" fill="#f5f5f5" />
+          <text
+            x="706"
+            y="101"
+            fill="#4f5d75"
+            font-size="8"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+            letter-spacing="0.06em"
+          >
+            SQL :5432
+          </text>
+
+          <rect x="732" y="248" width="56" height="12" rx="2" fill="#f5f5f5" />
+          <text
+            x="760"
+            y="257"
+            fill="#4f5d75"
+            font-size="8"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+            letter-spacing="0.06em"
+          >
+            ENQUEUE
+          </text>
+
+          <rect x="724" y="400" width="44" height="12" rx="2" fill="#f5f5f5" />
+          <text
+            x="746"
+            y="409"
+            fill="#4f5d75"
+            font-size="8"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+            letter-spacing="0.06em"
+          >
+            BYTES
+          </text>
+
+          <rect x="488" y="268" width="64" height="12" rx="2" fill="#f5f5f5" />
+          <text
+            x="520"
+            y="277"
+            fill="#4f5d75"
+            font-size="8"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+            letter-spacing="0.06em"
+          >
+            CORE_URL
+          </text>
+
+          <rect x="592" y="540" width="68" height="12" rx="2" fill="#f5f5f5" />
+          <text
+            x="626"
+            y="549"
+            fill="#eb6c36"
+            font-size="8"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+            letter-spacing="0.06em"
+          >
+            × BLOCKED
+          </text>
+
+          <!-- Node: web -->
+          <rect x="72" y="96" width="192" height="64" rx="6" fill="#f5f5f5" />
+          <rect
+            x="72"
+            y="96"
+            width="192"
+            height="64"
+            rx="6"
+            fill="rgba(79,93,117,0.10)"
+            stroke="#7a8399"
+            stroke-width="1"
+          />
+          <rect
+            x="80"
+            y="104"
+            width="44"
+            height="12"
+            rx="2"
+            fill="transparent"
+            stroke="rgba(122,131,153,0.40)"
+            stroke-width="0.8"
+          />
+          <text
+            x="102"
+            y="113"
+            fill="#7a8399"
+            font-size="7"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+            letter-spacing="0.08em"
+          >
+            CLIENT
+          </text>
+          <text
+            x="168"
+            y="132"
+            fill="#2d3142"
+            font-size="12"
+            font-weight="600"
+            font-family="'Geist', sans-serif"
+            text-anchor="middle"
+          >
+            web
+          </text>
+          <text
+            x="168"
+            y="148"
+            fill="#4f5d75"
+            font-size="9"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+          >
+            vite · :5173
+          </text>
+
+          <!-- Node: reverse proxy (optional, external) -->
+          <rect x="72" y="248" width="192" height="64" rx="6" fill="#f5f5f5" />
+          <rect
+            x="72"
+            y="248"
+            width="192"
+            height="64"
+            rx="6"
+            fill="#f5f5f5"
+            stroke="#7a8399"
+            stroke-width="1"
+            stroke-dasharray="4,3"
+          />
+          <rect
+            x="80"
+            y="256"
+            width="32"
+            height="12"
+            rx="2"
+            fill="transparent"
+            stroke="rgba(122,131,153,0.40)"
+            stroke-width="0.8"
+          />
+          <text
+            x="96"
+            y="265"
+            fill="#7a8399"
+            font-size="7"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+            letter-spacing="0.08em"
+          >
+            EXT
+          </text>
+          <text
+            x="168"
+            y="284"
+            fill="#2d3142"
+            font-size="12"
+            font-weight="600"
+            font-family="'Geist', sans-serif"
+            text-anchor="middle"
+          >
+            reverse proxy
+          </text>
+          <text
+            x="168"
+            y="300"
+            fill="#4f5d75"
+            font-size="9"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+          >
+            optional · external
+          </text>
+
+          <!-- Node: core (focal — the privileged gate) -->
+          <rect x="352" y="96" width="256" height="64" rx="6" fill="#f5f5f5" />
+          <rect
+            x="352"
+            y="96"
+            width="256"
+            height="64"
+            rx="6"
+            fill="rgba(235,108,54,0.08)"
+            stroke="#eb6c36"
+            stroke-width="1"
+          />
+          <rect
+            x="360"
+            y="104"
+            width="32"
+            height="12"
+            rx="2"
+            fill="transparent"
+            stroke="rgba(235,108,54,0.50)"
+            stroke-width="0.8"
+          />
+          <text
+            x="376"
+            y="113"
+            fill="#eb6c36"
+            font-size="7"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+            letter-spacing="0.08em"
+          >
+            API
+          </text>
+          <rect
+            x="516"
+            y="104"
+            width="84"
+            height="14"
+            rx="2"
+            fill="rgba(235,108,54,0.12)"
+            stroke="rgba(235,108,54,0.50)"
+            stroke-width="0.8"
+          />
+          <text
+            x="558"
+            y="114"
+            fill="#eb6c36"
+            font-size="7"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+            letter-spacing="0.06em"
+          >
+            JWT GATE
+          </text>
+          <text
+            x="480"
+            y="132"
+            fill="#2d3142"
+            font-size="12"
+            font-weight="600"
+            font-family="'Geist', sans-serif"
+            text-anchor="middle"
+          >
+            core
+          </text>
+          <text
+            x="480"
+            y="148"
+            fill="#4f5d75"
+            font-size="9"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+          >
+            api/v1 · :3000
+          </text>
+
+          <!-- Node: worker-service -->
+          <rect x="352" y="400" width="256" height="64" rx="6" fill="#f5f5f5" />
+          <rect
+            x="352"
+            y="400"
+            width="256"
+            height="64"
+            rx="6"
+            fill="#ffffff"
+            stroke="#2d3142"
+            stroke-width="1"
+          />
+          <rect
+            x="360"
+            y="408"
+            width="52"
+            height="12"
+            rx="2"
+            fill="transparent"
+            stroke="rgba(45,49,66,0.40)"
+            stroke-width="0.8"
+          />
+          <text
+            x="386"
+            y="417"
+            fill="#2d3142"
+            font-size="7"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+            letter-spacing="0.08em"
+          >
+            WORKER
+          </text>
+          <text
+            x="480"
+            y="436"
+            fill="#2d3142"
+            font-size="12"
+            font-weight="600"
+            font-family="'Geist', sans-serif"
+            text-anchor="middle"
+          >
+            worker-service
+          </text>
+          <text
+            x="480"
+            y="452"
+            fill="#4f5d75"
+            font-size="9"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+          >
+            bullmq · no DB access
+          </text>
+
+          <!-- Node: postgres -->
+          <rect x="800" y="96" width="232" height="64" rx="6" fill="#f5f5f5" />
+          <rect
+            x="800"
+            y="96"
+            width="232"
+            height="64"
+            rx="6"
+            fill="rgba(45,49,66,0.05)"
+            stroke="#4f5d75"
+            stroke-width="1"
+          />
+          <rect
+            x="808"
+            y="104"
+            width="32"
+            height="12"
+            rx="2"
+            fill="transparent"
+            stroke="rgba(79,93,117,0.50)"
+            stroke-width="0.8"
+          />
+          <text
+            x="824"
+            y="113"
+            fill="#4f5d75"
+            font-size="7"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+            letter-spacing="0.08em"
+          >
+            DB
+          </text>
+          <text
+            x="916"
+            y="132"
+            fill="#2d3142"
+            font-size="12"
+            font-weight="600"
+            font-family="'Geist', sans-serif"
+            text-anchor="middle"
+          >
+            postgres
+          </text>
+          <text
+            x="916"
+            y="148"
+            fill="#4f5d75"
+            font-size="9"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+          >
+            pgvector · photox
+          </text>
+
+          <!-- Node: redis -->
+          <rect x="800" y="248" width="232" height="64" rx="6" fill="#f5f5f5" />
+          <rect
+            x="800"
+            y="248"
+            width="232"
+            height="64"
+            rx="6"
+            fill="rgba(45,49,66,0.05)"
+            stroke="#4f5d75"
+            stroke-width="1"
+          />
+          <rect
+            x="808"
+            y="256"
+            width="48"
+            height="12"
+            rx="2"
+            fill="transparent"
+            stroke="rgba(79,93,117,0.50)"
+            stroke-width="0.8"
+          />
+          <text
+            x="832"
+            y="265"
+            fill="#4f5d75"
+            font-size="7"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+            letter-spacing="0.08em"
+          >
+            QUEUE
+          </text>
+          <text
+            x="916"
+            y="284"
+            fill="#2d3142"
+            font-size="12"
+            font-weight="600"
+            font-family="'Geist', sans-serif"
+            text-anchor="middle"
+          >
+            redis
+          </text>
+          <text
+            x="916"
+            y="300"
+            fill="#4f5d75"
+            font-size="9"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+          >
+            7 queues · bullmq
+          </text>
+
+          <!-- Node: storage-disk -->
+          <rect x="800" y="400" width="232" height="64" rx="6" fill="#f5f5f5" />
+          <rect
+            x="800"
+            y="400"
+            width="232"
+            height="64"
+            rx="6"
+            fill="rgba(45,49,66,0.05)"
+            stroke="#4f5d75"
+            stroke-width="1"
+          />
+          <rect
+            x="808"
+            y="408"
+            width="40"
+            height="12"
+            rx="2"
+            fill="transparent"
+            stroke="rgba(79,93,117,0.50)"
+            stroke-width="0.8"
+          />
+          <text
+            x="828"
+            y="417"
+            fill="#4f5d75"
+            font-size="7"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+            letter-spacing="0.08em"
+          >
+            DISK
+          </text>
+          <text
+            x="916"
+            y="436"
+            fill="#2d3142"
+            font-size="12"
+            font-weight="600"
+            font-family="'Geist', sans-serif"
+            text-anchor="middle"
+          >
+            storage-disk
+          </text>
+          <text
+            x="916"
+            y="452"
+            fill="#4f5d75"
+            font-size="9"
+            font-family="'Geist Mono', monospace"
+            text-anchor="middle"
+          >
+            STORAGE_DIR
+          </text>
+
+          <!-- Legend strip -->
+          <line
+            x1="40"
+            y1="660"
+            x2="1240"
+            y2="660"
+            stroke="rgba(45,49,66,0.10)"
+            stroke-width="0.8"
+          />
+          <text
+            x="40"
+            y="682"
+            fill="#4f5d75"
+            font-size="8"
+            font-family="'Geist Mono', monospace"
+            letter-spacing="0.18em"
+          >
+            LEGEND
+          </text>
+
+          <rect
+            x="110"
+            y="674"
+            width="14"
+            height="10"
+            rx="2"
+            fill="rgba(235,108,54,0.08)"
+            stroke="#eb6c36"
+            stroke-width="1"
+          />
+          <text x="130" y="683" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
+            Privileged gate
+          </text>
+
+          <rect
+            x="250"
+            y="674"
+            width="14"
+            height="10"
+            rx="2"
+            fill="#ffffff"
+            stroke="#2d3142"
+            stroke-width="1"
+          />
+          <text x="270" y="683" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
+            App / client
+          </text>
+
+          <rect
+            x="370"
+            y="674"
+            width="14"
+            height="10"
+            rx="2"
+            fill="rgba(45,49,66,0.05)"
+            stroke="#4f5d75"
+            stroke-width="1"
+          />
+          <text x="390" y="683" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
+            Data store
+          </text>
+
+          <rect
+            x="490"
+            y="674"
+            width="14"
+            height="10"
+            rx="2"
+            fill="#f5f5f5"
+            stroke="#7a8399"
+            stroke-width="1"
+            stroke-dasharray="3,2"
+          />
+          <text x="510" y="683" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
+            Optional (ext)
+          </text>
+
+          <line
+            x1="620"
+            y1="679"
+            x2="644"
+            y2="679"
+            stroke="#2e5aa8"
+            stroke-width="1.2"
+            marker-end="url(#arrow-link)"
+          />
+          <text x="652" y="683" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
+            Permitted ingress
+          </text>
+
+          <line
+            x1="790"
+            y1="679"
+            x2="814"
+            y2="679"
+            stroke="#4f5d75"
+            stroke-width="1.2"
+            marker-end="url(#arrow)"
+          />
+          <text x="822" y="683" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
+            Internal call
+          </text>
+
+          <line
+            x1="930"
+            y1="679"
+            x2="954"
+            y2="679"
+            stroke="#4f5d75"
+            stroke-width="1"
+            stroke-dasharray="5,4"
+            marker-end="url(#arrow)"
+          />
+          <text x="962" y="683" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
+            Async queue
+          </text>
+
+          <line
+            x1="1070"
+            y1="679"
+            x2="1094"
+            y2="679"
+            stroke="#eb6c36"
+            stroke-width="1.2"
+            stroke-dasharray="5,4"
+          />
+          <text x="1102" y="683" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
+            Blocked · no DB
+          </text>
+        </svg>
+      </div>
+    </div>
+  </body>
+</html>
