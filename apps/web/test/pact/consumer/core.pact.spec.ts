@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { PactV3, MatchersV3 } from '@pact-foundation/pact'
+import type { AdminLibraryStatsResponse } from '@photox/shared-types'
 
 vi.mock('../../../src/store/auth-store', () => ({
   useAuthStore: {
@@ -1031,6 +1032,38 @@ describe('Web → Core pact', () => {
         api.defaults.baseURL = mockserver.url + '/api'
         const res = await getAdminAssetCounts()
         expect(res.photos.thumbnails).toBe(0)
+      })
+  })
+
+  it('GET /api/v1/admin/assets/stats — library stats', async () => {
+    await provider
+      .uponReceiving('a request for admin library stats')
+      .withRequest({
+        method: 'GET',
+        path: '/api/v1/admin/assets/stats',
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: MatchersV3.like({
+          counts: { photos: 12, videos: 3, trashed: 1 },
+          uploadsByWeek: MatchersV3.eachLike({
+            week: '2026-09-28',
+            photos: 4,
+            videos: 1,
+          }),
+          storageByMonth: MatchersV3.eachLike({
+            month: '2026-09-01',
+            originalsBytes: 123456,
+            transcodesBytes: 23456,
+            thumbnailsBytes: 3456,
+          }),
+        }),
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const { data } = await api.get<AdminLibraryStatsResponse>('/v1/admin/assets/stats')
+        expect(data.counts.photos).toBeGreaterThan(0)
       })
   })
 

@@ -8,6 +8,7 @@ import { Asset, AssetThumbnail, FileRecord } from '../database/entities'
 import type {
   AdminAssetCountsResponse,
   AdminAssetReprocessListResponse,
+  AdminLibraryStatsResponse,
   AssetFailureCounts,
 } from '@photox/shared-types'
 
@@ -20,6 +21,92 @@ const REFERENCED_FILE_IDS_SQL = `
   UNION
   SELECT "fileId" AS "fileId" FROM asset_thumbnails
 `
+// ponytail: fixed 26-week upload window matching the wire contract; make it a query param if a UI ever needs more
+const UPLOAD_WEEKS = 26
+const LIBRARY_COUNTS_SQL = `
+  SELECT
+    COUNT(*) FILTER (WHERE "isTrashed" = false AND kind = 'photo') AS "photos",
+    COUNT(*) FILTER (WHERE "isTrashed" = false AND kind = 'video') AS "videos",
+    COUNT(*) FILTER (WHERE "isTrashed" = true) AS "trashed"
+  FROM assets
+`
+const UPLOADS_BY_WEEK_SQL = `
+  WITH weeks AS (
+    SELECT generate_series(
+      date_trunc('week', NOW()) - INTERVAL '${UPLOAD_WEEKS - 1} weeks',
+      date_trunc('week', NOW()),
+      INTERVAL '1 week'
+    ) AS week
+  )
+  SELECT
+    to_char(w.week, 'YYYY-MM-DD') AS "week",
+    COUNT(a.id) FILTER (WHERE a.kind = 'photo') AS "photos",
+    COUNT(a.id) FILTER (WHERE a.kind = 'video') AS "videos"
+  FROM weeks w
+  LEFT JOIN assets a
+    ON a."uploadedAt" >= w.week
+    AND a."uploadedAt" < w.week + INTERVAL '1 week'
+    AND a."isTrashed" = false
+  GROUP BY w.week
+  ORDER BY w.week
+`
+const STORAGE_BY_MONTH_SQL = `
+  WITH bounds AS (
+    SELECT COALESCE(
+      LEAST(
+        (SELECT MIN("createdAt") FROM files),
+        (SELECT MIN("createdAt") FROM asset_thumbnails)
+      ),
+      NOW()
+    ) AS start
+  ),
+  months AS (
+    SELECT generate_series(
+      date_trunc('month', (SELECT start FROM bounds)),
+      date_trunc('month', NOW()),
+      INTERVAL '1 month'
+    ) AS month
+  ),
+  file_sums AS (
+    SELECT
+      date_trunc('month', "createdAt") AS month,
+      SUM("sizeBytes") FILTER (WHERE purpose = 'original') AS originals,
+      SUM("sizeBytes") FILTER (WHERE purpose = 'transcode') AS transcodes
+    FROM files
+    GROUP BY 1
+  ),
+  thumb_sums AS (
+    SELECT date_trunc('month', "createdAt") AS month, SUM(bytes) AS thumbnails
+    FROM asset_thumbnails
+    GROUP BY 1
+  )
+  SELECT
+    to_char(m.month, 'YYYY-MM-DD') AS "month",
+    COALESCE(f.originals, 0) AS "originalsBytes",
+    COALESCE(f.transcodes, 0) AS "transcodesBytes",
+    COALESCE(t.thumbnails, 0) AS "thumbnailsBytes"
+  FROM months m
+  LEFT JOIN file_sums f ON f.month = m.month
+  LEFT JOIN thumb_sums t ON t.month = m.month
+  ORDER BY m.month
+`
+
+interface LibraryCountsRow {
+  photos: string
+  videos: string
+  trashed: string
+}
+interface WeeklyUploadsRow {
+  week: string
+  photos: string
+  videos: string
+}
+interface MonthlyStorageRow {
+  month: string
+  originalsBytes: string | null
+  transcodesBytes: string | null
+  thumbnailsBytes: string | null
+}
 
 @Injectable()
 export class AdminAssetsService {
@@ -187,6 +274,34 @@ export class AdminAssetsService {
     }
 
     return result
+  }
+
+  async getLibraryStats(): Promise<AdminLibraryStatsResponse> {
+    const [countRows, weekRows, monthRows] = await Promise.all([
+      this.dataSource.query<LibraryCountsRow[]>(LIBRARY_COUNTS_SQL),
+      this.dataSource.query<WeeklyUploadsRow[]>(UPLOADS_BY_WEEK_SQL),
+      this.dataSource.query<MonthlyStorageRow[]>(STORAGE_BY_MONTH_SQL),
+    ])
+
+    const counts = countRows[0]
+    return {
+      counts: {
+        photos: Number(counts?.photos ?? 0),
+        videos: Number(counts?.videos ?? 0),
+        trashed: Number(counts?.trashed ?? 0),
+      },
+      uploadsByWeek: weekRows.map((row) => ({
+        week: row.week,
+        photos: Number(row.photos),
+        videos: Number(row.videos),
+      })),
+      storageByMonth: monthRows.map((row) => ({
+        month: row.month,
+        originalsBytes: Number(row.originalsBytes ?? 0),
+        transcodesBytes: Number(row.transcodesBytes ?? 0),
+        thumbnailsBytes: Number(row.thumbnailsBytes ?? 0),
+      })),
+    }
   }
 
   async listForReprocess(
