@@ -4,7 +4,6 @@ import { Repository, DataSource, In } from 'typeorm'
 import { Asset } from '../database/entities'
 import { AssetThumbnail } from '../database/entities'
 import { AlbumAsset } from '../albums/entities/album-asset.entity'
-import { AssetShare } from '../shares/entities/asset-share.entity'
 import { Face } from '../database/entities'
 import { CreateAssetDto } from './dto/create-asset.dto'
 import { UpdateAssetDto } from './dto/update-asset.dto'
@@ -237,7 +236,7 @@ export class AssetsService {
     await this.dataSource.transaction(async (em) => {
       await em.delete(Face, { assetId: In(assetIds) })
       await em.delete(AlbumAsset, { assetId: In(assetIds) })
-      await em.delete(AssetShare, { assetId: In(assetIds) })
+      // shares.assetId FK is ON DELETE CASCADE, so share rows fall with the asset
       await em.delete(Asset, { id: In(assetIds) })
     })
     return { fileIds }

@@ -24,6 +24,9 @@ const USER_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
 const ASSET_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
 const FILE_ID = 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22'
 const ALBUM_ID = 'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33'
+const SHARE_ID = 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44'
+const ASSET_SHARE_TOKEN = 'valid-share-token'
+const ALBUM_SHARE_TOKEN = 'valid-album-share-token'
 const REFRESH_TOKEN = 'valid-refresh-token'
 
 const pactExists = existsSync(PACT_PATH)
@@ -93,6 +96,37 @@ describe.skipIf(!pactExists)('core provider pact verification (opt-in)', () => {
     }
   }
 
+  /**
+   * The pact's share paths use literal tokens. Recreate the two share fixtures with
+   * deterministic createdAt so `GET /api/v1/shares` returns [asset, album] in the order the
+   * consumer pact expects, and both public tokens resolve.
+   */
+  async function ensureShareFixtures(): Promise<void> {
+    await ensureAlbumFixtures()
+    await t.shareRepo.delete({ userId: USER_ID })
+    await t.shareRepo.save(
+      t.shareRepo.create({
+        id: SHARE_ID,
+        userId: USER_ID,
+        kind: 'asset',
+        assetId: ASSET_ID,
+        albumId: null,
+        token: ASSET_SHARE_TOKEN,
+        createdAt: new Date('2024-01-02T00:00:00.000Z'),
+      }),
+    )
+    await t.shareRepo.save(
+      t.shareRepo.create({
+        userId: USER_ID,
+        kind: 'album',
+        assetId: null,
+        albumId: ALBUM_ID,
+        token: ALBUM_SHARE_TOKEN,
+        createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      }),
+    )
+  }
+
   beforeAll(async () => {
     t = await createApiTestApp({ mockUser: null })
 
@@ -143,6 +177,9 @@ describe.skipIf(!pactExists)('core provider pact verification (opt-in)', () => {
       requestFilter: (req, _res, next) => {
         req.headers.authorization = `Bearer ${accessToken}`
         const pending: Promise<unknown>[] = []
+        if (req.path.startsWith('/api/v1/shares') || req.path.startsWith('/api/share/')) {
+          pending.push(ensureShareFixtures())
+        }
         if (req.path.includes(ALBUM_ID)) {
           pending.push(ensureAlbumFixtures())
         }

@@ -114,7 +114,12 @@ describe('HTTP range streaming', () => {
     const { user, file } = await seedStreamableFile()
     const asset = await seedAsset(t, user.id, file.id)
     const share = await t.shareRepo.save(
-      t.shareRepo.create({ userId: user.id, assetId: asset.id, token: 'share-token-123' }),
+      t.shareRepo.create({
+        userId: user.id,
+        kind: 'asset',
+        assetId: asset.id,
+        token: 'share-token-123',
+      }),
     )
     const res = await request(apiServer(t))
       .get(`/api/share/${share.token}/stream`)
@@ -130,7 +135,12 @@ describe('HTTP range streaming', () => {
     const { user, file } = await seedStreamableFile()
     const asset = await seedAsset(t, user.id, file.id)
     const share = await t.shareRepo.save(
-      t.shareRepo.create({ userId: user.id, assetId: asset.id, token: 'share-token-full' }),
+      t.shareRepo.create({
+        userId: user.id,
+        kind: 'asset',
+        assetId: asset.id,
+        token: 'share-token-full',
+      }),
     )
     const first = await request(apiServer(t)).get(`/api/share/${share.token}/stream`)
     expect(first.status).toBe(200)

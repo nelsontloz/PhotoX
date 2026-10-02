@@ -60,7 +60,7 @@ export function ViewerActions({
   const handleShare = async () => {
     setShareLoading(true)
     try {
-      const share = await createShare(asset.id)
+      const share = await createShare({ assetId: asset.id })
       const url = getShareUrl(share.token)
       await navigator.clipboard.writeText(url)
       setShareCopied(true)
