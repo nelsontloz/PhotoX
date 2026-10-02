@@ -3,6 +3,7 @@ import type {
   AdminUserListResponse,
   AdminUserSortField,
   AdminAssetCountsResponse,
+  AdminLibraryStatsResponse,
   AdminReprocessThumbnailsResponse,
   FaceDetectionSettings,
   FaceDetectorKind,
@@ -51,6 +52,11 @@ export async function listAdminUsers(
 
 export async function getAdminAssetCounts(): Promise<AdminAssetCountsResponse> {
   const { data } = await api.get<AdminAssetCountsResponse>('/v1/admin/assets/counts')
+  return data
+}
+
+export async function getAdminLibraryStats(): Promise<AdminLibraryStatsResponse> {
+  const { data } = await api.get<AdminLibraryStatsResponse>('/v1/admin/assets/stats')
   return data
 }
 

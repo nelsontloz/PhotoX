@@ -203,6 +203,34 @@ export interface AdminAssetReprocessListResponse {
   total: number
 }
 
+export interface AdminLibraryCounts {
+  photos: number
+  videos: number
+  trashed: number
+}
+
+export interface AdminLibraryUploadsWeek {
+  week: string
+  photos: number
+  videos: number
+}
+
+export interface AdminLibraryStorageMonth {
+  month: string
+  originalsBytes: number
+  transcodesBytes: number
+  thumbnailsBytes: number
+}
+
+// Library-wide admin stats: active counts, last 26 weeks of uploads (contiguous, zero-filled,
+// week = Monday 'YYYY-MM-DD') and per-month storage additions from file_records/thumbnails
+// (contiguous, zero-filled, month = first day 'YYYY-MM-DD').
+export interface AdminLibraryStatsResponse {
+  counts: AdminLibraryCounts
+  uploadsByWeek: AdminLibraryUploadsWeek[]
+  storageByMonth: AdminLibraryStorageMonth[]
+}
+
 // ponytail: single source of truth for the embedding dim (InsightFace buffalo_l w600k_r50) —
 // detector output, DTO validation, cluster filters, and the HNSW index cast all reference this
 export const FACE_EMBEDDING_DIM = 512

@@ -24,7 +24,10 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    Pages({ importMode: 'async', exclude: ['**/*.spec.*'] }),
+    Pages({
+      importMode: 'async',
+      exclude: ['**/*.spec.*', '**/library-stats.tsx', '**/AddPhotosDialog.tsx'],
+    }),
     suppressEconnreset(),
   ],
   build: {

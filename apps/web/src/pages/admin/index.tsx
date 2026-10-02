@@ -18,6 +18,7 @@ import { RequireAdmin } from '../../components/RequireAdmin'
 import { AppShell } from '../../components/AppShell'
 import { Dialog } from '../../components/Dialog'
 import { LoadingState } from '../../components/StateViews'
+import { LibraryStatsSection } from './library-stats'
 import {
   listAdminUsers,
   getAdminAssetCounts,
@@ -978,6 +979,7 @@ function AdminPageContent() {
 
   return (
     <div className="space-y-6">
+      <LibraryStatsSection />
       <AssetHealthSection />
       <ThumbnailReprocessSection />
       <FaceDetectionSection />
