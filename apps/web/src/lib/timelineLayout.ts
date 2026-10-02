@@ -5,6 +5,18 @@ const HEADER_BLOCK = 65 // 49px sticky header + 16px mb-4
 const GAP = 4 // flex gap between rows
 const SECTION_MARGIN = 40 // section mb-10
 
+/** How far past the visible screen, in px, tiles are kept mounted AND armed.
+ *
+ *  Shared by TimelineGrid's mount window and AssetThumb's observer rootMargin — they must agree.
+ *  A margin wider than the mount window is inert (the tile is never in the DOM to observe); a
+ *  margin narrower than it mounts tiles that never download. This is the second time that pair
+ *  drifted, hence one constant.
+ *
+ *  ponytail: costs ~2 extra screens of mounted days, each day mounting all its tiles with a live
+ *  IntersectionObserver. Upgrade path = row-granular windowing if mounted DOM shows up in profiles.
+ */
+export const TIMELINE_PREFETCH_PX = 2000
+
 export interface TimelineItem {
   t: string
   w: number | null

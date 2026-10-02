@@ -9,14 +9,18 @@ const pendingThumb = new Promise<Blob>(() => {
 vi.mock('../api/assets', () => ({ downloadFile: vi.fn(() => pendingThumb) }))
 
 import { AssetThumb } from './AssetThumb'
+import { ScrollContainerContext } from './AppShell'
 import { viewerThumbKey } from '../lib/asset-media'
 import { clearBlobCache, getCachedBlobUrl } from '../lib/blob-cache'
+import { TIMELINE_PREFETCH_PX } from '../lib/timelineLayout'
 
-// jsdom has no IntersectionObserver; the stub records the callback so a test can decide whether the
-// tile was ever told it intersected. AssetThumb must paint a cached thumb without that signal.
+// jsdom has no IntersectionObserver; the stub records the callback and the init so a test can decide
+// whether the tile was ever told it intersected, and which box it was tested against.
 let intersect: (() => void) | null = null
+let lastInit: IntersectionObserverInit | undefined
 class IOStub {
-  constructor(cb: IntersectionObserverCallback) {
+  constructor(cb: IntersectionObserverCallback, init?: IntersectionObserverInit) {
+    lastInit = init
     intersect = () =>
       cb([{ isIntersecting: true }] as unknown as IntersectionObserverEntry[], this as never)
   }
@@ -71,5 +75,28 @@ describe('AssetThumb remount', () => {
 
     expect(container.querySelector('img')).toBeNull()
     expect(container.querySelector('.animate-pulse')).not.toBeNull()
+  })
+})
+
+describe('AssetThumb prefetch window', () => {
+  it('tests against the timeline scroller, not the viewport', () => {
+    // A viewport root makes rootMargin inert: <main> clips the intersection rect back to its
+    // visible edge, so nothing off screen is ever observed.
+    const scroller = document.createElement('div')
+    render(
+      <ScrollContainerContext.Provider value={{ current: scroller }}>
+        <AssetThumb asset={asset} />
+      </ScrollContainerContext.Provider>,
+    )
+
+    expect(lastInit?.root).toBe(scroller)
+    // matches TimelineGrid's mount window — absolute lengths only, vh would throw SyntaxError
+    expect(lastInit?.rootMargin).toBe(`${TIMELINE_PREFETCH_PX}px 0px`)
+  })
+
+  it('degrades to the viewport root outside AppShell', () => {
+    render(<AssetThumb asset={asset} />)
+
+    expect(lastInit?.root).toBeNull()
   })
 })

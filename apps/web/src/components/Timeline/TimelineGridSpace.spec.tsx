@@ -27,6 +27,13 @@ const LAYOUT_ITEMS: TimelineItem[] = [
   { t: '2026-02-10T12:00:00', w: 1000, h: 1000 },
   // 2026-02-01 — five 16:9 (355.6px) → two per row, the fifth wraps → 3 rows
   ...Array.from({ length: 5 }, () => ({ t: '2026-02-01T12:00:00', w: 1920, h: 1080 })),
+  // Filler months (two days each) so the document is several screens taller than the mount window.
+  // Without this the window covers the whole timeline and windowing can't be told apart from
+  // "mount everything" — the window grew to ±(1 viewport + TIMELINE_PREFETCH_PX).
+  ...(['2026-01', '2025-12', '2025-11', '2025-10', '2025-09'] as const).flatMap((month) => [
+    ...Array.from({ length: 5 }, () => ({ t: `${month}-15T12:00:00`, w: 1920, h: 1080 })),
+    ...Array.from({ length: 3 }, () => ({ t: `${month}-10T12:00:00`, w: 1000, h: 1000 })),
+  ]),
 ]
 
 vi.mock('../../api/assets', async (importOriginal) => {
@@ -109,7 +116,15 @@ describe('TimelineGrid reserved space', () => {
       rowHeight: ROW_HEIGHT,
     })
     // guard the fixture so the comparison can't pass vacuously
-    expect(expected.buckets.map((b) => b.key)).toEqual(['2026-03', '2026-02'])
+    expect(expected.buckets.map((b) => b.key)).toEqual([
+      '2026-03',
+      '2026-02',
+      '2026-01',
+      '2025-12',
+      '2025-11',
+      '2025-10',
+      '2025-09',
+    ])
     expect(expected.buckets[0]?.days[0]?.sortKey).toBe('2026-03-20')
     expect(expected.dayIndex.get('2026-03-20')?.rows).toBe(2)
 
@@ -153,19 +168,26 @@ describe('TimelineGrid reserved space', () => {
       </ScrollContainerContext.Provider>,
     )
 
-    // window = [0 − 100, 0 + 2×100] = [−100, 200]: bucket 2026-03 (top 0, height 774) is the only
-    // mounted bucket; its 2026-03-20 day (top 0, height 469) is in-window, 2026-03-15 (top 509) is
-    // not. The unmounted 2026-02 bucket and the off-window day keep their reserved space.
-    await waitFor(() => {
-      expect(container.querySelectorAll('.max-w-6xl > section')).toHaveLength(1)
+    // window = [0 − 100 − 2000, 0 + 2×100 + 2000] = [−2100, 2200]: buckets 2026-03 (top 0),
+    // 2026-02 (814) and 2026-01 (1832) are mounted; 2025-12 (2850) is not. The straddling bucket is
+    // the interesting one — 2026-01-15 (dayTop 1832) is in-window and renders, 2026-01-10 (dayTop
+    // 2545) is not and renders nothing. Container height still spans the unmounted tail, so nothing
+    // below collapses.
+    const track = await waitFor(() => {
+      const el = container.querySelector<HTMLElement>('.max-w-6xl')
+      expect(el).not.toBeNull()
+      expect(el?.style.height).toBe('6882px')
+      return el!
     })
     expect(getAssetLayoutMock).toHaveBeenCalledTimes(1)
+    expect(track.querySelectorAll(':scope > section')).toHaveLength(3)
 
-    const monthEl = container.querySelector<HTMLElement>('.max-w-6xl > section')
-    const dayEls = Array.from(monthEl?.querySelectorAll<HTMLElement>(':scope > section') ?? [])
-    expect(dayEls).toHaveLength(2)
+    const boundary = Array.from(track.children)[2] as HTMLElement
+    expect(boundary.querySelectorAll(':scope > section')).toHaveLength(2)
+    const dayEls = Array.from(boundary.querySelectorAll<HTMLElement>(':scope > section'))
+    expect(dayEls[0]?.style.height).toBe('673px')
     expect(dayEls[0]?.querySelector('.fixed-row-gallery')).not.toBeNull()
-    expect(dayEls[1]?.querySelector('.fixed-row-gallery')).toBeNull()
     expect(dayEls[1]?.style.height).toBe('265px')
+    expect(dayEls[1]?.querySelector('.fixed-row-gallery')).toBeNull()
   })
 })
