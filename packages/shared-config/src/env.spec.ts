@@ -19,9 +19,9 @@ describe('AUTH_REFRESH_TTL parsing', () => {
     expect(loadEnv().AUTH_REFRESH_TTL).toBe(2 * 60 * 60 * 1000)
   })
 
-  it('defaults to 30d when unset', () => {
+  it('defaults to 1d when unset', () => {
     delete process.env.AUTH_REFRESH_TTL
-    expect(loadEnv().AUTH_REFRESH_TTL).toBe(30 * 24 * 60 * 60 * 1000)
+    expect(loadEnv().AUTH_REFRESH_TTL).toBe(1 * 24 * 60 * 60 * 1000)
   })
 
   it('falls back to 15 minutes for an unparseable value', () => {

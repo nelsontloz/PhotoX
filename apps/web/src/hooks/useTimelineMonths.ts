@@ -58,29 +58,26 @@ export function useTimelineMonths(): UseTimelineMonthsResult {
     lastUsedRef.current.set(key, ++counterRef.current)
   }, [])
 
-  const commit = useCallback(
-    (key: string, entry: MonthEntry) => {
-      // staleness guard: a fetch that finishes after a refresh-key bump writes nothing
-      if (entry.stamp !== useAppStore.getState().timelineRefreshKey) return
-      const next = new Map(entriesRef.current)
-      next.set(key, entry)
-      // Evict LRU-beyond-cap, once per commit, never the mounted (retained) months and never the
-      // key just committed. ponytail: month-count cap, not a byte budget — 12 heavy months fit
-      // comfortably; upgrade path = byte-budget LRU if single months ever get huge.
-      if (next.size > MAX_CACHED_MONTHS) {
-        const victims = [...next.keys()]
-          .filter((k) => k !== key && !retainedRef.current.has(k))
-          .sort((a, b) => (lastUsedRef.current.get(a) ?? 0) - (lastUsedRef.current.get(b) ?? 0))
-        for (const victim of victims) {
-          if (next.size <= MAX_CACHED_MONTHS) break
-          next.delete(victim)
-        }
+  const commit = useCallback((key: string, entry: MonthEntry) => {
+    // staleness guard: a fetch that finishes after a refresh-key bump writes nothing
+    if (entry.stamp !== useAppStore.getState().timelineRefreshKey) return
+    const next = new Map(entriesRef.current)
+    next.set(key, entry)
+    // Evict LRU-beyond-cap, once per commit, never the mounted (retained) months and never the
+    // key just committed. ponytail: month-count cap, not a byte budget — 12 heavy months fit
+    // comfortably; upgrade path = byte-budget LRU if single months ever get huge.
+    if (next.size > MAX_CACHED_MONTHS) {
+      const victims = [...next.keys()]
+        .filter((k) => k !== key && !retainedRef.current.has(k))
+        .sort((a, b) => (lastUsedRef.current.get(a) ?? 0) - (lastUsedRef.current.get(b) ?? 0))
+      for (const victim of victims) {
+        if (next.size <= MAX_CACHED_MONTHS) break
+        next.delete(victim)
       }
-      entriesRef.current = next
-      setEntries(next)
-    },
-    [],
-  )
+    }
+    entriesRef.current = next
+    setEntries(next)
+  }, [])
 
   const retainMonths = useCallback(
     (keys: readonly string[]) => {

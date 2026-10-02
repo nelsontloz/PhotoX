@@ -9,7 +9,7 @@ import {
 import type { Asset } from '@photox/shared-types'
 import type { AssetGroup } from '../../hooks/useAssetGroups'
 import type { MonthStatus, UseTimelineMonthsResult } from '../../hooks/useTimelineMonths'
-import type { TimelineLayout } from '../../lib/timelineLayout'
+import { TIMELINE_PREFETCH_PX, type TimelineLayout } from '../../lib/timelineLayout'
 import { groupDateLabelFromSortKey } from '../../lib/dateFormat'
 import { GalleryItem } from '../GalleryItem'
 import { Skeleton } from '../Skeleton'
@@ -79,10 +79,16 @@ export function TimelineGrid({
   const groupsByDay = useMemo(() => new Map(groups.map((g) => [g.sortKey, g])), [groups])
 
   // Mount window: visible range [top, top + h] expanded by one viewport of overscan above and
-  // below. Unmounted buckets keep their reserved space (container height + absolute tops).
+  // below, plus the shared prefetch distance (TIMELINE_PREFETCH_PX) that AssetThumb's observer
+  // rootMargin uses — the two must cover the same span or the outer band mounts but never downloads.
+  // Unmounted buckets keep their reserved space (container height + absolute tops).
   const hasViewport = scrollPos.height > 0
-  const min = hasViewport ? scrollPos.top - scrollPos.height : Number.NEGATIVE_INFINITY
-  const max = hasViewport ? scrollPos.top + scrollPos.height * 2 : Number.POSITIVE_INFINITY
+  const min = hasViewport
+    ? scrollPos.top - scrollPos.height - TIMELINE_PREFETCH_PX
+    : Number.NEGATIVE_INFINITY
+  const max = hasViewport
+    ? scrollPos.top + scrollPos.height * 2 + TIMELINE_PREFETCH_PX
+    : Number.POSITIVE_INFINITY
   const mountedBuckets = layout.buckets.filter(
     (bucket) => bucket.top < max && bucket.top + bucket.height > min,
   )
@@ -157,7 +163,7 @@ export function TimelineGrid({
                   className="mb-10 last:mb-0"
                   style={{ height: day.height }}
                 >
-                  <div className="flex items-end gap-3 mb-4 sticky top-0 bg-background-light/95 dark:bg-background-dark/95 backdrop-blur z-30 py-2 -mx-4 px-4 sm:-mx-8 sm:px-8 border-b border-transparent dark:border-transparent transition-all">
+                  <div className="flex items-end gap-3 mb-4 sticky top-0 bg-background-light/95 dark:bg-background-dark/95 z-30 py-2 -mx-4 px-4 sm:-mx-8 sm:px-8 border-b border-transparent dark:border-transparent transition-all">
                     <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                       {group ? group.label : groupDateLabelFromSortKey(day.sortKey)}
                     </h2>

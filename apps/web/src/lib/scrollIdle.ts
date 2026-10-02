@@ -1,7 +1,8 @@
 // ponytail: shared scroll-idle gate so visible tiles all arm at the same time — the old per-tile
 // entry timers fired staggered in scroll order. Capture-phase window listener catches every scroll
-// container. 300ms matches the old per-tile delay; per-element timers if this ever shows in profiles.
-const SETTLE_MS = 300
+// container. 200ms is the knob: below the time it takes to paint a cold screen off local disk, so
+// the gate is not the dominant term; per-element timers if this ever shows in profiles.
+const SETTLE_MS = 200
 
 let settleTimer: ReturnType<typeof setTimeout> | undefined
 let idle = true

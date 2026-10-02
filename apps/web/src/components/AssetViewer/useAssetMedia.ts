@@ -40,7 +40,11 @@ export function useAssetMedia(asset: Asset): {
     else setImageUrl(null)
 
     getCachedBlobUrl(key, () => downloadFile(thumb.fileId))
-      .then((url) => {
+      .then(async (url) => {
+        // Pre-decode off the main thread so the swap paints the first frame instead of waiting on decode.
+        const img = new Image()
+        img.src = url
+        await img.decode?.().catch(() => undefined)
         if (cancelled) return
         if (isPhoto) setImageUrl(url)
         else setVideoPosterUrl(url)

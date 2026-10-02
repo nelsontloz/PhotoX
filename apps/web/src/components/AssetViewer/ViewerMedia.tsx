@@ -91,6 +91,7 @@ export function ViewerMedia({
           <img
             src={imageUrl}
             alt={imageAlt}
+            decoding="async"
             className="relative max-h-full max-w-full object-contain shadow-2xl select-none"
           />
         )
