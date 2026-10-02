@@ -58,6 +58,7 @@ export function FaceThumb({ faceId, alt, className = '' }: FaceThumbProps) {
       alt={alt}
       className={className || 'w-full h-full object-cover'}
       loading="lazy"
+      decoding="async"
       draggable={false}
     />
   )

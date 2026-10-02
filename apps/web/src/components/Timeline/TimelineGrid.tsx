@@ -163,7 +163,7 @@ export function TimelineGrid({
                   className="mb-10 last:mb-0"
                   style={{ height: day.height }}
                 >
-                  <div className="flex items-end gap-3 mb-4 sticky top-0 bg-background-light/95 dark:bg-background-dark/95 backdrop-blur z-30 py-2 -mx-4 px-4 sm:-mx-8 sm:px-8 border-b border-transparent dark:border-transparent transition-all">
+                  <div className="flex items-end gap-3 mb-4 sticky top-0 bg-background-light/95 dark:bg-background-dark/95 z-30 py-2 -mx-4 px-4 sm:-mx-8 sm:px-8 border-b border-transparent dark:border-transparent transition-all">
                     <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                       {group ? group.label : groupDateLabelFromSortKey(day.sortKey)}
                     </h2>

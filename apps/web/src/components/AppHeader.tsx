@@ -22,7 +22,7 @@ export function AppHeader() {
   }
 
   return (
-    <header className="flex items-center justify-between border-b border-gray-200 dark:border-border-dark bg-white/80 dark:bg-background-dark/80 backdrop-blur-md px-6 py-3 z-40 shrink-0 h-16 w-full">
+    <header className="flex items-center justify-between border-b border-gray-200 dark:border-border-dark bg-white/95 dark:bg-background-dark/95 px-6 py-3 z-40 shrink-0 h-16 w-full">
       <div className="flex items-center gap-6 w-1/4">
         <div className="flex items-center gap-3">
           <div className="size-8 bg-primary rounded-lg flex items-center justify-center text-white shadow-lg shadow-primary/20">

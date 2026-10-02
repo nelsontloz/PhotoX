@@ -210,6 +210,7 @@ export function ZoomableImage({ src, alt, width, height, children }: ZoomableIma
           src={src}
           alt={alt}
           draggable={false}
+          decoding="async"
           className="block w-full h-full object-contain shadow-2xl select-none"
         />
         {children}

@@ -12,14 +12,17 @@ import { AssetThumb } from './AssetThumb'
 import { ScrollContainerContext } from './AppShell'
 import { viewerThumbKey } from '../lib/asset-media'
 import { clearBlobCache, getCachedBlobUrl } from '../lib/blob-cache'
+import { resetSharedIntersection } from '../lib/shared-intersection'
 import { TIMELINE_PREFETCH_PX } from '../lib/timelineLayout'
 
 // jsdom has no IntersectionObserver; the stub records the callback and the init so a test can decide
 // whether the tile was ever told it intersected, and which box it was tested against.
 let intersect: (() => void) | null = null
 let lastInit: IntersectionObserverInit | undefined
+let constructed = 0
 class IOStub {
   constructor(cb: IntersectionObserverCallback, init?: IntersectionObserverInit) {
+    constructed++
     lastInit = init
     intersect = () =>
       cb([{ isIntersecting: true }] as unknown as IntersectionObserverEntry[], this as never)
@@ -44,11 +47,14 @@ const asset = { id: 'a1', kind: 'photo', fileId: 'f1', thumbnails: [thumb] } as 
 
 beforeEach(() => {
   intersect = null
+  constructed = 0
   urlSeq = 0
   URL.createObjectURL = createObjectURL
   URL.revokeObjectURL = revokeObjectURL
   clearBlobCache()
   createObjectURL.mockClear()
+  // Drop observers cached against the previous test's stub before re-stubbing the global.
+  resetSharedIntersection()
   vi.stubGlobal('IntersectionObserver', IOStub)
 })
 
@@ -98,5 +104,33 @@ describe('AssetThumb prefetch window', () => {
     render(<AssetThumb asset={asset} />)
 
     expect(lastInit?.root).toBeNull()
+  })
+})
+
+describe('AssetThumb observer sharing', () => {
+  it('shares one IntersectionObserver across 100 tiles in the same scroll root', () => {
+    const scroller = document.createElement('div')
+    render(
+      <ScrollContainerContext.Provider value={{ current: scroller }}>
+        {Array.from({ length: 100 }, (_, i) => (
+          <AssetThumb
+            key={i}
+            asset={
+              {
+                id: `a${i}`,
+                kind: 'photo',
+                fileId: `f${i}`,
+                thumbnails: [{ fileId: `f${i}`, size: 'md', width: 4, height: 3 }],
+              } as Asset
+            }
+          />
+        ))}
+      </ScrollContainerContext.Provider>,
+    )
+
+    expect(
+      constructed,
+      'one shared observer per scroll root, not one per tile',
+    ).toBeLessThanOrEqual(2)
   })
 })
