@@ -19,10 +19,13 @@ Given('I uploaded {string}', async ({ page, request, ctx }, name: string) => {
 })
 
 When('I click the photo thumbnail', async ({ page, ctx }) => {
+  const previousId = ctx.assetId
   await page.locator('figure[role="button"]').first().click()
   await expect(page).toHaveURL(/[?&]asset=/)
   const id = new URL(page.url()).searchParams.get('asset')
   if (!id) throw new Error('no ?asset= id in the URL after opening the viewer')
+  // the viewer must be showing the asset uploaded earlier, not some other tile
+  if (previousId) expect(id).toBe(previousId)
   ctx.assetId = id
 })
 
@@ -38,6 +41,9 @@ Then('the large preview is loaded', async ({ page }) => {
   await expect
     .poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth))
     .toBeGreaterThan(0)
+  // pickViewerThumb prefers xl (800px for the 800x600 fixture) and only falls back to
+  // thumbnails[0] (md, 300px): width > md proves the full-size preview loaded, not the fallback
+  expect(await img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(300)
 })
 
 When('I press Escape', async ({ page }) => {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# E2E stack + BDD suite runner. Feature files are ordered 01..05; do not rename.
+# E2E stack + BDD suite runner. Feature files are ordered 01..07; do not rename.
 # Usage: pnpm test:e2e   (from the repo root)
 #   E2E_BUILD=1  rebuild images before starting the stack
 #   E2E_KEEP=1   leave the stack running after the tests (debugging)

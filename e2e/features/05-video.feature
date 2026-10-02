@@ -10,6 +10,7 @@ Feature: Uploading videos makes them playable
     When I open the video viewer for that asset
     Then the video element becomes playable
     And playback advances past 0.2 seconds
+    And the playing video source is the transcode file
 
   Scenario: An h264+aac video skips transcoding and plays the original
     Given I am signed in
@@ -20,3 +21,4 @@ Feature: Uploading videos makes them playable
     When I open the video viewer for that asset
     Then the video element becomes playable
     And playback advances past 0.2 seconds
+    And the playing video source is the original file

@@ -7,7 +7,9 @@ Feature: First registered account becomes administrator
     Then I am signed in on the timeline
     And my session role is "admin"
     And the sidebar shows the admin link
+    And the admin API accepts my session
     And I can open the admin dashboard
+    And the users table lists "admin@photox.test"
 
   Scenario: The second registered account is a regular user
     When I sign out

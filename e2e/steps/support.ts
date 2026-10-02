@@ -25,6 +25,7 @@ export interface AuthState {
 /** Subset of the asset DTO the steps poll. */
 export interface AssetDto {
   id: string
+  fileId?: string
   thumbnailStatus?: string | null
   thumbnails?: { size?: string }[]
   transcodeStatus?: string | null
@@ -78,7 +79,11 @@ export async function injectSession(page: Page, auth: AuthState): Promise<void> 
     version: 0,
   })
   await page.addInitScript((value: string) => {
-    window.localStorage.setItem('photox.auth', value)
+    // seed only when nothing is persisted: a full page reload after sign-out must stay signed out
+    // (a dev-server reload would otherwise resurrect the session this script re-writes on load)
+    if (!window.localStorage.getItem('photox.auth')) {
+      window.localStorage.setItem('photox.auth', value)
+    }
   }, persisted)
 }
 

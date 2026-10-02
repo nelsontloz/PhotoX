@@ -79,3 +79,38 @@ Then('playback advances past 0.2 seconds', async ({ page }) => {
     .toBeGreaterThan(0.2)
   expect(await video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(false)
 })
+
+Then('the playing video source is the transcode file', async ({ page, request, ctx }) => {
+  if (!ctx.assetId || !ctx.auth) throw new Error('upload an asset first')
+  const asset = await getAsset(request, ctx.auth, ctx.assetId)
+  const transcodeFileId = asset.transcodeFileId
+  if (!transcodeFileId) throw new Error('asset has no transcode file')
+  const video = page.locator('video[aria-label^="Video player"]')
+  // the player falls back to the original on error — playback advancing only proves a source
+  // played, not which one: pin it to the transcode URL the viewer picked first
+  await expect
+    .poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentSrc), { timeout: 30_000 })
+    .toContain(transcodeFileId)
+})
+
+Then('the playing video source is the original file', async ({ page, request, ctx }) => {
+  if (!ctx.assetId || !ctx.auth) throw new Error('upload an asset first')
+  const asset = await getAsset(request, ctx.auth, ctx.assetId)
+  const fileId = asset.fileId
+  if (!fileId) throw new Error('asset has no fileId')
+  const transcodeFileId = asset.transcodeFileId ?? null
+  const video = page.locator('video[aria-label^="Video player"]')
+  await expect
+    .poll(
+      async () => {
+        // evaluate only returns the URL — Node variables are not available in the browser closure
+        const currentSrc = await video.evaluate((el) => (el as HTMLVideoElement).currentSrc)
+        return (
+          currentSrc.includes(fileId) &&
+          (transcodeFileId === null || !currentSrc.includes(transcodeFileId))
+        )
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true)
+})
