@@ -20,7 +20,7 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-photox_dev}
       AUTH_ACCESS_TTL: 30m
-      AUTH_REFRESH_TTL: 30d
+      AUTH_REFRESH_TTL: 1d
       AUTH_TOKEN_SECRET: dev-auth-secret-32-characters-minimum!!
     volumes:
       - storage-data:/data/storage

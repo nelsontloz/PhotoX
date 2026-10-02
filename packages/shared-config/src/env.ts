@@ -33,7 +33,7 @@ const envSchema = z.object({
   STORAGE_DIR: z.string().default('./data/storage'),
   AUTH_ACCESS_TTL: z.string().default('30m'),
   // raw env value is a duration string; consumers get milliseconds, parsed exactly once
-  AUTH_REFRESH_TTL: z.string().default('30d').transform(parseDurationMs),
+  AUTH_REFRESH_TTL: z.string().default('1d').transform(parseDurationMs),
   AUTH_CLOCK_TOLERANCE_SEC: z.coerce.number().default(60),
 })
 
