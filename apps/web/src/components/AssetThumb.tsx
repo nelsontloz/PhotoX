@@ -3,7 +3,7 @@ import { FaSpinner, FaTriangleExclamation } from 'react-icons/fa6'
 import type { Asset, AssetThumbnail } from '@photox/shared-types'
 import { downloadFile } from '../api/assets'
 import { viewerThumbKey } from '../lib/asset-media'
-import { getCachedBlobUrl } from '../lib/blob-cache'
+import { getCachedBlobUrl, peekCachedBlobUrl } from '../lib/blob-cache'
 import { whenScrollIdle } from '../lib/scrollIdle'
 import { useThumbStore } from '../store/thumb-store'
 import { Skeleton } from './Skeleton'
@@ -18,7 +18,13 @@ export function AssetThumb({ asset, className = '', onThumbPicked }: AssetThumbP
   const ref = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
   const localThumb = useThumbStore((s) => s.urls[asset.fileId])
-  const [objectUrl, setObjectUrl] = useState<string | null>(null)
+  const thumb = asset.thumbnails?.find((t) => t.size === 'md') ?? asset.thumbnails?.[0]
+  // The timeline unmounts off-window days, so a loaded tile remounts on scroll-back. Seed from the
+  // cache synchronously (peek, as FaceThumb/useAssetMedia do) so it stays painted — waiting for the
+  // idle gate or a promise tick would flash a Skeleton over an already-downloaded thumb.
+  const [objectUrl, setObjectUrl] = useState<string | null>(() =>
+    thumb ? (peekCachedBlobUrl(viewerThumbKey(thumb)) ?? null) : null,
+  )
   const [error, setError] = useState(false)
 
   useEffect(() => {
@@ -50,7 +56,6 @@ export function AssetThumb({ asset, className = '', onThumbPicked }: AssetThumbP
 
     if (asset.kind !== 'photo' && asset.kind !== 'video') return
 
-    const thumb = asset.thumbnails?.find((t) => t.size === 'md') ?? asset.thumbnails?.[0]
     if (!thumb) return
 
     onThumbPicked?.(thumb)
