@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import request from 'supertest'
 import {
   apiServer,
@@ -11,6 +12,8 @@ import {
 import type { ApiTestApp } from './helpers'
 
 const FILE_BYTES = Buffer.from('0123456789')
+const FILE_ETAG = `"${createHash('sha256').update(FILE_BYTES).digest('hex')}"`
+const BYTES_CACHE_CONTROL = 'private, max-age=31536000, immutable'
 
 function expectBytes(body: unknown, expected: string) {
   expect(Buffer.isBuffer(body)).toBe(true)
@@ -47,6 +50,8 @@ describe('HTTP range streaming', () => {
     expect(res.status).toBe(200)
     expect(res.headers['accept-ranges']).toBe('bytes')
     expect(res.headers['content-length']).toBe('10')
+    expect(res.headers.etag).toBe(FILE_ETAG)
+    expect(res.headers['cache-control']).toBe(BYTES_CACHE_CONTROL)
     expectBytes(res.body, '0123456789')
   })
 
@@ -58,6 +63,8 @@ describe('HTTP range streaming', () => {
     expect(res.status).toBe(206)
     expect(res.headers['content-range']).toBe('bytes 0-3/10')
     expect(res.headers['content-length']).toBe('4')
+    expect(res.headers.etag).toBe(FILE_ETAG)
+    expect(res.headers['cache-control']).toBe(BYTES_CACHE_CONTROL)
     expectBytes(res.body, '0123')
   })
 
@@ -80,6 +87,29 @@ describe('HTTP range streaming', () => {
     expect(res.headers['content-range']).toBe('bytes */10')
   })
 
+  it('returns 304 for a full GET whose If-None-Match matches', async () => {
+    const { file } = await seedStreamableFile()
+    const res = await request(apiServer(t))
+      .get(`/api/v1/files/${file.id}/stream`)
+      .set('If-None-Match', FILE_ETAG)
+    expect(res.status).toBe(304)
+    expect(res.headers.etag).toBe(FILE_ETAG)
+    expect(res.headers['content-type']).toBeUndefined()
+    expect(res.headers['content-length']).toBeUndefined()
+    expect(res.headers['content-disposition']).toBeUndefined()
+  })
+
+  it('still answers 206 when a Range request also carries a matching If-None-Match', async () => {
+    const { file } = await seedStreamableFile()
+    const res = await request(apiServer(t))
+      .get(`/api/v1/files/${file.id}/stream`)
+      .set('Range', 'bytes=0-3')
+      .set('If-None-Match', FILE_ETAG)
+    expect(res.status).toBe(206)
+    expect(res.headers['content-range']).toBe('bytes 0-3/10')
+    expectBytes(res.body, '0123')
+  })
+
   it('streams a shared asset publicly with Range (206)', async () => {
     const { user, file } = await seedStreamableFile()
     const asset = await seedAsset(t, user.id, file.id)
@@ -91,6 +121,27 @@ describe('HTTP range streaming', () => {
       .set('Range', 'bytes=2-4')
     expect(res.status).toBe(206)
     expect(res.headers['content-range']).toBe('bytes 2-4/10')
+    expect(res.headers.etag).toBe(FILE_ETAG)
+    expect(res.headers['cache-control']).toBe(BYTES_CACHE_CONTROL)
     expectBytes(res.body, '234')
+  })
+
+  it('serves a shared asset fully with cache headers, then 304s on If-None-Match', async () => {
+    const { user, file } = await seedStreamableFile()
+    const asset = await seedAsset(t, user.id, file.id)
+    const share = await t.shareRepo.save(
+      t.shareRepo.create({ userId: user.id, assetId: asset.id, token: 'share-token-full' }),
+    )
+    const first = await request(apiServer(t)).get(`/api/share/${share.token}/stream`)
+    expect(first.status).toBe(200)
+    expect(first.headers.etag).toBe(FILE_ETAG)
+    expect(first.headers['cache-control']).toBe(BYTES_CACHE_CONTROL)
+    expectBytes(first.body, '0123456789')
+
+    const second = await request(apiServer(t))
+      .get(`/api/share/${share.token}/stream`)
+      .set('If-None-Match', FILE_ETAG)
+    expect(second.status).toBe(304)
+    expect(second.headers.etag).toBe(FILE_ETAG)
   })
 })

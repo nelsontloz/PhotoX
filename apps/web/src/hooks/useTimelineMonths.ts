@@ -14,7 +14,10 @@ interface MonthEntry {
   stamp: number
 }
 
-const PAGE_SIZE = 50
+const PAGE_SIZE = 100
+
+/** Bounded cache cap — see the eviction comment in `commit` for the tradeoff. */
+export const MAX_CACHED_MONTHS = 12
 
 export interface UseTimelineMonthsResult {
   /** Day groups merged across every fetched month (stale months included, so refreshes don't unmount the viewer) */
@@ -22,15 +25,23 @@ export interface UseTimelineMonthsResult {
   monthStatus: ReadonlyMap<string, MonthStatus>
   /** Fetches one month's assets (deduped, idempotent); resolves with the month's items or null on error/stale */
   ensureMonth: (monthKey: string) => Promise<Asset[] | null>
+  /**
+   * Marks months as in use: retained (never evicted) and touched for LRU. Ref-only — calling it
+   * does not re-render.
+   */
+  retainMonths: (keys: readonly string[]) => void
   /** Current `timelineRefreshKey` — bumping it makes TimelineGrid re-trigger ensureMonth for visible months */
   refreshKey: number
 }
 
 /**
  * Per-month asset cache for the timeline: nothing is fetched at mount, `ensureMonth('YYYY-MM')`
- * fetches the whole month through `listAllAssets` (limit 50) inside its half-open
+ * fetches the whole month through `listAllAssets` (limit 100) inside its half-open
  * `dateFrom`/`dateTo` range, and entries are stamped with the refresh key so an upload/trash bump
  * re-fetches only what's on screen. Favorites/trash keep `useAssetGroups`' fetch-all.
+ *
+ * The cache is bounded: past MAX_CACHED_MONTHS it evicts the least-recently-used month that isn't
+ * mounted (`retainMonths`), so evicted months simply re-fetch when they scroll back into view.
  */
 export function useTimelineMonths(): UseTimelineMonthsResult {
   const refreshKey = useAppStore((s) => s.timelineRefreshKey)
@@ -38,15 +49,46 @@ export function useTimelineMonths(): UseTimelineMonthsResult {
   // sync mirror of `entries` so ensureMonth reads fresh data without waiting for a re-render
   const entriesRef = useRef(entries)
   const inFlightRef = useRef(new Map<string, { stamp: number; promise: Promise<Asset[] | null> }>())
+  // LRU bookkeeping: monotonic touch counter per month + the mounted months protected from eviction
+  const lastUsedRef = useRef(new Map<string, number>())
+  const counterRef = useRef(0)
+  const retainedRef = useRef<ReadonlySet<string>>(new Set())
 
-  const commit = useCallback((key: string, entry: MonthEntry) => {
-    // staleness guard: a fetch that finishes after a refresh-key bump writes nothing
-    if (entry.stamp !== useAppStore.getState().timelineRefreshKey) return
-    const next = new Map(entriesRef.current)
-    next.set(key, entry)
-    entriesRef.current = next
-    setEntries(next)
+  const touch = useCallback((key: string) => {
+    lastUsedRef.current.set(key, ++counterRef.current)
   }, [])
+
+  const commit = useCallback(
+    (key: string, entry: MonthEntry) => {
+      // staleness guard: a fetch that finishes after a refresh-key bump writes nothing
+      if (entry.stamp !== useAppStore.getState().timelineRefreshKey) return
+      const next = new Map(entriesRef.current)
+      next.set(key, entry)
+      // Evict LRU-beyond-cap, once per commit, never the mounted (retained) months and never the
+      // key just committed. ponytail: month-count cap, not a byte budget — 12 heavy months fit
+      // comfortably; upgrade path = byte-budget LRU if single months ever get huge.
+      if (next.size > MAX_CACHED_MONTHS) {
+        const victims = [...next.keys()]
+          .filter((k) => k !== key && !retainedRef.current.has(k))
+          .sort((a, b) => (lastUsedRef.current.get(a) ?? 0) - (lastUsedRef.current.get(b) ?? 0))
+        for (const victim of victims) {
+          if (next.size <= MAX_CACHED_MONTHS) break
+          next.delete(victim)
+        }
+      }
+      entriesRef.current = next
+      setEntries(next)
+    },
+    [],
+  )
+
+  const retainMonths = useCallback(
+    (keys: readonly string[]) => {
+      retainedRef.current = new Set(keys)
+      for (const key of keys) touch(key)
+    },
+    [touch],
+  )
 
   const fetchMonth = useCallback(
     async (key: string): Promise<Asset[] | null> => {
@@ -70,6 +112,7 @@ export function useTimelineMonths(): UseTimelineMonthsResult {
 
   const ensureMonth = useCallback(
     (key: string): Promise<Asset[] | null> => {
+      touch(key) // in use: cache hit, in-flight join, or a fresh fetch
       const stamp = useAppStore.getState().timelineRefreshKey
       const entry = entriesRef.current.get(key)
       if (entry?.stamp === stamp && entry.status === 'ready') {
@@ -90,7 +133,7 @@ export function useTimelineMonths(): UseTimelineMonthsResult {
       inFlightRef.current.set(key, { stamp, promise })
       return promise
     },
-    [commit, fetchMonth],
+    [commit, fetchMonth, touch],
   )
 
   const groups = useMemo(() => {
@@ -105,5 +148,5 @@ export function useTimelineMonths(): UseTimelineMonthsResult {
     return status
   }, [entries])
 
-  return { groups, monthStatus, ensureMonth, refreshKey }
+  return { groups, monthStatus, ensureMonth, retainMonths, refreshKey }
 }

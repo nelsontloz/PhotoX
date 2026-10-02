@@ -1,25 +1,8 @@
-import { useState } from 'react'
-import {
-  FaArrowLeft,
-  FaHeart,
-  FaRegHeart,
-  FaDownload,
-  FaShare,
-  FaCheck,
-  FaCircleInfo,
-  FaTrash,
-  FaTrashCan,
-  FaRotateLeft,
-  FaFolderPlus,
-  FaFolderMinus,
-  FaArrowsRotate,
-  FaFilm,
-} from 'react-icons/fa6'
-import { downloadFile } from '../../api/assets'
-import { createShare, getShareUrl } from '../../api/shares'
+import { FaArrowLeft, FaCircleInfo } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
 import { formatBytes } from '../../lib/format'
 import { formatDate } from '../../lib/dateFormat'
+import { ViewerActions } from './ViewerActions'
 
 interface ViewerTopBarProps {
   asset: Asset
@@ -54,158 +37,38 @@ export function ViewerTopBar({
   const dateStr = asset.takenAt ?? asset.uploadedAt
   const sizeStr = asset.sizeBytes ? ` · ${formatBytes(asset.sizeBytes)}` : ''
 
-  const handleDownload = async () => {
-    try {
-      const blob = await downloadFile(asset.fileId)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = asset.originalName ?? 'download'
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch {
-      /* ignore */
-    }
-  }
-
-  const [shareLoading, setShareLoading] = useState(false)
-  const [shareCopied, setShareCopied] = useState(false)
-
-  const handleShare = async () => {
-    setShareLoading(true)
-    try {
-      const share = await createShare(asset.id)
-      const url = getShareUrl(share.token)
-      await navigator.clipboard.writeText(url)
-      setShareCopied(true)
-      setTimeout(() => setShareCopied(false), 2000)
-    } catch {
-      /* ignore */
-    } finally {
-      setShareLoading(false)
-    }
-  }
-
   return (
-    <div className="absolute top-0 left-0 right-0 h-16 flex items-center justify-between px-6 z-20 bg-gradient-to-b from-black/40 to-transparent">
-      <div className="flex items-center gap-4">
-        <button onClick={onClose} className="p-2 text-white/80 hover:text-white transition-colors">
+    <div className="absolute top-0 left-0 right-0 h-16 flex items-center justify-between gap-2 px-4 sm:px-6 z-20 bg-gradient-to-b from-black/40 to-transparent">
+      <div className="flex flex-1 min-w-0 items-center gap-3 sm:gap-4">
+        <button
+          onClick={onClose}
+          className="p-2 text-white/80 hover:text-white transition-colors shrink-0"
+        >
           <FaArrowLeft className="text-lg" />
         </button>
-        <div>
-          <h3 className="text-white text-sm font-medium">{title}</h3>
-          <p className="text-white/60 text-xs">
+        <div className="min-w-0">
+          <h3 className="text-white text-sm font-medium truncate">{title}</h3>
+          <p className="text-white/60 text-xs truncate">
             Shot on {formatDate(dateStr)}
             {sizeStr}
           </p>
         </div>
       </div>
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onToggleFavorite}
-          className="p-2 text-white/80 hover:text-white transition-colors"
-          title="Favorite"
-        >
-          {asset.favorite ? (
-            <FaHeart className="text-base fill-red-500 text-red-500" />
-          ) : (
-            <FaRegHeart className="text-base" />
-          )}
-        </button>
-        <button
-          onClick={() => void handleDownload()}
-          className="p-2 text-white/80 hover:text-white transition-colors"
-          title="Download"
-        >
-          <FaDownload className="text-base" />
-        </button>
-        {!asset.isTrashed && (
-          <>
-            <button
-              onClick={() => void handleShare()}
-              className="p-2 text-white/80 hover:text-white transition-colors"
-              title="Share"
-              disabled={shareLoading}
-            >
-              {shareCopied ? (
-                <FaCheck className="text-base text-green-400" />
-              ) : (
-                <FaShare className="text-base" />
-              )}
-            </button>
-            {onReprocessThumbnails && (
-              <button
-                onClick={onReprocessThumbnails}
-                className="p-2 text-white/80 hover:text-white transition-colors"
-                title="Reprocess thumbnails"
-                aria-label="Reprocess thumbnails"
-              >
-                <FaArrowsRotate className="text-base" />
-              </button>
-            )}
-            {onReprocessVideo && (
-              <button
-                onClick={onReprocessVideo}
-                className="p-2 text-white/80 hover:text-white transition-colors"
-                title="Reprocess video"
-                aria-label="Reprocess video"
-              >
-                <FaFilm className="text-base" />
-              </button>
-            )}
-            {onAddToAlbum && (
-              <button
-                onClick={onAddToAlbum}
-                className="p-2 text-white/80 hover:text-white transition-colors"
-                title="Add to album"
-                aria-label="Add to album"
-              >
-                <FaFolderPlus className="text-base" />
-              </button>
-            )}
-            {onRemoveFromAlbum && (
-              <button
-                onClick={onRemoveFromAlbum}
-                className="p-2 text-white/80 hover:text-white transition-colors"
-                title="Remove from this album"
-                aria-label="Remove from this album"
-              >
-                <FaFolderMinus className="text-base" />
-              </button>
-            )}
-          </>
-        )}
-        {onTrash && (
-          <button
-            onClick={onTrash}
-            className="p-2 text-red-400 hover:text-red-300 transition-colors"
-            title="Move to trash"
-            aria-label="Move to trash"
-          >
-            <FaTrash className="text-base" />
-          </button>
-        )}
-        {onRestore && (
-          <button
-            onClick={onRestore}
-            className="p-2 text-white/80 hover:text-white transition-colors"
-            title="Restore from trash"
-            aria-label="Restore from trash"
-          >
-            <FaRotateLeft className="text-base" />
-          </button>
-        )}
-        {onDelete && (
-          <button
-            onClick={onDelete}
-            className="p-2 text-red-400 hover:text-red-300 transition-colors"
-            title="Permanently delete"
-            aria-label="Permanently delete"
-          >
-            <FaTrashCan className="text-base" />
-          </button>
-        )}
-        <div className="w-px h-4 bg-white/20 mx-2" />
+      <div className="flex items-center gap-2 shrink-0">
+        <div className="hidden items-center gap-2 sm:flex">
+          <ViewerActions
+            asset={asset}
+            onTrash={onTrash}
+            onRestore={onRestore}
+            onDelete={onDelete}
+            onToggleFavorite={onToggleFavorite}
+            onAddToAlbum={onAddToAlbum}
+            onRemoveFromAlbum={onRemoveFromAlbum}
+            onReprocessThumbnails={onReprocessThumbnails}
+            onReprocessVideo={onReprocessVideo}
+          />
+          <div className="w-px h-4 bg-white/20 mx-2" />
+        </div>
         <button
           onClick={onToggleInfo}
           className="p-2 text-white/80 hover:text-white transition-colors"

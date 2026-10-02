@@ -67,7 +67,6 @@ const provider = new PactV3({
   logLevel: 'error',
 })
 
-const USER_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
 const ASSET_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
 const FILE_ID = 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22'
 const ALBUM_ID = 'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33'
@@ -404,7 +403,6 @@ describe('Web → Core pact', () => {
       .withRequest({
         method: 'GET',
         path: `/api/v1/files/${FILE_ID}/stream`,
-        query: { userId: USER_ID },
       })
       .willRespondWith({
         status: 200,
@@ -413,7 +411,7 @@ describe('Web → Core pact', () => {
       .executeTest(async (mockserver) => {
         api.defaults.baseURL = mockserver.url + '/api'
         // <video src> consumes the URL builder directly; re-issue it through the client for the pact
-        const url = getVideoStreamUrl(FILE_ID, USER_ID)
+        const url = getVideoStreamUrl(FILE_ID)
         const res = await api.get(url.replace(/^\/api/, ''), { responseType: 'arraybuffer' })
         expect(res.status).toBe(200)
       })

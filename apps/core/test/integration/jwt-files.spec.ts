@@ -40,6 +40,20 @@ describe('files JWT identity', () => {
       .get(`/api/v1/files/${record.id}/download`)
       .set(t.authHeader(token))
     expect(download.status).toBe(200)
+    expect(download.headers.etag).toBe(`"${record.checksumSha256}"`)
+    expect(download.headers['cache-control']).toBe('private, max-age=31536000, immutable')
+  })
+
+  it('returns 304 for an authenticated download whose If-None-Match matches', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const record = await seedFile(t, user.id, { bytes: Buffer.from('download-304-bytes') })
+    const res = await request(apiServer(t))
+      .get(`/api/v1/files/${record.id}/download`)
+      .set(t.authHeader(token))
+      .set('If-None-Match', `"${record.checksumSha256}"`)
+    expect(res.status).toBe(304)
+    expect(res.headers.etag).toBe(`"${record.checksumSha256}"`)
   })
 
   it('rejects cross-user file access even with userId query', async () => {

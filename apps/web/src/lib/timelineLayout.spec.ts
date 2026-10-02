@@ -83,6 +83,10 @@ describe('buildBuckets', () => {
       { sortKey: '2026-03-10', height: 673 }, // 65 + 3 × 204 − 4
       { sortKey: '2026-03-05', height: 469 },
     ])
+    // day offsets inside the bucket: first at 0, then prev.top + prev.height + 40
+    expect(bucket?.days.map((d) => d.top)).toEqual([0, 305, 814, 1527])
+    const lastDay = bucket?.days[bucket.days.length - 1]
+    expect((lastDay?.top ?? 0) + (lastDay?.height ?? 0)).toBe(bucket?.height)
     // per-day items ride along so skeleton tiles can pack into the reserved rows
     expect(bucket?.days[0]?.items).toHaveLength(4)
     expect(bucket?.days[0]?.items[0]).toEqual({ t: '2026-03-20T12:00:00', w: 4000, h: 3000 })
@@ -123,6 +127,14 @@ describe('buildBuckets', () => {
     expect(buckets[1]?.top).toBe(474 + 40) // 514
     expect(buckets[1]?.height).toBe(165 + 40 + 373) // 578
     expect(totalHeight).toBe(474 + 40 + 578) // 1092
+
+    // per-bucket day offsets; last day top + height === bucket height
+    expect(buckets[0]?.days.map((d) => d.top)).toEqual([0, 205])
+    expect(buckets[1]?.days.map((d) => d.top)).toEqual([0, 205])
+    for (const bucket of buckets) {
+      const lastDay = bucket.days[bucket.days.length - 1]
+      expect((lastDay?.top ?? 0) + (lastDay?.height ?? 0)).toBe(bucket.height)
+    }
 
     const last = buckets[buckets.length - 1]
     expect(totalHeight).toBe((last?.top ?? 0) + (last?.height ?? 0))

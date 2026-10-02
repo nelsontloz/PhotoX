@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { FaSpinner, FaTriangleExclamation } from 'react-icons/fa6'
 import type { Asset, AssetThumbnail } from '@photox/shared-types'
 import { downloadFile } from '../api/assets'
+import { viewerThumbKey } from '../lib/asset-media'
+import { getCachedBlobUrl } from '../lib/blob-cache'
 import { whenScrollIdle } from '../lib/scrollIdle'
 import { useThumbStore } from '../store/thumb-store'
 import { Skeleton } from './Skeleton'
@@ -11,10 +13,6 @@ interface AssetThumbProps {
   className?: string
   onThumbPicked?: (thumb: AssetThumbnail) => void
 }
-
-// ponytail: session-long objectURL cache keyed by thumb fileId — timeline virtualization remounts
-// tiles constantly and a blob must download once per session, LRU if memory ever matters
-const blobUrlCache = new Map<string, string>()
 
 export function AssetThumb({ asset, className = '', onThumbPicked }: AssetThumbProps) {
   const ref = useRef<HTMLDivElement>(null)
@@ -49,7 +47,6 @@ export function AssetThumb({ asset, className = '', onThumbPicked }: AssetThumbP
   useEffect(() => {
     if (!visible) return
     let cancelled = false
-    const controller = new AbortController()
 
     if (asset.kind !== 'photo' && asset.kind !== 'video') return
 
@@ -57,26 +54,18 @@ export function AssetThumb({ asset, className = '', onThumbPicked }: AssetThumbP
     if (!thumb) return
 
     onThumbPicked?.(thumb)
-    const cachedUrl = blobUrlCache.get(thumb.fileId)
-    if (cachedUrl) {
-      setObjectUrl(cachedUrl)
-      return
-    }
-
-    downloadFile(thumb.fileId, controller.signal)
-      .then((blob) => {
-        if (cancelled) return
-        const url = URL.createObjectURL(blob)
-        blobUrlCache.set(thumb.fileId, url)
-        setObjectUrl(url)
+    // The shared cache owns download + URL lifetime; no abort here, so a tile scrolling away
+    // still populates the cache for the next mount or the viewer.
+    getCachedBlobUrl(viewerThumbKey(thumb), () => downloadFile(thumb.fileId))
+      .then((url) => {
+        if (!cancelled) setObjectUrl(url)
       })
       .catch(() => {
-        if (!cancelled && !controller.signal.aborted) setError(true)
+        if (!cancelled) setError(true)
       })
 
     return () => {
       cancelled = true
-      controller.abort()
     }
   }, [asset.id, asset.kind, visible])
 

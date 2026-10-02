@@ -101,6 +101,7 @@ export class UserFilesController {
       record,
       totalSize,
       disposition: `attachment; filename="${record.originalName}"`,
+      ifNoneMatch: req.get('If-None-Match'),
     })
   }
 
@@ -123,6 +124,7 @@ export class UserFilesController {
       stream,
       record,
       disposition: `attachment; filename="${record.originalName}"`,
+      ifNoneMatch: req.get('If-None-Match'),
     })
   }
 }

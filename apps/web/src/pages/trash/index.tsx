@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { FaSpinner, FaTrash, FaTrashCan } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
+import { useConfirm } from '../../components/ConfirmProvider'
 import { GalleryItem } from '../../components/GalleryItem'
 import { AssetViewer } from '../../components/AssetViewer/AssetViewer'
 import { AlbumPickerDialog } from '../../components/AlbumPickerDialog'
@@ -11,6 +12,7 @@ import { emptyTrash } from '../../api/assets'
 import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
 
 function TrashContent() {
+  const confirm = useConfirm()
   const { groups, loading, error, refresh } = useAssetGroups({
     isTrashed: true,
     dateField: 'trashedAt',
@@ -23,7 +25,15 @@ function TrashContent() {
   const [emptying, setEmptying] = useState(false)
 
   const handleEmptyTrash = async () => {
-    if (!window.confirm('Permanently delete all items in trash? This cannot be undone.')) return
+    if (
+      !(await confirm({
+        title: 'Empty trash?',
+        body: 'All items in trash will be permanently deleted. This cannot be undone.',
+        confirmLabel: 'Empty trash',
+        destructive: true,
+      }))
+    )
+      return
     setEmptying(true)
     try {
       await emptyTrash()

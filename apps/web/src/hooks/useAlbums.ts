@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { AlbumDto } from '@photox/shared-types'
 import { listAlbums, createAlbum, updateAlbum, deleteAlbum } from '../api/albums'
+import { useConfirm } from '../components/ConfirmProvider'
 
 export function useAlbums() {
+  const confirm = useConfirm()
   const [albums, setAlbums] = useState<AlbumDto[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -37,7 +39,12 @@ export function useAlbums() {
   const remove = async (id: string) => {
     const album = albums.find((a) => a.id === id)
     if (
-      !window.confirm(`Delete "${album?.name ?? 'this album'}"? Assets in it will not be deleted.`)
+      !(await confirm({
+        title: `Delete "${album?.name ?? 'this album'}"?`,
+        body: 'Assets in it will not be deleted.',
+        confirmLabel: 'Delete',
+        destructive: true,
+      }))
     )
       return
     await deleteAlbum(id)

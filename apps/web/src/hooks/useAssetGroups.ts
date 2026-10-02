@@ -21,12 +21,13 @@ export function groupAssetsByDay(
   dateOf: (a: Asset) => string | null,
 ): AssetGroup[] {
   const sorted = items
-    .filter((a) => dateOf(a))
-    .sort((a, b) => {
-      const da = new Date(dateOf(a) ?? '')
-      const db = new Date(dateOf(b) ?? '')
-      return db.getTime() - da.getTime()
+    .map((asset) => {
+      const date = dateOf(asset)
+      return { asset, date, time: new Date(date ?? '').getTime() }
     })
+    .filter((entry) => entry.date)
+    .sort((a, b) => b.time - a.time)
+    .map((entry) => entry.asset)
 
   const map = new Map<string, Asset[]>()
   for (const asset of sorted) {

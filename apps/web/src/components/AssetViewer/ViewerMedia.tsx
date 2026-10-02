@@ -50,7 +50,7 @@ export function ViewerMedia({
   const showOverlay = infoOpen && !isVideo && imageUrl != null && dims != null && faces.length > 0
 
   return (
-    <div className="flex-1 flex items-center justify-center p-8 pt-20 pb-24 relative min-h-0">
+    <div className="flex-1 flex items-center justify-center p-8 pt-28 pb-28 sm:pt-20 sm:pb-24 relative min-h-0">
       {hasPrev && onPrev && (
         <button
           onClick={onPrev}

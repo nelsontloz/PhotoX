@@ -18,6 +18,8 @@ export interface TimelineLayoutOptions {
 
 export interface TimelineBucketDay {
   sortKey: string
+  /** Offset of the day section from its bucket's top, px (SECTION_MARGIN gaps included) */
+  top: number
   height: number
   /** The day's layout items (desc) — skeleton tiles pack from these before the month is fetched */
   items: TimelineItem[]
@@ -71,7 +73,10 @@ export function buildBuckets(
   items: readonly TimelineItem[],
   opts: TimelineLayoutOptions,
 ): TimelineLayout {
-  const sorted = [...items].sort((a, b) => new Date(b.t).getTime() - new Date(a.t).getTime())
+  const sorted = items
+    .map((item) => ({ item, time: new Date(item.t).getTime() }))
+    .sort((a, b) => b.time - a.time)
+    .map(({ item }) => item)
 
   const byDay = new Map<string, TimelineItem[]>()
   for (const item of sorted) {
@@ -93,10 +98,17 @@ export function buildBuckets(
 
     const last = buckets[buckets.length - 1]
     if (last?.key === bucketKey) {
+      // before the +=: last.height === previousDay.top + previousDay.height
+      const top = last.height + SECTION_MARGIN
       last.height += SECTION_MARGIN + height
-      last.days.push({ sortKey, height, items: dayItems })
+      last.days.push({ sortKey, top, height, items: dayItems })
     } else {
-      buckets.push({ key: bucketKey, top: 0, height, days: [{ sortKey, height, items: dayItems }] })
+      buckets.push({
+        key: bucketKey,
+        top: 0,
+        height,
+        days: [{ sortKey, top: 0, height, items: dayItems }],
+      })
     }
   }
 

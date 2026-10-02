@@ -11,6 +11,7 @@ vi.mock('../api/assets', () => ({
 
 import { useAssetNavigation } from './useAssetNavigation'
 import { restoreAsset, trashAsset } from '../api/assets'
+import { ConfirmProvider } from '../components/ConfirmProvider'
 
 const trashAssetMock = vi.mocked(trashAsset)
 const restoreAssetMock = vi.mocked(restoreAsset)
@@ -21,7 +22,11 @@ function makeAsset(id: string): Asset {
 
 function makeWrapper(initialUrl: string) {
   return function Wrapper({ children }: { children: ReactNode }) {
-    return <MemoryRouter initialEntries={[initialUrl]}>{children}</MemoryRouter>
+    return (
+      <MemoryRouter initialEntries={[initialUrl]}>
+        <ConfirmProvider>{children}</ConfirmProvider>
+      </MemoryRouter>
+    )
   }
 }
 
@@ -29,10 +34,6 @@ describe('useAssetNavigation', () => {
   beforeEach(() => {
     trashAssetMock.mockReset()
     restoreAssetMock.mockReset()
-    vi.stubGlobal(
-      'confirm',
-      vi.fn(() => true),
-    )
     vi.stubGlobal('alert', vi.fn())
   })
 
@@ -60,6 +61,19 @@ describe('useAssetNavigation', () => {
     expect(result.current.selected).toBeNull()
   })
 
+  it('keeps the selected asset when its month falls out of the loaded list', () => {
+    const a = makeAsset('a')
+    const b = makeAsset('b')
+    const { result, rerender } = renderHook(
+      (props: { assets: Asset[] }) => useAssetNavigation(props),
+      { initialProps: { assets: [a, b] }, wrapper: makeWrapper('/?asset=a') },
+    )
+    expect(result.current.selected).toEqual(a)
+
+    rerender({ assets: [] }) // simulated month-cache eviction
+    expect(result.current.selected).toEqual(a)
+  })
+
   it('open sets the asset param', () => {
     const a = makeAsset('a')
     const { result, rerender } = renderHook(
@@ -73,6 +87,17 @@ describe('useAssetNavigation', () => {
     act(() => result.current.nav.open(a))
     rerender()
     expect(result.current.params.get('asset')).toBe('a')
+  })
+
+  it('keeps open and close identity stable across rerenders', () => {
+    const a = makeAsset('a')
+    const { result, rerender } = renderHook(() => useAssetNavigation({ assets: [a] }), {
+      wrapper: makeWrapper('/'),
+    })
+    const { open, close } = result.current
+    rerender()
+    expect(result.current.open).toBe(open)
+    expect(result.current.close).toBe(close)
   })
 
   it('close clears the asset param', () => {

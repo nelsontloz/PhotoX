@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import { memo, useState, type CSSProperties, type ReactNode } from 'react'
 import { FaCheck, FaPlay, FaSpinner, FaTriangleExclamation, FaUser } from 'react-icons/fa6'
 import type { Asset, AssetThumbnail } from '@photox/shared-types'
 import { AssetThumb } from './AssetThumb'
@@ -18,7 +18,7 @@ interface GalleryItemProps {
   selectionMode?: boolean
 }
 
-export function GalleryItem({
+export const GalleryItem = memo(function GalleryItem({
   asset,
   onSelect,
   dark = false,
@@ -147,4 +147,4 @@ export function GalleryItem({
       {overlay}
     </figure>
   )
-}
+})

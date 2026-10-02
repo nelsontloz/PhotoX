@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Asset } from '@photox/shared-types'
-import { listAlbumAssets, addAssetsToAlbum, removeAssetFromAlbum } from '../api/albums'
+import { listAlbumAssets, addAssetsToAlbum } from '../api/albums'
 
 export function useAlbumAssets(albumId: string, pageSize = 60) {
   const [assets, setAssets] = useState<Asset[]>([])
@@ -30,18 +30,6 @@ export function useAlbumAssets(albumId: string, pageSize = 60) {
     await fetchAssets()
   }
 
-  const remove = async (assetId: string) => {
-    const asset = assets.find((a) => a.id === assetId)
-    if (
-      !window.confirm(
-        `Remove "${asset?.originalName ?? asset?.title ?? 'this asset'}" from this album?`,
-      )
-    )
-      return
-    await removeAssetFromAlbum(albumId, assetId)
-    await fetchAssets()
-  }
-
   useEffect(() => {
     void fetchAssets()
   }, [])
@@ -53,6 +41,5 @@ export function useAlbumAssets(albumId: string, pageSize = 60) {
     error,
     refresh: fetchAssets,
     addAssets: add,
-    removeAsset: remove,
   }
 }

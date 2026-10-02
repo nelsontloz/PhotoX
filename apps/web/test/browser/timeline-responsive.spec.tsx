@@ -71,6 +71,7 @@ function Harness({ loaded }: { loaded: boolean }) {
       groups={loaded ? GROUPS : []}
       monthStatus={loaded ? READY : EMPTY_STATUS}
       ensureMonth={ensureNothing}
+      retainMonths={() => {}}
       refreshKey={0}
       onSelect={() => {}}
       selectedIds={new Set()}

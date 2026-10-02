@@ -24,6 +24,8 @@ interface TimelineGridProps {
   monthStatus: ReadonlyMap<string, MonthStatus>
   /** Fetches a month's assets when its bucket enters the mount window (deduped inside the hook) */
   ensureMonth: UseTimelineMonthsResult['ensureMonth']
+  /** Marks the currently mounted months as in use so the bounded cache never evicts them */
+  retainMonths: UseTimelineMonthsResult['retainMonths']
   /** Bumped by uploads/trash — re-triggers ensureMonth for the currently mounted months */
   refreshKey: number
   onSelect: (asset: Asset) => void
@@ -39,6 +41,7 @@ export function TimelineGrid({
   groups,
   monthStatus,
   ensureMonth,
+  retainMonths,
   refreshKey,
   onSelect,
   selectedIds,
@@ -92,12 +95,23 @@ export function TimelineGrid({
   // matching the mount-everything DOM fallback above. ensureMonth dedupes per key.
   useEffect(() => {
     if (!scrollContainer) {
+      retainMonths(layout.buckets.map((bucket) => bucket.key))
       for (const bucket of layout.buckets) void ensureMonth(bucket.key)
       return
     }
     if (!hasViewport || !mountedKeys) return
-    for (const key of mountedKeys.split(',')) void ensureMonth(key)
-  }, [mountedKeys, ensureMonth, refreshKey, scrollContainer, hasViewport, layout.buckets])
+    const keys = mountedKeys.split(',')
+    retainMonths(keys)
+    for (const key of keys) void ensureMonth(key)
+  }, [
+    mountedKeys,
+    ensureMonth,
+    retainMonths,
+    refreshKey,
+    scrollContainer,
+    hasViewport,
+    layout.buckets,
+  ])
 
   return (
     <DropZone className="h-full">
@@ -115,6 +129,21 @@ export function TimelineGrid({
             style={{ top: bucket.top, height: bucket.height }}
           >
             {bucket.days.map((day) => {
+              // Day-granular window on top of the already-windowed bucket: off-window days keep
+              // their reserved section (same flow/margins) but render no children. min/max are
+              // ±Infinity with no viewport → everything renders (safe fallback).
+              // ponytail: day-granular — a single day with thousands of tiles still mounts them
+              // all; upgrade path = row-granular windowing from the day's packed rows.
+              const dayTop = bucket.top + day.top
+              if (dayTop >= max || dayTop + day.height <= min) {
+                return (
+                  <section
+                    key={day.sortKey}
+                    className="mb-10 last:mb-0"
+                    style={{ height: day.height }}
+                  />
+                )
+              }
               const group = groupsByDay.get(day.sortKey)
               const monthReady = monthStatus.get(day.sortKey.slice(0, 7)) === 'ready'
               const items = group?.items ?? []

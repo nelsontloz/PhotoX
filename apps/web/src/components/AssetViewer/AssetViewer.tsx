@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { Asset } from '@photox/shared-types'
-import { useAuthStore } from '../../store/auth-store'
 import { getAsset, getVideoStreamUrl, reprocessThumbnails, reprocessVideo } from '../../api/assets'
 import { ViewerTopBar } from './ViewerTopBar'
+import { ViewerActions } from './ViewerActions'
 import { useAssetMedia } from './useAssetMedia'
 import { useViewerKeyboard } from './useViewerKeyboard'
 import { ViewerMedia } from './ViewerMedia'
@@ -46,7 +46,6 @@ export function AssetViewer({
   const [hoveredFaceId, setHoveredFaceId] = useState<string | null>(null)
   const [favOverride, setFavOverride] = useState<boolean | null>(null)
   const [reprocessLoading, setReprocessLoading] = useState(false)
-  const userId = useAuthStore((s) => s.user?.id)
 
   useEffect(() => {
     setCurrentAsset(asset)
@@ -76,14 +75,11 @@ export function AssetViewer({
   }, [])
 
   const isVideo = currentAsset.kind === 'video'
-  const primaryVideoSrc =
-    isVideo && userId
-      ? getVideoStreamUrl(currentAsset.transcodeFileId ?? currentAsset.fileId, userId)
-      : null
+  const primaryVideoSrc = isVideo
+    ? getVideoStreamUrl(currentAsset.transcodeFileId ?? currentAsset.fileId)
+    : null
   const videoFallbackSrc =
-    isVideo && userId && currentAsset.transcodeFileId
-      ? getVideoStreamUrl(currentAsset.fileId, userId)
-      : undefined
+    isVideo && currentAsset.transcodeFileId ? getVideoStreamUrl(currentAsset.fileId) : undefined
   const imageAlt = currentAsset.originalName ?? currentAsset.title ?? 'Photo'
   const videoTitle = currentAsset.title ?? currentAsset.originalName ?? undefined
   const displayAsset =
@@ -117,6 +113,18 @@ export function AssetViewer({
     }
   }
 
+  const reprocessThumbnailsAction = !reprocessLoading
+    ? () => {
+        void handleReprocessThumbnails()
+      }
+    : undefined
+  const reprocessVideoAction =
+    currentAsset.kind === 'video' && !reprocessLoading
+      ? () => {
+          void handleReprocessVideo()
+        }
+      : undefined
+
   return (
     <div className="fixed inset-0 z-50 flex overflow-hidden bg-black">
       {imageUrl && !isVideo && (
@@ -145,20 +153,8 @@ export function AssetViewer({
           onToggleFavorite={handleToggleFavorite}
           onAddToAlbum={onAddToAlbum}
           onRemoveFromAlbum={onRemoveFromAlbum}
-          onReprocessThumbnails={
-            !reprocessLoading
-              ? () => {
-                  void handleReprocessThumbnails()
-                }
-              : undefined
-          }
-          onReprocessVideo={
-            currentAsset.kind === 'video' && !reprocessLoading
-              ? () => {
-                  void handleReprocessVideo()
-                }
-              : undefined
-          }
+          onReprocessThumbnails={reprocessThumbnailsAction}
+          onReprocessVideo={reprocessVideoAction}
         />
         <ViewerMedia
           isVideo={isVideo}
@@ -179,6 +175,24 @@ export function AssetViewer({
           siblingAssets={siblingAssets}
           onSelectSibling={onSelectSibling}
         />
+        {/* Mobile only: action row directly under the header (h-16), centered.
+            No background: the header gradient already ends transparent at its bottom
+            edge, so nothing here can form a seam. The bottom band is strip-only. */}
+        <div className="absolute top-16 left-0 right-0 z-20 sm:hidden">
+          <div className="flex flex-wrap items-center justify-center gap-1 px-4 py-2">
+            <ViewerActions
+              asset={displayAsset}
+              onTrash={onTrash}
+              onRestore={onRestore}
+              onDelete={onDelete}
+              onToggleFavorite={handleToggleFavorite}
+              onAddToAlbum={onAddToAlbum}
+              onRemoveFromAlbum={onRemoveFromAlbum}
+              onReprocessThumbnails={reprocessThumbnailsAction}
+              onReprocessVideo={reprocessVideoAction}
+            />
+          </div>
+        </div>
       </div>
       {infoOpen && (
         <ViewerInfoPanel
