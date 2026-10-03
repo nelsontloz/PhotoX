@@ -167,7 +167,10 @@ export class SharesService {
       .getRawOne<{ assetId: string }>()
     if (!member) throw new NotFoundException('Asset not found')
 
-    const asset = await this.assetRepo.findOne({ where: { id: assetId }, relations: ['thumbnails'] })
+    const asset = await this.assetRepo.findOne({
+      where: { id: assetId },
+      relations: ['thumbnails'],
+    })
     if (!asset) throw new NotFoundException('Asset not found')
 
     if (size === 'sm') {
@@ -248,12 +251,9 @@ export class SharesService {
       .createQueryBuilder('aa')
       .select('thumb."fileId"', 'fileId')
       .innerJoin('assets', 'asset', 'asset.id = aa."assetId"')
-      .innerJoin(
-        'asset_thumbnails',
-        'thumb',
-        'thumb."assetId" = asset.id AND thumb.size = :size',
-        { size: 'sm' },
-      )
+      .innerJoin('asset_thumbnails', 'thumb', 'thumb."assetId" = asset.id AND thumb.size = :size', {
+        size: 'sm',
+      })
       .where('aa."albumId" = :albumId', { albumId })
       .andWhere('asset.isTrashed = false')
       .orderBy('aa."addedAt"', 'DESC')

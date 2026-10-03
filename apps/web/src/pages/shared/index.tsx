@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FaUsers, FaTrash, FaCopy, FaCheck, FaPhotoFilm } from 'react-icons/fa6'
+import { FaUsers, FaTrash, FaCopy, FaCheck, FaPhotoFilm, FaImage, FaVideo } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { useConfirm } from '../../components/ConfirmProvider'
@@ -88,6 +88,7 @@ function SharedContent() {
       <div className="space-y-3">
         {shares.map((share) => {
           const isAlbum = share.kind === 'album'
+          const isVideo = share.kind === 'asset' && share.assetKind === 'video'
           const thumbFileId = isAlbum ? share.albumCoverThumbFileId : share.assetThumbFileId
           const sharedDate = new Date(share.createdAt).toLocaleDateString()
           const subtitle = isAlbum
@@ -112,9 +113,27 @@ function SharedContent() {
                 </div>
               ) : null}
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-slate-200 font-medium truncate">
-                  {isAlbum ? share.albumName : `${share.assetId.slice(0, 8)}…`}
-                </p>
+                <div className="flex items-center gap-2 min-w-0">
+                  {isAlbum ? (
+                    <>
+                      <p className="text-sm text-slate-200 font-medium truncate">
+                        {share.albumName}
+                      </p>
+                      <span className="shrink-0 inline-flex items-center text-[10px] font-semibold uppercase tracking-wider text-primary bg-primary/10 border border-primary/20 rounded-full px-2 py-0.5">
+                        Album
+                      </span>
+                    </>
+                  ) : (
+                    <p className="inline-flex items-center gap-1.5 text-sm text-slate-200 font-medium">
+                      {isVideo ? (
+                        <FaVideo className="text-xs text-slate-500" />
+                      ) : (
+                        <FaImage className="text-xs text-slate-500" />
+                      )}
+                      {isVideo ? 'Video' : 'Photo'}
+                    </p>
+                  )}
+                </div>
                 <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
