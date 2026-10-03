@@ -10,6 +10,8 @@ import { FaceDetectorService } from './face.detector'
 import { FaceEmbedderService } from './face.embedder'
 import { FaceProcessor } from './face.processor'
 import { FaceClusterService } from './face.cluster'
+import { EmbeddingService } from './embedding.service'
+import { EmbeddingProcessor } from './embed.processor'
 import { CleanupProcessor } from './cleanup.processor'
 import { CleanupOrphansProcessor } from './cleanup-orphans.processor'
 import { CoreClient } from '../core/core-client.service'
@@ -35,6 +37,8 @@ import { CoreClient } from '../core/core-client.service'
     FaceEmbedderService,
     FaceProcessor,
     FaceClusterService,
+    EmbeddingService,
+    EmbeddingProcessor,
     CleanupProcessor,
     CleanupOrphansProcessor,
   ],
@@ -47,6 +51,7 @@ export class QueueModule implements OnModuleInit {
     private readonly metadataProcessor: MetadataProcessor,
     private readonly faceProcessor: FaceProcessor,
     private readonly faceClusterService: FaceClusterService,
+    private readonly embeddingProcessor: EmbeddingProcessor,
     private readonly cleanupProcessor: CleanupProcessor,
     private readonly cleanupOrphansProcessor: CleanupOrphansProcessor,
   ) {}
@@ -57,6 +62,7 @@ export class QueueModule implements OnModuleInit {
     this.metadataProcessor.start()
     this.faceProcessor.start()
     this.faceClusterService.start()
+    this.embeddingProcessor.start()
     this.cleanupProcessor.start()
     this.cleanupOrphansProcessor.start()
   }

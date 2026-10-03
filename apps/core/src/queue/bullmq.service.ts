@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { loadEnv } from '@photox/shared-config'
+import { SEARCH_EMBEDDING_MODEL } from '@photox/shared-types'
 import { Queue, type JobsOptions } from 'bullmq'
 import Redis from 'ioredis'
 
@@ -73,6 +74,21 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
       { assetId, fileId, userId },
       {
         jobId: `${opts?.reprocess ? 'video-reprocess' : 'video'}-${assetId}`,
+        attempts: 3,
+        backoff: { type: 'exponential' },
+        removeOnFail: true,
+      },
+    )
+  }
+
+  enqueueEmbedding(assetId: string, fileId: string, userId: string): void {
+    void this.enqueue(
+      'process-embeddings',
+      'process-embeddings',
+      { assetId, fileId, userId },
+      {
+        // model is part of the id: switching models must not collide with the old model's job
+        jobId: `embed-${assetId}-${SEARCH_EMBEDDING_MODEL}`,
         attempts: 3,
         backoff: { type: 'exponential' },
         removeOnFail: true,

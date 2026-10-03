@@ -12,12 +12,20 @@ import { AppSetting, Face } from '../database/entities'
 
 export const FACE_DETECTOR_SETTING_KEY = 'face.detector'
 export const FACE_REPROCESS_LAST_RUN_KEY = 'face.reprocess.lastRun'
+export const EMBEDDING_REPROCESS_LAST_RUN_KEY = 'embedding.reprocess.lastRun'
 
 export interface FaceReprocessLastRun {
   startedAt: string
   total: number
   enqueued: number
   detector: FaceDetectorKind
+}
+
+export interface EmbeddingReprocessLastRun {
+  startedAt: string
+  total: number
+  enqueued: number
+  model: string
 }
 
 function isFaceDetectorKind(value: unknown): value is FaceDetectorKind {
@@ -41,6 +49,20 @@ function parseLastRun(value: unknown): FaceReprocessLastRun | null {
     enqueued: row.enqueued,
     detector: row.detector,
   }
+}
+
+function parseEmbeddingLastRun(value: unknown): EmbeddingReprocessLastRun | null {
+  if (typeof value !== 'object' || value === null) return null
+  const row = value as Record<string, unknown>
+  if (
+    typeof row.startedAt !== 'string' ||
+    typeof row.total !== 'number' ||
+    typeof row.enqueued !== 'number' ||
+    typeof row.model !== 'string'
+  ) {
+    return null
+  }
+  return { startedAt: row.startedAt, total: row.total, enqueued: row.enqueued, model: row.model }
 }
 
 @Injectable()
@@ -81,6 +103,15 @@ export class SettingsService {
 
   async setFaceReprocessLastRun(run: FaceReprocessLastRun): Promise<void> {
     await this.repo.upsert({ key: FACE_REPROCESS_LAST_RUN_KEY, value: run }, ['key'])
+  }
+
+  async getEmbeddingReprocessLastRun(): Promise<EmbeddingReprocessLastRun | null> {
+    const row = await this.repo.findOne({ where: { key: EMBEDDING_REPROCESS_LAST_RUN_KEY } })
+    return parseEmbeddingLastRun(row?.value)
+  }
+
+  async setEmbeddingReprocessLastRun(run: EmbeddingReprocessLastRun): Promise<void> {
+    await this.repo.upsert({ key: EMBEDDING_REPROCESS_LAST_RUN_KEY, value: run }, ['key'])
   }
 
   private async countFacesByDetector(): Promise<FaceDetectionSettings['facesByDetector']> {

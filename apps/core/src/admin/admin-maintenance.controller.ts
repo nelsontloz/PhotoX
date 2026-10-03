@@ -2,9 +2,10 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/commo
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { IsIn } from 'class-validator'
 import type { FaceDetectorKind } from '@photox/shared-types'
-import type { FaceReprocessLastRun } from '../settings/settings.service'
+import type { EmbeddingReprocessLastRun, FaceReprocessLastRun } from '../settings/settings.service'
 import { AdminAssetsService } from './admin-assets.service'
 import { AdminFacesService } from './admin-faces.service'
+import { AdminEmbeddingsService } from './admin-embeddings.service'
 import { BullMqService } from '../queue/bullmq.service'
 
 class ReprocessThumbnailsDto {
@@ -19,6 +20,7 @@ export class AdminMaintenanceController {
     private readonly admin: AdminAssetsService,
     private readonly bullMq: BullMqService,
     private readonly adminFaces: AdminFacesService,
+    private readonly adminEmbeddings: AdminEmbeddingsService,
   ) {}
 
   @Get('orphan-counts')
@@ -106,5 +108,28 @@ export class AdminMaintenanceController {
   })
   async reclusterFaces(): Promise<{ enqueued: number }> {
     return this.adminFaces.recluster()
+  }
+
+  @Post('embeddings/reprocess')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Enqueue embed jobs for all non-trashed photos (admin-only)' })
+  @ApiResponse({ status: 200, description: 'Embed jobs enqueued and the run recorded' })
+  async reprocessEmbeddings(): Promise<{ enqueued: number; total: number; model: string }> {
+    return this.adminEmbeddings.reprocess()
+  }
+
+  @Get('embeddings/reprocess')
+  @ApiOperation({
+    summary: 'Embedding reprocess last-run record and process-embeddings queue counts',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Last run record (null when never run) and queue counts',
+  })
+  async embeddingReprocessStatus(): Promise<{
+    lastRun: EmbeddingReprocessLastRun | null
+    queue: Record<string, number>
+  }> {
+    return this.adminEmbeddings.status()
   }
 }

@@ -5,6 +5,7 @@ import type { Repository } from 'typeorm'
 import { AppSetting } from '../database/entities/app-setting.entity'
 import { Face } from '../database/entities/face.entity'
 import {
+  EMBEDDING_REPROCESS_LAST_RUN_KEY,
   FACE_DETECTOR_SETTING_KEY,
   FACE_REPROCESS_LAST_RUN_KEY,
   SettingsService,
@@ -180,5 +181,28 @@ describe('SettingsService', () => {
       value: { startedAt: 'nope', total: 'x' },
     })
     expect(await service.getFaceReprocessLastRun()).toBeNull()
+  })
+
+  it('persists the last embedding reprocess run and reads it back', async () => {
+    const run = {
+      startedAt: '2026-10-03T00:00:00.000Z',
+      total: 5,
+      enqueued: 4,
+      model: 'siglip2-b16-224',
+    }
+    const { service, upsert } = makeService({ key: EMBEDDING_REPROCESS_LAST_RUN_KEY, value: run })
+    await service.setEmbeddingReprocessLastRun(run)
+    expect(upsert).toHaveBeenCalledWith({ key: EMBEDDING_REPROCESS_LAST_RUN_KEY, value: run }, [
+      'key',
+    ])
+    expect(await service.getEmbeddingReprocessLastRun()).toEqual(run)
+  })
+
+  it('returns null for a malformed embedding last reprocess run', async () => {
+    const { service } = makeService({
+      key: EMBEDDING_REPROCESS_LAST_RUN_KEY,
+      value: { startedAt: 1, model: 42 },
+    })
+    expect(await service.getEmbeddingReprocessLastRun()).toBeNull()
   })
 })

@@ -10,10 +10,12 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "face-model": "bash scripts/download-face-model.sh",
+    "vision-model": "bash scripts/download-vision-model.sh",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.3.0",
     "@nestjs/common": "^11.2.6",
     "@nestjs/core": "^11.2.6",
     "@nestjs/jwt": "^11.0.2",

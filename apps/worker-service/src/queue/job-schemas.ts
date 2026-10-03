@@ -32,6 +32,12 @@ export const faceJobSchema = z.object({
   detector: z.enum(FACE_DETECTOR_KINDS).optional(),
 })
 
+export const embeddingJobSchema = z.object({
+  assetId: uuid,
+  fileId: uuid,
+  userId: uuid,
+})
+
 export const clusterJobSchema = z.object({
   userId: uuid,
   reason: z.enum(['face-detected', 'manual']).optional(),
@@ -49,6 +55,7 @@ export type ThumbnailJob = z.infer<typeof thumbnailJobSchema>
 export type VideoJob = z.infer<typeof videoJobSchema>
 export type MetadataJob = z.infer<typeof metadataJobSchema>
 export type FaceJob = z.infer<typeof faceJobSchema>
+export type EmbeddingJob = z.infer<typeof embeddingJobSchema>
 export type ClusterJob = z.infer<typeof clusterJobSchema>
 export type CleanupJob = z.infer<typeof cleanupJobSchema>
 export type CleanupOrphansJob = z.infer<typeof cleanupOrphansJobSchema>

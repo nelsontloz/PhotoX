@@ -12,6 +12,7 @@ import { AssetsModule } from './assets/assets.module'
 import { AlbumsModule } from './albums/albums.module'
 import { SharesModule } from './shares/shares.module'
 import { FacesModule } from './faces/faces.module'
+import { EmbeddingsModule } from './embeddings/embeddings.module'
 import { PersonsModule } from './persons/persons.module'
 import { AdminModule } from './admin/admin.module'
 
@@ -32,6 +33,7 @@ loadRootEnvFile()
     AlbumsModule,
     SharesModule,
     FacesModule,
+    EmbeddingsModule,
     PersonsModule,
     AdminModule,
   ],

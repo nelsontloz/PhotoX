@@ -10,6 +10,7 @@ import type {
   FaceDetectionSettings,
   FaceDetectorKind,
   FileRecord,
+  RegisterEmbeddingRequestDto,
   Role,
 } from '@photox/shared-types'
 
@@ -47,6 +48,8 @@ export type MetadataPatch = Partial<
   // Date is not an Asset field: metadata jobs pass Date, JSON.stringify sends the same ISO wire string
   takenAt?: Date | null
   status?: 'pending' | 'ready' | 'failed'
+  // set by process-embeddings on failure; core's UpdateMetadataDto must whitelist it (sibling lane)
+  embeddingStatus?: 'pending' | 'ready' | 'failed'
 }
 
 export interface RegisterFileInput {
@@ -162,6 +165,14 @@ export class CoreClient {
       sub: userId,
       body: { faces, userId, detector },
     })
+  }
+
+  async registerEmbedding(
+    userId: string,
+    assetId: string,
+    dto: RegisterEmbeddingRequestDto,
+  ): Promise<void> {
+    await this.request('POST', `/api/v1/assets/${assetId}/embedding`, { sub: userId, body: dto })
   }
 
   async deleteAssetFaces(userId: string, assetId: string): Promise<{ deleted: number }> {

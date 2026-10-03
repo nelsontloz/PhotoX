@@ -19,6 +19,7 @@ import {
   Person,
   AppSetting,
 } from '../../src/database/entities'
+import { AssetEmbedding } from '../../src/database/entities/asset-embedding.entity'
 import { LocalStorageService } from '@photox/shared-config'
 import { User } from '../../src/users/entities/user.entity'
 import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
@@ -30,6 +31,7 @@ import { AlbumsModule } from '../../src/albums/albums.module'
 import { SharesModule } from '../../src/shares/shares.module'
 import { PersonsModule } from '../../src/persons/persons.module'
 import { FacesModule } from '../../src/faces/faces.module'
+import { EmbeddingsModule } from '../../src/embeddings/embeddings.module'
 import { UserFilesModule } from '../../src/files/user/user-files.module'
 import { StorageModule } from '../../src/files/storage/storage.module'
 import { AdminModule } from '../../src/admin/admin.module'
@@ -62,8 +64,9 @@ export interface ApiTestApp {
   thumbRepo: Repository<AssetThumbnail>
   faceRepo: Repository<Face>
   personRepo: Repository<Person>
+  embeddingRepo: Repository<AssetEmbedding>
   getQueue: (name: string) => Queue
-  signToken: (user: MockUser) => string
+  signToken: (user: MockUser, opts?: { act?: boolean }) => string
   authHeader: (token: string) => Record<string, string>
 }
 
@@ -85,6 +88,7 @@ const ENTITIES = [
   Face,
   Person,
   AppSetting,
+  AssetEmbedding,
 ]
 
 export async function createApiTestApp(opts?: {
@@ -122,6 +126,7 @@ export async function createApiTestApp(opts?: {
         SharesModule,
         PersonsModule,
         FacesModule,
+        EmbeddingsModule,
         UserFilesModule,
         AdminModule,
         FilesAdminModule,
@@ -149,8 +154,14 @@ export async function createApiTestApp(opts?: {
 
     const bullMq = app.get<BullMqService>(BullMqService)
     const jwt = app.get<JwtService>(JwtService)
-    const signToken = (user: MockUser): string =>
-      jwt.sign({ sub: user.id, email: user.email, role: user.role })
+    const signToken = (user: MockUser, opts?: { act?: boolean }): string =>
+      jwt.sign({
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+        // RFC 8693 act claim marks a worker-minted delegated token
+        ...(opts?.act ? { act: { sub: 'worker-service' } } : {}),
+      })
     // ponytail: core verifies the Bearer JWT itself — no x-user-* mirror needed;
     // malformed tokens keep the Authorization header and hit the 401 path
     const authHeader = (token: string): Record<string, string> => ({
@@ -172,6 +183,7 @@ export async function createApiTestApp(opts?: {
       thumbRepo: app.get<Repository<AssetThumbnail>>(getRepositoryToken(AssetThumbnail)),
       faceRepo: app.get<Repository<Face>>(getRepositoryToken(Face)),
       personRepo: app.get<Repository<Person>>(getRepositoryToken(Person)),
+      embeddingRepo: app.get<Repository<AssetEmbedding>>(getRepositoryToken(AssetEmbedding)),
       getQueue: (name: string) => bullMq.getQueue(name),
       signToken,
       authHeader,
@@ -185,7 +197,7 @@ export async function createApiTestApp(opts?: {
 
 export async function resetDb(t: ApiTestApp): Promise<void> {
   await t.dataSource.query(
-    'TRUNCATE users, refresh_tokens, albums, album_assets, shares, files, assets, asset_thumbnails, faces, persons, app_settings RESTART IDENTITY CASCADE',
+    'TRUNCATE users, refresh_tokens, albums, album_assets, shares, files, assets, asset_thumbnails, faces, persons, app_settings, asset_embeddings RESTART IDENTITY CASCADE',
   )
   rmSync(t.storageDir, { recursive: true, force: true })
   await t.storage.ensureDir()

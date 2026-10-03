@@ -160,6 +160,11 @@ export class UpdateMetadataDto {
   @IsIn(['pending', 'ready', 'failed'])
   faceStatus?: 'pending' | 'ready' | 'failed' | null
 
+  @ApiProperty({ required: false, enum: ['pending', 'ready', 'failed'] })
+  @IsOptional()
+  @IsIn(['pending', 'ready', 'failed'])
+  embeddingStatus?: 'pending' | 'ready' | 'failed' | null
+
   @ApiProperty({ required: false })
   @IsOptional()
   @Type(() => Number)

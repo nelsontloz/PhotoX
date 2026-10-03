@@ -245,6 +245,14 @@ export const SEARCH_EMBEDDING_DIM = 768
 // (ANN over one row set must not mix models, so the predicate filters on it)
 export const SEARCH_EMBEDDING_MODEL = 'siglip2-b16-224'
 
+// Wire contract for POST /api/v1/assets/:id/embedding — the worker registers one image embedding
+// for the asset owner; kind/model/dim are enforced core-side with 422
+export interface RegisterEmbeddingRequestDto {
+  kind: 'image'
+  model: string
+  embedding: number[]
+}
+
 export const FACE_DETECTOR_KINDS = ['human', 'scrfd'] as const
 export type FaceDetectorKind = (typeof FACE_DETECTOR_KINDS)[number]
 
