@@ -15,6 +15,9 @@ export async function listEventGroups(): Promise<EventsResponse> {
  * carries no asset ids, so the group's own [takenFrom, takenTo] window is the lookup key; `dateTo`
  * is exclusive server-side, hence the +1ms. Events group photos only, so videos in the window are
  * filtered out. Pages of 100 are fetched until the group's count is covered or the window ends.
+ * ponytail: tie-boundary misattribution — two photos sharing one timestamp split by a city change
+ * leak the neighbor into the window and slice(0, count) drops one real photo (worst case: one photo).
+ * Upgrade path: assetIds on EventGroupDto (splitEvents already holds the rows).
  */
 export async function listGroupAssets(group: EventGroupDto): Promise<Asset[]> {
   const dateTo = new Date(new Date(group.takenTo).getTime() + 1).toISOString()

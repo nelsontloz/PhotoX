@@ -11,6 +11,7 @@ import {
 } from './helpers'
 import type { ApiTestApp } from './helpers'
 import { Place } from '../../src/database/entities/place.entity'
+import { PlacesResolveService } from '../../src/places/places-resolve.service'
 
 const PARIS = { latitude: 48.8566, longitude: 2.3522 }
 const LYON = { latitude: 45.7485, longitude: 4.8467 }
@@ -28,6 +29,10 @@ describe('places resolution', () => {
 
   afterAll(async () => {
     await closeTestApp(t)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   beforeEach(async () => {
@@ -115,6 +120,25 @@ describe('places resolution', () => {
 
     const row = await t.assetRepo.findOneOrFail({ where: { id: asset.id } })
     expect(row.placeCity).toBe('Atlantis')
+  })
+
+  it('never resolves when a metadata patch carries null coordinates', async () => {
+    const user = await seedUser(t)
+    const asset = await seedOwnedAsset(user.id)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const resolveSpy = vi.spyOn(t.app.get(PlacesResolveService), 'resolve')
+
+    // worker no-GPS branch spreads latitude: null, longitude: null
+    const res = await request(apiServer(t))
+      .patch(`/api/v1/assets/${asset.id}/metadata`)
+      .set(t.authHeader(token))
+      .send({ latitude: null, longitude: null })
+    expect(res.status).toBe(200)
+    expect(resolveSpy).not.toHaveBeenCalled()
+
+    const row = await t.assetRepo.findOneOrFail({ where: { id: asset.id } })
+    expect(row.placeCity).toBeNull()
+    expect(row.placeDistanceKm).toBeNull()
   })
 
   it('does not fail the metadata write when places is empty', async () => {

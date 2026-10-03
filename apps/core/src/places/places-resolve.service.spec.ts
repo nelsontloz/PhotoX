@@ -36,4 +36,10 @@ describe('toPlaceFields', () => {
     expect(toPlaceFields(paris, 50.1)).toBeNull()
     expect(toPlaceFields(paris, 1427)).toBeNull()
   })
+
+  it('returns null for a null or non-finite distance', () => {
+    expect(toPlaceFields(paris, null)).toBeNull()
+    expect(toPlaceFields(paris, Number.NaN)).toBeNull()
+    expect(toPlaceFields(paris, Number.POSITIVE_INFINITY)).toBeNull()
+  })
 })

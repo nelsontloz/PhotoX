@@ -362,4 +362,35 @@ export class AdminAssetsService {
   async applyPlaceFields(id: string, fields: PlaceFields): Promise<void> {
     await this.repo.update(id, fields)
   }
+
+  countPhotosWithoutPhash(): Promise<number> {
+    return this.repo
+      .createQueryBuilder('a')
+      .where('a.kind = :kind', { kind: 'photo' })
+      .andWhere('a."isTrashed" = false')
+      .andWhere('a.phash IS NULL')
+      .getCount()
+  }
+
+  /**
+   * Keyset paging (id > afterId), not offset: process-metadata writes phash as jobs complete and
+   * shrink the matching set, which would make offset pages skip rows.
+   */
+  async listPhotosWithoutPhash(
+    limit: number,
+    afterId: string | null,
+  ): Promise<{ items: { id: string; userId: string; fileId: string }[] }> {
+    const qb = this.repo
+      .createQueryBuilder('a')
+      .select(['a.id AS id', 'a."userId" AS "userId"', 'a."fileId" AS "fileId"'])
+      .where('a.kind = :kind', { kind: 'photo' })
+      .andWhere('a."isTrashed" = false')
+      .andWhere('a.phash IS NULL')
+      .orderBy('a.id', 'ASC')
+      .limit(limit)
+
+    if (afterId !== null) qb.andWhere('a.id > :afterId', { afterId })
+
+    return { items: await qb.getRawMany<{ id: string; userId: string; fileId: string }>() }
+  }
 }

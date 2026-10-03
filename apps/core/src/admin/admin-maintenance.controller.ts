@@ -6,6 +6,7 @@ import type {
   DetectionsReprocessLastRun,
   EmbeddingReprocessLastRun,
   FaceReprocessLastRun,
+  MetadataReprocessLastRun,
   OcrReprocessLastRun,
   PlacesBackfillLastRun,
 } from '../settings/settings.service'
@@ -15,6 +16,7 @@ import { AdminEmbeddingsService } from './admin-embeddings.service'
 import { AdminOcrService } from './admin-ocr.service'
 import { AdminDetectionsService } from './admin-detections.service'
 import { AdminPlacesService } from './admin-places.service'
+import { AdminMetadataService } from './admin-metadata.service'
 import { BullMqService } from '../queue/bullmq.service'
 
 class ReprocessThumbnailsDto {
@@ -33,6 +35,7 @@ export class AdminMaintenanceController {
     private readonly adminOcr: AdminOcrService,
     private readonly adminDetections: AdminDetectionsService,
     private readonly adminPlaces: AdminPlacesService,
+    private readonly adminMetadata: AdminMetadataService,
   ) {}
 
   @Get('orphan-counts')
@@ -204,5 +207,30 @@ export class AdminMaintenanceController {
   @ApiResponse({ status: 200, description: 'Last run record (null when never run)' })
   async placesBackfillStatus(): Promise<{ lastRun: PlacesBackfillLastRun | null }> {
     return this.adminPlaces.status()
+  }
+
+  @Post('metadata/reprocess')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Enqueue metadata jobs for non-trashed photos missing a phash (admin-only)',
+  })
+  @ApiResponse({ status: 200, description: 'Metadata jobs enqueued and the run recorded' })
+  async reprocessMetadata(): Promise<{ enqueued: number; total: number }> {
+    return this.adminMetadata.reprocess()
+  }
+
+  @Get('metadata/reprocess')
+  @ApiOperation({
+    summary: 'Metadata reprocess last-run record and process-metadata queue counts',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Last run record (null when never run) and queue counts',
+  })
+  async metadataReprocessStatus(): Promise<{
+    lastRun: MetadataReprocessLastRun | null
+    queue: Record<string, number>
+  }> {
+    return this.adminMetadata.status()
   }
 }

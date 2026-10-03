@@ -299,11 +299,15 @@ export class AssetsService {
       patch.metadataExtractedAt = new Date()
     }
 
-    // resolve place once, when this write brings coordinates and no city was resolved yet
+    // resolve place once, when this write brings real coordinates and no city was resolved yet
+    // (typeof+isFinite: class-validator @IsOptional passes null through, and the worker sends
+    // latitude/longitude: null for every photo without GPS)
     if (
       asset.placeCity === null &&
-      fields.latitude !== undefined &&
-      fields.longitude !== undefined
+      typeof fields.latitude === 'number' &&
+      Number.isFinite(fields.latitude) &&
+      typeof fields.longitude === 'number' &&
+      Number.isFinite(fields.longitude)
     ) {
       try {
         // ponytail: per-write nearest-city lookup (indexed KNN); precompute/materialize per

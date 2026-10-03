@@ -11,6 +11,7 @@ import { AdminEmbeddingsService } from './admin-embeddings.service'
 import { AdminOcrService } from './admin-ocr.service'
 import { AdminDetectionsService } from './admin-detections.service'
 import { AdminPlacesService } from './admin-places.service'
+import { AdminMetadataService } from './admin-metadata.service'
 import { AdminMaintenanceController } from './admin-maintenance.controller'
 import { PlacesModule } from '../places/places.module'
 
@@ -29,6 +30,7 @@ import { PlacesModule } from '../places/places.module'
     AdminOcrService,
     AdminDetectionsService,
     AdminPlacesService,
+    AdminMetadataService,
   ],
 })
 export class AdminModule {}
