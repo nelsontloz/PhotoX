@@ -11,6 +11,7 @@ import type {
   FaceDetectorKind,
   FileRecord,
   RegisterEmbeddingRequestDto,
+  RegisterOcrRequestDto,
   Role,
 } from '@photox/shared-types'
 
@@ -173,6 +174,10 @@ export class CoreClient {
     dto: RegisterEmbeddingRequestDto,
   ): Promise<void> {
     await this.request('POST', `/api/v1/assets/${assetId}/embedding`, { sub: userId, body: dto })
+  }
+
+  async registerOcr(userId: string, assetId: string, dto: RegisterOcrRequestDto): Promise<void> {
+    await this.request('POST', `/api/v1/assets/${assetId}/ocr`, { sub: userId, body: dto })
   }
 
   async deleteAssetFaces(userId: string, assetId: string): Promise<{ deleted: number }> {

@@ -13,6 +13,7 @@ import { AppSetting, Face } from '../database/entities'
 export const FACE_DETECTOR_SETTING_KEY = 'face.detector'
 export const FACE_REPROCESS_LAST_RUN_KEY = 'face.reprocess.lastRun'
 export const EMBEDDING_REPROCESS_LAST_RUN_KEY = 'embedding.reprocess.lastRun'
+export const OCR_REPROCESS_LAST_RUN_KEY = 'ocr.reprocess.lastRun'
 
 export interface FaceReprocessLastRun {
   startedAt: string
@@ -26,6 +27,12 @@ export interface EmbeddingReprocessLastRun {
   total: number
   enqueued: number
   model: string
+}
+
+export interface OcrReprocessLastRun {
+  startedAt: string
+  total: number
+  enqueued: number
 }
 
 function isFaceDetectorKind(value: unknown): value is FaceDetectorKind {
@@ -63,6 +70,19 @@ function parseEmbeddingLastRun(value: unknown): EmbeddingReprocessLastRun | null
     return null
   }
   return { startedAt: row.startedAt, total: row.total, enqueued: row.enqueued, model: row.model }
+}
+
+function parseOcrLastRun(value: unknown): OcrReprocessLastRun | null {
+  if (typeof value !== 'object' || value === null) return null
+  const row = value as Record<string, unknown>
+  if (
+    typeof row.startedAt !== 'string' ||
+    typeof row.total !== 'number' ||
+    typeof row.enqueued !== 'number'
+  ) {
+    return null
+  }
+  return { startedAt: row.startedAt, total: row.total, enqueued: row.enqueued }
 }
 
 @Injectable()
@@ -112,6 +132,15 @@ export class SettingsService {
 
   async setEmbeddingReprocessLastRun(run: EmbeddingReprocessLastRun): Promise<void> {
     await this.repo.upsert({ key: EMBEDDING_REPROCESS_LAST_RUN_KEY, value: run }, ['key'])
+  }
+
+  async getOcrReprocessLastRun(): Promise<OcrReprocessLastRun | null> {
+    const row = await this.repo.findOne({ where: { key: OCR_REPROCESS_LAST_RUN_KEY } })
+    return parseOcrLastRun(row?.value)
+  }
+
+  async setOcrReprocessLastRun(run: OcrReprocessLastRun): Promise<void> {
+    await this.repo.upsert({ key: OCR_REPROCESS_LAST_RUN_KEY, value: run }, ['key'])
   }
 
   private async countFacesByDetector(): Promise<FaceDetectionSettings['facesByDetector']> {

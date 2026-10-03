@@ -285,6 +285,14 @@ export interface RegisterEmbeddingRequestDto {
   embedding: number[]
 }
 
+// Wire contract for POST /api/v1/assets/:id/ocr — the worker registers ONE concatenated text row
+// per asset (asset_ocr PK is assetId); text/lang/confidence are enforced core-side with 422
+export interface RegisterOcrRequestDto {
+  text: string
+  lang: string | null
+  confidence: number | null
+}
+
 export const FACE_DETECTOR_KINDS = ['human', 'scrfd'] as const
 export type FaceDetectorKind = (typeof FACE_DETECTOR_KINDS)[number]
 

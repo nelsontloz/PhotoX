@@ -34,6 +34,7 @@ import { PersonsModule } from '../../src/persons/persons.module'
 import { FacesModule } from '../../src/faces/faces.module'
 import { EmbeddingsModule } from '../../src/embeddings/embeddings.module'
 import { SearchModule } from '../../src/search/search.module'
+import { OcrModule } from '../../src/ocr/ocr.module'
 import { TextEncodeService } from '../../src/search/text-encode.service'
 import { UserFilesModule } from '../../src/files/user/user-files.module'
 import { StorageModule } from '../../src/files/storage/storage.module'
@@ -135,6 +136,7 @@ export async function createApiTestApp(opts?: {
         FacesModule,
         EmbeddingsModule,
         SearchModule,
+        OcrModule,
         UserFilesModule,
         AdminModule,
         FilesAdminModule,

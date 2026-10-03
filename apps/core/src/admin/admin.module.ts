@@ -8,6 +8,7 @@ import { AdminAssetsService } from './admin-assets.service'
 import { AdminFacesController } from './admin-faces.controller'
 import { AdminFacesService } from './admin-faces.service'
 import { AdminEmbeddingsService } from './admin-embeddings.service'
+import { AdminOcrService } from './admin-ocr.service'
 import { AdminMaintenanceController } from './admin-maintenance.controller'
 
 @Module({
@@ -17,6 +18,6 @@ import { AdminMaintenanceController } from './admin-maintenance.controller'
     SettingsModule,
   ],
   controllers: [AdminAssetsController, AdminMaintenanceController, AdminFacesController],
-  providers: [AdminAssetsService, AdminFacesService, AdminEmbeddingsService],
+  providers: [AdminAssetsService, AdminFacesService, AdminEmbeddingsService, AdminOcrService],
 })
 export class AdminModule {}

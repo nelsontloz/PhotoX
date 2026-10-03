@@ -2,10 +2,15 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/commo
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { IsIn } from 'class-validator'
 import type { FaceDetectorKind } from '@photox/shared-types'
-import type { EmbeddingReprocessLastRun, FaceReprocessLastRun } from '../settings/settings.service'
+import type {
+  EmbeddingReprocessLastRun,
+  FaceReprocessLastRun,
+  OcrReprocessLastRun,
+} from '../settings/settings.service'
 import { AdminAssetsService } from './admin-assets.service'
 import { AdminFacesService } from './admin-faces.service'
 import { AdminEmbeddingsService } from './admin-embeddings.service'
+import { AdminOcrService } from './admin-ocr.service'
 import { BullMqService } from '../queue/bullmq.service'
 
 class ReprocessThumbnailsDto {
@@ -21,6 +26,7 @@ export class AdminMaintenanceController {
     private readonly bullMq: BullMqService,
     private readonly adminFaces: AdminFacesService,
     private readonly adminEmbeddings: AdminEmbeddingsService,
+    private readonly adminOcr: AdminOcrService,
   ) {}
 
   @Get('orphan-counts')
@@ -131,5 +137,26 @@ export class AdminMaintenanceController {
     queue: Record<string, number>
   }> {
     return this.adminEmbeddings.status()
+  }
+
+  @Post('ocr/reprocess')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Enqueue OCR jobs for all non-trashed photos (admin-only)' })
+  @ApiResponse({ status: 200, description: 'OCR jobs enqueued and the run recorded' })
+  async reprocessOcr(): Promise<{ enqueued: number; total: number }> {
+    return this.adminOcr.reprocess()
+  }
+
+  @Get('ocr/reprocess')
+  @ApiOperation({ summary: 'OCR reprocess last-run record and process-ocr queue counts' })
+  @ApiResponse({
+    status: 200,
+    description: 'Last run record (null when never run) and queue counts',
+  })
+  async ocrReprocessStatus(): Promise<{
+    lastRun: OcrReprocessLastRun | null
+    queue: Record<string, number>
+  }> {
+    return this.adminOcr.status()
   }
 }

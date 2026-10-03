@@ -96,6 +96,20 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     )
   }
 
+  enqueueOcr(assetId: string, fileId: string, userId: string): void {
+    void this.enqueue(
+      'process-ocr',
+      'process-ocr',
+      { assetId, fileId, userId },
+      {
+        jobId: `ocr-${assetId}`,
+        attempts: 3,
+        backoff: { type: 'exponential' },
+        removeOnFail: true,
+      },
+    )
+  }
+
   async onModuleDestroy(): Promise<void> {
     for (const queue of this.queues.values()) {
       await queue.close()

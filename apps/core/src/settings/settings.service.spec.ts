@@ -8,6 +8,7 @@ import {
   EMBEDDING_REPROCESS_LAST_RUN_KEY,
   FACE_DETECTOR_SETTING_KEY,
   FACE_REPROCESS_LAST_RUN_KEY,
+  OCR_REPROCESS_LAST_RUN_KEY,
   SettingsService,
 } from './settings.service'
 
@@ -204,5 +205,21 @@ describe('SettingsService', () => {
       value: { startedAt: 1, model: 42 },
     })
     expect(await service.getEmbeddingReprocessLastRun()).toBeNull()
+  })
+
+  it('persists the last OCR reprocess run and reads it back', async () => {
+    const run = { startedAt: '2026-10-03T00:00:00.000Z', total: 7, enqueued: 7 }
+    const { service, upsert } = makeService({ key: OCR_REPROCESS_LAST_RUN_KEY, value: run })
+    await service.setOcrReprocessLastRun(run)
+    expect(upsert).toHaveBeenCalledWith({ key: OCR_REPROCESS_LAST_RUN_KEY, value: run }, ['key'])
+    expect(await service.getOcrReprocessLastRun()).toEqual(run)
+  })
+
+  it('returns null for a malformed OCR last reprocess run', async () => {
+    const { service } = makeService({
+      key: OCR_REPROCESS_LAST_RUN_KEY,
+      value: { startedAt: '2026-10-03T00:00:00.000Z', total: 'x' },
+    })
+    expect(await service.getOcrReprocessLastRun()).toBeNull()
   })
 })
