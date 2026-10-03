@@ -110,6 +110,20 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     )
   }
 
+  enqueueDetect(assetId: string, fileId: string, userId: string): void {
+    void this.enqueue(
+      'process-detect',
+      'process-detect',
+      { assetId, fileId, userId },
+      {
+        jobId: `detect-${assetId}`,
+        attempts: 3,
+        backoff: { type: 'exponential' },
+        removeOnFail: true,
+      },
+    )
+  }
+
   async onModuleDestroy(): Promise<void> {
     for (const queue of this.queues.values()) {
       await queue.close()

@@ -21,7 +21,9 @@ const BRANCH_MULTIPLIER = 2
 // 10k-photo library would otherwise put every one of them in the fused list
 const ROUTE_ASSET_LIMIT = 200
 
-const FTS_DOCUMENT = `to_tsvector('simple', COALESCE(a.title, '') || ' ' || COALESCE(a.description, '') || ' ' || COALESCE(o.text, ''))`
+// labels enter as an aggregated subquery (one row per asset) — a direct join would fan out and
+// inflate ts_rank_cd/duplicate assets in the FTS branch
+const FTS_DOCUMENT = `to_tsvector('simple', COALESCE(a.title, '') || ' ' || COALESCE(a.description, '') || ' ' || COALESCE(o.text, '') || ' ' || COALESCE(d.labels, ''))`
 
 @Injectable()
 export class SearchService {
@@ -80,6 +82,11 @@ export class SearchService {
       `SELECT a.id AS id
        FROM assets a
        LEFT JOIN asset_ocr o ON o."assetId" = a.id
+       LEFT JOIN (
+         SELECT "assetId", string_agg(label, ' ') AS labels
+         FROM asset_detections
+         GROUP BY "assetId"
+       ) d ON d."assetId" = a.id
        WHERE a."userId" = $1 AND a."isTrashed" = false
          AND ${FTS_DOCUMENT} @@ websearch_to_tsquery('simple', $2)
        ORDER BY ts_rank_cd(${FTS_DOCUMENT}, websearch_to_tsquery('simple', $2)) DESC

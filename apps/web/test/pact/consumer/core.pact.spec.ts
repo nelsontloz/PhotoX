@@ -29,6 +29,7 @@ import {
   reprocessVideo,
 } from '../../../src/api/assets'
 import { searchAssets } from '../../../src/api/search'
+import { getAssetDetections } from '../../../src/api/detections'
 import { createShare, listShares, revokeShare } from '../../../src/api/shares'
 import {
   listAlbums,
@@ -1431,6 +1432,32 @@ describe('Web → Core pact', () => {
       .executeTest(async (mockserver) => {
         api.defaults.baseURL = mockserver.url + '/api'
         await reprocessVideo(ASSET_ID)
+      })
+  })
+
+  it('GET /api/v1/assets/:id/detections — list detected objects', async () => {
+    await provider
+      .uponReceiving('a request to list the detected objects of an asset')
+      .withRequest({
+        method: 'GET',
+        path: `/api/v1/assets/${ASSET_ID}/detections`,
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: MatchersV3.like({
+          detections: MatchersV3.eachLike({
+            label: 'dog',
+            confidence: 0.9,
+            box: { x: 10, y: 20, w: 100, h: 80 },
+          }),
+        }),
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await getAssetDetections(ASSET_ID)
+        expect(res.detections.length).toBeGreaterThan(0)
+        expect(res.detections[0]?.label).toBe('dog')
       })
   })
 })

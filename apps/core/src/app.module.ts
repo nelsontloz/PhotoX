@@ -15,6 +15,7 @@ import { FacesModule } from './faces/faces.module'
 import { EmbeddingsModule } from './embeddings/embeddings.module'
 import { SearchModule } from './search/search.module'
 import { OcrModule } from './ocr/ocr.module'
+import { DetectionsModule } from './detections/detections.module'
 import { PersonsModule } from './persons/persons.module'
 import { AdminModule } from './admin/admin.module'
 
@@ -38,6 +39,7 @@ loadRootEnvFile()
     EmbeddingsModule,
     SearchModule,
     OcrModule,
+    DetectionsModule,
     PersonsModule,
     AdminModule,
   ],

@@ -14,6 +14,7 @@ export const FACE_DETECTOR_SETTING_KEY = 'face.detector'
 export const FACE_REPROCESS_LAST_RUN_KEY = 'face.reprocess.lastRun'
 export const EMBEDDING_REPROCESS_LAST_RUN_KEY = 'embedding.reprocess.lastRun'
 export const OCR_REPROCESS_LAST_RUN_KEY = 'ocr.reprocess.lastRun'
+export const DETECTIONS_REPROCESS_LAST_RUN_KEY = 'detections.reprocess.lastRun'
 
 export interface FaceReprocessLastRun {
   startedAt: string
@@ -30,6 +31,12 @@ export interface EmbeddingReprocessLastRun {
 }
 
 export interface OcrReprocessLastRun {
+  startedAt: string
+  total: number
+  enqueued: number
+}
+
+export interface DetectionsReprocessLastRun {
   startedAt: string
   total: number
   enqueued: number
@@ -73,6 +80,19 @@ function parseEmbeddingLastRun(value: unknown): EmbeddingReprocessLastRun | null
 }
 
 function parseOcrLastRun(value: unknown): OcrReprocessLastRun | null {
+  if (typeof value !== 'object' || value === null) return null
+  const row = value as Record<string, unknown>
+  if (
+    typeof row.startedAt !== 'string' ||
+    typeof row.total !== 'number' ||
+    typeof row.enqueued !== 'number'
+  ) {
+    return null
+  }
+  return { startedAt: row.startedAt, total: row.total, enqueued: row.enqueued }
+}
+
+function parseDetectionsLastRun(value: unknown): DetectionsReprocessLastRun | null {
   if (typeof value !== 'object' || value === null) return null
   const row = value as Record<string, unknown>
   if (
@@ -141,6 +161,15 @@ export class SettingsService {
 
   async setOcrReprocessLastRun(run: OcrReprocessLastRun): Promise<void> {
     await this.repo.upsert({ key: OCR_REPROCESS_LAST_RUN_KEY, value: run }, ['key'])
+  }
+
+  async getDetectionsReprocessLastRun(): Promise<DetectionsReprocessLastRun | null> {
+    const row = await this.repo.findOne({ where: { key: DETECTIONS_REPROCESS_LAST_RUN_KEY } })
+    return parseDetectionsLastRun(row?.value)
+  }
+
+  async setDetectionsReprocessLastRun(run: DetectionsReprocessLastRun): Promise<void> {
+    await this.repo.upsert({ key: DETECTIONS_REPROCESS_LAST_RUN_KEY, value: run }, ['key'])
   }
 
   private async countFacesByDetector(): Promise<FaceDetectionSettings['facesByDetector']> {

@@ -21,6 +21,7 @@ import {
 } from '../../src/database/entities'
 import { AssetEmbedding } from '../../src/database/entities/asset-embedding.entity'
 import { AssetOcr } from '../../src/database/entities/asset-ocr.entity'
+import { AssetDetection } from '../../src/database/entities/asset-detection.entity'
 import { LocalStorageService } from '@photox/shared-config'
 import { User } from '../../src/users/entities/user.entity'
 import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
@@ -35,6 +36,7 @@ import { FacesModule } from '../../src/faces/faces.module'
 import { EmbeddingsModule } from '../../src/embeddings/embeddings.module'
 import { SearchModule } from '../../src/search/search.module'
 import { OcrModule } from '../../src/ocr/ocr.module'
+import { DetectionsModule } from '../../src/detections/detections.module'
 import { TextEncodeService } from '../../src/search/text-encode.service'
 import { UserFilesModule } from '../../src/files/user/user-files.module'
 import { StorageModule } from '../../src/files/storage/storage.module'
@@ -70,6 +72,7 @@ export interface ApiTestApp {
   personRepo: Repository<Person>
   embeddingRepo: Repository<AssetEmbedding>
   ocrRepo: Repository<AssetOcr>
+  detectionRepo: Repository<AssetDetection>
   getQueue: (name: string) => Queue
   signToken: (user: MockUser, opts?: { act?: boolean }) => string
   authHeader: (token: string) => Record<string, string>
@@ -95,6 +98,7 @@ const ENTITIES = [
   AppSetting,
   AssetEmbedding,
   AssetOcr,
+  AssetDetection,
 ]
 
 export async function createApiTestApp(opts?: {
@@ -137,6 +141,7 @@ export async function createApiTestApp(opts?: {
         EmbeddingsModule,
         SearchModule,
         OcrModule,
+        DetectionsModule,
         UserFilesModule,
         AdminModule,
         FilesAdminModule,
@@ -199,6 +204,7 @@ export async function createApiTestApp(opts?: {
       personRepo: app.get<Repository<Person>>(getRepositoryToken(Person)),
       embeddingRepo: app.get<Repository<AssetEmbedding>>(getRepositoryToken(AssetEmbedding)),
       ocrRepo: app.get<Repository<AssetOcr>>(getRepositoryToken(AssetOcr)),
+      detectionRepo: app.get<Repository<AssetDetection>>(getRepositoryToken(AssetDetection)),
       getQueue: (name: string) => bullMq.getQueue(name),
       signToken,
       authHeader,
@@ -212,7 +218,7 @@ export async function createApiTestApp(opts?: {
 
 export async function resetDb(t: ApiTestApp): Promise<void> {
   await t.dataSource.query(
-    'TRUNCATE users, refresh_tokens, albums, album_assets, shares, files, assets, asset_thumbnails, faces, persons, app_settings, asset_embeddings, asset_ocr RESTART IDENTITY CASCADE',
+    'TRUNCATE users, refresh_tokens, albums, album_assets, shares, files, assets, asset_thumbnails, faces, persons, app_settings, asset_embeddings, asset_ocr, asset_detections RESTART IDENTITY CASCADE',
   )
   rmSync(t.storageDir, { recursive: true, force: true })
   await t.storage.ensureDir()

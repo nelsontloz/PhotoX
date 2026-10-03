@@ -14,6 +14,8 @@ import { EmbeddingService } from './embedding.service'
 import { EmbeddingProcessor } from './embed.processor'
 import { OcrService } from './ocr.service'
 import { OcrProcessor } from './ocr.processor'
+import { DetectService } from './detect.service'
+import { DetectProcessor } from './detect.processor'
 import { CleanupProcessor } from './cleanup.processor'
 import { CleanupOrphansProcessor } from './cleanup-orphans.processor'
 import { CoreClient } from '../core/core-client.service'
@@ -43,6 +45,8 @@ import { CoreClient } from '../core/core-client.service'
     EmbeddingProcessor,
     OcrService,
     OcrProcessor,
+    DetectService,
+    DetectProcessor,
     CleanupProcessor,
     CleanupOrphansProcessor,
   ],
@@ -57,6 +61,7 @@ export class QueueModule implements OnModuleInit {
     private readonly faceClusterService: FaceClusterService,
     private readonly embeddingProcessor: EmbeddingProcessor,
     private readonly ocrProcessor: OcrProcessor,
+    private readonly detectProcessor: DetectProcessor,
     private readonly cleanupProcessor: CleanupProcessor,
     private readonly cleanupOrphansProcessor: CleanupOrphansProcessor,
   ) {}
@@ -69,6 +74,7 @@ export class QueueModule implements OnModuleInit {
     this.faceClusterService.start()
     this.embeddingProcessor.start()
     this.ocrProcessor.start()
+    this.detectProcessor.start()
     this.cleanupProcessor.start()
     this.cleanupOrphansProcessor.start()
   }

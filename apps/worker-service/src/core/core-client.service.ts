@@ -10,6 +10,7 @@ import type {
   FaceDetectionSettings,
   FaceDetectorKind,
   FileRecord,
+  RegisterDetectionsRequestDto,
   RegisterEmbeddingRequestDto,
   RegisterOcrRequestDto,
   Role,
@@ -178,6 +179,14 @@ export class CoreClient {
 
   async registerOcr(userId: string, assetId: string, dto: RegisterOcrRequestDto): Promise<void> {
     await this.request('POST', `/api/v1/assets/${assetId}/ocr`, { sub: userId, body: dto })
+  }
+
+  async registerDetections(
+    userId: string,
+    assetId: string,
+    dto: RegisterDetectionsRequestDto,
+  ): Promise<void> {
+    await this.request('POST', `/api/v1/assets/${assetId}/detections`, { sub: userId, body: dto })
   }
 
   async deleteAssetFaces(userId: string, assetId: string): Promise<{ deleted: number }> {

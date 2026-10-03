@@ -12,6 +12,7 @@
     "face-model": "bash scripts/download-face-model.sh",
     "vision-model": "bash scripts/download-vision-model.sh",
     "ocr-model": "bash scripts/download-ocr-model.sh",
+    "detect-model": "bash scripts/download-detect-model.sh",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -293,6 +293,35 @@ export interface RegisterOcrRequestDto {
   confidence: number | null
 }
 
+// Wire contracts for POST/GET /api/v1/assets/:id/detections — box is ORIGINAL-image pixel coords.
+// POST replaces the asset's whole row set; GET returns the viewer-overlay payload.
+export interface DetectionBox {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export interface DetectedObjectInput {
+  label: string
+  confidence: number
+  box: DetectionBox
+}
+
+export interface RegisterDetectionsRequestDto {
+  detections: DetectedObjectInput[]
+}
+
+export interface AssetDetectionDto {
+  label: string
+  confidence: number
+  box: DetectionBox
+}
+
+export interface AssetDetectionsResponse {
+  detections: AssetDetectionDto[]
+}
+
 export const FACE_DETECTOR_KINDS = ['human', 'scrfd'] as const
 export type FaceDetectorKind = (typeof FACE_DETECTOR_KINDS)[number]
 

@@ -5,6 +5,7 @@ import type { Repository } from 'typeorm'
 import { AppSetting } from '../database/entities/app-setting.entity'
 import { Face } from '../database/entities/face.entity'
 import {
+  DETECTIONS_REPROCESS_LAST_RUN_KEY,
   EMBEDDING_REPROCESS_LAST_RUN_KEY,
   FACE_DETECTOR_SETTING_KEY,
   FACE_REPROCESS_LAST_RUN_KEY,
@@ -221,5 +222,23 @@ describe('SettingsService', () => {
       value: { startedAt: '2026-10-03T00:00:00.000Z', total: 'x' },
     })
     expect(await service.getOcrReprocessLastRun()).toBeNull()
+  })
+
+  it('persists the last detections reprocess run and reads it back', async () => {
+    const run = { startedAt: '2026-10-03T00:00:00.000Z', total: 9, enqueued: 9 }
+    const { service, upsert } = makeService({ key: DETECTIONS_REPROCESS_LAST_RUN_KEY, value: run })
+    await service.setDetectionsReprocessLastRun(run)
+    expect(upsert).toHaveBeenCalledWith({ key: DETECTIONS_REPROCESS_LAST_RUN_KEY, value: run }, [
+      'key',
+    ])
+    expect(await service.getDetectionsReprocessLastRun()).toEqual(run)
+  })
+
+  it('returns null for a malformed detections last reprocess run', async () => {
+    const { service } = makeService({
+      key: DETECTIONS_REPROCESS_LAST_RUN_KEY,
+      value: { startedAt: 1, enqueued: 'x' },
+    })
+    expect(await service.getDetectionsReprocessLastRun()).toBeNull()
   })
 })
