@@ -5,6 +5,7 @@ import {
   DETECT_MAX_DETECTIONS,
   letterboxParams,
   parseDetections,
+  scaleDetectionsToOriginal,
 } from './detect.service'
 
 function output(rows: number[][]): Float32Array {
@@ -96,5 +97,20 @@ describe('parseDetections', () => {
   it('maps the last COCO index', () => {
     const dets = parseDetections(output([[0, 140, 100, 240, 0.7, 79]]), 1, params, 1280, 720)
     expect(dets[0]!.label).toBe(COCO_LABELS[79])
+  })
+})
+
+describe('scaleDetectionsToOriginal', () => {
+  it('maps prep-space boxes to original pixels with a known resize factor', () => {
+    const dets = [
+      { label: 'person', confidence: 0.9, box: { x: 100, y: 50, w: 200, h: 150 } },
+      { label: 'car', confidence: 0.8, box: { x: 1200, y: 700, w: 200, h: 100 } },
+    ]
+    // 1280x720 prep -> 3840x2160 original (3x)
+    expect(scaleDetectionsToOriginal(dets, 3, 3, 3840, 2160)).toEqual([
+      { label: 'person', confidence: 0.9, box: { x: 300, y: 150, w: 600, h: 450 } },
+      // right/bottom edges poke past the frame -> clamped
+      { label: 'car', confidence: 0.8, box: { x: 3600, y: 2100, w: 240, h: 60 } },
+    ])
   })
 })

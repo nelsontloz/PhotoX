@@ -7,7 +7,7 @@ import { randomUUID } from 'crypto'
 import { copyFile, unlink } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
 import { assertOwnership, parseJobData, detectionJobSchema, type DetectionJob } from './job-schemas'
-import { DetectService } from './detect.service'
+import { DetectService, scaleDetectionsToOriginal } from './detect.service'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
 
@@ -47,8 +47,18 @@ export class DetectProcessor {
     try {
       await copyFile(this.storage.pathFor(record.storageKey), filePath)
 
-      // ponytail: EXIF-oriented ≤1280px long side — the model's letterbox goes to 640 and maps
-      // boxes back to original pixels itself, so this pass only trims decode cost
+      const metadata = await sharp(filePath).metadata()
+      if (!metadata.width || !metadata.height) {
+        throw new Error('Could not read image dimensions')
+      }
+      // EXIF orientations 5-8 transpose the stored pixels, so the displayed (oriented) original
+      // swaps axes; boxes must land in that same oriented space the web viewer scales by
+      const swapped = (metadata.orientation ?? 1) >= 5
+      const origW = swapped ? metadata.height : metadata.width
+      const origH = swapped ? metadata.width : metadata.height
+
+      // ponytail: EXIF-oriented ≤1280px long side — the model's own letterbox goes to 640, then
+      // scaleDetectionsToOriginal maps boxes from this prep space back to ORIGINAL px below
       const resized = await sharp(filePath)
         .rotate()
         .resize({
@@ -58,14 +68,21 @@ export class DetectProcessor {
           withoutEnlargement: true,
         })
         .toBuffer()
+      const resizedMeta = await sharp(resized).metadata()
+      const resizedW = resizedMeta.width ?? origW
+      const resizedH = resizedMeta.height ?? origH
+
+      const scaleX = origW / resizedW
+      const scaleY = origH / resizedH
 
       const detections = await this.detect.detect(resized)
+      const scaled = scaleDetectionsToOriginal(detections, scaleX, scaleY, origW, origH)
 
       // replace-semantics: core deletes the asset's whole row set and inserts this one, so an
       // empty array MUST be registered — that is what clears stale rows on a re-run
-      await this.core.registerDetections(userId, assetId, { detections })
+      await this.core.registerDetections(userId, assetId, { detections: scaled })
 
-      this.logger.log(`Detection complete: asset=${assetId}, count=${detections.length}`)
+      this.logger.log(`Detection complete: asset=${assetId}, count=${scaled.length}`)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       // ponytail: missing model weights are provisioning, not a job bug — warn + no retry.

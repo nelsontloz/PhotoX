@@ -144,6 +144,27 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
+// pure: detections in the processor's ≤1280px prep space -> oriented ORIGINAL-image pixels.
+// Same scale-back discipline as face.processor (per-edge clamp, drop collapsed boxes); the web
+// viewer scales overlays by asset.width/height, so registered boxes must be original px.
+export function scaleDetectionsToOriginal(
+  detections: DetectedObjectInput[],
+  scaleX: number,
+  scaleY: number,
+  origW: number,
+  origH: number,
+): DetectedObjectInput[] {
+  return detections
+    .map((d) => {
+      const x1 = clamp(Math.round(d.box.x * scaleX), 0, origW)
+      const y1 = clamp(Math.round(d.box.y * scaleY), 0, origH)
+      const x2 = clamp(Math.round((d.box.x + d.box.w) * scaleX), 0, origW)
+      const y2 = clamp(Math.round((d.box.y + d.box.h) * scaleY), 0, origH)
+      return { ...d, box: { x: x1, y: y1, w: x2 - x1, h: y2 - y1 } }
+    })
+    .filter((d) => d.box.w > 0 && d.box.h > 0)
+}
+
 // pure: map YOLO26 end-to-end rows ([x1,y1,x2,y2,score,class] in letterboxed 640px space) back to
 // original-image pixels, apply the confidence floor, drop unknown classes/degenerate boxes and
 // clamp to the frame — the same discipline as face.processor's scale-back
