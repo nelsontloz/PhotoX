@@ -2,7 +2,7 @@ import { Injectable, ServiceUnavailableException } from '@nestjs/common'
 import { access } from 'fs/promises'
 import { join } from 'path'
 import { loadEnv } from '@photox/shared-config'
-import { SEARCH_EMBEDDING_MODEL, toEmbedding } from '@photox/shared-types'
+import { SEARCH_EMBEDDING_MODEL, SEARCH_TEXT_MAX_LENGTH, toEmbedding } from '@photox/shared-types'
 import type { PreTrainedTokenizer, SiglipTextModel } from '@huggingface/transformers'
 
 const CACHE_MAX = 256
@@ -41,8 +41,15 @@ export class TextEncodeService {
   protected async encodeUncached(query: string): Promise<number[]> {
     const { tokenizer, model } = await this.load()
     // exactly the smoke-spec call: SiglipTextModel's learned pooler_output, NOT feature-extraction
-    // mean/CLS pooling (cross-modal contract in shared-types)
-    const outputs = (await model(tokenizer([query], { padding: true, truncation: true }))) as {
+    // mean/CLS pooling (cross-modal contract in shared-types). padding='max_length' is load-bearing:
+    // the tower pools the last slot of the 64-token padded sequence it was trained on.
+    const outputs = (await model(
+      tokenizer([query], {
+        padding: 'max_length',
+        max_length: SEARCH_TEXT_MAX_LENGTH,
+        truncation: true,
+      }),
+    )) as {
       pooler_output?: { data: Float32Array }
     }
     if (!outputs.pooler_output) throw new Error('SiglipTextModel returned no pooler_output')

@@ -251,11 +251,18 @@ export const SEARCH_EMBEDDING_DIM = 768
 // (ANN over one row set must not mix models, so the predicate filters on it)
 export const SEARCH_EMBEDDING_MODEL = 'siglip2-b16-224'
 
+// SigLIP2 was trained with `padding='max_length'` (the tokenizer.json declares Fixed 64): the text
+// tower pools the LAST slot of a 64-token padded sequence, so every text encode — core queries and
+// the smoke spec alike — must tokenize with `padding: 'max_length', max_length: SEARCH_TEXT_MAX_LENGTH`.
+// `padding: true` (batch-longest) or an unpadded single query pools the EOS slot instead and lands
+// in a non-aligned, near-orthogonal space the dim assert cannot catch.
+export const SEARCH_TEXT_MAX_LENGTH = 64
+
 // Cross-modal contract (SigLIP2 has NO projection layers): image and text embeddings must both be
 // the pooled output of their own tower, finalized by the SAME shared toEmbedding() below:
 //   image tower (worker): vision pooler_output from the image-feature-extraction pipeline (pool: true)
 //   text tower (P3, core): SiglipTextModel pooler_output — last_hidden_state[:, -1] through the
-//     learned head Linear inside text_model_int8.onnx.
+//     learned head Linear inside text_model_int8.onnx, with SEARCH_TEXT_MAX_LENGTH padding.
 // A feature-extraction pipeline's mean/CLS pooling silently drops that head and lands in a
 // different 768-d space the dim assert cannot catch.
 export function l2Normalize(vec: ArrayLike<number>): number[] {

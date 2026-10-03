@@ -3,7 +3,12 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import sharp from 'sharp'
 import { loadEnv } from '@photox/shared-config'
-import { SEARCH_EMBEDDING_DIM, SEARCH_EMBEDDING_MODEL, toEmbedding } from '@photox/shared-types'
+import {
+  SEARCH_EMBEDDING_DIM,
+  SEARCH_EMBEDDING_MODEL,
+  SEARCH_TEXT_MAX_LENGTH,
+  toEmbedding,
+} from '@photox/shared-types'
 import type { Tensor } from '@huggingface/transformers'
 import { EmbeddingService } from '../../src/queue/embedding.service'
 
@@ -36,7 +41,9 @@ describe.skipIf(!modelsPresent)('SigLIP2 cross-modal smoke', () => {
     //   const textModel = await SiglipTextModel.from_pretrained(SEARCH_EMBEDDING_MODEL, {
     //     dtype: 'int8', session_options: { intraOpNumThreads: 2 },
     //   })
-    //   const outputs = await textModel(tokenizer(texts, { padding: true, truncation: true }))
+    //   const outputs = await textModel(tokenizer(texts, {
+    //     padding: 'max_length', max_length: SEARCH_TEXT_MAX_LENGTH, truncation: true,
+    //   }))
     //   toEmbedding(outputs.pooler_output.data)  // learned head, NOT a mean/CLS pool
     const tokenizer = await AutoTokenizer.from_pretrained(SEARCH_EMBEDDING_MODEL)
     const textModel = await SiglipTextModel.from_pretrained(SEARCH_EMBEDDING_MODEL, {
@@ -46,7 +53,11 @@ describe.skipIf(!modelsPresent)('SigLIP2 cross-modal smoke', () => {
 
     const captions = ['a solid red square', 'a photograph of a cat', 'a snowy mountain landscape']
     const outputs = (await textModel(
-      tokenizer(captions, { padding: true, truncation: true }),
+      tokenizer(captions, {
+        padding: 'max_length',
+        max_length: SEARCH_TEXT_MAX_LENGTH,
+        truncation: true,
+      }),
     )) as Record<string, Tensor>
     const pooled = outputs.pooler_output!.data as Float32Array
     const textVecs = captions.map((_, i) =>
