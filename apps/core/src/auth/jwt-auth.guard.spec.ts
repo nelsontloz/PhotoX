@@ -11,6 +11,10 @@ function tokenFor(role: 'user' | 'admin' = 'user'): string {
   return jwt.sign({ sub: 'u1', email: 'u@example.com', role })
 }
 
+function workerTokenFor(role: 'user' | 'admin', sub = 'worker-service'): string {
+  return jwt.sign({ sub, email: 'worker@internal', role, act: { sub: 'worker-service' } })
+}
+
 function testContext(
   method: string,
   path: string,
@@ -152,6 +156,32 @@ describe('JwtAuthGuard', () => {
     })
     expect(guard.canActivate(context)).toBe(true)
     expect(req.user?.role).toBe('admin')
+  })
+
+  it('lets worker-actor admin tokens through on the allowlist', () => {
+    const auth = { authorization: `Bearer ${workerTokenFor('admin')}` }
+    const pass = (method: string, path: string) =>
+      guard.canActivate(testContext(method, path, auth).context)
+    expect(pass('DELETE', '/api/v1/admin/files/f1')).toBe(true)
+    expect(pass('POST', '/api/v1/admin/cleanup-orphans/run')).toBe(true)
+    expect(pass('GET', '/api/v1/admin/face-detection')).toBe(true)
+  })
+
+  it('rejects worker-actor admin tokens on non-allowlisted admin routes with 403', () => {
+    const auth = { authorization: `Bearer ${workerTokenFor('admin')}` }
+    const deny = (method: string, path: string) =>
+      expect(() => guard.canActivate(testContext(method, path, auth).context)).toThrow(
+        ForbiddenException,
+      )
+    deny('GET', '/api/v1/admin/users')
+    deny('PUT', '/api/v1/admin/face-detection')
+  })
+
+  it('lets worker-actor user tokens through on user routes', () => {
+    const { context } = testContext('GET', '/api/v1/assets', {
+      authorization: `Bearer ${workerTokenFor('user', 'u1')}`,
+    })
+    expect(guard.canActivate(context)).toBe(true)
   })
 
   it('lets non-admins through on normal routes', () => {
