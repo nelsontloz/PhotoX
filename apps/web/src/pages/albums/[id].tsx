@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   FaArrowLeft,
+  FaCheck,
   FaCircleExclamation,
   FaEllipsisVertical,
   FaPenToSquare,
   FaPhotoFilm,
   FaPlus,
+  FaShare,
   FaTrash,
 } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
@@ -17,6 +19,7 @@ import { AssetViewer } from '../../components/AssetViewer/AssetViewer'
 import { GalleryItem } from '../../components/GalleryItem'
 import { AlbumPickerDialog } from '../../components/AlbumPickerDialog'
 import { getAlbum, removeAssetFromAlbum } from '../../api/albums'
+import { createShare, getShareUrl } from '../../api/shares'
 import { useAlbumAssets } from '../../hooks/useAlbumAssets'
 import { useAlbums } from '../../hooks/useAlbums'
 import { useAssetNavigation } from '../../hooks/useAssetNavigation'
@@ -44,6 +47,7 @@ function AlbumDetailContent() {
   const [showMenu, setShowMenu] = useState(false)
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [shareStatus, setShareStatus] = useState<'copied' | 'error' | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const { update, remove } = useAlbums()
@@ -139,6 +143,21 @@ function AlbumDetailContent() {
     })()
   }
 
+  const handleShare = () => {
+    if (!id) return
+    setShowMenu(false)
+    void (async () => {
+      try {
+        const share = await createShare({ albumId: id })
+        await navigator.clipboard.writeText(getShareUrl(share.token))
+        setShareStatus('copied')
+      } catch {
+        setShareStatus('error')
+      }
+      setTimeout(() => setShareStatus(null), 2000)
+    })()
+  }
+
   if (albumNotFound) {
     return (
       <div className="max-w-6xl mx-auto">
@@ -203,6 +222,16 @@ function AlbumDetailContent() {
           {album.assetCount} {album.assetCount === 1 ? 'item' : 'items'}
         </span>
         <div className="flex items-center gap-2 ml-auto">
+          {shareStatus && (
+            <span
+              className={`inline-flex items-center gap-1.5 text-xs font-medium ${
+                shareStatus === 'copied' ? 'text-green-400' : 'text-red-400'
+              }`}
+            >
+              {shareStatus === 'copied' ? <FaCheck /> : <FaCircleExclamation />}
+              {shareStatus === 'copied' ? 'Link copied' : 'Could not copy link'}
+            </span>
+          )}
           <button
             onClick={() => setShowAddDialog(true)}
             className="bg-primary hover:bg-primary/90 text-white text-sm font-semibold px-3 py-1.5 rounded-md inline-flex items-center gap-1.5 transition-colors"
@@ -237,6 +266,13 @@ function AlbumDetailContent() {
                 >
                   <FaPenToSquare className="text-xs" />
                   Edit description
+                </button>
+                <button
+                  onClick={handleShare}
+                  className="w-full text-left px-3 py-2 text-sm text-slate-200 hover:bg-white/5 inline-flex items-center gap-2"
+                >
+                  <FaShare className="text-xs" />
+                  Share album
                 </button>
                 <div className="my-1 border-t border-border-dark" />
                 <button

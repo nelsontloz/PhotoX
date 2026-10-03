@@ -36,7 +36,13 @@ describe('shares JWT identity', () => {
       .set(t.authHeader(tokenA))
       .send({ assetId: asset.id })
     expect(res.status).toBe(201)
-    const body = res.body as unknown as { userId: string; assetId: string; token: string }
+    const body = res.body as unknown as {
+      kind: string
+      userId: string
+      assetId: string
+      token: string
+    }
+    expect(body.kind).toBe('asset')
     expect(body.userId).toBe(a.id)
     expect(body.assetId).toBe(asset.id)
     expect(typeof body.token).toBe('string')
@@ -64,8 +70,9 @@ describe('shares JWT identity', () => {
       .query({ userId: b.id })
       .set(t.authHeader(tokenA))
     expect(res.status).toBe(200)
-    const body = res.body as unknown as { items: { userId: string }[] }
+    const body = res.body as unknown as { items: { kind: string; userId: string }[] }
     expect(body.items).toHaveLength(1)
+    expect(body.items[0]?.kind).toBe('asset')
     expect(body.items[0]?.userId).toBe(a.id)
   })
 
@@ -135,6 +142,7 @@ describe('shares JWT identity', () => {
     const share = created.body as unknown as { token: string }
     const res = await request(apiServer(t)).get(`/api/share/${share.token}`)
     expect(res.status).toBe(200)
+    expect((res.body as { kind: string }).kind).toBe('asset')
   })
 
   it('returns 401 without token', async () => {

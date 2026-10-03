@@ -40,6 +40,8 @@ const CASES: [string, string, boolean][] = [
   ['POST', '/api/share/abc', true],
   ['GET', '/api/share/abc', true],
   ['GET', '/api/share/abc/stream', true],
+  ['GET', '/api/share/abc/assets', true],
+  ['GET', '/api/share/abc/assets/a1/stream', true],
   ['GET', '/api/v1/files/f1/stream', true],
   ['POST', '/api/v1/files/f1/stream', false],
   ['GET', '/api/v1/files/a/b/stream', false],

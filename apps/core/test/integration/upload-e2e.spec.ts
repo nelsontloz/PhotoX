@@ -25,7 +25,7 @@ import { User } from '../../src/users/entities/user.entity'
 import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
 import { Album } from '../../src/albums/entities/album.entity'
 import { AlbumAsset } from '../../src/albums/entities/album-asset.entity'
-import { AssetShare } from '../../src/shares/entities/asset-share.entity'
+import { Share } from '../../src/shares/entities/share.entity'
 import { AssetsModule } from '../../src/assets/assets.module'
 import { AlbumsModule } from '../../src/albums/albums.module'
 import { SharesModule } from '../../src/shares/shares.module'
@@ -65,7 +65,7 @@ const ENTITIES = [
   RefreshToken,
   Album,
   AlbumAsset,
-  AssetShare,
+  Share,
   FileRecord,
   Asset,
   AssetThumbnail,

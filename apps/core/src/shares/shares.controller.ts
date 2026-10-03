@@ -20,16 +20,17 @@ export class SharesController {
   constructor(private readonly shares: SharesService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a public share link for an asset' })
+  @ApiOperation({ summary: 'Create a public share link for an asset or an album' })
   @ApiResponse({ status: 201, description: 'Share created' })
-  @ApiResponse({ status: 404, description: 'Asset not found' })
+  @ApiResponse({ status: 400, description: 'Provide exactly one of assetId or albumId' })
+  @ApiResponse({ status: 404, description: 'Asset or album not found' })
   async create(@Body() dto: CreateShareDto, @Req() req: Request) {
     return this.shares.create((req.user as { id: string }).id, dto)
   }
 
   @Get()
   @ApiOperation({ summary: 'List all shares created by a user' })
-  @ApiResponse({ status: 200, description: 'Paginated share list' })
+  @ApiResponse({ status: 200, description: 'Share list' })
   async list(@Req() req: Request) {
     const userId = (req.user as { id: string }).id
     return this.shares.list(userId)

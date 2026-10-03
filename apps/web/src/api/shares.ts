@@ -1,8 +1,8 @@
 import { api } from './client'
-import type { AssetShareDto, ShareListResponse } from '@photox/shared-types'
+import type { CreateShareRequest, ShareDto, ShareListResponse } from '@photox/shared-types'
 
-export async function createShare(assetId: string): Promise<AssetShareDto> {
-  const { data } = await api.post<AssetShareDto>('/v1/shares', { assetId })
+export async function createShare(target: CreateShareRequest): Promise<ShareDto> {
+  const { data } = await api.post<ShareDto>('/v1/shares', target)
   return data
 }
 

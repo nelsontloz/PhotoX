@@ -24,7 +24,7 @@ import { User } from '../../src/users/entities/user.entity'
 import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
 import { Album } from '../../src/albums/entities/album.entity'
 import { AlbumAsset } from '../../src/albums/entities/album-asset.entity'
-import { AssetShare } from '../../src/shares/entities/asset-share.entity'
+import { Share } from '../../src/shares/entities/share.entity'
 import { AssetsModule } from '../../src/assets/assets.module'
 import { AlbumsModule } from '../../src/albums/albums.module'
 import { SharesModule } from '../../src/shares/shares.module'
@@ -56,7 +56,7 @@ export interface ApiTestApp {
   refreshRepo: Repository<RefreshToken>
   albumRepo: Repository<Album>
   albumAssetRepo: Repository<AlbumAsset>
-  shareRepo: Repository<AssetShare>
+  shareRepo: Repository<Share>
   fileRepo: Repository<FileRecord>
   assetRepo: Repository<Asset>
   thumbRepo: Repository<AssetThumbnail>
@@ -78,7 +78,7 @@ const ENTITIES = [
   RefreshToken,
   Album,
   AlbumAsset,
-  AssetShare,
+  Share,
   FileRecord,
   Asset,
   AssetThumbnail,
@@ -166,7 +166,7 @@ export async function createApiTestApp(opts?: {
       refreshRepo: app.get<Repository<RefreshToken>>(getRepositoryToken(RefreshToken)),
       albumRepo: app.get<Repository<Album>>(getRepositoryToken(Album)),
       albumAssetRepo: app.get<Repository<AlbumAsset>>(getRepositoryToken(AlbumAsset)),
-      shareRepo: app.get<Repository<AssetShare>>(getRepositoryToken(AssetShare)),
+      shareRepo: app.get<Repository<Share>>(getRepositoryToken(Share)),
       fileRepo: app.get<Repository<FileRecord>>(getRepositoryToken(FileRecord)),
       assetRepo: app.get<Repository<Asset>>(getRepositoryToken(Asset)),
       thumbRepo: app.get<Repository<AssetThumbnail>>(getRepositoryToken(AssetThumbnail)),
@@ -185,7 +185,7 @@ export async function createApiTestApp(opts?: {
 
 export async function resetDb(t: ApiTestApp): Promise<void> {
   await t.dataSource.query(
-    'TRUNCATE users, refresh_tokens, albums, album_assets, asset_shares, files, assets, asset_thumbnails, faces, persons, app_settings RESTART IDENTITY CASCADE',
+    'TRUNCATE users, refresh_tokens, albums, album_assets, shares, files, assets, asset_thumbnails, faces, persons, app_settings RESTART IDENTITY CASCADE',
   )
   rmSync(t.storageDir, { recursive: true, force: true })
   await t.storage.ensureDir()

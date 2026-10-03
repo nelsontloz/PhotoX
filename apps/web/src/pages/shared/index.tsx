@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react'
-import { FaUsers, FaTrash, FaCopy, FaCheck } from 'react-icons/fa6'
+import { FaUsers, FaTrash, FaCopy, FaCheck, FaPhotoFilm } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { useConfirm } from '../../components/ConfirmProvider'
 import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
 import { listShares, revokeShare, getShareUrl } from '../../api/shares'
 import { getVideoStreamUrl } from '../../api/assets'
-import type { AssetShareDto } from '@photox/shared-types'
+import type { ShareDto } from '@photox/shared-types'
 
 function SharedContent() {
   const confirm = useConfirm()
-  const [shares, setShares] = useState<AssetShareDto[]>([])
+  const [shares, setShares] = useState<ShareDto[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -32,14 +32,14 @@ function SharedContent() {
     void fetchShares()
   }, [])
 
-  const handleCopy = async (share: AssetShareDto) => {
+  const handleCopy = async (share: ShareDto) => {
     const url = getShareUrl(share.token)
     await navigator.clipboard.writeText(url)
     setCopiedId(share.id)
     setTimeout(() => setCopiedId(null), 2000)
   }
 
-  const handleRevoke = async (share: AssetShareDto) => {
+  const handleRevoke = async (share: ShareDto) => {
     if (
       !(await confirm({
         title: 'Revoke this share link?',
@@ -70,8 +70,8 @@ function SharedContent() {
       <EmptyState
         icon={<FaUsers className="text-4xl text-primary" />}
         circleClassName="bg-primary/10 dark:bg-primary/20 ring-1 ring-primary/20"
-        title="No shared photos yet"
-        body="Open a photo and tap the share icon to create a public link."
+        title="No shared links yet"
+        body="Open a photo or an album and use Share to create a public link."
       />
     )
   }
@@ -81,50 +81,62 @@ function SharedContent() {
       <header className="mb-8">
         <h1 className="text-3xl font-bold text-slate-100 tracking-tight">Shared</h1>
         <p className="text-sm text-slate-500 mt-1">
-          {shares.length} {shares.length === 1 ? 'link' : 'links'} active
+          {shares.length} active {shares.length === 1 ? 'link' : 'links'}
         </p>
       </header>
 
       <div className="space-y-3">
-        {shares.map((share) => (
-          <div
-            key={share.id}
-            className="flex items-center gap-4 bg-card-dark border border-border-dark rounded-lg px-4 py-3"
-          >
-            {share.assetThumbFileId && (
-              <img
-                src={getVideoStreamUrl(share.assetThumbFileId)}
-                alt=""
-                className="w-12 h-12 rounded object-cover bg-slate-800 shrink-0"
-              />
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-slate-200 font-medium truncate">
-                {share.assetId.slice(0, 8)}…
-              </p>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Shared {new Date(share.createdAt).toLocaleDateString()}
-              </p>
+        {shares.map((share) => {
+          const isAlbum = share.kind === 'album'
+          const thumbFileId = isAlbum ? share.albumCoverThumbFileId : share.assetThumbFileId
+          const sharedDate = new Date(share.createdAt).toLocaleDateString()
+          const subtitle = isAlbum
+            ? `${share.albumAssetCount} ${
+                share.albumAssetCount === 1 ? 'item' : 'items'
+              } · Shared ${sharedDate}`
+            : `Shared ${sharedDate}`
+          return (
+            <div
+              key={share.id}
+              className="flex items-center gap-4 bg-card-dark border border-border-dark rounded-lg px-4 py-3"
+            >
+              {thumbFileId ? (
+                <img
+                  src={getVideoStreamUrl(thumbFileId)}
+                  alt=""
+                  className="w-12 h-12 rounded object-cover bg-slate-800 shrink-0"
+                />
+              ) : isAlbum ? (
+                <div className="w-12 h-12 rounded bg-slate-800 shrink-0 flex items-center justify-center">
+                  <FaPhotoFilm className="text-slate-600" />
+                </div>
+              ) : null}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-slate-200 font-medium truncate">
+                  {isAlbum ? share.albumName : `${share.assetId.slice(0, 8)}…`}
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => void handleCopy(share)}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md transition-colors"
+                  title="Copy share link"
+                >
+                  {copiedId === share.id ? <FaCheck className="text-green-400" /> : <FaCopy />}
+                  {copiedId === share.id ? 'Copied' : 'Copy link'}
+                </button>
+                <button
+                  onClick={() => void handleRevoke(share)}
+                  className="p-1.5 text-slate-400 hover:text-red-400 transition-colors rounded-md hover:bg-red-500/10"
+                  title="Revoke share"
+                >
+                  <FaTrash className="text-sm" />
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => void handleCopy(share)}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md transition-colors"
-                title="Copy share link"
-              >
-                {copiedId === share.id ? <FaCheck className="text-green-400" /> : <FaCopy />}
-                {copiedId === share.id ? 'Copied' : 'Copy link'}
-              </button>
-              <button
-                onClick={() => void handleRevoke(share)}
-                className="p-1.5 text-slate-400 hover:text-red-400 transition-colors rounded-md hover:bg-red-500/10"
-                title="Revoke share"
-              >
-                <FaTrash className="text-sm" />
-              </button>
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

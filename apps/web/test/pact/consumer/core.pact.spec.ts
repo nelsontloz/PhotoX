@@ -155,6 +155,7 @@ const albumDto = MatchersV3.like({
 
 const shareDto = MatchersV3.like({
   id: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44',
+  kind: 'asset',
   assetId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
   userId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
   token: 'valid-share-token',
@@ -162,6 +163,32 @@ const shareDto = MatchersV3.like({
   assetThumbFileId: null,
   assetKind: 'photo',
   createdAt: '2024-01-01T00:00:00.000Z',
+})
+
+const albumShareDto = MatchersV3.like({
+  id: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a45',
+  kind: 'album',
+  userId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+  token: 'valid-album-share-token',
+  albumId: 'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33',
+  albumName: 'Trip 2024',
+  albumAssetCount: 1,
+  albumCoverThumbFileId: null,
+  createdAt: '2024-01-01T00:00:00.000Z',
+})
+
+const publicAssetDto = MatchersV3.like({
+  id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+  userId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+  kind: 'photo',
+  fileId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22',
+  title: null,
+  originalName: 'photo.jpg',
+  mimeType: 'image/jpeg',
+  width: 1920,
+  height: 1080,
+  durationSeconds: null,
+  takenAt: null,
 })
 
 const personDto = MatchersV3.like({
@@ -556,14 +583,14 @@ describe('Web → Core pact', () => {
       })
       .executeTest(async (mockserver) => {
         api.defaults.baseURL = mockserver.url + '/api'
-        const res = await createShare(ASSET_ID)
+        const res = await createShare({ assetId: ASSET_ID })
         expect(res.token).toBe('valid-share-token')
       })
   })
 
-  it('GET /api/v1/shares — list share links', async () => {
+  it('GET /api/v1/shares — list share links including an album', async () => {
     await provider
-      .uponReceiving('a request to list shares')
+      .uponReceiving('a request to list shares including an album')
       .withRequest({
         method: 'GET',
         path: '/api/v1/shares',
@@ -572,19 +599,31 @@ describe('Web → Core pact', () => {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
         body: MatchersV3.like({
-          items: MatchersV3.eachLike({
-            id: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44',
-            assetId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
-            token: 'valid-share-token',
-            assetKind: 'photo',
-            createdAt: '2024-01-01T00:00:00.000Z',
-          }),
+          items: [
+            MatchersV3.like({
+              id: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44',
+              kind: 'asset',
+              assetId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+              token: 'valid-share-token',
+              assetKind: 'photo',
+              createdAt: '2024-01-02T00:00:00.000Z',
+            }),
+            MatchersV3.like({
+              id: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a45',
+              kind: 'album',
+              albumId: 'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33',
+              albumName: 'Trip 2024',
+              albumAssetCount: 1,
+              token: 'valid-album-share-token',
+              createdAt: '2024-01-01T00:00:00.000Z',
+            }),
+          ],
         }),
       })
       .executeTest(async (mockserver) => {
         api.defaults.baseURL = mockserver.url + '/api'
         const res = await listShares()
-        expect(res.items.length).toBeGreaterThan(0)
+        expect(res.items.map((item) => item.kind)).toEqual(['asset', 'album'])
       })
   })
 
@@ -613,8 +652,10 @@ describe('Web → Core pact', () => {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
         body: MatchersV3.like({
+          kind: 'asset',
           share: {
             id: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44',
+            kind: 'asset',
             assetId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
             userId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
             token: 'valid-share-token',
@@ -628,7 +669,7 @@ describe('Web → Core pact', () => {
             userId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
             kind: 'photo',
             fileId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22',
-            title: 'My photo',
+            title: null,
             originalName: 'photo.jpg',
             mimeType: 'image/jpeg',
             width: 1920,
@@ -663,6 +704,89 @@ describe('Web → Core pact', () => {
         await expect(api.get('/share/revoked-share-token')).rejects.toMatchObject({
           response: { status: 404 },
         })
+      })
+  })
+
+  it('POST /api/v1/shares — create an album share link', async () => {
+    await provider
+      .uponReceiving('a request to create an album share')
+      .withRequest({
+        method: 'POST',
+        path: '/api/v1/shares',
+        headers: { 'Content-Type': 'application/json' },
+        body: { albumId: ALBUM_ID },
+      })
+      .willRespondWith({
+        status: 201,
+        headers: { 'Content-Type': 'application/json' },
+        body: albumShareDto,
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await createShare({ albumId: ALBUM_ID })
+        expect(res.kind).toBe('album')
+        expect(res.token).toBe('valid-album-share-token')
+      })
+  })
+
+  it('GET /api/share/:token — resolve a public album share', async () => {
+    await provider
+      .uponReceiving('a request to resolve a public album share')
+      .withRequest({
+        method: 'GET',
+        path: '/api/share/valid-album-share-token',
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: MatchersV3.like({
+          kind: 'album',
+          share: {
+            id: 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a45',
+            kind: 'album',
+            userId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+            token: 'valid-album-share-token',
+            albumId: 'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33',
+            albumName: 'Trip 2024',
+            albumAssetCount: 1,
+            albumCoverThumbFileId: null,
+            createdAt: '2024-01-01T00:00:00.000Z',
+          },
+          album: {
+            id: 'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33',
+            name: 'Trip 2024',
+            description: null,
+            assetCount: 1,
+          },
+        }),
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const { data } = await api.get('/share/valid-album-share-token')
+        expect(data.kind).toBe('album')
+        expect(data.album.id).toBe(ALBUM_ID)
+      })
+  })
+
+  it('GET /api/share/:token/assets — list public album assets', async () => {
+    await provider
+      .uponReceiving('a request to list the assets of a public album share')
+      .withRequest({
+        method: 'GET',
+        path: '/api/share/valid-album-share-token/assets',
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: MatchersV3.like({
+          items: MatchersV3.eachLike(publicAssetDto),
+        }),
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const { data } = await api.get('/share/valid-album-share-token/assets')
+        expect(data.items.length).toBeGreaterThan(0)
+        expect(data.items[0].kind).toBe('photo')
       })
   })
 
