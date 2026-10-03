@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { finalizeOcrText, OCR_MIN_CONFIDENCE } from './ocr.service'
+import { finalizeOcrText } from './ocr.service'
 
 describe('finalizeOcrText', () => {
   it('joins detected lines with \\n, trimming and dropping blanks', () => {
@@ -14,11 +14,10 @@ describe('finalizeOcrText', () => {
     expect(finalizeOcrText(' \n\t\n ', 0.99)).toBeNull()
   })
 
-  it('skips text below the mean-confidence floor and keeps it at the boundary', () => {
-    expect(finalizeOcrText('TOTAL 12.50', OCR_MIN_CONFIDENCE - 0.01)).toBeNull()
-    expect(finalizeOcrText('TOTAL 12.50', OCR_MIN_CONFIDENCE)).toEqual({
+  it('carries the mean confidence through — the floor is per-item inside the library', () => {
+    expect(finalizeOcrText('TOTAL 12.50', 0.42)).toEqual({
       text: 'TOTAL 12.50',
-      confidence: OCR_MIN_CONFIDENCE,
+      confidence: 0.42,
     })
   })
 })

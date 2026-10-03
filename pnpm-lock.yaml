@@ -257,7 +257,7 @@ importers:
         specifier: ^1.30.0
         version: 1.30.0
       ppu-paddle-ocr:
-        specifier: ^6.6.0
+        specifier: 6.6.0
         version: 6.6.0(onnxruntime-node@1.30.0)
       reflect-metadata:
         specifier: ^0.2.2

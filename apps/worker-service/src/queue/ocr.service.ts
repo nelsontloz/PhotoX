@@ -13,8 +13,9 @@ export const OCR_MODEL_DIR = 'pp-ocrv6-small'
 // cap would shrink large photos harder; 1600 keeps small print readable at ~31MB model cost
 export const OCR_MAX_DIM = 1600
 
-// ponytail: single mean-confidence floor — below it the row is mostly noise and the FTS index
-// would still match garbage. Upgrade: per-line confidence filtering once false positives show up.
+// ponytail: per-item drop_score handed to PaddleOCR's recognition (upstream convention: noise
+// reads 0.2-0.45, real text 0.65+), NOT a per-line filter — the library drops sub-threshold items
+// before we ever see them. Upgrade: tune once a corpus shows false positives/negatives.
 export const OCR_MIN_CONFIDENCE = 0.5
 
 export interface OcrExtract {
@@ -23,14 +24,15 @@ export interface OcrExtract {
 }
 
 // pure: normalize the library's concatenated text (one detected line per '\n'), trim/drop blank
-// lines, then apply the confidence floor. Exported for unit tests; null means "register nothing".
+// lines. The confidence floor is per item inside ppu-paddle-ocr, so this only rejects empty
+// output; the surviving mean confidence is carried through for the register payload.
 export function finalizeOcrText(text: string, confidence: number): OcrExtract | null {
   const normalized = text
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
     .join('\n')
-  if (normalized.length === 0 || confidence < OCR_MIN_CONFIDENCE) return null
+  if (normalized.length === 0) return null
   return { text: normalized, confidence }
 }
 
@@ -91,7 +93,9 @@ export class OcrService {
       image.byteOffset,
       image.byteOffset + image.byteLength,
     ) as ArrayBuffer
-    const result = await service.recognize(arrayBuffer)
+    const result = await service.recognize(arrayBuffer, {
+      minimumConfidence: OCR_MIN_CONFIDENCE,
+    })
     return finalizeOcrText(result.text, result.confidence)
   }
 }
