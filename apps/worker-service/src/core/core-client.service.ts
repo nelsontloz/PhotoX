@@ -52,6 +52,8 @@ export type MetadataPatch = Partial<
   status?: 'pending' | 'ready' | 'failed'
   // set by process-embeddings on failure; core's UpdateMetadataDto must whitelist it (sibling lane)
   embeddingStatus?: 'pending' | 'ready' | 'failed'
+  // 16-char lowercase dHash hex set by process-metadata; core's UpdateMetadataDto must whitelist it
+  phash?: string
 }
 
 export interface RegisterFileInput {

@@ -7,12 +7,14 @@ import type {
   EmbeddingReprocessLastRun,
   FaceReprocessLastRun,
   OcrReprocessLastRun,
+  PlacesBackfillLastRun,
 } from '../settings/settings.service'
 import { AdminAssetsService } from './admin-assets.service'
 import { AdminFacesService } from './admin-faces.service'
 import { AdminEmbeddingsService } from './admin-embeddings.service'
 import { AdminOcrService } from './admin-ocr.service'
 import { AdminDetectionsService } from './admin-detections.service'
+import { AdminPlacesService } from './admin-places.service'
 import { BullMqService } from '../queue/bullmq.service'
 
 class ReprocessThumbnailsDto {
@@ -30,6 +32,7 @@ export class AdminMaintenanceController {
     private readonly adminEmbeddings: AdminEmbeddingsService,
     private readonly adminOcr: AdminOcrService,
     private readonly adminDetections: AdminDetectionsService,
+    private readonly adminPlaces: AdminPlacesService,
   ) {}
 
   @Get('orphan-counts')
@@ -184,5 +187,22 @@ export class AdminMaintenanceController {
     queue: Record<string, number>
   }> {
     return this.adminDetections.status()
+  }
+
+  @Post('places/backfill')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Resolve place fields for all assets with coordinates and no city (admin-only)',
+  })
+  @ApiResponse({ status: 200, description: 'Place resolution counts and the run recorded' })
+  async backfillPlaces(): Promise<{ updated: number; total: number }> {
+    return this.adminPlaces.backfill()
+  }
+
+  @Get('places/backfill')
+  @ApiOperation({ summary: 'Places backfill last-run record' })
+  @ApiResponse({ status: 200, description: 'Last run record (null when never run)' })
+  async placesBackfillStatus(): Promise<{ lastRun: PlacesBackfillLastRun | null }> {
+    return this.adminPlaces.status()
   }
 }

@@ -89,6 +89,23 @@ describe('useAssetNavigation', () => {
     expect(result.current.params.get('asset')).toBe('a')
   })
 
+  it('opens an asset that is not in the loaded list (related strips)', () => {
+    const a = makeAsset('a')
+    const stray = makeAsset('stray')
+    const { result, rerender } = renderHook(
+      () => {
+        const nav = useAssetNavigation({ assets: [a] })
+        const [params] = useSearchParams()
+        return { nav, params }
+      },
+      { wrapper: makeWrapper('/') },
+    )
+    act(() => result.current.nav.open(stray))
+    rerender()
+    expect(result.current.params.get('asset')).toBe('stray')
+    expect(result.current.nav.selected?.id).toBe('stray')
+  })
+
   it('keeps open and close identity stable across rerenders', () => {
     const a = makeAsset('a')
     const { result, rerender } = renderHook(() => useAssetNavigation({ assets: [a] }), {

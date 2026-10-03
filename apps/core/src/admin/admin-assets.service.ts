@@ -5,6 +5,7 @@ import { readdir, stat } from 'fs/promises'
 import { join, relative } from 'path'
 import { loadEnv, LocalStorageService } from '@photox/shared-config'
 import { Asset, AssetThumbnail, FileRecord } from '../database/entities'
+import type { PlaceFields } from '../places/places-resolve.service'
 import type {
   AdminAssetCountsResponse,
   AdminAssetReprocessListResponse,
@@ -325,5 +326,40 @@ export class AdminAssetsService {
     ])
 
     return { items: rows, total }
+  }
+
+  countUnresolvedPlaces(): Promise<number> {
+    return this.repo
+      .createQueryBuilder('a')
+      .where('a.latitude IS NOT NULL')
+      .andWhere('a.longitude IS NOT NULL')
+      .andWhere('a."placeCity" IS NULL')
+      .getCount()
+  }
+
+  /**
+   * Keyset paging (id > afterId), not offset: successful backfill writes clear `placeCity` and
+   * shrink the matching set, which would make offset pages skip rows.
+   */
+  async listUnresolvedPlaces(
+    limit: number,
+    afterId: string | null,
+  ): Promise<{ items: { id: string; latitude: string; longitude: string }[] }> {
+    const qb = this.repo
+      .createQueryBuilder('a')
+      .select(['a.id AS id', 'a.latitude AS latitude', 'a.longitude AS longitude'])
+      .where('a.latitude IS NOT NULL')
+      .andWhere('a.longitude IS NOT NULL')
+      .andWhere('a."placeCity" IS NULL')
+      .orderBy('a.id', 'ASC')
+      .limit(limit)
+
+    if (afterId !== null) qb.andWhere('a.id > :afterId', { afterId })
+
+    return { items: await qb.getRawMany<{ id: string; latitude: string; longitude: string }>() }
+  }
+
+  async applyPlaceFields(id: string, fields: PlaceFields): Promise<void> {
+    await this.repo.update(id, fields)
   }
 }

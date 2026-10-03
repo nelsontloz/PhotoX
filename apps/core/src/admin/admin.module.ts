@@ -10,13 +10,16 @@ import { AdminFacesService } from './admin-faces.service'
 import { AdminEmbeddingsService } from './admin-embeddings.service'
 import { AdminOcrService } from './admin-ocr.service'
 import { AdminDetectionsService } from './admin-detections.service'
+import { AdminPlacesService } from './admin-places.service'
 import { AdminMaintenanceController } from './admin-maintenance.controller'
+import { PlacesModule } from '../places/places.module'
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Asset, FileRecord, AssetThumbnail]),
     StorageModule,
     SettingsModule,
+    PlacesModule,
   ],
   controllers: [AdminAssetsController, AdminMaintenanceController, AdminFacesController],
   providers: [
@@ -25,6 +28,7 @@ import { AdminMaintenanceController } from './admin-maintenance.controller'
     AdminEmbeddingsService,
     AdminOcrService,
     AdminDetectionsService,
+    AdminPlacesService,
   ],
 })
 export class AdminModule {}

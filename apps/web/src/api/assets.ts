@@ -10,6 +10,8 @@ interface ListAssetsParams {
   // half-open range on COALESCE(takenAt, uploadedAt) — the timeline's per-month window
   dateFrom?: string
   dateTo?: string
+  /** Comma-separated asset ids (max 100 per request), as documented by the list DTO. */
+  ids?: string
 }
 
 export async function listAssets(params: ListAssetsParams = {}): Promise<AssetListResponse> {
@@ -44,6 +46,20 @@ export async function listAllAssets(params: ListAssetsParams = {}): Promise<Asse
 export async function getAsset(assetId: string): Promise<Asset> {
   const { data } = await api.get<Asset>(`/v1/assets/${assetId}`)
   return data
+}
+
+const IDS_CHUNK_SIZE = 100
+
+/** Batch fetch by ids; one request carries at most 100 ids, so chunk and merge. */
+export async function listAssetsByIds(ids: string[]): Promise<Asset[]> {
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += IDS_CHUNK_SIZE) {
+    chunks.push(ids.slice(i, i + IDS_CHUNK_SIZE))
+  }
+  const pages = await Promise.all(
+    chunks.map((chunk) => listAssets({ ids: chunk.join(','), limit: chunk.length })),
+  )
+  return pages.flatMap((page) => page.items)
 }
 
 export async function getAssetLayout(): Promise<AssetLayout> {

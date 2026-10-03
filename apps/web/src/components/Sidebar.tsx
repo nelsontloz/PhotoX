@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import {
+  FaCalendarDays,
   FaClock,
   FaPhotoFilm,
   FaHeart,
@@ -16,6 +17,7 @@ export function Sidebar() {
 
   const navItems = [
     { to: '/', icon: FaClock, label: 'Timeline', end: true },
+    { to: '/events', icon: FaCalendarDays, label: 'Events' },
     { to: '/albums', icon: FaPhotoFilm, label: 'Albums' },
     { to: '/favorites', icon: FaHeart, label: 'Favorites' },
     { to: '/people', icon: FaFaceSmile, label: 'People' },

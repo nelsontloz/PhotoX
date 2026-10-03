@@ -15,6 +15,7 @@ export const FACE_REPROCESS_LAST_RUN_KEY = 'face.reprocess.lastRun'
 export const EMBEDDING_REPROCESS_LAST_RUN_KEY = 'embedding.reprocess.lastRun'
 export const OCR_REPROCESS_LAST_RUN_KEY = 'ocr.reprocess.lastRun'
 export const DETECTIONS_REPROCESS_LAST_RUN_KEY = 'detections.reprocess.lastRun'
+export const PLACES_BACKFILL_LAST_RUN_KEY = 'places.backfill.lastRun'
 
 export interface FaceReprocessLastRun {
   startedAt: string
@@ -40,6 +41,12 @@ export interface DetectionsReprocessLastRun {
   startedAt: string
   total: number
   enqueued: number
+}
+
+export interface PlacesBackfillLastRun {
+  startedAt: string
+  total: number
+  updated: number
 }
 
 function isFaceDetectorKind(value: unknown): value is FaceDetectorKind {
@@ -103,6 +110,19 @@ function parseDetectionsLastRun(value: unknown): DetectionsReprocessLastRun | nu
     return null
   }
   return { startedAt: row.startedAt, total: row.total, enqueued: row.enqueued }
+}
+
+function parsePlacesBackfillLastRun(value: unknown): PlacesBackfillLastRun | null {
+  if (typeof value !== 'object' || value === null) return null
+  const row = value as Record<string, unknown>
+  if (
+    typeof row.startedAt !== 'string' ||
+    typeof row.total !== 'number' ||
+    typeof row.updated !== 'number'
+  ) {
+    return null
+  }
+  return { startedAt: row.startedAt, total: row.total, updated: row.updated }
 }
 
 @Injectable()
@@ -170,6 +190,15 @@ export class SettingsService {
 
   async setDetectionsReprocessLastRun(run: DetectionsReprocessLastRun): Promise<void> {
     await this.repo.upsert({ key: DETECTIONS_REPROCESS_LAST_RUN_KEY, value: run }, ['key'])
+  }
+
+  async getPlacesBackfillLastRun(): Promise<PlacesBackfillLastRun | null> {
+    const row = await this.repo.findOne({ where: { key: PLACES_BACKFILL_LAST_RUN_KEY } })
+    return parsePlacesBackfillLastRun(row?.value)
+  }
+
+  async setPlacesBackfillLastRun(run: PlacesBackfillLastRun): Promise<void> {
+    await this.repo.upsert({ key: PLACES_BACKFILL_LAST_RUN_KEY, value: run }, ['key'])
   }
 
   private async countFacesByDetector(): Promise<FaceDetectionSettings['facesByDetector']> {

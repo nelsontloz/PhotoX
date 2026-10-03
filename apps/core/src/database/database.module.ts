@@ -74,6 +74,19 @@ const VECTOR_INIT_PROVIDER = {
             'asset_ocr full-text/trigram index creation failed — OCR search will fall back to scans',
           )
         }
+
+        try {
+          // offline reverse geocoding: nearest GeoNames city per asset coordinate
+          await dataSource.query('CREATE EXTENSION IF NOT EXISTS cube')
+          await dataSource.query('CREATE EXTENSION IF NOT EXISTS earthdistance')
+          await dataSource.query(
+            'CREATE INDEX IF NOT EXISTS places_earth_idx ON places USING gist (ll_to_earth(latitude, longitude))',
+          )
+        } catch {
+          new Logger('DatabaseModule').warn(
+            'cube/earthdistance extension or places GiST index creation failed — place resolution will be unavailable',
+          )
+        }
       },
     }
   },

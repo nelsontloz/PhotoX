@@ -22,6 +22,7 @@ import {
 import { AssetEmbedding } from '../../src/database/entities/asset-embedding.entity'
 import { AssetOcr } from '../../src/database/entities/asset-ocr.entity'
 import { AssetDetection } from '../../src/database/entities/asset-detection.entity'
+import { Place } from '../../src/database/entities/place.entity'
 import { LocalStorageService } from '@photox/shared-config'
 import { User } from '../../src/users/entities/user.entity'
 import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
@@ -37,6 +38,7 @@ import { EmbeddingsModule } from '../../src/embeddings/embeddings.module'
 import { SearchModule } from '../../src/search/search.module'
 import { OcrModule } from '../../src/ocr/ocr.module'
 import { DetectionsModule } from '../../src/detections/detections.module'
+import { GroupsModule } from '../../src/groups/groups.module'
 import { TextEncodeService } from '../../src/search/text-encode.service'
 import { UserFilesModule } from '../../src/files/user/user-files.module'
 import { StorageModule } from '../../src/files/storage/storage.module'
@@ -99,6 +101,7 @@ const ENTITIES = [
   AssetEmbedding,
   AssetOcr,
   AssetDetection,
+  Place,
 ]
 
 export async function createApiTestApp(opts?: {
@@ -142,6 +145,7 @@ export async function createApiTestApp(opts?: {
         SearchModule,
         OcrModule,
         DetectionsModule,
+        GroupsModule,
         UserFilesModule,
         AdminModule,
         FilesAdminModule,
@@ -218,7 +222,7 @@ export async function createApiTestApp(opts?: {
 
 export async function resetDb(t: ApiTestApp): Promise<void> {
   await t.dataSource.query(
-    'TRUNCATE users, refresh_tokens, albums, album_assets, shares, files, assets, asset_thumbnails, faces, persons, app_settings, asset_embeddings, asset_ocr, asset_detections RESTART IDENTITY CASCADE',
+    'TRUNCATE users, refresh_tokens, albums, album_assets, shares, files, assets, asset_thumbnails, faces, persons, app_settings, asset_embeddings, asset_ocr, asset_detections, places RESTART IDENTITY CASCADE',
   )
   rmSync(t.storageDir, { recursive: true, force: true })
   await t.storage.ensureDir()

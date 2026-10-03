@@ -124,7 +124,15 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
   )
 
   // stable identities: GalleryItem is memoized, so onSelect={nav.open} must not change per render
-  const open = useCallback((asset: Asset) => setAssetParam(asset.id), [setAssetParam])
+  const open = useCallback(
+    (asset: Asset) => {
+      // pin the asset so `selected` resolves it even when it isn't in this page's list
+      // (related strips can open any asset in the library)
+      resolvedRef.current.set(asset.id, asset)
+      setAssetParam(asset.id)
+    },
+    [setAssetParam],
+  )
   const close = useCallback(() => setAssetParam(null, true), [setAssetParam])
 
   const stepTo = (asset: Asset) => setAssetParam(asset.id, true)

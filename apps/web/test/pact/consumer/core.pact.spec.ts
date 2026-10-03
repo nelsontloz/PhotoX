@@ -27,9 +27,12 @@ import {
   getVideoStreamUrl,
   reprocessThumbnails as reprocessAssetThumbnails,
   reprocessVideo,
+  listAssetsByIds,
 } from '../../../src/api/assets'
 import { searchAssets } from '../../../src/api/search'
 import { getAssetDetections } from '../../../src/api/detections'
+import { getAssetDuplicates, getSimilarAssets } from '../../../src/api/related'
+import { listEventGroups } from '../../../src/api/events'
 import { createShare, listShares, revokeShare } from '../../../src/api/shares'
 import {
   listAlbums,
@@ -71,6 +74,7 @@ const provider = new PactV3({
 })
 
 const ASSET_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
+const ASSET_ID_2 = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a77'
 const FILE_ID = 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22'
 const ALBUM_ID = 'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33'
 const SHARE_ID = 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44'
@@ -146,6 +150,18 @@ const assetListResponse = MatchersV3.like({
 })
 
 const searchResponse = MatchersV3.like({
+  items: MatchersV3.eachLike({
+    id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+    kind: 'photo',
+    fileId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22',
+    isTrashed: false,
+    favorite: false,
+    thumbnailStatus: 'ready',
+  }),
+  total: 1,
+})
+
+const relatedResponse = MatchersV3.like({
   items: MatchersV3.eachLike({
     id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
     kind: 'photo',
@@ -1458,6 +1474,96 @@ describe('Web → Core pact', () => {
         const res = await getAssetDetections(ASSET_ID)
         expect(res.detections.length).toBeGreaterThan(0)
         expect(res.detections[0]?.label).toBe('dog')
+      })
+  })
+
+  it('GET /api/v1/assets/:id/similar — more like this', async () => {
+    await provider
+      .uponReceiving('a request to list assets similar to an asset')
+      .withRequest({
+        method: 'GET',
+        path: `/api/v1/assets/${ASSET_ID}/similar`,
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: relatedResponse,
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await getSimilarAssets(ASSET_ID)
+        expect(res.items.length).toBeGreaterThan(0)
+        expect(res.total).toBe(1)
+      })
+  })
+
+  it('GET /api/v1/assets/:id/duplicates — possible duplicates', async () => {
+    await provider
+      .uponReceiving('a request to list duplicate assets of an asset')
+      .withRequest({
+        method: 'GET',
+        path: `/api/v1/assets/${ASSET_ID}/duplicates`,
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: relatedResponse,
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await getAssetDuplicates(ASSET_ID)
+        expect(res.items.length).toBeGreaterThan(0)
+      })
+  })
+
+  it('GET /api/v1/events — grouped trips', async () => {
+    await provider
+      .uponReceiving('a request to list event groups')
+      .withRequest({
+        method: 'GET',
+        path: '/api/v1/events',
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: MatchersV3.like({
+          groups: MatchersV3.eachLike({
+            id: '2025-06-01T10:00:00.000Z_Paris',
+            label: 'Paris · Jun 2025',
+            takenFrom: '2025-06-01T10:00:00.000Z',
+            takenTo: '2025-06-05T18:00:00.000Z',
+            placeCity: 'Paris',
+            placeCountryCode: 'FR',
+            count: 24,
+            coverAssetId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+          }),
+        }),
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await listEventGroups()
+        expect(res.groups.length).toBeGreaterThan(0)
+        expect(res.groups[0]?.count).toBe(24)
+      })
+  })
+
+  it('GET /api/v1/assets?ids= — batch fetch assets by id', async () => {
+    await provider
+      .uponReceiving('a request to batch fetch assets by id')
+      .withRequest({
+        method: 'GET',
+        path: '/api/v1/assets',
+        query: { ids: `${ASSET_ID},${ASSET_ID_2}`, limit: '2' },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: assetListResponse,
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await listAssetsByIds([ASSET_ID, ASSET_ID_2])
+        expect(res.length).toBeGreaterThan(0)
       })
   })
 })

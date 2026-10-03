@@ -25,7 +25,8 @@ export async function setupTestInfra() {
     .start()
 
   // search ANN casts to halfvec — the extension must exist before any query runs (core's
-  // VECTOR_INIT bootstrap is not part of the test app's module graph)
+  // VECTOR_INIT bootstrap is not part of the test app's module graph); cube/earthdistance back
+  // the places reverse-geocoding KNN query
   await postgres.exec([
     'psql',
     '-U',
@@ -34,6 +35,10 @@ export async function setupTestInfra() {
     'photox',
     '-c',
     'CREATE EXTENSION IF NOT EXISTS vector',
+    '-c',
+    'CREATE EXTENSION IF NOT EXISTS cube',
+    '-c',
+    'CREATE EXTENSION IF NOT EXISTS earthdistance',
   ])
 
   const redisHost = redis.getHost()

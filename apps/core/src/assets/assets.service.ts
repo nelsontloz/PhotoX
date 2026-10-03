@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, DataSource, In } from 'typeorm'
 import { Asset } from '../database/entities'
@@ -11,6 +17,7 @@ import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
 import { UpdateMetadataDto } from './dto/update-metadata.dto'
 import { RegisterThumbnailDto } from './dto/register-thumbnail.dto'
 import { FacesService } from '../faces/faces.service'
+import { PlacesResolveService } from '../places/places-resolve.service'
 import { BullMqService } from '../queue/bullmq.service'
 import type {
   Asset as AssetResponse,
@@ -21,6 +28,8 @@ import type {
 
 @Injectable()
 export class AssetsService {
+  private readonly logger = new Logger(AssetsService.name)
+
   constructor(
     @InjectRepository(Asset)
     private readonly repo: Repository<Asset>,
@@ -29,6 +38,7 @@ export class AssetsService {
     private readonly dataSource: DataSource,
     private readonly facesService: FacesService,
     private readonly bullMq: BullMqService,
+    private readonly places: PlacesResolveService,
   ) {}
 
   async create(userId: string, dto: CreateAssetDto): Promise<AssetResponse> {
@@ -275,6 +285,10 @@ export class AssetsService {
   async updateMetadata(id: string, userId: string, dto: UpdateMetadataDto): Promise<AssetResponse> {
     const asset = await this.repo.findOne({ where: { id, userId } })
     if (!asset) throw new NotFoundException('Asset not found')
+    // phash is a plain column (spread maps it), but its format is semantic -> 422 like embeddings
+    if (dto.phash !== undefined && dto.phash !== null && !/^[0-9a-f]{16}$/.test(dto.phash)) {
+      throw new UnprocessableEntityException('phash must be 16 lowercase hex characters')
+    }
 
     // every UpdateMetadataDto field except `status` maps 1:1 to an Asset column; TypeORM
     // skips undefined values, so absent fields stay untouched
@@ -283,6 +297,23 @@ export class AssetsService {
     if (status !== undefined) {
       patch.metadataStatus = status
       patch.metadataExtractedAt = new Date()
+    }
+
+    // resolve place once, when this write brings coordinates and no city was resolved yet
+    if (
+      asset.placeCity === null &&
+      fields.latitude !== undefined &&
+      fields.longitude !== undefined
+    ) {
+      try {
+        // ponytail: per-write nearest-city lookup (indexed KNN); precompute/materialize per
+        // coordinate cell if it ever shows in slow-query logs
+        const place = await this.places.resolve(fields.latitude, fields.longitude)
+        if (place) Object.assign(patch, place)
+      } catch {
+        // geocoding must never fail a metadata write
+        this.logger.warn(`place resolution failed for asset ${id}`)
+      }
     }
 
     await this.repo.update(id, patch as Record<string, unknown>)
