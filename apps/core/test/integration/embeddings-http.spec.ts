@@ -11,9 +11,10 @@ import {
 } from './helpers'
 import type { ApiTestApp } from './helpers'
 
-const EMBEDDING_768 = Array.from({ length: SEARCH_EMBEDDING_DIM }, () => 0.1)
+const EMBEDDING_768 = Array.from({ length: SEARCH_EMBEDDING_DIM }, (_, i) => (i === 0 ? 1 : 0))
+const EMBEDDING_768_B = Array.from({ length: SEARCH_EMBEDDING_DIM }, (_, i) => (i === 1 ? 1 : 0))
 const BODY = { kind: 'image', model: SEARCH_EMBEDDING_MODEL, embedding: EMBEDDING_768 }
-const JOB_ID = (assetId: string) => `embed-${assetId}-${SEARCH_EMBEDDING_MODEL}`
+const JOB_ID = (assetId: string) => `embed-reprocess-${assetId}-${SEARCH_EMBEDDING_MODEL}`
 
 describe('asset embeddings HTTP', () => {
   let t: ApiTestApp
@@ -58,7 +59,9 @@ describe('asset embeddings HTTP', () => {
     expect(rows[0]?.kind).toBe('image')
     expect(rows[0]?.model).toBe(SEARCH_EMBEDDING_MODEL)
     expect(rows[0]?.embedding).toHaveLength(SEARCH_EMBEDDING_DIM)
-    expect(rows[0]?.embedding[0]).toBeCloseTo(0.1)
+    expect(rows[0]?.embedding[0]).toBeCloseTo(1)
+    // backfill filter `embeddingStatus = 'ready'` must find registered assets
+    expect((await t.assetRepo.findOneByOrFail({ id: asset.id })).embeddingStatus).toBe('ready')
   })
 
   it('upserts on (assetId, kind, model) instead of duplicating', async () => {
@@ -69,12 +72,11 @@ describe('asset embeddings HTTP', () => {
         .set(t.authHeader(token))
         .send({ ...BODY, embedding })
     expect((await post(EMBEDDING_768)).status).toBe(201)
-    const updated = EMBEDDING_768.map(() => 0.2)
-    expect((await post(updated)).status).toBe(201)
+    expect((await post(EMBEDDING_768_B)).status).toBe(201)
 
     const rows = await t.embeddingRepo.find({ where: { assetId: asset.id } })
     expect(rows).toHaveLength(1)
-    expect(rows[0]?.embedding[0]).toBeCloseTo(0.2)
+    expect(rows[0]?.embedding[1]).toBeCloseTo(1)
   })
 
   it('persists embeddingStatus through PATCH metadata', async () => {
@@ -94,6 +96,7 @@ describe('asset embeddings HTTP', () => {
     ['an unknown model', { ...BODY, model: 'clip-vit-b32' }],
     ['a 512-d face embedding', { ...BODY, embedding: Array.from({ length: 512 }, () => 0.1) }],
     ['a non-finite entry', { ...BODY, embedding: [NaN, ...EMBEDDING_768.slice(1)] }],
+    ['a scaled (non-unit) vector', { ...BODY, embedding: EMBEDDING_768.map((v) => v * 2) }],
   ])('422s %s without writing', async (_label, body) => {
     const { token, asset } = await seedOwnedAsset()
     const res = await request(apiServer(t))

@@ -28,6 +28,8 @@ export class EmbeddingsService {
       [{ assetId, kind: dto.kind, model: dto.model, embedding: dto.embedding }],
       ['assetId', 'kind', 'model'],
     )
+    // asset-level status so backfill can filter `embeddingStatus != 'ready'`; null = never embedded
+    await this.assetRepo.update({ id: assetId }, { embeddingStatus: 'ready' })
     return { ok: true }
   }
 
@@ -52,6 +54,11 @@ export class EmbeddingsService {
       throw new UnprocessableEntityException(
         `embedding must be ${SEARCH_EMBEDDING_DIM} finite numbers`,
       )
+    }
+    // pgvector ordering assumes unit vectors (ANN dot == cosine); the endpoint is a trust boundary
+    const norm = Math.hypot(...(embedding as number[]))
+    if (Math.abs(norm - 1) >= 0.01) {
+      throw new UnprocessableEntityException(`embedding must be unit-norm (got ${norm.toFixed(4)})`)
     }
   }
 

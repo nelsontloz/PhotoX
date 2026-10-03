@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SEARCH_EMBEDDING_DIM } from '@photox/shared-types'
-import { toEmbedding } from './embedding.service'
+import { SEARCH_EMBEDDING_DIM, toEmbedding } from '@photox/shared-types'
 
 describe('toEmbedding', () => {
   it('L2-normalizes a full-dim vector', () => {

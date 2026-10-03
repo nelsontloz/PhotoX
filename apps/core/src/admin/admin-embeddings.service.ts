@@ -17,9 +17,11 @@ export class AdminEmbeddingsService {
 
   /**
    * ponytail: `enqueued` counts requested jobs, not new Redis entries — `enqueue` swallows Redis
-   * failures, and an in-flight/completed `embed-<assetId>-<model>` jobId silently dedupes
-   * (BullMQ dedupes custom jobIds in any state). `removeOnComplete` drops completed jobs so a
-   * later run can re-enqueue the same asset.
+   * failures, and an in-flight/completed `embed-reprocess-<assetId>-<model>` jobId silently
+   * dedupes (BullMQ dedupes custom jobIds in any state). The `embed-reprocess-` prefix is
+   * deliberate: the upload path enqueues `embed-<assetId>-<model>`, so without it a first
+   * backfill would dedupe against every in-flight upload job and silently skip those assets.
+   * `removeOnComplete` drops completed jobs so a later run can re-enqueue the same asset.
    */
   async reprocess(): Promise<{ enqueued: number; total: number; model: string }> {
     const startedAt = new Date().toISOString()
@@ -36,7 +38,7 @@ export class AdminEmbeddingsService {
           'embed',
           { assetId: item.id, fileId: item.fileId, userId: item.userId, reason: 'reprocess' },
           {
-            jobId: `embed-${item.id}-${SEARCH_EMBEDDING_MODEL}`,
+            jobId: `embed-reprocess-${item.id}-${SEARCH_EMBEDDING_MODEL}`,
             attempts: 3,
             backoff: { type: 'exponential' },
             removeOnFail: true,

@@ -245,6 +245,32 @@ export const SEARCH_EMBEDDING_DIM = 768
 // (ANN over one row set must not mix models, so the predicate filters on it)
 export const SEARCH_EMBEDDING_MODEL = 'siglip2-b16-224'
 
+// Cross-modal contract (SigLIP2 has NO projection layers): image and text embeddings must both be
+// the pooled output of their own tower, finalized by the SAME shared toEmbedding() below:
+//   image tower (worker): vision pooler_output from the image-feature-extraction pipeline (pool: true)
+//   text tower (P3, core): SiglipTextModel pooler_output — last_hidden_state[:, -1] through the
+//     learned head Linear inside text_model_int8.onnx.
+// A feature-extraction pipeline's mean/CLS pooling silently drops that head and lands in a
+// different 768-d space the dim assert cannot catch.
+export function l2Normalize(vec: ArrayLike<number>): number[] {
+  const arr = Array.from(vec)
+  let norm = 0
+  for (const v of arr) norm += v * v
+  if (norm === 0) return arr
+  const scale = 1 / Math.sqrt(norm)
+  return arr.map((v) => v * scale)
+}
+
+// ponytail: one finalizer for every 768-d search tower — assert the shared dim, then L2-normalize
+// so ANN dot product == cosine similarity. Face embeddings (512-d) use l2Normalize directly.
+export function toEmbedding(raw: ArrayLike<number>): number[] {
+  const vec = Array.from(raw)
+  if (vec.length !== SEARCH_EMBEDDING_DIM) {
+    throw new Error(`Unexpected embedding dim ${vec.length}, expected ${SEARCH_EMBEDDING_DIM}`)
+  }
+  return l2Normalize(vec)
+}
+
 // Wire contract for POST /api/v1/assets/:id/embedding — the worker registers one image embedding
 // for the asset owner; kind/model/dim are enforced core-side with 422
 export interface RegisterEmbeddingRequestDto {

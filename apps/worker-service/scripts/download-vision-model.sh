@@ -7,7 +7,15 @@ set -euo pipefail
 FORCE=''
 if [ "${1:-}" = '--force' ]; then FORCE=1; fi
 
-MODELS_DIR="$(cd "$(dirname "$0")/../../.." && pwd)/data/storage/models"
+ROOT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+# shared-config anchors a relative STORAGE_DIR at the workspace root (core/worker run with
+# different cwds) — mirror that so custom dirs and compose/e2e (STORAGE_DIR=/data/storage) work
+STORAGE_DIR="${STORAGE_DIR:-data/storage}"
+case "$STORAGE_DIR" in
+  /*) ;;
+  *) STORAGE_DIR="$ROOT_DIR/$STORAGE_DIR" ;;
+esac
+MODELS_DIR="$STORAGE_DIR/models"
 DEST_DIR="$MODELS_DIR/siglip2-b16-224"
 BASE_URL="${SIGLIP_MODEL_URL:-https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/main}"
 

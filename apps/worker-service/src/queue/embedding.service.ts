@@ -2,23 +2,8 @@ import { Injectable, Logger } from '@nestjs/common'
 import { access } from 'fs/promises'
 import { join } from 'path'
 import { loadEnv } from '@photox/shared-config'
-import { SEARCH_EMBEDDING_DIM, SEARCH_EMBEDDING_MODEL } from '@photox/shared-types'
+import { SEARCH_EMBEDDING_MODEL, toEmbedding } from '@photox/shared-types'
 import type { ImageFeatureExtractionPipeline } from '@huggingface/transformers'
-import { l2Normalize } from './face.embedder'
-
-// ponytail: int8 SigLIP2-B/16-224 ONNX weights are provisioned by
-// `pnpm --filter @photox/worker-service vision-model` into STORAGE_DIR/models/<model id>/ —
-// offline-only at runtime, never committed.
-export function toEmbedding(raw: ArrayLike<number>): number[] {
-  const vec = Array.from(raw)
-  if (vec.length !== SEARCH_EMBEDDING_DIM) {
-    throw new Error(
-      `Unexpected vision embedding dim ${vec.length}, expected ${SEARCH_EMBEDDING_DIM}`,
-    )
-  }
-  // L2-normalized so ANN dot product == cosine similarity (matches P3 text encoding)
-  return l2Normalize(vec)
-}
 
 @Injectable()
 export class EmbeddingService {
@@ -30,7 +15,12 @@ export class EmbeddingService {
   }
 
   private load(): Promise<ImageFeatureExtractionPipeline> {
-    this.pipelinePromise ??= this.createPipeline()
+    // ponytail: reset on rejection — the first jobs can run before vision-model is provisioned
+    // and must not poison every later job until a worker restart
+    this.pipelinePromise ??= this.createPipeline().catch((err: unknown) => {
+      this.pipelinePromise = null
+      throw err
+    })
     return this.pipelinePromise
   }
 
@@ -52,6 +42,9 @@ export class EmbeddingService {
     env.localModelPath = join(loadEnv().STORAGE_DIR, 'models')
     env.allowRemoteModels = false
 
+    // ponytail: transformers 4.3.0 has no SigLIP2-specific classes — this works only because the
+    // onnx-community export shims model_type 'siglip', so the task mapping resolves the v1
+    // SiglipVisionModel. Verify class selection if the model repo or transformers major changes.
     const pipe = await pipeline('image-feature-extraction', SEARCH_EMBEDDING_MODEL, {
       dtype: 'int8',
       // ponytail: 2 ORT threads instead of the all-cores default — SCRFD/ArcFace sessions are
