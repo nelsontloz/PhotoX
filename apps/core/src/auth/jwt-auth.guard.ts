@@ -9,7 +9,7 @@ import { JwtService } from '@nestjs/jwt'
 import type { Request } from 'express'
 import { loadEnv } from '@photox/shared-config'
 import type { JwtPayload, Role } from '@photox/shared-types'
-import { isAdminRoute, isOpenRoute } from './open-routes'
+import { isAdminRoute, isOpenRoute, isWorkerAllowedRoute } from './open-routes'
 
 declare global {
   // ponytail: replaces the passport Request.user augmentation removed with passport
@@ -57,6 +57,10 @@ export class JwtAuthGuard implements CanActivate {
     const user = { id: payload.sub, email: payload.email, role: payload.role }
     req.user = user
     if (isAdminRoute(path) && user.role !== 'admin') throw new ForbiddenException('Admin only')
+    // worker-actor tokens (act claim, RFC 8693) are locked to an explicit admin allowlist;
+    // user routes stay governed by ordinary ownership checks
+    if (payload.act && isAdminRoute(path) && !isWorkerAllowedRoute(method, path))
+      throw new ForbiddenException('Not allowed for service tokens')
     return true
   }
 }

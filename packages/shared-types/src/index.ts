@@ -32,6 +32,9 @@ export interface JwtPayload {
   iat: number
   exp: number
   jti?: string
+  // RFC 8693 actor claim — present only on worker-minted tokens; core's guard locks
+  // act-carrying tokens to the admin-route allowlist in auth/open-routes.ts
+  act?: { sub: string }
 }
 
 export interface AuthResponse {

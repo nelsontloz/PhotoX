@@ -117,7 +117,9 @@ export class CoreClient {
   // never needs DB access; 2b passes role 'admin' with sub 'worker-service' for cleanup
   private signToken(sub: string, role: Role): string {
     return this.jwt.sign(
-      { sub, email: 'worker@internal', role },
+      // act (RFC 8693) marks every token as worker-origin — core's guard only lets act
+      // tokens reach the admin allowlist in core's auth/open-routes.ts
+      { sub, email: 'worker@internal', role, act: { sub: 'worker-service' } },
       {
         algorithm: 'HS256',
         expiresIn: loadEnv().AUTH_ACCESS_TTL as JwtSignOptions['expiresIn'],

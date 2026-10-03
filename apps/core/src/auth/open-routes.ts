@@ -11,3 +11,15 @@ export function isOpenRoute(method: string, path: string): boolean {
 export function isAdminRoute(path: string): boolean {
   return path === '/api/v1/admin' || path.startsWith('/api/v1/admin/')
 }
+
+// The only admin routes a worker-minted token (act claim present) may reach — everything
+// else under /api/v1/admin/* stays human-admin only. Matches the worker's CoreClient.
+const WORKER_ADMIN_ROUTES: [string, RegExp][] = [
+  ['DELETE', /^\/api\/v1\/admin\/files\/[^/]+$/],
+  ['POST', /^\/api\/v1\/admin\/cleanup-orphans\/run$/],
+  ['GET', /^\/api\/v1\/admin\/face-detection$/],
+]
+
+export function isWorkerAllowedRoute(method: string, path: string): boolean {
+  return WORKER_ADMIN_ROUTES.some(([m, re]) => m === method && re.test(path))
+}

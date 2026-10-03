@@ -46,7 +46,12 @@ describe('CoreClient', () => {
       iat: number
       exp: number
     }>(token)
-    expect(payload).toMatchObject({ sub: 'user-1', email: 'worker@internal', role: 'user' })
+    expect(payload).toMatchObject({
+      sub: 'user-1',
+      email: 'worker@internal',
+      role: 'user',
+      act: { sub: 'worker-service' },
+    })
     expect(payload.exp).toBeGreaterThan(payload.iat)
   })
 
@@ -177,7 +182,11 @@ describe('CoreClient', () => {
       sub: string
       role: string
     }>(token)
-    expect(payload).toMatchObject({ sub: 'worker-service', role: 'admin' })
+    expect(payload).toMatchObject({
+      sub: 'worker-service',
+      role: 'admin',
+      act: { sub: 'worker-service' },
+    })
   })
 
   it('runs the inline orphan cleanup with a 120s timeout and no body', async () => {
@@ -214,6 +223,10 @@ describe('CoreClient', () => {
       sub: string
       role: string
     }>(token)
-    expect(payload).toMatchObject({ sub: 'worker-service', role: 'admin' })
+    expect(payload).toMatchObject({
+      sub: 'worker-service',
+      role: 'admin',
+      act: { sub: 'worker-service' },
+    })
   })
 })
