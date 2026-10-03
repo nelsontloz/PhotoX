@@ -14,7 +14,7 @@ export async function setupTestInfra() {
     .withExposedPorts(6379)
     .start()
 
-  postgres = await new GenericContainer('postgres:16-alpine')
+  postgres = await new GenericContainer('pgvector/pgvector:0.8.7-pg16')
     .withName(`api-pg-${hash}`)
     .withExposedPorts(5432)
     .withEnvironment({
@@ -23,6 +23,18 @@ export async function setupTestInfra() {
       POSTGRES_DB: 'photox',
     })
     .start()
+
+  // search ANN casts to halfvec — the extension must exist before any query runs (core's
+  // VECTOR_INIT bootstrap is not part of the test app's module graph)
+  await postgres.exec([
+    'psql',
+    '-U',
+    'photox',
+    '-d',
+    'photox',
+    '-c',
+    'CREATE EXTENSION IF NOT EXISTS vector',
+  ])
 
   const redisHost = redis.getHost()
   const redisPort = redis.getMappedPort(6379)

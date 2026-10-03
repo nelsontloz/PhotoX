@@ -106,14 +106,28 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
   const hasPrev = currentIndex > 0 || beyond('prev')
   const hasNext = (currentIndex >= 0 && currentIndex < allAssets.length - 1) || beyond('next')
 
-  // stable identities: GalleryItem is memoized, so onSelect={nav.open} must not change per render
-  const open = useCallback(
-    (asset: Asset) => setSearchParams({ asset: asset.id }),
+  // Only `asset` is ours — preserve every other param (e.g. the search page's ?q=), so opening
+  // or closing the viewer never drops the page's own query state.
+  const setAssetParam = useCallback(
+    (assetId: string | null, replace = false) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          if (assetId) next.set('asset', assetId)
+          else next.delete('asset')
+          return next
+        },
+        { replace },
+      )
+    },
     [setSearchParams],
   )
-  const close = useCallback(() => setSearchParams({}, { replace: true }), [setSearchParams])
 
-  const stepTo = (asset: Asset) => setSearchParams({ asset: asset.id }, { replace: true })
+  // stable identities: GalleryItem is memoized, so onSelect={nav.open} must not change per render
+  const open = useCallback((asset: Asset) => setAssetParam(asset.id), [setAssetParam])
+  const close = useCallback(() => setAssetParam(null, true), [setAssetParam])
+
+  const stepTo = (asset: Asset) => setAssetParam(asset.id, true)
 
   const step = (dir: NavDirection) => {
     if (dir === 'prev' ? !hasPrev : !hasNext) return
@@ -151,7 +165,7 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
     if (!(await confirm({ title: `Move "${label}" to trash?`, destructive: true }))) return
     try {
       await trashAsset(selected.id)
-      setSearchParams({}, { replace: true })
+      close()
       await opts.onAfterAction?.()
     } catch {
       window.alert('Failed to move to trash. Please try again.')
@@ -162,7 +176,7 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
     if (!selected) return
     try {
       await restoreAsset(selected.id)
-      setSearchParams({}, { replace: true })
+      close()
       await opts.onAfterAction?.()
     } catch {
       window.alert('Failed to restore. Please try again.')
@@ -184,7 +198,7 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
       return
     try {
       await deleteAsset(selected.id)
-      setSearchParams({}, { replace: true })
+      close()
       await opts.onAfterAction?.()
     } catch {
       window.alert('Failed to permanently delete. Please try again.')

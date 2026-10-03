@@ -100,6 +100,27 @@ describe('useAssetNavigation', () => {
     expect(result.current.close).toBe(close)
   })
 
+  it('open and close preserve unrelated params (search ?q=)', () => {
+    const a = makeAsset('a')
+    const { result, rerender } = renderHook(
+      () => {
+        const nav = useAssetNavigation({ assets: [a] })
+        const [params] = useSearchParams()
+        return { nav, params }
+      },
+      { wrapper: makeWrapper('/search?q=beach') },
+    )
+    act(() => result.current.nav.open(a))
+    rerender()
+    expect(result.current.params.get('q')).toBe('beach')
+    expect(result.current.params.get('asset')).toBe('a')
+
+    act(() => result.current.nav.close())
+    rerender()
+    expect(result.current.params.get('q')).toBe('beach')
+    expect(result.current.params.get('asset')).toBeNull()
+  })
+
   it('close clears the asset param', () => {
     const a = makeAsset('a')
     const { result, rerender } = renderHook(

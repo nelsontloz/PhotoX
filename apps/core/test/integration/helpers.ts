@@ -20,6 +20,7 @@ import {
   AppSetting,
 } from '../../src/database/entities'
 import { AssetEmbedding } from '../../src/database/entities/asset-embedding.entity'
+import { AssetOcr } from '../../src/database/entities/asset-ocr.entity'
 import { LocalStorageService } from '@photox/shared-config'
 import { User } from '../../src/users/entities/user.entity'
 import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
@@ -32,6 +33,8 @@ import { SharesModule } from '../../src/shares/shares.module'
 import { PersonsModule } from '../../src/persons/persons.module'
 import { FacesModule } from '../../src/faces/faces.module'
 import { EmbeddingsModule } from '../../src/embeddings/embeddings.module'
+import { SearchModule } from '../../src/search/search.module'
+import { TextEncodeService } from '../../src/search/text-encode.service'
 import { UserFilesModule } from '../../src/files/user/user-files.module'
 import { StorageModule } from '../../src/files/storage/storage.module'
 import { AdminModule } from '../../src/admin/admin.module'
@@ -65,6 +68,7 @@ export interface ApiTestApp {
   faceRepo: Repository<Face>
   personRepo: Repository<Person>
   embeddingRepo: Repository<AssetEmbedding>
+  ocrRepo: Repository<AssetOcr>
   getQueue: (name: string) => Queue
   signToken: (user: MockUser, opts?: { act?: boolean }) => string
   authHeader: (token: string) => Record<string, string>
@@ -89,11 +93,14 @@ const ENTITIES = [
   Person,
   AppSetting,
   AssetEmbedding,
+  AssetOcr,
 ]
 
 export async function createApiTestApp(opts?: {
   mockUser?: MockUser | null
   storageDir?: string
+  /** stubs TextEncodeService so search specs never need the real ONNX text tower */
+  encodeQuery?: (q: string) => Promise<number[]>
 }): Promise<ApiTestApp> {
   const mockUser = opts?.mockUser === undefined ? DEFAULT_MOCK_USER : opts.mockUser
   const { pgHost, pgPort } = await setupTestInfra()
@@ -127,11 +134,16 @@ export async function createApiTestApp(opts?: {
         PersonsModule,
         FacesModule,
         EmbeddingsModule,
+        SearchModule,
         UserFilesModule,
         AdminModule,
         FilesAdminModule,
       ],
     })
+
+    if (opts?.encodeQuery) {
+      builder.overrideProvider(TextEncodeService).useValue({ encode: opts.encodeQuery })
+    }
 
     if (mockUser !== null) {
       const current: MockUser = mockUser
@@ -184,6 +196,7 @@ export async function createApiTestApp(opts?: {
       faceRepo: app.get<Repository<Face>>(getRepositoryToken(Face)),
       personRepo: app.get<Repository<Person>>(getRepositoryToken(Person)),
       embeddingRepo: app.get<Repository<AssetEmbedding>>(getRepositoryToken(AssetEmbedding)),
+      ocrRepo: app.get<Repository<AssetOcr>>(getRepositoryToken(AssetOcr)),
       getQueue: (name: string) => bullMq.getQueue(name),
       signToken,
       authHeader,
@@ -197,7 +210,7 @@ export async function createApiTestApp(opts?: {
 
 export async function resetDb(t: ApiTestApp): Promise<void> {
   await t.dataSource.query(
-    'TRUNCATE users, refresh_tokens, albums, album_assets, shares, files, assets, asset_thumbnails, faces, persons, app_settings, asset_embeddings RESTART IDENTITY CASCADE',
+    'TRUNCATE users, refresh_tokens, albums, album_assets, shares, files, assets, asset_thumbnails, faces, persons, app_settings, asset_embeddings, asset_ocr RESTART IDENTITY CASCADE',
   )
   rmSync(t.storageDir, { recursive: true, force: true })
   await t.storage.ensureDir()

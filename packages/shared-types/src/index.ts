@@ -136,6 +136,12 @@ export interface AssetListResponse {
   offset: number
 }
 
+// GET /api/v1/search response — items reuse the list-assets Asset shape verbatim
+export interface SearchResponse {
+  items: Asset[]
+  total: number
+}
+
 export interface AssetLayoutItem {
   t: string
   w: number

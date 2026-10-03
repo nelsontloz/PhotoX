@@ -28,6 +28,7 @@ import {
   reprocessThumbnails as reprocessAssetThumbnails,
   reprocessVideo,
 } from '../../../src/api/assets'
+import { searchAssets } from '../../../src/api/search'
 import { createShare, listShares, revokeShare } from '../../../src/api/shares'
 import {
   listAlbums,
@@ -141,6 +142,18 @@ const assetListResponse = MatchersV3.like({
   total: 1,
   limit: 20,
   offset: 0,
+})
+
+const searchResponse = MatchersV3.like({
+  items: MatchersV3.eachLike({
+    id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+    kind: 'photo',
+    fileId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22',
+    isTrashed: false,
+    favorite: false,
+    thumbnailStatus: 'ready',
+  }),
+  total: 1,
 })
 
 const albumDto = MatchersV3.like({
@@ -357,6 +370,27 @@ describe('Web → Core pact', () => {
         api.defaults.baseURL = mockserver.url + '/api'
         const res = await listAssets({ limit: 50, offset: 0, dateFrom, dateTo })
         expect(res.items.length).toBeGreaterThan(0)
+      })
+  })
+
+  it('GET /api/v1/search — search assets', async () => {
+    await provider
+      .uponReceiving('a request to search assets')
+      .withRequest({
+        method: 'GET',
+        path: '/api/v1/search',
+        query: { q: 'beach', limit: '50', offset: '0' },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: searchResponse,
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await searchAssets({ q: 'beach', limit: 50, offset: 0 })
+        expect(res.items.length).toBeGreaterThan(0)
+        expect(res.total).toBe(1)
       })
   })
 

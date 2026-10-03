@@ -111,6 +111,30 @@ export class AssetsService {
     }
   }
 
+  /**
+   * Fetch + serialize assets in the caller-provided id order (search fusion ranking), skipping
+   * ids that are gone/trashed/foreign. Same wire shape as `list` via `toResponse`.
+   */
+  async listByIdsRanked(userId: string, ids: string[]): Promise<AssetResponse[]> {
+    if (ids.length === 0) return []
+    const assets = await this.repo.find({ where: { id: In(ids), userId, isTrashed: false } })
+    const thumbRows = await this.thumbRepo.find({
+      where: { assetId: In(ids) },
+      order: { createdAt: 'ASC' },
+    })
+    const byId = new Map(assets.map((a) => [a.id, a]))
+    const thumbsByAsset = new Map<string, AssetThumbnail[]>()
+    for (const row of thumbRows) {
+      const list = thumbsByAsset.get(row.assetId) ?? []
+      list.push(row)
+      thumbsByAsset.set(row.assetId, list)
+    }
+    return ids.flatMap((id) => {
+      const asset = byId.get(id)
+      return asset ? [this.toResponse(asset, thumbsByAsset.get(id) ?? [])] : []
+    })
+  }
+
   async layout(userId: string): Promise<AssetLayout> {
     const rows = await this.repo
       .createQueryBuilder('asset')

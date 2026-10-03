@@ -15,6 +15,7 @@
     "test:pact:provider": "vitest run --config vitest.pact.config.ts"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.3.0",
     "@nestjs/common": "^11.2.6",
     "@nestjs/core": "^11.2.6",
     "@nestjs/jwt": "^11.0.2",
