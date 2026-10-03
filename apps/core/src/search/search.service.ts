@@ -14,7 +14,8 @@ import type { SearchQueryDto } from './dto/search-query.dto'
 
 const DEFAULT_LIMIT = 20
 // 2N candidates per branch (N = limit + offset): enough to survive fusion demotions and offset
-// paging without scanning the whole library; HNSW's default ef_search=40 covers the usual 2N.
+// paging without scanning the whole library. The ANN branch raises hnsw.ef_search to match (see
+// annIds) — HNSW scans cap at ef_search rows, so LIMIT alone under-delivers past 40.
 const BRANCH_MULTIPLIER = 2
 // ponytail: routed assets (person/place) are bonus-only, so cap the fan-out — a person with a
 // 10k-photo library would otherwise put every one of them in the fused list
@@ -54,17 +55,24 @@ export class SearchService {
   }
 
   private async annIds(userId: string, vector: number[], limit: number): Promise<string[]> {
-    const rows: { id: string }[] = await this.dataSource.query(
-      `SELECT ae."assetId" AS id
-       FROM asset_embeddings ae
-       JOIN assets a ON a.id = ae."assetId"
-       WHERE a."userId" = $1 AND a."isTrashed" = false
-         AND ae.kind = 'image' AND ae.model = $2
-       ORDER BY ae.embedding::halfvec(${SEARCH_EMBEDDING_DIM}) <=> $3::halfvec(${SEARCH_EMBEDDING_DIM})
-       LIMIT $4`,
-      [userId, SEARCH_EMBEDDING_MODEL, toSql(vector), limit],
-    )
-    return rows.map((r) => r.id)
+    // HNSW returns ~ef_search rows per scan (iterative scans off in pgvector 0.8.x), so LIMIT
+    // under-delivers once 2N > 40 — raise it locally for this transaction, capped at 200.
+    return this.dataSource.transaction(async (em) => {
+      await em.query(`SELECT set_config('hnsw.ef_search', $1, true)`, [
+        String(Math.min(limit, 200)),
+      ])
+      const rows: { id: string }[] = await em.query(
+        `SELECT ae."assetId" AS id
+         FROM asset_embeddings ae
+         JOIN assets a ON a.id = ae."assetId"
+         WHERE a."userId" = $1 AND a."isTrashed" = false
+           AND ae.kind = 'image' AND ae.model = $2
+         ORDER BY ae.embedding::halfvec(${SEARCH_EMBEDDING_DIM}) <=> $3::halfvec(${SEARCH_EMBEDDING_DIM})
+         LIMIT $4`,
+        [userId, SEARCH_EMBEDDING_MODEL, toSql(vector), limit],
+      )
+      return rows.map((r) => r.id)
+    })
   }
 
   private async ftsIds(userId: string, query: string, limit: number): Promise<string[]> {
@@ -117,11 +125,14 @@ export class SearchService {
 
   private async assetsForPersons(userId: string, personIds: string[]): Promise<string[]> {
     const rows: { id: string }[] = await this.dataSource.query(
+      // $3 repeats userId for faces: faces."userId" is uuid while assets."userId" is varchar
+      // (TypeORM @Column() default), so sharing $1 would conflict parameter type inference
       `SELECT DISTINCT f."assetId" AS id
        FROM faces f
        JOIN assets a ON a.id = f."assetId"
-       WHERE f."userId" = $1 AND a."isTrashed" = false AND f."personId" = ANY($2::uuid[])`,
-      [userId, personIds],
+       WHERE a."userId" = $1 AND a."isTrashed" = false
+         AND f."userId" = $3 AND f."personId" = ANY($2::uuid[])`,
+      [userId, personIds, userId],
     )
     return rows.map((r) => r.id)
   }
