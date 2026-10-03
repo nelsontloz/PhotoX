@@ -106,6 +106,25 @@ export class Asset {
   @Column({ type: 'numeric', precision: 9, scale: 3, nullable: true })
   altitude!: number | null
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  placeCity!: string | null
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  placeAdmin1!: string | null
+
+  @Column({ type: 'varchar', length: 2, nullable: true })
+  placeCountryCode!: string | null
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  placeTimezone!: string | null
+
+  @Column({ type: 'real', nullable: true })
+  placeDistanceKm!: number | null
+
+  // 64-bit dHash as hex string; queries cast (phash::bit(64))
+  @Column({ type: 'text', nullable: true })
+  phash!: string | null
+
   @Column({ type: 'numeric', nullable: true })
   fps!: number | null
 

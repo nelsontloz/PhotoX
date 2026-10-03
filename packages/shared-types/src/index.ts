@@ -238,6 +238,13 @@ export interface AdminLibraryStatsResponse {
 // detector output, DTO validation, cluster filters, and the HNSW index cast all reference this
 export const FACE_EMBEDDING_DIM = 512
 
+// SigLIP2-B/16 image embeddings — entity transformer, index cast and query code share this
+export const SEARCH_EMBEDDING_DIM = 768
+
+// SigLIP2-B/16 ONNX model id; the bootstrap partial HNSW index DDL hardcodes this same literal
+// (ANN over one row set must not mix models, so the predicate filters on it)
+export const SEARCH_EMBEDDING_MODEL = 'siglip2-b16-224'
+
 export const FACE_DETECTOR_KINDS = ['human', 'scrfd'] as const
 export type FaceDetectorKind = (typeof FACE_DETECTOR_KINDS)[number]
 
