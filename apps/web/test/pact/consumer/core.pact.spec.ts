@@ -63,6 +63,8 @@ import {
   reprocessFaces,
   getFaceReprocessStatus,
   reclusterFaces,
+  reprocessEmbeddings,
+  getEmbeddingReprocessStatus,
 } from '../../../src/api/admin'
 
 const PACT_DIR = path.resolve(__dirname, '../../../../../pacts')
@@ -1412,6 +1414,47 @@ describe('Web → Core pact', () => {
         api.defaults.baseURL = mockserver.url + '/api'
         const res = await reclusterFaces()
         expect(res.enqueued).toBe(2)
+      })
+  })
+
+  it('POST /api/v1/admin/embeddings/reprocess — enqueue embedding reprocess', async () => {
+    await provider
+      .uponReceiving('a request to reprocess all embeddings')
+      .withRequest({
+        method: 'POST',
+        path: '/api/v1/admin/embeddings/reprocess',
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: MatchersV3.like({ enqueued: 5, total: 5, model: 'siglip2-b16-224' }),
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await reprocessEmbeddings()
+        expect(res.enqueued).toBe(5)
+      })
+  })
+
+  it('GET /api/v1/admin/embeddings/reprocess — last run and queue counts', async () => {
+    await provider
+      .uponReceiving('a request for the embedding reprocess status')
+      .withRequest({
+        method: 'GET',
+        path: '/api/v1/admin/embeddings/reprocess',
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        // ponytail: same nullable-lastRun caveat as the face reprocess status above.
+        body: MatchersV3.like({
+          queue: { waiting: 1, active: 1, completed: 3, failed: 0, delayed: 0 },
+        }),
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await getEmbeddingReprocessStatus()
+        expect(res.queue.waiting).toBe(1)
       })
   })
 

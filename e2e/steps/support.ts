@@ -101,13 +101,26 @@ export function authHeaders(auth: AuthState): Record<string, string> {
 }
 
 /** Uploads a fixture via the hidden file input (header input comes first) and returns the asset id. */
-export async function uploadFixture(page: Page, name: string): Promise<string> {
+export async function uploadFixture(
+  page: Page,
+  name: string,
+  options: { allowDuplicate?: boolean } = {},
+): Promise<string> {
   const [response] = await Promise.all([
     page.waitForResponse(
       (r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/v1/files',
     ),
     page.locator('input[type="file"]').first().setInputFiles(join(FIXTURES_DIR, name)),
   ])
+  if (options.allowDuplicate && response.status() === 409) {
+    // the same user already uploaded this fixture earlier in the run; core points back at the
+    // existing asset, which the upload path already embedded/processed
+    const body = (await response.json()) as { existingAssetId?: string }
+    if (!body.existingAssetId) {
+      throw new Error('duplicate upload response did not include the existing asset id')
+    }
+    return body.existingAssetId
+  }
   expect(response.status()).toBe(201)
   const asset = (await response.json()) as { id?: string }
   if (!asset.id) throw new Error('upload response did not include an asset id')
