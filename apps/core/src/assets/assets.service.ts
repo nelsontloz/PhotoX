@@ -106,12 +106,7 @@ export class AssetsService {
           order: { createdAt: 'ASC' },
         })
       : []
-    const thumbsByAsset = new Map<string, AssetThumbnail[]>()
-    for (const row of thumbRows) {
-      const list = thumbsByAsset.get(row.assetId) ?? []
-      list.push(row)
-      thumbsByAsset.set(row.assetId, list)
-    }
+    const thumbsByAsset = groupThumbsByAsset(thumbRows)
 
     return {
       items: items.map((a) => this.toResponse(a, thumbsByAsset.get(a.id) ?? [])),
@@ -133,12 +128,7 @@ export class AssetsService {
       order: { createdAt: 'ASC' },
     })
     const byId = new Map(assets.map((a) => [a.id, a]))
-    const thumbsByAsset = new Map<string, AssetThumbnail[]>()
-    for (const row of thumbRows) {
-      const list = thumbsByAsset.get(row.assetId) ?? []
-      list.push(row)
-      thumbsByAsset.set(row.assetId, list)
-    }
+    const thumbsByAsset = groupThumbsByAsset(thumbRows)
     return ids.flatMap((id) => {
       const asset = byId.get(id)
       return asset ? [this.toResponse(asset, thumbsByAsset.get(id) ?? [])] : []
@@ -410,6 +400,16 @@ export class AssetsService {
       ...(thumbnails ? { thumbnails: thumbnails.map((t) => toThumbnailResponse(t)) } : {}),
     }
   }
+}
+
+function groupThumbsByAsset(rows: AssetThumbnail[]): Map<string, AssetThumbnail[]> {
+  const byAsset = new Map<string, AssetThumbnail[]>()
+  for (const row of rows) {
+    const list = byAsset.get(row.assetId) ?? []
+    list.push(row)
+    byAsset.set(row.assetId, list)
+  }
+  return byAsset
 }
 
 export function toThumbnailResponse(t: AssetThumbnail): AssetThumbnailResponse {

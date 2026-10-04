@@ -1,11 +1,30 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, OnModuleDestroy } from '@nestjs/common'
 import { DataSource } from 'typeorm'
 import Redis from 'ioredis'
 import { loadEnv } from '@photox/shared-config'
 
 @Injectable()
-export class HealthService {
+export class HealthService implements OnModuleDestroy {
+  private redis?: Redis
+
   constructor(private readonly dataSource: DataSource) {}
+
+  // ponytail: one client per process instead of one per check; ping latency is the signal we keep
+  private getRedis(): Redis {
+    if (!this.redis) {
+      const env = loadEnv()
+      this.redis = new Redis({
+        host: env.REDIS_HOST,
+        port: env.REDIS_PORT,
+        password: env.REDIS_PASSWORD,
+        maxRetriesPerRequest: 1,
+        enableReadyCheck: true,
+      })
+      // ioredis reconnects on its own; ping() surfaces failures, so don't let error events bubble
+      this.redis.on('error', () => undefined)
+    }
+    return this.redis
+  }
 
   async check() {
     const checks: Record<string, { status: string; latencyMs?: number }> = {}
@@ -19,24 +38,14 @@ export class HealthService {
     }
 
     const redisStart = Date.now()
-    const env = loadEnv()
-    const redis = new Redis({
-      host: env.REDIS_HOST,
-      port: env.REDIS_PORT,
-      password: env.REDIS_PASSWORD,
-      maxRetriesPerRequest: 1,
-      enableReadyCheck: true,
-    })
     try {
-      const pong = await redis.ping()
+      const pong = await this.getRedis().ping()
       checks.redis = {
         status: pong === 'PONG' ? 'up' : 'down',
         latencyMs: Date.now() - redisStart,
       }
     } catch {
       checks.redis = { status: 'down', latencyMs: Date.now() - redisStart }
-    } finally {
-      redis.disconnect()
     }
 
     const allUp = Object.values(checks).every((c) => c.status === 'up')
@@ -47,5 +56,9 @@ export class HealthService {
       timestamp: new Date().toISOString(),
       checks,
     }
+  }
+
+  onModuleDestroy(): void {
+    this.redis?.disconnect()
   }
 }
