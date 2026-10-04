@@ -1,9 +1,9 @@
 import { Controller, Get, Param, Query, Req } from '@nestjs/common'
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
 import type { Request } from 'express'
-import type { EventsResponse, RelatedAssetsResponse } from '@photox/shared-types'
+import type { RelatedAssetsResponse } from '@photox/shared-types'
 import { GroupsService } from './groups.service'
-import { DuplicatesQueryDto, EventsQueryDto, SimilarQueryDto } from './dto/groups-query.dto'
+import { DuplicatesQueryDto, SimilarQueryDto } from './dto/groups-query.dto'
 
 @ApiTags('groups')
 @Controller('api/v1')
@@ -35,12 +35,5 @@ export class GroupsController {
     @Req() req: Request,
   ): Promise<RelatedAssetsResponse> {
     return this.groups.similar((req.user as { id: string }).id, id, dto)
-  }
-
-  @Get('events')
-  @ApiOperation({ summary: 'Group own photos into time+place trips (newest first)' })
-  @ApiResponse({ status: 200, description: 'Trip groups with cover, dates, place and count' })
-  async events(@Query() dto: EventsQueryDto, @Req() req: Request): Promise<EventsResponse> {
-    return this.groups.events((req.user as { id: string }).id, dto)
   }
 }

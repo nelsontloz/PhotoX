@@ -335,22 +335,6 @@ export interface RelatedAssetsResponse {
   total: number
 }
 
-// GET /api/v1/events — time+place grouped trips; `id` is a stable listing key, not a resource
-export interface EventGroupDto {
-  id: string
-  label: string
-  takenFrom: string
-  takenTo: string
-  placeCity: string | null
-  placeCountryCode: string | null
-  count: number
-  coverAssetId: string
-}
-
-export interface EventsResponse {
-  groups: EventGroupDto[]
-}
-
 export const FACE_DETECTOR_KINDS = ['human', 'scrfd'] as const
 export type FaceDetectorKind = (typeof FACE_DETECTOR_KINDS)[number]
 

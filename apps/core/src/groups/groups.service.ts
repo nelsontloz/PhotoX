@@ -5,19 +5,15 @@ import { toSql } from 'pgvector'
 import {
   SEARCH_EMBEDDING_DIM,
   SEARCH_EMBEDDING_MODEL,
-  type EventsResponse,
   type RelatedAssetsResponse,
 } from '@photox/shared-types'
 import { Asset } from '../database/entities'
 import { AssetEmbedding } from '../database/entities/asset-embedding.entity'
 import { AssetsService } from '../assets/assets.service'
-import { splitEvents, type EventSourceRow } from './events'
-import type { DuplicatesQueryDto, EventsQueryDto, SimilarQueryDto } from './dto/groups-query.dto'
+import type { DuplicatesQueryDto, SimilarQueryDto } from './dto/groups-query.dto'
 
 const DEFAULT_DUPLICATE_THRESHOLD = 10
 const DEFAULT_SIMILAR_LIMIT = 12
-const DEFAULT_EVENT_GAP_DAYS = 3
-const DEFAULT_EVENT_LIMIT = 50
 
 @Injectable()
 export class GroupsService {
@@ -92,20 +88,6 @@ export class GroupsService {
       rows.map((r) => r.id),
     )
     return { items, total: rows.length }
-  }
-
-  async events(userId: string, dto: EventsQueryDto): Promise<EventsResponse> {
-    const gapDays = dto.gapDays ?? DEFAULT_EVENT_GAP_DAYS
-    const limit = dto.limit ?? DEFAULT_EVENT_LIMIT
-    const rows: EventSourceRow[] = await this.dataSource.query(
-      `SELECT id, COALESCE("takenAt", "uploadedAt") AS "takenAt", "placeCity", "placeCountryCode"
-       FROM assets
-       WHERE "userId" = $1 AND "isTrashed" = false AND kind = 'photo'
-       ORDER BY COALESCE("takenAt", "uploadedAt") ASC`,
-      [userId],
-    )
-    // splitEvents returns newest-first groups (built chronologically), then cap at `limit`
-    return { groups: splitEvents(rows, gapDays).slice(0, limit) }
   }
 
   private async assertAssetOwned(userId: string, assetId: string): Promise<void> {

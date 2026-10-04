@@ -32,7 +32,6 @@ import {
 import { searchAssets } from '../../../src/api/search'
 import { getAssetDetections } from '../../../src/api/detections'
 import { getAssetDuplicates, getSimilarAssets } from '../../../src/api/related'
-import { listEventGroups } from '../../../src/api/events'
 import { createShare, listShares, revokeShare } from '../../../src/api/shares'
 import {
   listAlbums,
@@ -1556,37 +1555,6 @@ describe('Web → Core pact', () => {
         api.defaults.baseURL = mockserver.url + '/api'
         const res = await getAssetDuplicates(ASSET_ID)
         expect(res.items.length).toBeGreaterThan(0)
-      })
-  })
-
-  it('GET /api/v1/events — grouped trips', async () => {
-    await provider
-      .uponReceiving('a request to list event groups')
-      .withRequest({
-        method: 'GET',
-        path: '/api/v1/events',
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: MatchersV3.like({
-          groups: MatchersV3.eachLike({
-            id: '2025-06-01T10:00:00.000Z_Paris',
-            label: 'Paris · Jun 2025',
-            takenFrom: '2025-06-01T10:00:00.000Z',
-            takenTo: '2025-06-05T18:00:00.000Z',
-            placeCity: 'Paris',
-            placeCountryCode: 'FR',
-            count: 24,
-            coverAssetId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
-          }),
-        }),
-      })
-      .executeTest(async (mockserver) => {
-        api.defaults.baseURL = mockserver.url + '/api'
-        const res = await listEventGroups()
-        expect(res.groups.length).toBeGreaterThan(0)
-        expect(res.groups[0]?.count).toBe(24)
       })
   })
 

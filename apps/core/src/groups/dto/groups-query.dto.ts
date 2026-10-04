@@ -21,21 +21,3 @@ export class SimilarQueryDto {
   @Max(100)
   limit?: number
 }
-
-export class EventsQueryDto {
-  @ApiProperty({ required: false, default: 3, description: 'Max days between photos in a group' })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  @Max(3650)
-  gapDays?: number
-
-  @ApiProperty({ required: false, default: 50, maximum: 100, description: 'Max groups' })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number
-}

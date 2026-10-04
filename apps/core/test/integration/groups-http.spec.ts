@@ -18,19 +18,7 @@ const NEAR = Array.from({ length: SEARCH_EMBEDDING_DIM }, (_, i) =>
   i === 0 ? 0.8 : i === 1 ? 0.6 : 0,
 )
 
-interface GroupBody {
-  groups: {
-    id: string
-    label: string
-    takenFrom: string
-    takenTo: string
-    placeCity: string | null
-    count: number
-    coverAssetId: string
-  }[]
-}
-
-describe('groups HTTP (duplicates / similar / events)', () => {
+describe('groups HTTP (duplicates / similar)', () => {
   let t: ApiTestApp
   const encodeMock = vi.fn((): Promise<number[]> => Promise.resolve(E0))
 
@@ -70,15 +58,13 @@ describe('groups HTTP (duplicates / similar / events)', () => {
     )
   }
 
-  it('requires a token on all three endpoints', async () => {
+  it('requires a token on both endpoints', async () => {
     const { userId } = await ownerAuth()
     const asset = await seedAssetWith(userId)
     const dup = await request(apiServer(t)).get(`/api/v1/assets/${asset.id}/duplicates`)
     expect(dup.status).toBe(401)
     const sim = await request(apiServer(t)).get(`/api/v1/assets/${asset.id}/similar`)
     expect(sim.status).toBe(401)
-    const ev = await request(apiServer(t)).get('/api/v1/events')
-    expect(ev.status).toBe(401)
   })
 
   describe('duplicates', () => {
@@ -179,79 +165,6 @@ describe('groups HTTP (duplicates / similar / events)', () => {
       const auth = t.authHeader(t.signToken({ id: other.id, email: other.email, role: other.role }))
       const res = await request(apiServer(t)).get(`/api/v1/assets/${asset.id}/similar`).set(auth)
       expect(res.status).toBe(404)
-    })
-  })
-
-  describe('events', () => {
-    it('groups by time gap and city, excludes trashed/videos/other users, newest first', async () => {
-      const { userId, auth } = await ownerAuth()
-      await seedAssetWith(userId, {
-        takenAt: new Date('2026-06-01T10:00:00Z'),
-        placeCity: 'Paris',
-        placeCountryCode: 'FR',
-      })
-      const p2 = await seedAssetWith(userId, {
-        takenAt: new Date('2026-06-02T10:00:00Z'),
-        placeCity: 'Paris',
-        placeCountryCode: 'FR',
-      })
-      const p3 = await seedAssetWith(userId, {
-        takenAt: new Date('2026-06-10T10:00:00Z'),
-        placeCity: 'Paris',
-        placeCountryCode: 'FR',
-      })
-      await seedAssetWith(userId, { takenAt: new Date('2026-06-11T10:00:00Z') })
-      const p5 = await seedAssetWith(userId, { takenAt: new Date('2026-06-12T10:00:00Z') })
-      const p6 = await seedAssetWith(userId, {
-        takenAt: new Date('2026-06-13T10:00:00Z'),
-        placeCity: 'Paris',
-        placeCountryCode: 'FR',
-      })
-      await seedAssetWith(userId, {
-        takenAt: new Date('2026-06-13T11:00:00Z'),
-        placeCity: 'Paris',
-        isTrashed: true,
-      })
-      const other = await seedUser(t)
-      await seedAssetWith(other.id, {
-        takenAt: new Date('2026-06-13T11:00:00Z'),
-        placeCity: 'Paris',
-      })
-      const videoFile = await seedFile(t, userId, { mimeType: 'video/mp4' })
-      const video = await seedAsset(t, userId, videoFile.id, { kind: 'video' })
-      await t.assetRepo.update(video.id, {
-        takenAt: new Date('2026-06-13T11:00:00Z'),
-        placeCity: 'Paris',
-      })
-
-      const res = await request(apiServer(t)).get('/api/v1/events').set(auth)
-      expect(res.status).toBe(200)
-      const body = res.body as GroupBody
-      expect(body.groups.map((g) => g.id)).toEqual([
-        '2026-06-13T10:00:00.000Z_Paris',
-        '2026-06-11T10:00:00.000Z_any',
-        '2026-06-10T10:00:00.000Z_Paris',
-        '2026-06-01T10:00:00.000Z_Paris',
-      ])
-      expect(body.groups.map((g) => g.count)).toEqual([1, 2, 1, 2])
-      expect(body.groups.map((g) => g.coverAssetId)).toEqual([p6.id, p5.id, p3.id, p2.id])
-      expect(body.groups[1]!.label).toBe('Untitled trip · Jun 11 – 12, 2026')
-      expect(body.groups[3]!.label).toBe('Paris · Jun 2026')
-      expect(body.groups[3]!.takenFrom).toBe('2026-06-01T10:00:00.000Z')
-      expect(body.groups[3]!.takenTo).toBe('2026-06-02T10:00:00.000Z')
-
-      const limited = await request(apiServer(t))
-        .get('/api/v1/events')
-        .query({ limit: '1' })
-        .set(auth)
-      expect((limited.body as GroupBody).groups).toHaveLength(1)
-      expect((limited.body as GroupBody).groups[0]!.id).toBe('2026-06-13T10:00:00.000Z_Paris')
-
-      const merged = await request(apiServer(t))
-        .get('/api/v1/events')
-        .query({ gapDays: '30' })
-        .set(auth)
-      expect((merged.body as GroupBody).groups.map((g) => g.count)).toEqual([1, 2, 3])
     })
   })
 
