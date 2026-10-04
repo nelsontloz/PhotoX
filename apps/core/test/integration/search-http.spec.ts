@@ -93,8 +93,8 @@ describe('hybrid search HTTP', () => {
       .set(auth)
     expect(res.status).toBe(200)
     const body = res.body as { items: Asset[]; total: number }
-    expect(body.total).toBe(3)
-    expect(body.items.map((i) => i.id)).toEqual([a.id, b.id, c.id])
+    expect(body.total).toBe(2)
+    expect(body.items.map((i) => i.id)).toEqual([a.id, b.id])
 
     // identical serializer to GET /api/v1/assets
     const list = await request(apiServer(t))
@@ -189,14 +189,14 @@ describe('hybrid search HTTP', () => {
       .query({ q: 'red square', limit: '2', offset: '0' })
       .set(auth)
     expect(page1.status).toBe(200)
-    expect((page1.body as { items: Asset[]; total: number }).total).toBe(3)
+    expect((page1.body as { items: Asset[]; total: number }).total).toBe(2)
     expect((page1.body as { items: Asset[] }).items.map((i) => i.id)).toEqual([a.id, b.id])
 
     const page2 = await request(apiServer(t))
       .get('/api/v1/search')
       .query({ q: 'red square', limit: '2', offset: '2' })
       .set(auth)
-    expect((page2.body as { items: Asset[] }).items.map((i) => i.id)).toEqual([c.id])
+    expect((page2.body as { items: Asset[] }).items.map((i) => i.id)).toEqual([])
   })
 
   it('503s when the text model is not provisioned', async () => {

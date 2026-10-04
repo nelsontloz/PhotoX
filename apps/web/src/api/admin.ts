@@ -25,6 +25,22 @@ export interface FaceReprocessResponse {
   detector: FaceDetectorKind
 }
 
+export interface EmbeddingReprocessStatus {
+  lastRun: {
+    startedAt: string
+    total: number
+    enqueued: number
+    model: string
+  } | null
+  queue: { waiting: number; active: number; completed: number; failed: number; delayed: number }
+}
+
+export interface EmbeddingReprocessResponse {
+  enqueued: number
+  total: number
+  model: string
+}
+
 export interface ListAdminUsersParams {
   limit?: number
   offset?: number
@@ -107,5 +123,39 @@ export async function getFaceReprocessStatus(): Promise<FaceReprocessStatus> {
 
 export async function reclusterFaces(): Promise<{ enqueued: number }> {
   const { data } = await api.post<{ enqueued: number }>('/v1/admin/faces/recluster')
+  return data
+}
+
+export async function reprocessEmbeddings(): Promise<EmbeddingReprocessResponse> {
+  const { data } = await api.post<EmbeddingReprocessResponse>('/v1/admin/embeddings/reprocess')
+  return data
+}
+
+export async function getEmbeddingReprocessStatus(): Promise<EmbeddingReprocessStatus> {
+  const { data } = await api.get<EmbeddingReprocessStatus>('/v1/admin/embeddings/reprocess')
+  return data
+}
+
+export interface DetectionReprocessStatus {
+  lastRun: {
+    startedAt: string
+    total: number
+    enqueued: number
+  } | null
+  queue: { waiting: number; active: number; completed: number; failed: number; delayed: number }
+}
+
+export interface DetectionReprocessResponse {
+  enqueued: number
+  total: number
+}
+
+export async function reprocessDetections(): Promise<DetectionReprocessResponse> {
+  const { data } = await api.post<DetectionReprocessResponse>('/v1/admin/detections/reprocess')
+  return data
+}
+
+export async function getDetectionReprocessStatus(): Promise<DetectionReprocessStatus> {
+  const { data } = await api.get<DetectionReprocessStatus>('/v1/admin/detections/reprocess')
   return data
 }

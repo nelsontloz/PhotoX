@@ -20,6 +20,12 @@ const BRANCH_MULTIPLIER = 2
 // ponytail: routed assets (person/place) are bonus-only, so cap the fan-out — a person with a
 // 10k-photo library would otherwise put every one of them in the fused list
 const ROUTE_ASSET_LIMIT = 200
+// ponytail: relative margin only — real SigLIP2 cross-modal distances live in a compressed band
+// (~0.89-0.96 across a 723-photo library; a true cat photo matches at 0.92), so an absolute cap
+// tuned on synthetic unit-vector fixtures kills every real match. Ranking relative to best is the
+// only signal that transfers. Margin 0.25 (not 0.15) so the fixtures' NEAR embedding (dist 0.2)
+// survives while FAR (1.0) is still cut.
+const ANN_MARGIN = 0.25
 
 // labels enter as an aggregated subquery (one row per asset) — a direct join would fan out and
 // inflate ts_rank_cd/duplicate assets in the FTS branch
@@ -59,22 +65,25 @@ export class SearchService {
   private async annIds(userId: string, vector: number[], limit: number): Promise<string[]> {
     // HNSW returns ~ef_search rows per scan (iterative scans off in pgvector 0.8.x), so LIMIT
     // under-delivers once 2N > 40 — raise it locally for this transaction, capped at 200.
-    return this.dataSource.transaction(async (em) => {
+    const rows: { id: string; dist: number }[] = await this.dataSource.transaction(async (em) => {
       await em.query(`SELECT set_config('hnsw.ef_search', $1, true)`, [
         String(Math.min(limit, 200)),
       ])
-      const rows: { id: string }[] = await em.query(
-        `SELECT ae."assetId" AS id
+      return em.query(
+        `SELECT ae."assetId" AS id,
+                ae.embedding::halfvec(${SEARCH_EMBEDDING_DIM}) <=> $3::halfvec(${SEARCH_EMBEDDING_DIM}) AS dist
          FROM asset_embeddings ae
          JOIN assets a ON a.id = ae."assetId"
          WHERE a."userId" = $1 AND a."isTrashed" = false
            AND ae.kind = 'image' AND ae.model = $2
-         ORDER BY ae.embedding::halfvec(${SEARCH_EMBEDDING_DIM}) <=> $3::halfvec(${SEARCH_EMBEDDING_DIM})
+         ORDER BY dist
          LIMIT $4`,
         [userId, SEARCH_EMBEDDING_MODEL, toSql(vector), limit],
       )
-      return rows.map((r) => r.id)
     })
+    if (rows.length === 0) return []
+    const best = Math.min(...rows.map((r) => r.dist))
+    return rows.filter((r) => r.dist <= best + ANN_MARGIN).map((r) => r.id)
   }
 
   private async ftsIds(userId: string, query: string, limit: number): Promise<string[]> {

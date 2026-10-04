@@ -30,8 +30,14 @@ import {
   reprocessFaces,
   getFaceReprocessStatus,
   reclusterFaces,
+  reprocessEmbeddings,
+  getEmbeddingReprocessStatus,
+  reprocessDetections,
+  getDetectionReprocessStatus,
   type ListAdminUsersParams,
   type FaceReprocessStatus,
+  type EmbeddingReprocessStatus,
+  type DetectionReprocessStatus,
 } from '../../api/admin'
 import type {
   AdminUserListResponse,
@@ -302,6 +308,7 @@ const DETECTOR_HINTS: Record<FaceDetectorKind, string> = {
 }
 
 const SCRFD_PROVISION_CMD = 'pnpm --filter @photox/worker-service face-model'
+const VISION_PROVISION_CMD = 'pnpm --filter @photox/worker-service vision-model'
 
 export function FaceDetectionSection() {
   const [data, setData] = useState<FaceDetectionSettings | null>(null)
@@ -767,6 +774,360 @@ export function FacesReprocessSection() {
   )
 }
 
+export function EmbeddingsReprocessSection() {
+  const [status, setStatus] = useState<EmbeddingReprocessStatus | null>(null)
+  const [confirming, setConfirming] = useState(false)
+  const [inFlight, setInFlight] = useState(false)
+  const [result, setResult] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [runToken, setRunToken] = useState(0)
+
+  // ponytail: 3s poll while the embeddings queue drains; poll errors stay silent and stop after 5
+  // consecutive failures so a broken endpoint is not hammered (re-run/remount resumes)
+  useEffect(() => {
+    let cancelled = false
+    let timer = 0
+    let failures = 0
+    const tick = () => {
+      getEmbeddingReprocessStatus()
+        .then((res) => {
+          if (cancelled) return
+          failures = 0
+          setStatus(res)
+          if (res.queue.waiting + res.queue.active > 0) {
+            timer = window.setTimeout(tick, 3000)
+          }
+        })
+        .catch(() => {
+          if (cancelled) return
+          failures += 1
+          if (failures < 5) timer = window.setTimeout(tick, 3000)
+        })
+    }
+    tick()
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [runToken])
+
+  const onConfirm = async () => {
+    setConfirming(false)
+    setInFlight(true)
+    setError(null)
+    setResult(null)
+    try {
+      const res = await reprocessEmbeddings()
+      setResult(
+        `Queued ${res.enqueued.toLocaleString()} embedding jobs for ${res.total.toLocaleString()} photos.`,
+      )
+      setRunToken((v) => v + 1)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Reprocess failed')
+    } finally {
+      setInFlight(false)
+    }
+  }
+
+  const lastRun = status?.lastRun ?? null
+  const remaining = status ? status.queue.waiting + status.queue.active : 0
+  const running = remaining > 0
+  const requested = lastRun?.enqueued ?? 0
+  const done = Math.max(0, Math.min(requested, requested - remaining))
+  const percent = requested > 0 ? Math.round((done / requested) * 100) : 0
+
+  return (
+    <section>
+      <div className="bg-card-dark border border-border-dark rounded-xl p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-200">Semantic search</h2>
+            <p className="text-xs text-slate-400 mt-1">
+              Photos are embedded automatically on upload. Reprocessing re-embeds the whole library
+              with the SigLIP2 vision model that powers text search and visually similar results.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            disabled={inFlight || running}
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors"
+          >
+            {inFlight ? (
+              <>
+                <FaSpinner className="animate-spin" />
+                Enqueuing…
+              </>
+            ) : (
+              'Reprocess all embeddings'
+            )}
+          </button>
+        </div>
+
+        <p className="text-xs text-slate-500 mt-2">
+          Model files seed on install — re-provision with{' '}
+          <code className="font-mono">{VISION_PROVISION_CMD}</code>.
+        </p>
+
+        {result && <p className="text-xs text-emerald-400 mt-3">{result}</p>}
+        {error && <p className="text-xs text-red-400 mt-3">{error}</p>}
+
+        {status && !lastRun && !running && (
+          <p className="text-xs text-slate-500 mt-3">No embedding reprocess runs yet.</p>
+        )}
+
+        {lastRun && (
+          <div className="mt-4 rounded-lg bg-slate-900/50 p-4">
+            {running && requested > 0 ? (
+              <>
+                <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+                  <span className="inline-flex items-center gap-2 text-xs font-medium text-slate-200">
+                    <FaSpinner className="animate-spin text-primary" />
+                    Reprocessing embeddings…
+                  </span>
+                  <span className="text-xs tabular-nums text-slate-400">
+                    {remaining.toLocaleString()} of {requested.toLocaleString()} remaining ·{' '}
+                    {percent}%
+                  </span>
+                </div>
+                <div
+                  role="progressbar"
+                  aria-label="Embedding reprocess progress"
+                  aria-valuemin={0}
+                  aria-valuemax={requested}
+                  aria-valuenow={done}
+                  className="h-2 rounded-full bg-slate-800 overflow-hidden"
+                >
+                  <div
+                    className="h-full bg-primary transition-all duration-500"
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-slate-400">
+                Last run {new Date(lastRun.startedAt).toLocaleString()} —{' '}
+                {lastRun.enqueued.toLocaleString()} of {lastRun.total.toLocaleString()} photos
+                queued with {lastRun.model}.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {confirming && (
+        <Dialog
+          title="Reprocess all embeddings?"
+          onClose={() => setConfirming(false)}
+          panelClassName="bg-card-dark border border-border-dark rounded-xl p-5 max-w-md w-full"
+          titleTag="h3"
+          titleClassName="text-base font-semibold text-slate-100"
+          headerClassName=""
+          closeOnOverlay={false}
+          escapeKey={false}
+        >
+          <p className="text-sm text-slate-400 mt-2">
+            This re-embeds every non-trashed photo with the SigLIP2 vision model. Text search and
+            visually similar photos update as jobs finish. The worker runs in the background, so
+            large libraries take a while.
+          </p>
+          <div className="flex justify-end gap-2 mt-5">
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void onConfirm()}
+              className="text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-3 py-2 transition-colors"
+            >
+              Confirm
+            </button>
+          </div>
+        </Dialog>
+      )}
+    </section>
+  )
+}
+
+export function DetectionsReprocessSection() {
+  const [status, setStatus] = useState<DetectionReprocessStatus | null>(null)
+  const [confirming, setConfirming] = useState(false)
+  const [inFlight, setInFlight] = useState(false)
+  const [result, setResult] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [runToken, setRunToken] = useState(0)
+
+  // ponytail: 3s poll while the detect queue drains; poll errors stay silent and stop after 5
+  // consecutive failures so a broken endpoint is not hammered (re-run/remount resumes)
+  useEffect(() => {
+    let cancelled = false
+    let timer = 0
+    let failures = 0
+    const tick = () => {
+      getDetectionReprocessStatus()
+        .then((res) => {
+          if (cancelled) return
+          failures = 0
+          setStatus(res)
+          if (res.queue.waiting + res.queue.active > 0) {
+            timer = window.setTimeout(tick, 3000)
+          }
+        })
+        .catch(() => {
+          if (cancelled) return
+          failures += 1
+          if (failures < 5) timer = window.setTimeout(tick, 3000)
+        })
+    }
+    tick()
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [runToken])
+
+  const onConfirm = async () => {
+    setConfirming(false)
+    setInFlight(true)
+    setError(null)
+    setResult(null)
+    try {
+      const res = await reprocessDetections()
+      setResult(
+        `Queued ${res.enqueued.toLocaleString()} detection jobs for ${res.total.toLocaleString()} photos.`,
+      )
+      setRunToken((v) => v + 1)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Reprocess failed')
+    } finally {
+      setInFlight(false)
+    }
+  }
+
+  const lastRun = status?.lastRun ?? null
+  const remaining = status ? status.queue.waiting + status.queue.active : 0
+  const running = remaining > 0
+  const requested = lastRun?.enqueued ?? 0
+  const done = Math.max(0, Math.min(requested, requested - remaining))
+  const percent = requested > 0 ? Math.round((done / requested) * 100) : 0
+
+  return (
+    <section>
+      <div className="bg-card-dark border border-border-dark rounded-xl p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-200">Object detection</h2>
+            <p className="text-xs text-slate-400 mt-1">
+              Photos are scanned for objects automatically on upload. Reprocessing runs the YOLO
+              detector over the whole library — boxes show in the viewer overlay and labels feed
+              text search.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            disabled={inFlight || running}
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors"
+          >
+            {inFlight ? (
+              <>
+                <FaSpinner className="animate-spin" />
+                Enqueuing…
+              </>
+            ) : (
+              'Reprocess object detection'
+            )}
+          </button>
+        </div>
+
+        {result && <p className="text-xs text-emerald-400 mt-3">{result}</p>}
+        {error && <p className="text-xs text-red-400 mt-3">{error}</p>}
+
+        {status && !lastRun && !running && (
+          <p className="text-xs text-slate-500 mt-3">No detection reprocess runs yet.</p>
+        )}
+
+        {lastRun && (
+          <div className="mt-4 rounded-lg bg-slate-900/50 p-4">
+            {running && requested > 0 ? (
+              <>
+                <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+                  <span className="inline-flex items-center gap-2 text-xs font-medium text-slate-200">
+                    <FaSpinner className="animate-spin text-primary" />
+                    Detecting objects…
+                  </span>
+                  <span className="text-xs tabular-nums text-slate-400">
+                    {remaining.toLocaleString()} of {requested.toLocaleString()} remaining ·{' '}
+                    {percent}%
+                  </span>
+                </div>
+                <div
+                  role="progressbar"
+                  aria-label="Detection reprocess progress"
+                  aria-valuemin={0}
+                  aria-valuemax={requested}
+                  aria-valuenow={done}
+                  className="h-2 rounded-full bg-slate-800 overflow-hidden"
+                >
+                  <div
+                    className="h-full bg-primary transition-all duration-500"
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-slate-400">
+                Last run {new Date(lastRun.startedAt).toLocaleString()} —{' '}
+                {lastRun.enqueued.toLocaleString()} of {lastRun.total.toLocaleString()} photos
+                queued.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {confirming && (
+        <Dialog
+          title="Reprocess object detection?"
+          onClose={() => setConfirming(false)}
+          panelClassName="bg-card-dark border border-border-dark rounded-xl p-5 max-w-md w-full"
+          titleTag="h3"
+          titleClassName="text-base font-semibold text-slate-100"
+          headerClassName=""
+          closeOnOverlay={false}
+          escapeKey={false}
+        >
+          <p className="text-sm text-slate-400 mt-2">
+            This runs object detection over every non-trashed photo. Boxes appear in the viewer
+            overlay as jobs finish. The worker runs in the background, so large libraries take a
+            while.
+          </p>
+          <div className="flex justify-end gap-2 mt-5">
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void onConfirm()}
+              className="text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-3 py-2 transition-colors"
+            >
+              Confirm
+            </button>
+          </div>
+        </Dialog>
+      )}
+    </section>
+  )
+}
+
 function OrphanCleanupSection() {
   const [data, setData] = useState<{ orphanFiles: number; orphanThumbnails: number } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -984,6 +1345,8 @@ function AdminPageContent() {
       <ThumbnailReprocessSection />
       <FaceDetectionSection />
       <FacesReprocessSection />
+      <EmbeddingsReprocessSection />
+      <DetectionsReprocessSection />
       <OrphanCleanupSection />
 
       <header className="flex items-center justify-between gap-4 flex-wrap">
