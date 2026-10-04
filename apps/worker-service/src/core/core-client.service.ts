@@ -10,6 +10,9 @@ import type {
   FaceDetectionSettings,
   FaceDetectorKind,
   FileRecord,
+  RegisterDetectionsRequestDto,
+  RegisterEmbeddingRequestDto,
+  RegisterOcrRequestDto,
   Role,
 } from '@photox/shared-types'
 
@@ -47,6 +50,10 @@ export type MetadataPatch = Partial<
   // Date is not an Asset field: metadata jobs pass Date, JSON.stringify sends the same ISO wire string
   takenAt?: Date | null
   status?: 'pending' | 'ready' | 'failed'
+  // set by process-embeddings on failure; core's UpdateMetadataDto must whitelist it (sibling lane)
+  embeddingStatus?: 'pending' | 'ready' | 'failed'
+  // 16-char lowercase dHash hex set by process-metadata; core's UpdateMetadataDto must whitelist it
+  phash?: string
 }
 
 export interface RegisterFileInput {
@@ -162,6 +169,26 @@ export class CoreClient {
       sub: userId,
       body: { faces, userId, detector },
     })
+  }
+
+  async registerEmbedding(
+    userId: string,
+    assetId: string,
+    dto: RegisterEmbeddingRequestDto,
+  ): Promise<void> {
+    await this.request('POST', `/api/v1/assets/${assetId}/embedding`, { sub: userId, body: dto })
+  }
+
+  async registerOcr(userId: string, assetId: string, dto: RegisterOcrRequestDto): Promise<void> {
+    await this.request('POST', `/api/v1/assets/${assetId}/ocr`, { sub: userId, body: dto })
+  }
+
+  async registerDetections(
+    userId: string,
+    assetId: string,
+    dto: RegisterDetectionsRequestDto,
+  ): Promise<void> {
+    await this.request('POST', `/api/v1/assets/${assetId}/detections`, { sub: userId, body: dto })
   }
 
   async deleteAssetFaces(userId: string, assetId: string): Promise<{ deleted: number }> {

@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
+import { l2Normalize } from '@photox/shared-types'
 import {
   ARCFACE_TEMPLATE,
   FACE_ALIGN_SIZE,
   alignFaceCrop,
-  l2Normalize,
   preprocessArcFace,
   similarityFromPoints,
   type RawImage,

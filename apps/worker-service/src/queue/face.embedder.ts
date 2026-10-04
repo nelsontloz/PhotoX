@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { access } from 'fs/promises'
 import { join } from 'path'
 import { loadEnv } from '@photox/shared-config'
-import { FACE_EMBEDDING_DIM } from '@photox/shared-types'
+import { FACE_EMBEDDING_DIM, l2Normalize } from '@photox/shared-types'
 import type * as ort from 'onnxruntime-node'
 
 // ponytail: InsightFace buffalo_l recognition weights (w600k_r50.onnx, ~174MB) are for
@@ -128,15 +128,6 @@ export function preprocessArcFace(rgb112: Buffer): Float32Array {
     chw[2 * size * size + i] = (rgb112[i * 3 + 2]! - 127.5) / 128
   }
   return chw
-}
-
-export function l2Normalize(vec: ArrayLike<number>): number[] {
-  const arr = Array.from(vec)
-  let norm = 0
-  for (const v of arr) norm += v * v
-  if (norm === 0) return arr
-  const scale = 1 / Math.sqrt(norm)
-  return arr.map((v) => v * scale)
 }
 
 @Injectable()

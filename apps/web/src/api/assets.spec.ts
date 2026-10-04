@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Asset, AssetListResponse } from '@photox/shared-types'
-import { getVideoStreamUrl, listAllAssets } from './assets'
+import { getVideoStreamUrl, listAllAssets, listAssetsByIds } from './assets'
 
 const { getMock } = vi.hoisted(() => ({
   getMock: vi.fn<
@@ -65,5 +65,35 @@ describe('listAllAssets', () => {
     const all = await pending
     // pages resolve out of order (50 before 100) but must concatenate in offset order
     expect(all.map((a) => a.id)).toEqual(['a-0', 'a-50', 'a-100'])
+  })
+})
+
+describe('listAssetsByIds', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('chunks ids at 100 and merges the pages', async () => {
+    getMock.mockImplementation((_url, config) => {
+      const rawIds = config?.params?.ids
+      const ids = (typeof rawIds === 'string' ? rawIds : '').split(',').filter(Boolean)
+      return Promise.resolve({
+        data: {
+          items: ids.map((id) => makeAsset(id)),
+          total: ids.length,
+          limit: ids.length,
+          offset: 0,
+        },
+      })
+    })
+
+    const all = await listAssetsByIds(Array.from({ length: 150 }, (_, i) => `id-${i}`))
+
+    expect(getMock).toHaveBeenCalledTimes(2)
+    const first = getMock.mock.calls[0]?.[1]?.params
+    const second = getMock.mock.calls[1]?.[1]?.params
+    expect(String(first?.ids).split(',')).toHaveLength(100)
+    expect(first?.limit).toBe(100)
+    expect(String(second?.ids).split(',')).toHaveLength(50)
+    expect(second?.limit).toBe(50)
+    expect(all).toHaveLength(150)
   })
 })

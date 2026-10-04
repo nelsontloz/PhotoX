@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, DataSource, In } from 'typeorm'
 import { Asset } from '../database/entities'
@@ -11,6 +17,7 @@ import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
 import { UpdateMetadataDto } from './dto/update-metadata.dto'
 import { RegisterThumbnailDto } from './dto/register-thumbnail.dto'
 import { FacesService } from '../faces/faces.service'
+import { PlacesResolveService } from '../places/places-resolve.service'
 import { BullMqService } from '../queue/bullmq.service'
 import type {
   Asset as AssetResponse,
@@ -21,6 +28,8 @@ import type {
 
 @Injectable()
 export class AssetsService {
+  private readonly logger = new Logger(AssetsService.name)
+
   constructor(
     @InjectRepository(Asset)
     private readonly repo: Repository<Asset>,
@@ -29,6 +38,7 @@ export class AssetsService {
     private readonly dataSource: DataSource,
     private readonly facesService: FacesService,
     private readonly bullMq: BullMqService,
+    private readonly places: PlacesResolveService,
   ) {}
 
   async create(userId: string, dto: CreateAssetDto): Promise<AssetResponse> {
@@ -109,6 +119,30 @@ export class AssetsService {
       limit,
       offset,
     }
+  }
+
+  /**
+   * Fetch + serialize assets in the caller-provided id order (search fusion ranking), skipping
+   * ids that are gone/trashed/foreign. Same wire shape as `list` via `toResponse`.
+   */
+  async listByIdsRanked(userId: string, ids: string[]): Promise<AssetResponse[]> {
+    if (ids.length === 0) return []
+    const assets = await this.repo.find({ where: { id: In(ids), userId, isTrashed: false } })
+    const thumbRows = await this.thumbRepo.find({
+      where: { assetId: In(ids) },
+      order: { createdAt: 'ASC' },
+    })
+    const byId = new Map(assets.map((a) => [a.id, a]))
+    const thumbsByAsset = new Map<string, AssetThumbnail[]>()
+    for (const row of thumbRows) {
+      const list = thumbsByAsset.get(row.assetId) ?? []
+      list.push(row)
+      thumbsByAsset.set(row.assetId, list)
+    }
+    return ids.flatMap((id) => {
+      const asset = byId.get(id)
+      return asset ? [this.toResponse(asset, thumbsByAsset.get(id) ?? [])] : []
+    })
   }
 
   async layout(userId: string): Promise<AssetLayout> {
@@ -251,6 +285,10 @@ export class AssetsService {
   async updateMetadata(id: string, userId: string, dto: UpdateMetadataDto): Promise<AssetResponse> {
     const asset = await this.repo.findOne({ where: { id, userId } })
     if (!asset) throw new NotFoundException('Asset not found')
+    // phash is a plain column (spread maps it), but its format is semantic -> 422 like embeddings
+    if (dto.phash !== undefined && dto.phash !== null && !/^[0-9a-f]{16}$/.test(dto.phash)) {
+      throw new UnprocessableEntityException('phash must be 16 lowercase hex characters')
+    }
 
     // every UpdateMetadataDto field except `status` maps 1:1 to an Asset column; TypeORM
     // skips undefined values, so absent fields stay untouched
@@ -259,6 +297,27 @@ export class AssetsService {
     if (status !== undefined) {
       patch.metadataStatus = status
       patch.metadataExtractedAt = new Date()
+    }
+
+    // resolve place once, when this write brings real coordinates and no city was resolved yet
+    // (typeof+isFinite: class-validator @IsOptional passes null through, and the worker sends
+    // latitude/longitude: null for every photo without GPS)
+    if (
+      asset.placeCity === null &&
+      typeof fields.latitude === 'number' &&
+      Number.isFinite(fields.latitude) &&
+      typeof fields.longitude === 'number' &&
+      Number.isFinite(fields.longitude)
+    ) {
+      try {
+        // ponytail: per-write nearest-city lookup (indexed KNN); precompute/materialize per
+        // coordinate cell if it ever shows in slow-query logs
+        const place = await this.places.resolve(fields.latitude, fields.longitude)
+        if (place) Object.assign(patch, place)
+      } catch {
+        // geocoding must never fail a metadata write
+        this.logger.warn(`place resolution failed for asset ${id}`)
+      }
     }
 
     await this.repo.update(id, patch as Record<string, unknown>)

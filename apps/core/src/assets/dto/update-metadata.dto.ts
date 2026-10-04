@@ -160,6 +160,20 @@ export class UpdateMetadataDto {
   @IsIn(['pending', 'ready', 'failed'])
   faceStatus?: 'pending' | 'ready' | 'failed' | null
 
+  @ApiProperty({ required: false, enum: ['pending', 'ready', 'failed'] })
+  @IsOptional()
+  @IsIn(['pending', 'ready', 'failed'])
+  embeddingStatus?: 'pending' | 'ready' | 'failed' | null
+
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    description: '64-bit dHash as 16 lowercase hex chars (duplicate detection)',
+  })
+  @IsOptional()
+  @IsString()
+  phash?: string | null
+
   @ApiProperty({ required: false })
   @IsOptional()
   @Type(() => Number)

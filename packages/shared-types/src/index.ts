@@ -136,6 +136,12 @@ export interface AssetListResponse {
   offset: number
 }
 
+// GET /api/v1/search response — items reuse the list-assets Asset shape verbatim
+export interface SearchResponse {
+  items: Asset[]
+  total: number
+}
+
 export interface AssetLayoutItem {
   t: string
   w: number
@@ -237,6 +243,97 @@ export interface AdminLibraryStatsResponse {
 // ponytail: single source of truth for the embedding dim (InsightFace buffalo_l w600k_r50) —
 // detector output, DTO validation, cluster filters, and the HNSW index cast all reference this
 export const FACE_EMBEDDING_DIM = 512
+
+// SigLIP2-B/16 image embeddings — entity transformer, index cast and query code share this
+export const SEARCH_EMBEDDING_DIM = 768
+
+// SigLIP2-B/16 ONNX model id; the bootstrap partial HNSW index DDL hardcodes this same literal
+// (ANN over one row set must not mix models, so the predicate filters on it)
+export const SEARCH_EMBEDDING_MODEL = 'siglip2-b16-224'
+
+// SigLIP2 was trained with `padding='max_length'` (the tokenizer.json declares Fixed 64): the text
+// tower pools the LAST slot of a 64-token padded sequence, so every text encode — core queries and
+// the smoke spec alike — must tokenize with `padding: 'max_length', max_length: SEARCH_TEXT_MAX_LENGTH`.
+// `padding: true` (batch-longest) or an unpadded single query pools the EOS slot instead and lands
+// in a non-aligned, near-orthogonal space the dim assert cannot catch.
+export const SEARCH_TEXT_MAX_LENGTH = 64
+
+// Cross-modal contract (SigLIP2 has NO projection layers): image and text embeddings must both be
+// the pooled output of their own tower, finalized by the SAME shared toEmbedding() below:
+//   image tower (worker): vision pooler_output from the image-feature-extraction pipeline (pool: true)
+//   text tower (P3, core): SiglipTextModel pooler_output — last_hidden_state[:, -1] through the
+//     learned head Linear inside text_model_int8.onnx, with SEARCH_TEXT_MAX_LENGTH padding.
+// A feature-extraction pipeline's mean/CLS pooling silently drops that head and lands in a
+// different 768-d space the dim assert cannot catch.
+export function l2Normalize(vec: ArrayLike<number>): number[] {
+  const arr = Array.from(vec)
+  let norm = 0
+  for (const v of arr) norm += v * v
+  if (norm === 0) return arr
+  const scale = 1 / Math.sqrt(norm)
+  return arr.map((v) => v * scale)
+}
+
+// ponytail: one finalizer for every 768-d search tower — assert the shared dim, then L2-normalize
+// so ANN dot product == cosine similarity. Face embeddings (512-d) use l2Normalize directly.
+export function toEmbedding(raw: ArrayLike<number>): number[] {
+  const vec = Array.from(raw)
+  if (vec.length !== SEARCH_EMBEDDING_DIM) {
+    throw new Error(`Unexpected embedding dim ${vec.length}, expected ${SEARCH_EMBEDDING_DIM}`)
+  }
+  return l2Normalize(vec)
+}
+
+// Wire contract for POST /api/v1/assets/:id/embedding — the worker registers one image embedding
+// for the asset owner; kind/model/dim are enforced core-side with 422
+export interface RegisterEmbeddingRequestDto {
+  kind: 'image'
+  model: string
+  embedding: number[]
+}
+
+// Wire contract for POST /api/v1/assets/:id/ocr — the worker registers ONE concatenated text row
+// per asset (asset_ocr PK is assetId); text/lang/confidence are enforced core-side with 422
+export interface RegisterOcrRequestDto {
+  text: string
+  lang: string | null
+  confidence: number | null
+}
+
+// Wire contracts for POST/GET /api/v1/assets/:id/detections — box is ORIGINAL-image pixel coords.
+// POST replaces the asset's whole row set; GET returns the viewer-overlay payload.
+export interface DetectionBox {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export interface DetectedObjectInput {
+  label: string
+  confidence: number
+  box: DetectionBox
+}
+
+export interface RegisterDetectionsRequestDto {
+  detections: DetectedObjectInput[]
+}
+
+export interface AssetDetectionDto {
+  label: string
+  confidence: number
+  box: DetectionBox
+}
+
+export interface AssetDetectionsResponse {
+  detections: AssetDetectionDto[]
+}
+
+// GET /api/v1/assets/:id/duplicates and /similar — items reuse the list-assets Asset shape
+export interface RelatedAssetsResponse {
+  items: Asset[]
+  total: number
+}
 
 export const FACE_DETECTOR_KINDS = ['human', 'scrfd'] as const
 export type FaceDetectorKind = (typeof FACE_DETECTOR_KINDS)[number]

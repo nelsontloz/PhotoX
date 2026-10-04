@@ -13,7 +13,7 @@
     "test:watch": "turbo run test:watch",
     "test:e2e": "pnpm --filter @photox/e2e test:e2e",
     "verify": "pnpm run lint && turbo run test --force && pnpm run typecheck && pnpm run build && pnpm run test:e2e",
-    "postinstall": "test \"${FACE_MODEL_SKIP:-}\" = 1 || test -f data/storage/models/w600k_r50.onnx || bash apps/worker-service/scripts/download-face-model.sh"
+    "postinstall": "test \"${FACE_MODEL_SKIP:-}\" = 1 || test -f data/storage/models/w600k_r50.onnx || bash apps/worker-service/scripts/download-face-model.sh; test \"${FACE_MODEL_SKIP:-}\" = 1 || test -f data/storage/models/siglip2-b16-224/onnx/vision_model_int8.onnx || bash apps/worker-service/scripts/download-vision-model.sh; test \"${FACE_MODEL_SKIP:-}\" = 1 || test -f data/storage/models/pp-ocrv6-small/det.onnx || bash apps/worker-service/scripts/download-ocr-model.sh; test \"${FACE_MODEL_SKIP:-}\" = 1 || test -f data/storage/models/yolo26n/yolo26n.onnx || bash apps/worker-service/scripts/download-detect-model.sh"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.0.0",

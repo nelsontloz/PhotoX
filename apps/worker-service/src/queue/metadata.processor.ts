@@ -4,11 +4,13 @@ import { readFile, copyFile, unlink } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
+import sharp from 'sharp'
 import { BullMqService } from './bullmq.service'
 import { assertOwnership, parseJobData, metadataJobSchema, type MetadataJob } from './job-schemas'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
 import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor'
+import { computeDhash, DHASH_HEIGHT, DHASH_WIDTH } from './dhash'
 
 export function branchFor(mimeType: string | null): 'photo' | 'video' | null {
   if (mimeType?.startsWith('image/')) return 'photo'
@@ -67,6 +69,22 @@ export class MetadataProcessor {
         const hasAnyField = Object.values(metadata).some((v) => v !== null)
         const metadataStatus = hasAnyField ? 'ready' : 'failed'
 
+        // ponytail: dHash must never fail the metadata job — on error warn and OMIT the field
+        // (a missing hash only costs dupe detection; a failed patch loses all metadata)
+        let phash: string | null = null
+        try {
+          const grayscale = await sharp(filePath)
+            .rotate()
+            .resize(DHASH_WIDTH, DHASH_HEIGHT, { fit: 'fill' })
+            .grayscale()
+            .raw()
+            .toBuffer()
+          phash = computeDhash(grayscale, DHASH_WIDTH, DHASH_HEIGHT)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          this.logger.warn(`dHash failed: asset=${assetId} — ${message}`)
+        }
+
         await this.core.patchMetadata(userId, assetId, {
           ...metadata,
           // EXIF iso can be rational (e.g. 201/2) — the DTO gates iso with @IsInt
@@ -76,6 +94,7 @@ export class MetadataProcessor {
           originalName,
           status: metadataStatus,
           metadata: null,
+          ...(phash === null ? {} : { phash }),
         })
       } else if (branch === 'video') {
         const videoMeta = await this.videoMetadataExtractor.extract(filePath)

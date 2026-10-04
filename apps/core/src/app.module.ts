@@ -12,6 +12,11 @@ import { AssetsModule } from './assets/assets.module'
 import { AlbumsModule } from './albums/albums.module'
 import { SharesModule } from './shares/shares.module'
 import { FacesModule } from './faces/faces.module'
+import { EmbeddingsModule } from './embeddings/embeddings.module'
+import { SearchModule } from './search/search.module'
+import { OcrModule } from './ocr/ocr.module'
+import { DetectionsModule } from './detections/detections.module'
+import { GroupsModule } from './groups/groups.module'
 import { PersonsModule } from './persons/persons.module'
 import { AdminModule } from './admin/admin.module'
 
@@ -32,6 +37,11 @@ loadRootEnvFile()
     AlbumsModule,
     SharesModule,
     FacesModule,
+    EmbeddingsModule,
+    SearchModule,
+    OcrModule,
+    DetectionsModule,
+    GroupsModule,
     PersonsModule,
     AdminModule,
   ],

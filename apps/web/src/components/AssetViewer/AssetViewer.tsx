@@ -4,9 +4,12 @@ import { getAsset, getVideoStreamUrl, reprocessThumbnails, reprocessVideo } from
 import { ViewerTopBar } from './ViewerTopBar'
 import { ViewerActions } from './ViewerActions'
 import { useAssetMedia } from './useAssetMedia'
+import { useDetections } from './useDetections'
+import { useAssetDuplicates, useSimilarAssets } from './useRelatedAssets'
 import { useViewerKeyboard } from './useViewerKeyboard'
 import { ViewerMedia } from './ViewerMedia'
 import { ViewerInfoPanel } from './ViewerInfoPanel'
+import { ViewerRelatedTray } from './ViewerRelatedTray'
 
 interface AssetViewerProps {
   asset: Asset
@@ -46,6 +49,7 @@ export function AssetViewer({
   const [hoveredFaceId, setHoveredFaceId] = useState<string | null>(null)
   const [favOverride, setFavOverride] = useState<boolean | null>(null)
   const [reprocessLoading, setReprocessLoading] = useState(false)
+  const [detectionsOn, setDetectionsOn] = useState(false)
 
   useEffect(() => {
     setCurrentAsset(asset)
@@ -75,6 +79,16 @@ export function AssetViewer({
   }, [])
 
   const isVideo = currentAsset.kind === 'video'
+  const canShowDetections = !isVideo && currentAsset.width != null && currentAsset.height != null
+  const { status: detectionStatus, detections } = useDetections(
+    currentAsset.id,
+    detectionsOn && canShowDetections,
+  )
+  // related sections skip trashed assets: suggestions for something already in the trash lead
+  // into viewer actions (restore/delete) that don't apply to live results
+  const relatedEnabled = !currentAsset.isTrashed
+  const similar = useSimilarAssets(currentAsset.id, relatedEnabled)
+  const duplicates = useAssetDuplicates(currentAsset.id, relatedEnabled)
   const primaryVideoSrc = isVideo
     ? getVideoStreamUrl(currentAsset.transcodeFileId ?? currentAsset.fileId)
     : null
@@ -147,6 +161,10 @@ export function AssetViewer({
             setHoveredFaceId(null)
           }}
           onClose={onClose}
+          detectionsOn={detectionsOn}
+          onToggleDetections={
+            canShowDetections ? () => setDetectionsOn((value) => !value) : undefined
+          }
           onTrash={onTrash}
           onRestore={onRestore}
           onDelete={onDelete}
@@ -170,10 +188,18 @@ export function AssetViewer({
           infoOpen={infoOpen}
           asset={currentAsset}
           highlightedFaceId={hoveredFaceId}
+          detectionsOn={detectionsOn}
+          detectionStatus={detectionStatus}
+          detections={detections}
           onPrev={onPrev}
           onNext={onNext}
           siblingAssets={siblingAssets}
           onSelectSibling={onSelectSibling}
+        />
+        <ViewerRelatedTray
+          similar={similar}
+          duplicates={duplicates}
+          onOpenAsset={onSelectSibling}
         />
         {/* Mobile only: action row directly under the header (h-16), centered.
             No background: the header gradient already ends transparent at its bottom

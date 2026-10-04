@@ -1,7 +1,9 @@
 import { FaChevronLeft, FaChevronRight, FaImage, FaSpinner } from 'react-icons/fa6'
-import type { Asset, FaceDto } from '@photox/shared-types'
+import type { Asset, AssetDetectionDto, FaceDto } from '@photox/shared-types'
 import { VideoPlayer } from '../VideoPlayer'
 import { FaceOverlay } from './FaceOverlay'
+import { DetectionOverlay } from './DetectionOverlay'
+import { summarizeDetections } from './detectionView'
 import { ViewerThumbnailStrip } from './ViewerThumbnailStrip'
 import { ZoomableImage } from './ZoomableImage'
 
@@ -19,6 +21,9 @@ interface ViewerMediaProps {
   infoOpen: boolean
   asset: Asset
   highlightedFaceId?: string | null
+  detectionsOn?: boolean
+  detectionStatus?: 'idle' | 'loading' | 'ready'
+  detections?: AssetDetectionDto[]
   onPrev?: () => void
   onNext?: () => void
   siblingAssets?: Asset[]
@@ -39,6 +44,9 @@ export function ViewerMedia({
   infoOpen,
   asset,
   highlightedFaceId,
+  detectionsOn = false,
+  detectionStatus = 'idle',
+  detections = [],
   onPrev,
   onNext,
   siblingAssets,
@@ -48,6 +56,7 @@ export function ViewerMedia({
   const dims =
     asset.width != null && asset.height != null ? { w: asset.width, h: asset.height } : null
   const showOverlay = infoOpen && !isVideo && imageUrl != null && dims != null && faces.length > 0
+  const showDetections = detectionsOn && !isVideo && imageUrl != null && dims != null
 
   return (
     <div className="flex-1 flex items-center justify-center p-8 pt-28 pb-28 sm:pt-20 sm:pb-24 relative min-h-0">
@@ -86,6 +95,9 @@ export function ViewerMedia({
                 highlightedFaceId={highlightedFaceId}
               />
             )}
+            {showDetections && (
+              <DetectionOverlay detections={detections} imageWidth={dims.w} imageHeight={dims.h} />
+            )}
           </ZoomableImage>
         ) : (
           <img
@@ -114,6 +126,18 @@ export function ViewerMedia({
         >
           <FaChevronRight className="text-2xl" />
         </button>
+      )}
+      {showDetections && (
+        <div className="absolute bottom-32 sm:bottom-28 left-4 sm:left-6 z-10 flex items-center gap-2 rounded-full bg-black/40 backdrop-blur-sm px-3 py-1.5 text-xs text-white/80">
+          {detectionStatus === 'loading' ? (
+            <>
+              <FaSpinner className="animate-spin" />
+              <span>Loading objects…</span>
+            </>
+          ) : (
+            <span className="tabular-nums">{summarizeDetections(detections)}</span>
+          )}
+        </div>
       )}
       {siblingAssets && onSelectSibling && (
         <ViewerThumbnailStrip

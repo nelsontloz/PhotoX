@@ -27,7 +27,11 @@ import {
   getVideoStreamUrl,
   reprocessThumbnails as reprocessAssetThumbnails,
   reprocessVideo,
+  listAssetsByIds,
 } from '../../../src/api/assets'
+import { searchAssets } from '../../../src/api/search'
+import { getAssetDetections } from '../../../src/api/detections'
+import { getAssetDuplicates, getSimilarAssets } from '../../../src/api/related'
 import { createShare, listShares, revokeShare } from '../../../src/api/shares'
 import {
   listAlbums,
@@ -58,6 +62,8 @@ import {
   reprocessFaces,
   getFaceReprocessStatus,
   reclusterFaces,
+  reprocessEmbeddings,
+  getEmbeddingReprocessStatus,
 } from '../../../src/api/admin'
 
 const PACT_DIR = path.resolve(__dirname, '../../../../../pacts')
@@ -69,6 +75,7 @@ const provider = new PactV3({
 })
 
 const ASSET_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
+const ASSET_ID_2 = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a77'
 const FILE_ID = 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22'
 const ALBUM_ID = 'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33'
 const SHARE_ID = 'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44'
@@ -141,6 +148,30 @@ const assetListResponse = MatchersV3.like({
   total: 1,
   limit: 20,
   offset: 0,
+})
+
+const searchResponse = MatchersV3.like({
+  items: MatchersV3.eachLike({
+    id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+    kind: 'photo',
+    fileId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22',
+    isTrashed: false,
+    favorite: false,
+    thumbnailStatus: 'ready',
+  }),
+  total: 1,
+})
+
+const relatedResponse = MatchersV3.like({
+  items: MatchersV3.eachLike({
+    id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+    kind: 'photo',
+    fileId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22',
+    isTrashed: false,
+    favorite: false,
+    thumbnailStatus: 'ready',
+  }),
+  total: 1,
 })
 
 const albumDto = MatchersV3.like({
@@ -357,6 +388,27 @@ describe('Web → Core pact', () => {
         api.defaults.baseURL = mockserver.url + '/api'
         const res = await listAssets({ limit: 50, offset: 0, dateFrom, dateTo })
         expect(res.items.length).toBeGreaterThan(0)
+      })
+  })
+
+  it('GET /api/v1/search — search assets', async () => {
+    await provider
+      .uponReceiving('a request to search assets')
+      .withRequest({
+        method: 'GET',
+        path: '/api/v1/search',
+        query: { q: 'beach', limit: '50', offset: '0' },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: searchResponse,
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await searchAssets({ q: 'beach', limit: 50, offset: 0 })
+        expect(res.items.length).toBeGreaterThan(0)
+        expect(res.total).toBe(1)
       })
   })
 
@@ -1364,6 +1416,47 @@ describe('Web → Core pact', () => {
       })
   })
 
+  it('POST /api/v1/admin/embeddings/reprocess — enqueue embedding reprocess', async () => {
+    await provider
+      .uponReceiving('a request to reprocess all embeddings')
+      .withRequest({
+        method: 'POST',
+        path: '/api/v1/admin/embeddings/reprocess',
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: MatchersV3.like({ enqueued: 5, total: 5, model: 'siglip2-b16-224' }),
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await reprocessEmbeddings()
+        expect(res.enqueued).toBe(5)
+      })
+  })
+
+  it('GET /api/v1/admin/embeddings/reprocess — last run and queue counts', async () => {
+    await provider
+      .uponReceiving('a request for the embedding reprocess status')
+      .withRequest({
+        method: 'GET',
+        path: '/api/v1/admin/embeddings/reprocess',
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        // ponytail: same nullable-lastRun caveat as the face reprocess status above.
+        body: MatchersV3.like({
+          queue: { waiting: 1, active: 1, completed: 3, failed: 0, delayed: 0 },
+        }),
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await getEmbeddingReprocessStatus()
+        expect(res.queue.waiting).toBe(1)
+      })
+  })
+
   it('POST /api/v1/assets/:id/reprocess-thumbnails — reprocess asset thumbnails', async () => {
     await provider
       .uponReceiving('a request to reprocess the thumbnails of an asset')
@@ -1397,6 +1490,91 @@ describe('Web → Core pact', () => {
       .executeTest(async (mockserver) => {
         api.defaults.baseURL = mockserver.url + '/api'
         await reprocessVideo(ASSET_ID)
+      })
+  })
+
+  it('GET /api/v1/assets/:id/detections — list detected objects', async () => {
+    await provider
+      .uponReceiving('a request to list the detected objects of an asset')
+      .withRequest({
+        method: 'GET',
+        path: `/api/v1/assets/${ASSET_ID}/detections`,
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: MatchersV3.like({
+          detections: MatchersV3.eachLike({
+            label: 'dog',
+            confidence: 0.9,
+            box: { x: 10, y: 20, w: 100, h: 80 },
+          }),
+        }),
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await getAssetDetections(ASSET_ID)
+        expect(res.detections.length).toBeGreaterThan(0)
+        expect(res.detections[0]?.label).toBe('dog')
+      })
+  })
+
+  it('GET /api/v1/assets/:id/similar — more like this', async () => {
+    await provider
+      .uponReceiving('a request to list assets similar to an asset')
+      .withRequest({
+        method: 'GET',
+        path: `/api/v1/assets/${ASSET_ID}/similar`,
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: relatedResponse,
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await getSimilarAssets(ASSET_ID)
+        expect(res.items.length).toBeGreaterThan(0)
+        expect(res.total).toBe(1)
+      })
+  })
+
+  it('GET /api/v1/assets/:id/duplicates — possible duplicates', async () => {
+    await provider
+      .uponReceiving('a request to list duplicate assets of an asset')
+      .withRequest({
+        method: 'GET',
+        path: `/api/v1/assets/${ASSET_ID}/duplicates`,
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: relatedResponse,
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await getAssetDuplicates(ASSET_ID)
+        expect(res.items.length).toBeGreaterThan(0)
+      })
+  })
+
+  it('GET /api/v1/assets?ids= — batch fetch assets by id', async () => {
+    await provider
+      .uponReceiving('a request to batch fetch assets by id')
+      .withRequest({
+        method: 'GET',
+        path: '/api/v1/assets',
+        query: { ids: `${ASSET_ID},${ASSET_ID_2}`, limit: '2' },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: assetListResponse,
+      })
+      .executeTest(async (mockserver) => {
+        api.defaults.baseURL = mockserver.url + '/api'
+        const res = await listAssetsByIds([ASSET_ID, ASSET_ID_2])
+        expect(res.length).toBeGreaterThan(0)
       })
   })
 })

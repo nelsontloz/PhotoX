@@ -1,4 +1,4 @@
-import { FaArrowLeft, FaCircleInfo } from 'react-icons/fa6'
+import { FaArrowLeft, FaCircleInfo, FaObjectGroup } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
 import { formatBytes } from '../../lib/format'
 import { formatDate } from '../../lib/dateFormat'
@@ -9,6 +9,8 @@ interface ViewerTopBarProps {
   infoOpen: boolean
   onToggleInfo: () => void
   onClose: () => void
+  detectionsOn?: boolean
+  onToggleDetections?: () => void
   onTrash?: () => void
   onRestore?: () => void
   onDelete?: () => void
@@ -24,6 +26,8 @@ export function ViewerTopBar({
   infoOpen,
   onToggleInfo,
   onClose,
+  detectionsOn,
+  onToggleDetections,
   onTrash,
   onRestore,
   onDelete,
@@ -69,6 +73,16 @@ export function ViewerTopBar({
           />
           <div className="w-px h-4 bg-white/20 mx-2" />
         </div>
+        {onToggleDetections && (
+          <button
+            onClick={onToggleDetections}
+            className="p-2 text-white/80 hover:text-white transition-colors"
+            title={detectionsOn ? 'Hide detected objects' : 'Show detected objects'}
+            aria-pressed={detectionsOn}
+          >
+            <FaObjectGroup className={`text-base ${detectionsOn ? 'text-primary' : ''}`} />
+          </button>
+        )}
         <button
           onClick={onToggleInfo}
           className="p-2 text-white/80 hover:text-white transition-colors"

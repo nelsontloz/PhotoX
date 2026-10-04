@@ -2,9 +2,21 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/commo
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { IsIn } from 'class-validator'
 import type { FaceDetectorKind } from '@photox/shared-types'
-import type { FaceReprocessLastRun } from '../settings/settings.service'
+import type {
+  DetectionsReprocessLastRun,
+  EmbeddingReprocessLastRun,
+  FaceReprocessLastRun,
+  MetadataReprocessLastRun,
+  OcrReprocessLastRun,
+  PlacesBackfillLastRun,
+} from '../settings/settings.service'
 import { AdminAssetsService } from './admin-assets.service'
 import { AdminFacesService } from './admin-faces.service'
+import { AdminEmbeddingsService } from './admin-embeddings.service'
+import { AdminOcrService } from './admin-ocr.service'
+import { AdminDetectionsService } from './admin-detections.service'
+import { AdminPlacesService } from './admin-places.service'
+import { AdminMetadataService } from './admin-metadata.service'
 import { BullMqService } from '../queue/bullmq.service'
 
 class ReprocessThumbnailsDto {
@@ -19,6 +31,11 @@ export class AdminMaintenanceController {
     private readonly admin: AdminAssetsService,
     private readonly bullMq: BullMqService,
     private readonly adminFaces: AdminFacesService,
+    private readonly adminEmbeddings: AdminEmbeddingsService,
+    private readonly adminOcr: AdminOcrService,
+    private readonly adminDetections: AdminDetectionsService,
+    private readonly adminPlaces: AdminPlacesService,
+    private readonly adminMetadata: AdminMetadataService,
   ) {}
 
   @Get('orphan-counts')
@@ -106,5 +123,114 @@ export class AdminMaintenanceController {
   })
   async reclusterFaces(): Promise<{ enqueued: number }> {
     return this.adminFaces.recluster()
+  }
+
+  @Post('embeddings/reprocess')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Enqueue embed jobs for all non-trashed photos (admin-only)' })
+  @ApiResponse({ status: 200, description: 'Embed jobs enqueued and the run recorded' })
+  async reprocessEmbeddings(): Promise<{ enqueued: number; total: number; model: string }> {
+    return this.adminEmbeddings.reprocess()
+  }
+
+  @Get('embeddings/reprocess')
+  @ApiOperation({
+    summary: 'Embedding reprocess last-run record and process-embeddings queue counts',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Last run record (null when never run) and queue counts',
+  })
+  async embeddingReprocessStatus(): Promise<{
+    lastRun: EmbeddingReprocessLastRun | null
+    queue: Record<string, number>
+  }> {
+    return this.adminEmbeddings.status()
+  }
+
+  @Post('ocr/reprocess')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Enqueue OCR jobs for all non-trashed photos (admin-only)' })
+  @ApiResponse({ status: 200, description: 'OCR jobs enqueued and the run recorded' })
+  async reprocessOcr(): Promise<{ enqueued: number; total: number }> {
+    return this.adminOcr.reprocess()
+  }
+
+  @Get('ocr/reprocess')
+  @ApiOperation({ summary: 'OCR reprocess last-run record and process-ocr queue counts' })
+  @ApiResponse({
+    status: 200,
+    description: 'Last run record (null when never run) and queue counts',
+  })
+  async ocrReprocessStatus(): Promise<{
+    lastRun: OcrReprocessLastRun | null
+    queue: Record<string, number>
+  }> {
+    return this.adminOcr.status()
+  }
+
+  @Post('detections/reprocess')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Enqueue object-detection jobs for all non-trashed photos (admin-only)',
+  })
+  @ApiResponse({ status: 200, description: 'Detection jobs enqueued and the run recorded' })
+  async reprocessDetections(): Promise<{ enqueued: number; total: number }> {
+    return this.adminDetections.reprocess()
+  }
+
+  @Get('detections/reprocess')
+  @ApiOperation({ summary: 'Detections reprocess last-run record and process-detect queue counts' })
+  @ApiResponse({
+    status: 200,
+    description: 'Last run record (null when never run) and queue counts',
+  })
+  async detectionsReprocessStatus(): Promise<{
+    lastRun: DetectionsReprocessLastRun | null
+    queue: Record<string, number>
+  }> {
+    return this.adminDetections.status()
+  }
+
+  @Post('places/backfill')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Resolve place fields for all assets with coordinates and no city (admin-only)',
+  })
+  @ApiResponse({ status: 200, description: 'Place resolution counts and the run recorded' })
+  async backfillPlaces(): Promise<{ updated: number; total: number }> {
+    return this.adminPlaces.backfill()
+  }
+
+  @Get('places/backfill')
+  @ApiOperation({ summary: 'Places backfill last-run record' })
+  @ApiResponse({ status: 200, description: 'Last run record (null when never run)' })
+  async placesBackfillStatus(): Promise<{ lastRun: PlacesBackfillLastRun | null }> {
+    return this.adminPlaces.status()
+  }
+
+  @Post('metadata/reprocess')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Enqueue metadata jobs for non-trashed photos missing a phash (admin-only)',
+  })
+  @ApiResponse({ status: 200, description: 'Metadata jobs enqueued and the run recorded' })
+  async reprocessMetadata(): Promise<{ enqueued: number; total: number }> {
+    return this.adminMetadata.reprocess()
+  }
+
+  @Get('metadata/reprocess')
+  @ApiOperation({
+    summary: 'Metadata reprocess last-run record and process-metadata queue counts',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Last run record (null when never run) and queue counts',
+  })
+  async metadataReprocessStatus(): Promise<{
+    lastRun: MetadataReprocessLastRun | null
+    queue: Record<string, number>
+  }> {
+    return this.adminMetadata.status()
   }
 }
