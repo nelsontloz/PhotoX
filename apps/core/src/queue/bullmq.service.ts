@@ -39,11 +39,47 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     > = {},
   ): Promise<void> {
     try {
-      await this.getQueue(queueName).add(jobName, data, opts)
+      // ponytail: retry defaults live here; callers pass only what they override
+      await this.getQueue(queueName).add(jobName, data, {
+        attempts: 3,
+        backoff: { type: 'exponential' },
+        removeOnFail: true,
+        ...opts,
+      })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       this.logger.error(`Failed to enqueue ${queueName} job: ${msg}`)
     }
+  }
+
+  /**
+   * Enqueues one job per item over offset pages, stopping on an empty page or once `offset`
+   * reaches `total`. Shared by the offset-loop admin reprocess services; metadata keeps its own
+   * keyset loop (its `phash IS NULL` set shrinks as jobs complete, so offset would skip rows).
+   * `removeOnComplete` lets a later reprocess run re-enqueue the same asset.
+   */
+  async enqueuePaged<T>(
+    queueName: string,
+    jobName: string,
+    fetchPage: (offset: number) => Promise<{ items: T[]; total: number }>,
+    build: (item: T) => { data: Record<string, unknown>; jobId: string },
+  ): Promise<{ enqueued: number; total: number }> {
+    let offset = 0
+    let enqueued = 0
+    let total = 0
+    for (;;) {
+      const page = await fetchPage(offset)
+      total = page.total
+      if (page.items.length === 0) break
+      for (const item of page.items) {
+        const { data, jobId } = build(item)
+        await this.enqueue(queueName, jobName, data, { jobId, removeOnComplete: true })
+        enqueued++
+      }
+      offset += page.items.length
+      if (offset >= total) break
+    }
+    return { enqueued, total }
   }
 
   enqueueThumbnails(assetId: string, fileId: string, userId: string, prefix = 'thumb'): void {
@@ -54,9 +90,6 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
         { assetId, fileId, userId, size },
         {
           jobId: `${prefix}-${assetId}-${size}`,
-          attempts: 3,
-          backoff: { type: 'exponential' },
-          removeOnFail: true,
         },
       )
     }
@@ -74,9 +107,6 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
       { assetId, fileId, userId },
       {
         jobId: `${opts?.reprocess ? 'video-reprocess' : 'video'}-${assetId}`,
-        attempts: 3,
-        backoff: { type: 'exponential' },
-        removeOnFail: true,
       },
     )
   }
@@ -89,9 +119,6 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
       {
         // model is part of the id: switching models must not collide with the old model's job
         jobId: `embed-${assetId}-${SEARCH_EMBEDDING_MODEL}`,
-        attempts: 3,
-        backoff: { type: 'exponential' },
-        removeOnFail: true,
       },
     )
   }
@@ -103,9 +130,6 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
       { assetId, fileId, userId },
       {
         jobId: `ocr-${assetId}`,
-        attempts: 3,
-        backoff: { type: 'exponential' },
-        removeOnFail: true,
       },
     )
   }
@@ -117,9 +141,6 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
       { assetId, fileId, userId },
       {
         jobId: `detect-${assetId}`,
-        attempts: 3,
-        backoff: { type: 'exponential' },
-        removeOnFail: true,
       },
     )
   }
