@@ -159,3 +159,27 @@ export async function getDetectionReprocessStatus(): Promise<DetectionReprocessS
   const { data } = await api.get<DetectionReprocessStatus>('/v1/admin/detections/reprocess')
   return data
 }
+
+export interface OcrReprocessStatus {
+  lastRun: {
+    startedAt: string
+    total: number
+    enqueued: number
+  } | null
+  queue: { waiting: number; active: number; completed: number; failed: number; delayed: number }
+}
+
+export interface OcrReprocessResponse {
+  enqueued: number
+  total: number
+}
+
+export async function reprocessOcr(): Promise<OcrReprocessResponse> {
+  const { data } = await api.post<OcrReprocessResponse>('/v1/admin/ocr/reprocess')
+  return data
+}
+
+export async function getOcrReprocessStatus(): Promise<OcrReprocessStatus> {
+  const { data } = await api.get<OcrReprocessStatus>('/v1/admin/ocr/reprocess')
+  return data
+}

@@ -34,10 +34,13 @@ import {
   getEmbeddingReprocessStatus,
   reprocessDetections,
   getDetectionReprocessStatus,
+  reprocessOcr,
+  getOcrReprocessStatus,
   type ListAdminUsersParams,
   type FaceReprocessStatus,
   type EmbeddingReprocessStatus,
   type DetectionReprocessStatus,
+  type OcrReprocessStatus,
 } from '../../api/admin'
 import type {
   AdminUserListResponse,
@@ -1128,6 +1131,179 @@ export function DetectionsReprocessSection() {
   )
 }
 
+export function OcrReprocessSection() {
+  const [status, setStatus] = useState<OcrReprocessStatus | null>(null)
+  const [confirming, setConfirming] = useState(false)
+  const [inFlight, setInFlight] = useState(false)
+  const [result, setResult] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [runToken, setRunToken] = useState(0)
+
+  // ponytail: 3s poll while the OCR queue drains; poll errors stay silent and stop after 5
+  // consecutive failures so a broken endpoint is not hammered (re-run/remount resumes)
+  useEffect(() => {
+    let cancelled = false
+    let timer = 0
+    let failures = 0
+    const tick = () => {
+      getOcrReprocessStatus()
+        .then((res) => {
+          if (cancelled) return
+          failures = 0
+          setStatus(res)
+          if (res.queue.waiting + res.queue.active > 0) {
+            timer = window.setTimeout(tick, 3000)
+          }
+        })
+        .catch(() => {
+          if (cancelled) return
+          failures += 1
+          if (failures < 5) timer = window.setTimeout(tick, 3000)
+        })
+    }
+    tick()
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [runToken])
+
+  const onConfirm = async () => {
+    setConfirming(false)
+    setInFlight(true)
+    setError(null)
+    setResult(null)
+    try {
+      const res = await reprocessOcr()
+      setResult(
+        `Queued ${res.enqueued.toLocaleString()} OCR jobs for ${res.total.toLocaleString()} photos.`,
+      )
+      setRunToken((v) => v + 1)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Reprocess failed')
+    } finally {
+      setInFlight(false)
+    }
+  }
+
+  const lastRun = status?.lastRun ?? null
+  const remaining = status ? status.queue.waiting + status.queue.active : 0
+  const running = remaining > 0
+  const requested = lastRun?.enqueued ?? 0
+  const done = Math.max(0, Math.min(requested, requested - remaining))
+  const percent = requested > 0 ? Math.round((done / requested) * 100) : 0
+
+  return (
+    <section>
+      <div className="bg-card-dark border border-border-dark rounded-xl p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-200">OCR text</h2>
+            <p className="text-xs text-slate-400 mt-1">
+              Photos are scanned for text automatically on upload. Reprocessing runs OCR over the
+              whole library — text feeds text search.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            disabled={inFlight || running}
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors"
+          >
+            {inFlight ? (
+              <>
+                <FaSpinner className="animate-spin" />
+                Enqueuing…
+              </>
+            ) : (
+              'Reprocess OCR text'
+            )}
+          </button>
+        </div>
+
+        {result && <p className="text-xs text-emerald-400 mt-3">{result}</p>}
+        {error && <p className="text-xs text-red-400 mt-3">{error}</p>}
+
+        {status && !lastRun && !running && (
+          <p className="text-xs text-slate-500 mt-3">No OCR reprocess runs yet.</p>
+        )}
+
+        {lastRun && (
+          <div className="mt-4 rounded-lg bg-slate-900/50 p-4">
+            {running && requested > 0 ? (
+              <>
+                <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+                  <span className="inline-flex items-center gap-2 text-xs font-medium text-slate-200">
+                    <FaSpinner className="animate-spin text-primary" />
+                    Reading text…
+                  </span>
+                  <span className="text-xs tabular-nums text-slate-400">
+                    {remaining.toLocaleString()} of {requested.toLocaleString()} remaining ·{' '}
+                    {percent}%
+                  </span>
+                </div>
+                <div
+                  role="progressbar"
+                  aria-label="OCR reprocess progress"
+                  aria-valuemin={0}
+                  aria-valuemax={requested}
+                  aria-valuenow={done}
+                  className="h-2 rounded-full bg-slate-800 overflow-hidden"
+                >
+                  <div
+                    className="h-full bg-primary transition-all duration-500"
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-slate-400">
+                Last run {new Date(lastRun.startedAt).toLocaleString()} —{' '}
+                {lastRun.enqueued.toLocaleString()} of {lastRun.total.toLocaleString()} photos
+                queued.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {confirming && (
+        <Dialog
+          title="Reprocess OCR text?"
+          onClose={() => setConfirming(false)}
+          panelClassName="bg-card-dark border border-border-dark rounded-xl p-5 max-w-md w-full"
+          titleTag="h3"
+          titleClassName="text-base font-semibold text-slate-100"
+          headerClassName=""
+          closeOnOverlay={false}
+          escapeKey={false}
+        >
+          <p className="text-sm text-slate-400 mt-2">
+            This runs OCR over every non-trashed photo. Extracted text feeds text search as jobs
+            finish. The worker runs in the background, so large libraries take a while.
+          </p>
+          <div className="flex justify-end gap-2 mt-5">
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void onConfirm()}
+              className="text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-3 py-2 transition-colors"
+            >
+              Confirm
+            </button>
+          </div>
+        </Dialog>
+      )}
+    </section>
+  )
+}
+
 function OrphanCleanupSection() {
   const [data, setData] = useState<{ orphanFiles: number; orphanThumbnails: number } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1347,6 +1523,7 @@ function AdminPageContent() {
       <FacesReprocessSection />
       <EmbeddingsReprocessSection />
       <DetectionsReprocessSection />
+      <OcrReprocessSection />
       <OrphanCleanupSection />
 
       <header className="flex items-center justify-between gap-4 flex-wrap">
