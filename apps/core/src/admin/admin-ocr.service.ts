@@ -23,31 +23,15 @@ export class AdminOcrService {
    */
   async reprocess(): Promise<{ enqueued: number; total: number }> {
     const startedAt = new Date().toISOString()
-    let offset = 0
-    let enqueued = 0
-    let total = 0
-    for (;;) {
-      const page = await this.admin.listForReprocess('photo', REPROCESS_PAGE_SIZE, offset)
-      total = page.total
-      if (page.items.length === 0) break
-      for (const item of page.items) {
-        await this.bullMq.enqueue(
-          OCR_QUEUE,
-          'ocr',
-          { assetId: item.id, fileId: item.fileId, userId: item.userId, reason: 'reprocess' },
-          {
-            jobId: `ocr-reprocess-${item.id}`,
-            attempts: 3,
-            backoff: { type: 'exponential' },
-            removeOnFail: true,
-            removeOnComplete: true,
-          },
-        )
-        enqueued++
-      }
-      offset += page.items.length
-      if (offset >= total) break
-    }
+    const { enqueued, total } = await this.bullMq.enqueuePaged(
+      OCR_QUEUE,
+      'ocr',
+      (offset) => this.admin.listForReprocess('photo', REPROCESS_PAGE_SIZE, offset),
+      (item) => ({
+        data: { assetId: item.id, fileId: item.fileId, userId: item.userId, reason: 'reprocess' },
+        jobId: `ocr-reprocess-${item.id}`,
+      }),
+    )
     await this.settings.setOcrReprocessLastRun({ startedAt, total, enqueued })
     return { enqueued, total }
   }

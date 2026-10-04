@@ -26,37 +26,21 @@ export class AdminFacesService {
     const startedAt = new Date().toISOString()
     // ponytail: detector read once per run — jobs enqueued mid-run keep the detector this run saw
     const detector = await this.settings.getFaceDetector()
-    let offset = 0
-    let enqueued = 0
-    let total = 0
-    for (;;) {
-      const page = await this.admin.listForReprocess('photo', REPROCESS_PAGE_SIZE, offset)
-      total = page.total
-      if (page.items.length === 0) break
-      for (const item of page.items) {
-        await this.bullMq.enqueue(
-          'process-faces',
-          're-embed',
-          {
-            assetId: item.id,
-            fileId: item.fileId,
-            userId: item.userId,
-            reason: 're-embed',
-            detector,
-          },
-          {
-            jobId: `face-reembed-${item.id}`,
-            attempts: 3,
-            backoff: { type: 'exponential' },
-            removeOnFail: true,
-            removeOnComplete: true,
-          },
-        )
-        enqueued++
-      }
-      offset += page.items.length
-      if (offset >= total) break
-    }
+    const { enqueued, total } = await this.bullMq.enqueuePaged(
+      'process-faces',
+      're-embed',
+      (offset) => this.admin.listForReprocess('photo', REPROCESS_PAGE_SIZE, offset),
+      (item) => ({
+        data: {
+          assetId: item.id,
+          fileId: item.fileId,
+          userId: item.userId,
+          reason: 're-embed',
+          detector,
+        },
+        jobId: `face-reembed-${item.id}`,
+      }),
+    )
     await this.settings.setFaceReprocessLastRun({ startedAt, total, enqueued, detector })
     return { enqueued, total, detector }
   }
@@ -82,9 +66,6 @@ export class AdminFacesService {
         {
           // unique suffix so a manual run is never deduped against a worker's debounced job
           jobId: `cluster-${row.userId}-admin-${suffix}`,
-          attempts: 3,
-          backoff: { type: 'exponential' },
-          removeOnFail: true,
         },
       )
     }

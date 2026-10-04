@@ -1,9 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm'
-import { toSql as pgToSql, fromSql as pgFromSql } from 'pgvector'
+import { vectorTransformer } from '../shared/pgvector'
 import type { FaceDetectorKind } from '@photox/shared-types'
-
-const toVectorString = (v: number[]): string => pgToSql(v) as string
-const fromVectorString = (v: string): number[] => pgFromSql(v) as number[]
 
 @Entity('faces')
 @Index(['personId', 'userId'])
@@ -25,13 +22,7 @@ export class Face {
   @Column('real')
   confidence!: number
 
-  @Column({
-    type: 'text',
-    transformer: {
-      to: toVectorString,
-      from: fromVectorString,
-    },
-  })
+  @Column({ type: 'text', transformer: vectorTransformer() })
   embedding!: number[]
 
   // ponytail: plain uuid column, no TypeORM relation — avoids circular import between faces/ and persons/ modules

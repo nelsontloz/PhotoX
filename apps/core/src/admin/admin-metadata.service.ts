@@ -37,9 +37,6 @@ export class AdminMetadataService {
           { assetId: item.id, fileId: item.fileId, userId: item.userId, kind: 'photo' },
           {
             jobId: `metadata-reprocess-${item.id}`,
-            attempts: 3,
-            backoff: { type: 'exponential' },
-            removeOnFail: true,
             removeOnComplete: true,
           },
         )
