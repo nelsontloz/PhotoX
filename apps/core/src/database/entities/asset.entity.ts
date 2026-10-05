@@ -11,19 +11,14 @@ import { AssetThumbnail } from './asset-thumbnail.entity'
 
 @Entity('assets')
 @Index(['userId', 'uploadedAt'])
-@Index(['userId', 'takenAt'])
-@Index(['userId', 'kind', 'uploadedAt'])
-@Index(['userId'], { where: '"isTrashed" = false' })
 export class Asset {
   @PrimaryGeneratedColumn('uuid')
   id!: string
 
   @Column()
-  @Index()
   userId!: string
 
   @Column({ type: 'enum', enum: ['photo', 'video'] })
-  @Index()
   kind!: 'photo' | 'video'
 
   @Column({ type: 'uuid', unique: true })

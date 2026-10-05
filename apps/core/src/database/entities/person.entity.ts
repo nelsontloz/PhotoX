@@ -14,7 +14,6 @@ export class Person {
   id!: string
 
   @Column('uuid')
-  @Index()
   userId!: string
 
   @Column('text', { nullable: true })

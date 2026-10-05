@@ -2,24 +2,14 @@ import { Module, Global, Logger } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { DataSource } from 'typeorm'
 import { loadEnv } from '@photox/shared-config'
-import { AssetEmbedding } from './entities/asset-embedding.entity'
-import { AssetOcr } from './entities/asset-ocr.entity'
-import { AssetDetection } from './entities/asset-detection.entity'
-import { Place } from './entities/place.entity'
 
 // ponytail: 512 is the InsightFace buffalo_l w600k_r50 output dim (replaced human faceres 1024).
 // Index rebuild fails while legacy 1024-dim rows remain (warn-caught) — the cluster re-embed backfill converts them.
 // Each group is best-effort and independent: a failure skips the rest of its statements, later groups still run.
 const BOOTSTRAP_SQL: { warn: string; statements: string[] }[] = [
   {
-    warn: 'pgvector extension or index creation failed — faces embedding search will be unavailable',
-    statements: [
-      'CREATE EXTENSION IF NOT EXISTS vector',
-      // idempotent: existing deployments pick up SQL-side fixes on a pgvector image bump
-      'ALTER EXTENSION vector UPDATE',
-      'DROP INDEX IF EXISTS faces_embedding_hnsw',
-      'CREATE INDEX faces_embedding_hnsw ON faces USING hnsw ((embedding::vector(512)) vector_cosine_ops)',
-    ],
+    warn: 'pgvector extension creation failed — vision search will be unavailable',
+    statements: ['CREATE EXTENSION IF NOT EXISTS vector', 'ALTER EXTENSION vector UPDATE'],
   },
   {
     warn: 'assets_layout_idx creation failed — layout endpoint falls back to filter+sort',
@@ -42,16 +32,6 @@ const BOOTSTRAP_SQL: { warn: string; statements: string[] }[] = [
       `CREATE INDEX asset_embeddings_hnsw ON asset_embeddings
        USING hnsw ((embedding::halfvec(768)) halfvec_cosine_ops)
        WHERE kind = 'image' AND model = 'siglip2-b16-224'`,
-    ],
-  },
-  {
-    warn: 'asset_ocr full-text/trigram index creation failed — OCR search will fall back to scans',
-    statements: [
-      'CREATE EXTENSION IF NOT EXISTS pg_trgm',
-      'DROP INDEX IF EXISTS asset_ocr_fts_idx',
-      `CREATE INDEX asset_ocr_fts_idx ON asset_ocr USING gin (to_tsvector('simple', text))`,
-      'DROP INDEX IF EXISTS asset_ocr_trgm_idx',
-      'CREATE INDEX asset_ocr_trgm_idx ON asset_ocr USING gin (text gin_trgm_ops)',
     ],
   },
   {
@@ -105,9 +85,6 @@ export class DatabaseModule {
           retryAttempts: 3,
           retryDelay: 3000,
         }),
-        // vision-search tables have no feature module yet; forFeature here makes synchronize
-        // create them (autoLoadEntities only picks up forFeature-registered entities)
-        TypeOrmModule.forFeature([AssetEmbedding, AssetOcr, AssetDetection, Place]),
       ],
       providers: [VECTOR_INIT_PROVIDER],
       exports: [TypeOrmModule],
