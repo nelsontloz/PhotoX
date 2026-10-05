@@ -6,7 +6,6 @@ import {
   ManyToOne,
   JoinColumn,
   Unique,
-  Index,
 } from 'typeorm'
 import { Asset } from './asset.entity'
 
@@ -17,7 +16,6 @@ export class AssetThumbnail {
   id!: string
 
   @Column()
-  @Index()
   assetId!: string
 
   @ManyToOne(() => Asset, (a) => a.thumbnails, { onDelete: 'CASCADE', nullable: false })

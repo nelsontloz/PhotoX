@@ -10,7 +10,6 @@ import {
 import { Asset } from './asset.entity'
 
 @Entity('asset_detections')
-@Index(['label', 'assetId'])
 export class AssetDetection {
   @PrimaryGeneratedColumn('uuid')
   id!: string

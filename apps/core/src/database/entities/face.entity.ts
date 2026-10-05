@@ -27,7 +27,6 @@ export class Face {
 
   // ponytail: plain uuid column, no TypeORM relation — avoids circular import between faces/ and persons/ modules
   @Column('uuid', { nullable: true })
-  @Index()
   personId!: string | null
 
   // provenance: which detector produced this embedding; null on pre-provenance rows (unknown origin)
