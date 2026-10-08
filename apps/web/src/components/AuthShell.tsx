@@ -87,7 +87,8 @@ export function AuthField({
           <button
             type="button"
             onClick={onTogglePassword}
-            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-300 focus:outline-none"
+            aria-label={showPassword ? 'Hide password' : 'Show password'}
+            className="absolute inset-y-0 right-0 pr-3 flex items-center rounded-md text-slate-400 hover:text-slate-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
           >
             {showPassword ? (
               <FaEyeSlash className="text-[15px]" />

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import type { AdminLibraryStorageMonth } from '@photox/shared-types'
-import { toCumulative, scaleToHeight, formatStorage } from './library-stats'
+import type { AdminLibraryStorageMonth, AssetFailureCounts } from '@photox/shared-types'
+import { toCumulative, scaleToHeight, formatStorage, indexedPercent } from './library-stats'
 
 const month = (over: Partial<AdminLibraryStorageMonth> = {}): AdminLibraryStorageMonth => ({
   month: '2026-01-01',
@@ -64,5 +64,39 @@ describe('formatStorage', () => {
   it('renders 0 (and negatives) as a real string, never null', () => {
     expect(formatStorage(0)).toBe('0 B')
     expect(formatStorage(-1)).toBe('0 B')
+  })
+})
+
+describe('indexedPercent', () => {
+  const counts = (photos: number) => ({ photos, videos: 0, trashed: 0 })
+  const failures = (over: Partial<AssetFailureCounts> = {}): AssetFailureCounts => ({
+    processing: 0,
+    metadata: 0,
+    thumbnails: 0,
+    encoding: 0,
+    ...over,
+  })
+
+  it('is 100 when every photo finished its pipeline', () => {
+    expect(indexedPercent(counts(100), failures())).toBe(100)
+  })
+
+  it('subtracts the stuck share and rounds to whole percent', () => {
+    expect(indexedPercent(counts(100), failures({ processing: 1, thumbnails: 1 }))).toBe(98)
+    expect(indexedPercent(counts(3), failures({ metadata: 1 }))).toBe(67)
+  })
+
+  it('ignores `encoding`, which is video-only', () => {
+    expect(indexedPercent(counts(100), failures({ encoding: 40 }))).toBe(100)
+  })
+
+  it('clamps an empty library to 100 instead of dividing by zero', () => {
+    expect(Number.isNaN(indexedPercent(counts(0), failures({ processing: 5 })))).toBe(false)
+    expect(indexedPercent(counts(0), failures({ processing: 5 }))).toBe(0)
+    expect(indexedPercent(counts(0), failures())).toBe(100)
+  })
+
+  it('clamps to 0 when failures exceed the photo count', () => {
+    expect(indexedPercent(counts(2), failures({ processing: 90 }))).toBe(0)
   })
 })

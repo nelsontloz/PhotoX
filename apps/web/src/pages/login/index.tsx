@@ -70,6 +70,7 @@ export default function LoginPage() {
 
         {error && (
           <div
+            role="alert"
             className="flex items-center gap-2 text-red-500 text-xs bg-red-500/10 p-2 rounded border border-red-500/20"
             onClick={clearError}
           >
