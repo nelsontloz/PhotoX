@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core'
 import { ValidationPipe } from '@nestjs/common'
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
+import type { NextFunction, Request, Response } from 'express'
 import { AppModule } from './app.module'
 import { HttpExceptionFilter } from './common/filters/http-exception.filter'
 import { loadEnv } from '@photox/shared-config'
@@ -8,6 +9,15 @@ import { loadEnv } from '@photox/shared-config'
 async function bootstrap() {
   const env = loadEnv()
   const app = await NestFactory.create(AppModule, { rawBody: true })
+
+  // ponytail: helmet not in the workspace — three static headers instead; no CSP on purpose
+  // (would break the Vite-served SPA and Swagger UI)
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('X-Frame-Options', 'DENY')
+    res.setHeader('Referrer-Policy', 'no-referrer')
+    next()
+  })
 
   app.useGlobalPipes(
     new ValidationPipe({

@@ -99,6 +99,15 @@ describe('JwtAuthGuard', () => {
     ).toThrow(UnauthorizedException)
   })
 
+  it('rejects tokens with an unknown role with 401', () => {
+    const forged = jwt.sign({ sub: 'u1', email: 'u@example.com', role: 'root' })
+    expect(() =>
+      guard.canActivate(
+        testContext('GET', '/api/v1/assets', { authorization: `Bearer ${forged}` }).context,
+      ),
+    ).toThrow(UnauthorizedException)
+  })
+
   it('rejects expired tokens with 401', () => {
     const expired = jwt.sign(
       { sub: 'u1', email: 'u@example.com', role: 'user' },

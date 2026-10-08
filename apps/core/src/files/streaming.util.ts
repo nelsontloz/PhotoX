@@ -63,7 +63,11 @@ export function pipeFileResponse(res: Response, opts: PipeFileResponseOptions): 
 
   const { stream, record } = opts
   const etag = `"${record.checksumSha256}"`
-  res.set({ ETag: etag, 'Cache-Control': BYTES_CACHE_CONTROL })
+  res.set({
+    ETag: etag,
+    'Cache-Control': BYTES_CACHE_CONTROL,
+    'X-Content-Type-Options': 'nosniff',
+  })
   if (opts.range) {
     const { start, end } = opts.range
     res.set({
@@ -71,6 +75,7 @@ export function pipeFileResponse(res: Response, opts: PipeFileResponseOptions): 
       'Content-Range': `bytes ${start}-${end}/${opts.totalSize}`,
       'Content-Length': String(end - start + 1),
       'Accept-Ranges': 'bytes',
+      ...(opts.disposition ? { 'Content-Disposition': opts.disposition } : {}),
     })
     res.status(206)
   } else {

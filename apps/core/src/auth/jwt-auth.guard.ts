@@ -54,6 +54,9 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException()
     }
 
+    // only the two known roles are accepted; anything else is a forged/foreign token
+    if (payload.role !== 'user' && payload.role !== 'admin') throw new UnauthorizedException()
+
     const user = { id: payload.sub, email: payload.email, role: payload.role }
     req.user = user
     if (isAdminRoute(path) && user.role !== 'admin') throw new ForbiddenException('Admin only')

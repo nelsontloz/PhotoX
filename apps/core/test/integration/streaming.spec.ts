@@ -52,6 +52,8 @@ describe('HTTP range streaming', () => {
     expect(res.headers['content-length']).toBe('10')
     expect(res.headers.etag).toBe(FILE_ETAG)
     expect(res.headers['cache-control']).toBe(BYTES_CACHE_CONTROL)
+    expect(res.headers['x-content-type-options']).toBe('nosniff')
+    expect(res.headers['content-disposition']).toBe('attachment; filename="photo.png"')
     expectBytes(res.body, '0123456789')
   })
 
@@ -65,6 +67,7 @@ describe('HTTP range streaming', () => {
     expect(res.headers['content-length']).toBe('4')
     expect(res.headers.etag).toBe(FILE_ETAG)
     expect(res.headers['cache-control']).toBe(BYTES_CACHE_CONTROL)
+    expect(res.headers['content-disposition']).toBe('attachment; filename="photo.png"')
     expectBytes(res.body, '0123')
   })
 

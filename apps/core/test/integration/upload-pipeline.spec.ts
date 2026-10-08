@@ -141,13 +141,15 @@ describe('upload pipeline', () => {
     }
   }, 30_000)
 
-  it('uploads video with any bytes and enqueues video job', async () => {
+  it('uploads video with a real mp4 header and enqueues video job', async () => {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    // minimal ftyp header — magic-byte sniffing rejects arbitrary bytes
+    const mp4Header = Buffer.from('000000186674797069736f6d', 'hex')
     const res = await request(apiServer(t))
       .post('/api/v1/files')
       .set(t.authHeader(token))
-      .attach('file', Buffer.from('fake-video-bytes'), {
+      .attach('file', mp4Header, {
         filename: 'video.mp4',
         contentType: 'video/mp4',
       })
@@ -188,5 +190,31 @@ describe('upload pipeline', () => {
         contentType: 'application/pdf',
       })
     expect(res.status).toBe(400)
+  })
+
+  it('rejects svg upload before anything is persisted', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script/></svg>')
+    const res = await request(apiServer(t))
+      .post('/api/v1/files')
+      .set(t.authHeader(token))
+      .attach('file', svg, { filename: 'evil.svg', contentType: 'image/svg+xml' })
+    expect(res.status).toBe(400)
+    expect(await t.fileRepo.count()).toBe(0)
+  })
+
+  it('stores the sniffed mime even when the client contentType lies', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const res = await request(apiServer(t))
+      .post('/api/v1/files')
+      .set(t.authHeader(token))
+      .attach('file', await pngBytes(), { filename: 'lie.bin', contentType: 'image/svg+xml' })
+    expect(res.status).toBe(201)
+    const asset = res.body as unknown as { fileId: string; kind: string }
+    expect(asset.kind).toBe('photo')
+    const fileRow = await t.fileRepo.findOneOrFail({ where: { id: asset.fileId } })
+    expect(fileRow.mimeType).toBe('image/png')
   })
 })

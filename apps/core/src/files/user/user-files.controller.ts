@@ -91,7 +91,13 @@ export class UserFilesController {
       }
 
       const { stream, record } = await this.userFilesService.stream(fileId, { range })
-      pipeFileResponse(res, { stream, record, range, totalSize })
+      pipeFileResponse(res, {
+        stream,
+        record,
+        range,
+        totalSize,
+        disposition: `attachment; filename="${record.originalName}"`,
+      })
       return
     }
 

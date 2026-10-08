@@ -10,7 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { randomUUID, createHash } from 'crypto'
 import { createReadStream } from 'fs'
-import { unlink } from 'fs/promises'
+import { open, unlink } from 'fs/promises'
 import { extname } from 'path'
 import { pipeline } from 'stream/promises'
 import { Readable } from 'stream'
@@ -37,6 +37,41 @@ export interface UploadMeta {
   takenAt?: string
 }
 
+// ponytail: header sniff only (no full decode) — enough to keep svg/html and unknown bytes out of
+// storage while allowing the image/video whitelist; upgrade to a real decode scan (sharp/ffprobe)
+// if uploads ever become publicly reachable
+const MIME_SNIFFERS: { mime: string; match: (b: Buffer) => boolean }[] = [
+  { mime: 'image/jpeg', match: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+  {
+    mime: 'image/png',
+    match: (b) =>
+      b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+  },
+  { mime: 'image/gif', match: (b) => b.subarray(0, 4).toString('latin1') === 'GIF8' },
+  {
+    mime: 'image/webp',
+    match: (b) =>
+      b.subarray(0, 4).toString('latin1') === 'RIFF' &&
+      b.subarray(8, 12).toString('latin1') === 'WEBP',
+  },
+  { mime: 'video/mp4', match: (b) => b.subarray(4, 8).toString('latin1') === 'ftyp' },
+  {
+    mime: 'video/webm',
+    match: (b) => b.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3])),
+  },
+]
+
+async function sniffMime(path: string): Promise<string | null> {
+  const buf = Buffer.alloc(12)
+  const handle = await open(path, 'r')
+  try {
+    if ((await handle.read(buf, 0, buf.length, 0)).bytesRead < buf.length) return null
+  } finally {
+    await handle.close()
+  }
+  return MIME_SNIFFERS.find((s) => s.match(buf))?.mime ?? null
+}
+
 @Injectable()
 export class UserFilesService {
   private readonly logger = new Logger(UserFilesService.name)
@@ -61,7 +96,7 @@ export class UserFilesService {
       throw new BadRequestException('No file provided')
     }
     const { record, created } = await this.storeFile(userId, file)
-    const kind = meta.kind ?? this.kindFromMime(file.mimetype)
+    const kind = meta.kind ?? this.kindFromMime(record.mimeType)
     if (!kind) {
       throw new BadRequestException('Unsupported file type')
     }
@@ -83,7 +118,7 @@ export class UserFilesService {
       title: meta.title,
       description: meta.description,
       takenAt: meta.takenAt,
-      mimeType: file.mimetype,
+      mimeType: record.mimeType,
       sizeBytes: file.size,
       originalName: file.originalname,
     })
@@ -182,6 +217,9 @@ export class UserFilesService {
     }
 
     try {
+      const mimeType = await sniffMime(file.path)
+      if (!mimeType) throw new BadRequestException('Unsupported file type')
+
       const checksum = await this.computeChecksum(file.path)
 
       const existing = await this.fileRepo.findOne({
@@ -204,7 +242,7 @@ export class UserFilesService {
         userId,
         storageKey,
         originalName: file.originalname,
-        mimeType: file.mimetype,
+        mimeType,
         sizeBytes: file.size,
         checksumSha256: checksum,
         purpose: 'original',
