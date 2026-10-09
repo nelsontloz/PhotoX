@@ -50,7 +50,6 @@ function useRelatedAssets(
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
-    setState({ assetId, status: 'loading', items: [], total: 0 })
     void load(assetId)
       .then((res) => {
         if (!cancelled) setState({ assetId, status: 'ready', items: res.items, total: res.total })
@@ -64,8 +63,12 @@ function useRelatedAssets(
     }
   }, [assetId, enabled, load])
 
-  // state from a previous asset must never leak into the current one
+  // Stale-while-revalidate: serve the previous asset's results while the next fetch is in
+  // flight. Blanking on assetId change unmounted the whole related tray and reflowed the
+  // media stage — a visible flash on every next/prev click, worst on mobile. Status stays
+  // 'loading' so callers can tell the items are not this asset's yet.
   if (state?.assetId !== assetId) {
+    if (state && enabled) return { status: 'loading', items: state.items, total: state.total }
     return { status: enabled ? 'loading' : 'idle', items: [], total: 0 }
   }
   return { status: state.status, items: state.items, total: state.total }

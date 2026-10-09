@@ -15,11 +15,23 @@ interface AssetThumbProps {
   asset: Asset
   className?: string
   onThumbPicked?: (thumb: AssetThumbnail) => void
+  /**
+   * Skip the intersection gate entirely. The observer's root is the timeline's <main>, and a
+   * position:fixed element (viewer strip/related tray, dialogs) never intersects a non-viewport
+   * root — its rect reports empty forever, so gated thumbs would stay Skeleton. Use for contexts
+   * that are always on-screen once mounted.
+   */
+  eager?: boolean
 }
 
-export function AssetThumb({ asset, className = '', onThumbPicked }: AssetThumbProps) {
+export function AssetThumb({
+  asset,
+  className = '',
+  onThumbPicked,
+  eager = false,
+}: AssetThumbProps) {
   const ref = useRef<HTMLDivElement>(null)
-  const [visible, setVisible] = useState(false)
+  const [visible, setVisible] = useState(eager)
   const localThumb = useThumbStore((s) => s.urls[asset.fileId])
   const scrollContainer = useScrollContainer()
   const thumb = asset.thumbnails?.find((t) => t.size === 'md') ?? asset.thumbnails?.[0]
@@ -32,6 +44,7 @@ export function AssetThumb({ asset, className = '', onThumbPicked }: AssetThumbP
   const [error, setError] = useState(false)
 
   useEffect(() => {
+    if (eager) return
     const el = ref.current
     if (!el) return
     let cancelIdle: (() => void) | undefined
@@ -57,7 +70,7 @@ export function AssetThumb({ asset, className = '', onThumbPicked }: AssetThumbP
       cancelIdle?.()
       cleanup?.()
     }
-  }, [scrollContainer])
+  }, [scrollContainer, eager])
 
   useEffect(() => {
     if (!visible) return

@@ -2,6 +2,8 @@ import request from 'supertest'
 import { JwtService } from '@nestjs/jwt'
 import { closeTestApp, createApiTestApp, resetDb, apiServer } from './helpers'
 import type { ApiTestApp } from './helpers'
+import { BullMqService } from '../../src/queue/bullmq.service'
+import { RATE_LIMITS } from '../../src/users/rate-limit.service'
 
 interface AuthBody {
   accessToken: string
@@ -24,10 +26,15 @@ describe('auth HTTP surface', () => {
 
   beforeEach(async () => {
     await resetDb(t)
+    // this app's dedicated Redis only; clear fixed-window counters so tests stay independent
+    await t.app.get<BullMqService>(BullMqService).redis.flushdb()
   })
 
   const registerUser = (email: string, password = PASSWORD, displayName = 'Test User') =>
     request(apiServer(t)).post('/api/v1/auth/register').send({ email, password, displayName })
+
+  const loginUser = (email: string, password = PASSWORD) =>
+    request(apiServer(t)).post('/api/v1/auth/login').send({ email, password })
 
   describe('register', () => {
     it('creates the first user as admin and the second as user', async () => {
@@ -91,6 +98,58 @@ describe('auth HTTP surface', () => {
     })
   })
 
+  describe('rate limiting', () => {
+    it('returns 401 below the limit, then 429 even with the correct password', async () => {
+      await registerUser('limited@example.com')
+
+      for (let i = 0; i < RATE_LIMITS.login.limit; i++) {
+        const res = await loginUser('limited@example.com', 'wrong-password')
+        expect(res.status).toBe(401)
+      }
+
+      const blocked = await loginUser('limited@example.com', PASSWORD)
+      expect(blocked.status).toBe(429)
+    })
+
+    it('returns 200 for the correct password while still below the limit', async () => {
+      await registerUser('below@example.com')
+
+      for (let i = 0; i < RATE_LIMITS.login.limit - 1; i++) {
+        const res = await loginUser('below@example.com', 'wrong-password')
+        expect(res.status).toBe(401)
+      }
+
+      const ok = await loginUser('below@example.com', PASSWORD)
+      expect(ok.status).toBe(200)
+    })
+
+    it('returns 429 after the per-IP login limit is hit across different emails', async () => {
+      for (let i = 0; i < RATE_LIMITS.loginIp.limit; i++) {
+        const res = await loginUser(`ip-${i}@example.com`, 'wrong-password')
+        expect(res.status).toBe(401)
+      }
+
+      const blocked = await loginUser('ip-final@example.com', PASSWORD)
+      expect(blocked.status).toBe(429)
+    })
+
+    it('leaves a positive TTL on every rate-limit key after failures', async () => {
+      await registerUser('ttl@example.com')
+
+      for (let i = 0; i < RATE_LIMITS.login.limit; i++) {
+        const res = await loginUser('ttl@example.com', 'wrong-password')
+        expect(res.status).toBe(401)
+      }
+
+      const redis = t.app.get<BullMqService>(BullMqService).redis
+      const keys = await redis.keys('rl:*')
+      expect(keys.length).toBeGreaterThan(0)
+      for (const key of keys) {
+        expect(await redis.ttl(key)).toBeGreaterThan(0)
+      }
+    })
+  })
+
   describe('refresh', () => {
     it('rotates the token pair and rejects the old refresh token', async () => {
       const registered = await registerUser('rotate@example.com')
@@ -123,6 +182,26 @@ describe('auth HTTP surface', () => {
         .post('/api/v1/auth/refresh')
         .send({ refreshToken: original })
       expect(secondRefresh.status).toBe(401)
+    })
+
+    it('revokes the whole token family when a rotated token is reused', async () => {
+      const registered = await registerUser('family@example.com')
+      const original = (registered.body as unknown as AuthBody).refreshToken
+      const loggedIn = await loginUser('family@example.com')
+      const sibling = (loggedIn.body as unknown as AuthBody).refreshToken
+
+      const rotate = (refreshToken: string) =>
+        request(apiServer(t)).post('/api/v1/auth/refresh').send({ refreshToken })
+
+      const rotated = await rotate(original)
+      expect(rotated.status).toBe(200)
+      const fresh = (rotated.body as unknown as AuthBody).refreshToken
+
+      expect((await rotate(original)).status).toBe(401)
+
+      // reuse detection revoked every refresh token for the user, not just the replayed one
+      expect((await rotate(fresh)).status).toBe(401)
+      expect((await rotate(sibling)).status).toBe(401)
     })
 
     it('returns 401 for an unknown refresh token and 400 for an empty one', async () => {

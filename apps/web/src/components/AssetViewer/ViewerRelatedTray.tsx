@@ -19,8 +19,11 @@ export function ViewerRelatedTray({ similar, duplicates, onOpenAsset }: ViewerRe
   const [active, setActive] = useState<RelatedTab | null>(null)
 
   if (!onOpenAsset) return null
-  const similarVisible = similar.status === 'ready' && similar.items.length > 0
-  const duplicatesVisible = duplicates.status === 'ready' && duplicates.total > 0
+  // Items, not status: while the next asset's fetch is in flight the hook serves the previous
+  // asset's results with status 'loading' (stale-while-revalidate). Gating on 'ready' here made
+  // the tray unmount on every next/prev click and flash the media stage.
+  const similarVisible = similar.items.length > 0
+  const duplicatesVisible = duplicates.total > 0
   if (!similarVisible && !duplicatesVisible) return null
 
   // the active tab can vanish when the viewer moves to another asset
@@ -79,7 +82,7 @@ export function ViewerRelatedTray({ similar, duplicates, onOpenAsset }: ViewerRe
                 title={asset.originalName ?? asset.title ?? 'Open asset'}
                 className="relative h-14 w-14 shrink-0 rounded overflow-hidden border-2 border-transparent hover:border-white/40 transition-colors"
               >
-                <AssetThumb asset={asset} />
+                <AssetThumb asset={asset} eager />
               </button>
             ))}
           </div>

@@ -59,6 +59,18 @@ describe('ViewerRelatedTray', () => {
     expect(screen.getByText('Possible duplicates')).toBeTruthy()
   })
 
+  it('keeps rendering stale items while the next asset loads (status not ready yet)', () => {
+    render(
+      <ViewerRelatedTray
+        similar={{ status: 'loading', items: [makeAsset('a', 'beach.jpg')], total: 2 }}
+        duplicates={{ status: 'loading', items: [], total: 0 }}
+        onOpenAsset={vi.fn()}
+      />,
+    )
+    // the tab row must not unmount mid-navigation — that unmount was the flicker
+    expect(screen.getByText('More like this')).toBeTruthy()
+  })
+
   it('expands the active tab to thumbs and count, opens an asset, collapses on re-click', () => {
     const onOpenAsset = vi.fn()
     render(

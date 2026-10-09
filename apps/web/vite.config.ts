@@ -26,7 +26,7 @@ export default defineConfig({
     tailwindcss(),
     Pages({
       importMode: 'async',
-      exclude: ['**/*.spec.*', '**/library-stats.tsx', '**/AddPhotosDialog.tsx'],
+      exclude: ['**/*.spec.*', '**/library-stats.tsx', '**/AddPhotosDialog.tsx', '**/ui.tsx'],
     }),
     suppressEconnreset(),
   ],

@@ -20,6 +20,11 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     })
   }
 
+  /** Shared ioredis client (BullMQ's connection) for other Redis-backed features, e.g. rate limits. */
+  get redis(): Redis {
+    return this.connection
+  }
+
   getQueue(name: string): Queue {
     let queue = this.queues.get(name)
     if (!queue) {

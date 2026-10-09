@@ -10,6 +10,56 @@
   --color-error: #ba1a1a;
 
   --font-display: 'Inter', sans-serif;
+
+  /* Material-style surface/content scale. Admin console only for now — aliases of the tokens
+     above where they match, so switching a class from card-dark to surface-container-low is a
+     no-op visually. Migrate the rest of the app off slate-* when it pays off, not before. */
+  --color-surface-container-lowest: #0b0e15;
+  --color-surface-container-low: #1c2430;
+  --color-surface-container: #1d1f27;
+  --color-surface-container-high: #272a32;
+  --color-surface-container-highest: #32353d;
+  --color-on-surface: #e1e2ed;
+  --color-on-surface-variant: #c2c6d7;
+  --color-outline: #8c90a0;
+  --color-outline-variant: #424754;
+
+  /* Accent containers: solid-blue primary container on dark reads as a filled action. */
+  --color-primary-container: #136dec;
+  --color-on-primary-container: #fbf9ff;
+  --color-secondary-fixed: #ddb8ff;
+  --color-secondary-fixed-dim: #ddb8ff;
+  --color-tertiary: #ffb695;
+  --color-tertiary-fixed-dim: #ffb695;
+  --color-tertiary-container: #c44e00;
+
+  /* Categorical series for admin charts (photos / transcodes / thumbnails). */
+  --color-status-error: #ef4444;
+
+  /* Not overridden on purpose: --radius-lg / --radius-xl are theme tokens, so redefining them
+     would resize rounded-lg/rounded-xl on every page. Admin cards use rounded-xl as-is; tighten
+     it app-wide only as a deliberate cross-cutting change. */
+
+  --text-headline-xl: 1.5rem;
+  --text-headline-xl--line-height: 2rem;
+  --text-headline-xl--letter-spacing: -0.02em;
+  --text-headline-xl--font-weight: 700;
+  --text-headline-lg: 1.25rem;
+  --text-headline-lg--line-height: 1.75rem;
+  --text-headline-lg--letter-spacing: -0.01em;
+  --text-headline-lg--font-weight: 700;
+  --text-body-md: 1rem;
+  --text-body-md--line-height: 1.5rem;
+  --text-body-sm: 0.875rem;
+  --text-body-sm--line-height: 1.25rem;
+  --text-body-sm--font-weight: 500;
+  --text-label-sm: 0.75rem;
+  --text-label-sm--line-height: 1rem;
+  --text-label-sm--letter-spacing: 0.02em;
+  --text-label-sm--font-weight: 600;
+  --text-label-xs: 0.625rem;
+  --text-label-xs--line-height: 0.75rem;
+  --text-label-xs--font-weight: 700;
 }
 
 ::-webkit-scrollbar {

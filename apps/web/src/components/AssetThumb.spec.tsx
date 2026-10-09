@@ -107,6 +107,18 @@ describe('AssetThumb prefetch window', () => {
   })
 })
 
+describe('AssetThumb eager (fixed-overlay contexts)', () => {
+  it('downloads without ever registering an observer', async () => {
+    const { downloadFile } = await import('../api/assets')
+    render(<AssetThumb asset={asset} eager />)
+
+    // A position:fixed thumb never intersects the timeline scroll root, so eager must skip the
+    // observer entirely and go straight to the download.
+    expect(intersect).toBeNull()
+    expect(downloadFile).toHaveBeenCalledWith('f1')
+  })
+})
+
 describe('AssetThumb observer sharing', () => {
   it('shares one IntersectionObserver across 100 tiles in the same scroll root', () => {
     const scroller = document.createElement('div')

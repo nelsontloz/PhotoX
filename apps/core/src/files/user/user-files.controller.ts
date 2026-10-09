@@ -20,7 +20,7 @@ import { UserFilesService } from './user-files.service'
 import { FileRecordDto } from '../file-record.dto'
 import { RegisterFileBodyDto } from './dto/register-file.body.dto'
 import { UploadFileBodyDto } from './dto/upload-file.body.dto'
-import { parseRangeHeader, pipeFileResponse } from '../streaming.util'
+import { parseRangeHeader, pipeFileResponse, attachmentDisposition } from '../streaming.util'
 
 const diskStorage = multer.diskStorage({
   destination: tmpdir(),
@@ -91,7 +91,13 @@ export class UserFilesController {
       }
 
       const { stream, record } = await this.userFilesService.stream(fileId, { range })
-      pipeFileResponse(res, { stream, record, range, totalSize })
+      pipeFileResponse(res, {
+        stream,
+        record,
+        range,
+        totalSize,
+        disposition: attachmentDisposition(record.originalName),
+      })
       return
     }
 
@@ -100,7 +106,7 @@ export class UserFilesController {
       stream,
       record,
       totalSize,
-      disposition: `attachment; filename="${record.originalName}"`,
+      disposition: attachmentDisposition(record.originalName),
       ifNoneMatch: req.get('If-None-Match'),
     })
   }
@@ -123,7 +129,7 @@ export class UserFilesController {
     pipeFileResponse(res, {
       stream,
       record,
-      disposition: `attachment; filename="${record.originalName}"`,
+      disposition: attachmentDisposition(record.originalName),
       ifNoneMatch: req.get('If-None-Match'),
     })
   }
