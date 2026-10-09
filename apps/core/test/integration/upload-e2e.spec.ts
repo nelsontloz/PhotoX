@@ -391,13 +391,18 @@ describe('upload e2e pipeline', () => {
   }, 120_000)
 
   it('transcodes a non-h264 video into a separate immutable derivative', async () => {
-    // mp4 container (not avi) — uploads are magic-byte whitelisted to image/video formats
-    const fixture = join(storageDir, 'transcode-source.mp4')
+    const fixture = join(storageDir, 'transcode-source.avi')
     await writeVideoFixture(fixture, { videoCodec: 'mpeg4', withAudio: false })
     const bytes = await readFile(fixture)
     const { auth } = await makeUser('e2e-video-transcode@example.com')
 
-    const assetId = await uploadAsset(expressApp, auth, bytes, 'transcode-source.mp4', 'video/mp4')
+    const assetId = await uploadAsset(
+      expressApp,
+      auth,
+      bytes,
+      'transcode-source.avi',
+      'video/x-msvideo',
+    )
     const uploaded = await assetRepo.findOneOrFail({ where: { id: assetId } })
     const originalBefore = await fileRepo.findOneOrFail({ where: { id: uploaded.fileId } })
 

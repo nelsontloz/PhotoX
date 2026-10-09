@@ -54,12 +54,31 @@ const MIME_SNIFFERS: { mime: string; match: (b: Buffer) => boolean }[] = [
       b.subarray(0, 4).toString('latin1') === 'RIFF' &&
       b.subarray(8, 12).toString('latin1') === 'WEBP',
   },
-  { mime: 'video/mp4', match: (b) => b.subarray(4, 8).toString('latin1') === 'ftyp' },
+  {
+    mime: 'video/x-msvideo',
+    match: (b) =>
+      b.subarray(0, 4).toString('latin1') === 'RIFF' &&
+      b.subarray(8, 12).toString('latin1') === 'AVI ',
+  },
   {
     mime: 'video/webm',
     match: (b) => b.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3])),
   },
 ]
+
+// ISO-BMFF: `ftyp` box at offset 4, major brand at offset 8 decides the canonical type —
+// heic family (iPhone photos), heif, avif, quicktime (iPhone .mov) and mp4 fall back
+function isoBmffMime(b: Buffer): string | null {
+  if (b.subarray(4, 8).toString('latin1') !== 'ftyp') return null
+  const brand = b.subarray(8, 12).toString('latin1')
+  if (brand === 'heic' || brand === 'heix' || brand === 'hevc' || brand === 'hevx') {
+    return 'image/heic'
+  }
+  if (brand === 'mif1' || brand === 'msf1') return 'image/heif'
+  if (brand === 'avif' || brand === 'avis') return 'image/avif'
+  if (brand === 'qt  ') return 'video/quicktime'
+  return 'video/mp4'
+}
 
 async function sniffMime(path: string): Promise<string | null> {
   const buf = Buffer.alloc(12)
@@ -69,7 +88,7 @@ async function sniffMime(path: string): Promise<string | null> {
   } finally {
     await handle.close()
   }
-  return MIME_SNIFFERS.find((s) => s.match(buf))?.mime ?? null
+  return isoBmffMime(buf) ?? MIME_SNIFFERS.find((s) => s.match(buf))?.mime ?? null
 }
 
 @Injectable()

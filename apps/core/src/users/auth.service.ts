@@ -59,6 +59,8 @@ export class AuthService {
   }
 
   async login(email: string, password: string, ip: string): Promise<AuthResponse> {
+    // per-IP bucket first, then the per-(ip,email) one, so email rotation can't multiply attempts
+    await this.rateLimit.consume('loginIp', ip)
     await this.rateLimit.consume('login', ip, email)
 
     const user = await this.userRepo.findOne({ where: { email } })

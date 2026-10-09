@@ -7,6 +7,20 @@ export const RANGE_RE = /^bytes=(\d+)-(\d*)$/
 
 const BYTES_CACHE_CONTROL = 'private, max-age=31536000, immutable'
 
+/**
+ * Builds an injection-safe `Content-Disposition: attachment` value. The quoted ASCII fallback
+ * replaces `"`, `\`, `;` and non-ASCII bytes with `_`; the RFC5987 `filename*` carries the real
+ * (percent-encoded) name for modern browsers.
+ */
+export function attachmentDisposition(name: string): string {
+  const fallback = name.replace(/[^\x20-\x7e]|["\\;]/g, '_')
+  const encoded = encodeURIComponent(name).replace(
+    /['()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  )
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`
+}
+
 export function parseRangeHeader(
   rangeHeader: string,
   totalSize: number,

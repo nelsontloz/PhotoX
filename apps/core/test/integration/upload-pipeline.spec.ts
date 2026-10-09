@@ -217,4 +217,36 @@ describe('upload pipeline', () => {
     const fileRow = await t.fileRepo.findOneOrFail({ where: { id: asset.fileId } })
     expect(fileRow.mimeType).toBe('image/png')
   })
+
+  it('accepts an iPhone heic photo and stores image/heic', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    // minimal ISO-BMFF header: ftyp box with major brand 'heic'
+    const heicHeader = Buffer.from('000000186674797068656963', 'hex')
+    const res = await request(apiServer(t))
+      .post('/api/v1/files')
+      .set(t.authHeader(token))
+      .attach('file', heicHeader, { filename: 'photo.heic', contentType: 'image/heic' })
+    expect(res.status).toBe(201)
+    const asset = res.body as unknown as { fileId: string; kind: string }
+    expect(asset.kind).toBe('photo')
+    const fileRow = await t.fileRepo.findOneOrFail({ where: { id: asset.fileId } })
+    expect(fileRow.mimeType).toBe('image/heic')
+  })
+
+  it('accepts an iPhone quicktime mov and stores video/quicktime', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    // minimal ISO-BMFF header: ftyp box with major brand 'qt  '
+    const movHeader = Buffer.from('000000186674797071742020', 'hex')
+    const res = await request(apiServer(t))
+      .post('/api/v1/files')
+      .set(t.authHeader(token))
+      .attach('file', movHeader, { filename: 'clip.mov', contentType: 'video/quicktime' })
+    expect(res.status).toBe(201)
+    const asset = res.body as unknown as { fileId: string; kind: string }
+    expect(asset.kind).toBe('video')
+    const fileRow = await t.fileRepo.findOneOrFail({ where: { id: asset.fileId } })
+    expect(fileRow.mimeType).toBe('video/quicktime')
+  })
 })

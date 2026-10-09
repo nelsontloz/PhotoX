@@ -53,7 +53,9 @@ describe('HTTP range streaming', () => {
     expect(res.headers.etag).toBe(FILE_ETAG)
     expect(res.headers['cache-control']).toBe(BYTES_CACHE_CONTROL)
     expect(res.headers['x-content-type-options']).toBe('nosniff')
-    expect(res.headers['content-disposition']).toBe('attachment; filename="photo.png"')
+    expect(res.headers['content-disposition']).toBe(
+      `attachment; filename="photo.png"; filename*=UTF-8''photo.png`,
+    )
     expectBytes(res.body, '0123456789')
   })
 
@@ -67,7 +69,9 @@ describe('HTTP range streaming', () => {
     expect(res.headers['content-length']).toBe('4')
     expect(res.headers.etag).toBe(FILE_ETAG)
     expect(res.headers['cache-control']).toBe(BYTES_CACHE_CONTROL)
-    expect(res.headers['content-disposition']).toBe('attachment; filename="photo.png"')
+    expect(res.headers['content-disposition']).toBe(
+      `attachment; filename="photo.png"; filename*=UTF-8''photo.png`,
+    )
     expectBytes(res.body, '0123')
   })
 
@@ -156,5 +160,20 @@ describe('HTTP range streaming', () => {
       .set('If-None-Match', FILE_ETAG)
     expect(second.status).toBe(304)
     expect(second.headers.etag).toBe(FILE_ETAG)
+  })
+
+  it('sanitizes a hostile filename in the download Content-Disposition', async () => {
+    const user = await seedUser(t)
+    const file = await seedFile(t, user.id, { originalName: 'x";\r\nX-Evil: 1.png' })
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const res = await request(apiServer(t))
+      .get(`/api/v1/files/${file.id}/download`)
+      .set(t.authHeader(token))
+    expect(res.status).toBe(200)
+    const disposition = res.headers['content-disposition'] ?? ''
+    expect(disposition).not.toMatch(/[\r\n]/)
+    expect(disposition).toBe(
+      `attachment; filename="x____X-Evil: 1.png"; filename*=UTF-8''x%22%3B%0D%0AX-Evil%3A%201.png`,
+    )
   })
 })

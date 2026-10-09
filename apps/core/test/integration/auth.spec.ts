@@ -110,6 +110,44 @@ describe('auth HTTP surface', () => {
       const blocked = await loginUser('limited@example.com', PASSWORD)
       expect(blocked.status).toBe(429)
     })
+
+    it('returns 200 for the correct password while still below the limit', async () => {
+      await registerUser('below@example.com')
+
+      for (let i = 0; i < RATE_LIMITS.login.limit - 1; i++) {
+        const res = await loginUser('below@example.com', 'wrong-password')
+        expect(res.status).toBe(401)
+      }
+
+      const ok = await loginUser('below@example.com', PASSWORD)
+      expect(ok.status).toBe(200)
+    })
+
+    it('returns 429 after the per-IP login limit is hit across different emails', async () => {
+      for (let i = 0; i < RATE_LIMITS.loginIp.limit; i++) {
+        const res = await loginUser(`ip-${i}@example.com`, 'wrong-password')
+        expect(res.status).toBe(401)
+      }
+
+      const blocked = await loginUser('ip-final@example.com', PASSWORD)
+      expect(blocked.status).toBe(429)
+    })
+
+    it('leaves a positive TTL on every rate-limit key after failures', async () => {
+      await registerUser('ttl@example.com')
+
+      for (let i = 0; i < RATE_LIMITS.login.limit; i++) {
+        const res = await loginUser('ttl@example.com', 'wrong-password')
+        expect(res.status).toBe(401)
+      }
+
+      const redis = t.app.get<BullMqService>(BullMqService).redis
+      const keys = await redis.keys('rl:*')
+      expect(keys.length).toBeGreaterThan(0)
+      for (const key of keys) {
+        expect(await redis.ttl(key)).toBeGreaterThan(0)
+      }
+    })
   })
 
   describe('refresh', () => {
