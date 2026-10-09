@@ -2,6 +2,14 @@
 
 Personal photo and video hosting platform: one NestJS API (`core`), one BullMQ worker (`worker-service`), and a Vite/React `web` app, sharing Redis and local-disk storage, with a single Postgres DB owned by `core`.
 
+## Architecture
+
+[![How PhotoX fits together](docs/diagrams/architecture.svg)](docs/diagrams/architecture.html)
+
+## Upload processing
+
+[![How PhotoX processes an uploaded asset](docs/diagrams/data-flow.svg)](docs/diagrams/data-flow.html)
+
 ## Prerequisites
 
 - Node.js 22 (`.nvmrc`)
