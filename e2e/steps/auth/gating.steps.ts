@@ -1,5 +1,5 @@
 import { expect, type APIRequestContext } from '@playwright/test'
-import { Given, Then, When, authHeaders } from './support'
+import { Given, Then, When, authHeaders } from '../support'
 
 Given('I am not signed in', () => {
   // fresh browser context per scenario: nothing persisted, no init script

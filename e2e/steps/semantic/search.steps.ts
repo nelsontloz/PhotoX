@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { Then, When } from './support'
+import { Then, When } from '../support'
 
 /**
  * One of three terminal search states must appear: the 503 "index not ready" error (the alpine

@@ -8,7 +8,7 @@ import {
   injectSession,
   type AuthState,
   type Ctx,
-} from './support'
+} from '../support'
 
 const ADMIN_EMAIL = 'admin@photox.test'
 

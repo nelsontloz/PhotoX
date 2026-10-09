@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, type APIRequestContext, type Page } from '@playwright/test'
@@ -121,6 +122,34 @@ export async function uploadFixture(
     }
     return body.existingAssetId
   }
+  expect(response.status()).toBe(201)
+  const asset = (await response.json()) as { id?: string }
+  if (!asset.id) throw new Error('upload response did not include an asset id')
+  return asset.id
+}
+
+const FIXTURE_MIME: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+}
+
+/** Uploads a fixture through POST /api/v1/files as the given auth (API-level, no browser). */
+export async function uploadViaApi(
+  request: APIRequestContext,
+  auth: AuthState,
+  name: string,
+): Promise<string> {
+  const mimeType = FIXTURE_MIME[name.slice(name.lastIndexOf('.'))]
+  if (!mimeType) throw new Error(`no MIME type registered for fixture "${name}"`)
+  const response = await request.post('/api/v1/files', {
+    headers: authHeaders(auth),
+    multipart: {
+      file: { name, mimeType, buffer: await readFile(join(FIXTURES_DIR, name)) },
+    },
+  })
   expect(response.status()).toBe(201)
   const asset = (await response.json()) as { id?: string }
   if (!asset.id) throw new Error('upload response did not include an asset id')

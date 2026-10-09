@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# E2E stack + BDD suite runner. Feature files are ordered 01..09; do not rename.
+# E2E stack + BDD suite runner. Test files run in alphabetical path order: feature
+# folders are numbered 01..09 so 01-bootstrap runs first on the fresh database
+# (first registered account becomes admin) — do not rename or reorder folders.
 # Usage: pnpm test:e2e   (from the repo root)
 #   E2E_BUILD=1  rebuild images before starting the stack
 #   E2E_KEEP=1   leave the stack running after the tests (debugging)
