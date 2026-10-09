@@ -22,6 +22,8 @@ services:
       AUTH_ACCESS_TTL: 30m
       AUTH_REFRESH_TTL: 1d
       AUTH_TOKEN_SECRET: dev-auth-secret-32-characters-minimum!!
+      # e2e registers many users from one IP; prod/dev keep the default of 10/hour
+      RATE_LIMIT_REGISTER: 1000
     volumes:
       - storage-data:/data/storage
     depends_on:
