@@ -159,7 +159,6 @@ async function expectVisuallySimilar(
     .toBe(true)
 }
 
-
 async function startReprocess(page: Page, ctx: Ctx, kind: ReprocessKind): Promise<void> {
   const { button, dialog, result } = REPROCESS[kind]
   await page.getByRole('button', { name: button }).click()
