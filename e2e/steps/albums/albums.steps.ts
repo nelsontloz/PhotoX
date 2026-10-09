@@ -251,10 +251,7 @@ Then('the listed albums in order are {string}', ({ ctx }, names: string) => {
 
 Then('my album lists the photos newest-added first', async ({ request, ctx }) => {
   const payload = await fetchAlbumAssets(request, requireAuth(ctx), currentAlbum(ctx).id)
-  expect(payload.items.map((item) => item.id)).toEqual([
-    albumAssetAt(ctx, 1),
-    albumAssetAt(ctx, 0),
-  ])
+  expect(payload.items.map((item) => item.id)).toEqual([albumAssetAt(ctx, 1), albumAssetAt(ctx, 0)])
 })
 
 Then('my timeline still contains the album photo', async ({ request, ctx }) => {
@@ -307,9 +304,7 @@ Then('only the album card {string} is visible', async ({ page }, name: string) =
 When('I open the album', async ({ page, ctx }) => {
   const album = currentAlbum(ctx)
   await page.goto(`/albums/${album.id}`)
-  await expect(
-    page.getByRole('heading', { level: 1, name: album.name, exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: album.name, exact: true })).toBeVisible()
 })
 
 Then('the album page shows the empty state', async ({ page }) => {
@@ -405,7 +400,10 @@ When('I select all album photos in the dialog', async ({ page }) => {
 When('I add the selected album photos', async ({ page }) => {
   const [response] = await Promise.all([
     page.waitForResponse(isAlbumAssetsPost),
-    page.getByRole('dialog').getByRole('button', { name: /^Add \d+$/ }).click(),
+    page
+      .getByRole('dialog')
+      .getByRole('button', { name: /^Add \d+$/ })
+      .click(),
   ])
   expect(response.status()).toBe(201)
   await expect(page.getByRole('dialog')).toHaveCount(0)
@@ -432,9 +430,7 @@ Then('the first album photo thumbnail loads', async ({ page, request, ctx }) => 
     await waitForThumbnails(request, auth, item.id, ['md'])
   }
   await page.reload()
-  await expect(
-    page.getByRole('heading', { level: 1, name: album.name, exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: album.name, exact: true })).toBeVisible()
   await expectThumbnailLoaded(page)
 })
 

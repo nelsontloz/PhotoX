@@ -1,13 +1,5 @@
 import { expect, type APIRequestContext, type Page, type Response } from '@playwright/test'
-import {
-  Given,
-  Then,
-  When,
-  authHeaders,
-  registerUser,
-  type AuthState,
-  type Ctx,
-} from '../support'
+import { Given, Then, When, authHeaders, registerUser, type AuthState, type Ctx } from '../support'
 
 /** Code-matched subsets of the person wire shapes (support.ts has no person types). */
 interface PersonSummary {
@@ -222,7 +214,12 @@ Then(
   'a person with {int} faces appears through the API',
   async ({ request, ctx }, faceCount: number) => {
     const auth = requireAuth(ctx)
-    const persons = await waitForPersons(request, auth, (person) => person.faceCount >= faceCount, 1)
+    const persons = await waitForPersons(
+      request,
+      auth,
+      (person) => person.faceCount >= faceCount,
+      1,
+    )
     pctx(ctx).personId = persons[0]!.id
   },
 )
@@ -231,7 +228,12 @@ Then(
   'two persons with {int} faces each appear through the API',
   async ({ request, ctx }, faceCount: number) => {
     const auth = requireAuth(ctx)
-    const persons = await waitForPersons(request, auth, (person) => person.faceCount >= faceCount, 2)
+    const persons = await waitForPersons(
+      request,
+      auth,
+      (person) => person.faceCount >= faceCount,
+      2,
+    )
     expect(new Set(persons.map((person) => person.id)).size).toBe(2)
   },
 )
