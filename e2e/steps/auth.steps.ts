@@ -70,9 +70,10 @@ Then('the sidebar does not show the admin link', async ({ page }) => {
 
 Then('I can open the admin dashboard', async ({ page }) => {
   await page.goto('/admin')
-  await expect(page.getByRole('heading', { level: 1, name: 'Users' })).toBeVisible({
+  await expect(page.getByRole('heading', { level: 1, name: 'Admin Console' })).toBeVisible({
     timeout: 15_000,
   })
+  await expect(page.getByRole('heading', { level: 2, name: 'Users Management' })).toBeVisible()
 })
 
 When('I sign out', async ({ page }) => {

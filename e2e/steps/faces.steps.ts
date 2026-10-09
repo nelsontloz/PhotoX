@@ -196,10 +196,15 @@ Given('I am signed in as an administrator', async ({ request, page, ctx }) => {
 
 When('I open the admin dashboard', async ({ page }) => {
   await page.goto('/admin')
-  await expect(page.getByRole('heading', { level: 1, name: 'Users' })).toBeVisible({
+  await expect(page.getByRole('heading', { level: 1, name: 'Admin Console' })).toBeVisible({
     timeout: 15_000,
   })
-  await expect(page.getByRole('heading', { level: 2, name: 'Face detection' })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { level: 2, name: 'Machine Learning Models & Inference' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('heading', { level: 3, name: 'Facial Detection & Clustering' }),
+  ).toBeVisible()
 })
 
 When('I remember the active face detector', async ({ request, page, ctx }) => {

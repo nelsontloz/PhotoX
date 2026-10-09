@@ -38,6 +38,21 @@ describe('RateLimitService', () => {
     expect((err as HttpException).getStatus()).toBe(429)
   })
 
+  it('reads RATE_LIMIT_REGISTER at call time', async () => {
+    const prev = process.env.RATE_LIMIT_REGISTER
+    const { service } = makeService(new FakeRedis())
+    try {
+      await service.consume('register', '1.2.3.4')
+      process.env.RATE_LIMIT_REGISTER = '1'
+      const err = await service.consume('register', '1.2.3.4').catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(HttpException)
+      expect((err as HttpException).getStatus()).toBe(429)
+    } finally {
+      if (prev === undefined) delete process.env.RATE_LIMIT_REGISTER
+      else process.env.RATE_LIMIT_REGISTER = prev
+    }
+  })
+
   it('sets the window TTL only on the first hit', async () => {
     const { service, redis } = makeService(new FakeRedis())
 

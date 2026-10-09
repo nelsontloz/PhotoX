@@ -13,6 +13,15 @@ export const RATE_LIMITS: Record<RateLimitRoute, { limit: number; windowSec: num
   refresh: { limit: 30, windowSec: 900 },
 }
 
+// ponytail: register is env-overridable (direct process.env like FACE_DETECTOR/WORKER_SERVICE_PORT,
+// not zod) so the e2e suite can batched-register from one IP. Parsed per call so
+// loadRootEnvFile() ordering can't bite; invalid/absent values fall back to the constant.
+function routeLimit(route: RateLimitRoute): number {
+  if (route !== 'register') return RATE_LIMITS[route].limit
+  const parsed = Number.parseInt(process.env.RATE_LIMIT_REGISTER ?? '', 10)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : RATE_LIMITS.register.limit
+}
+
 // atomic fixed window: INCR plus EXPIRE only when the window is created, so a crash can never
 // leave a no-TTL key that permanently locks out the bucket
 const RATE_LIMIT_SCRIPT = `
@@ -35,7 +44,8 @@ export class RateLimitService {
    * Fails open (allows the request) when Redis is unavailable, not yet connected, or too slow.
    */
   async consume(route: RateLimitRoute, ip: string, email?: string): Promise<void> {
-    const { limit, windowSec } = RATE_LIMITS[route]
+    const { windowSec } = RATE_LIMITS[route]
+    const limit = routeLimit(route)
     // encode segments so ':' in IPv6 addresses/emails can't alias another bucket;
     // lowercase only the key — the email lookup elsewhere stays case-sensitive
     const key = `rl:${route}:${encodeURIComponent(ip)}:${encodeURIComponent(email?.toLowerCase() ?? '-')}`

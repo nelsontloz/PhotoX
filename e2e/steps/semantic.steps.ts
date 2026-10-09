@@ -359,7 +359,12 @@ Then('the seeded detection is replaced without duplicates', async ({ request, ct
 
 Then('the admin page shows the last embedding reprocess run', async ({ page }) => {
   await page.goto('/admin')
-  await expect(page.getByText(/Last run .+ queued with siglip2-b16-224\./)).toBeVisible({
-    timeout: 20_000,
-  })
+  // three pipeline cards share the "Last run … photos queued." line — scope to the one whose
+  // heading is "Semantic Search" (innermost div containing both heading and the last-run text)
+  const card = page
+    .locator('div')
+    .filter({ has: page.getByRole('heading', { name: 'Semantic Search', exact: true }) })
+    .filter({ hasText: /photos queued\./ })
+    .last()
+  await expect(card.getByText(/Last run .+ photos queued\./)).toBeVisible({ timeout: 20_000 })
 })
