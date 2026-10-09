@@ -1,14 +1,10 @@
 import { useEffect, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { FaCamera, FaMagnifyingGlass } from 'react-icons/fa6'
-import { useAuthStore } from '../store/auth-store'
 import { UploadButton } from './UploadButton'
 import { SearchInput } from './SearchBar'
 
 export function AppHeader() {
-  const user = useAuthStore((s) => s.user)
-  const logout = useAuthStore((s) => s.logout)
-  const navigate = useNavigate()
   const location = useLocation()
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
 
@@ -16,19 +12,6 @@ export function AppHeader() {
   useEffect(() => {
     if (location.pathname !== '/search') setMobileSearchOpen(false)
   }, [location.pathname])
-
-  const initials =
-    user?.displayName
-      ?.split(' ')
-      .map((n) => n[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase() ?? 'U'
-
-  const handleLogout = async () => {
-    await logout()
-    void navigate('/login')
-  }
 
   return (
     <header className="relative flex items-center justify-between border-b border-gray-200 dark:border-border-dark bg-white/95 dark:bg-background-dark/95 px-6 py-3 z-40 shrink-0 h-16 w-full">
@@ -57,22 +40,6 @@ export function AppHeader() {
           <FaMagnifyingGlass className="text-[15px]" />
         </button>
         <UploadButton variant="compact" />
-        <div className="h-6 w-px bg-gray-200 dark:border-border-dark mx-1 hidden sm:block" />
-        <button
-          onClick={() => {
-            void handleLogout()
-          }}
-          title="Sign out"
-          className="size-9 rounded-full bg-gradient-to-br from-primary to-purple-600 p-[2px] ring-2 ring-transparent hover:ring-primary/50 transition-all cursor-pointer"
-        >
-          <div className="w-full h-full rounded-full bg-slate-800 flex items-center justify-center overflow-hidden text-xs font-bold text-white">
-            {user?.avatarUrl ? (
-              <img alt="User Avatar" className="w-full h-full object-cover" src={user.avatarUrl} />
-            ) : (
-              initials
-            )}
-          </div>
-        </button>
       </div>
 
       {mobileSearchOpen && (

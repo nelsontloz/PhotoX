@@ -22,10 +22,11 @@ export function UploadButton({ variant = 'default' }: UploadButtonProps) {
       <>
         <button
           onClick={open}
-          className="hidden sm:flex items-center gap-2 bg-primary hover:bg-primary/90 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-all shadow-lg shadow-primary/20"
+          aria-label="Upload"
+          className="flex size-9 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/20 hover:bg-primary/90 transition-colors sm:size-auto sm:gap-2 sm:rounded-lg sm:px-4 sm:py-2 sm:text-sm sm:font-semibold"
         >
-          <FaCamera className="text-[14px]" />
-          <span>Upload</span>
+          <FaCamera className="text-[15px] sm:text-[14px]" />
+          <span className="hidden sm:inline">Upload</span>
         </button>
         <input
           ref={inputRef}
