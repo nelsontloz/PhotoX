@@ -25,7 +25,6 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@pact-foundation/pact": "^17.1.4",
     "@tailwindcss/vite": "^4.3.1",
     "@testing-library/react": "^16.1.0",
     "@types/leaflet": "^1.9.21",
@@ -38,7 +37,6 @@
     "tailwindcss": "^4.3.1",
     "typescript": "^5.7.0",
     "vite": "^6.0.0",
-    "vite-plugin-pages": "^0.33.3",
     "vitest": "^3.2.7"
   }
 }

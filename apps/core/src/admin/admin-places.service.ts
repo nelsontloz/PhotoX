@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { AdminAssetsService } from './admin-assets.service'
 import { PlacesResolveService } from '../places/places-resolve.service'
-import { SettingsService, type PlacesBackfillLastRun } from '../settings/settings.service'
+import { SettingsService } from '../settings/settings.service'
+import type { LastRun } from '../settings/settings.service'
 
 const BACKFILL_PAGE_SIZE = 500
 
@@ -41,11 +42,11 @@ export class AdminPlacesService {
       }
       afterId = page.items[page.items.length - 1]!.id
     }
-    await this.settings.setPlacesBackfillLastRun({ startedAt, total, updated })
+    await this.settings.setLastRun('places', { startedAt, total, updated })
     return { updated, total }
   }
 
-  async status(): Promise<{ lastRun: PlacesBackfillLastRun | null }> {
-    return { lastRun: await this.settings.getPlacesBackfillLastRun() }
+  async status(): Promise<{ lastRun: LastRun<'places'> | null }> {
+    return { lastRun: await this.settings.getLastRun('places') }
   }
 }

@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common'
 import { AdminAssetsService } from './admin-assets.service'
 import { BullMqService } from '../queue/bullmq.service'
-import { SettingsService, type MetadataReprocessLastRun } from '../settings/settings.service'
+import type { LastRun } from '../settings/settings.service'
+import { SettingsService } from '../settings/settings.service'
+import { reprocessStatus } from './reprocess.util'
 
 const REPROCESS_PAGE_SIZE = 500
 const METADATA_QUEUE = 'process-metadata'
@@ -44,18 +46,11 @@ export class AdminMetadataService {
       }
       afterId = page.items[page.items.length - 1]!.id
     }
-    await this.settings.setMetadataReprocessLastRun({ startedAt, total, enqueued })
+    await this.settings.setLastRun('metadata', { startedAt, total, enqueued })
     return { enqueued, total }
   }
 
-  async status(): Promise<{
-    lastRun: MetadataReprocessLastRun | null
-    queue: Record<string, number>
-  }> {
-    const [lastRun, queue] = await Promise.all([
-      this.settings.getMetadataReprocessLastRun(),
-      this.bullMq.getQueue(METADATA_QUEUE).getJobCounts(),
-    ])
-    return { lastRun, queue }
+  status(): Promise<{ lastRun: LastRun<'metadata'> | null; queue: Record<string, number> }> {
+    return reprocessStatus(this.bullMq, METADATA_QUEUE, () => this.settings.getLastRun('metadata'))
   }
 }

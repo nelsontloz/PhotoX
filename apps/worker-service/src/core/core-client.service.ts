@@ -5,11 +5,13 @@ import { loadEnv } from '@photox/shared-config'
 import type {
   Asset,
   AssetListResponse,
+  AssetThumbnail,
   DetectedFaceInput,
-  FaceBox,
   FaceDetectionSettings,
   FaceDetectorKind,
+  FaceDto,
   FileRecord,
+  MetadataStatus,
   RegisterDetectionsRequestDto,
   RegisterEmbeddingRequestDto,
   RegisterOcrRequestDto,
@@ -49,37 +51,25 @@ export type MetadataPatch = Partial<
 > & {
   // Date is not an Asset field: metadata jobs pass Date, JSON.stringify sends the same ISO wire string
   takenAt?: Date | null
-  status?: 'pending' | 'ready' | 'failed'
+  status?: MetadataStatus
   // set by process-embeddings on failure; core's UpdateMetadataDto must whitelist it (sibling lane)
-  embeddingStatus?: 'pending' | 'ready' | 'failed'
+  embeddingStatus?: MetadataStatus
   // 16-char lowercase dHash hex set by process-metadata; core's UpdateMetadataDto must whitelist it
   phash?: string
 }
 
-export interface RegisterFileInput {
-  id: string
+export type RegisterFileInput = Pick<
+  FileRecord,
+  'id' | 'originalName' | 'mimeType' | 'sizeBytes' | 'checksumSha256'
+> & {
   kind: 'original' | 'thumbnail' | 'transcode'
   ext: string
-  checksumSha256: string
-  originalName: string
-  mimeType: string
-  sizeBytes: number
   assetId?: string
 }
 
-export interface RegisterThumbnailInput {
-  size: string
-  fileId: string
-  width: number
-  height: number
-  bytes: number
-}
+export type RegisterThumbnailInput = Omit<AssetThumbnail, 'createdAt'>
 
-export interface ClusterFace {
-  id: string
-  assetId: string
-  box: FaceBox
-  confidence: number
+export interface ClusterFace extends Omit<FaceDto, 'personId'> {
   personId: string | null
   embedding: number[]
 }
@@ -112,7 +102,6 @@ export interface OrphanCleanupResult {
   deletedStrays: number
 }
 
-const RETRY_DELAYS_MS = [1000, 2000, 4000]
 const REQUEST_TIMEOUT_MS = 30_000
 const ASSET_IDS_CHUNK = 100
 
@@ -259,45 +248,36 @@ export class CoreClient {
     extra: { timeoutMs?: number } = {},
   ): Promise<T> {
     const token = this.signToken(opts.sub, opts.role ?? 'user')
-    let lastError = new Error(`Core ${method} ${path} failed`)
 
-    for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
-      if (attempt > 0) await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt - 1]))
-
-      let res: Response
-      try {
-        res = await fetch(`${loadEnv().CORE_URL}${path}`, {
-          method,
-          headers: {
-            Authorization: `Bearer ${token}`,
-            ...(opts.body === undefined ? {} : { 'Content-Type': 'application/json' }),
-          },
-          body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
-          signal: AbortSignal.timeout(extra.timeoutMs ?? REQUEST_TIMEOUT_MS),
-        })
-      } catch (err) {
-        lastError = err instanceof Error ? err : new Error(String(err))
-        continue
-      }
-
-      if (res.ok) {
-        if (res.status === 204) return undefined as T
-        return (await res.json()) as T
-      }
-
-      const detail = await res.text().catch(() => '')
-      const message = `Core ${method} ${path} failed: ${res.status}${detail ? ` — ${detail.slice(0, 300)}` : ''}`
-
-      // bad payload / unknown or foreign resource: retrying cannot help
-      if (res.status === 400 || res.status === 404 || res.status === 422) {
-        throw new UnrecoverableError(message)
-      }
-      // secret rotation / clock skew is environmental — surface it, don't burn in-process retries
-      if (res.status === 401 || res.status === 403) throw new Error(message)
-
-      lastError = new Error(message)
+    let res: Response
+    try {
+      res = await fetch(`${loadEnv().CORE_URL}${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(opts.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        },
+        body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+        signal: AbortSignal.timeout(extra.timeoutMs ?? REQUEST_TIMEOUT_MS),
+      })
+    } catch (err) {
+      // network failure: plain Error so BullMQ's attempts:3 + backoff owns the retry
+      throw err instanceof Error ? err : new Error(String(err))
     }
 
-    throw lastError
+    if (res.ok) {
+      if (res.status === 204) return undefined as T
+      return (await res.json()) as T
+    }
+
+    const detail = await res.text().catch(() => '')
+    const message = `Core ${method} ${path} failed: ${res.status}${detail ? ` — ${detail.slice(0, 300)}` : ''}`
+
+    // bad payload / unknown or foreign resource: retrying cannot help
+    if (res.status === 400 || res.status === 404 || res.status === 422) {
+      throw new UnrecoverableError(message)
+    }
+    // 401/403/429/5xx are plain errors — BullMQ retries the job (attempts:3 + exponential backoff)
+    throw new Error(message)
   }
 }

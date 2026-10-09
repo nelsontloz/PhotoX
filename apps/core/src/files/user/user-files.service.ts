@@ -111,9 +111,6 @@ export class UserFilesService {
     file: UploadedDiskFile,
     meta: UploadMeta = {},
   ): Promise<AssetResponse> {
-    if (!file) {
-      throw new BadRequestException('No file provided')
-    }
     const { record, created } = await this.storeFile(userId, file)
     const kind = meta.kind ?? this.kindFromMime(record.mimeType)
     if (!kind) {

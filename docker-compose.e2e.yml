@@ -92,3 +92,7 @@ services:
 
   redis:
     ports: !override []
+
+# declared here (not in the infra-only base compose) — only the e2e stack mounts it
+volumes:
+  storage-data:

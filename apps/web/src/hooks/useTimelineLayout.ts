@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { getAssetLayout } from '../api/assets'
 import { buildBuckets } from '../lib/timelineLayout'
 import type { TimelineItem, TimelineLayout } from '../lib/timelineLayout'
 import { useAppStore } from '../store/app-store'
+import { useAsyncFetch } from './useAsyncFetch'
 
 const EMPTY: TimelineItem[] = []
 
@@ -26,45 +27,16 @@ interface UseTimelineLayoutResult {
  */
 export function useTimelineLayout(): UseTimelineLayoutResult {
   const timelineRefreshKey = useAppStore((s) => s.timelineRefreshKey)
-  const [layoutItems, setLayoutItems] = useState<TimelineItem[]>(EMPTY)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [containerWidth, setContainerWidth] = useState(0)
   const [rowHeight, setRowHeight] = useState(0)
-  const fetchIdRef = useRef(0)
-  const loadedOnceRef = useRef(false)
-  // dedupe same-refresh-key fetches already in flight (StrictMode dev double-mount)
-  const inFlightKeyRef = useRef<number | null>(null)
   const containerElRef = useRef<HTMLDivElement | null>(null)
   const roRef = useRef<ResizeObserver | null>(null)
 
-  const fetchLayout = async () => {
-    const key = timelineRefreshKey
-    if (inFlightKeyRef.current === key) return
-    inFlightKeyRef.current = key
-    const fetchId = ++fetchIdRef.current
-    try {
-      // ponytail: only the first load gates the page; refreshes update in place
-      if (!loadedOnceRef.current) setLoading(true)
-      setError(null)
-      const data = await getAssetLayout()
-      if (fetchId !== fetchIdRef.current) return
-      setLayoutItems(data.items)
-    } catch (err) {
-      if (fetchId !== fetchIdRef.current) return
-      setError((err as Error).message ?? 'Failed to load timeline layout')
-    } finally {
-      if (fetchId === fetchIdRef.current) {
-        loadedOnceRef.current = true
-        setLoading(false)
-        inFlightKeyRef.current = null
-      }
-    }
-  }
-
-  useEffect(() => {
-    void fetchLayout()
-  }, [timelineRefreshKey])
+  const { data, loading, error } = useAsyncFetch(getAssetLayout, {
+    refreshKey: timelineRefreshKey,
+    errorMessage: 'Failed to load timeline layout',
+  })
+  const layoutItems = data?.items ?? EMPTY
 
   // ONE ResizeObserver on the grid container + a hidden probe carrying `.fixed-row-gallery`, so
   // rowHeight always comes from computed CSS. Never branch on `innerWidth < 640`: the media

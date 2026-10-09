@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@photox/shared-types": "workspace:*",
     "@playwright/test": "^1.63.0",
     "@types/node": "^22.0.0",
     "playwright-bdd": "^9.2.1",

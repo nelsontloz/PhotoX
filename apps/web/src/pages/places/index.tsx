@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
 import { FaMapLocationDot } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
 import { listAllAssets } from '../../api/assets'
@@ -9,6 +8,7 @@ import { AppShell } from '../../components/AppShell'
 import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
 import { locationMarkerIcon } from '../../components/AssetViewer/sections/LocationSection'
 import { formatShortDate } from '../../lib/dateFormat'
+import { addOsmTileLayer } from '../../lib/leafletMap'
 
 function PlacesContent() {
   const [assets, setAssets] = useState<Asset[]>([])
@@ -40,10 +40,7 @@ function PlacesContent() {
     const map = L.map(containerRef.current, { zoomControl: false }).setView([0, 0], 2)
     L.control.zoom({ position: 'bottomright' }).addTo(map)
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      maxZoom: 19,
-    }).addTo(map)
+    addOsmTileLayer(map)
 
     const bounds = L.latLngBounds(
       assets.map((a) => [a.latitude!, a.longitude!] as [number, number]),

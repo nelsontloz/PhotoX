@@ -17,7 +17,7 @@ Personal photo/video hosting. One NestJS `core` API (the only HTTP app; when ext
 docker compose up -d postgres redis   # infra FIRST; there is no minio service
 pnpm dev                              # turbo persistent: core + worker + web
 pnpm --filter @photox/core dev           # single package (@photox/core | @photox/worker-service | @photox/web)
-pnpm verify                           # lint && test --force && typecheck && build && E2E_BUILD=1 test:e2e (no pact stages)
+pnpm verify                           # lint && test --force && typecheck && build && E2E_BUILD=1 test:e2e
 curl localhost:3000/health            # core (host dev); compose publishes no core port
 ```
 
@@ -60,7 +60,7 @@ Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 
 ## Web
 
-- File routes (`vite-plugin-pages`), `react-router-dom@7`, `zustand`, `axios`. Vite proxies `/api` + `/health` to `VITE_API_URL || http://localhost:3000` (core).
+- Explicit lazy routes in `src/App.tsx`, `react-router-dom@7`, `zustand`, `axios`. Vite proxies `/api` + `/health` to `VITE_API_URL || http://localhost:3000` (core).
 - Dark by default (`<html class="dark">`). Tailwind v4 CSS config (`@import "tailwindcss"` + `@theme` in `app.css`) — no `tailwind.config.*`. Icons: `react-icons/fa6` only.
 
 ## Style
@@ -73,7 +73,7 @@ Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 
 - Vitest 3, `globals: true`; turbo runs each package's own `test` script (core, worker-service, web, and the `shared-config` shared package).
 - Api runs `src/**/*.spec.ts` + `test/integration/**/*.spec.ts`. Integration spins testcontainers `redis:7-alpine` + plain `postgres:16-alpine` (no pgvector — index creation just warns). Needs Docker; on Podman run `DOCKER_HOST=unix://$HOME/.local/share/containers/podman/machine/podman.sock TESTCONTAINERS_RYUK_DISABLED=true pnpm verify` (`TESTCONTAINERS_RYUK_DISABLED` already in `turbo.json` passthrough). Worker integration tests are Redis-only (fake `CoreClient`, no Postgres).
-- Consumer pact: `apps/web/test/pact/consumer/core.pact.spec.ts` (consumer `web` → provider `core`) writing `pacts/web-core.json` (~41 interactions, all web→core calls). It runs inside `verify` because it's a plain vitest spec. Provider verification exists but is opt-in only: `pnpm --filter @photox/core test:pact:provider` (`test/pact/core.provider.spec.ts` via `vitest.pact.config.ts`) — not part of `verify`. No coverage script; don't resurrect the old pact pipeline (the old `worker-service-*.json` pacts are deleted).
+- Web→core contract lives in `shared-types` (compile time) + e2e (runtime) — pact consumer/provider specs deleted as same-repo duplication, do not resurrect. No coverage script.
 - Jenkins (k8s pod): `install --frozen-lockfile` → build `packages/*` → parallel typecheck/lint/test (dind, pulls pg+redis images) → build.
 
 ## Security / audit

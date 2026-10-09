@@ -18,58 +18,62 @@ export const DETECTIONS_REPROCESS_LAST_RUN_KEY = 'detections.reprocess.lastRun'
 export const PLACES_BACKFILL_LAST_RUN_KEY = 'places.backfill.lastRun'
 export const METADATA_REPROCESS_LAST_RUN_KEY = 'metadata.reprocess.lastRun'
 
-export interface FaceReprocessLastRun {
-  startedAt: string
-  total: number
-  enqueued: number
-  detector: FaceDetectorKind
-}
-
-export interface EmbeddingReprocessLastRun {
-  startedAt: string
-  total: number
-  enqueued: number
-  model: string
-}
-
-export interface OcrReprocessLastRun {
+export interface EnqueuedRun {
   startedAt: string
   total: number
   enqueued: number
 }
 
-export interface DetectionsReprocessLastRun {
-  startedAt: string
-  total: number
-  enqueued: number
+export interface LastRuns {
+  face: EnqueuedRun & { detector: FaceDetectorKind }
+  embedding: EnqueuedRun & { model: string }
+  ocr: EnqueuedRun
+  detections: EnqueuedRun
+  metadata: EnqueuedRun
+  places: { startedAt: string; total: number; updated: number }
 }
 
-export interface PlacesBackfillLastRun {
-  startedAt: string
-  total: number
-  updated: number
-}
+export type LastRunKind = keyof LastRuns
+export type LastRun<K extends LastRunKind> = LastRuns[K]
 
-export interface MetadataReprocessLastRun {
-  startedAt: string
-  total: number
-  enqueued: number
-}
+const isString = (value: unknown): boolean => typeof value === 'string'
+const isNumber = (value: unknown): boolean => typeof value === 'number'
 
 function isFaceDetectorKind(value: unknown): value is FaceDetectorKind {
   return typeof value === 'string' && (FACE_DETECTOR_KINDS as readonly string[]).includes(value)
 }
 
-const isString = (value: unknown): boolean => typeof value === 'string'
-const isNumber = (value: unknown): boolean => typeof value === 'number'
+const ENQUEUED_RUN_FIELDS = { startedAt: isString, total: isNumber, enqueued: isNumber }
 
 /**
- * Rebuilds a last-run record from the listed fields only (unknown stored keys are dropped); any
- * field failing its check makes the whole record unreadable, same as the old per-type guards.
+ * Per-kind app_settings key + field checks. A stored record is rebuilt from the listed fields only
+ * (unknown keys are dropped); any field failing its check makes the whole record unreadable, same
+ * as the old per-type guards.
  */
+const LAST_RUN_FIELDS: Record<
+  LastRunKind,
+  { key: string; fields: Record<string, (value: unknown) => boolean> }
+> = {
+  face: {
+    key: FACE_REPROCESS_LAST_RUN_KEY,
+    fields: { ...ENQUEUED_RUN_FIELDS, detector: isFaceDetectorKind },
+  },
+  embedding: {
+    key: EMBEDDING_REPROCESS_LAST_RUN_KEY,
+    fields: { ...ENQUEUED_RUN_FIELDS, model: isString },
+  },
+  ocr: { key: OCR_REPROCESS_LAST_RUN_KEY, fields: ENQUEUED_RUN_FIELDS },
+  detections: { key: DETECTIONS_REPROCESS_LAST_RUN_KEY, fields: ENQUEUED_RUN_FIELDS },
+  metadata: { key: METADATA_REPROCESS_LAST_RUN_KEY, fields: ENQUEUED_RUN_FIELDS },
+  places: {
+    key: PLACES_BACKFILL_LAST_RUN_KEY,
+    fields: { startedAt: isString, total: isNumber, updated: isNumber },
+  },
+}
+
 function parseRun<T>(
   value: unknown,
-  fields: Record<string, (field: unknown) => boolean>,
+  fields: Record<string, (value: unknown) => boolean>,
 ): T | null {
   if (typeof value !== 'object' || value === null) return null
   const row = value as Record<string, unknown>
@@ -80,50 +84,6 @@ function parseRun<T>(
   }
   return run as T
 }
-
-const parseFaceLastRun = (value: unknown): FaceReprocessLastRun | null =>
-  parseRun<FaceReprocessLastRun>(value, {
-    startedAt: isString,
-    total: isNumber,
-    enqueued: isNumber,
-    detector: isFaceDetectorKind,
-  })
-
-const parseEmbeddingLastRun = (value: unknown): EmbeddingReprocessLastRun | null =>
-  parseRun<EmbeddingReprocessLastRun>(value, {
-    startedAt: isString,
-    total: isNumber,
-    enqueued: isNumber,
-    model: isString,
-  })
-
-const parseOcrLastRun = (value: unknown): OcrReprocessLastRun | null =>
-  parseRun<OcrReprocessLastRun>(value, {
-    startedAt: isString,
-    total: isNumber,
-    enqueued: isNumber,
-  })
-
-const parseDetectionsLastRun = (value: unknown): DetectionsReprocessLastRun | null =>
-  parseRun<DetectionsReprocessLastRun>(value, {
-    startedAt: isString,
-    total: isNumber,
-    enqueued: isNumber,
-  })
-
-const parsePlacesBackfillLastRun = (value: unknown): PlacesBackfillLastRun | null =>
-  parseRun<PlacesBackfillLastRun>(value, {
-    startedAt: isString,
-    total: isNumber,
-    updated: isNumber,
-  })
-
-const parseMetadataReprocessLastRun = (value: unknown): MetadataReprocessLastRun | null =>
-  parseRun<MetadataReprocessLastRun>(value, {
-    startedAt: isString,
-    total: isNumber,
-    enqueued: isNumber,
-  })
 
 @Injectable()
 export class SettingsService {
@@ -156,61 +116,13 @@ export class SettingsService {
     await this.repo.upsert({ key: FACE_DETECTOR_SETTING_KEY, value: kind }, ['key'])
   }
 
-  getFaceReprocessLastRun(): Promise<FaceReprocessLastRun | null> {
-    return this.getLastRun(FACE_REPROCESS_LAST_RUN_KEY, parseFaceLastRun)
+  async getLastRun<K extends LastRunKind>(kind: K): Promise<LastRun<K> | null> {
+    const row = await this.repo.findOne({ where: { key: LAST_RUN_FIELDS[kind].key } })
+    return parseRun<LastRun<K>>(row?.value, LAST_RUN_FIELDS[kind].fields)
   }
 
-  setFaceReprocessLastRun(run: FaceReprocessLastRun): Promise<void> {
-    return this.setLastRun(FACE_REPROCESS_LAST_RUN_KEY, run)
-  }
-
-  getEmbeddingReprocessLastRun(): Promise<EmbeddingReprocessLastRun | null> {
-    return this.getLastRun(EMBEDDING_REPROCESS_LAST_RUN_KEY, parseEmbeddingLastRun)
-  }
-
-  setEmbeddingReprocessLastRun(run: EmbeddingReprocessLastRun): Promise<void> {
-    return this.setLastRun(EMBEDDING_REPROCESS_LAST_RUN_KEY, run)
-  }
-
-  getOcrReprocessLastRun(): Promise<OcrReprocessLastRun | null> {
-    return this.getLastRun(OCR_REPROCESS_LAST_RUN_KEY, parseOcrLastRun)
-  }
-
-  setOcrReprocessLastRun(run: OcrReprocessLastRun): Promise<void> {
-    return this.setLastRun(OCR_REPROCESS_LAST_RUN_KEY, run)
-  }
-
-  getDetectionsReprocessLastRun(): Promise<DetectionsReprocessLastRun | null> {
-    return this.getLastRun(DETECTIONS_REPROCESS_LAST_RUN_KEY, parseDetectionsLastRun)
-  }
-
-  setDetectionsReprocessLastRun(run: DetectionsReprocessLastRun): Promise<void> {
-    return this.setLastRun(DETECTIONS_REPROCESS_LAST_RUN_KEY, run)
-  }
-
-  getPlacesBackfillLastRun(): Promise<PlacesBackfillLastRun | null> {
-    return this.getLastRun(PLACES_BACKFILL_LAST_RUN_KEY, parsePlacesBackfillLastRun)
-  }
-
-  setPlacesBackfillLastRun(run: PlacesBackfillLastRun): Promise<void> {
-    return this.setLastRun(PLACES_BACKFILL_LAST_RUN_KEY, run)
-  }
-
-  getMetadataReprocessLastRun(): Promise<MetadataReprocessLastRun | null> {
-    return this.getLastRun(METADATA_REPROCESS_LAST_RUN_KEY, parseMetadataReprocessLastRun)
-  }
-
-  setMetadataReprocessLastRun(run: MetadataReprocessLastRun): Promise<void> {
-    return this.setLastRun(METADATA_REPROCESS_LAST_RUN_KEY, run)
-  }
-
-  private async getLastRun<T>(key: string, parse: (value: unknown) => T | null): Promise<T | null> {
-    const row = await this.repo.findOne({ where: { key } })
-    return parse(row?.value)
-  }
-
-  private async setLastRun(key: string, run: object): Promise<void> {
-    await this.repo.upsert({ key, value: run }, ['key'])
+  async setLastRun<K extends LastRunKind>(kind: K, run: LastRun<K>): Promise<void> {
+    await this.repo.upsert({ key: LAST_RUN_FIELDS[kind].key, value: run }, ['key'])
   }
 
   private async countFacesByDetector(): Promise<FaceDetectionSettings['facesByDetector']> {

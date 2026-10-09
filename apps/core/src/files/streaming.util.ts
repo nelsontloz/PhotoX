@@ -1,6 +1,7 @@
 import type { Readable } from 'stream'
 import type { Request, Response } from 'express'
 import type { FileRecord } from '../database/entities'
+import type { UserFilesService } from './user/user-files.service'
 import { etagMatches } from '../assets/assets.controller'
 
 const RANGE_RE = /^bytes=(\d+)-(\d*)$/
@@ -115,14 +116,6 @@ export function pipeFileResponse(res: Response, opts: PipeFileResponseOptions): 
   stream.pipe(res)
 }
 
-interface FileStreamSource {
-  getFileStat(fileId: string): Promise<{ totalSize: number }>
-  stream(
-    fileId: string,
-    opts?: { range: { start: number; end: number } },
-  ): Promise<{ stream: Readable; record: FileRecord; totalSize: number }>
-}
-
 /**
  * stat → range parse (416 on unsatisfiable) → ranged or full stream → pipe, shared by the
  * authenticated file route and the public share routes. `attachment: true` adds the
@@ -131,7 +124,7 @@ interface FileStreamSource {
 export async function serveFileBytes(
   req: Request,
   res: Response,
-  files: FileStreamSource,
+  files: UserFilesService,
   fileId: string,
   opts: { attachment?: boolean } = {},
 ): Promise<void> {

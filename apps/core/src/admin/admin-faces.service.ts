@@ -3,9 +3,9 @@ import { DataSource } from 'typeorm'
 import type { FaceDetectorKind } from '@photox/shared-types'
 import { AdminAssetsService } from './admin-assets.service'
 import { BullMqService } from '../queue/bullmq.service'
-import { SettingsService, type FaceReprocessLastRun } from '../settings/settings.service'
-
-const REPROCESS_PAGE_SIZE = 500
+import type { LastRun } from '../settings/settings.service'
+import { SettingsService } from '../settings/settings.service'
+import { reprocessPhotos, reprocessStatus } from './reprocess.util'
 
 @Injectable()
 export class AdminFacesService {
@@ -16,20 +16,13 @@ export class AdminFacesService {
     private readonly dataSource: DataSource,
   ) {}
 
-  /**
-   * ponytail: `enqueued` counts requested jobs, not new Redis entries — `enqueue` swallows Redis
-   * failures, and an in-flight/completed `face-reembed-<assetId>` jobId silently dedupes (BullMQ
-   * dedupes custom jobIds in any state). `removeOnComplete` drops completed jobs so a later run
-   * can re-enqueue the same asset.
-   */
+  // ponytail: detector read once per run — jobs enqueued mid-run keep the detector this run saw
   async reprocess(): Promise<{ enqueued: number; total: number; detector: FaceDetectorKind }> {
-    const startedAt = new Date().toISOString()
-    // ponytail: detector read once per run — jobs enqueued mid-run keep the detector this run saw
     const detector = await this.settings.getFaceDetector()
-    const { enqueued, total } = await this.bullMq.enqueuePaged(
+    const { enqueued, total } = await reprocessPhotos(
+      { admin: this.admin, bullMq: this.bullMq },
       'process-faces',
       're-embed',
-      (offset) => this.admin.listForReprocess('photo', REPROCESS_PAGE_SIZE, offset),
       (item) => ({
         data: {
           assetId: item.id,
@@ -40,17 +33,13 @@ export class AdminFacesService {
         },
         jobId: `face-reembed-${item.id}`,
       }),
+      (run) => this.settings.setLastRun('face', { ...run, detector }),
     )
-    await this.settings.setFaceReprocessLastRun({ startedAt, total, enqueued, detector })
     return { enqueued, total, detector }
   }
 
-  async status(): Promise<{ lastRun: FaceReprocessLastRun | null; queue: Record<string, number> }> {
-    const [lastRun, queue] = await Promise.all([
-      this.settings.getFaceReprocessLastRun(),
-      this.bullMq.getQueue('process-faces').getJobCounts(),
-    ])
-    return { lastRun, queue }
+  status(): Promise<{ lastRun: LastRun<'face'> | null; queue: Record<string, number> }> {
+    return reprocessStatus(this.bullMq, 'process-faces', () => this.settings.getLastRun('face'))
   }
 
   async recluster(): Promise<{ enqueued: number }> {

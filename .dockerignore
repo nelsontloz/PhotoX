@@ -9,7 +9,6 @@ dist
 coverage
 *.log
 data
-pacts
 .slim
 .worktrees
 .tmp

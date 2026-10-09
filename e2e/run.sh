@@ -5,9 +5,9 @@
 # Usage: pnpm test:e2e   (from the repo root)
 #   E2E_BUILD=1  rebuild images before starting the stack
 #   E2E_KEEP=1   leave the stack running after the tests (debugging)
-# Each run uses a unique compose project, an OS-assigned web port, and per-run output dirs,
-# so several runs can execute in parallel; the stack is stopped and removed when the script
-# exits, and only the latest run's report is kept.
+# Each run uses a unique compose project and an OS-assigned web port; the stack is stopped and
+# removed when the script exits. Artifact dirs (.features-gen, test-results, playwright-report)
+# are fixed, so parallel runs share (and overwrite) each other's artifacts.
 set -euo pipefail
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$E2E_DIR/.." && pwd)"
@@ -19,46 +19,23 @@ pick_port() {
 
 E2E_PROJECT="${E2E_PROJECT:-photox-e2e-$$-$RANDOM}"
 E2E_WEB_PORT="${E2E_WEB_PORT:-$(pick_port)}"
-E2E_GEN_DIR="${E2E_GEN_DIR:-.features-gen/$E2E_PROJECT}"
-E2E_OUTPUT_DIR="${E2E_OUTPUT_DIR:-test-results/$E2E_PROJECT}"
-E2E_REPORT_DIR="${E2E_REPORT_DIR:-playwright-report/$E2E_PROJECT}"
+E2E_GEN_DIR="${E2E_GEN_DIR:-.features-gen}"
+E2E_OUTPUT_DIR="${E2E_OUTPUT_DIR:-test-results}"
+E2E_REPORT_DIR="${E2E_REPORT_DIR:-playwright-report}"
 export E2E_WEB_PORT E2E_GEN_DIR E2E_OUTPUT_DIR E2E_REPORT_DIR
 
 COMPOSE=(docker compose -p "$E2E_PROJECT" -f "$ROOT/docker-compose.yml" -f "$ROOT/docker-compose.e2e.yml")
 
-# Remove per-run dirs of finished runs (their containers are gone); dirs of runs that are
-# still executing are kept so parallel runs never delete each other's artifacts.
-prune_runs() {
-  local parent="$1" keep_current="$2" dir proj
-  for dir in "$parent"/*/; do
-    [ -d "$dir" ] || continue
-    proj="$(basename "$dir")"
-    if [ "$keep_current" = "keep" ]; then
-      [ "$proj" = "$E2E_PROJECT" ] && continue
-      # keep only the latest report: a report newer than ours wins over ours
-      [ "$dir" -nt "$parent/$E2E_PROJECT" ] && continue
-    fi
-    if [ -n "$(docker ps -a --filter "label=com.docker.compose.project=$proj" --format '{{.Names}}' 2>/dev/null)" ]; then continue; fi
-    rm -rf "$dir"
-  done
-}
-
 cleanup() {
-  local had_report=0
-  if [ -d "$E2E_DIR/playwright-report/$E2E_PROJECT" ]; then
-    had_report=1
-    echo "Playwright report: e2e/playwright-report/$E2E_PROJECT (view: pnpm --filter @photox/e2e exec playwright show-report playwright-report/$E2E_PROJECT)"
-  fi
   if [ "${E2E_KEEP:-0}" = "1" ]; then
     echo "E2E_KEEP=1: leaving the stack running (project: $E2E_PROJECT, web: http://localhost:$E2E_WEB_PORT)"
     return 0
   fi
   "${COMPOSE[@]}" down -v --remove-orphans
-  if [ "$had_report" = "1" ]; then
-    prune_runs "$E2E_DIR/playwright-report" keep
+  rm -rf "$E2E_DIR/.features-gen" "$E2E_DIR/test-results"
+  if [ -d "$E2E_DIR/playwright-report" ]; then
+    echo "Playwright report: e2e/playwright-report (view: pnpm --filter @photox/e2e exec playwright show-report playwright-report)"
   fi
-  prune_runs "$E2E_DIR/test-results" all
-  prune_runs "$E2E_DIR/.features-gen" all
 }
 trap cleanup EXIT
 
