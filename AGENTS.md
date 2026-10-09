@@ -17,7 +17,7 @@ Personal photo/video hosting. One NestJS `core` API (the only HTTP app; when ext
 docker compose up -d postgres redis   # infra FIRST; there is no minio service
 pnpm dev                              # turbo persistent: core + worker + web
 pnpm --filter @photox/core dev           # single package (@photox/core | @photox/worker-service | @photox/web)
-pnpm verify                           # lint && test --force && typecheck && build && test:e2e (no pact stages)
+pnpm verify                           # lint && test --force && typecheck && build && E2E_BUILD=1 test:e2e (no pact stages)
 curl localhost:3000/health            # core (host dev); compose publishes no core port
 ```
 

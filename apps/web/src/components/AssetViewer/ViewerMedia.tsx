@@ -7,6 +7,11 @@ import { summarizeDetections } from './detectionView'
 import { ViewerThumbnailStrip } from './ViewerThumbnailStrip'
 import { ZoomableImage } from './ZoomableImage'
 
+// 1×1 transparent gif: an in-flow replaced element keeps the final image's box reserved even when
+// the md thumb is not cached yet, without painting anything.
+const TRANSPARENT_PIXEL =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+
 interface ViewerMediaProps {
   isVideo: boolean
   videoSrc: string | null
@@ -16,6 +21,7 @@ interface ViewerMediaProps {
   imageUrl: string | null
   imageAlt: string
   loading: boolean
+  placeholderUrl?: string | null
   hasPrev: boolean
   hasNext: boolean
   infoOpen: boolean
@@ -39,6 +45,7 @@ export function ViewerMedia({
   imageUrl,
   imageAlt,
   loading,
+  placeholderUrl,
   hasPrev,
   hasNext,
   infoOpen,
@@ -108,10 +115,27 @@ export function ViewerMedia({
           />
         )
       ) : loading ? (
-        <div className="flex flex-col items-center gap-3 text-slate-400">
-          <FaSpinner className="text-4xl text-primary animate-spin" />
-          <p className="text-sm">Loading preview…</p>
-        </div>
+        <>
+          {dims && (
+            // same box rules as the final image (intrinsic dims + max-constrained contain), so the
+            // full image swaps in at the exact same size; blurred md thumb stands in for it
+            <img
+              src={placeholderUrl ?? TRANSPARENT_PIXEL}
+              alt=""
+              aria-hidden="true"
+              width={dims.w}
+              height={dims.h}
+              decoding="async"
+              className="relative max-h-full max-w-full object-contain scale-110 blur-2xl select-none"
+            />
+          )}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3 rounded-2xl bg-black/50 backdrop-blur-sm px-6 py-5 text-slate-400 drop-shadow-[0_1px_6px_rgba(0,0,0,0.9)]">
+              <FaSpinner className="text-4xl text-primary animate-spin" />
+              <p className="text-sm">Loading preview…</p>
+            </div>
+          </div>
+        </>
       ) : (
         <div className="flex flex-col items-center gap-3 text-slate-500">
           <FaImage className="text-5xl opacity-30" />
