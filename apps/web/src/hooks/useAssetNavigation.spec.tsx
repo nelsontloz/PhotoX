@@ -1,20 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ReactNode } from 'react'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, fireEvent, screen, within } from '@testing-library/react'
 import { MemoryRouter, useSearchParams } from 'react-router-dom'
 import type { Asset } from '@photox/shared-types'
 
 vi.mock('../api/assets', () => ({
   trashAsset: vi.fn(),
   restoreAsset: vi.fn(),
+  deleteAsset: vi.fn(),
 }))
 
 import { useAssetNavigation } from './useAssetNavigation'
-import { restoreAsset, trashAsset } from '../api/assets'
+import { deleteAsset, restoreAsset, trashAsset } from '../api/assets'
 import { ConfirmProvider } from '../components/ConfirmProvider'
 
 const trashAssetMock = vi.mocked(trashAsset)
 const restoreAssetMock = vi.mocked(restoreAsset)
+const deleteAssetMock = vi.mocked(deleteAsset)
 
 function makeAsset(id: string): Asset {
   return { id, kind: 'photo' } as Asset
@@ -34,6 +36,7 @@ describe('useAssetNavigation', () => {
   beforeEach(() => {
     trashAssetMock.mockReset()
     restoreAssetMock.mockReset()
+    deleteAssetMock.mockReset()
     vi.stubGlobal('alert', vi.fn())
   })
 
@@ -197,5 +200,121 @@ describe('useAssetNavigation', () => {
     expect(restoreAssetMock).toHaveBeenCalledWith('a')
     expect(result.current.params.get('asset')).toBeNull()
     expect(onAfterAction).toHaveBeenCalledOnce()
+  })
+
+  it('trash confirms, calls the API with the selected id, closes, and refreshes', async () => {
+    trashAssetMock.mockResolvedValue(undefined)
+    const onAfterAction = vi.fn()
+    const a = makeAsset('a')
+    const { result, rerender } = renderHook(
+      () => {
+        const nav = useAssetNavigation({ assets: [a], onAfterAction })
+        const [params] = useSearchParams()
+        return { nav, params }
+      },
+      { wrapper: makeWrapper('/?asset=a') },
+    )
+
+    let pending!: Promise<void>
+    act(() => {
+      pending = result.current.nav.trash()
+    })
+    const dialog = await screen.findByRole('dialog', { name: 'Move "this photo" to trash?' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }))
+
+    await act(async () => {
+      await pending
+    })
+    rerender()
+    expect(trashAssetMock).toHaveBeenCalledWith('a')
+    expect(onAfterAction).toHaveBeenCalledOnce()
+    expect(result.current.params.get('asset')).toBeNull()
+  })
+
+  it('trash does not call the API when the confirm is declined', async () => {
+    const onAfterAction = vi.fn()
+    const a = makeAsset('a')
+    const { result, rerender } = renderHook(
+      () => {
+        const nav = useAssetNavigation({ assets: [a], onAfterAction })
+        const [params] = useSearchParams()
+        return { nav, params }
+      },
+      { wrapper: makeWrapper('/?asset=a') },
+    )
+
+    let pending!: Promise<void>
+    act(() => {
+      pending = result.current.nav.trash()
+    })
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    await act(async () => {
+      await pending
+    })
+    rerender()
+    expect(trashAssetMock).not.toHaveBeenCalled()
+    expect(onAfterAction).not.toHaveBeenCalled()
+    expect(result.current.params.get('asset')).toBe('a')
+  })
+
+  it('permanentlyDelete confirms, calls the API with the selected id, closes, and refreshes', async () => {
+    deleteAssetMock.mockResolvedValue(undefined)
+    const onAfterAction = vi.fn()
+    const a = makeAsset('a')
+    const { result, rerender } = renderHook(
+      () => {
+        const nav = useAssetNavigation({ assets: [a], onAfterAction })
+        const [params] = useSearchParams()
+        return { nav, params }
+      },
+      { wrapper: makeWrapper('/?asset=a') },
+    )
+
+    let pending!: Promise<void>
+    act(() => {
+      pending = result.current.nav.permanentlyDelete()
+    })
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Permanently delete "this photo"?',
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
+
+    await act(async () => {
+      await pending
+    })
+    rerender()
+    expect(deleteAssetMock).toHaveBeenCalledWith('a')
+    expect(onAfterAction).toHaveBeenCalledOnce()
+    expect(result.current.params.get('asset')).toBeNull()
+  })
+
+  it('permanentlyDelete does not call the API when the confirm is declined', async () => {
+    const onAfterAction = vi.fn()
+    const a = makeAsset('a')
+    const { result, rerender } = renderHook(
+      () => {
+        const nav = useAssetNavigation({ assets: [a], onAfterAction })
+        const [params] = useSearchParams()
+        return { nav, params }
+      },
+      { wrapper: makeWrapper('/?asset=a') },
+    )
+
+    let pending!: Promise<void>
+    act(() => {
+      pending = result.current.nav.permanentlyDelete()
+    })
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    await act(async () => {
+      await pending
+    })
+    rerender()
+    expect(deleteAssetMock).not.toHaveBeenCalled()
+    expect(onAfterAction).not.toHaveBeenCalled()
+    expect(result.current.params.get('asset')).toBe('a')
   })
 })
