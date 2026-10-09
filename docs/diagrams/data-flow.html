@@ -1,239 +1,1108 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>How an uploaded asset is processed · PhotoX data flow</title>
-  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&family=Noto+Sans+KR:wght@400;500;600&family=Noto+Serif+KR:wght@400&family=Noto+Sans+TC:wght@400;500;600&family=Noto+Serif+TC:wght@400&display=swap" rel="stylesheet">
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --color-paper:   #f5f5f5;   /* white-smoke */
-      --color-ink:     #2d3142;   /* jet-black */
-      --color-muted:   #4f5d75;   /* blue-slate */
-      --color-accent:  #eb6c36;   /* atomic-tangerine */
-      --font-sans:     'Geist', system-ui, sans-serif;
-      --font-serif:    'Instrument Serif', 'Noto Serif', 'Noto Serif KR', serif;
-      --font-mono:     'Geist Mono', ui-monospace, monospace;
-    }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>How an uploaded asset is processed · PhotoX data flow</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&family=Noto+Sans+KR:wght@400;500;600&family=Noto+Serif+KR:wght@400&family=Noto+Sans+TC:wght@400;500;600&family=Noto+Serif+TC:wght@400&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      :root {
+        --color-paper: #f5f5f5; /* white-smoke */
+        --color-ink: #2d3142; /* jet-black */
+        --color-muted: #4f5d75; /* blue-slate */
+        --color-accent: #eb6c36; /* atomic-tangerine */
+        --font-sans: 'Geist', system-ui, sans-serif;
+        --font-serif: 'Instrument Serif', 'Noto Serif', 'Noto Serif KR', serif;
+        --font-mono: 'Geist Mono', ui-monospace, monospace;
+      }
 
-    body {
-      font-family: var(--font-sans);
-      background: var(--color-paper);
-      color: var(--color-ink);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 3rem 2rem;
-    }
+      body {
+        font-family: var(--font-sans);
+        background: var(--color-paper);
+        color: var(--color-ink);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 3rem 2rem;
+      }
 
-    .frame { max-width: 1200px; width: 100%; }
-    /* The SVG holds its readable width (min-width == the viewBox width, so the
+      .frame {
+        max-width: 1200px;
+        width: 100%;
+      }
+      /* The SVG holds its readable width (min-width == the viewBox width, so the
        type ramp is never silently scaled down). This wrapper lets a narrow
        screen scroll the diagram instead of the whole page. */
-    .diagram-container { width: 100%; overflow-x: auto; }
+      .diagram-container {
+        width: 100%;
+        overflow-x: auto;
+      }
 
-    .eyebrow {
-      font-family: var(--font-mono);
-      font-size: 0.66rem;
-      font-weight: 500;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: var(--color-muted);
-      margin-bottom: 0.5rem;
-    }
+      .eyebrow {
+        font-family: var(--font-mono);
+        font-size: 0.66rem;
+        font-weight: 500;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--color-muted);
+        margin-bottom: 0.5rem;
+      }
 
-    h1 {
-      font-family: var(--font-serif);
-      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
-      font-weight: 400;
-      letter-spacing: -0.02em;
-      line-height: 1.15;
-      color: var(--color-ink);
-      margin-bottom: 1.5rem;
-    }
+      h1 {
+        font-family: var(--font-serif);
+        font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+        font-weight: 400;
+        letter-spacing: -0.02em;
+        line-height: 1.15;
+        color: var(--color-ink);
+        margin-bottom: 1.5rem;
+      }
 
-    svg { width: 100%; min-width: 960px; display: block; }
-    /* Paper has no scrollbar, so the local scroller would clip instead of
+      svg {
+        width: 100%;
+        min-width: 960px;
+        display: block;
+      }
+      /* Paper has no scrollbar, so the local scroller would clip instead of
        scroll. Let the diagram scale down to the sheet: smaller but whole
        beats sharp but cut off. Must come after the svg rule above - a media
        query adds no specificity, so a later plain rule would win. */
-    @media print {
-      .diagram-container { overflow-x: visible; }
-      svg { min-width: 0; }
-    }
-  </style>
-</head>
-<body>
-  <div class="frame">
-    <p class="eyebrow">PhotoX · Data flow</p>
-    <h1>How an uploaded asset is processed</h1>
+      @media print {
+        .diagram-container {
+          overflow-x: visible;
+        }
+        svg {
+          min-width: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="frame">
+      <p class="eyebrow">PhotoX · Data flow</p>
+      <h1>How an uploaded asset is processed</h1>
 
-    <div class="diagram-container">
-      <svg viewBox="0 0 960 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="data-flow-title data-flow-desc">
-        <title id="data-flow-title">How PhotoX processes an uploaded asset</title>
-        <desc id="data-flow-desc">Data flow of asset processing in PhotoX: web uploads to core, which saves the original bytes to local disk and queues BullMQ jobs on Redis; worker-service reads the same disk, holds no database access, and writes every result back through core's HTTP API; core persists to Postgres and serves the web app.</desc>
-        <defs>
-          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
-          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
-          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker>
-        </defs>
+      <div class="diagram-container">
+        <svg
+          viewBox="0 0 960 600"
+          xmlns="http://www.w3.org/2000/svg"
+          role="img"
+          aria-labelledby="data-flow-title data-flow-desc"
+        >
+          <title id="data-flow-title">How PhotoX processes an uploaded asset</title>
+          <desc id="data-flow-desc">
+            Data flow of asset processing in PhotoX: web uploads to core, which saves the original
+            bytes to local disk and queues BullMQ jobs on Redis; worker-service reads the same disk,
+            holds no database access, and writes every result back through core's HTTP API; core
+            persists to Postgres and serves the web app.
+          </desc>
+          <defs>
+            <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#4f5d75" />
+            </marker>
+            <marker
+              id="arrow-accent"
+              markerWidth="8"
+              markerHeight="6"
+              refX="7"
+              refY="3"
+              orient="auto"
+            >
+              <polygon points="0 0, 8 3, 0 6" fill="#eb6c36" />
+            </marker>
+            <marker
+              id="arrow-link"
+              markerWidth="8"
+              markerHeight="6"
+              refX="7"
+              refY="3"
+              orient="auto"
+            >
+              <polygon points="0 0, 8 3, 0 6" fill="#2e5aa8" />
+            </marker>
+          </defs>
 
-        <rect width="100%" height="100%" fill="#f5f5f5"/>
+          <rect width="100%" height="100%" fill="#f5f5f5" />
 
-        <!-- ============ LANES ============ -->
+          <!-- ============ LANES ============ -->
 
-        <g aria-label="Role lanes">
-          <rect x="0" y="44" width="960" height="120" fill="rgba(45,49,66,0.018)"/>
-          <rect x="0" y="284" width="960" height="120" fill="rgba(45,49,66,0.018)"/>
-          <line x1="0" y1="44" x2="960" y2="44" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
-          <line x1="0" y1="164" x2="960" y2="164" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
-          <line x1="0" y1="284" x2="960" y2="284" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
-          <line x1="0" y1="404" x2="960" y2="404" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
-          <line x1="0" y1="524" x2="960" y2="524" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
-          <line x1="160" y1="44" x2="160" y2="524" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
-          <text x="80" y="100" fill="#4f5d75" font-size="8" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">WEB</text>
-          <text x="80" y="112" fill="#4f5d75" font-size="8" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">CLIENT</text>
-          <text x="80" y="220" fill="#4f5d75" font-size="8" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">CORE</text>
-          <text x="80" y="232" fill="#4f5d75" font-size="8" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">API</text>
-          <text x="80" y="340" fill="#4f5d75" font-size="8" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">DATA</text>
-          <text x="80" y="352" fill="#4f5d75" font-size="8" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">STORES</text>
-          <text x="80" y="460" fill="#4f5d75" font-size="8" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">WORKER</text>
-          <text x="80" y="472" fill="#4f5d75" font-size="8" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">SERVICE</text>
-        </g>
+          <g aria-label="Role lanes">
+            <rect x="0" y="44" width="960" height="120" fill="rgba(45,49,66,0.018)" />
+            <rect x="0" y="284" width="960" height="120" fill="rgba(45,49,66,0.018)" />
+            <line x1="0" y1="44" x2="960" y2="44" stroke="rgba(45,49,66,0.12)" stroke-width="0.8" />
+            <line
+              x1="0"
+              y1="164"
+              x2="960"
+              y2="164"
+              stroke="rgba(45,49,66,0.12)"
+              stroke-width="0.8"
+            />
+            <line
+              x1="0"
+              y1="284"
+              x2="960"
+              y2="284"
+              stroke="rgba(45,49,66,0.12)"
+              stroke-width="0.8"
+            />
+            <line
+              x1="0"
+              y1="404"
+              x2="960"
+              y2="404"
+              stroke="rgba(45,49,66,0.12)"
+              stroke-width="0.8"
+            />
+            <line
+              x1="0"
+              y1="524"
+              x2="960"
+              y2="524"
+              stroke="rgba(45,49,66,0.12)"
+              stroke-width="0.8"
+            />
+            <line
+              x1="160"
+              y1="44"
+              x2="160"
+              y2="524"
+              stroke="rgba(45,49,66,0.12)"
+              stroke-width="0.8"
+            />
+            <text
+              x="80"
+              y="100"
+              fill="#4f5d75"
+              font-size="8"
+              font-weight="500"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.14em"
+            >
+              WEB
+            </text>
+            <text
+              x="80"
+              y="112"
+              fill="#4f5d75"
+              font-size="8"
+              font-weight="500"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.14em"
+            >
+              CLIENT
+            </text>
+            <text
+              x="80"
+              y="220"
+              fill="#4f5d75"
+              font-size="8"
+              font-weight="500"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.14em"
+            >
+              CORE
+            </text>
+            <text
+              x="80"
+              y="232"
+              fill="#4f5d75"
+              font-size="8"
+              font-weight="500"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.14em"
+            >
+              API
+            </text>
+            <text
+              x="80"
+              y="340"
+              fill="#4f5d75"
+              font-size="8"
+              font-weight="500"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.14em"
+            >
+              DATA
+            </text>
+            <text
+              x="80"
+              y="352"
+              fill="#4f5d75"
+              font-size="8"
+              font-weight="500"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.14em"
+            >
+              STORES
+            </text>
+            <text
+              x="80"
+              y="460"
+              fill="#4f5d75"
+              font-size="8"
+              font-weight="500"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.14em"
+            >
+              WORKER
+            </text>
+            <text
+              x="80"
+              y="472"
+              fill="#4f5d75"
+              font-size="8"
+              font-weight="500"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.14em"
+            >
+              SERVICE
+            </text>
+          </g>
 
-        <!-- ============ PIPELINE STEPS ============ -->
+          <!-- ============ PIPELINE STEPS ============ -->
 
-        <g aria-label="Pipeline steps">
-          <rect x="224" y="8" width="32" height="16" rx="8" fill="rgba(45,49,66,0.12)"/><text x="240" y="19" fill="#2d3142" font-size="8" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">01</text><text x="240" y="38" fill="#4f5d75" font-size="8" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">UPLOAD</text>
-          <rect x="384" y="8" width="32" height="16" rx="8" fill="rgba(45,49,66,0.12)"/><text x="400" y="19" fill="#2d3142" font-size="8" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">02</text><text x="400" y="38" fill="#4f5d75" font-size="8" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">INGEST</text>
-          <rect x="544" y="8" width="32" height="16" rx="8" fill="rgba(45,49,66,0.12)"/><text x="560" y="19" fill="#2d3142" font-size="8" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">03</text><text x="560" y="38" fill="#4f5d75" font-size="8" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">PROCESS</text>
-          <rect x="704" y="8" width="32" height="16" rx="8" fill="rgba(45,49,66,0.12)"/><text x="720" y="19" fill="#2d3142" font-size="8" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">04</text><text x="720" y="38" fill="#4f5d75" font-size="8" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">WRITE-BACK</text>
-          <rect x="864" y="8" width="32" height="16" rx="8" fill="rgba(45,49,66,0.12)"/><text x="880" y="19" fill="#2d3142" font-size="8" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">05</text><text x="880" y="38" fill="#4f5d75" font-size="8" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">RESULTS</text>
-        </g>
+          <g aria-label="Pipeline steps">
+            <rect x="224" y="8" width="32" height="16" rx="8" fill="rgba(45,49,66,0.12)" />
+            <text
+              x="240"
+              y="19"
+              fill="#2d3142"
+              font-size="8"
+              font-weight="600"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              01
+            </text>
+            <text
+              x="240"
+              y="38"
+              fill="#4f5d75"
+              font-size="8"
+              font-weight="500"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.12em"
+            >
+              UPLOAD
+            </text>
+            <rect x="384" y="8" width="32" height="16" rx="8" fill="rgba(45,49,66,0.12)" />
+            <text
+              x="400"
+              y="19"
+              fill="#2d3142"
+              font-size="8"
+              font-weight="600"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              02
+            </text>
+            <text
+              x="400"
+              y="38"
+              fill="#4f5d75"
+              font-size="8"
+              font-weight="500"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.12em"
+            >
+              INGEST
+            </text>
+            <rect x="544" y="8" width="32" height="16" rx="8" fill="rgba(45,49,66,0.12)" />
+            <text
+              x="560"
+              y="19"
+              fill="#2d3142"
+              font-size="8"
+              font-weight="600"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              03
+            </text>
+            <text
+              x="560"
+              y="38"
+              fill="#4f5d75"
+              font-size="8"
+              font-weight="500"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.12em"
+            >
+              PROCESS
+            </text>
+            <rect x="704" y="8" width="32" height="16" rx="8" fill="rgba(45,49,66,0.12)" />
+            <text
+              x="720"
+              y="19"
+              fill="#2d3142"
+              font-size="8"
+              font-weight="600"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              04
+            </text>
+            <text
+              x="720"
+              y="38"
+              fill="#4f5d75"
+              font-size="8"
+              font-weight="500"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.12em"
+            >
+              WRITE-BACK
+            </text>
+            <rect x="864" y="8" width="32" height="16" rx="8" fill="rgba(45,49,66,0.12)" />
+            <text
+              x="880"
+              y="19"
+              fill="#2d3142"
+              font-size="8"
+              font-weight="600"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              05
+            </text>
+            <text
+              x="880"
+              y="38"
+              fill="#4f5d75"
+              font-size="8"
+              font-weight="500"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.12em"
+            >
+              RESULTS
+            </text>
+          </g>
 
-        <!-- ============ ARROWS (drawn before boxes) ============ -->
+          <!-- ============ ARROWS (drawn before boxes) ============ -->
 
-        <g aria-label="Flows">
-          <!-- web -> core: upload (HTTP) -->
-          <path d="M 304 104 H 392 Q 400 104 400 112 V 176" fill="none" stroke="#2e5aa8" stroke-width="1" marker-end="url(#arrow-link)"/>
+          <g aria-label="Flows">
+            <!-- web -> core: upload (HTTP) -->
+            <path
+              d="M 304 104 H 392 Q 400 104 400 112 V 176"
+              fill="none"
+              stroke="#2e5aa8"
+              stroke-width="1"
+              marker-end="url(#arrow-link)"
+            />
 
-          <!-- core -> BullMQ: enqueue -->
-          <line x1="400" y1="272" x2="400" y2="296" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+            <!-- core -> BullMQ: enqueue -->
+            <line
+              x1="400"
+              y1="272"
+              x2="400"
+              y2="296"
+              stroke="#4f5d75"
+              stroke-width="1"
+              marker-end="url(#arrow)"
+            />
 
-          <!-- BullMQ -> worker: consume jobs -->
-          <path d="M 400 392 V 456 Q 400 464 408 464 H 496" fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+            <!-- BullMQ -> worker: consume jobs -->
+            <path
+              d="M 400 392 V 456 Q 400 464 408 464 H 496"
+              fill="none"
+              stroke="#4f5d75"
+              stroke-width="1"
+              marker-end="url(#arrow)"
+            />
 
-          <!-- core -> local disk: save original bytes -->
-          <path d="M 464 224 H 552 Q 560 224 560 232 V 296" fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+            <!-- core -> local disk: save original bytes -->
+            <path
+              d="M 464 224 H 552 Q 560 224 560 232 V 296"
+              fill="none"
+              stroke="#4f5d75"
+              stroke-width="1"
+              marker-end="url(#arrow)"
+            />
 
-          <!-- worker <-> local disk: read source, write derived bytes -->
-          <line x1="540" y1="392" x2="540" y2="416" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
-          <line x1="580" y1="416" x2="580" y2="392" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+            <!-- worker <-> local disk: read source, write derived bytes -->
+            <line
+              x1="540"
+              y1="392"
+              x2="540"
+              y2="416"
+              stroke="#4f5d75"
+              stroke-width="1"
+              marker-end="url(#arrow)"
+            />
+            <line
+              x1="580"
+              y1="416"
+              x2="580"
+              y2="392"
+              stroke="#4f5d75"
+              stroke-width="1"
+              marker-end="url(#arrow)"
+            />
 
-          <!-- worker -> core: the write-back path (focal) -->
-          <path d="M 624 464 H 712 Q 720 464 720 456 V 272" fill="none" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
-          <rect x="634" y="444" width="68" height="12" rx="2" fill="#f5f5f5"/>
-          <text x="668" y="453" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">WRITE-BACK</text>
+            <!-- worker -> core: the write-back path (focal) -->
+            <path
+              d="M 624 464 H 712 Q 720 464 720 456 V 272"
+              fill="none"
+              stroke="#eb6c36"
+              stroke-width="1.2"
+              marker-end="url(#arrow-accent)"
+            />
+            <rect x="634" y="444" width="68" height="12" rx="2" fill="#f5f5f5" />
+            <text
+              x="668"
+              y="453"
+              fill="#eb6c36"
+              font-size="8"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.06em"
+            >
+              WRITE-BACK
+            </text>
 
-          <!-- core -> Postgres: persist results -->
-          <path d="M 784 240 H 888 Q 896 240 896 248 V 296" fill="none" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+            <!-- core -> Postgres: persist results -->
+            <path
+              d="M 784 240 H 888 Q 896 240 896 248 V 296"
+              fill="none"
+              stroke="#4f5d75"
+              stroke-width="1"
+              marker-end="url(#arrow)"
+            />
 
-          <!-- core -> web: serve thumbnails and players (HTTP) -->
-          <path d="M 784 208 H 856 Q 864 208 864 200 V 152" fill="none" stroke="#2e5aa8" stroke-width="1" marker-end="url(#arrow-link)"/>
-        </g>
+            <!-- core -> web: serve thumbnails and players (HTTP) -->
+            <path
+              d="M 784 208 H 856 Q 864 208 864 200 V 152"
+              fill="none"
+              stroke="#2e5aa8"
+              stroke-width="1"
+              marker-end="url(#arrow-link)"
+            />
+          </g>
 
-        <!-- ============ NODES ============ -->
+          <!-- ============ NODES ============ -->
 
-        <g aria-label="Nodes">
-          <!-- Upload (web) -->
-          <rect x="176" y="56" width="128" height="96" rx="6" fill="#f5f5f5" stroke="rgba(45,49,66,0.25)" stroke-width="1"/>
-          <rect x="184" y="64" width="20" height="10" rx="3" fill="rgba(45,49,66,0.12)"/>
-          <text x="194" y="71" fill="#2d3142" font-size="7" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">WEB</text>
-          <text x="240" y="94" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Upload</text>
-          <text x="240" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">full-size asset</text>
-          <text x="240" y="132" fill="#7a8399" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">web · React</text>
+          <g aria-label="Nodes">
+            <!-- Upload (web) -->
+            <rect
+              x="176"
+              y="56"
+              width="128"
+              height="96"
+              rx="6"
+              fill="#f5f5f5"
+              stroke="rgba(45,49,66,0.25)"
+              stroke-width="1"
+            />
+            <rect x="184" y="64" width="20" height="10" rx="3" fill="rgba(45,49,66,0.12)" />
+            <text
+              x="194"
+              y="71"
+              fill="#2d3142"
+              font-size="7"
+              font-weight="600"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.08em"
+            >
+              WEB
+            </text>
+            <text
+              x="240"
+              y="94"
+              fill="#2d3142"
+              font-size="12"
+              font-weight="600"
+              font-family="'Geist', sans-serif"
+              text-anchor="middle"
+            >
+              Upload
+            </text>
+            <text
+              x="240"
+              y="114"
+              fill="#4f5d75"
+              font-size="9"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              full-size asset
+            </text>
+            <text
+              x="240"
+              y="132"
+              fill="#7a8399"
+              font-size="9"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              web · React
+            </text>
 
-          <!-- Ingest (core) -->
-          <rect x="336" y="176" width="128" height="96" rx="6" fill="#f5f5f5" stroke="rgba(45,49,66,0.25)" stroke-width="1"/>
-          <rect x="344" y="184" width="20" height="10" rx="3" fill="rgba(45,49,66,0.12)"/>
-          <text x="354" y="191" fill="#2d3142" font-size="7" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">COR</text>
-          <text x="400" y="214" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Ingest</text>
-          <text x="400" y="234" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">save bytes · records</text>
-          <text x="400" y="252" fill="#7a8399" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">core · NestJS</text>
+            <!-- Ingest (core) -->
+            <rect
+              x="336"
+              y="176"
+              width="128"
+              height="96"
+              rx="6"
+              fill="#f5f5f5"
+              stroke="rgba(45,49,66,0.25)"
+              stroke-width="1"
+            />
+            <rect x="344" y="184" width="20" height="10" rx="3" fill="rgba(45,49,66,0.12)" />
+            <text
+              x="354"
+              y="191"
+              fill="#2d3142"
+              font-size="7"
+              font-weight="600"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.08em"
+            >
+              COR
+            </text>
+            <text
+              x="400"
+              y="214"
+              fill="#2d3142"
+              font-size="12"
+              font-weight="600"
+              font-family="'Geist', sans-serif"
+              text-anchor="middle"
+            >
+              Ingest
+            </text>
+            <text
+              x="400"
+              y="234"
+              fill="#4f5d75"
+              font-size="9"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              save bytes · records
+            </text>
+            <text
+              x="400"
+              y="252"
+              fill="#7a8399"
+              font-size="9"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              core · NestJS
+            </text>
 
-          <!-- BullMQ (Redis) -->
-          <rect x="336" y="296" width="128" height="96" rx="6" fill="#f5f5f5"/>
-          <rect x="336" y="296" width="128" height="96" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
-          <rect x="344" y="304" width="20" height="10" rx="3" fill="rgba(45,49,66,0.12)"/>
-          <text x="354" y="311" fill="#2d3142" font-size="7" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">STO</text>
-          <text x="400" y="334" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">BullMQ</text>
-          <text x="400" y="354" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">7 job queues</text>
-          <text x="400" y="372" fill="#7a8399" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Redis</text>
+            <!-- BullMQ (Redis) -->
+            <rect x="336" y="296" width="128" height="96" rx="6" fill="#f5f5f5" />
+            <rect
+              x="336"
+              y="296"
+              width="128"
+              height="96"
+              rx="6"
+              fill="rgba(45,49,66,0.05)"
+              stroke="#4f5d75"
+              stroke-width="1"
+            />
+            <rect x="344" y="304" width="20" height="10" rx="3" fill="rgba(45,49,66,0.12)" />
+            <text
+              x="354"
+              y="311"
+              fill="#2d3142"
+              font-size="7"
+              font-weight="600"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.08em"
+            >
+              STO
+            </text>
+            <text
+              x="400"
+              y="334"
+              fill="#2d3142"
+              font-size="12"
+              font-weight="600"
+              font-family="'Geist', sans-serif"
+              text-anchor="middle"
+            >
+              BullMQ
+            </text>
+            <text
+              x="400"
+              y="354"
+              fill="#4f5d75"
+              font-size="9"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              7 job queues
+            </text>
+            <text
+              x="400"
+              y="372"
+              fill="#7a8399"
+              font-size="9"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              Redis
+            </text>
 
-          <!-- Local disk -->
-          <rect x="496" y="296" width="128" height="96" rx="6" fill="#f5f5f5"/>
-          <rect x="496" y="296" width="128" height="96" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
-          <rect x="504" y="304" width="20" height="10" rx="3" fill="rgba(45,49,66,0.12)"/>
-          <text x="514" y="311" fill="#2d3142" font-size="7" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">STO</text>
-          <text x="560" y="334" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Local disk</text>
-          <text x="560" y="354" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">originals immutable</text>
-          <text x="560" y="372" fill="#7a8399" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">STORAGE_DIR</text>
+            <!-- Local disk -->
+            <rect x="496" y="296" width="128" height="96" rx="6" fill="#f5f5f5" />
+            <rect
+              x="496"
+              y="296"
+              width="128"
+              height="96"
+              rx="6"
+              fill="rgba(45,49,66,0.05)"
+              stroke="#4f5d75"
+              stroke-width="1"
+            />
+            <rect x="504" y="304" width="20" height="10" rx="3" fill="rgba(45,49,66,0.12)" />
+            <text
+              x="514"
+              y="311"
+              fill="#2d3142"
+              font-size="7"
+              font-weight="600"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.08em"
+            >
+              STO
+            </text>
+            <text
+              x="560"
+              y="334"
+              fill="#2d3142"
+              font-size="12"
+              font-weight="600"
+              font-family="'Geist', sans-serif"
+              text-anchor="middle"
+            >
+              Local disk
+            </text>
+            <text
+              x="560"
+              y="354"
+              fill="#4f5d75"
+              font-size="9"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              originals immutable
+            </text>
+            <text
+              x="560"
+              y="372"
+              fill="#7a8399"
+              font-size="9"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              STORAGE_DIR
+            </text>
 
-          <!-- worker-service -->
-          <rect x="496" y="416" width="128" height="96" rx="6" fill="#f5f5f5" stroke="rgba(45,49,66,0.25)" stroke-width="1"/>
-          <rect x="504" y="424" width="20" height="10" rx="3" fill="rgba(45,49,66,0.12)"/>
-          <text x="514" y="431" fill="#2d3142" font-size="7" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">WRK</text>
-          <text x="560" y="454" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">worker-service</text>
-          <text x="560" y="474" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">no DB access</text>
-          <text x="560" y="492" fill="#7a8399" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">thumbs, video, faces</text>
+            <!-- worker-service -->
+            <rect
+              x="496"
+              y="416"
+              width="128"
+              height="96"
+              rx="6"
+              fill="#f5f5f5"
+              stroke="rgba(45,49,66,0.25)"
+              stroke-width="1"
+            />
+            <rect x="504" y="424" width="20" height="10" rx="3" fill="rgba(45,49,66,0.12)" />
+            <text
+              x="514"
+              y="431"
+              fill="#2d3142"
+              font-size="7"
+              font-weight="600"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.08em"
+            >
+              WRK
+            </text>
+            <text
+              x="560"
+              y="454"
+              fill="#2d3142"
+              font-size="12"
+              font-weight="600"
+              font-family="'Geist', sans-serif"
+              text-anchor="middle"
+            >
+              worker-service
+            </text>
+            <text
+              x="560"
+              y="474"
+              fill="#4f5d75"
+              font-size="9"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              no DB access
+            </text>
+            <text
+              x="560"
+              y="492"
+              fill="#7a8399"
+              font-size="9"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              thumbs, video, faces
+            </text>
 
-          <!-- Write-back (core, focal) -->
-          <rect x="656" y="176" width="128" height="96" rx="6" fill="#f5f5f5"/>
-          <rect x="656" y="176" width="128" height="96" rx="6" fill="rgba(235,108,54,0.07)" stroke="#eb6c36" stroke-width="1.2"/>
-          <rect x="664" y="184" width="20" height="10" rx="3" fill="rgba(235,108,54,0.20)"/>
-          <text x="674" y="191" fill="#eb6c36" font-size="7" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">COR</text>
-          <text x="720" y="214" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Write-back</text>
-          <text x="720" y="234" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">results → records</text>
-          <text x="720" y="252" fill="#7a8399" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">core · NestJS</text>
+            <!-- Write-back (core, focal) -->
+            <rect x="656" y="176" width="128" height="96" rx="6" fill="#f5f5f5" />
+            <rect
+              x="656"
+              y="176"
+              width="128"
+              height="96"
+              rx="6"
+              fill="rgba(235,108,54,0.07)"
+              stroke="#eb6c36"
+              stroke-width="1.2"
+            />
+            <rect x="664" y="184" width="20" height="10" rx="3" fill="rgba(235,108,54,0.20)" />
+            <text
+              x="674"
+              y="191"
+              fill="#eb6c36"
+              font-size="7"
+              font-weight="600"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.08em"
+            >
+              COR
+            </text>
+            <text
+              x="720"
+              y="214"
+              fill="#2d3142"
+              font-size="12"
+              font-weight="600"
+              font-family="'Geist', sans-serif"
+              text-anchor="middle"
+            >
+              Write-back
+            </text>
+            <text
+              x="720"
+              y="234"
+              fill="#4f5d75"
+              font-size="9"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              results → records
+            </text>
+            <text
+              x="720"
+              y="252"
+              fill="#7a8399"
+              font-size="9"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              core · NestJS
+            </text>
 
-          <!-- Postgres -->
-          <rect x="816" y="296" width="128" height="96" rx="6" fill="#f5f5f5"/>
-          <rect x="816" y="296" width="128" height="96" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
-          <rect x="824" y="304" width="20" height="10" rx="3" fill="rgba(45,49,66,0.12)"/>
-          <text x="834" y="311" fill="#2d3142" font-size="7" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">STO</text>
-          <text x="880" y="334" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Postgres</text>
-          <text x="880" y="354" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">assets, files, faces</text>
-          <text x="880" y="372" fill="#7a8399" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">TypeORM · pgvector</text>
+            <!-- Postgres -->
+            <rect x="816" y="296" width="128" height="96" rx="6" fill="#f5f5f5" />
+            <rect
+              x="816"
+              y="296"
+              width="128"
+              height="96"
+              rx="6"
+              fill="rgba(45,49,66,0.05)"
+              stroke="#4f5d75"
+              stroke-width="1"
+            />
+            <rect x="824" y="304" width="20" height="10" rx="3" fill="rgba(45,49,66,0.12)" />
+            <text
+              x="834"
+              y="311"
+              fill="#2d3142"
+              font-size="7"
+              font-weight="600"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.08em"
+            >
+              STO
+            </text>
+            <text
+              x="880"
+              y="334"
+              fill="#2d3142"
+              font-size="12"
+              font-weight="600"
+              font-family="'Geist', sans-serif"
+              text-anchor="middle"
+            >
+              Postgres
+            </text>
+            <text
+              x="880"
+              y="354"
+              fill="#4f5d75"
+              font-size="9"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              assets, files, faces
+            </text>
+            <text
+              x="880"
+              y="372"
+              fill="#7a8399"
+              font-size="9"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              TypeORM · pgvector
+            </text>
 
-          <!-- Gallery (web) -->
-          <rect x="816" y="56" width="128" height="96" rx="6" fill="#f5f5f5" stroke="rgba(45,49,66,0.25)" stroke-width="1"/>
-          <rect x="824" y="64" width="20" height="10" rx="3" fill="rgba(45,49,66,0.12)"/>
-          <text x="834" y="71" fill="#2d3142" font-size="7" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">WEB</text>
-          <text x="880" y="94" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Gallery</text>
-          <text x="880" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">thumbs · players</text>
-          <text x="880" y="132" fill="#7a8399" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">web · React</text>
-        </g>
+            <!-- Gallery (web) -->
+            <rect
+              x="816"
+              y="56"
+              width="128"
+              height="96"
+              rx="6"
+              fill="#f5f5f5"
+              stroke="rgba(45,49,66,0.25)"
+              stroke-width="1"
+            />
+            <rect x="824" y="64" width="20" height="10" rx="3" fill="rgba(45,49,66,0.12)" />
+            <text
+              x="834"
+              y="71"
+              fill="#2d3142"
+              font-size="7"
+              font-weight="600"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+              letter-spacing="0.08em"
+            >
+              WEB
+            </text>
+            <text
+              x="880"
+              y="94"
+              fill="#2d3142"
+              font-size="12"
+              font-weight="600"
+              font-family="'Geist', sans-serif"
+              text-anchor="middle"
+            >
+              Gallery
+            </text>
+            <text
+              x="880"
+              y="114"
+              fill="#4f5d75"
+              font-size="9"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              thumbs · players
+            </text>
+            <text
+              x="880"
+              y="132"
+              fill="#7a8399"
+              font-size="9"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              web · React
+            </text>
+          </g>
 
-        <!-- ============ LEGEND ============ -->
+          <!-- ============ LEGEND ============ -->
 
-        <g aria-label="Legend">
-          <text x="148" y="545" fill="#4f5d75" font-size="8" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.14em">STEPS</text>
-          <rect x="168" y="536" width="24" height="12" rx="6" fill="rgba(45,49,66,0.12)"/><text x="180" y="545" fill="#2d3142" font-size="7" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">01</text><text x="200" y="545" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Upload</text>
-          <rect x="256" y="536" width="24" height="12" rx="6" fill="rgba(45,49,66,0.12)"/><text x="268" y="545" fill="#2d3142" font-size="7" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">02</text><text x="288" y="545" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Ingest</text>
-          <rect x="344" y="536" width="24" height="12" rx="6" fill="rgba(45,49,66,0.12)"/><text x="356" y="545" fill="#2d3142" font-size="7" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">03</text><text x="376" y="545" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Process</text>
-          <rect x="440" y="536" width="24" height="12" rx="6" fill="rgba(45,49,66,0.12)"/><text x="452" y="545" fill="#2d3142" font-size="7" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">04</text><text x="472" y="545" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Write-back</text>
-          <rect x="552" y="536" width="24" height="12" rx="6" fill="rgba(45,49,66,0.12)"/><text x="564" y="545" fill="#2d3142" font-size="7" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">05</text><text x="584" y="545" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Results</text>
+          <g aria-label="Legend">
+            <text
+              x="148"
+              y="545"
+              fill="#4f5d75"
+              font-size="8"
+              font-weight="500"
+              font-family="'Geist Mono', monospace"
+              text-anchor="end"
+              letter-spacing="0.14em"
+            >
+              STEPS
+            </text>
+            <rect x="168" y="536" width="24" height="12" rx="6" fill="rgba(45,49,66,0.12)" />
+            <text
+              x="180"
+              y="545"
+              fill="#2d3142"
+              font-size="7"
+              font-weight="600"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              01
+            </text>
+            <text x="200" y="545" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
+              Upload
+            </text>
+            <rect x="256" y="536" width="24" height="12" rx="6" fill="rgba(45,49,66,0.12)" />
+            <text
+              x="268"
+              y="545"
+              fill="#2d3142"
+              font-size="7"
+              font-weight="600"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              02
+            </text>
+            <text x="288" y="545" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
+              Ingest
+            </text>
+            <rect x="344" y="536" width="24" height="12" rx="6" fill="rgba(45,49,66,0.12)" />
+            <text
+              x="356"
+              y="545"
+              fill="#2d3142"
+              font-size="7"
+              font-weight="600"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              03
+            </text>
+            <text x="376" y="545" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
+              Process
+            </text>
+            <rect x="440" y="536" width="24" height="12" rx="6" fill="rgba(45,49,66,0.12)" />
+            <text
+              x="452"
+              y="545"
+              fill="#2d3142"
+              font-size="7"
+              font-weight="600"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              04
+            </text>
+            <text x="472" y="545" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
+              Write-back
+            </text>
+            <rect x="552" y="536" width="24" height="12" rx="6" fill="rgba(45,49,66,0.12)" />
+            <text
+              x="564"
+              y="545"
+              fill="#2d3142"
+              font-size="7"
+              font-weight="600"
+              font-family="'Geist Mono', monospace"
+              text-anchor="middle"
+            >
+              05
+            </text>
+            <text x="584" y="545" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
+              Results
+            </text>
 
-          <text x="148" y="581" fill="#4f5d75" font-size="8" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.14em">FLOW</text>
-          <line x1="168" y1="578" x2="192" y2="578" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/><text x="200" y="581" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">internal handoff</text>
-          <line x1="300" y1="578" x2="324" y2="578" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#arrow-accent)"/><text x="332" y="581" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">write-back path</text>
-          <line x1="428" y1="578" x2="452" y2="578" stroke="#2e5aa8" stroke-width="1" marker-end="url(#arrow-link)"/><text x="460" y="581" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">HTTP call</text>
-        </g>
-
-      </svg>
+            <text
+              x="148"
+              y="581"
+              fill="#4f5d75"
+              font-size="8"
+              font-weight="500"
+              font-family="'Geist Mono', monospace"
+              text-anchor="end"
+              letter-spacing="0.14em"
+            >
+              FLOW
+            </text>
+            <line
+              x1="168"
+              y1="578"
+              x2="192"
+              y2="578"
+              stroke="#4f5d75"
+              stroke-width="1"
+              marker-end="url(#arrow)"
+            />
+            <text x="200" y="581" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
+              internal handoff
+            </text>
+            <line
+              x1="300"
+              y1="578"
+              x2="324"
+              y2="578"
+              stroke="#eb6c36"
+              stroke-width="1.2"
+              marker-end="url(#arrow-accent)"
+            />
+            <text x="332" y="581" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
+              write-back path
+            </text>
+            <line
+              x1="428"
+              y1="578"
+              x2="452"
+              y2="578"
+              stroke="#2e5aa8"
+              stroke-width="1"
+              marker-end="url(#arrow-link)"
+            />
+            <text x="460" y="581" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
+              HTTP call
+            </text>
+          </g>
+        </svg>
+      </div>
     </div>
-  </div>
-</body>
+  </body>
 </html>

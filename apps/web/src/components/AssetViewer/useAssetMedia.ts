@@ -7,11 +7,17 @@ import { getCachedBlobUrl, peekCachedBlobUrl } from '../../lib/blob-cache'
 export function useAssetMedia(asset: Asset): {
   imageUrl: string | null
   videoPosterUrl: string | null
+  placeholderUrl: string | null
   loading: boolean
 } {
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [videoPosterUrl, setVideoPosterUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // The strip already rendered this md thumb, so it is usually in the blob cache: a synchronous
+  // stand-in to stretch+blur while the full-size viewer file downloads.
+  const mdThumb = asset.thumbnails?.find((t) => t.size === 'md') ?? asset.thumbnails?.[0]
+  const placeholderUrl = mdThumb ? (peekCachedBlobUrl(viewerThumbKey(mdThumb)) ?? null) : null
 
   useEffect(() => {
     let cancelled = false
@@ -28,16 +34,21 @@ export function useAssetMedia(asset: Asset): {
     const cached = peekCachedBlobUrl(key)
     if (cached) {
       // prefetched neighbor: render the resolved URL synchronously, no fetch, no flash
-      if (isPhoto) setImageUrl(cached)
-      else setVideoPosterUrl(cached)
+      if (isPhoto) {
+        setImageUrl(cached)
+        setVideoPosterUrl(null)
+      } else {
+        setVideoPosterUrl(cached)
+        setImageUrl(null)
+      }
       setLoading(false)
       return
     }
 
     setLoading(true)
-    // clear the other kind so a stale image/poster cannot outlive the asset that produced it
-    if (isPhoto) setVideoPosterUrl(null)
-    else setImageUrl(null)
+    // clear both: a stale image/poster must not outlive the asset that produced it
+    setImageUrl(null)
+    setVideoPosterUrl(null)
 
     getCachedBlobUrl(key, () => downloadFile(thumb.fileId))
       .then(async (url) => {
@@ -58,5 +69,5 @@ export function useAssetMedia(asset: Asset): {
     }
   }, [asset.id, asset.kind])
 
-  return { imageUrl, videoPosterUrl, loading }
+  return { imageUrl, videoPosterUrl, placeholderUrl, loading }
 }

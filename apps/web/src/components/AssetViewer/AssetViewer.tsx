@@ -67,7 +67,7 @@ export function AssetViewer({
       cancelled = true
     }
   }, [asset])
-  const { imageUrl, videoPosterUrl, loading } = useAssetMedia(currentAsset)
+  const { imageUrl, videoPosterUrl, placeholderUrl, loading } = useAssetMedia(currentAsset)
   useViewerKeyboard({ onClose, onPrev, onNext, hasPrev, hasNext })
 
   useEffect(() => {
@@ -178,11 +178,12 @@ export function AssetViewer({
           isVideo={isVideo}
           videoSrc={primaryVideoSrc}
           videoFallbackSrc={videoFallbackSrc}
-          videoPoster={videoPosterUrl ?? undefined}
+          videoPoster={videoPosterUrl ?? placeholderUrl ?? undefined}
           videoTitle={videoTitle}
           imageUrl={imageUrl}
           imageAlt={imageAlt}
           loading={loading}
+          placeholderUrl={placeholderUrl}
           hasPrev={hasPrev}
           hasNext={hasNext}
           infoOpen={infoOpen}
