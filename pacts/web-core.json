@@ -1,0 +1,2584 @@
+{
+  "consumer": {
+    "name": "web"
+  },
+  "interactions": [
+    {
+      "description": "a file upload request",
+      "request": {
+        "headers": {
+          "Content-Type": "multipart/form-data"
+        },
+        "method": "POST",
+        "path": "/api/v1/files"
+      },
+      "response": {
+        "body": {
+          "altitude": null,
+          "cameraMake": null,
+          "cameraModel": null,
+          "codec": null,
+          "description": null,
+          "durationSeconds": null,
+          "exposureTime": null,
+          "fNumber": null,
+          "faceCount": null,
+          "faceStatus": null,
+          "favorite": false,
+          "fileId": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+          "focalLength": null,
+          "fps": null,
+          "hasAudio": null,
+          "height": 1080,
+          "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+          "isTrashed": false,
+          "iso": null,
+          "kind": "photo",
+          "latitude": null,
+          "lensModel": null,
+          "longitude": null,
+          "metadata": null,
+          "metadataExtractedAt": null,
+          "metadataStatus": "ready",
+          "mimeType": "image/jpeg",
+          "orientation": null,
+          "originalName": "photo.jpg",
+          "sizeBytes": 1024,
+          "takenAt": null,
+          "thumbnailStatus": "ready",
+          "title": null,
+          "transcodeFileId": null,
+          "transcodeStatus": "ready",
+          "trashedAt": null,
+          "uploadedAt": "2024-01-01T00:00:00.000Z",
+          "userId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+          "width": 1920
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 201
+      }
+    },
+    {
+      "description": "a login request",
+      "request": {
+        "body": {
+          "email": "user@test.com",
+          "password": "ValidPass123"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/api/v1/auth/login"
+      },
+      "response": {
+        "body": {
+          "accessToken": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.token",
+          "refreshToken": "valid-refresh-token",
+          "user": {
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "displayName": "Test User",
+            "email": "user@test.com",
+            "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+            "updatedAt": "2024-01-01T00:00:00.000Z"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.accessToken": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.refreshToken": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.user.createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "format": "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+                  "match": "datetime"
+                }
+              ]
+            },
+            "$.user.displayName": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.user.email": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.user.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.user.updatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "format": "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+                  "match": "datetime"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a logout request",
+      "request": {
+        "body": {
+          "refreshToken": "valid-refresh-token"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/api/v1/auth/logout"
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    {
+      "description": "a refresh request",
+      "request": {
+        "body": {
+          "refreshToken": "valid-refresh-token"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/api/v1/auth/refresh"
+      },
+      "response": {
+        "body": {
+          "accessToken": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.token",
+          "refreshToken": "valid-refresh-token",
+          "user": {
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "displayName": "Test User",
+            "email": "user@test.com",
+            "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+            "updatedAt": "2024-01-01T00:00:00.000Z"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.accessToken": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.refreshToken": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.user.createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "format": "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+                  "match": "datetime"
+                }
+              ]
+            },
+            "$.user.displayName": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.user.email": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.user.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.user.updatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "format": "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+                  "match": "datetime"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a register request",
+      "request": {
+        "body": {
+          "displayName": "New User",
+          "email": "new@test.com",
+          "password": "ValidPass123"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/api/v1/auth/register"
+      },
+      "response": {
+        "body": {
+          "accessToken": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.token",
+          "refreshToken": "valid-refresh-token",
+          "user": {
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "displayName": "Test User",
+            "email": "user@test.com",
+            "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+            "updatedAt": "2024-01-01T00:00:00.000Z"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.accessToken": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.refreshToken": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.user.createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "format": "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+                  "match": "datetime"
+                }
+              ]
+            },
+            "$.user.displayName": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.user.email": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.user.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.user.updatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "format": "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+                  "match": "datetime"
+                }
+              ]
+            }
+          }
+        },
+        "status": 201
+      }
+    },
+    {
+      "description": "a request for a face thumbnail",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/faces/f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a66/thumb",
+        "query": {
+          "size": ["128"]
+        }
+      },
+      "response": {
+        "headers": {
+          "Content-Type": "image/jpeg"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request for a revoked public share",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/revoked-share-token"
+      },
+      "response": {
+        "body": {
+          "error": "Not Found",
+          "message": "Share not found",
+          "statusCode": 404
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 404
+      }
+    },
+    {
+      "description": "a request for admin asset counts",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/admin/assets/counts"
+      },
+      "response": {
+        "body": {
+          "photos": {
+            "encoding": 0,
+            "metadata": 0,
+            "processing": 0,
+            "thumbnails": 0
+          },
+          "videos": {
+            "encoding": 0,
+            "metadata": 0,
+            "processing": 0,
+            "thumbnails": 0
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request for admin face detection settings",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/admin/face-detection"
+      },
+      "response": {
+        "body": {
+          "detector": "human",
+          "envDefault": "human",
+          "facesByDetector": {
+            "human": 3,
+            "scrfd": 2,
+            "unset": 1
+          },
+          "models": {
+            "scrfd": false
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request for admin library stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/admin/assets/stats"
+      },
+      "response": {
+        "body": {
+          "counts": {
+            "photos": 12,
+            "trashed": 1,
+            "videos": 3
+          },
+          "storageByMonth": [
+            {
+              "month": "2026-09-01",
+              "originalsBytes": 123456,
+              "thumbnailsBytes": 3456,
+              "transcodesBytes": 23456
+            }
+          ],
+          "uploadsByWeek": [
+            {
+              "photos": 4,
+              "videos": 1,
+              "week": "2026-09-28"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.storageByMonth": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.uploadsByWeek": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request for admin orphan counts",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/admin/orphan-counts"
+      },
+      "response": {
+        "body": {
+          "orphanFiles": 0,
+          "orphanThumbnails": 0
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request for the embedding reprocess status",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/admin/embeddings/reprocess"
+      },
+      "response": {
+        "body": {
+          "queue": {
+            "active": 1,
+            "completed": 3,
+            "delayed": 0,
+            "failed": 0,
+            "waiting": 1
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request for the face reprocess status",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/admin/faces/reprocess"
+      },
+      "response": {
+        "body": {
+          "queue": {
+            "active": 1,
+            "completed": 3,
+            "delayed": 0,
+            "failed": 0,
+            "waiting": 1
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to add assets to an album",
+      "request": {
+        "body": {
+          "assetIds": ["a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/api/v1/albums/c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33/assets"
+      },
+      "response": {
+        "body": {
+          "added": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 201
+      }
+    },
+    {
+      "description": "a request to assign a face to a person",
+      "request": {
+        "body": {
+          "personId": "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "PATCH",
+        "path": "/api/v1/faces/f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a66/person"
+      },
+      "response": {
+        "body": {
+          "ok": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to batch fetch assets by id",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/assets",
+        "query": {
+          "ids": ["a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11,a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a77"],
+          "limit": ["2"]
+        }
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "favorite": false,
+              "fileId": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+              "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+              "isTrashed": false,
+              "kind": "photo",
+              "thumbnailStatus": "ready"
+            }
+          ],
+          "limit": 20,
+          "offset": 0,
+          "total": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to bulk trash assets",
+      "request": {
+        "body": {
+          "assetIds": ["a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/api/v1/assets/bulk-trash"
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    {
+      "description": "a request to create a share",
+      "request": {
+        "body": {
+          "assetId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/api/v1/shares"
+      },
+      "response": {
+        "body": {
+          "assetFileId": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+          "assetId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+          "assetKind": "photo",
+          "assetThumbFileId": null,
+          "createdAt": "2024-01-01T00:00:00.000Z",
+          "id": "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44",
+          "kind": "asset",
+          "token": "valid-share-token",
+          "userId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 201
+      }
+    },
+    {
+      "description": "a request to create an album",
+      "request": {
+        "body": {
+          "name": "Trip 2024"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/api/v1/albums"
+      },
+      "response": {
+        "body": {
+          "assetCount": 0,
+          "createdAt": "2024-01-01T00:00:00.000Z",
+          "description": null,
+          "id": "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33",
+          "name": "Trip 2024",
+          "updatedAt": "2024-01-01T00:00:00.000Z",
+          "userId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 201
+      }
+    },
+    {
+      "description": "a request to create an album share",
+      "request": {
+        "body": {
+          "albumId": "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/api/v1/shares"
+      },
+      "response": {
+        "body": {
+          "albumAssetCount": 1,
+          "albumCoverThumbFileId": null,
+          "albumId": "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33",
+          "albumName": "Trip 2024",
+          "createdAt": "2024-01-01T00:00:00.000Z",
+          "id": "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a45",
+          "kind": "album",
+          "token": "valid-album-share-token",
+          "userId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 201
+      }
+    },
+    {
+      "description": "a request to delete an album",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/albums/c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33"
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    {
+      "description": "a request to empty the trash",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/assets/trashed"
+      },
+      "response": {
+        "body": {
+          "fileIds": ["b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22"]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to enqueue orphan cleanup",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/admin/cleanup-orphans"
+      },
+      "response": {
+        "body": {
+          "enqueued": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to get a single album",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/albums/c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33"
+      },
+      "response": {
+        "body": {
+          "assetCount": 0,
+          "createdAt": "2024-01-01T00:00:00.000Z",
+          "description": null,
+          "id": "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33",
+          "name": "Trip 2024",
+          "updatedAt": "2024-01-01T00:00:00.000Z",
+          "userId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to get a single asset",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/assets/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+      },
+      "response": {
+        "body": {
+          "altitude": null,
+          "cameraMake": null,
+          "cameraModel": null,
+          "codec": null,
+          "description": null,
+          "durationSeconds": null,
+          "exposureTime": null,
+          "fNumber": null,
+          "faceCount": null,
+          "faceStatus": null,
+          "favorite": false,
+          "fileId": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+          "focalLength": null,
+          "fps": null,
+          "hasAudio": null,
+          "height": 1080,
+          "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+          "isTrashed": false,
+          "iso": null,
+          "kind": "photo",
+          "latitude": null,
+          "lensModel": null,
+          "longitude": null,
+          "metadata": null,
+          "metadataExtractedAt": null,
+          "metadataStatus": "ready",
+          "mimeType": "image/jpeg",
+          "orientation": null,
+          "originalName": "photo.jpg",
+          "sizeBytes": 1024,
+          "takenAt": null,
+          "thumbnailStatus": "ready",
+          "title": null,
+          "transcodeFileId": null,
+          "transcodeStatus": "ready",
+          "trashedAt": null,
+          "uploadedAt": "2024-01-01T00:00:00.000Z",
+          "userId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+          "width": 1920
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to get a single person",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/persons/e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55"
+      },
+      "response": {
+        "body": {
+          "clusterLabel": "cluster-1",
+          "coverFaceId": null,
+          "coverFaceUrl": null,
+          "createdAt": "2024-01-01T00:00:00.000Z",
+          "faceCount": 2,
+          "id": "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55",
+          "name": "Ada",
+          "updatedAt": "2024-01-01T00:00:00.000Z",
+          "userId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to get the asset layout",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/assets/layout"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "h": 3024,
+              "t": "2025-12-25T10:11:12.000Z",
+              "w": 4032
+            },
+            {
+              "h": 1,
+              "t": "2025-12-24T09:00:00.000Z",
+              "w": 1
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to list a person’s assets",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/persons/e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55/assets"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "assetId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+              "faceCount": 1,
+              "faceId": "f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a66",
+              "uploadedAt": "2024-01-01T00:00:00.000Z"
+            }
+          ],
+          "limit": 20,
+          "offset": 0,
+          "personId": "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55",
+          "total": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to list admin users",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/admin/users"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "createdAt": "2024-01-01T00:00:00.000Z",
+              "displayName": "Test User",
+              "email": "user@test.com",
+              "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+              "role": "user"
+            }
+          ],
+          "limit": 20,
+          "offset": 0,
+          "total": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to list albums",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/albums"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "assetCount": 0,
+              "createdAt": "2024-01-01T00:00:00.000Z",
+              "description": null,
+              "id": "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33",
+              "name": "Trip 2024",
+              "updatedAt": "2024-01-01T00:00:00.000Z",
+              "userId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+            }
+          ],
+          "total": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to list assets",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/assets"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "favorite": false,
+              "fileId": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+              "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+              "isTrashed": false,
+              "kind": "photo",
+              "thumbnailStatus": "ready"
+            }
+          ],
+          "limit": 20,
+          "offset": 0,
+          "total": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to list assets in an album",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/albums/c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33/assets"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "favorite": false,
+              "fileId": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+              "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+              "isTrashed": false,
+              "kind": "photo",
+              "thumbnailStatus": "ready"
+            }
+          ],
+          "total": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to list assets similar to an asset",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/assets/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11/similar"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "favorite": false,
+              "fileId": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+              "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+              "isTrashed": false,
+              "kind": "photo",
+              "thumbnailStatus": "ready"
+            }
+          ],
+          "total": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to list assets within a date range",
+      "request": {
+        "matchingRules": {
+          "query": {
+            "dateFrom": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+                }
+              ]
+            },
+            "dateTo": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+                }
+              ]
+            }
+          }
+        },
+        "method": "GET",
+        "path": "/api/v1/assets",
+        "query": {
+          "dateFrom": ["2026-06-01T00:00:00.000Z"],
+          "dateTo": ["2026-07-01T00:00:00.000Z"],
+          "limit": ["50"],
+          "offset": ["0"]
+        }
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "favorite": false,
+              "fileId": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+              "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+              "isTrashed": false,
+              "kind": "photo",
+              "thumbnailStatus": "ready"
+            }
+          ],
+          "limit": 20,
+          "offset": 0,
+          "total": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to list duplicate assets of an asset",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/assets/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11/duplicates"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "favorite": false,
+              "fileId": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+              "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+              "isTrashed": false,
+              "kind": "photo",
+              "thumbnailStatus": "ready"
+            }
+          ],
+          "total": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to list event groups",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/events"
+      },
+      "response": {
+        "body": {
+          "groups": [
+            {
+              "count": 24,
+              "coverAssetId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+              "id": "2025-06-01T10:00:00.000Z_Paris",
+              "label": "Paris · Jun 2025",
+              "placeCity": "Paris",
+              "placeCountryCode": "FR",
+              "takenFrom": "2025-06-01T10:00:00.000Z",
+              "takenTo": "2025-06-05T18:00:00.000Z"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.groups": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to list persons",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/persons"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "clusterLabel": "cluster-1",
+              "coverFaceId": null,
+              "coverFaceUrl": null,
+              "createdAt": "2024-01-01T00:00:00.000Z",
+              "faceCount": 2,
+              "id": "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55",
+              "name": "Ada",
+              "updatedAt": "2024-01-01T00:00:00.000Z",
+              "userId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+            }
+          ],
+          "limit": 20,
+          "offset": 0,
+          "total": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to list shares",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/shares"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "assetId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+              "assetKind": "photo",
+              "createdAt": "2024-01-01T00:00:00.000Z",
+              "id": "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44",
+              "token": "valid-share-token"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to list shares including an album",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/shares"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "assetId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+              "assetKind": "photo",
+              "createdAt": "2024-01-02T00:00:00.000Z",
+              "id": "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44",
+              "kind": "asset",
+              "token": "valid-share-token"
+            },
+            {
+              "albumAssetCount": 1,
+              "albumId": "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33",
+              "albumName": "Trip 2024",
+              "createdAt": "2024-01-01T00:00:00.000Z",
+              "id": "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a45",
+              "kind": "album",
+              "token": "valid-album-share-token"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[0]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[1]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to list the assets of a public album share",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/valid-album-share-token/assets"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "durationSeconds": null,
+              "fileId": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+              "height": 1080,
+              "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+              "kind": "photo",
+              "mimeType": "image/jpeg",
+              "originalName": "photo.jpg",
+              "takenAt": null,
+              "title": null,
+              "userId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+              "width": 1920
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.items[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to list the detected objects of an asset",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/assets/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11/detections"
+      },
+      "response": {
+        "body": {
+          "detections": [
+            {
+              "box": {
+                "h": 80,
+                "w": 100,
+                "x": 10,
+                "y": 20
+              },
+              "confidence": 0.9,
+              "label": "dog"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.detections": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to list trashed assets",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/assets/trashed"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "favorite": false,
+              "fileId": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+              "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+              "isTrashed": false,
+              "kind": "photo",
+              "thumbnailStatus": "ready"
+            }
+          ],
+          "limit": 20,
+          "offset": 0,
+          "total": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to permanently delete a trashed asset",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/assets/trashed/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+      },
+      "response": {
+        "body": {
+          "fileIds": ["b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22"]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to recluster faces manually",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/admin/faces/recluster"
+      },
+      "response": {
+        "body": {
+          "enqueued": 2
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to remove an asset from an album",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/albums/c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33/assets/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    {
+      "description": "a request to rename a person",
+      "request": {
+        "body": {
+          "name": "Ada"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "PATCH",
+        "path": "/api/v1/persons/e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55"
+      },
+      "response": {
+        "body": {
+          "clusterLabel": "cluster-1",
+          "coverFaceId": null,
+          "coverFaceUrl": null,
+          "createdAt": "2024-01-01T00:00:00.000Z",
+          "faceCount": 2,
+          "id": "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55",
+          "name": "Ada",
+          "updatedAt": "2024-01-01T00:00:00.000Z",
+          "userId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to reprocess all embeddings",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/admin/embeddings/reprocess"
+      },
+      "response": {
+        "body": {
+          "enqueued": 5,
+          "model": "siglip2-b16-224",
+          "total": 5
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to reprocess all faces",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/admin/faces/reprocess"
+      },
+      "response": {
+        "body": {
+          "detector": "human",
+          "enqueued": 5,
+          "total": 5
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to reprocess all thumbnails",
+      "request": {
+        "body": {
+          "kind": "photo"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/api/v1/admin/thumbnails/reprocess"
+      },
+      "response": {
+        "body": {
+          "enqueued": 4,
+          "totalAssets": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to reprocess the thumbnails of an asset",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/assets/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11/reprocess-thumbnails"
+      },
+      "response": {
+        "body": {
+          "enqueued": 4
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to reprocess the video of an asset",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/assets/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11/reprocess-video"
+      },
+      "response": {
+        "body": {
+          "enqueued": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to resolve a public album share",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/valid-album-share-token"
+      },
+      "response": {
+        "body": {
+          "album": {
+            "assetCount": 1,
+            "description": null,
+            "id": "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33",
+            "name": "Trip 2024"
+          },
+          "kind": "album",
+          "share": {
+            "albumAssetCount": 1,
+            "albumCoverThumbFileId": null,
+            "albumId": "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33",
+            "albumName": "Trip 2024",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "id": "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a45",
+            "kind": "album",
+            "token": "valid-album-share-token",
+            "userId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to resolve a public share",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/valid-share-token"
+      },
+      "response": {
+        "body": {
+          "asset": {
+            "durationSeconds": null,
+            "fileId": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+            "height": 1080,
+            "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+            "kind": "photo",
+            "mimeType": "image/jpeg",
+            "originalName": "photo.jpg",
+            "takenAt": null,
+            "title": null,
+            "userId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+            "width": 1920
+          },
+          "kind": "asset",
+          "share": {
+            "assetFileId": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+            "assetId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+            "assetKind": "photo",
+            "assetThumbFileId": null,
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "id": "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44",
+            "kind": "asset",
+            "token": "valid-share-token",
+            "userId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to restore a trashed asset",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/assets/trashed/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11/restore"
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    {
+      "description": "a request to revoke a share",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/shares/d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44"
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    {
+      "description": "a request to search assets",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/search",
+        "query": {
+          "limit": ["50"],
+          "offset": ["0"],
+          "q": ["beach"]
+        }
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "favorite": false,
+              "fileId": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+              "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+              "isTrashed": false,
+              "kind": "photo",
+              "thumbnailStatus": "ready"
+            }
+          ],
+          "total": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to stream a video file",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/files/b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22/stream"
+      },
+      "response": {
+        "headers": {
+          "Content-Type": "video/mp4"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to switch the admin face detector",
+      "request": {
+        "body": {
+          "detector": "scrfd"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "PUT",
+        "path": "/api/v1/admin/face-detection"
+      },
+      "response": {
+        "body": {
+          "detector": "scrfd",
+          "envDefault": "human",
+          "facesByDetector": {
+            "human": 3,
+            "scrfd": 2,
+            "unset": 1
+          },
+          "models": {
+            "scrfd": true
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to trash an asset",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/assets/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11/trash"
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    {
+      "description": "a request to trigger face clustering",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/persons/cluster"
+      },
+      "response": {
+        "body": {
+          "jobId": "cluster-a0eebc99-manual-1700000000000",
+          "queued": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 202
+      }
+    },
+    {
+      "description": "a request to update an album",
+      "request": {
+        "body": {
+          "name": "Trip 2025"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "PATCH",
+        "path": "/api/v1/albums/c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33"
+      },
+      "response": {
+        "body": {
+          "assetCount": 0,
+          "createdAt": "2024-01-01T00:00:00.000Z",
+          "description": null,
+          "id": "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33",
+          "name": "Trip 2024",
+          "updatedAt": "2024-01-01T00:00:00.000Z",
+          "userId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a request to update an asset",
+      "request": {
+        "body": {
+          "favorite": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "PATCH",
+        "path": "/api/v1/assets/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+      },
+      "response": {
+        "body": {
+          "altitude": null,
+          "cameraMake": null,
+          "cameraModel": null,
+          "codec": null,
+          "description": null,
+          "durationSeconds": null,
+          "exposureTime": null,
+          "fNumber": null,
+          "faceCount": null,
+          "faceStatus": null,
+          "favorite": false,
+          "fileId": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+          "focalLength": null,
+          "fps": null,
+          "hasAudio": null,
+          "height": 1080,
+          "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+          "isTrashed": false,
+          "iso": null,
+          "kind": "photo",
+          "latitude": null,
+          "lensModel": null,
+          "longitude": null,
+          "metadata": null,
+          "metadataExtractedAt": null,
+          "metadataStatus": "ready",
+          "mimeType": "image/jpeg",
+          "orientation": null,
+          "originalName": "photo.jpg",
+          "sizeBytes": 1024,
+          "takenAt": null,
+          "thumbnailStatus": "ready",
+          "title": null,
+          "transcodeFileId": null,
+          "transcodeStatus": "ready",
+          "trashedAt": null,
+          "uploadedAt": "2024-01-01T00:00:00.000Z",
+          "userId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+          "width": 1920
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    }
+  ],
+  "metadata": {
+    "pact-js": {
+      "version": "17.1.4"
+    },
+    "pactRust": {
+      "ffi": "0.5.8",
+      "models": "1.3.16"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "core"
+  }
+}

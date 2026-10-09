@@ -10,6 +10,7 @@ import {
   FaUserShield,
 } from 'react-icons/fa6'
 import { useAuthStore } from '../store/auth-store'
+import { UploadSidebarQueue } from './UploadNotification'
 
 export function Sidebar() {
   const user = useAuthStore((s) => s.user)
@@ -57,7 +58,11 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="mt-auto mb-4 lg:p-3">
+      <div className="mt-auto">
+        <UploadSidebarQueue />
+      </div>
+
+      <div className="mb-4 lg:p-3">
         {bottomNavItems.map((item) => (
           <NavLink
             key={item.to}

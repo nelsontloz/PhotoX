@@ -2,7 +2,7 @@ import { createContext, useContext, useRef } from 'react'
 import type { ReactNode, RefObject } from 'react'
 import { AppHeader } from './AppHeader'
 import { Sidebar } from './Sidebar'
-import { UploadNotification } from './UploadNotification'
+import { UploadOverlay } from './UploadNotification'
 
 // The scroll container of AppShell's <main>: sticky day headers and timeline virtualization both
 // key off it. Consumers get the ref (stable object) and read/listen themselves.
@@ -32,7 +32,7 @@ export function AppShell({
           </ScrollContainerContext.Provider>
         </main>
       </div>
-      <UploadNotification />
+      <UploadOverlay />
     </div>
   )
 }
