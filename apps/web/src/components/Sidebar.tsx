@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import {
   FaClock,
   FaPhotoFilm,
@@ -8,11 +8,19 @@ import {
   FaMapLocationDot,
   FaTrash,
   FaUserShield,
+  FaRightFromBracket,
 } from 'react-icons/fa6'
 import { useAuthStore } from '../store/auth-store'
 
 export function Sidebar() {
   const user = useAuthStore((s) => s.user)
+  const logout = useAuthStore((s) => s.logout)
+  const navigate = useNavigate()
+
+  const handleLogout = async () => {
+    await logout()
+    void navigate('/login')
+  }
 
   const navItems = [
     { to: '/', icon: FaClock, label: 'Timeline', end: true },
@@ -57,17 +65,34 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="mt-auto mb-4 lg:p-3">
-        {bottomNavItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className="flex items-center justify-center gap-4 h-[50px] lg:h-auto py-3 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-card-dark hover:text-slate-900 dark:hover:text-white transition-colors group/item lg:justify-start lg:px-3"
+      <div className="mt-auto">
+        <div className="pb-1 lg:p-3">
+          {bottomNavItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className="flex items-center justify-center gap-4 h-[50px] lg:h-auto py-3 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-card-dark hover:text-slate-900 dark:hover:text-white transition-colors group/item lg:justify-start lg:px-3"
+            >
+              <item.icon className="shrink-0" />
+              <span className="hidden lg:inline whitespace-nowrap">{item.label}</span>
+            </NavLink>
+          ))}
+        </div>
+
+        <div className="border-t border-gray-200 dark:border-border-dark py-2 lg:p-3">
+          <button
+            type="button"
+            onClick={() => {
+              void handleLogout()
+            }}
+            title="Sign out"
+            aria-label="Sign out"
+            className="w-full flex items-center justify-center gap-4 h-[50px] lg:h-auto lg:py-3 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-card-dark hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer lg:justify-start lg:px-3"
           >
-            <item.icon className="shrink-0" />
-            <span className="hidden lg:inline whitespace-nowrap">{item.label}</span>
-          </NavLink>
-        ))}
+            <FaRightFromBracket className="shrink-0" />
+            <span className="hidden lg:inline whitespace-nowrap">Sign out</span>
+          </button>
+        </div>
       </div>
     </aside>
   )
