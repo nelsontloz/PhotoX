@@ -39,6 +39,7 @@ import {
   GhostButton,
   PrimaryButton,
   ProgressBar,
+  SectionCard,
   StatStrip,
   StatusPill,
   cx,
@@ -61,7 +62,6 @@ import {
   reprocessOcr,
   getOcrReprocessStatus,
   type ListAdminUsersParams,
-  type FaceReprocessStatus,
   type EmbeddingReprocessStatus,
   type DetectionReprocessStatus,
   type OcrReprocessStatus,
@@ -171,37 +171,51 @@ function InlineError({ message, onRetry }: { message: string; onRetry: () => voi
 }
 
 /**
- * SectionCard mirror with a header `actions` slot — the two maintenance cards need a refresh
- * button next to their title and ui.tsx's SectionCard doesn't expose one. Kept local on purpose:
- * ui.tsx is shared with other lanes, so extend the primitive only when a third caller needs it.
+ * Shared confirm shell for the admin page's five one-way dialogs: same panel, same Cancel/Confirm
+ * footer. Call sites render it inside their own `{state && ...}` guard and pass the body as children.
  */
-function ActionCard({
+function ConfirmDialog({
   title,
-  subtitle,
-  icon,
-  actions,
+  confirmLabel = 'Confirm',
+  onConfirm,
+  onClose,
   children,
 }: {
   title: string
-  subtitle?: string
-  icon: ReactNode
-  actions?: ReactNode
+  confirmLabel?: string
+  onConfirm: () => void
+  onClose: () => void
   children: ReactNode
 }) {
   return (
-    <AdminCard>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-2.5">
-          <span className="mt-0.5 text-lg text-outline">{icon}</span>
-          <div>
-            <h3 className="text-headline-lg text-on-surface">{title}</h3>
-            {subtitle && <p className="text-body-sm text-outline">{subtitle}</p>}
-          </div>
-        </div>
-        {actions != null && <div className="flex items-center gap-2">{actions}</div>}
-      </div>
+    <Dialog
+      title={title}
+      onClose={onClose}
+      panelClassName={DIALOG_PANEL_CLASS}
+      titleTag="h3"
+      titleClassName={DIALOG_TITLE_CLASS}
+      headerClassName=""
+      closeOnOverlay={false}
+      escapeKey={false}
+    >
       {children}
-    </AdminCard>
+      <div className="flex justify-end gap-2 mt-5">
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          className="text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-3 py-2 transition-colors"
+        >
+          {confirmLabel}
+        </button>
+      </div>
+    </Dialog>
   )
 }
 
@@ -250,6 +264,91 @@ const DETECTOR_HINTS: Record<FaceDetectorKind, string> = {
 const SCRFD_PROVISION_CMD = 'pnpm --filter @photox/worker-service face-model'
 const VISION_PROVISION_CMD = 'pnpm --filter @photox/worker-service vision-model'
 
+/**
+ * ponytail: 3s poll while the queue drains; poll errors stay silent and stop after 5 consecutive
+ * failures so a broken endpoint is not hammered (re-run/remount resumes). `enabled` skips the
+ * fetch entirely.
+ */
+function useQueuePoll<T extends { queue: QueueCounts }>(
+  getStatus: () => Promise<T>,
+  runToken: number,
+  enabled = true,
+): T | null {
+  const [status, setStatus] = useState<T | null>(null)
+  useEffect(() => {
+    if (!enabled) return
+    let cancelled = false
+    let timer = 0
+    let failures = 0
+    const tick = () => {
+      getStatus()
+        .then((res) => {
+          if (cancelled) return
+          failures = 0
+          setStatus(res)
+          if (res.queue.waiting + res.queue.active > 0) {
+            timer = window.setTimeout(tick, 3000)
+          }
+        })
+        .catch(() => {
+          if (cancelled) return
+          failures += 1
+          if (failures < 5) timer = window.setTimeout(tick, 3000)
+        })
+    }
+    tick()
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [getStatus, runToken, enabled])
+  return status
+}
+
+/** The reprocess counters both card shapes render from a queue status. */
+function useRunProgress<L extends ReprocessRun>(
+  status: { lastRun: L | null; queue: QueueCounts } | null,
+) {
+  const lastRun = status?.lastRun ?? null
+  const runQueue = status ? status.queue.waiting + status.queue.active : 0
+  const running = runQueue > 0
+  const requested = lastRun?.enqueued ?? 0
+  const done = Math.max(0, Math.min(requested, requested - runQueue))
+  const percent = requested > 0 ? Math.round((done / requested) * 100) : 0
+  return { lastRun, runQueue, running, requested, done, percent }
+}
+
+function RunProgress({
+  runningLabel,
+  progressLabel,
+  runQueue,
+  requested,
+  done,
+  percent,
+}: {
+  runningLabel: string
+  progressLabel: string
+  runQueue: number
+  requested: number
+  done: number
+  percent: number
+}) {
+  return (
+    <div className="mt-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+        <span className="inline-flex items-center gap-2 text-xs font-medium text-on-surface">
+          <FaSpinner className="animate-spin text-primary" />
+          {runningLabel}
+        </span>
+        <span className="text-xs tabular-nums text-on-surface-variant">
+          {runQueue.toLocaleString()} of {requested.toLocaleString()} remaining · {percent}%
+        </span>
+      </div>
+      <ProgressBar value={done} max={requested} label={progressLabel} />
+    </div>
+  )
+}
+
 /** The merged detector + reprocess card. `parts` narrows it for the two legacy exports below. */
 function FacialDetectionCard({ parts = 'both' }: { parts?: 'both' | 'detector' | 'reprocess' }) {
   const showDetector = parts !== 'reprocess'
@@ -263,7 +362,6 @@ function FacialDetectionCard({ parts = 'both' }: { parts?: 'both' | 'detector' |
   const [saveError, setSaveError] = useState<string | null>(null)
   const [confirmScrfd, setConfirmScrfd] = useState(false)
 
-  const [status, setStatus] = useState<FaceReprocessStatus | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [inFlight, setInFlight] = useState(false)
   const [result, setResult] = useState<string | null>(null)
@@ -294,35 +392,7 @@ function FacialDetectionCard({ parts = 'both' }: { parts?: 'both' | 'detector' |
     }
   }, [version])
 
-  // ponytail: 3s poll while the faces queue drains; poll errors stay silent and stop after 5
-  // consecutive failures so a broken endpoint is not hammered (re-run/remount resumes)
-  useEffect(() => {
-    if (!showReprocess) return
-    let cancelled = false
-    let timer = 0
-    let failures = 0
-    const tick = () => {
-      getFaceReprocessStatus()
-        .then((res) => {
-          if (cancelled) return
-          failures = 0
-          setStatus(res)
-          if (res.queue.waiting + res.queue.active > 0) {
-            timer = window.setTimeout(tick, 3000)
-          }
-        })
-        .catch(() => {
-          if (cancelled) return
-          failures += 1
-          if (failures < 5) timer = window.setTimeout(tick, 3000)
-        })
-    }
-    tick()
-    return () => {
-      cancelled = true
-      window.clearTimeout(timer)
-    }
-  }, [runToken, showReprocess])
+  const status = useQueuePoll(getFaceReprocessStatus, runToken, showReprocess)
 
   const applyDetector = async (detector: FaceDetectorKind) => {
     setSaving(true)
@@ -373,12 +443,7 @@ function FacialDetectionCard({ parts = 'both' }: { parts?: 'both' | 'detector' |
     }
   }
 
-  const lastRun = status?.lastRun ?? null
-  const runQueue = status ? status.queue.waiting + status.queue.active : 0
-  const running = runQueue > 0
-  const requested = lastRun?.enqueued ?? 0
-  const done = Math.max(0, Math.min(requested, requested - runQueue))
-  const percent = requested > 0 ? Math.round((done / requested) * 100) : 0
+  const { lastRun, runQueue, running, requested, done, percent } = useRunProgress(status)
   const scrfdUnprovisioned = data?.detector === 'scrfd' && !data.models.scrfd
 
   const pillTone: 'ok' | 'warn' | 'muted' = error
@@ -538,18 +603,14 @@ function FacialDetectionCard({ parts = 'both' }: { parts?: 'both' | 'detector' |
           )}
 
           {running && requested > 0 && (
-            <div className="mt-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
-                <span className="inline-flex items-center gap-2 text-xs font-medium text-on-surface">
-                  <FaSpinner className="animate-spin text-primary" />
-                  Reprocessing faces…
-                </span>
-                <span className="text-xs tabular-nums text-on-surface-variant">
-                  {runQueue.toLocaleString()} of {requested.toLocaleString()} remaining · {percent}%
-                </span>
-              </div>
-              <ProgressBar value={done} max={requested} label="Face reprocess progress" />
-            </div>
+            <RunProgress
+              runningLabel="Reprocessing faces…"
+              progressLabel="Face reprocess progress"
+              runQueue={runQueue}
+              requested={requested}
+              done={done}
+              percent={percent}
+            />
           )}
 
           {lastRun && !running && (
@@ -597,15 +658,14 @@ function FacialDetectionCard({ parts = 'both' }: { parts?: 'both' | 'detector' |
       </div>
 
       {confirmScrfd && (
-        <Dialog
+        <ConfirmDialog
           title="Switch to SCRFD anyway?"
+          confirmLabel="Switch anyway"
           onClose={() => setConfirmScrfd(false)}
-          panelClassName={DIALOG_PANEL_CLASS}
-          titleTag="h3"
-          titleClassName={DIALOG_TITLE_CLASS}
-          headerClassName=""
-          closeOnOverlay={false}
-          escapeKey={false}
+          onConfirm={() => {
+            setConfirmScrfd(false)
+            void applyDetector('scrfd')
+          }}
         >
           <p className="text-sm text-slate-400 mt-2">
             The SCRFD model is not installed, so SCRFD detection jobs will fail until you provision
@@ -614,38 +674,14 @@ function FacialDetectionCard({ parts = 'both' }: { parts?: 'both' | 'detector' |
           <code className="block text-xs font-mono text-slate-300 bg-slate-900/60 border border-border-dark rounded px-2 py-1.5 mt-2 break-all">
             {SCRFD_PROVISION_CMD}
           </code>
-          <div className="flex justify-end gap-2 mt-5">
-            <button
-              type="button"
-              onClick={() => setConfirmScrfd(false)}
-              className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setConfirmScrfd(false)
-                void applyDetector('scrfd')
-              }}
-              className="text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-3 py-2 transition-colors"
-            >
-              Switch anyway
-            </button>
-          </div>
-        </Dialog>
+        </ConfirmDialog>
       )}
 
       {confirming && (
-        <Dialog
+        <ConfirmDialog
           title="Reprocess all faces?"
           onClose={() => setConfirming(false)}
-          panelClassName={DIALOG_PANEL_CLASS}
-          titleTag="h3"
-          titleClassName={DIALOG_TITLE_CLASS}
-          headerClassName=""
-          closeOnOverlay={false}
-          escapeKey={false}
+          onConfirm={() => void onConfirm()}
         >
           <p className="text-sm text-slate-400 mt-2">
             This re-detects faces and rebuilds their embeddings for every photo, using the current
@@ -662,23 +698,7 @@ function FacialDetectionCard({ parts = 'both' }: { parts?: 'both' | 'detector' |
               </code>
             </div>
           )}
-          <div className="flex justify-end gap-2 mt-5">
-            <button
-              type="button"
-              onClick={() => setConfirming(false)}
-              className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => void onConfirm()}
-              className="text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-3 py-2 transition-colors"
-            >
-              Confirm
-            </button>
-          </div>
-        </Dialog>
+        </ConfirmDialog>
       )}
     </AdminCard>
   )
@@ -750,41 +770,13 @@ function ReprocessPipelineCard<L extends ReprocessRun>({
   pipeline: ReprocessPipeline<L>
 }) {
   const { getStatus, reprocess, resultText } = pipeline
-  const [status, setStatus] = useState<{ lastRun: L | null; queue: QueueCounts } | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [inFlight, setInFlight] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [runToken, setRunToken] = useState(0)
 
-  // ponytail: 3s poll while the queue drains; poll errors stay silent and stop after 5
-  // consecutive failures so a broken endpoint is not hammered (re-run/remount resumes)
-  useEffect(() => {
-    let cancelled = false
-    let timer = 0
-    let failures = 0
-    const tick = () => {
-      getStatus()
-        .then((res) => {
-          if (cancelled) return
-          failures = 0
-          setStatus(res)
-          if (res.queue.waiting + res.queue.active > 0) {
-            timer = window.setTimeout(tick, 3000)
-          }
-        })
-        .catch(() => {
-          if (cancelled) return
-          failures += 1
-          if (failures < 5) timer = window.setTimeout(tick, 3000)
-        })
-    }
-    tick()
-    return () => {
-      cancelled = true
-      window.clearTimeout(timer)
-    }
-  }, [getStatus, runToken])
+  const status = useQueuePoll(getStatus, runToken)
 
   const onConfirm = async () => {
     setConfirming(false)
@@ -802,12 +794,7 @@ function ReprocessPipelineCard<L extends ReprocessRun>({
     }
   }
 
-  const lastRun = status?.lastRun ?? null
-  const runQueue = status ? status.queue.waiting + status.queue.active : 0
-  const running = runQueue > 0
-  const requested = lastRun?.enqueued ?? 0
-  const done = Math.max(0, Math.min(requested, requested - runQueue))
-  const percent = requested > 0 ? Math.round((done / requested) * 100) : 0
+  const { lastRun, runQueue, running, requested, done, percent } = useRunProgress(status)
 
   return (
     <AdminCard className="flex flex-col">
@@ -827,18 +814,14 @@ function ReprocessPipelineCard<L extends ReprocessRun>({
       )}
 
       {running && requested > 0 && (
-        <div className="mt-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
-            <span className="inline-flex items-center gap-2 text-xs font-medium text-on-surface">
-              <FaSpinner className="animate-spin text-primary" />
-              {pipeline.runningLabel}
-            </span>
-            <span className="text-xs tabular-nums text-on-surface-variant">
-              {runQueue.toLocaleString()} of {requested.toLocaleString()} remaining · {percent}%
-            </span>
-          </div>
-          <ProgressBar value={done} max={requested} label={pipeline.progressLabel} />
-        </div>
+        <RunProgress
+          runningLabel={pipeline.runningLabel}
+          progressLabel={pipeline.progressLabel}
+          runQueue={runQueue}
+          requested={requested}
+          done={done}
+          percent={percent}
+        />
       )}
 
       {lastRun && !running && (
@@ -865,34 +848,13 @@ function ReprocessPipelineCard<L extends ReprocessRun>({
       </div>
 
       {confirming && (
-        <Dialog
+        <ConfirmDialog
           title={pipeline.dialogTitle}
           onClose={() => setConfirming(false)}
-          panelClassName={DIALOG_PANEL_CLASS}
-          titleTag="h3"
-          titleClassName={DIALOG_TITLE_CLASS}
-          headerClassName=""
-          closeOnOverlay={false}
-          escapeKey={false}
+          onConfirm={() => void onConfirm()}
         >
           <p className="text-sm text-slate-400 mt-2">{pipeline.dialogBody}</p>
-          <div className="flex justify-end gap-2 mt-5">
-            <button
-              type="button"
-              onClick={() => setConfirming(false)}
-              className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => void onConfirm()}
-              className="text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-3 py-2 transition-colors"
-            >
-              Confirm
-            </button>
-          </div>
-        </Dialog>
+        </ConfirmDialog>
       )}
     </AdminCard>
   )
@@ -1043,7 +1005,7 @@ function AssetHealthSection() {
   }
 
   return (
-    <ActionCard
+    <SectionCard
       title="Asset Health & Pipeline Queues"
       icon={<FaTriangleExclamation />}
       actions={
@@ -1098,40 +1060,19 @@ function AssetHealthSection() {
       {reprocessError && <AdminToast message={reprocessError} tone="error" />}
 
       {confirming && (
-        <Dialog
+        <ConfirmDialog
           title="Reprocess all pictures?"
           onClose={() => setConfirming(false)}
-          panelClassName={DIALOG_PANEL_CLASS}
-          titleTag="h3"
-          titleClassName={DIALOG_TITLE_CLASS}
-          headerClassName=""
-          closeOnOverlay={false}
-          escapeKey={false}
+          onConfirm={() => void onConfirm()}
         >
           <p className="text-sm text-slate-400 mt-2">
             This regenerates thumbnails for every non-trashed picture and replaces the existing
             ones. The worker processes one job at a time, so this can take a while on large
             libraries.
           </p>
-          <div className="flex justify-end gap-2 mt-5">
-            <button
-              type="button"
-              onClick={() => setConfirming(false)}
-              className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => void onConfirm()}
-              className="text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-3 py-2 transition-colors"
-            >
-              Confirm
-            </button>
-          </div>
-        </Dialog>
+        </ConfirmDialog>
       )}
-    </ActionCard>
+    </SectionCard>
   )
 }
 
@@ -1203,7 +1144,7 @@ function OrphanCleanupSection() {
   const empty = data?.orphanFiles === 0 && data?.orphanThumbnails === 0
 
   return (
-    <ActionCard
+    <SectionCard
       title="Orphan Cleanup"
       subtitle="Files and thumbnails in storage that no asset references."
       icon={<FaTrashCan />}
@@ -1250,39 +1191,18 @@ function OrphanCleanupSection() {
       {runError && <AdminToast message={runError} tone="error" />}
 
       {confirming && (
-        <Dialog
+        <ConfirmDialog
           title="Run orphan cleanup?"
           onClose={() => setConfirming(false)}
-          panelClassName={DIALOG_PANEL_CLASS}
-          titleTag="h3"
-          titleClassName={DIALOG_TITLE_CLASS}
-          headerClassName=""
-          closeOnOverlay={false}
-          escapeKey={false}
+          onConfirm={() => void runCleanup()}
         >
           <p className="text-sm text-slate-400 mt-2">
             This scans all files and thumbnails, then deletes anything not referenced by an asset.
             The worker processes this in the background.
           </p>
-          <div className="flex justify-end gap-2 mt-5">
-            <button
-              type="button"
-              onClick={() => setConfirming(false)}
-              className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => void runCleanup()}
-              className="text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-3 py-2 transition-colors"
-            >
-              Confirm
-            </button>
-          </div>
-        </Dialog>
+        </ConfirmDialog>
       )}
-    </ActionCard>
+    </SectionCard>
   )
 }
 

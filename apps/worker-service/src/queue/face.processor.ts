@@ -30,9 +30,7 @@ export class FaceProcessor {
   ) {}
 
   start() {
-    this.bullMq.createWorker<FaceJob>('process-faces', (job) => this.processJob(job), {
-      concurrency: 1,
-    })
+    this.bullMq.createWorker<FaceJob>('process-faces', (job) => this.processJob(job))
 
     this.logger.log('Face processor listening for jobs')
   }

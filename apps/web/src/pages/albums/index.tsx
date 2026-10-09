@@ -28,7 +28,7 @@ function NewAlbumDialog({ onClose, onCreate }: NewAlbumDialogProps) {
   const [error, setError] = useState<string | null>(null)
 
   const trimmed = name.trim()
-  const canSubmit = trimmed.length > 0 && trimmed.length <= NEW_ALBUM_NAME_MAX
+  const canSubmit = trimmed.length > 0
 
   const submit = async () => {
     if (!canSubmit || submitting) return

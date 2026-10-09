@@ -16,9 +16,9 @@ export const OCR_MAX_DIM = 1600
 // ponytail: per-item drop_score handed to PaddleOCR's recognition (upstream convention: noise
 // reads 0.2-0.45, real text 0.65+), NOT a per-line filter — the library drops sub-threshold items
 // before we ever see them. Upgrade: tune once a corpus shows false positives/negatives.
-export const OCR_MIN_CONFIDENCE = 0.5
+const OCR_MIN_CONFIDENCE = 0.5
 
-export interface OcrExtract {
+interface OcrExtract {
   text: string
   confidence: number
 }

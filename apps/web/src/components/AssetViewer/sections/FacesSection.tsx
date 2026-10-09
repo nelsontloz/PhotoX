@@ -5,7 +5,7 @@ import { listPersons } from '../../../api/persons'
 import { assignFace } from '../../../api/faces'
 import { FaceThumb } from '../../FaceThumb'
 
-export interface FacesSectionProps {
+interface FacesSectionProps {
   asset: Asset
   onFaceHover?: (faceId: string | null) => void
 }

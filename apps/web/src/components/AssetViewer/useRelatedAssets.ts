@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Asset, RelatedAssetsResponse } from '@photox/shared-types'
 import { getAssetDuplicates, getSimilarAssets } from '../../api/related'
 
-export type RelatedStatus = 'idle' | 'loading' | 'ready'
+type RelatedStatus = 'idle' | 'loading' | 'ready'
 
 export interface RelatedAssets {
   status: RelatedStatus

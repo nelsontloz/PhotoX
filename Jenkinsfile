@@ -33,9 +33,6 @@ spec:
                 }
             }
         }
-        stage('Build Shared') {
-            steps { container('node') { sh 'pnpm --filter "./packages/*" build' } }
-        }
         stage('Validate') {
             parallel {
                 stage('Typecheck') {

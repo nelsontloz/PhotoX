@@ -4,8 +4,7 @@ import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { useConfirm } from '../../components/ConfirmProvider'
 import { GalleryItem } from '../../components/GalleryItem'
-import { AssetViewer } from '../../components/AssetViewer/AssetViewer'
-import { AlbumPickerDialog } from '../../components/AlbumPickerDialog'
+import { ViewerHost } from '../../components/ViewerHost'
 import { useAssetGroups } from '../../hooks/useAssetGroups'
 import { useAssetNavigation } from '../../hooks/useAssetNavigation'
 import { emptyTrash } from '../../api/assets'
@@ -91,32 +90,25 @@ function TrashContent() {
           </div>
         </section>
       ))}
-      {nav.selected && (
-        <>
-          <AssetViewer
-            asset={nav.selected}
-            onClose={nav.close}
-            onPrev={nav.goPrev}
-            onNext={nav.goNext}
-            hasPrev={nav.hasPrev}
-            hasNext={nav.hasNext}
-            onAddToAlbum={!nav.selected.isTrashed ? () => setPickerOpen(true) : undefined}
-            onRestore={() => {
-              void nav.restore()
-            }}
-            onDelete={() => {
-              void nav.permanentlyDelete()
-            }}
-            siblingAssets={groups.flatMap((g) => g.items)}
-            onSelectSibling={(asset) => nav.open(asset)}
-          />
-          <AlbumPickerDialog
-            open={pickerOpen}
-            onClose={() => setPickerOpen(false)}
-            assetIds={[nav.selected.id]}
-          />
-        </>
-      )}
+      <ViewerHost
+        asset={nav.selected}
+        onClose={nav.close}
+        onPrev={nav.goPrev}
+        onNext={nav.goNext}
+        hasPrev={nav.hasPrev}
+        hasNext={nav.hasNext}
+        onAddToAlbum={!nav.selected?.isTrashed ? () => setPickerOpen(true) : undefined}
+        onRestore={() => {
+          void nav.restore()
+        }}
+        onDelete={() => {
+          void nav.permanentlyDelete()
+        }}
+        siblingAssets={groups.flatMap((g) => g.items)}
+        onSelectSibling={(asset) => nav.open(asset)}
+        pickerOpen={pickerOpen}
+        onPickerClose={() => setPickerOpen(false)}
+      />
     </div>
   )
 }

@@ -31,9 +31,7 @@ export class MetadataProcessor {
   ) {}
 
   start() {
-    this.bullMq.createWorker<MetadataJob>('process-metadata', (job) => this.processJob(job), {
-      concurrency: 1,
-    })
+    this.bullMq.createWorker<MetadataJob>('process-metadata', (job) => this.processJob(job))
 
     this.logger.log('Metadata processor listening for jobs')
   }

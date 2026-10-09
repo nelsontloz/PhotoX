@@ -4,50 +4,42 @@ import { FACE_DETECTOR_KINDS } from '@photox/shared-types'
 
 const uuid = z.string().uuid()
 
-export const thumbnailJobSchema = z.object({
+const jobRefs = {
   assetId: uuid,
   fileId: uuid,
   userId: uuid,
+}
+
+export const thumbnailJobSchema = z.object({
+  ...jobRefs,
   size: z.enum(['sm', 'md', 'lg', 'xl']),
 })
 
 export const videoJobSchema = z.object({
-  assetId: uuid,
-  fileId: uuid,
-  userId: uuid,
+  ...jobRefs,
 })
 
 export const metadataJobSchema = z.object({
-  assetId: uuid,
-  fileId: uuid,
-  userId: uuid,
+  ...jobRefs,
   kind: z.enum(['photo', 'video']),
 })
 
 export const faceJobSchema = z.object({
-  assetId: uuid,
-  fileId: uuid,
-  userId: uuid,
+  ...jobRefs,
   reason: z.enum(['initial', 're-embed']).optional(),
   detector: z.enum(FACE_DETECTOR_KINDS).optional(),
 })
 
 export const embeddingJobSchema = z.object({
-  assetId: uuid,
-  fileId: uuid,
-  userId: uuid,
+  ...jobRefs,
 })
 
 export const ocrJobSchema = z.object({
-  assetId: uuid,
-  fileId: uuid,
-  userId: uuid,
+  ...jobRefs,
 })
 
 export const detectionJobSchema = z.object({
-  assetId: uuid,
-  fileId: uuid,
-  userId: uuid,
+  ...jobRefs,
 })
 
 export const clusterJobSchema = z.object({
@@ -59,9 +51,7 @@ export const cleanupJobSchema = z.object({
   fileId: uuid,
 })
 
-export const cleanupOrphansJobSchema = z.object({
-  dryRun: z.boolean().optional(),
-})
+export const cleanupOrphansJobSchema = z.object({})
 
 export type ThumbnailJob = z.infer<typeof thumbnailJobSchema>
 export type VideoJob = z.infer<typeof videoJobSchema>

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import ExifReader from 'exifreader'
 import { runFfprobeJson, type FfprobeResult } from './ffmpeg'
 
-export interface ExtractedMetadata {
+interface ExtractedMetadata {
   takenAt: Date | null
   cameraMake: string | null
   cameraModel: string | null

@@ -1,23 +1,15 @@
 import { useState } from 'react'
 import { FaCircleExclamation, FaSpinner, FaVideo } from 'react-icons/fa6'
 
-export interface VideoPlayerProps {
+interface VideoPlayerProps {
   src: string
   fallbackSrc?: string
   poster?: string
   title?: string
-  autoPlay?: boolean
   className?: string
 }
 
-export function VideoPlayer({
-  src,
-  fallbackSrc,
-  poster,
-  title,
-  autoPlay = false,
-  className = '',
-}: VideoPlayerProps) {
+export function VideoPlayer({ src, fallbackSrc, poster, title, className = '' }: VideoPlayerProps) {
   const [currentSrc, setCurrentSrc] = useState(src)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -62,8 +54,6 @@ export function VideoPlayer({
         controls
         playsInline
         preload="metadata"
-        muted={autoPlay}
-        autoPlay={autoPlay}
         aria-label={label}
         onLoadedMetadata={() => {
           setLoading(false)

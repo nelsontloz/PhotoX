@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
 import { SharesService } from './shares.service'
 import { UserFilesService } from '../files/user/user-files.service'
-import { parseRangeHeader, pipeFileResponse } from '../files/streaming.util'
+import { serveFileBytes } from '../files/streaming.util'
 
 @ApiTags('shares')
 @Controller('api/share')
@@ -30,7 +30,7 @@ export class PublicSharesController {
   async streamByToken(@Param('token') token: string, @Req() req: Request, @Res() res: Response) {
     const share = await this.shares.getByToken(token)
     if (share.kind !== 'asset') throw new NotFoundException('Share not found')
-    await this.streamFile(req, res, share.asset.fileId)
+    await serveFileBytes(req, res, this.files, share.asset.fileId)
   }
 
   @Get(':token/assets')
@@ -55,26 +55,6 @@ export class PublicSharesController {
     @Res() res: Response,
   ) {
     const fileId = await this.shares.getAlbumAssetFileId(token, assetId, size)
-    await this.streamFile(req, res, fileId)
-  }
-
-  private async streamFile(req: Request, res: Response, fileId: string): Promise<void> {
-    const rangeHeader = req.headers.range
-
-    if (rangeHeader) {
-      const { totalSize } = await this.files.getFileStat(fileId)
-      const range = parseRangeHeader(rangeHeader, totalSize)
-      if (!range) {
-        pipeFileResponse(res, { range: null, totalSize })
-        return
-      }
-
-      const { stream, record } = await this.files.stream(fileId, { range })
-      pipeFileResponse(res, { stream, record, range, totalSize })
-      return
-    }
-
-    const { stream, record, totalSize } = await this.files.stream(fileId)
-    pipeFileResponse(res, { stream, record, totalSize, ifNoneMatch: req.get('If-None-Match') })
+    await serveFileBytes(req, res, this.files, fileId)
   }
 }

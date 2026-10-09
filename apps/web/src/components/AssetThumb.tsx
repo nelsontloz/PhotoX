@@ -7,7 +7,6 @@ import { getCachedBlobUrl, peekCachedBlobUrl } from '../lib/blob-cache'
 import { whenScrollIdle } from '../lib/scrollIdle'
 import { observeIntersecting } from '../lib/shared-intersection'
 import { TIMELINE_PREFETCH_PX } from '../lib/timelineLayout'
-import { useThumbStore } from '../store/thumb-store'
 import { useScrollContainer } from './AppShell'
 import { Skeleton } from './Skeleton'
 
@@ -32,7 +31,6 @@ export function AssetThumb({
 }: AssetThumbProps) {
   const ref = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(eager)
-  const localThumb = useThumbStore((s) => s.urls[asset.fileId])
   const scrollContainer = useScrollContainer()
   const thumb = asset.thumbnails?.find((t) => t.size === 'md') ?? asset.thumbnails?.[0]
   // The timeline unmounts off-window days, so a loaded tile remounts on scroll-back. Seed from the
@@ -96,7 +94,7 @@ export function AssetThumb({
     }
   }, [asset.id, asset.kind, visible])
 
-  const src = localThumb ?? objectUrl
+  const src = objectUrl
   const isVideo = asset.kind === 'video'
   const transcodeStatus = isVideo ? asset.transcodeStatus : null
 

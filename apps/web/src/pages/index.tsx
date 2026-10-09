@@ -5,12 +5,11 @@ import { RequireAuth } from '../components/RequireAuth'
 import { AppShell } from '../components/AppShell'
 import { useConfirm } from '../components/ConfirmProvider'
 import { ErrorState, LoadingState } from '../components/StateViews'
-import { AssetViewer } from '../components/AssetViewer/AssetViewer'
+import { ViewerHost } from '../components/ViewerHost'
 import { useTimelineMonths } from '../hooks/useTimelineMonths'
 import { useAssetNavigation } from '../hooks/useAssetNavigation'
 import { useTimelineLayout } from '../hooks/useTimelineLayout'
 import { TimelineGrid } from '../components/Timeline/TimelineGrid'
-import { AlbumPickerDialog } from '../components/AlbumPickerDialog'
 import { UploadButton } from '../components/UploadButton'
 import { getAsset, trashAssets } from '../api/assets'
 import { effectiveAssetDate, monthKeyOf } from '../lib/dateFormat'
@@ -173,40 +172,36 @@ function TimelineContent() {
         onLongPress={onLongPress}
         showCheckbox
       />
-      {nav.selected && (
-        <AssetViewer
-          asset={nav.selected}
-          onClose={nav.close}
-          onPrev={nav.goPrev}
-          onNext={nav.goNext}
-          hasPrev={nav.hasPrev}
-          hasNext={nav.hasNext}
-          onTrash={() => {
-            void nav.trash()
-          }}
-          onToggleFavorite={(nextValue) => {
-            const cur = nav.selected
-            if (cur) void nav.toggleFavorite(cur.id, nextValue)
-          }}
-          onAddToAlbum={() => {
-            const cur = nav.selected
-            if (cur) {
-              setSelectedIds((prev) => new Set(prev).add(cur.id))
-              setPickerOpen(true)
-            }
-          }}
-          siblingAssets={loadedAssets}
-          onSelectSibling={(asset) => nav.open(asset)}
-        />
-      )}
-      <AlbumPickerDialog
-        open={selectedIds.size > 0 && pickerOpen}
-        onClose={() => {
+      <ViewerHost
+        asset={nav.selected}
+        onClose={nav.close}
+        onPrev={nav.goPrev}
+        onNext={nav.goNext}
+        hasPrev={nav.hasPrev}
+        hasNext={nav.hasNext}
+        onTrash={() => {
+          void nav.trash()
+        }}
+        onToggleFavorite={(nextValue) => {
+          const cur = nav.selected
+          if (cur) void nav.toggleFavorite(cur.id, nextValue)
+        }}
+        onAddToAlbum={() => {
+          const cur = nav.selected
+          if (cur) {
+            setSelectedIds((prev) => new Set(prev).add(cur.id))
+            setPickerOpen(true)
+          }
+        }}
+        siblingAssets={loadedAssets}
+        onSelectSibling={(asset) => nav.open(asset)}
+        pickerOpen={selectedIds.size > 0 && pickerOpen}
+        onPickerClose={() => {
           setPickerOpen(false)
           clearSelection()
         }}
-        assetIds={Array.from(selectedIds)}
-        onDone={clearSelection}
+        pickerAssetIds={Array.from(selectedIds)}
+        onPickerDone={clearSelection}
       />
       <div
         aria-hidden={selectedIds.size === 0 || pickerOpen}

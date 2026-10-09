@@ -19,7 +19,7 @@ export interface FaceReprocessStatus {
   queue: { waiting: number; active: number; completed: number; failed: number; delayed: number }
 }
 
-export interface FaceReprocessResponse {
+interface FaceReprocessResponse {
   enqueued: number
   total: number
   detector: FaceDetectorKind
@@ -35,7 +35,7 @@ export interface EmbeddingReprocessStatus {
   queue: { waiting: number; active: number; completed: number; failed: number; delayed: number }
 }
 
-export interface EmbeddingReprocessResponse {
+interface EmbeddingReprocessResponse {
   enqueued: number
   total: number
   model: string
@@ -145,7 +145,7 @@ export interface DetectionReprocessStatus {
   queue: { waiting: number; active: number; completed: number; failed: number; delayed: number }
 }
 
-export interface DetectionReprocessResponse {
+interface DetectionReprocessResponse {
   enqueued: number
   total: number
 }
@@ -169,7 +169,7 @@ export interface OcrReprocessStatus {
   queue: { waiting: number; active: number; completed: number; failed: number; delayed: number }
 }
 
-export interface OcrReprocessResponse {
+interface OcrReprocessResponse {
   enqueued: number
   total: number
 }

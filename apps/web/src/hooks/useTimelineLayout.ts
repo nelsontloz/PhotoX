@@ -6,7 +6,7 @@ import { useAppStore } from '../store/app-store'
 
 const EMPTY: TimelineItem[] = []
 
-export interface UseTimelineLayoutResult {
+interface UseTimelineLayoutResult {
   layout: TimelineLayout
   /** Raw layout-endpoint items in effective-date desc order — used for viewer navigation beyond the loaded months */
   layoutItems: TimelineItem[]

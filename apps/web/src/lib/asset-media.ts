@@ -11,13 +11,11 @@ export function viewerThumbKey(thumb: AssetThumbnail): string {
   return `file:${thumb.fileId}`
 }
 
-export function loadViewerThumbUrl(asset: Asset): Promise<string> | null {
-  const thumb = pickViewerThumb(asset)
-  if (!thumb) return null
-  return getCachedBlobUrl(viewerThumbKey(thumb), () => downloadFile(thumb.fileId))
-}
-
 export function prefetchViewerMedia(asset: Asset): void {
   if (asset.kind !== 'photo' && asset.kind !== 'video') return
-  void loadViewerThumbUrl(asset)?.catch(() => undefined)
+  const thumb = pickViewerThumb(asset)
+  if (!thumb) return
+  void getCachedBlobUrl(viewerThumbKey(thumb), () => downloadFile(thumb.fileId)).catch(
+    () => undefined,
+  )
 }

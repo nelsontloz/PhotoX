@@ -67,10 +67,9 @@ export async function getAssetLayout(): Promise<AssetLayout> {
   return data
 }
 
-export async function downloadFile(fileId: string, signal?: AbortSignal): Promise<Blob> {
+export async function downloadFile(fileId: string): Promise<Blob> {
   const { data } = await api.get<Blob>(`/v1/files/${fileId}/download`, {
     responseType: 'blob',
-    signal,
     timeout: 300_000,
   })
   return data

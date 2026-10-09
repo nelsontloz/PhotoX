@@ -9,6 +9,5 @@ import { OcrService } from './ocr.service'
   imports: [TypeOrmModule.forFeature([AssetOcr, Asset])],
   controllers: [OcrController],
   providers: [OcrService],
-  exports: [OcrService],
 })
 export class OcrModule {}

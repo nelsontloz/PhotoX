@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
+import { Injectable, UnprocessableEntityException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import type { Repository } from 'typeorm'
 import { SEARCH_EMBEDDING_DIM, SEARCH_EMBEDDING_MODEL } from '@photox/shared-types'
 import { Asset } from '../database/entities'
+import { assertAssetOwned } from '../common/asset-ownership'
 import { AssetEmbedding } from '../database/entities/asset-embedding.entity'
 import type { RegisterEmbeddingDto } from './dto/register-embedding.dto'
 
@@ -22,7 +23,7 @@ export class EmbeddingsService {
     userId: string,
     dto: RegisterEmbeddingDto,
   ): Promise<{ ok: true }> {
-    await this.assertAssetOwned(userId, assetId)
+    await assertAssetOwned(this.assetRepo, userId, assetId)
     this.assertValid(dto)
     await this.repo.upsert(
       [{ assetId, kind: dto.kind, model: dto.model, embedding: dto.embedding }],
@@ -60,10 +61,5 @@ export class EmbeddingsService {
     if (Math.abs(norm - 1) >= 0.01) {
       throw new UnprocessableEntityException(`embedding must be unit-norm (got ${norm.toFixed(4)})`)
     }
-  }
-
-  private async assertAssetOwned(userId: string, assetId: string): Promise<void> {
-    const asset = await this.assetRepo.findOne({ where: { id: assetId, userId } })
-    if (!asset) throw new NotFoundException('Asset not found')
   }
 }

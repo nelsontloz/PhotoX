@@ -32,7 +32,6 @@ export class PersonsService {
       name: string | null
       coverFaceId: string | null
       clusterLabel: string | null
-      faceCount: number
       createdAt: Date
       updatedAt: Date
       liveFaceCount: string
@@ -40,7 +39,7 @@ export class PersonsService {
 
     const rows: PersonRow[] = await this.personRepo.query(
       `SELECT p.id, p."userId", p.name, p."coverFaceId", p."clusterLabel",
-              p."faceCount", p."createdAt", p."updatedAt",
+              p."createdAt", p."updatedAt",
               COALESCE(fc.cnt, 0) AS "liveFaceCount"
        FROM persons p
        LEFT JOIN (

@@ -14,14 +14,11 @@ export class CleanupOrphansProcessor {
   ) {}
 
   start() {
-    this.bullMq.createWorker<CleanupOrphansJob>('cleanup-orphans', (job) => this.processJob(job), {
-      concurrency: 1,
-    })
+    this.bullMq.createWorker<CleanupOrphansJob>('cleanup-orphans', (job) => this.processJob(job))
     this.logger.log('Cleanup orphans processor listening for jobs')
   }
 
   private async processJob(job: Job<CleanupOrphansJob>) {
-    // dryRun kept for payload compat; the scan always runs for real (parity with the old processor)
     parseJobData(cleanupOrphansJobSchema, job.data, 'cleanup-orphans')
     this.logger.log('Orphan cleanup starting')
 

@@ -25,9 +25,7 @@ export class EmbeddingProcessor {
   ) {}
 
   start() {
-    this.bullMq.createWorker<EmbeddingJob>('process-embeddings', (job) => this.processJob(job), {
-      concurrency: 1,
-    })
+    this.bullMq.createWorker<EmbeddingJob>('process-embeddings', (job) => this.processJob(job))
 
     this.logger.log('Embedding processor listening for jobs')
   }

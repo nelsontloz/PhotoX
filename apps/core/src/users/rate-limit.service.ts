@@ -2,7 +2,7 @@ import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common'
 import type { Redis } from 'ioredis'
 import { BullMqService } from '../queue/bullmq.service'
 
-export type RateLimitRoute = 'login' | 'loginIp' | 'register' | 'refresh'
+type RateLimitRoute = 'login' | 'loginIp' | 'register' | 'refresh'
 
 // ponytail: fixed windows as a module constant — tune here; per-user/admin config if ever needed
 export const RATE_LIMITS: Record<RateLimitRoute, { limit: number; windowSec: number }> = {
@@ -23,22 +23,6 @@ return count
 
 // ponytail: 300ms budget — Redis down/slow must not hang auth; see fail-open in consume()
 export const RATE_LIMIT_TIMEOUT_MS = 300
-
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(null), ms)
-    promise.then(
-      (value) => {
-        clearTimeout(timer)
-        resolve(value)
-      },
-      () => {
-        clearTimeout(timer)
-        resolve(null)
-      },
-    )
-  })
-}
 
 @Injectable()
 export class RateLimitService {
@@ -75,15 +59,20 @@ export class RateLimitService {
 
   /** null = Redis unavailable/timed out (caller fails open); otherwise the new window count. */
   private async countHit(key: string, windowSec: number): Promise<number | null> {
+    let timer: NodeJS.Timeout | undefined
     try {
       const redis: Redis | undefined = this.bullMq.redis
       if (!redis) return null // undefined until BullMqService.onModuleInit
-      return await withTimeout(
+      return await Promise.race([
         redis.eval(RATE_LIMIT_SCRIPT, 1, key, windowSec) as Promise<number>,
-        RATE_LIMIT_TIMEOUT_MS,
-      )
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), RATE_LIMIT_TIMEOUT_MS)
+        }),
+      ])
     } catch {
       return null
+    } finally {
+      clearTimeout(timer)
     }
   }
 }

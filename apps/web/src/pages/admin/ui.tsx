@@ -65,7 +65,6 @@ export function AdminCard({ children, className }: { children: ReactNode; classN
 export function MetricTile({
   label,
   value,
-  unit,
   icon,
   meta,
   barPercent,
@@ -73,7 +72,6 @@ export function MetricTile({
 }: {
   label: string
   value: ReactNode
-  unit?: string
   icon: ReactNode
   meta?: ReactNode
   barPercent?: number
@@ -102,12 +100,7 @@ export function MetricTile({
         <span className="text-label-sm uppercase tracking-wider text-outline">{label}</span>
       </div>
       <div className="mt-4 flex items-baseline justify-between gap-3">
-        <p className="text-[36px] font-bold leading-none text-on-surface">
-          {value}
-          {unit && (
-            <span className="ml-1.5 text-lg font-normal text-on-surface-variant">{unit}</span>
-          )}
-        </p>
+        <p className="text-[36px] font-bold leading-none text-on-surface">{value}</p>
         {meta != null && (
           <span className="text-right font-mono text-xs text-on-surface-variant">{meta}</span>
         )}
@@ -122,6 +115,7 @@ export function SectionCard({
   subtitle,
   icon,
   badge,
+  actions,
   children,
   className,
 }: {
@@ -129,6 +123,7 @@ export function SectionCard({
   subtitle?: string
   icon: ReactNode
   badge?: ReactNode
+  actions?: ReactNode
   children: ReactNode
   className?: string
 }) {
@@ -147,6 +142,7 @@ export function SectionCard({
             {badge}
           </span>
         )}
+        {actions != null && <div className="flex items-center gap-2">{actions}</div>}
       </div>
       {children}
     </AdminCard>
@@ -157,31 +153,21 @@ const BUTTON_BASE =
   'inline-flex items-center gap-2 text-xs font-semibold rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
 
 interface ButtonProps {
-  type?: 'button' | 'submit' | 'reset'
   onClick?: () => void
   disabled?: boolean
   icon?: ReactNode
   children: ReactNode
-  className?: string
 }
 
-export function PrimaryButton({
-  type = 'button',
-  onClick,
-  disabled,
-  icon,
-  children,
-  className,
-}: ButtonProps) {
+export function PrimaryButton({ onClick, disabled, icon, children }: ButtonProps) {
   return (
     <button
-      type={type}
+      type="button"
       onClick={onClick}
       disabled={disabled}
       className={cx(
         BUTTON_BASE,
         'bg-primary-container text-on-primary-container hover:bg-primary-container/90 shadow-sm',
-        className,
       )}
     >
       {icon}
@@ -190,23 +176,15 @@ export function PrimaryButton({
   )
 }
 
-export function GhostButton({
-  type = 'button',
-  onClick,
-  disabled,
-  icon,
-  children,
-  className,
-}: ButtonProps) {
+export function GhostButton({ onClick, disabled, icon, children }: ButtonProps) {
   return (
     <button
-      type={type}
+      type="button"
       onClick={onClick}
       disabled={disabled}
       className={cx(
         BUTTON_BASE,
         'bg-surface-container text-on-surface hover:bg-surface-container-high',
-        className,
       )}
     >
       {icon}

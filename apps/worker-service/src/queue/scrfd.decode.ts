@@ -5,13 +5,13 @@ export interface ScrfdTensorLike {
   data: Float32Array | number[]
 }
 
-export interface ScrfdDetection {
+interface ScrfdDetection {
   box: { x: number; y: number; w: number; h: number }
   score: number
   kps: [number, number][]
 }
 
-export interface ScrfdRgb {
+interface ScrfdRgb {
   data: Uint8Array
   width: number
   height: number

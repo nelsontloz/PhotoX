@@ -9,9 +9,9 @@ const ffprobeBin: { path: string } | null =
   (require('ffprobe-static') as { path: string } | null) ?? null
 
 export const FFMPEG_PATH: string | null = process.env.FFMPEG_PATH ?? ffmpegStatic
-export const FFPROBE_PATH: string | null = process.env.FFPROBE_PATH ?? ffprobeBin?.path ?? null
+const FFPROBE_PATH: string | null = process.env.FFPROBE_PATH ?? ffprobeBin?.path ?? null
 
-export interface FfprobeStream {
+interface FfprobeStream {
   index: number
   codec_name: string
   codec_type: string
@@ -22,7 +22,7 @@ export interface FfprobeStream {
   side_data_list?: { side_data_type?: string; rotation?: number }[]
 }
 
-export interface FfprobeFormat {
+interface FfprobeFormat {
   filename: string
   duration?: string
   tags?: Record<string, string>

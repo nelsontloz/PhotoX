@@ -4,7 +4,7 @@ import type { Repository, SelectQueryBuilder } from 'typeorm'
 import type { AdminUserListResponse, AdminUserRow, AdminUserSortField } from '@photox/shared-types'
 import { User } from '../entities/user.entity'
 
-export interface ListAdminUsersParams {
+interface ListAdminUsersParams {
   limit: number
   offset: number
   q?: string

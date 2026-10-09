@@ -13,7 +13,7 @@ import { LocalStorageService } from '@photox/shared-config'
 
 // detection only needs scene-level objects, so a 1280px long side is plenty before the model's
 // own 640px letterbox — the service records the geometry, not this prep
-export const DETECT_MAX_DIM = 1280
+const DETECT_MAX_DIM = 1280
 
 @Injectable()
 export class DetectProcessor {
@@ -27,9 +27,7 @@ export class DetectProcessor {
   ) {}
 
   start() {
-    this.bullMq.createWorker<DetectionJob>('process-detect', (job) => this.processJob(job), {
-      concurrency: 1,
-    })
+    this.bullMq.createWorker<DetectionJob>('process-detect', (job) => this.processJob(job))
 
     this.logger.log('Detection processor listening for jobs')
   }

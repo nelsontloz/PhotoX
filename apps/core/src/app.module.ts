@@ -5,7 +5,6 @@ import { HealthModule } from './health/health.module'
 import { AuthModule } from './auth/auth.module'
 import { BullMqModule } from './queue/bullmq.module'
 import { UsersModule } from './users/users.module'
-import { StorageModule } from './files/storage/storage.module'
 import { UserFilesModule } from './files/user/user-files.module'
 import { AdminModule as FilesAdminModule } from './files/admin/admin.module'
 import { AssetsModule } from './assets/assets.module'
@@ -30,7 +29,6 @@ loadRootEnvFile()
     AuthModule,
     BullMqModule,
     UsersModule,
-    StorageModule,
     UserFilesModule,
     FilesAdminModule,
     AssetsModule,

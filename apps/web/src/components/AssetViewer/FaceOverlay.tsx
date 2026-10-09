@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import type { FaceDto } from '@photox/shared-types'
 
-export interface FaceOverlayProps {
+interface FaceOverlayProps {
   faces: FaceDto[]
   imageWidth: number
   imageHeight: number

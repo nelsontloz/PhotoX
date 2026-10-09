@@ -30,7 +30,7 @@ interface UploadedDiskFile {
   size: number
 }
 
-export interface UploadMeta {
+interface UploadMeta {
   kind?: 'photo' | 'video'
   title?: string
   description?: string
