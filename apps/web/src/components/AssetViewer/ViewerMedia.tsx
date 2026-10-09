@@ -129,9 +129,11 @@ export function ViewerMedia({
               className="relative max-h-full max-w-full object-contain scale-110 blur-2xl select-none"
             />
           )}
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-400 drop-shadow-[0_1px_6px_rgba(0,0,0,0.9)]">
-            <FaSpinner className="text-4xl text-primary animate-spin" />
-            <p className="text-sm">Loading preview…</p>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3 rounded-2xl bg-black/50 backdrop-blur-sm px-6 py-5 text-slate-400 drop-shadow-[0_1px_6px_rgba(0,0,0,0.9)]">
+              <FaSpinner className="text-4xl text-primary animate-spin" />
+              <p className="text-sm">Loading preview…</p>
+            </div>
           </div>
         </>
       ) : (
