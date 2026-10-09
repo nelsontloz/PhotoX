@@ -80,6 +80,13 @@ describe('persons JWT identity', () => {
     expect(rename.status).toBe(200)
     const renameBody = rename.body as unknown as { name: string | null }
     expect(renameBody.name).toBe('Ada')
+    const clear = await request(apiServer(t))
+      .patch(`/api/v1/persons/${person.id}`)
+      .set(t.authHeader(tokenA))
+      .send({ name: null })
+    expect(clear.status).toBe(200)
+    expect((clear.body as unknown as { name: string | null }).name).toBeNull()
+    expect((await t.personRepo.findOneByOrFail({ id: person.id })).name).toBeNull()
   })
 
   it('rejects cross-user rename and person assets', async () => {

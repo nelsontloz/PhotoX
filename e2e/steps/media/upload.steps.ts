@@ -8,7 +8,7 @@ import {
   expectThumbnailLoaded,
   uploadFixture,
   waitForThumbnails,
-} from './support'
+} from '../support'
 
 When('I upload {string}', async ({ page, ctx }, name: string) => {
   ctx.assetId = await uploadFixture(page, name)

@@ -6,7 +6,7 @@ import {
   expectSingleTimelineItem,
   uploadFixture,
   waitForThumbnails,
-} from './support'
+} from '../support'
 
 Given('I uploaded {string}', async ({ page, request, ctx }, name: string) => {
   ctx.assetId = await uploadFixture(page, name)

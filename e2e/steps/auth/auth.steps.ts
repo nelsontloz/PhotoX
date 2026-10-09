@@ -8,7 +8,7 @@ import {
   injectSession,
   readSessionRole,
   registerUser,
-} from './support'
+} from '../support'
 
 interface PersistedAuthState {
   accessToken?: string | null

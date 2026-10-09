@@ -1,5 +1,5 @@
 import { expect, type APIRequestContext, type Page, type Response } from '@playwright/test'
-import { Given, Then, When, authHeaders, type AuthState, type Ctx, uploadFixture } from './support'
+import { Given, Then, When, authHeaders, type AuthState, type Ctx, uploadFixture } from '../support'
 
 const TEXT_FIXTURE = 'photo-text.jpg'
 const SEEDED_OCR_TEXT = 'ZEBRAQUUX77'
@@ -125,7 +125,11 @@ async function fetchSimilar(
   auth: AuthState,
   assetId: string,
 ): Promise<RelatedAssets> {
-  const response = await request.get(`/api/v1/assets/${assetId}/similar`, {
+  // The HNSW similarity scan is global: fixtures re-uploaded by other scenarios are duplicate
+  // vectors in the index and can exhaust the default ef_search window (limit 12 -> ef_search 13)
+  // before the per-user filter runs, starving this user's results. A larger limit widens the
+  // candidate window so residual test data in the shared DB cannot flip this assertion.
+  const response = await request.get(`/api/v1/assets/${assetId}/similar?limit=100`, {
     headers: authHeaders(auth),
   })
   expect(response.status()).toBe(200)

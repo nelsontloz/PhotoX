@@ -8,7 +8,7 @@ import {
   expectThumbnailLoaded,
   getAsset,
   waitForThumbnails,
-} from './support'
+} from '../support'
 
 /** Polls until transcode reaches a terminal state, so a 'failed' result fails fast. */
 async function waitForTranscodeStatus(
