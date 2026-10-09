@@ -1,38 +1,27 @@
-import { useEffect, useState } from 'react'
 import type { AlbumDto } from '@photox/shared-types'
 import { listAlbums, createAlbum, updateAlbum, deleteAlbum } from '../api/albums'
 import { useConfirm } from '../components/ConfirmProvider'
+import { useAsyncFetch } from './useAsyncFetch'
+
+const EMPTY: AlbumDto[] = []
 
 export function useAlbums() {
   const confirm = useConfirm()
-  const [albums, setAlbums] = useState<AlbumDto[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const fetchAlbums = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const res = await listAlbums({ limit: 1000 })
-      setAlbums(res.items)
-      setTotal(res.total)
-    } catch (err) {
-      setError((err as Error).message ?? 'Failed to load albums')
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { data, loading, error, refresh } = useAsyncFetch(() => listAlbums({ limit: 1000 }), {
+    errorMessage: 'Failed to load albums',
+    loadingMode: 'always',
+  })
+  const albums = data?.items ?? EMPTY
 
   const create = async (body: { name: string; description?: string }) => {
     const album = await createAlbum(body)
-    await fetchAlbums()
+    await refresh()
     return album
   }
 
   const update = async (id: string, body: { name?: string; description?: string }) => {
     const album = await updateAlbum(id, body)
-    await fetchAlbums()
+    await refresh()
     return album
   }
 
@@ -48,12 +37,8 @@ export function useAlbums() {
     )
       return
     await deleteAlbum(id)
-    await fetchAlbums()
+    await refresh()
   }
 
-  useEffect(() => {
-    void fetchAlbums()
-  }, [])
-
-  return { albums, total, loading, error, refresh: fetchAlbums, create, update, remove }
+  return { albums, total: data?.total ?? 0, loading, error, refresh, create, update, remove }
 }

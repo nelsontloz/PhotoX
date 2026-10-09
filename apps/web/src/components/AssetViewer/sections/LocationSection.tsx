@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
 import { FaLocationDot } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
+import { addOsmTileLayer } from '../../../lib/leafletMap'
 
 interface LocationSectionProps {
   asset: Asset
@@ -35,10 +35,7 @@ export function LocationSection({ asset }: LocationSectionProps) {
     if (!hasCoords || !containerRef.current) return
 
     const map = L.map(containerRef.current, { scrollWheelZoom: false, zoomControl: false })
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      maxZoom: 19,
-    }).addTo(map)
+    addOsmTileLayer(map)
     map.invalidateSize()
     mapRef.current = map
 

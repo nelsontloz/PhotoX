@@ -99,14 +99,7 @@ export class AssetsService {
       .take(limit)
       .getManyAndCount()
 
-    const pageIds = items.map((a) => a.id)
-    const thumbRows = pageIds.length
-      ? await this.thumbRepo.find({
-          where: { assetId: In(pageIds) },
-          order: { createdAt: 'ASC' },
-        })
-      : []
-    const thumbsByAsset = groupThumbsByAsset(thumbRows)
+    const thumbsByAsset = await this.fetchThumbs(items.map((a) => a.id))
 
     return {
       items: items.map((a) => this.toResponse(a, thumbsByAsset.get(a.id) ?? [])),
@@ -123,12 +116,8 @@ export class AssetsService {
   async listByIdsRanked(userId: string, ids: string[]): Promise<AssetResponse[]> {
     if (ids.length === 0) return []
     const assets = await this.repo.find({ where: { id: In(ids), userId, isTrashed: false } })
-    const thumbRows = await this.thumbRepo.find({
-      where: { assetId: In(ids) },
-      order: { createdAt: 'ASC' },
-    })
     const byId = new Map(assets.map((a) => [a.id, a]))
-    const thumbsByAsset = groupThumbsByAsset(thumbRows)
+    const thumbsByAsset = await this.fetchThumbs(ids)
     return ids.flatMap((id) => {
       const asset = byId.get(id)
       return asset ? [this.toResponse(asset, thumbsByAsset.get(id) ?? [])] : []
@@ -352,6 +341,15 @@ export class AssetsService {
     )
     const row = await this.thumbRepo.findOneOrFail({ where: { assetId, size: dto.size } })
     return toThumbnailResponse(row)
+  }
+
+  private async fetchThumbs(assetIds: string[]): Promise<Map<string, AssetThumbnail[]>> {
+    if (assetIds.length === 0) return new Map()
+    const rows = await this.thumbRepo.find({
+      where: { assetId: In(assetIds) },
+      order: { createdAt: 'ASC' },
+    })
+    return groupThumbsByAsset(rows)
   }
 
   private toResponse(asset: Asset, thumbnails?: AssetThumbnail[]): AssetResponse {

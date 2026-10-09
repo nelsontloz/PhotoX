@@ -13,11 +13,17 @@ const jobRefs = {
 export const thumbnailJobSchema = z.object({
   ...jobRefs,
   size: z.enum(['sm', 'md', 'lg', 'xl']),
+  // bounded defer counter the thumbnail processor sets when it re-enqueues a video job while
+  // metadata is still pending — absent on upload payloads
+  metadataWaits: z.number().int().min(0).max(10).optional(),
 })
 
-export const videoJobSchema = z.object({
+// video/embedding/ocr/detection jobs carry only the three refs — one base schema, aliased per queue
+const assetRefsJobSchema = z.object({
   ...jobRefs,
 })
+
+export const videoJobSchema = assetRefsJobSchema
 
 export const metadataJobSchema = z.object({
   ...jobRefs,
@@ -30,17 +36,11 @@ export const faceJobSchema = z.object({
   detector: z.enum(FACE_DETECTOR_KINDS).optional(),
 })
 
-export const embeddingJobSchema = z.object({
-  ...jobRefs,
-})
+export const embeddingJobSchema = assetRefsJobSchema
 
-export const ocrJobSchema = z.object({
-  ...jobRefs,
-})
+export const ocrJobSchema = assetRefsJobSchema
 
-export const detectionJobSchema = z.object({
-  ...jobRefs,
-})
+export const detectionJobSchema = assetRefsJobSchema
 
 export const clusterJobSchema = z.object({
   userId: uuid,

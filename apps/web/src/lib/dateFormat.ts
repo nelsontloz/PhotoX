@@ -22,10 +22,8 @@ function daysDiff(a: Date, b: Date): number {
   return Math.round((startA - startB) / msPerDay)
 }
 
-export function groupDateLabel(dateStr: string): string {
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diff = daysDiff(now, date)
+function labelFor(date: Date): string {
+  const diff = daysDiff(new Date(), date)
 
   if (diff === 0) return 'Today'
   if (diff === 1) return 'Yesterday'
@@ -33,6 +31,10 @@ export function groupDateLabel(dateStr: string): string {
   // ponytail: one section per day (see groupDateSortKey), so the label must be day-granular too —
   // a month-year fallback repeated the same header for every day of the month
   return DATED.format(date)
+}
+
+export function groupDateLabel(dateStr: string): string {
+  return labelFor(new Date(dateStr))
 }
 
 export function groupDateSortKey(dateStr: string): string {
@@ -76,7 +78,7 @@ export function groupDateLabelFromSortKey(sortKey: string): string {
   const [y, m, d] = sortKey.split('-')
   const date = new Date(Number(y), Number(m) - 1, Number(d))
   if (!y || !m || !d || Number.isNaN(date.getTime())) return sortKey
-  return groupDateLabel(date.toISOString())
+  return labelFor(date)
 }
 
 const MONTH_LONG = new Intl.DateTimeFormat('en-US', { month: 'long' })

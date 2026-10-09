@@ -103,6 +103,18 @@ export async function closeTestApp(testApp: TestApp): Promise<void> {
   rmSync(testApp.storageDir, { recursive: true, force: true })
 }
 
+export async function waitUntil(
+  cond: () => boolean | Promise<boolean>,
+  timeoutMs = 30_000,
+): Promise<void> {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    if (await cond()) return
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  throw new Error(`Condition not met within ${timeoutMs}ms`)
+}
+
 export async function waitForJob(
   queue: Queue,
   jobId: string,

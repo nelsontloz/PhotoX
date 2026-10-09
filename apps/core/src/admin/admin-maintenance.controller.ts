@@ -2,14 +2,7 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/commo
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { IsIn } from 'class-validator'
 import { SEARCH_EMBEDDING_MODEL, type FaceDetectorKind } from '@photox/shared-types'
-import type {
-  DetectionsReprocessLastRun,
-  EmbeddingReprocessLastRun,
-  FaceReprocessLastRun,
-  MetadataReprocessLastRun,
-  OcrReprocessLastRun,
-  PlacesBackfillLastRun,
-} from '../settings/settings.service'
+import type { LastRun } from '../settings/settings.service'
 import { AdminAssetsService } from './admin-assets.service'
 import { AdminFacesService } from './admin-faces.service'
 import { AdminReprocessService } from './admin-reprocess.service'
@@ -104,7 +97,7 @@ export class AdminMaintenanceController {
     description: 'Last run record (null when never run) and queue counts',
   })
   async faceReprocessStatus(): Promise<{
-    lastRun: FaceReprocessLastRun | null
+    lastRun: LastRun<'face'> | null
     queue: Record<string, number>
   }> {
     return this.adminFaces.status()
@@ -126,9 +119,7 @@ export class AdminMaintenanceController {
   @ApiOperation({ summary: 'Enqueue embed jobs for all non-trashed photos (admin-only)' })
   @ApiResponse({ status: 200, description: 'Embed jobs enqueued and the run recorded' })
   async reprocessEmbeddings(): Promise<{ enqueued: number; total: number; model: string }> {
-    const { enqueued, total } = await this.adminReprocess.reprocess(
-      this.adminReprocess.specs.embeddings,
-    )
+    const { enqueued, total } = await this.adminReprocess.reprocessEmbeddings()
     return { enqueued, total, model: SEARCH_EMBEDDING_MODEL }
   }
 
@@ -141,10 +132,10 @@ export class AdminMaintenanceController {
     description: 'Last run record (null when never run) and queue counts',
   })
   async embeddingReprocessStatus(): Promise<{
-    lastRun: EmbeddingReprocessLastRun | null
+    lastRun: LastRun<'embedding'> | null
     queue: Record<string, number>
   }> {
-    return this.adminReprocess.status(this.adminReprocess.specs.embeddings)
+    return this.adminReprocess.embeddingsStatus()
   }
 
   @Post('ocr/reprocess')
@@ -152,7 +143,7 @@ export class AdminMaintenanceController {
   @ApiOperation({ summary: 'Enqueue OCR jobs for all non-trashed photos (admin-only)' })
   @ApiResponse({ status: 200, description: 'OCR jobs enqueued and the run recorded' })
   async reprocessOcr(): Promise<{ enqueued: number; total: number }> {
-    return this.adminReprocess.reprocess(this.adminReprocess.specs.ocr)
+    return this.adminReprocess.reprocessOcr()
   }
 
   @Get('ocr/reprocess')
@@ -162,10 +153,10 @@ export class AdminMaintenanceController {
     description: 'Last run record (null when never run) and queue counts',
   })
   async ocrReprocessStatus(): Promise<{
-    lastRun: OcrReprocessLastRun | null
+    lastRun: LastRun<'ocr'> | null
     queue: Record<string, number>
   }> {
-    return this.adminReprocess.status(this.adminReprocess.specs.ocr)
+    return this.adminReprocess.ocrStatus()
   }
 
   @Post('detections/reprocess')
@@ -175,7 +166,7 @@ export class AdminMaintenanceController {
   })
   @ApiResponse({ status: 200, description: 'Detection jobs enqueued and the run recorded' })
   async reprocessDetections(): Promise<{ enqueued: number; total: number }> {
-    return this.adminReprocess.reprocess(this.adminReprocess.specs.detections)
+    return this.adminReprocess.reprocessDetections()
   }
 
   @Get('detections/reprocess')
@@ -185,10 +176,10 @@ export class AdminMaintenanceController {
     description: 'Last run record (null when never run) and queue counts',
   })
   async detectionsReprocessStatus(): Promise<{
-    lastRun: DetectionsReprocessLastRun | null
+    lastRun: LastRun<'detections'> | null
     queue: Record<string, number>
   }> {
-    return this.adminReprocess.status(this.adminReprocess.specs.detections)
+    return this.adminReprocess.detectionsStatus()
   }
 
   @Post('places/backfill')
@@ -204,7 +195,7 @@ export class AdminMaintenanceController {
   @Get('places/backfill')
   @ApiOperation({ summary: 'Places backfill last-run record' })
   @ApiResponse({ status: 200, description: 'Last run record (null when never run)' })
-  async placesBackfillStatus(): Promise<{ lastRun: PlacesBackfillLastRun | null }> {
+  async placesBackfillStatus(): Promise<{ lastRun: LastRun<'places'> | null }> {
     return this.adminPlaces.status()
   }
 
@@ -227,7 +218,7 @@ export class AdminMaintenanceController {
     description: 'Last run record (null when never run) and queue counts',
   })
   async metadataReprocessStatus(): Promise<{
-    lastRun: MetadataReprocessLastRun | null
+    lastRun: LastRun<'metadata'> | null
     queue: Record<string, number>
   }> {
     return this.adminMetadata.status()

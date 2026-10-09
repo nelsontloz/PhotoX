@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, LessThan, Repository } from 'typeorm'
-import { readdir, stat } from 'fs/promises'
+import { readdir } from 'fs/promises'
 import { join, relative } from 'path'
 import { loadEnv, LocalStorageService } from '@photox/shared-config'
 import { Asset, AssetThumbnail, FileRecord } from '../database/entities'
@@ -215,28 +215,15 @@ export class AdminAssetsService {
 
   private async listDiskKeys(): Promise<string[]> {
     const root = loadEnv().STORAGE_DIR
+    // ponytail: *.tmp staging files are mid-write, leave them
+    const entries = await readdir(root, { recursive: true, withFileTypes: true }).catch(() => [])
     const keys: string[] = []
-    const walk = async (dir: string): Promise<void> => {
-      let entries: string[]
-      try {
-        entries = await readdir(dir)
-      } catch {
-        return
-      }
-      for (const entry of entries) {
-        const full = join(dir, entry)
-        const key = relative(root, full)
-        if (key === 'models' || key.startsWith('models/')) continue
-        const s = await stat(full).catch(() => null)
-        if (!s) continue
-        if (s.isDirectory()) {
-          await walk(full)
-        } else if (!entry.endsWith('.tmp')) {
-          keys.push(key)
-        }
-      }
+    for (const entry of entries) {
+      if (!entry.isFile() || entry.name.endsWith('.tmp')) continue
+      const key = relative(root, join(entry.parentPath, entry.name))
+      if (key === 'models' || key.startsWith('models/')) continue
+      keys.push(key)
     }
-    await walk(root)
     return keys
   }
 

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import sharp from 'sharp'
-import { UnrecoverableError, type Job } from 'bullmq'
+import type { Job } from 'bullmq'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { randomUUID, createHash } from 'crypto'
@@ -9,7 +9,7 @@ import { BullMqService } from './bullmq.service'
 import { assertOwnership, parseJobData, thumbnailJobSchema, type ThumbnailJob } from './job-schemas'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
-import type { FileRecord } from '@photox/shared-types'
+import type { Asset, FileRecord } from '@photox/shared-types'
 import { runFfmpeg } from './ffmpeg'
 
 const STANDARD_SIZES: Record<string, [number, number]> = {
@@ -21,6 +21,12 @@ const STANDARD_SIZES: Record<string, [number, number]> = {
 
 // ponytail: fit: 'inside' preserves the source aspect ratio (landscape/portrait); 'cover' was cropping to a square, which broke the downstream masonry grid.
 const RESIZE_OPTIONS: sharp.ResizeOptions = { fit: 'inside', withoutEnlargement: true }
+
+// video thumbs need the metadata job's orientation/duration; metadata runs on a sibling queue with
+// no ordering guarantee, so a pending video job re-enqueues itself with a fixed delay instead of
+// polling in-process — bounded so a permanently failed metadata job still falls through to defaults
+const METADATA_WAIT_DELAY_MS = 1000
+const MAX_METADATA_WAITS = 5
 
 @Injectable()
 export class ThumbnailProcessor {
@@ -39,11 +45,13 @@ export class ThumbnailProcessor {
   }
 
   private async processJob(job: Job<ThumbnailJob>) {
-    const { assetId, fileId, size, userId } = parseJobData(
-      thumbnailJobSchema,
-      job.data,
-      'process-thumbnail',
-    )
+    const {
+      assetId,
+      fileId,
+      size,
+      userId,
+      metadataWaits = 0,
+    } = parseJobData(thumbnailJobSchema, job.data, 'process-thumbnail')
 
     this.logger.log(`Processing thumbnail: asset=${assetId}, size=${size}`)
 
@@ -51,8 +59,34 @@ export class ThumbnailProcessor {
     const asset = await this.core.getAsset(userId, assetId)
     assertOwnership({ assetId, fileId, userId }, { record, asset })
 
+    if (
+      record.mimeType?.startsWith('video/') &&
+      asset.metadataStatus === 'pending' &&
+      metadataWaits < MAX_METADATA_WAITS
+    ) {
+      // ponytail: no jobId — the current job is active, BullMQ would dedupe the re-add away; the
+      // deferred copy re-fetches the asset itself, which is the ordering point. Ceiling: if this
+      // add fails (enqueue logs-and-swallows) the thumbnail is dropped; BullMQ retry the whole job
+      await this.bullMq.enqueue(
+        'process-thumbnail',
+        job.name,
+        { ...job.data, metadataWaits: metadataWaits + 1 },
+        {
+          delay: METADATA_WAIT_DELAY_MS,
+          attempts: 3,
+          backoff: { type: 'exponential' },
+          removeOnComplete: true,
+          removeOnFail: true,
+        },
+      )
+      this.logger.log(
+        `Thumbnail deferred (metadata pending): asset=${assetId}, size=${size}, wait=${metadataWaits + 1}`,
+      )
+      return
+    }
+
     try {
-      await this.generateThumbnail(record, assetId, size, userId)
+      await this.generateThumbnail(record, asset, size, userId)
 
       this.logger.log(`Thumbnail complete: asset=${assetId}, size=${size}`)
     } catch (err) {
@@ -74,7 +108,7 @@ export class ThumbnailProcessor {
 
   private async generateThumbnail(
     record: FileRecord,
-    assetId: string,
+    asset: Asset,
     size: string,
     userId: string,
   ): Promise<void> {
@@ -89,27 +123,10 @@ export class ThumbnailProcessor {
       await copyFile(this.storage.pathFor(record.storageKey), tmpPath)
 
       if (mimeType?.startsWith('video/')) {
-        let orientation: number | null = null
-        let durationSeconds: number | null = null
-
-        // ponytail: thumbnail and metadata jobs race after upload — wait for metadata to land instead of thumbnailing blind (unrotated, frame 0)
-        for (let attempt = 0; attempt < 5; attempt++) {
-          try {
-            const asset = await this.core.getAsset(userId, assetId)
-            orientation = asset.orientation ?? null
-            durationSeconds = asset.durationSeconds !== null ? Number(asset.durationSeconds) : null
-            if (asset.metadataStatus !== 'pending') break
-          } catch (err) {
-            // asset is gone (404 → UnrecoverableError) — polling cannot fix it, fail fast
-            if (err instanceof UnrecoverableError) throw err
-            // transient core error; retry below
-          }
-          if (attempt < 4) {
-            await new Promise((r) => setTimeout(r, 1000))
-          }
-        }
-        const degrees = orientation === null ? 0 : ((orientation % 360) + 360) % 360
-        if (durationSeconds === null || !Number.isFinite(durationSeconds)) durationSeconds = 0
+        const rawDuration = asset.durationSeconds === null ? null : Number(asset.durationSeconds)
+        const durationSeconds =
+          rawDuration === null || !Number.isFinite(rawDuration) ? 0 : rawDuration
+        const degrees = asset.orientation === null ? 0 : ((asset.orientation % 360) + 360) % 360
 
         const seekSec =
           durationSeconds > 0
@@ -140,7 +157,7 @@ export class ThumbnailProcessor {
           degrees,
         )
 
-        await this.storeThumbnail(userId, assetId, size, thumbBuffer, info)
+        await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info)
 
         return
       }
@@ -158,11 +175,11 @@ export class ThumbnailProcessor {
             width,
             height,
           )
-          await this.storeThumbnail(userId, assetId, size, thumbBuffer, info)
+          await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info)
           return
         } catch (err) {
           this.logger.warn(
-            `ffmpeg HEIC decode failed for asset=${assetId} — falling back to sharp: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`,
+            `ffmpeg HEIC decode failed for asset=${asset.id} — falling back to sharp: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`,
           )
           // fall through to sharp path, which throws a normal thumbnail failure if HEIC is unsupported
         }
@@ -170,7 +187,7 @@ export class ThumbnailProcessor {
 
       const { data: thumbBuffer, info } = await this.encodeWebp(tmpPath, size, width, height)
 
-      await this.storeThumbnail(userId, assetId, size, thumbBuffer, info)
+      await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info)
     } finally {
       await unlink(tmpPath).catch(() => undefined)
     }

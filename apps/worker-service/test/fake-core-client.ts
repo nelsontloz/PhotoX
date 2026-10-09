@@ -83,7 +83,8 @@ export function makeAsset(
 }
 
 // ponytail: stateful in-memory CoreClient stand-in — patchMetadata mutates the fixture so the
-// thumbnail video poll observes metadataStatus flips; registerFile can exercise the 200 dedupe path
+// thumbnail video defer re-fetch observes metadataStatus flips; registerFile can exercise the 200
+// dedupe path
 export class FakeCoreClient {
   readonly files = new Map<string, FileRecord>()
   readonly assets = new Map<string, Asset>()

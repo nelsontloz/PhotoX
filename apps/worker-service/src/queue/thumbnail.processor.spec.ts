@@ -8,7 +8,8 @@ import { FakeCoreClient, makeAsset, makeFileRecord } from '../../test/fake-core-
 
 describe('ThumbnailProcessor job guards', () => {
   const base = { assetId: randomUUID(), fileId: randomUUID(), userId: randomUUID() }
-  const fakeJob = (data: unknown) => ({ data }) as unknown as Job<ThumbnailJob>
+  const fakeJob = (data: unknown) =>
+    ({ data, name: 'process-thumbnail' }) as unknown as Job<ThumbnailJob>
 
   function setup() {
     const fake = new FakeCoreClient()
@@ -18,6 +19,7 @@ describe('ThumbnailProcessor job guards', () => {
         callbacks.push(cb)
         return {}
       }),
+      enqueue: vi.fn().mockResolvedValue(undefined),
     }
     const processor = new ThumbnailProcessor(
       bullMq as never,
@@ -25,7 +27,7 @@ describe('ThumbnailProcessor job guards', () => {
       {} as never,
     )
     processor.start()
-    return { run: callbacks[0]!, fake }
+    return { run: callbacks[0]!, fake, bullMq }
   }
 
   it('rejects an invalid payload before any core call', async () => {
@@ -63,5 +65,61 @@ describe('ThumbnailProcessor job guards', () => {
     await expect(run(fakeJob({ ...base, size: 'sm' }))).rejects.toBeInstanceOf(UnrecoverableError)
 
     expect(fake.callsOf('patchMetadata')).toHaveLength(0)
+  })
+
+  it('defers a pending video thumbnail with a bounded delayed re-enqueue instead of polling', async () => {
+    const { run, fake, bullMq } = setup()
+    fake.files.set(
+      base.fileId,
+      makeFileRecord({ id: base.fileId, userId: base.userId, mimeType: 'video/mp4' }),
+    )
+    fake.assets.set(
+      base.assetId,
+      makeAsset({
+        id: base.assetId,
+        userId: base.userId,
+        fileId: base.fileId,
+        kind: 'video',
+        metadataStatus: 'pending',
+      }),
+    )
+
+    await run(fakeJob({ ...base, size: 'lg' }))
+
+    // no thumbnail work yet; a delayed copy of the job carries the wait counter
+    expect(fake.thumbnails).toHaveLength(0)
+    expect(fake.callsOf('registerFile')).toHaveLength(0)
+    expect(bullMq.enqueue).toHaveBeenCalledWith(
+      'process-thumbnail',
+      'process-thumbnail',
+      { ...base, size: 'lg', metadataWaits: 1 },
+      expect.objectContaining({ delay: 1000 }),
+    )
+  })
+
+  it('stops deferring once the metadata wait budget is spent', async () => {
+    const { run, fake, bullMq } = setup()
+    fake.files.set(
+      base.fileId,
+      makeFileRecord({ id: base.fileId, userId: base.userId, mimeType: 'video/mp4' }),
+    )
+    fake.assets.set(
+      base.assetId,
+      makeAsset({
+        id: base.assetId,
+        userId: base.userId,
+        fileId: base.fileId,
+        kind: 'video',
+        metadataStatus: 'pending',
+      }),
+    )
+
+    // budget spent: falls through to the real attempt (and fails on the missing source file here)
+    await expect(run(fakeJob({ ...base, size: 'lg', metadataWaits: 5 }))).rejects.toThrow()
+
+    expect(bullMq.enqueue).not.toHaveBeenCalled()
+    expect(fake.callsOf('patchMetadata').at(-1)!.args[1]).toEqual({
+      thumbnailStatus: 'failed',
+    })
   })
 })

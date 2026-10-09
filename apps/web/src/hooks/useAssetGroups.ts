@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback } from 'react'
 import type { Asset } from '@photox/shared-types'
 import { listAllAssets } from '../api/assets'
 import { groupDateLabel, groupDateSortKey } from '../lib/dateFormat'
 import { useAppStore } from '../store/app-store'
+import { useAsyncFetch } from './useAsyncFetch'
 
 export interface AssetGroup {
   label: string
@@ -11,6 +12,7 @@ export interface AssetGroup {
 }
 
 const PAGE_SIZE = 50
+const EMPTY: AssetGroup[] = []
 
 /**
  * Sorts assets by their date descending and buckets them into day groups (`groupDateSortKey`).
@@ -55,47 +57,18 @@ export function useAssetGroups(
 ) {
   const { isTrashed, favorite, dateField = 'takenAt' } = opts
   const timelineRefreshKey = useAppStore((s) => s.timelineRefreshKey)
-  const [groups, setGroups] = useState<AssetGroup[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const fetchIdRef = useRef(0)
-  const loadedOnceRef = useRef(false)
-  // dedupe same-refresh-key fetches already in flight (StrictMode dev double-mount)
-  const inFlightKeyRef = useRef<number | null>(null)
 
-  const fetchAssets = async () => {
-    const key = timelineRefreshKey
-    if (inFlightKeyRef.current === key) return
-    inFlightKeyRef.current = key
-    const fetchId = ++fetchIdRef.current
-    try {
-      // ponytail: only the first load blocks the page; refreshes update in place so the viewer isn't unmounted
-      if (!loadedOnceRef.current) setLoading(true)
-      setError(null)
+  const fetchGroups = useCallback(async () => {
+    const dateOf = (a: Asset) =>
+      dateField === 'trashedAt' ? a.trashedAt : (a.takenAt ?? a.uploadedAt)
+    const all = await listAllAssets({ limit: PAGE_SIZE, isTrashed, favorite })
+    return groupAssetsByDay(all, dateOf)
+  }, [dateField, isTrashed, favorite])
 
-      const dateOf = (a: Asset) =>
-        dateField === 'trashedAt' ? a.trashedAt : (a.takenAt ?? a.uploadedAt)
+  const { data, loading, error, refresh } = useAsyncFetch(fetchGroups, {
+    refreshKey: timelineRefreshKey,
+    errorMessage: 'Failed to load assets',
+  })
 
-      const all = await listAllAssets({ limit: PAGE_SIZE, isTrashed, favorite })
-
-      if (fetchId !== fetchIdRef.current) return
-
-      setGroups(groupAssetsByDay(all, dateOf))
-    } catch (err) {
-      if (fetchId !== fetchIdRef.current) return
-      setError((err as Error).message ?? 'Failed to load assets')
-    } finally {
-      if (fetchId === fetchIdRef.current) {
-        loadedOnceRef.current = true
-        setLoading(false)
-        inFlightKeyRef.current = null
-      }
-    }
-  }
-
-  useEffect(() => {
-    void fetchAssets()
-  }, [timelineRefreshKey])
-
-  return { groups, loading, error, refresh: fetchAssets }
+  return { groups: data ?? EMPTY, loading, error, refresh }
 }

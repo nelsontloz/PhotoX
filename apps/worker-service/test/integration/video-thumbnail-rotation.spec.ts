@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
 import type { RegisterFileInput } from '../../src/core/core-client.service'
 import { FFMPEG_PATH } from '../../src/queue/ffmpeg'
-import { waitForJob } from './helpers'
+import { waitForJob, waitUntil } from './helpers'
 import {
   closeMediaTestApp,
   createMediaTestApp,
@@ -109,25 +109,31 @@ describe('VideoThumbnailRotation (integration)', () => {
     expect(meta.width).toBeGreaterThan(meta.height)
   })
 
-  it('waits for a pending metadata job and picks up the orientation it writes', async () => {
+  it('defers while metadata is pending, then picks up the orientation it writes', async () => {
     const userId = randomUUID()
     const { record, asset } = await seedVideo(userId, null, 'pending', null)
 
     const queue = testApp.getQueue('process-thumbnail')
-    const jobPromise = queue
-      .add('thumbnail', { assetId: asset.id, fileId: record.id, size: 'lg', userId })
-      .then((job) => waitForJob(queue, job.id!))
+    const first = await queue.add('thumbnail', {
+      assetId: asset.id,
+      fileId: record.id,
+      size: 'lg',
+      userId,
+    })
+    // the first attempt only defers — no thumbnail work yet
+    expect(await waitForJob(queue, first.id!)).toBe('completed')
+    expect(testApp.fake.callsOf('registerThumbnail')).toHaveLength(0)
 
-    // flip the fake asset after the first poll so the second poll sees ready + orientation
-    await new Promise((r) => setTimeout(r, 500))
+    // metadata lands while the delayed re-enqueue waits; the deferred job's own fetch sees it
     Object.assign(testApp.fake.assets.get(asset.id)!, {
       metadataStatus: 'ready',
       orientation: 90,
       durationSeconds: 1,
     })
+    await waitUntil(() => testApp.fake.callsOf('registerThumbnail').length > 0)
 
-    expect(await jobPromise).toBe('completed')
     expect(testApp.fake.callsOf('getAsset').length).toBeGreaterThanOrEqual(2)
+    expect(testApp.fake.assets.get(asset.id)!.thumbnailStatus).toBe('ready')
 
     const dto = testApp.fake.callsOf('registerFile').at(-1)!.args[0] as RegisterFileInput
     const key = testApp.storage.buildKey('thumbnail', userId, dto.id, dto.ext)
@@ -135,25 +141,27 @@ describe('VideoThumbnailRotation (integration)', () => {
     expect(meta.height).toBeGreaterThan(meta.width)
   }, 30_000)
 
-  it('fails fast when the asset disappears during the metadata poll', async () => {
+  it('fails the deferred job fast when the asset disappears', async () => {
     const userId = randomUUID()
     const { record, asset } = await seedVideo(userId, null, 'pending', null)
 
     const queue = testApp.getQueue('process-thumbnail')
-    const jobPromise = queue
-      .add('thumbnail', { assetId: asset.id, fileId: record.id, size: 'lg', userId })
-      .then((job) => waitForJob(queue, job.id!))
+    const first = await queue.add('thumbnail', {
+      assetId: asset.id,
+      fileId: record.id,
+      size: 'lg',
+      userId,
+    })
+    expect(await waitForJob(queue, first.id!)).toBe('completed')
 
-    // wait for the initial getAsset plus the first poll, then remove the asset mid-poll
-    while (testApp.fake.callsOf('getAsset').length < 2) {
-      await new Promise((r) => setTimeout(r, 50))
-    }
-    const deletedAt = Date.now()
     testApp.fake.assets.delete(asset.id)
 
-    expect(await jobPromise).toBe('failed')
-    // without the fail-fast rethrow the poll burns 4 × 1s and only then fails
-    expect(Date.now() - deletedAt).toBeLessThan(3500)
-    expect(testApp.fake.callsOf('getAsset')).toHaveLength(3)
+    // the deferred job fetches the asset itself and the fake throws UnrecoverableError, so that
+    // one fetch fails the job — no 4×1s poll and no retry
+    await waitUntil(() => testApp.fake.callsOf('getAsset').length >= 2)
+    // settle window: a plain-error retry (exponential backoff ~1s) would fetch a third time
+    await new Promise((r) => setTimeout(r, 1500))
+    expect(testApp.fake.callsOf('getAsset')).toHaveLength(2)
+    expect(testApp.fake.callsOf('registerThumbnail')).toHaveLength(0)
   }, 30_000)
 })

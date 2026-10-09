@@ -11,8 +11,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "test:pact:provider": "vitest run --config vitest.pact.config.ts"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.0",
@@ -40,7 +39,6 @@
   "devDependencies": {
     "@nestjs/cli": "^11.0.24",
     "@nestjs/testing": "^11.2.6",
-    "@pact-foundation/pact": "^17.1.4",
     "@swc/core": "^1.15.0",
     "@types/express": "^5.0.0",
     "@types/multer": "^2.2.0",

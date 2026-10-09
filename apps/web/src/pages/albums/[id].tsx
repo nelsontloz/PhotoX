@@ -69,7 +69,7 @@ function AlbumDetailContent() {
     error: assetsError,
     refresh,
     addAssets,
-  } = useAlbumAssets(id ?? '', 60)
+  } = useAlbumAssets(id ?? '')
 
   const refreshAlbum = async () => {
     if (!id) return

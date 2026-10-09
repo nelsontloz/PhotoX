@@ -4,34 +4,14 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, type APIRequestContext, type Page } from '@playwright/test'
 import { createBdd, test as base } from 'playwright-bdd'
+import type { Asset, AuthResponse } from '@photox/shared-types'
 
 export const PASSWORD = 'password123'
 // apps/web is "type": "module" — steps load as ESM, so no __dirname
 export const FIXTURES_DIR = fileURLToPath(new URL('../fixtures', import.meta.url))
 
-export interface SessionUser {
-  id: string
-  email: string
-  role: string
-  displayName?: string
-}
-
 /** Wire shape of POST /api/v1/auth/register (and the localStorage session subset). */
-export interface AuthState {
-  user: SessionUser
-  accessToken: string
-  refreshToken: string
-}
-
-/** Subset of the asset DTO the steps poll. */
-export interface AssetDto {
-  id: string
-  fileId?: string
-  thumbnailStatus?: string | null
-  thumbnails?: { size?: string }[]
-  transcodeStatus?: string | null
-  transcodeFileId?: string | null
-}
+export type AuthState = AuthResponse
 
 export interface Ctx {
   auth?: AuthState
@@ -206,8 +186,8 @@ export async function getAsset(
   request: APIRequestContext,
   auth: AuthState,
   id: string,
-): Promise<AssetDto> {
+): Promise<Asset> {
   const response = await request.get(`/api/v1/assets/${id}`, { headers: authHeaders(auth) })
   expect(response.status()).toBe(200)
-  return (await response.json()) as AssetDto
+  return (await response.json()) as Asset
 }

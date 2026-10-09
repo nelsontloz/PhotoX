@@ -19,7 +19,6 @@ module.exports = {
     'vitest.config.ts',
     'vitest.*.config.ts',
     'vite.config.ts',
-    'apps/web/test/pact/**',
     'apps/web/test/browser/**',
     'e2e/.features-gen/**',
     'e2e/playwright-report/**',

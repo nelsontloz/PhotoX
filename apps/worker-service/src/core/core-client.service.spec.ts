@@ -80,26 +80,18 @@ describe('CoreClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('retries 5xx with backoff then throws a plain Error', async () => {
-    vi.useFakeTimers()
+  it('throws a plain Error on 5xx without in-process retries (BullMQ owns retries)', async () => {
     fetchMock.mockResolvedValue(jsonResponse(503, { message: 'unavailable' }))
 
-    const promise = makeClient().getAsset('user-1', 'asset-1')
-    const assertion = expect(promise).rejects.toThrow('503')
-    await vi.runAllTimersAsync()
-    await assertion
-    expect(fetchMock).toHaveBeenCalledTimes(4)
+    await expect(makeClient().getAsset('user-1', 'asset-1')).rejects.toThrow('503')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('retries network failures then throws a plain Error', async () => {
-    vi.useFakeTimers()
+  it('throws a plain Error on network failures immediately', async () => {
     fetchMock.mockRejectedValue(new TypeError('fetch failed'))
 
-    const promise = makeClient().getAsset('user-1', 'asset-1')
-    const assertion = expect(promise).rejects.toThrow('fetch failed')
-    await vi.runAllTimersAsync()
-    await assertion
-    expect(fetchMock).toHaveBeenCalledTimes(4)
+    await expect(makeClient().getAsset('user-1', 'asset-1')).rejects.toThrow('fetch failed')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('fetches cluster faces with embeddings and trashed assets excluded', async () => {

@@ -172,9 +172,9 @@ describe('SettingsService', () => {
       detector: 'scrfd' as const,
     }
     const { service, upsert } = makeService({ key: FACE_REPROCESS_LAST_RUN_KEY, value: run })
-    await service.setFaceReprocessLastRun(run)
+    await service.setLastRun('face', run)
     expect(upsert).toHaveBeenCalledWith({ key: FACE_REPROCESS_LAST_RUN_KEY, value: run }, ['key'])
-    expect(await service.getFaceReprocessLastRun()).toEqual(run)
+    expect(await service.getLastRun('face')).toEqual(run)
   })
 
   it('returns null for a malformed last reprocess run', async () => {
@@ -182,7 +182,7 @@ describe('SettingsService', () => {
       key: FACE_REPROCESS_LAST_RUN_KEY,
       value: { startedAt: 'nope', total: 'x' },
     })
-    expect(await service.getFaceReprocessLastRun()).toBeNull()
+    expect(await service.getLastRun('face')).toBeNull()
   })
 
   it('persists the last embedding reprocess run and reads it back', async () => {
@@ -193,11 +193,11 @@ describe('SettingsService', () => {
       model: 'siglip2-b16-224',
     }
     const { service, upsert } = makeService({ key: EMBEDDING_REPROCESS_LAST_RUN_KEY, value: run })
-    await service.setEmbeddingReprocessLastRun(run)
+    await service.setLastRun('embedding', run)
     expect(upsert).toHaveBeenCalledWith({ key: EMBEDDING_REPROCESS_LAST_RUN_KEY, value: run }, [
       'key',
     ])
-    expect(await service.getEmbeddingReprocessLastRun()).toEqual(run)
+    expect(await service.getLastRun('embedding')).toEqual(run)
   })
 
   it('returns null for a malformed embedding last reprocess run', async () => {
@@ -205,15 +205,15 @@ describe('SettingsService', () => {
       key: EMBEDDING_REPROCESS_LAST_RUN_KEY,
       value: { startedAt: 1, model: 42 },
     })
-    expect(await service.getEmbeddingReprocessLastRun()).toBeNull()
+    expect(await service.getLastRun('embedding')).toBeNull()
   })
 
   it('persists the last OCR reprocess run and reads it back', async () => {
     const run = { startedAt: '2026-10-03T00:00:00.000Z', total: 7, enqueued: 7 }
     const { service, upsert } = makeService({ key: OCR_REPROCESS_LAST_RUN_KEY, value: run })
-    await service.setOcrReprocessLastRun(run)
+    await service.setLastRun('ocr', run)
     expect(upsert).toHaveBeenCalledWith({ key: OCR_REPROCESS_LAST_RUN_KEY, value: run }, ['key'])
-    expect(await service.getOcrReprocessLastRun()).toEqual(run)
+    expect(await service.getLastRun('ocr')).toEqual(run)
   })
 
   it('returns null for a malformed OCR last reprocess run', async () => {
@@ -221,17 +221,17 @@ describe('SettingsService', () => {
       key: OCR_REPROCESS_LAST_RUN_KEY,
       value: { startedAt: '2026-10-03T00:00:00.000Z', total: 'x' },
     })
-    expect(await service.getOcrReprocessLastRun()).toBeNull()
+    expect(await service.getLastRun('ocr')).toBeNull()
   })
 
   it('persists the last detections reprocess run and reads it back', async () => {
     const run = { startedAt: '2026-10-03T00:00:00.000Z', total: 9, enqueued: 9 }
     const { service, upsert } = makeService({ key: DETECTIONS_REPROCESS_LAST_RUN_KEY, value: run })
-    await service.setDetectionsReprocessLastRun(run)
+    await service.setLastRun('detections', run)
     expect(upsert).toHaveBeenCalledWith({ key: DETECTIONS_REPROCESS_LAST_RUN_KEY, value: run }, [
       'key',
     ])
-    expect(await service.getDetectionsReprocessLastRun()).toEqual(run)
+    expect(await service.getLastRun('detections')).toEqual(run)
   })
 
   it('returns null for a malformed detections last reprocess run', async () => {
@@ -239,6 +239,6 @@ describe('SettingsService', () => {
       key: DETECTIONS_REPROCESS_LAST_RUN_KEY,
       value: { startedAt: 1, enqueued: 'x' },
     })
-    expect(await service.getDetectionsReprocessLastRun()).toBeNull()
+    expect(await service.getLastRun('detections')).toBeNull()
   })
 })

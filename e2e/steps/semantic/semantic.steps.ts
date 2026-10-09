@@ -24,7 +24,7 @@ interface FaceSettings {
   facesByDetector: { human: number; scrfd: number; unset: number }
 }
 
-/** Code-matched subset of GET /api/v1/assets/:id (support's AssetDto has no face fields). */
+/** Code-matched subset of GET /api/v1/assets/:id. */
 interface FaceAsset {
   id: string
   faceStatus?: 'pending' | 'ready' | 'failed' | null
