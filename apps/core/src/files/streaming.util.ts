@@ -1,9 +1,9 @@
 import type { Readable } from 'stream'
-import type { Response } from 'express'
+import type { Request, Response } from 'express'
 import type { FileRecord } from '../database/entities'
 import { etagMatches } from '../assets/assets.controller'
 
-export const RANGE_RE = /^bytes=(\d+)-(\d*)$/
+const RANGE_RE = /^bytes=(\d+)-(\d*)$/
 
 const BYTES_CACHE_CONTROL = 'private, max-age=31536000, immutable'
 
@@ -50,7 +50,7 @@ type FileStreamRecord = Pick<FileRecord, 'mimeType' | 'checksumSha256'>
  *   `Cache-Control: private, max-age=31536000, immutable`. A matching `ifNoneMatch` on a
  *   full (non-Range) GET short-circuits to 304 with no body headers.
  */
-export type PipeFileResponseOptions =
+type PipeFileResponseOptions =
   | { range: null; totalSize: number }
   | {
       range: { start: number; end: number }
@@ -113,4 +113,51 @@ export function pipeFileResponse(res: Response, opts: PipeFileResponseOptions): 
     stream.destroy()
   })
   stream.pipe(res)
+}
+
+interface FileStreamSource {
+  getFileStat(fileId: string): Promise<{ totalSize: number }>
+  stream(
+    fileId: string,
+    opts?: { range: { start: number; end: number } },
+  ): Promise<{ stream: Readable; record: FileRecord; totalSize: number }>
+}
+
+/**
+ * stat → range parse (416 on unsatisfiable) → ranged or full stream → pipe, shared by the
+ * authenticated file route and the public share routes. `attachment: true` adds the
+ * Content-Disposition header (user downloads); public shares stream inline.
+ */
+export async function serveFileBytes(
+  req: Request,
+  res: Response,
+  files: FileStreamSource,
+  fileId: string,
+  opts: { attachment?: boolean } = {},
+): Promise<void> {
+  const rangeHeader = req.headers.range
+  const disposition = (record: FileRecord): string | undefined =>
+    opts.attachment ? attachmentDisposition(record.originalName) : undefined
+
+  if (rangeHeader) {
+    const { totalSize } = await files.getFileStat(fileId)
+    const range = parseRangeHeader(rangeHeader, totalSize)
+    if (!range) {
+      pipeFileResponse(res, { range: null, totalSize })
+      return
+    }
+
+    const { stream, record } = await files.stream(fileId, { range })
+    pipeFileResponse(res, { stream, record, range, totalSize, disposition: disposition(record) })
+    return
+  }
+
+  const { stream, record, totalSize } = await files.stream(fileId)
+  pipeFileResponse(res, {
+    stream,
+    record,
+    totalSize,
+    disposition: disposition(record),
+    ifNoneMatch: req.get('If-None-Match'),
+  })
 }

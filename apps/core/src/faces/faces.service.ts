@@ -4,6 +4,7 @@ import { DataSource, Repository } from 'typeorm'
 import { Face } from '../database/entities'
 import { Person } from '../database/entities'
 import { Asset } from '../database/entities'
+import { assertAssetOwned } from '../common/asset-ownership'
 import { FaceResponseDto } from './dto/face.dto'
 import { refreshPersonFaceCount } from './face-count'
 import type { DetectedFaceInput, FaceDetectorKind } from '@photox/shared-types'
@@ -26,7 +27,7 @@ export class FacesService {
     faces: DetectedFaceInput[],
     detector: FaceDetectorKind | null = null,
   ): Promise<{ count: number }> {
-    await this.assertAssetOwned(userId, assetId)
+    await assertAssetOwned(this.assetRepo, userId, assetId)
     const entities = faces.map((f) => {
       const face = new Face()
       face.assetId = assetId
@@ -44,7 +45,7 @@ export class FacesService {
   // ponytail: transactional companion to registerFaces — worker re-embed does DELETE then POST,
   // so a retry never duplicates stale rows
   async deleteForAsset(userId: string, assetId: string): Promise<{ deleted: number }> {
-    await this.assertAssetOwned(userId, assetId)
+    await assertAssetOwned(this.assetRepo, userId, assetId)
     return this.dataSource.transaction(async (em) => {
       const existing = await em.find(Face, { where: { assetId, userId } })
       if (existing.length === 0) return { deleted: 0 }
@@ -67,7 +68,7 @@ export class FacesService {
   }
 
   async getForAsset(userId: string, assetId: string): Promise<FaceResponseDto[]> {
-    await this.assertAssetOwned(userId, assetId)
+    await assertAssetOwned(this.assetRepo, userId, assetId)
     const faces = await this.repo.find({ where: { assetId } })
     return faces.map((f) => ({
       id: f.id,
@@ -112,10 +113,5 @@ export class FacesService {
     // ponytail: keep Person.faceCount in sync after assign/unassign (cluster job + manual edits both route here)
     if (oldPersonId) await refreshPersonFaceCount(this.repo, this.personRepo, oldPersonId, userId)
     if (personId) await refreshPersonFaceCount(this.repo, this.personRepo, personId, userId)
-  }
-
-  private async assertAssetOwned(userId: string, assetId: string): Promise<void> {
-    const asset = await this.assetRepo.findOne({ where: { id: assetId, userId } })
-    if (!asset) throw new NotFoundException('Asset not found')
   }
 }

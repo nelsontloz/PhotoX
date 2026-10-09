@@ -1,25 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { FaMapLocationDot, FaSpinner } from 'react-icons/fa6'
+import { FaMapLocationDot } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
 import { listAllAssets } from '../../api/assets'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
+import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
+import { locationMarkerIcon } from '../../components/AssetViewer/sections/LocationSection'
 import { formatShortDate } from '../../lib/dateFormat'
-
-const markerIcon = new L.DivIcon({
-  className: '',
-  html: '<div style="width:12px;height:12px;background:#3b82f6;border:2px solid white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.3)"></div>',
-  iconSize: [12, 12],
-  iconAnchor: [6, 6],
-})
 
 function PlacesContent() {
   const [assets, setAssets] = useState<Asset[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const mapRef = useRef<L.Map | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -56,7 +50,7 @@ function PlacesContent() {
     )
 
     for (const asset of assets) {
-      L.marker([asset.latitude!, asset.longitude!], { icon: markerIcon })
+      L.marker([asset.latitude!, asset.longitude!], { icon: locationMarkerIcon })
         .addTo(map)
         .bindPopup(
           `<div style="font-family:system-ui,sans-serif;min-width:140px">
@@ -67,48 +61,36 @@ function PlacesContent() {
     }
 
     map.fitBounds(bounds, { padding: [40, 40] })
-    mapRef.current = map
 
     return () => {
       map.remove()
-      mapRef.current = null
     }
   }, [assets, loading, error])
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <FaSpinner className="text-2xl text-blue-500 animate-spin" />
-      </div>
-    )
+    return <LoadingState className="flex items-center justify-center h-full" />
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <p className="text-red-500 text-sm">{error}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="text-blue-500 text-sm font-medium hover:underline"
-        >
-          Retry
-        </button>
-      </div>
+      <ErrorState
+        message={error}
+        onRetry={() => window.location.reload()}
+        className="flex flex-col items-center justify-center h-full gap-4"
+        messageClassName="text-red-500"
+      />
     )
   }
 
   if (assets.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full px-4 text-center">
-        <div className="mb-8 w-20 h-20 rounded-full bg-blue-500/10 dark:bg-blue-500/15 ring-1 ring-blue-500/25 flex items-center justify-center">
-          <FaMapLocationDot className="text-4xl text-blue-500 dark:text-blue-400" />
-        </div>
-        <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 dark:text-white">
-          No photos with location data found
-        </h1>
-        <p className="mt-4 text-slate-500 dark:text-slate-400 text-base sm:text-lg leading-relaxed max-w-md">
-          Photos with GPS coordinates will appear on the map.
-        </p>
+      <div className="h-full flex items-center justify-center">
+        <EmptyState
+          icon={<FaMapLocationDot className="text-4xl text-blue-500 dark:text-blue-400" />}
+          circleClassName="bg-blue-500/10 dark:bg-blue-500/15 ring-1 ring-blue-500/25"
+          title="No photos with location data found"
+          body="Photos with GPS coordinates will appear on the map."
+        />
       </div>
     )
   }

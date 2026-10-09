@@ -15,9 +15,8 @@ import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { useConfirm } from '../../components/ConfirmProvider'
 import { LoadingState } from '../../components/StateViews'
-import { AssetViewer } from '../../components/AssetViewer/AssetViewer'
+import { ViewerHost } from '../../components/ViewerHost'
 import { GalleryItem } from '../../components/GalleryItem'
-import { AlbumPickerDialog } from '../../components/AlbumPickerDialog'
 import { getAlbum, removeAssetFromAlbum } from '../../api/albums'
 import { createShare, getShareUrl } from '../../api/shares'
 import { useAlbumAssets } from '../../hooks/useAlbumAssets'
@@ -335,38 +334,37 @@ function AlbumDetailContent() {
         </>
       )}
 
-      {nav.selected && (
-        <AssetViewer
-          asset={nav.selected}
-          onClose={nav.close}
-          onPrev={nav.goPrev}
-          onNext={nav.goNext}
-          hasPrev={nav.hasPrev}
-          hasNext={nav.hasNext}
-          onTrash={() => {
-            void nav.trash()
-          }}
-          onToggleFavorite={(nextValue) => {
+      <ViewerHost
+        asset={nav.selected}
+        onClose={nav.close}
+        onPrev={nav.goPrev}
+        onNext={nav.goNext}
+        hasPrev={nav.hasPrev}
+        hasNext={nav.hasNext}
+        onTrash={() => {
+          void nav.trash()
+        }}
+        onToggleFavorite={(nextValue) => {
+          const cur = nav.selected
+          if (cur) void nav.toggleFavorite(cur.id, nextValue)
+        }}
+        onAddToAlbum={() => setPickerOpen(true)}
+        onRemoveFromAlbum={() => {
+          void (async () => {
             const cur = nav.selected
-            if (cur) void nav.toggleFavorite(cur.id, nextValue)
-          }}
-          onAddToAlbum={() => setPickerOpen(true)}
-          onRemoveFromAlbum={() => {
-            void (async () => {
-              const cur = nav.selected
-              if (!cur) return
-              const assetLabel = cur.originalName ?? cur.title ?? 'this asset'
-              if (!(await confirm({ title: `Remove "${assetLabel}" from "${album.name}"?` })))
-                return
-              await removeAssetFromAlbum(album.id, cur.id)
-              await Promise.all([refresh(), refreshAlbum()])
-              nav.close()
-            })()
-          }}
-          siblingAssets={assets}
-          onSelectSibling={(asset) => nav.open(asset)}
-        />
-      )}
+            if (!cur) return
+            const assetLabel = cur.originalName ?? cur.title ?? 'this asset'
+            if (!(await confirm({ title: `Remove "${assetLabel}" from "${album.name}"?` }))) return
+            await removeAssetFromAlbum(album.id, cur.id)
+            await Promise.all([refresh(), refreshAlbum()])
+            nav.close()
+          })()
+        }}
+        siblingAssets={assets}
+        onSelectSibling={(asset) => nav.open(asset)}
+        pickerOpen={pickerOpen}
+        onPickerClose={() => setPickerOpen(false)}
+      />
 
       {showAddDialog && (
         <AddPhotosDialog
@@ -376,14 +374,6 @@ function AlbumDetailContent() {
             await addAssets(ids)
             await refreshAlbum()
           }}
-        />
-      )}
-
-      {nav.selected && (
-        <AlbumPickerDialog
-          open={pickerOpen}
-          onClose={() => setPickerOpen(false)}
-          assetIds={[nav.selected.id]}
         />
       )}
     </div>

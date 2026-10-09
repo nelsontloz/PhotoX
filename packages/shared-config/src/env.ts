@@ -37,7 +37,7 @@ const envSchema = z.object({
   AUTH_CLOCK_TOLERANCE_SEC: z.coerce.number().default(60),
 })
 
-export type Env = z.infer<typeof envSchema>
+type Env = z.infer<typeof envSchema>
 
 function findWorkspaceRoot(start: string): string {
   let dir = start
@@ -83,7 +83,7 @@ const authEnvSchema = z.object({
   AUTH_TOKEN_SECRET: z.string().min(32, 'AUTH_TOKEN_SECRET must be at least 32 characters'),
 })
 
-export type AuthEnv = z.infer<typeof authEnvSchema>
+type AuthEnv = z.infer<typeof authEnvSchema>
 
 export function loadAuthEnv(): AuthEnv {
   const parsed = authEnvSchema.safeParse(process.env)

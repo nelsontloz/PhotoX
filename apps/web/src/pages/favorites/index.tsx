@@ -3,8 +3,7 @@ import { FaHeart } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { GalleryItem } from '../../components/GalleryItem'
-import { AssetViewer } from '../../components/AssetViewer/AssetViewer'
-import { AlbumPickerDialog } from '../../components/AlbumPickerDialog'
+import { ViewerHost } from '../../components/ViewerHost'
 import { useAssetGroups } from '../../hooks/useAssetGroups'
 import { useAssetNavigation } from '../../hooks/useAssetNavigation'
 import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
@@ -52,30 +51,23 @@ function FavoritesContent() {
           </div>
         </section>
       ))}
-      {nav.selected && (
-        <>
-          <AssetViewer
-            asset={nav.selected}
-            onClose={nav.close}
-            onPrev={nav.goPrev}
-            onNext={nav.goNext}
-            hasPrev={nav.hasPrev}
-            hasNext={nav.hasNext}
-            onToggleFavorite={(nextValue) => {
-              const cur = nav.selected
-              if (cur) void nav.toggleFavorite(cur.id, nextValue)
-            }}
-            onAddToAlbum={() => setPickerOpen(true)}
-            siblingAssets={groups.flatMap((g) => g.items)}
-            onSelectSibling={(asset) => nav.open(asset)}
-          />
-          <AlbumPickerDialog
-            open={pickerOpen}
-            onClose={() => setPickerOpen(false)}
-            assetIds={[nav.selected.id]}
-          />
-        </>
-      )}
+      <ViewerHost
+        asset={nav.selected}
+        onClose={nav.close}
+        onPrev={nav.goPrev}
+        onNext={nav.goNext}
+        hasPrev={nav.hasPrev}
+        hasNext={nav.hasNext}
+        onToggleFavorite={(nextValue) => {
+          const cur = nav.selected
+          if (cur) void nav.toggleFavorite(cur.id, nextValue)
+        }}
+        onAddToAlbum={() => setPickerOpen(true)}
+        siblingAssets={groups.flatMap((g) => g.items)}
+        onSelectSibling={(asset) => nav.open(asset)}
+        pickerOpen={pickerOpen}
+        onPickerClose={() => setPickerOpen(false)}
+      />
     </div>
   )
 }

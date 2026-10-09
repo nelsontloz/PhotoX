@@ -23,9 +23,7 @@ export class OcrProcessor {
   ) {}
 
   start() {
-    this.bullMq.createWorker<OcrJob>('process-ocr', (job) => this.processJob(job), {
-      concurrency: 1,
-    })
+    this.bullMq.createWorker<OcrJob>('process-ocr', (job) => this.processJob(job))
 
     this.logger.log('OCR processor listening for jobs')
   }

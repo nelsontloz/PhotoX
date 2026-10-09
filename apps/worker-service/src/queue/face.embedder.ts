@@ -27,7 +27,7 @@ export interface RawImage {
   channels: number
 }
 
-export interface SimilarityParams {
+interface SimilarityParams {
   a: number
   b: number
   tx: number

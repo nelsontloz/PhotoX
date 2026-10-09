@@ -1,6 +1,5 @@
 import axios from 'axios'
 import { useUploadStore } from '../store/upload-store'
-import { useThumbStore } from '../store/thumb-store'
 import { useAppStore } from '../store/app-store'
 import { uploadFile } from '../api/assets'
 import { makeThumbnail } from './clientThumbnail'
@@ -9,7 +8,7 @@ const MAX_CONCURRENT = 3
 
 const filesRef = new Map<string, File>()
 
-export function enqueueFiles(files: File[], opts?: { onComplete?: () => void }): void {
+export function enqueueFiles(files: File[]): void {
   if (files.length === 0) return
 
   const { enqueue } = useUploadStore.getState()
@@ -26,7 +25,6 @@ export function enqueueFiles(files: File[], opts?: { onComplete?: () => void }):
 
   void processQueue(enqueuedIds).then(() => {
     useAppStore.getState().bumpTimelineRefresh()
-    opts?.onComplete?.()
   })
 }
 
@@ -48,9 +46,9 @@ async function processQueue(ids: string[]): Promise<void> {
       try {
         const thumbBlob = await makeThumbnail(file)
         if (thumbBlob) {
-          const thumbUrl = URL.createObjectURL(thumbBlob)
-          useThumbStore.getState().set(id, thumbUrl)
-          useUploadStore.getState().setStatus(id, 'uploading', { localThumbUrl: thumbUrl })
+          useUploadStore
+            .getState()
+            .setStatus(id, 'uploading', { localThumbUrl: URL.createObjectURL(thumbBlob) })
         }
 
         const asset = await uploadFile(

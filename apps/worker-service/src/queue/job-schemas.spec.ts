@@ -49,14 +49,12 @@ describe('job payload schemas', () => {
     expect(() => parseJobData(faceJobSchema, payload, 'process-faces')).toThrow(UnrecoverableError)
   })
 
-  it('accepts cleanup-orphans payloads from both producers', () => {
+  it('accepts empty cleanup-orphans payloads, rejecting non-objects', () => {
     expect(parseJobData(cleanupOrphansJobSchema, {}, 'cleanup-orphans')).toEqual({})
-    expect(parseJobData(cleanupOrphansJobSchema, { dryRun: true }, 'cleanup-orphans')).toEqual({
-      dryRun: true,
-    })
-    expect(() =>
-      parseJobData(cleanupOrphansJobSchema, { dryRun: 'yes' }, 'cleanup-orphans'),
-    ).toThrow(UnrecoverableError)
+    expect(parseJobData(cleanupOrphansJobSchema, { dryRun: true }, 'cleanup-orphans')).toEqual({})
+    expect(() => parseJobData(cleanupOrphansJobSchema, [], 'cleanup-orphans')).toThrow(
+      UnrecoverableError,
+    )
   })
 })
 

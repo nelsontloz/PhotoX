@@ -1,6 +1,6 @@
 import type { AssetDetectionDto, DetectionBox } from '@photox/shared-types'
 
-export interface DisplayRect {
+interface DisplayRect {
   left: number
   top: number
   width: number

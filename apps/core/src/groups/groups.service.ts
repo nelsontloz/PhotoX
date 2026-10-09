@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, type Repository } from 'typeorm'
 import { toSql } from 'pgvector'
@@ -9,6 +9,7 @@ import {
 } from '@photox/shared-types'
 import { Asset } from '../database/entities'
 import { AssetEmbedding } from '../database/entities/asset-embedding.entity'
+import { assertAssetOwned } from '../common/asset-ownership'
 import { AssetsService } from '../assets/assets.service'
 import type { DuplicatesQueryDto, SimilarQueryDto } from './dto/groups-query.dto'
 
@@ -31,7 +32,7 @@ export class GroupsService {
     assetId: string,
     dto: DuplicatesQueryDto,
   ): Promise<RelatedAssetsResponse> {
-    await this.assertAssetOwned(userId, assetId)
+    await assertAssetOwned(this.assetRepo, userId, assetId)
     const threshold = dto.threshold ?? DEFAULT_DUPLICATE_THRESHOLD
     const rows: { id: string }[] = await this.dataSource.query(
       // ('x'||phash) is the hex→bit(64) form: plain text::bit(64) only parses 0/1 strings.
@@ -58,7 +59,7 @@ export class GroupsService {
     assetId: string,
     dto: SimilarQueryDto,
   ): Promise<RelatedAssetsResponse> {
-    await this.assertAssetOwned(userId, assetId)
+    await assertAssetOwned(this.assetRepo, userId, assetId)
     const limit = dto.limit ?? DEFAULT_SIMILAR_LIMIT
     const source = await this.embeddingRepo.findOne({
       where: { assetId, kind: 'image', model: SEARCH_EMBEDDING_MODEL },
@@ -88,10 +89,5 @@ export class GroupsService {
       rows.map((r) => r.id),
     )
     return { items, total: rows.length }
-  }
-
-  private async assertAssetOwned(userId: string, assetId: string): Promise<void> {
-    const asset = await this.assetRepo.findOne({ where: { id: assetId, userId } })
-    if (!asset) throw new NotFoundException('Asset not found')
   }
 }

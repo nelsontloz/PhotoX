@@ -1,10 +1,10 @@
-export const RRF_K = 50
+const RRF_K = 50
 
 // Fixed bonus for person/place name matches: equivalent to a rank-1 hit in one retrieval branch,
 // so a routed asset ties the strongest ANN/FTS hit instead of dominating it.
 export const ROUTE_BONUS = 1 / (RRF_K + 1)
 
-export interface FusedHit {
+interface FusedHit {
   id: string
   score: number
 }

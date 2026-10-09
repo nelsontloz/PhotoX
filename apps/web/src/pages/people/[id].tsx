@@ -4,10 +4,9 @@ import { FaArrowLeft, FaFaceSmile } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { LoadingState } from '../../components/StateViews'
-import { AssetViewer } from '../../components/AssetViewer/AssetViewer'
+import { ViewerHost } from '../../components/ViewerHost'
 import { GalleryItem } from '../../components/GalleryItem'
 import { FaceOverlay } from '../../components/AssetViewer/FaceOverlay'
-import { AlbumPickerDialog } from '../../components/AlbumPickerDialog'
 import { renamePerson } from '../../api/persons'
 import { usePersonDetail } from '../../hooks/usePersonDetail'
 import { useInlineRename } from '../../hooks/useInlineRename'
@@ -117,24 +116,17 @@ export default function PersonDetailPage() {
           )}
         </div>
 
-        {selectedAsset && (
-          <>
-            <AssetViewer
-              asset={selectedAsset}
-              onClose={() => setSelectedAsset(null)}
-              hasPrev={false}
-              hasNext={false}
-              onAddToAlbum={() => setPickerOpen(true)}
-              siblingAssets={assets}
-              onSelectSibling={setSelectedAsset}
-            />
-            <AlbumPickerDialog
-              open={pickerOpen}
-              onClose={() => setPickerOpen(false)}
-              assetIds={[selectedAsset.id]}
-            />
-          </>
-        )}
+        <ViewerHost
+          asset={selectedAsset}
+          onClose={() => setSelectedAsset(null)}
+          hasPrev={false}
+          hasNext={false}
+          onAddToAlbum={() => setPickerOpen(true)}
+          siblingAssets={assets}
+          onSelectSibling={setSelectedAsset}
+          pickerOpen={pickerOpen}
+          onPickerClose={() => setPickerOpen(false)}
+        />
       </>
     )
   }

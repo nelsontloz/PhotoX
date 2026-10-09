@@ -5,7 +5,7 @@ import sharp from 'sharp'
 import type { FaceLandmark, FaceResult } from '@vladmandic/human'
 import type { DetectedBox, FaceDetectionBackend } from './face.detector.types'
 
-export interface FaceLandmarks5 {
+interface FaceLandmarks5 {
   leftEye: [number, number]
   rightEye: [number, number]
   nose: [number, number]

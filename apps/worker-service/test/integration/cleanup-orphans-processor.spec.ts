@@ -21,7 +21,7 @@ describe('CleanupOrphansProcessor (integration)', () => {
     const queue = testApp.getQueue('cleanup-orphans')
     const job = await queue.add(
       'cleanup-orphans',
-      { dryRun: false },
+      {},
       {
         jobId: randomUUID(),
         ...(attempts > 1 ? { attempts, backoff: { type: 'fixed' as const, delay: 50 } } : {}),
@@ -47,7 +47,7 @@ describe('CleanupOrphansProcessor (integration)', () => {
     logSpy.mockRestore()
   })
 
-  it('accepts payloads without dryRun (field kept for producer compat, ignored)', async () => {
+  it('accepts an empty payload', async () => {
     const queue = testApp.getQueue('cleanup-orphans')
     const job = await queue.add('cleanup-orphans', {})
 
@@ -57,7 +57,7 @@ describe('CleanupOrphansProcessor (integration)', () => {
 
   it('fails unrecoverably on an invalid payload without calling core', async () => {
     const queue = testApp.getQueue('cleanup-orphans')
-    const job = await queue.add('cleanup-orphans', { dryRun: 'yes' })
+    const job = await queue.add('cleanup-orphans', [])
 
     expect(await waitForJob(queue, job.id!)).toBe('failed')
     expect((await queue.getJob(job.id!))?.failedReason).toContain(

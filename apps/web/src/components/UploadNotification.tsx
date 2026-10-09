@@ -7,7 +7,6 @@ import {
   FaCloudArrowUp,
 } from 'react-icons/fa6'
 import { useUploadStore, type UploadStatus } from '../store/upload-store'
-import { useThumbStore } from '../store/thumb-store'
 import { UploadListItem } from './UploadListItem'
 import { formatBytes } from '../lib/format'
 
@@ -22,7 +21,6 @@ export function UploadNotification() {
   const items = useUploadStore((s) => s.items)
   const dismissed = useUploadStore((s) => s.dismissed)
   const setDismissed = useUploadStore((s) => s.setDismissed)
-  const thumbUrls = useThumbStore((s) => s.urls)
 
   const [collapsed, setCollapsed] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -129,11 +127,7 @@ export function UploadNotification() {
             {[...items]
               .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status])
               .map((item) => (
-                <UploadListItem
-                  key={item.id}
-                  item={item}
-                  thumbUrl={item.localThumbUrl ?? thumbUrls[item.id]}
-                />
+                <UploadListItem key={item.id} item={item} thumbUrl={item.localThumbUrl} />
               ))}
           </ul>
 

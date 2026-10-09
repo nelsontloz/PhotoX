@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
 import { Dialog } from './Dialog'
 
-export interface ConfirmOptions {
+interface ConfirmOptions {
   title: string
   body?: string
   confirmLabel?: string

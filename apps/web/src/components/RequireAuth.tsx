@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore, subscribeAuthFailure } from '../store/auth-store'
+import { LoadingState } from './StateViews'
 
 interface RequireAuthProps {
   children: React.ReactNode
@@ -17,14 +18,7 @@ export function RequireAuth({ children }: RequireAuthProps) {
   const location = useLocation()
 
   if (status === 'loading') {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background-dark text-white">
-        <div className="flex flex-col items-center gap-4">
-          <div className="size-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm text-slate-400">Loading...</span>
-        </div>
-      </div>
-    )
+    return <LoadingState className="min-h-screen bg-background-dark" />
   }
 
   if (status !== 'authenticated') {

@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
+import { Injectable, UnprocessableEntityException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import type { Repository } from 'typeorm'
 import { Asset } from '../database/entities'
 import { AssetOcr } from '../database/entities/asset-ocr.entity'
+import { assertAssetOwned } from '../common/asset-ownership'
 import type { RegisterOcrDto } from './dto/register-ocr.dto'
 
 const TEXT_MAX = 50_000
@@ -19,7 +20,7 @@ export class OcrService {
   ) {}
 
   async register(assetId: string, userId: string, dto: RegisterOcrDto): Promise<{ ok: true }> {
-    await this.assertAssetOwned(userId, assetId)
+    await assertAssetOwned(this.assetRepo, userId, assetId)
     this.assertValid(dto)
     // asset_ocr PK IS assetId: exactly one concatenated row per asset, so the search FTS
     // LEFT JOIN cannot fan out. Re-runs overwrite; empty results are rejected upstream (422)
@@ -64,10 +65,5 @@ export class OcrService {
         throw new UnprocessableEntityException('confidence must be between 0 and 1')
       }
     }
-  }
-
-  private async assertAssetOwned(userId: string, assetId: string): Promise<void> {
-    const asset = await this.assetRepo.findOne({ where: { id: assetId, userId } })
-    if (!asset) throw new NotFoundException('Asset not found')
   }
 }

@@ -20,7 +20,7 @@ import { UserFilesService } from './user-files.service'
 import { FileRecordDto } from '../file-record.dto'
 import { RegisterFileBodyDto } from './dto/register-file.body.dto'
 import { UploadFileBodyDto } from './dto/upload-file.body.dto'
-import { parseRangeHeader, pipeFileResponse, attachmentDisposition } from '../streaming.util'
+import { attachmentDisposition, pipeFileResponse, serveFileBytes } from '../streaming.util'
 
 const diskStorage = multer.diskStorage({
   destination: tmpdir(),
@@ -80,35 +80,7 @@ export class UserFilesController {
   @ApiResponse({ status: 404, description: 'File not found' })
   @ApiResponse({ status: 416, description: 'Range not satisfiable' })
   async stream(@Param('fileId') fileId: string, @Res() res: Response, @Req() req: Request) {
-    const rangeHeader = req.headers.range
-
-    if (rangeHeader) {
-      const { totalSize } = await this.userFilesService.getFileStat(fileId)
-      const range = parseRangeHeader(rangeHeader, totalSize)
-      if (!range) {
-        pipeFileResponse(res, { range: null, totalSize })
-        return
-      }
-
-      const { stream, record } = await this.userFilesService.stream(fileId, { range })
-      pipeFileResponse(res, {
-        stream,
-        record,
-        range,
-        totalSize,
-        disposition: attachmentDisposition(record.originalName),
-      })
-      return
-    }
-
-    const { stream, record, totalSize } = await this.userFilesService.stream(fileId)
-    pipeFileResponse(res, {
-      stream,
-      record,
-      totalSize,
-      disposition: attachmentDisposition(record.originalName),
-      ifNoneMatch: req.get('If-None-Match'),
-    })
+    await serveFileBytes(req, res, this.userFilesService, fileId, { attachment: true })
   }
 
   @Get(':fileId')

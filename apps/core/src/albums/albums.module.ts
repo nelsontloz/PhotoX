@@ -11,6 +11,5 @@ import { AssetsModule } from '../assets/assets.module'
   imports: [TypeOrmModule.forFeature([Album, AlbumAsset, Asset]), AssetsModule],
   controllers: [AlbumsController],
   providers: [AlbumsService],
-  exports: [AlbumsService],
 })
 export class AlbumsModule {}

@@ -9,9 +9,9 @@ import type * as ort from 'onnxruntime-node'
 // ponytail: YOLO26n ONNX export (AGPL-3.0, Ultralytics yolo26n.pt via model.export(format="onnx"))
 // provisioned by `pnpm --filter @photox/worker-service detect-model` into STORAGE_DIR/models/<dir>/ —
 // offline-only at runtime, never committed.
-export const DETECT_MODEL_DIR = 'yolo26n'
-export const DETECT_MODEL_FILE = 'yolo26n.onnx'
-export const DETECT_INPUT_SIZE = 640
+const DETECT_MODEL_DIR = 'yolo26n'
+const DETECT_MODEL_FILE = 'yolo26n.onnx'
+const DETECT_INPUT_SIZE = 640
 
 // ponytail: 0.4 keeps weak person/blur blobs out of the labels union; the export's own end-to-end
 // head already filtered at 0.25. Upgrade: tune once a corpus shows missed small objects.
@@ -104,7 +104,7 @@ export const COCO_LABELS = [
   'toothbrush',
 ] as const
 
-export interface LetterboxParams {
+interface LetterboxParams {
   scale: number
   resizedW: number
   resizedH: number

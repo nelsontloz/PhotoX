@@ -4,22 +4,18 @@ import { enqueueFiles } from '../lib/upload'
 
 interface UploadButtonProps {
   variant?: 'default' | 'compact'
-  onComplete?: () => void
 }
 
-export function UploadButton({ variant = 'default', onComplete }: UploadButtonProps) {
+export function UploadButton({ variant = 'default' }: UploadButtonProps) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const open = useCallback(() => inputRef.current?.click(), [])
 
-  const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(e.target.files ?? [])
-      enqueueFiles(files, { onComplete })
-      if (inputRef.current) inputRef.current.value = ''
-    },
-    [onComplete],
-  )
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    enqueueFiles(files)
+    if (inputRef.current) inputRef.current.value = ''
+  }, [])
 
   if (variant === 'compact') {
     return (

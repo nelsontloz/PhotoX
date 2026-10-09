@@ -1,7 +1,7 @@
 import { api } from './client'
 import type { SearchResponse } from '@photox/shared-types'
 
-export interface SearchParams {
+interface SearchParams {
   q: string
   limit?: number
   offset?: number

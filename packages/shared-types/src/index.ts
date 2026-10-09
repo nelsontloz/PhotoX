@@ -56,27 +56,6 @@ export interface FileRecord {
   createdAt: string
 }
 
-export interface FileSummary {
-  id: string
-  userId: string
-  originalName: string
-  mimeType: string
-  sizeBytes: number
-  createdAt: string
-}
-
-export interface FileListResponse {
-  items: FileSummary[]
-  total: number
-  limit: number
-  offset: number
-}
-
-export interface BatchFilesResponse {
-  items: FileRecord[]
-  missing: string[]
-}
-
 export type AssetKind = 'photo' | 'video'
 
 export type MetadataStatus = 'pending' | 'ready' | 'failed'
@@ -161,8 +140,6 @@ export interface AssetThumbnail {
   createdAt: string
 }
 
-export type AssetThumbnailListResponse = AssetThumbnail[]
-
 export type AdminUserSortField = 'createdAt' | 'displayName' | 'email' | 'role'
 
 export interface AdminUserRow {
@@ -190,10 +167,6 @@ export interface AssetFailureCounts {
 export interface AdminAssetCountsResponse {
   photos: AssetFailureCounts
   videos: AssetFailureCounts
-}
-
-export interface AdminReprocessThumbnailsRequest {
-  kind: 'photo' | 'video'
 }
 
 export interface AdminReprocessThumbnailsResponse {
@@ -374,10 +347,6 @@ export interface RegisterFacesRequestDto {
   detector?: FaceDetectorKind
 }
 
-export interface RegisterFacesResponseDto {
-  count: number
-}
-
 export interface PersonDto {
   id: string
   userId: string
@@ -414,15 +383,6 @@ export interface PersonAssetsResponse {
 
 export interface UpdatePersonRequest {
   name: string | null
-}
-
-export interface ReassignFacesRequest {
-  toPersonId: string | null
-  faceIds: string[]
-}
-
-export interface ReassignFacesResponse {
-  moved: number
 }
 
 export * from './albums'

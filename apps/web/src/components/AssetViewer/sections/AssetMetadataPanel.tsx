@@ -2,7 +2,7 @@ import { FaCircleCheck, FaCircleInfo, FaCircleXmark, FaSpinner } from 'react-ico
 import type { Asset } from '@photox/shared-types'
 import { formatBytes, formatDuration } from '../../../lib/format'
 
-export interface AssetMetadataPanelProps {
+interface AssetMetadataPanelProps {
   asset: Asset
 }
 

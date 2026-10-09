@@ -1,9 +1,9 @@
-export interface RouteCandidates {
+interface RouteCandidates {
   persons: { id: string; name: string }[]
   places: string[]
 }
 
-export interface RouteHits {
+interface RouteHits {
   personIds: string[]
   places: string[]
 }

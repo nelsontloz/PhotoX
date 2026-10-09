@@ -9,6 +9,6 @@ export default defineConfig({
     passWithNoTests: true,
     testTimeout: 60_000,
     hookTimeout: 120_000,
-    include: ['src/**/*.spec.ts', 'test/**/*.spec.ts', 'test/**/*.pact.spec.ts'],
+    include: ['src/**/*.spec.ts', 'test/**/*.spec.ts'],
   },
 })

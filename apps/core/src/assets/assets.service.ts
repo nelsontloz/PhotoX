@@ -412,7 +412,7 @@ function groupThumbsByAsset(rows: AssetThumbnail[]): Map<string, AssetThumbnail[
   return byAsset
 }
 
-export function toThumbnailResponse(t: AssetThumbnail): AssetThumbnailResponse {
+function toThumbnailResponse(t: AssetThumbnail): AssetThumbnailResponse {
   return {
     size: t.size,
     fileId: t.fileId,

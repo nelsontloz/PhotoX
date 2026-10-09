@@ -1,4 +1,4 @@
-import { FaFolder, FaNoteSticky, FaXmark } from 'react-icons/fa6'
+import { FaNoteSticky, FaXmark } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
 import { AssetMetadataPanel } from './sections/AssetMetadataPanel'
 import { CameraSection } from './sections/CameraSection'
@@ -42,13 +42,6 @@ export function ViewerInfoPanel({ asset, onClose, onFaceHover }: ViewerInfoPanel
         </section>
         <FacesSection asset={asset} onFaceHover={onFaceHover} />
         <LocationSection asset={asset} />
-        <section>
-          <div className="flex items-center gap-2 text-slate-400 mb-3">
-            <FaFolder className="text-[18px]" />
-            <h4 className="text-xs font-bold uppercase tracking-wider">Albums</h4>
-          </div>
-          <p className="text-sm text-slate-600 italic">No albums</p>
-        </section>
       </div>
     </aside>
   )

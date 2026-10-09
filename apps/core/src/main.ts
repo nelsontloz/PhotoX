@@ -8,7 +8,7 @@ import { loadEnv } from '@photox/shared-config'
 
 async function bootstrap() {
   const env = loadEnv()
-  const app = await NestFactory.create(AppModule, { rawBody: true })
+  const app = await NestFactory.create(AppModule)
 
   // ponytail: helmet not in the workspace — three static headers instead; no CSP on purpose
   // (would break the Vite-served SPA and Swagger UI)

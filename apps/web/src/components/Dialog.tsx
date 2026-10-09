@@ -17,7 +17,6 @@ interface DialogProps {
   icon?: ReactNode
   /** Empty string renders the bare title (admin confirm dialogs have no header row). */
   headerClassName?: string
-  showClose?: boolean
   closeClassName?: string
   closeDisabled?: boolean
   /** Overlay click / Escape close — off for dialogs that must be answered. */
@@ -36,7 +35,6 @@ export function Dialog({
   titleTag: Title = 'h2',
   icon,
   headerClassName = 'flex items-center justify-between mb-4',
-  showClose = true,
   closeClassName = 'text-slate-400 hover:text-white transition-colors p-1 shrink-0',
   closeDisabled,
   closeOnOverlay = true,
@@ -72,17 +70,15 @@ export function Dialog({
         {headerClassName ? (
           <div className={headerClassName}>
             {heading}
-            {showClose && (
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={closeDisabled}
-                className={closeClassName}
-                aria-label="Close"
-              >
-                <FaXmark className="text-lg" />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={closeDisabled}
+              className={closeClassName}
+              aria-label="Close"
+            >
+              <FaXmark className="text-lg" />
+            </button>
           </div>
         ) : (
           heading

@@ -13,7 +13,7 @@ function formatCoord(value: number, positive: string, negative: string): string 
   return `${abs.toFixed(4)}° ${value >= 0 ? positive : negative}`
 }
 
-const markerIcon = new L.DivIcon({
+export const locationMarkerIcon = new L.DivIcon({
   className: '',
   html: '<div style="width:12px;height:12px;background:#3b82f6;border:2px solid white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.3)"></div>',
   iconSize: [12, 12],
@@ -55,7 +55,7 @@ export function LocationSection({ asset }: LocationSectionProps) {
     if (markerRef.current) {
       markerRef.current.setLatLng(pos)
     } else {
-      markerRef.current = L.marker(pos, { icon: markerIcon }).addTo(mapRef.current)
+      markerRef.current = L.marker(pos, { icon: locationMarkerIcon }).addTo(mapRef.current)
     }
     mapRef.current.setView(pos, 14)
   }, [lat, lng])
