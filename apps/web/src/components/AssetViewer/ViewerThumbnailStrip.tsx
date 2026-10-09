@@ -44,7 +44,7 @@ export function ViewerThumbnailStrip({
                   : 'border-transparent opacity-50 hover:opacity-100 hover:border-white/30'
               }`}
             >
-              <AssetThumb asset={asset} />
+              <AssetThumb asset={asset} eager />
             </button>
           )
         })}

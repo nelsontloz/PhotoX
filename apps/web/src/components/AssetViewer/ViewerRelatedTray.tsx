@@ -79,7 +79,7 @@ export function ViewerRelatedTray({ similar, duplicates, onOpenAsset }: ViewerRe
                 title={asset.originalName ?? asset.title ?? 'Open asset'}
                 className="relative h-14 w-14 shrink-0 rounded overflow-hidden border-2 border-transparent hover:border-white/40 transition-colors"
               >
-                <AssetThumb asset={asset} />
+                <AssetThumb asset={asset} eager />
               </button>
             ))}
           </div>

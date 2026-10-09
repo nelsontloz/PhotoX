@@ -38,7 +38,9 @@ export function AlbumCover({
   if (cover) {
     return (
       <div ref={ref} className={`absolute inset-0 ${className}`}>
-        <AssetThumb asset={cover} />
+        {/* eager: this component already gates the cover fetch on viewport visibility, so the
+            AssetThumb scroll-root gate is redundant — and broken inside fixed dialogs. */}
+        <AssetThumb asset={cover} eager />
       </div>
     )
   }
