@@ -6,9 +6,11 @@ import {
   UnauthorizedException,
 } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
-import type { Request } from 'express'
+import { randomUUID } from 'crypto'
+import type { Request, Response } from 'express'
 import { loadEnv } from '@photox/shared-config'
 import type { JwtPayload, Role } from '@photox/shared-types'
+import { readAccessCookie, setAccessCookie } from './auth-cookie'
 import { isAdminRoute, isOpenRoute, isWorkerAllowedRoute } from './open-routes'
 
 declare global {
@@ -36,12 +38,16 @@ export class JwtAuthGuard implements CanActivate {
     this.clockTolerance = loadEnv().AUTH_CLOCK_TOLERANCE_SEC
   }
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<Request>()
     const { method, path } = req
     if (isOpenRoute(method, path)) return true
 
-    const token = bearerToken(req)
+    // explicit credentials win: the Authorization header is a deliberate, request-scoped
+    // credential — a stale cookie jar (API clients) must not shadow it. Browser subresources
+    // carry only the cookie, so it stays the fallback.
+    const cookieToken = readAccessCookie(req)
+    const token = bearerToken(req) ?? cookieToken
     if (!token) throw new UnauthorizedException()
 
     let payload: JwtPayload
@@ -64,6 +70,29 @@ export class JwtAuthGuard implements CanActivate {
     // user routes stay governed by ordinary ownership checks
     if (payload.act && isAdminRoute(path) && !isWorkerAllowedRoute(method, path))
       throw new ForbiddenException('Not allowed for service tokens')
+
+    // sliding renewal: once past half of its own ttl, a cookie-borne token is re-minted
+    // from the verified payload so subresources keep authenticating without client JS
+    // ponytail: each parallel request re-mints its own cookie — same exp, no coordination
+    if (
+      cookieToken !== undefined &&
+      typeof payload.exp === 'number' &&
+      typeof payload.iat === 'number'
+    ) {
+      const now = Date.now() / 1000
+      const ttl = payload.exp - payload.iat
+      if (payload.exp - now < ttl / 2) {
+        const renewed = await this.jwt.signAsync({
+          sub: payload.sub,
+          email: payload.email,
+          role: payload.role,
+          jti: randomUUID(),
+          // a worker-actor token must stay locked to the admin allowlist after renewal
+          ...(payload.act ? { act: payload.act } : {}),
+        })
+        setAccessCookie(context.switchToHttp().getResponse<Response>(), renewed, ttl * 1000)
+      }
+    }
     return true
   }
 }

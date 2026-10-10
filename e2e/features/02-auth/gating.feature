@@ -30,9 +30,9 @@ Feature: Anonymous visitors cannot reach the app
       | GET /api/v1/persons                                                        |
       | GET /api/v1/admin/users                                                    |
 
-  Scenario: The public file-stream route stays open (anonymous is not rejected)
+  Scenario: The file-stream route rejects anonymous requests
     When an anonymous client calls "GET /api/v1/files/00000000-0000-0000-0000-000000000000/stream"
-    Then the response status is 404
+    Then the response status is 401
 
   Scenario: Public share routes are open and unknown tokens are not found
     When an anonymous client calls "GET /api/share/does-not-exist"

@@ -1,5 +1,6 @@
 import request from 'supertest'
 import { JwtService } from '@nestjs/jwt'
+import { ACCESS_COOKIE } from '../../src/auth/auth-cookie'
 import { closeTestApp, createApiTestApp, resetDb, apiServer } from './helpers'
 import type { ApiTestApp } from './helpers'
 import { BullMqService } from '../../src/queue/bullmq.service'
@@ -257,6 +258,24 @@ describe('auth HTTP surface', () => {
 
       const anonymous = await request(apiServer(t)).get('/api/v1/assets')
       expect(anonymous.status).toBe(401)
+    })
+
+    it('sets an HttpOnly access cookie that authenticates on its own', async () => {
+      await registerUser('cookie@example.com')
+      const login = await request(apiServer(t))
+        .post('/api/v1/auth/login')
+        .send({ email: 'cookie@example.com', password: PASSWORD })
+      expect(login.status).toBe(200)
+
+      const setCookie = login.headers['set-cookie'] as unknown as string[] | undefined
+      const accessCookie = setCookie?.find((line) => line.startsWith(`${ACCESS_COOKIE}=`))
+      expect(accessCookie).toBeDefined()
+      expect(accessCookie).toMatch(/HttpOnly/)
+      expect(accessCookie).toMatch(/Path=\/api/)
+
+      const cookie = accessCookie?.split(';')[0] ?? ''
+      const res = await request(apiServer(t)).get('/api/v1/assets').set('Cookie', cookie)
+      expect(res.status).toBe(200)
     })
   })
 

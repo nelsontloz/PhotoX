@@ -1,17 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render } from '@testing-library/react'
+import { act, fireEvent, render } from '@testing-library/react'
 import type { Asset, AssetThumbnail } from '@photox/shared-types'
-
-// pending: the cache-miss path must stay on the Skeleton, so the download never settles
-const pendingThumb = new Promise<Blob>(() => {
-  /* intentionally never resolves */
-})
-vi.mock('../api/assets', () => ({ downloadFile: vi.fn(() => pendingThumb) }))
 
 import { AssetThumb } from './AssetThumb'
 import { ScrollContainerContext } from './AppShell'
-import { viewerThumbKey } from '../lib/asset-media'
-import { clearBlobCache, getCachedBlobUrl } from '../lib/blob-cache'
 import { resetSharedIntersection } from '../lib/shared-intersection'
 import { TIMELINE_PREFETCH_PX } from '../lib/timelineLayout'
 
@@ -21,14 +13,22 @@ let intersect: (() => void) | null = null
 let lastInit: IntersectionObserverInit | undefined
 let constructed = 0
 class IOStub {
+  private targets: Element[] = []
   constructor(cb: IntersectionObserverCallback, init?: IntersectionObserverInit) {
     constructed++
     lastInit = init
+    // The captured callback is the shared dispatcher (lib/shared-intersection), which routes by
+    // entry.target — so the fake entry must carry the observed element.
     intersect = () =>
-      cb([{ isIntersecting: true }] as unknown as IntersectionObserverEntry[], this as never)
+      cb(
+        this.targets.map(
+          (target) => ({ isIntersecting: true, target }) as IntersectionObserverEntry,
+        ),
+        this as unknown as IntersectionObserver,
+      )
   }
-  observe(): void {
-    /* no-op: visibility is driven by the captured callback only */
+  observe(el: Element): void {
+    this.targets.push(el)
   }
   unobserve(): void {
     /* no-op */
@@ -38,49 +38,41 @@ class IOStub {
   }
 }
 
-let urlSeq = 0
-const createObjectURL = vi.fn(() => `blob:mock-${++urlSeq}`)
-const revokeObjectURL = vi.fn()
-
 const thumb = { fileId: 'f1', size: 'md', width: 4, height: 3 } as AssetThumbnail
 const asset = { id: 'a1', kind: 'photo', fileId: 'f1', thumbnails: [thumb] } as Asset
 
 beforeEach(() => {
   intersect = null
   constructed = 0
-  urlSeq = 0
-  URL.createObjectURL = createObjectURL
-  URL.revokeObjectURL = revokeObjectURL
-  clearBlobCache()
-  createObjectURL.mockClear()
   // Drop observers cached against the previous test's stub before re-stubbing the global.
   resetSharedIntersection()
   vi.stubGlobal('IntersectionObserver', IOStub)
 })
 
 afterEach(() => {
-  Reflect.deleteProperty(URL, 'createObjectURL')
-  Reflect.deleteProperty(URL, 'revokeObjectURL')
   vi.unstubAllGlobals()
 })
 
-describe('AssetThumb remount', () => {
-  it('paints an already-cached thumb on first render, before the tile ever intersects', async () => {
-    await getCachedBlobUrl(viewerThumbKey(thumb), () => Promise.resolve({ size: 8 } as Blob))
-
-    const { container } = render(<AssetThumb asset={asset} />)
-
-    // Scroll-back remounts this tile: the observer has not fired, yet the img is already there
-    // instead of a Skeleton frame.
-    expect(container.querySelector('img')?.getAttribute('src')).toMatch(/^blob:/)
-    expect(intersect).not.toBeNull()
-  })
-
-  it('falls back to a Skeleton when nothing is cached', () => {
+describe('AssetThumb gating', () => {
+  it('shows a Skeleton, then the direct stream URL once the tile intersects', () => {
     const { container } = render(<AssetThumb asset={asset} />)
 
     expect(container.querySelector('img')).toBeNull()
+    expect(container.textContent).not.toContain('No preview')
     expect(container.querySelector('.animate-pulse')).not.toBeNull()
+
+    act(() => intersect?.())
+
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('/api/v1/files/f1/stream')
+  })
+
+  it('shows the No preview fallback when the stream image fails to load', () => {
+    const { container } = render(<AssetThumb asset={asset} eager />)
+
+    fireEvent.error(container.querySelector('img')!)
+
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.textContent).toContain('No preview')
   })
 })
 
@@ -108,14 +100,13 @@ describe('AssetThumb prefetch window', () => {
 })
 
 describe('AssetThumb eager (fixed-overlay contexts)', () => {
-  it('downloads without ever registering an observer', async () => {
-    const { downloadFile } = await import('../api/assets')
-    render(<AssetThumb asset={asset} eager />)
+  it('renders the direct stream URL without ever registering an observer', () => {
+    const { container } = render(<AssetThumb asset={asset} eager />)
 
     // A position:fixed thumb never intersects the timeline scroll root, so eager must skip the
-    // observer entirely and go straight to the download.
+    // observer entirely and go straight to the stream URL.
     expect(intersect).toBeNull()
-    expect(downloadFile).toHaveBeenCalledWith('f1')
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('/api/v1/files/f1/stream')
   })
 })
 

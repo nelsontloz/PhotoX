@@ -74,7 +74,7 @@ export class UserFilesController {
   }
 
   @Get(':fileId/stream')
-  @ApiOperation({ summary: 'Stream file bytes for video playback (public, capability URL)' })
+  @ApiOperation({ summary: 'Stream file bytes for video playback (authenticated)' })
   @ApiResponse({ status: 200, description: 'File stream' })
   @ApiResponse({ status: 206, description: 'Partial content' })
   @ApiResponse({ status: 404, description: 'File not found' })

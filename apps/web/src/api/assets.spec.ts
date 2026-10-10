@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { Asset, AssetListResponse } from '@photox/shared-types'
-import { getVideoStreamUrl, listAllAssets } from './assets'
+import { getFileStreamUrl, getVideoStreamUrl, listAllAssets } from './assets'
 
 const { getMock } = vi.hoisted(() => ({
   getMock: vi.fn<
@@ -19,9 +19,13 @@ function makeAsset(id: string): Asset {
   return { id, kind: 'photo', uploadedAt: '2024-01-01T00:00:00Z' } as Asset
 }
 
-describe('video URL builders', () => {
-  it('getVideoStreamUrl targets core through the /api prefix', () => {
-    expect(getVideoStreamUrl('file-1')).toBe('/api/v1/files/file-1/stream')
+describe('stream URL builders', () => {
+  it('getFileStreamUrl targets core through the /api prefix', () => {
+    expect(getFileStreamUrl('file-1')).toBe('/api/v1/files/file-1/stream')
+  })
+
+  it('getVideoStreamUrl delegates to getFileStreamUrl', () => {
+    expect(getVideoStreamUrl('file-1')).toBe(getFileStreamUrl('file-1'))
   })
 })
 

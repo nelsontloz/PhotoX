@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Asset } from '@photox/shared-types'
-import { downloadFile } from '../../api/assets'
-import { pickViewerThumb, viewerThumbKey } from '../../lib/asset-media'
-import { getCachedBlobUrl, peekCachedBlobUrl } from '../../lib/blob-cache'
+import { getFileStreamUrl } from '../../api/assets'
+import { pickViewerThumb } from '../../lib/asset-media'
 
 export function useAssetMedia(asset: Asset): {
   imageUrl: string | null
@@ -14,33 +13,20 @@ export function useAssetMedia(asset: Asset): {
   const [videoPosterUrl, setVideoPosterUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // The strip already rendered this md thumb, so it is usually in the blob cache: a synchronous
-  // stand-in to stretch+blur while the full-size viewer file downloads.
+  // The strip already requested this md thumb, so the browser HTTP cache serves it while the
+  // full-size stream loads: a synchronous stand-in to stretch+blur.
   const mdThumb = asset.thumbnails?.find((t) => t.size === 'md') ?? asset.thumbnails?.[0]
-  const placeholderUrl = mdThumb ? (peekCachedBlobUrl(viewerThumbKey(mdThumb)) ?? null) : null
+  const placeholderUrl = mdThumb ? getFileStreamUrl(mdThumb.fileId) : null
+  const thumb = pickViewerThumb(asset)
 
+  // Deps include thumb?.fileId: thumbnails can arrive in a later fetch with the same id/kind
+  // (viewer opened before processing finished), and the effect must rerun for the new stream URL.
   useEffect(() => {
     let cancelled = false
     const isPhoto = asset.kind === 'photo'
-    const thumb = pickViewerThumb(asset)
     if (!thumb) {
       setImageUrl(null)
       setVideoPosterUrl(null)
-      setLoading(false)
-      return
-    }
-
-    const key = viewerThumbKey(thumb)
-    const cached = peekCachedBlobUrl(key)
-    if (cached) {
-      // prefetched neighbor: render the resolved URL synchronously, no fetch, no flash
-      if (isPhoto) {
-        setImageUrl(cached)
-        setVideoPosterUrl(null)
-      } else {
-        setVideoPosterUrl(cached)
-        setImageUrl(null)
-      }
       setLoading(false)
       return
     }
@@ -50,24 +36,27 @@ export function useAssetMedia(asset: Asset): {
     setImageUrl(null)
     setVideoPosterUrl(null)
 
-    getCachedBlobUrl(key, () => downloadFile(thumb.fileId))
-      .then(async (url) => {
-        // Pre-decode off the main thread so the swap paints the first frame instead of waiting on decode.
-        const img = new Image()
-        img.src = url
-        await img.decode?.().catch(() => undefined)
-        if (cancelled) return
-        if (isPhoto) setImageUrl(url)
-        else setVideoPosterUrl(url)
-      })
-      .catch(() => {
+    const url = getFileStreamUrl(thumb.fileId)
+    void (async () => {
+      // Pre-decode off the main thread so the swap paints the first frame instead of waiting on decode.
+      const img = new Image()
+      img.src = url
+      try {
+        await img.decode?.()
+      } catch {
+        // Network/decode failure: leave both URLs null so ViewerMedia renders its no-preview state.
         if (!cancelled) setLoading(false)
-      })
+        return
+      }
+      if (cancelled) return
+      if (isPhoto) setImageUrl(url)
+      else setVideoPosterUrl(url)
+    })()
 
     return () => {
       cancelled = true
     }
-  }, [asset.id, asset.kind])
+  }, [asset.id, asset.kind, thumb?.fileId])
 
   return { imageUrl, videoPosterUrl, placeholderUrl, loading }
 }

@@ -137,8 +137,13 @@ export async function registerUser(
   return (await response.json()) as AuthResponse
 }
 
-/** Seeds the zustand-persisted session before any app script runs. */
-export async function injectSession(page: Page, auth: AuthResponse): Promise<void> {
+/** Seeds the zustand-persisted session and the access cookie before the app loads. */
+export async function injectSession(
+  page: Page,
+  auth: AuthResponse,
+  baseURL: string | undefined,
+): Promise<void> {
+  if (!baseURL) throw new Error('baseURL is required to seed the access cookie')
   const persisted = JSON.stringify({
     state: {
       user: auth.user,
@@ -154,6 +159,19 @@ export async function injectSession(page: Page, auth: AuthResponse): Promise<voi
       window.localStorage.setItem('photox.auth', value)
     }
   }, persisted)
+  // browser subresources (<img>/<video> hitting /api/v1/files/:id/stream) authenticate via the
+  // HttpOnly cookie, not localStorage — seed the same token for the web origin, scoped to /api
+  await page.context().addCookies([
+    {
+      name: 'photox_access',
+      value: auth.accessToken,
+      // url form keeps it host-only with path /api, so the server's logout clear matches it
+      url: `${baseURL}/api`,
+      httpOnly: true,
+      sameSite: 'Lax',
+      secure: false,
+    },
+  ])
 }
 
 export async function readSessionRole(page: Page): Promise<string> {

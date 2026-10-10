@@ -59,8 +59,16 @@ export async function downloadFile(fileId: string): Promise<Blob> {
   return data
 }
 
-export function getVideoStreamUrl(fileId: string): string {
+/**
+ * Same-origin URL for direct <img>/<video> use: the browser attaches the auth cookie itself, which
+ * the axios client's Bearer header pipeline can't for those tags.
+ */
+export function getFileStreamUrl(fileId: string): string {
   return `/api/v1/files/${fileId}/stream`
+}
+
+export function getVideoStreamUrl(fileId: string): string {
+  return getFileStreamUrl(fileId)
 }
 
 export async function uploadFile(

@@ -40,7 +40,7 @@ Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 
 - `argon2` (core dependency only — never add bcrypt). HS256 access JWT + opaque rotated refresh token.
 - `JwtPayload` is `{ sub, email, role, iat, exp, jti? }`.
-- Global `JwtAuthGuard` (`apps/core/src/auth/jwt-auth.guard.ts`) verifies the Bearer HS256 token (clock tolerance `AUTH_CLOCK_TOLERANCE_SEC`), sets `req.user`, and ignores incoming identity headers entirely. Open routes (`apps/core/src/auth/open-routes.ts`): `/docs*`, `/health`, `api/v1/auth*`, `api/share*`, `GET /api/v1/files/:fileId/stream`. `api/v1/admin*` requires the admin role, enforced centrally by the guard.
+- Global `JwtAuthGuard` (`apps/core/src/auth/jwt-auth.guard.ts`) authenticates with the Bearer HS256 token first (clock tolerance `AUTH_CLOCK_TOLERANCE_SEC`), falling back to the `photox_access` HttpOnly cookie (SameSite=Lax, Path=/api; set by login/register/refresh, cleared by logout, re-minted past half its TTL so browser subresources keep working; `apps/core/src/auth/auth-cookie.ts`); it sets `req.user` and ignores incoming identity headers entirely. Open routes (`apps/core/src/auth/open-routes.ts`): `/docs*`, `/health`, `api/v1/auth*`, `api/share*` (file streams are authenticated). `api/v1/admin*` requires the admin role, enforced centrally by the guard.
 
 ## Jobs (BullMQ over Redis)
 
@@ -62,6 +62,7 @@ Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 
 - Explicit lazy routes in `src/App.tsx`, `react-router-dom@7`, `zustand`, `axios`. Vite proxies `/api` + `/health` to `VITE_API_URL || http://localhost:3000` (core).
 - Dark by default (`<html class="dark">`). Tailwind v4 CSS config (`@import "tailwindcss"` + `@theme` in `app.css`) — no `tailwind.config.*`. Icons: `react-icons/fa6` only.
+- Media loads through direct stream URLs (`/api/v1/files/:id/stream`, `/api/v1/faces/:id/thumb`) authenticated by the HttpOnly cookie — no blob fetching.
 
 ## Style
 

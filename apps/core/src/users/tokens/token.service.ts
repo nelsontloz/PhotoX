@@ -17,6 +17,13 @@ export class TokenService {
     })
   }
 
+  // remaining lifetime of an access token for the cookie's maxAge; 0 when it has no exp
+  accessCookieMaxAge(accessToken: string): number {
+    const payload = this.jwtService.decode<{ exp?: number } | null>(accessToken)
+    if (!payload?.exp) return 0
+    return Math.max(0, payload.exp * 1000 - Date.now())
+  }
+
   generate(): string {
     return randomBytes(32).toString('base64url')
   }

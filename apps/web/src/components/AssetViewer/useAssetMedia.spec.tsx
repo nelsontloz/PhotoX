@@ -1,12 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, waitFor } from '@testing-library/react'
+import { act, render, waitFor } from '@testing-library/react'
 import type { Asset, AssetThumbnail } from '@photox/shared-types'
 
-vi.mock('../../api/assets', () => ({ downloadFile: vi.fn() }))
-
-import { downloadFile } from '../../api/assets'
-import { viewerThumbKey } from '../../lib/asset-media'
-import { clearBlobCache, getCachedBlobUrl } from '../../lib/blob-cache'
 import { useAssetMedia } from './useAssetMedia'
 
 const aXl = { fileId: 'a-xl', size: 'xl', width: 4, height: 3 } as AssetThumbnail
@@ -14,9 +9,20 @@ const bMd = { fileId: 'b-md', size: 'md', width: 4, height: 3 } as AssetThumbnai
 const bXl = { fileId: 'b-xl', size: 'xl', width: 4, height: 3 } as AssetThumbnail
 
 const assetA = { id: 'a', kind: 'photo', fileId: 'a-xl', thumbnails: [aXl] } as Asset
+// same id/kind as assetA, thumbnails not ready yet (viewer opened before processing finished)
+const assetLate = { id: 'a', kind: 'photo', fileId: 'a-xl' } as Asset
 const assetB = { id: 'b', kind: 'photo', fileId: 'b-xl', thumbnails: [bMd, bXl] } as Asset
 
-const never = () => new Promise<Blob>(() => undefined)
+const never = () => new Promise<void>(() => undefined)
+
+// jsdom has no HTMLImageElement.decode; the stub is also the seam that holds a "slow connection" open.
+const decodeMock = vi.fn<() => Promise<void>>()
+class ImageStub {
+  src = ''
+  decode(): Promise<void> {
+    return decodeMock()
+  }
+}
 
 function Probe({ asset }: { asset: Asset }) {
   const { imageUrl, placeholderUrl, loading } = useAssetMedia(asset)
@@ -29,54 +35,73 @@ function Probe({ asset }: { asset: Asset }) {
   )
 }
 
-let urlSeq = 0
-const createObjectURL = vi.fn(() => `blob:mock-${++urlSeq}`)
-const revokeObjectURL = vi.fn()
-
 beforeEach(() => {
-  urlSeq = 0
-  URL.createObjectURL = createObjectURL
-  URL.revokeObjectURL = revokeObjectURL
-  createObjectURL.mockClear()
-  // stub first: clearing evicts entries left by the previous test, which calls revokeObjectURL
-  clearBlobCache()
-  vi.mocked(downloadFile).mockReset()
+  decodeMock.mockReset()
+  decodeMock.mockResolvedValue(undefined)
+  vi.stubGlobal('Image', ImageStub)
 })
 
 afterEach(() => {
-  Reflect.deleteProperty(URL, 'createObjectURL')
-  Reflect.deleteProperty(URL, 'revokeObjectURL')
+  vi.unstubAllGlobals()
 })
 
 describe('useAssetMedia navigation', () => {
-  it('drops the stale full image and exposes the cached md placeholder while the next file loads', async () => {
-    const download = vi.mocked(downloadFile)
-    download.mockResolvedValueOnce({ size: 8 } as Blob) // asset A's xl resolves
-    download.mockImplementation(never) // asset B's xl is on a slow connection
+  it('drops the stale full image and exposes the direct md placeholder while the next file loads', async () => {
+    decodeMock.mockResolvedValueOnce(undefined) // asset A's xl decodes
+    decodeMock.mockImplementation(never) // asset B's xl is on a slow connection
 
     const { getByTestId, rerender } = render(<Probe asset={assetA} />)
-    await waitFor(() => expect(getByTestId('image').textContent).toMatch(/^blob:/))
+    await waitFor(() => expect(getByTestId('image').textContent).toBe('/api/v1/files/a-xl/stream'))
 
-    // the strip rendered asset B's md before the click, so it is in the blob cache
-    await getCachedBlobUrl(viewerThumbKey(bMd), () => Promise.resolve({ size: 8 } as Blob))
     rerender(<Probe asset={assetB} />)
 
-    // no stale full image, spinner on, blurred md stand-in available
+    // no stale full image, spinner on, md stand-in available synchronously
     expect(getByTestId('image').textContent).toBe('none')
     expect(getByTestId('loading').textContent).toBe('true')
-    expect(getByTestId('placeholder').textContent).toMatch(/^blob:/)
+    expect(getByTestId('placeholder').textContent).toBe('/api/v1/files/b-md/stream')
   })
 
-  it('renders a prefetched viewer thumb without a loading flash', async () => {
-    vi.mocked(downloadFile).mockImplementation(never)
-
+  it('swaps the viewer image in only after the preload decode resolves', async () => {
     const { getByTestId, rerender } = render(<Probe asset={assetA} />)
-    const prefetched = await getCachedBlobUrl(viewerThumbKey(bXl), () =>
-      Promise.resolve({ size: 8 } as Blob),
+    await waitFor(() => expect(getByTestId('image').textContent).toBe('/api/v1/files/a-xl/stream'))
+
+    let finishDecode!: () => void
+    decodeMock.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishDecode = resolve
+      }),
     )
     rerender(<Probe asset={assetB} />)
 
-    expect(getByTestId('image').textContent).toBe(prefetched)
+    // b-xl is still decoding: the previous image must be gone and no URL swapped in yet
+    expect(getByTestId('image').textContent).toBe('none')
+    expect(getByTestId('loading').textContent).toBe('true')
+
+    act(() => {
+      finishDecode()
+    })
+    await waitFor(() => expect(getByTestId('image').textContent).toBe('/api/v1/files/b-xl/stream'))
+  })
+
+  it('falls back to the no-preview state when the preload decode fails', async () => {
+    decodeMock.mockRejectedValue(new Error('stream failed'))
+
+    const { getByTestId } = render(<Probe asset={assetA} />)
+
+    // ViewerMedia reads this as "not loading, no URL" → its No preview available branch
+    await waitFor(() => expect(getByTestId('loading').textContent).toBe('false'))
+    expect(getByTestId('image').textContent).toBe('none')
+  })
+
+  it('picks up thumbnails that arrive after mount (same id and kind)', async () => {
+    const { getByTestId, rerender } = render(<Probe asset={assetLate} />)
+
+    // no thumb yet: nothing to load, not stuck spinning
+    expect(getByTestId('image').textContent).toBe('none')
     expect(getByTestId('loading').textContent).toBe('false')
+
+    rerender(<Probe asset={assetA} />)
+
+    await waitFor(() => expect(getByTestId('image').textContent).toBe('/api/v1/files/a-xl/stream'))
   })
 })
