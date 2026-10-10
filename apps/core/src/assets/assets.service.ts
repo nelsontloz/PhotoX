@@ -11,6 +11,7 @@ import { Asset } from '../database/entities'
 import { AssetThumbnail } from '../database/entities'
 import { AlbumAsset } from '../albums/entities/album-asset.entity'
 import { Face } from '../database/entities'
+import { findOwnedOr404 } from '../common/asset-ownership'
 import { CreateAssetDto } from './dto/create-asset.dto'
 import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
@@ -205,8 +206,7 @@ export class AssetsService {
   }
 
   async getOne(userId: string, id: string): Promise<AssetResponse> {
-    const asset = await this.repo.findOne({ where: { id, userId } })
-    if (!asset) throw new NotFoundException('Asset not found')
+    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
     const faces = await this.facesService.getForAsset(asset.userId, id)
     const thumbRows = await this.thumbRepo.find({
       where: { assetId: id },
@@ -216,8 +216,7 @@ export class AssetsService {
   }
 
   async update(userId: string, id: string, dto: UpdateAssetDto): Promise<AssetResponse> {
-    const asset = await this.repo.findOne({ where: { id, userId } })
-    if (!asset) throw new NotFoundException('Asset not found')
+    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
 
     const patch: Partial<Asset> = {}
     if (dto.title !== undefined) patch.title = dto.title
@@ -235,8 +234,7 @@ export class AssetsService {
   }
 
   async trash(userId: string, id: string): Promise<void> {
-    const asset = await this.repo.findOne({ where: { id, userId } })
-    if (!asset) throw new NotFoundException('Asset not found')
+    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
 
     if (!asset.isTrashed) {
       await this.repo.update(id, { isTrashed: true, trashedAt: new Date() })
@@ -254,8 +252,7 @@ export class AssetsService {
   }
 
   async restore(userId: string, id: string): Promise<void> {
-    const asset = await this.repo.findOne({ where: { id, userId } })
-    if (!asset) throw new NotFoundException('Asset not found')
+    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
 
     if (asset.isTrashed) {
       await this.repo.update(id, { isTrashed: false, trashedAt: null })
@@ -269,8 +266,7 @@ export class AssetsService {
   }
 
   async delete(userId: string, id: string): Promise<{ fileIds: string[] }> {
-    const asset = await this.repo.findOne({ where: { id, userId } })
-    if (!asset) throw new NotFoundException('Asset not found')
+    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
     if (!asset.isTrashed)
       throw new BadRequestException('Asset must be trashed before permanent deletion')
 
@@ -301,8 +297,7 @@ export class AssetsService {
   }
 
   async updateMetadata(id: string, userId: string, dto: UpdateMetadataDto): Promise<AssetResponse> {
-    const asset = await this.repo.findOne({ where: { id, userId } })
-    if (!asset) throw new NotFoundException('Asset not found')
+    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
     // phash is a plain column (spread maps it), but its format is semantic -> 422 like embeddings
     if (dto.phash !== undefined && dto.phash !== null && !/^[0-9a-f]{16}$/.test(dto.phash)) {
       throw new UnprocessableEntityException('phash must be 16 lowercase hex characters')
@@ -344,15 +339,13 @@ export class AssetsService {
   }
 
   async reprocessThumbnails(userId: string, id: string): Promise<{ enqueued: number }> {
-    const asset = await this.repo.findOne({ where: { id, userId } })
-    if (!asset) throw new NotFoundException('Asset not found')
+    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
     this.bullMq.enqueueThumbnails(asset.id, asset.fileId, asset.userId, 'thumb-reprocess')
     return { enqueued: 4 }
   }
 
   async reprocessVideo(userId: string, id: string): Promise<{ enqueued: number }> {
-    const asset = await this.repo.findOne({ where: { id, userId } })
-    if (!asset) throw new NotFoundException('Asset not found')
+    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
     if (asset.kind !== 'video') throw new BadRequestException('Not a video asset')
     this.bullMq.enqueueVideo(asset.id, asset.fileId, asset.userId, { reprocess: true })
     return { enqueued: 1 }
@@ -363,8 +356,7 @@ export class AssetsService {
     assetId: string,
     dto: RegisterThumbnailDto,
   ): Promise<AssetThumbnailResponse> {
-    const asset = await this.repo.findOne({ where: { id: assetId, userId } })
-    if (!asset) throw new NotFoundException('Asset not found')
+    await findOwnedOr404(this.repo, assetId, userId, 'Asset')
     await this.thumbRepo.upsert(
       [
         {

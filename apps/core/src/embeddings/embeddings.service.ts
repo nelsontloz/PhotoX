@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import type { Repository } from 'typeorm'
 import { SEARCH_EMBEDDING_DIM, SEARCH_EMBEDDING_MODEL } from '@photox/shared-types'
 import { Asset } from '../database/entities'
-import { assertAssetOwned } from '../common/asset-ownership'
+import { findOwnedOr404 } from '../common/asset-ownership'
 import { AssetEmbedding } from '../database/entities/asset-embedding.entity'
 import type { RegisterEmbeddingDto } from './dto/register-embedding.dto'
 
@@ -23,7 +23,7 @@ export class EmbeddingsService {
     userId: string,
     dto: RegisterEmbeddingDto,
   ): Promise<{ ok: true }> {
-    await assertAssetOwned(this.assetRepo, userId, assetId)
+    await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset')
     this.assertValid(dto)
     await this.repo.upsert(
       [{ assetId, kind: dto.kind, model: dto.model, embedding: dto.embedding }],

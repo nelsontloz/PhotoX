@@ -5,7 +5,7 @@ import { unlink, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { branchFor, MetadataProcessor } from './metadata.processor'
-import type { MetadataJob } from './job-schemas'
+import type { AssetRefsJob } from './job-schemas'
 import type { CoreClient } from '../core/core-client.service'
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../../test/fake-core-client'
 
@@ -30,7 +30,7 @@ describe('MetadataProcessor job guards', () => {
     fileId: randomUUID(),
     userId: randomUUID(),
   }
-  const fakeJob = (data: unknown) => ({ data }) as unknown as Job<MetadataJob>
+  const fakeJob = (data: unknown) => ({ data }) as unknown as Job<AssetRefsJob>
 
   function setup(
     opts: {
@@ -39,9 +39,9 @@ describe('MetadataProcessor job guards', () => {
     } = {},
   ) {
     const fake = new FakeCoreClient()
-    const callbacks: ((job: Job<MetadataJob>) => Promise<void>)[] = []
+    const callbacks: ((job: Job<AssetRefsJob>) => Promise<void>)[] = []
     const bullMq = {
-      createWorker: vi.fn((_name: string, cb: (job: Job<MetadataJob>) => Promise<void>) => {
+      createWorker: vi.fn((_name: string, cb: (job: Job<AssetRefsJob>) => Promise<void>) => {
         callbacks.push(cb)
         return {}
       }),

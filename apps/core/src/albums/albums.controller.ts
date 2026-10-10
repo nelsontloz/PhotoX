@@ -7,12 +7,11 @@ import {
   Param,
   Query,
   Body,
-  Req,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import type { Request } from 'express'
+import { CurrentUserId } from '../auth/jwt-auth.guard'
 import { AlbumsService } from './albums.service'
 import { CreateAlbumDto } from './dto/create-album.dto'
 import { UpdateAlbumDto } from './dto/update-album.dto'
@@ -28,31 +27,35 @@ export class AlbumsController {
   @ApiOperation({ summary: 'Create a new album' })
   @ApiResponse({ status: 201, description: 'Album created' })
   @ApiResponse({ status: 400, description: 'Invalid request body' })
-  async create(@Body() dto: CreateAlbumDto, @Req() req: Request) {
-    return this.albums.create((req.user as { id: string }).id, dto)
+  async create(@Body() dto: CreateAlbumDto, @CurrentUserId() userId: string) {
+    return this.albums.create(userId, dto)
   }
 
   @Get()
   @ApiOperation({ summary: 'List albums' })
   @ApiResponse({ status: 200, description: 'Paginated album list' })
-  async list(@Query() q: PaginationQueryDto, @Req() req: Request) {
-    return this.albums.list((req.user as { id: string }).id, q)
+  async list(@Query() q: PaginationQueryDto, @CurrentUserId() userId: string) {
+    return this.albums.list(userId, q)
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a single album' })
   @ApiResponse({ status: 200, description: 'Album found' })
   @ApiResponse({ status: 404, description: 'Album not found' })
-  async getOne(@Param('id') id: string, @Req() req: Request) {
-    return this.albums.getOne((req.user as { id: string }).id, id)
+  async getOne(@Param('id') id: string, @CurrentUserId() userId: string) {
+    return this.albums.getOne(userId, id)
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update album name or description' })
   @ApiResponse({ status: 200, description: 'Album updated' })
   @ApiResponse({ status: 404, description: 'Album not found' })
-  async update(@Param('id') id: string, @Body() dto: UpdateAlbumDto, @Req() req: Request) {
-    return this.albums.update((req.user as { id: string }).id, id, dto)
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateAlbumDto,
+    @CurrentUserId() userId: string,
+  ) {
+    return this.albums.update(userId, id, dto)
   }
 
   @Delete(':id')
@@ -60,16 +63,20 @@ export class AlbumsController {
   @ApiOperation({ summary: 'Delete an album' })
   @ApiResponse({ status: 204, description: 'Album deleted' })
   @ApiResponse({ status: 404, description: 'Album not found' })
-  async delete(@Param('id') id: string, @Req() req: Request) {
-    await this.albums.delete((req.user as { id: string }).id, id)
+  async delete(@Param('id') id: string, @CurrentUserId() userId: string) {
+    await this.albums.delete(userId, id)
   }
 
   @Post(':id/assets')
   @ApiOperation({ summary: 'Add assets to an album' })
   @ApiResponse({ status: 201, description: 'Assets added, returns refreshed album' })
   @ApiResponse({ status: 404, description: 'Album or asset not found' })
-  async addAssets(@Param('id') id: string, @Body() dto: AddAssetsBodyDto, @Req() req: Request) {
-    await this.albums.addAssets((req.user as { id: string }).id, id, dto.assetIds)
+  async addAssets(
+    @Param('id') id: string,
+    @Body() dto: AddAssetsBodyDto,
+    @CurrentUserId() userId: string,
+  ) {
+    await this.albums.addAssets(userId, id, dto.assetIds)
     return { added: dto.assetIds.length }
   }
 
@@ -81,17 +88,20 @@ export class AlbumsController {
   async removeAsset(
     @Param('id') id: string,
     @Param('assetId') assetId: string,
-    @Req() req: Request,
+    @CurrentUserId() userId: string,
   ) {
-    await this.albums.removeAsset((req.user as { id: string }).id, id, assetId)
+    await this.albums.removeAsset(userId, id, assetId)
   }
 
   @Get(':id/assets')
   @ApiOperation({ summary: 'List assets in an album' })
   @ApiResponse({ status: 200, description: 'Paginated asset list' })
   @ApiResponse({ status: 404, description: 'Album not found' })
-  async listAssets(@Param('id') id: string, @Req() req: Request, @Query() q: PaginationQueryDto) {
-    const userId = (req.user as { id: string }).id
+  async listAssets(
+    @Param('id') id: string,
+    @CurrentUserId() userId: string,
+    @Query() q: PaginationQueryDto,
+  ) {
     return this.albums.listAssets(userId, id, { limit: q.limit, offset: q.offset })
   }
 }

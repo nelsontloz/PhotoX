@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import type { Repository } from 'typeorm'
 import { Asset } from '../database/entities'
 import { AssetOcr } from '../database/entities/asset-ocr.entity'
-import { assertAssetOwned } from '../common/asset-ownership'
+import { findOwnedOr404 } from '../common/asset-ownership'
 import type { RegisterOcrDto } from './dto/register-ocr.dto'
 
 const TEXT_MAX = 50_000
@@ -20,7 +20,7 @@ export class OcrService {
   ) {}
 
   async register(assetId: string, userId: string, dto: RegisterOcrDto): Promise<{ ok: true }> {
-    await assertAssetOwned(this.assetRepo, userId, assetId)
+    await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset')
     this.assertValid(dto)
     // asset_ocr PK IS assetId: exactly one concatenated row per asset, so the search FTS
     // LEFT JOIN cannot fan out. Re-runs overwrite; empty results are rejected upstream (422)

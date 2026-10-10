@@ -23,8 +23,9 @@ interface ViewerHostProps {
   onRemoveFromAlbum?: () => void
   siblingAssets?: Asset[]
   onSelectSibling?: (asset: Asset) => void
-  pickerOpen: boolean
-  onPickerClose: () => void
+  /** Optional: pages without an add-to-album flow (trash) omit both. */
+  pickerOpen?: boolean
+  onPickerClose?: () => void
   /** Defaults to the open asset; pages that select several pass their own list. */
   pickerAssetIds?: string[]
   onPickerDone?: () => void
@@ -47,7 +48,7 @@ export function ViewerHost({
         <Suspense fallback={null}>
           <AlbumPickerDialog
             open
-            onClose={onPickerClose}
+            onClose={() => onPickerClose?.()}
             assetIds={pickerAssetIds ?? [asset.id]}
             onDone={onPickerDone}
           />

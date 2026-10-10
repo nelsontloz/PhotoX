@@ -1,10 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
-import sharp from 'sharp'
 import type { Job } from 'bullmq'
 import { SEARCH_EMBEDDING_MODEL } from '@photox/shared-types'
 import { BullMqService } from './bullmq.service'
-import { embeddingJobSchema, type EmbeddingJob } from './job-schemas'
-import { patchStatusFailed, runAssetFileJob } from './asset-file-job'
+import { assetRefsJobSchema, type AssetRefsJob } from './job-schemas'
+import { orientedResize, patchStatusFailed, runAssetFileJob } from './asset-file-job'
 import { FACE_MAX_DIM } from './face.processor'
 import { EmbeddingService } from './embedding.service'
 import { CoreClient } from '../core/core-client.service'
@@ -22,15 +21,15 @@ export class EmbeddingProcessor implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.bullMq.createWorker<EmbeddingJob>('process-embeddings', (job) => this.processJob(job))
+    this.bullMq.createWorker<AssetRefsJob>('process-embeddings', (job) => this.processJob(job))
 
     this.logger.log('Embedding processor listening for jobs')
   }
 
-  private async processJob(job: Job<EmbeddingJob>) {
+  private async processJob(job: Job<AssetRefsJob>) {
     await runAssetFileJob({ core: this.core, storage: this.storage, logger: this.logger }, job, {
       queue: 'process-embeddings',
-      schema: embeddingJobSchema,
+      schema: assetRefsJobSchema,
       label: 'Embedding',
       missingModelMarkers: ['Vision embedding model not found'],
       onFailure: ({ userId, assetId }) =>
@@ -38,15 +37,7 @@ export class EmbeddingProcessor implements OnModuleInit {
       body: async ({ data, filePath }) => {
         // ponytail: same EXIF-oriented ≤2048px prep as face detection — the SigLIP processor
         // downscales to 224 itself; 2048 keeps texture detail without decoding full resolution
-        const resized = await sharp(filePath)
-          .rotate()
-          .resize({
-            width: FACE_MAX_DIM,
-            height: FACE_MAX_DIM,
-            fit: 'inside',
-            withoutEnlargement: true,
-          })
-          .toBuffer()
+        const resized = await orientedResize(filePath, FACE_MAX_DIM)
 
         const embedding = await this.embedder.embed(resized)
         await this.core.registerEmbedding(data.userId, data.assetId, {

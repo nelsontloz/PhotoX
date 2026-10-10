@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common'
+import { Body, Controller, Get, Param, Post } from '@nestjs/common'
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
-import type { Request } from 'express'
 import type { AssetDetectionsResponse } from '@photox/shared-types'
+import { CurrentUserId } from '../auth/jwt-auth.guard'
 import { DetectionsService } from './detections.service'
 import { RegisterDetectionsDto } from './dto/register-detections.dto'
 
@@ -18,9 +18,8 @@ export class DetectionsController {
   async registerDetections(
     @Param('id') id: string,
     @Body() dto: RegisterDetectionsDto,
-    @Req() req: Request,
+    @CurrentUserId() userId: string,
   ): Promise<{ ok: true }> {
-    const userId = (req.user as { id: string }).id
     return this.detections.register(id, userId, dto)
   }
 
@@ -30,9 +29,8 @@ export class DetectionsController {
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async listDetections(
     @Param('id') id: string,
-    @Req() req: Request,
+    @CurrentUserId() userId: string,
   ): Promise<AssetDetectionsResponse> {
-    const userId = (req.user as { id: string }).id
     return this.detections.list(userId, id)
   }
 }

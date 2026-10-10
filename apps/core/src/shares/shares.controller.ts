@@ -1,16 +1,6 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Delete,
-  Param,
-  Body,
-  Req,
-  HttpCode,
-  HttpStatus,
-} from '@nestjs/common'
+import { Controller, Get, Post, Delete, Param, Body, HttpCode, HttpStatus } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import type { Request } from 'express'
+import { CurrentUserId } from '../auth/jwt-auth.guard'
 import { SharesService } from './shares.service'
 import { CreateShareDto } from './dto/create-share.dto'
 
@@ -24,15 +14,14 @@ export class SharesController {
   @ApiResponse({ status: 201, description: 'Share created' })
   @ApiResponse({ status: 400, description: 'Provide exactly one of assetId or albumId' })
   @ApiResponse({ status: 404, description: 'Asset or album not found' })
-  async create(@Body() dto: CreateShareDto, @Req() req: Request) {
-    return this.shares.create((req.user as { id: string }).id, dto)
+  async create(@Body() dto: CreateShareDto, @CurrentUserId() userId: string) {
+    return this.shares.create(userId, dto)
   }
 
   @Get()
   @ApiOperation({ summary: 'List all shares created by a user' })
   @ApiResponse({ status: 200, description: 'Share list' })
-  async list(@Req() req: Request) {
-    const userId = (req.user as { id: string }).id
+  async list(@CurrentUserId() userId: string) {
     return this.shares.list(userId)
   }
 
@@ -41,7 +30,7 @@ export class SharesController {
   @ApiOperation({ summary: 'Revoke a share link' })
   @ApiResponse({ status: 204, description: 'Share revoked' })
   @ApiResponse({ status: 404, description: 'Share not found' })
-  async revoke(@Param('id') id: string, @Req() req: Request) {
-    await this.shares.revoke((req.user as { id: string }).id, id)
+  async revoke(@Param('id') id: string, @CurrentUserId() userId: string) {
+    await this.shares.revoke(userId, id)
   }
 }

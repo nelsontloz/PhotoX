@@ -1,6 +1,6 @@
-import { Controller, Post, Delete, Param, Body, Req } from '@nestjs/common'
+import { Controller, Post, Delete, Param, Body } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import type { Request } from 'express'
+import { CurrentUserId } from '../auth/jwt-auth.guard'
 import { FacesService } from './faces.service'
 import { RegisterFacesDto } from './dto/register-faces.dto'
 
@@ -12,8 +12,11 @@ export class FacesController {
   @Post(':id/faces')
   @ApiOperation({ summary: 'Register detected faces for an asset' })
   @ApiResponse({ status: 201, description: 'Faces registered' })
-  async registerFaces(@Param('id') id: string, @Body() dto: RegisterFacesDto, @Req() req: Request) {
-    const userId = (req.user as { id: string }).id
+  async registerFaces(
+    @Param('id') id: string,
+    @Body() dto: RegisterFacesDto,
+    @CurrentUserId() userId: string,
+  ) {
     return this.faces.registerFaces(id, userId, dto.faces, dto.detector ?? null)
   }
 
@@ -21,7 +24,7 @@ export class FacesController {
   @ApiOperation({ summary: 'Delete all detected faces for an asset (idempotent)' })
   @ApiResponse({ status: 200, description: 'Faces deleted (0 when none existed)' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async deleteFaces(@Param('id') id: string, @Req() req: Request) {
-    return this.faces.deleteForAsset((req.user as { id: string }).id, id)
+  async deleteFaces(@Param('id') id: string, @CurrentUserId() userId: string) {
+    return this.faces.deleteForAsset(userId, id)
   }
 }

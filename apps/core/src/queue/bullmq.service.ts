@@ -4,6 +4,19 @@ import { SEARCH_EMBEDDING_MODEL } from '@photox/shared-types'
 import { Queue, type JobsOptions } from 'bullmq'
 import Redis from 'ioredis'
 
+// ponytail: one table for the three identical asset job wrappers; jobId prefixes are the dedup
+// contract — `embed-` also pins the model so a switch never collides with the old model's job
+const ASSET_JOBS = {
+  embed: {
+    queue: 'process-embeddings',
+    jobId: (assetId: string) => `embed-${assetId}-${SEARCH_EMBEDDING_MODEL}`,
+  },
+  ocr: { queue: 'process-ocr', jobId: (assetId: string) => `ocr-${assetId}` },
+  detect: { queue: 'process-detect', jobId: (assetId: string) => `detect-${assetId}` },
+} as const
+
+type AssetJobKind = keyof typeof ASSET_JOBS
+
 @Injectable()
 export class BullMqService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BullMqService.name)
@@ -116,37 +129,13 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     )
   }
 
-  enqueueEmbedding(assetId: string, fileId: string, userId: string): void {
+  enqueueAssetJob(kind: AssetJobKind, assetId: string, fileId: string, userId: string): void {
+    const job = ASSET_JOBS[kind]
     void this.enqueue(
-      'process-embeddings',
-      'process-embeddings',
+      job.queue,
+      job.queue,
       { assetId, fileId, userId },
-      {
-        // model is part of the id: switching models must not collide with the old model's job
-        jobId: `embed-${assetId}-${SEARCH_EMBEDDING_MODEL}`,
-      },
-    )
-  }
-
-  enqueueOcr(assetId: string, fileId: string, userId: string): void {
-    void this.enqueue(
-      'process-ocr',
-      'process-ocr',
-      { assetId, fileId, userId },
-      {
-        jobId: `ocr-${assetId}`,
-      },
-    )
-  }
-
-  enqueueDetect(assetId: string, fileId: string, userId: string): void {
-    void this.enqueue(
-      'process-detect',
-      'process-detect',
-      { assetId, fileId, userId },
-      {
-        jobId: `detect-${assetId}`,
-      },
+      { jobId: job.jobId(assetId) },
     )
   }
 

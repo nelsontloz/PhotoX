@@ -36,9 +36,6 @@ interface LastRuns {
 export type LastRunKind = keyof LastRuns
 export type LastRun<K extends LastRunKind> = LastRuns[K]
 
-const isString = (value: unknown): boolean => typeof value === 'string'
-const isNumber = (value: unknown): boolean => typeof value === 'number'
-
 function isFaceDetectorKind(value: unknown): value is FaceDetectorKind {
   return typeof value === 'string' && (FACE_DETECTOR_KINDS as readonly string[]).includes(value)
 }
@@ -60,9 +57,9 @@ function parseRun<T>(value: unknown): T | null {
   if (typeof value !== 'object' || value === null) return null
   const run = value as Partial<EnqueuedRun & { updated: number }>
   const hasEnvelope =
-    isString(run.startedAt) &&
-    isNumber(run.total) &&
-    (isNumber(run.enqueued) || isNumber(run.updated))
+    typeof run.startedAt === 'string' &&
+    typeof run.total === 'number' &&
+    (typeof run.enqueued === 'number' || typeof run.updated === 'number')
   return hasEnvelope ? (value as T) : null
 }
 
@@ -75,13 +72,9 @@ export class SettingsService {
     private readonly faceRepo: Repository<Face>,
   ) {}
 
-  envDefaultDetector(): FaceDetectorKind {
-    return envFaceDetectorKind()
-  }
-
   async getFaceDetector(): Promise<FaceDetectorKind> {
     const row = await this.repo.findOne({ where: { key: FACE_DETECTOR_SETTING_KEY } })
-    return isFaceDetectorKind(row?.value) ? row.value : this.envDefaultDetector()
+    return isFaceDetectorKind(row?.value) ? row.value : envFaceDetectorKind()
   }
 
   async getSettings(): Promise<FaceDetectionSettings> {
@@ -90,7 +83,7 @@ export class SettingsService {
       this.scrfdModelAvailable(),
       this.countFacesByDetector(),
     ])
-    return { detector, envDefault: this.envDefaultDetector(), models: { scrfd }, facesByDetector }
+    return { detector, envDefault: envFaceDetectorKind(), models: { scrfd }, facesByDetector }
   }
 
   async setFaceDetector(kind: FaceDetectorKind): Promise<void> {

@@ -5,7 +5,7 @@ import { join } from 'path'
 import { randomUUID, createHash } from 'crypto'
 import { copyFile, rm, mkdir, readFile } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
-import { assertOwnership, parseJobData, videoJobSchema, type VideoJob } from './job-schemas'
+import { assertOwnership, parseJobData, assetRefsJobSchema, type AssetRefsJob } from './job-schemas'
 import { patchStatusFailed } from './asset-file-job'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
@@ -27,13 +27,13 @@ export class VideoProcessor implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.bullMq.createWorker<VideoJob>('process-video', (job) => this.processJob(job))
+    this.bullMq.createWorker<AssetRefsJob>('process-video', (job) => this.processJob(job))
 
     this.logger.log('Video processor listening for jobs')
   }
 
-  private async processJob(job: Job<VideoJob>) {
-    const { assetId, fileId, userId } = parseJobData(videoJobSchema, job.data, 'process-video')
+  private async processJob(job: Job<AssetRefsJob>) {
+    const { assetId, fileId, userId } = parseJobData(assetRefsJobSchema, job.data, 'process-video')
 
     this.logger.log(`Processing video transcode: asset=${assetId}`)
 

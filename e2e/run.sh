@@ -9,7 +9,7 @@
 # Usage: pnpm test:e2e   (from the repo root)
 #   E2E_BUILD=1      rebuild images before starting the stack
 #   E2E_KEEP=1       leave the stack running after the tests (debugging)
-#   --e2e-workers=N  run the parallel `suite` project with N playwright workers
+#   --workers=N      playwright's native worker count (parallel `suite` project)
 # Each run uses a unique compose project and an OS-assigned web port; the stack is stopped and
 # removed when the script exits. Artifact dirs (.features-gen, test-results, playwright-report)
 # are fixed, so parallel runs share (and overwrite) each other's artifacts.
@@ -63,16 +63,4 @@ cd "$E2E_DIR"
 export E2E_BASE_URL="http://localhost:${E2E_WEB_PORT}"
 pnpm exec bddgen
 
-# --e2e-workers=N is ours (playwright has no such flag): map it to --workers=N and forward the
-# rest untouched. The non-empty guard keeps `set -u` quiet on bash 3.2 (macOS /bin/bash).
-PW_ARGS=()
-for arg in "$@"; do
-  case "$arg" in
-    --e2e-workers=*) PW_ARGS+=("--workers=${arg#--e2e-workers=}") ;;
-    *) PW_ARGS+=("$arg") ;;
-  esac
-done
-if [ "${#PW_ARGS[@]}" -gt 0 ]; then
-  set -- "${PW_ARGS[@]}"
-fi
 pnpm exec playwright test "$@"

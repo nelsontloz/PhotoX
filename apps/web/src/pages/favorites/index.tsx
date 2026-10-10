@@ -1,25 +1,19 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { FaHeart } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
-import { TimelineGrid } from '../../components/Timeline/TimelineGrid'
+import { TimelineAssets } from '../../components/Timeline/TimelineAssets'
 import { ViewerHost } from '../../components/ViewerHost'
 import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
 import { useAssetNavigation } from '../../hooks/useAssetNavigation'
-import { useTimelineLayout } from '../../hooks/useTimelineLayout'
-import { useTimelineMonths } from '../../hooks/useTimelineMonths'
-import { useTimelineNav } from '../../hooks/useTimelineNav'
+import { useTimelineView } from '../../hooks/useTimelineView'
 import { useAppStore } from '../../store/app-store'
 
 function FavoritesContent() {
   // Same lazy pipeline as the home timeline, filtered to favorites (layout + per-month fetches).
-  const timeline = useTimelineLayout({ favorite: true })
-  const { groups, monthStatus, ensureMonth, retainMonths, refreshKey } = useTimelineMonths({
-    favorite: true,
-  })
+  const view = useTimelineView({ favorite: true })
+  const { timeline, loadedAssets, navHelpers } = view
   const bumpTimelineRefresh = useAppStore((s) => s.bumpTimelineRefresh)
-  const loadedAssets = useMemo(() => groups.flatMap((g) => g.items), [groups])
-  const navHelpers = useTimelineNav({ layoutItems: timeline.layoutItems, ensureMonth })
   const nav = useAssetNavigation({
     assets: loadedAssets,
     ...navHelpers,
@@ -49,16 +43,7 @@ function FavoritesContent() {
 
   return (
     <>
-      <TimelineGrid
-        layout={timeline.layout}
-        containerRef={timeline.containerRef}
-        groups={groups}
-        monthStatus={monthStatus}
-        ensureMonth={ensureMonth}
-        retainMonths={retainMonths}
-        refreshKey={refreshKey}
-        onSelect={nav.open}
-      />
+      <TimelineAssets view={view} onSelect={nav.open} />
       <ViewerHost
         asset={nav.selected}
         onClose={nav.close}

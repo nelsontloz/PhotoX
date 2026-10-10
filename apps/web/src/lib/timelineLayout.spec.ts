@@ -92,16 +92,6 @@ describe('buildBuckets', () => {
     expect(bucket?.days[0]?.items[0]).toEqual({ t: '2026-03-20T12:00:00', w: 4000, h: 3000 })
     expect(bucket?.height).toBe(265 + 40 + 469 + 40 + 673 + 40 + 469)
     expect(layout.totalHeight).toBe(1996)
-    expect(layout.dayIndex.get('2026-03-15')).toEqual({
-      bucketKey: '2026-03',
-      height: 469,
-      rows: 2,
-    })
-    expect(layout.dayIndex.get('2026-03-10')).toEqual({
-      bucketKey: '2026-03',
-      height: 673,
-      rows: 3,
-    })
     // int rowHeight → int heights/tops
     expect(Number.isInteger(bucket?.top)).toBe(true)
     expect(Number.isInteger(bucket?.height)).toBe(true)
@@ -148,13 +138,12 @@ describe('buildBuckets', () => {
       item('2026-02-28T12:00:00', 1000, 1000),
     ]
 
-    const { buckets, dayIndex } = buildBuckets(items, OPTS)
+    const { buckets } = buildBuckets(items, OPTS)
 
     expect(buckets.map((b) => b.key)).toEqual(['2026-03', '2026-02'])
     expect(buckets[0]?.days.map((d) => d.sortKey)).toEqual(['2026-03-20'])
     expect(buckets[1]?.days.map((d) => d.sortKey)).toEqual(['2026-02-28', '2026-02-10'])
-    // both 2026-03-20 timestamps land in the same day slot
-    expect(dayIndex.get('2026-03-20')?.rows).toBe(1)
+    // both 2026-03-20 timestamps land in the same single day slot (asserted above by the day list)
     // input array is not mutated
     expect(items.map((i) => i.t)).toEqual([
       '2026-02-10T23:30:00',
@@ -165,6 +154,6 @@ describe('buildBuckets', () => {
   })
 
   it('returns no buckets and zero height for empty input', () => {
-    expect(buildBuckets([], OPTS)).toEqual({ buckets: [], totalHeight: 0, dayIndex: new Map() })
+    expect(buildBuckets([], OPTS)).toEqual({ buckets: [], totalHeight: 0 })
   })
 })

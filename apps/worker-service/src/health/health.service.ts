@@ -6,12 +6,8 @@ export class HealthService {
   constructor(private readonly bullMq: BullMqService) {}
 
   async check() {
-    let queue: string
-    try {
-      queue = (await this.bullMq.isHealthy()) ? 'ok' : 'down'
-    } catch {
-      queue = 'error'
-    }
+    // isHealthy() swallows ping errors and resolves false — no catch needed here
+    const queue = (await this.bullMq.isHealthy()) ? 'ok' : 'down'
 
     if (queue !== 'ok') {
       throw new ServiceUnavailableException({

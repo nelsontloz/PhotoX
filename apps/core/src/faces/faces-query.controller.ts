@@ -1,16 +1,6 @@
-import {
-  Controller,
-  Get,
-  Patch,
-  Param,
-  Query,
-  Body,
-  Req,
-  HttpCode,
-  HttpStatus,
-} from '@nestjs/common'
+import { Controller, Get, Patch, Param, Query, Body, HttpCode, HttpStatus } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import type { Request } from 'express'
+import { CurrentUserId } from '../auth/jwt-auth.guard'
 import { FacesService } from './faces.service'
 import { AssignPersonDto } from './dto/assign-person.dto'
 import { isQueryTrue } from '../common/query-params'
@@ -26,9 +16,8 @@ export class FacesQueryController {
   async list(
     @Query('includeEmbeddings') includeEmbeddings: string | undefined,
     @Query('excludeTrashed') excludeTrashed: string | undefined,
-    @Req() req: Request,
+    @CurrentUserId() userId: string,
   ) {
-    const userId = (req.user as { id: string }).id
     const wantEmbeddings = isQueryTrue(includeEmbeddings)
     const items = await this.faces.listForUser(userId, wantEmbeddings, isQueryTrue(excludeTrashed))
     return { items }
@@ -39,8 +28,11 @@ export class FacesQueryController {
   @ApiOperation({ summary: 'Assign or unassign a face from a person' })
   @ApiResponse({ status: 200, description: 'Face updated' })
   @ApiResponse({ status: 404, description: 'Face not found or userId mismatch' })
-  async assignPerson(@Param('id') id: string, @Body() dto: AssignPersonDto, @Req() req: Request) {
-    const userId = (req.user as { id: string }).id
+  async assignPerson(
+    @Param('id') id: string,
+    @Body() dto: AssignPersonDto,
+    @CurrentUserId() userId: string,
+  ) {
     await this.faces.assignPerson(userId, id, dto.personId)
     return { ok: true }
   }

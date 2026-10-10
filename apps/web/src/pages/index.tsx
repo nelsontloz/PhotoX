@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { Asset } from '@photox/shared-types'
 import { FaFolderPlus, FaImage, FaMountain, FaTrash, FaWandMagicSparkles } from 'react-icons/fa6'
 import { RequireAuth } from '../components/RequireAuth'
@@ -6,11 +6,9 @@ import { AppShell } from '../components/AppShell'
 import { useConfirm } from '../components/ConfirmProvider'
 import { ErrorState, LoadingState } from '../components/StateViews'
 import { ViewerHost } from '../components/ViewerHost'
-import { useTimelineMonths } from '../hooks/useTimelineMonths'
 import { useAssetNavigation } from '../hooks/useAssetNavigation'
-import { useTimelineLayout } from '../hooks/useTimelineLayout'
-import { useTimelineNav } from '../hooks/useTimelineNav'
-import { TimelineGrid } from '../components/Timeline/TimelineGrid'
+import { useTimelineView } from '../hooks/useTimelineView'
+import { TimelineAssets } from '../components/Timeline/TimelineAssets'
 import { DropZone } from '../components/DropZone'
 import { UploadButton } from '../components/UploadButton'
 import { trashAssets } from '../api/assets'
@@ -19,16 +17,13 @@ import { useAppStore } from '../store/app-store'
 function TimelineContent() {
   const confirm = useConfirm()
   // Structure (buckets, heights, order) comes from the layout endpoint; months fill it in.
-  const { groups, monthStatus, ensureMonth, retainMonths, refreshKey } = useTimelineMonths()
-  const timeline = useTimelineLayout()
+  const view = useTimelineView()
+  const { timeline, loadedAssets, navHelpers } = view
   const bumpTimelineRefresh = useAppStore((s) => s.bumpTimelineRefresh)
-  const loadedAssets = useMemo(() => groups.flatMap((g) => g.items), [groups])
 
   // One refresh signal: layout refetches itself, months re-check their stamps and the grid
   // re-triggers ensureMonth for whatever is on screen (uploads bump this too, via lib/upload).
   const refresh = bumpTimelineRefresh
-
-  const navHelpers = useTimelineNav({ layoutItems: timeline.layoutItems, ensureMonth })
 
   const nav = useAssetNavigation({
     assets: loadedAssets,
@@ -122,14 +117,8 @@ function TimelineContent() {
     <>
       <DropZone className="h-full">
         {/* fixed overlay — inside DropZone so file drops onto the strip still reach its handlers */}
-        <TimelineGrid
-          layout={timeline.layout}
-          containerRef={timeline.containerRef}
-          groups={groups}
-          monthStatus={monthStatus}
-          ensureMonth={ensureMonth}
-          retainMonths={retainMonths}
-          refreshKey={refreshKey}
+        <TimelineAssets
+          view={view}
           onSelect={onClickAsset}
           selectedIds={selectedIds}
           onToggleSelect={toggle}

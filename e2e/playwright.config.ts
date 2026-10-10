@@ -6,7 +6,7 @@ import { defineBddProject } from 'playwright-bdd'
 // 04-faces / 05-semantic's semantic-upload.feature switch the global face detector and
 // reprocess/recluster data for every user. Everything else is scenario-scoped (each scenario
 // registers its own random user), so the `suite` project runs it in parallel with the worker
-// pool that run.sh's --e2e-workers sets.
+// pool that playwright's native --workers flag raises.
 const setup = defineBddProject({
   name: 'setup',
   features: [
@@ -29,12 +29,9 @@ const suite = defineBddProject({
 })
 
 export default defineConfig({
-  outputDir: 'test-results',
-  fullyParallel: false,
-  // serial by default; run.sh translates --e2e-workers=N into playwright's --workers=N, which
-  // raises this pool — the `setup` project below keeps its own workers cap so it stays serial
+  // serial by default; playwright's native --workers=N (forwarded by run.sh) raises this pool —
+  // the `setup` project below keeps its own workers cap so it stays serial
   workers: 1,
-  retries: 0,
   timeout: 120_000,
   expect: { timeout: 15_000 },
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],

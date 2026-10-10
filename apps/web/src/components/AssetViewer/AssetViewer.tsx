@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Asset } from '@photox/shared-types'
-import { getAsset, getVideoStreamUrl, reprocessThumbnails, reprocessVideo } from '../../api/assets'
+import { getAsset, getFileStreamUrl, reprocessThumbnails, reprocessVideo } from '../../api/assets'
 import { ViewerTopBar } from './ViewerTopBar'
 import { ViewerActions } from './ViewerActions'
 import { useAssetMedia } from './useAssetMedia'
@@ -90,10 +90,10 @@ export function AssetViewer({
   const similar = useSimilarAssets(currentAsset.id, relatedEnabled)
   const duplicates = useAssetDuplicates(currentAsset.id, relatedEnabled)
   const primaryVideoSrc = isVideo
-    ? getVideoStreamUrl(currentAsset.transcodeFileId ?? currentAsset.fileId)
+    ? getFileStreamUrl(currentAsset.transcodeFileId ?? currentAsset.fileId)
     : null
   const videoFallbackSrc =
-    isVideo && currentAsset.transcodeFileId ? getVideoStreamUrl(currentAsset.fileId) : undefined
+    isVideo && currentAsset.transcodeFileId ? getFileStreamUrl(currentAsset.fileId) : undefined
   // video.js picks a source via canPlayType(type); the transcode is always AV1-in-webm.
   const videoType = isVideo
     ? currentAsset.transcodeFileId

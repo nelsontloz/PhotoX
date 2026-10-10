@@ -15,25 +15,13 @@ const asset = { id: 'a', kind: 'photo' } as Asset
 describe('GalleryItem memoization', () => {
   it('bails out on shallow-equal props and re-renders when selected flips', () => {
     const onSelect = vi.fn()
-    const { rerender } = render(
-      <GalleryItem asset={asset} onSelect={onSelect} showCheckbox={false} />,
-    )
+    const { rerender } = render(<GalleryItem asset={asset} onSelect={onSelect} />)
     expect(AssetThumbMock).toHaveBeenCalledTimes(1)
 
-    rerender(<GalleryItem asset={asset} onSelect={onSelect} showCheckbox={false} />)
+    rerender(<GalleryItem asset={asset} onSelect={onSelect} />)
     expect(AssetThumbMock).toHaveBeenCalledTimes(1)
 
-    rerender(<GalleryItem asset={asset} onSelect={onSelect} showCheckbox={false} selected />)
+    rerender(<GalleryItem asset={asset} onSelect={onSelect} selected />)
     expect(AssetThumbMock).toHaveBeenCalledTimes(2)
-  })
-})
-
-describe('GalleryItem eager forwarding', () => {
-  it('passes eager through to AssetThumb for fixed-overlay contexts', () => {
-    AssetThumbMock.mockClear()
-    render(<GalleryItem asset={asset} eager showCheckbox={false} />)
-
-    const props = AssetThumbMock.mock.calls.at(-1)?.[0] as { eager?: boolean } | undefined
-    expect(props?.eager).toBe(true)
   })
 })

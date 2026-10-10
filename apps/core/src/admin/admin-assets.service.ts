@@ -122,11 +122,8 @@ export class AdminAssetsService {
   ) {}
 
   async getOrphanCounts(): Promise<{ orphanFiles: number; orphanThumbnails: number }> {
-    const mediaFileIds = await this.getReferencedFileIds()
-    const storageFileIds = await this.getStaleFileIds()
-    const orphanFiles = storageFileIds.filter((id) => !mediaFileIds.has(id)).length
-    const orphanThumbnails = (await this.findOrphanThumbs(storageFileIds)).length
-    return { orphanFiles, orphanThumbnails }
+    const { orphanFileIds, orphanThumbs } = await this.scanOrphans()
+    return { orphanFiles: orphanFileIds.length, orphanThumbnails: orphanThumbs.length }
   }
 
   async cleanupOrphans(): Promise<{
@@ -134,15 +131,11 @@ export class AdminAssetsService {
     deletedThumbnails: number
     deletedStrays: number
   }> {
-    const mediaFileIds = await this.getReferencedFileIds()
-    const storageFileIds = await this.getStaleFileIds()
-    const orphanFileIds = storageFileIds.filter((id) => !mediaFileIds.has(id))
+    const { orphanFileIds, orphanThumbs } = await this.scanOrphans()
 
     // re-query right before deleting: an in-flight job may have referenced a file after the first scan
     const freshMediaFileIds = await this.getReferencedFileIds()
     const toDelete = orphanFileIds.filter((id) => !freshMediaFileIds.has(id))
-
-    const orphanThumbs = await this.findOrphanThumbs(storageFileIds)
 
     let deletedFiles = 0
     for (const fileId of toDelete) {
@@ -190,6 +183,17 @@ export class AdminAssetsService {
     }
 
     return { deletedFiles, deletedThumbnails, deletedStrays }
+  }
+
+  /** Shared orphan scan: stale storage files with no live reference + their orphan thumbnail rows. */
+  private async scanOrphans(): Promise<{
+    orphanFileIds: string[]
+    orphanThumbs: AssetThumbnail[]
+  }> {
+    const mediaFileIds = await this.getReferencedFileIds()
+    const storageFileIds = await this.getStaleFileIds()
+    const orphanFileIds = storageFileIds.filter((id) => !mediaFileIds.has(id))
+    return { orphanFileIds, orphanThumbs: await this.findOrphanThumbs(storageFileIds) }
   }
 
   private async getReferencedFileIds(): Promise<Set<string>> {

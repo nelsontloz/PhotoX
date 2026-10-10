@@ -10,9 +10,6 @@ interface GalleryItemProps {
   onSelect?: (asset: Asset) => void
   dark?: boolean
   onLongPress?: (asset: Asset) => void
-  /** Forwarded to AssetThumb: fixed overlays (dialogs) never intersect the scroll root, so their tiles must skip the gate. */
-  eager?: boolean
-  showCheckbox?: boolean
   onToggleSelect?: (id: string) => void
   selected?: boolean
   selectionMode?: boolean
@@ -23,8 +20,6 @@ export const GalleryItem = memo(function GalleryItem({
   onSelect,
   dark = false,
   onLongPress,
-  eager = false,
-  showCheckbox = true,
   onToggleSelect,
   selected = false,
   selectionMode = false,
@@ -75,7 +70,6 @@ export const GalleryItem = memo(function GalleryItem({
     >
       <AssetThumb
         asset={asset}
-        eager={eager}
         onThumbPicked={(t: AssetThumbnail) => setDims({ width: t.width, height: t.height })}
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
@@ -124,7 +118,7 @@ export const GalleryItem = memo(function GalleryItem({
           </div>
         </div>
       )}
-      {onToggleSelect && showCheckbox && (
+      {onToggleSelect && (
         <button
           type="button"
           role="checkbox"

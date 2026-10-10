@@ -231,7 +231,7 @@ export class CoreClient {
       'POST',
       '/api/v1/admin/cleanup-orphans/run',
       { sub: 'worker-service', role: 'admin' },
-      { timeoutMs: 120_000 },
+      120_000,
     )
   }
 
@@ -246,7 +246,7 @@ export class CoreClient {
     method: 'GET' | 'PATCH' | 'POST' | 'DELETE',
     path: string,
     opts: { sub: string; role?: Role; body?: unknown },
-    extra: { timeoutMs?: number } = {},
+    timeoutMs = REQUEST_TIMEOUT_MS,
   ): Promise<T> {
     const token = this.signToken(opts.sub, opts.role ?? 'user')
 
@@ -259,7 +259,7 @@ export class CoreClient {
           ...(opts.body === undefined ? {} : { 'Content-Type': 'application/json' }),
         },
         body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
-        signal: AbortSignal.timeout(extra.timeoutMs ?? REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeoutMs),
       })
     } catch (err) {
       // network failure: plain Error so BullMQ's attempts:3 + backoff owns the retry

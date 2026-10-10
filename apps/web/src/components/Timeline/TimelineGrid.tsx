@@ -14,6 +14,7 @@ import { groupDateLabelFromSortKey } from '../../lib/dateFormat'
 import { GalleryItem } from '../GalleryItem'
 import { Skeleton } from '../Skeleton'
 import { ScrollContainerContext } from '../AppShell'
+import { useAppStore } from '../../store/app-store'
 import { TimelineScrollbar } from './TimelineScrollbar'
 
 interface TimelineGridProps {
@@ -25,8 +26,6 @@ interface TimelineGridProps {
   ensureMonth: UseTimelineMonthsResult['ensureMonth']
   /** Marks the currently mounted months as in use so the bounded cache never evicts them */
   retainMonths: UseTimelineMonthsResult['retainMonths']
-  /** Bumped by uploads/trash — re-triggers ensureMonth for the currently mounted months */
-  refreshKey: number
   onSelect: (asset: Asset) => void
   /** Selection is optional: a read-only grid omits both (no checkboxes, no Select-all) */
   selectedIds?: ReadonlySet<string>
@@ -56,7 +55,6 @@ export function TimelineGrid({
   monthStatus,
   ensureMonth,
   retainMonths,
-  refreshKey,
   onSelect,
   selectedIds = EMPTY_SELECTED_IDS,
   onToggleSelect,
@@ -64,6 +62,9 @@ export function TimelineGrid({
   dayHeaderSurfaceClassName = DAY_HEADER_PAGE_SURFACE,
 }: TimelineGridProps) {
   const selectionMode = selectedIds.size > 0
+  // Refresh signal (bumped by uploads/trash): re-triggers ensureMonth for the mounted months.
+  // Subscribed here so pages don't thread it down.
+  const refreshKey = useAppStore((s) => s.timelineRefreshKey)
   const scrollContainer = useContext(ScrollContainerContext)
   const [scrollPos, setScrollPos] = useState({ top: 0, height: 0 })
 

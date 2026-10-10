@@ -1,9 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
-import sharp from 'sharp'
 import type { Job } from 'bullmq'
 import { BullMqService } from './bullmq.service'
-import { ocrJobSchema, type OcrJob } from './job-schemas'
-import { runAssetFileJob } from './asset-file-job'
+import { assetRefsJobSchema, type AssetRefsJob } from './job-schemas'
+import { orientedResize, runAssetFileJob } from './asset-file-job'
 import { OCR_MAX_DIM, OcrService } from './ocr.service'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
@@ -20,15 +19,15 @@ export class OcrProcessor implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.bullMq.createWorker<OcrJob>('process-ocr', (job) => this.processJob(job))
+    this.bullMq.createWorker<AssetRefsJob>('process-ocr', (job) => this.processJob(job))
 
     this.logger.log('OCR processor listening for jobs')
   }
 
-  private async processJob(job: Job<OcrJob>) {
+  private async processJob(job: Job<AssetRefsJob>) {
     await runAssetFileJob({ core: this.core, storage: this.storage, logger: this.logger }, job, {
       queue: 'process-ocr',
-      schema: ocrJobSchema,
+      schema: assetRefsJobSchema,
       label: 'OCR',
       // ponytail: missing model weights are provisioning, not a job bug — warn + no retry.
       // No metadata status marker: core's UpdateMetadataDto has no ocrStatus field
@@ -36,15 +35,7 @@ export class OcrProcessor implements OnModuleInit {
       body: async ({ data, filePath }) => {
         // ponytail: receipts/scans need pixels — one EXIF-oriented pass down to OCR_MAX_DIM on
         // the long side (subsumes the 2048 face/embed prep; PaddleOCR downscales further itself)
-        const resized = await sharp(filePath)
-          .rotate()
-          .resize({
-            width: OCR_MAX_DIM,
-            height: OCR_MAX_DIM,
-            fit: 'inside',
-            withoutEnlargement: true,
-          })
-          .toBuffer()
+        const resized = await orientedResize(filePath, OCR_MAX_DIM)
 
         const extracted = await this.ocr.extract(resized)
         if (!extracted) {

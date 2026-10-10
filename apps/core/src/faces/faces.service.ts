@@ -1,10 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, Repository } from 'typeorm'
 import { Face } from '../database/entities'
 import { Person } from '../database/entities'
 import { Asset } from '../database/entities'
-import { assertAssetOwned } from '../common/asset-ownership'
+import { findOwnedOr404 } from '../common/asset-ownership'
 import { FaceResponseDto } from './dto/face.dto'
 import { refreshPersonFaceCount } from './face-count'
 import type { DetectedFaceInput, FaceDetectorKind } from '@photox/shared-types'
@@ -27,7 +27,7 @@ export class FacesService {
     faces: DetectedFaceInput[],
     detector: FaceDetectorKind | null = null,
   ): Promise<{ count: number }> {
-    await assertAssetOwned(this.assetRepo, userId, assetId)
+    await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset')
     const entities = faces.map((f) => {
       const face = new Face()
       face.assetId = assetId
@@ -45,7 +45,7 @@ export class FacesService {
   // ponytail: transactional companion to registerFaces — worker re-embed does DELETE then POST,
   // so a retry never duplicates stale rows
   async deleteForAsset(userId: string, assetId: string): Promise<{ deleted: number }> {
-    await assertAssetOwned(this.assetRepo, userId, assetId)
+    await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset')
     return this.dataSource.transaction(async (em) => {
       const existing = await em.find(Face, { where: { assetId, userId } })
       if (existing.length === 0) return { deleted: 0 }
@@ -68,7 +68,7 @@ export class FacesService {
   }
 
   async getForAsset(userId: string, assetId: string): Promise<FaceResponseDto[]> {
-    await assertAssetOwned(this.assetRepo, userId, assetId)
+    await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset')
     const faces = await this.repo.find({ where: { assetId } })
     return faces.map((f) => ({
       id: f.id,
@@ -101,11 +101,9 @@ export class FacesService {
   }
 
   async assignPerson(userId: string, faceId: string, personId: string | null): Promise<void> {
-    const face = await this.repo.findOne({ where: { id: faceId, userId } })
-    if (!face) throw new NotFoundException('Face not found')
+    const face = await findOwnedOr404(this.repo, faceId, userId, 'Face')
     if (personId) {
-      const person = await this.personRepo.findOne({ where: { id: personId, userId } })
-      if (!person) throw new NotFoundException('Person not found')
+      await findOwnedOr404(this.personRepo, personId, userId, 'Person')
     }
     const oldPersonId = face.personId
     face.personId = personId

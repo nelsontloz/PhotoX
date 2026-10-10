@@ -5,6 +5,7 @@ import { Person } from '../database/entities'
 import { Face } from '../database/entities'
 import { Asset } from '../database/entities'
 import { refreshPersonFaceCount, countLiveFaces } from '../faces/face-count'
+import { findOwnedOr404 } from '../common/asset-ownership'
 import type { ApplyClustersDto } from './dto/apply-clusters.dto'
 import type { PersonDto, PersonListResponse, PersonAssetsResponse } from '@photox/shared-types'
 
@@ -77,15 +78,13 @@ export class PersonsService {
   }
 
   async getOne(userId: string, id: string): Promise<PersonDto> {
-    const person = await this.personRepo.findOne({ where: { id, userId } })
-    if (!person) throw new NotFoundException('Person not found')
+    const person = await findOwnedOr404(this.personRepo, id, userId, 'Person')
     person.faceCount = await countLiveFaces(this.faceRepo, id, userId)
     return this.toListItem(person)
   }
 
   async update(userId: string, id: string, name: string | null): Promise<PersonDto> {
-    const person = await this.personRepo.findOne({ where: { id, userId } })
-    if (!person) throw new NotFoundException('Person not found')
+    await findOwnedOr404(this.personRepo, id, userId, 'Person')
     await this.personRepo.update(id, { name })
     const updated = await this.personRepo.findOne({ where: { id } })
     return this.toListItem(updated!)
@@ -97,8 +96,7 @@ export class PersonsService {
     limit = 20,
     offset = 0,
   ): Promise<PersonAssetsResponse> {
-    const person = await this.personRepo.findOne({ where: { id, userId } })
-    if (!person) throw new NotFoundException('Person not found')
+    await findOwnedOr404(this.personRepo, id, userId, 'Person')
 
     // ponytail: per-asset rollup — one row per asset containing this person; faceId is the person's face in that asset, ordered by photo date like the timeline
     const rows = await this.faceRepo

@@ -18,25 +18,15 @@ export const thumbnailJobSchema = z.object({
   metadataWaits: z.number().int().min(0).max(10).optional(),
 })
 
-// video/metadata/embedding/ocr/detection jobs carry only the three refs — one base schema, aliased per queue
-const assetRefsJobSchema = z.object({
+// video/metadata/embedding/ocr/detection jobs carry only the three refs — one shared schema
+export const assetRefsJobSchema = z.object({
   ...jobRefs,
 })
-
-export const videoJobSchema = assetRefsJobSchema
-
-export const metadataJobSchema = assetRefsJobSchema
 
 export const faceJobSchema = z.object({
   ...jobRefs,
   detector: z.enum(FACE_DETECTOR_KINDS).optional(),
 })
-
-export const embeddingJobSchema = assetRefsJobSchema
-
-export const ocrJobSchema = assetRefsJobSchema
-
-export const detectionJobSchema = assetRefsJobSchema
 
 export const clusterJobSchema = z.object({
   userId: uuid,
@@ -49,12 +39,8 @@ export const cleanupJobSchema = z.object({
 export const cleanupOrphansJobSchema = z.object({})
 
 export type ThumbnailJob = z.infer<typeof thumbnailJobSchema>
-export type VideoJob = z.infer<typeof videoJobSchema>
-export type MetadataJob = z.infer<typeof metadataJobSchema>
+export type AssetRefsJob = z.infer<typeof assetRefsJobSchema>
 export type FaceJob = z.infer<typeof faceJobSchema>
-export type EmbeddingJob = z.infer<typeof embeddingJobSchema>
-export type OcrJob = z.infer<typeof ocrJobSchema>
-export type DetectionJob = z.infer<typeof detectionJobSchema>
 export type ClusterJob = z.infer<typeof clusterJobSchema>
 export type CleanupJob = z.infer<typeof cleanupJobSchema>
 export type CleanupOrphansJob = z.infer<typeof cleanupOrphansJobSchema>

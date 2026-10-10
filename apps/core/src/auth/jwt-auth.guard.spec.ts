@@ -2,7 +2,7 @@ import { ForbiddenException, UnauthorizedException, type ExecutionContext } from
 import { JwtService } from '@nestjs/jwt'
 import type { Request } from 'express'
 import { ACCESS_COOKIE } from './auth-cookie'
-import { JwtAuthGuard } from './jwt-auth.guard'
+import { JwtAuthGuard, requireUserId } from './jwt-auth.guard'
 
 const TEST_SECRET = 'test-secret-0123456789abcdef0123456789'
 const jwt = new JwtService({ secret: TEST_SECRET })
@@ -364,5 +364,18 @@ describe('JwtAuthGuard', () => {
       authorization: `Bearer ${tokenFor()}`,
     })
     await expect(guard.canActivate(context)).resolves.toBe(true)
+  })
+})
+
+describe('requireUserId', () => {
+  const contextWith = (user?: { id: string }) =>
+    ({ switchToHttp: () => ({ getRequest: () => ({ user }) }) }) as unknown as ExecutionContext
+
+  it('returns the verified user id', () => {
+    expect(requireUserId(contextWith({ id: 'u1' }))).toBe('u1')
+  })
+
+  it('throws 401 when the request has no verified user', () => {
+    expect(() => requireUserId(contextWith())).toThrow(UnauthorizedException)
   })
 })

@@ -161,6 +161,24 @@ interface VideoMetadataPatch {
   altitude: number | null
 }
 
+// all-null patch returned when ffprobe cannot read the file
+const NULL_VIDEO_METADATA: VideoMetadataPatch = {
+  durationSeconds: null,
+  width: null,
+  height: null,
+  codec: null,
+  fps: null,
+  hasAudio: null,
+  orientation: null,
+  takenAt: null,
+  cameraMake: null,
+  cameraModel: null,
+  lensModel: null,
+  latitude: null,
+  longitude: null,
+  altitude: null,
+}
+
 function readOrientation(result: FfprobeResult): number | null {
   for (const stream of result.streams) {
     if (stream.codec_type !== 'video') continue
@@ -207,22 +225,7 @@ export class VideoMetadataExtractor {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       this.logger.warn(`ffprobe failed for ${inputPath}: ${message}`)
-      return {
-        durationSeconds: null,
-        width: null,
-        height: null,
-        codec: null,
-        fps: null,
-        hasAudio: null,
-        orientation: null,
-        takenAt: null,
-        cameraMake: null,
-        cameraModel: null,
-        lensModel: null,
-        latitude: null,
-        longitude: null,
-        altitude: null,
-      }
+      return NULL_VIDEO_METADATA
     }
 
     const videoStream = result.streams.find((s) => s.codec_type === 'video')

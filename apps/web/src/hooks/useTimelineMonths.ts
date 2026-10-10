@@ -38,7 +38,7 @@ export interface UseTimelineMonthsResult {
  * Per-month asset cache for the timeline: nothing is fetched at mount, `ensureMonth('YYYY-MM')`
  * fetches the whole month through `listAllAssets` (limit 100) inside its half-open
  * `dateFrom`/`dateTo` range, and entries are stamped with the refresh key so an upload/trash bump
- * re-fetches only what's on screen. Favorites/trash keep `useAssetGroups`' fetch-all.
+ * re-fetches only what's on screen. Trash keeps its own fetch-all grouping.
  *
  * The cache is bounded: past MAX_CACHED_MONTHS it evicts the least-recently-used month that isn't
  * mounted (`retainMonths`), so evicted months simply re-fetch when they scroll back into view.
@@ -53,13 +53,15 @@ export function useTimelineMonths({
   // sync mirror of `entries` so ensureMonth reads fresh data without waiting for a re-render
   const entriesRef = useRef(entries)
   const inFlightRef = useRef(new Map<string, { stamp: number; promise: Promise<Asset[] | null> }>())
-  // LRU bookkeeping: monotonic touch counter per month + the mounted months protected from eviction
-  const lastUsedRef = useRef(new Map<string, number>())
-  const counterRef = useRef(0)
+  // LRU bookkeeping: insertion-ordered Map, front = least recently used (touch = delete+set moves
+  // the key to the back); retainedRef = mounted months protected from eviction
+  const lastUsedRef = useRef(new Map<string, true>())
   const retainedRef = useRef<ReadonlySet<string>>(new Set())
 
   const touch = useCallback((key: string) => {
-    lastUsedRef.current.set(key, ++counterRef.current)
+    const used = lastUsedRef.current
+    used.delete(key)
+    used.set(key, true)
   }, [])
 
   const commit = useCallback((key: string, entry: MonthEntry) => {
@@ -71,12 +73,11 @@ export function useTimelineMonths({
     // key just committed. ponytail: month-count cap, not a byte budget — 12 heavy months fit
     // comfortably; upgrade path = byte-budget LRU if single months ever get huge.
     if (next.size > MAX_CACHED_MONTHS) {
-      const victims = [...next.keys()]
-        .filter((k) => k !== key && !retainedRef.current.has(k))
-        .sort((a, b) => (lastUsedRef.current.get(a) ?? 0) - (lastUsedRef.current.get(b) ?? 0))
-      for (const victim of victims) {
+      for (const victim of lastUsedRef.current.keys()) {
         if (next.size <= MAX_CACHED_MONTHS) break
+        if (victim === key || retainedRef.current.has(victim)) continue
         next.delete(victim)
+        lastUsedRef.current.delete(victim)
       }
     }
     entriesRef.current = next

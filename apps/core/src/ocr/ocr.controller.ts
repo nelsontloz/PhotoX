@@ -1,6 +1,6 @@
-import { Body, Controller, Param, Post, Req } from '@nestjs/common'
+import { Body, Controller, Param, Post } from '@nestjs/common'
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
-import type { Request } from 'express'
+import { CurrentUserId } from '../auth/jwt-auth.guard'
 import { OcrService } from './ocr.service'
 import { RegisterOcrDto } from './dto/register-ocr.dto'
 
@@ -17,9 +17,8 @@ export class OcrController {
   async registerOcr(
     @Param('id') id: string,
     @Body() dto: RegisterOcrDto,
-    @Req() req: Request,
+    @CurrentUserId() userId: string,
   ): Promise<{ ok: true }> {
-    const userId = (req.user as { id: string }).id
     return this.ocr.register(id, userId, dto)
   }
 }

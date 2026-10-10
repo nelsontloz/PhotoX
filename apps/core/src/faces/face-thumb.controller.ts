@@ -1,6 +1,7 @@
-import { Controller, Get, Param, Query, Req, Res } from '@nestjs/common'
+import { Controller, Get, Param, Query, Res } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import type { Request, Response } from 'express'
+import type { Response } from 'express'
+import { CurrentUserId } from '../auth/jwt-auth.guard'
 import { FaceThumbService } from './face-thumb.service'
 import { FaceThumbQueryDto } from './dto/face-thumb-query.dto'
 
@@ -15,11 +16,10 @@ export class FaceThumbController {
   @ApiResponse({ status: 404, description: 'Face, asset, or source bytes not found' })
   async getThumb(
     @Param('id') id: string,
-    @Req() req: Request,
+    @CurrentUserId() userId: string,
     @Res() res: Response,
     @Query() q: FaceThumbQueryDto,
   ): Promise<void> {
-    const userId = (req.user as { id: string }).id
     const bytes = await this.thumbs.getThumb(id, userId, q.size ?? Number.NaN)
     res.set({
       'Content-Type': 'image/jpeg',

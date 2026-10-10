@@ -1,5 +1,6 @@
 import { execSync } from 'node:child_process'
 import { readFileSync, unlinkSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -123,7 +124,7 @@ describe('VideoProcessor (integration)', () => {
         const derivative = testApp.fake.files.get(updated.transcodeFileId!)!
         expect(derivative.purpose).toBe('transcode')
         expect(derivative.mimeType).toBe('video/webm')
-        const derivativeStat = await testApp.storage.stat(derivative.storageKey)
+        const derivativeStat = await stat(testApp.storage.pathFor(derivative.storageKey))
         expect(derivativeStat.size).toBeGreaterThan(0)
 
         // register-before-patch ordering: ready patch carries the registered id

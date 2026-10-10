@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common'
 import { DataSource } from 'typeorm'
-import { toSql } from 'pgvector'
 import {
   SEARCH_EMBEDDING_DIM,
   SEARCH_EMBEDDING_MODEL,
   type SearchResponse,
 } from '@photox/shared-types'
 import { AssetsService } from '../assets/assets.service'
+import { toVectorSql } from '../database/shared/pgvector'
 import { TextEncodeService } from './text-encode.service'
 import { fuseRrf } from './rrf'
 import { routeMatches } from './routing'
@@ -78,7 +78,7 @@ export class SearchService {
            AND ae.kind = 'image' AND ae.model = $2
          ORDER BY dist
          LIMIT $4`,
-        [userId, SEARCH_EMBEDDING_MODEL, toSql(vector), limit],
+        [userId, SEARCH_EMBEDDING_MODEL, toVectorSql(vector), limit],
       )
     })
     if (rows.length === 0) return []

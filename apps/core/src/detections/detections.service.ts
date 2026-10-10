@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, type Repository } from 'typeorm'
 import type { AssetDetectionsResponse } from '@photox/shared-types'
 import { Asset } from '../database/entities'
-import { assertAssetOwned } from '../common/asset-ownership'
+import { findOwnedOr404 } from '../common/asset-ownership'
 import { AssetDetection } from '../database/entities/asset-detection.entity'
 import type { DetectedObjectDto, RegisterDetectionsDto } from './dto/register-detections.dto'
 
@@ -34,7 +34,7 @@ export class DetectionsService {
     userId: string,
     dto: RegisterDetectionsDto,
   ): Promise<{ ok: true }> {
-    await assertAssetOwned(this.assetRepo, userId, assetId)
+    await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset')
     this.assertValid(dto)
     const rows = dto.detections.map((d) => ({
       assetId,
@@ -52,7 +52,7 @@ export class DetectionsService {
   }
 
   async list(userId: string, assetId: string): Promise<AssetDetectionsResponse> {
-    await assertAssetOwned(this.assetRepo, userId, assetId)
+    await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset')
     const rows = await this.repo.find({ where: { assetId }, order: { confidence: 'DESC' } })
     return {
       detections: rows.map((r) => ({ label: r.label, confidence: r.confidence, box: r.box })),

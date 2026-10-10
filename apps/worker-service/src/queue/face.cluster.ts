@@ -259,7 +259,6 @@ export class FaceClusterService implements OnModuleInit {
         best.dist <= NOISE_ASSIGN_EPS &&
         best.runnerUp - best.dist >= CLUSTER_MATCH_MARGIN
       ) {
-        face.personId = best.id
         facesByPerson.get(best.id)!.push(face)
         refreshCentroid(best.id)
         // noise attaches carry no cover (parity with the old per-face update)
@@ -293,10 +292,8 @@ export class FaceClusterService implements OnModuleInit {
         }
         creates.push(create)
         pendingCreates.set(clusterLabel, create)
-        personCentroids.set(clusterLabel, newCentroid)
         facesByPerson.set(clusterLabel, [])
         for (const face of facesInCluster) {
-          face.personId = clusterLabel
           facesByPerson.get(clusterLabel)!.push(face)
         }
         refreshCentroid(clusterLabel)
@@ -318,7 +315,6 @@ export class FaceClusterService implements OnModuleInit {
       }
 
       for (const face of facesInCluster) {
-        face.personId = personId
         facesByPerson.get(personId)!.push(face)
       }
       // ponytail: refresh so later clusters in the same run match against faces attached earlier

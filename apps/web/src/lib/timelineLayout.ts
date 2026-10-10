@@ -44,16 +44,9 @@ export interface TimelineBucket {
   days: TimelineBucketDay[]
 }
 
-export interface TimelineDaySlot {
-  bucketKey: string
-  height: number
-  rows: number
-}
-
 export interface TimelineLayout {
   buckets: TimelineBucket[]
   totalHeight: number
-  dayIndex: Map<string, TimelineDaySlot>
 }
 
 type Dims = Pick<TimelineItem, 'w' | 'h'>
@@ -99,14 +92,11 @@ export function buildBuckets(
   }
 
   const buckets: TimelineBucket[] = []
-  const dayIndex = new Map<string, TimelineDaySlot>()
 
   for (const [sortKey, dayItems] of [...byDay.entries()].sort(([a], [b]) => b.localeCompare(a))) {
     const rows = packRows(dayItems, opts)
     const height = HEADER_BLOCK + rows * (opts.rowHeight + GAP) - GAP
     const bucketKey = sortKey.slice(0, 7)
-
-    dayIndex.set(sortKey, { bucketKey, height, rows })
 
     const last = buckets[buckets.length - 1]
     if (last?.key === bucketKey) {
@@ -134,6 +124,5 @@ export function buildBuckets(
     buckets,
     // margins sit only between sections, so totalHeight = lastBucket.top + lastBucket.height
     totalHeight: buckets.length > 0 ? top - SECTION_MARGIN : 0,
-    dayIndex,
   }
 }

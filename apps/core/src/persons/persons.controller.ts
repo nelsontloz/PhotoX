@@ -6,12 +6,11 @@ import {
   Param,
   Query,
   Body,
-  Req,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import type { Request } from 'express'
+import { CurrentUserId } from '../auth/jwt-auth.guard'
 import { PersonsService } from './persons.service'
 import { BullMqService } from '../queue/bullmq.service'
 import { UpdatePersonDto } from './dto/update-person.dto'
@@ -31,8 +30,7 @@ export class PersonsController {
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: 'Trigger face clustering for the current user' })
   @ApiResponse({ status: 202, description: 'Cluster job queued' })
-  async triggerCluster(@Req() req: Request) {
-    const userId = (req.user as { id: string }).id
+  async triggerCluster(@CurrentUserId() userId: string) {
     // ponytail: unique jobId per click — fixed jobId would dedupe via BullMQ and silently drop re-runs
     const jobId = `cluster-${userId}-manual-${Date.now()}`
     await this.bullmq.enqueue(
@@ -52,31 +50,34 @@ export class PersonsController {
   @ApiResponse({ status: 200, description: 'Plan applied' })
   @ApiResponse({ status: 400, description: 'Invalid plan (cover not in faceIds, too many faces)' })
   @ApiResponse({ status: 404, description: 'Face or person not found' })
-  async applyClusters(@Req() req: Request, @Body() dto: ApplyClustersDto) {
-    return this.persons.applyClusters((req.user as { id: string }).id, dto)
+  async applyClusters(@CurrentUserId() userId: string, @Body() dto: ApplyClustersDto) {
+    return this.persons.applyClusters(userId, dto)
   }
 
   @Post('prune-empty')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Delete persons with no live faces (post-clustering cleanup)' })
   @ApiResponse({ status: 200, description: 'Empty persons deleted' })
-  async pruneEmpty(@Req() req: Request): Promise<{ deleted: number }> {
-    return this.persons.pruneEmpty((req.user as { id: string }).id)
+  async pruneEmpty(@CurrentUserId() userId: string): Promise<{ deleted: number }> {
+    return this.persons.pruneEmpty(userId)
   }
 
   @Get()
   @ApiOperation({ summary: 'List persons for a user' })
   @ApiResponse({ status: 200, description: 'Paginated person list' })
-  async list(@Query() q: PaginationQueryDto, @Req() req: Request): Promise<PersonListResponse> {
-    return this.persons.list((req.user as { id: string }).id, q.limit ?? 20, q.offset ?? 0)
+  async list(
+    @Query() q: PaginationQueryDto,
+    @CurrentUserId() userId: string,
+  ): Promise<PersonListResponse> {
+    return this.persons.list(userId, q.limit ?? 20, q.offset ?? 0)
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a single person' })
   @ApiResponse({ status: 200, description: 'Person found' })
   @ApiResponse({ status: 404, description: 'Person not found' })
-  async getOne(@Param('id') id: string, @Req() req: Request): Promise<PersonDto> {
-    return this.persons.getOne((req.user as { id: string }).id, id)
+  async getOne(@Param('id') id: string, @CurrentUserId() userId: string): Promise<PersonDto> {
+    return this.persons.getOne(userId, id)
   }
 
   @Patch(':id')
@@ -85,10 +86,10 @@ export class PersonsController {
   @ApiResponse({ status: 404, description: 'Person not found' })
   async update(
     @Param('id') id: string,
-    @Req() req: Request,
+    @CurrentUserId() userId: string,
     @Body() dto: UpdatePersonDto,
   ): Promise<PersonDto> {
-    return this.persons.update((req.user as { id: string }).id, id, dto.name)
+    return this.persons.update(userId, id, dto.name)
   }
 
   @Get(':id/assets')
@@ -98,13 +99,8 @@ export class PersonsController {
   async getAssets(
     @Param('id') id: string,
     @Query() q: PaginationQueryDto,
-    @Req() req: Request,
+    @CurrentUserId() userId: string,
   ): Promise<PersonAssetsResponse> {
-    return this.persons.getAssetsForPerson(
-      (req.user as { id: string }).id,
-      id,
-      q.limit ?? 20,
-      q.offset ?? 0,
-    )
+    return this.persons.getAssetsForPerson(userId, id, q.limit ?? 20, q.offset ?? 0)
   }
 }

@@ -6,10 +6,7 @@ import { SettingsModule } from '../settings/settings.module'
 import { AdminAssetsController } from './admin-assets.controller'
 import { AdminAssetsService } from './admin-assets.service'
 import { AdminFacesController } from './admin-faces.controller'
-import { AdminFacesService } from './admin-faces.service'
-import { AdminReprocessService } from './admin-reprocess.service'
-import { AdminPlacesService } from './admin-places.service'
-import { AdminMetadataService } from './admin-metadata.service'
+import { AdminJobsService } from './admin-jobs.service'
 import { AdminMaintenanceController } from './admin-maintenance.controller'
 import { PlacesModule } from '../places/places.module'
 
@@ -21,12 +18,6 @@ import { PlacesModule } from '../places/places.module'
     PlacesModule,
   ],
   controllers: [AdminAssetsController, AdminMaintenanceController, AdminFacesController],
-  providers: [
-    AdminAssetsService,
-    AdminFacesService,
-    AdminReprocessService,
-    AdminPlacesService,
-    AdminMetadataService,
-  ],
+  providers: [AdminAssetsService, AdminJobsService],
 })
 export class AdminModule {}

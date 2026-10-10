@@ -1,5 +1,5 @@
 // ponytail: single source of truth for API access rules (formerly the gateway's table)
-export function isOpenRoute(_method: string, path: string): boolean {
+export function isOpenRoute(path: string): boolean {
   if (path.startsWith('/docs')) return true
   if (path === '/health') return true
   if (path === '/api/v1/auth' || path.startsWith('/api/v1/auth/')) return true
