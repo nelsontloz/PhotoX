@@ -42,6 +42,8 @@ export interface PublicShareAsset {
   userId: string
   kind: 'photo' | 'video'
   fileId: string
+  /** Set when the worker transcoded the video to browser-playable AV1/webm; share streams serve it instead of the original. */
+  transcodeFileId: string | null
   title: string | null
   originalName: string | null
   mimeType: string | null

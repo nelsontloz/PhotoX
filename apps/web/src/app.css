@@ -163,7 +163,8 @@
 
 /* video.js frame: fit the media container's content box (container query units) while keeping the
    video's aspect ratio, so the player never slides under the viewer's reserved chrome (top bar,
-   thumbnail strip). Surfaces mark their media area with `container-type: size`. */
+   thumbnail strip). Surfaces mark their media area with `container-type: size` AND a definite
+   height — an auto/min-height-only box resolves cqh to 0 and collapses the frame. */
 .video-frame {
   width: min(100cqw, calc(100cqh * var(--video-ar, 1.7777778)));
   aspect-ratio: var(--video-ar, 1.7777778);

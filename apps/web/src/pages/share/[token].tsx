@@ -24,6 +24,12 @@ function getAlbumAssetUrl(token: string, assetId: string, size?: 'sm'): string {
   return `/api/share/${encodeURIComponent(token)}/assets/${encodeURIComponent(assetId)}/stream${query}`
 }
 
+// The share stream endpoints serve the AV1/webm derivative whenever the worker transcoded the
+// video; declaring the original mime there makes video.js reject the source outright.
+function videoType(asset: PublicShareAsset): string | undefined {
+  return asset.transcodeFileId ? 'video/webm' : (asset.mimeType ?? undefined)
+}
+
 function AlbumShare({
   token,
   album,
@@ -118,7 +124,7 @@ function AlbumShare({
               <Suspense fallback={null}>
                 <VideoPlayer
                   src={getAlbumAssetUrl(token, selected.id)}
-                  type={selected.mimeType ?? undefined}
+                  type={videoType(selected)}
                   autoPlay
                   title={selected.title ?? selected.originalName ?? undefined}
                   aspectRatio={
@@ -236,14 +242,19 @@ export default function PublicSharePage() {
   const streamUrl = token ? getStreamUrl(token) : ''
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-black [container-type:size]">
+    // h-screen (not min-h-screen): the container-type:size box needs a definite height or cqh
+    // resolves to 0 and the player frame collapses to 0x0.
+    <div className="flex items-center justify-center h-screen bg-black [container-type:size]">
       {isVideo ? (
         <Suspense fallback={null}>
           <VideoPlayer
             src={streamUrl}
-            type={asset.mimeType ?? undefined}
+            type={videoType(asset)}
             autoPlay
             title={asset.originalName ?? asset.title ?? undefined}
+            aspectRatio={
+              asset.width != null && asset.height != null ? asset.width / asset.height : undefined
+            }
           />
         </Suspense>
       ) : (

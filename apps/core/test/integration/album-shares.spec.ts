@@ -30,6 +30,7 @@ interface PublicAsset {
   userId: string
   kind: string
   fileId: string
+  transcodeFileId: string | null
   title: string | null
   originalName: string | null
   mimeType: string | null
@@ -435,5 +436,74 @@ describe('album shares', () => {
 
     const assetsRoute = await request(apiServer(t)).get(`/api/share/${share.token}/assets`)
     expect(assetsRoute.status).toBe(404)
+  })
+
+  it('serves the transcoded derivative on a shared video, not the unplayable original', async () => {
+    const { id: userId, token } = await seedUserWithToken()
+    const original = await seedFile(t, userId, {
+      bytes: Buffer.from('hevc-original-bytes'),
+      mimeType: 'video/quicktime',
+    })
+    const transcode = await seedFile(t, userId, {
+      bytes: Buffer.from('av1-webm-transcoded'),
+      mimeType: 'video/webm',
+    })
+    const asset = await seedAsset(t, userId, original.id, {
+      kind: 'video',
+      transcodeFileId: transcode.id,
+      transcodeStatus: 'ready',
+    })
+    const created = await createShare(token, { assetId: asset.id })
+    const share = created.body as ShareBody
+
+    const pub = await request(apiServer(t)).get(`/api/share/${share.token}`)
+    expect((pub.body as { asset: PublicAsset }).asset.transcodeFileId).toBe(transcode.id)
+
+    const stream = await request(apiServer(t)).get(`/api/share/${share.token}/stream`)
+    expect(stream.status).toBe(200)
+    expect(stream.headers['content-type']).toBe('video/webm')
+    const record = await t.fileRepo.findOneOrFail({ where: { id: transcode.id } })
+    expect(stream.headers.etag).toBe(`"${record.checksumSha256}"`)
+  })
+
+  it('serves the transcode for a shared album video member and keeps ?size=sm on the thumb', async () => {
+    const { id: userId, token } = await seedUserWithToken()
+    const album = await createAlbum(userId)
+    const original = await seedFile(t, userId, {
+      bytes: Buffer.from('hevc-original-bytes'),
+      mimeType: 'video/quicktime',
+    })
+    const transcode = await seedFile(t, userId, {
+      bytes: Buffer.from('av1-webm-transcoded'),
+      mimeType: 'video/webm',
+    })
+    const asset = await seedAsset(t, userId, original.id, {
+      kind: 'video',
+      transcodeFileId: transcode.id,
+      transcodeStatus: 'ready',
+    })
+    const thumb = await seedThumbnail(t, asset.id, { size: 'sm' })
+    await addMember(album.id, asset.id)
+    const created = await createShare(token, { albumId: album.id })
+    const share = created.body as ShareBody
+
+    const list = await request(apiServer(t)).get(`/api/share/${share.token}/assets`)
+    const item = (list.body as { items: PublicAsset[] }).items[0]!
+    expect(item.transcodeFileId).toBe(transcode.id)
+
+    const stream = await request(apiServer(t)).get(
+      `/api/share/${share.token}/assets/${asset.id}/stream`,
+    )
+    expect(stream.status).toBe(200)
+    expect(stream.headers['content-type']).toBe('video/webm')
+    const record = await t.fileRepo.findOneOrFail({ where: { id: transcode.id } })
+    expect(stream.headers.etag).toBe(`"${record.checksumSha256}"`)
+
+    const sm = await request(apiServer(t)).get(
+      `/api/share/${share.token}/assets/${asset.id}/stream?size=sm`,
+    )
+    expect(sm.status).toBe(200)
+    const thumbRecord = await t.fileRepo.findOneOrFail({ where: { id: thumb.fileId } })
+    expect(sm.headers.etag).toBe(`"${thumbRecord.checksumSha256}"`)
   })
 })

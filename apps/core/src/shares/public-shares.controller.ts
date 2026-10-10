@@ -30,7 +30,8 @@ export class PublicSharesController {
   async streamByToken(@Param('token') token: string, @Req() req: Request, @Res() res: Response) {
     const share = await this.shares.getByToken(token)
     if (share.kind !== 'asset') throw new NotFoundException('Share not found')
-    await serveFileBytes(req, res, this.files, share.asset.fileId)
+    // Serve the browser-playable derivative when the video was transcoded, like the app viewer.
+    await serveFileBytes(req, res, this.files, share.asset.transcodeFileId ?? share.asset.fileId)
   }
 
   @Get(':token/assets')
