@@ -16,6 +16,8 @@ interface ViewerMediaProps {
   isVideo: boolean
   videoSrc: string | null
   videoFallbackSrc: string | undefined
+  videoType?: string
+  videoFallbackType?: string
   videoPoster: string | undefined
   videoTitle: string | undefined
   imageUrl: string | null
@@ -40,6 +42,8 @@ export function ViewerMedia({
   isVideo,
   videoSrc,
   videoFallbackSrc,
+  videoType,
+  videoFallbackType,
   videoPoster,
   videoTitle,
   imageUrl,
@@ -81,9 +85,11 @@ export function ViewerMedia({
           key={asset.id}
           src={videoSrc}
           fallbackSrc={videoFallbackSrc}
+          type={videoType}
+          fallbackType={videoFallbackType}
           poster={videoPoster}
           title={videoTitle}
-          className="relative max-h-full max-w-full"
+          aspectRatio={dims ? dims.w / dims.h : undefined}
         />
       ) : imageUrl ? (
         dims ? (

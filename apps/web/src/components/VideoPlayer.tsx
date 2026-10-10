@@ -1,20 +1,73 @@
-import { useState } from 'react'
-import { FaCircleExclamation, FaSpinner, FaVideo } from 'react-icons/fa6'
+import { useEffect, useRef, useState } from 'react'
+import videojs from 'video.js'
+import type Player from 'video.js/dist/types/player'
+import { FaCircleExclamation } from 'react-icons/fa6'
 
 interface VideoPlayerProps {
   src: string
   fallbackSrc?: string
+  // video.js picks sources via canPlayType(type): a missing type is rejected — pass a real mime.
+  type?: string
+  fallbackType?: string
   poster?: string
   title?: string
   className?: string
+  autoPlay?: boolean
+  /** width / height of the video; sizes the frame so portrait videos stay tall (defaults to 16:9). */
+  aspectRatio?: number
 }
 
-export function VideoPlayer({ src, fallbackSrc, poster, title, className = '' }: VideoPlayerProps) {
-  const [currentSrc, setCurrentSrc] = useState(src)
-  const [loading, setLoading] = useState(true)
+export function VideoPlayer({
+  src,
+  fallbackSrc,
+  type = 'video/mp4',
+  fallbackType,
+  poster,
+  title,
+  className = '',
+  autoPlay = false,
+  aspectRatio = 16 / 9,
+}: VideoPlayerProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState(false)
 
-  const label = title ? `Video player for ${title}` : 'Video player'
+  useEffect(() => {
+    if (error) return
+    const container = containerRef.current
+    if (!container) return
+
+    // React owns only the container: video.js dispose() removes its own element, which breaks a
+    // JSX-rendered node under StrictMode's double effect (legacy.videojs.org/guides/react).
+    const videoEl = document.createElement('video-js')
+    videoEl.classList.add('vjs-big-play-centered')
+    videoEl.setAttribute('aria-label', title ? `Video player for ${title}` : 'Video player')
+    container.appendChild(videoEl)
+
+    let swapped = false
+    const player: Player = videojs(videoEl, {
+      controls: true,
+      autoplay: autoPlay,
+      playsinline: true,
+      preload: 'metadata',
+      fill: true,
+      poster,
+      sources: [{ src, type }],
+    })
+
+    player.on('error', () => {
+      if (!swapped && fallbackSrc) {
+        swapped = true
+        player.error(null)
+        player.src({ src: fallbackSrc, type: fallbackType ?? type })
+        return
+      }
+      setError(true)
+    })
+
+    return () => {
+      if (!player.isDisposed()) player.dispose()
+    }
+  }, [error, src, type, fallbackSrc, fallbackType, poster, title, autoPlay])
 
   if (error) {
     return (
@@ -41,51 +94,16 @@ export function VideoPlayer({ src, fallbackSrc, poster, title, className = '' }:
     )
   }
 
+  // Width follows the video's aspect ratio (height capped at 80vh), so the frame hugs the video
+  // instead of staying full-width with letterbox bars.
   return (
     <div
-      className={[
-        'relative w-full max-h-[80vh] bg-black rounded-xl overflow-hidden shadow-2xl',
-        className,
-      ].join(' ')}
+      className={['relative bg-black rounded-xl overflow-hidden shadow-2xl', className].join(' ')}
+      style={{ width: `min(100%, calc(80vh * ${aspectRatio}))`, aspectRatio }}
     >
-      <video
-        src={currentSrc}
-        poster={poster}
-        controls
-        playsInline
-        preload="metadata"
-        aria-label={label}
-        onLoadedMetadata={() => {
-          setLoading(false)
-        }}
-        onError={(e) => {
-          const video = e.currentTarget
-          if (fallbackSrc && currentSrc !== fallbackSrc) {
-            setCurrentSrc(fallbackSrc)
-            video.load()
-            return
-          }
-          setLoading(false)
-          setError(true)
-        }}
-        className="block w-full h-full max-h-[80vh] object-contain"
-      >
-        <track kind="captions" />
-      </video>
-      {loading && (
-        <div
-          className="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none"
-          aria-hidden="true"
-        >
-          <div className="flex flex-col items-center gap-2 text-slate-200">
-            <FaSpinner className="text-3xl text-primary animate-spin" />
-            <span className="text-xs text-slate-300 inline-flex items-center gap-1.5">
-              <FaVideo className="text-xs" />
-              Loading video…
-            </span>
-          </div>
-        </div>
-      )}
+      <div data-vjs-player className="absolute inset-0">
+        <div ref={containerRef} className="h-full w-full" />
+      </div>
     </div>
   )
 }

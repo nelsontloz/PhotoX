@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { FaCircleExclamation, FaPhotoFilm, FaPlay, FaXmark } from 'react-icons/fa6'
 import { api } from '../../api/client'
 import { LoadingState } from '../../components/StateViews'
+import { VideoPlayer } from '../../components/VideoPlayer'
 import type {
   PublicAlbumAssetsResponse,
   PublicAlbumShareResponse,
@@ -109,13 +110,19 @@ function AlbumShare({
             <FaXmark className="text-2xl" />
           </button>
           {selected.kind === 'video' ? (
-            <video
-              src={getAlbumAssetUrl(token, selected.id)}
-              controls
-              autoPlay
-              onClick={(e) => e.stopPropagation()}
-              className="max-w-full max-h-[90vh] object-contain"
-            />
+            <div onClick={(e) => e.stopPropagation()}>
+              <VideoPlayer
+                src={getAlbumAssetUrl(token, selected.id)}
+                type={selected.mimeType ?? undefined}
+                autoPlay
+                title={selected.title ?? selected.originalName ?? undefined}
+                aspectRatio={
+                  selected.width != null && selected.height != null
+                    ? selected.width / selected.height
+                    : undefined
+                }
+              />
+            </div>
           ) : (
             <img
               src={getAlbumAssetUrl(token, selected.id)}
@@ -225,12 +232,11 @@ export default function PublicSharePage() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-black">
       {isVideo ? (
-        <video
+        <VideoPlayer
           src={streamUrl}
-          controls
+          type={asset.mimeType ?? undefined}
           autoPlay
-          className="max-w-full max-h-screen object-contain"
-          title={asset.originalName ?? asset.title ?? 'Video'}
+          title={asset.originalName ?? asset.title ?? undefined}
         />
       ) : (
         <img

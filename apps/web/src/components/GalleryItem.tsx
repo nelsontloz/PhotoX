@@ -12,6 +12,8 @@ interface GalleryItemProps {
   // ponytail: extra absolute-positioned content rendered inside the figure (e.g. face box overlay) — keeps the figure as the positioning context
   overlay?: ReactNode
   onLongPress?: (asset: Asset) => void
+  /** Forwarded to AssetThumb: fixed overlays (dialogs) never intersect the scroll root, so their tiles must skip the gate. */
+  eager?: boolean
   showCheckbox?: boolean
   onToggleSelect?: (id: string) => void
   selected?: boolean
@@ -24,6 +26,7 @@ export const GalleryItem = memo(function GalleryItem({
   dark = false,
   overlay,
   onLongPress,
+  eager = false,
   showCheckbox = true,
   onToggleSelect,
   selected = false,
@@ -75,6 +78,7 @@ export const GalleryItem = memo(function GalleryItem({
     >
       <AssetThumb
         asset={asset}
+        eager={eager}
         onThumbPicked={(t: AssetThumbnail) => setDims({ width: t.width, height: t.height })}
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />

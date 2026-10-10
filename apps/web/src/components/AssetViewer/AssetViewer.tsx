@@ -94,6 +94,13 @@ export function AssetViewer({
     : null
   const videoFallbackSrc =
     isVideo && currentAsset.transcodeFileId ? getVideoStreamUrl(currentAsset.fileId) : undefined
+  // video.js picks a source via canPlayType(type); the transcode is always AV1-in-webm.
+  const videoType = isVideo
+    ? currentAsset.transcodeFileId
+      ? 'video/webm'
+      : (currentAsset.mimeType ?? undefined)
+    : undefined
+  const videoFallbackType = isVideo ? (currentAsset.mimeType ?? undefined) : undefined
   const imageAlt = currentAsset.originalName ?? currentAsset.title ?? 'Photo'
   const videoTitle = currentAsset.title ?? currentAsset.originalName ?? undefined
   const displayAsset =
@@ -178,6 +185,8 @@ export function AssetViewer({
           isVideo={isVideo}
           videoSrc={primaryVideoSrc}
           videoFallbackSrc={videoFallbackSrc}
+          videoType={videoType}
+          videoFallbackType={videoFallbackType}
           videoPoster={videoPosterUrl ?? placeholderUrl ?? undefined}
           videoTitle={videoTitle}
           imageUrl={imageUrl}

@@ -155,3 +155,8 @@
   flex-basis: 0;
   margin-left: calc(-1 * var(--space));
 }
+
+/* Tech video letterboxes inside the frame like the old native player did. */
+.video-js .vjs-tech {
+  object-fit: contain;
+}
