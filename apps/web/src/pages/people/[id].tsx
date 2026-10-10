@@ -1,25 +1,30 @@
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { FaArrowLeft, FaFaceSmile } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
-import { LoadingState } from '../../components/StateViews'
+import { ErrorState, LoadingState } from '../../components/StateViews'
 import { ViewerHost } from '../../components/ViewerHost'
-import { GalleryItem } from '../../components/GalleryItem'
-import { FaceOverlay } from '../../components/AssetViewer/FaceOverlay'
+import { TimelineGrid } from '../../components/Timeline/TimelineGrid'
 import { renamePerson } from '../../api/persons'
 import { usePersonDetail } from '../../hooks/usePersonDetail'
 import { useInlineRename } from '../../hooks/useInlineRename'
+import { useTimelineLayout } from '../../hooks/useTimelineLayout'
+import { useTimelineMonths } from '../../hooks/useTimelineMonths'
 import type { Asset } from '@photox/shared-types'
 
-export default function PersonDetailPage() {
-  const { id } = useParams<{ id: string }>()
+function PersonDetail({ id }: { id: string }) {
   const navigate = useNavigate()
-  const { person, setPerson, assets, faceMap, total, loading } = usePersonDetail(id)
+  const { person, setPerson, loading: personLoading } = usePersonDetail(id)
+  // Same lazy pipeline as the home timeline, scoped to this person (layout + per-month fetches).
+  const timeline = useTimelineLayout({ personId: id })
+  const { groups, monthStatus, ensureMonth, retainMonths, refreshKey } = useTimelineMonths({
+    personId: id,
+  })
+  const loadedAssets = useMemo(() => groups.flatMap((g) => g.items), [groups])
   const { editing, nameValue, setNameValue, start, save } = useInlineRename(
     person?.name ?? '',
     async (name) => {
-      if (!id) return
       const updated = await renamePerson(id, name || null)
       setPerson(updated)
     },
@@ -28,112 +33,96 @@ export default function PersonDetailPage() {
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
 
-  let content: ReactNode
-  if (loading) {
-    content = <LoadingState className="flex justify-center py-20" />
-  } else if (!person) {
-    content = (
+  if (personLoading || timeline.loading)
+    return <LoadingState className="flex justify-center py-20" />
+  if (timeline.error)
+    return <ErrorState message={timeline.error} onRetry={() => window.location.reload()} />
+  if (!person)
+    return (
       <div className="flex flex-col items-center justify-center py-20">
         <FaFaceSmile className="text-4xl text-slate-500 mb-4" />
         <p className="text-slate-400">Person not found</p>
       </div>
     )
-  } else {
-    content = (
-      <>
-        <div className="max-w-6xl mx-auto">
-          <div className="flex items-center gap-4 mb-6">
-            <button
-              onClick={() => {
-                void navigate('/people')
-              }}
-              className="text-slate-400 hover:text-white transition-colors"
-            >
-              <FaArrowLeft className="text-xl" />
-            </button>
-            {editing ? (
-              <input
-                autoFocus
-                value={nameValue}
-                onChange={(e) => setNameValue(e.target.value)}
-                onBlur={() => {
-                  void save()
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void save()
-                }}
-                className="text-2xl font-bold text-white bg-transparent border-b border-primary outline-none"
-              />
-            ) : (
-              <h1
-                onClick={start}
-                className="text-2xl font-bold text-white cursor-pointer hover:text-primary transition-colors"
-                title="Click to rename"
-              >
-                {person.name ?? 'Unknown'}
-              </h1>
-            )}
-            <span className="text-slate-400 text-sm">
-              {person.faceCount} {person.faceCount === 1 ? 'face' : 'faces'}
-            </span>
-          </div>
-
-          {assets.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20">
-              <FaFaceSmile className="text-4xl text-slate-500 mb-4" />
-              <p className="text-slate-400">No assets with this person</p>
-            </div>
-          ) : (
-            <div className="justified-grid-gallery">
-              {assets.map((asset) => {
-                const face = faceMap.get(asset.id)
-                const faceOverlay =
-                  face && asset.width && asset.height ? (
-                    <FaceOverlay
-                      faces={[face]}
-                      imageWidth={asset.width}
-                      imageHeight={asset.height}
-                    />
-                  ) : undefined
-                return (
-                  <GalleryItem
-                    key={asset.id}
-                    asset={asset}
-                    onSelect={setSelectedAsset}
-                    overlay={faceOverlay}
-                  />
-                )
-              })}
-            </div>
-          )}
-
-          {total > assets.length && (
-            <div className="flex justify-center mt-6">
-              <p className="text-sm text-slate-400">
-                Showing {assets.length} of {total}
-              </p>
-            </div>
-          )}
-        </div>
-
-        <ViewerHost
-          asset={selectedAsset}
-          onClose={() => setSelectedAsset(null)}
-          hasPrev={false}
-          hasNext={false}
-          onAddToAlbum={() => setPickerOpen(true)}
-          siblingAssets={assets}
-          onSelectSibling={setSelectedAsset}
-          pickerOpen={pickerOpen}
-          onPickerClose={() => setPickerOpen(false)}
-        />
-      </>
-    )
-  }
 
   return (
+    <>
+      <div className="max-w-6xl mx-auto">
+        <div className="flex items-center gap-4 mb-6">
+          <button
+            onClick={() => {
+              void navigate('/people')
+            }}
+            className="text-slate-400 hover:text-white transition-colors"
+          >
+            <FaArrowLeft className="text-xl" />
+          </button>
+          {editing ? (
+            <input
+              autoFocus
+              value={nameValue}
+              onChange={(e) => setNameValue(e.target.value)}
+              onBlur={() => {
+                void save()
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void save()
+              }}
+              className="text-2xl font-bold text-white bg-transparent border-b border-primary outline-none"
+            />
+          ) : (
+            <h1
+              onClick={start}
+              className="text-2xl font-bold text-white cursor-pointer hover:text-primary transition-colors"
+              title="Click to rename"
+            >
+              {person.name ?? 'Unknown'}
+            </h1>
+          )}
+          <span className="text-slate-400 text-sm">
+            {person.faceCount} {person.faceCount === 1 ? 'face' : 'faces'}
+          </span>
+        </div>
+
+        {timeline.layout.buckets.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <FaFaceSmile className="text-4xl text-slate-500 mb-4" />
+            <p className="text-slate-400">No assets with this person</p>
+          </div>
+        ) : (
+          <TimelineGrid
+            layout={timeline.layout}
+            containerRef={timeline.containerRef}
+            groups={groups}
+            monthStatus={monthStatus}
+            ensureMonth={ensureMonth}
+            retainMonths={retainMonths}
+            refreshKey={refreshKey}
+            onSelect={setSelectedAsset}
+          />
+        )}
+      </div>
+
+      <ViewerHost
+        asset={selectedAsset}
+        onClose={() => setSelectedAsset(null)}
+        hasPrev={false}
+        hasNext={false}
+        onAddToAlbum={() => setPickerOpen(true)}
+        siblingAssets={loadedAssets}
+        onSelectSibling={setSelectedAsset}
+        pickerOpen={pickerOpen}
+        onPickerClose={() => setPickerOpen(false)}
+      />
+    </>
+  )
+}
+
+export default function PersonDetailPage() {
+  const { id } = useParams<{ id: string }>()
+  return (
     <RequireAuth>
-      <AppShell>{content}</AppShell>
+      <AppShell>{id ? <PersonDetail key={id} id={id} /> : null}</AppShell>
     </RequireAuth>
   )
 }

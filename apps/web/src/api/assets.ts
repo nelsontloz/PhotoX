@@ -10,6 +10,8 @@ interface ListAssetsParams {
   // half-open range on COALESCE(takenAt, uploadedAt) — the timeline's per-month window
   dateFrom?: string
   dateTo?: string
+  /** Restricts to one person's assets (person detail grid) */
+  personId?: string
 }
 
 export async function listAssets(params: ListAssetsParams = {}): Promise<AssetListResponse> {
@@ -46,8 +48,8 @@ export async function getAsset(assetId: string): Promise<Asset> {
   return data
 }
 
-export async function getAssetLayout(): Promise<AssetLayout> {
-  const { data } = await api.get<AssetLayout>('/v1/assets/layout')
+export async function getAssetLayout(personId?: string): Promise<AssetLayout> {
+  const { data } = await api.get<AssetLayout>('/v1/assets/layout', { params: { personId } })
   return data
 }
 

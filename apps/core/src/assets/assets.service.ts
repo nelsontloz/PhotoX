@@ -92,6 +92,13 @@ export class AssetsService {
       qb.andWhere('(asset.latitude IS NULL OR asset.longitude IS NULL)')
     }
 
+    if (q.personId) {
+      qb.andWhere(
+        'EXISTS (SELECT 1 FROM faces f WHERE f."assetId" = asset.id AND f."personId" = :personId)',
+        { personId: q.personId },
+      )
+    }
+
     const [items, total] = await qb
       .orderBy(`COALESCE(asset.takenAt, asset.uploadedAt)`, 'DESC')
       .addOrderBy('asset.uploadedAt', 'DESC')
@@ -124,14 +131,23 @@ export class AssetsService {
     })
   }
 
-  async layout(userId: string): Promise<AssetLayout> {
-    const rows = await this.repo
+  async layout(userId: string, personId?: string): Promise<AssetLayout> {
+    const qb = this.repo
       .createQueryBuilder('asset')
       .select('COALESCE(asset.takenAt, asset.uploadedAt)', 't')
       .addSelect('COALESCE(asset.width, 1)', 'w')
       .addSelect('COALESCE(asset.height, 1)', 'h')
       .where('asset.userId = :userId', { userId })
       .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false })
+
+    if (personId) {
+      qb.andWhere(
+        'EXISTS (SELECT 1 FROM faces f WHERE f."assetId" = asset.id AND f."personId" = :personId)',
+        { personId },
+      )
+    }
+
+    const rows = await qb
       .orderBy('COALESCE(asset.takenAt, asset.uploadedAt)', 'DESC')
       .addOrderBy('asset.uploadedAt', 'DESC')
       .getRawMany<{ t: Date | string; w: number; h: number }>()

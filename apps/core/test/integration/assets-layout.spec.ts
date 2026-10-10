@@ -1,4 +1,5 @@
 import request from 'supertest'
+import { randomUUID } from 'node:crypto'
 import {
   closeTestApp,
   createApiTestApp,
@@ -123,5 +124,83 @@ describe('assets layout', () => {
       { t: sameTaken.toISOString(), w: 20, h: 1 },
       { t: sameTaken.toISOString(), w: 10, h: 1 },
     ])
+  })
+
+  it('scopes layout to a person, and to the requesting user', async () => {
+    const user = await seedUser(t)
+    const other = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+
+    const faceFile = await seedFile(t, user.id)
+    const withFace = await seedAsset(t, user.id, faceFile.id)
+    await t.assetRepo.update(withFace.id, {
+      takenAt: new Date('2024-03-02T10:00:00.000Z'),
+      width: 4032,
+      height: 3024,
+    })
+
+    const plainFile = await seedFile(t, user.id)
+    const plain = await seedAsset(t, user.id, plainFile.id)
+    await t.assetRepo.update(plain.id, { takenAt: new Date('2024-01-05T08:30:00.000Z') })
+
+    const person = await t.personRepo.save(
+      t.personRepo.create({
+        userId: user.id,
+        name: null,
+        clusterLabel: `c-${randomUUID()}`,
+        faceCount: 1,
+      }),
+    )
+    await t.faceRepo.save(
+      t.faceRepo.create({
+        assetId: withFace.id,
+        userId: user.id,
+        box: { x: 1, y: 1, w: 10, h: 10 },
+        confidence: 0.9,
+        embedding: [0.1, 0.2, 0.3],
+        personId: person.id,
+      }),
+    )
+
+    const otherFile = await seedFile(t, other.id)
+    const otherAsset = await seedAsset(t, other.id, otherFile.id)
+    const otherPerson = await t.personRepo.save(
+      t.personRepo.create({
+        userId: other.id,
+        name: null,
+        clusterLabel: `c-${randomUUID()}`,
+        faceCount: 1,
+      }),
+    )
+    await t.faceRepo.save(
+      t.faceRepo.create({
+        assetId: otherAsset.id,
+        userId: other.id,
+        box: { x: 1, y: 1, w: 10, h: 10 },
+        confidence: 0.9,
+        embedding: [0.1, 0.2, 0.3],
+        personId: otherPerson.id,
+      }),
+    )
+
+    const filtered = await request(apiServer(t))
+      .get('/api/v1/assets/layout')
+      .query({ personId: person.id })
+      .set(t.authHeader(token))
+    expect(filtered.status).toBe(200)
+    expect(filtered.body).toEqual({
+      items: [{ t: '2024-03-02T10:00:00.000Z', w: 4032, h: 3024 }],
+    })
+
+    const all = await request(apiServer(t)).get('/api/v1/assets/layout').set(t.authHeader(token))
+    expect(all.status).toBe(200)
+    expect((all.body as { items: unknown[] }).items).toHaveLength(2)
+
+    const foreign = await request(apiServer(t))
+      .get('/api/v1/assets/layout')
+      .query({ personId: otherPerson.id })
+      .set(t.authHeader(token))
+    expect(foreign.status).toBe(200)
+    expect(foreign.body).toEqual({ items: [] })
   })
 })

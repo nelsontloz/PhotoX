@@ -276,12 +276,13 @@ When('I go back to the people page', async ({ page }) => {
   await expect(page).toHaveURL('/people')
 })
 
-Then('the person detail shows one asset with a face box overlay', async ({ page }) => {
+Then('the person detail shows one asset without a face box overlay', async ({ page }) => {
   await expect(page.locator('figure[role="button"]')).toHaveCount(1, { timeout: 60_000 })
-  // FaceOverlay.tsx renders one .border-2 box per face inside the figure
-  const overlay = page.locator('figure[role="button"] div.border-2')
-  await expect(overlay).toHaveCount(1)
-  await expect(overlay).toBeVisible()
+  await expect(page.locator('figure[role="button"] div.border-2')).toHaveCount(0)
+})
+
+Then('the person detail shows a {string} day header', async ({ page }, label: string) => {
+  await expect(page.locator('main h2').first()).toHaveText(label, { timeout: 60_000 })
 })
 
 When('I open my latest person photo in the viewer', async ({ page, ctx }) => {

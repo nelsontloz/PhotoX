@@ -1,4 +1,4 @@
-import { memo, useState, type CSSProperties, type ReactNode } from 'react'
+import { memo, useState, type CSSProperties } from 'react'
 import { FaCheck, FaPlay, FaSpinner, FaTriangleExclamation, FaUser } from 'react-icons/fa6'
 import type { Asset, AssetThumbnail } from '@photox/shared-types'
 import { AssetThumb } from './AssetThumb'
@@ -9,8 +9,6 @@ interface GalleryItemProps {
   asset: Asset
   onSelect?: (asset: Asset) => void
   dark?: boolean
-  // ponytail: extra absolute-positioned content rendered inside the figure (e.g. face box overlay) — keeps the figure as the positioning context
-  overlay?: ReactNode
   onLongPress?: (asset: Asset) => void
   /** Forwarded to AssetThumb: fixed overlays (dialogs) never intersect the scroll root, so their tiles must skip the gate. */
   eager?: boolean
@@ -24,7 +22,6 @@ export const GalleryItem = memo(function GalleryItem({
   asset,
   onSelect,
   dark = false,
-  overlay,
   onLongPress,
   eager = false,
   showCheckbox = true,
@@ -148,7 +145,6 @@ export const GalleryItem = memo(function GalleryItem({
           {selected && <FaCheck className="text-xs" />}
         </button>
       )}
-      {overlay}
     </figure>
   )
 })
