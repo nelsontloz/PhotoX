@@ -170,7 +170,6 @@ function TimelineContent() {
         selectedIds={selectedIds}
         onToggleSelect={toggle}
         onLongPress={onLongPress}
-        showCheckbox
       />
       <ViewerHost
         asset={nav.selected}

@@ -41,7 +41,7 @@ describe('FaceProcessor', () => {
     const processor = new FaceProcessor(bullMq as never, fake as unknown as CoreClient, storage, {
       detect,
     } as unknown as FaceDetectorService)
-    processor.start()
+    processor.onModuleInit()
     return callbacks[0]!
   }
 

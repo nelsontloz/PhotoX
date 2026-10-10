@@ -2,7 +2,7 @@ import { expect, type APIRequestContext } from '@playwright/test'
 import {
   Then,
   When,
-  type AuthState,
+  type AuthResponse,
   discoverAssetId,
   expectSingleTimelineItem,
   expectThumbnailLoaded,
@@ -13,7 +13,7 @@ import {
 /** Polls until transcode reaches a terminal state, so a 'failed' result fails fast. */
 async function waitForTranscodeStatus(
   request: APIRequestContext,
-  auth: AuthState,
+  auth: AuthResponse,
   id: string,
   status: string,
 ): Promise<void> {

@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { access } from 'fs/promises'
 import { join } from 'path'
 import { loadEnv } from '@photox/shared-config'
 import { FACE_EMBEDDING_DIM, l2Normalize } from '@photox/shared-types'
+import { lazyOnce, requireModelFile } from './model-loader'
 import type * as ort from 'onnxruntime-node'
 
 // ponytail: InsightFace buffalo_l recognition weights (w600k_r50.onnx, ~174MB) are for
@@ -133,18 +133,13 @@ export function preprocessArcFace(rgb112: Buffer): Float32Array {
 @Injectable()
 export class FaceEmbedderService {
   private readonly logger = new Logger(FaceEmbedderService.name)
-  private sessionPromise: Promise<ort.InferenceSession> | null = null
   private inputName = ''
   private outputName = ''
+  private readonly load = lazyOnce(() => this.createSession())
 
   modelPath(): string {
     if (process.env.FACE_MODEL_PATH) return process.env.FACE_MODEL_PATH
     return join(loadEnv().STORAGE_DIR, 'models', FACE_MODEL_FILE)
-  }
-
-  private load(): Promise<ort.InferenceSession> {
-    this.sessionPromise ??= this.createSession()
-    return this.sessionPromise
   }
 
   private async createSession(): Promise<ort.InferenceSession> {
@@ -152,14 +147,11 @@ export class FaceEmbedderService {
     // same reason FaceDetectorService lazy-loads tfjs-node
     const { InferenceSession } = await import('onnxruntime-node')
     const modelPath = this.modelPath()
-    try {
-      await access(modelPath)
-    } catch {
-      throw new Error(
-        `Face embedding model not found at ${modelPath} — run ` +
-          `'pnpm --filter @photox/worker-service face-model' or set FACE_MODEL_PATH`,
-      )
-    }
+    await requireModelFile(
+      modelPath,
+      `Face embedding model not found at ${modelPath} — run ` +
+        `'pnpm --filter @photox/worker-service face-model' or set FACE_MODEL_PATH`,
+    )
     const session = await InferenceSession.create(modelPath, { executionProviders: ['cpu'] })
     this.inputName = session.inputNames[0]!
     this.outputName = session.outputNames[0]!

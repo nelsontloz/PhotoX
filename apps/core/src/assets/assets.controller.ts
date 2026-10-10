@@ -21,15 +21,6 @@ import { UpdateMetadataDto } from './dto/update-metadata.dto'
 import { TrashAssetsDto } from './dto/trash-assets.dto'
 import { RegisterThumbnailDto } from './dto/register-thumbnail.dto'
 
-/** Weak-safe ETag matching: handles W/ prefixes, comma lists, and `*`. */
-export function etagMatches(ifNoneMatch: string | undefined, etag: string): boolean {
-  if (!ifNoneMatch) return false
-  return ifNoneMatch
-    .split(',')
-    .map((candidate) => candidate.trim().replace(/^W\//, ''))
-    .some((candidate) => candidate === '*' || candidate === etag)
-}
-
 export function layoutEtag(fingerprint: { count: number; maxUpdatedAtMs: number }): string {
   return `"layout-${fingerprint.count}-${fingerprint.maxUpdatedAtMs}"`
 }
@@ -53,15 +44,15 @@ export class AssetsController {
   async layout(@Req() req: Request, @Res() res: Response) {
     const userId = (req.user as { id: string }).id
     const fingerprint = await this.assets.layoutFingerprint(userId)
-    const etag = layoutEtag(fingerprint)
-    if (etagMatches(req.get('If-None-Match'), etag)) {
-      res.status(HttpStatus.NOT_MODIFIED).setHeader('ETag', etag).end()
+    // ETag must be on the response before `req.fresh` compares it against If-None-Match.
+    res.setHeader('ETag', layoutEtag(fingerprint))
+    if (req.fresh) {
+      res.status(HttpStatus.NOT_MODIFIED).end()
       return
     }
     const body = await this.assets.layout(userId)
     // private, no-cache: browser stores the body but must revalidate (conditional GET → 304)
     // every load; Vary: Authorization keeps per-user bodies out of each other's cache slots.
-    res.setHeader('ETag', etag)
     res.setHeader('Cache-Control', 'private, no-cache')
     res.setHeader('Vary', 'Authorization')
     res.json(body)

@@ -13,7 +13,6 @@ import { createReadStream } from 'fs'
 import { open, unlink } from 'fs/promises'
 import { extname } from 'path'
 import { pipeline } from 'stream/promises'
-import { Readable } from 'stream'
 import { Asset, FileRecord } from '../../database/entities'
 import { LocalStorageService } from '@photox/shared-config'
 import { toFileRecordResponse } from '../file-record.mapper'
@@ -301,39 +300,14 @@ export class UserFilesService {
     return toFileRecordResponse(record)
   }
 
-  async download(
-    userId: string,
-    fileId: string,
-  ): Promise<{ stream: Readable; record: FileRecord }> {
+  async download(userId: string, fileId: string): Promise<{ path: string; record: FileRecord }> {
     const record = await this.getRecord(fileId)
     if (record.userId !== userId) throw new NotFoundException('File not found')
-    const stream = this.storage.createReadStream(record.storageKey)
-    return { stream, record }
+    return { path: this.storage.pathFor(record.storageKey), record }
   }
 
-  async stream(
-    fileId: string,
-    opts?: { range: { start: number; end: number } },
-  ): Promise<{ stream: Readable; record: FileRecord; totalSize: number }> {
+  async serve(fileId: string): Promise<{ path: string; record: FileRecord }> {
     const record = await this.getRecord(fileId)
-    const fileStat = await this.storage.stat(record.storageKey)
-    const totalSize = fileStat.size
-
-    if (opts) {
-      const stream = this.storage.createReadStream(record.storageKey, {
-        start: opts.range.start,
-        end: opts.range.end,
-      })
-      return { stream, record, totalSize }
-    }
-
-    const stream = this.storage.createReadStream(record.storageKey)
-    return { stream, record, totalSize }
-  }
-
-  async getFileStat(fileId: string): Promise<{ totalSize: number }> {
-    const record = await this.getRecord(fileId)
-    const fileStat = await this.storage.stat(record.storageKey)
-    return { totalSize: fileStat.size }
+    return { path: this.storage.pathFor(record.storageKey), record }
   }
 }

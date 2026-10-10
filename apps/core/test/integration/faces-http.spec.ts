@@ -78,7 +78,6 @@ describe('faces HTTP', () => {
 
   it('registers faces for the owner and persists the JWT userId', async () => {
     const owner = await seedUser(t)
-    const other = await seedUser(t)
     const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role })
     const file = await seedFile(t, owner.id)
     const asset = await seedAsset(t, owner.id, file.id)
@@ -86,7 +85,6 @@ describe('faces HTTP', () => {
       .post(`/api/v1/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
       .send({
-        userId: other.id,
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }],
       })
     expect(res.status).toBe(201)
@@ -107,7 +105,7 @@ describe('faces HTTP', () => {
     const withDetector = await request(apiServer(t))
       .post(`/api/v1/assets/${assetA.id}/faces`)
       .set(t.authHeader(token))
-      .send({ userId: owner.id, detector: 'scrfd', faces: [face] })
+      .send({ detector: 'scrfd', faces: [face] })
     expect(withDetector.status).toBe(201)
     const rowsA = await t.faceRepo.find({ where: { assetId: assetA.id } })
     expect(rowsA[0]?.detector).toBe('scrfd')
@@ -117,7 +115,7 @@ describe('faces HTTP', () => {
     const withoutDetector = await request(apiServer(t))
       .post(`/api/v1/assets/${assetB.id}/faces`)
       .set(t.authHeader(token))
-      .send({ userId: owner.id, faces: [face] })
+      .send({ faces: [face] })
     expect(withoutDetector.status).toBe(201)
     const rowsB = await t.faceRepo.find({ where: { assetId: assetB.id } })
     expect(rowsB[0]?.detector).toBeNull()
@@ -132,7 +130,6 @@ describe('faces HTTP', () => {
       .post(`/api/v1/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
       .send({
-        userId: owner.id,
         detector: 'bogus',
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }],
       })
@@ -148,7 +145,7 @@ describe('faces HTTP', () => {
     const res = await request(apiServer(t))
       .post(`/api/v1/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
-      .send({ userId: owner.id, faces: [] })
+      .send({ faces: [] })
     expect(res.status).toBe(201)
     expect((res.body as { count: number }).count).toBe(0)
     expect(await t.faceRepo.count()).toBe(0)
@@ -163,7 +160,6 @@ describe('faces HTTP', () => {
       .post(`/api/v1/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
       .send({
-        userId: owner.id,
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: [0.1, 0.2] }],
       })
     expect(res.status).toBe(400)
@@ -180,7 +176,6 @@ describe('faces HTTP', () => {
       .post(`/api/v1/assets/${asset.id}/faces`)
       .set(t.authHeader(tokenB))
       .send({
-        userId: b.id,
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }],
       })
     expect(res.status).toBe(404)

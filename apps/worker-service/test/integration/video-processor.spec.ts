@@ -5,14 +5,14 @@ import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import type { MetadataPatch, RegisterFileInput } from '../../src/core/core-client.service'
 import { FFMPEG_PATH } from '../../src/queue/ffmpeg'
-import { waitForJob } from './helpers'
 import {
-  closeMediaTestApp,
-  createMediaTestApp,
-  resetMediaTestApp,
+  closeTestApp,
+  createTestApp,
+  resetTestApp,
   seedOriginal,
-  type MediaTestApp,
-} from './media-helpers'
+  waitForJob,
+  type TestApp,
+} from './helpers'
 
 const TEST_VIDEO_DIR = mkdtempSync(join(tmpdir(), 'video-test-'))
 const H264_AAC_PATH = join(TEST_VIDEO_DIR, 'h264-aac.mp4')
@@ -35,16 +35,16 @@ function hasAomAv1(): boolean {
 }
 
 describe('VideoProcessor (integration)', () => {
-  let testApp: MediaTestApp
+  let testApp: TestApp
   let h264AacBuffer: Buffer
 
   beforeAll(async () => {
     h264AacBuffer = createH264AacVideo()
-    testApp = await createMediaTestApp()
+    testApp = await createTestApp({ processors: 'media' })
   }, 180_000)
 
   afterAll(async () => {
-    await closeMediaTestApp(testApp)
+    await closeTestApp(testApp)
     if (existsSync(H264_AAC_PATH)) unlinkSync(H264_AAC_PATH)
     try {
       rmSync(TEST_VIDEO_DIR, { recursive: true, force: true })
@@ -53,9 +53,7 @@ describe('VideoProcessor (integration)', () => {
     }
   })
 
-  beforeEach(() => {
-    resetMediaTestApp(testApp)
-  })
+  beforeEach(() => resetTestApp(testApp))
 
   function patchDtos(): MetadataPatch[] {
     return testApp.fake.callsOf('patchMetadata').map((c) => c.args[1] as MetadataPatch)

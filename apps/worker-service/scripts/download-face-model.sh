@@ -4,10 +4,9 @@
 # Weights are for non-commercial research use and are never committed (see .gitignore *.onnx).
 set -euo pipefail
 
-FORCE=''
-if [ "${1:-}" = '--force' ]; then FORCE=1; fi
+source "$(dirname "$0")/lib.sh"
 
-MODELS_DIR="$(cd "$(dirname "$0")/../../.." && pwd)/data/storage/models"
+MODELS_DIR="$(resolve_storage_dir)/models"
 
 # --- recognition: w600k_r50.onnx (official buffalo_l bundle) ---
 WK_URL="${FACE_MODEL_URL:-https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip}"
@@ -19,7 +18,7 @@ if [ -n "$FORCE" ] || [ ! -s "$WK_DEST" ]; then
   trap 'rm -f "$TMP"' EXIT
 
   echo "Downloading buffalo_l bundle..."
-  curl -fSL --retry 3 -o "$TMP" "$WK_URL"
+  fetch_file "$WK_URL" "$TMP"
 
   echo "Extracting w600k_r50.onnx to $WK_DEST..."
   if command -v unzip >/dev/null 2>&1; then
@@ -44,18 +43,10 @@ DET_URL="${FACE_DETECTOR_MODEL_URL:-https://huggingface.co/deepghs/insightface/r
 DET_DEST="${FACE_DETECTOR_MODEL_PATH:-$MODELS_DIR/det_10g.onnx}"
 
 if [ -n "$FORCE" ] || [ ! -s "$DET_DEST" ]; then
-  mkdir -p "$(dirname "$DET_DEST")"
-  TMP="$(mktemp "${DET_DEST}.tmp.XXXXXX")"
-  trap 'rm -f "$TMP"' EXIT
-
   echo "Downloading det_10g.onnx to $DET_DEST..."
   # best-effort: human is the default detector, and the runtime/admin UI cover provisioning
-  if curl -fSL --retry 3 -o "$TMP" "$DET_URL"; then
-    mv -f "$TMP" "$DET_DEST"
-    trap - EXIT
-  else
+  fetch_file "$DET_URL" "$DET_DEST" ||
     echo "WARNING: det_10g.onnx download failed — SCRFD stays unavailable until provisioned" >&2
-  fi
 else
   echo "Detector model already present at $DET_DEST (use --force to re-fetch)"
 fi

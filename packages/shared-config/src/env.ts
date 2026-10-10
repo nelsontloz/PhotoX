@@ -1,3 +1,4 @@
+import type { FaceDetectorKind } from '@photox/shared-types'
 import { existsSync } from 'fs'
 import { dirname, isAbsolute, join, resolve } from 'path'
 import { z } from 'zod'
@@ -8,15 +9,14 @@ function parseDurationMs(duration: string): number {
   if (!match) return 15 * 60 * 1000
 
   const value = parseInt(match[1]!, 10)
-  switch (match[2]) {
+  // regex restricts the unit to m|h|d, so the assertion is safe and the switch is exhaustive
+  switch (match[2] as 'm' | 'h' | 'd') {
     case 'm':
       return value * 60 * 1000
     case 'h':
       return value * 60 * 60 * 1000
     case 'd':
       return value * 24 * 60 * 60 * 1000
-    default:
-      return 15 * 60 * 1000
   }
 }
 
@@ -107,6 +107,6 @@ export function resolveFaceDetectorModelPath(): string {
   )
 }
 
-export function envFaceDetectorKind(): 'human' | 'scrfd' {
+export function envFaceDetectorKind(): FaceDetectorKind {
   return process.env.FACE_DETECTOR === 'scrfd' ? 'scrfd' : 'human'
 }

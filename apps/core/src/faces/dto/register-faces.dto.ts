@@ -6,7 +6,6 @@ import {
   IsIn,
   IsNumber,
   IsOptional,
-  IsUUID,
   ArrayMaxSize,
   ArrayMinSize,
   ValidateNested,
@@ -46,10 +45,6 @@ export class RegisterFacesDto implements RegisterFacesRequestDto {
   @ValidateNested({ each: true })
   @Type(() => DetectedFaceDto)
   faces!: DetectedFaceDto[]
-
-  @ApiProperty()
-  @IsUUID()
-  userId!: string
 
   @ApiPropertyOptional({ enum: FACE_DETECTOR_KINDS })
   @IsOptional()

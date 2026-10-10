@@ -11,6 +11,7 @@ import {
   ArrayMaxSize,
 } from 'class-validator'
 import { Transform, Type } from 'class-transformer'
+import { isQueryTrue } from '../../common/query-params'
 
 export class ListAssetsQueryDto {
   @IsOptional()
@@ -43,7 +44,7 @@ export class ListAssetsQueryDto {
   offset?: number
 
   @IsOptional()
-  @Transform(({ value }) => value === true || value === 'true')
+  @Transform(({ value }) => isQueryTrue(value))
   @IsBoolean()
   @ApiProperty({ default: false, required: false })
   isTrashed?: boolean
@@ -67,13 +68,13 @@ export class ListAssetsQueryDto {
   dateTo?: string
 
   @IsOptional()
-  @Transform(({ value }) => value === true || value === 'true')
+  @Transform(({ value }) => isQueryTrue(value))
   @IsBoolean()
   @ApiProperty({ required: false })
   favorite?: boolean
 
   @IsOptional()
-  @Transform(({ value }) => value === true || value === 'true')
+  @Transform(({ value }) => isQueryTrue(value))
   @IsBoolean()
   @ApiProperty({ required: false, description: 'Filter to only assets with GPS coordinates' })
   hasLocations?: boolean

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import sharp from 'sharp'
 import type { Job } from 'bullmq'
 import { BullMqService } from './bullmq.service'
@@ -13,7 +13,7 @@ import { LocalStorageService } from '@photox/shared-config'
 const DETECT_MAX_DIM = 1280
 
 @Injectable()
-export class DetectProcessor {
+export class DetectProcessor implements OnModuleInit {
   private readonly logger = new Logger(DetectProcessor.name)
 
   constructor(
@@ -23,7 +23,7 @@ export class DetectProcessor {
     private readonly detect: DetectService,
   ) {}
 
-  start() {
+  onModuleInit() {
     this.bullMq.createWorker<DetectionJob>('process-detect', (job) => this.processJob(job))
 
     this.logger.log('Detection processor listening for jobs')

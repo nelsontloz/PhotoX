@@ -10,9 +10,6 @@ export class Place {
   @Column('text')
   name!: string
 
-  @Column('text')
-  asciiName!: string
-
   @Column({ type: 'numeric', precision: 9, scale: 6 })
   latitude!: number
 
@@ -24,12 +21,6 @@ export class Place {
 
   @Column('varchar', { length: 20, nullable: true })
   admin1Code!: string | null
-
-  @Column('varchar', { length: 80, nullable: true })
-  admin2Code!: string | null
-
-  @Column('int', { default: 0 })
-  population!: number
 
   @Column('varchar', { length: 64, nullable: true })
   timezone!: string | null

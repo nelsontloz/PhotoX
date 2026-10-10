@@ -2,6 +2,7 @@ import { Controller, Get, Param, Query, Req, Res } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
 import { FaceThumbService } from './face-thumb.service'
+import { FaceThumbQueryDto } from './dto/face-thumb-query.dto'
 
 @ApiTags('faces')
 @Controller('api/v1/faces')
@@ -16,10 +17,10 @@ export class FaceThumbController {
     @Param('id') id: string,
     @Req() req: Request,
     @Res() res: Response,
-    @Query('size') size?: string,
+    @Query() q: FaceThumbQueryDto,
   ): Promise<void> {
     const userId = (req.user as { id: string }).id
-    const bytes = await this.thumbs.getThumb(id, userId, size ? Number(size) : Number.NaN)
+    const bytes = await this.thumbs.getThumb(id, userId, q.size ?? Number.NaN)
     res.set({
       'Content-Type': 'image/jpeg',
       'Content-Length': String(bytes.byteLength),

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import sharp from 'sharp'
 import type { Job } from 'bullmq'
 import { BullMqService } from './bullmq.service'
@@ -9,7 +9,7 @@ import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
 
 @Injectable()
-export class OcrProcessor {
+export class OcrProcessor implements OnModuleInit {
   private readonly logger = new Logger(OcrProcessor.name)
 
   constructor(
@@ -19,7 +19,7 @@ export class OcrProcessor {
     private readonly ocr: OcrService,
   ) {}
 
-  start() {
+  onModuleInit() {
     this.bullMq.createWorker<OcrJob>('process-ocr', (job) => this.processJob(job))
 
     this.logger.log('OCR processor listening for jobs')

@@ -3,7 +3,7 @@ import { FaSpinner, FaTrash, FaTrashCan } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { useConfirm } from '../../components/ConfirmProvider'
-import { GalleryItem } from '../../components/GalleryItem'
+import { DayGroups } from '../../components/DayGroups'
 import { ViewerHost } from '../../components/ViewerHost'
 import { useAssetGroups } from '../../hooks/useAssetGroups'
 import { useAssetNavigation } from '../../hooks/useAssetNavigation'
@@ -76,20 +76,7 @@ function TrashContent() {
           Empty trash
         </button>
       </div>
-      {groups.map((group) => (
-        <section key={group.sortKey} className="mb-10">
-          <div className="flex items-end gap-3 mb-4 sticky top-0 bg-background-light/95 dark:bg-background-dark/95 z-30 py-2 -mx-4 px-4 sm:-mx-8 sm:px-8 border-b border-transparent dark:border-transparent transition-all">
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-              {group.label}
-            </h2>
-          </div>
-          <div className="justified-grid-gallery">
-            {group.items.map((asset) => {
-              return <GalleryItem key={asset.id} asset={asset} onSelect={nav.open} dark />
-            })}
-          </div>
-        </section>
-      ))}
+      <DayGroups groups={groups} onSelect={nav.open} dark />
       <ViewerHost
         asset={nav.selected}
         onClose={nav.close}
@@ -97,7 +84,6 @@ function TrashContent() {
         onNext={nav.goNext}
         hasPrev={nav.hasPrev}
         hasNext={nav.hasNext}
-        onAddToAlbum={!nav.selected?.isTrashed ? () => setPickerOpen(true) : undefined}
         onRestore={() => {
           void nav.restore()
         }}

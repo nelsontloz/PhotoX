@@ -13,6 +13,7 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Request } from 'express'
 import { FacesService } from './faces.service'
 import { AssignPersonDto } from './dto/assign-person.dto'
+import { isQueryTrue } from '../common/query-params'
 
 @ApiTags('faces-query')
 @Controller('api/v1/faces')
@@ -28,8 +29,8 @@ export class FacesQueryController {
     @Req() req: Request,
   ) {
     const userId = (req.user as { id: string }).id
-    const wantEmbeddings = includeEmbeddings === 'true'
-    const items = await this.faces.listForUser(userId, wantEmbeddings, excludeTrashed === 'true')
+    const wantEmbeddings = isQueryTrue(includeEmbeddings)
+    const items = await this.faces.listForUser(userId, wantEmbeddings, isQueryTrue(excludeTrashed))
     return { items }
   }
 

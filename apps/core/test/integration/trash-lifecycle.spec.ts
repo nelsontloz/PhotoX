@@ -102,13 +102,12 @@ describe('trash lifecycle', () => {
   })
 
   it('permanent delete cascades the faces of the asset', async () => {
-    const { user, token, asset } = await seedOwner()
+    const { token, asset } = await seedOwner()
 
     const register = await request(apiServer(t))
       .post(`/api/v1/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
       .send({
-        userId: user.id,
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }],
       })
     expect(register.status).toBe(201)

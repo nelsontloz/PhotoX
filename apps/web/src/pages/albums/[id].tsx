@@ -17,10 +17,9 @@ import { useConfirm } from '../../components/ConfirmProvider'
 import { LoadingState } from '../../components/StateViews'
 import { ViewerHost } from '../../components/ViewerHost'
 import { GalleryItem } from '../../components/GalleryItem'
-import { getAlbum, removeAssetFromAlbum } from '../../api/albums'
+import { deleteAlbum, getAlbum, removeAssetFromAlbum, updateAlbum } from '../../api/albums'
 import { createShare, getShareUrl } from '../../api/shares'
 import { useAlbumAssets } from '../../hooks/useAlbumAssets'
-import { useAlbums } from '../../hooks/useAlbums'
 import { useAssetNavigation } from '../../hooks/useAssetNavigation'
 import { useInlineRename } from '../../hooks/useInlineRename'
 import { AddPhotosDialog } from './AddPhotosDialog'
@@ -49,7 +48,6 @@ function AlbumDetailContent() {
   const [shareStatus, setShareStatus] = useState<'copied' | 'error' | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  const { update, remove } = useAlbums()
   const {
     editing: editingName,
     nameValue,
@@ -59,7 +57,7 @@ function AlbumDetailContent() {
     cancel,
   } = useInlineRename(album?.name ?? '', async (name) => {
     if (!id) return
-    const updated = await update(id, { name })
+    const updated = await updateAlbum(id, { name })
     setAlbum(updated)
   })
   const {
@@ -118,11 +116,20 @@ function AlbumDetailContent() {
   const handleDelete = async () => {
     if (!id) return
     setShowMenu(false)
+    if (
+      !(await confirm({
+        title: `Delete "${album?.name ?? 'this album'}"?`,
+        body: 'Assets in it will not be deleted.',
+        confirmLabel: 'Delete',
+        destructive: true,
+      }))
+    )
+      return
     try {
-      await remove(id)
+      await deleteAlbum(id)
       void navigate('/albums')
     } catch {
-      /* ponytail: useAlbums.remove handles its own confirm, navigation only on success */
+      /* ponytail: silent fail */
     }
   }
 
@@ -134,7 +141,7 @@ function AlbumDetailContent() {
     if (next === null) return
     void (async () => {
       try {
-        const updated = await update(id, { description: next })
+        const updated = await updateAlbum(id, { description: next })
         setAlbum(updated)
       } catch {
         /* ponytail: silent fail */

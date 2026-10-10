@@ -6,6 +6,6 @@
     "composite": true,
     "incremental": true
   },
-  "include": ["src"],
-  "references": []
+  "references": [{ "path": "../shared-types" }],
+  "include": ["src"]
 }

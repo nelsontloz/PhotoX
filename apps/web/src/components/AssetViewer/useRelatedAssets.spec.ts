@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
-import type { Asset, RelatedAssetsResponse } from '@photox/shared-types'
+import type { Asset, SearchResponse } from '@photox/shared-types'
 
 vi.mock('../../api/related', () => ({
   getSimilarAssets: vi.fn(),
@@ -16,7 +16,7 @@ function makeAsset(id: string): Asset {
   return { id, kind: 'photo' } as Asset
 }
 
-const response = (...ids: string[]): RelatedAssetsResponse => ({
+const response = (...ids: string[]): SearchResponse => ({
   items: ids.map(makeAsset),
   total: ids.length,
 })

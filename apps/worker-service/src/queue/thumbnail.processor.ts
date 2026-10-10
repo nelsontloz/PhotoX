@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import sharp from 'sharp'
 import type { Job } from 'bullmq'
 import { tmpdir } from 'os'
@@ -7,6 +7,7 @@ import { randomUUID, createHash } from 'crypto'
 import { copyFile, unlink, writeFile } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
 import { assertOwnership, parseJobData, thumbnailJobSchema, type ThumbnailJob } from './job-schemas'
+import { patchStatusFailed } from './asset-file-job'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
 import type { Asset, FileRecord } from '@photox/shared-types'
@@ -29,7 +30,7 @@ const METADATA_WAIT_DELAY_MS = 1000
 const MAX_METADATA_WAITS = 5
 
 @Injectable()
-export class ThumbnailProcessor {
+export class ThumbnailProcessor implements OnModuleInit {
   private readonly logger = new Logger(ThumbnailProcessor.name)
 
   constructor(
@@ -38,7 +39,7 @@ export class ThumbnailProcessor {
     private readonly storage: LocalStorageService,
   ) {}
 
-  start() {
+  onModuleInit() {
     this.bullMq.createWorker<ThumbnailJob>('process-thumbnail', (job) => this.processJob(job))
 
     this.logger.log('Thumbnail processor listening for jobs')
@@ -93,14 +94,9 @@ export class ThumbnailProcessor {
       const message = err instanceof Error ? err.message : String(err)
       this.logger.error(`Thumbnail failed: asset=${assetId}, size=${size} — ${message}`)
 
-      try {
-        await this.core.patchMetadata(userId, assetId, { thumbnailStatus: 'failed' })
-      } catch (patchErr) {
-        const patchMsg = patchErr instanceof Error ? patchErr.message : String(patchErr)
-        this.logger.warn(
-          `Failed to patch thumbnail status to failed for asset=${assetId}, size=${size}: ${patchMsg}`,
-        )
-      }
+      await patchStatusFailed(this.core, this.logger, userId, assetId, {
+        thumbnailStatus: 'failed',
+      })
 
       throw err
     }

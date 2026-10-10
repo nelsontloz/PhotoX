@@ -29,7 +29,6 @@ describe('MetadataProcessor job guards', () => {
     assetId: randomUUID(),
     fileId: randomUUID(),
     userId: randomUUID(),
-    kind: 'photo' as const,
   }
   const fakeJob = (data: unknown) => ({ data }) as unknown as Job<MetadataJob>
 
@@ -54,14 +53,14 @@ describe('MetadataProcessor job guards', () => {
       (opts.metadataExtractor ?? {}) as never,
       {} as never,
     )
-    processor.start()
+    processor.onModuleInit()
     return { run: callbacks[0]!, fake }
   }
 
   it('rejects an invalid payload before any core call', async () => {
     const { run, fake } = setup()
 
-    await expect(run(fakeJob({ ...base, kind: 'audio' }))).rejects.toBeInstanceOf(
+    await expect(run(fakeJob({ ...base, assetId: 'not-a-uuid' }))).rejects.toBeInstanceOf(
       UnrecoverableError,
     )
 

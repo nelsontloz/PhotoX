@@ -32,7 +32,6 @@ interface TimelineGridProps {
   selectedIds: Set<string>
   onToggleSelect: (id: string) => void
   onLongPress?: (asset: Asset) => void
-  showCheckbox?: boolean
 }
 
 export function TimelineGrid({
@@ -47,7 +46,6 @@ export function TimelineGrid({
   selectedIds,
   onToggleSelect,
   onLongPress,
-  showCheckbox = true,
 }: TimelineGridProps) {
   const selectionMode = selectedIds.size > 0
   const scrollContainer = useContext(ScrollContainerContext)
@@ -200,7 +198,6 @@ export function TimelineGrid({
                             selected={selectedIds.has(asset.id)}
                             onToggleSelect={onToggleSelect}
                             onLongPress={onLongPress}
-                            showCheckbox={showCheckbox}
                             selectionMode={selectionMode}
                           />
                         ))

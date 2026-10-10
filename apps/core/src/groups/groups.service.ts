@@ -5,7 +5,7 @@ import { toSql } from 'pgvector'
 import {
   SEARCH_EMBEDDING_DIM,
   SEARCH_EMBEDDING_MODEL,
-  type RelatedAssetsResponse,
+  type SearchResponse,
 } from '@photox/shared-types'
 import { Asset } from '../database/entities'
 import { AssetEmbedding } from '../database/entities/asset-embedding.entity'
@@ -31,7 +31,7 @@ export class GroupsService {
     userId: string,
     assetId: string,
     dto: DuplicatesQueryDto,
-  ): Promise<RelatedAssetsResponse> {
+  ): Promise<SearchResponse> {
     await assertAssetOwned(this.assetRepo, userId, assetId)
     const threshold = dto.threshold ?? DEFAULT_DUPLICATE_THRESHOLD
     const rows: { id: string }[] = await this.dataSource.query(
@@ -54,11 +54,7 @@ export class GroupsService {
     return { items, total: rows.length }
   }
 
-  async similar(
-    userId: string,
-    assetId: string,
-    dto: SimilarQueryDto,
-  ): Promise<RelatedAssetsResponse> {
+  async similar(userId: string, assetId: string, dto: SimilarQueryDto): Promise<SearchResponse> {
     await assertAssetOwned(this.assetRepo, userId, assetId)
     const limit = dto.limit ?? DEFAULT_SIMILAR_LIMIT
     const source = await this.embeddingRepo.findOne({

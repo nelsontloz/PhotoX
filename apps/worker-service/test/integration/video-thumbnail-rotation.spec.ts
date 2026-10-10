@@ -7,14 +7,15 @@ import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
 import type { RegisterFileInput } from '../../src/core/core-client.service'
 import { FFMPEG_PATH } from '../../src/queue/ffmpeg'
-import { waitForJob, waitUntil } from './helpers'
 import {
-  closeMediaTestApp,
-  createMediaTestApp,
-  resetMediaTestApp,
+  closeTestApp,
+  createTestApp,
+  resetTestApp,
   seedOriginal,
-  type MediaTestApp,
-} from './media-helpers'
+  waitForJob,
+  waitUntil,
+  type TestApp,
+} from './helpers'
 
 const FIXTURE_DIR = mkdtempSync(join(tmpdir(), 'video-thumb-rot-'))
 const LANDSCAPE_PATH = join(FIXTURE_DIR, 'landscape.mp4')
@@ -43,22 +44,20 @@ function makeLandscapeMp4(): Buffer {
 }
 
 describe('VideoThumbnailRotation (integration)', () => {
-  let testApp: MediaTestApp
+  let testApp: TestApp
   let landscapeBuffer: Buffer
 
   beforeAll(async () => {
     landscapeBuffer = makeLandscapeMp4()
-    testApp = await createMediaTestApp()
+    testApp = await createTestApp({ processors: 'media' })
   }, 120_000)
 
   afterAll(async () => {
-    await closeMediaTestApp(testApp)
+    await closeTestApp(testApp)
     rmSync(FIXTURE_DIR, { recursive: true, force: true })
   })
 
-  beforeEach(() => {
-    resetMediaTestApp(testApp)
-  })
+  beforeEach(() => resetTestApp(testApp))
 
   function seedVideo(
     userId: string,

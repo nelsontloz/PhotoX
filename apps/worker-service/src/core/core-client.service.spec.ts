@@ -149,7 +149,6 @@ describe('CoreClient', () => {
     expect(url).toBe('http://localhost:3000/api/v1/assets/asset-1/faces')
     expect(init.method).toBe('POST')
     expect(JSON.parse(init.body as string)).toEqual({
-      userId: 'user-1',
       detector: 'scrfd',
       faces: [{ box: { x: 1, y: 2, w: 3, h: 4 }, confidence: 0.9, embedding: [0.1, 0.2] }],
     })

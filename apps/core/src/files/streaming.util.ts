@@ -1,12 +1,18 @@
-import type { Readable } from 'stream'
 import type { Request, Response } from 'express'
 import type { FileRecord } from '../database/entities'
 import type { UserFilesService } from './user/user-files.service'
-import { etagMatches } from '../assets/assets.controller'
-
-const RANGE_RE = /^bytes=(\d+)-(\d*)$/
 
 const BYTES_CACHE_CONTROL = 'private, max-age=31536000, immutable'
+
+// send re-evaluates conditional/If-Range headers itself (412/304/ignore-range); the previous
+// hand-rolled handler never did, so these are dropped before sendFile reads the request.
+const CONDITIONAL_HEADERS = [
+  'if-match',
+  'if-unmodified-since',
+  'if-none-match',
+  'if-modified-since',
+  'if-range',
+]
 
 /**
  * Builds an injection-safe `Content-Disposition: attachment` value. The quoted ASCII fallback
@@ -22,104 +28,62 @@ export function attachmentDisposition(name: string): string {
   return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`
 }
 
-export function parseRangeHeader(
-  rangeHeader: string,
-  totalSize: number,
-): { start: number; end: number } | null {
-  const match = RANGE_RE.exec(rangeHeader)
-  if (!match) return null
-  const start = Number(match[1])
-  if (!Number.isFinite(start) || start < 0 || start >= totalSize) return null
-  const endStr = match[2]
-  const end = endStr ? Number(endStr) : totalSize - 1
-  if (!Number.isFinite(end) || end < start) {
-    return { start, end: totalSize - 1 }
-  }
-  return { start, end: Math.min(end, totalSize - 1) }
+interface ServableFile {
+  path: string
+  record: Pick<FileRecord, 'mimeType' | 'checksumSha256'>
 }
 
-type FileStreamRecord = Pick<FileRecord, 'mimeType' | 'checksumSha256'>
-
 /**
- * Sends a file byte stream over an Express response.
- * - `range === null`: unsatisfiable range -> 416 + `Content-Range` (bytes, slash, total).
- * - `range` set: 206 + Content-Range/Content-Length/Accept-Ranges.
- * - `range` omitted: full body, Content-Length/Accept-Ranges only when `totalSize` is
- *   provided (the download route omits it to stream without either header), plus the
- *   optional `Content-Disposition`.
- * - 206 and full-body responses carry a strong `ETag` (the immutable `checksumSha256`) and
- *   `Cache-Control: private, max-age=31536000, immutable`. A matching `ifNoneMatch` on a
- *   full (non-Range) GET short-circuits to 304 with no body headers.
+ * Sends a file from local disk via `res.sendFile`, which owns Range/206/416 and `Accept-Ranges`.
+ * The strong checksum `ETag` and `Cache-Control` are set first so send never writes its own weak
+ * fs `ETag` (`etag: false`).
+ * - A full GET whose ETag is fresh short-circuits to 304 before any body headers exist; ranged
+ *   requests still answer 206 even when `If-None-Match` matches (previous behavior).
+ * - The 416 keeps `Content-Range: bytes, slash, total`; `Content-Disposition` keeps the RFC5987
+ *   fallback; client close destroys the read stream (send's `onFinished`) and a mid-stream error
+ *   destroys the response (callback below).
  */
-type PipeFileResponseOptions =
-  | { range: null; totalSize: number }
-  | {
-      range: { start: number; end: number }
-      totalSize: number
-      stream: Readable
-      record: FileStreamRecord
-      disposition?: string
-    }
-  | {
-      range?: undefined
-      totalSize?: number
-      stream: Readable
-      record: FileStreamRecord
-      disposition?: string
-      ifNoneMatch?: string
-    }
-
-export function pipeFileResponse(res: Response, opts: PipeFileResponseOptions): void {
-  if (opts.range === null) {
-    res.set('Content-Range', `bytes */${opts.totalSize}`)
-    res.status(416).end()
-    return
-  }
-
-  const { stream, record } = opts
-  const etag = `"${record.checksumSha256}"`
+export function pipeFileResponse(
+  req: Request,
+  res: Response,
+  file: ServableFile,
+  disposition?: string,
+): void {
   res.set({
-    ETag: etag,
+    ETag: `"${file.record.checksumSha256}"`,
     'Cache-Control': BYTES_CACHE_CONTROL,
     'X-Content-Type-Options': 'nosniff',
   })
-  if (opts.range) {
-    const { start, end } = opts.range
-    res.set({
-      'Content-Type': record.mimeType,
-      'Content-Range': `bytes ${start}-${end}/${opts.totalSize}`,
-      'Content-Length': String(end - start + 1),
-      'Accept-Ranges': 'bytes',
-      ...(opts.disposition ? { 'Content-Disposition': opts.disposition } : {}),
-    })
-    res.status(206)
-  } else {
-    if (opts.ifNoneMatch && etagMatches(opts.ifNoneMatch, etag)) {
-      stream.destroy()
-      res.status(304).end()
-      return
-    }
-    res.set({
-      'Content-Type': record.mimeType,
-      ...(opts.totalSize !== undefined ? { 'Content-Length': String(opts.totalSize) } : {}),
-      ...(opts.disposition ? { 'Content-Disposition': opts.disposition } : {}),
-      ...(opts.totalSize !== undefined ? { 'Accept-Ranges': 'bytes' } : {}),
-    })
+
+  if (!req.headers.range && req.fresh) {
+    res.status(304).end()
+    return
   }
 
-  stream.on('error', () => {
-    res.destroy()
+  for (const header of CONDITIONAL_HEADERS) delete req.headers[header]
+
+  res.set({
+    'Content-Type': file.record.mimeType,
+    ...(disposition ? { 'Content-Disposition': disposition } : {}),
   })
-  res.on('close', () => {
-    stream.destroy()
+  // Callback form keeps send's errors (416 incl. `Content-Range: bytes */total`, missing bytes,
+  // mid-stream reads) out of Nest's exception layer, which would map them to 500.
+  res.sendFile(file.path, { etag: false, lastModified: false }, (err) => {
+    if (!err) return
+    const cause = err as Error & { code?: string; status?: number }
+    if (res.headersSent || cause.code === 'ECONNABORTED') {
+      // mid-stream failure or client abort: same cleanup the previous stream.on('error') did
+      res.destroy()
+      return
+    }
+    res.status(cause.status ?? 500).end()
   })
-  stream.pipe(res)
 }
 
 /**
- * stat → range parse (416 on unsatisfiable) → ranged or full stream → pipe, shared by the
- * authenticated file route and the public share routes. `attachment: true` adds the
- * Content-Disposition header (user downloads); public shares stream inline.
+ * Resolve path → pipe, shared by the authenticated file routes and the public share routes.
+ * `attachment: true` adds the Content-Disposition header (user downloads); public shares stream
+ * inline.
  */
 export async function serveFileBytes(
   req: Request,
@@ -128,29 +92,11 @@ export async function serveFileBytes(
   fileId: string,
   opts: { attachment?: boolean } = {},
 ): Promise<void> {
-  const rangeHeader = req.headers.range
-  const disposition = (record: FileRecord): string | undefined =>
-    opts.attachment ? attachmentDisposition(record.originalName) : undefined
-
-  if (rangeHeader) {
-    const { totalSize } = await files.getFileStat(fileId)
-    const range = parseRangeHeader(rangeHeader, totalSize)
-    if (!range) {
-      pipeFileResponse(res, { range: null, totalSize })
-      return
-    }
-
-    const { stream, record } = await files.stream(fileId, { range })
-    pipeFileResponse(res, { stream, record, range, totalSize, disposition: disposition(record) })
-    return
-  }
-
-  const { stream, record, totalSize } = await files.stream(fileId)
-  pipeFileResponse(res, {
-    stream,
-    record,
-    totalSize,
-    disposition: disposition(record),
-    ifNoneMatch: req.get('If-None-Match'),
-  })
+  const { path, record } = await files.serve(fileId)
+  pipeFileResponse(
+    req,
+    res,
+    { path, record },
+    opts.attachment ? attachmentDisposition(record.originalName) : undefined,
+  )
 }

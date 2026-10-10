@@ -8,7 +8,7 @@ import type { z } from 'zod'
 import type { Asset, FileRecord } from '@photox/shared-types'
 import { LocalStorageService } from '@photox/shared-config'
 import { assertOwnership, parseJobData } from './job-schemas'
-import type { CoreClient } from '../core/core-client.service'
+import type { CoreClient, MetadataPatch } from '../core/core-client.service'
 
 export interface AssetFileJobData {
   assetId: string
@@ -59,5 +59,21 @@ export async function runAssetFileJob<T extends AssetFileJobData>(
     if (!missingModel) throw err
   } finally {
     await unlink(filePath).catch(() => undefined)
+  }
+}
+
+// best-effort failure marker: a failed patch must never mask the original job error
+export async function patchStatusFailed(
+  core: CoreClient,
+  logger: Logger,
+  userId: string,
+  assetId: string,
+  patch: MetadataPatch,
+): Promise<void> {
+  try {
+    await core.patchMetadata(userId, assetId, patch)
+  } catch (patchErr) {
+    const message = patchErr instanceof Error ? patchErr.message : String(patchErr)
+    logger.warn(`Failed to patch status to failed for asset=${assetId}: ${message}`)
   }
 }

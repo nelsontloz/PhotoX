@@ -296,10 +296,8 @@ describe('upload e2e pipeline', () => {
       faceRepo = app.get<Repository<Face>>(getRepositoryToken(Face))
       jwt = app.get<JwtService>(JwtService)
       workerBullMq = app.get<WorkerBullMqService>(WorkerBullMqService)
-      app.get<ThumbnailProcessor>(ThumbnailProcessor).start()
-      app.get<MetadataProcessor>(MetadataProcessor).start()
-      app.get<VideoProcessor>(VideoProcessor).start()
-      app.get<FaceProcessor>(FaceProcessor).start()
+      // worker processors self-start via their own OnModuleInit during app.listen();
+      // no manual start needed (see ponytail: note on QueueModule providers)
     } catch (err) {
       if (prevStorageDir === undefined) delete process.env.STORAGE_DIR
       else process.env.STORAGE_DIR = prevStorageDir

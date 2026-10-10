@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { FaUsers, FaTrash, FaCopy, FaCheck, FaPhotoFilm, FaImage, FaVideo } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
@@ -6,31 +6,19 @@ import { useConfirm } from '../../components/ConfirmProvider'
 import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
 import { listShares, revokeShare, getShareUrl } from '../../api/shares'
 import { getVideoStreamUrl } from '../../api/assets'
+import { useAsyncFetch } from '../../hooks/useAsyncFetch'
 import type { ShareDto } from '@photox/shared-types'
 
 function SharedContent() {
   const confirm = useConfirm()
-  const [shares, setShares] = useState<ShareDto[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, loading, error, refresh } = useAsyncFetch(() => listShares(), {
+    errorMessage: 'Failed to load shares',
+    loadingMode: 'always',
+  })
   const [copiedId, setCopiedId] = useState<string | null>(null)
-
-  const fetchShares = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const res = await listShares()
-      setShares(res.items)
-    } catch (err) {
-      setError((err as Error).message ?? 'Failed to load shares')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    void fetchShares()
-  }, [])
+  // revoke is optimistic: hide the row immediately, the next fetch is the source of truth
+  const [revokedIds, setRevokedIds] = useState<Set<string>>(new Set())
+  const shares = (data?.items ?? []).filter((s) => !revokedIds.has(s.id))
 
   const handleCopy = async (share: ShareDto) => {
     const url = getShareUrl(share.token)
@@ -51,7 +39,7 @@ function SharedContent() {
       return
     try {
       await revokeShare(share.id)
-      setShares((prev) => prev.filter((s) => s.id !== share.id))
+      setRevokedIds((prev) => new Set(prev).add(share.id))
     } catch {
       /* ignore */
     }
@@ -62,7 +50,7 @@ function SharedContent() {
   }
 
   if (error) {
-    return <ErrorState message={error} onRetry={() => void fetchShares()} />
+    return <ErrorState message={error} onRetry={() => void refresh()} />
   }
 
   if (shares.length === 0) {

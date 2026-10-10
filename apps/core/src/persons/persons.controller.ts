@@ -16,7 +16,7 @@ import { PersonsService } from './persons.service'
 import { BullMqService } from '../queue/bullmq.service'
 import { UpdatePersonDto } from './dto/update-person.dto'
 import { ApplyClustersDto } from './dto/apply-clusters.dto'
-import { ListPersonsQueryDto } from './dto/list-persons-query.dto'
+import { PaginationQueryDto } from '../common/pagination-query.dto'
 import type { PersonListResponse, PersonDto, PersonAssetsResponse } from '@photox/shared-types'
 
 @ApiTags('persons')
@@ -67,7 +67,7 @@ export class PersonsController {
   @Get()
   @ApiOperation({ summary: 'List persons for a user' })
   @ApiResponse({ status: 200, description: 'Paginated person list' })
-  async list(@Query() q: ListPersonsQueryDto, @Req() req: Request): Promise<PersonListResponse> {
+  async list(@Query() q: PaginationQueryDto, @Req() req: Request): Promise<PersonListResponse> {
     return this.persons.list((req.user as { id: string }).id, q.limit ?? 20, q.offset ?? 0)
   }
 
@@ -97,7 +97,7 @@ export class PersonsController {
   @ApiResponse({ status: 404, description: 'Person not found' })
   async getAssets(
     @Param('id') id: string,
-    @Query() q: ListPersonsQueryDto,
+    @Query() q: PaginationQueryDto,
     @Req() req: Request,
   ): Promise<PersonAssetsResponse> {
     return this.persons.getAssetsForPerson(

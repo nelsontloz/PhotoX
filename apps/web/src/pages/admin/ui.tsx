@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { FaCircleCheck, FaCircleExclamation } from 'react-icons/fa6'
+import { FaArrowsRotate, FaCircleCheck, FaCircleExclamation } from 'react-icons/fa6'
 
 /**
  * Shared admin-console primitives. Every admin section used to copy-paste the same header/card
@@ -17,35 +17,60 @@ function clampPercent(value: number | undefined): number {
   return Math.min(100, Math.max(0, value))
 }
 
+/**
+ * Section header + body. Carded by default; `card={false}` renders a bare <section> for
+ * top-level groups whose children card themselves. `headingTag` keeps h2/h3 nesting right.
+ */
 export function AdminSection({
   title,
   subtitle,
   icon,
+  badge,
   actions,
   children,
   className,
+  card = true,
+  headingTag: Heading = 'h2',
 }: {
   title: string
   subtitle?: string
   icon: ReactNode
+  badge?: ReactNode
   actions?: ReactNode
   children: ReactNode
   className?: string
+  card?: boolean
+  headingTag?: 'h2' | 'h3'
 }) {
-  return (
-    <section className={className}>
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-4">
+  const body = (
+    <>
+      <div
+        className={cx(
+          'flex flex-wrap items-start justify-between',
+          card ? 'mb-4 gap-3' : 'mb-3 gap-4',
+        )}
+      >
         <div className="flex items-start gap-2.5">
           <span className="mt-0.5 text-lg text-outline">{icon}</span>
           <div>
-            <h2 className="text-headline-lg text-on-surface">{title}</h2>
+            <Heading className="text-headline-lg text-on-surface">{title}</Heading>
             {subtitle && <p className="text-body-sm text-outline">{subtitle}</p>}
           </div>
         </div>
-        {actions && <div className="flex items-center gap-2">{actions}</div>}
+        {badge != null && (
+          <span className="rounded-full bg-surface-container-highest px-2.5 py-1 font-mono text-[11px] text-on-surface-variant">
+            {badge}
+          </span>
+        )}
+        {actions != null && <div className="flex items-center gap-2">{actions}</div>}
       </div>
       {children}
-    </section>
+    </>
+  )
+  return card ? (
+    <AdminCard className={className}>{body}</AdminCard>
+  ) : (
+    <section className={className}>{body}</section>
   )
 }
 
@@ -110,45 +135,6 @@ export function MetricTile({
   )
 }
 
-export function SectionCard({
-  title,
-  subtitle,
-  icon,
-  badge,
-  actions,
-  children,
-  className,
-}: {
-  title: string
-  subtitle?: string
-  icon: ReactNode
-  badge?: ReactNode
-  actions?: ReactNode
-  children: ReactNode
-  className?: string
-}) {
-  return (
-    <AdminCard className={className}>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-2.5">
-          <span className="mt-0.5 text-lg text-outline">{icon}</span>
-          <div>
-            <h3 className="text-headline-lg text-on-surface">{title}</h3>
-            {subtitle && <p className="text-body-sm text-outline">{subtitle}</p>}
-          </div>
-        </div>
-        {badge != null && (
-          <span className="rounded-full bg-surface-container-highest px-2.5 py-1 font-mono text-[11px] text-on-surface-variant">
-            {badge}
-          </span>
-        )}
-        {actions != null && <div className="flex items-center gap-2">{actions}</div>}
-      </div>
-      {children}
-    </AdminCard>
-  )
-}
-
 const BUTTON_BASE =
   'inline-flex items-center gap-2 text-xs font-semibold rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
 
@@ -193,12 +179,35 @@ export function GhostButton({ onClick, disabled, icon, children }: ButtonProps) 
   )
 }
 
+/** Icon-only refresh; PrimaryButton/GhostButton require children, so this stays raw. */
+export function RefreshButton({
+  onClick,
+  label,
+  disabled,
+  className = 'p-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high disabled:opacity-50 disabled:cursor-not-allowed transition-colors',
+}: {
+  onClick: () => void
+  label: string
+  disabled?: boolean
+  className?: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      className={className}
+    >
+      <FaArrowsRotate />
+    </button>
+  )
+}
+
 export function StatStrip({
   rows,
-  note,
 }: {
   rows: { label: string; value: ReactNode; tone?: 'default' | 'muted' }[]
-  note?: ReactNode
 }) {
   return (
     <div className="rounded-lg bg-surface-container p-3 font-mono text-xs flex flex-col gap-1">
@@ -210,15 +219,13 @@ export function StatStrip({
           </span>
         </div>
       ))}
-      {note != null && <p className="text-[11px] text-outline">{note}</p>}
     </div>
   )
 }
 
-const PILL_TONES: Record<'ok' | 'warn' | 'error' | 'muted', string> = {
+const PILL_TONES: Record<'ok' | 'warn' | 'muted', string> = {
   ok: 'bg-emerald-500/10 text-emerald-400',
   warn: 'bg-amber-500/10 text-amber-300',
-  error: 'bg-status-error/10 text-status-error',
   muted: 'bg-surface-container-highest text-on-surface-variant',
 }
 
@@ -226,7 +233,7 @@ export function StatusPill({
   tone,
   children,
 }: {
-  tone: 'ok' | 'warn' | 'error' | 'muted'
+  tone: 'ok' | 'warn' | 'muted'
   children: ReactNode
 }) {
   return (
@@ -241,19 +248,8 @@ export function StatusPill({
   )
 }
 
-export function ProgressBar({
-  value,
-  max,
-  label,
-  tone = 'default',
-}: {
-  value: number
-  max: number
-  label: string
-  tone?: 'default' | 'warn' | 'ok'
-}) {
+export function ProgressBar({ value, max, label }: { value: number; max: number; label: string }) {
   const percent = max > 0 && value > 0 ? Math.min(100, (value / max) * 100) : 0
-  const fill = tone === 'warn' ? 'bg-tertiary' : tone === 'ok' ? 'bg-emerald-400' : 'bg-primary'
   return (
     <div
       role="progressbar"
@@ -264,7 +260,7 @@ export function ProgressBar({
       className="h-2 rounded-full bg-surface-container-high overflow-hidden"
     >
       <div
-        className={cx('h-full transition-all duration-500', fill)}
+        className="h-full bg-primary transition-all duration-500"
         style={{ width: `${percent}%` }}
       />
     </div>

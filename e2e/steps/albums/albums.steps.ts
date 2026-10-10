@@ -4,56 +4,34 @@ import {
   Given,
   Then,
   When,
+  addAssetsViaApi,
   authHeaders,
+  createAlbumViaApi,
   expectThumbnailLoaded,
   registerUser,
+  requireAuth,
+  requireOtherAuth,
   uploadViaApi,
   waitForThumbnails,
-  type AuthState,
+  type AlbumRef,
+  type AuthResponse,
   type Ctx,
 } from '../support'
-
-interface AlbumRef {
-  id: string
-  name: string
-}
 
 interface AlbumAssetsPayload {
   items: { id: string }[]
   total: number
 }
 
-/** ctx has no album slots; keep them local instead of editing support.ts (same trick as semantic). */
-type AlbumsCtx = Ctx & {
-  albums?: AlbumRef[]
-  albumAssets?: string[]
-  albumPage?: AlbumRef[]
-  otherAuth?: AuthState
-  otherAssetId?: string
-}
-
-const actx = (ctx: Ctx): AlbumsCtx => ctx
-
-function requireAuth(ctx: Ctx): AuthState {
-  if (!ctx.auth) throw new Error('ctx.auth is missing — sign in first')
-  return ctx.auth
-}
-
-function requireOtherAuth(ctx: Ctx): AuthState {
-  const other = actx(ctx).otherAuth
-  if (!other) throw new Error('register a second album user first')
-  return other
-}
-
 function currentAlbum(ctx: Ctx): AlbumRef {
-  const albums = actx(ctx).albums
+  const albums = ctx.albums
   const album = albums?.[albums.length - 1]
   if (!album) throw new Error('create an album first')
   return album
 }
 
 function albumAssetAt(ctx: Ctx, index: number): string {
-  const assetId = actx(ctx).albumAssets?.[index]
+  const assetId = ctx.albumAssets?.[index]
   if (!assetId) throw new Error(`upload album photos first (no photo at index ${index})`)
   return assetId
 }
@@ -65,36 +43,9 @@ const isAlbumAssetsPost = (response: Response): boolean =>
   response.request().method() === 'POST' &&
   /^\/api\/v1\/albums\/[^/]+\/assets$/.test(new URL(response.url()).pathname)
 
-async function createAlbumViaApi(
-  request: APIRequestContext,
-  auth: AuthState,
-  name: string,
-): Promise<AlbumRef> {
-  const response = await request.post('/api/v1/albums', {
-    headers: authHeaders(auth),
-    data: { name },
-  })
-  expect(response.status()).toBe(201)
-  const album = (await response.json()) as AlbumRef
-  return { id: album.id, name: album.name }
-}
-
-async function addAssetsViaApi(
-  request: APIRequestContext,
-  auth: AuthState,
-  albumId: string,
-  assetIds: string[],
-): Promise<number> {
-  const response = await request.post(`/api/v1/albums/${albumId}/assets`, {
-    headers: authHeaders(auth),
-    data: { assetIds },
-  })
-  return response.status()
-}
-
 async function fetchAlbumAssets(
   request: APIRequestContext,
-  auth: AuthState,
+  auth: AuthResponse,
   albumId: string,
 ): Promise<AlbumAssetsPayload> {
   const response = await request.get(`/api/v1/albums/${albumId}/assets?limit=100`, {
@@ -108,17 +59,17 @@ async function fetchAlbumAssets(
 
 Given('I created an album via the API named {string}', async ({ request, ctx }, name: string) => {
   const album = await createAlbumViaApi(request, requireAuth(ctx), name)
-  const albums = (actx(ctx).albums ??= [])
+  const albums = (ctx.albums ??= [])
   albums.push(album)
 })
 
 Given('I registered a second album user', async ({ request, ctx }) => {
-  actx(ctx).otherAuth = await registerUser(request)
+  ctx.otherAuth = await registerUser(request)
 })
 
 Given('I uploaded an album photo', async ({ request, ctx }) => {
   const assetId = await uploadViaApi(request, requireAuth(ctx), 'photo.jpg')
-  actx(ctx).albumAssets = [assetId]
+  ctx.albumAssets = [assetId]
   ctx.assetId = assetId
 })
 
@@ -126,13 +77,13 @@ Given('I uploaded two album photos', async ({ request, ctx }) => {
   const auth = requireAuth(ctx)
   const first = await uploadViaApi(request, auth, 'photo.jpg')
   const second = await uploadViaApi(request, auth, 'photo-text.jpg')
-  actx(ctx).albumAssets = [first, second]
+  ctx.albumAssets = [first, second]
   ctx.assetId = first
 })
 
 Given('the other album user uploaded an album photo', async ({ request, ctx }) => {
   const assetId = await uploadViaApi(request, requireOtherAuth(ctx), 'photo.jpg')
-  actx(ctx).otherAssetId = assetId
+  ctx.otherAssetId = assetId
 })
 
 // --- album API actions ------------------------------------------------------
@@ -168,7 +119,7 @@ When('I add my trashed album photo to the album', async ({ request, ctx }) => {
 })
 
 When("I add the other album user's photo to my album", async ({ request, ctx }) => {
-  const assetId = actx(ctx).otherAssetId
+  const assetId = ctx.otherAssetId
   if (!assetId) throw new Error("the other album user's photo was not uploaded")
   ctx.lastStatus = await addAssetsViaApi(request, requireAuth(ctx), currentAlbum(ctx).id, [assetId])
 })
@@ -211,8 +162,8 @@ When("the other album user requests my album's photos", async ({ request, ctx })
 
 When('the other album user adds their own photo to my album', async ({ request, ctx }) => {
   const other = requireOtherAuth(ctx)
-  const assetId = actx(ctx).otherAssetId ?? (await uploadViaApi(request, other, 'photo.jpg'))
-  actx(ctx).otherAssetId = assetId
+  const assetId = ctx.otherAssetId ?? (await uploadViaApi(request, other, 'photo.jpg'))
+  ctx.otherAssetId = assetId
   ctx.lastStatus = await addAssetsViaApi(request, other, currentAlbum(ctx).id, [assetId])
 })
 
@@ -224,7 +175,7 @@ When(
     })
     expect(response.status()).toBe(200)
     const body = (await response.json()) as { items: AlbumRef[] }
-    actx(ctx).albumPage = body.items.map((album) => ({ id: album.id, name: album.name }))
+    ctx.albumPage = body.items.map((album) => ({ id: album.id, name: album.name }))
   },
 )
 
@@ -244,7 +195,7 @@ Then('the album asset count is {int}', async ({ request, ctx }, count: number) =
 })
 
 Then('the listed albums in order are {string}', ({ ctx }, names: string) => {
-  const page = actx(ctx).albumPage
+  const page = ctx.albumPage
   if (!page) throw new Error('list the albums first')
   expect(page.map((album) => album.name)).toEqual(names.split(',').map((name) => name.trim()))
 })
@@ -272,7 +223,7 @@ When('I create an album through the UI named {string}', async ({ page, ctx }, na
   ])
   expect(response.status()).toBe(201)
   const album = (await response.json()) as AlbumRef
-  const albums = (actx(ctx).albums ??= [])
+  const albums = (ctx.albums ??= [])
   albums.push({ id: album.id, name: album.name })
 })
 

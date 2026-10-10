@@ -6,7 +6,7 @@ import { AlbumAsset } from './entities/album-asset.entity'
 import { Asset } from '../database/entities'
 import { CreateAlbumDto } from './dto/create-album.dto'
 import { UpdateAlbumDto } from './dto/update-album.dto'
-import { ListAlbumsQueryDto } from './dto/list-albums-query.dto'
+import { PaginationQueryDto } from '../common/pagination-query.dto'
 import { AssetsService } from '../assets/assets.service'
 import type { AlbumDto, Asset as AssetResponse } from '@photox/shared-types'
 
@@ -31,7 +31,7 @@ export class AlbumsService {
     return this.toDto(saved, 0)
   }
 
-  async list(userId: string, q: ListAlbumsQueryDto): Promise<{ items: AlbumDto[]; total: number }> {
+  async list(userId: string, q: PaginationQueryDto): Promise<{ items: AlbumDto[]; total: number }> {
     const limit = q.limit ?? 20
     const offset = q.offset ?? 0
 

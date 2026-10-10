@@ -9,7 +9,9 @@ import {
   EMBEDDING_REPROCESS_LAST_RUN_KEY,
   FACE_DETECTOR_SETTING_KEY,
   FACE_REPROCESS_LAST_RUN_KEY,
+  METADATA_REPROCESS_LAST_RUN_KEY,
   OCR_REPROCESS_LAST_RUN_KEY,
+  PLACES_BACKFILL_LAST_RUN_KEY,
   SettingsService,
 } from './settings.service'
 
@@ -240,5 +242,44 @@ describe('SettingsService', () => {
       value: { startedAt: 1, enqueued: 'x' },
     })
     expect(await service.getLastRun('detections')).toBeNull()
+  })
+
+  it('persists the last metadata reprocess run and reads it back', async () => {
+    const run = { startedAt: '2026-10-04T00:00:00.000Z', total: 11, enqueued: 10 }
+    const { service, upsert } = makeService({ key: METADATA_REPROCESS_LAST_RUN_KEY, value: run })
+    await service.setLastRun('metadata', run)
+    expect(upsert).toHaveBeenCalledWith({ key: METADATA_REPROCESS_LAST_RUN_KEY, value: run }, [
+      'key',
+    ])
+    expect(await service.getLastRun('metadata')).toEqual(run)
+  })
+
+  it('returns null for a malformed metadata last reprocess run', async () => {
+    const { service } = makeService({
+      key: METADATA_REPROCESS_LAST_RUN_KEY,
+      value: { startedAt: '2026-10-04T00:00:00.000Z', total: 11 },
+    })
+    expect(await service.getLastRun('metadata')).toBeNull()
+  })
+
+  it('persists the last places backfill run and reads it back', async () => {
+    const run = { startedAt: '2026-10-05T00:00:00.000Z', total: 20, updated: 3 }
+    const { service, upsert } = makeService({ key: PLACES_BACKFILL_LAST_RUN_KEY, value: run })
+    await service.setLastRun('places', run)
+    expect(upsert).toHaveBeenCalledWith({ key: PLACES_BACKFILL_LAST_RUN_KEY, value: run }, ['key'])
+    expect(await service.getLastRun('places')).toEqual(run)
+  })
+
+  it('returns null for a malformed places backfill run', async () => {
+    const { service } = makeService({
+      key: PLACES_BACKFILL_LAST_RUN_KEY,
+      value: { startedAt: '2026-10-05T00:00:00.000Z', updated: 'x' },
+    })
+    expect(await service.getLastRun('places')).toBeNull()
+  })
+
+  it('returns null for a non-object stored run', async () => {
+    const { service } = makeService({ key: FACE_REPROCESS_LAST_RUN_KEY, value: 'corrupt' })
+    expect(await service.getLastRun('face')).toBeNull()
   })
 })

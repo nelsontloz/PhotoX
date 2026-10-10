@@ -97,12 +97,7 @@ export class UserFilesController {
   @ApiResponse({ status: 404, description: 'File not found' })
   async download(@Res() res: Response, @Param('fileId') fileId: string, @Req() req: Request) {
     const userId = (req.user as { id: string }).id
-    const { stream, record } = await this.userFilesService.download(userId, fileId)
-    pipeFileResponse(res, {
-      stream,
-      record,
-      disposition: attachmentDisposition(record.originalName),
-      ifNoneMatch: req.get('If-None-Match'),
-    })
+    const { path, record } = await this.userFilesService.download(userId, fileId)
+    pipeFileResponse(req, res, { path, record }, attachmentDisposition(record.originalName))
   }
 }

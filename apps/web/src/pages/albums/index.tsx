@@ -10,11 +10,10 @@ import {
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { AlbumCover } from '../../components/AlbumCover'
-import { Dialog, formInputClass } from '../../components/Dialog'
+import { Dialog } from '../../components/Dialog'
+import { NewAlbumFields } from '../../components/NewAlbumFields'
 import { ErrorState, LoadingState } from '../../components/StateViews'
 import { useAlbums } from '../../hooks/useAlbums'
-
-const NEW_ALBUM_NAME_MAX = 255
 
 interface NewAlbumDialogProps {
   onClose: () => void
@@ -57,34 +56,11 @@ function NewAlbumDialog({ onClose, onCreate }: NewAlbumDialogProps) {
       closeOnOverlay={false}
       escapeKey={false}
     >
-      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-        Name
-      </label>
-      <input
-        autoFocus
-        type="text"
-        value={name}
-        maxLength={NEW_ALBUM_NAME_MAX}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="e.g. Summer 2025"
-        className={formInputClass}
-      />
-      <div className="mt-1 flex justify-between text-[11px] text-slate-500">
-        <span>Required</span>
-        <span className="tabular-nums">
-          {trimmed.length}/{NEW_ALBUM_NAME_MAX}
-        </span>
-      </div>
-
-      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5 mt-4">
-        Description <span className="text-slate-500 normal-case font-normal">(optional)</span>
-      </label>
-      <textarea
-        value={description}
-        rows={3}
-        onChange={(e) => setDescription(e.target.value)}
-        placeholder="What's this album about?"
-        className={`${formInputClass} resize-none`}
+      <NewAlbumFields
+        name={name}
+        onNameChange={setName}
+        description={description}
+        onDescriptionChange={setDescription}
       />
 
       {error && (

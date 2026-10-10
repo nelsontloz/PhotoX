@@ -21,8 +21,3 @@ export interface UpdateAlbumDto {
 export interface AddAssetsToAlbumDto {
   assetIds: string[]
 }
-
-export interface ListAlbumsQueryDto {
-  limit?: number
-  offset?: number
-}

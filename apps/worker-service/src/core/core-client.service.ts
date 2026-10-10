@@ -153,10 +153,11 @@ export class CoreClient {
     faces: DetectedFaceInput[],
     detector: FaceDetectorKind,
   ): Promise<{ count: number }> {
-    // userId is part of the wire DTO (required @IsUUID); the token sub stays authoritative
+    // the delegated token sub is the only identity core accepts; the body carries no userId
+    // (forbidNonWhitelisted would 400 an extra field)
     return this.request('POST', `/api/v1/assets/${assetId}/faces`, {
       sub: userId,
-      body: { faces, userId, detector },
+      body: { faces, detector },
     })
   }
 

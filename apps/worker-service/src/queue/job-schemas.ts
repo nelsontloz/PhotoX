@@ -18,21 +18,17 @@ export const thumbnailJobSchema = z.object({
   metadataWaits: z.number().int().min(0).max(10).optional(),
 })
 
-// video/embedding/ocr/detection jobs carry only the three refs — one base schema, aliased per queue
+// video/metadata/embedding/ocr/detection jobs carry only the three refs — one base schema, aliased per queue
 const assetRefsJobSchema = z.object({
   ...jobRefs,
 })
 
 export const videoJobSchema = assetRefsJobSchema
 
-export const metadataJobSchema = z.object({
-  ...jobRefs,
-  kind: z.enum(['photo', 'video']),
-})
+export const metadataJobSchema = assetRefsJobSchema
 
 export const faceJobSchema = z.object({
   ...jobRefs,
-  reason: z.enum(['initial', 're-embed']).optional(),
   detector: z.enum(FACE_DETECTOR_KINDS).optional(),
 })
 
@@ -44,7 +40,6 @@ export const detectionJobSchema = assetRefsJobSchema
 
 export const clusterJobSchema = z.object({
   userId: uuid,
-  reason: z.enum(['face-detected', 'manual']).optional(),
 })
 
 export const cleanupJobSchema = z.object({

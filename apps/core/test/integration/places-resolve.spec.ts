@@ -41,23 +41,19 @@ describe('places resolution', () => {
       placeRepo.create({
         geonameId: 2988507,
         name: 'Paris',
-        asciiName: 'Paris',
         latitude: PARIS.latitude,
         longitude: PARIS.longitude,
         countryCode: 'FR',
         admin1Code: '11',
-        population: 2138551,
         timezone: 'Europe/Paris',
       }),
       placeRepo.create({
         geonameId: 2996944,
         name: 'Lyon',
-        asciiName: 'Lyon',
         latitude: LYON.latitude,
         longitude: LYON.longitude,
         countryCode: 'FR',
         admin1Code: '84',
-        population: 472317,
         timezone: 'Europe/Paris',
       }),
     ])

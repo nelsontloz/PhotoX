@@ -1,4 +1,3 @@
-import { Injectable } from '@nestjs/common'
 import { createReadStream } from 'fs'
 import { Readable } from 'stream'
 import { copyFile, mkdir, rename, stat, unlink } from 'fs/promises'
@@ -6,7 +5,6 @@ import { dirname, resolve, sep } from 'path'
 import { randomUUID } from 'crypto'
 import { loadEnv } from './env'
 
-@Injectable()
 export class LocalStorageService {
   buildKey(
     kind: 'original' | 'thumbnail' | 'transcode',

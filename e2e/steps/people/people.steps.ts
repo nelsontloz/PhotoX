@@ -1,5 +1,16 @@
 import { expect, type APIRequestContext, type Page, type Response } from '@playwright/test'
-import { Given, Then, When, authHeaders, registerUser, type AuthState, type Ctx } from '../support'
+import {
+  Given,
+  Then,
+  When,
+  authHeaders,
+  registerUser,
+  requireAssetId,
+  requireAuth,
+  seedEmbedding,
+  type AuthResponse,
+  type Ctx,
+} from '../support'
 
 /** Code-matched subsets of the person wire shapes (support.ts has no person types). */
 interface PersonSummary {
@@ -22,40 +33,17 @@ interface FaceSummary {
   personId?: string | null
 }
 
-/** ctx has no slots for this state; keep it local instead of editing support.ts. */
-type PeopleCtx = Ctx & {
-  personId?: string
-  personFaceId?: string
-  otherUser?: AuthState
-}
-
-const pctx = (ctx: Ctx): PeopleCtx => ctx
-
-function requireAuth(ctx: Ctx): AuthState {
-  if (!ctx.auth) throw new Error('ctx.auth is missing — sign in first')
-  return ctx.auth
-}
-
-function requireAssetId(ctx: Ctx): string {
-  if (!ctx.assetId) throw new Error('upload a photo first')
-  return ctx.assetId
-}
-
 function requirePersonId(ctx: Ctx): string {
-  const id = pctx(ctx).personId
+  const id = ctx.personId
   if (!id) throw new Error('create a person first (seed faces and cluster)')
   return id
 }
 
 function requirePersonFaceId(ctx: Ctx): string {
-  const id = pctx(ctx).personFaceId
+  const id = ctx.personFaceId
   if (!id) throw new Error('seed a person face first')
   return id
 }
-
-/** Deterministic 512-dim unit vectors, far apart from each other and from real fixture faces. */
-const seedEmbedding = (axis: number): number[] =>
-  Array.from({ length: 512 }, (_, i) => (i === axis ? 1 : 0))
 
 interface SeedPersonFace {
   box: { x: number; y: number; w: number; h: number }
@@ -65,14 +53,13 @@ interface SeedPersonFace {
 /** Appends faces via the authenticated user endpoint (same wire shape as faces.steps.ts). */
 async function seedPersonFaces(
   request: APIRequestContext,
-  auth: AuthState,
+  auth: AuthResponse,
   assetId: string,
   faces: SeedPersonFace[],
 ): Promise<void> {
   const response = await request.post(`/api/v1/assets/${assetId}/faces`, {
     headers: authHeaders(auth),
     data: {
-      userId: auth.user.id,
       detector: 'human',
       faces: faces.map((face) => ({ ...face, confidence: 0.9 })),
     },
@@ -83,7 +70,7 @@ async function seedPersonFaces(
 
 async function fetchAssetFaces(
   request: APIRequestContext,
-  auth: AuthState,
+  auth: AuthResponse,
   assetId: string,
 ): Promise<FaceSummary[]> {
   const response = await request.get(`/api/v1/assets/${assetId}`, { headers: authHeaders(auth) })
@@ -93,7 +80,7 @@ async function fetchAssetFaces(
 
 async function fetchPerson(
   request: APIRequestContext,
-  auth: AuthState,
+  auth: AuthResponse,
   id: string,
 ): Promise<PersonSummary> {
   const response = await request.get(`/api/v1/persons/${id}`, { headers: authHeaders(auth) })
@@ -103,7 +90,7 @@ async function fetchPerson(
 
 async function fetchPersons(
   request: APIRequestContext,
-  auth: AuthState,
+  auth: AuthResponse,
   query = '',
 ): Promise<PersonList> {
   const response = await request.get(`/api/v1/persons${query}`, { headers: authHeaders(auth) })
@@ -114,7 +101,7 @@ async function fetchPersons(
 /** Polls GET /persons until at least `minimum` items match; returns the matches of that fetch. */
 async function waitForPersons(
   request: APIRequestContext,
-  auth: AuthState,
+  auth: AuthResponse,
   predicate: (person: PersonSummary) => boolean,
   minimum: number,
 ): Promise<PersonSummary[]> {
@@ -132,9 +119,9 @@ async function waitForPersons(
   return matches
 }
 
-async function ensureOtherUser(request: APIRequestContext, ctx: Ctx): Promise<AuthState> {
-  const other = pctx(ctx).otherUser ?? (await registerUser(request))
-  pctx(ctx).otherUser = other
+async function ensureOtherUser(request: APIRequestContext, ctx: Ctx): Promise<AuthResponse> {
+  const other = ctx.otherUser ?? (await registerUser(request))
+  ctx.otherUser = other
   return other
 }
 
@@ -175,7 +162,7 @@ Given('I seed one unassigned person face on my latest photo', async ({ request, 
     (face) => !before.some((previous) => previous.id === face.id),
   )
   expect(added.length).toBe(1)
-  pctx(ctx).personFaceId = added[0]!.id
+  ctx.personFaceId = added[0]!.id
 })
 
 Given('I seed two distinct person clusters on my latest photo', async ({ request, ctx }) => {
@@ -220,7 +207,7 @@ Then(
       (person) => person.faceCount >= faceCount,
       1,
     )
-    pctx(ctx).personId = persons[0]!.id
+    ctx.personId = persons[0]!.id
   },
 )
 

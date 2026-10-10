@@ -6,14 +6,14 @@ import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
 import { makeAsset, makeFileRecord } from '../fake-core-client'
 import { FFMPEG_PATH } from '../../src/queue/ffmpeg'
-import { waitForJob } from './helpers'
 import {
-  closeMediaTestApp,
-  createMediaTestApp,
-  resetMediaTestApp,
+  closeTestApp,
+  createTestApp,
+  resetTestApp,
   seedOriginal,
-  type MediaTestApp,
-} from './media-helpers'
+  waitForJob,
+  type TestApp,
+} from './helpers'
 
 const FIXTURE_DIR = mkdtempSync(join(tmpdir(), 'metadata-int-'))
 const VIDEO_PATH = join(FIXTURE_DIR, 'h264-aac.mp4')
@@ -46,31 +46,24 @@ function makeH264AacMp4(): Buffer {
 }
 
 describe('MetadataProcessor (integration)', () => {
-  let testApp: MediaTestApp
+  let testApp: TestApp
   let videoBuffer: Buffer
 
   beforeAll(async () => {
     videoBuffer = makeH264AacMp4()
-    testApp = await createMediaTestApp()
+    testApp = await createTestApp({ processors: 'media' })
   }, 180_000)
 
   afterAll(async () => {
-    await closeMediaTestApp(testApp)
+    await closeTestApp(testApp)
     rmSync(FIXTURE_DIR, { recursive: true, force: true })
   })
 
-  beforeEach(() => {
-    resetMediaTestApp(testApp)
-  })
+  beforeEach(() => resetTestApp(testApp))
 
-  async function runMetadata(
-    assetId: string,
-    fileId: string,
-    userId: string,
-    kind: 'photo' | 'video',
-  ) {
+  async function runMetadata(assetId: string, fileId: string, userId: string) {
     const queue = testApp.getQueue('process-metadata')
-    const job = await queue.add('metadata', { assetId, fileId, userId, kind })
+    const job = await queue.add('metadata', { assetId, fileId, userId })
     return { queue, job }
   }
 
@@ -92,7 +85,7 @@ describe('MetadataProcessor (integration)', () => {
       ext: 'jpg',
     })
 
-    const { queue, job } = await runMetadata(asset.id, record.id, userId, 'photo')
+    const { queue, job } = await runMetadata(asset.id, record.id, userId)
     expect(await waitForJob(queue, job.id!)).toBe('completed')
 
     const updated = testApp.fake.assets.get(asset.id)!
@@ -122,7 +115,7 @@ describe('MetadataProcessor (integration)', () => {
       ext: 'mp4',
     })
 
-    const { queue, job } = await runMetadata(asset.id, record.id, userId, 'video')
+    const { queue, job } = await runMetadata(asset.id, record.id, userId)
     expect(await waitForJob(queue, job.id!)).toBe('completed')
 
     const updated = testApp.fake.assets.get(asset.id)!
@@ -147,7 +140,7 @@ describe('MetadataProcessor (integration)', () => {
       ext: 'pdf',
     })
 
-    const { queue, job } = await runMetadata(asset.id, record.id, userId, 'photo')
+    const { queue, job } = await runMetadata(asset.id, record.id, userId)
     expect(await waitForJob(queue, job.id!)).toBe('completed')
 
     expect(testApp.fake.callsOf('patchMetadata')).toHaveLength(0)
@@ -171,7 +164,7 @@ describe('MetadataProcessor (integration)', () => {
     const asset = makeAsset({ id: randomUUID(), userId, fileId, kind: 'photo' })
     testApp.fake.assets.set(asset.id, asset)
 
-    const { queue, job } = await runMetadata(asset.id, fileId, userId, 'photo')
+    const { queue, job } = await runMetadata(asset.id, fileId, userId)
     expect(await waitForJob(queue, job.id!)).toBe('failed')
 
     expect(testApp.fake.callsOf('patchMetadata').at(-1)!.args[1]).toEqual({ status: 'failed' })
@@ -195,7 +188,7 @@ describe('MetadataProcessor (integration)', () => {
     record.sizeBytes = 4242
     testApp.fake.files.set(record.id, record)
 
-    const { queue, job } = await runMetadata(asset.id, record.id, userId, 'photo')
+    const { queue, job } = await runMetadata(asset.id, record.id, userId)
     expect(await waitForJob(queue, job.id!)).toBe('completed')
 
     expect(testApp.fake.assets.get(asset.id)!.sizeBytes).toBe(4242)

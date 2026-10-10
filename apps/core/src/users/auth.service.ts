@@ -139,7 +139,6 @@ export class AuthService {
         email: user.email,
         role: user.role,
         displayName: user.displayName,
-        avatarUrl: user.avatarUrl ?? undefined,
         createdAt: user.createdAt.toISOString(),
         updatedAt: user.updatedAt.toISOString(),
       },

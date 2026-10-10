@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import type { Asset } from '@photox/shared-types'
 import { listAllAssets } from '../api/assets'
-import { groupDateLabel, groupDateSortKey } from '../lib/dateFormat'
+import { effectiveAssetDate, groupDateLabel, groupDateSortKey } from '../lib/dateFormat'
 import { useAppStore } from '../store/app-store'
 import { useAsyncFetch } from './useAsyncFetch'
 
@@ -59,8 +59,7 @@ export function useAssetGroups(
   const timelineRefreshKey = useAppStore((s) => s.timelineRefreshKey)
 
   const fetchGroups = useCallback(async () => {
-    const dateOf = (a: Asset) =>
-      dateField === 'trashedAt' ? a.trashedAt : (a.takenAt ?? a.uploadedAt)
+    const dateOf = (a: Asset) => (dateField === 'trashedAt' ? a.trashedAt : effectiveAssetDate(a))
     const all = await listAllAssets({ limit: PAGE_SIZE, isTrashed, favorite })
     return groupAssetsByDay(all, dateOf)
   }, [dateField, isTrashed, favorite])

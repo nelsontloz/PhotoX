@@ -22,10 +22,6 @@ export const FACE_MIN_SIZE_PX = 40
 // ponytail: FACE_DETECTOR stays a direct env read outside the zod schema (WORKER_SERVICE_PORT
 // precedent); per-job `detector` overrides this default. Read lazily: .env is loaded in app.module's
 // body, after this module is evaluated.
-function defaultKind(): FaceDetectorKind {
-  return envFaceDetectorKind()
-}
-
 @Injectable()
 export class FaceDetectorService implements OnModuleInit {
   private readonly logger = new Logger(FaceDetectorService.name)
@@ -49,7 +45,7 @@ export class FaceDetectorService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    const kind = defaultKind()
+    const kind = envFaceDetectorKind()
     try {
       await this.loaded(kind)
       this.logger.log(`Face detector ready: ${kind}`)
@@ -63,7 +59,10 @@ export class FaceDetectorService implements OnModuleInit {
     }
   }
 
-  async detect(buffer: Buffer, kind: FaceDetectorKind = defaultKind()): Promise<DetectedFace[]> {
+  async detect(
+    buffer: Buffer,
+    kind: FaceDetectorKind = envFaceDetectorKind(),
+  ): Promise<DetectedFace[]> {
     const boxes = await (await this.loaded(kind)).detect(buffer)
     if (boxes.length === 0) return []
     // ponytail: decode once, warp each face in-memory — avoids a sharp pipeline per face
