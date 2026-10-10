@@ -32,10 +32,22 @@ interface TimelineGridProps {
   selectedIds?: ReadonlySet<string>
   onToggleSelect?: (id: string) => void
   onLongPress?: (asset: Asset) => void
+  /**
+   * Surface classes of the sticky day-header bands. The default blends with the app background
+   * (the grid normally scrolls on the page, so the bands read as the page under the tiles).
+   * Dialogs pass their panel surface — e.g. `bg-card-dark/95 text-white` — or the bands show up
+   * as stripes; the day title inherits the band's color.
+   */
+  dayHeaderSurfaceClassName?: string
 }
 
 /** Module-level so read-only grids keep a referentially stable default across renders (memoized children). */
 const EMPTY_SELECTED_IDS: ReadonlySet<string> = new Set()
+
+const DAY_HEADER_CLASS =
+  'flex items-end gap-3 mb-4 sticky top-0 z-30 py-2 -mx-4 px-4 sm:-mx-8 sm:px-8 border-b border-transparent dark:border-transparent transition-all'
+const DAY_HEADER_PAGE_SURFACE =
+  'bg-background-light/95 dark:bg-background-dark/95 text-slate-900 dark:text-white'
 
 export function TimelineGrid({
   layout,
@@ -49,6 +61,7 @@ export function TimelineGrid({
   selectedIds = EMPTY_SELECTED_IDS,
   onToggleSelect,
   onLongPress,
+  dayHeaderSurfaceClassName = DAY_HEADER_PAGE_SURFACE,
 }: TimelineGridProps) {
   const selectionMode = selectedIds.size > 0
   const scrollContainer = useContext(ScrollContainerContext)
@@ -163,8 +176,8 @@ export function TimelineGrid({
                   className="mb-10 last:mb-0"
                   style={{ height: day.height }}
                 >
-                  <div className="flex items-end gap-3 mb-4 sticky top-0 bg-background-light/95 dark:bg-background-dark/95 z-30 py-2 -mx-4 px-4 sm:-mx-8 sm:px-8 border-b border-transparent dark:border-transparent transition-all">
-                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+                  <div className={`${DAY_HEADER_CLASS} ${dayHeaderSurfaceClassName}`}>
+                    <h2 className="text-2xl font-bold tracking-tight">
                       {group ? group.label : groupDateLabelFromSortKey(day.sortKey)}
                     </h2>
                     {onToggleSelect && items.length > 0 && (
