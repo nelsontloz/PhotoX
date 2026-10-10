@@ -176,7 +176,9 @@ export class SharesService {
     if (size === 'sm') {
       return asset.thumbnails?.find((thumb) => thumb.size === 'sm')?.fileId ?? asset.fileId
     }
-    return asset.fileId
+    // Same pick as the in-app viewer: when the worker transcoded the video (non-h264 original),
+    // browsers cannot decode the original — serve the AV1/webm derivative.
+    return asset.transcodeFileId ?? asset.fileId
   }
 
   private async getAlbumShare(token: string): Promise<Share> {
@@ -193,6 +195,7 @@ export class SharesService {
       userId: asset.userId,
       kind: asset.kind,
       fileId: asset.fileId,
+      transcodeFileId: asset.transcodeFileId,
       title: asset.title,
       originalName: asset.originalName,
       mimeType: asset.mimeType,

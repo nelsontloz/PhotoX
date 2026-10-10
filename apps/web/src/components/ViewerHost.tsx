@@ -1,6 +1,11 @@
+import { lazy, Suspense } from 'react'
 import type { Asset } from '@photox/shared-types'
 import { AssetViewer } from './AssetViewer/AssetViewer'
-import { AlbumPickerDialog } from './AlbumPickerDialog'
+
+// Only needed when the picker opens — keep it out of the shared gallery chunk.
+const AlbumPickerDialog = lazy(() =>
+  import('./AlbumPickerDialog').then((m) => ({ default: m.AlbumPickerDialog })),
+)
 
 interface ViewerHostProps {
   /** Mounts the viewer while non-null; the picker's open state is independent. */
@@ -38,12 +43,16 @@ export function ViewerHost({
   return (
     <>
       {asset && <AssetViewer asset={asset} onClose={onClose} {...viewerProps} />}
-      <AlbumPickerDialog
-        open={asset != null && pickerOpen}
-        onClose={onPickerClose}
-        assetIds={pickerAssetIds ?? (asset ? [asset.id] : [])}
-        onDone={onPickerDone}
-      />
+      {asset != null && pickerOpen && (
+        <Suspense fallback={null}>
+          <AlbumPickerDialog
+            open
+            onClose={onPickerClose}
+            assetIds={pickerAssetIds ?? [asset.id]}
+            onDone={onPickerDone}
+          />
+        </Suspense>
+      )}
     </>
   )
 }

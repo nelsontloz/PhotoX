@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react'
 import type { Asset } from '@photox/shared-types'
 import { AssetThumb } from '../AssetThumb'
 
@@ -13,14 +12,11 @@ export function ViewerThumbnailStrip({
   currentAssetId,
   onSelect,
 }: ViewerThumbnailStripProps) {
-  const activeRef = useRef<HTMLButtonElement>(null)
-
-  useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
-  }, [currentAssetId])
-
   if (assets.length <= 1) return null
 
+  // The window is re-sliced around the active id, so the active thumb is always rendered — no
+  // scrollIntoView needed, and none here: it would scroll the overflow-hidden viewer column
+  // (still a scroll container) and slide the whole stage sideways near the end of the strip.
   const MAX_VISIBLE = 7
   const currentIdx = assets.findIndex((a) => a.id === currentAssetId)
   const half = Math.floor(MAX_VISIBLE / 2)
@@ -35,7 +31,6 @@ export function ViewerThumbnailStrip({
           return (
             <button
               key={asset.id}
-              ref={isActive ? activeRef : undefined}
               onClick={() => onSelect(asset)}
               className={`relative shrink-0 h-14 w-14 rounded overflow-hidden border-2 transition-all duration-150 ${
                 isActive

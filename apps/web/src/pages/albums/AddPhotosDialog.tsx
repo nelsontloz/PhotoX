@@ -105,7 +105,7 @@ export function AddPhotosDialog({ albumName, onClose, onAdd }: AddPhotosDialogPr
                   key={asset.id}
                   className="relative aspect-square overflow-hidden rounded-lg bg-card-dark [&>figure]:w-full [&>figure]:h-full"
                 >
-                  <GalleryItem asset={asset} onSelect={() => toggle(asset.id)} />
+                  <GalleryItem asset={asset} eager onSelect={() => toggle(asset.id)} />
                   {isSelected && (
                     <div className="absolute inset-0 ring-2 ring-primary bg-primary/20 pointer-events-none rounded-lg">
                       <div className="absolute top-1.5 right-1.5 bg-primary rounded-full w-5 h-5 flex items-center justify-center shadow">

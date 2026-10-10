@@ -1,11 +1,14 @@
+import { lazy, Suspense } from 'react'
 import { FaChevronLeft, FaChevronRight, FaImage, FaSpinner } from 'react-icons/fa6'
 import type { Asset, AssetDetectionDto, FaceDto } from '@photox/shared-types'
-import { VideoPlayer } from '../VideoPlayer'
 import { FaceOverlay } from './FaceOverlay'
 import { DetectionOverlay } from './DetectionOverlay'
 import { summarizeDetections } from './detectionView'
 import { ViewerThumbnailStrip } from './ViewerThumbnailStrip'
 import { ZoomableImage } from './ZoomableImage'
+
+// video.js is ~209 kB gzip: load the player (and its skin CSS) only when a video is opened.
+const VideoPlayer = lazy(() => import('../VideoPlayer').then((m) => ({ default: m.VideoPlayer })))
 
 // 1×1 transparent gif: an in-flow replaced element keeps the final image's box reserved even when
 // the md thumb is not cached yet, without painting anything.
@@ -16,6 +19,8 @@ interface ViewerMediaProps {
   isVideo: boolean
   videoSrc: string | null
   videoFallbackSrc: string | undefined
+  videoType?: string
+  videoFallbackType?: string
   videoPoster: string | undefined
   videoTitle: string | undefined
   imageUrl: string | null
@@ -40,6 +45,8 @@ export function ViewerMedia({
   isVideo,
   videoSrc,
   videoFallbackSrc,
+  videoType,
+  videoFallbackType,
   videoPoster,
   videoTitle,
   imageUrl,
@@ -66,7 +73,7 @@ export function ViewerMedia({
   const showDetections = detectionsOn && !isVideo && imageUrl != null && dims != null
 
   return (
-    <div className="flex-1 flex items-center justify-center p-8 pt-28 pb-28 sm:pt-20 sm:pb-24 relative min-h-0">
+    <div className="flex-1 flex items-center justify-center p-8 pt-28 pb-28 sm:pt-20 sm:pb-24 relative min-h-0 [container-type:size]">
       {hasPrev && onPrev && (
         <button
           onClick={onPrev}
@@ -77,14 +84,18 @@ export function ViewerMedia({
         </button>
       )}
       {isVideo && videoSrc ? (
-        <VideoPlayer
-          key={asset.id}
-          src={videoSrc}
-          fallbackSrc={videoFallbackSrc}
-          poster={videoPoster}
-          title={videoTitle}
-          className="relative max-h-full max-w-full"
-        />
+        <Suspense fallback={null}>
+          <VideoPlayer
+            key={asset.id}
+            src={videoSrc}
+            fallbackSrc={videoFallbackSrc}
+            type={videoType}
+            fallbackType={videoFallbackType}
+            poster={videoPoster}
+            title={videoTitle}
+            aspectRatio={dims ? dims.w / dims.h : undefined}
+          />
+        </Suspense>
       ) : imageUrl ? (
         dims ? (
           <ZoomableImage

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { FaCircleExclamation, FaPhotoFilm, FaPlay, FaXmark } from 'react-icons/fa6'
 import { api } from '../../api/client'
@@ -10,6 +10,11 @@ import type {
   PublicShareResponse,
 } from '@photox/shared-types'
 
+// video.js loads only when a shared item is actually a video.
+const VideoPlayer = lazy(() =>
+  import('../../components/VideoPlayer').then((m) => ({ default: m.VideoPlayer })),
+)
+
 function getStreamUrl(token: string): string {
   return `/api/share/${encodeURIComponent(token)}/stream`
 }
@@ -17,6 +22,12 @@ function getStreamUrl(token: string): string {
 function getAlbumAssetUrl(token: string, assetId: string, size?: 'sm'): string {
   const query = size ? `?size=${size}` : ''
   return `/api/share/${encodeURIComponent(token)}/assets/${encodeURIComponent(assetId)}/stream${query}`
+}
+
+// The share stream endpoints serve the AV1/webm derivative whenever the worker transcoded the
+// video; declaring the original mime there makes video.js reject the source outright.
+function videoType(asset: PublicShareAsset): string | undefined {
+  return asset.transcodeFileId ? 'video/webm' : (asset.mimeType ?? undefined)
 }
 
 function AlbumShare({
@@ -94,7 +105,7 @@ function AlbumShare({
 
       {selected && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4 [container-type:size]"
           onClick={() => setSelected(null)}
           role="dialog"
           aria-modal="true"
@@ -109,13 +120,21 @@ function AlbumShare({
             <FaXmark className="text-2xl" />
           </button>
           {selected.kind === 'video' ? (
-            <video
-              src={getAlbumAssetUrl(token, selected.id)}
-              controls
-              autoPlay
-              onClick={(e) => e.stopPropagation()}
-              className="max-w-full max-h-[90vh] object-contain"
-            />
+            <div onClick={(e) => e.stopPropagation()}>
+              <Suspense fallback={null}>
+                <VideoPlayer
+                  src={getAlbumAssetUrl(token, selected.id)}
+                  type={videoType(selected)}
+                  autoPlay
+                  title={selected.title ?? selected.originalName ?? undefined}
+                  aspectRatio={
+                    selected.width != null && selected.height != null
+                      ? selected.width / selected.height
+                      : undefined
+                  }
+                />
+              </Suspense>
+            </div>
           ) : (
             <img
               src={getAlbumAssetUrl(token, selected.id)}
@@ -223,15 +242,21 @@ export default function PublicSharePage() {
   const streamUrl = token ? getStreamUrl(token) : ''
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-black">
+    // h-screen (not min-h-screen): the container-type:size box needs a definite height or cqh
+    // resolves to 0 and the player frame collapses to 0x0.
+    <div className="flex items-center justify-center h-screen bg-black [container-type:size]">
       {isVideo ? (
-        <video
-          src={streamUrl}
-          controls
-          autoPlay
-          className="max-w-full max-h-screen object-contain"
-          title={asset.originalName ?? asset.title ?? 'Video'}
-        />
+        <Suspense fallback={null}>
+          <VideoPlayer
+            src={streamUrl}
+            type={videoType(asset)}
+            autoPlay
+            title={asset.originalName ?? asset.title ?? undefined}
+            aspectRatio={
+              asset.width != null && asset.height != null ? asset.width / asset.height : undefined
+            }
+          />
+        </Suspense>
       ) : (
         <img
           src={streamUrl}

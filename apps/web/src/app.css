@@ -155,3 +155,26 @@
   flex-basis: 0;
   margin-left: calc(-1 * var(--space));
 }
+
+/* Tech video letterboxes inside the frame like the old native player did. */
+.video-js .vjs-tech {
+  object-fit: contain;
+}
+
+/* video.js frame: fit the media container's content box (container query units) while keeping the
+   video's aspect ratio, so the player never slides under the viewer's reserved chrome (top bar,
+   thumbnail strip). Surfaces mark their media area with `container-type: size` AND a definite
+   height — an auto/min-height-only box resolves cqh to 0 and collapses the frame. */
+.video-frame {
+  width: min(100cqw, calc(100cqh * var(--video-ar, 1.7777778)));
+  aspect-ratio: var(--video-ar, 1.7777778);
+}
+
+/* Mobile: give the control bar (seek timeline, buttons) the full player width — the frame
+   stretches and the video itself letterboxes inside (.vjs-tech keeps object-fit: contain). */
+@media (width < 40rem) {
+  .video-frame {
+    width: 100cqw;
+    max-height: 100cqh;
+  }
+}

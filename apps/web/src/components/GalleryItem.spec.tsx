@@ -27,3 +27,13 @@ describe('GalleryItem memoization', () => {
     expect(AssetThumbMock).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('GalleryItem eager forwarding', () => {
+  it('passes eager through to AssetThumb for fixed-overlay contexts', () => {
+    AssetThumbMock.mockClear()
+    render(<GalleryItem asset={asset} eager showCheckbox={false} />)
+
+    const props = AssetThumbMock.mock.calls.at(-1)?.[0] as { eager?: boolean } | undefined
+    expect(props?.eager).toBe(true)
+  })
+})

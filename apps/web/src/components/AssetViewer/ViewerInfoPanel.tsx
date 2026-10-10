@@ -1,9 +1,14 @@
+import { lazy, Suspense } from 'react'
 import { FaNoteSticky, FaXmark } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
 import { AssetMetadataPanel } from './sections/AssetMetadataPanel'
 import { CameraSection } from './sections/CameraSection'
 import { FacesSection } from './sections/FacesSection'
-import { LocationSection } from './sections/LocationSection'
+
+// leaflet is ~44 kB gzip: load the map section only when the panel actually renders.
+const LocationSection = lazy(() =>
+  import('./sections/LocationSection').then((m) => ({ default: m.LocationSection })),
+)
 
 interface ViewerInfoPanelProps {
   asset: Asset
@@ -41,7 +46,9 @@ export function ViewerInfoPanel({ asset, onClose, onFaceHover }: ViewerInfoPanel
           )}
         </section>
         <FacesSection asset={asset} onFaceHover={onFaceHover} />
-        <LocationSection asset={asset} />
+        <Suspense fallback={null}>
+          <LocationSection asset={asset} />
+        </Suspense>
       </div>
     </aside>
   )
