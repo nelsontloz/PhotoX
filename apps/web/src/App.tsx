@@ -1,5 +1,6 @@
-import { lazy } from 'react'
+import { lazy, Suspense } from 'react'
 import { useRoutes, type RouteObject } from 'react-router-dom'
+import { LoadingState } from './components/StateViews'
 
 const HomePage = lazy(() => import('./pages/index'))
 const AdminPage = lazy(() => import('./pages/admin'))
@@ -34,5 +35,10 @@ const routes: RouteObject[] = [
 ]
 
 export function App() {
-  return useRoutes(routes)
+  const element = useRoutes(routes)
+  return (
+    <Suspense fallback={<LoadingState className="flex items-center justify-center h-screen" />}>
+      {element}
+    </Suspense>
+  )
 }
