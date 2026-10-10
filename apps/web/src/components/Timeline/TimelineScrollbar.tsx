@@ -70,17 +70,25 @@ interface TimelineScrollbarProps {
   scrollPos: { top: number; height: number }
 }
 
+/** Viewport-relative box of the scroll container — fixed-position coordinates of the strip. */
+interface StripBox {
+  top: number
+  height: number
+  right: number
+}
+
 /**
  * Timeline-only scroll affordance: hides the native scrollbar (scoped via the `.timeline-scroll`
- * class toggled on AppShell's <main>) and draws a chronological indicator — a rail with a tick per
- * month bucket at its real layout position (January ticks longer + primary = year boundaries), a
- * draggable thumb, and a "Month Year" popup while scrolling (1s grace), hovering, or scrubbing.
- * Fixed top-16 right-0: same header-height assumption as DropZone's overlay, over <main>'s right
- * padding, so it never covers clickable content.
+ * class toggled on the scroll container) and draws a chronological indicator — a rail with a tick
+ * per month bucket at its real layout position (January ticks longer + primary = year boundaries),
+ * a draggable thumb, and a "Month Year" popup while scrolling (1s grace), hovering, or scrubbing.
+ * Fixed, anchored to the measured box of the scroll container: over <main>'s right padding on
+ * pages, over the Add-photos dialog scroller's px-8 padding inside the modal — never over content.
  */
 export function TimelineScrollbar({ layout, scrollPos }: TimelineScrollbarProps) {
   const container = useScrollContainer()
   const [metrics, setMetrics] = useState<ScrollbarMetrics | null>(null)
+  const [box, setBox] = useState<StripBox | null>(null)
   const [hovered, setHovered] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [scrolling, setScrolling] = useState(false)
@@ -88,23 +96,36 @@ export function TimelineScrollbar({ layout, scrollPos }: TimelineScrollbarProps)
   const dragRef = useRef<{ grab: number } | null>(null)
   const stripRef = useRef<HTMLDivElement>(null)
 
-  // Hide the native bar only while the timeline is mounted, and (re)measure the mapping inputs —
-  // scrollHeight/clientHeight move with layout rebuilds and viewport resizes.
+  // Hide the native bar only while the timeline is mounted, and (re)measure the mapping inputs:
+  // scrollHeight/clientHeight move with layout rebuilds and viewport resizes, while the fixed
+  // strip anchors to the container box — AppShell's <main> on pages, the dialog scroller in the
+  // Add-photos modal. A ResizeObserver on the container catches both (window resizes included,
+  // <main> being flex-1), so a dialog panel that grows/shrinks re-anchors without a window resize.
   useLayoutEffect(() => {
     const el = container?.current
     if (!el) return
     el.classList.add('timeline-scroll')
-    const measure = () =>
+    const measure = () => {
       setMetrics({
         trackH: Math.max(0, el.clientHeight - RAIL_INSET * 2),
         scrollH: el.scrollHeight,
         clientH: el.clientHeight,
         padTop: parseFloat(getComputedStyle(el).paddingTop) || 0,
       })
+      // fixed → viewport coordinates; `right` from the document edge (clientWidth excludes any
+      // page scrollbar, matching the old right-0 on every scrollbar mode)
+      const rect = el.getBoundingClientRect()
+      setBox({
+        top: rect.top,
+        height: rect.height,
+        right: document.documentElement.clientWidth - rect.right,
+      })
+    }
     measure()
-    window.addEventListener('resize', measure)
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
     return () => {
-      window.removeEventListener('resize', measure)
+      observer.disconnect()
       el.classList.remove('timeline-scroll')
     }
   }, [container, layout.totalHeight])
@@ -126,7 +147,7 @@ export function TimelineScrollbar({ layout, scrollPos }: TimelineScrollbarProps)
     : ''
   const { month, year } = useMemo(() => monthYearLabel(monthKey), [monthKey])
 
-  if (!container || !m || m.scrollH <= m.clientH || layout.buckets.length === 0) return null
+  if (!container || !m || !box || m.scrollH <= m.clientH || layout.buckets.length === 0) return null
 
   const maxScroll = m.scrollH - m.clientH
   const thumb = thumbGeometry(scrollPos.top, m)
@@ -247,7 +268,8 @@ export function TimelineScrollbar({ layout, scrollPos }: TimelineScrollbarProps)
       aria-valuemax={100}
       aria-valuenow={Math.round((Math.min(scrollPos.top, maxScroll) / maxScroll) * 100)}
       tabIndex={0}
-      className="group fixed top-16 bottom-0 right-0 z-40 w-4 cursor-ns-resize touch-none select-none focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
+      className="group fixed z-40 w-4 cursor-ns-resize touch-none select-none focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
+      style={{ top: box.top, height: box.height, right: box.right }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerDone}
