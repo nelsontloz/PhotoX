@@ -5,7 +5,6 @@ export interface User {
   email: string
   role: Role
   displayName: string
-  avatarUrl?: string
   createdAt: string
   updatedAt: string
 }
@@ -115,7 +114,8 @@ export interface AssetListResponse {
   offset: number
 }
 
-// GET /api/v1/search response — items reuse the list-assets Asset shape verbatim
+// GET /api/v1/search + GET /api/v1/assets/:id/{duplicates,similar} — items reuse the
+// list-assets Asset shape verbatim
 export interface SearchResponse {
   items: Asset[]
   total: number
@@ -302,12 +302,6 @@ export interface AssetDetectionsResponse {
   detections: AssetDetectionDto[]
 }
 
-// GET /api/v1/assets/:id/duplicates and /similar — items reuse the list-assets Asset shape
-export interface RelatedAssetsResponse {
-  items: Asset[]
-  total: number
-}
-
 export const FACE_DETECTOR_KINDS = ['human', 'scrfd'] as const
 export type FaceDetectorKind = (typeof FACE_DETECTOR_KINDS)[number]
 
@@ -321,23 +315,16 @@ export interface FaceDetectionSettings {
   facesByDetector: { human: number; scrfd: number; unset: number }
 }
 
-export interface FaceBox {
-  x: number
-  y: number
-  w: number
-  h: number
-}
-
 export interface FaceDto {
   id: string
   assetId: string
-  box: FaceBox
+  box: DetectionBox
   confidence: number
   personId?: string | null
 }
 
 export interface DetectedFaceInput {
-  box: FaceBox
+  box: DetectionBox
   confidence: number
   embedding: number[]
 }

@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { Then, When } from '../support'
+import { Then, When, openViewerAndCaptureAssetId } from '../support'
 
 /**
  * One of three terminal search states must appear: the 503 "index not ready" error (the alpine
@@ -28,11 +28,7 @@ Then(
 
 When('I open the first photo in the viewer', async ({ page, ctx }) => {
   await page.goto('/')
-  await page.locator('figure[role="button"]').first().click()
-  await expect(page).toHaveURL(/[?&]asset=/)
-  const id = new URL(page.url()).searchParams.get('asset')
-  if (!id) throw new Error('no ?asset= id in the URL after opening the viewer')
-  ctx.assetId = id
+  await openViewerAndCaptureAssetId(page, ctx)
 })
 
 Then('the related tray offers similar photos', async ({ page }) => {

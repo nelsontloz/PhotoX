@@ -2,29 +2,27 @@ import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
 import type { RegisterFileInput } from '../../src/core/core-client.service'
 import { makeAsset, makeFileRecord } from '../fake-core-client'
-import { waitForJob } from './helpers'
 import {
-  closeMediaTestApp,
-  createMediaTestApp,
-  resetMediaTestApp,
+  closeTestApp,
+  createTestApp,
+  resetTestApp,
   seedOriginal,
-  type MediaTestApp,
-} from './media-helpers'
+  waitForJob,
+  type TestApp,
+} from './helpers'
 
 describe('ThumbnailProcessor (integration)', () => {
-  let testApp: MediaTestApp
+  let testApp: TestApp
 
   beforeAll(async () => {
-    testApp = await createMediaTestApp()
+    testApp = await createTestApp({ processors: 'media' })
   }, 120_000)
 
   afterAll(async () => {
-    await closeMediaTestApp(testApp)
+    await closeTestApp(testApp)
   })
 
-  beforeEach(() => {
-    resetMediaTestApp(testApp)
-  })
+  beforeEach(() => resetTestApp(testApp))
 
   describe('happy path (image)', () => {
     it('generates a thumbnail, registers its file and marks the asset ready', async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import { FaMapLocationDot } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
@@ -9,30 +9,17 @@ import { EmptyState, ErrorState, LoadingState } from '../../components/StateView
 import { locationMarkerIcon } from '../../components/AssetViewer/sections/LocationSection'
 import { formatShortDate } from '../../lib/dateFormat'
 import { addOsmTileLayer } from '../../lib/leafletMap'
+import { useAsyncFetch } from '../../hooks/useAsyncFetch'
+
+const EMPTY: Asset[] = []
 
 function PlacesContent() {
-  const [assets, setAssets] = useState<Asset[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, loading, error, refresh } = useAsyncFetch(
+    () => listAllAssets({ hasLocations: true }),
+    { errorMessage: 'Failed to load photos', loadingMode: 'always' },
+  )
+  const assets = data ?? EMPTY
   const containerRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const all = await listAllAssets({ hasLocations: true })
-        if (!cancelled) setAssets(all)
-      } catch {
-        if (!cancelled) setError('Failed to load photos')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   useEffect(() => {
     if (loading || error || assets.length === 0 || !containerRef.current) return
@@ -71,8 +58,8 @@ function PlacesContent() {
   if (error) {
     return (
       <ErrorState
-        message={error}
-        onRetry={() => window.location.reload()}
+        message="Failed to load photos"
+        onRetry={() => void refresh()}
         className="flex flex-col items-center justify-center h-full gap-4"
         messageClassName="text-red-500"
       />

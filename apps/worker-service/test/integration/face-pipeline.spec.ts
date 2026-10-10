@@ -89,14 +89,9 @@ describe('Face pipeline (integration)', () => {
     expect(await waitForJob(queue, job.id!)).toBe('completed')
   }
 
-  async function runFaceJob(
-    assetId: string,
-    fileId: string,
-    userId: string,
-    reason?: 'initial' | 're-embed',
-  ) {
+  async function runFaceJob(assetId: string, fileId: string, userId: string) {
     const queue = testApp.getQueue('process-faces')
-    const job = await queue.add('face', { assetId, fileId, userId, reason })
+    const job = await queue.add('face', { assetId, fileId, userId })
     return { queue, job }
   }
 
@@ -124,7 +119,7 @@ describe('Face pipeline (integration)', () => {
 
     expect(clusterAdd).toHaveBeenCalledExactlyOnceWith(
       'cluster',
-      { userId, reason: 'face-detected' },
+      { userId },
       {
         jobId: `cluster-${userId}`,
         delay: CLUSTER_DEBOUNCE_MS,
@@ -149,7 +144,7 @@ describe('Face pipeline (integration)', () => {
       { box: { x: 5, y: 5, w: 50, h: 50 }, confidence: 0.8, embedding: emb512([0, 1]) },
     ])
 
-    const { queue, job } = await runFaceJob(asset.id, record.id, userId, 're-embed')
+    const { queue, job } = await runFaceJob(asset.id, record.id, userId)
     expect(await waitForJob(queue, job.id!)).toBe('completed')
 
     expect(testApp.fake.deleteFacesCalls).toEqual([asset.id])
@@ -300,7 +295,7 @@ describe('Face pipeline (integration)', () => {
     expect(enqueueSpy).toHaveBeenCalledWith(
       'process-faces',
       're-embed',
-      { assetId, fileId, userId, reason: 're-embed', detector: 'human' },
+      { assetId, fileId, userId, detector: 'human' },
       expect.objectContaining({
         jobId: `face-reembed-${assetId}`,
         attempts: 3,

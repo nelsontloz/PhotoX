@@ -13,15 +13,11 @@ interface FusedHit {
  * Reciprocal Rank Fusion over ordered id lists (rank = index + 1), plus a flat bonus for routed
  * ids. Scores are summed per id; ties keep first-seen order (stable sort).
  */
-export function fuseRrf(
-  lists: string[][],
-  bonusIds: ReadonlySet<string> = new Set(),
-  k = RRF_K,
-): FusedHit[] {
+export function fuseRrf(lists: string[][], bonusIds: ReadonlySet<string> = new Set()): FusedHit[] {
   const scores = new Map<string, number>()
   for (const list of lists) {
     list.forEach((id, index) => {
-      scores.set(id, (scores.get(id) ?? 0) + 1 / (k + index + 1))
+      scores.set(id, (scores.get(id) ?? 0) + 1 / (RRF_K + index + 1))
     })
   }
   for (const id of bonusIds) {

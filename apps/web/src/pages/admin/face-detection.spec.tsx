@@ -12,7 +12,7 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../../api/admin', () => api)
 
-import { FaceDetectionSection, FacesReprocessSection } from './index'
+import { FacialDetectionCard } from './index'
 
 const settings = (over: Partial<FaceDetectionSettings> = {}): FaceDetectionSettings => ({
   detector: 'human',
@@ -42,9 +42,9 @@ afterEach(() => {
   vi.resetAllMocks()
 })
 
-describe('FaceDetectionSection', () => {
+describe('FacialDetectionCard (detector)', () => {
   it('renders the detector radios, disables SCRFD and shows the provisioning hint', async () => {
-    render(<FaceDetectionSection />)
+    render(<FacialDetectionCard />)
 
     const human = await screen.findByRole<HTMLInputElement>('radio', {
       name: /Human \(BlazeFace\)/,
@@ -59,7 +59,7 @@ describe('FaceDetectionSection', () => {
 
   it('opens the SCRFD override dialog and PUTs the detector on confirm', async () => {
     api.setFaceDetector.mockResolvedValue(settings({ detector: 'scrfd' }))
-    render(<FaceDetectionSection />)
+    render(<FacialDetectionCard />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Switch to SCRFD anyway' }))
     expect(screen.getByText('Switch to SCRFD anyway?')).toBeTruthy()
@@ -78,7 +78,7 @@ describe('FaceDetectionSection', () => {
         facesByDetector: { human: 3, scrfd: 2, unset: 1 },
       }),
     )
-    const { unmount } = render(<FaceDetectionSection />)
+    const { unmount } = render(<FacialDetectionCard />)
     await screen.findByRole('radio', { name: /Human \(BlazeFace\)/ })
 
     const warning = mixedParagraph()
@@ -92,13 +92,13 @@ describe('FaceDetectionSection', () => {
     api.getFaceDetection.mockResolvedValue(
       settings({ models: { scrfd: true }, facesByDetector: { human: 3, scrfd: 0, unset: 0 } }),
     )
-    render(<FaceDetectionSection />)
+    render(<FacialDetectionCard />)
     await screen.findByRole('radio', { name: /Human \(BlazeFace\)/ })
     expect(mixedParagraph()).toBeNull()
   })
 })
 
-describe('FacesReprocessSection', () => {
+describe('FacialDetectionCard (reprocess)', () => {
   it('confirms the reprocess dialog, POSTs, then renders polled progress', async () => {
     api.getFaceReprocessStatus.mockResolvedValueOnce(drained).mockResolvedValueOnce({
       lastRun: {
@@ -111,7 +111,7 @@ describe('FacesReprocessSection', () => {
     })
     api.reprocessFaces.mockResolvedValue({ enqueued: 5, total: 5, detector: 'human' })
 
-    render(<FacesReprocessSection />)
+    render(<FacialDetectionCard />)
     await screen.findByText('No face reprocess runs yet.')
 
     fireEvent.click(screen.getByRole('button', { name: 'Reprocess all faces' }))
@@ -140,7 +140,7 @@ describe('FacesReprocessSection', () => {
       queue: { waiting: 0, active: 0, completed: 5, failed: 0, delayed: 0 },
     })
 
-    render(<FacesReprocessSection />)
+    render(<FacialDetectionCard />)
 
     expect(
       await screen.findByText(/5 of 8 photos\s+queued with the SCRFD 10G detector\./),
@@ -154,7 +154,7 @@ describe('FacesReprocessSection', () => {
     )
     api.reprocessFaces.mockResolvedValue({ enqueued: 5, total: 5, detector: 'scrfd' })
 
-    render(<FacesReprocessSection />)
+    render(<FacialDetectionCard />)
     await screen.findByText('No face reprocess runs yet.')
 
     fireEvent.click(screen.getByRole('button', { name: 'Reprocess all faces' }))
@@ -164,7 +164,10 @@ describe('FacesReprocessSection', () => {
         "The SCRFD model isn't installed — these jobs will fail until it is provisioned.",
       ),
     ).toBeTruthy()
-    expect(screen.getByText('pnpm --filter @photox/worker-service face-model')).toBeTruthy()
+    // the merged card also shows the provision command in its detector warning
+    expect(
+      screen.getAllByText('pnpm --filter @photox/worker-service face-model').length,
+    ).toBeGreaterThan(0)
 
     // warn, don't block — parity with the "Switch to SCRFD anyway" flow
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
@@ -174,20 +177,22 @@ describe('FacesReprocessSection', () => {
   it('shows no SCRFD warning in the confirm dialog when the model is installed', async () => {
     api.getFaceDetection.mockResolvedValue(settings({ detector: 'scrfd', models: { scrfd: true } }))
 
-    render(<FacesReprocessSection />)
+    render(<FacialDetectionCard />)
     await screen.findByText('No face reprocess runs yet.')
 
     fireEvent.click(screen.getByRole('button', { name: 'Reprocess all faces' }))
 
     expect(screen.getByText('Reprocess all faces?')).toBeTruthy()
     expect(screen.queryByText(/The SCRFD model isn't installed/)).toBeNull()
-    expect(screen.queryByText('pnpm --filter @photox/worker-service face-model')).toBeNull()
+    expect(
+      screen.queryAllByText('pnpm --filter @photox/worker-service face-model'),
+    ).toHaveLength(0)
   })
 
   it('reclusters users and renders the queued result', async () => {
     api.reclusterFaces.mockResolvedValue({ enqueued: 2 })
 
-    render(<FacesReprocessSection />)
+    render(<FacialDetectionCard />)
     await screen.findByText('No face reprocess runs yet.')
 
     fireEvent.click(screen.getByRole('button', { name: 'Recluster users' }))
@@ -199,7 +204,7 @@ describe('FacesReprocessSection', () => {
   it('renders the recluster empty state when no users have faces', async () => {
     api.reclusterFaces.mockResolvedValue({ enqueued: 0 })
 
-    render(<FacesReprocessSection />)
+    render(<FacialDetectionCard />)
     await screen.findByText('No face reprocess runs yet.')
 
     fireEvent.click(screen.getByRole('button', { name: 'Recluster users' }))

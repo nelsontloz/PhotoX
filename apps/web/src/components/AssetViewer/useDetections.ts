@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AssetDetectionDto } from '@photox/shared-types'
 import { getAssetDetections } from '../../api/detections'
+import { makeLoader } from './makeLoader'
 
 type DetectionStatus = 'idle' | 'loading' | 'ready'
 
@@ -10,27 +11,7 @@ interface DetectionState {
   detections: AssetDetectionDto[]
 }
 
-// Session cache: one entry per asset, filled the first time its overlay is switched on. Failed
-// fetches are not cached, so toggling again retries instead of pinning a transient error.
-const cache = new Map<string, AssetDetectionDto[]>()
-const inflight = new Map<string, Promise<AssetDetectionDto[]>>()
-
-function loadDetections(assetId: string): Promise<AssetDetectionDto[]> {
-  const cached = cache.get(assetId)
-  if (cached) return Promise.resolve(cached)
-  const pending = inflight.get(assetId)
-  if (pending) return pending
-  const request = getAssetDetections(assetId)
-    .then((res) => {
-      cache.set(assetId, res.detections)
-      return res.detections
-    })
-    .finally(() => {
-      inflight.delete(assetId)
-    })
-  inflight.set(assetId, request)
-  return request
-}
+const loadDetections = makeLoader(getAssetDetections)
 
 /** Lazy detections for the viewer overlay: nothing is fetched until `enabled` flips true. */
 export function useDetections(
@@ -41,16 +22,16 @@ export function useDetections(
 
   useEffect(() => {
     if (!enabled) return
-    const cached = cache.get(assetId)
+    const cached = loadDetections.peek(assetId)
     if (cached) {
-      setState({ assetId, status: 'ready', detections: cached })
+      setState({ assetId, status: 'ready', detections: cached.detections })
       return
     }
     let cancelled = false
     setState({ assetId, status: 'loading', detections: [] })
     void loadDetections(assetId)
-      .then((detections) => {
-        if (!cancelled) setState({ assetId, status: 'ready', detections })
+      .then((res) => {
+        if (!cancelled) setState({ assetId, status: 'ready', detections: res.detections })
       })
       .catch(() => {
         // 404 / network: same silent empty state as "no objects detected"

@@ -13,7 +13,6 @@ export function ViewerThumbnailStrip({
   currentAssetId,
   onSelect,
 }: ViewerThumbnailStripProps) {
-  const scrollRef = useRef<HTMLDivElement>(null)
   const activeRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -30,7 +29,7 @@ export function ViewerThumbnailStrip({
 
   return (
     <div className="absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/60 via-black/30 to-transparent pt-8 pb-3">
-      <div ref={scrollRef} className="flex items-center justify-center gap-1.5 px-6">
+      <div className="flex items-center justify-center gap-1.5 px-6">
         {visible.map((asset) => {
           const isActive = asset.id === currentAssetId
           return (

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import type { Asset, RelatedAssetsResponse } from '@photox/shared-types'
+import type { Asset, SearchResponse } from '@photox/shared-types'
 import { getAssetDuplicates, getSimilarAssets } from '../../api/related'
+import { makeLoader } from './makeLoader'
 
 type RelatedStatus = 'idle' | 'loading' | 'ready'
 
@@ -14,36 +15,15 @@ interface RelatedState extends RelatedAssets {
   assetId: string
 }
 
-// Session cache per asset + kind, same shape as useDetections: one entry per viewed asset,
-// filled the first time its viewer opens. Failed fetches are not cached, so a later open retries.
-function makeLoader(fetcher: (assetId: string) => Promise<RelatedAssetsResponse>) {
-  const cache = new Map<string, RelatedAssetsResponse>()
-  const inflight = new Map<string, Promise<RelatedAssetsResponse>>()
-  return (assetId: string): Promise<RelatedAssetsResponse> => {
-    const cached = cache.get(assetId)
-    if (cached) return Promise.resolve(cached)
-    const pending = inflight.get(assetId)
-    if (pending) return pending
-    const request = fetcher(assetId)
-      .then((res) => {
-        cache.set(assetId, res)
-        return res
-      })
-      .finally(() => {
-        inflight.delete(assetId)
-      })
-    inflight.set(assetId, request)
-    return request
-  }
-}
-
+// Session loader shared with useDetections (see ./makeLoader): one entry per viewed
+// asset, filled on first open; failed fetches are not cached, so a later open retries.
 const loadSimilar = makeLoader(getSimilarAssets)
 const loadDuplicates = makeLoader(getAssetDuplicates)
 
 function useRelatedAssets(
   assetId: string,
   enabled: boolean,
-  load: (assetId: string) => Promise<RelatedAssetsResponse>,
+  load: (assetId: string) => Promise<SearchResponse>,
 ): RelatedAssets {
   const [state, setState] = useState<RelatedState | null>(null)
 

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import type { Job } from 'bullmq'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -6,6 +6,7 @@ import { randomUUID, createHash } from 'crypto'
 import { copyFile, rm, mkdir, readFile } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
 import { assertOwnership, parseJobData, videoJobSchema, type VideoJob } from './job-schemas'
+import { patchStatusFailed } from './asset-file-job'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
 import type { FileRecord } from '@photox/shared-types'
@@ -16,7 +17,7 @@ const MAX_DIMENSION = 7680
 const TRANSCODE_TIMEOUT_MS = 60 * 60 * 1000
 
 @Injectable()
-export class VideoProcessor {
+export class VideoProcessor implements OnModuleInit {
   private readonly logger = new Logger(VideoProcessor.name)
 
   constructor(
@@ -25,7 +26,7 @@ export class VideoProcessor {
     private readonly storage: LocalStorageService,
   ) {}
 
-  start() {
+  onModuleInit() {
     this.bullMq.createWorker<VideoJob>('process-video', (job) => this.processJob(job))
 
     this.logger.log('Video processor listening for jobs')
@@ -110,14 +111,10 @@ export class VideoProcessor {
       const message = err instanceof Error ? err.message : String(err)
       this.logger.error(`Video transcode failed: asset=${assetId} — ${message}`)
 
-      try {
-        await this.core.patchMetadata(userId, assetId, {
-          transcodeStatus: 'failed',
-          metadata: { transcodeError: message },
-        })
-      } catch {
-        this.logger.warn(`Failed to patch transcode error for asset=${assetId}`)
-      }
+      await patchStatusFailed(this.core, this.logger, userId, assetId, {
+        transcodeStatus: 'failed',
+        metadata: { transcodeError: message },
+      })
 
       throw err
     } finally {

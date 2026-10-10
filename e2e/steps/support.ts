@@ -4,19 +4,104 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, type APIRequestContext, type Page } from '@playwright/test'
 import { createBdd, test as base } from 'playwright-bdd'
-import type { Asset, AuthResponse } from '@photox/shared-types'
+import {
+  FACE_EMBEDDING_DIM,
+  type Asset,
+  type AuthResponse,
+  type FaceDetectionSettings,
+  type FaceDetectorKind,
+} from '@photox/shared-types'
 
 export const PASSWORD = 'password123'
 // apps/web is "type": "module" — steps load as ESM, so no __dirname
 export const FIXTURES_DIR = fileURLToPath(new URL('../fixtures', import.meta.url))
 
-/** Wire shape of POST /api/v1/auth/register (and the localStorage session subset). */
-export type AuthState = AuthResponse
+// re-exported for step files so they keep importing wire types from support, not shared-types
+export type { AuthResponse, FaceDetectionSettings, FaceDetectorKind }
 
+/** Album id + name as returned by the album API. */
+export interface AlbumRef {
+  id: string
+  name: string
+}
+
+/** Trimmed favorites list response cached by the favorites steps. */
+export interface FavoriteAsset {
+  id: string
+  favorite: boolean
+}
+
+export interface FavoriteList {
+  items: FavoriteAsset[]
+  total: number
+}
+
+/** A fixture tracked by the semantic steps. */
+export interface SemanticUpload {
+  name: string
+  assetId: string
+}
+
+export type ReprocessKind = 'embedding' | 'ocr' | 'detection'
+
+export interface ReprocessRun {
+  enqueued: number
+  total: number
+}
+
+/** Trimmed share response cached by the sharing steps (asset + album fields, loose shape). */
+export interface ShareState {
+  id: string
+  kind: 'asset' | 'album'
+  token: string
+  assetId?: string
+  albumId?: string
+  albumName?: string
+}
+
+/** Scenario state; each slot is optional and only the owning feature's steps fill it. */
 export interface Ctx {
-  auth?: AuthState
+  auth?: AuthResponse
   assetId?: string
   lastStatus?: number
+  // albums
+  albums?: AlbumRef[]
+  albumAssets?: string[]
+  albumPage?: AlbumRef[]
+  // isolation users shared by albums/favorites/sharing
+  otherAuth?: AuthResponse
+  otherAssetId?: string
+  // faces
+  faceDetectorOriginal?: FaceDetectorKind
+  faceReprocess?: ReprocessRun
+  reclusterEnqueued?: number
+  // favorites
+  favoriteIds?: string[]
+  listResponses?: FavoriteList[]
+  otherListResponse?: FavoriteList
+  // people
+  personId?: string
+  personFaceId?: string
+  otherUser?: AuthResponse
+  // semantic
+  semanticUploads?: SemanticUpload[]
+  faceCountsBefore?: FaceDetectionSettings['facesByDetector']
+  reprocessRuns?: Partial<Record<ReprocessKind, ReprocessRun>>
+  // sharing
+  assetShare?: ShareState
+  assetShareAgain?: ShareState
+  albumShare?: ShareState
+  videoShare?: ShareState
+  lastShare?: ShareState
+  shareOwner?: AuthResponse
+  albumId?: string
+  albumName?: string
+  albumMemberId?: string
+  otherShare?: ShareState
+  streamContentRange?: string | null
+  // trash
+  trashAssetIds?: string[]
+  openTrashedId?: string
 }
 
 // playwright-bdd requires the custom test to extend ITS test (BDD fixtures), and the exported
@@ -37,7 +122,10 @@ AfterStep(async ({ page, $testInfo }) => {
 })
 
 /** Registers a user through the API; unique email unless one is given. */
-export async function registerUser(request: APIRequestContext, email?: string): Promise<AuthState> {
+export async function registerUser(
+  request: APIRequestContext,
+  email?: string,
+): Promise<AuthResponse> {
   const response = await request.post('/api/v1/auth/register', {
     data: {
       email: email ?? `e2e-${randomUUID()}@photox.test`,
@@ -46,11 +134,11 @@ export async function registerUser(request: APIRequestContext, email?: string): 
     },
   })
   expect(response.status()).toBe(201)
-  return (await response.json()) as AuthState
+  return (await response.json()) as AuthResponse
 }
 
 /** Seeds the zustand-persisted session before any app script runs. */
-export async function injectSession(page: Page, auth: AuthState): Promise<void> {
+export async function injectSession(page: Page, auth: AuthResponse): Promise<void> {
   const persisted = JSON.stringify({
     state: {
       user: auth.user,
@@ -77,8 +165,70 @@ export async function readSessionRole(page: Page): Promise<string> {
   return role
 }
 
-export function authHeaders(auth: AuthState): Record<string, string> {
+export function authHeaders(auth: AuthResponse): Record<string, string> {
   return { Authorization: `Bearer ${auth.accessToken}` }
+}
+
+/** The signed-in user for this scenario; every authenticated step starts here. */
+export function requireAuth(ctx: Ctx): AuthResponse {
+  if (!ctx.auth) throw new Error('ctx.auth is missing — sign in first')
+  return ctx.auth
+}
+
+/** The second user a scenario registered for isolation checks. */
+export function requireOtherAuth(ctx: Ctx): AuthResponse {
+  if (!ctx.otherAuth) throw new Error('register the other user first')
+  return ctx.otherAuth
+}
+
+export function requireAssetId(ctx: Ctx): string {
+  if (!ctx.assetId) throw new Error('ctx.assetId is missing — upload an asset first')
+  return ctx.assetId
+}
+
+/** Deterministic unit vector along `axis` — fixtures have no real faces, so seeds are synthetic. */
+export function seedEmbedding(axis = 0): number[] {
+  return Array.from({ length: FACE_EMBEDDING_DIM }, (_, i) => (i === axis ? 1 : 0))
+}
+
+/** GETs the admin face-detection settings (same wire shape as the PUT response). */
+export async function fetchFaceSettings(
+  request: APIRequestContext,
+  auth: AuthResponse,
+): Promise<FaceDetectionSettings> {
+  const response = await request.get('/api/v1/admin/face-detection', { headers: authHeaders(auth) })
+  expect(response.status()).toBe(200)
+  return (await response.json()) as FaceDetectionSettings
+}
+
+/** Creates an album via the API and returns it as an AlbumRef. */
+export async function createAlbumViaApi(
+  request: APIRequestContext,
+  auth: AuthResponse,
+  name: string,
+): Promise<AlbumRef> {
+  const response = await request.post('/api/v1/albums', {
+    headers: authHeaders(auth),
+    data: { name },
+  })
+  expect(response.status()).toBe(201)
+  const album = (await response.json()) as AlbumRef
+  if (!album.id) throw new Error('album response did not include an id')
+  return { id: album.id, name: album.name }
+}
+
+/** Adds assets to an album via the API; returns the status so callers assert the outcome. */
+export async function addAssetsViaApi(
+  request: APIRequestContext,
+  auth: AuthResponse,
+  albumId: string,
+  assetIds: string[],
+): Promise<number> {
+  const response = await request.post(`/api/v1/albums/${albumId}/assets`, {
+    headers: authHeaders(auth),
+    data: { assetIds },
+  })
+  return response.status()
 }
 
 /** Uploads a fixture via the hidden file input (header input comes first) and returns the asset id. */
@@ -119,7 +269,7 @@ const FIXTURE_MIME: Record<string, string> = {
 /** Uploads a fixture through POST /api/v1/files as the given auth (API-level, no browser). */
 export async function uploadViaApi(
   request: APIRequestContext,
-  auth: AuthState,
+  auth: AuthResponse,
   name: string,
 ): Promise<string> {
   const mimeType = FIXTURE_MIME[name.slice(name.lastIndexOf('.'))]
@@ -153,7 +303,7 @@ export async function expectThumbnailLoaded(page: Page): Promise<void> {
 /** Waits until the worker has registered the given thumbnail sizes for the asset. */
 export async function waitForThumbnails(
   request: APIRequestContext,
-  auth: AuthState,
+  auth: AuthResponse,
   assetId: string,
   sizes: string[],
 ): Promise<void> {
@@ -169,14 +319,20 @@ export async function waitForThumbnails(
     .toBe(true)
 }
 
-/** Opens the viewer on the first tile, caches its asset id, then closes the viewer again. */
-export async function discoverAssetId(page: Page, ctx: Ctx): Promise<string> {
-  if (ctx.assetId) return ctx.assetId
+/** Clicks the first tile, waits for the viewer URL, then caches and returns the ?asset= id. */
+export async function openViewerAndCaptureAssetId(page: Page, ctx: Ctx): Promise<string> {
   await page.locator('figure[role="button"]').first().click()
   await expect(page).toHaveURL(/[?&]asset=/)
   const id = new URL(page.url()).searchParams.get('asset')
   if (!id) throw new Error('no ?asset= id in the URL after opening the viewer')
   ctx.assetId = id
+  return id
+}
+
+/** Opens the viewer on the first tile, caches its asset id, then closes the viewer again. */
+export async function discoverAssetId(page: Page, ctx: Ctx): Promise<string> {
+  if (ctx.assetId) return ctx.assetId
+  const id = await openViewerAndCaptureAssetId(page, ctx)
   await page.keyboard.press('Escape')
   await expect(page.locator('div.fixed.inset-0.z-50')).toHaveCount(0)
   return id
@@ -184,7 +340,7 @@ export async function discoverAssetId(page: Page, ctx: Ctx): Promise<string> {
 
 export async function getAsset(
   request: APIRequestContext,
-  auth: AuthState,
+  auth: AuthResponse,
   id: string,
 ): Promise<Asset> {
   const response = await request.get(`/api/v1/assets/${id}`, { headers: authHeaders(auth) })

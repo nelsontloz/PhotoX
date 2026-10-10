@@ -9,15 +9,26 @@ import type {
   FaceDetectorKind,
 } from '@photox/shared-types'
 
-export interface FaceReprocessStatus {
-  lastRun: {
-    startedAt: string
-    total: number
-    enqueued: number
-    detector: FaceDetectorKind
-  } | null
-  queue: { waiting: number; active: number; completed: number; failed: number; delayed: number }
+export interface QueueCounts {
+  waiting: number
+  active: number
+  completed: number
+  failed: number
+  delayed: number
 }
+
+/** Status envelope shared by every reprocess pipeline: last run (if any) + live queue depth. */
+export interface ReprocessStatus<L> {
+  lastRun: L | null
+  queue: QueueCounts
+}
+
+export type FaceReprocessStatus = ReprocessStatus<{
+  startedAt: string
+  total: number
+  enqueued: number
+  detector: FaceDetectorKind
+}>
 
 interface FaceReprocessResponse {
   enqueued: number
@@ -25,15 +36,12 @@ interface FaceReprocessResponse {
   detector: FaceDetectorKind
 }
 
-export interface EmbeddingReprocessStatus {
-  lastRun: {
-    startedAt: string
-    total: number
-    enqueued: number
-    model: string
-  } | null
-  queue: { waiting: number; active: number; completed: number; failed: number; delayed: number }
-}
+export type EmbeddingReprocessStatus = ReprocessStatus<{
+  startedAt: string
+  total: number
+  enqueued: number
+  model: string
+}>
 
 interface EmbeddingReprocessResponse {
   enqueued: number
@@ -136,14 +144,11 @@ export async function getEmbeddingReprocessStatus(): Promise<EmbeddingReprocessS
   return data
 }
 
-export interface DetectionReprocessStatus {
-  lastRun: {
-    startedAt: string
-    total: number
-    enqueued: number
-  } | null
-  queue: { waiting: number; active: number; completed: number; failed: number; delayed: number }
-}
+export type DetectionReprocessStatus = ReprocessStatus<{
+  startedAt: string
+  total: number
+  enqueued: number
+}>
 
 interface DetectionReprocessResponse {
   enqueued: number
@@ -160,14 +165,11 @@ export async function getDetectionReprocessStatus(): Promise<DetectionReprocessS
   return data
 }
 
-export interface OcrReprocessStatus {
-  lastRun: {
-    startedAt: string
-    total: number
-    enqueued: number
-  } | null
-  queue: { waiting: number; active: number; completed: number; failed: number; delayed: number }
-}
+export type OcrReprocessStatus = ReprocessStatus<{
+  startedAt: string
+  total: number
+  enqueued: number
+}>
 
 interface OcrReprocessResponse {
   enqueued: number

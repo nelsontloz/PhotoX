@@ -5,22 +5,17 @@ import {
   When,
   PASSWORD,
   authHeaders,
+  fetchFaceSettings,
   injectSession,
-  type AuthState,
+  requireAuth,
+  seedEmbedding,
+  type AuthResponse,
   type Ctx,
+  type FaceDetectionSettings,
+  type FaceDetectorKind,
 } from '../support'
 
 const ADMIN_EMAIL = 'admin@photox.test'
-
-type FaceDetectorKind = 'human' | 'scrfd'
-
-/** Wire shape of GET/PUT /api/v1/admin/face-detection (local copy — steps never import apps/web). */
-interface FaceSettings {
-  detector: FaceDetectorKind
-  envDefault: FaceDetectorKind
-  models: { scrfd: boolean }
-  facesByDetector: { human: number; scrfd: number; unset: number }
-}
 
 /** Wire shape of GET /api/v1/admin/faces/reprocess. */
 interface FaceStatus {
@@ -46,22 +41,8 @@ interface PersonList {
   items: { id: string; faceCount: number }[]
 }
 
-/** ctx has no slots for this state; keep it local instead of editing support.ts. */
-type FacesCtx = Ctx & {
-  faceDetectorOriginal?: FaceDetectorKind
-  faceReprocess?: { enqueued: number; total: number }
-  reclusterEnqueued?: number
-}
-
-const fctx = (ctx: Ctx): FacesCtx => ctx
-
-function requireAuth(ctx: Ctx): AuthState {
-  if (!ctx.auth) throw new Error('ctx.auth is missing — sign in first')
-  return ctx.auth
-}
-
 /** Admin login, falling back to register (the first account of an empty instance becomes admin). */
-async function signInAdmin(request: APIRequestContext): Promise<AuthState> {
+async function signInAdmin(request: APIRequestContext): Promise<AuthResponse> {
   let response = await request.post('/api/v1/auth/login', {
     data: { email: ADMIN_EMAIL, password: PASSWORD },
   })
@@ -71,23 +52,12 @@ async function signInAdmin(request: APIRequestContext): Promise<AuthState> {
     })
   }
   expect(response.ok()).toBe(true)
-  const auth = (await response.json()) as AuthState
+  const auth = (await response.json()) as AuthResponse
   if (auth.user.role !== 'admin') {
     throw new Error(`expected ${ADMIN_EMAIL} to have the admin role, got "${auth.user.role}"`)
   }
   return auth
 }
-
-async function getFaceSettings(request: APIRequestContext, auth: AuthState): Promise<FaceSettings> {
-  const response = await request.get('/api/v1/admin/face-detection', {
-    headers: authHeaders(auth),
-  })
-  expect(response.status()).toBe(200)
-  return (await response.json()) as FaceSettings
-}
-
-/** Deterministic 512-dim unit vector — fixtures have no real faces, so seeds are synthetic too. */
-const seedEmbedding = (): number[] => Array.from({ length: 512 }, (_, i) => (i === 0 ? 1 : 0))
 
 interface SeedFace {
   box: { x: number; y: number; w: number; h: number }
@@ -99,14 +69,13 @@ interface SeedFace {
  */
 async function seedFaces(
   request: APIRequestContext,
-  auth: AuthState,
+  auth: AuthResponse,
   assetId: string,
   faces: SeedFace[],
 ): Promise<void> {
   const response = await request.post(`/api/v1/assets/${assetId}/faces`, {
     headers: authHeaders(auth),
     data: {
-      userId: auth.user.id,
       detector: 'human',
       faces: faces.map((face) => ({ ...face, confidence: 0.9, embedding: seedEmbedding() })),
     },
@@ -117,7 +86,7 @@ async function seedFaces(
 
 async function fetchFaceAsset(
   request: APIRequestContext,
-  auth: AuthState,
+  auth: AuthResponse,
   assetId: string,
 ): Promise<FaceAsset> {
   const response = await request.get(`/api/v1/assets/${assetId}`, { headers: authHeaders(auth) })
@@ -152,7 +121,7 @@ async function switchDetector(
   ctx: Ctx,
   target: FaceDetectorKind,
 ): Promise<void> {
-  const active = (await getFaceSettings(request, requireAuth(ctx))).detector
+  const active = (await fetchFaceSettings(request, requireAuth(ctx))).detector
   if (active === target) {
     // silently returning would let the scenario pass without ever exercising the PUT
     throw new Error(`the active face detector is already "${target}" — nothing would be switched`)
@@ -162,7 +131,7 @@ async function switchDetector(
   const apply = async (click: () => Promise<void>): Promise<void> => {
     const [response] = await Promise.all([page.waitForResponse(isDetectorPut), click()])
     expect(response.status()).toBe(200)
-    const body = (await response.json()) as FaceSettings
+    const body = (await response.json()) as FaceDetectionSettings
     expect(body.detector).toBe(target)
   }
 
@@ -184,7 +153,7 @@ async function expectActiveDetector(
   ctx: Ctx,
   expected: FaceDetectorKind,
 ): Promise<void> {
-  expect((await getFaceSettings(request, requireAuth(ctx))).detector).toBe(expected)
+  expect((await fetchFaceSettings(request, requireAuth(ctx))).detector).toBe(expected)
   await expect(detectorRadio(page, expected)).toBeChecked()
 }
 
@@ -208,8 +177,8 @@ When('I open the admin dashboard', async ({ page }) => {
 })
 
 When('I remember the active face detector', async ({ request, page, ctx }) => {
-  const settings = await getFaceSettings(request, requireAuth(ctx))
-  fctx(ctx).faceDetectorOriginal = settings.detector
+  const settings = await fetchFaceSettings(request, requireAuth(ctx))
+  ctx.faceDetectorOriginal = settings.detector
   await expect(detectorRadio(page, settings.detector)).toBeChecked()
 })
 
@@ -220,7 +189,7 @@ When('I switch the face detector to {string}', async ({ page, request, ctx }, ta
 When(
   'I switch the face detector back to the remembered detector',
   async ({ page, request, ctx }) => {
-    const original = fctx(ctx).faceDetectorOriginal
+    const original = ctx.faceDetectorOriginal
     if (!original) throw new Error('remember the active face detector first')
     await switchDetector(page, request, ctx, original)
   },
@@ -231,7 +200,7 @@ Then('the active face detector is {string}', async ({ page, request, ctx }, expe
 })
 
 Then('the active face detector is the remembered detector', async ({ page, request, ctx }) => {
-  const original = fctx(ctx).faceDetectorOriginal
+  const original = ctx.faceDetectorOriginal
   if (!original) throw new Error('remember the active face detector first')
   await expectActiveDetector(page, request, ctx, original)
 })
@@ -290,7 +259,7 @@ When('I start a face reprocess run', async ({ page, request, ctx }) => {
   ])
   expect(response.status()).toBe(200)
   const run = (await response.json()) as { enqueued: number; total: number }
-  fctx(ctx).faceReprocess = run
+  ctx.faceReprocess = run
   // `enqueued` counts requested jobs; check Redis once so a run that enqueued nothing is caught.
   // Tiny race accepted (the job may drain first) — the seeded-face check below is the durable proof.
   const statusResponse = await request.get('/api/v1/admin/faces/reprocess', {
@@ -308,14 +277,14 @@ When('I start a face reprocess run', async ({ page, request, ctx }) => {
 })
 
 Then('the face reprocess reports queued jobs for every photo', ({ ctx }) => {
-  const run = fctx(ctx).faceReprocess
+  const run = ctx.faceReprocess
   if (!run) throw new Error('start a face reprocess run first')
   expect(run.total).toBeGreaterThanOrEqual(1)
   expect(run.enqueued).toBe(run.total)
 })
 
 Then('the face reprocess queue drains', async ({ request, ctx }) => {
-  const run = fctx(ctx).faceReprocess
+  const run = ctx.faceReprocess
   if (!run) throw new Error('start a face reprocess run first')
   const auth = requireAuth(ctx)
   const fetchStatus = async (): Promise<FaceStatus> => {
@@ -373,7 +342,7 @@ When('I recluster face users', async ({ page, ctx }) => {
     page.getByRole('button', { name: 'Recluster users' }).click(),
   ])
   expect(response.status()).toBe(200)
-  fctx(ctx).reclusterEnqueued = ((await response.json()) as { enqueued: number }).enqueued
+  ctx.reclusterEnqueued = ((await response.json()) as { enqueued: number }).enqueued
 })
 
 Then('the seeded faces are grouped into a person', async ({ request, ctx }) => {
@@ -398,7 +367,7 @@ Then('the seeded faces are grouped into a person', async ({ request, ctx }) => {
 })
 
 Then('the admin page confirms the recluster outcome', async ({ page, ctx }) => {
-  const enqueued = fctx(ctx).reclusterEnqueued
+  const enqueued = ctx.reclusterEnqueued
   if (enqueued === undefined) throw new Error('recluster face users first')
   const expected =
     enqueued > 0

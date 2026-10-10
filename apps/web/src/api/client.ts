@@ -11,7 +11,7 @@ api.interceptors.request.use(async (config) => {
   if (config.url?.includes('/v1/auth/')) return config
 
   const { accessToken, refreshToken } = useAuthStore.getState()
-  if (accessToken && refreshToken && isExpiringSoon(accessToken, 5 * 60 * 1000)) {
+  if (accessToken && refreshToken && isExpiringSoon(accessToken)) {
     await useAuthStore
       .getState()
       .refresh()

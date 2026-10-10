@@ -15,8 +15,8 @@ COPY tsconfig.base.json ./
 COPY packages/shared-types/ ./packages/shared-types/
 COPY packages/shared-config/ ./packages/shared-config/
 COPY apps/core/ ./apps/core/
-RUN pnpm --filter @photox/shared-config build && \
-    pnpm --filter @photox/shared-types build && \
+RUN pnpm --filter @photox/shared-types build && \
+    pnpm --filter @photox/shared-config build && \
     pnpm --filter @photox/core build
 
 # -- runtime --

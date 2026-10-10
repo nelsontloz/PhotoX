@@ -4,6 +4,7 @@ import {
   Then,
   When,
   expectSingleTimelineItem,
+  openViewerAndCaptureAssetId,
   uploadFixture,
   waitForThumbnails,
 } from '../support'
@@ -20,13 +21,9 @@ Given('I uploaded {string}', async ({ page, request, ctx }, name: string) => {
 
 When('I click the photo thumbnail', async ({ page, ctx }) => {
   const previousId = ctx.assetId
-  await page.locator('figure[role="button"]').first().click()
-  await expect(page).toHaveURL(/[?&]asset=/)
-  const id = new URL(page.url()).searchParams.get('asset')
-  if (!id) throw new Error('no ?asset= id in the URL after opening the viewer')
+  const id = await openViewerAndCaptureAssetId(page, ctx)
   // the viewer must be showing the asset uploaded earlier, not some other tile
   if (previousId) expect(id).toBe(previousId)
-  ctx.assetId = id
 })
 
 Then('the viewer is open on that photo', async ({ page }) => {

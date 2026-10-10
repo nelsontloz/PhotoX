@@ -1,21 +1,8 @@
 import { expect, type Page } from '@playwright/test'
-import { Given, Then, When, authHeaders, uploadViaApi, type AuthState, type Ctx } from '../support'
-
-/** ctx has no trash slots; keep them local instead of editing support.ts (same trick as albums). */
-type TrashCtx = Ctx & {
-  trashAssetIds?: string[]
-  openTrashedId?: string
-}
-
-const tctx = (ctx: Ctx): TrashCtx => ctx
-
-function requireAuth(ctx: Ctx): AuthState {
-  if (!ctx.auth) throw new Error('ctx.auth is missing — sign in first')
-  return ctx.auth
-}
+import { Given, Then, When, authHeaders, requireAuth, uploadViaApi, type Ctx } from '../support'
 
 function requireOpenTrashedId(ctx: Ctx): string {
-  const id = tctx(ctx).openTrashedId
+  const id = ctx.openTrashedId
   if (!id) throw new Error('open a trashed item in the viewer first')
   return id
 }
@@ -26,7 +13,7 @@ Given('I uploaded two photos through the API', async ({ request, ctx }) => {
   const auth = requireAuth(ctx)
   const first = await uploadViaApi(request, auth, 'photo.jpg')
   const second = await uploadViaApi(request, auth, 'photo-text.jpg')
-  tctx(ctx).trashAssetIds = [first, second]
+  ctx.trashAssetIds = [first, second]
   ctx.assetId = first
 })
 
@@ -39,7 +26,7 @@ When('I trash the uploaded asset through the API', async ({ request, ctx }) => {
 })
 
 When('I trash both uploaded photos through the API', async ({ request, ctx }) => {
-  const assetIds = tctx(ctx).trashAssetIds
+  const assetIds = ctx.trashAssetIds
   if (!assetIds) throw new Error('upload the two photos first')
   const response = await request.post('/api/v1/assets/bulk-trash', {
     headers: authHeaders(requireAuth(ctx)),
@@ -80,7 +67,7 @@ When('I open the first trashed item in the viewer', async ({ page, ctx }) => {
   await expect(page).toHaveURL(/[?&]asset=/)
   const id = new URL(page.url()).searchParams.get('asset')
   if (!id) throw new Error('no ?asset= id in the URL after opening the viewer')
-  tctx(ctx).openTrashedId = id
+  ctx.openTrashedId = id
   await expect(page.locator('div.fixed.inset-0.z-50')).toBeVisible()
 })
 

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import type { Job } from 'bullmq'
 import { readFile, copyFile, unlink } from 'fs/promises'
 import { tmpdir } from 'os'
@@ -19,7 +19,7 @@ export function branchFor(mimeType: string | null): 'photo' | 'video' | null {
 }
 
 @Injectable()
-export class MetadataProcessor {
+export class MetadataProcessor implements OnModuleInit {
   private readonly logger = new Logger(MetadataProcessor.name)
 
   constructor(
@@ -30,20 +30,20 @@ export class MetadataProcessor {
     private readonly videoMetadataExtractor: VideoMetadataExtractor,
   ) {}
 
-  start() {
+  onModuleInit() {
     this.bullMq.createWorker<MetadataJob>('process-metadata', (job) => this.processJob(job))
 
     this.logger.log('Metadata processor listening for jobs')
   }
 
   private async processJob(job: Job<MetadataJob>) {
-    const { assetId, fileId, kind, userId } = parseJobData(
+    const { assetId, fileId, userId } = parseJobData(
       metadataJobSchema,
       job.data,
       'process-metadata',
     )
 
-    this.logger.log(`Processing metadata: asset=${assetId}, kind=${kind}`)
+    this.logger.log(`Processing metadata: asset=${assetId}`)
 
     const record = await this.core.getFile(userId, fileId)
     const asset = await this.core.getAsset(userId, assetId)

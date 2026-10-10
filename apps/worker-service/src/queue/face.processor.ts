@@ -1,22 +1,19 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import sharp from 'sharp'
 import type { Job } from 'bullmq'
 import { BullMqService } from './bullmq.service'
 import { faceJobSchema, type FaceJob } from './job-schemas'
-import { runAssetFileJob } from './asset-file-job'
+import { patchStatusFailed, runAssetFileJob } from './asset-file-job'
 import { FaceDetectorService } from './face.detector'
+import { scaleDetectionsToOriginal } from './detect.service'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService, envFaceDetectorKind } from '@photox/shared-config'
 
 export const CLUSTER_DEBOUNCE_MS = 30_000
 export const FACE_MAX_DIM = 2048
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value))
-}
-
 @Injectable()
-export class FaceProcessor {
+export class FaceProcessor implements OnModuleInit {
   private readonly logger = new Logger(FaceProcessor.name)
 
   constructor(
@@ -26,7 +23,7 @@ export class FaceProcessor {
     private readonly faceDetector: FaceDetectorService,
   ) {}
 
-  start() {
+  onModuleInit() {
     this.bullMq.createWorker<FaceJob>('process-faces', (job) => this.processJob(job))
 
     this.logger.log('Face processor listening for jobs')
@@ -39,7 +36,8 @@ export class FaceProcessor {
       label: 'Faces',
       // ponytail: missing model weights are provisioning, not a job bug — warn + no retry
       missingModelMarkers: ['Face embedding model not found', 'Face detector model not found'],
-      onFailure: ({ userId, assetId }) => this.markFailed(userId, assetId),
+      onFailure: ({ userId, assetId }) =>
+        patchStatusFailed(this.core, this.logger, userId, assetId, { faceStatus: 'failed' }),
       body: async ({ data, filePath }) => {
         const { assetId, userId } = data
         // ponytail: resolve once — the same kind drives detection and is persisted as provenance
@@ -78,23 +76,17 @@ export class FaceProcessor {
 
         const detections = await this.faceDetector.detect(resized, resolvedDetector)
         // ponytail: drop low-confidence detections before save — clustering separately ignores conf < 0.4
-        const faces = detections
-          .filter((d) => d.confidence >= 0.5)
-          .map((d) => {
-            // ponytail: detector boxes can poke past the frame (SCRFD especially) — clamp each edge
-            // to the oriented original so core's @Min(0) box DTO accepts them and crops stay in-bounds
-            const x1 = clamp(Math.round(d.box.x * scaleX), 0, origW)
-            const y1 = clamp(Math.round(d.box.y * scaleY), 0, origH)
-            const x2 = clamp(Math.round((d.box.x + d.box.w) * scaleX), 0, origW)
-            const y2 = clamp(Math.round((d.box.y + d.box.h) * scaleY), 0, origH)
-            return {
-              box: { x: x1, y: y1, w: x2 - x1, h: y2 - y1 },
-              confidence: Math.round(d.confidence * 10000) / 10000,
-              embedding: d.embedding,
-            }
-          })
-          // a box entirely outside the frame collapses to zero/negative extent — never register it
-          .filter((d) => d.box.w > 0 && d.box.h > 0)
+        const faces = scaleDetectionsToOriginal(
+          detections.filter((d) => d.confidence >= 0.5),
+          scaleX,
+          scaleY,
+          origW,
+          origH,
+        ).map((d) => ({
+          box: d.box,
+          confidence: Math.round(d.confidence * 10000) / 10000,
+          embedding: d.embedding,
+        }))
 
         // ponytail: unconditional delete + re-save after a successful detect — retry-safe replace
         // (was re-embed-only, so a retried job duplicated faces); never before detect, to avoid data loss
@@ -115,7 +107,7 @@ export class FaceProcessor {
           await this.bullMq.enqueue(
             'process-faces-cluster',
             'cluster',
-            { userId, reason: 'face-detected' },
+            { userId },
             {
               // ponytail: fixed jobId + delay debounces a detection burst into one trailing run
               // (BullMQ ignores same jobId while waiting/active). Ceiling: faces uploaded during an
@@ -132,14 +124,5 @@ export class FaceProcessor {
         }
       },
     })
-  }
-
-  private async markFailed(userId: string, assetId: string): Promise<void> {
-    try {
-      await this.core.patchMetadata(userId, assetId, { faceStatus: 'failed' })
-    } catch (patchErr) {
-      const patchMsg = patchErr instanceof Error ? patchErr.message : String(patchErr)
-      this.logger.warn(`Failed to patch face status to failed for asset=${assetId}: ${patchMsg}`)
-    }
   }
 }

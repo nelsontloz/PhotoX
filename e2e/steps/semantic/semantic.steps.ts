@@ -1,27 +1,26 @@
 import { expect, type APIRequestContext, type Page, type Response } from '@playwright/test'
-import { Given, Then, When, authHeaders, type AuthState, type Ctx, uploadFixture } from '../support'
+import {
+  Given,
+  Then,
+  When,
+  authHeaders,
+  fetchFaceSettings,
+  requireAuth,
+  uploadFixture,
+  type AuthResponse,
+  type Ctx,
+  type ReprocessKind,
+  type SemanticUpload,
+} from '../support'
 
 const TEXT_FIXTURE = 'photo-text.jpg'
 const SEEDED_OCR_TEXT = 'ZEBRAQUUX77'
 const SEEDED_DETECTION_LABEL = 'e2e-seeded-object'
 
-type ReprocessKind = 'embedding' | 'ocr' | 'detection'
-
-interface SemanticUpload {
-  name: string
-  assetId: string
-}
-
 /** Wire shape of GET /api/v1/admin/{embeddings,ocr,detections}/reprocess. */
 interface QueueStatus {
   lastRun: { enqueued: number; total: number } | null
   queue: { waiting: number; active: number; completed: number; failed: number; delayed: number }
-}
-
-/** Wire shape of GET /api/v1/admin/face-detection, trimmed to the fields these steps need. */
-interface FaceSettings {
-  detector: 'human' | 'scrfd'
-  facesByDetector: { human: number; scrfd: number; unset: number }
 }
 
 /** Code-matched subset of GET /api/v1/assets/:id. */
@@ -40,22 +39,8 @@ interface DetectionsResponse {
   detections: { label: string }[]
 }
 
-/** ctx has no slots for this state; keep it local instead of editing support.ts. */
-type SemanticCtx = Ctx & {
-  semanticUploads?: SemanticUpload[]
-  faceCountsBefore?: FaceSettings['facesByDetector']
-  reprocessRuns?: Partial<Record<ReprocessKind, { enqueued: number; total: number }>>
-}
-
-const sctx = (ctx: Ctx): SemanticCtx => ctx
-
-function requireAuth(ctx: Ctx): AuthState {
-  if (!ctx.auth) throw new Error('ctx.auth is missing — sign in first')
-  return ctx.auth
-}
-
 function uploadsOf(ctx: Ctx): SemanticUpload[] {
-  const uploads = sctx(ctx).semanticUploads
+  const uploads = ctx.semanticUploads
   if (!uploads || uploads.length === 0) {
     throw new Error('upload a photo for semantic processing first')
   }
@@ -101,18 +86,9 @@ const REPROCESS: Record<
 const statusPath = (kind: ReprocessKind): string =>
   `/api/v1/admin/${STATUS_SEGMENT[kind]}/reprocess`
 
-async function fetchFaceSettings(
-  request: APIRequestContext,
-  auth: AuthState,
-): Promise<FaceSettings> {
-  const response = await request.get('/api/v1/admin/face-detection', { headers: authHeaders(auth) })
-  expect(response.status()).toBe(200)
-  return (await response.json()) as FaceSettings
-}
-
 async function fetchReprocessStatus(
   request: APIRequestContext,
-  auth: AuthState,
+  auth: AuthResponse,
   kind: ReprocessKind,
 ): Promise<QueueStatus> {
   const response = await request.get(statusPath(kind), { headers: authHeaders(auth) })
@@ -122,7 +98,7 @@ async function fetchReprocessStatus(
 
 async function fetchSimilar(
   request: APIRequestContext,
-  auth: AuthState,
+  auth: AuthResponse,
   assetId: string,
 ): Promise<RelatedAssets> {
   // The HNSW similarity scan is global: fixtures re-uploaded by other scenarios are duplicate
@@ -138,7 +114,7 @@ async function fetchSimilar(
 
 async function fetchDetections(
   request: APIRequestContext,
-  auth: AuthState,
+  auth: AuthResponse,
   assetId: string,
 ): Promise<DetectionsResponse> {
   const response = await request.get(`/api/v1/assets/${assetId}/detections`, {
@@ -151,7 +127,7 @@ async function fetchDetections(
 /** `similar` is empty exactly when the source asset has no embedding — B proving A embedded. */
 async function expectVisuallySimilar(
   request: APIRequestContext,
-  auth: AuthState,
+  auth: AuthResponse,
   a: string,
   b: string,
 ): Promise<void> {
@@ -178,7 +154,7 @@ async function startReprocess(page: Page, ctx: Ctx, kind: ReprocessKind): Promis
   // every non-trashed photo gets exactly one job — a partial enqueue is a bug
   expect(run.total).toBeGreaterThanOrEqual(1)
   expect(run.enqueued).toBe(run.total)
-  sctx(ctx).reprocessRuns = { ...sctx(ctx).reprocessRuns, [kind]: run }
+  ctx.reprocessRuns = { ...ctx.reprocessRuns, [kind]: run }
   await expect(page.getByText(result(run.enqueued, run.total), { exact: true })).toBeVisible()
 }
 
@@ -187,7 +163,7 @@ async function drainReprocess(
   ctx: Ctx,
   kind: ReprocessKind,
 ): Promise<void> {
-  const run = sctx(ctx).reprocessRuns?.[kind]
+  const run = ctx.reprocessRuns?.[kind]
   if (!run) throw new Error(`start an ${kind} reprocess run first`)
   const auth = requireAuth(ctx)
   await expect
@@ -213,7 +189,7 @@ When(
     // 06 uploads photo.jpg as the admin first, so scenario 4 legitimately gets a 409 pointing at
     // the already-processed asset — the duplicate is fine, only the asset id matters here
     const assetId = await uploadFixture(page, name, { allowDuplicate: true })
-    const uploads = (sctx(ctx).semanticUploads ??= [])
+    const uploads = (ctx.semanticUploads ??= [])
     uploads.push({ name, assetId })
     ctx.assetId = assetId
   },
@@ -229,7 +205,7 @@ Then('the uploaded photos are visually similar to each other', async ({ request,
 
 Given('I remember the faces-by-detector counts', async ({ request, ctx }) => {
   const settings = await fetchFaceSettings(request, requireAuth(ctx))
-  sctx(ctx).faceCountsBefore = settings.facesByDetector
+  ctx.faceCountsBefore = settings.facesByDetector
 })
 
 Then(
@@ -261,7 +237,7 @@ Then(
 )
 
 Then('the new faces are counted under the active detector', async ({ request, ctx }) => {
-  const before = sctx(ctx).faceCountsBefore
+  const before = ctx.faceCountsBefore
   if (!before) throw new Error('remember the faces-by-detector counts first')
   const settings = await fetchFaceSettings(request, requireAuth(ctx))
   expect(settings.facesByDetector[settings.detector]).toBeGreaterThan(before[settings.detector])

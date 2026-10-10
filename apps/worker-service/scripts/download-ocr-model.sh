@@ -4,17 +4,9 @@
 # Weights are never committed (see .gitignore *.onnx / data/).
 set -euo pipefail
 
-FORCE=''
-if [ "${1:-}" = '--force' ]; then FORCE=1; fi
+source "$(dirname "$0")/lib.sh"
 
-ROOT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
-# shared-config anchors a relative STORAGE_DIR at the workspace root (core/worker run with
-# different cwds) — mirror that so custom dirs and compose/e2e (STORAGE_DIR=/data/storage) work
-STORAGE_DIR="${STORAGE_DIR:-data/storage}"
-case "$STORAGE_DIR" in
-  /*) ;;
-  *) STORAGE_DIR="$ROOT_DIR/$STORAGE_DIR" ;;
-esac
+STORAGE_DIR="$(resolve_storage_dir)"
 DEST_DIR="$STORAGE_DIR/models/pp-ocrv6-small"
 BASE_URL="${OCR_MODEL_URL:-https://huggingface.co/snowfluke/ppu-paddle-ocr-models/resolve/main}"
 
@@ -34,17 +26,10 @@ for ENTRY in "${FILES[@]}"; do
     continue
   fi
 
-  mkdir -p "$DEST_DIR"
-  TMP="${DEST}.tmp.XXXXXX"
-
   echo "Downloading $SRC ..."
   # best-effort: a partial model dir only disables OCR (process-ocr warns + skips)
-  if curl -fSL --retry 3 -o "$TMP" "$BASE_URL/$SRC"; then
-    mv -f "$TMP" "$DEST"
-  else
-    rm -f "$TMP"
+  fetch_file "$BASE_URL/$SRC" "$DEST" ||
     echo "WARNING: failed to download $NAME — OCR stays unavailable until provisioned" >&2
-  fi
 done
 
 ls -la "$DEST_DIR" 2>/dev/null || true

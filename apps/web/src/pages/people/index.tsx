@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { FaArrowsRotate, FaCheck, FaSpinner, FaUsers, FaFaceSmile } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
@@ -6,22 +6,18 @@ import { AppShell } from '../../components/AppShell'
 import { LoadingState } from '../../components/StateViews'
 import { FaceThumb } from '../../components/FaceThumb'
 import { listAllPersons, triggerCluster } from '../../api/persons'
+import { useAsyncFetch } from '../../hooks/useAsyncFetch'
 import type { PersonDto } from '@photox/shared-types'
 
+const EMPTY: PersonDto[] = []
+
 export default function PeoplePage() {
-  const [persons, setPersons] = useState<PersonDto[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data, loading, refresh } = useAsyncFetch(() => listAllPersons(), {
+    errorMessage: 'Failed to load people',
+  })
+  const persons = data ?? EMPTY
   const [clustering, setClustering] = useState(false)
   const [clusterQueued, setClusterQueued] = useState(false)
-
-  useEffect(() => {
-    listAllPersons()
-      .then(setPersons)
-      .catch(() => {
-        /* ponytail: silent fail */
-      })
-      .finally(() => setLoading(false))
-  }, [])
 
   const handleCluster = async () => {
     if (clustering) return
@@ -35,9 +31,7 @@ export default function PeoplePage() {
       let elapsed = 0
       const interval = window.setInterval(() => {
         elapsed += 3000
-        listAllPersons()
-          .then(setPersons)
-          .catch(() => undefined)
+        void refresh()
         if (elapsed >= 30000) window.clearInterval(interval)
       }, 3000)
     } catch {

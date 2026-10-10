@@ -127,7 +127,7 @@ describe('VideoProcessor disk paths', () => {
       }),
     }
     const guarded = new VideoProcessor(bullMq as never, fake as unknown as CoreClient, storage)
-    guarded.start()
+    guarded.onModuleInit()
 
     const base = { assetId: randomUUID(), fileId: randomUUID(), userId: randomUUID() }
     fake.files.set(base.fileId, makeFileRecord({ id: base.fileId, userId: base.userId }))

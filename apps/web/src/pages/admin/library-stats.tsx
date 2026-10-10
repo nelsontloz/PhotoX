@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import {
-  FaArrowsRotate,
   FaCamera,
   FaChartColumn,
   FaChartLine,
@@ -12,7 +11,7 @@ import {
 import { getAdminAssetCounts, getAdminLibraryStats } from '../../api/admin'
 import { formatBytes } from '../../lib/format'
 import { Skeleton } from '../../components/Skeleton'
-import { AdminCard, AdminSection, GhostButton, MetricTile, SectionCard, cx } from './ui'
+import { AdminCard, AdminSection, GhostButton, MetricTile, RefreshButton, cx } from './ui'
 import type {
   AdminAssetCountsResponse,
   AdminLibraryCounts,
@@ -515,18 +514,16 @@ export function LibraryStatsSection() {
 
   return (
     <AdminSection
+      card={false}
       title="Library stats"
       subtitle="Uploads, storage growth, and library composition"
       icon={<FaChartPie />}
       actions={
-        <button
-          type="button"
-          aria-label="Refresh library stats"
+        <RefreshButton
           onClick={retry}
+          label="Refresh library stats"
           className="inline-flex items-center rounded-lg bg-surface-container p-2 text-on-surface transition-colors hover:bg-surface-container-high"
-        >
-          <FaArrowsRotate />
-        </button>
+        />
       }
     >
       {loading ? (
@@ -606,8 +603,9 @@ export function LibraryStatsSection() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            <SectionCard
+            <AdminSection
               className="lg:col-span-7"
+              headingTag="h3"
               title="Uploads per week"
               subtitle="Weekly photo and video uploads"
               icon={<FaChartColumn />}
@@ -615,9 +613,10 @@ export function LibraryStatsSection() {
             >
               <UploadsChart weeks={data.uploadsByWeek} />
               <ChartLegend items={UPLOAD_LEGEND} />
-            </SectionCard>
-            <SectionCard
+            </AdminSection>
+            <AdminSection
               className="lg:col-span-5"
+              headingTag="h3"
               title="Storage growth"
               subtitle="Total stored bytes by category"
               icon={<FaChartLine />}
@@ -625,7 +624,7 @@ export function LibraryStatsSection() {
             >
               <StorageChart months={data.storageByMonth} />
               <ChartLegend items={STORAGE_LEGEND} />
-            </SectionCard>
+            </AdminSection>
           </div>
         </div>
       ) : null}

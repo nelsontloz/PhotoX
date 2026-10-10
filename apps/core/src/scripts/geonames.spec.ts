@@ -23,22 +23,16 @@ const ROW = [
 ].join('\t')
 
 describe('parseCityLine', () => {
-  it('parses a cities500 row, blanks as null, empty population as 0', () => {
+  it('parses a cities500 row', () => {
     expect(parseCityLine(ROW)).toEqual({
       geonameId: 2988507,
       name: 'Paris',
-      asciiName: 'Paris',
       latitude: 48.85341,
       longitude: 2.3488,
       countryCode: 'FR',
       admin1Code: '11',
-      admin2Code: '75',
-      population: 2145906,
       timezone: 'Europe/Paris',
     })
-
-    const noPop = ROW.replace('\t2145906\t', '\t\t')
-    expect(parseCityLine(noPop)?.population).toBe(0)
   })
 
   it('rejects malformed rows', () => {

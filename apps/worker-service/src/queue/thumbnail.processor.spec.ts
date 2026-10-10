@@ -26,7 +26,7 @@ describe('ThumbnailProcessor job guards', () => {
       fake as unknown as CoreClient,
       {} as never,
     )
-    processor.start()
+    processor.onModuleInit()
     return { run: callbacks[0]!, fake, bullMq }
   }
 

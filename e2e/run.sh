@@ -19,10 +19,7 @@ pick_port() {
 
 E2E_PROJECT="${E2E_PROJECT:-photox-e2e-$$-$RANDOM}"
 E2E_WEB_PORT="${E2E_WEB_PORT:-$(pick_port)}"
-E2E_GEN_DIR="${E2E_GEN_DIR:-.features-gen}"
-E2E_OUTPUT_DIR="${E2E_OUTPUT_DIR:-test-results}"
-E2E_REPORT_DIR="${E2E_REPORT_DIR:-playwright-report}"
-export E2E_WEB_PORT E2E_GEN_DIR E2E_OUTPUT_DIR E2E_REPORT_DIR
+export E2E_WEB_PORT
 
 COMPOSE=(docker compose -p "$E2E_PROJECT" -f "$ROOT/docker-compose.yml" -f "$ROOT/docker-compose.e2e.yml")
 

@@ -1,11 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import type { Job } from 'bullmq'
 import { BullMqService } from './bullmq.service'
 import { parseJobData, cleanupOrphansJobSchema, type CleanupOrphansJob } from './job-schemas'
 import { CoreClient } from '../core/core-client.service'
 
 @Injectable()
-export class CleanupOrphansProcessor {
+export class CleanupOrphansProcessor implements OnModuleInit {
   private readonly logger = new Logger(CleanupOrphansProcessor.name)
 
   constructor(
@@ -13,7 +13,7 @@ export class CleanupOrphansProcessor {
     private readonly core: CoreClient,
   ) {}
 
-  start() {
+  onModuleInit() {
     this.bullMq.createWorker<CleanupOrphansJob>('cleanup-orphans', (job) => this.processJob(job))
     this.logger.log('Cleanup orphans processor listening for jobs')
   }

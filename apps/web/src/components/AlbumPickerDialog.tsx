@@ -10,7 +10,8 @@ import {
 import type { AlbumDto } from '@photox/shared-types'
 import { addAssetsToAlbum, createAlbum, listAlbums } from '../api/albums'
 import { AlbumCover } from './AlbumCover'
-import { Dialog, formInputClass } from './Dialog'
+import { Dialog } from './Dialog'
+import { NewAlbumFields } from './NewAlbumFields'
 
 interface AlbumPickerDialogProps {
   open: boolean
@@ -130,32 +131,11 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
           </div>
         ) : creating ? (
           <div className="py-4">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-              Name
-            </label>
-            <input
-              autoFocus
-              type="text"
-              value={newName}
-              maxLength={255}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="e.g. Summer 2025"
-              className={formInputClass}
-            />
-            <div className="mt-1 flex justify-between text-[11px] text-slate-500">
-              <span>Required</span>
-              <span className="tabular-nums">{newName.length}/255</span>
-            </div>
-
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5 mt-4">
-              Description <span className="text-slate-500 normal-case font-normal">(optional)</span>
-            </label>
-            <textarea
-              value={newDesc}
-              rows={3}
-              onChange={(e) => setNewDesc(e.target.value)}
-              placeholder="What's this album about?"
-              className={`${formInputClass} resize-none`}
+            <NewAlbumFields
+              name={newName}
+              onNameChange={setNewName}
+              description={newDesc}
+              onDescriptionChange={setNewDesc}
             />
           </div>
         ) : !hasAlbums ? (

@@ -1,17 +1,17 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import sharp from 'sharp'
 import type { Job } from 'bullmq'
 import { SEARCH_EMBEDDING_MODEL } from '@photox/shared-types'
 import { BullMqService } from './bullmq.service'
 import { embeddingJobSchema, type EmbeddingJob } from './job-schemas'
-import { runAssetFileJob } from './asset-file-job'
+import { patchStatusFailed, runAssetFileJob } from './asset-file-job'
 import { FACE_MAX_DIM } from './face.processor'
 import { EmbeddingService } from './embedding.service'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
 
 @Injectable()
-export class EmbeddingProcessor {
+export class EmbeddingProcessor implements OnModuleInit {
   private readonly logger = new Logger(EmbeddingProcessor.name)
 
   constructor(
@@ -21,7 +21,7 @@ export class EmbeddingProcessor {
     private readonly embedder: EmbeddingService,
   ) {}
 
-  start() {
+  onModuleInit() {
     this.bullMq.createWorker<EmbeddingJob>('process-embeddings', (job) => this.processJob(job))
 
     this.logger.log('Embedding processor listening for jobs')
@@ -33,7 +33,8 @@ export class EmbeddingProcessor {
       schema: embeddingJobSchema,
       label: 'Embedding',
       missingModelMarkers: ['Vision embedding model not found'],
-      onFailure: ({ userId, assetId }) => this.markFailed(userId, assetId),
+      onFailure: ({ userId, assetId }) =>
+        patchStatusFailed(this.core, this.logger, userId, assetId, { embeddingStatus: 'failed' }),
       body: async ({ data, filePath }) => {
         // ponytail: same EXIF-oriented ≤2048px prep as face detection — the SigLIP processor
         // downscales to 224 itself; 2048 keeps texture detail without decoding full resolution
@@ -57,16 +58,5 @@ export class EmbeddingProcessor {
         this.logger.log(`Embedding complete: asset=${data.assetId}`)
       },
     })
-  }
-
-  private async markFailed(userId: string, assetId: string): Promise<void> {
-    try {
-      await this.core.patchMetadata(userId, assetId, { embeddingStatus: 'failed' })
-    } catch (patchErr) {
-      const patchMsg = patchErr instanceof Error ? patchErr.message : String(patchErr)
-      this.logger.warn(
-        `Failed to patch embedding status to failed for asset=${assetId}: ${patchMsg}`,
-      )
-    }
   }
 }

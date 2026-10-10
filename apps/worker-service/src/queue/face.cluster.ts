@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { randomUUID } from 'crypto'
 import type { Job } from 'bullmq'
 import { FACE_EMBEDDING_DIM } from '@photox/shared-types'
@@ -119,7 +119,7 @@ function dbscan(points: number[][], eps: number, minPts: number): number[] {
 }
 
 @Injectable()
-export class FaceClusterService {
+export class FaceClusterService implements OnModuleInit {
   private readonly logger = new Logger(FaceClusterService.name)
 
   constructor(
@@ -127,14 +127,14 @@ export class FaceClusterService {
     private readonly core: CoreClient,
   ) {}
 
-  start() {
+  onModuleInit() {
     this.bullMq.createWorker<ClusterJob>('process-faces-cluster', (job) => this.processJob(job))
     this.logger.log('Face cluster processor listening for jobs')
   }
 
   private async processJob(job: Job<ClusterJob>) {
-    const { userId, reason } = parseJobData(clusterJobSchema, job.data, 'process-faces-cluster')
-    this.logger.log(`Clustering faces: user=${userId}, reason=${reason ?? 'unknown'}`)
+    const { userId } = parseJobData(clusterJobSchema, job.data, 'process-faces-cluster')
+    this.logger.log(`Clustering faces: user=${userId}`)
     await this.cluster(userId)
     // ponytail: runs even when cluster() skipped (no faces/unassigned faces) — the point is stale
     // clusters whose last face left, not the plan
@@ -348,7 +348,7 @@ export class FaceClusterService {
       await this.bullMq.enqueue(
         'process-faces',
         're-embed',
-        { assetId: a.id, fileId: a.fileId, userId, reason: 're-embed', detector },
+        { assetId: a.id, fileId: a.fileId, userId, detector },
         {
           jobId: `face-reembed-${a.id}`,
           attempts: 3,

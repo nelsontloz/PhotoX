@@ -3,7 +3,6 @@ import {
   FaArrowDown,
   FaArrowUp,
   FaArrowsUpDown,
-  FaArrowsRotate,
   FaBrain,
   FaCamera,
   FaCircleCheck,
@@ -39,7 +38,7 @@ import {
   GhostButton,
   PrimaryButton,
   ProgressBar,
-  SectionCard,
+  RefreshButton,
   StatStrip,
   StatusPill,
   cx,
@@ -62,6 +61,7 @@ import {
   reprocessOcr,
   getOcrReprocessStatus,
   type ListAdminUsersParams,
+  type ReprocessStatus,
   type EmbeddingReprocessStatus,
   type DetectionReprocessStatus,
   type OcrReprocessStatus,
@@ -81,29 +81,6 @@ const DIALOG_PANEL_CLASS = 'bg-card-dark border border-border-dark rounded-xl p-
 const DIALOG_TITLE_CLASS = 'text-base font-semibold text-slate-100'
 
 // --- small shared pieces ----------------------------------------------------------------
-
-/** Icon-only refresh; PrimaryButton/GhostButton require children, so this stays raw. */
-function RefreshButton({
-  onClick,
-  label,
-  disabled,
-}: {
-  onClick: () => void
-  label: string
-  disabled?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      className="p-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-    >
-      <FaArrowsRotate />
-    </button>
-  )
-}
 
 function FailureTile({ count, label }: { count: number; label: string }) {
   return (
@@ -266,17 +243,14 @@ const VISION_PROVISION_CMD = 'pnpm --filter @photox/worker-service vision-model'
 
 /**
  * ponytail: 3s poll while the queue drains; poll errors stay silent and stop after 5 consecutive
- * failures so a broken endpoint is not hammered (re-run/remount resumes). `enabled` skips the
- * fetch entirely.
+ * failures so a broken endpoint is not hammered (re-run/remount resumes).
  */
-function useQueuePoll<T extends { queue: QueueCounts }>(
+function useQueuePoll<T extends ReprocessStatus<unknown>>(
   getStatus: () => Promise<T>,
   runToken: number,
-  enabled = true,
 ): T | null {
   const [status, setStatus] = useState<T | null>(null)
   useEffect(() => {
-    if (!enabled) return
     let cancelled = false
     let timer = 0
     let failures = 0
@@ -301,14 +275,12 @@ function useQueuePoll<T extends { queue: QueueCounts }>(
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [getStatus, runToken, enabled])
+  }, [getStatus, runToken])
   return status
 }
 
 /** The reprocess counters both card shapes render from a queue status. */
-function useRunProgress<L extends ReprocessRun>(
-  status: { lastRun: L | null; queue: QueueCounts } | null,
-) {
+function useRunProgress<L extends ReprocessRun>(status: ReprocessStatus<L> | null) {
   const lastRun = status?.lastRun ?? null
   const runQueue = status ? status.queue.waiting + status.queue.active : 0
   const running = runQueue > 0
@@ -349,11 +321,8 @@ function RunProgress({
   )
 }
 
-/** The merged detector + reprocess card. `parts` narrows it for the two legacy exports below. */
-function FacialDetectionCard({ parts = 'both' }: { parts?: 'both' | 'detector' | 'reprocess' }) {
-  const showDetector = parts !== 'reprocess'
-  const showReprocess = parts !== 'detector'
-
+/** The merged detector + reprocess card. */
+export function FacialDetectionCard() {
   const [data, setData] = useState<FaceDetectionSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -392,7 +361,7 @@ function FacialDetectionCard({ parts = 'both' }: { parts?: 'both' | 'detector' |
     }
   }, [version])
 
-  const status = useQueuePoll(getFaceReprocessStatus, runToken, showReprocess)
+  const status = useQueuePoll(getFaceReprocessStatus, runToken)
 
   const applyDetector = async (detector: FaceDetectorKind) => {
     setSaving(true)
@@ -461,15 +430,13 @@ function FacialDetectionCard({ parts = 'both' }: { parts?: 'both' | 'detector' |
         ? 'Model missing'
         : 'Online'
 
-  const statRows: { label: string; value: ReactNode }[] = []
-  if (showDetector)
-    statRows.push({ label: 'Detector', value: data ? DETECTOR_LABELS[data.detector] : '—' })
-  if (showReprocess) {
-    statRows.push({
+  const statRows: { label: string; value: ReactNode }[] = [
+    { label: 'Detector', value: data ? DETECTOR_LABELS[data.detector] : '—' },
+    {
       label: 'Queue',
       value: status ? (running ? runQueue.toLocaleString() : 'Idle') : '—',
-    })
-  }
+    },
+  ]
 
   return (
     <AdminCard className="flex flex-col">
@@ -486,147 +453,142 @@ function FacialDetectionCard({ parts = 'both' }: { parts?: 'both' | 'detector' |
         automatically as jobs finish.
       </p>
 
-      {showDetector &&
-        (loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4">
-            <div className="h-16 rounded-lg bg-surface-container-high/50 animate-pulse" />
-            <div className="h-16 rounded-lg bg-surface-container-high/50 animate-pulse" />
-          </div>
-        ) : error ? (
-          <InlineError message={error} onRetry={() => setVersion((v) => v + 1)} />
-        ) : data ? (
-          <div className="mt-4">
-            <fieldset disabled={saving}>
-              <legend className="text-label-xs uppercase font-mono text-outline mb-2">
-                Active detector
-              </legend>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {DETECTOR_KINDS.map((kind) => {
-                  const selected = data.detector === kind
-                  const unavailable = kind === 'scrfd' && !data.models.scrfd
-                  return (
-                    <label
-                      key={kind}
-                      className={cx(
-                        'flex items-start gap-3 rounded-lg p-3 transition-colors',
-                        selected
-                          ? 'bg-primary/10 border-2 border-primary/40'
-                          : 'bg-surface-container hover:bg-surface-container-high border border-transparent',
-                        unavailable ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
-                      )}
-                    >
-                      <input
-                        type="radio"
-                        name="face-detector"
-                        value={kind}
-                        checked={selected}
-                        disabled={unavailable}
-                        onChange={() => void applyDetector(kind)}
-                        className="mt-0.5 h-4 w-4 shrink-0 accent-primary disabled:cursor-not-allowed"
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-sm font-medium text-on-surface">
-                          {DETECTOR_LABELS[kind]}
-                        </span>
-                        <span className="block text-xs text-on-surface-variant mt-0.5">
-                          {DETECTOR_HINTS[kind]}
-                        </span>
-                      </span>
-                    </label>
-                  )
-                })}
-              </div>
-            </fieldset>
-
-            {saveError && <p className="text-xs text-status-error mt-2">{saveError}</p>}
-
-            {!data.models.scrfd && (
-              <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-                <p className="text-xs text-amber-200">
-                  {data.detector === 'scrfd'
-                    ? 'SCRFD is selected but its model is not installed — detection jobs will fail until it is provisioned.'
-                    : 'SCRFD model not installed — the SCRFD choice stays disabled until it is provisioned.'}
-                </p>
-                <code className="block text-xs font-mono text-amber-200/80 mt-1.5 break-all">
-                  {SCRFD_PROVISION_CMD}
-                </code>
-                {data.detector !== 'scrfd' && (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmScrfd(true)}
-                    className="text-xs font-medium text-amber-300 underline underline-offset-2 hover:text-amber-100 transition-colors mt-1.5"
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4">
+          <div className="h-16 rounded-lg bg-surface-container-high/50 animate-pulse" />
+          <div className="h-16 rounded-lg bg-surface-container-high/50 animate-pulse" />
+        </div>
+      ) : error ? (
+        <InlineError message={error} onRetry={() => setVersion((v) => v + 1)} />
+      ) : data ? (
+        <div className="mt-4">
+          <fieldset disabled={saving}>
+            <legend className="text-label-xs uppercase font-mono text-outline mb-2">
+              Active detector
+            </legend>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {DETECTOR_KINDS.map((kind) => {
+                const selected = data.detector === kind
+                const unavailable = kind === 'scrfd' && !data.models.scrfd
+                return (
+                  <label
+                    key={kind}
+                    className={cx(
+                      'flex items-start gap-3 rounded-lg p-3 transition-colors',
+                      selected
+                        ? 'bg-primary/10 border-2 border-primary/40'
+                        : 'bg-surface-container hover:bg-surface-container-high border border-transparent',
+                      unavailable ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
+                    )}
                   >
-                    Switch to SCRFD anyway
-                  </button>
-                )}
-              </div>
-            )}
+                    <input
+                      type="radio"
+                      name="face-detector"
+                      value={kind}
+                      checked={selected}
+                      disabled={unavailable}
+                      onChange={() => void applyDetector(kind)}
+                      className="mt-0.5 h-4 w-4 shrink-0 accent-primary disabled:cursor-not-allowed"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-on-surface">
+                        {DETECTOR_LABELS[kind]}
+                      </span>
+                      <span className="block text-xs text-on-surface-variant mt-0.5">
+                        {DETECTOR_HINTS[kind]}
+                      </span>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          </fieldset>
 
-            {data.detector !== data.envDefault && (
-              <p className="text-xs text-outline mt-3">
-                Persisted — overrides the <code className="font-mono">FACE_DETECTOR</code> env
-                default, currently {DETECTOR_LABELS[data.envDefault]}.
+          {saveError && <p className="text-xs text-status-error mt-2">{saveError}</p>}
+
+          {!data.models.scrfd && (
+            <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+              <p className="text-xs text-amber-200">
+                {data.detector === 'scrfd'
+                  ? 'SCRFD is selected but its model is not installed — detection jobs will fail until it is provisioned.'
+                  : 'SCRFD model not installed — the SCRFD choice stays disabled until it is provisioned.'}
               </p>
-            )}
-
-            {data.facesByDetector.human > 0 && data.facesByDetector.scrfd > 0 && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 mt-4">
-                <FaTriangleExclamation className="text-amber-400 shrink-0 mt-0.5" />
-                <p className="text-xs text-amber-200">
-                  Faces are mixed:{' '}
-                  <span className="font-semibold tabular-nums">
-                    {data.facesByDetector.human.toLocaleString()}
-                  </span>{' '}
-                  with {DETECTOR_LABELS.human},{' '}
-                  <span className="font-semibold tabular-nums">
-                    {data.facesByDetector.scrfd.toLocaleString()}
-                  </span>{' '}
-                  with {DETECTOR_LABELS.scrfd}.
-                  {data.facesByDetector.unset > 0 ? (
-                    <>
-                      {' '}
-                      {data.facesByDetector.unset.toLocaleString()} more faces have no detector
-                      recorded.
-                    </>
-                  ) : null}{' '}
-                  Reprocess all faces below to put the library on one detector.
-                </p>
-              </div>
-            )}
-          </div>
-        ) : null)}
-
-      {showReprocess && (
-        <>
-          {status && !lastRun && !running && (
-            <p className="text-xs font-mono text-outline mt-3">No face reprocess runs yet.</p>
+              <code className="block text-xs font-mono text-amber-200/80 mt-1.5 break-all">
+                {SCRFD_PROVISION_CMD}
+              </code>
+              {data.detector !== 'scrfd' && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmScrfd(true)}
+                  className="text-xs font-medium text-amber-300 underline underline-offset-2 hover:text-amber-100 transition-colors mt-1.5"
+                >
+                  Switch to SCRFD anyway
+                </button>
+              )}
+            </div>
           )}
 
-          {running && requested > 0 && (
-            <RunProgress
-              runningLabel="Reprocessing faces…"
-              progressLabel="Face reprocess progress"
-              runQueue={runQueue}
-              requested={requested}
-              done={done}
-              percent={percent}
-            />
-          )}
-
-          {lastRun && !running && (
-            <p className="text-xs font-mono text-outline mt-3">
-              Last run {new Date(lastRun.startedAt).toLocaleString()} —{' '}
-              {lastRun.enqueued.toLocaleString()} of {lastRun.total.toLocaleString()} photos queued
-              with the {DETECTOR_LABELS[lastRun.detector]} detector.
+          {data.detector !== data.envDefault && (
+            <p className="text-xs text-outline mt-3">
+              Persisted — overrides the <code className="font-mono">FACE_DETECTOR</code> env
+              default, currently {DETECTOR_LABELS[data.envDefault]}.
             </p>
           )}
 
-          {result && <AdminToast message={result} />}
-          {reprocessError && <AdminToast message={reprocessError} tone="error" />}
-          {clusterResult && <AdminToast message={clusterResult} />}
-          {clusterError && <AdminToast message={clusterError} tone="error" />}
-        </>
+          {data.facesByDetector.human > 0 && data.facesByDetector.scrfd > 0 && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 mt-4">
+              <FaTriangleExclamation className="text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-200">
+                Faces are mixed:{' '}
+                <span className="font-semibold tabular-nums">
+                  {data.facesByDetector.human.toLocaleString()}
+                </span>{' '}
+                with {DETECTOR_LABELS.human},{' '}
+                <span className="font-semibold tabular-nums">
+                  {data.facesByDetector.scrfd.toLocaleString()}
+                </span>{' '}
+                with {DETECTOR_LABELS.scrfd}.
+                {data.facesByDetector.unset > 0 ? (
+                  <>
+                    {' '}
+                    {data.facesByDetector.unset.toLocaleString()} more faces have no detector
+                    recorded.
+                  </>
+                ) : null}{' '}
+                Reprocess all faces below to put the library on one detector.
+              </p>
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {status && !lastRun && !running && (
+        <p className="text-xs font-mono text-outline mt-3">No face reprocess runs yet.</p>
       )}
+
+      {running && requested > 0 && (
+        <RunProgress
+          runningLabel="Reprocessing faces…"
+          progressLabel="Face reprocess progress"
+          runQueue={runQueue}
+          requested={requested}
+          done={done}
+          percent={percent}
+        />
+      )}
+
+      {lastRun && !running && (
+        <p className="text-xs font-mono text-outline mt-3">
+          Last run {new Date(lastRun.startedAt).toLocaleString()} —{' '}
+          {lastRun.enqueued.toLocaleString()} of {lastRun.total.toLocaleString()} photos queued with
+          the {DETECTOR_LABELS[lastRun.detector]} detector.
+        </p>
+      )}
+
+      {result && <AdminToast message={result} />}
+      {reprocessError && <AdminToast message={reprocessError} tone="error" />}
+      {clusterResult && <AdminToast message={clusterResult} />}
+      {clusterError && <AdminToast message={clusterError} tone="error" />}
 
       <div className="mt-auto pt-5">
         <StatStrip rows={statRows} />
@@ -636,24 +598,22 @@ function FacialDetectionCard({ parts = 'both' }: { parts?: 'both' | 'detector' |
             label="Refresh face detection settings"
             disabled={saving}
           />
-          {showReprocess && (
-            <div className="flex items-center gap-2 flex-wrap ml-auto">
-              <GhostButton
-                onClick={() => void onRecluster()}
-                disabled={clustering}
-                icon={clustering ? <FaSpinner className="animate-spin" /> : undefined}
-              >
-                Recluster users
-              </GhostButton>
-              <PrimaryButton
-                onClick={() => setConfirming(true)}
-                disabled={inFlight || running}
-                icon={inFlight ? <FaSpinner className="animate-spin" /> : undefined}
-              >
-                {inFlight ? 'Enqueuing…' : 'Reprocess all faces'}
-              </PrimaryButton>
-            </div>
-          )}
+          <div className="flex items-center gap-2 flex-wrap ml-auto">
+            <GhostButton
+              onClick={() => void onRecluster()}
+              disabled={clustering}
+              icon={clustering ? <FaSpinner className="animate-spin" /> : undefined}
+            >
+              Recluster users
+            </GhostButton>
+            <PrimaryButton
+              onClick={() => setConfirming(true)}
+              disabled={inFlight || running}
+              icon={inFlight ? <FaSpinner className="animate-spin" /> : undefined}
+            >
+              {inFlight ? 'Enqueuing…' : 'Reprocess all faces'}
+            </PrimaryButton>
+          </div>
         </div>
       </div>
 
@@ -704,25 +664,7 @@ function FacialDetectionCard({ parts = 'both' }: { parts?: 'both' | 'detector' |
   )
 }
 
-/** Kept for face-detection.spec.tsx — the page mounts the merged card above. */
-export function FaceDetectionSection() {
-  return <FacialDetectionCard parts="detector" />
-}
-
-/** Kept for face-detection.spec.tsx — the page mounts the merged card above. */
-export function FacesReprocessSection() {
-  return <FacialDetectionCard parts="reprocess" />
-}
-
 // --- single-pipeline model cards (embeddings / detections / OCR) ------------------------
-
-interface QueueCounts {
-  waiting: number
-  active: number
-  completed: number
-  failed: number
-  delayed: number
-}
 
 interface ReprocessRun {
   startedAt: string
@@ -748,13 +690,13 @@ interface ReprocessPipeline<L extends ReprocessRun> {
   buttonLabel: string
   dialogTitle: string
   dialogBody: string
-  getStatus: () => Promise<{ lastRun: L | null; queue: QueueCounts }>
+  getStatus: () => Promise<ReprocessStatus<L>>
   reprocess: () => Promise<{ enqueued: number; total: number }>
   resultText: (res: { enqueued: number; total: number }) => string
-  statRows: (status: { lastRun: L | null; queue: QueueCounts } | null) => StatRow[]
+  statRows: (status: ReprocessStatus<L> | null) => StatRow[]
 }
 
-function queueValue(status: { queue: QueueCounts } | null): string {
+function queueValue(status: ReprocessStatus<unknown> | null): string {
   if (!status) return '—'
   const depth = status.queue.waiting + status.queue.active
   return depth > 0 ? depth.toLocaleString() : 'Idle'
@@ -1005,7 +947,8 @@ function AssetHealthSection() {
   }
 
   return (
-    <SectionCard
+    <AdminSection
+      headingTag="h3"
       title="Asset Health & Pipeline Queues"
       icon={<FaTriangleExclamation />}
       actions={
@@ -1072,7 +1015,7 @@ function AssetHealthSection() {
           </p>
         </ConfirmDialog>
       )}
-    </SectionCard>
+    </AdminSection>
   )
 }
 
@@ -1144,7 +1087,8 @@ function OrphanCleanupSection() {
   const empty = data?.orphanFiles === 0 && data?.orphanThumbnails === 0
 
   return (
-    <SectionCard
+    <AdminSection
+      headingTag="h3"
       title="Orphan Cleanup"
       subtitle="Files and thumbnails in storage that no asset references."
       icon={<FaTrashCan />}
@@ -1202,7 +1146,7 @@ function OrphanCleanupSection() {
           </p>
         </ConfirmDialog>
       )}
-    </SectionCard>
+    </AdminSection>
   )
 }
 
@@ -1312,6 +1256,7 @@ export function UsersSection() {
 
   return (
     <AdminSection
+      card={false}
       title="Users Management"
       subtitle="Manage roles for accounts on this instance"
       icon={
@@ -1428,6 +1373,7 @@ function AdminPageContent() {
       <LibraryStatsSection />
 
       <AdminSection
+        card={false}
         title="Machine Learning Models & Inference"
         subtitle="Vision embeddings, facial clustering, object detection, and OCR pipelines."
         icon={<FaBrain />}
@@ -1441,6 +1387,7 @@ function AdminPageContent() {
       </AdminSection>
 
       <AdminSection
+        card={false}
         title="Asset Health & Maintenance"
         subtitle="Queue depths across the transcoder and thumbnail generator."
         icon={<FaCircleCheck />}

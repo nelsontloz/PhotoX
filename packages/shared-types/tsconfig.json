@@ -6,6 +6,5 @@
     "composite": true,
     "incremental": true
   },
-  "include": ["src"],
-  "references": []
+  "include": ["src"]
 }

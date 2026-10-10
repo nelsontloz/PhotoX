@@ -159,9 +159,6 @@ interface VideoMetadataPatch {
   latitude: number | null
   longitude: number | null
   altitude: number | null
-  metadata: Record<string, unknown> | null
-  metadataStatus: 'ready'
-  metadataExtractedAt: Date
 }
 
 function readOrientation(result: FfprobeResult): number | null {
@@ -225,9 +222,6 @@ export class VideoMetadataExtractor {
         latitude: null,
         longitude: null,
         altitude: null,
-        metadata: null,
-        metadataStatus: 'ready',
-        metadataExtractedAt: new Date(),
       }
     }
 
@@ -299,9 +293,6 @@ export class VideoMetadataExtractor {
       latitude: location?.latitude ?? null,
       longitude: location?.longitude ?? null,
       altitude: location?.altitude ?? null,
-      metadata: result as unknown as Record<string, unknown>,
-      metadataStatus: 'ready',
-      metadataExtractedAt: new Date(),
     }
   }
 }

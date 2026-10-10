@@ -16,7 +16,7 @@ import type { Request } from 'express'
 import { AlbumsService } from './albums.service'
 import { CreateAlbumDto } from './dto/create-album.dto'
 import { UpdateAlbumDto } from './dto/update-album.dto'
-import { ListAlbumsQueryDto } from './dto/list-albums-query.dto'
+import { PaginationQueryDto } from '../common/pagination-query.dto'
 import { AddAssetsBodyDto } from './dto/add-assets.dto'
 
 @ApiTags('albums')
@@ -35,7 +35,7 @@ export class AlbumsController {
   @Get()
   @ApiOperation({ summary: 'List albums' })
   @ApiResponse({ status: 200, description: 'Paginated album list' })
-  async list(@Query() q: ListAlbumsQueryDto, @Req() req: Request) {
+  async list(@Query() q: PaginationQueryDto, @Req() req: Request) {
     return this.albums.list((req.user as { id: string }).id, q)
   }
 
@@ -90,14 +90,8 @@ export class AlbumsController {
   @ApiOperation({ summary: 'List assets in an album' })
   @ApiResponse({ status: 200, description: 'Paginated asset list' })
   @ApiResponse({ status: 404, description: 'Album not found' })
-  async listAssets(
-    @Param('id') id: string,
-    @Req() req: Request,
-    @Query() q: Record<string, string | undefined>,
-  ) {
+  async listAssets(@Param('id') id: string, @Req() req: Request, @Query() q: PaginationQueryDto) {
     const userId = (req.user as { id: string }).id
-    const limit = q.limit ? Number(q.limit) : undefined
-    const offset = q.offset ? Number(q.offset) : undefined
-    return this.albums.listAssets(userId, id, { limit, offset })
+    return this.albums.listAssets(userId, id, { limit: q.limit, offset: q.offset })
   }
 }

@@ -1,8 +1,8 @@
 import { Logger } from '@nestjs/common'
-import { access } from 'fs/promises'
 import sharp from 'sharp'
 import { resolveFaceDetectorModelPath } from '@photox/shared-config'
 import { SCRFD_INPUT_SIZE, decodeScrfdOutputs, scrfdPreprocess } from './scrfd.decode'
+import { lazyOnce, requireModelFile } from './model-loader'
 import type { DetectedBox, FaceDetectionBackend } from './face.detector.types'
 import type * as ort from 'onnxruntime-node'
 
@@ -11,33 +11,21 @@ import type * as ort from 'onnxruntime-node'
 // point FACE_DETECTOR_MODEL_PATH at your own copy.
 export class ScrfdFaceDetector implements FaceDetectionBackend {
   private readonly logger = new Logger(ScrfdFaceDetector.name)
-  private sessionPromise?: Promise<ort.InferenceSession>
+  private readonly session = lazyOnce(() => this.createSession())
 
   modelPath(): string {
     return resolveFaceDetectorModelPath()
-  }
-
-  private session(): Promise<ort.InferenceSession> {
-    // clear a rejected promise so a later attempt (e.g. after provisioning) retries
-    this.sessionPromise ??= this.createSession().catch((err) => {
-      this.sessionPromise = undefined
-      throw err
-    })
-    return this.sessionPromise
   }
 
   private async createSession(): Promise<ort.InferenceSession> {
     // ponytail: lazy import so unit tests on Alpine (musl, no onnx native binding) never dlopen it
     const { InferenceSession } = await import('onnxruntime-node')
     const modelPath = this.modelPath()
-    try {
-      await access(modelPath)
-    } catch {
-      throw new Error(
-        `Face detector model not found at ${modelPath} — run ` +
-          `'pnpm --filter @photox/worker-service face-model' or set FACE_DETECTOR_MODEL_PATH`,
-      )
-    }
+    await requireModelFile(
+      modelPath,
+      `Face detector model not found at ${modelPath} — run ` +
+        `'pnpm --filter @photox/worker-service face-model' or set FACE_DETECTOR_MODEL_PATH`,
+    )
     const session = await InferenceSession.create(modelPath, { executionProviders: ['cpu'] })
     this.logger.log(`SCRFD face detector loaded: ${modelPath}`)
     return session

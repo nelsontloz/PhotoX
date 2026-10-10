@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { access } from 'fs/promises'
 import { join } from 'path'
 import { loadEnv } from '@photox/shared-config'
+import { lazyOnce, requireModelFile } from './model-loader'
 import type { PaddleOcrService } from 'ppu-paddle-ocr'
 
 // ponytail: PP-OCRv6 small (det ~10MB + rec ~21MB + dict) provisioned by
@@ -39,20 +39,10 @@ export function finalizeOcrText(text: string, confidence: number): OcrExtract | 
 @Injectable()
 export class OcrService {
   private readonly logger = new Logger(OcrService.name)
-  private servicePromise: Promise<PaddleOcrService> | null = null
+  private readonly load = lazyOnce(() => this.createService())
 
   modelDir(): string {
     return join(loadEnv().STORAGE_DIR, 'models', OCR_MODEL_DIR)
-  }
-
-  private load(): Promise<PaddleOcrService> {
-    // ponytail: reset on rejection — the first jobs can run before ocr-model is provisioned and
-    // must not poison every later job until a worker restart (same F3 pattern as EmbeddingService)
-    this.servicePromise ??= this.createService().catch((err: unknown) => {
-      this.servicePromise = null
-      throw err
-    })
-    return this.servicePromise
   }
 
   private async createService(): Promise<PaddleOcrService> {
@@ -66,14 +56,11 @@ export class OcrService {
       charactersDictionary: join(dir, 'dict.txt'),
     }
     for (const [kind, path] of Object.entries(files)) {
-      try {
-        await access(path)
-      } catch {
-        throw new Error(
-          `OCR model not found at ${path} (${kind}) — run ` +
-            `'pnpm --filter @photox/worker-service ocr-model'`,
-        )
-      }
+      await requireModelFile(
+        path,
+        `OCR model not found at ${path} (${kind}) — run ` +
+          `'pnpm --filter @photox/worker-service ocr-model'`,
+      )
     }
 
     const service = new Service({

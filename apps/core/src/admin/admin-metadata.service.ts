@@ -3,9 +3,8 @@ import { AdminAssetsService } from './admin-assets.service'
 import { BullMqService } from '../queue/bullmq.service'
 import type { LastRun } from '../settings/settings.service'
 import { SettingsService } from '../settings/settings.service'
-import { reprocessStatus } from './reprocess.util'
+import { REPROCESS_PAGE_SIZE, reprocessStatus } from './reprocess.util'
 
-const REPROCESS_PAGE_SIZE = 500
 const METADATA_QUEUE = 'process-metadata'
 
 @Injectable()

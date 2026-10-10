@@ -1,11 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import type { Job } from 'bullmq'
 import { BullMqService } from './bullmq.service'
 import { parseJobData, cleanupJobSchema, type CleanupJob } from './job-schemas'
 import { CoreClient } from '../core/core-client.service'
 
 @Injectable()
-export class CleanupProcessor {
+export class CleanupProcessor implements OnModuleInit {
   private readonly logger = new Logger(CleanupProcessor.name)
 
   constructor(
@@ -13,7 +13,7 @@ export class CleanupProcessor {
     private readonly core: CoreClient,
   ) {}
 
-  start() {
+  onModuleInit() {
     this.bullMq.createWorker<CleanupJob>('cleanup-asset', (job) => this.processJob(job), {
       concurrency: 5,
     })

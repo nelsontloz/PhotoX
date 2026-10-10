@@ -17,9 +17,6 @@ export class User {
   @Column()
   displayName!: string
 
-  @Column({ nullable: true })
-  avatarUrl?: string
-
   @CreateDateColumn()
   createdAt!: Date
 

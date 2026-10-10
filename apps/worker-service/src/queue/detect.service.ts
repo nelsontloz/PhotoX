@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { access } from 'fs/promises'
 import { join } from 'path'
 import sharp from 'sharp'
 import { loadEnv } from '@photox/shared-config'
+import { lazyOnce, requireModelFile } from './model-loader'
 import type { DetectedObjectInput } from '@photox/shared-types'
 import type * as ort from 'onnxruntime-node'
 
@@ -144,16 +144,16 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
-// pure: detections in the processor's ≤1280px prep space -> oriented ORIGINAL-image pixels.
-// Same scale-back discipline as face.processor (per-edge clamp, drop collapsed boxes); the web
-// viewer scales overlays by asset.width/height, so registered boxes must be original px.
-export function scaleDetectionsToOriginal(
-  detections: DetectedObjectInput[],
+// pure: detections in a processor's prep space -> oriented ORIGINAL-image pixels, shared by
+// process-faces and process-detect (per-edge clamp, drop collapsed boxes); the web viewer scales
+// overlays by asset.width/height, so registered boxes must be original px.
+export function scaleDetectionsToOriginal<T extends { box: DetectedObjectInput['box'] }>(
+  detections: T[],
   scaleX: number,
   scaleY: number,
   origW: number,
   origH: number,
-): DetectedObjectInput[] {
+): T[] {
   return detections
     .map((d) => {
       const x1 = clamp(Math.round(d.box.x * scaleX), 0, origW)
@@ -210,36 +210,23 @@ export function parseDetections(
 @Injectable()
 export class DetectService {
   private readonly logger = new Logger(DetectService.name)
-  private sessionPromise: Promise<ort.InferenceSession> | null = null
   private inputName = ''
   private outputName = ''
+  private readonly load = lazyOnce(() => this.createSession())
 
   modelPath(): string {
     return join(loadEnv().STORAGE_DIR, 'models', DETECT_MODEL_DIR, DETECT_MODEL_FILE)
-  }
-
-  private load(): Promise<ort.InferenceSession> {
-    // ponytail: reset on rejection — jobs can run before detect-model is provisioned and must not
-    // poison every later job until a worker restart (same pattern as EmbeddingService/OcrService)
-    this.sessionPromise ??= this.createSession().catch((err: unknown) => {
-      this.sessionPromise = null
-      throw err
-    })
-    return this.sessionPromise
   }
 
   private async createSession(): Promise<ort.InferenceSession> {
     // ponytail: lazy import so unit tests (and hosts without the ORT native binding) never dlopen it
     const { InferenceSession } = await import('onnxruntime-node')
     const modelPath = this.modelPath()
-    try {
-      await access(modelPath)
-    } catch {
-      throw new Error(
-        `Detection model not found at ${modelPath} — run ` +
-          `'pnpm --filter @photox/worker-service detect-model'`,
-      )
-    }
+    await requireModelFile(
+      modelPath,
+      `Detection model not found at ${modelPath} — run ` +
+        `'pnpm --filter @photox/worker-service detect-model'`,
+    )
     const session = await InferenceSession.create(modelPath, {
       executionProviders: ['cpu'],
       // ponytail: 2 ORT threads instead of the all-cores default — SigLIP/PP-OCR/SCRFD sessions

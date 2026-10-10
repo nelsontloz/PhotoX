@@ -3,16 +3,7 @@ import type { Place } from '../database/entities/place.entity'
 /** Parsed cities500 row, shaped for the `places` table. */
 export type PlaceRow = Pick<
   Place,
-  | 'geonameId'
-  | 'name'
-  | 'asciiName'
-  | 'latitude'
-  | 'longitude'
-  | 'countryCode'
-  | 'admin1Code'
-  | 'admin2Code'
-  | 'population'
-  | 'timezone'
+  'geonameId' | 'name' | 'latitude' | 'longitude' | 'countryCode' | 'admin1Code' | 'timezone'
 >
 
 const blankToNull = (value: string | undefined): string | null =>
@@ -36,18 +27,13 @@ export function parseCityLine(line: string): PlaceRow | null {
     return null
   if (countryCode === '') return null
 
-  const population = Number.parseInt(f[14]!, 10)
-
   return {
     geonameId,
     name: f[1]!,
-    asciiName: f[2]!,
     latitude,
     longitude,
     countryCode,
     admin1Code: blankToNull(f[10]),
-    admin2Code: blankToNull(f[11]),
-    population: Number.isFinite(population) ? population : 0,
     timezone: blankToNull(f[17]),
   }
 }

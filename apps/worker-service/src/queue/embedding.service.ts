@@ -1,27 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { access } from 'fs/promises'
 import { join } from 'path'
 import { loadEnv } from '@photox/shared-config'
 import { SEARCH_EMBEDDING_MODEL, toEmbedding } from '@photox/shared-types'
+import { lazyOnce, requireModelFile } from './model-loader'
 import type { ImageFeatureExtractionPipeline } from '@huggingface/transformers'
 
 @Injectable()
 export class EmbeddingService {
   private readonly logger = new Logger(EmbeddingService.name)
-  private pipelinePromise: Promise<ImageFeatureExtractionPipeline> | null = null
+  private readonly load = lazyOnce(() => this.createPipeline())
 
   modelDir(): string {
     return join(loadEnv().STORAGE_DIR, 'models', SEARCH_EMBEDDING_MODEL)
-  }
-
-  private load(): Promise<ImageFeatureExtractionPipeline> {
-    // ponytail: reset on rejection — the first jobs can run before vision-model is provisioned
-    // and must not poison every later job until a worker restart
-    this.pipelinePromise ??= this.createPipeline().catch((err: unknown) => {
-      this.pipelinePromise = null
-      throw err
-    })
-    return this.pipelinePromise
   }
 
   private async createPipeline(): Promise<ImageFeatureExtractionPipeline> {
@@ -29,14 +19,11 @@ export class EmbeddingService {
     // dlopen the inference stack — same reason FaceEmbedderService lazy-loads onnxruntime-node
     const { pipeline, env } = await import('@huggingface/transformers')
     const modelDir = this.modelDir()
-    try {
-      await access(join(modelDir, 'config.json'))
-    } catch {
-      throw new Error(
-        `Vision embedding model not found at ${modelDir} — run ` +
-          `'pnpm --filter @photox/worker-service vision-model'`,
-      )
-    }
+    await requireModelFile(
+      join(modelDir, 'config.json'),
+      `Vision embedding model not found at ${modelDir} — run ` +
+        `'pnpm --filter @photox/worker-service vision-model'`,
+    )
 
     // offline-only: weights come from disk, the process never talks to the HF hub at runtime
     env.localModelPath = join(loadEnv().STORAGE_DIR, 'models')

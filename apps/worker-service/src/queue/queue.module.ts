@@ -1,4 +1,4 @@
-import { Module, OnModuleInit } from '@nestjs/common'
+import { Module } from '@nestjs/common'
 import { JwtModule } from '@nestjs/jwt'
 import { loadAuthEnv, LocalStorageService } from '@photox/shared-config'
 import { BullMqService } from './bullmq.service'
@@ -29,6 +29,9 @@ import { CoreClient } from '../core/core-client.service'
     }),
   ],
   providers: [
+    // ponytail: processors self-start via their own OnModuleInit, relying on provider
+    // insertion order + the DI graph (BullMqService first) for connection readiness —
+    // not a documented Nest guarantee; add an explicit whenReady/start ordering if flaky
     BullMqService,
     LocalStorageService,
     CoreClient,
@@ -52,30 +55,4 @@ import { CoreClient } from '../core/core-client.service'
   ],
   exports: [BullMqService],
 })
-export class QueueModule implements OnModuleInit {
-  constructor(
-    private readonly thumbnailProcessor: ThumbnailProcessor,
-    private readonly videoProcessor: VideoProcessor,
-    private readonly metadataProcessor: MetadataProcessor,
-    private readonly faceProcessor: FaceProcessor,
-    private readonly faceClusterService: FaceClusterService,
-    private readonly embeddingProcessor: EmbeddingProcessor,
-    private readonly ocrProcessor: OcrProcessor,
-    private readonly detectProcessor: DetectProcessor,
-    private readonly cleanupProcessor: CleanupProcessor,
-    private readonly cleanupOrphansProcessor: CleanupOrphansProcessor,
-  ) {}
-
-  onModuleInit() {
-    this.thumbnailProcessor.start()
-    this.videoProcessor.start()
-    this.metadataProcessor.start()
-    this.faceProcessor.start()
-    this.faceClusterService.start()
-    this.embeddingProcessor.start()
-    this.ocrProcessor.start()
-    this.detectProcessor.start()
-    this.cleanupProcessor.start()
-    this.cleanupOrphansProcessor.start()
-  }
-}
+export class QueueModule {}
