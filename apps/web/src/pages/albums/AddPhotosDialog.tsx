@@ -3,9 +3,8 @@ import { FaCircleExclamation, FaPhotoFilm, FaPlus, FaSpinner } from 'react-icons
 import type { Asset } from '@photox/shared-types'
 import { ScrollContainerContext } from '../../components/AppShell'
 import { Dialog } from '../../components/Dialog'
-import { TimelineGrid } from '../../components/Timeline/TimelineGrid'
-import { useTimelineLayout } from '../../hooks/useTimelineLayout'
-import { useTimelineMonths } from '../../hooks/useTimelineMonths'
+import { TimelineAssets } from '../../components/Timeline/TimelineAssets'
+import { useTimelineView } from '../../hooks/useTimelineView'
 
 interface AddPhotosDialogProps {
   albumName: string
@@ -16,8 +15,8 @@ interface AddPhotosDialogProps {
 export function AddPhotosDialog({ albumName, onClose, onAdd }: AddPhotosDialogProps) {
   // Same pipeline as the home timeline: the full-library layout reserves every bucket/day height
   // up front, then months fill in lazily behind it — skeletons sit in the exact slots, no shift.
-  const timeline = useTimelineLayout()
-  const { groups, monthStatus, ensureMonth, retainMonths, refreshKey } = useTimelineMonths()
+  const view = useTimelineView()
+  const { timeline } = view
   // The dialog's own scroller — inside a position:fixed panel everything must scroll against
   // this, not AppShell's <main>: the grid's windowing, AssetThumb's observers AND the
   // TimelineScrollbar rail (which anchors to this box) all key off the ScrollContainerContext
@@ -97,14 +96,8 @@ export function AddPhotosDialog({ albumName, onClose, onAdd }: AddPhotosDialogPr
               </p>
             </div>
           ) : (
-            <TimelineGrid
-              layout={timeline.layout}
-              containerRef={timeline.containerRef}
-              groups={groups}
-              monthStatus={monthStatus}
-              ensureMonth={ensureMonth}
-              retainMonths={retainMonths}
-              refreshKey={refreshKey}
+            <TimelineAssets
+              view={view}
               // sticky day bands blend with this panel instead of the page background
               dayHeaderSurfaceClassName="bg-card-dark/95 text-white"
               onSelect={onSelect}

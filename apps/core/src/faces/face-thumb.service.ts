@@ -6,6 +6,7 @@ import sharp from 'sharp'
 import { Face } from '../database/entities'
 import { Asset } from '../database/entities'
 import { FileRecord } from '../database/entities'
+import { findOwnedOr404 } from '../common/asset-ownership'
 import { LocalStorageService } from '@photox/shared-config'
 
 const DEFAULT_SIZE = 240
@@ -29,14 +30,9 @@ export class FaceThumbService {
       32,
       Math.min(MAX_SIZE, Math.floor(Number.isFinite(size) ? size : DEFAULT_SIZE)),
     )
-    const face = await this.faceRepo.findOne({ where: { id: faceId, userId } })
-    if (!face) throw new NotFoundException('Face not found')
-
-    const asset = await this.assetRepo.findOne({ where: { id: face.assetId, userId } })
-    if (!asset) throw new NotFoundException('Asset not found')
-
-    const record = await this.fileRepo.findOne({ where: { id: asset.fileId, userId } })
-    if (!record) throw new NotFoundException('File not found')
+    const face = await findOwnedOr404(this.faceRepo, faceId, userId, 'Face')
+    const asset = await findOwnedOr404(this.assetRepo, face.assetId, userId, 'Asset')
+    const record = await findOwnedOr404(this.fileRepo, asset.fileId, userId, 'File')
     const buf = await readFile(this.storage.pathFor(record.storageKey))
 
     const meta = await sharp(buf).metadata()

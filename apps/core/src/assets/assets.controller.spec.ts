@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express'
-import { AssetsController, layoutEtag } from './assets.controller'
+import { AssetsController } from './assets.controller'
 import type { AssetsService } from './assets.service'
 
 function fakeRes() {
@@ -29,10 +29,7 @@ function fakeRes() {
 }
 
 function fakeReq(fresh: boolean): Request {
-  return {
-    user: { id: 'u1' },
-    fresh,
-  } as unknown as Request
+  return { fresh } as unknown as Request
 }
 
 function makeController(fingerprint: { count: number; maxUpdatedAtMs: number }, body: unknown) {
@@ -54,7 +51,7 @@ describe('AssetsController layout ETag', () => {
     )
     const res = fakeRes()
 
-    await controller.layout(fakeReq(false), res as unknown as Response)
+    await controller.layout(fakeReq(false), res as unknown as Response, 'u1')
 
     expect(layoutFingerprint).toHaveBeenCalledTimes(1)
     expect(layoutFingerprint).toHaveBeenCalledWith('u1')
@@ -73,7 +70,7 @@ describe('AssetsController layout ETag', () => {
     )
     const res = fakeRes()
 
-    await controller.layout(fakeReq(true), res as unknown as Response)
+    await controller.layout(fakeReq(true), res as unknown as Response, 'u1')
 
     expect(res.statusCode).toBe(304)
     expect(res.ended).toBe(true)
@@ -86,7 +83,7 @@ describe('AssetsController layout ETag', () => {
     const { controller, layout } = makeController({ count: 1, maxUpdatedAtMs: 5 }, body)
     const res = fakeRes()
 
-    await controller.layout(fakeReq(false), res as unknown as Response)
+    await controller.layout(fakeReq(false), res as unknown as Response, 'u1')
 
     expect(res.statusCode).toBe(200)
     expect(res.jsonBody).toEqual(body)
@@ -103,7 +100,7 @@ describe('AssetsController layout ETag', () => {
     const res = fakeRes()
 
     // fresh conditional request still gets the body: the fingerprint can't see face→person moves
-    await controller.layout(fakeReq(true), res as unknown as Response, 'p-1')
+    await controller.layout(fakeReq(true), res as unknown as Response, 'u1', 'p-1')
 
     expect(layoutFingerprint).not.toHaveBeenCalled()
     expect(res.statusCode).toBe(200)
@@ -121,18 +118,12 @@ describe('AssetsController layout ETag', () => {
     const res = fakeRes()
 
     // fresh conditional request still gets the body: the fingerprint can't see album membership
-    await controller.layout(fakeReq(true), res as unknown as Response, undefined, true)
+    await controller.layout(fakeReq(true), res as unknown as Response, 'u1', undefined, true)
 
     expect(layoutFingerprint).not.toHaveBeenCalled()
     expect(res.statusCode).toBe(200)
     expect(res.jsonBody).toEqual(body)
     expect(layout).toHaveBeenCalledWith('u1', undefined, true, undefined)
     expect(res.headers.get('ETag')).toBeUndefined()
-  })
-})
-
-describe('layoutEtag', () => {
-  it('quotes the count and timestamp', () => {
-    expect(layoutEtag({ count: 3, maxUpdatedAtMs: 42 })).toBe('"layout-3-42"')
   })
 })

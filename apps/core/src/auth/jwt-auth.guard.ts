@@ -1,5 +1,6 @@
 import {
   CanActivate,
+  createParamDecorator,
   ExecutionContext,
   ForbiddenException,
   Injectable,
@@ -30,6 +31,18 @@ function bearerToken(req: Request): string | undefined {
   return scheme?.toLowerCase() === 'bearer' && token ? token : undefined
 }
 
+/** 401s when the request carries no verified user; guarded routes only, never open routes. */
+export function requireUserId(ctx: ExecutionContext): string {
+  const req = ctx.switchToHttp().getRequest<Request>()
+  if (!req.user) throw new UnauthorizedException()
+  return req.user.id
+}
+
+/** Param decorator injecting the verified JWT user id (`req.user.id`). */
+export const CurrentUserId = createParamDecorator((_data: unknown, ctx: ExecutionContext) =>
+  requireUserId(ctx),
+)
+
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   private readonly clockTolerance: number
@@ -41,7 +54,7 @@ export class JwtAuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<Request>()
     const { method, path } = req
-    if (isOpenRoute(method, path)) return true
+    if (isOpenRoute(path)) return true
 
     // explicit credentials win: the Authorization header is a deliberate, request-scoped
     // credential — a stale cookie jar (API clients) must not shadow it. Browser subresources

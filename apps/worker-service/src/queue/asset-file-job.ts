@@ -1,9 +1,6 @@
 import { Logger } from '@nestjs/common'
 import type { Job } from 'bullmq'
-import { tmpdir } from 'os'
-import { join } from 'path'
-import { randomUUID } from 'crypto'
-import { copyFile, unlink } from 'fs/promises'
+import sharp from 'sharp'
 import type { z } from 'zod'
 import type { Asset, FileRecord } from '@photox/shared-types'
 import { LocalStorageService } from '@photox/shared-config'
@@ -43,9 +40,9 @@ export async function runAssetFileJob<T extends AssetFileJobData>(
   const asset = await core.getAsset(userId, assetId)
   assertOwnership({ assetId, fileId, userId }, { record, asset })
 
-  const filePath = join(tmpdir(), `${spec.queue.replace(/^process-/, '')}-${randomUUID()}`)
+  // storage is local-disk only — read the original in place, no tmp staging copy
+  const filePath = storage.pathFor(record.storageKey)
   try {
-    await copyFile(storage.pathFor(record.storageKey), filePath)
     await spec.body({ data, record, asset, filePath })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -57,9 +54,15 @@ export async function runAssetFileJob<T extends AssetFileJobData>(
     }
     await spec.onFailure?.({ userId, assetId, message })
     if (!missingModel) throw err
-  } finally {
-    await unlink(filePath).catch(() => undefined)
   }
+}
+
+// EXIF-oriented downscale to a max long side — shared prep for face/embedding/detection/OCR bodies
+export async function orientedResize(filePath: string, maxPx: number): Promise<Buffer> {
+  return sharp(filePath)
+    .rotate()
+    .resize({ width: maxPx, height: maxPx, fit: 'inside', withoutEnlargement: true })
+    .toBuffer()
 }
 
 // best-effort failure marker: a failed patch must never mask the original job error

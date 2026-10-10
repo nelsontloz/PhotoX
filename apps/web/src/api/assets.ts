@@ -78,10 +78,6 @@ export function getFileStreamUrl(fileId: string): string {
   return `/api/v1/files/${fileId}/stream`
 }
 
-export function getVideoStreamUrl(fileId: string): string {
-  return getFileStreamUrl(fileId)
-}
-
 export async function uploadFile(
   file: File,
   onProgress?: (pct: number) => void,

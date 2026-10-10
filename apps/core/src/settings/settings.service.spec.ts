@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Repository } from 'typeorm'
+import { envFaceDetectorKind } from '@photox/shared-config'
 import { AppSetting } from '../database/entities/app-setting.entity'
 import { Face } from '../database/entities/face.entity'
 import {
@@ -54,7 +55,7 @@ describe('SettingsService', () => {
   it('defaults to human when FACE_DETECTOR is unset and no row exists', async () => {
     delete process.env.FACE_DETECTOR
     const { service, findOne } = makeService()
-    expect(service.envDefaultDetector()).toBe('human')
+    expect(envFaceDetectorKind()).toBe('human')
     expect(await service.getFaceDetector()).toBe('human')
     expect(findOne).toHaveBeenCalledWith({ where: { key: FACE_DETECTOR_SETTING_KEY } })
   })
@@ -62,14 +63,13 @@ describe('SettingsService', () => {
   it('honours FACE_DETECTOR=scrfd as the env default', async () => {
     process.env.FACE_DETECTOR = 'scrfd'
     const { service } = makeService()
-    expect(service.envDefaultDetector()).toBe('scrfd')
+    expect(envFaceDetectorKind()).toBe('scrfd')
     expect(await service.getFaceDetector()).toBe('scrfd')
   })
 
   it('treats an unknown FACE_DETECTOR value as human', () => {
     process.env.FACE_DETECTOR = 'bogus'
-    const { service } = makeService()
-    expect(service.envDefaultDetector()).toBe('human')
+    expect(envFaceDetectorKind()).toBe('human')
   })
 
   it('returns the stored detector over the env default', async () => {

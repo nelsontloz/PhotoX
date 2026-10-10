@@ -14,7 +14,8 @@ import { open, unlink } from 'fs/promises'
 import { extname } from 'path'
 import { pipeline } from 'stream/promises'
 import { Asset, FileRecord } from '../../database/entities'
-import { LocalStorageService } from '@photox/shared-config'
+import { envFaceDetectorKind, LocalStorageService } from '@photox/shared-config'
+import { findOwnedOr404 } from '../../common/asset-ownership'
 import { toFileRecordResponse } from '../file-record.mapper'
 import { RegisterFileBodyDto } from './dto/register-file.body.dto'
 import { AssetsService } from '../../assets/assets.service'
@@ -153,7 +154,7 @@ export class UserFilesService {
             err instanceof Error ? err.message : String(err)
           }`,
         )
-        return this.settings.envDefaultDetector()
+        return envFaceDetectorKind()
       })
       void this.bullMq.enqueue('process-faces', 'process-faces', {
         assetId: asset.id,
@@ -162,9 +163,9 @@ export class UserFilesService {
         detector,
       })
       // videos out of scope for vision search — only photos get image embeddings
-      this.bullMq.enqueueEmbedding(asset.id, record.id, userId)
-      this.bullMq.enqueueOcr(asset.id, record.id, userId)
-      this.bullMq.enqueueDetect(asset.id, record.id, userId)
+      this.bullMq.enqueueAssetJob('embed', asset.id, record.id, userId)
+      this.bullMq.enqueueAssetJob('ocr', asset.id, record.id, userId)
+      this.bullMq.enqueueAssetJob('detect', asset.id, record.id, userId)
     } else {
       this.bullMq.enqueueVideo(asset.id, record.id, userId)
     }
@@ -193,8 +194,7 @@ export class UserFilesService {
     }
 
     if (dto.assetId) {
-      const asset = await this.assetRepo.findOne({ where: { id: dto.assetId, userId } })
-      if (!asset) throw new NotFoundException('Asset not found')
+      await findOwnedOr404(this.assetRepo, dto.assetId, userId, 'Asset')
     }
 
     const storageKey = this.storage.buildKey(dto.kind, userId, dto.id, dto.ext)
@@ -294,15 +294,18 @@ export class UserFilesService {
     return record
   }
 
-  async getOne(userId: string, fileId: string) {
+  private async getOwnedRecord(userId: string, fileId: string): Promise<FileRecord> {
     const record = await this.getRecord(fileId)
     if (record.userId !== userId) throw new NotFoundException('File not found')
-    return toFileRecordResponse(record)
+    return record
+  }
+
+  async getOne(userId: string, fileId: string) {
+    return toFileRecordResponse(await this.getOwnedRecord(userId, fileId))
   }
 
   async download(userId: string, fileId: string): Promise<{ path: string; record: FileRecord }> {
-    const record = await this.getRecord(fileId)
-    if (record.userId !== userId) throw new NotFoundException('File not found')
+    const record = await this.getOwnedRecord(userId, fileId)
     return { path: this.storage.pathFor(record.storageKey), record }
   }
 

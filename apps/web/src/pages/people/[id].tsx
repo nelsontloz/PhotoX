@@ -1,27 +1,23 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { FaArrowLeft, FaFaceSmile } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { ErrorState, LoadingState } from '../../components/StateViews'
 import { ViewerHost } from '../../components/ViewerHost'
-import { TimelineGrid } from '../../components/Timeline/TimelineGrid'
+import { TimelineAssets } from '../../components/Timeline/TimelineAssets'
 import { renamePerson } from '../../api/persons'
 import { usePersonDetail } from '../../hooks/usePersonDetail'
 import { useInlineRename } from '../../hooks/useInlineRename'
-import { useTimelineLayout } from '../../hooks/useTimelineLayout'
-import { useTimelineMonths } from '../../hooks/useTimelineMonths'
+import { useTimelineView } from '../../hooks/useTimelineView'
 import type { Asset } from '@photox/shared-types'
 
 function PersonDetail({ id }: { id: string }) {
   const navigate = useNavigate()
   const { person, setPerson, loading: personLoading } = usePersonDetail(id)
   // Same lazy pipeline as the home timeline, scoped to this person (layout + per-month fetches).
-  const timeline = useTimelineLayout({ personId: id })
-  const { groups, monthStatus, ensureMonth, retainMonths, refreshKey } = useTimelineMonths({
-    personId: id,
-  })
-  const loadedAssets = useMemo(() => groups.flatMap((g) => g.items), [groups])
+  const view = useTimelineView({ personId: id })
+  const { timeline, loadedAssets } = view
   const { editing, nameValue, setNameValue, start, save } = useInlineRename(
     person?.name ?? '',
     async (name) => {
@@ -90,16 +86,7 @@ function PersonDetail({ id }: { id: string }) {
             <p className="text-slate-400">No assets with this person</p>
           </div>
         ) : (
-          <TimelineGrid
-            layout={timeline.layout}
-            containerRef={timeline.containerRef}
-            groups={groups}
-            monthStatus={monthStatus}
-            ensureMonth={ensureMonth}
-            retainMonths={retainMonths}
-            refreshKey={refreshKey}
-            onSelect={setSelectedAsset}
-          />
+          <TimelineAssets view={view} onSelect={setSelectedAsset} />
         )}
       </div>
 

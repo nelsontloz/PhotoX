@@ -10,7 +10,7 @@ import type { FileRecord } from '@photox/shared-types'
 import { VideoProcessor } from './video.processor'
 import type { CoreClient, RegisterFileInput } from '../core/core-client.service'
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../../test/fake-core-client'
-import type { VideoJob } from './job-schemas'
+import type { AssetRefsJob } from './job-schemas'
 
 interface PrivateVideoProcessor {
   downloadSource(record: FileRecord, destDir: string): Promise<string>
@@ -119,9 +119,9 @@ describe('VideoProcessor disk paths', () => {
   })
 
   it('rejects a job whose asset belongs to another user before patching', async () => {
-    const callbacks: ((job: Job<VideoJob>) => Promise<void>)[] = []
+    const callbacks: ((job: Job<AssetRefsJob>) => Promise<void>)[] = []
     const bullMq = {
-      createWorker: vi.fn((_name: string, cb: (job: Job<VideoJob>) => Promise<void>) => {
+      createWorker: vi.fn((_name: string, cb: (job: Job<AssetRefsJob>) => Promise<void>) => {
         callbacks.push(cb)
         return {}
       }),
@@ -136,9 +136,9 @@ describe('VideoProcessor disk paths', () => {
       makeAsset({ id: base.assetId, userId: randomUUID(), fileId: base.fileId }),
     )
 
-    await expect(callbacks[0]!({ data: base } as unknown as Job<VideoJob>)).rejects.toBeInstanceOf(
-      UnrecoverableError,
-    )
+    await expect(
+      callbacks[0]!({ data: base } as unknown as Job<AssetRefsJob>),
+    ).rejects.toBeInstanceOf(UnrecoverableError)
 
     expect(fake.callsOf('patchMetadata')).toHaveLength(0)
   })

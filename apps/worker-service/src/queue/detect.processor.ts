@@ -2,8 +2,8 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import sharp from 'sharp'
 import type { Job } from 'bullmq'
 import { BullMqService } from './bullmq.service'
-import { detectionJobSchema, type DetectionJob } from './job-schemas'
-import { runAssetFileJob } from './asset-file-job'
+import { assetRefsJobSchema, type AssetRefsJob } from './job-schemas'
+import { orientedResize, runAssetFileJob } from './asset-file-job'
 import { DetectService, scaleDetectionsToOriginal } from './detect.service'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
@@ -24,15 +24,15 @@ export class DetectProcessor implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.bullMq.createWorker<DetectionJob>('process-detect', (job) => this.processJob(job))
+    this.bullMq.createWorker<AssetRefsJob>('process-detect', (job) => this.processJob(job))
 
     this.logger.log('Detection processor listening for jobs')
   }
 
-  private async processJob(job: Job<DetectionJob>) {
+  private async processJob(job: Job<AssetRefsJob>) {
     await runAssetFileJob({ core: this.core, storage: this.storage, logger: this.logger }, job, {
       queue: 'process-detect',
-      schema: detectionJobSchema,
+      schema: assetRefsJobSchema,
       label: 'Detection',
       // ponytail: missing model weights are provisioning, not a job bug — warn + no retry.
       // No metadata status marker: core's UpdateMetadataDto has no detection status field
@@ -50,15 +50,7 @@ export class DetectProcessor implements OnModuleInit {
 
         // ponytail: EXIF-oriented ≤1280px long side — the model's own letterbox goes to 640, then
         // scaleDetectionsToOriginal maps boxes from this prep space back to ORIGINAL px below
-        const resized = await sharp(filePath)
-          .rotate()
-          .resize({
-            width: DETECT_MAX_DIM,
-            height: DETECT_MAX_DIM,
-            fit: 'inside',
-            withoutEnlargement: true,
-          })
-          .toBuffer()
+        const resized = await orientedResize(filePath, DETECT_MAX_DIM)
         const resizedMeta = await sharp(resized).metadata()
         const resizedW = resizedMeta.width ?? origW
         const resizedH = resizedMeta.height ?? origH

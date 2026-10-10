@@ -1,26 +1,48 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { FaSpinner, FaTrash, FaTrashCan } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { useConfirm } from '../../components/ConfirmProvider'
 import { DayGroups } from '../../components/DayGroups'
 import { ViewerHost } from '../../components/ViewerHost'
-import { useAssetGroups } from '../../hooks/useAssetGroups'
+import { groupAssetsByDay, type AssetGroup } from '../../hooks/useAssetGroups'
 import { useAssetNavigation } from '../../hooks/useAssetNavigation'
-import { emptyTrash } from '../../api/assets'
+import { useAsyncFetch } from '../../hooks/useAsyncFetch'
+import { emptyTrash, listAllAssets } from '../../api/assets'
 import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
+import { useAppStore } from '../../store/app-store'
+
+const PAGE_SIZE = 50
+const EMPTY: AssetGroup[] = []
+
+/**
+ * Fetch-all day grouping for trash (timeline views use the per-month cache instead) — folded in
+ * here since trash is the hook's only consumer.
+ */
+function useTrashGroups() {
+  const timelineRefreshKey = useAppStore((s) => s.timelineRefreshKey)
+  const fetchGroups = useCallback(
+    async () =>
+      groupAssetsByDay(
+        await listAllAssets({ limit: PAGE_SIZE, isTrashed: true }),
+        (a) => a.trashedAt,
+      ),
+    [],
+  )
+  const { data, loading, error, refresh } = useAsyncFetch(fetchGroups, {
+    refreshKey: timelineRefreshKey,
+    errorMessage: 'Failed to load assets',
+  })
+  return { groups: data ?? EMPTY, loading, error, refresh }
+}
 
 function TrashContent() {
   const confirm = useConfirm()
-  const { groups, loading, error, refresh } = useAssetGroups({
-    isTrashed: true,
-    dateField: 'trashedAt',
-  })
+  const { groups, loading, error, refresh } = useTrashGroups()
   const nav = useAssetNavigation({
     assets: groups.flatMap((g) => g.items),
     onAfterAction: refresh,
   })
-  const [pickerOpen, setPickerOpen] = useState(false)
   const [emptying, setEmptying] = useState(false)
 
   const handleEmptyTrash = async () => {
@@ -76,7 +98,7 @@ function TrashContent() {
           Empty trash
         </button>
       </div>
-      <DayGroups groups={groups} onSelect={nav.open} dark />
+      <DayGroups groups={groups} onSelect={nav.open} />
       <ViewerHost
         asset={nav.selected}
         onClose={nav.close}
@@ -92,8 +114,6 @@ function TrashContent() {
         }}
         siblingAssets={groups.flatMap((g) => g.items)}
         onSelectSibling={(asset) => nav.open(asset)}
-        pickerOpen={pickerOpen}
-        onPickerClose={() => setPickerOpen(false)}
       />
     </div>
   )

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { stat } from 'node:fs/promises'
 import sharp from 'sharp'
 import type { RegisterFileInput } from '../../src/core/core-client.service'
 import { makeAsset, makeFileRecord } from '../fake-core-client'
@@ -61,7 +62,7 @@ describe('ThumbnailProcessor (integration)', () => {
       })
       const registered = testApp.fake.files.get(dto.id)!
       expect(registered.mimeType).toBe('image/webp')
-      const thumbStat = await testApp.storage.stat(registered.storageKey)
+      const thumbStat = await stat(testApp.storage.pathFor(registered.storageKey))
       expect(thumbStat.size).toBe(thumb.bytes)
 
       expect(testApp.fake.callsOf('patchMetadata').at(-1)!.args[1]).toEqual({

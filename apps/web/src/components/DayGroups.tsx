@@ -2,15 +2,13 @@ import type { Asset } from '@photox/shared-types'
 import type { AssetGroup } from '../hooks/useAssetGroups'
 import { GalleryItem } from './GalleryItem'
 
-/** Day-sectioned gallery (sticky header + justified grid) shared by favorites and trash. */
+/** Day-sectioned gallery (sticky header + justified grid) for trash. */
 export function DayGroups({
   groups,
   onSelect,
-  dark,
 }: {
   groups: AssetGroup[]
   onSelect: (asset: Asset) => void
-  dark?: boolean
 }) {
   return (
     <>
@@ -23,7 +21,7 @@ export function DayGroups({
           </div>
           <div className="justified-grid-gallery">
             {group.items.map((asset) => (
-              <GalleryItem key={asset.id} asset={asset} onSelect={onSelect} dark={dark} />
+              <GalleryItem key={asset.id} asset={asset} onSelect={onSelect} dark />
             ))}
           </div>
         </section>

@@ -1,7 +1,7 @@
-import { Controller, Get, Query, Req } from '@nestjs/common'
+import { Controller, Get, Query } from '@nestjs/common'
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
-import type { Request } from 'express'
 import type { SearchResponse } from '@photox/shared-types'
+import { CurrentUserId } from '../auth/jwt-auth.guard'
 import { SearchService } from './search.service'
 import { SearchQueryDto } from './dto/search-query.dto'
 
@@ -18,7 +18,10 @@ export class SearchController {
   })
   @ApiResponse({ status: 400, description: 'Invalid q/limit/offset' })
   @ApiResponse({ status: 503, description: 'Vision search model not provisioned' })
-  async query(@Query() dto: SearchQueryDto, @Req() req: Request): Promise<SearchResponse> {
-    return this.search.search((req.user as { id: string }).id, dto)
+  async query(
+    @Query() dto: SearchQueryDto,
+    @CurrentUserId() userId: string,
+  ): Promise<SearchResponse> {
+    return this.search.search(userId, dto)
   }
 }

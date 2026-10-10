@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import type { Asset } from '@photox/shared-types'
 
@@ -105,7 +105,7 @@ describe('TrashPage', () => {
 
     expect(await screen.findByText(formatDate(trashedAt))).toBeTruthy()
     expect(api.listAllAssets).toHaveBeenCalledWith(
-      expect.objectContaining({ isTrashed: true, favorite: undefined }),
+      expect.objectContaining({ isTrashed: true, limit: 50 }),
     )
     expect(screen.getByRole('button', { name: 'Empty trash' })).toBeTruthy()
     // the toolbar action plus one GalleryItem (figure with role="button")
@@ -141,6 +141,36 @@ describe('TrashPage', () => {
       expect(alertMock).toHaveBeenCalledWith('Failed to empty trash. Please try again.'),
     )
     expect(api.listAllAssets).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the page rendered (viewer mounted) while a refresh is in flight', async () => {
+    api.listAllAssets.mockResolvedValueOnce([makeAsset()])
+    api.emptyTrash.mockResolvedValue(undefined)
+    renderTrash()
+    await screen.findByText(formatDate(trashedAt))
+
+    let resolveRefresh: (value: Asset[]) => void = () => {
+      /* replaced by the pending-refresh mock below before any call */
+    }
+    api.listAllAssets.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRefresh = resolve
+        }),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Empty trash' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Empty trash?' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Empty trash' }))
+    await waitFor(() => expect(api.listAllAssets).toHaveBeenCalledTimes(2))
+
+    // ponytail: refresh must not flip loading — a loading state would unmount the viewer mid-action
+    expect(screen.queryByText('Trash is empty')).toBeNull()
+    expect(screen.getByText(formatDate(trashedAt))).toBeTruthy()
+
+    act(() => {
+      resolveRefresh([])
+    })
   })
 
   it('opens the viewer on item click and restores through it', async () => {

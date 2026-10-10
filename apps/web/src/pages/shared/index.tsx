@@ -5,7 +5,7 @@ import { AppShell } from '../../components/AppShell'
 import { useConfirm } from '../../components/ConfirmProvider'
 import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
 import { listShares, revokeShare, getShareUrl } from '../../api/shares'
-import { getVideoStreamUrl } from '../../api/assets'
+import { getFileStreamUrl } from '../../api/assets'
 import { useAsyncFetch } from '../../hooks/useAsyncFetch'
 import type { ShareDto } from '@photox/shared-types'
 
@@ -91,7 +91,7 @@ function SharedContent() {
             >
               {thumbFileId ? (
                 <img
-                  src={getVideoStreamUrl(thumbFileId)}
+                  src={getFileStreamUrl(thumbFileId)}
                   alt=""
                   className="w-12 h-12 rounded object-cover bg-slate-800 shrink-0"
                 />

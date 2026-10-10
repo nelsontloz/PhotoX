@@ -1,5 +1,3 @@
-import { createReadStream } from 'fs'
-import { Readable } from 'stream'
 import { copyFile, mkdir, rename, stat, unlink } from 'fs/promises'
 import { dirname, resolve, sep } from 'path'
 import { randomUUID } from 'crypto'
@@ -42,14 +40,6 @@ export class LocalStorageService {
       await unlink(tmpPath).catch(() => undefined)
     }
     await rename(tmp, dest)
-  }
-
-  createReadStream(key: string, range?: { start?: number; end?: number }): Readable {
-    return createReadStream(this.pathFor(key), range)
-  }
-
-  async stat(key: string) {
-    return stat(this.pathFor(key))
   }
 
   async exists(key: string): Promise<boolean> {

@@ -1,6 +1,6 @@
-import { Body, Controller, Param, Post, Req } from '@nestjs/common'
+import { Body, Controller, Param, Post } from '@nestjs/common'
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
-import type { Request } from 'express'
+import { CurrentUserId } from '../auth/jwt-auth.guard'
 import { EmbeddingsService } from './embeddings.service'
 import { RegisterEmbeddingDto } from './dto/register-embedding.dto'
 
@@ -17,9 +17,8 @@ export class EmbeddingsController {
   async registerEmbedding(
     @Param('id') id: string,
     @Body() dto: RegisterEmbeddingDto,
-    @Req() req: Request,
+    @CurrentUserId() userId: string,
   ): Promise<{ ok: true }> {
-    const userId = (req.user as { id: string }).id
     return this.embeddings.register(id, userId, dto)
   }
 }

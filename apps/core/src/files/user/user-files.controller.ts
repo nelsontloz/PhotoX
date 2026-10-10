@@ -16,6 +16,7 @@ import type { Request, Response } from 'express'
 import { randomUUID } from 'crypto'
 import { tmpdir } from 'os'
 import multer from 'multer'
+import { CurrentUserId } from '../../auth/jwt-auth.guard'
 import { UserFilesService } from './user-files.service'
 import { FileRecordDto } from '../file-record.dto'
 import { RegisterFileBodyDto } from './dto/register-file.body.dto'
@@ -42,11 +43,11 @@ export class UserFilesController {
   @ApiResponse({ status: 400, description: 'No file or invalid request' })
   @ApiResponse({ status: 409, description: 'File already uploaded' })
   async upload(
-    @Req() req: Request,
+    @CurrentUserId() userId: string,
     @UploadedFile() file: { path: string; originalname: string; mimetype: string; size: number },
     @Body() body: UploadFileBodyDto,
   ) {
-    return this.userFilesService.upload((req.user as { id: string }).id, file, {
+    return this.userFilesService.upload(userId, file, {
       kind: body.kind,
       title: body.title,
       description: body.description,
@@ -63,11 +64,10 @@ export class UserFilesController {
   @ApiResponse({ status: 409, description: 'File id already exists' })
   @ApiResponse({ status: 422, description: 'Bytes missing from storage' })
   async register(
-    @Req() req: Request,
+    @CurrentUserId() userId: string,
     @Body() body: RegisterFileBodyDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const userId = (req.user as { id: string }).id
     const { file, created } = await this.userFilesService.register(userId, body)
     res.status(created ? HttpStatus.CREATED : HttpStatus.OK)
     return file
@@ -87,16 +87,20 @@ export class UserFilesController {
   @ApiOperation({ summary: 'Get file metadata' })
   @ApiResponse({ status: 200, description: 'File record', type: FileRecordDto })
   @ApiResponse({ status: 404, description: 'File not found' })
-  async getOne(@Param('fileId') fileId: string, @Req() req: Request) {
-    return this.userFilesService.getOne((req.user as { id: string }).id, fileId)
+  async getOne(@Param('fileId') fileId: string, @CurrentUserId() userId: string) {
+    return this.userFilesService.getOne(userId, fileId)
   }
 
   @Get(':fileId/download')
   @ApiOperation({ summary: 'Download file bytes' })
   @ApiResponse({ status: 200, description: 'File stream' })
   @ApiResponse({ status: 404, description: 'File not found' })
-  async download(@Res() res: Response, @Param('fileId') fileId: string, @Req() req: Request) {
-    const userId = (req.user as { id: string }).id
+  async download(
+    @Res() res: Response,
+    @Param('fileId') fileId: string,
+    @Req() req: Request,
+    @CurrentUserId() userId: string,
+  ) {
     const { path, record } = await this.userFilesService.download(userId, fileId)
     pipeFileResponse(req, res, { path, record }, attachmentDisposition(record.originalName))
   }

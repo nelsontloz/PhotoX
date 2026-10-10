@@ -89,7 +89,6 @@ function TimelineHarness() {
       monthStatus={new Map()}
       ensureMonth={noopEnsureMonth}
       retainMonths={noopRetainMonths}
-      refreshKey={0}
       onSelect={onSelectStub}
       selectedIds={new Set()}
       onToggleSelect={onToggleSelectStub}
@@ -126,7 +125,7 @@ describe('TimelineGrid reserved space', () => {
       '2025-09',
     ])
     expect(expected.buckets[0]?.days[0]?.sortKey).toBe('2026-03-20')
-    expect(expected.dayIndex.get('2026-03-20')?.rows).toBe(2)
+    expect(expected.buckets[0]?.days[0]?.height).toBe(469) // 65 + 2×204 − 4
 
     const { container } = render(<TimelineHarness />)
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   FaArrowLeft,
@@ -16,7 +16,7 @@ import { AppShell } from '../../components/AppShell'
 import { useConfirm } from '../../components/ConfirmProvider'
 import { ErrorState, LoadingState } from '../../components/StateViews'
 import { ViewerHost } from '../../components/ViewerHost'
-import { TimelineGrid } from '../../components/Timeline/TimelineGrid'
+import { TimelineAssets } from '../../components/Timeline/TimelineAssets'
 import {
   addAssetsToAlbum,
   deleteAlbum,
@@ -27,9 +27,7 @@ import {
 import { createShare, getShareUrl } from '../../api/shares'
 import { useAssetNavigation } from '../../hooks/useAssetNavigation'
 import { useInlineRename } from '../../hooks/useInlineRename'
-import { useTimelineLayout } from '../../hooks/useTimelineLayout'
-import { useTimelineMonths } from '../../hooks/useTimelineMonths'
-import { useTimelineNav } from '../../hooks/useTimelineNav'
+import { useTimelineView } from '../../hooks/useTimelineView'
 import { useAppStore } from '../../store/app-store'
 import { AddPhotosDialog } from './AddPhotosDialog'
 import type { AlbumDto } from '@photox/shared-types'
@@ -56,13 +54,9 @@ function AlbumDetail({ id }: { id: string }) {
   const menuRef = useRef<HTMLDivElement>(null)
 
   // Same lazy pipeline as the home timeline, scoped to this album (layout + per-month fetches).
-  const timeline = useTimelineLayout({ albumId: id })
-  const { groups, monthStatus, ensureMonth, retainMonths, refreshKey } = useTimelineMonths({
-    albumId: id,
-  })
+  const view = useTimelineView({ albumId: id })
+  const { timeline, loadedAssets, navHelpers } = view
   const bumpTimelineRefresh = useAppStore((s) => s.bumpTimelineRefresh)
-  const loadedAssets = useMemo(() => groups.flatMap((g) => g.items), [groups])
-  const navHelpers = useTimelineNav({ layoutItems: timeline.layoutItems, ensureMonth })
 
   const {
     editing: editingName,
@@ -331,16 +325,7 @@ function AlbumDetail({ id }: { id: string }) {
           </button>
         </div>
       ) : (
-        <TimelineGrid
-          layout={timeline.layout}
-          containerRef={timeline.containerRef}
-          groups={groups}
-          monthStatus={monthStatus}
-          ensureMonth={ensureMonth}
-          retainMonths={retainMonths}
-          refreshKey={refreshKey}
-          onSelect={nav.open}
-        />
+        <TimelineAssets view={view} onSelect={nav.open} />
       )}
 
       <ViewerHost

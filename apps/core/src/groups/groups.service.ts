@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, type Repository } from 'typeorm'
-import { toSql } from 'pgvector'
 import {
   SEARCH_EMBEDDING_DIM,
   SEARCH_EMBEDDING_MODEL,
@@ -9,7 +8,8 @@ import {
 } from '@photox/shared-types'
 import { Asset } from '../database/entities'
 import { AssetEmbedding } from '../database/entities/asset-embedding.entity'
-import { assertAssetOwned } from '../common/asset-ownership'
+import { findOwnedOr404 } from '../common/asset-ownership'
+import { toVectorSql } from '../database/shared/pgvector'
 import { AssetsService } from '../assets/assets.service'
 import type { DuplicatesQueryDto, SimilarQueryDto } from './dto/groups-query.dto'
 
@@ -32,7 +32,7 @@ export class GroupsService {
     assetId: string,
     dto: DuplicatesQueryDto,
   ): Promise<SearchResponse> {
-    await assertAssetOwned(this.assetRepo, userId, assetId)
+    await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset')
     const threshold = dto.threshold ?? DEFAULT_DUPLICATE_THRESHOLD
     const rows: { id: string }[] = await this.dataSource.query(
       // ('x'||phash) is the hex→bit(64) form: plain text::bit(64) only parses 0/1 strings.
@@ -55,7 +55,7 @@ export class GroupsService {
   }
 
   async similar(userId: string, assetId: string, dto: SimilarQueryDto): Promise<SearchResponse> {
-    await assertAssetOwned(this.assetRepo, userId, assetId)
+    await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset')
     const limit = dto.limit ?? DEFAULT_SIMILAR_LIMIT
     const source = await this.embeddingRepo.findOne({
       where: { assetId, kind: 'image', model: SEARCH_EMBEDDING_MODEL },
@@ -77,7 +77,7 @@ export class GroupsService {
            AND ae."assetId" <> $3
          ORDER BY ae.embedding::halfvec(${SEARCH_EMBEDDING_DIM}) <=> $4::halfvec(${SEARCH_EMBEDDING_DIM})
          LIMIT $5`,
-        [userId, SEARCH_EMBEDDING_MODEL, assetId, toSql(source.embedding), limit],
+        [userId, SEARCH_EMBEDDING_MODEL, assetId, toVectorSql(source.embedding), limit],
       )
     })
     const items = await this.assets.listByIdsRanked(

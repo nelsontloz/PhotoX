@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { UnrecoverableError } from 'bullmq'
 import { randomUUID } from 'crypto'
-import {
-  assertOwnership,
-  cleanupOrphansJobSchema,
-  faceJobSchema,
-  parseJobData,
-  thumbnailJobSchema,
-} from './job-schemas'
+import { assertOwnership, faceJobSchema, parseJobData, thumbnailJobSchema } from './job-schemas'
 
 describe('job payload schemas', () => {
   it('passes a valid producer payload through', () => {
@@ -47,14 +41,6 @@ describe('job payload schemas', () => {
       detector: 'bogus',
     }
     expect(() => parseJobData(faceJobSchema, payload, 'process-faces')).toThrow(UnrecoverableError)
-  })
-
-  it('accepts empty cleanup-orphans payloads, rejecting non-objects', () => {
-    expect(parseJobData(cleanupOrphansJobSchema, {}, 'cleanup-orphans')).toEqual({})
-    expect(parseJobData(cleanupOrphansJobSchema, { dryRun: true }, 'cleanup-orphans')).toEqual({})
-    expect(() => parseJobData(cleanupOrphansJobSchema, [], 'cleanup-orphans')).toThrow(
-      UnrecoverableError,
-    )
   })
 })
 

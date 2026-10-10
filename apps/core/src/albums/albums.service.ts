@@ -4,6 +4,7 @@ import { Repository } from 'typeorm'
 import { Album } from './entities/album.entity'
 import { AlbumAsset } from './entities/album-asset.entity'
 import { Asset } from '../database/entities'
+import { findOwnedOr404 } from '../common/asset-ownership'
 import { CreateAlbumDto } from './dto/create-album.dto'
 import { UpdateAlbumDto } from './dto/update-album.dto'
 import { PaginationQueryDto } from '../common/pagination-query.dto'
@@ -67,16 +68,14 @@ export class AlbumsService {
   }
 
   async getOne(userId: string, id: string): Promise<AlbumDto> {
-    const album = await this.repo.findOne({ where: { id, userId } })
-    if (!album) throw new NotFoundException('Album not found')
+    const album = await findOwnedOr404(this.repo, id, userId, 'Album')
 
     const count = await this.countAssets(id)
     return this.toDto(album, count)
   }
 
   async update(userId: string, id: string, dto: UpdateAlbumDto): Promise<AlbumDto> {
-    const album = await this.repo.findOne({ where: { id, userId } })
-    if (!album) throw new NotFoundException('Album not found')
+    const album = await findOwnedOr404(this.repo, id, userId, 'Album')
 
     const patch: Partial<Album> = {}
     if (dto.name !== undefined) patch.name = dto.name
@@ -94,14 +93,12 @@ export class AlbumsService {
   }
 
   async delete(userId: string, id: string): Promise<void> {
-    const album = await this.repo.findOne({ where: { id, userId } })
-    if (!album) throw new NotFoundException('Album not found')
+    await findOwnedOr404(this.repo, id, userId, 'Album')
     await this.repo.delete({ id, userId })
   }
 
   async addAssets(userId: string, albumId: string, assetIds: string[]): Promise<AlbumDto> {
-    const album = await this.repo.findOne({ where: { id: albumId, userId } })
-    if (!album) throw new NotFoundException('Album not found')
+    await findOwnedOr404(this.repo, albumId, userId, 'Album')
 
     for (const assetId of assetIds) {
       const asset = await this.assetRepo.findOne({
@@ -126,8 +123,7 @@ export class AlbumsService {
   }
 
   async removeAsset(userId: string, albumId: string, assetId: string): Promise<void> {
-    const album = await this.repo.findOne({ where: { id: albumId, userId } })
-    if (!album) throw new NotFoundException('Album not found')
+    await findOwnedOr404(this.repo, albumId, userId, 'Album')
     await this.albumAssetRepo.delete({ albumId, assetId })
   }
 
@@ -136,8 +132,7 @@ export class AlbumsService {
     albumId: string,
     q: { limit?: number; offset?: number },
   ): Promise<{ items: AssetResponse[]; total: number }> {
-    const album = await this.repo.findOne({ where: { id: albumId, userId } })
-    if (!album) throw new NotFoundException('Album not found')
+    await findOwnedOr404(this.repo, albumId, userId, 'Album')
 
     const limit = q.limit ?? 20
     const offset = q.offset ?? 0

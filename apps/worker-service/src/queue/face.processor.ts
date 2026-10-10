@@ -3,7 +3,7 @@ import sharp from 'sharp'
 import type { Job } from 'bullmq'
 import { BullMqService } from './bullmq.service'
 import { faceJobSchema, type FaceJob } from './job-schemas'
-import { patchStatusFailed, runAssetFileJob } from './asset-file-job'
+import { orientedResize, patchStatusFailed, runAssetFileJob } from './asset-file-job'
 import { FaceDetectorService } from './face.detector'
 import { scaleDetectionsToOriginal } from './detect.service'
 import { CoreClient } from '../core/core-client.service'
@@ -58,15 +58,7 @@ export class FaceProcessor implements OnModuleInit {
 
         // ponytail: detection + embedding both run off this downscaled buffer, and the embedder
         // warps 112px crops from it, so 2048 preserves small-face detail (~12MB raw at that size).
-        const resized = await sharp(filePath)
-          .rotate()
-          .resize({
-            width: FACE_MAX_DIM,
-            height: FACE_MAX_DIM,
-            fit: 'inside',
-            withoutEnlargement: true,
-          })
-          .toBuffer()
+        const resized = await orientedResize(filePath, FACE_MAX_DIM)
         const resizedMeta = await sharp(resized).metadata()
         const resizedW = resizedMeta.width ?? origW
         const resizedH = resizedMeta.height ?? origH

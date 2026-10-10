@@ -3,6 +3,7 @@ import { dirname, join } from 'path'
 import { pathToFileURL } from 'url'
 import sharp from 'sharp'
 import type { FaceLandmark, FaceResult } from '@vladmandic/human'
+import { lazyOnce } from './model-loader'
 import type { DetectedBox, FaceDetectionBackend } from './face.detector.types'
 
 interface FaceLandmarks5 {
@@ -64,16 +65,8 @@ export class HumanFaceDetector implements FaceDetectionBackend {
   // eager import crashes them on Alpine (musl, no ld-linux-x86-64.so.2)
   private tf!: typeof import('@tensorflow/tfjs-node')
   private human!: import('@vladmandic/human').Human
-  private loadPromise?: Promise<void>
-
-  load(): Promise<void> {
-    // clear a rejected promise so a later attempt (e.g. after provisioning) retries
-    this.loadPromise ??= this.create().catch((err) => {
-      this.loadPromise = undefined
-      throw err
-    })
-    return this.loadPromise
-  }
+  // lazyOnce clears a rejected promise so a later attempt (e.g. after provisioning) retries
+  readonly load = lazyOnce(() => this.create())
 
   private async create(): Promise<void> {
     this.tf = await import('@tensorflow/tfjs-node')

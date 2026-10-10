@@ -1,12 +1,10 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import type { Job } from 'bullmq'
-import { readFile, copyFile, unlink } from 'fs/promises'
-import { tmpdir } from 'os'
-import { join } from 'path'
-import { randomUUID } from 'crypto'
+import { readFile } from 'fs/promises'
 import sharp from 'sharp'
 import { BullMqService } from './bullmq.service'
-import { assertOwnership, parseJobData, metadataJobSchema, type MetadataJob } from './job-schemas'
+import { assertOwnership, parseJobData, assetRefsJobSchema, type AssetRefsJob } from './job-schemas'
+import { patchStatusFailed } from './asset-file-job'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
 import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor'
@@ -31,14 +29,14 @@ export class MetadataProcessor implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.bullMq.createWorker<MetadataJob>('process-metadata', (job) => this.processJob(job))
+    this.bullMq.createWorker<AssetRefsJob>('process-metadata', (job) => this.processJob(job))
 
     this.logger.log('Metadata processor listening for jobs')
   }
 
-  private async processJob(job: Job<MetadataJob>) {
+  private async processJob(job: Job<AssetRefsJob>) {
     const { assetId, fileId, userId } = parseJobData(
-      metadataJobSchema,
+      assetRefsJobSchema,
       job.data,
       'process-metadata',
     )
@@ -49,9 +47,9 @@ export class MetadataProcessor implements OnModuleInit {
     const asset = await this.core.getAsset(userId, assetId)
     assertOwnership({ assetId, fileId, userId }, { record, asset })
 
-    const filePath = join(tmpdir(), `metadata-${randomUUID()}`)
+    // storage is local-disk only — read the original in place, no tmp staging copy
+    const filePath = this.storage.pathFor(record.storageKey)
     try {
-      await copyFile(this.storage.pathFor(record.storageKey), filePath)
       const mimeType = record.mimeType ?? null
       const sizeBytes = record.sizeBytes
       const originalName = record.originalName ?? null
@@ -141,18 +139,9 @@ export class MetadataProcessor implements OnModuleInit {
       const message = err instanceof Error ? err.message : String(err)
       this.logger.error(`Metadata failed: asset=${assetId} — ${message}`)
 
-      try {
-        await this.core.patchMetadata(userId, assetId, { status: 'failed' })
-      } catch (patchErr) {
-        const patchMsg = patchErr instanceof Error ? patchErr.message : String(patchErr)
-        this.logger.warn(
-          `Failed to patch metadata status to failed for asset=${assetId}: ${patchMsg}`,
-        )
-      }
+      await patchStatusFailed(this.core, this.logger, userId, assetId, { status: 'failed' })
 
       throw err
-    } finally {
-      await unlink(filePath).catch(() => undefined)
     }
   }
 }

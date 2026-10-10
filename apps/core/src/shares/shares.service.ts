@@ -6,6 +6,7 @@ import { Share } from './entities/share.entity'
 import { Asset } from '../database/entities'
 import { Album } from '../albums/entities/album.entity'
 import { AlbumAsset } from '../albums/entities/album-asset.entity'
+import { findOwnedOr404 } from '../common/asset-ownership'
 import { CreateShareDto } from './dto/create-share.dto'
 import type {
   AlbumShareDto,
@@ -60,8 +61,7 @@ export class SharesService {
       return this.toAssetDto(saved)
     }
 
-    const album = await this.albumRepo.findOne({ where: { id: albumId, userId } })
-    if (!album) throw new NotFoundException('Album not found')
+    const album = await findOwnedOr404(this.albumRepo, albumId!, userId, 'Album')
 
     const existing = await this.shareRepo.findOne({ where: { albumId, userId } })
     if (existing) return this.toAlbumDto(existing, album)
@@ -100,8 +100,7 @@ export class SharesService {
   }
 
   async revoke(userId: string, shareId: string): Promise<void> {
-    const share = await this.shareRepo.findOne({ where: { id: shareId, userId } })
-    if (!share) throw new NotFoundException('Share not found')
+    await findOwnedOr404(this.shareRepo, shareId, userId, 'Share')
     await this.shareRepo.delete(shareId)
   }
 
