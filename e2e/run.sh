@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# E2E stack + BDD suite runner. Test files run in alphabetical path order: feature
-# folders are numbered 01..09 so 01-bootstrap runs first on the fresh database
-# (first registered account becomes admin) — do not rename or reorder folders.
+# E2E stack + BDD suite runner. playwright.config.ts splits the features into two projects:
+# `setup` runs first, serially, on the fresh database — 01-bootstrap must register the first
+# account (it becomes admin) before anything else registers, and 04-faces /
+# 05-semantic/semantic-upload.feature mutate global state (active detector, reprocess-all,
+# recluster for every user). Inside `setup` the numbered folders still run in alphabetical path
+# order — do not rename or reorder them. The `suite` project (every other feature) depends on
+# `setup` and runs with the worker pool.
 # Usage: pnpm test:e2e   (from the repo root)
-#   E2E_BUILD=1  rebuild images before starting the stack
-#   E2E_KEEP=1   leave the stack running after the tests (debugging)
+#   E2E_BUILD=1      rebuild images before starting the stack
+#   E2E_KEEP=1       leave the stack running after the tests (debugging)
+#   --e2e-workers=N  run the parallel `suite` project with N playwright workers
 # Each run uses a unique compose project and an OS-assigned web port; the stack is stopped and
 # removed when the script exits. Artifact dirs (.features-gen, test-results, playwright-report)
 # are fixed, so parallel runs share (and overwrite) each other's artifacts.
@@ -57,4 +62,17 @@ done
 cd "$E2E_DIR"
 export E2E_BASE_URL="http://localhost:${E2E_WEB_PORT}"
 pnpm exec bddgen
+
+# --e2e-workers=N is ours (playwright has no such flag): map it to --workers=N and forward the
+# rest untouched. The non-empty guard keeps `set -u` quiet on bash 3.2 (macOS /bin/bash).
+PW_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --e2e-workers=*) PW_ARGS+=("--workers=${arg#--e2e-workers=}") ;;
+    *) PW_ARGS+=("$arg") ;;
+  esac
+done
+if [ "${#PW_ARGS[@]}" -gt 0 ]; then
+  set -- "${PW_ARGS[@]}"
+fi
 pnpm exec playwright test "$@"
