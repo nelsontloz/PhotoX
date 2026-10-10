@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { PersonListResponse, PersonDto, PersonAssetsResponse } from '@photox/shared-types'
+import type { PersonListResponse, PersonDto } from '@photox/shared-types'
 
 export async function listPersons(
   params: { limit?: number; offset?: number } = {},
@@ -25,14 +25,6 @@ export async function getPerson(id: string): Promise<PersonDto> {
 
 export async function renamePerson(id: string, name: string | null): Promise<PersonDto> {
   const { data } = await api.patch<PersonDto>(`/v1/persons/${id}`, { name })
-  return data
-}
-
-export async function getPersonAssets(
-  id: string,
-  params: { limit?: number; offset?: number } = {},
-): Promise<PersonAssetsResponse> {
-  const { data } = await api.get<PersonAssetsResponse>(`/v1/persons/${id}/assets`, { params })
   return data
 }
 

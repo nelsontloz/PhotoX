@@ -11,6 +11,7 @@ import {
   Res,
   HttpCode,
   HttpStatus,
+  ParseUUIDPipe,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
@@ -41,16 +42,25 @@ export class AssetsController {
   @ApiOperation({ summary: 'Compact timeline layout: timestamps and aspect dimensions only' })
   @ApiResponse({ status: 200, description: 'Asset layout list' })
   @ApiResponse({ status: 304, description: 'ETag match — layout unchanged' })
-  async layout(@Req() req: Request, @Res() res: Response) {
+  async layout(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query('personId', new ParseUUIDPipe({ optional: true })) personId?: string,
+  ) {
     const userId = (req.user as { id: string }).id
-    const fingerprint = await this.assets.layoutFingerprint(userId)
-    // ETag must be on the response before `req.fresh` compares it against If-None-Match.
-    res.setHeader('ETag', layoutEtag(fingerprint))
-    if (req.fresh) {
-      res.status(HttpStatus.NOT_MODIFIED).end()
-      return
+    // ponytail: the ETag fingerprint covers asset mutations only — clustering moves faces between
+    // persons without touching assets, which changes a person-scoped layout behind a matching
+    // ETag. Those requests skip revalidation and always get the body (small, person-sized payload).
+    if (!personId) {
+      const fingerprint = await this.assets.layoutFingerprint(userId)
+      // ETag must be on the response before `req.fresh` compares it against If-None-Match.
+      res.setHeader('ETag', layoutEtag(fingerprint))
+      if (req.fresh) {
+        res.status(HttpStatus.NOT_MODIFIED).end()
+        return
+      }
     }
-    const body = await this.assets.layout(userId)
+    const body = await this.assets.layout(userId, personId)
     // private, no-cache: browser stores the body but must revalidate (conditional GET → 304)
     // every load; Vary: Authorization keeps per-user bodies out of each other's cache slots.
     res.setHeader('Cache-Control', 'private, no-cache')

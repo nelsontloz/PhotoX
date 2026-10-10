@@ -43,7 +43,11 @@ export interface UseTimelineMonthsResult {
  * The cache is bounded: past MAX_CACHED_MONTHS it evicts the least-recently-used month that isn't
  * mounted (`retainMonths`), so evicted months simply re-fetch when they scroll back into view.
  */
-export function useTimelineMonths(): UseTimelineMonthsResult {
+export function useTimelineMonths({
+  personId,
+}: {
+  personId?: string
+} = {}): UseTimelineMonthsResult {
   const refreshKey = useAppStore((s) => s.timelineRefreshKey)
   const [entries, setEntries] = useState<Map<string, MonthEntry>>(() => new Map())
   // sync mirror of `entries` so ensureMonth reads fresh data without waiting for a re-render
@@ -92,7 +96,7 @@ export function useTimelineMonths(): UseTimelineMonthsResult {
       const stamp = useAppStore.getState().timelineRefreshKey
       try {
         const { dateFrom, dateTo } = monthRange(key)
-        const all = await listAllAssets({ limit: PAGE_SIZE, dateFrom, dateTo })
+        const all = await listAllAssets({ limit: PAGE_SIZE, dateFrom, dateTo, personId })
         if (stamp !== useAppStore.getState().timelineRefreshKey) return null
         commit(key, { items: all, status: 'ready', stamp })
         return all
@@ -104,7 +108,7 @@ export function useTimelineMonths(): UseTimelineMonthsResult {
         return null
       }
     },
-    [commit],
+    [commit, personId],
   )
 
   const ensureMonth = useCallback(

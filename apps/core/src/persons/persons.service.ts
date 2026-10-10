@@ -100,22 +100,22 @@ export class PersonsService {
     const person = await this.personRepo.findOne({ where: { id, userId } })
     if (!person) throw new NotFoundException('Person not found')
 
-    // ponytail: per-asset rollup — one row per asset containing this person; faceId is any of the person's faces in that asset (used to fetch the face box for overlay)
+    // ponytail: per-asset rollup — one row per asset containing this person; faceId is the person's face in that asset, ordered by photo date like the timeline
     const rows = await this.faceRepo
       .createQueryBuilder('f')
       .innerJoin('assets', 'a', 'a.id = f."assetId"')
       .select('f."assetId"', 'assetId')
       .addSelect(`MIN(f.id::text)::uuid`, 'faceId')
       .addSelect('COUNT(*)', 'faceCount')
-      .addSelect('MAX(f."createdAt")', 'lastSeen')
+      .addSelect('MAX(COALESCE(a."takenAt", a."uploadedAt"))', 'photoDate')
       .where('f."personId" = :personId', { personId: id })
       .andWhere('f."userId" = :userId', { userId })
       .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
       .groupBy('f."assetId"')
-      .orderBy('"lastSeen"', 'DESC')
+      .orderBy('"photoDate"', 'DESC')
       .limit(limit)
       .offset(offset)
-      .getRawMany<{ assetId: string; faceId: string; faceCount: string; lastSeen: Date }>()
+      .getRawMany<{ assetId: string; faceId: string; faceCount: string; photoDate: string }>()
 
     const total = await this.faceRepo
       .createQueryBuilder('f')

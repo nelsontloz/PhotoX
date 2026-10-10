@@ -13,7 +13,6 @@ import { TIMELINE_PREFETCH_PX, type TimelineLayout } from '../../lib/timelineLay
 import { groupDateLabelFromSortKey } from '../../lib/dateFormat'
 import { GalleryItem } from '../GalleryItem'
 import { Skeleton } from '../Skeleton'
-import { DropZone } from '../DropZone'
 import { ScrollContainerContext } from '../AppShell'
 import { TimelineScrollbar } from './TimelineScrollbar'
 
@@ -29,10 +28,14 @@ interface TimelineGridProps {
   /** Bumped by uploads/trash — re-triggers ensureMonth for the currently mounted months */
   refreshKey: number
   onSelect: (asset: Asset) => void
-  selectedIds: Set<string>
-  onToggleSelect: (id: string) => void
+  /** Selection is optional: a read-only grid omits both (no checkboxes, no Select-all) */
+  selectedIds?: ReadonlySet<string>
+  onToggleSelect?: (id: string) => void
   onLongPress?: (asset: Asset) => void
 }
+
+/** Module-level so read-only grids keep a referentially stable default across renders (memoized children). */
+const EMPTY_SELECTED_IDS: ReadonlySet<string> = new Set()
 
 export function TimelineGrid({
   layout,
@@ -43,7 +46,7 @@ export function TimelineGrid({
   retainMonths,
   refreshKey,
   onSelect,
-  selectedIds,
+  selectedIds = EMPTY_SELECTED_IDS,
   onToggleSelect,
   onLongPress,
 }: TimelineGridProps) {
@@ -118,8 +121,7 @@ export function TimelineGrid({
   ])
 
   return (
-    <DropZone className="h-full">
-      {/* fixed overlay — inside DropZone so file drops onto the strip still reach its handlers */}
+    <>
       <TimelineScrollbar layout={layout} scrollPos={scrollPos} />
       <div
         ref={containerRef}
@@ -165,7 +167,7 @@ export function TimelineGrid({
                     <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                       {group ? group.label : groupDateLabelFromSortKey(day.sortKey)}
                     </h2>
-                    {items.length > 0 && (
+                    {onToggleSelect && items.length > 0 && (
                       <div className="ml-auto flex items-center">
                         <button
                           type="button"
@@ -222,6 +224,6 @@ export function TimelineGrid({
           </section>
         ))}
       </div>
-    </DropZone>
+    </>
   )
 }

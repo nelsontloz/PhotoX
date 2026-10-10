@@ -10,6 +10,7 @@ import { useTimelineMonths } from '../hooks/useTimelineMonths'
 import { useAssetNavigation } from '../hooks/useAssetNavigation'
 import { useTimelineLayout } from '../hooks/useTimelineLayout'
 import { TimelineGrid } from '../components/Timeline/TimelineGrid'
+import { DropZone } from '../components/DropZone'
 import { UploadButton } from '../components/UploadButton'
 import { getAsset, trashAssets } from '../api/assets'
 import { effectiveAssetDate, monthKeyOf } from '../lib/dateFormat'
@@ -158,19 +159,22 @@ function TimelineContent() {
 
   return (
     <>
-      <TimelineGrid
-        layout={timeline.layout}
-        containerRef={timeline.containerRef}
-        groups={groups}
-        monthStatus={monthStatus}
-        ensureMonth={ensureMonth}
-        retainMonths={retainMonths}
-        refreshKey={refreshKey}
-        onSelect={onClickAsset}
-        selectedIds={selectedIds}
-        onToggleSelect={toggle}
-        onLongPress={onLongPress}
-      />
+      <DropZone className="h-full">
+        {/* fixed overlay — inside DropZone so file drops onto the strip still reach its handlers */}
+        <TimelineGrid
+          layout={timeline.layout}
+          containerRef={timeline.containerRef}
+          groups={groups}
+          monthStatus={monthStatus}
+          ensureMonth={ensureMonth}
+          retainMonths={retainMonths}
+          refreshKey={refreshKey}
+          onSelect={onClickAsset}
+          selectedIds={selectedIds}
+          onToggleSelect={toggle}
+          onLongPress={onLongPress}
+        />
+      </DropZone>
       <ViewerHost
         asset={nav.selected}
         onClose={nav.close}

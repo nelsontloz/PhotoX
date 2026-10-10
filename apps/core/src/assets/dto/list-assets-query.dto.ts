@@ -78,4 +78,12 @@ export class ListAssetsQueryDto {
   @IsBoolean()
   @ApiProperty({ required: false, description: 'Filter to only assets with GPS coordinates' })
   hasLocations?: boolean
+
+  @IsOptional()
+  @IsUUID('4')
+  @ApiProperty({
+    required: false,
+    description: 'Filter to assets containing a face assigned to this person',
+  })
+  personId?: string
 }

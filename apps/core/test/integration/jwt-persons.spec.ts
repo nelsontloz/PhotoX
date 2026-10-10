@@ -121,6 +121,38 @@ describe('persons JWT identity', () => {
     expect(body.total).toBe(1)
   })
 
+  it('orders person assets by photo date, not face detection time', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+
+    // This face row is created first, but its photo is the newer one.
+    const { person, asset: newer } = await seedPersonWithFace(user.id)
+    await t.assetRepo.update(newer.id, { takenAt: new Date('2024-05-06T00:00:00.000Z') })
+
+    // This face row is created second, but its photo is older.
+    const file = await seedFile(t, user.id)
+    const older = await seedAsset(t, user.id, file.id)
+    await t.assetRepo.update(older.id, { takenAt: new Date('2020-01-02T00:00:00.000Z') })
+    await t.faceRepo.save(
+      t.faceRepo.create({
+        assetId: older.id,
+        userId: user.id,
+        box: { x: 1, y: 1, w: 10, h: 10 },
+        confidence: 0.9,
+        embedding: [0.1, 0.2, 0.3],
+        personId: person.id,
+      }),
+    )
+
+    const res = await request(apiServer(t))
+      .get(`/api/v1/persons/${person.id}/assets`)
+      .set(t.authHeader(token))
+    expect(res.status).toBe(200)
+    expect(
+      (res.body as unknown as { items: { assetId: string }[] }).items.map((i) => i.assetId),
+    ).toEqual([newer.id, older.id])
+  })
+
   it('queues cluster without userId', async () => {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })

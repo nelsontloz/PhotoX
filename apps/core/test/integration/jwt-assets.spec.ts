@@ -76,6 +76,51 @@ describe('assets JWT identity', () => {
     expect(bodyB.items.map((i) => i.id)).toEqual([assetB.id])
   })
 
+  it('filters by personId and 400s a malformed one', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+
+    const faceFile = await seedFile(t, user.id)
+    const withFace = await seedAsset(t, user.id, faceFile.id)
+    const plainFile = await seedFile(t, user.id)
+    const plain = await seedAsset(t, user.id, plainFile.id)
+
+    const person = await t.personRepo.save(
+      t.personRepo.create({
+        userId: user.id,
+        name: null,
+        clusterLabel: `c-${randomUUID()}`,
+        faceCount: 1,
+      }),
+    )
+    await t.faceRepo.save(
+      t.faceRepo.create({
+        assetId: withFace.id,
+        userId: user.id,
+        box: { x: 1, y: 1, w: 10, h: 10 },
+        confidence: 0.9,
+        embedding: [0.1, 0.2, 0.3],
+        personId: person.id,
+      }),
+    )
+
+    const filtered = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .query({ personId: person.id })
+      .set(t.authHeader(token))
+    expect(filtered.status).toBe(200)
+    const body = filtered.body as unknown as { items: { id: string }[]; total: number }
+    expect(body.items.map((a) => a.id)).toEqual([withFace.id])
+    expect(body.items.map((a) => a.id)).not.toContain(plain.id)
+    expect(body.total).toBe(1)
+
+    const bad = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .query({ personId: 'not-a-uuid' })
+      .set(t.authHeader(token))
+    expect(bad.status).toBe(400)
+  })
+
   it('gets own asset without userId and 404s cross-user even with userId query', async () => {
     const a = await seedUser(t)
     const b = await seedUser(t)
