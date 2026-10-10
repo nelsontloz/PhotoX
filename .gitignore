@@ -22,3 +22,6 @@ e2e/test-results/
 
 # deepwork state (git-local, OpenCode-readable)
 .slim/deepwork/
+
+# vitest browser failure screenshots
+__screenshots__/
