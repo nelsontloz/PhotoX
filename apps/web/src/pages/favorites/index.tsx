@@ -1,30 +1,42 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { FaHeart } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
-import { DayGroups } from '../../components/DayGroups'
+import { TimelineGrid } from '../../components/Timeline/TimelineGrid'
 import { ViewerHost } from '../../components/ViewerHost'
-import { useAssetGroups } from '../../hooks/useAssetGroups'
-import { useAssetNavigation } from '../../hooks/useAssetNavigation'
 import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
+import { useAssetNavigation } from '../../hooks/useAssetNavigation'
+import { useTimelineLayout } from '../../hooks/useTimelineLayout'
+import { useTimelineMonths } from '../../hooks/useTimelineMonths'
+import { useTimelineNav } from '../../hooks/useTimelineNav'
+import { useAppStore } from '../../store/app-store'
 
 function FavoritesContent() {
-  const { groups, loading, error, refresh } = useAssetGroups({ favorite: true })
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const nav = useAssetNavigation({
-    assets: groups.flatMap((g) => g.items),
-    onAfterAction: refresh,
+  // Same lazy pipeline as the home timeline, filtered to favorites (layout + per-month fetches).
+  const timeline = useTimelineLayout({ favorite: true })
+  const { groups, monthStatus, ensureMonth, retainMonths, refreshKey } = useTimelineMonths({
+    favorite: true,
   })
+  const bumpTimelineRefresh = useAppStore((s) => s.bumpTimelineRefresh)
+  const loadedAssets = useMemo(() => groups.flatMap((g) => g.items), [groups])
+  const navHelpers = useTimelineNav({ layoutItems: timeline.layoutItems, ensureMonth })
+  const nav = useAssetNavigation({
+    assets: loadedAssets,
+    ...navHelpers,
+    // un-favoriting in the viewer must refresh the filtered view
+    onAfterAction: bumpTimelineRefresh,
+  })
+  const [pickerOpen, setPickerOpen] = useState(false)
 
-  if (loading) {
+  if (timeline.loading) {
     return <LoadingState />
   }
 
-  if (error) {
-    return <ErrorState message={error} onRetry={() => window.location.reload()} />
+  if (timeline.error) {
+    return <ErrorState message={timeline.error} onRetry={() => window.location.reload()} />
   }
 
-  if (groups.length === 0) {
+  if (timeline.layout.buckets.length === 0) {
     return (
       <EmptyState
         icon={<FaHeart className="text-4xl text-red-500 dark:text-red-400" />}
@@ -36,8 +48,17 @@ function FavoritesContent() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <DayGroups groups={groups} onSelect={nav.open} />
+    <>
+      <TimelineGrid
+        layout={timeline.layout}
+        containerRef={timeline.containerRef}
+        groups={groups}
+        monthStatus={monthStatus}
+        ensureMonth={ensureMonth}
+        retainMonths={retainMonths}
+        refreshKey={refreshKey}
+        onSelect={nav.open}
+      />
       <ViewerHost
         asset={nav.selected}
         onClose={nav.close}
@@ -50,12 +71,12 @@ function FavoritesContent() {
           if (cur) void nav.toggleFavorite(cur.id, nextValue)
         }}
         onAddToAlbum={() => setPickerOpen(true)}
-        siblingAssets={groups.flatMap((g) => g.items)}
+        siblingAssets={loadedAssets}
         onSelectSibling={(asset) => nav.open(asset)}
         pickerOpen={pickerOpen}
         onPickerClose={() => setPickerOpen(false)}
       />
-    </div>
+    </>
   )
 }
 

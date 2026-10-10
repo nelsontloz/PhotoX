@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   FaArrowLeft,
@@ -14,29 +14,36 @@ import {
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { useConfirm } from '../../components/ConfirmProvider'
-import { LoadingState } from '../../components/StateViews'
+import { ErrorState, LoadingState } from '../../components/StateViews'
 import { ViewerHost } from '../../components/ViewerHost'
-import { GalleryItem } from '../../components/GalleryItem'
-import { deleteAlbum, getAlbum, removeAssetFromAlbum, updateAlbum } from '../../api/albums'
+import { TimelineGrid } from '../../components/Timeline/TimelineGrid'
+import {
+  addAssetsToAlbum,
+  deleteAlbum,
+  getAlbum,
+  removeAssetFromAlbum,
+  updateAlbum,
+} from '../../api/albums'
 import { createShare, getShareUrl } from '../../api/shares'
-import { useAlbumAssets } from '../../hooks/useAlbumAssets'
 import { useAssetNavigation } from '../../hooks/useAssetNavigation'
 import { useInlineRename } from '../../hooks/useInlineRename'
+import { useTimelineLayout } from '../../hooks/useTimelineLayout'
+import { useTimelineMonths } from '../../hooks/useTimelineMonths'
+import { useTimelineNav } from '../../hooks/useTimelineNav'
+import { useAppStore } from '../../store/app-store'
 import { AddPhotosDialog } from './AddPhotosDialog'
 import type { AlbumDto } from '@photox/shared-types'
 
 export default function AlbumDetailPage() {
+  const { id } = useParams<{ id: string }>()
   return (
     <RequireAuth>
-      <AppShell>
-        <AlbumDetailContent />
-      </AppShell>
+      <AppShell>{id ? <AlbumDetail key={id} id={id} /> : null}</AppShell>
     </RequireAuth>
   )
 }
 
-function AlbumDetailContent() {
-  const { id } = useParams<{ id: string }>()
+function AlbumDetail({ id }: { id: string }) {
   const navigate = useNavigate()
   const confirm = useConfirm()
   const [album, setAlbum] = useState<AlbumDto | null>(null)
@@ -48,6 +55,15 @@ function AlbumDetailContent() {
   const [shareStatus, setShareStatus] = useState<'copied' | 'error' | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
+  // Same lazy pipeline as the home timeline, scoped to this album (layout + per-month fetches).
+  const timeline = useTimelineLayout({ albumId: id })
+  const { groups, monthStatus, ensureMonth, retainMonths, refreshKey } = useTimelineMonths({
+    albumId: id,
+  })
+  const bumpTimelineRefresh = useAppStore((s) => s.bumpTimelineRefresh)
+  const loadedAssets = useMemo(() => groups.flatMap((g) => g.items), [groups])
+  const navHelpers = useTimelineNav({ layoutItems: timeline.layoutItems, ensureMonth })
+
   const {
     editing: editingName,
     nameValue,
@@ -56,21 +72,11 @@ function AlbumDetailContent() {
     save,
     cancel,
   } = useInlineRename(album?.name ?? '', async (name) => {
-    if (!id) return
     const updated = await updateAlbum(id, { name })
     setAlbum(updated)
   })
-  const {
-    assets,
-    total,
-    loading: loadingAssets,
-    error: assetsError,
-    refresh,
-    addAssets,
-  } = useAlbumAssets(id ?? '')
 
   const refreshAlbum = async () => {
-    if (!id) return
     try {
       const fresh = await getAlbum(id)
       setAlbum(fresh)
@@ -79,15 +85,22 @@ function AlbumDetailContent() {
     }
   }
 
+  const addAssets = async (ids: string[]) => {
+    await addAssetsToAlbum(id, ids)
+    bumpTimelineRefresh()
+    await refreshAlbum()
+  }
+
   const nav = useAssetNavigation({
-    assets,
+    assets: loadedAssets,
+    ...navHelpers,
     onAfterAction: async () => {
-      await Promise.all([refresh(), refreshAlbum()])
+      bumpTimelineRefresh()
+      await refreshAlbum()
     },
   })
 
   useEffect(() => {
-    if (!id) return
     setLoadingAlbum(true)
     setAlbumNotFound(false)
     void (async () => {
@@ -114,7 +127,6 @@ function AlbumDetailContent() {
   }, [showMenu])
 
   const handleDelete = async () => {
-    if (!id) return
     setShowMenu(false)
     if (
       !(await confirm({
@@ -134,7 +146,6 @@ function AlbumDetailContent() {
   }
 
   const handleEditDescription = () => {
-    if (!id) return
     setShowMenu(false)
     const current = album?.description ?? ''
     const next = window.prompt('Album description', current)
@@ -150,7 +161,6 @@ function AlbumDetailContent() {
   }
 
   const handleShare = () => {
-    if (!id) return
     setShowMenu(false)
     void (async () => {
       try {
@@ -182,9 +192,12 @@ function AlbumDetailContent() {
     )
   }
 
-  if (loadingAlbum || loadingAssets) {
+  if (loadingAlbum || timeline.loading) {
     return <LoadingState className="flex justify-center py-20" />
   }
+
+  if (timeline.error)
+    return <ErrorState message={timeline.error} onRetry={() => window.location.reload()} />
 
   if (!album) return null
 
@@ -302,14 +315,7 @@ function AlbumDetailContent() {
         </p>
       )}
 
-      {assetsError && (
-        <div className="flex items-center gap-2 text-rose-400 text-sm mb-4 bg-rose-500/10 border border-rose-500/20 rounded-md px-3 py-2">
-          <FaCircleExclamation />
-          <span>{assetsError}</span>
-        </div>
-      )}
-
-      {assets.length === 0 ? (
+      {timeline.layout.buckets.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 px-4 text-center">
           <div className="mb-6 w-20 h-20 rounded-full bg-white/5 flex items-center justify-center">
             <FaPhotoFilm className="text-3xl text-slate-500" />
@@ -325,20 +331,16 @@ function AlbumDetailContent() {
           </button>
         </div>
       ) : (
-        <>
-          <div className="justified-grid-gallery">
-            {assets.map((asset) => (
-              <GalleryItem key={asset.id} asset={asset} onSelect={nav.open} />
-            ))}
-          </div>
-          {total > assets.length && (
-            <div className="flex justify-center mt-6">
-              <p className="text-sm text-slate-400">
-                Showing {assets.length} of {total}
-              </p>
-            </div>
-          )}
-        </>
+        <TimelineGrid
+          layout={timeline.layout}
+          containerRef={timeline.containerRef}
+          groups={groups}
+          monthStatus={monthStatus}
+          ensureMonth={ensureMonth}
+          retainMonths={retainMonths}
+          refreshKey={refreshKey}
+          onSelect={nav.open}
+        />
       )}
 
       <ViewerHost
@@ -363,11 +365,12 @@ function AlbumDetailContent() {
             const assetLabel = cur.originalName ?? cur.title ?? 'this asset'
             if (!(await confirm({ title: `Remove "${assetLabel}" from "${album.name}"?` }))) return
             await removeAssetFromAlbum(album.id, cur.id)
-            await Promise.all([refresh(), refreshAlbum()])
+            bumpTimelineRefresh()
+            await refreshAlbum()
             nav.close()
           })()
         }}
-        siblingAssets={assets}
+        siblingAssets={loadedAssets}
         onSelectSibling={(asset) => nav.open(asset)}
         pickerOpen={pickerOpen}
         onPickerClose={() => setPickerOpen(false)}
@@ -377,10 +380,7 @@ function AlbumDetailContent() {
         <AddPhotosDialog
           albumName={album.name}
           onClose={() => setShowAddDialog(false)}
-          onAdd={async (ids) => {
-            await addAssets(ids)
-            await refreshAlbum()
-          }}
+          onAdd={addAssets}
         />
       )}
     </div>

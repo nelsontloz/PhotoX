@@ -1,4 +1,4 @@
-import { getAssetLayout } from '../api/assets'
+import { getAssetLayout, type AssetFilters } from '../api/assets'
 import type { TimelineItem, TimelineLayout } from '../lib/timelineLayout'
 import { useAppStore } from '../store/app-store'
 import { useAsyncFetch } from './useAsyncFetch'
@@ -24,14 +24,10 @@ interface UseTimelineLayoutResult {
  * shrink the reserved track as months land. Upgrade path: rebuild only if every month is loaded.
  * Layout fetch failure → the page's error state (no partial-track fallback).
  */
-export function useTimelineLayout({
-  personId,
-}: {
-  personId?: string
-} = {}): UseTimelineLayoutResult {
+export function useTimelineLayout(filters: AssetFilters = {}): UseTimelineLayoutResult {
   const timelineRefreshKey = useAppStore((s) => s.timelineRefreshKey)
 
-  const { data, loading, error } = useAsyncFetch(() => getAssetLayout(personId), {
+  const { data, loading, error } = useAsyncFetch(() => getAssetLayout(filters), {
     refreshKey: timelineRefreshKey,
     errorMessage: 'Failed to load timeline layout',
   })

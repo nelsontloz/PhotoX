@@ -12,6 +12,15 @@ interface ListAssetsParams {
   dateTo?: string
   /** Restricts to one person's assets (person detail grid) */
   personId?: string
+  /** Restricts to one album's assets (album detail grid) */
+  albumId?: string
+}
+
+/** Asset-list/layout filters shared by the timeline-backed views (home, favorites, person, album). */
+export interface AssetFilters {
+  personId?: string
+  favorite?: boolean
+  albumId?: string
 }
 
 export async function listAssets(params: ListAssetsParams = {}): Promise<AssetListResponse> {
@@ -48,8 +57,8 @@ export async function getAsset(assetId: string): Promise<Asset> {
   return data
 }
 
-export async function getAssetLayout(personId?: string): Promise<AssetLayout> {
-  const { data } = await api.get<AssetLayout>('/v1/assets/layout', { params: { personId } })
+export async function getAssetLayout(filters: AssetFilters = {}): Promise<AssetLayout> {
+  const { data } = await api.get<AssetLayout>('/v1/assets/layout', { params: filters })
   return data
 }
 
