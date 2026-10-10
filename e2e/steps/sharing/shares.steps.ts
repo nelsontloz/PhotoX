@@ -7,6 +7,7 @@ import {
   addAssetsViaApi,
   authHeaders,
   createAlbumViaApi,
+  getAsset,
   registerUser,
   requireAssetId,
   requireAuth,
@@ -92,6 +93,22 @@ Given('a share exists for an uploaded photo', async ({ request, ctx }) => {
 
 Given('a share exists for an uploaded video', async ({ request, ctx }) => {
   await seedAssetShare(request, ctx, 'video')
+})
+
+Given('a share exists for an uploaded video that gets transcoded', async ({ request, ctx }) => {
+  const auth = await registerUser(request)
+  const assetId = await uploadViaApi(request, auth, 'video-vp8.webm')
+  // the share stream only has a derivative to serve once the worker has produced it
+  await expect
+    .poll(async () => (await getAsset(request, auth, assetId)).transcodeFileId ?? null, {
+      timeout: 180_000,
+    })
+    .not.toBeNull()
+  const share = await expectShareCreated(await postShare(request, auth, { assetId }))
+  ctx.shareOwner = auth
+  ctx.assetId = assetId
+  ctx.videoShare = share
+  ctx.lastShare = share
 })
 
 Given('a share exists for an album containing an uploaded photo', async ({ request, ctx }) => {
@@ -351,6 +368,18 @@ Then('the public share lightbox is closed', async ({ page }) => {
   await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 
+Then('the public share page plays the shared video', async ({ page }) => {
+  const video = page.locator('video[aria-label^="Video player"]')
+  // A size container without a definite height collapses the frame to 0x0 — visibility catches it.
+  await expect(video).toBeVisible()
+  // preload="metadata" stops at readyState 1 until playback starts — metadata + a decodable
+  // video track (videoWidth > 0) is the strongest signal short of pressing play
+  await expect
+    .poll(() => video.evaluate((el) => (el as HTMLVideoElement).readyState), { timeout: 30_000 })
+    .toBeGreaterThanOrEqual(1)
+  expect(await video.evaluate((el) => (el as HTMLVideoElement).videoWidth)).toBeGreaterThan(0)
+})
+
 Then('the public share page shows not found', async ({ page }) => {
   await expect(page.getByText('Share not found')).toBeVisible()
 })
@@ -403,4 +432,26 @@ Then('the share stream response carries a content range header', ({ ctx }) => {
   const contentRange = ctx.streamContentRange
   if (!contentRange) throw new Error('the share stream response has no Content-Range header')
   expect(contentRange).toMatch(/^bytes 0-99\/\d+$/)
+})
+
+Then('the share stream serves the video transcode', async ({ request, ctx }) => {
+  const share = requireShare(ctx.videoShare ?? ctx.lastShare, 'video')
+  const owner = ctx.shareOwner
+  if (!owner || !ctx.assetId) throw new Error('seed a transcoded video share first')
+  const asset = await getAsset(request, owner, ctx.assetId)
+  const transcodeFileId = asset.transcodeFileId
+  if (!transcodeFileId) throw new Error('asset has no transcode file')
+
+  // ETags identify the bytes: the capability URL must serve the transcode, not the original
+  const range = { Range: 'bytes=0-99' }
+  const shared = await request.get(`/api/share/${share.token}/stream`, { headers: range })
+  expect(shared.status()).toBe(206)
+  const transcode = await request.get(`/api/v1/files/${transcodeFileId}/stream`, {
+    headers: { ...authHeaders(owner), ...range },
+  })
+  const original = await request.get(`/api/v1/files/${asset.fileId}/stream`, {
+    headers: { ...authHeaders(owner), ...range },
+  })
+  expect(shared.headers().etag).toBe(transcode.headers().etag)
+  expect(shared.headers().etag).not.toBe(original.headers().etag)
 })
