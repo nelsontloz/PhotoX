@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import request from 'supertest'
+import { ACCESS_COOKIE } from '../../src/auth/auth-cookie'
 import {
   closeTestApp,
   createApiTestApp,
@@ -68,11 +69,23 @@ describe('files JWT identity', () => {
     expect(res.status).toBe(404)
   })
 
-  it('streams publicly without token', async () => {
+  it('rejects anonymous stream calls but serves with a bearer token or cookie', async () => {
     const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
     const record = await seedFile(t, user.id, { bytes: Buffer.from('stream-bytes') })
-    const res = await request(apiServer(t)).get(`/api/v1/files/${record.id}/stream`)
-    expect(res.status).toBe(200)
+
+    const anonymous = await request(apiServer(t)).get(`/api/v1/files/${record.id}/stream`)
+    expect(anonymous.status).toBe(401)
+
+    const viaBearer = await request(apiServer(t))
+      .get(`/api/v1/files/${record.id}/stream`)
+      .set(t.authHeader(token))
+    expect(viaBearer.status).toBe(200)
+
+    const viaCookie = await request(apiServer(t))
+      .get(`/api/v1/files/${record.id}/stream`)
+      .set('Cookie', `${ACCESS_COOKIE}=${encodeURIComponent(token)}`)
+    expect(viaCookie.status).toBe(200)
   })
 
   it('returns 404 for an unknown file id', async () => {

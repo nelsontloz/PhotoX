@@ -34,9 +34,9 @@ Given('the instance database is empty', () => {
   // enforced by e2e/run.sh: the stack starts from `docker compose down -v`
 })
 
-Given('I am signed in', async ({ request, page, ctx }) => {
+Given('I am signed in', async ({ request, page, baseURL, ctx }) => {
   ctx.auth = await registerUser(request)
-  await injectSession(page, ctx.auth)
+  await injectSession(page, ctx.auth, baseURL)
   // land on the timeline so subsequent UI steps have a page to interact with
   await page.goto('/')
 })

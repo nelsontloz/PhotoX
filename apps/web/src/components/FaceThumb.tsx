@@ -1,7 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { FaFaceSmile } from 'react-icons/fa6'
-import { downloadFaceThumb } from '../api/faces'
-import { getCachedBlobUrl, peekCachedBlobUrl } from '../lib/blob-cache'
 import { Skeleton } from './Skeleton'
 
 interface FaceThumbProps {
@@ -11,36 +9,10 @@ interface FaceThumbProps {
 }
 
 export function FaceThumb({ faceId, alt, className = '' }: FaceThumbProps) {
-  const [objectUrl, setObjectUrl] = useState<string | null>(null)
-  const [error, setError] = useState(false)
+  const [loadedFaceId, setLoadedFaceId] = useState<string | null>(null)
+  const [failedFaceId, setFailedFaceId] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!faceId) return
-    let cancelled = false
-    setObjectUrl(null)
-    setError(false)
-
-    const key = `face:${faceId}`
-    const cached = peekCachedBlobUrl(key)
-    if (cached) {
-      setObjectUrl(cached)
-      return
-    }
-
-    getCachedBlobUrl(key, () => downloadFaceThumb(faceId))
-      .then((url) => {
-        if (!cancelled) setObjectUrl(url)
-      })
-      .catch(() => {
-        if (!cancelled) setError(true)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [faceId])
-
-  if (!faceId || error) {
+  if (!faceId || failedFaceId === faceId) {
     return (
       <div className="flex flex-col items-center gap-1">
         <FaFaceSmile className="text-3xl text-slate-500" />
@@ -48,13 +20,30 @@ export function FaceThumb({ faceId, alt, className = '' }: FaceThumbProps) {
     )
   }
 
-  if (!objectUrl) {
-    return <Skeleton className={`w-full h-full ${className}`} />
+  const src = `/api/v1/faces/${encodeURIComponent(faceId)}/thumb`
+
+  if (loadedFaceId !== faceId) {
+    return (
+      <>
+        {/* Eager (no loading="lazy") and aria-hidden: this load is what the Skeleton below stands in
+            for, and a display:none lazy image might never be fetched. */}
+        <img
+          src={src}
+          alt=""
+          aria-hidden="true"
+          className="hidden"
+          decoding="async"
+          onLoad={() => setLoadedFaceId(faceId)}
+          onError={() => setFailedFaceId(faceId)}
+        />
+        <Skeleton className={`w-full h-full ${className}`} />
+      </>
+    )
   }
 
   return (
     <img
-      src={objectUrl}
+      src={src}
       alt={alt}
       className={className || 'w-full h-full object-cover'}
       loading="lazy"

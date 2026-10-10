@@ -41,12 +41,13 @@ describe('HTTP range streaming', () => {
       bytes: FILE_BYTES,
       mimeType: 'application/octet-stream',
     })
-    return { user, file }
+    const auth = t.authHeader(t.signToken(user))
+    return { user, file, auth }
   }
 
-  it('serves the full body without auth or Range (200)', async () => {
-    const { file } = await seedStreamableFile()
-    const res = await request(apiServer(t)).get(`/api/v1/files/${file.id}/stream`)
+  it('serves the full body with auth and no Range (200)', async () => {
+    const { file, auth } = await seedStreamableFile()
+    const res = await request(apiServer(t)).get(`/api/v1/files/${file.id}/stream`).set(auth)
     expect(res.status).toBe(200)
     expect(res.headers['accept-ranges']).toBe('bytes')
     expect(res.headers['content-length']).toBe('10')
@@ -60,9 +61,10 @@ describe('HTTP range streaming', () => {
   })
 
   it('serves bytes=0-3 as 206 with Content-Range', async () => {
-    const { file } = await seedStreamableFile()
+    const { file, auth } = await seedStreamableFile()
     const res = await request(apiServer(t))
       .get(`/api/v1/files/${file.id}/stream`)
+      .set(auth)
       .set('Range', 'bytes=0-3')
     expect(res.status).toBe(206)
     expect(res.headers['content-range']).toBe('bytes 0-3/10')
@@ -76,9 +78,10 @@ describe('HTTP range streaming', () => {
   })
 
   it('serves an open-ended bytes=5- range to end of file', async () => {
-    const { file } = await seedStreamableFile()
+    const { file, auth } = await seedStreamableFile()
     const res = await request(apiServer(t))
       .get(`/api/v1/files/${file.id}/stream`)
+      .set(auth)
       .set('Range', 'bytes=5-')
     expect(res.status).toBe(206)
     expect(res.headers['content-range']).toBe('bytes 5-9/10')
@@ -86,18 +89,20 @@ describe('HTTP range streaming', () => {
   })
 
   it('returns 416 for an unsatisfiable bytes=999- range', async () => {
-    const { file } = await seedStreamableFile()
+    const { file, auth } = await seedStreamableFile()
     const res = await request(apiServer(t))
       .get(`/api/v1/files/${file.id}/stream`)
+      .set(auth)
       .set('Range', 'bytes=999-')
     expect(res.status).toBe(416)
     expect(res.headers['content-range']).toBe('bytes */10')
   })
 
   it('returns 304 for a full GET whose If-None-Match matches', async () => {
-    const { file } = await seedStreamableFile()
+    const { file, auth } = await seedStreamableFile()
     const res = await request(apiServer(t))
       .get(`/api/v1/files/${file.id}/stream`)
+      .set(auth)
       .set('If-None-Match', FILE_ETAG)
     expect(res.status).toBe(304)
     expect(res.headers.etag).toBe(FILE_ETAG)
@@ -107,9 +112,10 @@ describe('HTTP range streaming', () => {
   })
 
   it('still answers 206 when a Range request also carries a matching If-None-Match', async () => {
-    const { file } = await seedStreamableFile()
+    const { file, auth } = await seedStreamableFile()
     const res = await request(apiServer(t))
       .get(`/api/v1/files/${file.id}/stream`)
+      .set(auth)
       .set('Range', 'bytes=0-3')
       .set('If-None-Match', FILE_ETAG)
     expect(res.status).toBe(206)

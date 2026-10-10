@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { FaSpinner, FaTriangleExclamation } from 'react-icons/fa6'
 import type { Asset, AssetThumbnail } from '@photox/shared-types'
-import { downloadFile } from '../api/assets'
-import { viewerThumbKey } from '../lib/asset-media'
-import { getCachedBlobUrl, peekCachedBlobUrl } from '../lib/blob-cache'
+import { getFileStreamUrl } from '../api/assets'
 import { whenScrollIdle } from '../lib/scrollIdle'
 import { observeIntersecting } from '../lib/shared-intersection'
 import { TIMELINE_PREFETCH_PX } from '../lib/timelineLayout'
@@ -31,15 +29,10 @@ export function AssetThumb({
 }: AssetThumbProps) {
   const ref = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(eager)
+  // Keyed by fileId so a different asset on the same component instance is not stuck on the fallback.
+  const [failedFileId, setFailedFileId] = useState<string | null>(null)
   const scrollContainer = useScrollContainer()
   const thumb = asset.thumbnails?.find((t) => t.size === 'md') ?? asset.thumbnails?.[0]
-  // The timeline unmounts off-window days, so a loaded tile remounts on scroll-back. Seed from the
-  // cache synchronously (peek, as FaceThumb/useAssetMedia do) so it stays painted — waiting for the
-  // idle gate or a promise tick would flash a Skeleton over an already-downloaded thumb.
-  const [objectUrl, setObjectUrl] = useState<string | null>(() =>
-    thumb ? (peekCachedBlobUrl(viewerThumbKey(thumb)) ?? null) : null,
-  )
-  const [error, setError] = useState(false)
 
   useEffect(() => {
     if (eager) return
@@ -72,35 +65,20 @@ export function AssetThumb({
 
   useEffect(() => {
     if (!visible) return
-    let cancelled = false
-
     if (asset.kind !== 'photo' && asset.kind !== 'video') return
-
     if (!thumb) return
-
     onThumbPicked?.(thumb)
-    // The shared cache owns download + URL lifetime; no abort here, so a tile scrolling away
-    // still populates the cache for the next mount or the viewer.
-    getCachedBlobUrl(viewerThumbKey(thumb), () => downloadFile(thumb.fileId))
-      .then((url) => {
-        if (!cancelled) setObjectUrl(url)
-      })
-      .catch(() => {
-        if (!cancelled) setError(true)
-      })
-
-    return () => {
-      cancelled = true
-    }
   }, [asset.id, asset.kind, visible])
 
-  const src = objectUrl
+  const thumbFileId = thumb?.fileId ?? null
+  const src = visible && thumbFileId ? getFileStreamUrl(thumbFileId) : null
+  const error = failedFileId !== null && failedFileId === thumbFileId
   const isVideo = asset.kind === 'video'
   const transcodeStatus = isVideo ? asset.transcodeStatus : null
 
   return (
     <div ref={ref} className={`relative w-full h-full ${className}`}>
-      {error && !src ? (
+      {error ? (
         <div className="w-full h-full bg-slate-800 flex items-center justify-center">
           <span className="text-xs text-slate-500">No preview</span>
         </div>
@@ -119,6 +97,7 @@ export function AssetThumb({
             loading="lazy"
             decoding="async"
             draggable={false}
+            onError={() => setFailedFileId(thumbFileId)}
           />
           {isVideo && transcodeStatus === 'pending' && (
             <div className="absolute top-2 left-2 pointer-events-none" aria-label="Transcoding">

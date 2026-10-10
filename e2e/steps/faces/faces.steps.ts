@@ -157,9 +157,9 @@ async function expectActiveDetector(
   await expect(detectorRadio(page, expected)).toBeChecked()
 }
 
-Given('I am signed in as an administrator', async ({ request, page, ctx }) => {
+Given('I am signed in as an administrator', async ({ request, page, baseURL, ctx }) => {
   ctx.auth = await signInAdmin(request)
-  await injectSession(page, ctx.auth)
+  await injectSession(page, ctx.auth, baseURL)
   await page.goto('/')
 })
 
