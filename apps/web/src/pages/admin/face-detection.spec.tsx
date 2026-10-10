@@ -184,9 +184,7 @@ describe('FacialDetectionCard (reprocess)', () => {
 
     expect(screen.getByText('Reprocess all faces?')).toBeTruthy()
     expect(screen.queryByText(/The SCRFD model isn't installed/)).toBeNull()
-    expect(
-      screen.queryAllByText('pnpm --filter @photox/worker-service face-model'),
-    ).toHaveLength(0)
+    expect(screen.queryAllByText('pnpm --filter @photox/worker-service face-model')).toHaveLength(0)
   })
 
   it('reclusters users and renders the queued result', async () => {

@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { App } from './App'
 import { ConfirmProvider } from './components/ConfirmProvider'
-import 'video.js/dist/video-js.css'
 import './app.css'
 
 createRoot(document.getElementById('root')!).render(

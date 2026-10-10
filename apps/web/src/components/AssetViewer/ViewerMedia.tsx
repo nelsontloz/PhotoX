@@ -1,11 +1,14 @@
+import { lazy, Suspense } from 'react'
 import { FaChevronLeft, FaChevronRight, FaImage, FaSpinner } from 'react-icons/fa6'
 import type { Asset, AssetDetectionDto, FaceDto } from '@photox/shared-types'
-import { VideoPlayer } from '../VideoPlayer'
 import { FaceOverlay } from './FaceOverlay'
 import { DetectionOverlay } from './DetectionOverlay'
 import { summarizeDetections } from './detectionView'
 import { ViewerThumbnailStrip } from './ViewerThumbnailStrip'
 import { ZoomableImage } from './ZoomableImage'
+
+// video.js is ~209 kB gzip: load the player (and its skin CSS) only when a video is opened.
+const VideoPlayer = lazy(() => import('../VideoPlayer').then((m) => ({ default: m.VideoPlayer })))
 
 // 1×1 transparent gif: an in-flow replaced element keeps the final image's box reserved even when
 // the md thumb is not cached yet, without painting anything.
@@ -81,16 +84,18 @@ export function ViewerMedia({
         </button>
       )}
       {isVideo && videoSrc ? (
-        <VideoPlayer
-          key={asset.id}
-          src={videoSrc}
-          fallbackSrc={videoFallbackSrc}
-          type={videoType}
-          fallbackType={videoFallbackType}
-          poster={videoPoster}
-          title={videoTitle}
-          aspectRatio={dims ? dims.w / dims.h : undefined}
-        />
+        <Suspense fallback={null}>
+          <VideoPlayer
+            key={asset.id}
+            src={videoSrc}
+            fallbackSrc={videoFallbackSrc}
+            type={videoType}
+            fallbackType={videoFallbackType}
+            poster={videoPoster}
+            title={videoTitle}
+            aspectRatio={dims ? dims.w / dims.h : undefined}
+          />
+        </Suspense>
       ) : imageUrl ? (
         dims ? (
           <ZoomableImage

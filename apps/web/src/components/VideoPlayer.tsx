@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import videojs from 'video.js'
 import type Player from 'video.js/dist/types/player'
+// Kept with the component so the skin ships in the lazy player chunk, not the app-wide CSS.
+import 'video.js/dist/video-js.css'
 import { FaCircleExclamation } from 'react-icons/fa6'
 
 interface VideoPlayerProps {

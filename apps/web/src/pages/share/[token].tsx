@@ -1,15 +1,19 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { FaCircleExclamation, FaPhotoFilm, FaPlay, FaXmark } from 'react-icons/fa6'
 import { api } from '../../api/client'
 import { LoadingState } from '../../components/StateViews'
-import { VideoPlayer } from '../../components/VideoPlayer'
 import type {
   PublicAlbumAssetsResponse,
   PublicAlbumShareResponse,
   PublicShareAsset,
   PublicShareResponse,
 } from '@photox/shared-types'
+
+// video.js loads only when a shared item is actually a video.
+const VideoPlayer = lazy(() =>
+  import('../../components/VideoPlayer').then((m) => ({ default: m.VideoPlayer })),
+)
 
 function getStreamUrl(token: string): string {
   return `/api/share/${encodeURIComponent(token)}/stream`
@@ -111,17 +115,19 @@ function AlbumShare({
           </button>
           {selected.kind === 'video' ? (
             <div onClick={(e) => e.stopPropagation()}>
-              <VideoPlayer
-                src={getAlbumAssetUrl(token, selected.id)}
-                type={selected.mimeType ?? undefined}
-                autoPlay
-                title={selected.title ?? selected.originalName ?? undefined}
-                aspectRatio={
-                  selected.width != null && selected.height != null
-                    ? selected.width / selected.height
-                    : undefined
-                }
-              />
+              <Suspense fallback={null}>
+                <VideoPlayer
+                  src={getAlbumAssetUrl(token, selected.id)}
+                  type={selected.mimeType ?? undefined}
+                  autoPlay
+                  title={selected.title ?? selected.originalName ?? undefined}
+                  aspectRatio={
+                    selected.width != null && selected.height != null
+                      ? selected.width / selected.height
+                      : undefined
+                  }
+                />
+              </Suspense>
             </div>
           ) : (
             <img
@@ -232,12 +238,14 @@ export default function PublicSharePage() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-black [container-type:size]">
       {isVideo ? (
-        <VideoPlayer
-          src={streamUrl}
-          type={asset.mimeType ?? undefined}
-          autoPlay
-          title={asset.originalName ?? asset.title ?? undefined}
-        />
+        <Suspense fallback={null}>
+          <VideoPlayer
+            src={streamUrl}
+            type={asset.mimeType ?? undefined}
+            autoPlay
+            title={asset.originalName ?? asset.title ?? undefined}
+          />
+        </Suspense>
       ) : (
         <img
           src={streamUrl}
