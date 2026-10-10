@@ -95,7 +95,7 @@ function AlbumShare({
 
       {selected && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4 [container-type:size]"
           onClick={() => setSelected(null)}
           role="dialog"
           aria-modal="true"
@@ -230,7 +230,7 @@ export default function PublicSharePage() {
   const streamUrl = token ? getStreamUrl(token) : ''
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-black">
+    <div className="flex items-center justify-center min-h-screen bg-black [container-type:size]">
       {isVideo ? (
         <VideoPlayer
           src={streamUrl}

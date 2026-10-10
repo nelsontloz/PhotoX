@@ -70,7 +70,7 @@ export function ViewerMedia({
   const showDetections = detectionsOn && !isVideo && imageUrl != null && dims != null
 
   return (
-    <div className="flex-1 flex items-center justify-center p-8 pt-28 pb-28 sm:pt-20 sm:pb-24 relative min-h-0">
+    <div className="flex-1 flex items-center justify-center p-8 pt-28 pb-28 sm:pt-20 sm:pb-24 relative min-h-0 [container-type:size]">
       {hasPrev && onPrev && (
         <button
           onClick={onPrev}

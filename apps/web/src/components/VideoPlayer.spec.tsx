@@ -74,9 +74,9 @@ describe('VideoPlayer', () => {
     const { container } = render(<VideoPlayer src="/api/v1/files/abc/stream" aspectRatio={2} />)
 
     const frame = container.firstElementChild as HTMLElement
-    // jsdom normalizes the calc (160vh); match either form — the point is the ratio-aware sizing
-    expect(frame.style.width).toMatch(/^min\(100%, .*vh\)$/)
-    expect(frame.style.aspectRatio).toBe('2')
+    // .video-frame in app.css fits the container box (cq units) using this variable
+    expect(frame.classList.contains('video-frame')).toBe(true)
+    expect(frame.style.getPropertyValue('--video-ar')).toBe('2')
   })
 
   it('swaps to fallbackSrc on the first player error', () => {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import videojs from 'video.js'
 import type Player from 'video.js/dist/types/player'
 import { FaCircleExclamation } from 'react-icons/fa6'
@@ -94,12 +95,16 @@ export function VideoPlayer({
     )
   }
 
-  // Width follows the video's aspect ratio (height capped at 80vh), so the frame hugs the video
-  // instead of staying full-width with letterbox bars.
+  // Frame sizing lives in app.css (.video-frame): it fits the media container's content box via
+  // container query units, so the video never slides under the chrome (top bar, thumbnail strip)
+  // that the container's padding reserves.
   return (
     <div
-      className={['relative bg-black rounded-xl overflow-hidden shadow-2xl', className].join(' ')}
-      style={{ width: `min(100%, calc(80vh * ${aspectRatio}))`, aspectRatio }}
+      className={[
+        'video-frame relative bg-black rounded-xl overflow-hidden shadow-2xl',
+        className,
+      ].join(' ')}
+      style={{ '--video-ar': aspectRatio } as CSSProperties}
     >
       <div data-vjs-player className="absolute inset-0">
         <div ref={containerRef} className="h-full w-full" />
