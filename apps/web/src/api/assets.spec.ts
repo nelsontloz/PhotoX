@@ -43,14 +43,16 @@ describe('listAllAssets', () => {
       })
     })
 
-    const all = await listAllAssets({ limit: 50, personId: 'p-1' })
+    const all = await listAllAssets({ limit: 50, personId: 'p-1', albumId: 'al-1' })
 
     expect(getMock.mock.calls.map(([, config]) => config?.params?.offset)).toEqual([0, 50, 100])
-    // the person filter rides along on every page request
-    expect(getMock.mock.calls.map(([, config]) => config?.params?.personId)).toEqual([
-      'p-1',
-      'p-1',
-      'p-1',
+    // the person/album filters ride along on every page request
+    expect(
+      getMock.mock.calls.map(([, config]) => [config?.params?.personId, config?.params?.albumId]),
+    ).toEqual([
+      ['p-1', 'al-1'],
+      ['p-1', 'al-1'],
+      ['p-1', 'al-1'],
     ])
     expect(all).toHaveLength(3)
   })

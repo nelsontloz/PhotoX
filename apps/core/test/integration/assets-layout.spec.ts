@@ -203,4 +203,66 @@ describe('assets layout', () => {
     expect(foreign.status).toBe(200)
     expect(foreign.body).toEqual({ items: [] })
   })
+
+  it('scopes layout to favorites and to an album', async () => {
+    const user = await seedUser(t)
+    const other = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+
+    const favFile = await seedFile(t, user.id)
+    const favorite = await seedAsset(t, user.id, favFile.id)
+    await t.assetRepo.update(favorite.id, {
+      takenAt: new Date('2024-03-02T10:00:00.000Z'),
+      width: 4032,
+      height: 3024,
+      favorite: true,
+    })
+
+    const memberFile = await seedFile(t, user.id)
+    const member = await seedAsset(t, user.id, memberFile.id)
+    await t.assetRepo.update(member.id, { takenAt: new Date('2024-02-01T00:00:00.000Z') })
+
+    const plainFile = await seedFile(t, user.id)
+    const plain = await seedAsset(t, user.id, plainFile.id)
+    await t.assetRepo.update(plain.id, { takenAt: new Date('2024-01-05T08:30:00.000Z') })
+
+    const album = await t.albumRepo.save(
+      t.albumRepo.create({ userId: user.id, name: 'Trip', description: null }),
+    )
+    await t.albumAssetRepo.save(t.albumAssetRepo.create({ albumId: album.id, assetId: member.id }))
+
+    const otherFile = await seedFile(t, other.id)
+    const otherAsset = await seedAsset(t, other.id, otherFile.id)
+    const otherAlbum = await t.albumRepo.save(
+      t.albumRepo.create({ userId: other.id, name: 'Theirs', description: null }),
+    )
+    await t.albumAssetRepo.save(
+      t.albumAssetRepo.create({ albumId: otherAlbum.id, assetId: otherAsset.id }),
+    )
+
+    const favs = await request(apiServer(t))
+      .get('/api/v1/assets/layout')
+      .query({ favorite: true })
+      .set(t.authHeader(token))
+    expect(favs.status).toBe(200)
+    expect(favs.body).toEqual({ items: [{ t: '2024-03-02T10:00:00.000Z', w: 4032, h: 3024 }] })
+
+    const inAlbum = await request(apiServer(t))
+      .get('/api/v1/assets/layout')
+      .query({ albumId: album.id })
+      .set(t.authHeader(token))
+    expect(inAlbum.status).toBe(200)
+    expect(inAlbum.body).toEqual({ items: [{ t: '2024-02-01T00:00:00.000Z', w: 1, h: 1 }] })
+
+    const all = await request(apiServer(t)).get('/api/v1/assets/layout').set(t.authHeader(token))
+    expect(all.status).toBe(200)
+    expect((all.body as { items: unknown[] }).items).toHaveLength(3)
+
+    const foreign = await request(apiServer(t))
+      .get('/api/v1/assets/layout')
+      .query({ albumId: otherAlbum.id })
+      .set(t.authHeader(token))
+    expect(foreign.status).toBe(200)
+    expect(foreign.body).toEqual({ items: [] })
+  })
 })

@@ -86,4 +86,9 @@ export class ListAssetsQueryDto {
     description: 'Filter to assets containing a face assigned to this person',
   })
   personId?: string
+
+  @IsOptional()
+  @IsUUID('4')
+  @ApiProperty({ required: false, description: 'Filter to assets in this album' })
+  albumId?: string
 }

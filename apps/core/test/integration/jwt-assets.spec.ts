@@ -121,6 +121,37 @@ describe('assets JWT identity', () => {
     expect(bad.status).toBe(400)
   })
 
+  it('filters by albumId and 400s a malformed one', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+
+    const memberFile = await seedFile(t, user.id)
+    const member = await seedAsset(t, user.id, memberFile.id)
+    const plainFile = await seedFile(t, user.id)
+    const plain = await seedAsset(t, user.id, plainFile.id)
+
+    const album = await t.albumRepo.save(
+      t.albumRepo.create({ userId: user.id, name: 'Trip', description: null }),
+    )
+    await t.albumAssetRepo.save(t.albumAssetRepo.create({ albumId: album.id, assetId: member.id }))
+
+    const filtered = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .query({ albumId: album.id })
+      .set(t.authHeader(token))
+    expect(filtered.status).toBe(200)
+    const body = filtered.body as unknown as { items: { id: string }[]; total: number }
+    expect(body.items.map((a) => a.id)).toEqual([member.id])
+    expect(body.items.map((a) => a.id)).not.toContain(plain.id)
+    expect(body.total).toBe(1)
+
+    const bad = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .query({ albumId: 'not-a-uuid' })
+      .set(t.authHeader(token))
+    expect(bad.status).toBe(400)
+  })
+
   it('gets own asset without userId and 404s cross-user even with userId query', async () => {
     const a = await seedUser(t)
     const b = await seedUser(t)

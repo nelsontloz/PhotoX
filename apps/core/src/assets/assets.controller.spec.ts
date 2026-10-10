@@ -59,7 +59,7 @@ describe('AssetsController layout ETag', () => {
     expect(layoutFingerprint).toHaveBeenCalledTimes(1)
     expect(layoutFingerprint).toHaveBeenCalledWith('u1')
     expect(layout).toHaveBeenCalledTimes(1)
-    expect(layout).toHaveBeenCalledWith('u1', undefined)
+    expect(layout).toHaveBeenCalledWith('u1', undefined, undefined, undefined)
     expect(res.jsonBody).toEqual(body)
     expect(res.headers.get('ETag')).toBe('"layout-2-1700000000000"')
     expect(res.headers.get('Cache-Control')).toBe('private, no-cache')
@@ -108,7 +108,25 @@ describe('AssetsController layout ETag', () => {
     expect(layoutFingerprint).not.toHaveBeenCalled()
     expect(res.statusCode).toBe(200)
     expect(res.jsonBody).toEqual(body)
-    expect(layout).toHaveBeenCalledWith('u1', 'p-1')
+    expect(layout).toHaveBeenCalledWith('u1', 'p-1', undefined, undefined)
+    expect(res.headers.get('ETag')).toBeUndefined()
+  })
+
+  it('skips ETag revalidation for favorite-scoped layouts', async () => {
+    const body = { items: [{ t: '2024-01-01T00:00:00.000Z', w: 4, h: 3 }] }
+    const { controller, layoutFingerprint, layout } = makeController(
+      { count: 2, maxUpdatedAtMs: 1700000000000 },
+      body,
+    )
+    const res = fakeRes()
+
+    // fresh conditional request still gets the body: the fingerprint can't see album membership
+    await controller.layout(fakeReq(true), res as unknown as Response, undefined, true)
+
+    expect(layoutFingerprint).not.toHaveBeenCalled()
+    expect(res.statusCode).toBe(200)
+    expect(res.jsonBody).toEqual(body)
+    expect(layout).toHaveBeenCalledWith('u1', undefined, true, undefined)
     expect(res.headers.get('ETag')).toBeUndefined()
   })
 })

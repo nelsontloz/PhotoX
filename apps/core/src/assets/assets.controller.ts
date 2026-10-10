@@ -11,6 +11,7 @@ import {
   Res,
   HttpCode,
   HttpStatus,
+  ParseBoolPipe,
   ParseUUIDPipe,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
@@ -46,12 +47,15 @@ export class AssetsController {
     @Req() req: Request,
     @Res() res: Response,
     @Query('personId', new ParseUUIDPipe({ optional: true })) personId?: string,
+    @Query('favorite', new ParseBoolPipe({ optional: true })) favorite?: boolean,
+    @Query('albumId', new ParseUUIDPipe({ optional: true })) albumId?: string,
   ) {
     const userId = (req.user as { id: string }).id
     // ponytail: the ETag fingerprint covers asset mutations only — clustering moves faces between
-    // persons without touching assets, which changes a person-scoped layout behind a matching
-    // ETag. Those requests skip revalidation and always get the body (small, person-sized payload).
-    if (!personId) {
+    // persons and album membership changes without touching assets, so filtered layouts can change
+    // behind a matching ETag. Filtered requests skip revalidation and always get the body (cheap,
+    // scoped payloads).
+    if (!personId && !favorite && !albumId) {
       const fingerprint = await this.assets.layoutFingerprint(userId)
       // ETag must be on the response before `req.fresh` compares it against If-None-Match.
       res.setHeader('ETag', layoutEtag(fingerprint))
@@ -60,7 +64,7 @@ export class AssetsController {
         return
       }
     }
-    const body = await this.assets.layout(userId, personId)
+    const body = await this.assets.layout(userId, personId, favorite, albumId)
     // private, no-cache: browser stores the body but must revalidate (conditional GET → 304)
     // every load; Vary: Authorization keeps per-user bodies out of each other's cache slots.
     res.setHeader('Cache-Control', 'private, no-cache')

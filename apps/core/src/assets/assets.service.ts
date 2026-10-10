@@ -99,6 +99,13 @@ export class AssetsService {
       )
     }
 
+    if (q.albumId) {
+      qb.andWhere(
+        'EXISTS (SELECT 1 FROM album_assets aa WHERE aa."assetId" = asset.id AND aa."albumId" = :albumId)',
+        { albumId: q.albumId },
+      )
+    }
+
     const [items, total] = await qb
       .orderBy(`COALESCE(asset.takenAt, asset.uploadedAt)`, 'DESC')
       .addOrderBy('asset.uploadedAt', 'DESC')
@@ -131,7 +138,12 @@ export class AssetsService {
     })
   }
 
-  async layout(userId: string, personId?: string): Promise<AssetLayout> {
+  async layout(
+    userId: string,
+    personId?: string,
+    favorite?: boolean,
+    albumId?: string,
+  ): Promise<AssetLayout> {
     const qb = this.repo
       .createQueryBuilder('asset')
       .select('COALESCE(asset.takenAt, asset.uploadedAt)', 't')
@@ -144,6 +156,17 @@ export class AssetsService {
       qb.andWhere(
         'EXISTS (SELECT 1 FROM faces f WHERE f."assetId" = asset.id AND f."personId" = :personId)',
         { personId },
+      )
+    }
+
+    if (favorite !== undefined) {
+      qb.andWhere('asset.favorite = :favorite', { favorite })
+    }
+
+    if (albumId) {
+      qb.andWhere(
+        'EXISTS (SELECT 1 FROM album_assets aa WHERE aa."assetId" = asset.id AND aa."albumId" = :albumId)',
+        { albumId },
       )
     }
 

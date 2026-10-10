@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { Asset } from '@photox/shared-types'
-import { listAllAssets } from '../api/assets'
+import { listAllAssets, type AssetFilters } from '../api/assets'
 import { groupAssetsByDay, type AssetGroup } from './useAssetGroups'
 import { effectiveAssetDate, monthRange } from '../lib/dateFormat'
 import { useAppStore } from '../store/app-store'
@@ -45,9 +45,9 @@ export interface UseTimelineMonthsResult {
  */
 export function useTimelineMonths({
   personId,
-}: {
-  personId?: string
-} = {}): UseTimelineMonthsResult {
+  favorite,
+  albumId,
+}: AssetFilters = {}): UseTimelineMonthsResult {
   const refreshKey = useAppStore((s) => s.timelineRefreshKey)
   const [entries, setEntries] = useState<Map<string, MonthEntry>>(() => new Map())
   // sync mirror of `entries` so ensureMonth reads fresh data without waiting for a re-render
@@ -96,7 +96,14 @@ export function useTimelineMonths({
       const stamp = useAppStore.getState().timelineRefreshKey
       try {
         const { dateFrom, dateTo } = monthRange(key)
-        const all = await listAllAssets({ limit: PAGE_SIZE, dateFrom, dateTo, personId })
+        const all = await listAllAssets({
+          limit: PAGE_SIZE,
+          dateFrom,
+          dateTo,
+          personId,
+          favorite,
+          albumId,
+        })
         if (stamp !== useAppStore.getState().timelineRefreshKey) return null
         commit(key, { items: all, status: 'ready', stamp })
         return all
@@ -108,7 +115,7 @@ export function useTimelineMonths({
         return null
       }
     },
-    [commit, personId],
+    [commit, personId, favorite, albumId],
   )
 
   const ensureMonth = useCallback(
