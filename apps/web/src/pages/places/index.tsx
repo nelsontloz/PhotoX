@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet.markercluster'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
 import { FaMapLocationDot } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
-import { listAllAssets } from '../../api/assets'
+import { getFileStreamUrl, listAllAssets } from '../../api/assets'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
 import { ViewerHost } from '../../components/ViewerHost'
 import { locationMarkerIcon } from '../../components/AssetViewer/sections/LocationSection'
-import { formatShortDate, effectiveAssetDate } from '../../lib/dateFormat'
+import { effectiveAssetDate } from '../../lib/dateFormat'
 import { addOsmTileLayer } from '../../lib/leafletMap'
 import { useAssetNavigation } from '../../hooks/useAssetNavigation'
 import { useAsyncFetch } from '../../hooks/useAsyncFetch'
@@ -18,9 +19,68 @@ import { MapSidePanel } from './MapSidePanel'
 
 const EMPTY: Asset[] = []
 
+// Individual (unclustered) markers: a 40px bubble matching the cluster bubbles. A ready
+// thumbnail fills it; while the thumbnail job hasn't registered one yet (thumbnailStatus
+// 'pending' — videos sit in that state far longer than photos: the thumbnail worker waits for
+// metadata, then ffmpeg-extracts a frame per size) the identical bubble shows a spinner, since
+// the asset list is fetched once per visit and never re-renders. Only a genuinely thumb-less
+// asset (never succeeded) keeps the viewer's 12px dot. A clicked marker swaps to the selected
+// variant (same icon + accent ring), matching the cluster bubbles' `.is-selected` language.
+const THUMB_BUBBLE_PX = 40
+
+const PLAY_BADGE =
+  '<span class="photox-thumb-play"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span>'
+
+// Selected variant of the 12px dot: the shared `locationMarkerIcon` is also used by the viewer's
+// mini map, so the accent ring lives on a copy here instead of on that icon.
+const selectedDotIcon = new L.DivIcon({
+  className: '',
+  html: '<div style="width:12px;height:12px;background:#3b82f6;border:2px solid white;border-radius:50%;box-shadow:0 0 0 3px var(--color-tertiary)"></div>',
+  iconSize: [12, 12],
+  iconAnchor: [6, 6],
+})
+
+function markerIconFor(asset: Asset, selected = false): L.DivIcon {
+  const thumb = asset.thumbnails?.find((t) => t.size === 'md') ?? asset.thumbnails?.[0]
+  const pending = thumb === undefined && asset.thumbnailStatus === 'pending'
+  if (thumb === undefined && !pending) return selected ? selectedDotIcon : locationMarkerIcon
+  const inner = thumb
+    ? `<img src="${getFileStreamUrl(thumb.fileId)}" alt="" loading="lazy" decoding="async" draggable="false">${asset.kind === 'video' ? PLAY_BADGE : ''}`
+    : '<span class="photox-thumb-spinner"></span>'
+  return L.divIcon({
+    className: '',
+    html: `<div class="photox-thumb-marker${pending ? ' is-pending' : ''}${selected ? ' is-selected' : ''}">${inner}</div>`,
+    iconSize: [THUMB_BUBBLE_PX, THUMB_BUBBLE_PX],
+    iconAnchor: [THUMB_BUBBLE_PX / 2, THUMB_BUBBLE_PX / 2],
+  })
+}
+
 // A bubble can hold thousands of leaves; the panel grid (and the viewer's prev/next walk, which
 // follows the panel list) only ever sees the first slice.
 const PANEL_MAX = 200
+
+type PlacesView = { lat: number; lng: number; zoom: number }
+
+// One bad or missing piece (?lat=&lng=&z=) discards the whole URL source and falls through to the
+// next one, instead of restoring a half-valid view. Zoom range matches the max-zoom-19 tile layer.
+function numberParam(
+  params: URLSearchParams,
+  key: string,
+  min: number,
+  max: number,
+): number | null {
+  const raw = params.get(key)
+  if (raw === null || raw.trim() === '') return null
+  const value = Number(raw)
+  return Number.isFinite(value) && value >= min && value <= max ? value : null
+}
+
+function readViewParams(params: URLSearchParams): PlacesView | null {
+  const lat = numberParam(params, 'lat', -90, 90)
+  const lng = numberParam(params, 'lng', -180, 180)
+  const zoom = numberParam(params, 'z', 0, 19)
+  return lat !== null && lng !== null && zoom !== null ? { lat, lng, zoom } : null
+}
 
 function PlacesContent() {
   const { data, loading, error, refresh } = useAsyncFetch(
@@ -32,6 +92,18 @@ function PlacesContent() {
   const mapRef = useRef<L.Map | null>(null)
   const clustersRef = useRef<L.MarkerClusterGroup | null>(null)
   const selectedAssetIdsRef = useRef<ReadonlySet<string> | null>(null)
+  // Individual markers are static divIcons, so the highlight swaps them via setIcon; `selected`
+  // diffs against the last applied state so only markers that changed pay a setIcon. Markers the
+  // plugin has taken into a cluster are off the map, where setIcon is just an options swap.
+  const markersRef = useRef<Map<string, { marker: L.Marker; asset: Asset; selected: boolean }>>(
+    new Map(),
+  )
+  const [searchParams, setSearchParams] = useSearchParams()
+  // The map effect's moveend handler outlives the render it was created in, and react-router
+  // rebuilds setSearchParams around the location it captured — re-point both each render so a pan
+  // never rewrites the URL from a stale snapshot (e.g. resurrecting the viewer's closed ?asset=).
+  const urlRef = useRef({ searchParams, setSearchParams })
+  urlRef.current = { searchParams, setSearchParams }
   const [selection, setSelection] = useState<Asset[]>([])
   const panelAssets = useMemo(
     () => (selection.length > PANEL_MAX ? selection.slice(0, PANEL_MAX) : selection),
@@ -44,11 +116,24 @@ function PlacesContent() {
   // The highlight is held as photo ids, not as a cluster object: the plugin drops and rebuilds
   // its cluster layers on every zoom change, so the bubble(s) holding those leaves change too.
   // iconCreateFunction marks whichever bubble contains them (a deeper zoom can split the
-  // selection over several bubbles) and refreshClusters repaints on the spot.
+  // selection over several bubbles) and refreshClusters repaints on the spot. Individual markers
+  // are repainted here instead — same ids, same selected ring as a clicked cluster bubble.
+  const applyMarkerHighlight = () => {
+    const selectedIds = selectedAssetIdsRef.current
+    for (const binding of markersRef.current.values()) {
+      const selected = selectedIds?.has(binding.asset.id) ?? false
+      if (binding.selected !== selected) {
+        binding.selected = selected
+        binding.marker.setIcon(markerIconFor(binding.asset, selected))
+      }
+    }
+  }
+
   const selectAssets = (next: Asset[] | null) => {
     if (next === null && selectedAssetIdsRef.current === null) return
     selectedAssetIdsRef.current = next ? new Set(next.map((asset) => asset.id)) : null
     clustersRef.current?.refreshClusters()
+    applyMarkerHighlight()
   }
 
   const closePanel = () => {
@@ -130,37 +215,73 @@ function PlacesContent() {
     })
 
     for (const asset of assets) {
-      const marker = L.marker([asset.latitude!, asset.longitude!], { icon: locationMarkerIcon })
-        .bindPopup(
-          `<div style="font-family:system-ui,sans-serif;min-width:140px">
-            <div style="font-size:13px;color:#334155">${formatShortDate(new Date(asset.takenAt ?? asset.uploadedAt))}</div>
-            ${asset.kind === 'video' ? '<div style="font-size:11px;color:#94a3b8;margin-top:2px">Video</div>' : ''}
-          </div>`,
-        )
-        .on('click', () => {
-          selectAssets(null)
-          setSelection([asset])
-        })
+      // A click selects just this asset — highlight in place + panel open, like a cluster click.
+      // No Leaflet popup: the date lives in the side panel and the viewer.
+      const marker = L.marker([asset.latitude!, asset.longitude!], {
+        icon: markerIconFor(asset),
+      }).on('click', () => {
+        selectAssets([asset])
+        setSelection([asset])
+      })
       assetByMarker.set(marker, asset)
+      markersRef.current.set(asset.id, { marker, asset, selected: false })
       clusters.addLayer(marker)
     }
 
     map.addLayer(clusters)
+    // Re-syncs markers with an already-applied selection when the map rebuilds (e.g. refetch).
+    applyMarkerHighlight()
 
     // Registered after the group, so the plugin's own zoom/move handlers have already swapped
     // the cluster layers. It reuses each bubble's cached icon when re-showing it, so the
     // highlight has to be repainted from the current selection before the user sees it.
     map.on('zoomend moveend', () => clusters.refreshClusters())
 
-    // fitBounds can land between whole levels now that zoomSnap is fractional, which opens the
-    // page on scaled-up tiles; round that back down to the whole level the old whole-level snap
-    // landed on (rounding up would push the outermost markers out of their padding).
-    map.once('zoomend', () => map.setZoom(Math.floor(map.getZoom()), { animate: false }))
-    map.fitBounds(bounds, { padding: [40, 40] })
+    // View persistence: on every settle, mirror the view into the URL with a replace — panning
+    // must never fill history. Equal params are skipped so the setView below doesn't trigger a
+    // redundant replace. In-app navigation lands on a bare `/places` (no params) and resets to
+    // the full-library view; only a reload restores.
+    const writeView = () => {
+      const center = map.getCenter()
+      const view: PlacesView = {
+        lat: Number(center.lat.toFixed(5)), // ~1 m
+        lng: Number(center.lng.toFixed(5)),
+        zoom: Number(map.getZoom().toFixed(2)),
+      }
+      const params = urlRef.current.searchParams
+      if (
+        params.get('lat') === String(view.lat) &&
+        params.get('lng') === String(view.lng) &&
+        params.get('z') === String(view.zoom)
+      )
+        return
+      const next = new URLSearchParams(params)
+      next.set('lat', String(view.lat))
+      next.set('lng', String(view.lng))
+      next.set('z', String(view.zoom))
+      urlRef.current.setSearchParams(next, { replace: true })
+    }
+    map.on('moveend', writeView)
+
+    // Initial view: the URL (reload, shared link); anything else fits everything.
+    const restored = readViewParams(urlRef.current.searchParams)
+    if (restored) {
+      map.setView([restored.lat, restored.lng], restored.zoom, { animate: false })
+    } else {
+      // fitBounds can land between whole levels now that zoomSnap is fractional, which opens the
+      // page on scaled-up tiles; round that back down to the whole level the old whole-level snap
+      // landed on (rounding up would push the outermost markers out of their padding).
+      // animate: false keeps the whole settle synchronous, so the first painted frame already
+      // shows the final view instead of flashing the dummy [0, 0]/2 view and gliding to the
+      // bounds (replayed by StrictMode's dev double-mount).
+      map.once('zoomend', () => map.setZoom(Math.floor(map.getZoom()), { animate: false }))
+      map.fitBounds(bounds, { padding: [40, 40], animate: false })
+    }
 
     return () => {
       mapRef.current = null
       clustersRef.current = null
+      markersRef.current.clear()
       map.remove()
     }
   }, [assets, loading, error])
