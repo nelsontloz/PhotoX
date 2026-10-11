@@ -31,7 +31,7 @@ function PlacesContent() {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const clustersRef = useRef<L.MarkerClusterGroup | null>(null)
-  const selectedClusterRef = useRef<L.MarkerCluster | null>(null)
+  const selectedAssetIdsRef = useRef<ReadonlySet<string> | null>(null)
   const [selection, setSelection] = useState<Asset[]>([])
   const panelAssets = useMemo(
     () => (selection.length > PANEL_MAX ? selection.slice(0, PANEL_MAX) : selection),
@@ -41,27 +41,34 @@ function PlacesContent() {
   const nav = useAssetNavigation({ assets: panelAssets })
   const panelOpen = selection.length > 0
 
-  // The highlighted bubble lives on the cluster object rather than in React state: the plugin
-  // re-runs iconCreateFunction for whichever cluster this ref points at (so the highlight
-  // survives zoom/pan re-renders), and refreshClusters repaints the two bubbles involved.
-  const selectCluster = (next: L.MarkerCluster | null) => {
-    const prev = selectedClusterRef.current
-    if (prev === next) return
-    selectedClusterRef.current = next
-    for (const cluster of [prev, next]) {
-      if (cluster) clustersRef.current?.refreshClusters(cluster)
-    }
+  // The highlight is held as photo ids, not as a cluster object: the plugin drops and rebuilds
+  // its cluster layers on every zoom change, so the bubble(s) holding those leaves change too.
+  // iconCreateFunction marks whichever bubble contains them (a deeper zoom can split the
+  // selection over several bubbles) and refreshClusters repaints on the spot.
+  const selectAssets = (next: Asset[] | null) => {
+    if (next === null && selectedAssetIdsRef.current === null) return
+    selectedAssetIdsRef.current = next ? new Set(next.map((asset) => asset.id)) : null
+    clustersRef.current?.refreshClusters()
   }
 
   const closePanel = () => {
     setSelection([])
-    selectCluster(null)
+    selectAssets(null)
   }
 
   useEffect(() => {
     if (loading || error || assets.length === 0 || !containerRef.current) return
 
-    const map = L.map(containerRef.current, { zoomControl: false }).setView([0, 0], 2)
+    const map = L.map(containerRef.current, {
+      zoomControl: false,
+      // Smooth zoom: quarter-level steps from the wheel, buttons, keyboard and double-click
+      // instead of Leaflet's whole-level snap (a 100px wheel notch used to be a full level).
+      // 0.25 rather than 0 because the wheel delta is platform-scaled (Leaflet divides by up to
+      // 40x on Linux Chrome); the snap floor keeps a notch meaningful everywhere.
+      zoomSnap: 0.25,
+      zoomDelta: 0.25,
+      wheelPxPerZoomLevel: 120,
+    }).setView([0, 0], 2)
     mapRef.current = map
     L.control.zoom({ position: 'bottomright' }).addTo(map)
 
@@ -79,14 +86,20 @@ function PlacesContent() {
       // zoom the map into the cluster's bounds. (spiderfyOnMaxZoom stays on: max-zoom bubbles
       // still fan out.)
       zoomToBoundsOnClick: false,
-      iconCreateFunction: (cluster) =>
-        L.divIcon({
+      iconCreateFunction: (cluster) => {
+        const selectedIds = selectedAssetIdsRef.current
+        const selected =
+          selectedIds !== null &&
+          cluster.getAllChildMarkers().some((marker) => {
+            const asset = assetByMarker.get(marker)
+            return asset !== undefined && selectedIds.has(asset.id)
+          })
+        return L.divIcon({
           className: '',
-          html: `<div class="photox-cluster-bubble${
-            cluster === selectedClusterRef.current ? ' is-selected' : ''
-          }">${cluster.getChildCount().toLocaleString()}</div>`,
+          html: `<div class="photox-cluster-bubble${selected ? ' is-selected' : ''}">${cluster.getChildCount().toLocaleString()}</div>`,
           iconSize: [40, 40],
-        }),
+        })
+      },
     })
     clustersRef.current = clusters
 
@@ -102,7 +115,7 @@ function PlacesContent() {
         .flatMap((marker) => assetByMarker.get(marker) ?? [])
       // Cluster-walk order is internal; the panel reads newest-first like the timeline.
       picked.sort((a, b) => Date.parse(effectiveAssetDate(b)) - Date.parse(effectiveAssetDate(a)))
-      selectCluster(cluster)
+      selectAssets(picked)
       setSelection(picked)
     }
     clusters.on('clusterclick', openCluster)
@@ -112,7 +125,7 @@ function PlacesContent() {
     // a marker icon; it only drops the highlight (the panel stays until it is closed).
     map.on('click', (event) => {
       const target = event.originalEvent.target as HTMLElement | null
-      if (!target?.closest('.leaflet-marker-icon')) selectCluster(null)
+      if (!target?.closest('.leaflet-marker-icon')) selectAssets(null)
     })
 
     for (const asset of assets) {
@@ -124,7 +137,7 @@ function PlacesContent() {
           </div>`,
         )
         .on('click', () => {
-          selectCluster(null)
+          selectAssets(null)
           setSelection([asset])
         })
       assetByMarker.set(marker, asset)
@@ -133,12 +146,20 @@ function PlacesContent() {
 
     map.addLayer(clusters)
 
+    // Registered after the group, so the plugin's own zoom/move handlers have already swapped
+    // the cluster layers. It reuses each bubble's cached icon when re-showing it, so the
+    // highlight has to be repainted from the current selection before the user sees it.
+    map.on('zoomend moveend', () => clusters.refreshClusters())
+
+    // fitBounds can land between whole levels now that zoomSnap is fractional, which opens the
+    // page on scaled-up tiles; round that back down to the whole level the old whole-level snap
+    // landed on (rounding up would push the outermost markers out of their padding).
+    map.once('zoomend', () => map.setZoom(Math.floor(map.getZoom()), { animate: false }))
     map.fitBounds(bounds, { padding: [40, 40] })
 
     return () => {
       mapRef.current = null
       clustersRef.current = null
-      selectedClusterRef.current = null
       map.remove()
     }
   }, [assets, loading, error])
