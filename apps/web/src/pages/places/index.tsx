@@ -30,6 +30,8 @@ function PlacesContent() {
   const assets = data ?? EMPTY
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
+  const clustersRef = useRef<L.MarkerClusterGroup | null>(null)
+  const selectedClusterRef = useRef<L.MarkerCluster | null>(null)
   const [selection, setSelection] = useState<Asset[]>([])
   const panelAssets = useMemo(
     () => (selection.length > PANEL_MAX ? selection.slice(0, PANEL_MAX) : selection),
@@ -38,6 +40,23 @@ function PlacesContent() {
   // Viewer prev/next walks the clicked bubble (the panel's list), not the whole library.
   const nav = useAssetNavigation({ assets: panelAssets })
   const panelOpen = selection.length > 0
+
+  // The highlighted bubble lives on the cluster object rather than in React state: the plugin
+  // re-runs iconCreateFunction for whichever cluster this ref points at (so the highlight
+  // survives zoom/pan re-renders), and refreshClusters repaints the two bubbles involved.
+  const selectCluster = (next: L.MarkerCluster | null) => {
+    const prev = selectedClusterRef.current
+    if (prev === next) return
+    selectedClusterRef.current = next
+    for (const cluster of [prev, next]) {
+      if (cluster) clustersRef.current?.refreshClusters(cluster)
+    }
+  }
+
+  const closePanel = () => {
+    setSelection([])
+    selectCluster(null)
+  }
 
   useEffect(() => {
     if (loading || error || assets.length === 0 || !containerRef.current) return
@@ -56,18 +75,24 @@ function PlacesContent() {
       showCoverageOnHover: false,
       maxClusterRadius: 50,
       disableClusteringAtZoom: 16,
+      // A bubble click opens the side panel and highlights the bubble in place — it must not
+      // zoom the map into the cluster's bounds. (spiderfyOnMaxZoom stays on: max-zoom bubbles
+      // still fan out.)
+      zoomToBoundsOnClick: false,
       iconCreateFunction: (cluster) =>
         L.divIcon({
           className: '',
-          html: `<div class="photox-cluster-bubble">${cluster.getChildCount().toLocaleString()}</div>`,
+          html: `<div class="photox-cluster-bubble${
+            cluster === selectedClusterRef.current ? ' is-selected' : ''
+          }">${cluster.getChildCount().toLocaleString()}</div>`,
           iconSize: [40, 40],
         }),
     })
+    clustersRef.current = clusters
 
     const assetByMarker = new WeakMap<L.Marker, Asset>()
 
-    // Cluster clicks (and Enter on a focused cluster) open the panel; the plugin's own
-    // zoomToBoundsOnClick default still flies the map to the cluster's bounds.
+    // Cluster clicks (and Enter on a focused cluster) open the panel and highlight the bubble.
     const openCluster = (event: L.LeafletEvent) => {
       // Leaflet's event type declares `layer` as any (`any & T` would collapse a cast); the
       // plugin puts the clicked cluster marker there.
@@ -77,10 +102,18 @@ function PlacesContent() {
         .flatMap((marker) => assetByMarker.get(marker) ?? [])
       // Cluster-walk order is internal; the panel reads newest-first like the timeline.
       picked.sort((a, b) => Date.parse(effectiveAssetDate(b)) - Date.parse(effectiveAssetDate(a)))
+      selectCluster(cluster)
       setSelection(picked)
     }
     clusters.on('clusterclick', openCluster)
     clusters.on('clusterkeypress', openCluster)
+
+    // Marker clicks bubble up to the map too, so an empty-map click is one whose target isn't
+    // a marker icon; it only drops the highlight (the panel stays until it is closed).
+    map.on('click', (event) => {
+      const target = event.originalEvent.target as HTMLElement | null
+      if (!target?.closest('.leaflet-marker-icon')) selectCluster(null)
+    })
 
     for (const asset of assets) {
       const marker = L.marker([asset.latitude!, asset.longitude!], { icon: locationMarkerIcon })
@@ -90,7 +123,10 @@ function PlacesContent() {
             ${asset.kind === 'video' ? '<div style="font-size:11px;color:#94a3b8;margin-top:2px">Video</div>' : ''}
           </div>`,
         )
-        .on('click', () => setSelection([asset]))
+        .on('click', () => {
+          selectCluster(null)
+          setSelection([asset])
+        })
       assetByMarker.set(marker, asset)
       clusters.addLayer(marker)
     }
@@ -101,6 +137,8 @@ function PlacesContent() {
 
     return () => {
       mapRef.current = null
+      clustersRef.current = null
+      selectedClusterRef.current = null
       map.remove()
     }
   }, [assets, loading, error])
@@ -147,7 +185,7 @@ function PlacesContent() {
           <MapSidePanel
             assets={panelAssets}
             totalCount={selection.length}
-            onClose={() => setSelection([])}
+            onClose={closePanel}
             onSelect={nav.open}
           />
         )}
