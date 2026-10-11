@@ -83,6 +83,11 @@ export interface Ctx {
   personId?: string
   personFaceId?: string
   otherUser?: AuthResponse
+  // places
+  placesAssetIds?: string[]
+  placesCenter?: { lat: number; lng: number }
+  placesView?: { lat: number; lng: number; z: number }
+  placesWalkedIds?: string[]
   // semantic
   semanticUploads?: SemanticUpload[]
   faceCountsBefore?: FaceDetectionSettings['facesByDetector']

@@ -65,7 +65,11 @@ function markerIconFor(asset: Asset, selected = false, groupSize = 1): L.DivIcon
 // follows the panel list) only ever sees the first slice.
 const PANEL_MAX = 200
 
-type PlacesView = { lat: number; lng: number; zoom: number }
+interface PlacesView {
+  lat: number
+  lng: number
+  zoom: number
+}
 
 // One bad or missing piece (?lat=&lng=&z=) discards the whole URL source and falls through to the
 // next one, instead of restoring a half-valid view. Zoom range matches the max-zoom-19 tile layer.
