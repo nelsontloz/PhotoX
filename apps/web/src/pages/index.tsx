@@ -65,6 +65,7 @@ function TimelineContent() {
 
   // stable handler identities: memoized GalleryItems must bail out on unrelated re-renders
   const selectionMode = selectedIds.size > 0
+  const selectionBarVisible = selectedIds.size > 0 && !pickerOpen
   const onClickAsset = useCallback(
     (asset: Asset) => {
       if (selectionMode) toggle(asset.id)
@@ -157,11 +158,14 @@ function TimelineContent() {
         onPickerDone={clearSelection}
       />
       <div
-        aria-hidden={selectedIds.size === 0 || pickerOpen}
+        // inert, not aria-hidden: aria-hidden on an ancestor that still holds focus (bar button
+        // clicked) is refused by Chrome, and slid-out buttons would stay tabbable. React 18 only
+        // passes unknown attrs through as strings, hence `inert: ''` instead of `inert={true}`.
+        // data-selection-bar lifts the upload toast above the bar (see app.css) so the two
+        // bottom-anchored overlays never intercept each other's clicks.
+        {...(selectionBarVisible ? { 'data-selection-bar': 'visible' } : { inert: '' })}
         className={`fixed bottom-0 left-0 right-0 z-40 bg-card-dark/95 backdrop-blur border-t border-border-dark px-4 py-3 flex items-center gap-3 transition-transform duration-300 ease-out ${
-          selectedIds.size > 0 && !pickerOpen
-            ? 'translate-y-0'
-            : 'translate-y-full pointer-events-none'
+          selectionBarVisible ? 'translate-y-0' : 'translate-y-full pointer-events-none'
         }`}
       >
         <span className="text-sm text-slate-300 font-medium shrink-0 truncate">

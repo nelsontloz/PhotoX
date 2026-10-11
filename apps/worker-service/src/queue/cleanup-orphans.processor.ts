@@ -1,11 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { BullMqService } from './bullmq.service'
 import { CoreClient } from '../core/core-client.service'
-import {
-  parseJobData,
-  cleanupOrphansJobSchema,
-  type CleanupOrphansJob,
-} from './job-schemas'
+import { parseJobData, cleanupOrphansJobSchema, type CleanupOrphansJob } from './job-schemas'
 
 @Injectable()
 export class CleanupOrphansProcessor implements OnModuleInit {

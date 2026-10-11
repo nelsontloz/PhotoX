@@ -55,6 +55,21 @@ async function fetchAlbumAssets(
   return (await response.json()) as AlbumAssetsPayload
 }
 
+async function findAlbumByName(
+  request: APIRequestContext,
+  auth: AuthResponse,
+  name: string,
+): Promise<AlbumRef> {
+  const listResponse = await request.get('/api/v1/albums?limit=1000', {
+    headers: authHeaders(auth),
+  })
+  expect(listResponse.status()).toBe(200)
+  const list = (await listResponse.json()) as { items: AlbumRef[] }
+  const album = list.items.find((candidate) => candidate.name === name)
+  if (!album) throw new Error(`album "${name}" was not found via the API`)
+  return album
+}
+
 // --- seeding ----------------------------------------------------------------
 
 Given('I created an album via the API named {string}', async ({ request, ctx }, name: string) => {
@@ -345,7 +360,9 @@ When('I select all album photos in the dialog', async ({ page }) => {
   for (let i = 0; i < count; i++) {
     await figures.nth(i).click()
   }
-  await expect(page.getByRole('dialog').getByText(`${count} photos selected`)).toBeVisible()
+  await expect(
+    page.getByRole('dialog').getByText(`${count} ${count === 1 ? 'photo' : 'photos'} selected`),
+  ).toBeVisible()
 })
 
 When('I add the selected album photos', async ({ page }) => {
@@ -409,6 +426,43 @@ Then('the album page shows the not-found state', async ({ page }) => {
 
 // --- timeline viewer picker -------------------------------------------------
 
+When('I select the first photo on the timeline', async ({ page }) => {
+  const checkbox = page.locator('figure[role="button"] button[role="checkbox"]').first()
+  await checkbox.click()
+  await expect(checkbox).toHaveAttribute('aria-checked', 'true')
+})
+
+When('I select all {int} photos on the timeline', async ({ page }, count: number) => {
+  const checkboxes = page.locator('figure[role="button"] button[role="checkbox"]')
+  await expect(checkboxes).toHaveCount(count, { timeout: 60_000 })
+  for (let i = 0; i < count; i++) {
+    const checkbox = checkboxes.nth(i)
+    await checkbox.click()
+    await expect(checkbox).toHaveAttribute('aria-checked', 'true')
+  }
+})
+
+When('I open the album picker from the selection bar', async ({ page }) => {
+  await page.getByRole('button', { name: 'Add to album', exact: true }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+})
+
+When('I select the album {string} in the picker', async ({ page }, name: string) => {
+  const tile = page.getByRole('dialog').getByRole('button').filter({ hasText: name })
+  await tile.click()
+  await expect(tile).toHaveAttribute('aria-pressed', 'true')
+})
+
+When('I add the selected photos to the selected albums', async ({ page }) => {
+  const dialog = page.getByRole('dialog')
+  const [response] = await Promise.all([
+    page.waitForResponse(isAlbumAssetsPost),
+    dialog.getByRole('button', { name: /^Add to \d+ album/ }).click(),
+  ])
+  expect(response.status()).toBe(201)
+  await expect(dialog).toHaveCount(0)
+})
+
 When('I open the album picker from the viewer', async ({ page }) => {
   await page.locator('button[aria-label="Add to album"]:visible').click()
   await expect(page.getByRole('dialog')).toBeVisible()
@@ -434,17 +488,19 @@ Then('the open photo is in the album {string}', async ({ request, ctx }, name: s
   const auth = requireAuth(ctx)
   const assetId = ctx.assetId
   if (!assetId) throw new Error('open a photo first')
-  const listResponse = await request.get('/api/v1/albums?limit=1000', {
-    headers: authHeaders(auth),
-  })
-  expect(listResponse.status()).toBe(200)
-  const list = (await listResponse.json()) as { items: AlbumRef[] }
-  const album = list.items.find((candidate) => candidate.name === name)
-  if (!album) throw new Error(`album "${name}" was not found via the API`)
-  const assetsResponse = await request.get(`/api/v1/albums/${album.id}/assets`, {
-    headers: authHeaders(auth),
-  })
-  expect(assetsResponse.status()).toBe(200)
-  const assets = (await assetsResponse.json()) as { items: { id: string }[] }
-  expect(assets.items.map((item) => item.id)).toContain(assetId)
+  const album = await findAlbumByName(request, auth, name)
+  const payload = await fetchAlbumAssets(request, auth, album.id)
+  expect(payload.items.map((item) => item.id)).toContain(assetId)
 })
+
+Then(
+  'the album {string} contains exactly my album photos',
+  async ({ request, ctx }, name: string) => {
+    const auth = requireAuth(ctx)
+    const assetIds = ctx.albumAssets
+    if (!assetIds?.length) throw new Error('upload album photos first')
+    const album = await findAlbumByName(request, auth, name)
+    const payload = await fetchAlbumAssets(request, auth, album.id)
+    expect(payload.items.map((item) => item.id).sort()).toEqual([...assetIds].sort())
+  },
+)
