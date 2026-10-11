@@ -178,3 +178,10 @@
     max-height: 100cqh;
   }
 }
+
+/* The timeline selection bar (index.tsx `data-selection-bar`) and the upload toast are both
+   fixed to the bottom-right; lift the toast above the bar while the bar is up so neither
+   intercepts the other's clicks. 5rem clears the bar's ~3.4rem height. */
+html:has([data-selection-bar='visible']) [data-upload-toast] {
+  bottom: 5rem;
+}

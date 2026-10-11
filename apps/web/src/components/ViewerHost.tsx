@@ -44,12 +44,13 @@ export function ViewerHost({
   return (
     <>
       {asset && <AssetViewer asset={asset} onClose={onClose} {...viewerProps} />}
-      {asset != null && pickerOpen && (
+      {/* Not gated on `asset`: the timeline selection bar opens the picker with no viewer mounted. */}
+      {pickerOpen && (
         <Suspense fallback={null}>
           <AlbumPickerDialog
             open
             onClose={() => onPickerClose?.()}
-            assetIds={pickerAssetIds ?? [asset.id]}
+            assetIds={pickerAssetIds ?? (asset ? [asset.id] : [])}
             onDone={onPickerDone}
           />
         </Suspense>

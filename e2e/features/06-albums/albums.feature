@@ -60,6 +60,17 @@ Feature: Albums UI flows
     Then the album page shows 2 album photos
     And the first album photo thumbnail loads
 
+  Scenario: Adding photos to a freshly created album through its dialog
+    Given I am signed in
+    And I uploaded an album photo
+    When I open "/albums"
+    And I create an album through the UI named "Fresh album"
+    And I open the album card "Fresh album"
+    And I open the add photos dialog
+    And I select all album photos in the dialog
+    And I add the selected album photos
+    Then the album page shows 1 album photos
+
   Scenario: Removing a photo from an album keeps it on the timeline
     Given I am signed in
     And I created an album via the API named "Removable album"
@@ -84,3 +95,34 @@ Feature: Albums UI flows
     When I open the album picker from the viewer
     And I create an album named "Viewer album" in the picker
     Then the open photo is in the album "Viewer album"
+
+  Scenario: Adding a photo to an existing album from the selection bar
+    Given I am signed in
+    And I created an album via the API named "Timeline album"
+    And I uploaded "photo.jpg"
+    When I select the first photo on the timeline
+    And I open the album picker from the selection bar
+    And I select the album "Timeline album" in the picker
+    And I add the selected photos to the selected albums
+    Then the album asset count is 1
+
+  Scenario: Adding selected timeline photos to a new album from the selection bar
+    Given I am signed in
+    And I uploaded two album photos
+    When I open "/"
+    And I select all 2 photos on the timeline
+    And I open the album picker from the selection bar
+    And I create an album named "Bar-created album" in the picker
+    Then the album "Bar-created album" contains exactly my album photos
+
+  Scenario: Adding timeline photos to an album that already has photos
+    Given I am signed in
+    And I created an album via the API named "Populated album"
+    And I uploaded two album photos
+    When I add my second album photo to the album
+    And I open "/"
+    And I select all 2 photos on the timeline
+    And I open the album picker from the selection bar
+    And I select the album "Populated album" in the picker
+    And I add the selected photos to the selected albums
+    Then the album "Populated album" contains exactly my album photos

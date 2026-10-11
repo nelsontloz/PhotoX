@@ -72,6 +72,7 @@ export function UploadNotification() {
   return (
     <section
       aria-label="Upload progress"
+      data-upload-toast
       className={[
         'fixed z-50',
         'bottom-6 right-6 w-80',
