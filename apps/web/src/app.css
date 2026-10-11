@@ -91,6 +91,31 @@
   width: 0;
 }
 
+/* Places map cluster bubbles (leaflet.markercluster). MarkerCluster.css supplies only the
+   zoom/spider animations, so the bubble itself is styled here: brand blue with a light ring so
+   the count reads over the dark map at every zoom. Hover lifts it slightly as a click hint
+   (clicking a cluster zooms into it). */
+.photox-cluster-bubble {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: 2px solid rgb(255 255 255 / 0.85);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.45);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition: transform 0.15s ease-out;
+}
+
+.leaflet-marker-icon:hover > .photox-cluster-bubble {
+  transform: scale(1.06);
+}
+
 .justified-grid-gallery {
   --space: 4px;
   --min-height: 200px;

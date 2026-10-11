@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
 import L from 'leaflet'
+import 'leaflet.markercluster'
+import 'leaflet.markercluster/dist/MarkerCluster.css'
 import { FaMapLocationDot } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
 import { listAllAssets } from '../../api/assets'
@@ -33,16 +35,30 @@ function PlacesContent() {
       assets.map((a) => [a.latitude!, a.longitude!] as [number, number]),
     )
 
+    const clusters = L.markerClusterGroup({
+      showCoverageOnHover: false,
+      maxClusterRadius: 50,
+      disableClusteringAtZoom: 16,
+      iconCreateFunction: (cluster) =>
+        L.divIcon({
+          className: '',
+          html: `<div class="photox-cluster-bubble">${cluster.getChildCount().toLocaleString()}</div>`,
+          iconSize: [40, 40],
+        }),
+    })
+
     for (const asset of assets) {
-      L.marker([asset.latitude!, asset.longitude!], { icon: locationMarkerIcon })
-        .addTo(map)
-        .bindPopup(
+      clusters.addLayer(
+        L.marker([asset.latitude!, asset.longitude!], { icon: locationMarkerIcon }).bindPopup(
           `<div style="font-family:system-ui,sans-serif;min-width:140px">
             <div style="font-size:13px;color:#334155">${formatShortDate(new Date(asset.takenAt ?? asset.uploadedAt))}</div>
             ${asset.kind === 'video' ? '<div style="font-size:11px;color:#94a3b8;margin-top:2px">Video</div>' : ''}
           </div>`,
-        )
+        ),
+      )
     }
+
+    map.addLayer(clusters)
 
     map.fitBounds(bounds, { padding: [40, 40] })
 
