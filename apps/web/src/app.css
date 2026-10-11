@@ -208,6 +208,30 @@
   fill: rgb(255 255 255 / 0.85);
 }
 
+/* Co-located group markers: count chip hanging on the leaflet icon element's top-right corner
+   (a sibling of the circle — the circle's overflow: hidden would clip a corner chip). Same
+   blue / white-ring / white-count language as .photox-cluster-bubble, shrunk to a corner pill so
+   the still still reads. Rendered by markerIconFor whenever a marker stands for >1 asset. */
+.photox-thumb-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--color-primary);
+  border: 1.5px solid rgb(255 255 255 / 0.85);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.45);
+}
+
 .leaflet-marker-icon:hover > .photox-thumb-marker {
   transform: scale(1.06);
 }

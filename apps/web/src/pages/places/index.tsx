@@ -26,6 +26,9 @@ const EMPTY: Asset[] = []
 // the asset list is fetched once per visit and never re-renders. Only a genuinely thumb-less
 // asset (never succeeded) keeps the viewer's 12px dot. A clicked marker swaps to the selected
 // variant (same icon + accent ring), matching the cluster bubbles' `.is-selected` language.
+// Assets sharing byte-identical coordinates (same-spot phone videos) would otherwise stack
+// pixel-exactly — only the topmost bubble reachable — so they collapse into ONE group marker
+// keyed `${lat},${lng}`: the newest asset's icon + a corner count chip, clicked like a cluster.
 const THUMB_BUBBLE_PX = 40
 
 const PLAY_BADGE =
@@ -40,16 +43,19 @@ const selectedDotIcon = new L.DivIcon({
   iconAnchor: [6, 6],
 })
 
-function markerIconFor(asset: Asset, selected = false): L.DivIcon {
+function markerIconFor(asset: Asset, selected = false, groupSize = 1): L.DivIcon {
   const thumb = asset.thumbnails?.find((t) => t.size === 'md') ?? asset.thumbnails?.[0]
   const pending = thumb === undefined && asset.thumbnailStatus === 'pending'
   if (thumb === undefined && !pending) return selected ? selectedDotIcon : locationMarkerIcon
   const inner = thumb
     ? `<img src="${getFileStreamUrl(thumb.fileId)}" alt="" loading="lazy" decoding="async" draggable="false">${asset.kind === 'video' ? PLAY_BADGE : ''}`
     : '<span class="photox-thumb-spinner"></span>'
+  // The count chip is a sibling of the circle: the circle's overflow: hidden would clip a corner
+  // chip, while the leaflet icon element (position: absolute, 40x40) is already a positioning box.
+  const count = groupSize > 1 ? `<span class="photox-thumb-count">${groupSize}</span>` : ''
   return L.divIcon({
     className: '',
-    html: `<div class="photox-thumb-marker${pending ? ' is-pending' : ''}${selected ? ' is-selected' : ''}">${inner}</div>`,
+    html: `<div class="photox-thumb-marker${pending ? ' is-pending' : ''}${selected ? ' is-selected' : ''}">${inner}</div>${count}`,
     iconSize: [THUMB_BUBBLE_PX, THUMB_BUBBLE_PX],
     iconAnchor: [THUMB_BUBBLE_PX / 2, THUMB_BUBBLE_PX / 2],
   })
@@ -94,8 +100,9 @@ function PlacesContent() {
   const selectedAssetIdsRef = useRef<ReadonlySet<string> | null>(null)
   // Individual markers are static divIcons, so the highlight swaps them via setIcon; `selected`
   // diffs against the last applied state so only markers that changed pay a setIcon. Markers the
-  // plugin has taken into a cluster are off the map, where setIcon is just an options swap.
-  const markersRef = useRef<Map<string, { marker: L.Marker; asset: Asset; selected: boolean }>>(
+  // plugin has taken into a cluster are off the map, where setIcon is just an options swap. One
+  // entry per co-located group (a lone asset is a group of one), keyed `${lat},${lng}`.
+  const markersRef = useRef<Map<string, { marker: L.Marker; assets: Asset[]; selected: boolean }>>(
     new Map(),
   )
   const [searchParams, setSearchParams] = useSearchParams()
@@ -117,14 +124,16 @@ function PlacesContent() {
   // its cluster layers on every zoom change, so the bubble(s) holding those leaves change too.
   // iconCreateFunction marks whichever bubble contains them (a deeper zoom can split the
   // selection over several bubbles) and refreshClusters repaints on the spot. Individual markers
-  // are repainted here instead — same ids, same selected ring as a clicked cluster bubble.
+  // are repainted here instead — same ids, same selected ring as a clicked cluster bubble. A
+  // group marker is selected when any asset it stands for is.
   const applyMarkerHighlight = () => {
     const selectedIds = selectedAssetIdsRef.current
     for (const binding of markersRef.current.values()) {
-      const selected = selectedIds?.has(binding.asset.id) ?? false
+      const selected =
+        selectedIds !== null && binding.assets.some((asset) => selectedIds.has(asset.id))
       if (binding.selected !== selected) {
         binding.selected = selected
-        binding.marker.setIcon(markerIconFor(binding.asset, selected))
+        binding.marker.setIcon(markerIconFor(binding.assets[0]!, selected, binding.assets.length))
       }
     }
   }
@@ -174,22 +183,23 @@ function PlacesContent() {
       zoomToBoundsOnClick: false,
       iconCreateFunction: (cluster) => {
         const selectedIds = selectedAssetIdsRef.current
+        // Markers stand for however many assets share their coordinates, so the bubble's count
+        // and its selected check read the groups, not the marker count.
+        const groupAssets = cluster
+          .getAllChildMarkers()
+          .flatMap((marker) => assetByMarker.get(marker) ?? [])
         const selected =
-          selectedIds !== null &&
-          cluster.getAllChildMarkers().some((marker) => {
-            const asset = assetByMarker.get(marker)
-            return asset !== undefined && selectedIds.has(asset.id)
-          })
+          selectedIds !== null && groupAssets.some((asset) => selectedIds.has(asset.id))
         return L.divIcon({
           className: '',
-          html: `<div class="photox-cluster-bubble${selected ? ' is-selected' : ''}">${cluster.getChildCount().toLocaleString()}</div>`,
+          html: `<div class="photox-cluster-bubble${selected ? ' is-selected' : ''}">${groupAssets.length.toLocaleString()}</div>`,
           iconSize: [40, 40],
         })
       },
     })
     clustersRef.current = clusters
 
-    const assetByMarker = new WeakMap<L.Marker, Asset>()
+    const assetByMarker = new WeakMap<L.Marker, Asset[]>()
 
     // Cluster clicks (and Enter on a focused cluster) open the panel and highlight the bubble.
     const openCluster = (event: L.LeafletEvent) => {
@@ -214,17 +224,31 @@ function PlacesContent() {
       if (!target?.closest('.leaflet-marker-icon')) selectAssets(null)
     })
 
+    // Assets at byte-identical coordinates collapse into one marker per exact pair, newest-first
+    // (newest like the cluster panel drives both the icon and the click selection).
+    const groups = new Map<string, Asset[]>()
     for (const asset of assets) {
-      // A click selects just this asset — highlight in place + panel open, like a cluster click.
+      const key = `${asset.latitude},${asset.longitude}`
+      const group = groups.get(key)
+      if (group) group.push(asset)
+      else groups.set(key, [asset])
+    }
+    for (const group of groups.values()) {
+      group.sort((a, b) => Date.parse(effectiveAssetDate(b)) - Date.parse(effectiveAssetDate(a)))
+    }
+
+    for (const [key, group] of groups) {
+      // A click selects the whole group — highlight in place + panel open, like a cluster click.
       // No Leaflet popup: the date lives in the side panel and the viewer.
-      const marker = L.marker([asset.latitude!, asset.longitude!], {
-        icon: markerIconFor(asset),
+      const newest = group[0]!
+      const marker = L.marker([newest.latitude!, newest.longitude!], {
+        icon: markerIconFor(newest, false, group.length),
       }).on('click', () => {
-        selectAssets([asset])
-        setSelection([asset])
+        selectAssets(group)
+        setSelection(group)
       })
-      assetByMarker.set(marker, asset)
-      markersRef.current.set(asset.id, { marker, asset, selected: false })
+      assetByMarker.set(marker, group)
+      markersRef.current.set(key, { marker, assets: group, selected: false })
       clusters.addLayer(marker)
     }
 
