@@ -61,13 +61,14 @@ function PlacesContent() {
 
     const map = L.map(containerRef.current, {
       zoomControl: false,
-      // Smooth zoom: quarter-level steps from the wheel, buttons, keyboard and double-click
-      // instead of Leaflet's whole-level snap (a 100px wheel notch used to be a full level).
-      // 0.25 rather than 0 because the wheel delta is platform-scaled (Leaflet divides by up to
-      // 40x on Linux Chrome); the snap floor keeps a notch meaningful everywhere.
+      // Zoom feel: fractions of a level instead of Leaflet's whole-level snap. zoomSnap is the
+      // step grid (a quarter), zoomDelta the button/keyboard/double-click step, and 60px per
+      // level gives the wheel half a level per notch. The snap stays at a quarter rather than 0
+      // because the wheel delta is platform-scaled (Leaflet divides by up to 40x on Linux
+      // Chrome, where the snap floor is what keeps a notch meaningful at all).
       zoomSnap: 0.25,
       zoomDelta: 0.25,
-      wheelPxPerZoomLevel: 120,
+      wheelPxPerZoomLevel: 60,
     }).setView([0, 0], 2)
     mapRef.current = map
     L.control.zoom({ position: 'bottomright' }).addTo(map)
@@ -201,7 +202,7 @@ function PlacesContent() {
   return (
     <>
       <div className="flex h-full w-full">
-        <div ref={containerRef} className="flex-1 min-w-0 h-full" />
+        <div ref={containerRef} className="places-map flex-1 min-w-0 h-full" />
         {panelOpen && (
           <MapSidePanel
             assets={panelAssets}

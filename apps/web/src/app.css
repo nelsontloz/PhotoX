@@ -132,6 +132,14 @@
   transform: scale(1.18);
 }
 
+/* Places map only: Leaflet animates a zoom with a 250ms CSS transition, and it drops any wheel
+   notch that arrives while that animation is still running — so a fast scroll loses most of its
+   input and the map reads as slow, stuttering steps. A shorter glide lets consecutive notches
+   land and blend into one continuous motion. */
+.places-map .leaflet-zoom-anim .leaflet-zoom-animated {
+  transition-duration: 0.14s;
+}
+
 .justified-grid-gallery {
   --space: 4px;
   --min-height: 200px;
