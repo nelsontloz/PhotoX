@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { FaCamera, FaMagnifyingGlass } from 'react-icons/fa6'
-import { UploadButton } from './UploadButton'
+import { UploadButtonCompact } from './UploadButton'
 import { SearchInput } from './SearchBar'
 
 export function AppHeader() {
@@ -39,7 +39,7 @@ export function AppHeader() {
         >
           <FaMagnifyingGlass className="text-[15px]" />
         </button>
-        <UploadButton variant="compact" />
+        <UploadButtonCompact />
       </div>
 
       {mobileSearchOpen && (

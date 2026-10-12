@@ -2,13 +2,13 @@ import { Controller, Get, Param, Query, Res } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Response } from 'express'
 import { CurrentUserId } from '../auth/jwt-auth.guard'
-import { FaceThumbService } from './face-thumb.service'
 import { FaceThumbQueryDto } from './dto/face-thumb-query.dto'
+import { FacesService } from './faces.service'
 
 @ApiTags('faces')
 @Controller('api/v1/faces')
 export class FaceThumbController {
-  constructor(private readonly thumbs: FaceThumbService) {}
+  constructor(private readonly thumbs: FacesService) {}
 
   @Get(':id/thumb')
   @ApiOperation({ summary: 'Crop a face thumbnail from the source asset on demand' })

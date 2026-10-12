@@ -132,13 +132,9 @@ export class VideoProcessor implements OnModuleInit {
   }
 
   private async downloadSource(record: FileRecord, destDir: string): Promise<string> {
-    const ext = record.mimeType.includes('webm')
-      ? 'webm'
-      : record.mimeType.includes('quicktime')
-        ? 'mov'
-        : 'mp4'
     await mkdir(destDir, { recursive: true })
-    const destPath = join(destDir, `${randomUUID()}.${ext}`)
+    // ponytail: no extension — ffprobe/ffmpeg sniff by content, and the tmp copy is deleted after
+    const destPath = join(destDir, randomUUID())
     await copyFile(this.storage.pathFor(record.storageKey), destPath)
     return destPath
   }

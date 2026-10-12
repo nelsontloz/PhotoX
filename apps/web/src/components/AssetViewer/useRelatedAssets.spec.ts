@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { Asset, SearchResponse } from '@photox/shared-types'
 
-vi.mock('../../api/related', () => ({
+vi.mock('../../api/assets', () => ({
   getSimilarAssets: vi.fn(),
   getAssetDuplicates: vi.fn(),
 }))
 
-import { getSimilarAssets } from '../../api/related'
+import { getSimilarAssets } from '../../api/assets'
 import { useSimilarAssets } from './useRelatedAssets'
 
 const getSimilarMock = vi.mocked(getSimilarAssets)

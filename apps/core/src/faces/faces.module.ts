@@ -9,12 +9,11 @@ import { FacesController } from './faces.controller'
 import { FacesQueryController } from './faces-query.controller'
 import { FaceThumbController } from './face-thumb.controller'
 import { FacesService } from './faces.service'
-import { FaceThumbService } from './face-thumb.service'
 
 @Module({
   imports: [TypeOrmModule.forFeature([Face, Person, Asset, FileRecord]), StorageModule],
   controllers: [FacesController, FacesQueryController, FaceThumbController],
-  providers: [FacesService, FaceThumbService],
+  providers: [FacesService],
   exports: [FacesService],
 })
 export class FacesModule {}

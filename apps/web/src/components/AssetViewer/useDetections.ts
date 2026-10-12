@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { AssetDetectionDto } from '@photox/shared-types'
-import { getAssetDetections } from '../../api/detections'
+import { getAssetDetections } from '../../api/assets'
 import { makeLoader } from './makeLoader'
 
 type DetectionStatus = 'idle' | 'loading' | 'ready'

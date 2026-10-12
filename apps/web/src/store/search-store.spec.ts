@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Asset } from '@photox/shared-types'
 
-vi.mock('../api/search', () => ({ searchAssets: vi.fn() }))
+vi.mock('../api/assets', () => ({ searchAssets: vi.fn() }))
 
-import { searchAssets } from '../api/search'
+import { searchAssets } from '../api/assets'
 import { useSearchStore, SEARCH_PAGE_SIZE } from './search-store'
 
 const searchAssetsMock = vi.mocked(searchAssets)

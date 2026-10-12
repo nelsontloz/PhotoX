@@ -12,7 +12,6 @@ import type { MonthStatus, UseTimelineMonthsResult } from '../../hooks/useTimeli
 import { TIMELINE_PREFETCH_PX, type TimelineLayout } from '../../lib/timelineLayout'
 import { groupDateLabelFromSortKey } from '../../lib/dateFormat'
 import { GalleryItem } from '../GalleryItem'
-import { Skeleton } from '../Skeleton'
 import { ScrollContainerContext } from '../AppShell'
 import { useAppStore } from '../../store/app-store'
 import { TimelineScrollbar } from './TimelineScrollbar'
@@ -228,7 +227,7 @@ export function TimelineGrid({
                                 { '--width': item.w ?? 1, '--height': item.h ?? 1 } as CSSProperties
                               }
                             >
-                              <Skeleton className="w-full h-full" />
+                              <div className="animate-pulse bg-slate-700/50 rounded w-full h-full" />
                             </figure>
                           ))}
                   </div>

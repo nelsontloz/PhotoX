@@ -3,7 +3,7 @@ import sharp from 'sharp'
 import { resolveFaceDetectorModelPath } from '@photox/shared-config'
 import { SCRFD_INPUT_SIZE, decodeScrfdOutputs, scrfdPreprocess } from './scrfd.decode'
 import { lazyOnce, requireModelFile } from './model-loader'
-import type { DetectedBox, FaceDetectionBackend } from './face.detector.types'
+import type { DetectedBox, FaceDetectionBackend } from './face.detector'
 import type * as ort from 'onnxruntime-node'
 
 // ponytail: InsightFace SCRFD det_10g detector weights (~17MB) are for non-commercial research

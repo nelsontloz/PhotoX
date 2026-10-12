@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { Asset, AssetLayout, AssetListResponse } from '@photox/shared-types'
+import type { Asset, AssetLayout, AssetListResponse, AssetDetectionsResponse, SearchResponse } from '@photox/shared-types'
 
 interface ListAssetsParams {
   limit?: number
@@ -139,4 +139,36 @@ export async function reprocessVideo(assetId: string): Promise<void> {
 
 export async function trashAssets(assetIds: string[]): Promise<void> {
   await api.post('/v1/assets/bulk-trash', { assetIds })
+}
+
+interface SearchParams {
+  q: string
+  limit?: number
+  offset?: number
+}
+
+export async function searchAssets(params: SearchParams): Promise<SearchResponse> {
+  const { data } = await api.get<SearchResponse>('/v1/search', { params })
+  return data
+}
+
+/** Visually similar assets (image-embedding ANN). Server default limit 12, max 100. */
+export async function getSimilarAssets(assetId: string): Promise<SearchResponse> {
+  const { data } = await api.get<SearchResponse>(`/v1/assets/${assetId}/similar`)
+  return data
+}
+
+/** Perceptual duplicates within the Hamming threshold. Server default 10, max 64. */
+export async function getAssetDuplicates(assetId: string): Promise<SearchResponse> {
+  const { data } = await api.get<SearchResponse>(`/v1/assets/${assetId}/duplicates`)
+  return data
+}
+
+export async function getAssetDetections(assetId: string): Promise<AssetDetectionsResponse> {
+  const { data } = await api.get<AssetDetectionsResponse>(`/v1/assets/${assetId}/detections`)
+  return data
+}
+
+export async function assignFace(faceId: string, personId: string | null): Promise<void> {
+  await api.patch(`/v1/faces/${faceId}/person`, { personId })
 }

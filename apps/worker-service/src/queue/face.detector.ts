@@ -3,11 +3,20 @@ import sharp from 'sharp'
 import { envFaceDetectorKind } from '@photox/shared-config'
 import type { FaceDetectorKind } from '@photox/shared-types'
 import { FaceEmbedderService, alignFaceCrop, type RawImage } from './face.embedder'
-import type { FaceDetectionBackend } from './face.detector.types'
 import { HumanFaceDetector } from './face.detector.human'
 import { ScrfdFaceDetector } from './face.detector.scrfd'
 
-export { landmarks5 } from './face.detector.human'
+export interface DetectedBox {
+  box: { x: number; y: number; w: number; h: number }
+  score: number
+  // 5 points in input-buffer pixel coords, order: leftEye, rightEye, nose, mouthLeft, mouthRight
+  points5: [number, number][]
+}
+
+export interface FaceDetectionBackend {
+  load(): Promise<void>
+  detect(buffer: Buffer): Promise<DetectedBox[]>
+}
 
 export interface DetectedFace {
   box: { x: number; y: number; w: number; h: number }
@@ -25,21 +34,13 @@ export const FACE_MIN_SIZE_PX = 40
 @Injectable()
 export class FaceDetectorService implements OnModuleInit {
   private readonly logger = new Logger(FaceDetectorService.name)
-  private readonly backends = new Map<FaceDetectorKind, FaceDetectionBackend>()
+  private readonly human = new HumanFaceDetector()
+  private readonly scrfd = new ScrfdFaceDetector()
 
   constructor(private readonly embedder: FaceEmbedderService) {}
 
-  private backend(kind: FaceDetectorKind): FaceDetectionBackend {
-    let backend = this.backends.get(kind)
-    if (!backend) {
-      backend = kind === 'scrfd' ? new ScrfdFaceDetector() : new HumanFaceDetector()
-      this.backends.set(kind, backend)
-    }
-    return backend
-  }
-
   private async loaded(kind: FaceDetectorKind): Promise<FaceDetectionBackend> {
-    const backend = this.backend(kind)
+    const backend = kind === 'scrfd' ? this.scrfd : this.human
     await backend.load()
     return backend
   }

@@ -1,15 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 vi.mock('../api/assets')
-vi.mock('./clientThumbnail')
 
 import { enqueueFiles } from './upload'
 import { useUploadStore } from '../store/upload-store'
 import * as assetsApi from '../api/assets'
-import * as clientThumbnail from './clientThumbnail'
 
 const uploadFileMock = vi.mocked(assetsApi.uploadFile)
-const makeThumbnailMock = vi.mocked(clientThumbnail.makeThumbnail)
 
 function makeFile(name: string): File {
   return new File([new Uint8Array(8)], name, { type: 'image/jpeg' })
@@ -27,8 +24,6 @@ class FakeAxiosError extends Error {
 describe('enqueueFiles', () => {
   beforeEach(() => {
     uploadFileMock.mockReset()
-    makeThumbnailMock.mockReset()
-    makeThumbnailMock.mockResolvedValue(null)
     useUploadStore.setState({ items: [], dismissed: false })
   })
 

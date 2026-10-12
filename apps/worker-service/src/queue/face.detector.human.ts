@@ -4,7 +4,7 @@ import { pathToFileURL } from 'url'
 import sharp from 'sharp'
 import type { FaceLandmark, FaceResult } from '@vladmandic/human'
 import { lazyOnce } from './model-loader'
-import type { DetectedBox, FaceDetectionBackend } from './face.detector.types'
+import type { DetectedBox, FaceDetectionBackend } from './face.detector'
 
 interface FaceLandmarks5 {
   leftEye: [number, number]

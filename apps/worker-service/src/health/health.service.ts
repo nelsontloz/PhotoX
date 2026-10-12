@@ -7,13 +7,11 @@ export class HealthService {
 
   async check() {
     // isHealthy() swallows ping errors and resolves false — no catch needed here
-    const queue = (await this.bullMq.isHealthy()) ? 'ok' : 'down'
-
-    if (queue !== 'ok') {
+    if (!(await this.bullMq.isHealthy())) {
       throw new ServiceUnavailableException({
         status: 'unhealthy',
         service: 'worker-service',
-        checks: { queue },
+        checks: { queue: 'down' },
       })
     }
 
@@ -22,7 +20,7 @@ export class HealthService {
       service: 'worker-service',
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
-      checks: { queue },
+      checks: { queue: 'ok' },
     }
   }
 }

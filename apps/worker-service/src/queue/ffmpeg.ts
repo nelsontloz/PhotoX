@@ -47,9 +47,8 @@ async function runBin(
   bin: string,
   args: string[],
   { input, timeoutMs = DEFAULT_TIMEOUT_MS, label = 'process' }: RunOptions = {},
-): Promise<{ stdout: Buffer; stderr: string; code: number }> {
+): Promise<Buffer> {
   const useStdioInput = input !== undefined
-
   const proc = spawn(bin, args, {
     stdio: useStdioInput ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
   })
@@ -61,6 +60,7 @@ async function runBin(
 
   const result = await new Promise<{ stdout: Buffer; stderr: string; code: number }>(
     (resolve, reject) => {
+      if (useStdioInput && proc.stdin) proc.stdin.end(input)
       timer = setTimeout(() => {
         killWithDelay(proc)
         reject(new Error(`${label} timed out after ${timeoutMs}ms`))
@@ -79,10 +79,6 @@ async function runBin(
           resolve({ stdout, stderr, code: code ?? 1 })
         })()
       })
-
-      if (useStdioInput && proc.stdin) {
-        proc.stdin.end(input)
-      }
     },
   )
 
@@ -90,7 +86,7 @@ async function runBin(
     throw new Error(`${label} exited with code ${result.code}: ${result.stderr.slice(-2000)}`)
   }
 
-  return result
+  return result.stdout
 }
 
 function killWithDelay(proc: ChildProcess) {
@@ -114,7 +110,7 @@ function killWithDelay(proc: ChildProcess) {
 export async function runFfmpeg(
   args: string[],
   options?: { input?: Buffer; timeoutMs?: number },
-): Promise<{ stdout: Buffer; stderr: string; code: number }> {
+): Promise<Buffer> {
   if (!FFMPEG_PATH)
     throw new Error('ffmpeg-static not found — install ffmpeg-static or set FFMPEG_PATH')
   return runBin(FFMPEG_PATH, args, { ...options, label: 'ffmpeg' })
@@ -124,7 +120,7 @@ export async function runFfprobeJson(input: string): Promise<FfprobeResult> {
   if (!FFPROBE_PATH)
     throw new Error('ffprobe-static not found — install ffprobe-static or set FFPROBE_PATH')
 
-  const { stdout } = await runBin(
+  const stdout = await runBin(
     FFPROBE_PATH,
     ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', input],
     { label: 'ffprobe' },

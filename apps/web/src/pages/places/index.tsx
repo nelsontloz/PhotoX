@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
 import { FaMapLocationDot } from 'react-icons/fa6'
@@ -12,7 +13,6 @@ import { EmptyState, ErrorState, LoadingState } from '../../components/StateView
 import { ViewerHost } from '../../components/ViewerHost'
 import { locationMarkerIcon } from '../../components/AssetViewer/sections/LocationSection'
 import { effectiveAssetDate } from '../../lib/dateFormat'
-import { addOsmTileLayer } from '../../lib/leafletMap'
 import { useAssetNavigation } from '../../hooks/useAssetNavigation'
 import { useAsyncFetch } from '../../hooks/useAsyncFetch'
 import { MapSidePanel } from './MapSidePanel'
@@ -171,7 +171,10 @@ function PlacesContent() {
     mapRef.current = map
     L.control.zoom({ position: 'bottomright' }).addTo(map)
 
-    addOsmTileLayer(map)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+    }).addTo(map)
 
     const bounds = L.latLngBounds(
       assets.map((a) => [a.latitude!, a.longitude!] as [number, number]),
@@ -330,7 +333,6 @@ function PlacesContent() {
         message="Failed to load photos"
         onRetry={() => void refresh()}
         className="flex flex-col items-center justify-center h-full gap-4"
-        messageClassName="text-red-500"
       />
     )
   }

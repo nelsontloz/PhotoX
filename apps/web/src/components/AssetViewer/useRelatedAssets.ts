@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Asset, SearchResponse } from '@photox/shared-types'
-import { getAssetDuplicates, getSimilarAssets } from '../../api/related'
+import { getAssetDuplicates, getSimilarAssets } from '../../api/assets'
 import { makeLoader } from './makeLoader'
 
 type RelatedStatus = 'idle' | 'loading' | 'ready'

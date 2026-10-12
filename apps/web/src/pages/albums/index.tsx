@@ -12,7 +12,7 @@ import { AppShell } from '../../components/AppShell'
 import { AlbumCover } from '../../components/AlbumCover'
 import { Dialog } from '../../components/Dialog'
 import { NewAlbumFields } from '../../components/NewAlbumFields'
-import { ErrorState, LoadingState } from '../../components/StateViews'
+import { LoadingState } from '../../components/StateViews'
 import { useAlbums } from '../../hooks/useAlbums'
 
 interface NewAlbumDialogProps {
@@ -110,13 +110,18 @@ function AlbumsListContent() {
 
   if (error) {
     return (
-      <ErrorState
-        message={error}
-        messageClassName="text-red-400"
-        onRetry={() => {
-          void refresh()
-        }}
-      />
+      <div className="flex flex-col items-center justify-center py-32 gap-4">
+        <p className="text-sm text-red-400">{error}</p>
+        <button
+          type="button"
+          onClick={() => {
+            void refresh()
+          }}
+          className="text-primary text-sm font-medium hover:underline"
+        >
+          Retry
+        </button>
+      </div>
     )
   }
 

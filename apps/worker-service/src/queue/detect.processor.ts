@@ -1,9 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
-import sharp from 'sharp'
 import type { Job } from 'bullmq'
 import { BullMqService } from './bullmq.service'
 import { assetRefsJobSchema, type AssetRefsJob } from './job-schemas'
-import { orientedResize, runAssetFileJob } from './asset-file-job'
+import { orientedPrep, runAssetFileJob } from './asset-file-job'
 import { DetectService, scaleDetectionsToOriginal } from './detect.service'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
@@ -38,25 +37,12 @@ export class DetectProcessor implements OnModuleInit {
       // No metadata status marker: core's UpdateMetadataDto has no detection status field
       missingModelMarkers: ['Detection model not found'],
       body: async ({ data, filePath }) => {
-        const metadata = await sharp(filePath).metadata()
-        if (!metadata.width || !metadata.height) {
-          throw new Error('Could not read image dimensions')
-        }
-        // EXIF orientations 5-8 transpose the stored pixels, so the displayed (oriented) original
-        // swaps axes; boxes must land in that same oriented space the web viewer scales by
-        const swapped = (metadata.orientation ?? 1) >= 5
-        const origW = swapped ? metadata.height : metadata.width
-        const origH = swapped ? metadata.width : metadata.height
-
         // ponytail: EXIF-oriented ≤1280px long side — the model's own letterbox goes to 640, then
         // scaleDetectionsToOriginal maps boxes from this prep space back to ORIGINAL px below
-        const resized = await orientedResize(filePath, DETECT_MAX_DIM)
-        const resizedMeta = await sharp(resized).metadata()
-        const resizedW = resizedMeta.width ?? origW
-        const resizedH = resizedMeta.height ?? origH
-
-        const scaleX = origW / resizedW
-        const scaleY = origH / resizedH
+        const { resized, scaleX, scaleY, origW, origH } = await orientedPrep(
+          filePath,
+          DETECT_MAX_DIM,
+        )
 
         const detections = await this.detect.detect(resized)
         const scaled = scaleDetectionsToOriginal(detections, scaleX, scaleY, origW, origH)

@@ -6,7 +6,6 @@ import { whenScrollIdle } from '../lib/scrollIdle'
 import { observeIntersecting } from '../lib/shared-intersection'
 import { TIMELINE_PREFETCH_PX } from '../lib/timelineLayout'
 import { useScrollContainer } from './AppShell'
-import { Skeleton } from './Skeleton'
 
 interface AssetThumbProps {
   asset: Asset
@@ -83,7 +82,7 @@ export function AssetThumb({
           <span className="text-xs text-slate-500">No preview</span>
         </div>
       ) : !src ? (
-        <Skeleton className="w-full h-full" />
+        <div className="animate-pulse bg-slate-700/50 rounded w-full h-full" />
       ) : (
         <>
           <img

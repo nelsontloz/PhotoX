@@ -5,7 +5,7 @@ import type { Asset } from '@photox/shared-types'
 const listPersonsMock = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../api/persons', () => ({ listPersons: listPersonsMock }))
-vi.mock('../../../api/faces', () => ({ assignFace: vi.fn() }))
+vi.mock('../../../api/assets', () => ({ assignFace: vi.fn() }))
 vi.mock('../../FaceThumb', () => ({
   FaceThumb: ({ alt }: { alt: string }) => <img alt={alt} />,
 }))

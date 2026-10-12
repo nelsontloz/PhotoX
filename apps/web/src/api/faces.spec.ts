@@ -4,7 +4,7 @@ const patchMock = vi.hoisted(() => vi.fn())
 
 vi.mock('./client', () => ({ api: { patch: patchMock } }))
 
-import { assignFace } from './faces'
+import { assignFace } from './assets'
 
 describe('assignFace', () => {
   beforeEach(() => vi.clearAllMocks())

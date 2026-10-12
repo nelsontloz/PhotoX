@@ -62,7 +62,6 @@ describe('VideoProcessor disk paths', () => {
     const result = await downloadSource(record, destDir)
 
     expect(result.startsWith(destDir)).toBe(true)
-    expect(result.endsWith('.mp4')).toBe(true)
     expect(await readFile(result)).toEqual(fileBytes)
   })
 

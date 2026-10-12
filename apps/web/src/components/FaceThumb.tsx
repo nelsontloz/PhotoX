@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { FaFaceSmile } from 'react-icons/fa6'
-import { Skeleton } from './Skeleton'
 
 interface FaceThumbProps {
   faceId: string | null
@@ -36,7 +35,7 @@ export function FaceThumb({ faceId, alt, className = '' }: FaceThumbProps) {
           onLoad={() => setLoadedFaceId(faceId)}
           onError={() => setFailedFaceId(faceId)}
         />
-        <Skeleton className={`w-full h-full ${className}`} />
+        <div className={`animate-pulse bg-slate-700/50 rounded w-full h-full ${className}`} />
       </>
     )
   }

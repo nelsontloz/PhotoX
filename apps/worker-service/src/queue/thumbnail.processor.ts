@@ -13,7 +13,7 @@ import { LocalStorageService } from '@photox/shared-config'
 import type { Asset, FileRecord } from '@photox/shared-types'
 import { runFfmpeg } from './ffmpeg'
 
-const STANDARD_SIZES: Record<string, [number, number]> = {
+const STANDARD_SIZES: Record<ThumbnailJob['size'], [number, number]> = {
   sm: [150, 150],
   md: [300, 300],
   lg: [600, 600],
@@ -105,12 +105,10 @@ export class ThumbnailProcessor implements OnModuleInit {
   private async generateThumbnail(
     record: FileRecord,
     asset: Asset,
-    size: string,
+    size: ThumbnailJob['size'],
     userId: string,
   ): Promise<void> {
-    const dims = STANDARD_SIZES[size]
-    if (!dims) throw new Error(`Unknown thumbnail size: ${size}`)
-    const [width, height] = dims
+    const [width, height] = STANDARD_SIZES[size]
 
     const mimeType = record.mimeType
 
@@ -129,21 +127,19 @@ export class ThumbnailProcessor implements OnModuleInit {
             ? Math.min(Math.max(0, durationSeconds * 0.25), Math.max(0, durationSeconds - 0.1))
             : 0
 
-        const frameBuffer = (
-          await runFfmpeg([
-            '-y',
-            '-noautorotate',
-            '-ss',
-            String(seekSec),
-            '-i',
-            tmpPath,
-            '-vframes',
-            '1',
-            '-f',
-            'image2pipe',
-            '-',
-          ])
-        ).stdout
+        const frameBuffer = await runFfmpeg([
+          '-y',
+          '-noautorotate',
+          '-ss',
+          String(seekSec),
+          '-i',
+          tmpPath,
+          '-vframes',
+          '1',
+          '-f',
+          'image2pipe',
+          '-',
+        ])
 
         const { data: thumbBuffer, info } = await this.encodeWebp(
           frameBuffer,
@@ -162,9 +158,16 @@ export class ThumbnailProcessor implements OnModuleInit {
       // through ffmpeg (has libde265), upgrade to a libheif-capable sharp build if it lands
       if (mimeType === 'image/heic' || mimeType === 'image/heif') {
         try {
-          const frameBuffer = (
-            await runFfmpeg(['-y', '-i', tmpPath, '-vframes', '1', '-f', 'image2pipe', '-'])
-          ).stdout
+          const frameBuffer = await runFfmpeg([
+            '-y',
+            '-i',
+            tmpPath,
+            '-vframes',
+            '1',
+            '-f',
+            'image2pipe',
+            '-',
+          ])
           const { data: thumbBuffer, info } = await this.encodeWebp(
             frameBuffer,
             size,
@@ -238,11 +241,8 @@ export class ThumbnailProcessor implements OnModuleInit {
       bytes: thumbBuffer.length,
     })
 
-    try {
-      await this.core.patchMetadata(userId, assetId, { thumbnailStatus: 'ready' })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      this.logger.warn(`Thumbnail status update failed for asset=${assetId}: ${msg}`)
-    }
+    await patchStatusFailed(this.core, this.logger, userId, assetId, {
+      thumbnailStatus: 'ready',
+    })
   }
 }
