@@ -24,7 +24,9 @@ import { CoreClient } from '../core/core-client.service'
     // ponytail: registerAsync (not register) — defers loadAuthEnv() until app.module's
     // loadRootEnvFile() has loaded root .env; matches apps/core
     JwtModule.registerAsync({
-      useFactory: () => ({ secret: loadAuthEnv().AUTH_TOKEN_SECRET }),
+      // the worker signs delegated job JWTs ONLY with the worker secret — core accepts
+      // both secrets but gates worker-origin tokens through the act allowlist
+      useFactory: () => ({ secret: loadAuthEnv().WORKER_JWT_SECRET }),
     }),
   ],
   providers: [

@@ -7,6 +7,7 @@ import { Test } from '@nestjs/testing'
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm'
 import { ValidationPipe, type ExecutionContext, type INestApplication } from '@nestjs/common'
 import { APP_GUARD } from '@nestjs/core'
+import type { NestExpressApplication } from '@nestjs/platform-express'
 import { JwtModule, JwtService } from '@nestjs/jwt'
 import type { Queue } from 'bullmq'
 import type { Express } from 'express'
@@ -50,7 +51,7 @@ import { AuthModule } from '../../src/auth/auth.module'
 import { BullMqModule } from '../../src/queue/bullmq.module'
 import { BullMqService } from '../../src/queue/bullmq.service'
 import { HttpExceptionFilter } from '../../src/common/filters/http-exception.filter'
-import { TEST_AUTH_SECRET, setupTestInfra, teardownTestInfra } from './test-setup'
+import { TEST_AUTH_SECRET, TEST_WORKER_SECRET, setupTestInfra, teardownTestInfra } from './test-setup'
 
 export interface MockUser {
   id: string
@@ -79,6 +80,8 @@ export interface ApiTestApp {
   getQueue: (name: string) => Queue
   signToken: (user: MockUser, opts?: { act?: boolean }) => string
   authHeader: (token: string) => Record<string, string>
+  /** worker-secret twin of signToken for delegated-job tokens (phase-2 secret split) */
+  signWorkerToken: (user: MockUser, opts?: { act?: boolean }) => string
 }
 
 const DEFAULT_MOCK_USER: MockUser = {
@@ -170,7 +173,9 @@ export async function createApiTestApp(opts?: {
     }
 
     const moduleRef = await builder.compile()
-    const app = moduleRef.createNestApplication()
+    const app = moduleRef.createNestApplication<NestExpressApplication>()
+    // mirrors main.ts: the XFF trust-proxy test needs req.ip from X-Forwarded-For
+    app.set('trust proxy', 1)
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     )
@@ -185,6 +190,15 @@ export async function createApiTestApp(opts?: {
         email: user.email,
         role: user.role,
         // RFC 8693 act claim marks a worker-minted delegated token
+        ...(opts?.act ? { act: { sub: 'worker-service' } } : {}),
+      })
+    // worker-secret twin: real CoreClient tokens are minted under WORKER_JWT_SECRET
+    const workerJwt = new JwtService({ secret: TEST_WORKER_SECRET })
+    const signWorkerToken = (user: MockUser, opts?: { act?: boolean }): string =>
+      workerJwt.sign({
+        sub: user.id,
+        email: user.email,
+        role: user.role,
         ...(opts?.act ? { act: { sub: 'worker-service' } } : {}),
       })
     // ponytail: core verifies the Bearer JWT itself — no x-user-* mirror needed;
@@ -213,6 +227,7 @@ export async function createApiTestApp(opts?: {
       detectionRepo: app.get<Repository<AssetDetection>>(getRepositoryToken(AssetDetection)),
       getQueue: (name: string) => bullMq.getQueue(name),
       signToken,
+      signWorkerToken,
       authHeader,
     }
   } catch (err) {

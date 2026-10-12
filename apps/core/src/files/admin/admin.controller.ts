@@ -1,9 +1,11 @@
 import { Controller, Delete, HttpCode, HttpStatus, Param } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { AdminService } from './admin.service'
+import { Roles } from '../../auth/roles.decorator'
 
 @ApiTags('admin')
 @Controller('api/v1/admin/files')
+@Roles('admin')
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
 

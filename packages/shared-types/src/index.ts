@@ -21,7 +21,8 @@ export interface LoginRequest {
 }
 
 export interface RefreshRequest {
-  refreshToken: string
+  // optional: the HttpOnly photox_refresh cookie is accepted as a fallback
+  refreshToken?: string
 }
 
 export interface JwtPayload {

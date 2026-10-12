@@ -53,9 +53,12 @@ describe('authStore', () => {
     expect(s.refreshToken).toBe('rt1')
 
     const stored = JSON.parse(localStorage.getItem('photox.auth') ?? '{}') as {
-      state: { accessToken?: string }
+      state: { user?: unknown; accessToken?: string; refreshToken?: string }
     }
-    expect(stored.state.accessToken).toBe('at1')
+    // cookie session: only the profile persists, never tokens
+    expect(stored.state.user).toEqual(mockUser)
+    expect(stored.state.accessToken).toBeUndefined()
+    expect(stored.state.refreshToken).toBeUndefined()
   })
 
   it('login error sets error status and message', async () => {
@@ -262,7 +265,7 @@ describe('authStore', () => {
       }
     })
 
-    it('adopts a newer persisted token pair without calling the API', async () => {
+    it('ignores tokens in stale disk payloads and refreshes via the API', async () => {
       useAuthStore.setState({
         user: mockUser,
         accessToken: 'stale-at',
@@ -277,13 +280,44 @@ describe('authStore', () => {
         }),
       )
 
+      mockRefresh.mockResolvedValueOnce({
+        accessToken: 'new-at',
+        refreshToken: 'new-rt',
+        user: mockUser,
+      })
+
       await useAuthStore.getState().refresh()
 
-      expect(mockRefresh).not.toHaveBeenCalled()
+      // jar-first: the memory pair never drives the rotation, so stale disk pairs stay dead
+      expect(mockRefresh).toHaveBeenCalledWith(undefined)
       const s = useAuthStore.getState()
       expect(s.status).toBe('authenticated')
-      expect(s.accessToken).toBe('disk-at')
-      expect(s.refreshToken).toBe('disk-rt')
+      expect(s.accessToken).toBe('new-at')
+      expect(s.refreshToken).toBe('new-rt')
+    })
+
+    it('two-tab newest-wins: a lock-delayed tab rotates the shared cookie, not its stale pair', async () => {
+      // both tabs hold the same superseded memory pair; the jar already moved on
+      useAuthStore.setState({
+        user: mockUser,
+        accessToken: 'stale-at',
+        refreshToken: 'stale-rt',
+        status: 'authenticated',
+      })
+
+      mockRefresh.mockResolvedValueOnce({
+        accessToken: 'new-at',
+        refreshToken: 'new-rt',
+        user: mockUser,
+      })
+
+      await useAuthStore.getState().refresh()
+
+      // no body key → the server rotates the jar's newest instead of reuse-killing the family
+      expect(mockRefresh).toHaveBeenCalledWith(undefined)
+      const s = useAuthStore.getState()
+      expect(s.accessToken).toBe('new-at')
+      expect(s.refreshToken).toBe('new-rt')
     })
 
     it('single-flight: two concurrent calls share one request', async () => {
@@ -326,12 +360,27 @@ describe('authStore', () => {
       expect(useAuthStore.getState().accessToken).toBe('fresh-at')
     })
 
-    it('no-op when refreshToken is null', async () => {
-      useAuthStore.setState({ refreshToken: null })
+    it('refreshes via the cookie when the memory token is absent', async () => {
+      useAuthStore.setState({
+        user: mockUser,
+        accessToken: null,
+        refreshToken: null,
+        status: 'authenticated',
+      })
+
+      mockRefresh.mockResolvedValueOnce({
+        accessToken: 'cookie-at',
+        refreshToken: 'cookie-rt',
+        user: mockUser,
+      })
 
       await useAuthStore.getState().refresh()
 
-      expect(mockRefresh).not.toHaveBeenCalled()
+      // undefined omits the body key: the HttpOnly refresh cookie carries the credential
+      expect(mockRefresh).toHaveBeenCalledWith(undefined)
+      const s = useAuthStore.getState()
+      expect(s.accessToken).toBe('cookie-at')
+      expect(s.refreshToken).toBe('cookie-rt')
     })
   })
 

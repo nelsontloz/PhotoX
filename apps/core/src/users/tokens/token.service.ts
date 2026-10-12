@@ -9,12 +9,17 @@ export class TokenService {
   constructor(private readonly jwtService: JwtService) {}
 
   signAccessToken(user: { id: string; email: string; role: Role }): Promise<string> {
-    return this.jwtService.signAsync({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      jti: randomUUID(),
-    })
+    return this.jwtService.signAsync(
+      {
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+        jti: randomUUID(),
+      },
+      // kid names the signing secret ('cur' = AUTH_TOKEN_SECRET); rotation verifiers try
+      // current, then AUTH_TOKEN_SECRET_PREVIOUS — no extra JwtModule needed
+      { keyid: 'cur' },
+    )
   }
 
   // remaining lifetime of an access token for the cookie's maxAge; 0 when it has no exp

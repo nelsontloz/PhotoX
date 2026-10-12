@@ -17,6 +17,9 @@ export class User {
   @Column()
   displayName!: string
 
+  @Column({ type: 'timestamptz', nullable: true })
+  tokensValidAfter!: Date | null
+
   @CreateDateColumn()
   createdAt!: Date
 

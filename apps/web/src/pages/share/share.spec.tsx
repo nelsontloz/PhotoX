@@ -24,10 +24,8 @@ vi.mock('../../api/client', () => ({ api: { get: mocks.get } }))
 
 const videoAsset = (overrides: Partial<PublicShareAsset> = {}): PublicShareAsset => ({
   id: 'a1',
-  userId: 'u1',
   kind: 'video',
-  fileId: 'original-file',
-  transcodeFileId: null,
+  hasTranscode: false,
   title: null,
   originalName: 'clip.mov',
   mimeType: 'video/quicktime',
@@ -41,15 +39,9 @@ const videoAsset = (overrides: Partial<PublicShareAsset> = {}): PublicShareAsset
 const assetShare = (asset: PublicShareAsset): PublicShareResponse => ({
   kind: 'asset',
   share: {
-    id: 's1',
     kind: 'asset',
-    userId: 'u1',
-    token: 'tok',
-    assetId: asset.id,
-    assetFileId: asset.fileId,
-    assetThumbFileId: null,
-    assetKind: 'video',
     createdAt: '2026-01-01T00:00:00.000Z',
+    expiresAt: null,
   },
   asset,
 })
@@ -57,15 +49,9 @@ const assetShare = (asset: PublicShareAsset): PublicShareResponse => ({
 const albumShare: PublicShareResponse = {
   kind: 'album',
   share: {
-    id: 's2',
     kind: 'album',
-    userId: 'u1',
-    token: 'tok',
-    albumId: 'al1',
-    albumName: 'Trip',
-    albumAssetCount: 1,
-    albumCoverThumbFileId: null,
     createdAt: '2026-01-01T00:00:00.000Z',
+    expiresAt: null,
   },
   album: { id: 'al1', name: 'Trip', description: null, assetCount: 1 },
 }
@@ -88,7 +74,7 @@ describe('public share page video playback', () => {
 
   it('asks the player for the webm transcode when the video has one', async () => {
     mocks.get.mockResolvedValue({
-      data: assetShare(videoAsset({ transcodeFileId: 'transcoded-file' })),
+      data: assetShare(videoAsset({ hasTranscode: true })),
     })
 
     renderShare()
@@ -110,7 +96,7 @@ describe('public share page video playback', () => {
   })
 
   it('plays an album video member as webm when a transcode exists', async () => {
-    const asset = videoAsset({ transcodeFileId: 'transcoded-file' })
+    const asset = videoAsset({ hasTranscode: true })
     mocks.get.mockImplementation((url: string) => {
       if (url === '/share/tok') return Promise.resolve({ data: albumShare })
       if (url === '/share/tok/assets') return Promise.resolve({ data: { items: [asset] } })

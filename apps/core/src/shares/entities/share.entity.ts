@@ -42,8 +42,13 @@ export class Share {
   @JoinColumn({ name: 'albumId' })
   album!: Album | null
 
-  @Column({ type: 'varchar', length: 32 })
+  // stores sha256 hex of the capability (64 chars); plaintext appears only in the create response
+  @Column({ type: 'varchar', length: 64 })
   token!: string
+
+  // null = legacy share with no expiry; new shares default to 30d
+  @Column({ type: 'timestamptz', nullable: true })
+  expiresAt!: Date | null
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date

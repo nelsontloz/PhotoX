@@ -27,7 +27,7 @@ function getAlbumAssetUrl(token: string, assetId: string, size?: 'sm'): string {
 // The share stream endpoints serve the AV1/webm derivative whenever the worker transcoded the
 // video; declaring the original mime there makes video.js reject the source outright.
 function videoType(asset: PublicShareAsset): string | undefined {
-  return asset.transcodeFileId ? 'video/webm' : (asset.mimeType ?? undefined)
+  return asset.hasTranscode ? 'video/webm' : (asset.mimeType ?? undefined)
 }
 
 function AlbumShare({

@@ -21,7 +21,7 @@ pnpm verify                           # lint && test --force && typecheck && bui
 curl localhost:3000/health            # core (host dev); compose publishes no core port
 ```
 
-Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install`, then compose, then `pnpm dev`.
+Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install`, diff `.env` against `.env.example` for new required keys (e.g. `WORKER_JWT_SECRET`), then compose, then `pnpm dev`.
 
 ## Env / config
 

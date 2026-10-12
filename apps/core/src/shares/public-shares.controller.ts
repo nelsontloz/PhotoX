@@ -1,4 +1,4 @@
-import { Controller, Get, NotFoundException, Param, Query, Req, Res } from '@nestjs/common'
+import { Controller, Get, Param, Query, Req, Res } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
 import { SharesService } from './shares.service'
@@ -28,15 +28,10 @@ export class PublicSharesController {
   @ApiResponse({ status: 404, description: 'Share not found' })
   @ApiResponse({ status: 416, description: 'Range not satisfiable' })
   async streamByToken(@Param('token') token: string, @Req() req: Request, @Res() res: Response) {
-    const share = await this.shares.getByToken(token)
-    if (share.kind !== 'asset') throw new NotFoundException('Share not found')
-    // Serve the browser-playable derivative when the video was transcoded, like the app viewer.
-    const fileId = await this.shares.playableFileId(
-      share.share.userId,
-      share.asset.transcodeFileId,
-      share.asset.fileId,
-    )
-    await serveFileBytes(req, res, this.files, share.share.userId, fileId)
+    // file ids never leave the server: resolve the playable target from the token
+    // (getAssetStreamTarget 404s unknown/expired/non-asset shares alike)
+    const { fileId, userId } = await this.shares.getAssetStreamTarget(token)
+    await serveFileBytes(req, res, this.files, userId, fileId)
   }
 
   @Get(':token/assets')

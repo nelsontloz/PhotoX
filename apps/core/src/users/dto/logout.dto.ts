@@ -1,10 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { IsString, IsNotEmpty } from 'class-validator'
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator'
 import type { RefreshRequest } from '@photox/shared-types'
 
 export class RefreshDto implements RefreshRequest {
-  @ApiProperty({ description: 'The opaque refresh token from the last auth response' })
+  @ApiProperty({
+    description: 'The opaque refresh token from the last auth response; omit when the HttpOnly refresh cookie carries it',
+    required: false,
+  })
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  refreshToken!: string
+  refreshToken?: string
 }

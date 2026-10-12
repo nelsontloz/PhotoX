@@ -170,7 +170,7 @@ describe('shares JWT identity', () => {
     },
   )
 
-  it('returns the same token when sharing the same asset twice', async () => {
+  it('rotates the token when sharing the same asset twice', async () => {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })
     const file = await seedFile(t, user.id)
@@ -188,9 +188,12 @@ describe('shares JWT identity', () => {
     expect(second.status).toBe(201)
     const firstBody = first.body as unknown as { id: string; token: string }
     const secondBody = second.body as unknown as { id: string; token: string }
-    expect(secondBody.id).toBe(firstBody.id)
-    expect(secondBody.token).toBe(firstBody.token)
+    // rotation mints a new capability and kills the old URL (compat break by design)
+    expect(secondBody.id).not.toBe(firstBody.id)
+    expect(secondBody.token).not.toBe(firstBody.token)
     expect(await t.shareRepo.count({ where: { assetId: asset.id } })).toBe(1)
+    expect((await request(apiServer(t)).get(`/api/share/${firstBody.token}`)).status).toBe(404)
+    expect((await request(apiServer(t)).get(`/api/share/${secondBody.token}`)).status).toBe(200)
   })
 
   it('404s the public route after revoke', async () => {

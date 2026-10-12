@@ -4,10 +4,10 @@ import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { useConfirm } from '../../components/ConfirmProvider'
 import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
-import { listShares, revokeShare, getShareUrl } from '../../api/shares'
+import { listShares, createShare, revokeShare, getShareUrl } from '../../api/shares'
 import { getFileStreamUrl } from '../../api/assets'
 import { useAsyncFetch } from '../../hooks/useAsyncFetch'
-import type { ShareDto } from '@photox/shared-types'
+import type { ShareListItem } from '@photox/shared-types'
 
 function SharedContent() {
   const confirm = useConfirm()
@@ -20,14 +20,24 @@ function SharedContent() {
   const [revokedIds, setRevokedIds] = useState<Set<string>>(new Set())
   const shares = (data?.items ?? []).filter((s) => !revokedIds.has(s.id))
 
-  const handleCopy = async (share: ShareDto) => {
-    const url = getShareUrl(share.token)
-    await navigator.clipboard.writeText(url)
-    setCopiedId(share.id)
-    setTimeout(() => setCopiedId(null), 2000)
+  // copy rotates: raw capabilities exist only in create responses, so copying mints a fresh
+  // link (the old one dies with rotation) and refreshes the list to the new row
+  const handleCopy = async (share: ShareListItem) => {
+    try {
+      const fresh =
+        share.kind === 'album'
+          ? await createShare({ albumId: share.albumId })
+          : await createShare({ assetId: share.assetId })
+      await navigator.clipboard.writeText(getShareUrl(fresh.token))
+      setCopiedId(fresh.id)
+      setTimeout(() => setCopiedId(null), 2000)
+      await refresh()
+    } catch {
+      /* rotation failed (e.g. trashed asset) — leave the row as-is */
+    }
   }
 
-  const handleRevoke = async (share: ShareDto) => {
+  const handleRevoke = async (share: ShareListItem) => {
     if (
       !(await confirm({
         title: 'Revoke this share link?',

@@ -12,7 +12,7 @@ Feature: Managing my public share links
     And I open the album detail for that share target
     When I create an album share from the album options
     Then the album page confirms the share link was copied
-    And the shares API lists that share with a token
+    And the shares API lists that share without a usable token
     When I open "/shared"
     Then the share list shows an album share entry
 
@@ -21,7 +21,7 @@ Feature: Managing my public share links
     When I upload "photo.jpg"
     And I click the photo thumbnail
     When I create an asset share from the viewer
-    Then the shares API lists that share with a token
+    Then the shares API lists that share without a usable token
     When I open "/shared"
     Then the share list shows an asset share entry
 
@@ -54,13 +54,13 @@ Feature: Managing my public share links
     When I submit a share request with both an asset and an album id
     Then the response status is 400
 
-  Scenario: Requesting the same asset share twice is idempotent
+  Scenario: Requesting the same asset share twice rotates the token
     Given I am signed in
     When I upload "photo.jpg"
     And I create an asset share for the uploaded photo
     Then the response status is 201
     When I create an asset share for the uploaded photo again
-    Then both share requests returned the same share id and token
+    Then the second share request rotated the token and killed the old URL
     And the shares API lists exactly one share entry
 
   Scenario: Shares are isolated between users

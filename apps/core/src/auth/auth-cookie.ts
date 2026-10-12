@@ -1,32 +1,61 @@
 import type { Request, Response } from 'express'
 
 export const ACCESS_COOKIE = 'photox_access'
+export const REFRESH_COOKIE = 'photox_refresh'
 
-// ponytail: secure:false until a TLS proxy exists — then make this conditional on
-// app.set('trust proxy') + req.secure so plain-HTTP host dev keeps working
-const BASE_COOKIE_ATTRS = {
-  httpOnly: true,
-  sameSite: 'lax',
-  path: '/api',
-  secure: false,
-} as const
-
-export function setAccessCookie(res: Response, token: string, maxAgeMs: number): void {
-  res.cookie(ACCESS_COOKIE, token, { ...BASE_COOKIE_ATTRS, maxAge: maxAgeMs })
+// ponytail: Secure is per-request, not a constant — trust-proxy-1 is set, so req.secure follows
+// X-Forwarded-Proto and plain-HTTP host dev keeps working while https gets Secure cookies
+export function isSecureRequest(req: Request): boolean {
+  if (req.secure) return true
+  const proto = req.headers['x-forwarded-proto']
+  const first = Array.isArray(proto) ? proto[0] : proto?.split(',')[0]
+  return first?.trim().toLowerCase() === 'https'
 }
 
-export function clearAccessCookie(res: Response): void {
-  res.clearCookie(ACCESS_COOKIE, { ...BASE_COOKIE_ATTRS })
+function attrs(secure: boolean, path: string, maxAge?: number) {
+  return {
+    httpOnly: true,
+    sameSite: 'lax',
+    path,
+    ...(maxAge !== undefined ? { maxAge } : {}),
+    ...(secure ? { secure: true } : {}),
+  } as const
+}
+
+export function setAccessCookie(
+  res: Response,
+  token: string,
+  maxAgeMs: number,
+  secure: boolean,
+): void {
+  res.cookie(ACCESS_COOKIE, token, attrs(secure, '/api', maxAgeMs))
+}
+
+export function clearAccessCookie(res: Response, secure: boolean): void {
+  res.clearCookie(ACCESS_COOKIE, attrs(secure, '/api'))
+}
+
+export function setRefreshCookie(
+  res: Response,
+  token: string,
+  maxAgeMs: number,
+  secure: boolean,
+): void {
+  res.cookie(REFRESH_COOKIE, token, attrs(secure, '/api/v1/auth', maxAgeMs))
+}
+
+export function clearRefreshCookie(res: Response, secure: boolean): void {
+  res.clearCookie(REFRESH_COOKIE, attrs(secure, '/api/v1/auth'))
 }
 
 // manual parse: no cookie-parser dependency; first occurrence of the name wins
-export function readAccessCookie(req: Request): string | undefined {
+function readCookie(req: Request, name: string): string | undefined {
   const header = req.headers.cookie
   if (!header) return undefined
   for (const part of header.split(';')) {
     const eq = part.indexOf('=')
     if (eq === -1) continue
-    if (part.slice(0, eq).trim() !== ACCESS_COOKIE) continue
+    if (part.slice(0, eq).trim() !== name) continue
     const value = part.slice(eq + 1).trim()
     try {
       return decodeURIComponent(value)
@@ -36,4 +65,12 @@ export function readAccessCookie(req: Request): string | undefined {
     }
   }
   return undefined
+}
+
+export function readAccessCookie(req: Request): string | undefined {
+  return readCookie(req, ACCESS_COOKIE)
+}
+
+export function readRefreshCookie(req: Request): string | undefined {
+  return readCookie(req, REFRESH_COOKIE)
 }

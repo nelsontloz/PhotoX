@@ -295,6 +295,9 @@ export class UserFilesService {
   }
 
   private async getRecord(fileId: string): Promise<FileRecord> {
+    // malformed ids must read as missing — the uuid cast below would 500 them instead
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(fileId))
+      throw new NotFoundException('File not found')
     const record = await this.fileRepo.findOne({ where: { id: fileId } })
     if (!record) throw new NotFoundException('File not found')
     return record

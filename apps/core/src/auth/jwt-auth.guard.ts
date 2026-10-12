@@ -4,15 +4,18 @@ import {
   ExecutionContext,
   ForbiddenException,
   Injectable,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common'
-import { JwtService } from '@nestjs/jwt'
+import { JwtService, type JwtVerifyOptions } from '@nestjs/jwt'
 import { randomUUID } from 'crypto'
 import type { Request, Response } from 'express'
-import { loadEnv } from '@photox/shared-config'
+import { DataSource } from 'typeorm'
+import { loadAuthEnv, loadEnv } from '@photox/shared-config'
 import type { JwtPayload, Role } from '@photox/shared-types'
-import { readAccessCookie, setAccessCookie } from './auth-cookie'
+import { readAccessCookie, isSecureRequest, setAccessCookie } from './auth-cookie'
 import { isAdminRoute, isOpenRoute, isWorkerAllowedRoute, isWorkerRoute } from './open-routes'
+import { User } from '../users/entities/user.entity'
 import { WORKER_ONLY_METADATA_KEYS } from '../assets/dto/update-metadata.dto'
 
 declare global {
@@ -21,6 +24,8 @@ declare global {
   namespace Express {
     interface Request {
       user?: { id: string; email: string; role: Role }
+      // set when the token verified under WORKER_JWT_SECRET rather than the user secret
+      workerOrigin?: boolean
     }
   }
 }
@@ -64,9 +69,19 @@ function hasWorkerMetadataKey(body: unknown): boolean {
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   private readonly clockTolerance: number
+  private readonly userSecret: string
+  private readonly previousSecret?: string
+  private readonly workerSecret: string
 
-  constructor(private readonly jwt: JwtService) {
+  constructor(
+    private readonly jwt: JwtService,
+    @Optional() private readonly dataSource?: DataSource,
+  ) {
     this.clockTolerance = loadEnv().AUTH_CLOCK_TOLERANCE_SEC
+    const auth = loadAuthEnv()
+    this.userSecret = auth.AUTH_TOKEN_SECRET
+    this.previousSecret = auth.AUTH_TOKEN_SECRET_PREVIOUS
+    this.workerSecret = auth.WORKER_JWT_SECRET
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -81,18 +96,65 @@ export class JwtAuthGuard implements CanActivate {
     const token = bearerToken(req) ?? cookieToken
     if (!token) throw new UnauthorizedException()
 
-    let payload: JwtPayload
-    try {
-      payload = this.jwt.verify<JwtPayload>(token, {
-        algorithms: ['HS256'],
-        clockTolerance: this.clockTolerance,
-      })
-    } catch {
+    // rotation + worker split as a guard-level fallback (no extra JwtModule): the user
+    // secret first, then the previous secret during rotation, then the worker secret —
+    // a worker-secret hit is marked worker-origin below (act still gates the allowlist)
+    const verifyOpts: JwtVerifyOptions = {
+      algorithms: ['HS256'],
+      clockTolerance: this.clockTolerance,
+    }
+    const candidates: { secret: string; worker: boolean }[] = [
+      { secret: this.userSecret, worker: false },
+      ...(this.previousSecret ? [{ secret: this.previousSecret, worker: false }] : []),
+      { secret: this.workerSecret, worker: true },
+    ]
+    let payload: JwtPayload | undefined
+    let workerOrigin = false
+    for (const { secret, worker } of candidates) {
+      try {
+        payload = this.jwt.verify<JwtPayload>(token, { ...verifyOpts, secret })
+        workerOrigin = worker
+        break
+      } catch {
+        continue
+      }
+    }
+    if (!payload) {
       throw new UnauthorizedException()
     }
+    if (workerOrigin) req.workerOrigin = true
+    // a worker-secret token without act borrows no identity: even with a real sub it never
+    // reaches the floor check (every legit CoreClient token carries act, so nothing breaks)
+    if (workerOrigin && !payload.act) throw new UnauthorizedException()
 
     // only the two known roles are accepted; anything else is a forged/foreign token
     if (payload.role !== 'user' && payload.role !== 'admin') throw new UnauthorizedException()
+
+    // session floor: logout/reuse bumps users.tokensValidAfter, killing access tokens minted
+    // before it. Runs for Bearer and cookie alike, before the sliding re-mint below.
+    // ponytail: per-request O(1) PK lookup — Redis-cache the floor if this shows up hot
+    if (this.dataSource) {
+      if (typeof payload.iat !== 'number') throw new UnauthorizedException()
+      // a failed lookup reads as "no row": non-act tokens still fail closed below, while
+      // worker-actor pseudo-subs (e.g. worker-service, not a uuid Postgres can cast) pass
+      let row: { tokensValidAfter: Date | null } | null = null
+      try {
+        row = await this.dataSource
+          .getRepository(User)
+          .findOne({ where: { id: payload.sub }, select: ['id', 'tokensValidAfter'] })
+      } catch {
+        row = null
+      }
+      // no user row fails closed — except worker-actor pseudo-subs (e.g. worker-service),
+      // which have no users row; user-sub worker tokens still hit the floor above
+      if (!row && !payload.act) throw new UnauthorizedException()
+      // second granularity: iat is seconds while the floor carries ms
+      if (
+        row?.tokensValidAfter &&
+        Math.floor(row.tokensValidAfter.getTime() / 1000) > payload.iat
+      )
+        throw new UnauthorizedException()
+    }
 
     const user = { id: payload.sub, email: payload.email, role: payload.role }
     req.user = user
@@ -119,15 +181,23 @@ export class JwtAuthGuard implements CanActivate {
       const now = Date.now() / 1000
       const ttl = payload.exp - payload.iat
       if (payload.exp - now < ttl / 2) {
-        const renewed = await this.jwt.signAsync({
-          sub: payload.sub,
-          email: payload.email,
-          role: payload.role,
-          jti: randomUUID(),
-          // a worker-actor token must stay locked to the admin allowlist after renewal
-          ...(payload.act ? { act: payload.act } : {}),
-        })
-        setAccessCookie(context.switchToHttp().getResponse<Response>(), renewed, ttl * 1000)
+        const renewed = await this.jwt.signAsync(
+          {
+            sub: payload.sub,
+            email: payload.email,
+            role: payload.role,
+            jti: randomUUID(),
+            // a worker-actor token must stay locked to the admin allowlist after renewal
+            ...(payload.act ? { act: payload.act } : {}),
+          },
+          { keyid: 'cur' },
+        )
+        setAccessCookie(
+          context.switchToHttp().getResponse<Response>(),
+          renewed,
+          ttl * 1000,
+          isSecureRequest(req),
+        )
       }
     }
     return true
