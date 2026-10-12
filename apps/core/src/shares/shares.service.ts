@@ -4,6 +4,7 @@ import { In, Repository } from 'typeorm'
 import * as crypto from 'crypto'
 import { Share } from './entities/share.entity'
 import { Asset } from '../database/entities'
+import { FileRecord } from '../database/entities'
 import { Album } from '../albums/entities/album.entity'
 import { AlbumAsset } from '../albums/entities/album-asset.entity'
 import { findOwnedOr404 } from '../common/asset-ownership'
@@ -25,6 +26,8 @@ export class SharesService {
     private readonly shareRepo: Repository<Share>,
     @InjectRepository(Asset)
     private readonly assetRepo: Repository<Asset>,
+    @InjectRepository(FileRecord)
+    private readonly fileRepo: Repository<FileRecord>,
     @InjectRepository(Album)
     private readonly albumRepo: Repository<Album>,
     @InjectRepository(AlbumAsset)
@@ -153,7 +156,11 @@ export class SharesService {
     return { items }
   }
 
-  async getAlbumAssetFileId(token: string, assetId: string, size?: string): Promise<string> {
+  async getAlbumAssetFileId(
+    token: string,
+    assetId: string,
+    size?: string,
+  ): Promise<{ fileId: string; userId: string }> {
     const share = await this.getAlbumShare(token)
 
     const member = await this.albumAssetRepo
@@ -173,11 +180,29 @@ export class SharesService {
     if (!asset) throw new NotFoundException('Asset not found')
 
     if (size === 'sm') {
-      return asset.thumbnails?.find((thumb) => thumb.size === 'sm')?.fileId ?? asset.fileId
+      const thumbFileId =
+        asset.thumbnails?.find((thumb) => thumb.size === 'sm')?.fileId ?? asset.fileId
+      return { fileId: thumbFileId, userId: share.userId }
     }
     // Same pick as the in-app viewer: when the worker transcoded the video (non-h264 original),
     // browsers cannot decode the original — serve the AV1/webm derivative.
-    return asset.transcodeFileId ?? asset.fileId
+    const fileId = await this.playableFileId(share.userId, asset.transcodeFileId, asset.fileId)
+    return { fileId, userId: share.userId }
+  }
+
+  /**
+   * Serve the transcode derivative only when its file row still belongs to the share owner;
+   * otherwise fall back to the original. A poisoned transcodeFileId pointer must never pull
+   * another user's bytes into a public capability URL.
+   */
+  async playableFileId(
+    userId: string,
+    transcodeFileId: string | null,
+    fallbackFileId: string,
+  ): Promise<string> {
+    if (!transcodeFileId) return fallbackFileId
+    const file = await this.fileRepo.findOne({ where: { id: transcodeFileId } })
+    return file?.userId === userId ? transcodeFileId : fallbackFileId
   }
 
   private async getAlbumShare(token: string): Promise<Share> {

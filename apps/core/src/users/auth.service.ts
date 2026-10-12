@@ -27,6 +27,12 @@ const ARGON2_OPTIONS = {
 const DUMMY_PASSWORD_HASH =
   '$argon2id$v=19$m=65536,t=3,p=1$QZuG/mblvx/n3SXlX9r3uw$Vo0UNhRloCRz9xDVfibLrw9XJYAgo/gQQ5nhGrdtJEo'
 
+// Shared password hasher (argon2id, core dep — never bcrypt); reused by the admin env-seed so
+// bootstrap rows verify exactly like registered ones.
+export function hashPassword(password: string): Promise<string> {
+  return argon2.hash(password, ARGON2_OPTIONS)
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name)
@@ -49,10 +55,10 @@ export class AuthService {
     const existing = await this.userRepo.findOne({ where: { email } })
     if (existing) throw new ConflictException('Email already registered')
 
-    const existingCount = await this.userRepo.count()
-    const role = existingCount === 0 ? 'admin' : 'user'
-    const passwordHash = await argon2.hash(password, ARGON2_OPTIONS)
-    const user = this.userRepo.create({ email, passwordHash, displayName, role })
+    // ponytail: open registration never mints admin — the first-admin bootstrap was a
+    // check-then-insert race (two concurrent count()===0 both won). Promote via DB/seed instead.
+    const passwordHash = await hashPassword(password)
+    const user = this.userRepo.create({ email, passwordHash, displayName, role: 'user' })
     const saved = await this.userRepo.save(user)
 
     return this.issueTokens(saved)

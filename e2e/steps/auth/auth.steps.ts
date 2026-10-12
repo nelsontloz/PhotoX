@@ -34,11 +34,24 @@ Given('the instance database is empty', () => {
   // enforced by e2e/run.sh: the stack starts from `docker compose down -v`
 })
 
+Given('the instance database is freshly seeded', () => {
+  // enforced by docker-compose.e2e.yml (ADMIN_EMAIL/ADMIN_PASSWORD) + e2e/run.sh (`down -v`):
+  // core seeds the admin on bootstrap before serving traffic
+})
+
 Given('I am signed in', async ({ request, page, baseURL, ctx }) => {
   ctx.auth = await registerUser(request)
   await injectSession(page, ctx.auth, baseURL)
   // land on the timeline so subsequent UI steps have a page to interact with
   await page.goto('/')
+})
+
+When('I sign in as {string} through the login page', async ({ page }, email: string) => {
+  await page.goto('/login')
+  await page.fill('#email', email)
+  await page.fill('#password', PASSWORD)
+  await page.getByRole('button', { name: 'Sign In' }).click()
+  await expect(page).toHaveURL('/')
 })
 
 When('I register {string} through the register page', async ({ page }, email: string) => {

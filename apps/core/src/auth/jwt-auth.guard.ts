@@ -12,7 +12,8 @@ import type { Request, Response } from 'express'
 import { loadEnv } from '@photox/shared-config'
 import type { JwtPayload, Role } from '@photox/shared-types'
 import { readAccessCookie, setAccessCookie } from './auth-cookie'
-import { isAdminRoute, isOpenRoute, isWorkerAllowedRoute } from './open-routes'
+import { isAdminRoute, isOpenRoute, isWorkerAllowedRoute, isWorkerRoute } from './open-routes'
+import { WORKER_ONLY_METADATA_KEYS } from '../assets/dto/update-metadata.dto'
 
 declare global {
   // ponytail: replaces the passport Request.user augmentation removed with passport
@@ -42,6 +43,23 @@ export function requireUserId(ctx: ExecutionContext): string {
 export const CurrentUserId = createParamDecorator((_data: unknown, ctx: ExecutionContext) =>
   requireUserId(ctx),
 )
+
+// worker ranking fetches page the user list endpoint by ids; the guard scopes rows by sub
+function isActListRead(req: Request): boolean {
+  const ids = (req.query as { ids?: unknown } | undefined)?.ids
+  return typeof ids === 'string' ? ids.length > 0 : Array.isArray(ids) && ids.length > 0
+}
+
+function isUserMetadataWrite(method: string, path: string): boolean {
+  return method === 'PATCH' && /^\/api\/v1\/assets\/[^/]+\/metadata$/.test(path)
+}
+
+// req.body is parsed by express.json() before guards run; absent on unit-test mocks
+function hasWorkerMetadataKey(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false
+  const workerKeys: readonly string[] = WORKER_ONLY_METADATA_KEYS
+  return Object.keys(body).some((k) => workerKeys.includes(k))
+}
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -79,10 +97,16 @@ export class JwtAuthGuard implements CanActivate {
     const user = { id: payload.sub, email: payload.email, role: payload.role }
     req.user = user
     if (isAdminRoute(path) && user.role !== 'admin') throw new ForbiddenException('Admin only')
-    // worker-actor tokens (act claim, RFC 8693) are locked to an explicit admin allowlist;
-    // user routes stay governed by ordinary ownership checks
-    if (payload.act && isAdminRoute(path) && !isWorkerAllowedRoute(method, path))
+    // the worker namespace is act-only: a plain user token proves no job delegation
+    if (isWorkerRoute(path) && !payload.act) throw new ForbiddenException('Worker only')
+    // worker-actor tokens (act claim, RFC 8693) are default-denied outside the explicit
+    // allowlist; the user list-by-ids read stays act-usable for worker ranking fetches
+    if (payload.act && !isWorkerAllowedRoute(method, path) && !isActListRead(req))
       throw new ForbiddenException('Not allowed for service tokens')
+    // non-act callers may not smuggle worker-only extraction fields through the user metadata
+    // endpoint — the whitelist would only 400 them, hiding a worker-contract violation
+    if (!payload.act && isUserMetadataWrite(method, path) && hasWorkerMetadataKey(req.body))
+      throw new ForbiddenException('Worker field')
 
     // sliding renewal: once past half of its own ttl, a cookie-borne token is re-minted
     // from the verified payload so subresources keep authenticating without client JS

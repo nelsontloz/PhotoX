@@ -83,16 +83,18 @@ export function pipeFileResponse(
 /**
  * Resolve path → pipe, shared by the authenticated file routes and the public share routes.
  * `attachment: true` adds the Content-Disposition header (user downloads); public shares stream
- * inline.
+ * inline. Ownership is always enforced against `userId` — share callers pass the share owner's id
+ * after resolving the playable (transcode-guarded) file.
  */
 export async function serveFileBytes(
   req: Request,
   res: Response,
   files: UserFilesService,
+  userId: string,
   fileId: string,
   opts: { attachment?: boolean } = {},
 ): Promise<void> {
-  const { path, record } = await files.serve(fileId)
+  const { path, record } = await files.serve(userId, fileId)
   pipeFileResponse(
     req,
     res,

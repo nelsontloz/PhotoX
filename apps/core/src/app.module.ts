@@ -18,6 +18,7 @@ import { DetectionsModule } from './detections/detections.module'
 import { GroupsModule } from './groups/groups.module'
 import { PersonsModule } from './persons/persons.module'
 import { AdminModule } from './admin/admin.module'
+import { WorkerModule } from './worker/worker.module'
 
 // runs before DatabaseModule.forRoot()'s loadEnv() below — replicates @nestjs/config's envFilePath
 loadRootEnvFile()
@@ -42,6 +43,7 @@ loadRootEnvFile()
     GroupsModule,
     PersonsModule,
     AdminModule,
+    WorkerModule,
   ],
 })
 export class AppModule {}

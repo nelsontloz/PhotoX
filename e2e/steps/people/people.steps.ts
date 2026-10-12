@@ -8,6 +8,7 @@ import {
   requireAssetId,
   requireAuth,
   seedEmbedding,
+  workerHeaders,
   type AuthResponse,
   type Ctx,
 } from '../support'
@@ -57,8 +58,8 @@ async function seedPersonFaces(
   assetId: string,
   faces: SeedPersonFace[],
 ): Promise<void> {
-  const response = await request.post(`/api/v1/assets/${assetId}/faces`, {
-    headers: authHeaders(auth),
+  const response = await request.post(`/worker/assets/${assetId}/faces`, {
+    headers: workerHeaders(auth.user.id),
     data: {
       detector: 'human',
       faces: faces.map((face) => ({ ...face, confidence: 0.9 })),

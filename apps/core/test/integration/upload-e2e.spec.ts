@@ -33,6 +33,7 @@ import { PersonsModule } from '../../src/persons/persons.module'
 import { FacesModule } from '../../src/faces/faces.module'
 import { UserFilesModule } from '../../src/files/user/user-files.module'
 import { StorageModule } from '../../src/files/storage/storage.module'
+import { WorkerModule } from '../../src/worker/worker.module'
 import { AdminModule } from '../../src/admin/admin.module'
 import { UsersModule } from '../../src/users/users.module'
 import { AuthModule } from '../../src/auth/auth.module'
@@ -262,6 +263,7 @@ describe('upload e2e pipeline', () => {
           FacesModule,
           UserFilesModule,
           AdminModule,
+          WorkerModule,
         ],
         providers: [
           WorkerBullMqService,

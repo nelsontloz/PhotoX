@@ -78,11 +78,11 @@ describe('faces HTTP', () => {
 
   it('registers faces for the owner and persists the JWT userId', async () => {
     const owner = await seedUser(t)
-    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role })
+    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
     const file = await seedFile(t, owner.id)
     const asset = await seedAsset(t, owner.id, file.id)
     const res = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/faces`)
+      .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
       .send({
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }],
@@ -97,13 +97,13 @@ describe('faces HTTP', () => {
 
   it('stores detector provenance on registered faces and null when absent', async () => {
     const owner = await seedUser(t)
-    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role })
+    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
     const face = { box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }
 
     const fileA = await seedFile(t, owner.id)
     const assetA = await seedAsset(t, owner.id, fileA.id)
     const withDetector = await request(apiServer(t))
-      .post(`/api/v1/assets/${assetA.id}/faces`)
+      .post(`/worker/assets/${assetA.id}/faces`)
       .set(t.authHeader(token))
       .send({ detector: 'scrfd', faces: [face] })
     expect(withDetector.status).toBe(201)
@@ -113,7 +113,7 @@ describe('faces HTTP', () => {
     const fileB = await seedFile(t, owner.id)
     const assetB = await seedAsset(t, owner.id, fileB.id)
     const withoutDetector = await request(apiServer(t))
-      .post(`/api/v1/assets/${assetB.id}/faces`)
+      .post(`/worker/assets/${assetB.id}/faces`)
       .set(t.authHeader(token))
       .send({ faces: [face] })
     expect(withoutDetector.status).toBe(201)
@@ -123,11 +123,11 @@ describe('faces HTTP', () => {
 
   it('rejects an invalid detector on register with 400', async () => {
     const owner = await seedUser(t)
-    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role })
+    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
     const file = await seedFile(t, owner.id)
     const asset = await seedAsset(t, owner.id, file.id)
     const res = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/faces`)
+      .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
       .send({
         detector: 'bogus',
@@ -139,11 +139,11 @@ describe('faces HTTP', () => {
 
   it('accepts an empty faces array', async () => {
     const owner = await seedUser(t)
-    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role })
+    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
     const file = await seedFile(t, owner.id)
     const asset = await seedAsset(t, owner.id, file.id)
     const res = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/faces`)
+      .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
       .send({ faces: [] })
     expect(res.status).toBe(201)
@@ -153,11 +153,11 @@ describe('faces HTTP', () => {
 
   it('rejects an embedding with the wrong length', async () => {
     const owner = await seedUser(t)
-    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role })
+    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
     const file = await seedFile(t, owner.id)
     const asset = await seedAsset(t, owner.id, file.id)
     const res = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/faces`)
+      .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
       .send({
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: [0.1, 0.2] }],
@@ -169,11 +169,11 @@ describe('faces HTTP', () => {
   it('404s registering faces on a cross-user asset without creating rows', async () => {
     const a = await seedUser(t)
     const b = await seedUser(t)
-    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role }, { act: true })
     const file = await seedFile(t, a.id)
     const asset = await seedAsset(t, a.id, file.id)
     const res = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/faces`)
+      .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(tokenB))
       .send({
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }],
@@ -351,7 +351,7 @@ describe('faces HTTP', () => {
 
   it('deletes all faces for an asset, nulls dangling cover and refreshes faceCount', async () => {
     const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
     const person = await t.personRepo.save(
       t.personRepo.create({ userId: user.id, name: null, clusterLabel: 'c-del', faceCount: 2 }),
     )
@@ -369,7 +369,7 @@ describe('faces HTTP', () => {
     await t.personRepo.update(person.id, { coverFaceId: cover.id })
 
     const res = await request(apiServer(t))
-      .delete(`/api/v1/assets/${asset.id}/faces`)
+      .delete(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
     expect(res.status).toBe(200)
     expect((res.body as { deleted: number }).deleted).toBe(2)
@@ -379,7 +379,7 @@ describe('faces HTTP', () => {
     expect(updated.faceCount).toBe(0)
 
     const again = await request(apiServer(t))
-      .delete(`/api/v1/assets/${asset.id}/faces`)
+      .delete(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
     expect(again.status).toBe(200)
     expect((again.body as { deleted: number }).deleted).toBe(0)
@@ -388,14 +388,14 @@ describe('faces HTTP', () => {
   it('404s face deletion on cross-user or unknown assets without deleting rows', async () => {
     const a = await seedUser(t)
     const b = await seedUser(t)
-    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role }, { act: true })
     const { asset, face } = await seedFace(a.id)
     const cross = await request(apiServer(t))
-      .delete(`/api/v1/assets/${asset.id}/faces`)
+      .delete(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(tokenB))
     expect(cross.status).toBe(404)
     const unknown = await request(apiServer(t))
-      .delete(`/api/v1/assets/${randomUUID()}/faces`)
+      .delete(`/worker/assets/${randomUUID()}/faces`)
       .set(t.authHeader(tokenB))
     expect(unknown.status).toBe(404)
     expect(await t.faceRepo.count({ where: { id: face.id } })).toBe(1)

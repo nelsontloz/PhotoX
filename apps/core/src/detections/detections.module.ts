@@ -9,5 +9,6 @@ import { DetectionsService } from './detections.service'
   imports: [TypeOrmModule.forFeature([AssetDetection, Asset])],
   controllers: [DetectionsController],
   providers: [DetectionsService],
+  exports: [DetectionsService],
 })
 export class DetectionsModule {}

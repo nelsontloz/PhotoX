@@ -12,7 +12,6 @@ import type {
   ApplyClustersResult,
   ClusterFace,
   MetadataPatch,
-  OrphanCleanupResult,
   RegisterFileInput,
   RegisterThumbnailInput,
 } from '../src/core/core-client.service'
@@ -95,20 +94,14 @@ export class FakeCoreClient {
   readonly registerFaceDetectors: FaceDetectorKind[] = []
   readonly clusterFaces: ClusterFace[] = []
   readonly applyClustersCalls: ApplyClustersPayload[] = []
-  readonly adminDeletedFiles: string[] = []
-  orphanCleanupResult: OrphanCleanupResult = {
-    deletedFiles: 0,
-    deletedThumbnails: 0,
-    deletedStrays: 0,
-  }
+  readonly ownedDeletedFiles: string[] = []
   faceDetectionSettings: FaceDetectionSettings = {
     detector: 'human',
     envDefault: 'human',
     models: { scrfd: false },
     facesByDetector: { human: 0, scrfd: 0, unset: 0 },
   }
-  adminDeleteFileFailures = 0
-  orphanCleanupFailures = 0
+  deleteOwnedFileFailures = 0
   dedupeRegistrations = false
 
   private readonly registeredByChecksum = new Map<string, string>()
@@ -129,16 +122,14 @@ export class FakeCoreClient {
     this.registerFaceDetectors.length = 0
     this.clusterFaces.length = 0
     this.applyClustersCalls.length = 0
-    this.adminDeletedFiles.length = 0
-    this.orphanCleanupResult = { deletedFiles: 0, deletedThumbnails: 0, deletedStrays: 0 }
+    this.ownedDeletedFiles.length = 0
     this.faceDetectionSettings = {
       detector: 'human',
       envDefault: 'human',
       models: { scrfd: false },
       facesByDetector: { human: 0, scrfd: 0, unset: 0 },
     }
-    this.adminDeleteFileFailures = 0
-    this.orphanCleanupFailures = 0
+    this.deleteOwnedFileFailures = 0
     this.registeredByChecksum.clear()
     this.dedupeRegistrations = false
     this.personSeq = 0
@@ -281,24 +272,19 @@ export class FakeCoreClient {
     return Promise.resolve({ deleted: 0 })
   }
 
-  adminDeleteFile(fileId: string): Promise<void> {
-    this.calls.push({ method: 'adminDeleteFile', args: [fileId] })
-    if (this.adminDeleteFileFailures > 0) {
-      this.adminDeleteFileFailures--
+  deleteOwnedFile(userId: string, fileId: string): Promise<void> {
+    this.calls.push({ method: 'deleteOwnedFile', args: [userId, fileId] })
+    if (this.deleteOwnedFileFailures > 0) {
+      this.deleteOwnedFileFailures--
       return Promise.reject(new Error('core 503'))
     }
-    this.adminDeletedFiles.push(fileId)
+    const file = this.files.get(fileId)
+    if (file?.userId !== userId) {
+      return Promise.reject(new UnrecoverableError(`File not found: ${fileId}`))
+    }
+    this.ownedDeletedFiles.push(fileId)
     this.files.delete(fileId)
     return Promise.resolve()
-  }
-
-  adminRunOrphanCleanup(): Promise<OrphanCleanupResult> {
-    this.calls.push({ method: 'adminRunOrphanCleanup', args: [] })
-    if (this.orphanCleanupFailures > 0) {
-      this.orphanCleanupFailures--
-      return Promise.reject(new Error('core 503'))
-    }
-    return Promise.resolve({ ...this.orphanCleanupResult })
   }
 
   getFaceDetectionSettings(): Promise<FaceDetectionSettings> {

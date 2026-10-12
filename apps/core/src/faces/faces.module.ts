@@ -5,14 +5,13 @@ import { Person } from '../database/entities'
 import { Asset } from '../database/entities'
 import { FileRecord } from '../database/entities'
 import { StorageModule } from '../files/storage/storage.module'
-import { FacesController } from './faces.controller'
 import { FacesQueryController } from './faces-query.controller'
 import { FaceThumbController } from './face-thumb.controller'
 import { FacesService } from './faces.service'
 
 @Module({
   imports: [TypeOrmModule.forFeature([Face, Person, Asset, FileRecord]), StorageModule],
-  controllers: [FacesController, FacesQueryController, FaceThumbController],
+  controllers: [FacesQueryController, FaceThumbController],
   providers: [FacesService],
   exports: [FacesService],
 })

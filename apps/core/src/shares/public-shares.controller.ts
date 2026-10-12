@@ -31,7 +31,12 @@ export class PublicSharesController {
     const share = await this.shares.getByToken(token)
     if (share.kind !== 'asset') throw new NotFoundException('Share not found')
     // Serve the browser-playable derivative when the video was transcoded, like the app viewer.
-    await serveFileBytes(req, res, this.files, share.asset.transcodeFileId ?? share.asset.fileId)
+    const fileId = await this.shares.playableFileId(
+      share.share.userId,
+      share.asset.transcodeFileId,
+      share.asset.fileId,
+    )
+    await serveFileBytes(req, res, this.files, share.share.userId, fileId)
   }
 
   @Get(':token/assets')
@@ -55,7 +60,7 @@ export class PublicSharesController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const fileId = await this.shares.getAlbumAssetFileId(token, assetId, size)
-    await serveFileBytes(req, res, this.files, fileId)
+    const { fileId, userId } = await this.shares.getAlbumAssetFileId(token, assetId, size)
+    await serveFileBytes(req, res, this.files, userId, fileId)
   }
 }

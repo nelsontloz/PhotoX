@@ -125,13 +125,13 @@ describe('files JWT identity', () => {
 
   it('registers a file with a core-computed storage key', async () => {
     const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
     const bytes = Buffer.from('register-thumb-bytes')
     const id = randomUUID()
     const storageKey = await writeBytes('thumbnail', user.id, id, 'webp', bytes)
 
     const res = await request(apiServer(t))
-      .post('/api/v1/files/register')
+      .post('/worker/files/register')
       .set(t.authHeader(token))
       .send(
         registerBody(bytes, {
@@ -153,7 +153,7 @@ describe('files JWT identity', () => {
 
   it('registers a transcode against an owned asset', async () => {
     const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
     const source = await seedFile(t, user.id)
     const asset = await seedAsset(t, user.id, source.id, { kind: 'video' })
     const bytes = Buffer.from('register-transcode-bytes')
@@ -161,7 +161,7 @@ describe('files JWT identity', () => {
     const storageKey = await writeBytes('transcode', user.id, id, 'webm', bytes)
 
     const res = await request(apiServer(t))
-      .post('/api/v1/files/register')
+      .post('/worker/files/register')
       .set(t.authHeader(token))
       .send(registerBody(bytes, { id, kind: 'transcode', ext: 'webm', assetId: asset.id }))
     expect(res.status).toBe(201)
@@ -173,19 +173,19 @@ describe('files JWT identity', () => {
 
   it('returns the existing file for a duplicate checksum', async () => {
     const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
     const bytes = Buffer.from('register-dedupe-bytes')
     const firstId = randomUUID()
     await writeBytes('original', user.id, firstId, 'jpg', bytes)
 
     const first = await request(apiServer(t))
-      .post('/api/v1/files/register')
+      .post('/worker/files/register')
       .set(t.authHeader(token))
       .send(registerBody(bytes, { id: firstId }))
     expect(first.status).toBe(201)
 
     const second = await request(apiServer(t))
-      .post('/api/v1/files/register')
+      .post('/worker/files/register')
       .set(t.authHeader(token))
       .send(registerBody(bytes))
     expect(second.status).toBe(200)
@@ -196,19 +196,19 @@ describe('files JWT identity', () => {
 
   it('rejects a re-used file id with 409', async () => {
     const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
     const id = randomUUID()
     const bytes = Buffer.from('register-collision-bytes')
     await writeBytes('original', user.id, id, 'jpg', bytes)
 
     const first = await request(apiServer(t))
-      .post('/api/v1/files/register')
+      .post('/worker/files/register')
       .set(t.authHeader(token))
       .send(registerBody(bytes, { id }))
     expect(first.status).toBe(201)
 
     const second = await request(apiServer(t))
-      .post('/api/v1/files/register')
+      .post('/worker/files/register')
       .set(t.authHeader(token))
       .send(registerBody(Buffer.from('different-bytes'), { id }))
     expect(second.status).toBe(409)
@@ -217,12 +217,12 @@ describe('files JWT identity', () => {
   it('rejects a foreign asset with 404', async () => {
     const owner = await seedUser(t)
     const other = await seedUser(t)
-    const token = t.signToken({ id: other.id, email: other.email, role: other.role })
+    const token = t.signToken({ id: other.id, email: other.email, role: other.role }, { act: true })
     const source = await seedFile(t, owner.id)
     const asset = await seedAsset(t, owner.id, source.id)
 
     const res = await request(apiServer(t))
-      .post('/api/v1/files/register')
+      .post('/worker/files/register')
       .set(t.authHeader(token))
       .send(registerBody(Buffer.from('foreign-asset-bytes'), { assetId: asset.id }))
     expect(res.status).toBe(404)
@@ -230,7 +230,7 @@ describe('files JWT identity', () => {
 
   it('rejects invalid registration payloads with 400', async () => {
     const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
     const valid = registerBody(Buffer.from('register-validation-bytes'))
     const payloads = [
       { ...valid, checksumSha256: 'z'.repeat(64) },
@@ -243,7 +243,7 @@ describe('files JWT identity', () => {
     ]
     for (const payload of payloads) {
       const res = await request(apiServer(t))
-        .post('/api/v1/files/register')
+        .post('/worker/files/register')
         .set(t.authHeader(token))
         .send(payload)
       expect(res.status).toBe(400)
@@ -252,9 +252,9 @@ describe('files JWT identity', () => {
 
   it('returns 422 when registered bytes are missing from storage', async () => {
     const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
     const res = await request(apiServer(t))
-      .post('/api/v1/files/register')
+      .post('/worker/files/register')
       .set(t.authHeader(token))
       .send(registerBody(Buffer.from('register-missing-bytes')))
     expect(res.status).toBe(422)

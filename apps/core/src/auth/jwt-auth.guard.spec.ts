@@ -26,8 +26,9 @@ function testContext(
   method: string,
   path: string,
   headers: Record<string, string> = {},
+  query: Record<string, unknown> = {},
 ): { context: ExecutionContext; req: Request; cookie: ReturnType<typeof vi.fn> } {
-  const req = { method, path, headers } as unknown as Request
+  const req = { method, path, headers, query } as unknown as Request
   const cookie = vi.fn<(...args: CookieArgs) => void>()
   const res = { cookie, clearCookie: vi.fn() }
   const context = {
@@ -217,8 +218,8 @@ describe('JwtAuthGuard', () => {
       )
       vi.setSystemTime(new Date('2030-01-01T00:00:20Z'))
       const { context, cookie } = testContext(
-        'DELETE',
-        '/api/v1/admin/files/f1',
+        'GET',
+        '/api/v1/admin/face-detection',
         cookieHeader(stale),
       )
 
@@ -282,7 +283,7 @@ describe('JwtAuthGuard', () => {
         { expiresIn: 30 },
       )
       vi.setSystemTime(new Date('2030-01-01T00:00:20Z'))
-      const { context, cookie } = testContext('DELETE', '/api/v1/admin/files/f1', {
+      const { context, cookie } = testContext('GET', '/api/v1/admin/face-detection', {
         ...cookieHeader(staleCookie),
         authorization: `Bearer ${bearer}`,
       })
@@ -335,11 +336,27 @@ describe('JwtAuthGuard', () => {
 
   it('lets worker-actor admin tokens through on the allowlist', async () => {
     const auth = { authorization: `Bearer ${workerTokenFor('admin')}` }
-    const pass = (method: string, path: string) =>
-      guard.canActivate(testContext(method, path, auth).context)
-    await expect(pass('DELETE', '/api/v1/admin/files/f1')).resolves.toBe(true)
-    await expect(pass('POST', '/api/v1/admin/cleanup-orphans/run')).resolves.toBe(true)
+    const pass = (method: string, path: string, query: Record<string, unknown> = {}) =>
+      guard.canActivate(testContext(method, path, auth, query).context)
     await expect(pass('GET', '/api/v1/admin/face-detection')).resolves.toBe(true)
+    await expect(pass('GET', '/worker/assets/a1')).resolves.toBe(true)
+    await expect(pass('PATCH', '/worker/assets/a1/metadata')).resolves.toBe(true)
+    await expect(pass('GET', '/api/v1/assets', { ids: 'a1,b2' })).resolves.toBe(true)
+  })
+
+  it('rejects worker-actor tokens outside the allowlist with 403', async () => {
+    const adminAuth = { authorization: `Bearer ${workerTokenFor('admin')}` }
+    const userAuth = { authorization: `Bearer ${workerTokenFor('user', 'u1')}` }
+    const deny = (method: string, path: string, headers: Record<string, string>) =>
+      expect(guard.canActivate(testContext(method, path, headers).context)).rejects.toThrow(
+        ForbiddenException,
+      )
+    await deny('DELETE', '/api/v1/admin/files/f1', adminAuth)
+    await deny('POST', '/api/v1/admin/cleanup-orphans/run', adminAuth)
+    await deny('GET', '/api/v1/assets/a1', userAuth)
+    await deny('PATCH', '/api/v1/assets/a1/metadata', userAuth)
+    await deny('GET', '/api/v1/files/f1/stream', userAuth)
+    await deny('GET', '/api/v1/assets', userAuth)
   })
 
   it('rejects worker-actor admin tokens on non-allowlisted admin routes with 403', async () => {
@@ -352,11 +369,25 @@ describe('JwtAuthGuard', () => {
     await deny('PUT', '/api/v1/admin/face-detection')
   })
 
-  it('lets worker-actor user tokens through on user routes', async () => {
-    const { context } = testContext('GET', '/api/v1/assets', {
-      authorization: `Bearer ${workerTokenFor('user', 'u1')}`,
-    })
-    await expect(guard.canActivate(context)).resolves.toBe(true)
+  it('rejects plain tokens on worker routes with 403', async () => {
+    const auth = { authorization: `Bearer ${tokenFor()}` }
+    await expect(
+      guard.canActivate(testContext('GET', '/worker/assets/a1', auth).context),
+    ).rejects.toThrow(ForbiddenException)
+  })
+
+  it('rejects worker-only metadata fields from non-act callers with 403', async () => {
+    const req = {
+      method: 'PATCH',
+      path: '/api/v1/assets/a1/metadata',
+      headers: { authorization: `Bearer ${tokenFor()}` },
+      body: { width: 100 },
+    } as unknown as Request
+    const cookie = vi.fn()
+    const context = {
+      switchToHttp: () => ({ getRequest: () => req, getResponse: () => ({ cookie }) }),
+    } as unknown as ExecutionContext
+    await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException)
   })
 
   it('lets non-admins through on normal routes', async () => {

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # E2E stack + BDD suite runner. playwright.config.ts splits the features into two projects:
-# `setup` runs first, serially, on the fresh database — 01-bootstrap must register the first
-# account (it becomes admin) before anything else registers, and 04-faces /
+# `setup` runs first, serially, on the fresh database — core seeds ADMIN_EMAIL/ADMIN_PASSWORD as
+# admin on bootstrap (before it serves traffic, so the health wait below implies the seed is
+# done) before anything else registers, and 04-faces /
 # 05-semantic/semantic-upload.feature mutate global state (active detector, reprocess-all,
 # recluster for every user). Inside `setup` the numbered folders still run in alphabetical path
 # order — do not rename or reorder them. The `suite` project (every other feature) depends on

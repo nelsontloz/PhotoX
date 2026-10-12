@@ -96,12 +96,6 @@ export interface ApplyClustersResult {
   assigned: number
 }
 
-export interface OrphanCleanupResult {
-  deletedFiles: number
-  deletedThumbnails: number
-  deletedStrays: number
-}
-
 const REQUEST_TIMEOUT_MS = 30_000
 const ASSET_IDS_CHUNK = 100
 
@@ -109,8 +103,8 @@ const ASSET_IDS_CHUNK = 100
 export class CoreClient {
   constructor(private readonly jwt: JwtService) {}
 
-  // ponytail: per-job delegated JWT — core's guard scopes every call by sub, so worker
-  // never needs DB access; 2b passes role 'admin' with sub 'worker-service' for cleanup
+  // ponytail: per-job delegated JWT — core's worker guard scopes every call by sub, so worker
+  // never needs DB access; only face-detection settings uses role 'admin'
   private signToken(sub: string, role: Role): string {
     return this.jwt.sign(
       // act (RFC 8693) marks every token as worker-origin — core's guard only lets act
@@ -124,19 +118,19 @@ export class CoreClient {
   }
 
   async getFile(userId: string, fileId: string): Promise<FileRecord> {
-    return this.request('GET', `/api/v1/files/${fileId}`, { sub: userId })
+    return this.request('GET', `/worker/files/${fileId}`, { sub: userId })
   }
 
   async getAsset(userId: string, assetId: string): Promise<Asset> {
-    return this.request('GET', `/api/v1/assets/${assetId}`, { sub: userId })
+    return this.request('GET', `/worker/assets/${assetId}`, { sub: userId })
   }
 
   async patchMetadata(userId: string, assetId: string, dto: MetadataPatch): Promise<void> {
-    await this.request('PATCH', `/api/v1/assets/${assetId}/metadata`, { sub: userId, body: dto })
+    await this.request('PATCH', `/worker/assets/${assetId}/metadata`, { sub: userId, body: dto })
   }
 
   async registerFile(userId: string, dto: RegisterFileInput): Promise<FileRecord> {
-    return this.request('POST', '/api/v1/files/register', { sub: userId, body: dto })
+    return this.request('POST', '/worker/files/register', { sub: userId, body: dto })
   }
 
   async registerThumbnail(
@@ -144,7 +138,7 @@ export class CoreClient {
     assetId: string,
     dto: RegisterThumbnailInput,
   ): Promise<void> {
-    await this.request('POST', `/api/v1/assets/${assetId}/thumbnails`, { sub: userId, body: dto })
+    await this.request('POST', `/worker/assets/${assetId}/thumbnails`, { sub: userId, body: dto })
   }
 
   async registerFaces(
@@ -155,7 +149,7 @@ export class CoreClient {
   ): Promise<{ count: number }> {
     // the delegated token sub is the only identity core accepts; the body carries no userId
     // (forbidNonWhitelisted would 400 an extra field)
-    return this.request('POST', `/api/v1/assets/${assetId}/faces`, {
+    return this.request('POST', `/worker/assets/${assetId}/faces`, {
       sub: userId,
       body: { faces, detector },
     })
@@ -166,11 +160,11 @@ export class CoreClient {
     assetId: string,
     dto: RegisterEmbeddingRequestDto,
   ): Promise<void> {
-    await this.request('POST', `/api/v1/assets/${assetId}/embedding`, { sub: userId, body: dto })
+    await this.request('POST', `/worker/assets/${assetId}/embedding`, { sub: userId, body: dto })
   }
 
   async registerOcr(userId: string, assetId: string, dto: RegisterOcrRequestDto): Promise<void> {
-    await this.request('POST', `/api/v1/assets/${assetId}/ocr`, { sub: userId, body: dto })
+    await this.request('POST', `/worker/assets/${assetId}/ocr`, { sub: userId, body: dto })
   }
 
   async registerDetections(
@@ -178,17 +172,19 @@ export class CoreClient {
     assetId: string,
     dto: RegisterDetectionsRequestDto,
   ): Promise<void> {
-    await this.request('POST', `/api/v1/assets/${assetId}/detections`, { sub: userId, body: dto })
+    await this.request('POST', `/worker/assets/${assetId}/detections`, { sub: userId, body: dto })
   }
 
   async deleteAssetFaces(userId: string, assetId: string): Promise<{ deleted: number }> {
-    return this.request('DELETE', `/api/v1/assets/${assetId}/faces`, { sub: userId })
+    return this.request('DELETE', `/worker/assets/${assetId}/faces`, { sub: userId })
   }
 
   async getFacesForCluster(userId: string): Promise<ClusterFace[]> {
+    // cluster votes on embeddings and ignores trashed assets — same params as the pre-#156
+    // user-side call this replaces
     const res = await this.request<{ items: ClusterFace[] }>(
       'GET',
-      '/api/v1/faces?includeEmbeddings=true&excludeTrashed=true',
+      '/worker/faces?includeEmbeddings=true&excludeTrashed=true',
       { sub: userId },
     )
     return res.items
@@ -200,7 +196,7 @@ export class CoreClient {
     for (let i = 0; i < ids.length; i += ASSET_IDS_CHUNK) {
       const res = await this.request<AssetListResponse>(
         'GET',
-        `/api/v1/assets?ids=${ids.slice(i, i + ASSET_IDS_CHUNK).join(',')}`,
+        `/worker/assets?ids=${ids.slice(i, i + ASSET_IDS_CHUNK).join(',')}`,
         { sub: userId },
       )
       assets.push(...res.items)
@@ -209,30 +205,17 @@ export class CoreClient {
   }
 
   async applyClusters(userId: string, payload: ApplyClustersPayload): Promise<ApplyClustersResult> {
-    return this.request('POST', '/api/v1/persons/apply-clusters', { sub: userId, body: payload })
+    return this.request('POST', '/worker/persons/apply-clusters', { sub: userId, body: payload })
   }
 
   // ponytail: called after every cluster run (even when the plan was empty) — deletes persons whose
   // last live face left and unassigns any faces left behind in trash
   async pruneEmptyPersons(userId: string): Promise<{ deleted: number }> {
-    return this.request('POST', '/api/v1/persons/prune-empty', { sub: userId })
+    return this.request('POST', '/worker/persons/prune-empty', { sub: userId })
   }
 
-  async adminDeleteFile(fileId: string): Promise<void> {
-    await this.request('DELETE', `/api/v1/admin/files/${fileId}`, {
-      sub: 'worker-service',
-      role: 'admin',
-    })
-  }
-
-  async adminRunOrphanCleanup(): Promise<OrphanCleanupResult> {
-    // disk walk can exceed the default 30s — endpoint runs the whole scan inline
-    return this.request(
-      'POST',
-      '/api/v1/admin/cleanup-orphans/run',
-      { sub: 'worker-service', role: 'admin' },
-      120_000,
-    )
+  async deleteOwnedFile(userId: string, fileId: string): Promise<void> {
+    await this.request('DELETE', `/worker/files/${fileId}`, { sub: userId })
   }
 
   async getFaceDetectionSettings(): Promise<FaceDetectionSettings> {

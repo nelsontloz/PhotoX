@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHmac, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -190,6 +190,26 @@ export async function readSessionRole(page: Page): Promise<string> {
 
 export function authHeaders(auth: AuthResponse): Record<string, string> {
   return { Authorization: `Bearer ${auth.accessToken}` }
+}
+
+// e2e seeding hits the act-required worker routes (#156 moved extraction writes there), so the
+// suite mints its own delegated tokens with node:crypto (no new deps). Same HS256 shape as the
+// worker's CoreClient; the secret mirrors docker-compose.e2e.yml (override with
+// E2E_AUTH_TOKEN_SECRET when it diverges).
+const E2E_AUTH_TOKEN_SECRET =
+  process.env.E2E_AUTH_TOKEN_SECRET ?? 'dev-auth-secret-32-characters-minimum!!'
+
+function base64url(input: string | Buffer): string {
+  return (typeof input === 'string' ? Buffer.from(input) : input).toString('base64url')
+}
+
+/** Delegated worker headers scoped to a job user id (test seeding only, never prod). */
+export function workerHeaders(userId: string): Record<string, string> {
+  const encoded =
+    `${base64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.` +
+    `${base64url(JSON.stringify({ sub: userId, email: 'worker@internal', role: 'user', act: { sub: 'worker-service' } }))}`
+  const signature = base64url(createHmac('sha256', E2E_AUTH_TOKEN_SECRET).update(encoded).digest())
+  return { Authorization: `Bearer ${encoded}.${signature}` }
 }
 
 /** The signed-in user for this scenario; every authenticated step starts here. */

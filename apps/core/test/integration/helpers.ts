@@ -42,6 +42,7 @@ import { GroupsModule } from '../../src/groups/groups.module'
 import { TextEncodeService } from '../../src/search/text-encode.service'
 import { UserFilesModule } from '../../src/files/user/user-files.module'
 import { StorageModule } from '../../src/files/storage/storage.module'
+import { WorkerModule } from '../../src/worker/worker.module'
 import { AdminModule } from '../../src/admin/admin.module'
 import { AdminModule as FilesAdminModule } from '../../src/files/admin/admin.module'
 import { UsersModule } from '../../src/users/users.module'
@@ -149,6 +150,7 @@ export async function createApiTestApp(opts?: {
         UserFilesModule,
         AdminModule,
         FilesAdminModule,
+        WorkerModule,
       ],
     })
 
