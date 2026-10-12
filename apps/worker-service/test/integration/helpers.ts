@@ -18,7 +18,6 @@ import { FaceDetectorService } from '../../src/queue/face.detector'
 import { FaceProcessor } from '../../src/queue/face.processor'
 import { FaceClusterService } from '../../src/queue/face.cluster'
 import { CleanupProcessor } from '../../src/queue/cleanup.processor'
-import { CleanupOrphansProcessor } from '../../src/queue/cleanup-orphans.processor'
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../fake-core-client'
 import { setupRedis, teardownRedis } from './test-setup'
 
@@ -32,7 +31,7 @@ export interface TestApp {
 
 export interface CreateTestAppOptions {
   detect?: FaceDetectorService['detect']
-  // 'media' wires only the four media processors (thumbnail/video/metadata/face); default all seven
+  // 'media' wires only the four media processors (thumbnail/video/metadata/face); default all six
   processors?: 'all' | 'media'
 }
 
@@ -64,7 +63,7 @@ export async function createTestApp(opts: CreateTestAppOptions = {}): Promise<Te
         FaceProcessor,
         ...(opts.processors === 'media'
           ? []
-          : [FaceClusterService, CleanupProcessor, CleanupOrphansProcessor]),
+          : [FaceClusterService, CleanupProcessor]),
       ],
     }).compile()
 

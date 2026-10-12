@@ -67,10 +67,10 @@ describe('places resolution', () => {
   it('fills place fields when a metadata patch brings coordinates', async () => {
     const user = await seedUser(t)
     const asset = await seedOwnedAsset(user.id)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
 
     const res = await request(apiServer(t))
-      .patch(`/api/v1/assets/${asset.id}/metadata`)
+      .patch(`/worker/assets/${asset.id}/metadata`)
       .set(t.authHeader(token))
       .send(PARIS)
     expect(res.status).toBe(200)
@@ -86,10 +86,10 @@ describe('places resolution', () => {
   it('leaves place fields null when the nearest city is beyond 50km', async () => {
     const user = await seedUser(t)
     const asset = await seedOwnedAsset(user.id)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
 
     const res = await request(apiServer(t))
-      .patch(`/api/v1/assets/${asset.id}/metadata`)
+      .patch(`/worker/assets/${asset.id}/metadata`)
       .set(t.authHeader(token))
       .send(OPEN_OCEAN)
     expect(res.status).toBe(200)
@@ -106,10 +106,10 @@ describe('places resolution', () => {
     const user = await seedUser(t)
     const asset = await seedOwnedAsset(user.id)
     await t.assetRepo.update(asset.id, { placeCity: 'Atlantis' })
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
 
     const res = await request(apiServer(t))
-      .patch(`/api/v1/assets/${asset.id}/metadata`)
+      .patch(`/worker/assets/${asset.id}/metadata`)
       .set(t.authHeader(token))
       .send(PARIS)
     expect(res.status).toBe(200)
@@ -121,12 +121,12 @@ describe('places resolution', () => {
   it('never resolves when a metadata patch carries null coordinates', async () => {
     const user = await seedUser(t)
     const asset = await seedOwnedAsset(user.id)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
     const resolveSpy = vi.spyOn(t.app.get(PlacesResolveService), 'resolve')
 
     // worker no-GPS branch spreads latitude: null, longitude: null
     const res = await request(apiServer(t))
-      .patch(`/api/v1/assets/${asset.id}/metadata`)
+      .patch(`/worker/assets/${asset.id}/metadata`)
       .set(t.authHeader(token))
       .send({ latitude: null, longitude: null })
     expect(res.status).toBe(200)
@@ -141,10 +141,10 @@ describe('places resolution', () => {
     const user = await seedUser(t)
     const asset = await seedOwnedAsset(user.id)
     await placeRepo.clear()
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
 
     const res = await request(apiServer(t))
-      .patch(`/api/v1/assets/${asset.id}/metadata`)
+      .patch(`/worker/assets/${asset.id}/metadata`)
       .set(t.authHeader(token))
       .send(PARIS)
     expect(res.status).toBe(200)

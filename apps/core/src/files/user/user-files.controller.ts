@@ -8,7 +8,6 @@ import {
   Req,
   UseInterceptors,
   UploadedFile,
-  HttpStatus,
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes } from '@nestjs/swagger'
@@ -19,7 +18,6 @@ import multer from 'multer'
 import { CurrentUserId } from '../../auth/jwt-auth.guard'
 import { UserFilesService, type UploadedDiskFile } from './user-files.service'
 import { FileRecordDto } from '../file-record.dto'
-import { RegisterFileBodyDto } from './dto/register-file.body.dto'
 import { UploadFileBodyDto } from './dto/upload-file.body.dto'
 import { attachmentDisposition, pipeFileResponse, serveFileBytes } from '../streaming.util'
 
@@ -55,32 +53,19 @@ export class UserFilesController {
     })
   }
 
-  @Post('register')
-  @ApiOperation({ summary: 'Register a file whose bytes a worker already wrote to storage' })
-  @ApiResponse({ status: 201, description: 'File registered' })
-  @ApiResponse({ status: 200, description: 'Existing file returned for the same checksum' })
-  @ApiResponse({ status: 400, description: 'Invalid registration payload' })
-  @ApiResponse({ status: 404, description: 'Asset not found' })
-  @ApiResponse({ status: 409, description: 'File id already exists' })
-  @ApiResponse({ status: 422, description: 'Bytes missing from storage' })
-  async register(
-    @CurrentUserId() userId: string,
-    @Body() body: RegisterFileBodyDto,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const { file, created } = await this.userFilesService.register(userId, body)
-    res.status(created ? HttpStatus.CREATED : HttpStatus.OK)
-    return file
-  }
-
   @Get(':fileId/stream')
   @ApiOperation({ summary: 'Stream file bytes for video playback (authenticated)' })
   @ApiResponse({ status: 200, description: 'File stream' })
   @ApiResponse({ status: 206, description: 'Partial content' })
   @ApiResponse({ status: 404, description: 'File not found' })
   @ApiResponse({ status: 416, description: 'Range not satisfiable' })
-  async stream(@Param('fileId') fileId: string, @Res() res: Response, @Req() req: Request) {
-    await serveFileBytes(req, res, this.userFilesService, fileId, { attachment: true })
+  async stream(
+    @Param('fileId') fileId: string,
+    @Res() res: Response,
+    @Req() req: Request,
+    @CurrentUserId() userId: string,
+  ) {
+    await serveFileBytes(req, res, this.userFilesService, userId, fileId, { attachment: true })
   }
 
   @Get(':fileId')

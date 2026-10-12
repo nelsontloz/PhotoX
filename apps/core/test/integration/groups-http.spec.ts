@@ -36,11 +36,17 @@ describe('groups HTTP (duplicates / similar)', () => {
     encodeMock.mockResolvedValue(E0)
   })
 
-  async function ownerAuth(): Promise<{ userId: string; auth: Record<string, string> }> {
+  async function ownerAuth(): Promise<{
+    userId: string
+    auth: Record<string, string>
+    act: Record<string, string>
+  }> {
     const owner = await seedUser(t)
+    const identity = { id: owner.id, email: owner.email, role: owner.role }
     return {
       userId: owner.id,
-      auth: t.authHeader(t.signToken({ id: owner.id, email: owner.email, role: owner.role })),
+      auth: t.authHeader(t.signToken(identity)),
+      act: t.authHeader(t.signToken(identity, { act: true })),
     }
   }
 
@@ -168,21 +174,21 @@ describe('groups HTTP (duplicates / similar)', () => {
     })
   })
 
-  it('whitelists a 16-hex phash through PATCH metadata and 422s bad formats', async () => {
-    const { userId, auth } = await ownerAuth()
+  it('whitelists a 16-hex phash through worker metadata and 422s bad formats', async () => {
+    const { userId, act } = await ownerAuth()
     const asset = await seedAssetWith(userId)
 
     const ok = await request(apiServer(t))
-      .patch(`/api/v1/assets/${asset.id}/metadata`)
-      .set(auth)
+      .patch(`/worker/assets/${asset.id}/metadata`)
+      .set(act)
       .send({ phash: 'deadbeefdeadbeef' })
     expect(ok.status).toBe(200)
     expect((await t.assetRepo.findOneByOrFail({ id: asset.id })).phash).toBe('deadbeefdeadbeef')
 
     for (const bad of ['XYZ123', 'deadbeef', 'DEADBEEFDEADBEEF', 'zzzzzzzzzzzzzzzz']) {
       const res = await request(apiServer(t))
-        .patch(`/api/v1/assets/${asset.id}/metadata`)
-        .set(auth)
+        .patch(`/worker/assets/${asset.id}/metadata`)
+        .set(act)
         .send({ phash: bad })
       expect(res.status).toBe(422)
     }

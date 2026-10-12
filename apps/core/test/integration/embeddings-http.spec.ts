@@ -33,23 +33,23 @@ describe('asset embeddings HTTP', () => {
 
   async function seedOwnedAsset() {
     const owner = await seedUser(t)
-    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role })
+    const act = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
     const file = await seedFile(t, owner.id)
     const asset = await seedAsset(t, owner.id, file.id)
-    return { owner, token, file, asset }
+    return { owner, act, file, asset }
   }
 
   it('requires a token', async () => {
     const { asset } = await seedOwnedAsset()
-    const res = await request(apiServer(t)).post(`/api/v1/assets/${asset.id}/embedding`).send(BODY)
+    const res = await request(apiServer(t)).post(`/worker/assets/${asset.id}/embedding`).send(BODY)
     expect(res.status).toBe(401)
   })
 
   it('registers a 768-d image embedding for the asset owner', async () => {
-    const { token, asset } = await seedOwnedAsset()
+    const { act, asset } = await seedOwnedAsset()
     const res = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/embedding`)
-      .set(t.authHeader(token))
+      .post(`/worker/assets/${asset.id}/embedding`)
+      .set(t.authHeader(act))
       .send(BODY)
     expect(res.status).toBe(201)
     expect(res.body).toEqual({ ok: true })
@@ -65,11 +65,11 @@ describe('asset embeddings HTTP', () => {
   })
 
   it('upserts on (assetId, kind, model) instead of duplicating', async () => {
-    const { token, asset } = await seedOwnedAsset()
+    const { act, asset } = await seedOwnedAsset()
     const post = (embedding: number[]) =>
       request(apiServer(t))
-        .post(`/api/v1/assets/${asset.id}/embedding`)
-        .set(t.authHeader(token))
+        .post(`/worker/assets/${asset.id}/embedding`)
+        .set(t.authHeader(act))
         .send({ ...BODY, embedding })
     expect((await post(EMBEDDING_768)).status).toBe(201)
     expect((await post(EMBEDDING_768_B)).status).toBe(201)
@@ -80,12 +80,12 @@ describe('asset embeddings HTTP', () => {
   })
 
   it('persists embeddingStatus through PATCH metadata', async () => {
-    const { token, asset } = await seedOwnedAsset()
+    const { act, asset } = await seedOwnedAsset()
     expect((await t.assetRepo.findOneByOrFail({ id: asset.id })).embeddingStatus).toBeNull()
 
     const res = await request(apiServer(t))
-      .patch(`/api/v1/assets/${asset.id}/metadata`)
-      .set(t.authHeader(token))
+      .patch(`/worker/assets/${asset.id}/metadata`)
+      .set(t.authHeader(act))
       .send({ embeddingStatus: 'failed' })
     expect(res.status).toBe(200)
     expect((await t.assetRepo.findOneByOrFail({ id: asset.id })).embeddingStatus).toBe('failed')
@@ -98,10 +98,10 @@ describe('asset embeddings HTTP', () => {
     ['a non-finite entry', { ...BODY, embedding: [NaN, ...EMBEDDING_768.slice(1)] }],
     ['a scaled (non-unit) vector', { ...BODY, embedding: EMBEDDING_768.map((v) => v * 2) }],
   ])('422s %s without writing', async (_label, body) => {
-    const { token, asset } = await seedOwnedAsset()
+    const { act, asset } = await seedOwnedAsset()
     const res = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/embedding`)
-      .set(t.authHeader(token))
+      .post(`/worker/assets/${asset.id}/embedding`)
+      .set(t.authHeader(act))
       .send(body)
     expect(res.status).toBe(422)
     expect(await t.embeddingRepo.count()).toBe(0)
@@ -110,10 +110,10 @@ describe('asset embeddings HTTP', () => {
   it('404s registering on a cross-user asset without writing', async () => {
     const { asset } = await seedOwnedAsset()
     const other = await seedUser(t)
-    const token = t.signToken({ id: other.id, email: other.email, role: other.role })
+    const act = t.signToken({ id: other.id, email: other.email, role: other.role }, { act: true })
     const res = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/embedding`)
-      .set(t.authHeader(token))
+      .post(`/worker/assets/${asset.id}/embedding`)
+      .set(t.authHeader(act))
       .send(BODY)
     expect(res.status).toBe(404)
     expect(await t.embeddingRepo.count()).toBe(0)
@@ -121,10 +121,10 @@ describe('asset embeddings HTTP', () => {
 
   it('accepts the worker delegated token as the asset owner', async () => {
     const { owner, asset } = await seedOwnedAsset()
-    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
+    const act = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
     const res = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/embedding`)
-      .set(t.authHeader(token))
+      .post(`/worker/assets/${asset.id}/embedding`)
+      .set(t.authHeader(act))
       .send(BODY)
     expect(res.status).toBe(201)
     expect(await t.embeddingRepo.count()).toBe(1)

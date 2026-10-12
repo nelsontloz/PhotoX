@@ -38,7 +38,7 @@ describe('auth HTTP surface', () => {
     request(apiServer(t)).post('/api/v1/auth/login').send({ email, password })
 
   describe('register', () => {
-    it('creates the first user as admin and the second as user', async () => {
+    it('creates every open-registration user as a plain user, never admin', async () => {
       const first = await registerUser('first@example.com', PASSWORD, 'First User')
       expect(first.status).toBe(201)
       const firstBody = first.body as unknown as AuthBody
@@ -47,7 +47,7 @@ describe('auth HTTP surface', () => {
       expect(firstBody.user).toMatchObject({
         email: 'first@example.com',
         displayName: 'First User',
-        role: 'admin',
+        role: 'user',
       })
 
       const second = await registerUser('second@example.com')

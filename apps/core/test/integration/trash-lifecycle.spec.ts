@@ -32,9 +32,10 @@ describe('trash lifecycle', () => {
   async function seedOwner() {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const act = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
     const file = await seedFile(t, user.id)
     const asset = await seedAsset(t, user.id, file.id)
-    return { user, token, asset }
+    return { user, token, act, asset }
   }
 
   it('rejects permanent delete of a non-trashed asset with 400 and leaves it intact', async () => {
@@ -102,11 +103,11 @@ describe('trash lifecycle', () => {
   })
 
   it('permanent delete cascades the faces of the asset', async () => {
-    const { token, asset } = await seedOwner()
+    const { token, act, asset } = await seedOwner()
 
     const register = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/faces`)
-      .set(t.authHeader(token))
+      .post(`/worker/assets/${asset.id}/faces`)
+      .set(t.authHeader(act))
       .send({
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }],
       })

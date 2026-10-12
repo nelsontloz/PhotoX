@@ -1,183 +1,57 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { Type } from 'class-transformer'
-import {
-  IsIn,
-  IsOptional,
-  IsString,
-  IsNumber,
-  IsInt,
-  IsBoolean,
-  IsDate,
-  IsObject,
-  IsUUID,
-  Min,
-} from 'class-validator'
+import { IsOptional, IsString, MaxLength } from 'class-validator'
+
+// Extraction-produced fields (worker-only). A non-act caller sending any of these to the user
+// metadata endpoint gets 403 in JwtAuthGuard — the whitelist would only 400 them, hiding a
+// worker-contract violation. `transcodeFileId` stays user-reachable (viewer "use original"
+// flows) with service-side ownership validation.
+export const WORKER_ONLY_METADATA_KEYS = [
+  'status',
+  'takenAt',
+  'mimeType',
+  'sizeBytes',
+  'originalName',
+  'width',
+  'height',
+  'durationSeconds',
+  'fps',
+  'codec',
+  'hasAudio',
+  'cameraMake',
+  'cameraModel',
+  'lensModel',
+  'orientation',
+  'iso',
+  'fNumber',
+  'exposureTime',
+  'focalLength',
+  'latitude',
+  'longitude',
+  'altitude',
+  'metadata',
+  'transcodeStatus',
+  'thumbnailStatus',
+  'faceStatus',
+  'embeddingStatus',
+  'phash',
+  'faceCount',
+] as const
 
 export class UpdateMetadataDto {
-  @ApiProperty({ enum: ['pending', 'ready', 'failed'] })
-  @IsOptional()
-  @IsIn(['pending', 'ready', 'failed'])
-  status?: 'pending' | 'ready' | 'failed'
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @Type(() => Date)
-  @IsDate()
-  takenAt?: Date
-
-  @ApiProperty({ required: false })
+  @ApiProperty({ required: false, maxLength: 255 })
   @IsOptional()
   @IsString()
-  mimeType?: string
+  @MaxLength(255)
+  title?: string
 
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  sizeBytes?: number
-
-  @ApiProperty({ required: false })
+  @ApiProperty({ required: false, maxLength: 2000 })
   @IsOptional()
   @IsString()
-  originalName?: string
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  width?: number
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  height?: number
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  durationSeconds?: number
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  fps?: number
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  codec?: string
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsBoolean()
-  hasAudio?: boolean
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  cameraMake?: string
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  cameraModel?: string
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  lensModel?: string
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsNumber()
-  orientation?: number
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  iso?: number
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  fNumber?: number
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  exposureTime?: number
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  focalLength?: number
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsNumber()
-  latitude?: number
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsNumber()
-  longitude?: number
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsNumber()
-  // no @Min(0): GPS altitude is legitimately negative (below sea level)
-  altitude?: number
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsObject()
-  metadata?: Record<string, unknown>
-
-  @ApiProperty({ required: false, enum: ['pending', 'ready', 'failed'] })
-  @IsOptional()
-  @IsIn(['pending', 'ready', 'failed'])
-  transcodeStatus?: 'pending' | 'ready' | 'failed'
-
-  @ApiProperty({ required: false, enum: ['pending', 'ready', 'failed'] })
-  @IsOptional()
-  @IsIn(['pending', 'ready', 'failed'])
-  thumbnailStatus?: 'pending' | 'ready' | 'failed' | null
+  @MaxLength(2000)
+  description?: string
 
   @ApiProperty({ required: false, nullable: true })
   @IsOptional()
-  @IsUUID()
-  transcodeFileId?: string | null
-
-  @ApiProperty({ required: false, enum: ['pending', 'ready', 'failed'] })
-  @IsOptional()
-  @IsIn(['pending', 'ready', 'failed'])
-  faceStatus?: 'pending' | 'ready' | 'failed' | null
-
-  @ApiProperty({ required: false, enum: ['pending', 'ready', 'failed'] })
-  @IsOptional()
-  @IsIn(['pending', 'ready', 'failed'])
-  embeddingStatus?: 'pending' | 'ready' | 'failed' | null
-
-  @ApiProperty({
-    required: false,
-    nullable: true,
-    description: '64-bit dHash as 16 lowercase hex chars (duplicate detection)',
-  })
-  @IsOptional()
   @IsString()
-  phash?: string | null
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  faceCount?: number | null
+  transcodeFileId?: string | null
 }

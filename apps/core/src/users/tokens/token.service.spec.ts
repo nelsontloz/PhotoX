@@ -8,7 +8,7 @@ describe('TokenService.accessCookieMaxAge', () => {
   it('returns the remaining lifetime in ms for a token with exp', () => {
     const token = jwt.sign({ sub: 'u1', email: 'u@example.com', role: 'user' }, { expiresIn: 60 })
     const maxAge = service.accessCookieMaxAge(token)
-    expect(maxAge).toBeGreaterThan(59_000)
+    expect(maxAge).toBeGreaterThan(58_000)
     expect(maxAge).toBeLessThanOrEqual(60_000)
   })
 

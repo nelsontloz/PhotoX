@@ -315,8 +315,8 @@ export class UserFilesService {
     return { path: this.storage.pathFor(record.storageKey), record }
   }
 
-  async serve(fileId: string): Promise<{ path: string; record: FileRecord }> {
-    const record = await this.getRecord(fileId)
+  async serve(userId: string, fileId: string): Promise<{ path: string; record: FileRecord }> {
+    const record = await this.getOwnedRecord(userId, fileId)
     return { path: this.storage.pathFor(record.storageKey), record }
   }
 }

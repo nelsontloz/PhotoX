@@ -1,9 +1,9 @@
 @fresh
-Feature: First registered account becomes administrator
+Feature: Seeded administrator and open registration
 
-  Scenario: The first user on an empty instance registers as admin
-    Given the instance database is empty
-    When I register "admin@photox.test" through the register page
+  Scenario: The seeded admin signs in as admin
+    Given the instance database is freshly seeded
+    When I sign in as "admin@photox.test" through the login page
     Then I am signed in on the timeline
     And my session role is "admin"
     And the sidebar shows the admin link
@@ -11,7 +11,7 @@ Feature: First registered account becomes administrator
     And I can open the admin dashboard
     And the users table lists "admin@photox.test"
 
-  Scenario: The second registered account is a regular user
+  Scenario: A registered account is a regular user
     When I sign out
     And I register "user@photox.test" through the register page
     Then my session role is "user"

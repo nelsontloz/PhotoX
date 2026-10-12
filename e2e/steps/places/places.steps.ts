@@ -8,6 +8,7 @@ import {
   requireAuth,
   uploadViaApi,
   waitForThumbnails,
+  workerHeaders,
   type AuthResponse,
 } from '../support'
 
@@ -89,8 +90,10 @@ async function setLocation(
     )
     .not.toBe('pending')
 
-  const response = await request.patch(`/api/v1/assets/${assetId}/metadata`, {
-    headers: authHeaders(auth),
+  // coordinates are worker-only extraction fields (#156), so placing goes through the
+  // act-required worker route scoped to the scenario user
+  const response = await request.patch(`/worker/assets/${assetId}/metadata`, {
+    headers: workerHeaders(auth.user.id),
     data: { latitude: lat, longitude: lng },
   })
   expect(response.status()).toBe(200)

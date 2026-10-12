@@ -37,22 +37,23 @@ describe('asset OCR HTTP', () => {
   async function seedOwnedAsset() {
     const owner = await seedUser(t)
     const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role })
+    const act = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
     const file = await seedFile(t, owner.id)
     const asset = await seedAsset(t, owner.id, file.id)
-    return { owner, token, file, asset }
+    return { owner, token, act, file, asset }
   }
 
   it('requires a token', async () => {
     const { asset } = await seedOwnedAsset()
-    const res = await request(apiServer(t)).post(`/api/v1/assets/${asset.id}/ocr`).send(BODY)
+    const res = await request(apiServer(t)).post(`/worker/assets/${asset.id}/ocr`).send(BODY)
     expect(res.status).toBe(401)
   })
 
   it('registers one trimmed OCR row for the asset owner', async () => {
-    const { token, asset } = await seedOwnedAsset()
+    const { act, asset } = await seedOwnedAsset()
     const res = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/ocr`)
-      .set(t.authHeader(token))
+      .post(`/worker/assets/${asset.id}/ocr`)
+      .set(t.authHeader(act))
       .send({ ...BODY, text: '  passport number 12345  ' })
     expect(res.status).toBe(201)
     expect(res.body).toEqual({ ok: true })
@@ -65,12 +66,9 @@ describe('asset OCR HTTP', () => {
   })
 
   it('overwrites the single row on (assetId) instead of duplicating', async () => {
-    const { token, asset } = await seedOwnedAsset()
+    const { act, asset } = await seedOwnedAsset()
     const post = (body: Record<string, unknown>) =>
-      request(apiServer(t))
-        .post(`/api/v1/assets/${asset.id}/ocr`)
-        .set(t.authHeader(token))
-        .send(body)
+      request(apiServer(t)).post(`/worker/assets/${asset.id}/ocr`).set(t.authHeader(act)).send(body)
     expect((await post(BODY)).status).toBe(201)
     expect((await post({ text: 'second pass', lang: 'deu', confidence: 0.5 })).status).toBe(201)
 
@@ -89,10 +87,10 @@ describe('asset OCR HTTP', () => {
     ['confidence above 1', { ...BODY, confidence: 1.5 }],
     ['confidence below 0', { ...BODY, confidence: -0.1 }],
   ])('422s %s without writing', async (_label, body) => {
-    const { token, asset } = await seedOwnedAsset()
+    const { act, asset } = await seedOwnedAsset()
     const res = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/ocr`)
-      .set(t.authHeader(token))
+      .post(`/worker/assets/${asset.id}/ocr`)
+      .set(t.authHeader(act))
       .send(body)
     expect(res.status).toBe(422)
     expect(await t.ocrRepo.count()).toBe(0)
@@ -101,10 +99,10 @@ describe('asset OCR HTTP', () => {
   it('404s registering on a cross-user asset without writing', async () => {
     const { asset } = await seedOwnedAsset()
     const other = await seedUser(t)
-    const token = t.signToken({ id: other.id, email: other.email, role: other.role })
+    const act = t.signToken({ id: other.id, email: other.email, role: other.role }, { act: true })
     const res = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/ocr`)
-      .set(t.authHeader(token))
+      .post(`/worker/assets/${asset.id}/ocr`)
+      .set(t.authHeader(act))
       .send(BODY)
     expect(res.status).toBe(404)
     expect(await t.ocrRepo.count()).toBe(0)
@@ -112,20 +110,20 @@ describe('asset OCR HTTP', () => {
 
   it('accepts the worker delegated token as the asset owner', async () => {
     const { owner, asset } = await seedOwnedAsset()
-    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
+    const act = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
     const res = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/ocr`)
-      .set(t.authHeader(token))
+      .post(`/worker/assets/${asset.id}/ocr`)
+      .set(t.authHeader(act))
       .send(BODY)
     expect(res.status).toBe(201)
     expect(await t.ocrRepo.count()).toBe(1)
   })
 
   it('makes registered OCR rows searchable through the P3 FTS union', async () => {
-    const { token, asset } = await seedOwnedAsset()
+    const { token, act, asset } = await seedOwnedAsset()
     const post = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/ocr`)
-      .set(t.authHeader(token))
+      .post(`/worker/assets/${asset.id}/ocr`)
+      .set(t.authHeader(act))
       .send({ text: 'passport number 12345', lang: 'eng', confidence: 0.9 })
     expect(post.status).toBe(201)
 

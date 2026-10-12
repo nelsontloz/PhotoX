@@ -17,26 +17,30 @@ describe('CleanupProcessor (integration)', () => {
     await resetTestApp(testApp)
   })
 
-  it('delegates blob + row deletion to the admin endpoint', async () => {
+  it('delegates blob + row deletion to the owned endpoint', async () => {
+    const userId = randomUUID()
     const fileId = randomUUID()
-    testApp.fake.files.set(fileId, makeFileRecord({ id: fileId, userId: randomUUID() }))
+    const assetId = randomUUID()
+    testApp.fake.files.set(fileId, makeFileRecord({ id: fileId, userId }))
 
     const queue = testApp.getQueue('cleanup-asset')
-    const job = await queue.add('cleanup-asset', { fileId })
+    const job = await queue.add('cleanup-asset', { fileId, userId, assetId })
 
     expect(await waitForJob(queue, job.id!)).toBe('completed')
-    expect(testApp.fake.callsOf('adminDeleteFile').map((c) => c.args[0])).toEqual([fileId])
+    expect(testApp.fake.callsOf('deleteOwnedFile').map((c) => c.args)).toEqual([[userId, fileId]])
     expect(testApp.fake.files.has(fileId)).toBe(false)
   })
 
-  it('is a no-op for a fileId with no record (endpoint is idempotent)', async () => {
-    const fileId = randomUUID()
-
+  it('fails unrecoverably for an unknown file without retrying', async () => {
     const queue = testApp.getQueue('cleanup-asset')
-    const job = await queue.add('cleanup-asset', { fileId })
+    const job = await queue.add('cleanup-asset', {
+      fileId: randomUUID(),
+      userId: randomUUID(),
+      assetId: randomUUID(),
+    })
 
-    expect(await waitForJob(queue, job.id!)).toBe('completed')
-    expect(testApp.fake.callsOf('adminDeleteFile')).toHaveLength(1)
+    expect(await waitForJob(queue, job.id!)).toBe('failed')
+    expect(testApp.fake.callsOf('deleteOwnedFile')).toHaveLength(1)
   })
 
   it('fails unrecoverably on an invalid payload without calling core', async () => {
@@ -47,21 +51,23 @@ describe('CleanupProcessor (integration)', () => {
     expect((await queue.getJob(job.id!))?.failedReason).toContain(
       'Invalid cleanup-asset job payload',
     )
-    expect(testApp.fake.callsOf('adminDeleteFile')).toHaveLength(0)
+    expect(testApp.fake.callsOf('deleteOwnedFile')).toHaveLength(0)
   })
 
   it('retries the job after a transient core failure, then completes', async () => {
-    testApp.fake.adminDeleteFileFailures = 1
+    testApp.fake.deleteOwnedFileFailures = 1
+    const userId = randomUUID()
     const fileId = randomUUID()
+    testApp.fake.files.set(fileId, makeFileRecord({ id: fileId, userId }))
 
     const queue = testApp.getQueue('cleanup-asset')
     const job = await queue.add(
       'cleanup-asset',
-      { fileId },
+      { fileId, userId, assetId: randomUUID() },
       { attempts: 3, backoff: { type: 'fixed', delay: 50 } },
     )
 
     expect(await waitForJob(queue, job.id!)).toBe('completed')
-    expect(testApp.fake.callsOf('adminDeleteFile')).toHaveLength(2)
+    expect(testApp.fake.callsOf('deleteOwnedFile')).toHaveLength(2)
   })
 })

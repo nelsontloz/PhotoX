@@ -1,8 +1,9 @@
 import { defineConfig } from '@playwright/test'
 import { defineBddProject } from 'playwright-bdd'
 
-// The stack has global state that forces an ordered serial prologue: 01-bootstrap registers the
-// first account of the fresh database (it becomes admin) before anything else registers, and
+// The stack has global state that forces an ordered serial prologue: 01-bootstrap logs in as
+// the seeded admin (core inserts ADMIN_EMAIL on bootstrap when no admin exists) before anything
+// else registers, and
 // 04-faces / 05-semantic's semantic-upload.feature switch the global face detector and
 // reprocess/recluster data for every user. Everything else is scenario-scoped (each scenario
 // registers its own random user), so the `suite` project runs it in parallel with the worker

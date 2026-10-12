@@ -2,20 +2,23 @@ import {
   BadRequestException,
   Injectable,
   Logger,
+  NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, DataSource, In } from 'typeorm'
+import { isUUID } from 'class-validator'
 import { Asset } from '../database/entities'
 import { AssetThumbnail } from '../database/entities'
+import { FileRecord } from '../database/entities'
 import { AlbumAsset } from '../albums/entities/album-asset.entity'
 import { Face } from '../database/entities'
 import { findOwnedOr404 } from '../common/asset-ownership'
 import { CreateAssetDto } from './dto/create-asset.dto'
 import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
-import { UpdateMetadataDto } from './dto/update-metadata.dto'
 import { RegisterThumbnailDto } from './dto/register-thumbnail.dto'
+import { WorkerMetadataDto } from '../worker/dto/worker-metadata.dto'
 import { FacesService } from '../faces/faces.service'
 import { PlacesResolveService } from '../places/places-resolve.service'
 import { BullMqService } from '../queue/bullmq.service'
@@ -35,6 +38,8 @@ export class AssetsService {
     private readonly repo: Repository<Asset>,
     @InjectRepository(AssetThumbnail)
     private readonly thumbRepo: Repository<AssetThumbnail>,
+    @InjectRepository(FileRecord)
+    private readonly fileRepo: Repository<FileRecord>,
     private readonly dataSource: DataSource,
     private readonly facesService: FacesService,
     private readonly bullMq: BullMqService,
@@ -289,20 +294,35 @@ export class AssetsService {
     return { fileIds }
   }
 
-  async updateMetadata(id: string, userId: string, dto: UpdateMetadataDto): Promise<AssetResponse> {
+  // WorkerMetadataDto extends UpdateMetadataDto, so the user DTO is assignable here; both
+  // callers share the transcodeFileId ownership rules below.
+  async updateMetadata(id: string, userId: string, dto: WorkerMetadataDto): Promise<AssetResponse> {
     const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
     // phash is a plain column (spread maps it), but its format is semantic -> 422 like embeddings
     if (dto.phash !== undefined && dto.phash !== null && !/^[0-9a-f]{16}$/.test(dto.phash)) {
       throw new UnprocessableEntityException('phash must be 16 lowercase hex characters')
     }
 
-    // every UpdateMetadataDto field except `status` maps 1:1 to an Asset column; TypeORM
+    // every DTO field except `status`/`transcodeFileId` maps 1:1 to an Asset column; TypeORM
     // skips undefined values, so absent fields stay untouched
-    const { status, ...fields } = dto
+    const { status, transcodeFileId, ...fields } = dto
     const patch: Partial<Asset> = { ...fields }
     if (status !== undefined) {
       patch.metadataStatus = status
       patch.metadataExtractedAt = new Date()
+    }
+    if (transcodeFileId !== undefined) {
+      if (transcodeFileId === null) {
+        patch.transcodeFileId = null
+      } else {
+        if (!isUUID(transcodeFileId)) {
+          throw new UnprocessableEntityException('transcodeFileId must be a UUID')
+        }
+        const file = await this.fileRepo.findOne({ where: { id: transcodeFileId } })
+        // missing and foreign files are indistinguishable, like every other ownership check
+        if (file?.userId !== asset.userId) throw new NotFoundException('File not found')
+        patch.transcodeFileId = transcodeFileId
+      }
     }
 
     // resolve place once, when this write brings real coordinates and no city was resolved yet
@@ -349,7 +369,13 @@ export class AssetsService {
     assetId: string,
     dto: RegisterThumbnailDto,
   ): Promise<AssetThumbnailResponse> {
-    await findOwnedOr404(this.repo, assetId, userId, 'Asset')
+    const asset = await findOwnedOr404(this.repo, assetId, userId, 'Asset')
+    const file = await this.fileRepo.findOne({ where: { id: dto.fileId } })
+    if (!file) throw new NotFoundException('File not found')
+    // a thumbnail row pointing at another user's bytes would leak it through share streams
+    if (file.userId !== asset.userId) {
+      throw new UnprocessableEntityException('Thumbnail file must belong to the asset owner')
+    }
     await this.thumbRepo.upsert(
       [
         {

@@ -99,8 +99,8 @@ describe('thumbnails and trash JWT identity', () => {
     const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
     const file = await seedFile(t, a.id)
     const asset = await seedAsset(t, a.id, file.id)
-    const thumbFileId = randomUUID()
-    const body = { size: 'sm', fileId: thumbFileId, width: 10, height: 10, bytes: 5 }
+    const thumbFile = await seedFile(t, a.id)
+    const body = { size: 'sm', fileId: thumbFile.id, width: 10, height: 10, bytes: 5 }
 
     const crossRegister = await request(apiServer(t))
       .post(`/api/v1/assets/${asset.id}/thumbnails`)
@@ -123,7 +123,7 @@ describe('thumbnails and trash JWT identity', () => {
     const afterCross = await t.thumbRepo.findOneOrFail({
       where: { assetId: asset.id, size: 'sm' },
     })
-    expect(afterCross.fileId).toBe(thumbFileId)
+    expect(afterCross.fileId).toBe(thumbFile.id)
     expect(afterCross.width).toBe(10)
   })
 

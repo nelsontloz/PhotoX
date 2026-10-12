@@ -29,6 +29,12 @@ export default defineConfig({
         target: process.env.VITE_API_URL || 'http://localhost:3000',
         changeOrigin: true,
       },
+      // worker job surface lives on core outside /api (act-gated; browsers never call it,
+      // but same-origin API clients like the e2e suite reach core through this proxy)
+      '/worker': {
+        target: process.env.VITE_API_URL || 'http://localhost:3000',
+        changeOrigin: true,
+      },
       '/health': {
         target: process.env.VITE_API_URL || 'http://localhost:3000',
         changeOrigin: true,

@@ -36,7 +36,7 @@ describe('CoreClient', () => {
 
     expect(file).toEqual({ id: 'file-1', userId: 'user-1' })
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('http://localhost:3000/api/v1/files/file-1')
+    expect(url).toBe('http://localhost:3000/worker/files/file-1')
     expect(init.method).toBe('GET')
     const token = (init.headers as Record<string, string>).Authorization!.replace('Bearer ', '')
     const payload = new JwtService({ secret: 'x'.repeat(32) }).verify<{
@@ -94,14 +94,14 @@ describe('CoreClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('fetches cluster faces with embeddings and trashed assets excluded', async () => {
+  it('fetches cluster faces from the worker endpoint', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [{ id: 'face-1' }] }))
 
     const faces = await makeClient().getFacesForCluster('user-1')
 
     expect(faces).toEqual([{ id: 'face-1' }])
     expect(fetchMock.mock.calls[0]![0]).toBe(
-      'http://localhost:3000/api/v1/faces?includeEmbeddings=true&excludeTrashed=true',
+      'http://localhost:3000/worker/faces?includeEmbeddings=true&excludeTrashed=true',
     )
   })
 
@@ -115,6 +115,9 @@ describe('CoreClient', () => {
 
     const urls = fetchMock.mock.calls.map((call) => call[0] as string)
     expect(urls).toHaveLength(3)
+    expect(urls.every((url) => url.startsWith('http://localhost:3000/worker/assets?ids='))).toBe(
+      true,
+    )
     expect(urls.map((url) => url.split('ids=')[1]!.split(',').length)).toEqual([100, 100, 5])
   })
 
@@ -126,7 +129,9 @@ describe('CoreClient', () => {
       attaches: [],
     })
 
-    const body = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string) as unknown
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('http://localhost:3000/worker/persons/apply-clusters')
+    const body = JSON.parse(init.body as string) as unknown
     expect(body).toEqual({
       creates: [{ clusterLabel: 'cluster-x', faceIds: ['f1', 'f2'] }],
       attaches: [],
@@ -146,7 +151,7 @@ describe('CoreClient', () => {
 
     expect(result).toEqual({ count: 1 })
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('http://localhost:3000/api/v1/assets/asset-1/faces')
+    expect(url).toBe('http://localhost:3000/worker/assets/asset-1/faces')
     expect(init.method).toBe('POST')
     expect(JSON.parse(init.body as string)).toEqual({
       detector: 'scrfd',
@@ -154,7 +159,7 @@ describe('CoreClient', () => {
     })
   })
 
-  it('deletes a file via the admin endpoint with an admin token and no body', async () => {
+  it('deletes an owned file with a per-user token and no body', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 204,
@@ -162,10 +167,10 @@ describe('CoreClient', () => {
       text: () => Promise.resolve(''),
     })
 
-    await makeClient().adminDeleteFile('file-1')
+    await makeClient().deleteOwnedFile('user-1', 'file-1')
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('http://localhost:3000/api/v1/admin/files/file-1')
+    expect(url).toBe('http://localhost:3000/worker/files/file-1')
     expect(init.method).toBe('DELETE')
     expect(init.body).toBeUndefined()
     const token = (init.headers as Record<string, string>).Authorization!.replace('Bearer ', '')
@@ -174,28 +179,10 @@ describe('CoreClient', () => {
       role: string
     }>(token)
     expect(payload).toMatchObject({
-      sub: 'worker-service',
-      role: 'admin',
+      sub: 'user-1',
+      role: 'user',
       act: { sub: 'worker-service' },
     })
-  })
-
-  it('runs the inline orphan cleanup with a 120s timeout and no body', async () => {
-    fetchMock.mockResolvedValue(
-      jsonResponse(200, { deletedFiles: 1, deletedThumbnails: 2, deletedStrays: 3 }),
-    )
-    const timeoutSpy = vi
-      .spyOn(AbortSignal, 'timeout')
-      .mockReturnValue(new AbortController().signal)
-
-    const result = await makeClient().adminRunOrphanCleanup()
-
-    expect(result).toEqual({ deletedFiles: 1, deletedThumbnails: 2, deletedStrays: 3 })
-    expect(timeoutSpy).toHaveBeenCalledWith(120_000)
-    const init = fetchMock.mock.calls[0]![1] as RequestInit
-    expect(init.method).toBe('POST')
-    expect(init.body).toBeUndefined()
-    timeoutSpy.mockRestore()
   })
 
   it('fetches face detection settings with an admin token', async () => {

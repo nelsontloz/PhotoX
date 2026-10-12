@@ -7,6 +7,7 @@ import {
   fetchFaceSettings,
   requireAuth,
   uploadFixture,
+  workerHeaders,
   type AuthResponse,
   type Ctx,
   type ReprocessKind,
@@ -267,8 +268,8 @@ Given('the initial semantic processing has settled', async ({ request, ctx }) =>
 Given('I seed a detection on the uploaded text photo', async ({ request, ctx }) => {
   const auth = requireAuth(ctx)
   const { assetId } = uploadByName(ctx, TEXT_FIXTURE)
-  const response = await request.post(`/api/v1/assets/${assetId}/detections`, {
-    headers: authHeaders(auth),
+  const response = await request.post(`/worker/assets/${assetId}/detections`, {
+    headers: workerHeaders(auth.user.id),
     data: {
       detections: [
         {
@@ -287,8 +288,8 @@ Given('I seed a detection on the uploaded text photo', async ({ request, ctx }) 
 Given('I seed OCR text on the uploaded text photo', async ({ request, ctx }) => {
   const auth = requireAuth(ctx)
   const { assetId } = uploadByName(ctx, TEXT_FIXTURE)
-  const response = await request.post(`/api/v1/assets/${assetId}/ocr`, {
-    headers: authHeaders(auth),
+  const response = await request.post(`/worker/assets/${assetId}/ocr`, {
+    headers: workerHeaders(auth.user.id),
     data: { text: SEEDED_OCR_TEXT, lang: 'eng', confidence: 0.9 },
   })
   expect(response.status()).toBe(201)

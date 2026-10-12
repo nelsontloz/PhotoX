@@ -9,6 +9,7 @@ import {
   injectSession,
   requireAuth,
   seedEmbedding,
+  workerHeaders,
   type AuthResponse,
   type Ctx,
   type FaceDetectionSettings,
@@ -41,8 +42,18 @@ interface PersonList {
   items: { id: string; faceCount: number }[]
 }
 
-/** Admin login, falling back to register (the first account of an empty instance becomes admin). */
+/** Admin login against the seeded admin (core inserts ADMIN_EMAIL on bootstrap when no
+ * admin exists); the register fallback only covers seed-less environments and can never mint
+ * admin, so the role assertion still guards the admin flows below. The session is memoized per
+ * worker process (under the 30m access TTL) so serial admin scenarios share one login instead
+ * of tripping the 5/900s login throttle — production throttle untouched. */
+let cachedAdmin: { auth: AuthResponse; at: number } | null = null
+const ADMIN_SESSION_REUSE_MS = 20 * 60 * 1000
+
 async function signInAdmin(request: APIRequestContext): Promise<AuthResponse> {
+  if (cachedAdmin && Date.now() - cachedAdmin.at < ADMIN_SESSION_REUSE_MS) {
+    return cachedAdmin.auth
+  }
   let response = await request.post('/api/v1/auth/login', {
     data: { email: ADMIN_EMAIL, password: PASSWORD },
   })
@@ -56,6 +67,7 @@ async function signInAdmin(request: APIRequestContext): Promise<AuthResponse> {
   if (auth.user.role !== 'admin') {
     throw new Error(`expected ${ADMIN_EMAIL} to have the admin role, got "${auth.user.role}"`)
   }
+  cachedAdmin = { auth, at: Date.now() }
   return auth
 }
 
@@ -73,8 +85,8 @@ async function seedFaces(
   assetId: string,
   faces: SeedFace[],
 ): Promise<void> {
-  const response = await request.post(`/api/v1/assets/${assetId}/faces`, {
-    headers: authHeaders(auth),
+  const response = await request.post(`/worker/assets/${assetId}/faces`, {
+    headers: workerHeaders(auth.user.id),
     data: {
       detector: 'human',
       faces: faces.map((face) => ({ ...face, confidence: 0.9, embedding: seedEmbedding() })),

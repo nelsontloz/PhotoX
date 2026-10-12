@@ -42,15 +42,16 @@ describe('asset detections HTTP', () => {
   async function seedOwnedAsset() {
     const owner = await seedUser(t)
     const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role })
+    const act = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
     const file = await seedFile(t, owner.id)
     const asset = await seedAsset(t, owner.id, file.id)
-    return { owner, token, file, asset }
+    return { owner, token, act, file, asset }
   }
 
   it('requires a token', async () => {
     const { asset } = await seedOwnedAsset()
     const post = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/detections`)
+      .post(`/worker/assets/${asset.id}/detections`)
       .send(DETECTIONS)
     expect(post.status).toBe(401)
     const get = await request(apiServer(t)).get(`/api/v1/assets/${asset.id}/detections`)
@@ -58,10 +59,10 @@ describe('asset detections HTTP', () => {
   })
 
   it('registers detections and returns them ordered by confidence desc', async () => {
-    const { token, asset } = await seedOwnedAsset()
+    const { token, act, asset } = await seedOwnedAsset()
     const res = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/detections`)
-      .set(t.authHeader(token))
+      .post(`/worker/assets/${asset.id}/detections`)
+      .set(t.authHeader(act))
       .send(DETECTIONS)
     expect(res.status).toBe(201)
     expect(res.body).toEqual({ ok: true })
@@ -75,11 +76,11 @@ describe('asset detections HTTP', () => {
   })
 
   it('replaces the row set instead of appending', async () => {
-    const { token, asset } = await seedOwnedAsset()
+    const { token, act, asset } = await seedOwnedAsset()
     const post = (body: Record<string, unknown>) =>
       request(apiServer(t))
-        .post(`/api/v1/assets/${asset.id}/detections`)
-        .set(t.authHeader(token))
+        .post(`/worker/assets/${asset.id}/detections`)
+        .set(t.authHeader(act))
         .send(body)
     expect((await post(DETECTIONS)).status).toBe(201)
     expect(
@@ -100,14 +101,14 @@ describe('asset detections HTTP', () => {
   })
 
   it('clears stale rows when the new set is empty', async () => {
-    const { token, asset } = await seedOwnedAsset()
+    const { token, act, asset } = await seedOwnedAsset()
     await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/detections`)
-      .set(t.authHeader(token))
+      .post(`/worker/assets/${asset.id}/detections`)
+      .set(t.authHeader(act))
       .send(DETECTIONS)
     const clear = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/detections`)
-      .set(t.authHeader(token))
+      .post(`/worker/assets/${asset.id}/detections`)
+      .set(t.authHeader(act))
       .send({ detections: [] })
     expect(clear.status).toBe(201)
 
@@ -152,10 +153,10 @@ describe('asset detections HTTP', () => {
       { detections: [{ label: 'car', confidence: 0.5, box: { x: 1, y: 1, w: 10, h: -1 } }] },
     ],
   ])('422s %s without writing', async (_label, body) => {
-    const { token, asset } = await seedOwnedAsset()
+    const { act, asset } = await seedOwnedAsset()
     const res = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/detections`)
-      .set(t.authHeader(token))
+      .post(`/worker/assets/${asset.id}/detections`)
+      .set(t.authHeader(act))
       .send(body)
     expect(res.status).toBe(422)
     expect(await t.detectionRepo.count()).toBe(0)
@@ -164,35 +165,36 @@ describe('asset detections HTTP', () => {
   it('404s cross-user register and list without writing', async () => {
     const { asset } = await seedOwnedAsset()
     const other = await seedUser(t)
-    const token = t.signToken({ id: other.id, email: other.email, role: other.role })
+    const act = t.signToken({ id: other.id, email: other.email, role: other.role }, { act: true })
+    const userToken = t.signToken({ id: other.id, email: other.email, role: other.role })
     const post = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/detections`)
-      .set(t.authHeader(token))
+      .post(`/worker/assets/${asset.id}/detections`)
+      .set(t.authHeader(act))
       .send(DETECTIONS)
     expect(post.status).toBe(404)
     const get = await request(apiServer(t))
       .get(`/api/v1/assets/${asset.id}/detections`)
-      .set(t.authHeader(token))
+      .set(t.authHeader(userToken))
     expect(get.status).toBe(404)
     expect(await t.detectionRepo.count()).toBe(0)
   })
 
   it('accepts the worker delegated token as the asset owner', async () => {
     const { owner, asset } = await seedOwnedAsset()
-    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
+    const act = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
     const res = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/detections`)
-      .set(t.authHeader(token))
+      .post(`/worker/assets/${asset.id}/detections`)
+      .set(t.authHeader(act))
       .send(DETECTIONS)
     expect(res.status).toBe(201)
     expect(await t.detectionRepo.count()).toBe(2)
   })
 
   it('makes registered labels searchable through the P3 FTS union', async () => {
-    const { token, asset } = await seedOwnedAsset()
+    const { token, act, asset } = await seedOwnedAsset()
     await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/detections`)
-      .set(t.authHeader(token))
+      .post(`/worker/assets/${asset.id}/detections`)
+      .set(t.authHeader(act))
       .send(DETECTIONS)
 
     const res = await request(apiServer(t))
