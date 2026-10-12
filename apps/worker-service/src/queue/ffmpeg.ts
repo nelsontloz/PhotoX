@@ -37,6 +37,7 @@ const DEFAULT_TIMEOUT_MS = 120_000
 const SIGKILL_DELAY_MS = 5_000
 
 interface RunOptions {
+  input?: Buffer
   timeoutMs?: number
   label?: string
 }
@@ -45,10 +46,11 @@ interface RunOptions {
 async function runBin(
   bin: string,
   args: string[],
-  { timeoutMs = DEFAULT_TIMEOUT_MS, label = 'process' }: RunOptions = {},
+  { input, timeoutMs = DEFAULT_TIMEOUT_MS, label = 'process' }: RunOptions = {},
 ): Promise<Buffer> {
+  const useStdioInput = input !== undefined
   const proc = spawn(bin, args, {
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: useStdioInput ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
   })
 
   const stdoutPromise = proc.stdout ? buffer(proc.stdout) : Promise.resolve(Buffer.alloc(0))
@@ -58,6 +60,7 @@ async function runBin(
 
   const result = await new Promise<{ stdout: Buffer; stderr: string; code: number }>(
     (resolve, reject) => {
+      if (useStdioInput && proc.stdin) proc.stdin.end(input)
       timer = setTimeout(() => {
         killWithDelay(proc)
         reject(new Error(`${label} timed out after ${timeoutMs}ms`))
@@ -106,7 +109,7 @@ function killWithDelay(proc: ChildProcess) {
 
 export async function runFfmpeg(
   args: string[],
-  options?: { timeoutMs?: number },
+  options?: { input?: Buffer; timeoutMs?: number },
 ): Promise<Buffer> {
   if (!FFMPEG_PATH)
     throw new Error('ffmpeg-static not found — install ffmpeg-static or set FFMPEG_PATH')
