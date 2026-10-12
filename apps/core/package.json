@@ -8,6 +8,7 @@
     "start": "node dist/main.js",
     "clean": "rm -rf dist",
     "places:import": "tsx src/scripts/import-geonames.ts",
+    "admin:create": "tsx src/scripts/admin-create.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

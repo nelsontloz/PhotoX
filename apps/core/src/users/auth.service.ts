@@ -12,26 +12,13 @@ import { User } from './entities/user.entity'
 import { RefreshToken } from './entities/refresh-token.entity'
 import { TokenService } from './tokens/token.service'
 import { RateLimitService } from './rate-limit.service'
+import { hashPassword } from './password'
 import type { AuthResponse } from '@photox/shared-types'
 
-// pinned so hashes don't silently change with the library's defaults
-const ARGON2_OPTIONS = {
-  type: argon2.argon2id,
-  memoryCost: 65536,
-  timeCost: 3,
-  parallelism: 1,
-} satisfies argon2.Options
-
-// argon2id hash of a throwaway password (generated once with ARGON2_OPTIONS); verified against
-// for unknown emails so both 401 paths pay the same cost
+// argon2id hash of a throwaway password (generated once with the pinned options); verified
+// against for unknown emails so both 401 paths pay the same cost
 const DUMMY_PASSWORD_HASH =
   '$argon2id$v=19$m=65536,t=3,p=1$QZuG/mblvx/n3SXlX9r3uw$Vo0UNhRloCRz9xDVfibLrw9XJYAgo/gQQ5nhGrdtJEo'
-
-// Shared password hasher (argon2id, core dep — never bcrypt); reused by the admin env-seed so
-// bootstrap rows verify exactly like registered ones.
-export function hashPassword(password: string): Promise<string> {
-  return argon2.hash(password, ARGON2_OPTIONS)
-}
 
 @Injectable()
 export class AuthService {

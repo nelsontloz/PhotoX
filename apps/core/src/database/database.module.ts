@@ -3,7 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 import { DataSource } from 'typeorm'
 import { randomUUID } from 'crypto'
 import { loadEnv } from '@photox/shared-config'
-import { hashPassword } from '../users/auth.service'
+import { hashPassword } from '../users/password'
 
 // ponytail: 512 is the InsightFace buffalo_l w600k_r50 output dim (replaced human faceres 1024).
 // Index rebuild fails while legacy 1024-dim rows remain (warn-caught) — the cluster re-embed backfill converts them.

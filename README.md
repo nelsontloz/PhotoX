@@ -75,6 +75,17 @@ Core health check (host dev): `curl localhost:3000/health`; Swagger UI at `http:
 
 Storage is local disk (`STORAGE_DIR`, default `./data/storage`) shared by core and worker — no object store.
 
+## Admin setup
+
+Open registration only mints role `user`, so a fresh instance needs an admin one of three ways:
+
+- **A. Env seed** (simplest for compose): set `ADMIN_EMAIL` + `ADMIN_PASSWORD` — core inserts that admin on bootstrap when no admin exists. Empty env disables the seed (dev/CI default).
+- **B. CLI recovery** (works even when an admin already exists — it promotes/creates unconditionally): `pnpm --filter @photox/core admin:create` (interactive prompts; `--email=`/`--password=` flags for scripts).
+- **C. SQL fallback** (promote an existing user; needs DB access):
+  ```sql
+  UPDATE users SET role = 'admin' WHERE email = 'you@example.com';
+  ```
+
 ## Layout
 
 - `apps/core` — NestJS API (`@photox/core`)
