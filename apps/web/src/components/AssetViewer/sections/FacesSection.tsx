@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { FaSpinner, FaTriangleExclamation, FaUser } from 'react-icons/fa6'
 import type { Asset, FaceDto, PersonDto } from '@photox/shared-types'
 import { listPersons } from '../../../api/persons'
-import { assignFace } from '../../../api/faces'
+import { assignFace } from '../../../api/assets'
 import { FaceThumb } from '../../FaceThumb'
 
 interface FacesSectionProps {

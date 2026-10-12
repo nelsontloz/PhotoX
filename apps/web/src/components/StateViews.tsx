@@ -19,16 +19,14 @@ export function ErrorState({
   message,
   onRetry,
   className = 'flex flex-col items-center justify-center py-32 gap-4',
-  messageClassName = 'text-red-500',
 }: {
   message: string
   onRetry: () => void
   className?: string
-  messageClassName?: string
 }) {
   return (
     <div className={className}>
-      <p className={`text-sm ${messageClassName}`}>{message}</p>
+      <p className="text-sm text-red-500">{message}</p>
       <button
         type="button"
         onClick={onRetry}

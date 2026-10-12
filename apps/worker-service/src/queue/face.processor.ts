@@ -1,9 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
-import sharp from 'sharp'
 import type { Job } from 'bullmq'
 import { BullMqService } from './bullmq.service'
 import { faceJobSchema, type FaceJob } from './job-schemas'
-import { orientedResize, patchStatusFailed, runAssetFileJob } from './asset-file-job'
+import { orientedPrep, patchStatusFailed, runAssetFileJob } from './asset-file-job'
 import { FaceDetectorService } from './face.detector'
 import { scaleDetectionsToOriginal } from './detect.service'
 import { CoreClient } from '../core/core-client.service'
@@ -45,26 +44,12 @@ export class FaceProcessor implements OnModuleInit {
 
         await this.core.patchMetadata(userId, assetId, { faceStatus: 'pending' })
 
-        const metadata = await sharp(filePath).metadata()
-        if (!metadata.width || !metadata.height) {
-          throw new Error('Could not read image dimensions')
-        }
-        // EXIF orientations 5-8 transpose the stored pixels, so the displayed (oriented) original
-        // swaps axes; boxes must be stored in that oriented space to match the browser/thumbnails.
-        // `.rotate()` below applies the same swap to the detection buffer.
-        const swapped = (metadata.orientation ?? 1) >= 5
-        const origW = swapped ? metadata.height : metadata.width
-        const origH = swapped ? metadata.width : metadata.height
-
         // ponytail: detection + embedding both run off this downscaled buffer, and the embedder
         // warps 112px crops from it, so 2048 preserves small-face detail (~12MB raw at that size).
-        const resized = await orientedResize(filePath, FACE_MAX_DIM)
-        const resizedMeta = await sharp(resized).metadata()
-        const resizedW = resizedMeta.width ?? origW
-        const resizedH = resizedMeta.height ?? origH
-
-        const scaleX = origW / resizedW
-        const scaleY = origH / resizedH
+        const { resized, scaleX, scaleY, origW, origH } = await orientedPrep(
+          filePath,
+          FACE_MAX_DIM,
+        )
 
         const detections = await this.faceDetector.detect(resized, resolvedDetector)
         // ponytail: drop low-confidence detections before save — clustering separately ignores conf < 0.4
@@ -76,7 +61,7 @@ export class FaceProcessor implements OnModuleInit {
           origH,
         ).map((d) => ({
           box: d.box,
-          confidence: Math.round(d.confidence * 10000) / 10000,
+          confidence: d.confidence,
           embedding: d.embedding,
         }))
 

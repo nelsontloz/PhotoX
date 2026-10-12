@@ -11,12 +11,6 @@ export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter((part): part is string => Boolean(part)).join(' ')
 }
 
-/** Clamp an optional 0–100 value; missing or NaN renders as 0. */
-function clampPercent(value: number | undefined): number {
-  if (value == null || !Number.isFinite(value)) return 0
-  return Math.min(100, Math.max(0, value))
-}
-
 /**
  * Section header + body. Carded by default; `card={false}` renders a bare <section> for
  * top-level groups whose children card themselves. `headingTag` keeps h2/h3 nesting right.
@@ -103,7 +97,10 @@ export function MetricTile({
   /** Advanced slot: renders instead of the default percent track (e.g. a stacked allocation bar). */
   bar?: ReactNode
 }) {
-  const percent = clampPercent(barPercent)
+  const percent =
+    barPercent == null || !Number.isFinite(barPercent)
+      ? 0
+      : Math.min(100, Math.max(0, barPercent))
   const track =
     barPercent != null ? (
       <div
@@ -223,12 +220,6 @@ export function StatStrip({
   )
 }
 
-const PILL_TONES: Record<'ok' | 'warn' | 'muted', string> = {
-  ok: 'bg-emerald-500/10 text-emerald-400',
-  warn: 'bg-amber-500/10 text-amber-300',
-  muted: 'bg-surface-container-highest text-on-surface-variant',
-}
-
 export function StatusPill({
   tone,
   children,
@@ -238,10 +229,14 @@ export function StatusPill({
 }) {
   return (
     <span
-      className={cx(
+      className={[
         'inline-flex items-center rounded px-2 py-0.5 font-mono text-label-xs font-bold uppercase',
-        PILL_TONES[tone],
-      )}
+        tone === 'ok'
+          ? 'bg-emerald-500/10 text-emerald-400'
+          : tone === 'warn'
+            ? 'bg-amber-500/10 text-amber-300'
+            : 'bg-surface-container-highest text-on-surface-variant',
+      ].join(' ')}
     >
       {children}
     </span>

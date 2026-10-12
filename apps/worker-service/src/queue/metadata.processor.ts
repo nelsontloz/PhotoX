@@ -94,22 +94,7 @@ export class MetadataProcessor implements OnModuleInit {
         })
       } else if (branch === 'video') {
         const videoMeta = await this.videoMetadataExtractor.extract(filePath)
-        const hasAnyVideoField = [
-          videoMeta.durationSeconds,
-          videoMeta.width,
-          videoMeta.height,
-          videoMeta.codec,
-          videoMeta.fps,
-          videoMeta.hasAudio,
-          videoMeta.orientation,
-          videoMeta.takenAt,
-          videoMeta.cameraMake,
-          videoMeta.cameraModel,
-          videoMeta.lensModel,
-          videoMeta.latitude,
-          videoMeta.longitude,
-          videoMeta.altitude,
-        ].some((v) => v !== null)
+        const hasAnyVideoField = Object.values(videoMeta).some((v) => v !== null)
         const videoMetadataStatus = hasAnyVideoField ? 'ready' : 'failed'
         await this.core.patchMetadata(userId, assetId, {
           status: videoMetadataStatus,

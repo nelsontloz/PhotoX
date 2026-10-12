@@ -66,7 +66,7 @@ describeIfFfmpeg('ffmpeg wrapper', () => {
   })
 
   it('extractVideoFrame returns a non-empty JPEG buffer', async () => {
-    const result = await runFfmpeg([
+    const buffer = await runFfmpeg([
       '-y',
       '-ss',
       '1',
@@ -78,7 +78,6 @@ describeIfFfmpeg('ffmpeg wrapper', () => {
       'image2pipe',
       '-',
     ])
-    const buffer = result.stdout
 
     expect(buffer.length).toBeGreaterThan(0)
 

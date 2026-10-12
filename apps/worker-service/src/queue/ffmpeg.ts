@@ -37,7 +37,6 @@ const DEFAULT_TIMEOUT_MS = 120_000
 const SIGKILL_DELAY_MS = 5_000
 
 interface RunOptions {
-  input?: Buffer
   timeoutMs?: number
   label?: string
 }
@@ -46,12 +45,10 @@ interface RunOptions {
 async function runBin(
   bin: string,
   args: string[],
-  { input, timeoutMs = DEFAULT_TIMEOUT_MS, label = 'process' }: RunOptions = {},
-): Promise<{ stdout: Buffer; stderr: string; code: number }> {
-  const useStdioInput = input !== undefined
-
+  { timeoutMs = DEFAULT_TIMEOUT_MS, label = 'process' }: RunOptions = {},
+): Promise<Buffer> {
   const proc = spawn(bin, args, {
-    stdio: useStdioInput ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
+    stdio: ['ignore', 'pipe', 'pipe'],
   })
 
   const stdoutPromise = proc.stdout ? buffer(proc.stdout) : Promise.resolve(Buffer.alloc(0))
@@ -79,10 +76,6 @@ async function runBin(
           resolve({ stdout, stderr, code: code ?? 1 })
         })()
       })
-
-      if (useStdioInput && proc.stdin) {
-        proc.stdin.end(input)
-      }
     },
   )
 
@@ -90,7 +83,7 @@ async function runBin(
     throw new Error(`${label} exited with code ${result.code}: ${result.stderr.slice(-2000)}`)
   }
 
-  return result
+  return result.stdout
 }
 
 function killWithDelay(proc: ChildProcess) {
@@ -113,8 +106,8 @@ function killWithDelay(proc: ChildProcess) {
 
 export async function runFfmpeg(
   args: string[],
-  options?: { input?: Buffer; timeoutMs?: number },
-): Promise<{ stdout: Buffer; stderr: string; code: number }> {
+  options?: { timeoutMs?: number },
+): Promise<Buffer> {
   if (!FFMPEG_PATH)
     throw new Error('ffmpeg-static not found — install ffmpeg-static or set FFMPEG_PATH')
   return runBin(FFMPEG_PATH, args, { ...options, label: 'ffmpeg' })
@@ -124,7 +117,7 @@ export async function runFfprobeJson(input: string): Promise<FfprobeResult> {
   if (!FFPROBE_PATH)
     throw new Error('ffprobe-static not found — install ffprobe-static or set FFPROBE_PATH')
 
-  const { stdout } = await runBin(
+  const stdout = await runBin(
     FFPROBE_PATH,
     ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', input],
     { label: 'ffprobe' },

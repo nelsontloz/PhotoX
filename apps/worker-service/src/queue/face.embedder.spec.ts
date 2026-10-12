@@ -8,7 +8,7 @@ import {
   similarityFromPoints,
   type RawImage,
 } from './face.embedder'
-import { landmarks5 } from './face.detector'
+import { landmarks5 } from './face.detector.human'
 
 const solid = (w: number, h: number, r: number, g: number, b: number): RawImage => {
   const data = Buffer.alloc(w * h * 3)

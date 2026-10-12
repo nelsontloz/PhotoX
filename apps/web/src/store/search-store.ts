@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { isAxiosError } from 'axios'
 import type { Asset } from '@photox/shared-types'
-import { searchAssets } from '../api/search'
+import { searchAssets } from '../api/assets'
 import { useAuthStore } from './auth-store'
 
 export const SEARCH_PAGE_SIZE = 50

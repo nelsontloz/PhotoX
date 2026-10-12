@@ -2,11 +2,7 @@ import { useRef, useCallback } from 'react'
 import { FaCamera } from 'react-icons/fa6'
 import { enqueueFiles } from '../lib/upload'
 
-interface UploadButtonProps {
-  variant?: 'default' | 'compact'
-}
-
-export function UploadButton({ variant = 'default' }: UploadButtonProps) {
+function useUploadPicker() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const open = useCallback(() => inputRef.current?.click(), [])
@@ -17,28 +13,11 @@ export function UploadButton({ variant = 'default' }: UploadButtonProps) {
     if (inputRef.current) inputRef.current.value = ''
   }, [])
 
-  if (variant === 'compact') {
-    return (
-      <>
-        <button
-          onClick={open}
-          aria-label="Upload"
-          className="flex size-9 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/20 hover:bg-primary/90 transition-colors sm:size-auto sm:gap-2 sm:rounded-lg sm:px-4 sm:py-2 sm:text-sm sm:font-semibold"
-        >
-          <FaCamera className="text-[15px] sm:text-[14px]" />
-          <span className="hidden sm:inline">Upload</span>
-        </button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*,video/*"
-          multiple
-          className="hidden"
-          onChange={handleChange}
-        />
-      </>
-    )
-  }
+  return { inputRef, open, handleChange }
+}
+
+export function UploadButton() {
+  const { inputRef, open, handleChange } = useUploadPicker()
 
   return (
     <>
@@ -57,6 +36,31 @@ export function UploadButton({ variant = 'default' }: UploadButtonProps) {
         <FaCamera className="text-2xl group-hover:-translate-y-0.5 transition-transform" />
         <span>Upload Photos</span>
       </button>
+    </>
+  )
+}
+
+export function UploadButtonCompact() {
+  const { inputRef, open, handleChange } = useUploadPicker()
+
+  return (
+    <>
+      <button
+        onClick={open}
+        aria-label="Upload"
+        className="flex size-9 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/20 hover:bg-primary/90 transition-colors sm:size-auto sm:gap-2 sm:rounded-lg sm:px-4 sm:py-2 sm:text-sm sm:font-semibold"
+      >
+        <FaCamera className="text-[15px] sm:text-[14px]" />
+        <span className="hidden sm:inline">Upload</span>
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,video/*"
+        multiple
+        className="hidden"
+        onChange={handleChange}
+      />
     </>
   )
 }

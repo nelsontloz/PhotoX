@@ -65,6 +65,27 @@ export async function orientedResize(filePath: string, maxPx: number): Promise<B
     .toBuffer()
 }
 
+// EXIF-oriented prep + geometry for box scaling: EXIF orientations 5-8 transpose the stored
+// pixels, so the displayed (oriented) original swaps axes; boxes must be stored in that oriented
+// space to match the browser/thumbnails, and `.rotate()` above applies the same swap to the buffer
+export async function orientedPrep(
+  filePath: string,
+  maxPx: number,
+): Promise<{ resized: Buffer; scaleX: number; scaleY: number; origW: number; origH: number }> {
+  const metadata = await sharp(filePath).metadata()
+  if (!metadata.width || !metadata.height) {
+    throw new Error('Could not read image dimensions')
+  }
+  const swapped = (metadata.orientation ?? 1) >= 5
+  const origW = swapped ? metadata.height : metadata.width
+  const origH = swapped ? metadata.width : metadata.height
+  const resized = await orientedResize(filePath, maxPx)
+  const resizedMeta = await sharp(resized).metadata()
+  const resizedW = resizedMeta.width ?? origW
+  const resizedH = resizedMeta.height ?? origH
+  return { resized, scaleX: origW / resizedW, scaleY: origH / resizedH, origW, origH }
+}
+
 // best-effort failure marker: a failed patch must never mask the original job error
 export async function patchStatusFailed(
   core: CoreClient,

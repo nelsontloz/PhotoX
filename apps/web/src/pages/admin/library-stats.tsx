@@ -10,7 +10,6 @@ import {
 } from 'react-icons/fa6'
 import { getAdminAssetCounts, getAdminLibraryStats } from '../../api/admin'
 import { formatBytes } from '../../lib/format'
-import { Skeleton } from '../../components/Skeleton'
 import { AdminCard, AdminSection, GhostButton, MetricTile, RefreshButton, cx } from './ui'
 import type {
   AdminAssetCountsResponse,
@@ -407,9 +406,9 @@ function AllocationBar({
 function TileSkeleton() {
   return (
     <AdminCard>
-      <Skeleton className="h-3.5 w-24" />
-      <Skeleton className="mt-4 h-9 w-28" />
-      <Skeleton className="mt-4 h-1 w-full" />
+      <div className="animate-pulse bg-slate-700/50 rounded h-3.5 w-24" />
+      <div className="animate-pulse bg-slate-700/50 rounded mt-4 h-9 w-28" />
+      <div className="animate-pulse bg-slate-700/50 rounded mt-4 h-1 w-full" />
     </AdminCard>
   )
 }
@@ -419,12 +418,12 @@ function ChartSkeleton() {
     <AdminCard>
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-2">
-          <Skeleton className="h-5 w-36" />
-          <Skeleton className="h-3.5 w-44" />
+          <div className="animate-pulse bg-slate-700/50 rounded h-5 w-36" />
+          <div className="animate-pulse bg-slate-700/50 rounded h-3.5 w-44" />
         </div>
-        <Skeleton className="h-6 w-24 rounded-full" />
+        <div className="animate-pulse bg-slate-700/50 rounded h-6 w-24 rounded-full" />
       </div>
-      <Skeleton className="mt-4 h-52 w-full" />
+      <div className="animate-pulse bg-slate-700/50 rounded mt-4 h-52 w-full" />
     </AdminCard>
   )
 }
@@ -437,7 +436,7 @@ function StatsSkeleton() {
           <TileSkeleton key={i} />
         ))}
       </div>
-      <Skeleton className="h-11 w-full" />
+      <div className="animate-pulse bg-slate-700/50 rounded h-11 w-full" />
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-7">
           <ChartSkeleton />

@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { AssetDetectionDto } from '@photox/shared-types'
 
-vi.mock('../../api/detections', () => ({ getAssetDetections: vi.fn() }))
+vi.mock('../../api/assets', () => ({ getAssetDetections: vi.fn() }))
 
-import { getAssetDetections } from '../../api/detections'
+import { getAssetDetections } from '../../api/assets'
 import { useDetections } from './useDetections'
 
 const getDetectionsMock = vi.mocked(getAssetDetections)
