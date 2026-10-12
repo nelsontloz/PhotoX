@@ -1,9 +1,17 @@
-import { memo, useState, type CSSProperties } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { FaCheck, FaPlay, FaSpinner, FaTriangleExclamation, FaUser } from 'react-icons/fa6'
 import type { Asset, AssetThumbnail } from '@photox/shared-types'
 import { AssetThumb } from './AssetThumb'
 import { formatDuration } from '../lib/format'
-import { useLongPress } from '../hooks/useLongPress'
 
 interface GalleryItemProps {
   asset: Asset
@@ -25,7 +33,38 @@ export const GalleryItem = memo(function GalleryItem({
   selectionMode = false,
 }: GalleryItemProps) {
   const [dims, setDims] = useState<{ width: number; height: number } | null>(null)
-  const lp = useLongPress(() => onLongPress?.(asset))
+  // touch-only long-press, folded from hooks/useLongPress (single caller)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const armedRef = useRef(false)
+  const justLongPressedRef = useRef(false)
+  const clearLongPress = useCallback(() => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    armedRef.current = false
+  }, [])
+  useEffect(() => clearLongPress, [clearLongPress])
+  const lp = {
+    justLongPressedRef,
+    onPointerDown: (e: ReactPointerEvent) => {
+      if (e.pointerType !== 'touch') return
+      justLongPressedRef.current = false
+      armedRef.current = true
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null
+        onLongPress?.(asset)
+        justLongPressedRef.current = true
+        armedRef.current = false
+      }, 500)
+    },
+    onPointerUp: clearLongPress,
+    onPointerLeave: clearLongPress,
+    onPointerCancel: clearLongPress,
+    onContextMenu: (e: ReactMouseEvent) => {
+      if (armedRef.current) e.preventDefault()
+    },
+  }
   const longPressHandlers = onLongPress
     ? {
         onPointerDown: lp.onPointerDown,

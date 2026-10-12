@@ -108,8 +108,6 @@ export class ThumbnailProcessor implements OnModuleInit {
     size: ThumbnailJob['size'],
     userId: string,
   ): Promise<void> {
-    const [width, height] = STANDARD_SIZES[size]
-
     const mimeType = record.mimeType
 
     const tmpPath = join(tmpdir(), `thumb-${randomUUID()}`)
@@ -141,13 +139,7 @@ export class ThumbnailProcessor implements OnModuleInit {
           '-',
         ])
 
-        const { data: thumbBuffer, info } = await this.encodeWebp(
-          frameBuffer,
-          size,
-          width,
-          height,
-          degrees,
-        )
+        const { data: thumbBuffer, info } = await this.encodeWebp(frameBuffer, size, degrees)
 
         await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info)
 
@@ -168,12 +160,7 @@ export class ThumbnailProcessor implements OnModuleInit {
             'image2pipe',
             '-',
           ])
-          const { data: thumbBuffer, info } = await this.encodeWebp(
-            frameBuffer,
-            size,
-            width,
-            height,
-          )
+          const { data: thumbBuffer, info } = await this.encodeWebp(frameBuffer, size)
           await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info)
           return
         } catch (err) {
@@ -184,7 +171,7 @@ export class ThumbnailProcessor implements OnModuleInit {
         }
       }
 
-      const { data: thumbBuffer, info } = await this.encodeWebp(tmpPath, size, width, height)
+      const { data: thumbBuffer, info } = await this.encodeWebp(tmpPath, size)
 
       await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info)
     } finally {
@@ -192,13 +179,8 @@ export class ThumbnailProcessor implements OnModuleInit {
     }
   }
 
-  private async encodeWebp(
-    source: Buffer | string,
-    size: string,
-    width: number,
-    height: number,
-    rotateDegrees = 0,
-  ) {
+  private async encodeWebp(source: Buffer | string, size: ThumbnailJob['size'], rotateDegrees = 0) {
+    const [width, height] = STANDARD_SIZES[size]
     let pipeline = sharp(source)
     if (rotateDegrees !== 0) pipeline = pipeline.rotate(rotateDegrees)
     return pipeline

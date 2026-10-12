@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Injectable,
   Logger,
-  NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
@@ -288,12 +287,6 @@ export class AssetsService {
       await em.delete(Asset, { id: In(assetIds) })
     })
     return { fileIds }
-  }
-
-  async getByFileId(fileId: string, userId: string): Promise<AssetResponse> {
-    const asset = await this.repo.findOne({ where: { fileId, userId } })
-    if (!asset) throw new NotFoundException('Asset not found for fileId')
-    return this.toResponse(asset)
   }
 
   async updateMetadata(id: string, userId: string, dto: UpdateMetadataDto): Promise<AssetResponse> {

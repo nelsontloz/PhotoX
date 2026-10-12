@@ -214,6 +214,17 @@ function parseIso6709(
   }
 }
 
+function parseFps(rate: string | undefined): number | null {
+  if (!rate) return null
+  const parts = rate.split('/')
+  if (parts.length !== 2) return null
+  const num = Number(parts[0])
+  const den = Number(parts[1])
+  if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) return null
+  const fps = num / den
+  return Number.isFinite(fps) && fps > 0 ? Math.round(fps * 100) / 100 : null
+}
+
 @Injectable()
 export class VideoMetadataExtractor {
   private readonly logger = new Logger(VideoMetadataExtractor.name)
@@ -276,17 +287,7 @@ export class VideoMetadataExtractor {
       width: swapDims ? (rawHeight ?? null) : (rawWidth ?? null),
       height: swapDims ? (rawWidth ?? null) : (rawHeight ?? null),
       codec: videoStream?.codec_name ?? null,
-      fps: (() => {
-        const rate = videoStream?.avg_frame_rate
-        if (!rate || typeof rate !== 'string') return null
-        const parts = rate.split('/')
-        if (parts.length !== 2) return null
-        const num = Number(parts[0])
-        const den = Number(parts[1])
-        if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) return null
-        const fps = num / den
-        return Number.isFinite(fps) && fps > 0 ? Math.round(fps * 100) / 100 : null
-      })(),
+      fps: parseFps(videoStream?.avg_frame_rate),
       hasAudio,
       orientation,
       takenAt,

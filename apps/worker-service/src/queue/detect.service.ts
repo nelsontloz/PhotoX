@@ -142,6 +142,10 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
 // pure: detections in a processor's prep space -> oriented ORIGINAL-image pixels, shared by
 // process-faces and process-detect (per-edge clamp, drop collapsed boxes); the web viewer scales
 // overlays by asset.width/height, so registered boxes must be original px.
@@ -189,10 +193,10 @@ export function parseDetections(
     if (x2 <= x1 || y2 <= y1) continue
 
     const box = {
-      x: Math.round(x1 * 100) / 100,
-      y: Math.round(y1 * 100) / 100,
-      w: Math.round((x2 - x1) * 100) / 100,
-      h: Math.round((y2 - y1) * 100) / 100,
+      x: round2(x1),
+      y: round2(y1),
+      w: round2(x2 - x1),
+      h: round2(y2 - y1),
     }
     // core rejects w/h <= 0 with 422 — drop sub-pixel boxes after rounding
     if (box.w <= 0 || box.h <= 0) continue

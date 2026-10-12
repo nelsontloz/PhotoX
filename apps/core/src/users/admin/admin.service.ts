@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import type { Repository, SelectQueryBuilder } from 'typeorm'
+import type { Repository } from 'typeorm'
 import type { AdminUserListResponse, AdminUserRow, AdminUserSortField } from '@photox/shared-types'
 import { User } from '../entities/user.entity'
 
@@ -22,7 +22,13 @@ export class AdminService {
       .createQueryBuilder('u')
       .select(['u.id', 'u.displayName', 'u.email', 'u.role', 'u.createdAt'])
 
-    this.applyFilters(qb, params)
+    if (params.q) {
+      const like = `%${params.q}%`
+      qb.andWhere('(u.email ILIKE :like OR u.displayName ILIKE :like)', { like })
+    }
+    if (params.role) {
+      qb.andWhere('u.role = :role', { role: params.role })
+    }
     qb.orderBy(`u.${params.sortField}`, params.sortDir.toUpperCase() as 'ASC' | 'DESC')
     qb.take(params.limit).skip(params.offset)
 
@@ -37,21 +43,5 @@ export class AdminService {
     }))
 
     return { items, total, limit: params.limit, offset: params.offset }
-  }
-
-  private applyFilters(qb: SelectQueryBuilder<User>, params: ListAdminUsersParams): void {
-    if (params.q) {
-      const like = `%${params.q}%`
-      qb.andWhere('(u.email ILIKE :like OR u.displayName ILIKE :like)', { like })
-    }
-    if (params.role) {
-      qb.andWhere('u.role = :role', { role: params.role })
-    }
-  }
-
-  static parseSort(sort: string | undefined): { field: AdminUserSortField; dir: 'asc' | 'desc' } {
-    if (!sort) return { field: 'createdAt', dir: 'desc' }
-    const [field, dir] = sort.split(':') as [AdminUserSortField, 'asc' | 'desc']
-    return { field, dir: dir === 'asc' ? 'asc' : 'desc' }
   }
 }

@@ -26,7 +26,8 @@ import {
   type FaceDetectorKind,
 } from '@photox/shared-types'
 import { RequireAuth } from '../../components/RequireAuth'
-import { RequireAdmin } from '../../components/RequireAdmin'
+import { Navigate } from 'react-router-dom'
+import { useAuthStore } from '../../store/auth-store'
 import { AppShell } from '../../components/AppShell'
 import { Dialog } from '../../components/Dialog'
 import { LoadingState } from '../../components/StateViews'
@@ -1404,13 +1405,16 @@ function AdminPageContent() {
 }
 
 export default function AdminPage() {
+  const user = useAuthStore((s) => s.user)
   return (
     <RequireAuth>
-      <RequireAdmin>
+      {user?.role !== 'admin' ? (
+        <Navigate to="/" replace />
+      ) : (
         <AppShell>
           <AdminPageContent />
         </AppShell>
-      </RequireAdmin>
+      )}
     </RequireAuth>
   )
 }

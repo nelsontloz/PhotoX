@@ -118,6 +118,16 @@ function dbscan(points: number[][], eps: number, minPts: number): number[] {
   return labels
 }
 
+interface NearestPerson {
+  id: string
+  dist: number
+  runnerUp: number
+}
+
+function matchesPerson(best: NearestPerson | null, eps: number): best is NearestPerson {
+  return best !== null && best.dist <= eps && best.runnerUp - best.dist >= CLUSTER_MATCH_MARGIN
+}
+
 @Injectable()
 export class FaceClusterService implements OnModuleInit {
   private readonly logger = new Logger(FaceClusterService.name)
@@ -227,10 +237,8 @@ export class FaceClusterService implements OnModuleInit {
     }
     for (const pid of facesByPerson.keys()) refreshCentroid(pid)
 
-    const nearestPerson = (
-      embedding: number[],
-    ): { id: string; dist: number; runnerUp: number } | null => {
-      let best: { id: string; dist: number; runnerUp: number } | null = null
+    const nearestPerson = (embedding: number[]): NearestPerson | null => {
+      let best: NearestPerson | null = null
       for (const [pid, centroid] of personCentroids) {
         const d = cosineDistance(embedding, centroid)
         if (best === null) {
@@ -254,11 +262,7 @@ export class FaceClusterService implements OnModuleInit {
     let noiseReassigned = 0
     for (const face of noiseFaces) {
       const best = nearestPerson(face.embedding)
-      if (
-        best !== null &&
-        best.dist <= NOISE_ASSIGN_EPS &&
-        best.runnerUp - best.dist >= CLUSTER_MATCH_MARGIN
-      ) {
+      if (matchesPerson(best, NOISE_ASSIGN_EPS)) {
         facesByPerson.get(best.id)!.push(face)
         refreshCentroid(best.id)
         // noise attaches carry no cover (parity with the old per-face update)
@@ -272,12 +276,7 @@ export class FaceClusterService implements OnModuleInit {
     for (const facesInCluster of clusters.values()) {
       const newCentroid = centroidOf(facesInCluster.map((f) => f.embedding))
       const best = nearestPerson(newCentroid)
-      const personId =
-        best !== null &&
-        best.dist <= CLUSTER_MATCH_EPS &&
-        best.runnerUp - best.dist >= CLUSTER_MATCH_MARGIN
-          ? best.id
-          : null
+      const personId = matchesPerson(best, CLUSTER_MATCH_EPS) ? best.id : null
 
       const coverFace = facesInCluster.reduce((bestFace, f) =>
         f.box.w * f.box.h > bestFace.box.w * bestFace.box.h ? f : bestFace,

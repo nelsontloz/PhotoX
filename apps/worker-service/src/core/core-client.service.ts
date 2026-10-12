@@ -249,6 +249,7 @@ export class CoreClient {
     timeoutMs = REQUEST_TIMEOUT_MS,
   ): Promise<T> {
     const token = this.signToken(opts.sub, opts.role ?? 'user')
+    const hasBody = opts.body !== undefined
 
     let res: Response
     try {
@@ -256,9 +257,9 @@ export class CoreClient {
         method,
         headers: {
           Authorization: `Bearer ${token}`,
-          ...(opts.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+          ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
         },
-        body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+        body: hasBody ? JSON.stringify(opts.body) : undefined,
         signal: AbortSignal.timeout(timeoutMs),
       })
     } catch (err) {

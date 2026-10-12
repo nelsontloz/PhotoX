@@ -118,15 +118,12 @@ export class VideoProcessor implements OnModuleInit {
 
       throw err
     } finally {
-      try {
-        await rm(srcDir, { recursive: true, force: true })
-      } catch {
-        // ignore cleanup errors
-      }
-      try {
-        await rm(outDir, { recursive: true, force: true })
-      } catch {
-        // ignore cleanup errors
+      for (const dir of [srcDir, outDir]) {
+        try {
+          await rm(dir, { recursive: true, force: true })
+        } catch {
+          // ignore cleanup errors
+        }
       }
     }
   }

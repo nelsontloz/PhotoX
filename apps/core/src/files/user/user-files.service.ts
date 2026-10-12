@@ -16,25 +16,18 @@ import { pipeline } from 'stream/promises'
 import { Asset, FileRecord } from '../../database/entities'
 import { envFaceDetectorKind, LocalStorageService } from '@photox/shared-config'
 import { findOwnedOr404 } from '../../common/asset-ownership'
-import { toFileRecordResponse } from '../file-record.mapper'
 import { RegisterFileBodyDto } from './dto/register-file.body.dto'
+import type { UploadFileBodyDto } from './dto/upload-file.body.dto'
 import { AssetsService } from '../../assets/assets.service'
 import { BullMqService } from '../../queue/bullmq.service'
 import { SettingsService } from '../../settings/settings.service'
 import type { Asset as AssetResponse } from '@photox/shared-types'
 
-interface UploadedDiskFile {
+export interface UploadedDiskFile {
   path: string
   originalname: string
   mimetype: string
   size: number
-}
-
-interface UploadMeta {
-  kind?: 'photo' | 'video'
-  title?: string
-  description?: string
-  takenAt?: string
 }
 
 // ponytail: header sniff only (no full decode) — enough to keep svg/html and unknown bytes out of
@@ -91,6 +84,22 @@ async function sniffMime(path: string): Promise<string | null> {
   return isoBmffMime(buf) ?? MIME_SNIFFERS.find((s) => s.match(buf))?.mime ?? null
 }
 
+function toFileRecordResponse(record: FileRecord) {
+  return {
+    id: record.id,
+    userId: record.userId,
+    storageKey: record.storageKey,
+    originalName: record.originalName,
+    mimeType: record.mimeType,
+    // bigint columns come back as strings from pg — the wire type says number
+    sizeBytes: Number(record.sizeBytes),
+    checksumSha256: record.checksumSha256,
+    purpose: record.purpose,
+    assetId: record.assetId,
+    createdAt: record.createdAt.toISOString(),
+  }
+}
+
 @Injectable()
 export class UserFilesService {
   private readonly logger = new Logger(UserFilesService.name)
@@ -109,7 +118,7 @@ export class UserFilesService {
   async upload(
     userId: string,
     file: UploadedDiskFile,
-    meta: UploadMeta = {},
+    meta: UploadFileBodyDto = {},
   ): Promise<AssetResponse> {
     const { record, created } = await this.storeFile(userId, file)
     const kind = meta.kind ?? this.kindFromMime(record.mimeType)
@@ -117,10 +126,7 @@ export class UserFilesService {
       throw new BadRequestException('Unsupported file type')
     }
     if (!created) {
-      const existing = await this.assets.getByFileId(record.id, userId).catch((err: unknown) => {
-        if (err instanceof NotFoundException) return null
-        throw err
-      })
+      const existing = await this.assetRepo.findOne({ where: { fileId: record.id, userId } })
       if (existing) {
         throw new ConflictException({
           existingAssetId: existing.id,
