@@ -7,6 +7,7 @@ import { AdminAssetsService } from './admin-assets.service'
 import { AdminJobsService } from './admin-jobs.service'
 import { REPROCESS_PAGE_SIZE } from './reprocess.util'
 import { BullMqService } from '../queue/bullmq.service'
+import { Roles } from '../auth/roles.decorator'
 
 class ReprocessThumbnailsDto {
   @IsIn(['photo', 'video'])
@@ -15,6 +16,7 @@ class ReprocessThumbnailsDto {
 
 @ApiTags('admin')
 @Controller('api/v1/admin')
+@Roles('admin')
 export class AdminMaintenanceController {
   constructor(
     private readonly admin: AdminAssetsService,

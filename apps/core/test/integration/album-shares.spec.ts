@@ -27,10 +27,8 @@ interface ShareBody {
 
 interface PublicAsset {
   id: string
-  userId: string
   kind: string
-  fileId: string
-  transcodeFileId: string | null
+  hasTranscode: boolean
   title: string | null
   originalName: string | null
   mimeType: string | null
@@ -90,7 +88,7 @@ describe('album shares', () => {
     expect(defs.some((def) => def.includes('"albumId" IS NOT NULL'))).toBe(true)
   })
 
-  it('creates an album share with non-trashed count/cover and dedupes the same album', async () => {
+  it('creates an album share with non-trashed count/cover and rotates the same album', async () => {
     const { id: userId, token } = await seedUserWithToken()
     const album = await createAlbum(userId)
     const file1 = await seedFile(t, userId)
@@ -115,9 +113,12 @@ describe('album shares', () => {
     const second = await createShare(token, { albumId: album.id })
     expect(second.status).toBe(201)
     const secondBody = second.body as ShareBody
-    expect(secondBody.id).toBe(firstBody.id)
-    expect(secondBody.token).toBe(firstBody.token)
+    // rotation mints a new capability and kills the old URL (compat break by design)
+    expect(secondBody.id).not.toBe(firstBody.id)
+    expect(secondBody.token).not.toBe(firstBody.token)
     expect(await t.shareRepo.count({ where: { albumId: album.id } })).toBe(1)
+    expect((await request(apiServer(t)).get(`/api/share/${firstBody.token}`)).status).toBe(404)
+    expect((await request(apiServer(t)).get(`/api/share/${secondBody.token}`)).status).toBe(200)
   })
 
   it('rejects missing or both targets with 400', async () => {
@@ -386,7 +387,7 @@ describe('album shares', () => {
     expect(missing.status).toBe(404)
   })
 
-  it('serves the sm thumbnail with ?size=sm and falls back to the original', async () => {
+  it('serves the sm thumbnail with ?size=sm and 404s it when missing (no original fallback)', async () => {
     const { id: userId, token } = await seedUserWithToken()
     const album = await createAlbum(userId)
     const originalFile = await seedFile(t, userId, { mimeType: 'image/png' })
@@ -395,11 +396,11 @@ describe('album shares', () => {
     const created = await createShare(token, { albumId: album.id })
     const share = created.body as ShareBody
 
-    const fallback = await request(apiServer(t)).get(
+    // no sm thumbnail yet: 404, never the original
+    const missing = await request(apiServer(t)).get(
       `/api/share/${share.token}/assets/${asset.id}/stream?size=sm`,
     )
-    expect(fallback.status).toBe(200)
-    expect(fallback.headers['content-type']).toBe('image/png')
+    expect(missing.status).toBe(404)
 
     const thumb = await seedThumbnail(t, asset.id, { size: 'sm' })
     const thumbFile = await t.fileRepo.findOneOrFail({ where: { id: thumb.fileId } })
@@ -409,6 +410,11 @@ describe('album shares', () => {
     expect(thumbRes.status).toBe(200)
     expect(thumbRes.headers['content-type']).toBe('image/jpeg')
     expect(thumbRes.headers.etag).toBe(`"${thumbFile.checksumSha256}"`)
+
+    const otherSize = await request(apiServer(t)).get(
+      `/api/share/${share.token}/assets/${asset.id}/stream?size=md`,
+    )
+    expect(otherSize.status).toBe(400)
 
     const original = await request(apiServer(t)).get(
       `/api/share/${share.token}/assets/${asset.id}/stream`,
@@ -457,7 +463,7 @@ describe('album shares', () => {
     const share = created.body as ShareBody
 
     const pub = await request(apiServer(t)).get(`/api/share/${share.token}`)
-    expect((pub.body as { asset: PublicAsset }).asset.transcodeFileId).toBe(transcode.id)
+    expect((pub.body as { asset: PublicAsset }).asset.hasTranscode).toBe(true)
 
     const stream = await request(apiServer(t)).get(`/api/share/${share.token}/stream`)
     expect(stream.status).toBe(200)
@@ -489,7 +495,7 @@ describe('album shares', () => {
 
     const list = await request(apiServer(t)).get(`/api/share/${share.token}/assets`)
     const item = (list.body as { items: PublicAsset[] }).items[0]!
-    expect(item.transcodeFileId).toBe(transcode.id)
+    expect(item.hasTranscode).toBe(true)
 
     const stream = await request(apiServer(t)).get(
       `/api/share/${share.token}/assets/${asset.id}/stream`,

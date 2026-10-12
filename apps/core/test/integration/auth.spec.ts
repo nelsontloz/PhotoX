@@ -280,27 +280,35 @@ describe('auth HTTP surface', () => {
   })
 
   describe('expiry and identity spoofing', () => {
-    const signExpired = (secondsAgo: number) =>
+    // gate-1: the guard fails closed for unknown subs, so expiry tests sign as a real user —
+    // otherwise the 401 would prove fail-closed, not clock tolerance
+    const signExpiredFor = (user: { id: string; email: string }, secondsAgo: number) =>
       t.app.get(JwtService).sign(
         {
-          sub: '22222222-2222-4222-8222-222222222222',
-          email: 'expired@example.com',
+          sub: user.id,
+          email: user.email,
           role: 'user',
         },
         { expiresIn: -secondsAgo },
       )
 
     it('accepts a token expired within AUTH_CLOCK_TOLERANCE_SEC (60s default)', async () => {
+      const registered = await registerUser('tolerant@example.com')
+      expect(registered.status).toBe(201)
+      const { user } = registered.body as unknown as AuthBody
       const res = await request(apiServer(t))
         .get('/api/v1/assets')
-        .set(t.authHeader(signExpired(30)))
+        .set(t.authHeader(signExpiredFor(user, 30)))
       expect(res.status).toBe(200)
     })
 
     it('returns 401 for a token expired beyond the clock tolerance', async () => {
+      const registered = await registerUser('stale@example.com')
+      expect(registered.status).toBe(201)
+      const { user } = registered.body as unknown as AuthBody
       const res = await request(apiServer(t))
         .get('/api/v1/assets')
-        .set(t.authHeader(signExpired(120)))
+        .set(t.authHeader(signExpiredFor(user, 120)))
       expect(res.status).toBe(401)
     })
 

@@ -6,7 +6,7 @@ import {
   Logger,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { IsNull, Repository } from 'typeorm'
+import { IsNull, Repository, type EntityManager } from 'typeorm'
 import * as argon2 from 'argon2'
 import { User } from './entities/user.entity'
 import { RefreshToken } from './entities/refresh-token.entity'
@@ -77,14 +77,17 @@ export class AuthService {
     })
     if (!row) throw new UnauthorizedException('Invalid refresh token')
     if (new Date() > row.expiresAt) throw new UnauthorizedException('Refresh token expired')
+    if (row.absoluteExpiresAt && new Date() > row.absoluteExpiresAt)
+      throw new UnauthorizedException('Refresh token expired')
 
     const result = await this.tokenRepo.update(
       { tokenHash: hash, revokedAt: IsNull() },
       { revokedAt: () => 'now()' },
     )
     if (!result.affected) {
-      // reused (already rotated/revoked) token — assume theft and revoke the whole family
-      await this.tokenRepo.delete({ userId: row.userId })
+      // reused (already rotated/revoked) token — assume theft: drop the whole family and
+      // floor access tokens in the same transaction so stolen cookies die with it
+      await this.userRepo.manager.transaction((m) => this.revokeAllSessions(row.userId, m))
       this.logger.warn(`Refresh token reuse for user ${row.userId}; all refresh tokens revoked`)
       throw new UnauthorizedException('Refresh token revoked')
     }
@@ -92,7 +95,14 @@ export class AuthService {
     const user = await this.userRepo.findOne({ where: { id: row.userId } })
     if (!user) throw new NotFoundException('User not found')
 
-    return this.issueTokens(user)
+    return this.issueTokens(user, row.absoluteExpiresAt)
+  }
+
+  // ponytail: global logout kills every device session — per-jti denylist if selective logout matters
+  async revokeAllSessions(userId: string, manager?: EntityManager): Promise<void> {
+    const store = manager ?? this.userRepo.manager
+    await store.delete(RefreshToken, { userId })
+    await store.update(User, userId, { tokensValidAfter: new Date() })
   }
 
   async logout(refreshToken: string): Promise<void> {
@@ -101,12 +111,12 @@ export class AuthService {
     const row = await this.tokenRepo.findOne({
       where: { tokenHash: hash },
     })
-    if (row && !row.revokedAt) {
-      await this.tokenRepo.update(row.id, { revokedAt: new Date() })
-    }
+    // unknown token scopes to no user — idempotent no-op (still 204)
+    if (!row) return
+    await this.userRepo.manager.transaction((m) => this.revokeAllSessions(row.userId, m))
   }
 
-  private async issueTokens(user: User): Promise<AuthResponse> {
+  private async issueTokens(user: User, absoluteExpiresAt?: Date | null): Promise<AuthResponse> {
     const accessToken = await this.tokenService.signAccessToken({
       id: user.id,
       email: user.email,
@@ -116,11 +126,16 @@ export class AuthService {
     const refreshRaw = this.tokenService.generate()
     const refreshHash = this.tokenService.hash(refreshRaw)
 
+    // ponytail: hardcoded 7d absolute session cap — promote to env if it needs tuning
+    const absolute = absoluteExpiresAt ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    const sliding = this.tokenService.getRefreshExpiresAt()
+
     await this.tokenRepo.save(
       this.tokenRepo.create({
         userId: user.id,
         tokenHash: refreshHash,
-        expiresAt: this.tokenService.getRefreshExpiresAt(),
+        expiresAt: sliding < absolute ? sliding : absolute,
+        absoluteExpiresAt: absolute,
       }),
     )
 

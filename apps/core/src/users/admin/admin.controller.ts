@@ -3,9 +3,11 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { AdminUserListResponse, AdminUserSortField } from '@photox/shared-types'
 import { AdminService } from './admin.service'
 import { ListAdminUsersQueryDto } from './dto/list-admin-users.query.dto'
+import { Roles } from '../../auth/roles.decorator'
 
 @ApiTags('admin')
 @Controller('api/v1/admin/users')
+@Roles('admin')
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
 

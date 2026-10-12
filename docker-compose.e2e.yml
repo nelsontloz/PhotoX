@@ -22,6 +22,7 @@ services:
       AUTH_ACCESS_TTL: 30m
       AUTH_REFRESH_TTL: 1d
       AUTH_TOKEN_SECRET: dev-auth-secret-32-characters-minimum!!
+      WORKER_JWT_SECRET: dev-worker-secret-32-characters-minimum!!
       # e2e registers many users from one IP; prod/dev keep the default of 10/hour
       RATE_LIMIT_REGISTER: 1000
       # seeded admin (open registration only mints 'user'): core inserts this admin on
@@ -58,6 +59,7 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-photox_dev}
       AUTH_TOKEN_SECRET: dev-auth-secret-32-characters-minimum!!
+      WORKER_JWT_SECRET: dev-worker-secret-32-characters-minimum!!
     volumes:
       - storage-data:/data/storage
       - ./data/storage/models:/data/storage/models:ro

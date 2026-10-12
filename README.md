@@ -75,6 +75,14 @@ Core health check (host dev): `curl localhost:3000/health`; Swagger UI at `http:
 
 Storage is local disk (`STORAGE_DIR`, default `./data/storage`) shared by core and worker — no object store.
 
+## Share links
+
+- Re-sharing an asset/album **rotates** the link: a new token is minted and the old URL immediately 404s.
+- Share tokens are stored hashed — plaintext exists only in the create response, so copy the link when you create it (the Shared page re-shares on copy for the same reason).
+- Pre-hash share rows still resolve via a plaintext fallback but never expire — re-share to hash them, attach the 30d expiry, and rotate the URL.
+- New shares expire after 30d; older shares with no expiry never expire.
+- Upgrade note for existing DBs: TypeORM `synchronize` recreates a `varchar` column on length change (dropping its data), so widen `shares.token` by hand before booting core — `ALTER TABLE shares ALTER COLUMN token TYPE varchar(64); ALTER TABLE shares ADD COLUMN "expiresAt" timestamptz NULL;` — otherwise boot crashes on `column "token" contains null values`.
+
 ## Admin setup
 
 Open registration only mints role `user`, so a fresh instance needs an admin one of three ways:

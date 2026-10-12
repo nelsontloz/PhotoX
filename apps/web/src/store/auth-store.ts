@@ -46,36 +46,16 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-interface PersistedAuth {
-  user: User | null
-  accessToken: string | null
-  refreshToken: string | null
-}
-
-// localStorage is untrusted and zustand wraps state in `{ state, version }` — parse defensively.
-function readPersistedAuth(): PersistedAuth | null {
-  try {
-    const raw = localStorage.getItem(AUTH_STORAGE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as { state?: Partial<PersistedAuth> }
-    const state = parsed?.state
-    if (typeof state?.refreshToken !== 'string' || state.refreshToken === '') return null
-    return {
-      user: state.user ?? null,
-      accessToken: state.accessToken ?? null,
-      refreshToken: state.refreshToken,
-    }
-  } catch {
-    return null
-  }
-}
+// cookie session: tokens live in memory only — the persisted profile just restores the UI
+// across reloads while the HttpOnly cookies prove the session to the API.
+// localStorage is untrusted, so merge() below adopts only the profile, never tokens.
 
 // ponytail: BroadcastChannel-only cross-tab signalling — storage-event fallback only if
 // browsers without BroadcastChannel support ever matter.
 const authChannel =
   typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('photox.auth') : null
 
-function broadcastAuth(message: { type: 'tokens' } | { type: 'logout' }) {
+function broadcastAuth(message: { type: 'logout' }) {
   authChannel?.postMessage(message)
 }
 
@@ -87,7 +67,7 @@ async function withRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
   return result
 }
 
-async function refreshWithRetry(rt: string): Promise<AuthResponse> {
+async function refreshWithRetry(rt: string | undefined): Promise<AuthResponse> {
   try {
     return await authApi.refresh(rt)
   } catch (err: unknown) {
@@ -159,40 +139,33 @@ export const useAuthStore = create<AuthState>()(
         // clear locally first: logout must never block on (or fail because of) the network
         set({ user: null, accessToken: null, refreshToken: null, status: 'idle', error: null })
         broadcastAuth({ type: 'logout' })
-        if (token) {
-          void authApi.logout(token).catch(() => {
-            /* best-effort server-side revoke */
-          })
-        }
+        // always tell the server: with a memory token it revokes, without one the refresh
+        // cookie still revokes — and either way both cookies are cleared
+        void authApi.logout(token ?? undefined).catch(() => {
+          /* best-effort server-side revoke */
+        })
         return Promise.resolve()
       },
 
       refresh: async () => {
         if (refreshInFlight) return refreshInFlight
 
-        const rt = get().refreshToken
-        if (!rt) return
-
         const run = async (): Promise<void> => {
           const epoch = sessionEpoch
           const res = await withRefreshLock(async () => {
-            // another tab may have rotated while we waited for the lock — adopt its pair
-            const persisted = readPersistedAuth()
-            if (persisted && persisted.refreshToken !== get().refreshToken) {
-              if (epoch === sessionEpoch) {
-                set({
-                  user: persisted.user,
-                  accessToken: persisted.accessToken,
-                  refreshToken: persisted.refreshToken,
-                  status: 'authenticated',
-                })
-              }
-              return null
+            // jar-first: the shared cookie always holds the newest rotation, so a tab that
+            // waited on the lock never replays its stale memory token into the reuse-kill;
+            // memory is fallback only for a jar the server can't see (400 = no credential)
+            const rt = get().refreshToken ?? undefined
+            try {
+              return await refreshWithRetry(undefined)
+            } catch (err) {
+              const status = (err as { response?: { status?: number } }).response?.status
+              if (rt === undefined || status !== 400) throw err
+              return refreshWithRetry(rt)
             }
-            return refreshWithRetry(rt)
           })
 
-          if (!res) return
           if (epoch !== sessionEpoch) return // logged out mid-flight — drop the result
           set({
             user: res.user,
@@ -200,7 +173,6 @@ export const useAuthStore = create<AuthState>()(
             refreshToken: res.refreshToken,
             status: 'authenticated',
           })
-          broadcastAuth({ type: 'tokens' })
         }
 
         refreshInFlight = run()
@@ -223,18 +195,12 @@ export const useAuthStore = create<AuthState>()(
     {
       name: AUTH_STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({
-        user: state.user,
-        accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
-      }),
+      // tokens are memory-only; an old disk payload may still carry them — never spread it
+      partialize: (state) => ({ user: state.user }),
       merge: (persisted, current) => {
-        const data = persisted as Partial<AuthState>
-        return {
-          ...current,
-          ...data,
-          status: data.accessToken ? 'authenticated' : 'idle',
-        }
+        const data = persisted as { user?: User | null }
+        const user = data.user ?? null
+        return { ...current, user, status: user ? 'authenticated' : 'idle' }
       },
     },
   ),
@@ -256,18 +222,6 @@ authChannel?.addEventListener('message', (event: MessageEvent<unknown>) => {
   const message = event.data as { type?: string } | null
   if (message?.type === 'logout') {
     clearLocalSession()
-    return
-  }
-  if (message?.type === 'tokens' && !refreshInFlight) {
-    const persisted = readPersistedAuth()
-    if (persisted && persisted.refreshToken !== useAuthStore.getState().refreshToken) {
-      useAuthStore.setState({
-        user: persisted.user,
-        accessToken: persisted.accessToken,
-        refreshToken: persisted.refreshToken,
-        status: 'authenticated',
-      })
-    }
   }
 })
 

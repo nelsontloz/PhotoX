@@ -83,6 +83,15 @@ async function seedAlbumShare(request: APIRequestContext, ctx: Ctx): Promise<voi
   ctx.albumMemberId = assetId
   ctx.albumShare = share
   ctx.lastShare = share
+  // readiness, not the security rule: the album grid/lightbox sm URLs 404 until the worker
+  // renders the thumbnail — wait for the member sm stream here so page loads never race it
+  await expect
+    .poll(
+      async () =>
+        (await request.get(`/api/share/${share.token}/assets/${assetId}/stream?size=sm`)).status(),
+      { timeout: 120_000 },
+    )
+    .toBe(200)
 }
 
 // --- Setup: shares created through the API without a browser session --------------------
@@ -162,12 +171,13 @@ Then('the album page confirms the share link was copied', async ({ page }) => {
   await expect(page.getByText('Link copied')).toBeVisible()
 })
 
-Then('the shares API lists that share with a token', async ({ request, ctx }) => {
+Then('the shares API lists that share without a usable token', async ({ request, ctx }) => {
   const share = requireShare(ctx.lastShare, 'UI or API')
   const list = await fetchShares(request, requireAuth(ctx))
   const found = list.items.find((item) => item.id === share.id)
   if (!found) throw new Error(`share ${share.id} is not listed by GET /api/v1/shares`)
-  expect(found.token).toBe(share.token)
+  // raw capabilities appear only in create responses — the list must not carry one
+  expect('token' in found).toBe(false)
 })
 
 Then('the share list shows an album share entry', async ({ page }) => {
@@ -268,11 +278,13 @@ When('I submit a share request with both an asset and an album id', async ({ req
   ctx.lastStatus = response.status()
 })
 
-Then('both share requests returned the same share id and token', ({ ctx }) => {
+Then('the second share request rotated the token and killed the old URL', async ({ request, ctx }) => {
   const first = requireShare(ctx.assetShare, 'first asset')
   const second = requireShare(ctx.assetShareAgain, 'second asset')
-  expect(second.id).toBe(first.id)
-  expect(second.token).toBe(first.token)
+  expect(second.id).not.toBe(first.id)
+  expect(second.token).not.toBe(first.token)
+  expect((await request.get(`/api/share/${first.token}`)).status()).toBe(404)
+  expect((await request.get(`/api/share/${second.token}`)).status()).toBe(200)
 })
 
 Then('the shares API lists exactly one share entry', async ({ request, ctx }) => {

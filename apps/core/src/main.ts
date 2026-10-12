@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core'
+import type { NestExpressApplication } from '@nestjs/platform-express'
 import { ValidationPipe } from '@nestjs/common'
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
 import type { NextFunction, Request, Response } from 'express'
@@ -8,7 +9,11 @@ import { loadEnv } from '@photox/shared-config'
 
 async function bootstrap() {
   const env = loadEnv()
-  const app = await NestFactory.create(AppModule)
+  const app = await NestFactory.create<NestExpressApplication>(AppModule)
+
+  // ponytail: trust proxy 1 — a single reverse proxy in front; req.ip reads X-Forwarded-For
+  // so per-IP rate limiting sees clients, not the proxy. Bump the hop count if proxies stack.
+  app.set('trust proxy', 1)
 
   // ponytail: helmet not in the workspace — three static headers instead; no CSP on purpose
   // (would break the Vite-served SPA and Swagger UI)

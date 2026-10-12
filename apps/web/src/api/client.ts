@@ -4,6 +4,8 @@ import { useAuthStore, isExpiringSoon } from '../store/auth-store'
 export const api = axios.create({
   baseURL: '/api',
   timeout: 10000,
+  // cookie session: the HttpOnly access/refresh cookies ride every same-origin request
+  withCredentials: true,
 })
 
 api.interceptors.request.use(async (config) => {
@@ -16,15 +18,11 @@ api.interceptors.request.use(async (config) => {
       .getState()
       .refresh()
       .catch(() => {
-        /* transient failure — the response still attaches the current token */
+        /* transient failure — the cookies still authenticate this request */
       })
   }
 
-  // re-read: a proactive refresh above may have swapped the token
-  const token = useAuthStore.getState().accessToken
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
+  // no Bearer header: the access cookie authenticates same-origin calls (media tags too)
   return config
 })
 
@@ -56,8 +54,8 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
+    // cookies (refreshed above) authenticate the retry — no Bearer header
     originalRequest.headers['X-Auth-Retry'] = '1'
-    originalRequest.headers.Authorization = `Bearer ${newToken}`
     return api(originalRequest)
   },
 )

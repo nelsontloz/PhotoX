@@ -36,10 +36,15 @@ describe('issue-156 vulns (expect secure, currently insecure)', () => {
     role: 'user' | 'admin'
   }
   const userTok = (u: TokUser) => t.signToken({ id: u.id, email: u.email, role: u.role })
+  // phase-2 secret split: worker-origin tokens are minted under WORKER_JWT_SECRET — core's
+  // guard verifies them against the worker secret and still gates them via the act allowlist
   const forgedAs = (u: { id: string; email: string }) =>
-    t.signToken({ id: u.id, email: u.email, role: 'user' }, { act: true })
+    t.signWorkerToken({ id: u.id, email: u.email, role: 'user' }, { act: true })
   const workerAdmin = () =>
-    t.signToken({ id: 'worker-service', email: 'worker@internal', role: 'admin' }, { act: true })
+    t.signWorkerToken(
+      { id: 'worker-service', email: 'worker@internal', role: 'admin' },
+      { act: true },
+    )
 
   async function shareToken(owner: TokUser, assetId: string): Promise<string> {
     const res = await request(apiServer(t))
@@ -145,7 +150,7 @@ describe('issue-156 vulns (expect secure, currently insecure)', () => {
     expect(res.status).toBe(403)
   })
 
-  it('vuln3 share→stream chain: share-exposed fileId is not streamable by B', async () => {
+  it('vuln3 share→stream chain: public JSON exposes no ids to chain from (hash-era)', async () => {
     const a = await seedUser(t)
     const b = await seedUser(t)
     const file = await seedFile(t, a.id, { bytes: Buffer.from('victim-bytes-123') })
@@ -154,14 +159,23 @@ describe('issue-156 vulns (expect secure, currently insecure)', () => {
     const pub = await request(apiServer(t)).get(`/api/share/${token}`)
     expect(pub.status).toBe(200)
     const body = pub.body as unknown as {
-      share: { assetFileId: string | null }
-      asset: { fileId: string }
+      share: Record<string, unknown>
+      asset: Record<string, unknown>
     }
-    const exposed = body.share.assetFileId ?? body.asset.fileId
-    const res = await request(apiServer(t))
-      .get(`/api/v1/files/${exposed}/stream`)
+    // hash-era contract (mirrors #12c): no ids to chain into the files API
+    for (const key of ['fileId', 'transcodeFileId', 'userId']) {
+      expect(body.asset).not.toHaveProperty(key)
+      expect(body.share).not.toHaveProperty(key)
+    }
+    // BOLA with no exposed id at all: B streams/downloads the victim file directly → 404
+    const stream = await request(apiServer(t))
+      .get(`/api/v1/files/${file.id}/stream`)
       .set(t.authHeader(userTok(b)))
-    expect(res.status).toBe(404)
+    expect(stream.status).toBe(404)
+    const download = await request(apiServer(t))
+      .get(`/api/v1/files/${file.id}/download`)
+      .set(t.authHeader(userTok(b)))
+    expect(download.status).toBe(404)
   })
 
   it('vuln3 download parity: B download of victim file is 404 (passing guard)', async () => {

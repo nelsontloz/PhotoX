@@ -79,9 +79,31 @@ export function loadEnv(): Env {
   }
 }
 
-const authEnvSchema = z.object({
-  AUTH_TOKEN_SECRET: z.string().min(32, 'AUTH_TOKEN_SECRET must be at least 32 characters'),
-})
+// ponytail: entropy floor for every JWT secret — length alone accepts 'a'.repeat(32).
+// generate with: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+function hasSecretEntropy(secret: string): boolean {
+  if (new Set(secret).size < 16) return false
+  return !/(.)\1{5}/.test(secret)
+}
+
+const secretField = (name: string) =>
+  z
+    .string()
+    .min(32, `${name} must be at least 32 characters`)
+    .refine(hasSecretEntropy, { message: `${name} is too predictable — generate a random one` })
+
+const authEnvSchema = z
+  .object({
+    AUTH_TOKEN_SECRET: secretField('AUTH_TOKEN_SECRET'),
+    AUTH_TOKEN_SECRET_PREVIOUS: secretField('AUTH_TOKEN_SECRET_PREVIOUS').optional(),
+    WORKER_JWT_SECRET: secretField('WORKER_JWT_SECRET'),
+  })
+  // equal user/worker secrets silently collapse the split — previous-equals-current stays
+  // allowed (rotation overlap), only the worker secret must differ
+  .refine((v) => v.WORKER_JWT_SECRET !== v.AUTH_TOKEN_SECRET, {
+    message: 'WORKER_JWT_SECRET must differ from AUTH_TOKEN_SECRET — the split is void otherwise',
+    path: ['WORKER_JWT_SECRET'],
+  })
 
 type AuthEnv = z.infer<typeof authEnvSchema>
 

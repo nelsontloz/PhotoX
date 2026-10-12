@@ -30,7 +30,7 @@ if count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
 return count
 `
 
-// ponytail: 300ms budget — Redis down/slow must not hang auth; see fail-open in consume()
+// ponytail: 300ms budget — Redis down/slow rejects auth with 503 instead of hanging it
 export const RATE_LIMIT_TIMEOUT_MS = 300
 
 @Injectable()
@@ -41,7 +41,8 @@ export class RateLimitService {
 
   /**
    * Fixed-window counter: first hit sets the window TTL, throws 429 once the limit is exceeded.
-   * Fails open (allows the request) when Redis is unavailable, not yet connected, or too slow.
+   * Fails closed (503) when Redis is unavailable, not yet connected, or too slow — an
+   * attacker must never get unlimited auth attempts from a Redis blip.
    */
   async consume(route: RateLimitRoute, ip: string, email?: string): Promise<void> {
     const { windowSec } = RATE_LIMITS[route]
@@ -52,10 +53,11 @@ export class RateLimitService {
 
     const count = await this.countHit(key, windowSec)
     if (count === null) {
-      // ponytail: fail-open — argon2 still gates login and a personal instance prefers
-      // availability; fail-closed would need a dedicated short-retry Redis client
-      this.logger.warn(`Rate limit unavailable for ${route} (${key}); allowing request`)
-      return
+      this.logger.warn(`Rate limit unavailable for ${route} (${key}); rejecting request`)
+      throw new HttpException(
+        { statusCode: HttpStatus.SERVICE_UNAVAILABLE, message: 'Rate limiter unavailable' },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      )
     }
 
     if (count > limit) {
@@ -67,7 +69,7 @@ export class RateLimitService {
     }
   }
 
-  /** null = Redis unavailable/timed out (caller fails open); otherwise the new window count. */
+  /** null = Redis unavailable/timed out (caller fails closed with 503). */
   private async countHit(key: string, windowSec: number): Promise<number | null> {
     let timer: NodeJS.Timeout | undefined
     try {

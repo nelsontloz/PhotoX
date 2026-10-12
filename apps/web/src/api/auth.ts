@@ -11,11 +11,12 @@ export async function register(req: RegisterRequest): Promise<AuthResponse> {
   return data
 }
 
-export async function refresh(refreshToken: string): Promise<AuthResponse> {
+export async function refresh(refreshToken?: string): Promise<AuthResponse> {
+  // undefined refreshToken omits the key: the HttpOnly refresh cookie carries it instead
   const { data } = await api.post<AuthResponse>('/v1/auth/refresh', { refreshToken })
   return data
 }
 
-export async function logout(refreshToken: string): Promise<void> {
+export async function logout(refreshToken?: string): Promise<void> {
   await api.post('/v1/auth/logout', { refreshToken })
 }

@@ -14,10 +14,15 @@ import type {
   AssetShareDto,
   PublicAlbumAssetsResponse,
   PublicShareAsset,
+  PublicShareInfo,
   PublicShareResponse,
   ShareDto,
+  ShareListItem,
   ShareListResponse,
 } from '@photox/shared-types'
+
+// ponytail: hardcoded 30d share lifetime — per-share expiresIn on the create DTO if owners need control
+const SHARE_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
 @Injectable()
 export class SharesService {
@@ -34,6 +39,29 @@ export class SharesService {
     private readonly albumAssetRepo: Repository<AlbumAsset>,
   ) {}
 
+  /** sha256 of a presented capability for lookups — writes store hashes, see create(). */
+  private hashToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex')
+  }
+
+  /**
+   * Token resolution across the hash migration: new rows store sha256 (match first), legacy
+   * rows store plaintext (raw fallback). Presenting T matches only rows storing T or sha256(T)
+   * — no escalation beyond the pre-hash contract — and misses stay uniform-404 downstream.
+   */
+  private async findShareByToken(token: string, relations?: string[]): Promise<Share | null> {
+    const hashed = await this.shareRepo.findOne({
+      where: { token: this.hashToken(token) },
+      relations,
+    })
+    if (hashed) return hashed
+    return this.shareRepo.findOne({ where: { token }, relations })
+  }
+
+  private expiresAt(): Date {
+    return new Date(Date.now() + SHARE_TTL_MS)
+  }
+
   async create(userId: string, dto: CreateShareDto): Promise<ShareDto> {
     const assetId = dto.assetId
     const albumId = dto.albumId
@@ -47,37 +75,39 @@ export class SharesService {
       })
       if (!asset) throw new NotFoundException('Asset not found')
 
-      const existing = await this.shareRepo.findOne({
-        where: { assetId, userId },
-        relations: ['asset', 'asset.thumbnails'],
-      })
-      if (existing) return this.toAssetDto(existing)
+      const existing = await this.shareRepo.findOne({ where: { assetId, userId } })
+      // rotation: re-sharing mints a new token and kills the old URL (compat break by design)
+      if (existing) await this.shareRepo.delete(existing.id)
 
+      const raw = crypto.randomBytes(16).toString('base64url')
       const share = this.shareRepo.create({
         userId,
         kind: 'asset',
         assetId,
         albumId: null,
-        token: crypto.randomBytes(16).toString('base64url'),
+        token: this.hashToken(raw),
+        expiresAt: this.expiresAt(),
       })
       const saved = await this.shareRepo.save(share)
-      return this.toAssetDto(saved)
+      return { ...this.toAssetDto(saved), token: raw }
     }
 
     const album = await findOwnedOr404(this.albumRepo, albumId!, userId, 'Album')
 
-    const existing = await this.shareRepo.findOne({ where: { albumId, userId } })
-    if (existing) return this.toAlbumDto(existing, album)
+    const existingAlbum = await this.shareRepo.findOne({ where: { albumId, userId } })
+    if (existingAlbum) await this.shareRepo.delete(existingAlbum.id)
 
+    const rawAlbum = crypto.randomBytes(16).toString('base64url')
     const share = this.shareRepo.create({
       userId,
       kind: 'album',
       assetId: null,
       albumId,
-      token: crypto.randomBytes(16).toString('base64url'),
+      token: this.hashToken(rawAlbum),
+      expiresAt: this.expiresAt(),
     })
     const saved = await this.shareRepo.save(share)
-    return this.toAlbumDto(saved, album)
+    return { ...(await this.toAlbumDto(saved, album)), token: rawAlbum }
   }
 
   async list(userId: string): Promise<ShareListResponse> {
@@ -93,7 +123,7 @@ export class SharesService {
 
     // ponytail: N+1 count/cover query per album share — fine for a personal scale library;
     // replace with a grouped join if share lists ever get large
-    const items: ShareDto[] = []
+    const items: ShareListItem[] = []
     for (const row of rows) {
       items.push(
         row.kind === 'album' ? await this.toAlbumDto(row, row.album) : this.toAssetDto(row),
@@ -108,18 +138,17 @@ export class SharesService {
   }
 
   async getByToken(token: string): Promise<PublicShareResponse> {
-    const share = await this.shareRepo.findOne({
-      where: { token },
-      relations: ['asset', 'asset.thumbnails', 'album'],
-    })
-    if (!share) throw new NotFoundException('Share not found')
+    const share = await this.findShareByToken(token, ['asset', 'asset.thumbnails', 'album'])
+    // expired and unknown share identically: never distinguish the two
+    if (!share || (share.expiresAt && new Date() > share.expiresAt))
+      throw new NotFoundException('Share not found')
 
     if (share.kind === 'album') {
       if (!share.album) throw new NotFoundException('Share not found')
       const shareDto = await this.toAlbumDto(share, share.album)
       return {
         kind: 'album',
-        share: shareDto,
+        share: this.toPublicShare(share),
         album: {
           id: share.album.id,
           name: share.album.name,
@@ -130,7 +159,11 @@ export class SharesService {
     }
 
     if (!share.asset || share.asset.isTrashed) throw new NotFoundException('Share not found')
-    return { kind: 'asset', share: this.toAssetDto(share), asset: this.toPublicAsset(share.asset) }
+    return {
+      kind: 'asset',
+      share: this.toPublicShare(share),
+      asset: this.toPublicAsset(share.asset),
+    }
   }
 
   async listAlbumAssetsByToken(token: string): Promise<PublicAlbumAssetsResponse> {
@@ -180,10 +213,12 @@ export class SharesService {
     if (!asset) throw new NotFoundException('Asset not found')
 
     if (size === 'sm') {
-      const thumbFileId =
-        asset.thumbnails?.find((thumb) => thumb.size === 'sm')?.fileId ?? asset.fileId
+      // sm-only: a missing sm thumbnail 404s — never fall back to the (possibly huge) original
+      const thumbFileId = asset.thumbnails?.find((thumb) => thumb.size === 'sm')?.fileId
+      if (!thumbFileId) throw new NotFoundException('Asset not found')
       return { fileId: thumbFileId, userId: share.userId }
     }
+    if (size !== undefined) throw new BadRequestException(`Unsupported size '${size}'`)
     // Same pick as the in-app viewer: when the worker transcoded the video (non-h264 original),
     // browsers cannot decode the original — serve the AV1/webm derivative.
     const fileId = await this.playableFileId(share.userId, asset.transcodeFileId, asset.fileId)
@@ -206,20 +241,40 @@ export class SharesService {
   }
 
   private async getAlbumShare(token: string): Promise<Share> {
-    const share = await this.shareRepo.findOne({ where: { token } })
+    const share = await this.findShareByToken(token)
     if (share?.kind !== 'album' || !share.albumId) {
+      throw new NotFoundException('Share not found')
+    }
+    if (share.expiresAt && new Date() > share.expiresAt) {
       throw new NotFoundException('Share not found')
     }
     return share
   }
 
+  /**
+   * Stream target for a single-asset share: resolved server-side from the token so the public
+   * projection never has to expose file ids. Transcode-guarded playable logic unchanged.
+   */
+  async getAssetStreamTarget(token: string): Promise<{ fileId: string; userId: string }> {
+    const share = await this.findShareByToken(token, ['asset', 'asset.thumbnails'])
+    // optional chains: a missing share must read the same as a wrong-kind/expired one
+    const expiresAt = share?.expiresAt ?? null
+    if (share?.kind !== 'asset' || (expiresAt && new Date() > expiresAt))
+      throw new NotFoundException('Share not found')
+    if (!share?.asset || share.asset.isTrashed) throw new NotFoundException('Share not found')
+    const fileId = await this.playableFileId(
+      share.userId,
+      share.asset.transcodeFileId,
+      share.asset.fileId,
+    )
+    return { fileId, userId: share.userId }
+  }
+
   private toPublicAsset(asset: Asset): PublicShareAsset {
     return {
       id: asset.id,
-      userId: asset.userId,
       kind: asset.kind,
-      fileId: asset.fileId,
-      transcodeFileId: asset.transcodeFileId,
+      hasTranscode: asset.transcodeFileId !== null,
       title: asset.title,
       originalName: asset.originalName,
       mimeType: asset.mimeType,
@@ -230,12 +285,11 @@ export class SharesService {
     }
   }
 
-  private toAssetDto(share: Share): AssetShareDto {
+  private toAssetDto(share: Share): Omit<AssetShareDto, 'token'> {
     return {
       id: share.id,
       kind: 'asset',
       userId: share.userId,
-      token: share.token,
       assetId: share.assetId!,
       assetFileId: share.asset?.fileId ?? null,
       assetThumbFileId: share.asset?.thumbnails?.find((t) => t.size === 'sm')?.fileId ?? null,
@@ -244,7 +298,18 @@ export class SharesService {
     }
   }
 
-  private async toAlbumDto(share: Share, album?: Album | null): Promise<AlbumShareDto> {
+  private toPublicShare(share: Share): PublicShareInfo {
+    return {
+      kind: share.kind,
+      createdAt: share.createdAt instanceof Date ? share.createdAt.toISOString() : share.createdAt,
+      expiresAt: share.expiresAt instanceof Date ? share.expiresAt.toISOString() : share.expiresAt,
+    }
+  }
+
+  private async toAlbumDto(
+    share: Share,
+    album?: Album | null,
+  ): Promise<Omit<AlbumShareDto, 'token'>> {
     const albumId = share.albumId!
     const albumRow = album ?? (await this.albumRepo.findOne({ where: { id: albumId } }))
     const [assetCount, coverThumbFileId] = await Promise.all([
@@ -255,7 +320,6 @@ export class SharesService {
       id: share.id,
       kind: 'album',
       userId: share.userId,
-      token: share.token,
       albumId,
       albumName: albumRow?.name ?? '',
       albumAssetCount: assetCount,

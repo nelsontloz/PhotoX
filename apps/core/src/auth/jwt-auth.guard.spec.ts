@@ -5,6 +5,10 @@ import { ACCESS_COOKIE } from './auth-cookie'
 import { JwtAuthGuard, requireUserId } from './jwt-auth.guard'
 
 const TEST_SECRET = 'test-secret-0123456789abcdef0123456789'
+// phase-2: the guard verifies against explicit env secrets (not the injected JwtService
+// default), so the env user secret must match this spec's signing secret
+process.env.AUTH_TOKEN_SECRET = TEST_SECRET
+process.env.WORKER_JWT_SECRET = 'worker-unit-test-secret-9f8e7d6c5b4a3210'
 const jwt = new JwtService({ secret: TEST_SECRET })
 const guard = new JwtAuthGuard(jwt)
 

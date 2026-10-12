@@ -205,9 +205,11 @@ function base64url(input: string | Buffer): string {
 
 /** Delegated worker headers scoped to a job user id (test seeding only, never prod). */
 export function workerHeaders(userId: string): Record<string, string> {
+  // the guard mandates iat on every verified token and fails closed when absent
+  const now = Math.floor(Date.now() / 1000)
   const encoded =
     `${base64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.` +
-    `${base64url(JSON.stringify({ sub: userId, email: 'worker@internal', role: 'user', act: { sub: 'worker-service' } }))}`
+    `${base64url(JSON.stringify({ sub: userId, email: 'worker@internal', role: 'user', act: { sub: 'worker-service' }, iat: now, exp: now + 1800 }))}`
   const signature = base64url(createHmac('sha256', E2E_AUTH_TOKEN_SECRET).update(encoded).digest())
   return { Authorization: `Bearer ${encoded}.${signature}` }
 }

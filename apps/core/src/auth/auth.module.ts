@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core'
 import { JwtModule, type JwtSignOptions } from '@nestjs/jwt'
 import { loadAuthEnv, loadEnv } from '@photox/shared-config'
 import { JwtAuthGuard } from './jwt-auth.guard'
+import { RolesGuard } from './roles.guard'
 
 @Module({
   imports: [
@@ -22,6 +23,11 @@ import { JwtAuthGuard } from './jwt-auth.guard'
       }),
     }),
   ],
-  providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
+  // ponytail: RolesGuard runs AFTER JwtAuthGuard (provider order) — it reads the identity
+  // the first guard set; it never authenticates on its own
+  providers: [
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
+  ],
 })
 export class AuthModule {}

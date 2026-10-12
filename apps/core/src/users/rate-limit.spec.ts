@@ -76,29 +76,39 @@ describe('RateLimitService', () => {
     ])
   })
 
-  it('fails open and warns when Redis rejects', async () => {
+  it('fails closed with 503 and warns when Redis rejects', async () => {
     const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
     const { service } = makeService({ eval: () => Promise.reject(new Error('redis down')) })
 
-    await expect(service.consume('login', '1.2.3.4', 'user@example.com')).resolves.toBeUndefined()
+    const err = await service
+      .consume('login', '1.2.3.4', 'user@example.com')
+      .catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(HttpException)
+    expect((err as HttpException).getStatus()).toBe(503)
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('Rate limit unavailable'))
   })
 
-  it('fails open after the timeout when Redis never answers', async () => {
+  it('fails closed with 503 after the timeout when Redis never answers', async () => {
     const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
     const { service } = makeService({ eval: () => new Promise<never>(() => undefined) })
 
     const start = Date.now()
-    await expect(service.consume('login', '1.2.3.4', 'user@example.com')).resolves.toBeUndefined()
+    const err = await service
+      .consume('login', '1.2.3.4', 'user@example.com')
+      .catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(HttpException)
+    expect((err as HttpException).getStatus()).toBe(503)
     expect(Date.now() - start).toBeGreaterThanOrEqual(RATE_LIMIT_TIMEOUT_MS - 50)
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('Rate limit unavailable'))
   })
 
-  it('fails open when the Redis connection is not ready', async () => {
+  it('fails closed with 503 when the Redis connection is not ready', async () => {
     const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
     const { service } = makeService(undefined)
 
-    await expect(service.consume('register', '1.2.3.4')).resolves.toBeUndefined()
+    const err = await service.consume('register', '1.2.3.4').catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(HttpException)
+    expect((err as HttpException).getStatus()).toBe(503)
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('Rate limit unavailable'))
   })
 })

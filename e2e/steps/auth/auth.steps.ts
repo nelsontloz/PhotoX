@@ -8,6 +8,7 @@ import {
   injectSession,
   readSessionRole,
   registerUser,
+  type AuthResponse,
 } from '../support'
 
 interface PersistedAuthState {
@@ -114,12 +115,26 @@ Then('the stored session has no refresh token', async ({ page }) => {
 })
 
 Then('the admin API accepts my session', async ({ page, request, ctx }) => {
-  // UI-registered scenarios (feature 01) never populate ctx.auth — fall back to the browser's
-  // persisted session, which is the token the app itself would send
-  const accessToken = ctx.auth?.accessToken ?? (await readPersistedAuthState(page))?.accessToken
-  if (!accessToken) throw new Error('no access token in ctx.auth or localStorage — sign in first')
-  const headers = ctx.auth ? authHeaders(ctx.auth) : { Authorization: `Bearer ${accessToken}` }
-  const response = await request.get('/api/v1/admin/users', { headers })
+  if (ctx.auth) {
+    const response = await request.get('/api/v1/admin/users', { headers: authHeaders(ctx.auth) })
+    expect(response.status()).toBe(200)
+    return
+  }
+  // UI-registered scenarios never populate ctx.auth, and the phase-3 persist holds the profile
+  // only — read the email from the profile and take the token from one API login response body
+  let email: string | undefined
+  try {
+    const raw = await page.evaluate(() => window.localStorage.getItem('photox.auth'))
+    email = (JSON.parse(raw ?? '{}') as { state?: { user?: { email?: string } } }).state?.user
+      ?.email
+  } catch {
+    email = undefined
+  }
+  if (!email) throw new Error('no UI session profile in localStorage — sign in first')
+  const login = await request.post('/api/v1/auth/login', { data: { email, password: PASSWORD } })
+  expect(login.status()).toBe(200)
+  const auth = (await login.json()) as AuthResponse
+  const response = await request.get('/api/v1/admin/users', { headers: authHeaders(auth) })
   expect(response.status()).toBe(200)
 })
 
