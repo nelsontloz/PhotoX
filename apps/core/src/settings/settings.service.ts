@@ -50,19 +50,6 @@ const LAST_RUN_KEYS: Record<LastRunKind, string> = {
   places: PLACES_BACKFILL_LAST_RUN_KEY,
 }
 
-// ponytail: shallow guard only — the stored JSON comes from setLastRun's typed values, so a wrong
-// envelope reading back as null is enough; add per-field checks back only if rows can originate
-// outside this service.
-function parseRun<T>(value: unknown): T | null {
-  if (typeof value !== 'object' || value === null) return null
-  const run = value as Partial<EnqueuedRun & { updated: number }>
-  const hasEnvelope =
-    typeof run.startedAt === 'string' &&
-    typeof run.total === 'number' &&
-    (typeof run.enqueued === 'number' || typeof run.updated === 'number')
-  return hasEnvelope ? (value as T) : null
-}
-
 @Injectable()
 export class SettingsService {
   constructor(
@@ -92,7 +79,17 @@ export class SettingsService {
 
   async getLastRun<K extends LastRunKind>(kind: K): Promise<LastRun<K> | null> {
     const row = await this.repo.findOne({ where: { key: LAST_RUN_KEYS[kind] } })
-    return parseRun<LastRun<K>>(row?.value)
+    // ponytail: shallow guard only — the stored JSON comes from setLastRun's typed values, so a
+    // wrong envelope reading back as null is enough; add per-field checks back only if rows can
+    // originate outside this service.
+    const value: unknown = row?.value
+    if (typeof value !== 'object' || value === null) return null
+    const run = value as Partial<EnqueuedRun & { updated: number }>
+    const hasEnvelope =
+      typeof run.startedAt === 'string' &&
+      typeof run.total === 'number' &&
+      (typeof run.enqueued === 'number' || typeof run.updated === 'number')
+    return hasEnvelope ? (value as LastRun<K>) : null
   }
 
   async setLastRun<K extends LastRunKind>(kind: K, run: LastRun<K>): Promise<void> {

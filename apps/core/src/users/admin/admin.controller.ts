@@ -1,6 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import type { AdminUserListResponse } from '@photox/shared-types'
+import type { AdminUserListResponse, AdminUserSortField } from '@photox/shared-types'
 import { AdminService } from './admin.service'
 import { ListAdminUsersQueryDto } from './dto/list-admin-users.query.dto'
 
@@ -13,7 +13,9 @@ export class AdminController {
   @ApiOperation({ summary: 'List all users (admin-only, trusts the network)' })
   @ApiResponse({ status: 200, description: 'Paginated user list' })
   async list(@Query() q: ListAdminUsersQueryDto): Promise<AdminUserListResponse> {
-    const { field, dir } = AdminService.parseSort(q.sort)
+    const [rawField = 'createdAt', rawDir] = q.sort?.split(':') ?? []
+    const field = rawField as AdminUserSortField
+    const dir = rawDir === 'asc' ? 'asc' : 'desc'
     return this.admin.listUsers({
       limit: q.limit ?? 20,
       offset: q.offset ?? 0,

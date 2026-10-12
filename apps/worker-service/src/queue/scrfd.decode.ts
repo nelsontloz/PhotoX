@@ -33,6 +33,12 @@ function anchorsForStride(stride: number): number {
   return (SCRFD_INPUT_SIZE / stride) ** 2 * NUM_ANCHORS
 }
 
+function strideForAnchors(anchors: number): number {
+  // ponytail: inverse of anchorsForStride — exact for 12800/3200/800 (perfect squares,
+  // correctly-rounded sqrt); anything else fails the stride check at the call site
+  return SCRFD_INPUT_SIZE / Math.sqrt(anchors / NUM_ANCHORS)
+}
+
 // ponytail: canonical SCRFD layout (insightface/model_zoo/scrfd.py) — output row i belongs to
 // cell floor(i / 2) (row-major, both anchors share one center) and centers sit at cell * stride
 // with no half-pixel offset
@@ -96,9 +102,6 @@ export function decodeScrfdOutputs(
     throw new Error(`SCRFD expects 9 outputs (3 strides x score/bbox/kps), got ${outputs.length}`)
   }
 
-  const strideByAnchors = new Map<number, number>(
-    SCRFD_STRIDES.map((stride) => [anchorsForStride(stride), stride]),
-  )
   interface StrideOutputs {
     score?: ScrfdTensorLike
     bbox?: ScrfdTensorLike
@@ -118,7 +121,8 @@ export function decodeScrfdOutputs(
     } else {
       throw new Error(`Unexpected SCRFD tensor dims [${tensor.dims.join(', ')}]`)
     }
-    if (!strideByAnchors.has(anchors)) {
+    const stride = strideForAnchors(anchors)
+    if (stride !== 8 && stride !== 16 && stride !== 32) {
       throw new Error(`Unknown SCRFD anchor count ${anchors} (expected 12800, 3200 or 800)`)
     }
     if (tensor.data.length !== anchors * last) {

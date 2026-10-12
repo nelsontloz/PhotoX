@@ -24,10 +24,6 @@ import { UpdateMetadataDto } from './dto/update-metadata.dto'
 import { TrashAssetsDto } from './dto/trash-assets.dto'
 import { RegisterThumbnailDto } from './dto/register-thumbnail.dto'
 
-function layoutEtag(fingerprint: { count: number; maxUpdatedAtMs: number }): string {
-  return `"layout-${fingerprint.count}-${fingerprint.maxUpdatedAtMs}"`
-}
-
 @ApiTags('assets')
 @Controller('api/v1/assets')
 export class AssetsController {
@@ -59,7 +55,7 @@ export class AssetsController {
     if (!personId && !favorite && !albumId) {
       const fingerprint = await this.assets.layoutFingerprint(userId)
       // ETag must be on the response before `req.fresh` compares it against If-None-Match.
-      res.setHeader('ETag', layoutEtag(fingerprint))
+      res.setHeader('ETag', `"layout-${fingerprint.count}-${fingerprint.maxUpdatedAtMs}"`)
       if (req.fresh) {
         res.status(HttpStatus.NOT_MODIFIED).end()
         return

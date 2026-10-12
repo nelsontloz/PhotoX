@@ -17,7 +17,7 @@ import { randomUUID } from 'crypto'
 import { tmpdir } from 'os'
 import multer from 'multer'
 import { CurrentUserId } from '../../auth/jwt-auth.guard'
-import { UserFilesService } from './user-files.service'
+import { UserFilesService, type UploadedDiskFile } from './user-files.service'
 import { FileRecordDto } from '../file-record.dto'
 import { RegisterFileBodyDto } from './dto/register-file.body.dto'
 import { UploadFileBodyDto } from './dto/upload-file.body.dto'
@@ -44,7 +44,7 @@ export class UserFilesController {
   @ApiResponse({ status: 409, description: 'File already uploaded' })
   async upload(
     @CurrentUserId() userId: string,
-    @UploadedFile() file: { path: string; originalname: string; mimetype: string; size: number },
+    @UploadedFile() file: UploadedDiskFile,
     @Body() body: UploadFileBodyDto,
   ) {
     return this.userFilesService.upload(userId, file, {
