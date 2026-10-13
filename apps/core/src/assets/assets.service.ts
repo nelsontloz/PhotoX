@@ -1,12 +1,13 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository, DataSource, In } from 'typeorm'
+import { Repository, DataSource, In, QueryFailedError } from 'typeorm'
 import { isUUID } from 'class-validator'
 import { Asset } from '../database/entities'
 import { AssetThumbnail } from '../database/entities'
@@ -59,7 +60,24 @@ export class AssetsService {
     asset.originalName = dto.originalName ?? null
     asset.transcodeStatus = dto.kind === 'video' ? 'pending' : null
     asset.thumbnailStatus = 'pending'
-    const saved = await this.repo.save(asset)
+    // P1-5: duplicate uploads converge on one file row, but two asset inserts for the same
+    // fileId can still collide on UNIQUE(fileId) — map it to the same 409 shape the upload
+    // dedup path returns instead of leaking a 500.
+    let saved: Asset
+    try {
+      saved = await this.repo.save(asset)
+    } catch (err) {
+      if (isPostgresUniqueViolation(err)) {
+        const existing = await this.repo.findOne({ where: { fileId: dto.fileId } })
+        if (existing) {
+          throw new ConflictException({
+            existingAssetId: existing.id,
+            existingFileId: dto.fileId,
+          })
+        }
+      }
+      throw err
+    }
     return this.toResponse(saved)
   }
 
@@ -448,6 +466,14 @@ export class AssetsService {
       ...(thumbnails ? { thumbnails: thumbnails.map((t) => toThumbnailResponse(t)) } : {}),
     }
   }
+}
+
+// pg unique-violation probe shared by the upload-race arbiters (user-files + assets create).
+// ponytail: pg code only — the only prod driver; sqlite/test callers never hit this branch.
+export function isPostgresUniqueViolation(err: unknown): boolean {
+  if (!(err instanceof QueryFailedError)) return false
+  const driver = err.driverError as { code?: unknown } | null | undefined
+  return driver?.code === '23505'
 }
 
 function groupThumbsByAsset(rows: AssetThumbnail[]): Map<string, AssetThumbnail[]> {

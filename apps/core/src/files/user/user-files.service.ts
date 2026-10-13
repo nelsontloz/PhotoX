@@ -8,7 +8,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
+import { Repository, FindOptionsWhere } from 'typeorm'
 import { randomUUID, createHash } from 'crypto'
 import { createReadStream } from 'fs'
 import { open, unlink } from 'fs/promises'
@@ -195,14 +195,13 @@ export class UserFilesService {
     dto: RegisterFileBodyDto,
   ): Promise<{ file: ReturnType<typeof toFileRecordResponse>; created: boolean }> {
     const purpose = dto.kind === 'transcode' ? 'transcode' : 'original'
-    const existing = await this.fileRepo.findOne({
-      where: {
-        userId,
-        checksumSha256: dto.checksumSha256,
-        purpose,
-        ...(dto.assetId ? { assetId: dto.assetId } : {}),
-      },
-    })
+    const naturalKey: FindOptionsWhere<FileRecord> = {
+      userId,
+      checksumSha256: dto.checksumSha256,
+      purpose,
+      ...(dto.assetId ? { assetId: dto.assetId } : {}),
+    }
+    const existing = await this.fileRepo.findOne({ where: naturalKey })
     if (existing) return { file: toFileRecordResponse(existing), created: false }
 
     if (await this.fileRepo.exists({ where: { id: dto.id } })) {
@@ -218,19 +217,48 @@ export class UserFilesService {
       throw new UnprocessableEntityException('File bytes not found in storage')
     }
 
-    const record = this.fileRepo.create({
-      id: dto.id,
-      userId,
-      storageKey,
-      originalName: dto.originalName,
-      mimeType: dto.mimeType,
-      sizeBytes: dto.sizeBytes,
-      checksumSha256: dto.checksumSha256,
-      purpose,
-      assetId: dto.assetId ?? null,
-    })
-    await this.fileRepo.save(record)
-    return { file: toFileRecordResponse(record), created: true }
+    // P1-5: same ON CONFLICT DO NOTHING arbiter as storeFile — concurrent registers of
+    // identical bytes both pass the checks above; the partial unique index decides.
+    await this.fileRepo
+      .createQueryBuilder()
+      .insert()
+      .values({
+        id: dto.id,
+        userId,
+        storageKey,
+        originalName: dto.originalName,
+        mimeType: dto.mimeType,
+        sizeBytes: dto.sizeBytes,
+        checksumSha256: dto.checksumSha256,
+        purpose,
+        assetId: dto.assetId ?? null,
+      })
+      .orIgnore()
+      .execute()
+
+    const row = await this.fileRepo.findOne({ where: { id: dto.id } })
+    if (row) {
+      // a row with our id: ours (won) or a concurrent same-id register (lost) — same content
+      // means the same logical file; anything else keeps the old 409.
+      if (
+        row.userId !== userId ||
+        row.checksumSha256 !== dto.checksumSha256 ||
+        row.purpose !== purpose
+      ) {
+        throw new ConflictException('File id already exists')
+      }
+      return { file: toFileRecordResponse(row), created: true }
+    }
+
+    // lost on the (userId, checksum) partial unique — re-read the winner (scoped first to
+    // preserve the assetId-aware lookup above; unscoped fallback for cross-asset matches)
+    const winner =
+      (await this.fileRepo.findOne({ where: naturalKey })) ??
+      (await this.fileRepo.findOne({
+        where: { userId, checksumSha256: dto.checksumSha256, purpose },
+      }))
+    if (!winner) throw new ServiceUnavailableException('File register conflict, please retry')
+    return { file: toFileRecordResponse(winner), created: false }
   }
 
   private kindFromMime(mimetype: string): 'photo' | 'video' | null {
@@ -269,19 +297,26 @@ export class UserFilesService {
         throw new BadRequestException('Failed to upload file to storage')
       }
 
-      const record = this.fileRepo.create({
-        userId,
-        storageKey,
-        originalName: file.originalname,
-        mimeType,
-        sizeBytes: file.size,
-        checksumSha256: checksum,
-        purpose: 'original',
-        assetId: null,
-      })
-
+      // P1-5: concurrent uploads of identical bytes both pass the fast path above, so the
+      // insert is the arbiter — ON CONFLICT DO NOTHING + select-by-id below tells us whether
+      // this upload won (repo.upsert() can't target the partial unique index, so orIgnore).
       try {
-        await this.fileRepo.save(record)
+        await this.fileRepo
+          .createQueryBuilder()
+          .insert()
+          .values({
+            id: fileId,
+            userId,
+            storageKey,
+            originalName: file.originalname,
+            mimeType,
+            sizeBytes: file.size,
+            checksumSha256: checksum,
+            purpose: 'original',
+            assetId: null,
+          })
+          .orIgnore()
+          .execute()
       } catch (err) {
         console.error('[UserFilesService] DB save failed, cleaning up file object', err)
         try {
@@ -289,10 +324,23 @@ export class UserFilesService {
         } catch (cleanupErr) {
           console.error('[UserFilesService] File cleanup failed', cleanupErr)
         }
-        throw new BadRequestException('Failed to save file record')
+        throw err
       }
 
-      return { record, created: true }
+      const mine = await this.fileRepo.findOne({ where: { id: fileId } })
+      if (mine) return { record: mine, created: true }
+
+      // lost the race: drop the orphaned bytes and return the winner
+      try {
+        await this.storage.delete(storageKey)
+      } catch (cleanupErr) {
+        console.error('[UserFilesService] Loser file cleanup failed', cleanupErr)
+      }
+      const winner = await this.fileRepo.findOne({
+        where: { userId, checksumSha256: checksum, purpose: 'original' },
+      })
+      if (!winner) throw new ServiceUnavailableException('Upload conflict, please retry')
+      return { record: winner, created: false }
     } finally {
       await unlink(file.path).catch(() => undefined)
     }
