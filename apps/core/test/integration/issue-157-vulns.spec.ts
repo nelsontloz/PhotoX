@@ -1,10 +1,10 @@
-import { randomUUID } from 'node:crypto'
+import { createHmac, randomUUID } from 'node:crypto'
 import request from 'supertest'
 import { vi } from 'vitest'
 import { JwtService } from '@nestjs/jwt'
 import type { Redis } from 'ioredis'
 import { loadAuthEnv } from '@photox/shared-config'
-import { TEST_AUTH_SECRET_PREVIOUS } from './test-setup'
+import { TEST_AUTH_SECRET_PREVIOUS, TEST_WORKER_SECRET } from './test-setup'
 import { ACCESS_COOKIE } from '../../src/auth/auth-cookie'
 import { RATE_LIMITS } from '../../src/users/rate-limit.service'
 import { BullMqService } from '../../src/queue/bullmq.service'
@@ -358,13 +358,21 @@ describe('issue-157 vulns (expect secure, currently insecure)', () => {
         .status,
     ).toBe(200)
 
-    // act-bearing user-sub worker token on a /worker route works (floor applies as today)
+    // act-bearing user-sub worker token on a /worker route works with a valid job
+    // binding (floor applies as today); H1 requires the X-Job-Signature the enqueue stamped
     const u = await seedUser(t)
     const file = await seedFile(t, u.id)
     const asset = await seedAsset(t, u.id, file.id)
     const job = t.signWorkerToken({ id: u.id, email: u.email, role: u.role }, { act: true })
+    const sig = createHmac('sha256', TEST_WORKER_SECRET).update(`${u.id}:${asset.id}`).digest('hex')
     expect(
-      (await request(apiServer(t)).get(`/worker/assets/${asset.id}`).set(t.authHeader(job))).status,
+      (
+        await request(apiServer(t))
+          .get(`/worker/assets/${asset.id}`)
+          .set(t.authHeader(job))
+          .set('X-Job-Signature', sig)
+          .set('X-Job-Scope', asset.id)
+      ).status,
     ).toBe(200)
   })
 

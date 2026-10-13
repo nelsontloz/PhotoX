@@ -4,7 +4,7 @@ import type { Job } from 'bullmq'
 import { FACE_EMBEDDING_DIM } from '@photox/shared-types'
 import type { FaceDetectorKind } from '@photox/shared-types'
 import { BullMqService } from './bullmq.service'
-import { parseJobData, clusterJobSchema, type ClusterJob } from './job-schemas'
+import { parseJobData, bindingOf, clusterJobSchema, type ClusterJob } from './job-schemas'
 import type {
   ApplyClusterAttach,
   ApplyClusterCreate,
@@ -144,7 +144,8 @@ export class FaceClusterService implements OnModuleInit {
 
   private async processJob(job: Job<ClusterJob>) {
     const { userId, sig } = parseJobData(clusterJobSchema, job.data, 'process-faces-cluster')
-    const binding = sig === undefined ? undefined : { sig }
+    // user-scoped job: the scope is the sub itself, so the guard resolves it from the header
+    const binding = bindingOf({ userId, sig })
     this.logger.log(`Clustering faces: user=${userId}`)
     await this.cluster(userId, binding)
     // ponytail: runs even when cluster() skipped (no faces/unassigned faces) — the point is stale
@@ -158,7 +159,7 @@ export class FaceClusterService implements OnModuleInit {
     // core's E1 endpoint excludes trashed assets (trashed faces stay stored, just don't vote);
     // pageCount for this fetch is in CoreClient's fetch log (signature kept array-only)
     const started = Date.now()
-    const faces = await this.core.getFacesForCluster(userId)
+    const faces = await this.core.getFacesForCluster(userId, binding)
 
     if (faces.length === 0) {
       this.logger.log(`No faces for user=${userId}`)
@@ -179,7 +180,7 @@ export class FaceClusterService implements OnModuleInit {
       // ponytail: stamp the configured detector into re-embed jobs — settings fetched only when
       // there is re-embed work to enqueue
       const settings = await this.core.getFaceDetectionSettings()
-      await this.enqueueReembed(assetIds, userId, settings.detector)
+      await this.enqueueReembed(assetIds, userId, settings.detector, binding)
       this.logger.log(
         `Skipped ${legacyUnassigned.length} legacy-dim faces, re-embed enqueued for ` +
           `${assetIds.length} assets: user=${userId}`,
@@ -341,8 +342,9 @@ export class FaceClusterService implements OnModuleInit {
     assetIds: string[],
     userId: string,
     detector: FaceDetectorKind,
+    binding?: { sig?: string },
   ): Promise<void> {
-    const assets = await this.core.getAssetsByIds(userId, assetIds)
+    const assets = await this.core.getAssetsByIds(userId, assetIds, binding)
     for (const a of assets) {
       // the worker's own enqueue stamps the asset-scoped binding; a loss throws so BullMQ retries
       const reembedQueued = await this.bullMq.enqueue(

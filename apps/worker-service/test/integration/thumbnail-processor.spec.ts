@@ -8,6 +8,7 @@ import {
   createTestApp,
   resetTestApp,
   seedOriginal,
+  signJob,
   waitForJob,
   type TestApp,
 } from './helpers'
@@ -41,12 +42,15 @@ describe('ThumbnailProcessor (integration)', () => {
       })
 
       const queue = testApp.getQueue('process-thumbnail')
-      const job = await queue.add('thumbnail', {
-        assetId: asset.id,
-        fileId: record.id,
-        size: 'sm',
-        userId,
-      })
+      const job = await queue.add(
+        'thumbnail',
+        signJob({
+          assetId: asset.id,
+          fileId: record.id,
+          size: 'sm',
+          userId,
+        }),
+      )
 
       expect(await waitForJob(queue, job.id!)).toBe('completed')
 
@@ -89,7 +93,7 @@ describe('ThumbnailProcessor (integration)', () => {
       })
 
       const queue = testApp.getQueue('process-thumbnail')
-      const payload = { assetId: asset.id, fileId: record.id, size: 'sm' as const, userId }
+      const payload = signJob({ assetId: asset.id, fileId: record.id, size: 'sm' as const, userId })
       const first = await queue.add('thumbnail', payload)
       expect(await waitForJob(queue, first.id!)).toBe('completed')
       const second = await queue.add('thumbnail', payload)
@@ -125,7 +129,10 @@ describe('ThumbnailProcessor (integration)', () => {
       testApp.fake.assets.set(asset.id, asset)
 
       const queue = testApp.getQueue('process-thumbnail')
-      const job = await queue.add('thumbnail', { assetId: asset.id, fileId, size: 'sm', userId })
+      const job = await queue.add(
+        'thumbnail',
+        signJob({ assetId: asset.id, fileId, size: 'sm', userId }),
+      )
 
       expect(await waitForJob(queue, job.id!)).toBe('failed')
 

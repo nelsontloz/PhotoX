@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -19,7 +19,8 @@ import { FaceProcessor } from '../../src/queue/face.processor'
 import { FaceClusterService } from '../../src/queue/face.cluster'
 import { CleanupProcessor } from '../../src/queue/cleanup.processor'
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../fake-core-client'
-import { setupRedis, teardownRedis } from './test-setup'
+import { jobScopeOf } from '../../src/queue/job-schemas'
+import { setupRedis, teardownRedis, TEST_WORKER_SECRET } from './test-setup'
 
 export interface TestApp {
   app: INestApplicationContext
@@ -104,6 +105,19 @@ export async function waitUntil(
     await new Promise((r) => setTimeout(r, 100))
   }
   throw new Error(`Condition not met within ${timeoutMs}ms`)
+}
+
+// stamp a test job the way core's enqueue does — same scope derivation (jobScopeOf) and HMAC
+// construction, so processor verification passes with the harness secret
+export function signJob<T extends { userId: string; assetId?: string; fileId?: string }>(
+  data: T,
+): T & { sig: string } {
+  const scope = jobScopeOf(data)
+  if (!scope) throw new Error('signJob needs assetId, fileId, or userId')
+  return {
+    ...data,
+    sig: createHmac('sha256', TEST_WORKER_SECRET).update(`${data.userId}:${scope}`).digest('hex'),
+  }
 }
 
 export async function waitForJob(

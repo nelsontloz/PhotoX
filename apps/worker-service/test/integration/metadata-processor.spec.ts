@@ -11,6 +11,7 @@ import {
   createTestApp,
   resetTestApp,
   seedOriginal,
+  signJob,
   waitForJob,
   type TestApp,
 } from './helpers'
@@ -63,7 +64,7 @@ describe('MetadataProcessor (integration)', () => {
 
   async function runMetadata(assetId: string, fileId: string, userId: string) {
     const queue = testApp.getQueue('process-metadata')
-    const job = await queue.add('metadata', { assetId, fileId, userId })
+    const job = await queue.add('metadata', signJob({ assetId, fileId, userId }))
     return { queue, job }
   }
 

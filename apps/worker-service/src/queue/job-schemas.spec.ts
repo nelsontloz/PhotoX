@@ -1,7 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, beforeEach, afterEach } from 'vitest'
 import { UnrecoverableError } from 'bullmq'
-import { randomUUID } from 'crypto'
-import { assertOwnership, faceJobSchema, parseJobData, thumbnailJobSchema } from './job-schemas'
+import { createHmac, randomUUID } from 'crypto'
+import {
+  assertOwnership,
+  bindingOf,
+  clusterJobSchema,
+  faceJobSchema,
+  parseJobData,
+  thumbnailJobSchema,
+} from './job-schemas'
 
 describe('job payload schemas', () => {
   it('passes a valid producer payload through', () => {
@@ -41,6 +48,76 @@ describe('job payload schemas', () => {
       detector: 'bogus',
     }
     expect(() => parseJobData(faceJobSchema, payload, 'process-faces')).toThrow(UnrecoverableError)
+  })
+})
+
+describe('job signature verification', () => {
+  const AUTH_SECRET = '0123456789abcdef0123456789abcdef'
+  const WORKER_SECRET = 'worker-test-secret-9f8e7d6c5b4a3210'
+  let savedAuth: string | undefined
+  let savedWorker: string | undefined
+
+  const sign = (sub: string, scope: string) =>
+    createHmac('sha256', WORKER_SECRET).update(`${sub}:${scope}`).digest('hex')
+
+  beforeEach(() => {
+    savedAuth = process.env.AUTH_TOKEN_SECRET
+    savedWorker = process.env.WORKER_JWT_SECRET
+    process.env.AUTH_TOKEN_SECRET = AUTH_SECRET
+    process.env.WORKER_JWT_SECRET = WORKER_SECRET
+  })
+
+  afterEach(() => {
+    if (savedAuth === undefined) delete process.env.AUTH_TOKEN_SECRET
+    else process.env.AUTH_TOKEN_SECRET = savedAuth
+    if (savedWorker === undefined) delete process.env.WORKER_JWT_SECRET
+    else process.env.WORKER_JWT_SECRET = savedWorker
+  })
+
+  it('accepts a core-stamped payload and binds the asset-first scope', () => {
+    const payload = {
+      assetId: randomUUID(),
+      fileId: randomUUID(),
+      userId: randomUUID(),
+      size: 'sm' as const,
+    }
+    const signed = { ...payload, sig: sign(payload.userId, payload.assetId) }
+    expect(parseJobData(thumbnailJobSchema, signed, 'process-thumbnail')).toEqual(signed)
+    expect(bindingOf(signed)).toEqual({ sig: signed.sig, scope: payload.assetId })
+  })
+
+  it('rejects a missing sig without retrying', () => {
+    const payload = {
+      assetId: randomUUID(),
+      fileId: randomUUID(),
+      userId: randomUUID(),
+      size: 'sm' as const,
+    }
+    expect(() => parseJobData(thumbnailJobSchema, payload, 'process-thumbnail')).toThrow(
+      UnrecoverableError,
+    )
+    expect(bindingOf(payload)).toBeUndefined()
+  })
+
+  it('rejects a sig bound to the wrong scope', () => {
+    const payload = {
+      assetId: randomUUID(),
+      fileId: randomUUID(),
+      userId: randomUUID(),
+      size: 'sm' as const,
+    }
+    // valid HMAC but over the file scope — derivation demands the asset-first scope
+    const signed = { ...payload, sig: sign(payload.userId, payload.fileId) }
+    expect(() => parseJobData(thumbnailJobSchema, signed, 'process-thumbnail')).toThrow(
+      UnrecoverableError,
+    )
+  })
+
+  it('verifies user-scoped cluster jobs against the sub itself', () => {
+    const userId = randomUUID()
+    const signed = { userId, sig: sign(userId, userId) }
+    expect(parseJobData(clusterJobSchema, signed, 'process-faces-cluster')).toEqual(signed)
+    expect(bindingOf(signed)).toEqual({ sig: signed.sig, scope: userId })
   })
 })
 

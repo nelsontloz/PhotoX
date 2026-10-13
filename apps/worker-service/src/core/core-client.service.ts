@@ -130,12 +130,12 @@ export class CoreClient {
     )
   }
 
-  async getFile(userId: string, fileId: string): Promise<FileRecord> {
-    return this.request('GET', `/worker/files/${fileId}`, { sub: userId })
+  async getFile(userId: string, fileId: string, binding?: JobBinding): Promise<FileRecord> {
+    return this.request('GET', `/worker/files/${fileId}`, { sub: userId, ...binding })
   }
 
-  async getAsset(userId: string, assetId: string): Promise<Asset> {
-    return this.request('GET', `/worker/assets/${assetId}`, { sub: userId })
+  async getAsset(userId: string, assetId: string, binding?: JobBinding): Promise<Asset> {
+    return this.request('GET', `/worker/assets/${assetId}`, { sub: userId, ...binding })
   }
 
   async patchMetadata(
@@ -235,7 +235,7 @@ export class CoreClient {
     return this.request('DELETE', `/worker/assets/${assetId}/faces`, { sub: userId, ...binding })
   }
 
-  async getFacesForCluster(userId: string): Promise<ClusterFace[]> {
+  async getFacesForCluster(userId: string, binding?: JobBinding): Promise<ClusterFace[]> {
     // ponytail: same accumulate-loop style as getAssetsByIds below — each page is one request()
     // (30s timeout + 400/404/422→Unrecoverable mapping), cursor walks id ASC until nextCursor null
     const faces: ClusterFace[] = []
@@ -249,7 +249,7 @@ export class CoreClient {
       const res = await this.request<{ items: ClusterFace[]; nextCursor?: string | null }>(
         'GET',
         `/worker/faces?${query}`,
-        { sub: userId },
+        { sub: userId, ...binding },
       )
       faces.push(...res.items)
       pageCount += 1
@@ -276,13 +276,17 @@ export class CoreClient {
   }
 
   // ponytail: E2 caps ids at 100 (header size); LEGACY_REEMBED_PER_RUN matches, chunk anyway for safety
-  async getAssetsByIds(userId: string, ids: string[]): Promise<Pick<Asset, 'id' | 'fileId'>[]> {
+  async getAssetsByIds(
+    userId: string,
+    ids: string[],
+    binding?: JobBinding,
+  ): Promise<Pick<Asset, 'id' | 'fileId'>[]> {
     const assets: Pick<Asset, 'id' | 'fileId'>[] = []
     for (let i = 0; i < ids.length; i += ASSET_IDS_CHUNK) {
       const res = await this.request<AssetListResponse>(
         'GET',
         `/worker/assets?ids=${ids.slice(i, i + ASSET_IDS_CHUNK).join(',')}`,
-        { sub: userId },
+        { sub: userId, ...binding },
       )
       assets.push(...res.items)
     }

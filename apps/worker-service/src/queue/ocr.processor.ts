@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import type { Job } from 'bullmq'
 import { BullMqService } from './bullmq.service'
-import { assetRefsJobSchema, type AssetRefsJob } from './job-schemas'
+import { assetRefsJobSchema, bindingOf, type AssetRefsJob } from './job-schemas'
 import { orientedResize, runAssetFileJob } from './asset-file-job'
 import { OCR_MAX_DIM, OcrService } from './ocr.service'
 import { CoreClient } from '../core/core-client.service'
@@ -54,7 +54,7 @@ export class OcrProcessor implements OnModuleInit {
             lang: null,
             confidence: extracted.confidence,
           },
-          data.sig === undefined ? undefined : { sig: data.sig },
+          bindingOf(data),
         )
 
         this.logger.log(`OCR complete: asset=${data.assetId}, chars=${extracted.text.length}`)

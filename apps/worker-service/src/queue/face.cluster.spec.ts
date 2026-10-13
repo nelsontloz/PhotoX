@@ -255,7 +255,7 @@ describe('FaceClusterService.cluster', () => {
 
     expect(plans).toHaveLength(0)
     expect(faces.every((f) => f.personId === null || f.id === 'face-old-assigned')).toBe(true)
-    expect(getAssetsByIdsMock).toHaveBeenCalledWith(userId, ['asset-legacy'])
+    expect(getAssetsByIdsMock).toHaveBeenCalledWith(userId, ['asset-legacy'], undefined)
     expect(settingsMock).toHaveBeenCalledTimes(1)
     expect(enqueueMock).toHaveBeenCalledTimes(1)
     expect(enqueueMock).toHaveBeenCalledWith(

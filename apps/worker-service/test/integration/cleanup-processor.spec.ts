@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { makeFileRecord } from '../fake-core-client'
-import { createTestApp, closeTestApp, resetTestApp, waitForJob, type TestApp } from './helpers'
+import {
+  createTestApp,
+  closeTestApp,
+  resetTestApp,
+  signJob,
+  waitForJob,
+  type TestApp,
+} from './helpers'
 
 describe('CleanupProcessor (integration)', () => {
   let testApp: TestApp
@@ -24,7 +31,7 @@ describe('CleanupProcessor (integration)', () => {
     testApp.fake.files.set(fileId, makeFileRecord({ id: fileId, userId }))
 
     const queue = testApp.getQueue('cleanup-asset')
-    const job = await queue.add('cleanup-asset', { fileId, userId, assetId })
+    const job = await queue.add('cleanup-asset', signJob({ fileId, userId, assetId }))
 
     expect(await waitForJob(queue, job.id!)).toBe('completed')
     expect(testApp.fake.callsOf('deleteOwnedFile').map((c) => c.args)).toEqual([[userId, fileId]])
@@ -33,11 +40,14 @@ describe('CleanupProcessor (integration)', () => {
 
   it('fails unrecoverably for an unknown file without retrying', async () => {
     const queue = testApp.getQueue('cleanup-asset')
-    const job = await queue.add('cleanup-asset', {
-      fileId: randomUUID(),
-      userId: randomUUID(),
-      assetId: randomUUID(),
-    })
+    const job = await queue.add(
+      'cleanup-asset',
+      signJob({
+        fileId: randomUUID(),
+        userId: randomUUID(),
+        assetId: randomUUID(),
+      }),
+    )
 
     expect(await waitForJob(queue, job.id!)).toBe('failed')
     expect(testApp.fake.callsOf('deleteOwnedFile')).toHaveLength(1)
@@ -63,7 +73,7 @@ describe('CleanupProcessor (integration)', () => {
     const queue = testApp.getQueue('cleanup-asset')
     const job = await queue.add(
       'cleanup-asset',
-      { fileId, userId, assetId: randomUUID() },
+      signJob({ fileId, userId, assetId: randomUUID() }),
       { attempts: 3, backoff: { type: 'fixed', delay: 50 } },
     )
 
