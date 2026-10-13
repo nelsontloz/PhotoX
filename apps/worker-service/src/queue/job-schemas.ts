@@ -8,6 +8,9 @@ const jobRefs = {
   assetId: uuid,
   fileId: uuid,
   userId: uuid,
+  // HMAC proof stamped by core's enqueue (or the worker's own re-enqueue) — optional so
+  // directly-added test jobs still parse; the guard requires it on mutating /worker/* calls
+  sig: z.string().optional(),
 }
 
 export const thumbnailJobSchema = z.object({
@@ -30,6 +33,7 @@ export const faceJobSchema = z.object({
 
 export const clusterJobSchema = z.object({
   userId: uuid,
+  sig: z.string().optional(),
 })
 
 export const cleanupJobSchema = z.object({

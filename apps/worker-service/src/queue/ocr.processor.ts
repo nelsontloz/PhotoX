@@ -45,12 +45,17 @@ export class OcrProcessor implements OnModuleInit {
           return
         }
 
-        await this.core.registerOcr(data.userId, data.assetId, {
-          text: extracted.text,
-          // language detection is out of scope — the v6 model is multilingual, null is the honest value
-          lang: null,
-          confidence: extracted.confidence,
-        })
+        await this.core.registerOcr(
+          data.userId,
+          data.assetId,
+          {
+            text: extracted.text,
+            // language detection is out of scope — the v6 model is multilingual, null is the honest value
+            lang: null,
+            confidence: extracted.confidence,
+          },
+          data.sig === undefined ? undefined : { sig: data.sig },
+        )
 
         this.logger.log(`OCR complete: asset=${data.assetId}, chars=${extracted.text.length}`)
       },

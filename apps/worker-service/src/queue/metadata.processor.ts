@@ -35,11 +35,12 @@ export class MetadataProcessor implements OnModuleInit {
   }
 
   private async processJob(job: Job<AssetRefsJob>) {
-    const { assetId, fileId, userId } = parseJobData(
+    const { assetId, fileId, userId, sig } = parseJobData(
       assetRefsJobSchema,
       job.data,
       'process-metadata',
     )
+    const binding = sig === undefined ? undefined : { sig }
 
     this.logger.log(`Processing metadata: asset=${assetId}`)
 
@@ -81,42 +82,52 @@ export class MetadataProcessor implements OnModuleInit {
           this.logger.warn(`dHash failed: asset=${assetId} — ${message}`)
         }
 
-        await this.core.patchMetadata(userId, assetId, {
-          ...metadata,
-          // EXIF iso can be rational (e.g. 201/2) — the DTO gates iso with @IsInt
-          iso: metadata.iso === null ? null : Math.round(metadata.iso),
-          mimeType,
-          sizeBytes,
-          originalName,
-          status: metadataStatus,
-          metadata: null,
-          ...(phash === null ? {} : { phash }),
-        })
+        await this.core.patchMetadata(
+          userId,
+          assetId,
+          {
+            ...metadata,
+            // EXIF iso can be rational (e.g. 201/2) — the DTO gates iso with @IsInt
+            iso: metadata.iso === null ? null : Math.round(metadata.iso),
+            mimeType,
+            sizeBytes,
+            originalName,
+            status: metadataStatus,
+            metadata: null,
+            ...(phash === null ? {} : { phash }),
+          },
+          binding,
+        )
       } else if (branch === 'video') {
         const videoMeta = await this.videoMetadataExtractor.extract(filePath)
         const hasAnyVideoField = Object.values(videoMeta).some((v) => v !== null)
         const videoMetadataStatus = hasAnyVideoField ? 'ready' : 'failed'
-        await this.core.patchMetadata(userId, assetId, {
-          status: videoMetadataStatus,
-          mimeType,
-          durationSeconds: videoMeta.durationSeconds,
-          width: videoMeta.width,
-          height: videoMeta.height,
-          codec: videoMeta.codec,
-          fps: videoMeta.fps,
-          hasAudio: videoMeta.hasAudio,
-          orientation: videoMeta.orientation,
-          sizeBytes,
-          originalName,
-          takenAt: videoMeta.takenAt,
-          cameraMake: videoMeta.cameraMake,
-          cameraModel: videoMeta.cameraModel,
-          lensModel: videoMeta.lensModel,
-          latitude: videoMeta.latitude,
-          longitude: videoMeta.longitude,
-          altitude: videoMeta.altitude,
-          metadata: null,
-        })
+        await this.core.patchMetadata(
+          userId,
+          assetId,
+          {
+            status: videoMetadataStatus,
+            mimeType,
+            durationSeconds: videoMeta.durationSeconds,
+            width: videoMeta.width,
+            height: videoMeta.height,
+            codec: videoMeta.codec,
+            fps: videoMeta.fps,
+            hasAudio: videoMeta.hasAudio,
+            orientation: videoMeta.orientation,
+            sizeBytes,
+            originalName,
+            takenAt: videoMeta.takenAt,
+            cameraMake: videoMeta.cameraMake,
+            cameraModel: videoMeta.cameraModel,
+            lensModel: videoMeta.lensModel,
+            latitude: videoMeta.latitude,
+            longitude: videoMeta.longitude,
+            altitude: videoMeta.altitude,
+            metadata: null,
+          },
+          binding,
+        )
       }
 
       this.logger.log(`Metadata complete: asset=${assetId}`)
@@ -124,7 +135,7 @@ export class MetadataProcessor implements OnModuleInit {
       const message = err instanceof Error ? err.message : String(err)
       this.logger.error(`Metadata failed: asset=${assetId} — ${message}`)
 
-      await patchStatusFailed(this.core, this.logger, userId, assetId, { status: 'failed' })
+      await patchStatusFailed(this.core, this.logger, userId, assetId, { status: 'failed' }, sig)
 
       throw err
     }

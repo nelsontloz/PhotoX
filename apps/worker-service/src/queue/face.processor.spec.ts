@@ -36,7 +36,7 @@ describe('FaceProcessor', () => {
         return {}
       }),
       getQueue: vi.fn(() => ({ add: vi.fn().mockResolvedValue({}) })),
-      enqueue: vi.fn().mockResolvedValue(undefined),
+      enqueue: vi.fn().mockResolvedValue(true),
     }
     const processor = new FaceProcessor(bullMq as never, fake as unknown as CoreClient, storage, {
       detect,

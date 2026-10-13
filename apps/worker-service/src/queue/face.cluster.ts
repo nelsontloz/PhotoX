@@ -143,17 +143,18 @@ export class FaceClusterService implements OnModuleInit {
   }
 
   private async processJob(job: Job<ClusterJob>) {
-    const { userId } = parseJobData(clusterJobSchema, job.data, 'process-faces-cluster')
+    const { userId, sig } = parseJobData(clusterJobSchema, job.data, 'process-faces-cluster')
+    const binding = sig === undefined ? undefined : { sig }
     this.logger.log(`Clustering faces: user=${userId}`)
-    await this.cluster(userId)
+    await this.cluster(userId, binding)
     // ponytail: runs even when cluster() skipped (no faces/unassigned faces) — the point is stale
     // clusters whose last face left, not the plan
-    const { deleted } = await this.core.pruneEmptyPersons(userId)
+    const { deleted } = await this.core.pruneEmptyPersons(userId, binding)
     if (deleted > 0) this.logger.log(`Pruned ${deleted} empty persons for user=${userId}`)
     this.logger.log(`Clustering complete: user=${userId}`)
   }
 
-  async cluster(userId: string): Promise<void> {
+  async cluster(userId: string, binding?: { sig?: string }): Promise<void> {
     // core's E1 endpoint excludes trashed assets (trashed faces stay stored, just don't vote)
     const faces = await this.core.getFacesForCluster(userId)
 
@@ -325,7 +326,7 @@ export class FaceClusterService implements OnModuleInit {
       return
     }
 
-    const result = await this.core.applyClusters(userId, { creates, attaches })
+    const result = await this.core.applyClusters(userId, { creates, attaches }, binding)
     this.logger.log(
       `Clustered ${unassigned.length} unassigned faces into ${clusters.size} groups ` +
         `(${noiseReassigned} noise faces reassigned to existing persons) for user=${userId}; ` +
@@ -340,7 +341,8 @@ export class FaceClusterService implements OnModuleInit {
   ): Promise<void> {
     const assets = await this.core.getAssetsByIds(userId, assetIds)
     for (const a of assets) {
-      await this.bullMq.enqueue(
+      // the worker's own enqueue stamps the asset-scoped binding; a loss throws so BullMQ retries
+      const reembedQueued = await this.bullMq.enqueue(
         'process-faces',
         're-embed',
         { assetId: a.id, fileId: a.fileId, userId, detector },
@@ -353,6 +355,7 @@ export class FaceClusterService implements OnModuleInit {
           removeOnComplete: true,
         },
       )
+      if (!reembedQueued) throw new Error(`Failed to enqueue re-embed for asset=${a.id}`)
     }
   }
 }

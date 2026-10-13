@@ -4,8 +4,9 @@
 //   https://download.geonames.org/export/dump/cities500.zip         ~13MB, ~200k cities >500 ppl
 // Cache: STORAGE_DIR/geo (default data/storage/geo), reused across runs. Idempotent: no-ops when
 // `places` already has rows (--force re-imports), inserts ON CONFLICT DO NOTHING by geonameId.
-// Schema comes from the Place entity via TypeORM synchronize (same POSTGRES_* env as core); the
-// script lives under src/ so core tsconfig/ESLint cover it.
+// Schema comes from the Place entity via TypeORM synchronize (non-prod; same gate as
+// DatabaseModule) or core migrations (prod) — same POSTGRES_* env as core; the script lives
+// under src/ so core tsconfig/ESLint cover it.
 // Usage: pnpm --filter @photox/core places:import [--force]
 import { spawnSync } from 'node:child_process'
 import { createReadStream, existsSync } from 'node:fs'
@@ -69,7 +70,8 @@ async function main(): Promise<void> {
   loadRootEnvFile()
   const env = loadEnv()
 
-  // mirrors DatabaseModule.forRoot(); synchronize creates `places` from the entity if core never ran
+  // mirrors DatabaseModule.forRoot(); non-prod synchronize creates `places` from the entity
+  // if core never ran (prod schema comes from core migrations, same gate as DatabaseModule)
   const dataSource = new DataSource({
     type: 'postgres',
     host: env.POSTGRES_HOST,
@@ -78,7 +80,7 @@ async function main(): Promise<void> {
     password: env.POSTGRES_PASSWORD,
     database: 'photox',
     entities: [Place],
-    synchronize: true,
+    synchronize: process.env.NODE_ENV !== 'production',
   })
   await dataSource.initialize()
 

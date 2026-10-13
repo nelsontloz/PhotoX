@@ -99,6 +99,13 @@ export interface ApplyClustersResult {
 const REQUEST_TIMEOUT_MS = 30_000
 const ASSET_IDS_CHUNK = 100
 
+/** Job-binding proof threaded from the BullMQ payload: the guard recomputes the HMAC per route. */
+export interface JobBinding {
+  sig?: string
+  /** route target the guard cannot derive itself (thumbnail registerFile); else omit */
+  scope?: string
+}
+
 @Injectable()
 export class CoreClient {
   constructor(private readonly jwt: JwtService) {}
@@ -125,20 +132,38 @@ export class CoreClient {
     return this.request('GET', `/worker/assets/${assetId}`, { sub: userId })
   }
 
-  async patchMetadata(userId: string, assetId: string, dto: MetadataPatch): Promise<void> {
-    await this.request('PATCH', `/worker/assets/${assetId}/metadata`, { sub: userId, body: dto })
+  async patchMetadata(
+    userId: string,
+    assetId: string,
+    dto: MetadataPatch,
+    binding?: JobBinding,
+  ): Promise<void> {
+    await this.request('PATCH', `/worker/assets/${assetId}/metadata`, {
+      sub: userId,
+      body: dto,
+      ...binding,
+    })
   }
 
-  async registerFile(userId: string, dto: RegisterFileInput): Promise<FileRecord> {
-    return this.request('POST', '/worker/files/register', { sub: userId, body: dto })
+  async registerFile(
+    userId: string,
+    dto: RegisterFileInput,
+    binding?: JobBinding,
+  ): Promise<FileRecord> {
+    return this.request('POST', '/worker/files/register', { sub: userId, body: dto, ...binding })
   }
 
   async registerThumbnail(
     userId: string,
     assetId: string,
     dto: RegisterThumbnailInput,
+    binding?: JobBinding,
   ): Promise<void> {
-    await this.request('POST', `/worker/assets/${assetId}/thumbnails`, { sub: userId, body: dto })
+    await this.request('POST', `/worker/assets/${assetId}/thumbnails`, {
+      sub: userId,
+      body: dto,
+      ...binding,
+    })
   }
 
   async registerFaces(
@@ -146,12 +171,14 @@ export class CoreClient {
     assetId: string,
     faces: DetectedFaceInput[],
     detector: FaceDetectorKind,
+    binding?: JobBinding,
   ): Promise<{ count: number }> {
     // the delegated token sub is the only identity core accepts; the body carries no userId
     // (forbidNonWhitelisted would 400 an extra field)
     return this.request('POST', `/worker/assets/${assetId}/faces`, {
       sub: userId,
       body: { faces, detector },
+      ...binding,
     })
   }
 
@@ -159,24 +186,47 @@ export class CoreClient {
     userId: string,
     assetId: string,
     dto: RegisterEmbeddingRequestDto,
+    binding?: JobBinding,
   ): Promise<void> {
-    await this.request('POST', `/worker/assets/${assetId}/embedding`, { sub: userId, body: dto })
+    await this.request('POST', `/worker/assets/${assetId}/embedding`, {
+      sub: userId,
+      body: dto,
+      ...binding,
+    })
   }
 
-  async registerOcr(userId: string, assetId: string, dto: RegisterOcrRequestDto): Promise<void> {
-    await this.request('POST', `/worker/assets/${assetId}/ocr`, { sub: userId, body: dto })
+  async registerOcr(
+    userId: string,
+    assetId: string,
+    dto: RegisterOcrRequestDto,
+    binding?: JobBinding,
+  ): Promise<void> {
+    await this.request('POST', `/worker/assets/${assetId}/ocr`, {
+      sub: userId,
+      body: dto,
+      ...binding,
+    })
   }
 
   async registerDetections(
     userId: string,
     assetId: string,
     dto: RegisterDetectionsRequestDto,
+    binding?: JobBinding,
   ): Promise<void> {
-    await this.request('POST', `/worker/assets/${assetId}/detections`, { sub: userId, body: dto })
+    await this.request('POST', `/worker/assets/${assetId}/detections`, {
+      sub: userId,
+      body: dto,
+      ...binding,
+    })
   }
 
-  async deleteAssetFaces(userId: string, assetId: string): Promise<{ deleted: number }> {
-    return this.request('DELETE', `/worker/assets/${assetId}/faces`, { sub: userId })
+  async deleteAssetFaces(
+    userId: string,
+    assetId: string,
+    binding?: JobBinding,
+  ): Promise<{ deleted: number }> {
+    return this.request('DELETE', `/worker/assets/${assetId}/faces`, { sub: userId, ...binding })
   }
 
   async getFacesForCluster(userId: string): Promise<ClusterFace[]> {
@@ -204,18 +254,26 @@ export class CoreClient {
     return assets
   }
 
-  async applyClusters(userId: string, payload: ApplyClustersPayload): Promise<ApplyClustersResult> {
-    return this.request('POST', '/worker/persons/apply-clusters', { sub: userId, body: payload })
+  async applyClusters(
+    userId: string,
+    payload: ApplyClustersPayload,
+    binding?: JobBinding,
+  ): Promise<ApplyClustersResult> {
+    return this.request('POST', '/worker/persons/apply-clusters', {
+      sub: userId,
+      body: payload,
+      ...binding,
+    })
   }
 
   // ponytail: called after every cluster run (even when the plan was empty) — deletes persons whose
   // last live face left and unassigns any faces left behind in trash
-  async pruneEmptyPersons(userId: string): Promise<{ deleted: number }> {
-    return this.request('POST', '/worker/persons/prune-empty', { sub: userId })
+  async pruneEmptyPersons(userId: string, binding?: JobBinding): Promise<{ deleted: number }> {
+    return this.request('POST', '/worker/persons/prune-empty', { sub: userId, ...binding })
   }
 
-  async deleteOwnedFile(userId: string, fileId: string): Promise<void> {
-    await this.request('DELETE', `/worker/files/${fileId}`, { sub: userId })
+  async deleteOwnedFile(userId: string, fileId: string, binding?: JobBinding): Promise<void> {
+    await this.request('DELETE', `/worker/files/${fileId}`, { sub: userId, ...binding })
   }
 
   async getFaceDetectionSettings(): Promise<FaceDetectionSettings> {
@@ -228,7 +286,7 @@ export class CoreClient {
   private async request<T>(
     method: 'GET' | 'PATCH' | 'POST' | 'DELETE',
     path: string,
-    opts: { sub: string; role?: Role; body?: unknown },
+    opts: { sub: string; role?: Role; body?: unknown; sig?: string; scope?: string },
     timeoutMs = REQUEST_TIMEOUT_MS,
   ): Promise<T> {
     const token = this.signToken(opts.sub, opts.role ?? 'user')
@@ -241,6 +299,9 @@ export class CoreClient {
         headers: {
           Authorization: `Bearer ${token}`,
           ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+          // job binding for mutating /worker/* calls — the guard 403s without a valid one
+          ...(opts.sig ? { 'X-Job-Signature': opts.sig } : {}),
+          ...(opts.scope ? { 'X-Job-Scope': opts.scope } : {}),
         },
         body: hasBody ? JSON.stringify(opts.body) : undefined,
         signal: AbortSignal.timeout(timeoutMs),

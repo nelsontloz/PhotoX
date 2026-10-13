@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
@@ -144,13 +145,17 @@ export class UserFilesService {
       sizeBytes: file.size,
       originalName: file.originalname,
     })
-    this.bullMq.enqueueThumbnails(asset.id, record.id, userId)
-    void this.bullMq.enqueue('process-metadata', 'process-metadata', {
-      assetId: asset.id,
-      fileId: record.id,
-      userId,
-      kind,
-    })
+    // P0-3: every enqueue is awaited and a single Redis loss fails the upload — the rows
+    // already exist, but a silent 201 would orphan them with no job ever coming
+    const enqueues: Promise<boolean>[] = [
+      this.bullMq.enqueueThumbnails(asset.id, record.id, userId),
+      this.bullMq.enqueue('process-metadata', 'process-metadata', {
+        assetId: asset.id,
+        fileId: record.id,
+        userId,
+        kind,
+      }),
+    ]
     if (kind === 'photo') {
       // ponytail: detector stamped at enqueue time — a later admin switch only affects new uploads;
       // the read is best-effort so a settings outage never fails an upload whose rows already exist
@@ -162,18 +167,23 @@ export class UserFilesService {
         )
         return envFaceDetectorKind()
       })
-      void this.bullMq.enqueue('process-faces', 'process-faces', {
-        assetId: asset.id,
-        fileId: record.id,
-        userId,
-        detector,
-      })
-      // videos out of scope for vision search — only photos get image embeddings
-      this.bullMq.enqueueAssetJob('embed', asset.id, record.id, userId)
-      this.bullMq.enqueueAssetJob('ocr', asset.id, record.id, userId)
-      this.bullMq.enqueueAssetJob('detect', asset.id, record.id, userId)
+      enqueues.push(
+        this.bullMq.enqueue('process-faces', 'process-faces', {
+          assetId: asset.id,
+          fileId: record.id,
+          userId,
+          detector,
+        }),
+        // videos out of scope for vision search — only photos get image embeddings
+        this.bullMq.enqueueAssetJob('embed', asset.id, record.id, userId),
+        this.bullMq.enqueueAssetJob('ocr', asset.id, record.id, userId),
+        this.bullMq.enqueueAssetJob('detect', asset.id, record.id, userId),
+      )
     } else {
-      this.bullMq.enqueueVideo(asset.id, record.id, userId)
+      enqueues.push(this.bullMq.enqueueVideo(asset.id, record.id, userId))
+    }
+    if ((await Promise.all(enqueues)).includes(false)) {
+      throw new ServiceUnavailableException('Failed to enqueue background processing jobs')
     }
     return asset
   }

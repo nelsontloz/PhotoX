@@ -35,14 +35,15 @@ export class FaceProcessor implements OnModuleInit {
       label: 'Faces',
       // ponytail: missing model weights are provisioning, not a job bug — warn + no retry
       missingModelMarkers: ['Face embedding model not found', 'Face detector model not found'],
-      onFailure: ({ userId, assetId }) =>
-        patchStatusFailed(this.core, this.logger, userId, assetId, { faceStatus: 'failed' }),
+      onFailure: ({ userId, assetId, sig }) =>
+        patchStatusFailed(this.core, this.logger, userId, assetId, { faceStatus: 'failed' }, sig),
       body: async ({ data, filePath }) => {
         const { assetId, userId } = data
         // ponytail: resolve once — the same kind drives detection and is persisted as provenance
         const resolvedDetector = data.detector ?? envFaceDetectorKind()
+        const binding = data.sig === undefined ? undefined : { sig: data.sig }
 
-        await this.core.patchMetadata(userId, assetId, { faceStatus: 'pending' })
+        await this.core.patchMetadata(userId, assetId, { faceStatus: 'pending' }, binding)
 
         // ponytail: detection + embedding both run off this downscaled buffer, and the embedder
         // warps 112px crops from it, so 2048 preserves small-face detail (~12MB raw at that size).
@@ -64,21 +65,27 @@ export class FaceProcessor implements OnModuleInit {
 
         // ponytail: unconditional delete + re-save after a successful detect — retry-safe replace
         // (was re-embed-only, so a retried job duplicated faces); never before detect, to avoid data loss
-        await this.core.deleteAssetFaces(userId, assetId)
+        await this.core.deleteAssetFaces(userId, assetId, binding)
         if (faces.length > 0) {
-          await this.core.registerFaces(userId, assetId, faces, resolvedDetector)
+          await this.core.registerFaces(userId, assetId, faces, resolvedDetector, binding)
         }
 
-        await this.core.patchMetadata(userId, assetId, {
-          faceStatus: 'ready',
-          faceCount: faces.length,
-        })
+        await this.core.patchMetadata(
+          userId,
+          assetId,
+          {
+            faceStatus: 'ready',
+            faceCount: faces.length,
+          },
+          binding,
+        )
 
         this.logger.log(`Faces complete: asset=${assetId}, count=${faces.length}`)
 
-        // enqueue() logs-and-swallows add failures, so a Redis hiccup here cannot fail the face job
+        // a lost cluster debounce fails the face job so BullMQ retries it — detection itself is
+        // idempotent (delete + re-save above), so the retry is cheap
         if (faces.length > 0) {
-          await this.bullMq.enqueue(
+          const clusterQueued = await this.bullMq.enqueue(
             'process-faces-cluster',
             'cluster',
             { userId },
@@ -95,6 +102,7 @@ export class FaceProcessor implements OnModuleInit {
               backoff: { type: 'exponential' },
             },
           )
+          if (!clusterQueued) throw new Error(`Failed to enqueue cluster job for user=${userId}`)
         }
       },
     })
