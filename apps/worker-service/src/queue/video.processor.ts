@@ -27,7 +27,11 @@ export class VideoProcessor implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.bullMq.createWorker<AssetRefsJob>('process-video', (job) => this.processJob(job))
+    // ponytail: concurrency 2 bounds poison-video stall without CPU oversubscribe on a
+    // personal host; raise only with abuse evidence (precedent: cleanup runs 5)
+    this.bullMq.createWorker<AssetRefsJob>('process-video', (job) => this.processJob(job), {
+      concurrency: 2,
+    })
 
     this.logger.log('Video processor listening for jobs')
   }

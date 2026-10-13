@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  PayloadTooLargeException,
   ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common'
@@ -15,7 +16,7 @@ import { open, unlink } from 'fs/promises'
 import { extname } from 'path'
 import { pipeline } from 'stream/promises'
 import { Asset, FileRecord } from '../../database/entities'
-import { envFaceDetectorKind, LocalStorageService } from '@photox/shared-config'
+import { envFaceDetectorKind, loadEnv, LocalStorageService } from '@photox/shared-config'
 import { findOwnedOr404 } from '../../common/asset-ownership'
 import { RegisterFileBodyDto } from './dto/register-file.body.dto'
 import type { UploadFileBodyDto } from './dto/upload-file.body.dto'
@@ -270,6 +271,24 @@ export class UserFilesService {
         where: { userId, checksumSha256: checksum, purpose: 'original' },
       })
       if (existing) return { record: existing, created: false }
+
+      // ponytail: per-user quota (env/const, original-only SUM, AFTER the dedup fast-path above
+      // so re-linking owned bytes costs nothing). Throwing before storage.save() leaves no orphan
+      // bytes. TOCTOU: concurrent over-quota uploads can both pass the SUM (same race class as
+      // the P1-5 dedup arbiter) — accepted for personal hosting; upgrade to a locked
+      // SELECT ... FOR UPDATE on a per-user counter only with abuse evidence.
+      const quota = loadEnv().STORAGE_QUOTA_BYTES
+      if (quota !== undefined) {
+        const { used } = (await this.fileRepo
+          .createQueryBuilder('f')
+          .select('COALESCE(SUM(f.sizeBytes), 0)', 'used')
+          .where('f.userId = :userId', { userId })
+          .andWhere('f.purpose = :purpose', { purpose: 'original' })
+          .getRawOne<{ used: string }>()) ?? { used: '0' }
+        if (Number(used) + file.size > quota) {
+          throw new PayloadTooLargeException('Storage quota exceeded')
+        }
+      }
 
       const ext = extname(file.originalname).slice(1) || 'bin'
       const fileId = randomUUID()
