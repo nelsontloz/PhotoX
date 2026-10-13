@@ -176,7 +176,8 @@ Given('I am signed in as an administrator', async ({ request, page, baseURL, ctx
 })
 
 When('I open the admin dashboard', async ({ page }) => {
-  await page.goto('/admin')
+  // the detector/reprocess/recluster controls live on the AI Pipelines tab
+  await page.goto('/admin?tab=ai')
   await expect(page.getByRole('heading', { level: 1, name: 'Admin Console' })).toBeVisible({
     timeout: 15_000,
   })
@@ -326,7 +327,7 @@ Then('the face reprocess queue drains', async ({ request, ctx }) => {
 })
 
 Then('the admin page shows the last face reprocess run', async ({ page }) => {
-  await page.goto('/admin')
+  await page.goto('/admin?tab=ai')
   await expect(page.getByText(/Last run .+ queued with the .+ detector\./)).toBeVisible({
     timeout: 20_000,
   })

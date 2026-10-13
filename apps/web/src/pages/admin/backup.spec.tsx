@@ -13,7 +13,7 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../../api/admin', () => api)
 
-import { BackupSection } from './index'
+import { BackupSection } from './backups'
 
 const ada: AdminUserRow = {
   id: 'u-1',

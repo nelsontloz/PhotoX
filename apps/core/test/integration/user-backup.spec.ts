@@ -237,9 +237,7 @@ describe('user backup round-trip', () => {
 
   async function queueJobsFor(queueName: string, userId: string): Promise<JobData[]> {
     const jobs = await bullMq.getQueue(queueName).getJobs(['waiting', 'delayed', 'active'])
-    return jobs
-      .map((j) => j.data as JobData)
-      .filter((d) => d.userId === userId)
+    return jobs.map((j) => j.data as JobData).filter((d) => d.userId === userId)
   }
 
   it('backs up and restores one user via EMAIL with same UUIDs (M1/M2/M4)', async () => {
@@ -311,9 +309,7 @@ describe('user backup round-trip', () => {
     const album = await albumRepo.save(
       albumRepo.create({ userId: user.id, name: 'Trip', description: null }),
     )
-    await albumAssetRepo.save(
-      albumAssetRepo.create({ albumId: album.id, assetId: photoAsset.id }),
-    )
+    await albumAssetRepo.save(albumAssetRepo.create({ albumId: album.id, assetId: photoAsset.id }))
     const token = createHash('sha256').update(randomUUID()).digest('hex')
     const share = await shareRepo.save(
       shareRepo.create({
@@ -394,9 +390,7 @@ describe('user backup round-trip', () => {
     expect(personAfter.faceCount).toBe(5)
 
     const metadataJobs = await queueJobsFor('process-metadata', user.id)
-    expect(metadataJobs.map((d) => d.assetId).sort()).toEqual(
-      [photoAsset.id, videoAsset.id].sort(),
-    )
+    expect(metadataJobs.map((d) => d.assetId).sort()).toEqual([photoAsset.id, videoAsset.id].sort())
     expect(metadataJobs.find((d) => d.assetId === videoAsset.id)?.kind).toBe('video')
 
     const videoJobs = await queueJobsFor('process-video', user.id)
@@ -461,9 +455,9 @@ describe('user backup round-trip', () => {
   })
 
   it('backupStatus is false for unknown users and missing manifests (A4)', async () => {
-    await expect(
-      svc.backupStatus(`ghost-${randomUUID()}@example.com`),
-    ).resolves.toEqual({ exists: false })
+    await expect(svc.backupStatus(`ghost-${randomUUID()}@example.com`)).resolves.toEqual({
+      exists: false,
+    })
 
     const email = `status-${randomUUID()}@example.com`
     const user = await userRepo.save(
