@@ -42,13 +42,12 @@ services:
       FLOCI_STORAGE_MODE: hybrid
       FLOCI_STORAGE_PERSISTENT_PATH: /app/data
     volumes:
-      - floci-data:/app/data
+      - ./data/floci:/app/data
     networks:
       - photox-net
 
 volumes:
   pgdata:
-  floci-data:
 
 networks:
   photox-net:
