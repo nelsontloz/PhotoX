@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { JwtService, type JwtSignOptions } from '@nestjs/jwt'
 import { UnrecoverableError } from 'bullmq'
 import { loadEnv } from '@photox/shared-config'
@@ -98,6 +98,10 @@ export interface ApplyClustersResult {
 
 const REQUEST_TIMEOUT_MS = 30_000
 const ASSET_IDS_CHUNK = 100
+// ponytail: keyset walk over GET /worker/faces (id ASC, cursor = last id); 500 matches core's default
+const FACES_PAGE_LIMIT = 500
+// ponytail: O(n²) DBSCAN ceiling — fail loudly above this, Phase 3 streams/pages the algorithm itself
+const MAX_FACES_PER_USER = 10_000
 
 /** Job-binding proof threaded from the BullMQ payload: the guard recomputes the HMAC per route. */
 export interface JobBinding {
@@ -108,6 +112,8 @@ export interface JobBinding {
 
 @Injectable()
 export class CoreClient {
+  private readonly logger = new Logger(CoreClient.name)
+
   constructor(private readonly jwt: JwtService) {}
 
   // ponytail: per-job delegated JWT — core's worker guard scopes every call by sub, so worker
@@ -230,14 +236,43 @@ export class CoreClient {
   }
 
   async getFacesForCluster(userId: string): Promise<ClusterFace[]> {
-    // cluster votes on embeddings and ignores trashed assets — same params as the pre-#156
-    // user-side call this replaces
-    const res = await this.request<{ items: ClusterFace[] }>(
-      'GET',
-      '/worker/faces?includeEmbeddings=true&excludeTrashed=true',
-      { sub: userId },
+    // ponytail: same accumulate-loop style as getAssetsByIds below — each page is one request()
+    // (30s timeout + 400/404/422→Unrecoverable mapping), cursor walks id ASC until nextCursor null
+    const faces: ClusterFace[] = []
+    let cursor: string | undefined
+    let pageCount = 0
+    let bytes = 0
+    for (;;) {
+      const query =
+        `includeEmbeddings=true&excludeTrashed=true&limit=${FACES_PAGE_LIMIT}` +
+        (cursor !== undefined ? `&cursor=${cursor}` : '')
+      const res = await this.request<{ items: ClusterFace[]; nextCursor?: string | null }>(
+        'GET',
+        `/worker/faces?${query}`,
+        { sub: userId },
+      )
+      faces.push(...res.items)
+      pageCount += 1
+      bytes += Buffer.byteLength(JSON.stringify(res.items))
+      if (faces.length > MAX_FACES_PER_USER) {
+        this.logger.error(
+          `Face cap exceeded: user=${userId} faceCount=${faces.length} ` +
+            `pageCount=${pageCount} bytes=${bytes}`,
+        )
+        // deterministic overshoot — retries re-fetch the same pages, so fail without retry
+        throw new UnrecoverableError(
+          `Too many faces for user=${userId}: ${faces.length} > ${MAX_FACES_PER_USER}`,
+        )
+      }
+      // deprecated fallback: old core serves { items } with no nextCursor — single page, done
+      if (res.nextCursor === undefined || res.nextCursor === null) break
+      cursor = res.nextCursor
+    }
+    this.logger.log(
+      `Cluster faces fetched: user=${userId} faceCount=${faces.length} ` +
+        `pageCount=${pageCount} bytes=${bytes}`,
     )
-    return res.items
+    return faces
   }
 
   // ponytail: E2 caps ids at 100 (header size); LEGACY_REEMBED_PER_RUN matches, chunk anyway for safety

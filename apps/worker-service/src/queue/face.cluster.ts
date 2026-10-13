@@ -155,7 +155,9 @@ export class FaceClusterService implements OnModuleInit {
   }
 
   async cluster(userId: string, binding?: { sig?: string }): Promise<void> {
-    // core's E1 endpoint excludes trashed assets (trashed faces stay stored, just don't vote)
+    // core's E1 endpoint excludes trashed assets (trashed faces stay stored, just don't vote);
+    // pageCount for this fetch is in CoreClient's fetch log (signature kept array-only)
+    const started = Date.now()
     const faces = await this.core.getFacesForCluster(userId)
 
     if (faces.length === 0) {
@@ -330,7 +332,8 @@ export class FaceClusterService implements OnModuleInit {
     this.logger.log(
       `Clustered ${unassigned.length} unassigned faces into ${clusters.size} groups ` +
         `(${noiseReassigned} noise faces reassigned to existing persons) for user=${userId}; ` +
-        `applied created=${result.created}, assigned=${result.assigned}`,
+        `applied created=${result.created}, assigned=${result.assigned}, ` +
+        `faceCount=${faces.length} clusterMs=${Date.now() - started}`,
     )
   }
 

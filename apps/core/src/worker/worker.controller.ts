@@ -14,7 +14,6 @@ import {
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Response } from 'express'
 import { CurrentUserId } from '../auth/jwt-auth.guard'
-import { isQueryTrue } from '../common/query-params'
 import { AssetsService } from '../assets/assets.service'
 import { ListAssetsQueryDto } from '../assets/dto/list-assets-query.dto'
 import { RegisterThumbnailDto } from '../assets/dto/register-thumbnail.dto'
@@ -32,6 +31,7 @@ import { RegisterOcrDto } from '../ocr/dto/register-ocr.dto'
 import { DetectionsService } from '../detections/detections.service'
 import { RegisterDetectionsDto } from '../detections/dto/register-detections.dto'
 import { WorkerMetadataDto } from './dto/worker-metadata.dto'
+import { ListFacesQueryDto } from './dto/list-faces-query.dto'
 
 // Worker job surface (agreed interface with the worker lane — do not rename paths). Every route
 // is act-required via JwtAuthGuard; ownership is scoped by the job's sub through the reused
@@ -159,17 +159,20 @@ export class WorkerController {
 
   @Get('faces')
   @ApiOperation({ summary: 'Worker list of faces for clustering (job user scope)' })
-  async listFaces(
-    @Query('includeEmbeddings') includeEmbeddings: string | undefined,
-    @Query('excludeTrashed') excludeTrashed: string | undefined,
-    @CurrentUserId() userId: string,
-  ) {
-    const items = await this.faces.listForUser(
-      userId,
-      isQueryTrue(includeEmbeddings),
-      isQueryTrue(excludeTrashed),
-    )
-    return { items }
+  async listFaces(@Query() q: ListFacesQueryDto, @CurrentUserId() userId: string) {
+    const includeEmbeddings = q.includeEmbeddings ?? false
+    const excludeTrashed = q.excludeTrashed ?? false
+    // deprecated fallback: no limit/cursor keeps the old unpaginated { items } shape green
+    if (q.limit === undefined && q.cursor === undefined) {
+      const items = await this.faces.listForUser(userId, includeEmbeddings, excludeTrashed)
+      return { items }
+    }
+    return this.faces.listForUserPaginated(userId, {
+      limit: q.limit ?? 500,
+      cursor: q.cursor,
+      includeEmbeddings,
+      excludeTrashed,
+    })
   }
 
   @Post('persons/apply-clusters')
