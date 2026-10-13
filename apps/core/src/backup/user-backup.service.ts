@@ -1,0 +1,743 @@
+import { Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { InjectRepository } from '@nestjs/typeorm'
+import { isUUID } from 'class-validator'
+import { randomUUID } from 'crypto'
+import { mkdtemp, rm } from 'fs/promises'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { DataSource, EntityManager, Repository } from 'typeorm'
+import {
+  LocalStorageService,
+  backupPrefix,
+  manifestKey,
+  normalizeEmail,
+  originalKey,
+  parseBackupDir,
+  resolveBackupPrefix,
+} from '@photox/shared-config'
+import { FACE_DETECTOR_KINDS, SEARCH_EMBEDDING_MODEL } from '@photox/shared-types'
+import { z } from 'zod'
+import { Asset, FileRecord, Person } from '../database/entities'
+import { Album } from '../albums/entities/album.entity'
+import { AlbumAsset } from '../albums/entities/album-asset.entity'
+import { Share } from '../shares/entities/share.entity'
+import { User } from '../users/entities/user.entity'
+import { BullMqService } from '../queue/bullmq.service'
+import { SettingsService } from '../settings/settings.service'
+import { PlacesResolveService } from '../places/places-resolve.service'
+import { S3BackupService, isNotFound } from './s3-backup.service'
+
+const fileManifestSchema = z.object({
+  id: z.string().uuid(),
+  userId: z.string().uuid(),
+  storageKey: z.string().min(1),
+  originalName: z.string(),
+  mimeType: z.string(),
+  sizeBytes: z.number().int().nonnegative(),
+  checksumSha256: z.string(),
+  purpose: z.literal('original'),
+  assetId: z.string().uuid().nullable(),
+})
+
+const assetManifestSchema = z.object({
+  id: z.string().uuid(),
+  userId: z.string().uuid(),
+  kind: z.enum(['photo', 'video']),
+  fileId: z.string().uuid(),
+  isTrashed: z.boolean(),
+  trashedAt: z.string().nullable(),
+  title: z.string().nullable(),
+  description: z.string().nullable(),
+  takenAt: z.string().nullable(),
+  favorite: z.boolean(),
+  mimeType: z.string().nullable(),
+  sizeBytes: z.number().int().nonnegative().nullable(),
+  originalName: z.string().nullable(),
+  width: z.number().int().nullable(),
+  height: z.number().int().nullable(),
+  durationSeconds: z.number().nullable(),
+  cameraMake: z.string().nullable(),
+  cameraModel: z.string().nullable(),
+  lensModel: z.string().nullable(),
+  orientation: z.number().int().nullable(),
+  iso: z.number().int().nullable(),
+  fNumber: z.number().nullable(),
+  exposureTime: z.number().nullable(),
+  focalLength: z.number().nullable(),
+  latitude: z.number().nullable(),
+  longitude: z.number().nullable(),
+  altitude: z.number().nullable(),
+  placeCity: z.string().nullable(),
+  placeAdmin1: z.string().nullable(),
+  placeCountryCode: z.string().nullable(),
+  placeTimezone: z.string().nullable(),
+  placeDistanceKm: z.number().nullable(),
+  fps: z.number().nullable(),
+  codec: z.string().nullable(),
+  hasAudio: z.boolean().nullable(),
+  metadata: z.record(z.unknown()).nullable(),
+  metadataStatus: z.enum(['pending', 'ready', 'failed']),
+  transcodeStatus: z.enum(['pending', 'ready', 'failed']).nullable(),
+  thumbnailStatus: z.enum(['pending', 'ready', 'failed']).nullable(),
+  faceStatus: z.enum(['pending', 'ready', 'failed']).nullable(),
+  embeddingStatus: z.enum(['pending', 'ready', 'failed']).nullable(),
+  faceCount: z.number().int().nullable(),
+  // ponytail: transcodeFileId/phash never persist — restore nulls both (re-transcode
+  // + metadata reprocess refill them), so they are absent by construction
+})
+
+const albumManifestSchema = z.object({
+  id: z.string().uuid(),
+  userId: z.string().uuid(),
+  name: z.string(),
+  description: z.string().nullable(),
+})
+
+const albumAssetManifestSchema = z.object({
+  albumId: z.string().uuid(),
+  assetId: z.string().uuid(),
+})
+
+const shareManifestSchema = z.object({
+  id: z.string().uuid(),
+  userId: z.string().uuid(),
+  kind: z.enum(['asset', 'album']),
+  assetId: z.string().uuid().nullable(),
+  albumId: z.string().uuid().nullable(),
+  token: z.string(),
+  expiresAt: z.string().nullable(),
+})
+
+const personManifestSchema = z.object({
+  id: z.string().uuid(),
+  userId: z.string().uuid(),
+  name: z.string().nullable(),
+  clusterLabel: z.string().nullable(),
+  faceCount: z.number().int(),
+  // ponytail: coverFaceId dropped — it points at faces rows (regenerated with new
+  // UUIDs), so restore always stores NULL and recluster assigns fresh covers
+})
+
+const userManifestSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().email(),
+  role: z.enum(['user', 'admin']),
+  passwordHash: z.string(),
+  displayName: z.string(),
+  tokensValidAfter: z.string().nullable(),
+})
+
+const userBackupManifestSchema = z.object({
+  manifestVersion: z.literal(1),
+  userId: z.string().uuid(),
+  emailAtBackup: z.string().email(),
+  backedUpAt: z.string(),
+  detector: z.enum(FACE_DETECTOR_KINDS),
+  user: userManifestSchema,
+  files: z.array(fileManifestSchema),
+  assets: z.array(assetManifestSchema),
+  albums: z.array(albumManifestSchema),
+  albumAssets: z.array(albumAssetManifestSchema),
+  shares: z.array(shareManifestSchema),
+  persons: z.array(personManifestSchema),
+})
+
+export type UserBackupManifest = z.infer<typeof userBackupManifestSchema>
+
+function toNumberOrNull(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined) return null
+  const n = typeof value === 'string' ? Number(value) : value
+  return Number.isFinite(n) ? n : null
+}
+
+function toIntOrNull(value: number | string | null | undefined): number | null {
+  const n = toNumberOrNull(value)
+  return n === null ? null : Math.trunc(n)
+}
+
+function toIsoOrNull(value: Date | string | null | undefined): string | null {
+  if (value === null || value === undefined) return null
+  const date = value instanceof Date ? value : new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date.toISOString()
+}
+
+function extOf(storageKey: string): string {
+  const base = storageKey.split('/').pop() ?? storageKey
+  const dot = base.lastIndexOf('.')
+  return dot < 0 ? '' : base.slice(dot + 1)
+}
+
+export interface BackupResult {
+  userId: string
+  email: string
+  prefix: string
+  backedUpAt: string
+  files: number
+  assets: number
+  albums: number
+  shares: number
+  persons: number
+}
+
+export interface RestoreResult extends BackupResult {
+  restoredFrom: string
+  startedAt: string
+  completedAt: string
+  enqueued: { metadata: number; thumbnails: number; videos: number; faces: number; ai: number }
+}
+
+export interface BackupStatus {
+  exists: boolean
+  userId?: string
+  emailAtBackup?: string
+  backedUpAt?: string
+  files?: number
+  assets?: number
+  albums?: number
+  shares?: number
+  persons?: number
+}
+
+/**
+ * Per-user backup/restore: user-scoped rows + original bytes to S3 (Floci,
+ * docker-only), same-UUID reinsert + derivative regeneration on restore.
+ *
+ * Backup set: users row (same UUID) + files (originals only — transcode rows are
+ * dropped, videos re-transcode) + assets + albums + album_assets + shares +
+ * persons. Skipped: refresh_tokens (restored clients re-login), faces/embeddings/
+ * ocr/detections/thumbnails (all regenerable via re-enqueue). Trashed rows+bytes
+ * travel as-is and stay degraded (reprocess filters exclude trashed).
+ *
+ * Restore runs rows-first in one transaction (fresh `createdAt = now()` keeps new
+ * rows inside the orphan grace window), bytes second — the reverse order would
+ * leave strays the next cleanup-orphans run deletes.
+ *
+ * HARD PREREQUISITE (M4): pause cleanup-orphans for the WHOLE restore — never run
+ * `POST /api/v1/admin/cleanup-orphans/run` (or any automated sweep) mid-restore.
+ * Restored rows use `now()` timestamps inside the ~10-minute orphan grace window,
+ * so a sweep past that window deletes freshly restored bytes/rows. Multi-GB
+ * restores can exceed 10 minutes — keep the sweeper paused until the restore
+ * completion log line (with startedAt/completedAt) appears. No lock is held in
+ * code; the operator owns the pause.
+ *
+ * Stale-until-jobs-complete (A2/A3): derivative statuses restore as-was while the
+ * bytes/jobs are still outstanding — transcode/thumbnail/face/embedding statuses
+ * stay stale until their re-enqueued jobs complete, `metadataStatus` is reset to
+ * `pending` for every asset (M2 covers videos too) and refills via metadata jobs,
+ * and `persons.faceCount` stays stale until the restore cluster job assigns fresh
+ * covers/counts.
+ *
+ * Email changes orphan prefixes (A6): the S3 layout is keyed by backup-time email
+ * (`backups/<email>__<userId>/`), so a later email change leaves the old prefix
+ * behind — GC is deleting the stale prefix; restores resolve by userId suffix.
+ *
+ * Floci runbook (docker-only, no host installs): `docker compose up -d floci`.
+ * Host core uses `S3_ENDPOINT=http://localhost:4566`; in-Compose core uses
+ * `http://floci:4566`. E2E uses the `photox-e2e-backups` bucket — dev/prod share
+ * nothing. Backup writes original bytes FIRST, `manifest.json` LAST (M3), so a
+ * failed run never leaves a live manifest over missing bytes; fixed keys make a
+ * rerun idempotent (missing bytes re-upload, manifest lands last).
+ */
+@Injectable()
+export class UserBackupService {
+  private readonly logger = new Logger(UserBackupService.name)
+
+  constructor(
+    private readonly s3: S3BackupService,
+    private readonly dataSource: DataSource,
+    private readonly bullMq: BullMqService,
+    private readonly settings: SettingsService,
+    private readonly places: PlacesResolveService,
+    private readonly storage: LocalStorageService,
+    @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(FileRecord) private readonly files: Repository<FileRecord>,
+    @InjectRepository(Asset) private readonly assets: Repository<Asset>,
+    @InjectRepository(Album) private readonly albums: Repository<Album>,
+    @InjectRepository(AlbumAsset) private readonly albumAssets: Repository<AlbumAsset>,
+    @InjectRepository(Share) private readonly shares: Repository<Share>,
+    @InjectRepository(Person) private readonly persons: Repository<Person>,
+  ) {}
+
+  async backupUser(emailOrId: string): Promise<BackupResult> {
+    const user = await this.findUser(emailOrId)
+    if (!user) throw new NotFoundException(`No user for ${emailOrId}`)
+    await this.s3.ensureBucket()
+
+    const [fileRows, assetRows, albumRows, shareRows, personRows] = await Promise.all([
+      this.files.find({ where: { userId: user.id, purpose: 'original' } }),
+      this.assets.find({ where: { userId: user.id } }),
+      this.albums.find({ where: { userId: user.id } }),
+      this.shares.find({ where: { userId: user.id } }),
+      this.persons.find({ where: { userId: user.id } }),
+    ])
+    const albumIds = albumRows.map((a) => a.id)
+    const albumAssetRows =
+      albumIds.length > 0
+        ? await this.albumAssets
+            .createQueryBuilder('aa')
+            .where('aa."albumId" IN (:...ids)', { ids: albumIds })
+            .getMany()
+        : []
+
+    const detector = await this.settings.getFaceDetector()
+    const backedUpAt = new Date().toISOString()
+    const manifest: UserBackupManifest = {
+      manifestVersion: 1,
+      userId: user.id,
+      emailAtBackup: user.email,
+      backedUpAt,
+      detector,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        passwordHash: user.passwordHash,
+        displayName: user.displayName,
+        tokensValidAfter: toIsoOrNull(user.tokensValidAfter),
+      },
+      files: fileRows.map((f) => ({
+        id: f.id,
+        userId: f.userId,
+        storageKey: f.storageKey,
+        originalName: f.originalName,
+        mimeType: f.mimeType,
+        sizeBytes: Number(f.sizeBytes),
+        checksumSha256: f.checksumSha256,
+        purpose: 'original' as const,
+        assetId: f.assetId,
+      })),
+      assets: assetRows.map((a) => ({
+        id: a.id,
+        userId: a.userId,
+        kind: a.kind,
+        fileId: a.fileId,
+        isTrashed: a.isTrashed,
+        trashedAt: toIsoOrNull(a.trashedAt),
+        title: a.title,
+        description: a.description,
+        takenAt: toIsoOrNull(a.takenAt),
+        favorite: a.favorite,
+        mimeType: a.mimeType,
+        sizeBytes: toIntOrNull(a.sizeBytes),
+        originalName: a.originalName,
+        width: a.width,
+        height: a.height,
+        durationSeconds: toNumberOrNull(a.durationSeconds),
+        cameraMake: a.cameraMake,
+        cameraModel: a.cameraModel,
+        lensModel: a.lensModel,
+        orientation: a.orientation,
+        iso: a.iso,
+        fNumber: toNumberOrNull(a.fNumber),
+        exposureTime: toNumberOrNull(a.exposureTime),
+        focalLength: toNumberOrNull(a.focalLength),
+        latitude: toNumberOrNull(a.latitude),
+        longitude: toNumberOrNull(a.longitude),
+        altitude: toNumberOrNull(a.altitude),
+        placeCity: a.placeCity,
+        placeAdmin1: a.placeAdmin1,
+        placeCountryCode: a.placeCountryCode,
+        placeTimezone: a.placeTimezone,
+        placeDistanceKm: toNumberOrNull(a.placeDistanceKm),
+        fps: toNumberOrNull(a.fps),
+        codec: a.codec,
+        hasAudio: a.hasAudio,
+        metadata: a.metadata,
+        metadataStatus: a.metadataStatus,
+        transcodeStatus: a.transcodeStatus,
+        thumbnailStatus: a.thumbnailStatus,
+        faceStatus: a.faceStatus,
+        embeddingStatus: a.embeddingStatus,
+        faceCount: a.faceCount,
+      })),
+      albums: albumRows.map((a) => ({
+        id: a.id,
+        userId: a.userId,
+        name: a.name,
+        description: a.description,
+      })),
+      albumAssets: albumAssetRows.map((aa) => ({ albumId: aa.albumId, assetId: aa.assetId })),
+      shares: shareRows.map((s) => ({
+        id: s.id,
+        userId: s.userId,
+        kind: s.kind,
+        assetId: s.assetId,
+        albumId: s.albumId,
+        token: s.token,
+        expiresAt: toIsoOrNull(s.expiresAt),
+      })),
+      persons: personRows.map((p) => ({
+        id: p.id,
+        userId: p.userId,
+        name: p.name,
+        clusterLabel: p.clusterLabel,
+        faceCount: p.faceCount,
+      })),
+    }
+    // zod runtime-validates the manifest we just built (fail fast, never upload garbage)
+    const parsed = userBackupManifestSchema.parse(manifest)
+
+    // ponytail: one-backup-per-user — fixed keys per user, a rerun overwrites the
+    // previous backup in place. Bytes land FIRST, manifest LAST (M3): a mid-run
+    // failure leaves the previous manifest (stale but consistent), never a live
+    // manifest over missing bytes; a rerun re-uploads missing bytes then the
+    // manifest, so rerun-after-failure is safe and idempotent.
+    const prefix = backupPrefix(user.email, user.id)
+    for (const file of parsed.files) {
+      await this.s3.putFile(
+        originalKey(user.email, user.id, file.id, extOf(file.storageKey)),
+        this.storage.pathFor(file.storageKey),
+        file.mimeType,
+      )
+    }
+    await this.s3.putObject(
+      manifestKey(user.email, user.id),
+      Buffer.from(JSON.stringify(parsed)),
+      'application/json',
+    )
+
+    this.logger.log(`Backed up user ${user.id} (${fileRows.length} files) to ${prefix}`)
+    return {
+      userId: user.id,
+      email: user.email,
+      prefix,
+      backedUpAt,
+      files: fileRows.length,
+      assets: assetRows.length,
+      albums: albumRows.length,
+      shares: shareRows.length,
+      persons: personRows.length,
+    }
+  }
+
+  async restoreUser(emailOrId: string): Promise<RestoreResult> {
+    const startedAt = new Date().toISOString()
+    this.logger.warn(
+      `Restore started at ${startedAt} — keep cleanup-orphans paused until restore ` +
+        'completes; never run cleanup mid-restore (bytes land after rows, strays ' +
+        'would be deleted; restored rows use now() inside the ~10-min grace window)',
+    )
+    await this.s3.ensureBucket()
+    const located = await this.locateBackup(emailOrId)
+    const raw = await this.s3.getBuffer(located.manifestObjectKey)
+    // zod runtime-validates the downloaded manifest (untrusted S3 bytes)
+    const manifest = userBackupManifestSchema.parse(JSON.parse(raw.toString('utf-8')))
+    if (manifest.userId !== located.userId) {
+      throw new Error(
+        `Backup manifest userId ${manifest.userId} does not match prefix user ${located.userId}`,
+      )
+    }
+
+    // rows first, in one transaction — links (assets.fileId, album_assets, shares)
+    // land together so no row is ever orphan-eligible; timestamps default to now()
+    // (inside the orphan grace window even before bytes arrive).
+    // ponytail: save-with-explicit-PK (not upsert) — upsert's QueryDeepPartialEntity
+    // rejects the jsonb metadata column while save's DeepPartial accepts it
+    await this.dataSource.transaction(async (manager: EntityManager) => {
+      await manager.save(
+        User,
+        manager.create(User, {
+          id: manifest.user.id,
+          email: manifest.user.email,
+          role: manifest.user.role,
+          passwordHash: manifest.user.passwordHash,
+          displayName: manifest.user.displayName,
+          tokensValidAfter: manifest.user.tokensValidAfter
+            ? new Date(manifest.user.tokensValidAfter)
+            : null,
+        }),
+      )
+      for (const f of manifest.files) {
+        await manager.save(
+          FileRecord,
+          manager.create(FileRecord, {
+            id: f.id,
+            userId: f.userId,
+            storageKey: f.storageKey,
+            originalName: f.originalName,
+            mimeType: f.mimeType,
+            sizeBytes: f.sizeBytes,
+            checksumSha256: f.checksumSha256,
+            purpose: 'original' as const,
+            assetId: f.assetId,
+          }),
+        )
+      }
+      for (const a of manifest.assets) {
+        await manager.save(
+          Asset,
+          manager.create(Asset, {
+            ...a,
+            trashedAt: a.trashedAt ? new Date(a.trashedAt) : null,
+            takenAt: a.takenAt ? new Date(a.takenAt) : null,
+            // restore transforms: re-transcode videos, refill phash via metadata jobs
+            transcodeFileId: null,
+            phash: null,
+            metadataStatus: 'pending' as const,
+            metadataExtractedAt: null,
+          }),
+        )
+      }
+      for (const a of manifest.albums) {
+        await manager.save(
+          Album,
+          manager.create(Album, {
+            id: a.id,
+            userId: a.userId,
+            name: a.name,
+            description: a.description,
+          }),
+        )
+      }
+      for (const aa of manifest.albumAssets) {
+        await manager.save(
+          AlbumAsset,
+          manager.create(AlbumAsset, { albumId: aa.albumId, assetId: aa.assetId }),
+        )
+      }
+      for (const s of manifest.shares) {
+        await manager.save(
+          Share,
+          manager.create(Share, {
+            id: s.id,
+            userId: s.userId,
+            kind: s.kind,
+            assetId: s.assetId,
+            albumId: s.albumId,
+            token: s.token,
+            expiresAt: s.expiresAt ? new Date(s.expiresAt) : null,
+          }),
+        )
+      }
+      for (const p of manifest.persons) {
+        await manager.save(
+          Person,
+          manager.create(Person, {
+            id: p.id,
+            userId: p.userId,
+            name: p.name,
+            coverFaceId: null,
+            clusterLabel: p.clusterLabel,
+            faceCount: p.faceCount,
+          }),
+        )
+      }
+    })
+
+    // bytes second — rows already reference every key, so no stray sweep can fire
+    const tmpRoot = await mkdtemp(join(tmpdir(), 'photox-restore-'))
+    try {
+      for (const f of manifest.files) {
+        const tmp = join(tmpRoot, `${f.id}.${randomUUID()}.tmp`)
+        await this.s3.downloadToFile(
+          originalKey(manifest.emailAtBackup, manifest.userId, f.id, extOf(f.storageKey)),
+          tmp,
+        )
+        // pathFor containment rejects escaped storageKeys before any byte lands
+        await this.storage.save(f.storageKey, tmp)
+      }
+    } finally {
+      await rm(tmpRoot, { recursive: true, force: true })
+    }
+
+    const enqueued = await this.reenqueueDerivatives(manifest.userId)
+    const completedAt = new Date().toISOString()
+    this.logger.log(
+      `Restored user ${manifest.userId} (${manifest.files.length} files) ` +
+        `startedAt=${startedAt} completedAt=${completedAt} — cleanup-orphans may resume`,
+    )
+    return {
+      userId: manifest.userId,
+      email: manifest.emailAtBackup,
+      prefix: located.prefix,
+      backedUpAt: manifest.backedUpAt,
+      restoredFrom: located.manifestObjectKey,
+      startedAt,
+      completedAt,
+      files: manifest.files.length,
+      assets: manifest.assets.length,
+      albums: manifest.albums.length,
+      shares: manifest.shares.length,
+      persons: manifest.persons.length,
+      enqueued,
+    }
+  }
+
+  async backupStatus(emailOrId: string): Promise<BackupStatus> {
+    await this.s3.ensureBucket()
+    let located
+    try {
+      located = await this.locateBackup(emailOrId)
+    } catch (err) {
+      if (err instanceof NotFoundException) return { exists: false }
+      throw err
+    }
+    let raw: Buffer
+    try {
+      raw = await this.s3.getBuffer(located.manifestObjectKey)
+    } catch (err) {
+      if (isNotFound(err)) return { exists: false }
+      throw err
+    }
+    const manifest = userBackupManifestSchema.parse(JSON.parse(raw.toString('utf-8')))
+    return {
+      exists: true,
+      userId: manifest.userId,
+      emailAtBackup: manifest.emailAtBackup,
+      backedUpAt: manifest.backedUpAt,
+      files: manifest.files.length,
+      assets: manifest.assets.length,
+      albums: manifest.albums.length,
+      shares: manifest.shares.length,
+      persons: manifest.persons.length,
+    }
+  }
+
+  private async findUser(emailOrId: string): Promise<User | null> {
+    // M1: non-UUID email input must never reach the uuid-typed id lookup — Postgres
+    // raises 22P02 (500) before the email fallback runs (precedent: assets.service
+    // isUUID guard). UUIDs take the by-id fast path, everything else goes email-only.
+    if (isUUID(emailOrId)) {
+      const byId = await this.users.findOne({ where: { id: emailOrId } })
+      if (byId) return byId
+    }
+    return this.users.findOne({ where: { email: normalizeEmail(emailOrId) } })
+  }
+
+  /**
+   * Resolves the S3 prefix for a user: DB row when present (email-first layout),
+   * else an S3 scan matching the normalized email or userId suffix (fresh-DB
+   * restore where no user row exists yet). Suffix matching splits folder names on
+   * the LAST `__` (emails may contain `__`; UUIDs never contain `_`).
+   */
+  private async locateBackup(
+    emailOrId: string,
+  ): Promise<{ prefix: string; manifestObjectKey: string; userId: string }> {
+    const user = await this.findUser(emailOrId)
+    if (user) {
+      return {
+        prefix: backupPrefix(user.email, user.id),
+        manifestObjectKey: manifestKey(user.email, user.id),
+        userId: user.id,
+      }
+    }
+    const base = resolveBackupPrefix()
+    const keys = await this.s3.listKeys(base)
+    const manifests = keys.filter((k) => k.endsWith('/manifest.json') && k.startsWith(base))
+    const wantEmail = emailOrId.includes('@') ? normalizeEmail(emailOrId) : null
+    for (const key of manifests) {
+      const dir = key.slice(base.length, -'/manifest.json'.length)
+      let parsed: { email: string; userId: string }
+      try {
+        parsed = parseBackupDir(dir)
+      } catch {
+        continue
+      }
+      if (wantEmail ? parsed.email === wantEmail : parsed.userId === emailOrId) {
+        return { prefix: `${base}${dir}/`, manifestObjectKey: key, userId: parsed.userId }
+      }
+    }
+    throw new NotFoundException(`No backup found for ${emailOrId}`)
+  }
+
+  /**
+   * Derivative regeneration after restore, in pipeline order: metadata first for
+   * both kinds (every restored asset is `pending`; mirrors the upload path which
+   * enqueues process-metadata for photos and videos alike), thumbnails
+   * photo+video, per-asset video loop (no admin bulk exists), faces re-embed,
+   * embeddings/ocr/detect, cluster, then places backfill. Runs twice:
+   * offset-paged readers assume a stable set, so a second pass catches anything
+   * the first missed under concurrent writes (jobIds dedupe, making it idempotent).
+   * Existing reprocess filters are reused untouched.
+   */
+  private async reenqueueDerivatives(userId: string): Promise<RestoreResult['enqueued']> {
+    const detector = await this.settings.getFaceDetector()
+    const totals = { metadata: 0, thumbnails: 0, videos: 0, faces: 0, ai: 0 }
+    for (let pass = 0; pass < 2; pass++) {
+      const assets = await this.assets.find({ where: { userId } })
+      const live = assets.filter((a) => !a.isTrashed)
+      for (const asset of live) {
+        // M2: metadata for BOTH kinds — restore marks every asset pending and the
+        // upload path enqueues process-metadata for photos and videos alike; the
+        // photo-only admin backstop stays untouched.
+        await this.bullMq.enqueue(
+          'process-metadata',
+          'process-metadata',
+          { assetId: asset.id, fileId: asset.fileId, userId, kind: asset.kind },
+          { jobId: `metadata-restore-${asset.id}`, removeOnComplete: true },
+        )
+        totals.metadata += pass === 0 ? 1 : 0
+        await this.bullMq.enqueueThumbnails(asset.id, asset.fileId, userId, 'thumb-restore')
+        totals.thumbnails += pass === 0 ? 4 : 0
+        if (asset.kind === 'video') {
+          await this.bullMq.enqueueVideo(asset.id, asset.fileId, userId, { reprocess: true })
+          totals.videos += pass === 0 ? 1 : 0
+        }
+        if (asset.kind === 'photo') {
+          await this.bullMq.enqueue(
+            'process-faces',
+            'process-faces',
+            { assetId: asset.id, fileId: asset.fileId, userId, reason: 'restore', detector },
+            { jobId: `face-restore-${asset.id}` },
+          )
+          totals.faces += pass === 0 ? 1 : 0
+          await this.bullMq.enqueue(
+            'process-embeddings',
+            'process-embeddings',
+            { assetId: asset.id, fileId: asset.fileId, userId, reason: 'restore' },
+            { jobId: `embed-restore-${asset.id}-${SEARCH_EMBEDDING_MODEL}` },
+          )
+          await this.bullMq.enqueue(
+            'process-ocr',
+            'process-ocr',
+            { assetId: asset.id, fileId: asset.fileId, userId, reason: 'restore' },
+            { jobId: `ocr-restore-${asset.id}` },
+          )
+          await this.bullMq.enqueue(
+            'process-detect',
+            'process-detect',
+            { assetId: asset.id, fileId: asset.fileId, userId, reason: 'restore' },
+            { jobId: `detect-restore-${asset.id}` },
+          )
+          totals.ai += pass === 0 ? 3 : 0
+        }
+      }
+    }
+    await this.bullMq.enqueue(
+      'process-faces-cluster',
+      'cluster',
+      { userId, reason: 'restore' },
+      { jobId: `cluster-${userId}-restore-${Date.now()}` },
+    )
+    await this.backfillUserPlaces(userId)
+    return totals
+  }
+
+  /** Per-user places backfill (mirrors the admin global loop, scoped to userId). */
+  private async backfillUserPlaces(userId: string): Promise<void> {
+    let afterId: string | null = null
+    for (;;) {
+      const qb = this.assets
+        .createQueryBuilder('a')
+        .select(['a.id AS id', 'a.latitude AS latitude', 'a.longitude AS longitude'])
+        .where('a."userId" = :userId', { userId })
+        .andWhere('a.latitude IS NOT NULL')
+        .andWhere('a.longitude IS NOT NULL')
+        .andWhere('a."placeCity" IS NULL')
+        .orderBy('a.id', 'ASC')
+        .limit(500)
+      if (afterId !== null) qb.andWhere('a.id > :afterId', { afterId })
+      const items = await qb.getRawMany<{ id: string; latitude: string; longitude: string }>()
+      if (items.length === 0) break
+      for (const item of items) {
+        try {
+          const place = await this.places.resolve(Number(item.latitude), Number(item.longitude))
+          if (place) await this.assets.update(item.id, place)
+        } catch (err) {
+          this.logger.warn(`place backfill failed for asset ${item.id}: ${String(err)}`)
+        }
+      }
+      afterId = items[items.length - 1]!.id
+    }
+  }
+}

@@ -29,6 +29,14 @@ services:
       # bootstrap when no admin exists — the e2e suite logs in as it
       ADMIN_EMAIL: admin@photox.test
       ADMIN_PASSWORD: password123
+      # per-user backup S3 (Floci): in-Compose endpoint for server-side ops, host
+      # endpoint unused here (no presigns); e2e-only bucket keeps dev/prod apart
+      S3_ENDPOINT: http://floci:4566
+      S3_PUBLIC_ENDPOINT: http://localhost:4566
+      S3_BACKUP_BUCKET: photox-e2e-backups
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
     volumes:
       - storage-data:/data/storage
     depends_on:
@@ -36,6 +44,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      floci:
+        condition: service_started
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/health || exit 1']
       interval: 10s
@@ -98,6 +108,17 @@ services:
 
   redis:
     ports: !override []
+
+  # Floci S3 for per-user backup e2e (same image/env as the infra base compose);
+  # no healthcheck exists on the base service, so core gates on service_started.
+  # Ports unpublished — parallel e2e runs must not contend on host :4566.
+  floci:
+    image: floci/floci:latest
+    ports: !override []
+    environment:
+      FLOCI_HOSTNAME: floci
+      FLOCI_STORAGE_MODE: hybrid
+      FLOCI_STORAGE_PERSISTENT_PATH: /app/data
 
 # declared here (not in the infra-only base compose) — only the e2e stack mounts it
 volumes:
