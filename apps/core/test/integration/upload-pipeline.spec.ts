@@ -1,8 +1,17 @@
 import request from 'supertest'
 import sharp from 'sharp'
 import { SettingsService } from '../../src/settings/settings.service'
-import { closeTestApp, createApiTestApp, resetDb, seedUser, apiServer } from './helpers'
+import { closeTestApp, createApiTestApp, resetDb, seedFile, seedUser, apiServer } from './helpers'
 import type { ApiTestApp } from './helpers'
+
+// ponytail red test for h2-storage-compute-quota: no per-user quota exists yet, and the key is not
+// in packages/shared-config/src/env.ts — STORAGE_QUOTA_BYTES is the proposed name (Gate1 cuts:
+// env/const quota, original-only, AFTER dedup, compare used+size>quota). Set BEFORE
+// createApiTestApp so an init-time loadEnv() read picks it up; a per-request process.env read
+// sees it too. 1 MiB keeps every other single-upload test in this file under quota while the
+// quota tests prefill near the ceiling via seedFile (direct DB insert, bypasses the guard).
+const STORAGE_QUOTA_BYTES = 1024 * 1024
+process.env.STORAGE_QUOTA_BYTES = String(STORAGE_QUOTA_BYTES)
 
 async function pngBytes(): Promise<Buffer> {
   return sharp({ create: { width: 64, height: 64, channels: 3, background: 'red' } })
@@ -202,6 +211,52 @@ describe('upload pipeline', () => {
       .attach('file', svg, { filename: 'evil.svg', contentType: 'image/svg+xml' })
     expect(res.status).toBe(400)
     expect(await t.fileRepo.count()).toBe(0)
+  })
+
+  it('rejects upload exceeding per-user storage quota with 413 and persists nothing', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const png = await pngBytes()
+    // prefill to 1 byte under quota so these exact new bytes tip used+size over the ceiling
+    await seedFile(t, user.id, { bytes: Buffer.alloc(STORAGE_QUOTA_BYTES - png.length + 1, 'a') })
+    const filesBefore = await t.fileRepo.count()
+    const res = await request(apiServer(t))
+      .post('/api/v1/files')
+      .set(t.authHeader(token))
+      .attach('file', png, 'over-quota.png')
+      .field('kind', 'photo')
+    // 413, not 429: quota exhaustion has no time-based retry. No guard exists yet → 201 (red).
+    expect(res.status).toBe(413)
+    expect(await t.fileRepo.count()).toBe(filesBefore)
+    const thumbJobs = await t
+      .getQueue('process-thumbnail')
+      .getJobs(['waiting', 'active', 'delayed'])
+    expect(
+      thumbJobs.filter((j) => (j.data as { userId?: string }).userId === user.id),
+    ).toHaveLength(0)
+  })
+
+  it('dedup re-upload of owned bytes still returns 409 when over quota', async () => {
+    // documents the AFTER-dedup requirement: re-linking owned bytes costs zero bytes, so the
+    // quota check must run after the dedup fast-path, not before it. Passes already; pins the
+    // behavior so the quota guard cannot break it.
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const png = await pngBytes()
+    const first = await request(apiServer(t))
+      .post('/api/v1/files')
+      .set(t.authHeader(token))
+      .attach('file', png, 'reuse.png')
+    expect(first.status).toBe(201)
+    // push usage over quota through the DB backdoor (the guard would reject this via API)
+    await seedFile(t, user.id, { bytes: Buffer.alloc(STORAGE_QUOTA_BYTES, 'b') })
+    const filesBefore = await t.fileRepo.count()
+    const second = await request(apiServer(t))
+      .post('/api/v1/files')
+      .set(t.authHeader(token))
+      .attach('file', png, 'reuse.png')
+    expect(second.status).toBe(409)
+    expect(await t.fileRepo.count()).toBe(filesBefore)
   })
 
   it('stores the sniffed mime even when the client contentType lies', async () => {

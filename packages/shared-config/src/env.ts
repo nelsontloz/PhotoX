@@ -31,6 +31,7 @@ const envSchema = z.object({
   REDIS_PORT: z.coerce.number().default(6379),
   REDIS_PASSWORD: z.string().optional(),
   STORAGE_DIR: z.string().default('./data/storage'),
+  STORAGE_QUOTA_BYTES: z.coerce.number().int().positive().optional(),
   AUTH_ACCESS_TTL: z.string().default('30m'),
   // raw env value is a duration string; consumers get milliseconds, parsed exactly once
   AUTH_REFRESH_TTL: z.string().default('1d').transform(parseDurationMs),

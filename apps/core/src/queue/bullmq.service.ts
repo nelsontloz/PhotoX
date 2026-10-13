@@ -158,6 +158,9 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
       { assetId, fileId, userId },
       {
         jobId: `${opts?.reprocess ? 'video-reprocess' : 'video'}-${assetId}`,
+        // ponytail: a video retry can cost up to 1h of SVT-AV1 — one retry absorbs
+        // transient flakes; the second retry is the most expensive one, cut it
+        attempts: 2,
       },
     )
   }

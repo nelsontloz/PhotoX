@@ -142,3 +142,25 @@ describe('VideoProcessor disk paths', () => {
     expect(fake.callsOf('patchMetadata')).toHaveLength(0)
   })
 })
+
+// ponytail: unbounded video concurrency lets 1h SVT-AV1 jobs pile up — the worker must
+// pass a concurrency opt (cleanup.processor.ts:17-19 precedent) instead of the default 1
+describe('VideoProcessor concurrency', () => {
+  it('requests concurrency >1 on the process-video worker', () => {
+    const createWorker = vi.fn(
+      (name: string, cb: (job: unknown) => Promise<void>, opts?: { concurrency?: number }) => {
+        void name
+        void cb
+        void opts
+        return {}
+      },
+    )
+    const processor = new VideoProcessor({ createWorker } as never, {} as never, {} as never)
+    processor.onModuleInit()
+
+    expect(createWorker).toHaveBeenCalledTimes(1)
+    expect(createWorker.mock.calls[0]?.[0]).toBe('process-video')
+    const opts = createWorker.mock.calls[0]?.[2]
+    expect(opts?.concurrency).toBeGreaterThan(1)
+  })
+})
