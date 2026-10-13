@@ -69,20 +69,23 @@ describe('Job binding (H1 ingress verification)', () => {
       sigKind: 'sig-less cluster',
       makePayload: (ctx: { victim: string }) => ({ userId: ctx.victim }),
     },
-  ])('rejects a $sigKind job without touching core', async ({ queue: queueName, jobName, makePayload }) => {
-    const victim = randomUUID()
-    const { record, asset } = await seedPhoto(victim)
+  ])(
+    'rejects a $sigKind job without touching core',
+    async ({ queue: queueName, jobName, makePayload }) => {
+      const victim = randomUUID()
+      const { record, asset } = await seedPhoto(victim)
 
-    const queue = testApp.getQueue(queueName)
-    const job = await queue.add(
-      jobName,
-      makePayload({ victim, assetId: asset.id, fileId: record.id }),
-    )
+      const queue = testApp.getQueue(queueName)
+      const job = await queue.add(
+        jobName,
+        makePayload({ victim, assetId: asset.id, fileId: record.id }),
+      )
 
-    expect(await waitForJob(queue, job.id!)).toBe('failed')
-    expect((await queue.getJob(job.id!))?.failedReason).toContain('job signature')
-    expect(testApp.fake.calls).toHaveLength(0)
-  })
+      expect(await waitForJob(queue, job.id!)).toBe('failed')
+      expect((await queue.getJob(job.id!))?.failedReason).toContain('job signature')
+      expect(testApp.fake.calls).toHaveLength(0)
+    },
+  )
 
   it('processes a validly signed job and threads the binding into reads', async () => {
     const userId = randomUUID()

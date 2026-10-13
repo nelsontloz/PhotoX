@@ -113,22 +113,16 @@ describe('admin maintenance', () => {
     const photo = await seedAsset(t, admin.id, photoFile.id, { kind: 'photo' })
     const videoFile = await seedFile(t, admin.id, { mimeType: 'video/mp4' })
     await seedAsset(t, admin.id, videoFile.id, { kind: 'video' })
-    await reprocessMatrix(
-      t,
-      auth,
-      admin.id,
-      [{ file: photoFile, asset: photo }],
-      {
-        route: '/api/v1/admin/thumbnails/reprocess',
-        queue: 'process-thumbnail',
-        jobIdFn: (id, size) => `thumb-reprocess-${id}-${size}`,
-        jobName: 'process-thumbnail',
-        respKeys: { enqueued: 4, totalAssets: 1 },
-        fanout: ['sm', 'md', 'lg', 'xl'],
-        reqBody: { kind: 'photo' },
-        noStatus: true,
-      },
-    )
+    await reprocessMatrix(t, auth, admin.id, [{ file: photoFile, asset: photo }], {
+      route: '/api/v1/admin/thumbnails/reprocess',
+      queue: 'process-thumbnail',
+      jobIdFn: (id, size) => `thumb-reprocess-${id}-${size}`,
+      jobName: 'process-thumbnail',
+      respKeys: { enqueued: 4, totalAssets: 1 },
+      fanout: ['sm', 'md', 'lg', 'xl'],
+      reqBody: { kind: 'photo' },
+      noStatus: true,
+    })
   })
 
   it('rejects non-admin on admin endpoints', async () => {
