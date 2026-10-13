@@ -4,6 +4,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -196,6 +197,17 @@ export class S3BackupService implements OnModuleInit {
     const body = res.Body
     if (!body) throw new Error(`S3 GetObject ${key} returned no body`)
     return Buffer.from(await body.transformToByteArray())
+  }
+
+  /** Existence probe for an unreadable object (HeadObject shares the retry ladder). */
+  async headObject(key: string): Promise<void> {
+    await this.withRetry(
+      () =>
+        this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }), {
+          abortSignal: AbortSignal.timeout(30_000),
+        }),
+      `HeadObject ${key}`,
+    )
   }
 
   /** Streams an object straight to disk (originals can be gigabytes — never buffer). */

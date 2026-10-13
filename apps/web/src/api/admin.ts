@@ -158,6 +158,7 @@ export interface BackupResult {
 /** GET /v1/admin/backups/status response: manifest presence + row counts (absent fields when none). */
 export interface BackupStatus {
   exists: boolean
+  degraded?: 'unreadable' | 'corrupt'
   userId?: string
   emailAtBackup?: string
   backedUpAt?: string
@@ -182,6 +183,10 @@ export function backupPrefixPreview(email: string, userId: string): string {
 // 10s default on multi-GB libraries — raise the cap instead of failing a healthy backup.
 const BACKUP_TIMEOUT_MS = 600_000
 
+// Status reads the manifest back from S3 and can stall when the store is slow — give it
+// headroom over the generic 10s client default without touching the shared timeout.
+const BACKUP_STATUS_TIMEOUT_MS = 30_000
+
 export async function backupUser(emailOrId: string): Promise<BackupResult> {
   const { data } = await api.post<BackupResult>(
     '/v1/admin/backups',
@@ -194,6 +199,7 @@ export async function backupUser(emailOrId: string): Promise<BackupResult> {
 export async function getBackupStatus(emailOrId: string): Promise<BackupStatus> {
   const { data } = await api.get<BackupStatus>('/v1/admin/backups/status', {
     params: { emailOrId },
+    timeout: BACKUP_STATUS_TIMEOUT_MS,
   })
   return data
 }

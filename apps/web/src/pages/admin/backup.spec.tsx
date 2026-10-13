@@ -52,6 +52,10 @@ const backedUp: BackupStatus = {
 
 const noBackup: BackupStatus = { exists: false }
 
+const unreadable: BackupStatus = { exists: true, degraded: 'unreadable', userId: 'u-1' }
+
+const corrupt: BackupStatus = { exists: true, degraded: 'corrupt', userId: 'u-1' }
+
 const result: BackupResult = {
   userId: 'u-1',
   email: 'ada@example.com',
@@ -154,8 +158,8 @@ describe('BackupSection', () => {
     await waitFor(() => expect(api.getBackupStatus).toHaveBeenCalledTimes(2))
   })
 
-  it('surfaces a backup failure as an error toast', async () => {
-    api.backupUser.mockRejectedValue(new Error('S3 unavailable'))
+  it('surfaces a backup failure as an error toast without axios verbatim', async () => {
+    api.backupUser.mockRejectedValue(new Error('Request failed with status code 500'))
 
     render(<BackupSection />)
     await search('grace')
@@ -165,7 +169,8 @@ describe('BackupSection', () => {
     fireEvent.click(button('Run backup'))
     fireEvent.click(button('Confirm'))
 
-    expect(await screen.findByText('S3 unavailable')).toBeTruthy()
+    expect(await screen.findByText('Backup failed')).toBeTruthy()
+    expect(screen.queryByText('Request failed with status code 500')).toBeNull()
     expect(button('Run backup').disabled).toBe(false)
     expect(screen.queryByText(/Backed up/)).toBeNull()
   })
@@ -177,6 +182,72 @@ describe('BackupSection', () => {
 
     expect(await screen.findByText('None')).toBeTruthy()
     expect(await screen.findByText('No backup yet for this user.')).toBeTruthy()
+  })
+
+  it('shows the unreadable degraded state and hides a stale Last run', async () => {
+    api.getBackupStatus.mockResolvedValue(unreadable)
+
+    render(<BackupSection />)
+    await search('ada')
+    fireEvent.click(button(/ada@example.com/))
+
+    expect(await screen.findByText('Unreadable')).toBeTruthy()
+    expect(await screen.findByText('Backup listed but unreadable')).toBeTruthy()
+    expect(screen.getByText(/can't be fetched/)).toBeTruthy()
+    expect(screen.queryByText(/Last run/)).toBeNull()
+
+    // a fresh run must not resurrect the stale Last-run line while degraded
+    fireEvent.click(button('Run backup'))
+    fireEvent.click(button('Confirm'))
+    await waitFor(() => expect(api.backupUser).toHaveBeenCalledWith('u-1'))
+    expect(await screen.findByText(/Backed up 121 files/)).toBeTruthy()
+    expect(screen.queryByText(/Last run/)).toBeNull()
+    expect(screen.getByText('Unreadable')).toBeTruthy()
+  })
+
+  it('shows the corrupt degraded state and hides a stale Last run', async () => {
+    api.getBackupStatus.mockResolvedValue(corrupt)
+
+    render(<BackupSection />)
+    await search('ada')
+    fireEvent.click(button(/ada@example.com/))
+
+    expect(await screen.findByText('Corrupt')).toBeTruthy()
+    expect(await screen.findByText('Backup manifest is corrupt')).toBeTruthy()
+    expect(screen.getByText(/isn't valid JSON/)).toBeTruthy()
+    expect(screen.queryByText(/Last run/)).toBeNull()
+
+    fireEvent.click(button('Run backup'))
+    fireEvent.click(button('Confirm'))
+    await waitFor(() => expect(api.backupUser).toHaveBeenCalledWith('u-1'))
+    expect(await screen.findByText(/Backed up 121 files/)).toBeTruthy()
+    expect(screen.queryByText(/Last run/)).toBeNull()
+    expect(screen.getByText('Corrupt')).toBeTruthy()
+  })
+
+  it('maps a 503 status probe to the Floci copy, keeps Last run and never leaks axios verbatim', async () => {
+    api.getBackupStatus.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 503 },
+      message: 'Request failed with status code 503',
+    })
+
+    render(<BackupSection />)
+    await search('grace')
+    fireEvent.click(button(/grace@example.com/))
+
+    expect(await screen.findByText('Unavailable')).toBeTruthy()
+    expect(await screen.findByText("Can't reach backup storage")).toBeTruthy()
+    expect(screen.getByText(/Floci is running/)).toBeTruthy()
+    expect(screen.queryByText('Request failed with status code 503')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+
+    // Last run from a successful backup stays visible even while status probes fail
+    fireEvent.click(button('Run backup'))
+    fireEvent.click(button('Confirm'))
+    await waitFor(() => expect(api.backupUser).toHaveBeenCalledWith('u-2'))
+    expect(await screen.findByText(/Last run/)).toBeTruthy()
+    expect(screen.queryByText('Request failed with status code 503')).toBeNull()
   })
 
   it('previews an encoded prefix for uppercase emails in the confirm dialog', async () => {

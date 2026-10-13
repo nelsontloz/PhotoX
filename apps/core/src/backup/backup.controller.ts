@@ -64,6 +64,7 @@ export class BackupController {
   @Get('backups/status')
   @ApiOperation({ summary: 'Backup manifest status for one user (admin-only)' })
   @ApiResponse({ status: 200, description: 'Manifest presence and row counts' })
+  @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
   async status(@Query() query: BackupStatusQueryDto): Promise<BackupStatus> {
     return this.backups.backupStatus(query.emailOrId)
   }

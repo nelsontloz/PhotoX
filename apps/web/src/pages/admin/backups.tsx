@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { FaDatabase, FaMagnifyingGlass, FaSpinner } from 'react-icons/fa6'
+import { isAxiosError } from 'axios'
 import { type AdminUserRow } from '@photox/shared-types'
 import {
   AdminSection,
@@ -26,6 +27,38 @@ import { ConfirmDialog, RoleBadge } from './shared'
 
 const PICK_LIMIT = 8
 const PICK_DEBOUNCE_MS = 250
+
+const S3_DOWN_HEADLINE = "Can't reach backup storage"
+const S3_DOWN_BODY =
+  "The S3 endpoint isn't responding — check that Floci is running (docker compose up -d floci), then retry."
+const BACKUP_TIMEOUT_MESSAGE =
+  'Timed out talking to the API — the backup store may be slow or down. Retry in a moment.'
+const STATUS_LOAD_FALLBACK = "Couldn't load backup status."
+const RUN_FALLBACK = 'Backup failed'
+
+const DEGRADED_UNREADABLE_HEADLINE = 'Backup listed but unreadable'
+const DEGRADED_UNREADABLE_BODY =
+  "S3 still lists this user's backup, but the manifest can't be fetched — objects may have been deleted outside PhotoX. Run a new backup to replace it."
+const DEGRADED_CORRUPT_HEADLINE = 'Backup manifest is corrupt'
+const DEGRADED_CORRUPT_BODY =
+  "The manifest downloaded, but it isn't valid JSON or doesn't match the backup format — this backup can't be restored as-is."
+
+/** 503 means S3/Floci is down; a timeout or no response means the store is slow. Never leak axios verbatim. */
+function statusErrorMessage(err: unknown): string {
+  if (isAxiosError(err)) {
+    if (err.response?.status === 503) return S3_DOWN_BODY
+    if (!err.response || err.code === 'ECONNABORTED') return BACKUP_TIMEOUT_MESSAGE
+  }
+  return STATUS_LOAD_FALLBACK
+}
+
+function runErrorMessage(err: unknown): string {
+  if (isAxiosError(err)) {
+    if (err.response?.status === 503) return S3_DOWN_BODY
+    if (!err.response || err.code === 'ECONNABORTED') return BACKUP_TIMEOUT_MESSAGE
+  }
+  return RUN_FALLBACK
+}
 
 /** Formats an ISO timestamp the way the rest of the admin console does, tolerating absence. */
 function stamp(value: string | undefined): string {
@@ -101,8 +134,8 @@ export function BackupSection() {
       .then((res) => {
         if (!cancelled) setStatus(res)
       })
-      .catch((err: Error) => {
-        if (!cancelled) setStatusError(err.message ?? 'Failed to load backup status')
+      .catch((err: unknown) => {
+        if (!cancelled) setStatusError(statusErrorMessage(err))
       })
       .finally(() => {
         if (!cancelled) setStatusLoading(false)
@@ -122,8 +155,8 @@ export function BackupSection() {
       const res = await backupUser(selected.id)
       setResult(res)
       setStatusVersion((v) => v + 1)
-    } catch (err) {
-      setRunError(err instanceof Error ? err.message : 'Backup failed')
+    } catch (err: unknown) {
+      setRunError(runErrorMessage(err))
     } finally {
       setInFlight(false)
     }
@@ -235,9 +268,19 @@ export function BackupSection() {
             <p className="text-label-xs uppercase font-mono text-outline mr-auto">
               Existing backup
             </p>
-            {status && (
-              <StatusPill tone={status.exists ? 'ok' : 'muted'}>
-                {status.exists ? 'Backed up' : 'None'}
+            {(statusError ?? status) && (
+              <StatusPill
+                tone={(statusError ?? status?.degraded) ? 'warn' : status?.exists ? 'ok' : 'muted'}
+              >
+                {statusError
+                  ? 'Unavailable'
+                  : status?.degraded === 'unreadable'
+                    ? 'Unreadable'
+                    : status?.degraded === 'corrupt'
+                      ? 'Corrupt'
+                      : status?.exists
+                        ? 'Backed up'
+                        : 'None'}
               </StatusPill>
             )}
           </div>
@@ -249,8 +292,28 @@ export function BackupSection() {
             <div className="h-24 rounded bg-surface-container-high/50 animate-pulse" />
           ) : statusError ? (
             <div className="py-2">
-              <p className="text-xs text-status-error mb-2">{statusError}</p>
+              {statusError === S3_DOWN_BODY ? (
+                <>
+                  <p className="text-xs font-medium text-on-surface">{S3_DOWN_HEADLINE}</p>
+                  <p className="mt-1 mb-2 text-xs text-on-surface-variant">{S3_DOWN_BODY}</p>
+                </>
+              ) : (
+                <p className="text-xs text-status-error mb-2">{statusError}</p>
+              )}
               <GhostButton onClick={() => setStatusVersion((v) => v + 1)}>Retry</GhostButton>
+            </div>
+          ) : status?.degraded ? (
+            <div className="py-2">
+              <p className="text-xs font-medium text-on-surface">
+                {status.degraded === 'unreadable'
+                  ? DEGRADED_UNREADABLE_HEADLINE
+                  : DEGRADED_CORRUPT_HEADLINE}
+              </p>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                {status.degraded === 'unreadable'
+                  ? DEGRADED_UNREADABLE_BODY
+                  : DEGRADED_CORRUPT_BODY}
+              </p>
             </div>
           ) : status?.exists ? (
             <StatStrip
@@ -264,7 +327,7 @@ export function BackupSection() {
           ) : status ? (
             <p className="text-xs text-on-surface-variant">No backup yet for this user.</p>
           ) : null}
-          {result && (
+          {result && !status?.degraded && (
             <p className="mt-3 font-mono text-[10px] text-on-surface-variant break-all">
               Last run {stamp(result.backedUpAt)} — {result.files.toLocaleString()} files,{' '}
               {result.assets.toLocaleString()} assets · {result.prefix}

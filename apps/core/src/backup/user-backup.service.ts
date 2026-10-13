@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { isUUID } from 'class-validator'
 import { randomUUID } from 'crypto'
@@ -195,6 +195,7 @@ export interface RestoreResult extends BackupResult {
 
 export interface BackupStatus {
   exists: boolean
+  degraded?: 'unreadable' | 'corrupt'
   userId?: string
   emailAtBackup?: string
   backedUpAt?: string
@@ -606,22 +607,48 @@ export class UserBackupService {
   }
 
   async backupStatus(emailOrId: string): Promise<BackupStatus> {
-    await this.s3.ensureBucket()
+    try {
+      await this.s3.ensureBucket()
+    } catch {
+      throw new ServiceUnavailableException('Backup storage (S3) unreachable')
+    }
     let located
     try {
       located = await this.locateBackup(emailOrId)
     } catch (err) {
       if (err instanceof NotFoundException) return { exists: false }
-      throw err
+      throw new ServiceUnavailableException('Backup storage (S3) unreachable')
     }
     let raw: Buffer
     try {
       raw = await this.s3.getBuffer(located.manifestObjectKey)
     } catch (err) {
       if (isNotFound(err)) return { exists: false }
-      throw err
+      const name = (err as { name?: string }).name ?? 'Unknown'
+      try {
+        await this.s3.headObject(located.manifestObjectKey)
+      } catch (headErr) {
+        if (isNotFound(headErr)) return { exists: false }
+        throw new ServiceUnavailableException('Backup storage (S3) unreachable')
+      }
+      this.logger.warn(
+        `Backup manifest at ${located.manifestObjectKey} unreadable (${name}) — ` +
+          'object exists, reporting degraded status',
+      )
+      return { exists: true, degraded: 'unreadable', ...this.prefixIdentity(located) }
     }
-    const manifest = userBackupManifestSchema.parse(JSON.parse(raw.toString('utf-8')))
+    let manifest: UserBackupManifest
+    try {
+      manifest = userBackupManifestSchema.parse(JSON.parse(raw.toString('utf-8')))
+    } catch (err) {
+      // never log the payload — the manifest carries the user's passwordHash
+      const name = (err as { name?: string }).name ?? 'Unknown'
+      this.logger.warn(
+        `Backup manifest at ${located.manifestObjectKey} failed validation (${name}) — ` +
+          'reporting degraded status',
+      )
+      return { exists: true, degraded: 'corrupt', ...this.manifestIdentity(raw, located) }
+    }
     // Legacy manifests embed derivative rows — report original-only counts so a
     // pre-fix backup reads the same as the bytes a new backup would upload.
     const originalFiles = manifest.files.filter((f) => !isDerivativeStorageKey(f.storageKey))
@@ -636,6 +663,60 @@ export class UserBackupService {
       shares: manifest.shares.length,
       persons: manifest.persons.length,
     }
+  }
+
+  /**
+   * Best-effort identity for a degraded (unreadable) manifest: the userId from
+   * the located prefix plus the backup-time email parsed back out of the
+   * `<email>__<userId>` folder segment. Counts are omitted — the body never
+   * arrived — and backedUpAt is unknowable without the manifest.
+   */
+  private prefixIdentity(located: { prefix: string; userId: string }): {
+    userId: string
+    emailAtBackup?: string
+  } {
+    const identity: { userId: string; emailAtBackup?: string } = { userId: located.userId }
+    try {
+      const base = resolveBackupPrefix()
+      const stripped =
+        base && located.prefix.startsWith(base) ? located.prefix.slice(base.length) : located.prefix
+      const dir = stripped.replace(/\/+$/, '').split('/').pop() ?? stripped
+      const parsed = parseBackupDir(dir)
+      if (parsed.userId === located.userId) identity.emailAtBackup = parsed.email
+    } catch {
+      // email stays omitted — userId alone still identifies the backup
+    }
+    return identity
+  }
+
+  /**
+   * Best-effort identity for a corrupt manifest: identifying fields pulled from
+   * the raw bytes where present (never the secret payload), falling back to the
+   * prefix-derived email. Counts are omitted — a failed schema parse means no
+   * count is trustworthy.
+   */
+  private manifestIdentity(
+    raw: Buffer,
+    located: { prefix: string; userId: string },
+  ): { userId: string; emailAtBackup?: string; backedUpAt?: string } {
+    const identity: { userId: string; emailAtBackup?: string; backedUpAt?: string } = {
+      ...this.prefixIdentity(located),
+    }
+    try {
+      const partial = JSON.parse(raw.toString('utf-8')) as Record<string, unknown>
+      if (typeof partial.userId === 'string' && partial.userId.length > 0) {
+        identity.userId = partial.userId
+      }
+      if (typeof partial.emailAtBackup === 'string' && partial.emailAtBackup.length > 0) {
+        identity.emailAtBackup = partial.emailAtBackup
+      }
+      if (typeof partial.backedUpAt === 'string' && partial.backedUpAt.length > 0) {
+        identity.backedUpAt = partial.backedUpAt
+      }
+    } catch {
+      // raw bytes are not JSON at all — prefix-derived identity stands
+    }
+    return identity
   }
 
   private async findUser(emailOrId: string): Promise<User | null> {

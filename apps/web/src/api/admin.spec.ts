@@ -109,6 +109,7 @@ describe('user backup admin API', () => {
     await expect(getBackupStatus('ada@example.com')).resolves.toEqual(status)
     expect(getMock).toHaveBeenCalledWith('/v1/admin/backups/status', {
       params: { emailOrId: 'ada@example.com' },
+      timeout: 30_000,
     })
   })
 
