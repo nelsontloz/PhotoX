@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import type { Job } from 'bullmq'
 import { SEARCH_EMBEDDING_MODEL } from '@photox/shared-types'
 import { BullMqService } from './bullmq.service'
-import { assetRefsJobSchema, type AssetRefsJob } from './job-schemas'
+import { assetRefsJobSchema, bindingOf, type AssetRefsJob } from './job-schemas'
 import { orientedResize, patchStatusFailed, runAssetFileJob } from './asset-file-job'
 import { FACE_MAX_DIM } from './face.processor'
 import { EmbeddingService } from './embedding.service'
@@ -55,7 +55,7 @@ export class EmbeddingProcessor implements OnModuleInit {
             model: SEARCH_EMBEDDING_MODEL,
             embedding,
           },
-          data.sig === undefined ? undefined : { sig: data.sig },
+          bindingOf(data),
         )
 
         this.logger.log(`Embedding complete: asset=${data.assetId}`)

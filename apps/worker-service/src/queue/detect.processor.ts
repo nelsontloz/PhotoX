@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import type { Job } from 'bullmq'
 import { BullMqService } from './bullmq.service'
-import { assetRefsJobSchema, type AssetRefsJob } from './job-schemas'
+import { assetRefsJobSchema, bindingOf, type AssetRefsJob } from './job-schemas'
 import { orientedPrep, runAssetFileJob } from './asset-file-job'
 import { DetectService, scaleDetectionsToOriginal } from './detect.service'
 import { CoreClient } from '../core/core-client.service'
@@ -53,7 +53,7 @@ export class DetectProcessor implements OnModuleInit {
           data.userId,
           data.assetId,
           { detections: scaled },
-          data.sig === undefined ? undefined : { sig: data.sig },
+          bindingOf(data),
         )
 
         this.logger.log(`Detection complete: asset=${data.assetId}, count=${scaled.length}`)

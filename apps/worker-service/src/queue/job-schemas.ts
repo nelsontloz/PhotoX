@@ -1,5 +1,7 @@
 import { UnrecoverableError } from 'bullmq'
+import { createHmac, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
+import { loadAuthEnv } from '@photox/shared-config'
 import { FACE_DETECTOR_KINDS } from '@photox/shared-types'
 
 const uuid = z.string().uuid()
@@ -49,7 +51,78 @@ export function parseJobData<T>(schema: z.ZodType<T>, data: unknown, queue: stri
       .join('; ')
     throw new UnrecoverableError(`Invalid ${queue} job payload: ${detail}`)
   }
+  // shared ingress: every processor routes through here, so a forged payload fails before any
+  // CoreClient call or re-enqueue below
+  verifyJobSig(parsed.data, queue)
   return parsed.data
+}
+
+// scope derivation mirrors core's enqueue stamp (and its guard's jobScopeFrom for asset routes):
+// the asset/file/user id, first present — cluster jobs carry only the user id
+export function jobScopeOf(data: {
+  assetId?: unknown
+  fileId?: unknown
+  userId?: unknown
+}): string | undefined {
+  return [data.assetId, data.fileId, data.userId].find(
+    (v): v is string => typeof v === 'string' && v.length > 0,
+  )
+}
+
+// the binding threaded back as X-Job-Signature/X-Job-Scope — scope stays identical to the
+// verified scope so the guard recomputes the same HMAC
+export function bindingOf(data: {
+  assetId?: unknown
+  fileId?: unknown
+  userId?: unknown
+  sig?: unknown
+}): { sig: string; scope: string } | undefined {
+  if (typeof data.sig !== 'string' || data.sig.length === 0) return undefined
+  const scope = jobScopeOf(data)
+  if (!scope) return undefined
+  return { sig: data.sig, scope }
+}
+
+function workerSecret(): string | undefined {
+  try {
+    return loadAuthEnv().WORKER_JWT_SECRET
+  } catch {
+    return undefined
+  }
+}
+
+let warnedNoSecret = false
+
+// H1: a Redis-forged job mints a delegated token for whatever userId it claims, so the payload
+// itself must prove core enqueued it — HMAC(sub:scope) under WORKER_JWT_SECRET, same secret
+// source and construction as core's guard. Fail-closed when configured; legacy pass-through
+// (warn once) when the secret is unavailable, which is dev-only — compose always passes it
+export function verifyJobSig(data: unknown, queue: string): void {
+  const secret = workerSecret()
+  if (!secret) {
+    if (!warnedNoSecret) {
+      warnedNoSecret = true
+      console.warn(
+        '[worker] WORKER_JWT_SECRET is not configured — job signatures are not verified (dev only)',
+      )
+    }
+    return
+  }
+  const record = (typeof data === 'object' && data !== null ? data : {}) as Record<string, unknown>
+  const sub = record.userId
+  const scope = jobScopeOf(record)
+  const sig = record.sig
+  const expected =
+    typeof sub === 'string' && sub.length > 0 && scope !== undefined
+      ? createHmac('sha256', secret).update(`${sub}:${scope}`).digest('hex')
+      : undefined
+  // length-checked first: timingSafeEqual throws on mismatched lengths
+  const valid =
+    typeof sig === 'string' &&
+    expected !== undefined &&
+    sig.length === expected?.length &&
+    timingSafeEqual(Buffer.from(sig), Buffer.from(expected))
+  if (!valid) throw new UnrecoverableError(`Missing or invalid job signature for ${queue} job`)
 }
 
 export function assertOwnership(

@@ -11,6 +11,7 @@ import type {
   ApplyClustersPayload,
   ApplyClustersResult,
   ClusterFace,
+  JobBinding,
   MetadataPatch,
   RegisterFileInput,
   RegisterThumbnailInput,
@@ -19,6 +20,7 @@ import type {
 export interface CallRecord {
   method: string
   args: unknown[]
+  binding?: JobBinding
 }
 
 export function makeFileRecord(
@@ -139,8 +141,8 @@ export class FakeCoreClient {
     return this.calls.filter((c) => c.method === method)
   }
 
-  getFile(userId: string, fileId: string): Promise<FileRecord> {
-    this.calls.push({ method: 'getFile', args: [userId, fileId] })
+  getFile(userId: string, fileId: string, binding?: JobBinding): Promise<FileRecord> {
+    this.calls.push({ method: 'getFile', args: [userId, fileId], binding })
     const file = this.files.get(fileId)
     if (file?.userId !== userId) {
       return Promise.reject(new UnrecoverableError(`File not found: ${fileId}`))
@@ -148,8 +150,8 @@ export class FakeCoreClient {
     return Promise.resolve({ ...file })
   }
 
-  getAsset(userId: string, assetId: string): Promise<Asset> {
-    this.calls.push({ method: 'getAsset', args: [userId, assetId] })
+  getAsset(userId: string, assetId: string, binding?: JobBinding): Promise<Asset> {
+    this.calls.push({ method: 'getAsset', args: [userId, assetId], binding })
     const asset = this.assets.get(assetId)
     if (asset?.userId !== userId) {
       return Promise.reject(new UnrecoverableError(`Asset not found: ${assetId}`))
@@ -236,13 +238,17 @@ export class FakeCoreClient {
     return Promise.resolve({ deleted })
   }
 
-  getFacesForCluster(userId: string): Promise<ClusterFace[]> {
-    this.calls.push({ method: 'getFacesForCluster', args: [userId] })
+  getFacesForCluster(userId: string, binding?: JobBinding): Promise<ClusterFace[]> {
+    this.calls.push({ method: 'getFacesForCluster', args: [userId], binding })
     return Promise.resolve(this.clusterFaces.map((f) => ({ ...f })))
   }
 
-  getAssetsByIds(userId: string, ids: string[]): Promise<Pick<Asset, 'id' | 'fileId'>[]> {
-    this.calls.push({ method: 'getAssetsByIds', args: [userId, ids] })
+  getAssetsByIds(
+    userId: string,
+    ids: string[],
+    binding?: JobBinding,
+  ): Promise<Pick<Asset, 'id' | 'fileId'>[]> {
+    this.calls.push({ method: 'getAssetsByIds', args: [userId, ids], binding })
     return Promise.resolve(
       ids
         .map((id) => this.assets.get(id))

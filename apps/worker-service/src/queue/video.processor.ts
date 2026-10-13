@@ -5,7 +5,13 @@ import { join } from 'path'
 import { randomUUID, createHash } from 'crypto'
 import { copyFile, rm, mkdir, readFile } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
-import { assertOwnership, parseJobData, assetRefsJobSchema, type AssetRefsJob } from './job-schemas'
+import {
+  assertOwnership,
+  bindingOf,
+  parseJobData,
+  assetRefsJobSchema,
+  type AssetRefsJob,
+} from './job-schemas'
 import { patchStatusFailed } from './asset-file-job'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
@@ -42,15 +48,15 @@ export class VideoProcessor implements OnModuleInit {
       job.data,
       'process-video',
     )
-    const binding = sig === undefined ? undefined : { sig }
+    const binding = bindingOf({ assetId, fileId, userId, sig })
 
     this.logger.log(`Processing video transcode: asset=${assetId}`)
 
     const srcDir = join(tmpdir(), fileId)
     const outDir = `${srcDir}-transcode`
 
-    const record = await this.core.getFile(userId, fileId)
-    const asset = await this.core.getAsset(userId, assetId)
+    const record = await this.core.getFile(userId, fileId, binding)
+    const asset = await this.core.getAsset(userId, assetId, binding)
     assertOwnership({ assetId, fileId, userId }, { record, asset })
 
     try {

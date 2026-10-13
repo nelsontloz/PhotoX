@@ -59,21 +59,23 @@ function isUserMetadataWrite(method: string, path: string): boolean {
   return method === 'PATCH' && /^\/api\/v1\/assets\/[^/]+\/metadata$/.test(path)
 }
 
-// scope the HMAC binding to the route's target: path id/fileId, then the register-file
-// body asset, then the worker's claimed scope, else the sub itself (persons routes, whose
-// cluster jobs are user-scoped)
-function jobScopeFrom(req: Request, sub: string): string {
+// candidate scopes for the HMAC binding, in request-priority order: the route target
+// (path id/fileId), then the register-file body asset, then the worker's claimed scope,
+// else the sub itself (persons routes, whose cluster jobs are user-scoped). The enqueue
+// stamps scope from the JOB payload (first of assetId|fileId|userId — usually the asset)
+// while file reads address the fileId, so no single derived scope fits every legit call;
+// the guard accepts when the presented sig verifies against ANY non-empty candidate.
+// Unforgeability holds (only the secret holder mints sigs) and sub-scoped services still
+// enforce ownership, so an assetId-scoped sig reading that asset's file adds no capability.
+function jobScopesFrom(req: Request, sub: string): string[] {
+  const scopes: string[] = []
   const params = req.params as Record<string, unknown> | undefined
-  const id = params?.id
-  if (typeof id === 'string' && id.length > 0) return id
-  const fileId = params?.fileId
-  if (typeof fileId === 'string' && fileId.length > 0) return fileId
   const body = req.body as Record<string, unknown> | undefined
-  const assetId = body?.assetId
-  if (typeof assetId === 'string' && assetId.length > 0) return assetId
-  const scopeHeader = req.headers['x-job-scope']
-  if (typeof scopeHeader === 'string' && scopeHeader.length > 0) return scopeHeader
-  return sub
+  const header = req.headers['x-job-scope']
+  for (const v of [params?.id, params?.fileId, body?.assetId, header, sub]) {
+    if (typeof v === 'string' && v.length > 0 && !scopes.includes(v)) scopes.push(v)
+  }
+  return scopes
 }
 
 // req.body is parsed by express.json() before guards run; absent on unit-test mocks
@@ -184,13 +186,13 @@ export class JwtAuthGuard implements CanActivate {
     if (!payload.act && isUserMetadataWrite(method, path) && hasWorkerMetadataKey(req.body))
       throw new ForbiddenException('Worker field')
     // ponytail: HMAC job binding — a worker-origin token alone proves only delegation, not that
-    // a job was enqueued for this target; mutating /worker/* calls must carry the X-Job-Signature
-    // the enqueue stamped (HMAC of sub:scope under WORKER_JWT_SECRET). Scoped to worker-origin
+    // a job was enqueued for this target; every /worker/* call (reads included — a forged
+    // act token otherwise reads any victim row) must carry the X-Job-Signature the enqueue
+    // stamped (HMAC of sub:scope under WORKER_JWT_SECRET). Scoped to worker-origin
     // because only the worker mints act tokens in prod (auth never sets act; the user-secret act
-    // tokens in specs are pre-binding stand-ins). Reads stay open. Ceiling: scope is the asset,
+    // tokens in specs are pre-binding stand-ins). Ceiling: scope is the asset,
     // not the job — a leaked token replays within its asset until it expires.
-    if (workerOrigin && payload.act && isWorkerRoute(path) && method !== 'GET' && method !== 'HEAD')
-      this.assertJobBinding(req, payload.sub)
+    if (workerOrigin && payload.act && isWorkerRoute(path)) this.assertJobBinding(req, payload.sub)
 
     // sliding renewal: once past half of its own ttl, a cookie-borne token is re-minted
     // from the verified payload so subresources keep authenticating without client JS
@@ -227,14 +229,18 @@ export class JwtAuthGuard implements CanActivate {
 
   private assertJobBinding(req: Request, sub: string): void {
     const presented = req.headers['x-job-signature']
-    const expectedHex = createHmac('sha256', this.workerSecret)
-      .update(`${sub}:${jobScopeFrom(req, sub)}`)
-      .digest('hex')
-    // length-checked first: timingSafeEqual throws on mismatched lengths
     const valid =
       typeof presented === 'string' &&
-      presented.length === expectedHex.length &&
-      timingSafeEqual(Buffer.from(presented), Buffer.from(expectedHex))
+      jobScopesFrom(req, sub).some((scope) => {
+        const expectedHex = createHmac('sha256', this.workerSecret)
+          .update(`${sub}:${scope}`)
+          .digest('hex')
+        // length-checked first: timingSafeEqual throws on mismatched lengths
+        return (
+          presented.length === expectedHex.length &&
+          timingSafeEqual(Buffer.from(presented), Buffer.from(expectedHex))
+        )
+      })
     if (!valid) throw new ForbiddenException('Missing or invalid job binding')
   }
 }

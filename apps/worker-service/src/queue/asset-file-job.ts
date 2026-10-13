@@ -4,7 +4,7 @@ import sharp from 'sharp'
 import type { z } from 'zod'
 import type { Asset, FileRecord } from '@photox/shared-types'
 import { LocalStorageService } from '@photox/shared-config'
-import { assertOwnership, parseJobData } from './job-schemas'
+import { assertOwnership, bindingOf, parseJobData } from './job-schemas'
 import type { CoreClient, MetadataPatch } from '../core/core-client.service'
 
 export interface AssetFileJobSpec<
@@ -36,11 +36,12 @@ export async function runAssetFileJob<
   const data = parseJobData(spec.schema, job.data, spec.queue)
   const { assetId, fileId, userId } = data
   const { core, storage, logger } = deps
+  const binding = bindingOf(data)
 
   logger.log(`Processing ${spec.label}: asset=${assetId}`)
 
-  const record = await core.getFile(userId, fileId)
-  const asset = await core.getAsset(userId, assetId)
+  const record = await core.getFile(userId, fileId, binding)
+  const asset = await core.getAsset(userId, assetId, binding)
   assertOwnership({ assetId, fileId, userId }, { record, asset })
 
   // storage is local-disk only — read the original in place, no tmp staging copy

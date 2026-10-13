@@ -3,7 +3,13 @@ import type { Job } from 'bullmq'
 import { readFile } from 'fs/promises'
 import sharp from 'sharp'
 import { BullMqService } from './bullmq.service'
-import { assertOwnership, parseJobData, assetRefsJobSchema, type AssetRefsJob } from './job-schemas'
+import {
+  assertOwnership,
+  bindingOf,
+  parseJobData,
+  assetRefsJobSchema,
+  type AssetRefsJob,
+} from './job-schemas'
 import { patchStatusFailed } from './asset-file-job'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
@@ -40,12 +46,12 @@ export class MetadataProcessor implements OnModuleInit {
       job.data,
       'process-metadata',
     )
-    const binding = sig === undefined ? undefined : { sig }
+    const binding = bindingOf({ assetId, fileId, userId, sig })
 
     this.logger.log(`Processing metadata: asset=${assetId}`)
 
-    const record = await this.core.getFile(userId, fileId)
-    const asset = await this.core.getAsset(userId, assetId)
+    const record = await this.core.getFile(userId, fileId, binding)
+    const asset = await this.core.getAsset(userId, assetId, binding)
     assertOwnership({ assetId, fileId, userId }, { record, asset })
 
     // storage is local-disk only — read the original in place, no tmp staging copy

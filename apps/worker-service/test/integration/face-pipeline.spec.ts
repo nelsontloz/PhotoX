@@ -7,7 +7,14 @@ import { makeAsset, makeFileRecord } from '../fake-core-client'
 import type { ClusterFace } from '../../src/core/core-client.service'
 import { BullMqService } from '../../src/queue/bullmq.service'
 import { CLUSTER_DEBOUNCE_MS } from '../../src/queue/face.processor'
-import { createTestApp, closeTestApp, resetTestApp, waitForJob, type TestApp } from './helpers'
+import {
+  createTestApp,
+  closeTestApp,
+  resetTestApp,
+  signJob,
+  waitForJob,
+  type TestApp,
+} from './helpers'
 
 const emb512 = (...pairs: [number, number][]): number[] => {
   const v = new Array<number>(FACE_EMBEDDING_DIM).fill(0)
@@ -85,13 +92,13 @@ describe('Face pipeline (integration)', () => {
 
   async function runClusterJob(userId: string) {
     const queue = testApp.getQueue('process-faces-cluster')
-    const job = await queue.add('cluster', { userId })
+    const job = await queue.add('cluster', signJob({ userId }))
     expect(await waitForJob(queue, job.id!)).toBe('completed')
   }
 
   async function runFaceJob(assetId: string, fileId: string, userId: string) {
     const queue = testApp.getQueue('process-faces')
-    const job = await queue.add('face', { assetId, fileId, userId })
+    const job = await queue.add('face', signJob({ assetId, fileId, userId }))
     return { queue, job }
   }
 
@@ -117,18 +124,14 @@ describe('Face pipeline (integration)', () => {
     expect(updated.faceStatus).toBe('ready')
     expect(updated.faceCount).toBe(1)
 
-    expect(clusterAdd).toHaveBeenCalledExactlyOnceWith(
-      'cluster',
-      { userId },
-      {
-        jobId: `cluster-${userId}`,
-        delay: CLUSTER_DEBOUNCE_MS,
-        attempts: 3,
-        backoff: { type: 'exponential' },
-        removeOnComplete: true,
-        removeOnFail: true,
-      },
-    )
+    expect(clusterAdd).toHaveBeenCalledExactlyOnceWith('cluster', signJob({ userId }), {
+      jobId: `cluster-${userId}`,
+      delay: CLUSTER_DEBOUNCE_MS,
+      attempts: 3,
+      backoff: { type: 'exponential' },
+      removeOnComplete: true,
+      removeOnFail: true,
+    })
 
     clusterAdd.mockRestore()
   })
@@ -295,6 +298,8 @@ describe('Face pipeline (integration)', () => {
     expect(enqueueSpy).toHaveBeenCalledWith(
       'process-faces',
       're-embed',
+      // the spy observes enqueue's args pre-stamp; withJobSig stamps inside (covered by the
+      // cluster queue.add assertion above and the job-binding re-enqueue probes)
       { assetId, fileId, userId, detector: 'human' },
       expect.objectContaining({
         jobId: `face-reembed-${assetId}`,

@@ -11,6 +11,7 @@ import {
   createTestApp,
   resetTestApp,
   seedOriginal,
+  signJob,
   waitForJob,
   type TestApp,
 } from './helpers'
@@ -71,7 +72,10 @@ describe('VideoProcessor (integration)', () => {
       })
 
       const queue = testApp.getQueue('process-video')
-      const job = await queue.add('video', { assetId: asset.id, fileId: record.id, userId })
+      const job = await queue.add(
+        'video',
+        signJob({ assetId: asset.id, fileId: record.id, userId }),
+      )
 
       expect(await waitForJob(queue, job.id!)).toBe('completed')
 
@@ -106,7 +110,10 @@ describe('VideoProcessor (integration)', () => {
         })
 
         const queue = testApp.getQueue('process-video')
-        const job = await queue.add('video', { assetId: asset.id, fileId: record.id, userId })
+        const job = await queue.add(
+          'video',
+          signJob({ assetId: asset.id, fileId: record.id, userId }),
+        )
 
         expect(await waitForJob(queue, job.id!)).toBe('completed')
 
@@ -151,7 +158,10 @@ describe('VideoProcessor (integration)', () => {
       })
 
       const queue = testApp.getQueue('process-video')
-      const job = await queue.add('video', { assetId: asset.id, fileId: record.id, userId })
+      const job = await queue.add(
+        'video',
+        signJob({ assetId: asset.id, fileId: record.id, userId }),
+      )
 
       expect(await waitForJob(queue, job.id!)).toBe('failed')
 

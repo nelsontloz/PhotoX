@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import type { Job } from 'bullmq'
 import { BullMqService } from './bullmq.service'
-import { parseJobData, assetRefsJobSchema, type AssetRefsJob } from './job-schemas'
+import { parseJobData, bindingOf, assetRefsJobSchema, type AssetRefsJob } from './job-schemas'
 import { CoreClient } from '../core/core-client.service'
 
 @Injectable()
@@ -22,10 +22,14 @@ export class CleanupProcessor implements OnModuleInit {
   }
 
   private async processJob(job: Job<AssetRefsJob>) {
-    const { userId, fileId, sig } = parseJobData(assetRefsJobSchema, job.data, 'cleanup-asset')
+    const { assetId, userId, fileId, sig } = parseJobData(
+      assetRefsJobSchema,
+      job.data,
+      'cleanup-asset',
+    )
 
     // endpoint deletes blob + row and is idempotent (204 even when missing)
-    await this.core.deleteOwnedFile(userId, fileId, sig === undefined ? undefined : { sig })
+    await this.core.deleteOwnedFile(userId, fileId, bindingOf({ assetId, fileId, userId, sig }))
     this.logger.log(`Cleanup complete: file=${fileId}`)
   }
 }

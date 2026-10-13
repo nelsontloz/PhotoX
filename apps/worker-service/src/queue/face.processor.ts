@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import type { Job } from 'bullmq'
 import { BullMqService } from './bullmq.service'
-import { faceJobSchema, type FaceJob } from './job-schemas'
+import { faceJobSchema, bindingOf, type FaceJob } from './job-schemas'
 import { orientedPrep, patchStatusFailed, runAssetFileJob } from './asset-file-job'
 import { FaceDetectorService } from './face.detector'
 import { scaleDetectionsToOriginal } from './detect.service'
@@ -41,7 +41,7 @@ export class FaceProcessor implements OnModuleInit {
         const { assetId, userId } = data
         // ponytail: resolve once — the same kind drives detection and is persisted as provenance
         const resolvedDetector = data.detector ?? envFaceDetectorKind()
-        const binding = data.sig === undefined ? undefined : { sig: data.sig }
+        const binding = bindingOf(data)
 
         await this.core.patchMetadata(userId, assetId, { faceStatus: 'pending' }, binding)
 

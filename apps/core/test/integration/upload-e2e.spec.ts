@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, createHmac } from 'node:crypto'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -60,7 +60,12 @@ import {
 import { runFfmpeg } from '../../../worker-service/src/queue/ffmpeg'
 import { CoreClient } from '../../../worker-service/src/core/core-client.service'
 import { HttpExceptionFilter } from '../../src/common/filters/http-exception.filter'
-import { TEST_AUTH_SECRET, setupTestInfra, teardownTestInfra } from './test-setup'
+import {
+  TEST_AUTH_SECRET,
+  TEST_WORKER_SECRET,
+  setupTestInfra,
+  teardownTestInfra,
+} from './test-setup'
 
 const ENTITIES = [
   User,
@@ -179,7 +184,20 @@ async function enqueueAndWait(
   data: Record<string, unknown>,
   timeoutMs = 60_000,
 ): Promise<void> {
-  const job = await bullMq.getQueue(queueName).add(queueName, data)
+  // H1: the worker ingress verifies the HMAC core's enqueue stamps — stamp the directly-added
+  // test job the same way (sub:scope, first of assetId/fileId/userId) or it dies Unrecoverable
+  const sub = data.userId
+  const scope = [data.assetId, data.fileId, data.userId].find(
+    (v): v is string => typeof v === 'string' && v.length > 0,
+  )
+  const stamped =
+    typeof sub === 'string' && sub.length > 0 && scope !== undefined
+      ? {
+          ...data,
+          sig: createHmac('sha256', TEST_WORKER_SECRET).update(`${sub}:${scope}`).digest('hex'),
+        }
+      : data
+  const job = await bullMq.getQueue(queueName).add(queueName, stamped)
   const deadline = Date.now() + timeoutMs
   for (;;) {
     if (await job.isCompleted()) return

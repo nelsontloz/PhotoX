@@ -6,7 +6,13 @@ import { join } from 'path'
 import { randomUUID, createHash } from 'crypto'
 import { copyFile, unlink, writeFile } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
-import { assertOwnership, parseJobData, thumbnailJobSchema, type ThumbnailJob } from './job-schemas'
+import {
+  assertOwnership,
+  bindingOf,
+  parseJobData,
+  thumbnailJobSchema,
+  type ThumbnailJob,
+} from './job-schemas'
 import { patchStatusFailed } from './asset-file-job'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
@@ -54,11 +60,12 @@ export class ThumbnailProcessor implements OnModuleInit {
       sig,
       metadataWaits = 0,
     } = parseJobData(thumbnailJobSchema, job.data, 'process-thumbnail')
+    const binding = bindingOf({ assetId, fileId, userId, sig })
 
     this.logger.log(`Processing thumbnail: asset=${assetId}, size=${size}`)
 
-    const record = await this.core.getFile(userId, fileId)
-    const asset = await this.core.getAsset(userId, assetId)
+    const record = await this.core.getFile(userId, fileId, binding)
+    const asset = await this.core.getAsset(userId, assetId, binding)
     assertOwnership({ assetId, fileId, userId }, { record, asset })
 
     if (

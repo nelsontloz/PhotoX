@@ -12,6 +12,7 @@ import {
   createTestApp,
   resetTestApp,
   seedOriginal,
+  signJob,
   waitForJob,
   waitUntil,
   type TestApp,
@@ -76,7 +77,7 @@ describe('VideoThumbnailRotation (integration)', () => {
 
   async function runLgThumbnail(assetId: string, fileId: string, userId: string) {
     const queue = testApp.getQueue('process-thumbnail')
-    const job = await queue.add('thumbnail', { assetId, fileId, size: 'lg', userId })
+    const job = await queue.add('thumbnail', signJob({ assetId, fileId, size: 'lg', userId }))
     const state = await waitForJob(queue, job.id!)
     expect(state).toBe('completed')
     const updated = testApp.fake.assets.get(assetId)!
@@ -113,12 +114,15 @@ describe('VideoThumbnailRotation (integration)', () => {
     const { record, asset } = await seedVideo(userId, null, 'pending', null)
 
     const queue = testApp.getQueue('process-thumbnail')
-    const first = await queue.add('thumbnail', {
-      assetId: asset.id,
-      fileId: record.id,
-      size: 'lg',
-      userId,
-    })
+    const first = await queue.add(
+      'thumbnail',
+      signJob({
+        assetId: asset.id,
+        fileId: record.id,
+        size: 'lg',
+        userId,
+      }),
+    )
     // the first attempt only defers — no thumbnail work yet
     expect(await waitForJob(queue, first.id!)).toBe('completed')
     expect(testApp.fake.callsOf('registerThumbnail')).toHaveLength(0)
@@ -145,12 +149,15 @@ describe('VideoThumbnailRotation (integration)', () => {
     const { record, asset } = await seedVideo(userId, null, 'pending', null)
 
     const queue = testApp.getQueue('process-thumbnail')
-    const first = await queue.add('thumbnail', {
-      assetId: asset.id,
-      fileId: record.id,
-      size: 'lg',
-      userId,
-    })
+    const first = await queue.add(
+      'thumbnail',
+      signJob({
+        assetId: asset.id,
+        fileId: record.id,
+        size: 'lg',
+        userId,
+      }),
+    )
     expect(await waitForJob(queue, first.id!)).toBe('completed')
 
     testApp.fake.assets.delete(asset.id)
