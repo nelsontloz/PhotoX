@@ -10,6 +10,8 @@ import {
   seedUser,
 } from './helpers'
 import type { ApiTestApp } from './helpers'
+import { seedSidecarAsset, sidecarHarness } from './helpers/sidecar'
+import { adminAuthHarness, reprocessMatrix } from './helpers/reprocess-matrix'
 
 const EMBEDDING_768 = Array.from({ length: SEARCH_EMBEDDING_DIM }, (_, i) => (i === 0 ? 1 : 0))
 const EMBEDDING_768_B = Array.from({ length: SEARCH_EMBEDDING_DIM }, (_, i) => (i === 1 ? 1 : 0))
@@ -32,17 +34,15 @@ describe('asset embeddings HTTP', () => {
   })
 
   async function seedOwnedAsset() {
-    const owner = await seedUser(t)
-    const act = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
-    const file = await seedFile(t, owner.id)
-    const asset = await seedAsset(t, owner.id, file.id)
-    return { owner, act, file, asset }
+    return seedSidecarAsset(t)
   }
 
   it('requires a token', async () => {
-    const { asset } = await seedOwnedAsset()
-    const res = await request(apiServer(t)).post(`/worker/assets/${asset.id}/embedding`).send(BODY)
-    expect(res.status).toBe(401)
+    await sidecarHarness(t, {
+      route: (id) => `/worker/assets/${id}/embedding`,
+      body: BODY,
+      repo: t.embeddingRepo,
+    })
   })
 
   it('registers a 768-d image embedding for the asset owner', async () => {
@@ -137,12 +137,10 @@ describe('asset embeddings HTTP', () => {
     }
 
     it('rejects unauthenticated and non-admin requests', async () => {
-      const anon = await request(apiServer(t)).post('/api/v1/admin/embeddings/reprocess')
-      expect(anon.status).toBe(401)
-      const user = await seedUser(t)
-      const auth = t.authHeader(t.signToken({ id: user.id, email: user.email, role: user.role }))
-      const res = await request(apiServer(t)).post('/api/v1/admin/embeddings/reprocess').set(auth)
-      expect(res.status).toBe(403)
+      await adminAuthHarness(t, {
+        post: ['/api/v1/admin/embeddings/reprocess'],
+        get: ['/api/v1/admin/embeddings/reprocess'],
+      })
     })
 
     it('enqueues embed jobs for non-trashed photos, records the run and counts the queue', async () => {
@@ -159,38 +157,16 @@ describe('asset embeddings HTTP', () => {
       const videoFile = await seedFile(t, owner.id, { mimeType: 'video/mp4' })
       await seedAsset(t, owner.id, videoFile.id, { kind: 'video' })
 
-      const before = await request(apiServer(t)).get('/api/v1/admin/embeddings/reprocess').set(auth)
-      expect(before.status).toBe(200)
-      expect((before.body as { lastRun: unknown }).lastRun).toBeNull()
-
-      const res = await request(apiServer(t)).post('/api/v1/admin/embeddings/reprocess').set(auth)
-      expect(res.status).toBe(200)
-      expect(res.body).toEqual({ enqueued: 2, total: 2, model: SEARCH_EMBEDDING_MODEL })
-
-      const queue = t.getQueue('process-embeddings')
-      for (const { file, asset } of [a, b]) {
-        const job = await queue.getJob(JOB_ID(asset.id))
-        expect(job).toBeTruthy()
-        expect(job?.opts.removeOnComplete).toBe(true)
-        expect(job?.data as Record<string, unknown>).toMatchObject({
-          assetId: asset.id,
-          fileId: file.id,
-          userId: owner.id,
-        })
-      }
-      expect(await queue.getJob(JOB_ID(trashed.asset.id))).toBeFalsy()
-
-      const status = await request(apiServer(t)).get('/api/v1/admin/embeddings/reprocess').set(auth)
-      expect(status.status).toBe(200)
-      const body = status.body as {
-        lastRun: { startedAt: string; total: number; enqueued: number; model: string }
-        queue: Record<string, number>
-      }
-      expect(body.lastRun.total).toBe(2)
-      expect(body.lastRun.enqueued).toBe(2)
-      expect(body.lastRun.model).toBe(SEARCH_EMBEDDING_MODEL)
-      expect(Number.isNaN(Date.parse(body.lastRun.startedAt))).toBe(false)
-      expect(body.queue.waiting).toBeGreaterThanOrEqual(2)
+      await reprocessMatrix(t, auth, owner.id, [a, b], {
+        route: '/api/v1/admin/embeddings/reprocess',
+        queue: 'process-embeddings',
+        jobIdFn: JOB_ID,
+        jobName: 'embed',
+        jobDataExtra: { reason: 'reprocess' },
+        respKeys: { enqueued: 2, total: 2, model: SEARCH_EMBEDDING_MODEL },
+        lastRunExtra: { model: SEARCH_EMBEDDING_MODEL },
+        filter: [trashed.asset.id],
+      })
     })
   })
 })

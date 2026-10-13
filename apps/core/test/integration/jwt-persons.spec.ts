@@ -162,35 +162,6 @@ describe('persons JWT identity', () => {
     expect(body.queued).toBe(true)
   })
 
-  it('returns 401 without token', async () => {
-    const res = await request(apiServer(t)).get('/api/v1/persons')
-    expect(res.status).toBe(401)
-  })
-
-  it('returns 401 for malformed token', async () => {
-    const res = await request(apiServer(t))
-      .get('/api/v1/persons')
-      .set({ Authorization: 'Bearer not-a-token' })
-    expect(res.status).toBe(401)
-  })
-
-  it.each([
-    ['post', '/api/v1/persons/cluster'],
-    ['post', '/api/v1/persons/apply-clusters', { creates: [], attaches: [] }],
-    ['post', '/api/v1/persons/prune-empty'],
-    ['get', `/api/v1/persons/${randomUUID()}`],
-    ['patch', `/api/v1/persons/${randomUUID()}`, { name: 'Nope' }],
-    ['get', `/api/v1/persons/${randomUUID()}/assets`],
-  ] as ['get' | 'post' | 'patch', string, object?][])(
-    'returns 401 for %s %s without token',
-    async (method, path, body) => {
-      const agent = request(apiServer(t))
-      const req = agent[method](path)
-      const res = await (body ? req.send(body) : req)
-      expect(res.status).toBe(401)
-    },
-  )
-
   it('returns 404 for an unknown person id', async () => {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })

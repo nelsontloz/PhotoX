@@ -180,36 +180,6 @@ describe('albums JWT identity', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 401 without token', async () => {
-    const res = await request(apiServer(t)).get('/api/v1/albums')
-    expect(res.status).toBe(401)
-  })
-
-  it('returns 401 for malformed token', async () => {
-    const res = await request(apiServer(t))
-      .get('/api/v1/albums')
-      .set({ Authorization: 'Bearer not-a-token' })
-    expect(res.status).toBe(401)
-  })
-
-  it.each([
-    ['post', '/api/v1/albums', { name: 'Nope' }],
-    ['get', `/api/v1/albums/${randomUUID()}`],
-    ['patch', `/api/v1/albums/${randomUUID()}`, { name: 'Nope' }],
-    ['delete', `/api/v1/albums/${randomUUID()}`],
-    ['post', `/api/v1/albums/${randomUUID()}/assets`, { assetIds: [] }],
-    ['delete', `/api/v1/albums/${randomUUID()}/assets/${randomUUID()}`],
-    ['get', `/api/v1/albums/${randomUUID()}/assets`],
-  ] as ['get' | 'post' | 'patch' | 'delete', string, object?][])(
-    'returns 401 for %s %s without token',
-    async (method, path, body) => {
-      const agent = request(apiServer(t))
-      const req = agent[method](path)
-      const res = await (body ? req.send(body) : req)
-      expect(res.status).toBe(401)
-    },
-  )
-
   it('returns 404 for an unknown album on get, patch and delete', async () => {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })

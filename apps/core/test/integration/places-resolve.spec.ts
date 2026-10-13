@@ -10,6 +10,7 @@ import {
   apiServer,
 } from './helpers'
 import type { ApiTestApp } from './helpers'
+import { adminAuthHarness } from './helpers/reprocess-matrix'
 import { Place } from '../../src/database/entities/place.entity'
 import { PlacesResolveService } from '../../src/places/places-resolve.service'
 
@@ -186,20 +187,9 @@ describe('places resolution', () => {
   })
 
   it('requires admin on the backfill endpoints', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-
-    const forbidden = await request(apiServer(t))
-      .post('/api/v1/admin/places/backfill')
-      .set(t.authHeader(token))
-    expect(forbidden.status).toBe(403)
-
-    const forbiddenStatus = await request(apiServer(t))
-      .get('/api/v1/admin/places/backfill')
-      .set(t.authHeader(token))
-    expect(forbiddenStatus.status).toBe(403)
-
-    const anonymous = await request(apiServer(t)).post('/api/v1/admin/places/backfill')
-    expect(anonymous.status).toBe(401)
+    await adminAuthHarness(t, {
+      post: ['/api/v1/admin/places/backfill'],
+      get: ['/api/v1/admin/places/backfill'],
+    })
   })
 })

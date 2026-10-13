@@ -11,6 +11,7 @@ import {
   apiServer,
 } from './helpers'
 import type { ApiTestApp } from './helpers'
+import { adminAuthHarness, reprocessMatrix } from './helpers/reprocess-matrix'
 
 function envDefault(): FaceDetectorKind {
   return process.env.FACE_DETECTOR === 'scrfd' ? 'scrfd' : 'human'
@@ -45,24 +46,11 @@ describe('admin face reprocess and recluster', () => {
     return { file, asset }
   }
 
-  it('rejects unauthenticated requests', async () => {
-    const reprocess = await request(apiServer(t)).post('/api/v1/admin/faces/reprocess')
-    expect(reprocess.status).toBe(401)
-    const status = await request(apiServer(t)).get('/api/v1/admin/faces/reprocess')
-    expect(status.status).toBe(401)
-    const recluster = await request(apiServer(t)).post('/api/v1/admin/faces/recluster')
-    expect(recluster.status).toBe(401)
-  })
-
-  it('rejects non-admin requests', async () => {
-    const user = await seedUser(t)
-    const auth = t.authHeader(t.signToken({ id: user.id, email: user.email, role: user.role }))
-    const reprocess = await request(apiServer(t)).post('/api/v1/admin/faces/reprocess').set(auth)
-    expect(reprocess.status).toBe(403)
-    const status = await request(apiServer(t)).get('/api/v1/admin/faces/reprocess').set(auth)
-    expect(status.status).toBe(403)
-    const recluster = await request(apiServer(t)).post('/api/v1/admin/faces/recluster').set(auth)
-    expect(recluster.status).toBe(403)
+  it('rejects unauthenticated and non-admin requests', async () => {
+    await adminAuthHarness(t, {
+      post: ['/api/v1/admin/faces/reprocess', '/api/v1/admin/faces/recluster'],
+      get: ['/api/v1/admin/faces/reprocess'],
+    })
   })
 
   it('reports lastRun null and queue counts before any run', async () => {
@@ -83,37 +71,16 @@ describe('admin face reprocess and recluster', () => {
     await seedAsset(t, owner.id, videoFile.id, { kind: 'video' })
     const trashed = await seedPhotoAsset(owner.id, { isTrashed: true })
 
-    const res = await request(apiServer(t)).post('/api/v1/admin/faces/reprocess').set(auth)
-    expect(res.status).toBe(200)
-    expect(res.body).toEqual({ enqueued: 2, total: 2, detector: envDefault() })
-
-    const queue = t.getQueue('process-faces')
-    for (const { file, asset } of [a, b]) {
-      const job = await queue.getJob(`face-reembed-${asset.id}`)
-      expect(job).toBeTruthy()
-      expect(job?.name).toBe('re-embed')
-      expect(job?.opts.removeOnComplete).toBe(true)
-      expect(job?.data as Record<string, unknown>).toMatchObject({
-        assetId: asset.id,
-        fileId: file.id,
-        userId: owner.id,
-        reason: 're-embed',
-        detector: envDefault(),
-      })
-    }
-    expect(await queue.getJob(`face-reembed-${trashed.asset.id}`)).toBeFalsy()
-
-    const status = await request(apiServer(t)).get('/api/v1/admin/faces/reprocess').set(auth)
-    expect(status.status).toBe(200)
-    const body = status.body as {
-      lastRun: { startedAt: string; total: number; enqueued: number; detector: string }
-      queue: Record<string, number>
-    }
-    expect(body.lastRun.total).toBe(2)
-    expect(body.lastRun.enqueued).toBe(2)
-    expect(body.lastRun.detector).toBe(envDefault())
-    expect(Number.isNaN(Date.parse(body.lastRun.startedAt))).toBe(false)
-    expect(body.queue.waiting).toBeGreaterThanOrEqual(2)
+    await reprocessMatrix(t, auth, owner.id, [a, b], {
+      route: '/api/v1/admin/faces/reprocess',
+      queue: 'process-faces',
+      jobIdFn: (id) => `face-reembed-${id}`,
+      jobName: 're-embed',
+      jobDataExtra: { reason: 're-embed', detector: envDefault() },
+      respKeys: { enqueued: 2, total: 2, detector: envDefault() },
+      lastRunExtra: { detector: envDefault() },
+      filter: [trashed.asset.id],
+    })
   })
 
   it('re-enqueues the same asset after a completed job is removed', async () => {

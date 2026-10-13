@@ -13,6 +13,7 @@ import {
   apiServer,
 } from './helpers'
 import type { ApiTestApp } from './helpers'
+import { reprocessMatrix } from './helpers/reprocess-matrix'
 
 describe('admin maintenance', () => {
   let t: ApiTestApp
@@ -107,23 +108,27 @@ describe('admin maintenance', () => {
   it('reprocesses photo thumbnails with thumb-reprocess jobIds', async () => {
     const admin = await seedUser(t, { role: 'admin' })
     const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
+    const auth = t.authHeader(token)
     const photoFile = await seedFile(t, admin.id)
     const photo = await seedAsset(t, admin.id, photoFile.id, { kind: 'photo' })
     const videoFile = await seedFile(t, admin.id, { mimeType: 'video/mp4' })
     await seedAsset(t, admin.id, videoFile.id, { kind: 'video' })
-    const res = await request(apiServer(t))
-      .post('/api/v1/admin/thumbnails/reprocess')
-      .set(t.authHeader(token))
-      .send({ kind: 'photo' })
-    expect(res.status).toBe(200)
-    const body = res.body as unknown as { enqueued: number; totalAssets: number }
-    expect(body.totalAssets).toBe(1)
-    expect(body.enqueued).toBe(4)
-    const queue = t.getQueue('process-thumbnail')
-    for (const size of ['sm', 'md', 'lg', 'xl']) {
-      const job = await queue.getJob(`thumb-reprocess-${photo.id}-${size}`)
-      expect(job).toBeTruthy()
-    }
+    await reprocessMatrix(
+      t,
+      auth,
+      admin.id,
+      [{ file: photoFile, asset: photo }],
+      {
+        route: '/api/v1/admin/thumbnails/reprocess',
+        queue: 'process-thumbnail',
+        jobIdFn: (id, size) => `thumb-reprocess-${id}-${size}`,
+        jobName: 'process-thumbnail',
+        respKeys: { enqueued: 4, totalAssets: 1 },
+        fanout: ['sm', 'md', 'lg', 'xl'],
+        reqBody: { kind: 'photo' },
+        noStatus: true,
+      },
+    )
   })
 
   it('rejects non-admin on admin endpoints', async () => {
