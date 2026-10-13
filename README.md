@@ -19,11 +19,14 @@ Personal photo and video hosting platform: one NestJS API (`core`), one BullMQ w
 ## Quick Start
 
 ```bash
-# Install dependencies (also seeds worker models; FACE_MODEL_SKIP=1 to skip)
+# Install dependencies (root postinstall loops all 4 worker model scripts; FACE_MODEL_SKIP=1 to skip)
 pnpm install
 
-# Configure env (AUTH_TOKEN_SECRET is required, >= 32 chars)
+# Configure env, then re-diff .env against .env.example after every pull (new required keys land there)
 cp .env.example .env
+# Required: AUTH_TOKEN_SECRET + WORKER_JWT_SECRET (>= 32 chars each, must differ).
+# Notables: AUTH_TOKEN_SECRET_PREVIOUS (rotation), REDIS_PASSWORD (photox_dev),
+# CORE_URL, FACE_DETECTOR(+_MODEL_PATH), AUTH_* TTLs, RATE_LIMIT_REGISTER, STORAGE_QUOTA_BYTES.
 
 # Start infrastructure
 docker compose up -d postgres redis
@@ -35,7 +38,7 @@ pnpm dev
 open http://localhost:5173
 ```
 
-Infrastructure only: `docker-compose.yml` runs `postgres` + `redis`. The e2e stack (`docker-compose.e2e.yml`, used by `pnpm test:e2e`) is self-contained and additionally builds/runs `core`, `worker-service` and `web` in containers.
+Infrastructure only: `docker-compose.yml` runs `postgres` + `redis` and publishes no core port (host dev reaches core at `:3000` directly). The e2e stack (`docker-compose.e2e.yml`, used by `pnpm test:e2e`) is self-contained and additionally builds/runs `core`, `worker-service` and `web` in containers.
 
 ## Commands
 
@@ -57,23 +60,28 @@ Single app: `pnpm --filter @photox/core dev` (also `@photox/worker-service`, `@p
 - `E2E_BUILD=1` — rebuild the `photox-e2e-*` images before booting the stack (`pnpm verify` sets it); without it existing images are reused.
 - `E2E_KEEP=1` — keep the stack running after the suite (prints the web URL) and skip artifact cleanup.
 - `E2E_PROJECT=` / `E2E_WEB_PORT=` — override the auto-generated compose project / web port. Each invocation is stack-isolated, but `e2e/.features-gen`, `e2e/test-results` and `e2e/playwright-report` are shared between concurrent runs.
-- `FACE_MODEL_SKIP=1 pnpm install` — skip the postinstall worker-model download.
+- `FACE_MODEL_SKIP=1 pnpm install` — skip the root postinstall loop over all 4 worker model scripts.
 - `ADMIN_EMAIL` / `ADMIN_PASSWORD` — seed an admin on core bootstrap when no admin exists (open registration only mints `user`); empty disables the seed.
-- `pnpm --filter @photox/worker-service face-model` — (re)download worker models: `face-model`, `vision-model`, `ocr-model`, `detect-model`.
+- `pnpm --filter @photox/worker-service <script>` — 4 separate (re)download scripts in `apps/worker-service`: `face-model`, `vision-model`, `ocr-model`, `detect-model` (root `postinstall` loops all four).
 
 Core health check (host dev): `curl localhost:3000/health`; Swagger UI at `http://localhost:3000/docs`.
 
 ## Services
 
-| Service        | Port       | Description                                                                                |
-| -------------- | ---------- | ------------------------------------------------------------------------------------------ |
-| core           | 3000       | The only HTTP API (auth, assets, files, albums, shares, faces, admin)                      |
-| worker-service | (internal) | BullMQ consumers (thumbnails, video, metadata, OCR, embeddings, detection, faces, cleanup) |
-| web            | 5173       | React frontend (proxies `/api` to core)                                                    |
-| postgres       | 5432       | PostgreSQL (pgvector image; single `photox` DB)                                            |
-| redis          | 6379       | Redis (BullMQ queues)                                                                      |
+| Service        | Port       | Description                                                                                                                                                                                                      |
+| -------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| core           | 3000       | The only HTTP API (auth, assets, files, albums, shares, faces, admin)                                                                                                                                            |
+| worker-service | (internal) | BullMQ consumers: process-thumbnail, process-video, process-metadata, process-faces, process-faces-cluster, process-embeddings, process-detect, process-ocr, cleanup-asset (cleanup-orphans runs inline in core) |
+| web            | 5173       | React frontend (proxies `/api` to core)                                                                                                                                                                          |
+| postgres       | 5432       | PostgreSQL (pgvector image; single `photox` DB)                                                                                                                                                                  |
+| redis          | 6379       | Redis (BullMQ queues)                                                                                                                                                                                            |
 
 Storage is local disk (`STORAGE_DIR`, default `./data/storage`) shared by core and worker — no object store.
+
+## Security
+
+- Every `/worker/*` call must carry the `X-Job-Signature` HMAC stamped at enqueue (fail-closed, replay confined to the asset).
+- Original uploads are checked against per-user `STORAGE_QUOTA_BYTES` after the dedup fast-path — over quota rejects with 413 before any bytes are written. Video transcodes retry once (`attempts: 2`, each retry can cost ~1h of AV1).
 
 ## Share links
 
@@ -81,7 +89,7 @@ Storage is local disk (`STORAGE_DIR`, default `./data/storage`) shared by core a
 - Share tokens are stored hashed — plaintext exists only in the create response, so copy the link when you create it (the Shared page re-shares on copy for the same reason).
 - Pre-hash share rows still resolve via a plaintext fallback but never expire — re-share to hash them, attach the 30d expiry, and rotate the URL.
 - New shares expire after 30d; older shares with no expiry never expire.
-- Upgrade note for existing DBs: TypeORM `synchronize` recreates a `varchar` column on length change (dropping its data), so widen `shares.token` by hand before booting core — `ALTER TABLE shares ALTER COLUMN token TYPE varchar(64); ALTER TABLE shares ADD COLUMN "expiresAt" timestamptz NULL;` — otherwise boot crashes on `column "token" contains null values`.
+- Upgrade note for pre-expiry DBs only (fresh DBs already get token `varchar(64)` + `expiresAt` via the baseline migration): TypeORM `synchronize` recreates a `varchar` column on length change (dropping its data), so widen `shares.token` by hand before booting core — `ALTER TABLE shares ALTER COLUMN token TYPE varchar(64); ALTER TABLE shares ADD COLUMN "expiresAt" timestamptz NULL;` — otherwise boot crashes on `column "token" contains null values`.
 
 ## Admin setup
 
