@@ -4,6 +4,7 @@ import type { Asset } from '@photox/shared-types'
 import { AssetMetadataPanel } from './sections/AssetMetadataPanel'
 import { CameraSection } from './sections/CameraSection'
 import { FacesSection } from './sections/FacesSection'
+import { SectionShell } from './sections/SectionShell'
 
 // leaflet is ~44 kB gzip: load the map section only when the panel actually renders.
 const LocationSection = lazy(() =>
@@ -32,11 +33,11 @@ export function ViewerInfoPanel({ asset, onClose, onFaceHover }: ViewerInfoPanel
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
         <AssetMetadataPanel asset={asset} />
         <CameraSection asset={asset} />
-        <section>
-          <div className="flex items-center gap-2 text-slate-400 mb-2">
-            <FaNoteSticky className="text-[18px]" />
-            <h4 className="text-xs font-bold uppercase tracking-wider">Description</h4>
-          </div>
+        <SectionShell
+          compact
+          icon={<FaNoteSticky className="text-[18px]" />}
+          title="Description"
+        >
           {asset.description ? (
             <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
               {asset.description}
@@ -44,7 +45,7 @@ export function ViewerInfoPanel({ asset, onClose, onFaceHover }: ViewerInfoPanel
           ) : (
             <p className="text-sm text-slate-600 italic">No description</p>
           )}
-        </section>
+        </SectionShell>
         <FacesSection asset={asset} onFaceHover={onFaceHover} />
         <Suspense fallback={null}>
           <LocationSection asset={asset} />

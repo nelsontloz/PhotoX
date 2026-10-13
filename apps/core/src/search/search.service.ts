@@ -12,7 +12,6 @@ import { fuseRrf } from './rrf'
 import { routeMatches } from './routing'
 import type { SearchQueryDto } from './dto/search-query.dto'
 
-const DEFAULT_LIMIT = 20
 // 2N candidates per branch (N = limit + offset): enough to survive fusion demotions and offset
 // paging without scanning the whole library. The ANN branch raises hnsw.ef_search to match (see
 // annIds) — HNSW scans cap at ef_search rows, so LIMIT alone under-delivers past 40.
@@ -41,8 +40,8 @@ export class SearchService {
 
   async search(userId: string, dto: SearchQueryDto): Promise<SearchResponse> {
     const query = dto.q.trim()
-    const limit = dto.limit ?? DEFAULT_LIMIT
-    const offset = dto.offset ?? 0
+    const limit = dto.limit
+    const offset = dto.offset
     if (query === '') return { items: [], total: 0 }
 
     const branchLimit = BRANCH_MULTIPLIER * (limit + offset)

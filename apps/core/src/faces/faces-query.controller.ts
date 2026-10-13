@@ -1,8 +1,20 @@
-import { Controller, Get, Patch, Param, Query, Body, HttpCode, HttpStatus } from '@nestjs/common'
+import {
+  Controller,
+  Get,
+  Patch,
+  Param,
+  Query,
+  Body,
+  HttpCode,
+  HttpStatus,
+  Res,
+} from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
+import type { Response } from 'express'
 import { CurrentUserId } from '../auth/jwt-auth.guard'
 import { FacesService } from './faces.service'
 import { AssignPersonDto } from './dto/assign-person.dto'
+import { FaceThumbQueryDto } from './dto/face-thumb-query.dto'
 import { isQueryTrue } from '../common/query-params'
 
 @ApiTags('faces-query')
@@ -21,6 +33,25 @@ export class FacesQueryController {
     const wantEmbeddings = isQueryTrue(includeEmbeddings)
     const items = await this.faces.listForUser(userId, wantEmbeddings, isQueryTrue(excludeTrashed))
     return { items }
+  }
+
+  @Get(':id/thumb')
+  @ApiOperation({ summary: 'Crop a face thumbnail from the source asset on demand' })
+  @ApiResponse({ status: 200, description: 'JPEG image bytes' })
+  @ApiResponse({ status: 404, description: 'Face, asset, or source bytes not found' })
+  async getThumb(
+    @Param('id') id: string,
+    @CurrentUserId() userId: string,
+    @Res() res: Response,
+    @Query() q: FaceThumbQueryDto,
+  ): Promise<void> {
+    const bytes = await this.faces.getThumb(id, userId, q.size ?? Number.NaN)
+    res.set({
+      'Content-Type': 'image/jpeg',
+      'Content-Length': String(bytes.byteLength),
+      'Cache-Control': 'private, max-age=86400',
+    })
+    res.status(200).end(bytes)
   }
 
   @Patch(':id/person')

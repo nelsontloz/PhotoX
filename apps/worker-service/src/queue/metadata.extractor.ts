@@ -38,18 +38,21 @@ const EMPTY: ExtractedMetadata = {
 
 const DATE_RE = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/
 
-function readNumber(tag: Record<string, unknown> | undefined): number | null {
+// first=true takes the first array element (Orientation/ISO lists) instead of dividing a
+// [num, den] rational — the two shapes are indistinguishable, so the tag decides, not sniffing
+function readNumber(tag: Record<string, unknown> | undefined, first = false): number | null {
   if (!tag) return null
-  if (typeof tag.computed === 'number') return tag.computed
+  if (!first && typeof tag.computed === 'number') return tag.computed
   if (typeof tag.value === 'number') return tag.value
-  if (
-    Array.isArray(tag.value) &&
-    tag.value.length === 2 &&
-    typeof tag.value[0] === 'number' &&
-    typeof tag.value[1] === 'number' &&
-    tag.value[1] !== 0
-  ) {
-    return tag.value[0] / tag.value[1]
+  if (Array.isArray(tag.value) && typeof tag.value[0] === 'number') {
+    if (first) return tag.value[0]
+    if (
+      tag.value.length === 2 &&
+      typeof tag.value[1] === 'number' &&
+      tag.value[1] !== 0
+    ) {
+      return tag.value[0] / tag.value[1]
+    }
   }
   return null
 }
@@ -62,13 +65,6 @@ function readString(tag: Record<string, unknown> | undefined): string | null {
   }
   if (typeof tag.value === 'string') return tag.value
   if (typeof tag.description === 'string') return tag.description
-  return null
-}
-
-function readFirstNumber(tag: Record<string, unknown> | undefined): number | null {
-  if (!tag) return null
-  if (typeof tag.value === 'number') return tag.value
-  if (Array.isArray(tag.value) && typeof tag.value[0] === 'number') return tag.value[0]
   return null
 }
 
@@ -130,13 +126,13 @@ export class MetadataExtractor {
       cameraMake: readString(exif.Make as Record<string, unknown> | undefined),
       cameraModel: readString(exif.Model as Record<string, unknown> | undefined),
       lensModel: readString(exif.LensModel as Record<string, unknown> | undefined),
-      orientation: readFirstNumber(exif.Orientation as Record<string, unknown> | undefined),
+      orientation: readNumber(exif.Orientation as Record<string, unknown> | undefined, true),
       width,
       height,
       latitude: typeof gps.Latitude === 'number' ? gps.Latitude : null,
       longitude: typeof gps.Longitude === 'number' ? gps.Longitude : null,
       altitude: typeof gps.Altitude === 'number' ? gps.Altitude : null,
-      iso: readFirstNumber(exif.ISOSpeedRatings as Record<string, unknown> | undefined),
+      iso: readNumber(exif.ISOSpeedRatings as Record<string, unknown> | undefined, true),
       fNumber: readNumber(exif.FNumber as Record<string, unknown> | undefined),
       exposureTime: readNumber(exif.ExposureTime as Record<string, unknown> | undefined),
       focalLength: readNumber(exif.FocalLength as Record<string, unknown> | undefined),

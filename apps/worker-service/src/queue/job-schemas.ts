@@ -36,15 +36,10 @@ export const clusterJobSchema = z.object({
   sig: z.string().optional(),
 })
 
-export const cleanupJobSchema = z.object({
-  ...jobRefs,
-})
-
 export type ThumbnailJob = z.infer<typeof thumbnailJobSchema>
 export type AssetRefsJob = z.infer<typeof assetRefsJobSchema>
 export type FaceJob = z.infer<typeof faceJobSchema>
 export type ClusterJob = z.infer<typeof clusterJobSchema>
-export type CleanupJob = z.infer<typeof cleanupJobSchema>
 
 export function parseJobData<T>(schema: z.ZodType<T>, data: unknown, queue: string): T {
   const parsed = schema.safeParse(data)

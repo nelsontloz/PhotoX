@@ -1,14 +1,8 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
-import {
-  FaRegEnvelope,
-  FaLock,
-  FaSpinner,
-  FaCircleExclamation,
-  FaArrowRight,
-} from 'react-icons/fa6'
+import { FaRegEnvelope, FaLock, FaArrowRight } from 'react-icons/fa6'
 import { useAuthStore } from '../../store/auth-store'
-import { AuthField, AuthShell } from '../../components/AuthShell'
+import { AuthError, AuthField, AuthShell, AuthSubmit } from '../../components/AuthShell'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -68,24 +62,9 @@ export default function LoginPage() {
           onTogglePassword={() => setShowPassword((v) => !v)}
         />
 
-        {error && (
-          <div
-            role="alert"
-            className="flex items-center gap-2 text-red-500 text-xs bg-red-500/10 p-2 rounded border border-red-500/20"
-            onClick={clearError}
-          >
-            <FaCircleExclamation className="text-[14px] shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
+        <AuthError message={error} onClear={clearError} />
 
-        <button
-          type="submit"
-          disabled={status === 'loading'}
-          className="flex w-full cursor-pointer items-center justify-center rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-bold h-11 px-5 transition-transform active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100"
-        >
-          {status === 'loading' ? <FaSpinner className="text-[18px] animate-spin" /> : 'Sign In'}
-        </button>
+        <AuthSubmit loading={status === 'loading'} label="Sign In" />
       </form>
     </AuthShell>
   )

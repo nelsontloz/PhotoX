@@ -7,7 +7,6 @@ import {
   type FaceDetectorKind,
 } from '@photox/shared-types'
 import { SettingsService } from '../settings/settings.service'
-import { Roles } from '../auth/roles.decorator'
 
 class SetFaceDetectorDto {
   @IsIn(FACE_DETECTOR_KINDS)
@@ -16,7 +15,6 @@ class SetFaceDetectorDto {
 
 @ApiTags('admin')
 @Controller('api/v1/admin/face-detection')
-@Roles('admin')
 export class AdminFacesController {
   constructor(private readonly settings: SettingsService) {}
 

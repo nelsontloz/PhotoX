@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { FaCamera, FaEye, FaEyeSlash } from 'react-icons/fa6'
+import { FaCamera, FaCircleExclamation, FaEye, FaEyeSlash, FaSpinner } from 'react-icons/fa6'
 
 /** Shared login/register page shell: outer background, logo block, card and version footer. */
 export function AuthShell({
@@ -99,5 +99,39 @@ export function AuthField({
         )}
       </div>
     </div>
+  )
+}
+
+/** Dismissible auth error alert; renders nothing when there is no message. */
+export function AuthError({
+  message,
+  onClear,
+}: {
+  message: string | null | undefined
+  onClear: () => void
+}) {
+  if (!message) return null
+  return (
+    <div
+      role="alert"
+      className="flex items-center gap-2 text-red-500 text-xs bg-red-500/10 p-2 rounded border border-red-500/20"
+      onClick={onClear}
+    >
+      <FaCircleExclamation className="text-[14px] shrink-0" />
+      <span>{message}</span>
+    </div>
+  )
+}
+
+/** Full-width auth submit: spinner while loading, label otherwise. */
+export function AuthSubmit({ loading, label }: { loading: boolean; label: string }) {
+  return (
+    <button
+      type="submit"
+      disabled={loading}
+      className="flex w-full cursor-pointer items-center justify-center rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-bold h-11 px-5 transition-transform active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100"
+    >
+      {loading ? <FaSpinner className="text-[18px] animate-spin" /> : label}
+    </button>
   )
 }

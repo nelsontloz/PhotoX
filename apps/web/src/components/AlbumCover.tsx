@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FaPhotoFilm } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
 import { listAlbumAssets } from '../api/albums'
+import { observeIntersecting } from '../lib/shared-intersection'
 import { AssetThumb } from './AssetThumb'
 
 export function AlbumCover({
@@ -19,19 +20,15 @@ export function AlbumCover({
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((e) => e.isIntersecting)) return
-        io.disconnect()
-        listAlbumAssets(albumId, { limit: 1 })
-          .then((res) => setCover(res.items[0] ?? null))
-          .catch(() => setCover(null))
-      },
-      { rootMargin: '200px' },
-    )
-    io.observe(el)
+    const cleanup = observeIntersecting(el, null, '200px', (entry) => {
+      if (!entry.isIntersecting) return
+      cleanup?.()
+      listAlbumAssets(albumId, { limit: 1 })
+        .then((res) => setCover(res.items[0] ?? null))
+        .catch(() => setCover(null))
+    })
     return () => {
-      io.disconnect()
+      cleanup?.()
     }
   }, [albumId])
 

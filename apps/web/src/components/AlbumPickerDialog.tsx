@@ -9,6 +9,7 @@ import {
 } from 'react-icons/fa6'
 import type { AlbumDto } from '@photox/shared-types'
 import { addAssetsToAlbum, createAlbum, listAlbums } from '../api/albums'
+import { toggleId } from '../lib/set'
 import { AlbumCover } from './AlbumCover'
 import { Dialog } from './Dialog'
 import { NewAlbumFields } from './NewAlbumFields'
@@ -56,12 +57,7 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
   }, [open])
 
   const toggle = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+    setSelected((prev) => toggleId(prev, id))
   }
 
   const handleAdd = useCallback(async () => {

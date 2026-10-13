@@ -16,6 +16,17 @@ import type { DetectedFaceInput, FaceDetectorKind } from '@photox/shared-types'
 const DEFAULT_SIZE = 240
 const MAX_SIZE = 600
 
+function toFaceDto(f: Face, includeEmbeddings = false) {
+  return {
+    id: f.id,
+    assetId: f.assetId,
+    box: f.box,
+    confidence: f.confidence,
+    personId: f.personId ?? null,
+    ...(includeEmbeddings ? { embedding: f.embedding } : {}),
+  }
+}
+
 @Injectable()
 export class FacesService {
   constructor(
@@ -80,34 +91,15 @@ export class FacesService {
   async getForAsset(userId: string, assetId: string): Promise<FaceResponseDto[]> {
     await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset')
     const faces = await this.repo.find({ where: { assetId } })
-    return faces.map((f) => ({
-      id: f.id,
-      assetId: f.assetId,
-      box: f.box,
-      confidence: f.confidence,
-      personId: f.personId ?? null,
-    }))
+    return faces.map((f) => toFaceDto(f))
   }
 
   async listForUser(userId: string, includeEmbeddings: boolean, excludeTrashed = false) {
     const faces = await this.repo.find({ where: { userId } })
-    const trashedAssetIds = excludeTrashed
-      ? new Set(
-          (await this.assetRepo.find({ where: { userId, isTrashed: true }, select: ['id'] })).map(
-            (a) => a.id,
-          ),
-        )
-      : null
+    const trashedAssetIds = await this.trashedAssetIds(userId, excludeTrashed)
     return faces
       .filter((f) => !trashedAssetIds?.has(f.assetId))
-      .map((f) => ({
-        id: f.id,
-        assetId: f.assetId,
-        box: f.box,
-        confidence: f.confidence,
-        personId: f.personId ?? null,
-        ...(includeEmbeddings ? { embedding: f.embedding } : {}),
-      }))
+      .map((f) => toFaceDto(f, includeEmbeddings))
   }
 
   // ponytail: keyset page over (userId, id ASC); trashed filtered in memory like listForUser —
@@ -127,24 +119,23 @@ export class FacesService {
       order: { id: 'ASC' },
       take: limit,
     })
-    const trashedAssetIds = opts.excludeTrashed
-      ? new Set(
-          (await this.assetRepo.find({ where: { userId, isTrashed: true }, select: ['id'] })).map(
-            (a) => a.id,
-          ),
-        )
-      : null
+    const trashedAssetIds = await this.trashedAssetIds(userId, opts.excludeTrashed)
     const items = faces
       .filter((f) => !trashedAssetIds?.has(f.assetId))
-      .map((f) => ({
-        id: f.id,
-        assetId: f.assetId,
-        box: f.box,
-        confidence: f.confidence,
-        personId: f.personId ?? null,
-        ...(opts.includeEmbeddings ? { embedding: f.embedding } : {}),
-      }))
+      .map((f) => toFaceDto(f, opts.includeEmbeddings))
     return { items, nextCursor: faces.length < limit ? null : (faces.at(-1)?.id ?? null) }
+  }
+
+  private async trashedAssetIds(
+    userId: string,
+    excludeTrashed?: boolean,
+  ): Promise<Set<string> | null> {
+    if (!excludeTrashed) return null
+    const trashed = await this.assetRepo.find({
+      where: { userId, isTrashed: true },
+      select: ['id'],
+    })
+    return new Set(trashed.map((a) => a.id))
   }
 
   async assignPerson(userId: string, faceId: string, personId: string | null): Promise<void> {

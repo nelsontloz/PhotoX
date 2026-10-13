@@ -5,6 +5,7 @@ import { ScrollContainerContext } from '../../components/AppShell'
 import { Dialog } from '../../components/Dialog'
 import { TimelineAssets } from '../../components/Timeline/TimelineAssets'
 import { useTimelineView } from '../../hooks/useTimelineView'
+import { toggleId } from '../../lib/set'
 
 interface AddPhotosDialogProps {
   albumName: string
@@ -27,12 +28,7 @@ export function AddPhotosDialog({ albumName, onClose, onAdd }: AddPhotosDialogPr
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const toggle = useCallback((id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+    setSelected((prev) => toggleId(prev, id))
   }, [])
 
   // Click always toggles: the modal has no viewer, so there is no open-vs-select mode.

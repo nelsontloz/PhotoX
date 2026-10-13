@@ -18,7 +18,7 @@ export interface FaceDetectionBackend {
   detect(buffer: Buffer): Promise<DetectedBox[]>
 }
 
-export interface DetectedFace {
+interface DetectedFace {
   box: { x: number; y: number; w: number; h: number }
   confidence: number
   embedding: number[]

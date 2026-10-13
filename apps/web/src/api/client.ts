@@ -59,3 +59,9 @@ api.interceptors.response.use(
     return api(originalRequest)
   },
 )
+
+/** Shared page-through params for list endpoints (albums, persons). */
+export interface PageParams {
+  limit?: number
+  offset?: number
+}

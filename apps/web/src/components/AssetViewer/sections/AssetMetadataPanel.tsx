@@ -1,6 +1,7 @@
 import { FaCircleCheck, FaCircleInfo, FaCircleXmark, FaSpinner } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
 import { formatBytes, formatDuration } from '../../../lib/format'
+import { SectionShell } from './SectionShell'
 
 interface AssetMetadataPanelProps {
   asset: Asset
@@ -59,22 +60,14 @@ export function AssetMetadataPanel({ asset }: AssetMetadataPanelProps) {
 
   if (rows.length === 0) {
     return (
-      <section>
-        <div className="flex items-center gap-2 text-slate-400 mb-2">
-          <FaCircleInfo className="text-[18px]" />
-          <h4 className="text-xs font-bold uppercase tracking-wider">Details</h4>
-        </div>
+      <SectionShell compact icon={<FaCircleInfo className="text-[18px]" />} title="Details">
         <p className="text-sm text-slate-600 italic">No technical details available</p>
-      </section>
+      </SectionShell>
     )
   }
 
   return (
-    <section>
-      <div className="flex items-center gap-2 text-slate-400 mb-3">
-        <FaCircleInfo className="text-[18px]" />
-        <h4 className="text-xs font-bold uppercase tracking-wider">Details</h4>
-      </div>
+    <SectionShell icon={<FaCircleInfo className="text-[18px]" />} title="Details">
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         {rows.map((row) => (
           <div key={row.label} className="flex flex-col">
@@ -102,6 +95,6 @@ export function AssetMetadataPanel({ asset }: AssetMetadataPanelProps) {
           </div>
         ))}
       </dl>
-    </section>
+    </SectionShell>
   )
 }

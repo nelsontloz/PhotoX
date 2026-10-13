@@ -44,6 +44,7 @@ export function useTimelineLayout(filters: AssetFilters = {}): UseTimelineLayout
   // ONE ResizeObserver on the grid container + a hidden probe carrying `.fixed-row-gallery`, so
   // rowHeight always comes from computed CSS. Never branch on `innerWidth < 640`: the media
   // query is `40rem`, which diverges from px when the user's root font-size isn't 16px.
+  // The RO fires on every container resize (including window resizes), so no window listener.
   useLayoutEffect(() => {
     const probe = document.createElement('div')
     probe.className = 'justified-grid-gallery fixed-row-gallery'
@@ -64,10 +65,7 @@ export function useTimelineLayout(filters: AssetFilters = {}): UseTimelineLayout
     roRef.current = ro
     if (containerElRef.current) ro.observe(containerElRef.current)
 
-    const onResize = () => readRowHeight()
-    window.addEventListener('resize', onResize)
     return () => {
-      window.removeEventListener('resize', onResize)
       ro.disconnect()
       roRef.current = null
       probe.remove()

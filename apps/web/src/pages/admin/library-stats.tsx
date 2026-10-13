@@ -10,6 +10,7 @@ import {
 } from 'react-icons/fa6'
 import { getAdminAssetCounts, getAdminLibraryStats } from '../../api/admin'
 import { formatBytes } from '../../lib/format'
+import { formatIsoDate } from '../../lib/dateFormat'
 import { AdminCard, AdminSection, GhostButton, MetricTile, RefreshButton, cx } from './ui'
 import type {
   AdminAssetCountsResponse,
@@ -85,20 +86,6 @@ const PLOT_MID_Y = PAD_TOP + PLOT_H / 2
 
 // Stable (not per-render) so two mounted charts could never fight over the same defs id.
 const STORAGE_AREA_GRADIENT_ID = 'library-stats-storage-area'
-
-function shortDate(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  })
-}
-
-function shortMonth(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, {
-    month: 'short',
-    year: '2-digit',
-  })
-}
 
 function AxisText({
   x,
@@ -210,7 +197,7 @@ function UploadsChart({ weeks }: { weeks: AdminLibraryUploadsWeek[] }) {
         const yV = yP - hV
         return (
           <g key={w.week}>
-            <title>{`${shortDate(w.week)}: ${w.photos} photos, ${w.videos} videos`}</title>
+            <title>{`${formatIsoDate(w.week, { month: 'short', day: 'numeric' })}: ${w.photos} photos, ${w.videos} videos`}</title>
             {hP > 0 && (
               <rect x={x} y={yP} width={barW} height={hP} rx={1} className="fill-primary" />
             )}
@@ -240,7 +227,7 @@ function UploadsChart({ weeks }: { weeks: AdminLibraryUploadsWeek[] }) {
             y={PLOT_BOTTOM + 15}
             anchor={first ? 'start' : last ? 'end' : 'middle'}
           >
-            {shortDate(w.week)}
+            {formatIsoDate(w.week, { month: 'short', day: 'numeric' })}
           </AxisText>
         )
       })}
@@ -366,7 +353,7 @@ function StorageChart({ months }: { months: AdminLibraryStorageMonth[] }) {
             y={PLOT_BOTTOM + 15}
             anchor={first ? 'start' : isLast ? 'end' : 'middle'}
           >
-            {shortMonth(row.month)}
+            {formatIsoDate(row.month, { month: 'short', year: '2-digit' })}
           </AxisText>
         )
       })}

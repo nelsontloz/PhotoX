@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsOptional, IsString } from 'class-validator'
+import { TitleDescriptionDto } from '../../common/title-description.dto'
 
 // Extraction-produced fields (worker-only). A non-act caller sending any of these to the user
 // metadata endpoint gets 403 in JwtAuthGuard — the whitelist would only 400 them, hiding a
@@ -37,19 +38,7 @@ export const WORKER_ONLY_METADATA_KEYS = [
   'faceCount',
 ] as const
 
-export class UpdateMetadataDto {
-  @ApiProperty({ required: false, maxLength: 255 })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  title?: string
-
-  @ApiProperty({ required: false, maxLength: 2000 })
-  @IsOptional()
-  @IsString()
-  @MaxLength(2000)
-  description?: string
-
+export class UpdateMetadataDto extends TitleDescriptionDto {
   @ApiProperty({ required: false, nullable: true })
   @IsOptional()
   @IsString()

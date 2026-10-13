@@ -33,8 +33,8 @@ export class AlbumsService {
   }
 
   async list(userId: string, q: PaginationQueryDto): Promise<{ items: AlbumDto[]; total: number }> {
-    const limit = q.limit ?? 20
-    const offset = q.offset ?? 0
+    const limit = q.limit
+    const offset = q.offset
 
     const [items, total] = await this.repo.findAndCount({
       where: { userId },
@@ -130,12 +130,12 @@ export class AlbumsService {
   async listAssets(
     userId: string,
     albumId: string,
-    q: { limit?: number; offset?: number },
+    q: PaginationQueryDto,
   ): Promise<{ items: AssetResponse[]; total: number }> {
     await findOwnedOr404(this.repo, albumId, userId, 'Album')
 
-    const limit = q.limit ?? 20
-    const offset = q.offset ?? 0
+    const limit = q.limit
+    const offset = q.offset
 
     const joins = await this.albumAssetRepo
       .createQueryBuilder('aa')
