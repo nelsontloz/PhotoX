@@ -167,6 +167,13 @@ function extOf(storageKey: string): string {
   return dot < 0 ? '' : base.slice(dot + 1)
 }
 
+// Thumbnails register with purpose='original' (FileRecord only has
+// 'original'|'transcode') but live under derivatives/thumbnails/..., so purpose
+// alone cannot isolate original bytes — storageKey prefix is the arbiter.
+function isDerivativeStorageKey(storageKey: string): boolean {
+  return storageKey.startsWith('derivatives/')
+}
+
 export interface BackupResult {
   userId: string
   email: string
@@ -263,8 +270,17 @@ export class UserBackupService {
     if (!user) throw new NotFoundException(`No user for ${emailOrId}`)
     await this.s3.ensureBucket()
 
+    // purpose='original' also matches thumbnail rows (they share the enum value
+    // but live under derivatives/thumbnails/...), so the storageKey prefix is the
+    // arbiter — keep both predicates, no register/storage layout change.
+    const fileRowsPromise = this.files
+      .createQueryBuilder('f')
+      .where('f."userId" = :userId', { userId: user.id })
+      .andWhere('f.purpose = :purpose', { purpose: 'original' })
+      .andWhere('f."storageKey" LIKE :prefix', { prefix: 'originals/%' })
+      .getMany()
     const [fileRows, assetRows, albumRows, shareRows, personRows] = await Promise.all([
-      this.files.find({ where: { userId: user.id, purpose: 'original' } }),
+      fileRowsPromise,
       this.assets.find({ where: { userId: user.id } }),
       this.albums.find({ where: { userId: user.id } }),
       this.shares.find({ where: { userId: user.id } }),
@@ -382,12 +398,27 @@ export class UserBackupService {
     // failure leaves the previous manifest (stale but consistent), never a live
     // manifest over missing bytes; a rerun re-uploads missing bytes then the
     // manifest, so rerun-after-failure is safe and idempotent.
+    // Pre-fix backups uploaded thumbnail bytes as originals/<thumbFileId>.webp;
+    // the originals/% query filter stops new uploads, so prune those stale keys
+    // here (before the manifest, keeping bytes-first/manifest-last).
     const prefix = backupPrefix(user.email, user.id)
+    const expectedKeys = new Set(
+      parsed.files.map((file) => originalKey(user.email, user.id, file.id, extOf(file.storageKey))),
+    )
     for (const file of parsed.files) {
       await this.s3.putFile(
         originalKey(user.email, user.id, file.id, extOf(file.storageKey)),
         this.storage.pathFor(file.storageKey),
         file.mimeType,
+      )
+    }
+    const staleKeys = (await this.s3.listKeys(`${prefix}originals/`)).filter(
+      (key) => !expectedKeys.has(key),
+    )
+    if (staleKeys.length > 0) {
+      await this.s3.deleteKeys(staleKeys)
+      this.logger.log(
+        `Pruned ${staleKeys.length} stale original(s) from pre-fix backup for user ${user.id}`,
       )
     }
     await this.s3.putObject(
@@ -428,6 +459,17 @@ export class UserBackupService {
       )
     }
 
+    // Legacy manifests (pre thumbnail-leak fix) embed derivatives/thumbnails/...
+    // rows with purpose='original' — skip them on restore while still restoring
+    // old originals; derivatives regenerate via reenqueueDerivatives below.
+    const originalFiles = manifest.files.filter((f) => !isDerivativeStorageKey(f.storageKey))
+    if (originalFiles.length !== manifest.files.length) {
+      this.logger.warn(
+        `Restore skipping ${manifest.files.length - originalFiles.length} derivative ` +
+          `file(s) from legacy manifest for user ${manifest.userId}`,
+      )
+    }
+
     // rows first, in one transaction — links (assets.fileId, album_assets, shares)
     // land together so no row is ever orphan-eligible; timestamps default to now()
     // (inside the orphan grace window even before bytes arrive).
@@ -447,7 +489,7 @@ export class UserBackupService {
             : null,
         }),
       )
-      for (const f of manifest.files) {
+      for (const f of originalFiles) {
         await manager.save(
           FileRecord,
           manager.create(FileRecord, {
@@ -527,7 +569,7 @@ export class UserBackupService {
     // bytes second — rows already reference every key, so no stray sweep can fire
     const tmpRoot = await mkdtemp(join(tmpdir(), 'photox-restore-'))
     try {
-      for (const f of manifest.files) {
+      for (const f of originalFiles) {
         const tmp = join(tmpRoot, `${f.id}.${randomUUID()}.tmp`)
         await this.s3.downloadToFile(
           originalKey(manifest.emailAtBackup, manifest.userId, f.id, extOf(f.storageKey)),
@@ -543,7 +585,7 @@ export class UserBackupService {
     const enqueued = await this.reenqueueDerivatives(manifest.userId)
     const completedAt = new Date().toISOString()
     this.logger.log(
-      `Restored user ${manifest.userId} (${manifest.files.length} files) ` +
+      `Restored user ${manifest.userId} (${originalFiles.length} files) ` +
         `startedAt=${startedAt} completedAt=${completedAt} — cleanup-orphans may resume`,
     )
     return {
@@ -554,7 +596,7 @@ export class UserBackupService {
       restoredFrom: located.manifestObjectKey,
       startedAt,
       completedAt,
-      files: manifest.files.length,
+      files: originalFiles.length,
       assets: manifest.assets.length,
       albums: manifest.albums.length,
       shares: manifest.shares.length,
@@ -580,12 +622,15 @@ export class UserBackupService {
       throw err
     }
     const manifest = userBackupManifestSchema.parse(JSON.parse(raw.toString('utf-8')))
+    // Legacy manifests embed derivative rows — report original-only counts so a
+    // pre-fix backup reads the same as the bytes a new backup would upload.
+    const originalFiles = manifest.files.filter((f) => !isDerivativeStorageKey(f.storageKey))
     return {
       exists: true,
       userId: manifest.userId,
       emailAtBackup: manifest.emailAtBackup,
       backedUpAt: manifest.backedUpAt,
-      files: manifest.files.length,
+      files: originalFiles.length,
       assets: manifest.assets.length,
       albums: manifest.albums.length,
       shares: manifest.shares.length,

@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import {
   CreateBucketCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
   ListObjectsV2Command,
@@ -235,6 +236,23 @@ export class S3BackupService implements OnModuleInit {
       if (!token) break
     }
     return keys
+  }
+
+  /** Deletes a single key (S3 deletes are idempotent — missing keys succeed). */
+  async deleteKey(key: string): Promise<void> {
+    await this.withRetry(
+      () =>
+        this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }), {
+          abortSignal: AbortSignal.timeout(30_000),
+        }),
+      `DeleteObject ${key}`,
+    )
+  }
+
+  /** Sequential prune of stale keys; logs the count. */
+  async deleteKeys(keys: string[]): Promise<void> {
+    for (const key of keys) await this.deleteKey(key)
+    if (keys.length > 0) this.logger.log(`Deleted ${keys.length} stale backup key(s)`)
   }
 
   private async withRetry<T>(op: () => Promise<T>, label: string): Promise<T> {

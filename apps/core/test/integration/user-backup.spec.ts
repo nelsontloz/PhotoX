@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path'
 import { NotFoundException, type INestApplication } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm'
-import { LocalStorageService } from '@photox/shared-config'
+import { LocalStorageService, backupPrefix } from '@photox/shared-config'
 import { DataSource, type Repository } from 'typeorm'
 import { Asset, AssetThumbnail, Face, FileRecord, Person } from '../../src/database/entities'
 import { AppSetting } from '../../src/database/entities/app-setting.entity'
@@ -45,7 +45,7 @@ const ENTITIES = [
 ]
 
 interface FakeOp {
-  op: 'putObject' | 'putFile'
+  op: 'putObject' | 'putFile' | 'deleteKey'
   key: string
 }
 
@@ -100,6 +100,16 @@ class FakeS3BackupService {
 
   listKeys(prefix: string): Promise<string[]> {
     return Promise.resolve([...this.objects.keys()].filter((k) => k.startsWith(prefix)))
+  }
+
+  deleteKey(key: string): Promise<void> {
+    this.ops.push({ op: 'deleteKey', key })
+    this.objects.delete(key)
+    return Promise.resolve()
+  }
+
+  async deleteKeys(keys: string[]): Promise<void> {
+    for (const key of keys) await this.deleteKey(key)
   }
 }
 
@@ -214,6 +224,28 @@ describe('user backup round-trip', () => {
       }),
     )
     return { record, bytes }
+  }
+
+  async function seedFile(
+    userId: string,
+    storageKey: string,
+    bytes: Buffer,
+    opts?: { mimeType?: string; originalName?: string; purpose?: 'original' | 'transcode' },
+  ): Promise<FileRecord> {
+    await mkdir(dirname(storage.pathFor(storageKey)), { recursive: true })
+    await writeFile(storage.pathFor(storageKey), bytes)
+    return fileRepo.save(
+      fileRepo.create({
+        userId,
+        storageKey,
+        originalName: opts?.originalName ?? 'file.bin',
+        mimeType: opts?.mimeType ?? 'image/png',
+        sizeBytes: bytes.length,
+        checksumSha256: createHash('sha256').update(bytes).digest('hex'),
+        purpose: opts?.purpose ?? 'original',
+        assetId: null,
+      }),
+    )
   }
 
   async function wipeUserData(): Promise<void> {
@@ -452,6 +484,133 @@ describe('user backup round-trip', () => {
       const row = await fileRepo.findOneOrFail({ where: { id: f.record.id } })
       expect(await readFile(storage.pathFor(row.storageKey))).toEqual(f.bytes)
     }
+  })
+
+  it('backs up original bytes only, skipping thumbnail/transcode derivatives', async () => {
+    const email = `derivatives-${randomUUID()}@example.com`
+    const user = await userRepo.save(
+      userRepo.create({
+        email,
+        role: 'user',
+        passwordHash: 'test-hash',
+        displayName: 'Derivatives User',
+      }),
+    )
+    const original = await seedOriginal(user.id, Buffer.from('derivative-test-original'))
+    const thumbBytes = Buffer.from('derivative-test-thumb')
+    await seedFile(user.id, `derivatives/thumbnails/${user.id}/${randomUUID()}.webp`, thumbBytes, {
+      mimeType: 'image/webp',
+      originalName: 'thumb-sm.webp',
+      purpose: 'original',
+    })
+    const transcodeBytes = Buffer.from('derivative-test-transcode')
+    await seedFile(
+      user.id,
+      `derivatives/transcodes/${user.id}/${randomUUID()}.mp4`,
+      transcodeBytes,
+      { mimeType: 'video/mp4', originalName: 'clip-transcode.mp4', purpose: 'transcode' },
+    )
+    const legacyBytes = Buffer.from('derivative-test-legacy-transcode')
+    await seedFile(user.id, `derivatives/transcodes/${user.id}/${randomUUID()}.mp4`, legacyBytes, {
+      mimeType: 'video/mp4',
+      originalName: 'legacy-transcode.mp4',
+      purpose: 'original',
+    })
+
+    // pre-fix rerun leaves stale thumbnail bytes under originals/ — prune must delete them
+    const staleKey = `${backupPrefix(email, user.id)}originals/${randomUUID()}.webp`
+    fake.objects.set(staleKey, Buffer.from('stale-thumb-bytes'))
+
+    const backed = await svc.backupUser(user.id)
+    expect(backed.files).toBe(1)
+    const putFiles = fake.ops.filter((o) => o.op === 'putFile')
+    expect(putFiles).toHaveLength(1)
+    const manifestObjectKey = fake.ops.find((o) => o.key.endsWith('manifest.json'))!.key
+    const manifest = JSON.parse((await fake.getBuffer(manifestObjectKey)).toString('utf-8')) as {
+      files: { id: string; storageKey: string }[]
+    }
+    expect(manifest.files).toHaveLength(1)
+    expect(manifest.files[0]!.id).toBe(original.record.id)
+    expect(manifest.files[0]!.storageKey.startsWith('originals/')).toBe(true)
+    expectManifestLast()
+    // stale pre-fix bytes are pruned before the manifest lands, expected original remains
+    expect(fake.objects.has(staleKey)).toBe(false)
+    expect(fake.objects.has(putFiles[0]!.key)).toBe(true)
+    const deletes = fake.ops.filter((o) => o.op === 'deleteKey')
+    expect(deletes.map((o) => o.key)).toContain(staleKey)
+    const manifestIdx = fake.ops.findIndex((o) => o.key.endsWith('manifest.json'))
+    for (const op of deletes) {
+      expect(fake.ops.indexOf(op)).toBeLessThan(manifestIdx)
+    }
+
+    const status = await svc.backupStatus(user.id)
+    expect(status).toMatchObject({ exists: true, userId: user.id, files: 1 })
+  })
+
+  it('reports original-only status and skips derivatives on restore for legacy manifests', async () => {
+    const email = `legacy-${randomUUID()}@example.com`
+    const user = await userRepo.save(
+      userRepo.create({
+        email,
+        role: 'user',
+        passwordHash: 'test-hash',
+        displayName: 'Legacy User',
+      }),
+    )
+    const original = await seedOriginal(user.id, Buffer.from('legacy-original-bytes'))
+    const thumbBytes = Buffer.from('legacy-thumb-bytes')
+    const thumb = await seedFile(
+      user.id,
+      `derivatives/thumbnails/${user.id}/${randomUUID()}.webp`,
+      thumbBytes,
+      { mimeType: 'image/webp', originalName: 'thumb-sm.webp', purpose: 'original' },
+    )
+
+    const backed = await svc.backupUser(user.id)
+    expect(backed.files).toBe(1)
+
+    // splice a pre-fix derivative entry into the stored manifest plus its S3 bytes
+    const manifestObjectKey = fake.ops.find((o) => o.key.endsWith('manifest.json'))!.key
+    const stored = JSON.parse((await fake.getBuffer(manifestObjectKey)).toString('utf-8')) as {
+      files: {
+        id: string
+        userId: string
+        storageKey: string
+        originalName: string
+        mimeType: string
+        sizeBytes: number
+        checksumSha256: string
+        purpose: 'original'
+        assetId: string | null
+      }[]
+    }
+    stored.files.push({
+      id: thumb.id,
+      userId: thumb.userId,
+      storageKey: thumb.storageKey,
+      originalName: thumb.originalName,
+      mimeType: thumb.mimeType,
+      sizeBytes: thumbBytes.length,
+      checksumSha256: thumb.checksumSha256,
+      purpose: 'original',
+      assetId: null,
+    })
+    await fake.putObject(manifestObjectKey, Buffer.from(JSON.stringify(stored)))
+    const prefix = manifestObjectKey.slice(0, -'manifest.json'.length)
+    await fake.putFile(`${prefix}originals/${thumb.id}.webp`, storage.pathFor(thumb.storageKey))
+
+    // status reports original-only despite the legacy derivative entry
+    expect((await svc.backupStatus(user.id)).files).toBe(1)
+
+    await wipeUserData()
+
+    const restored = await svc.restoreUser(email)
+    expect(restored.files).toBe(1)
+    const restoredOriginal = await fileRepo.findOneOrFail({ where: { id: original.record.id } })
+    expect(await readFile(storage.pathFor(restoredOriginal.storageKey))).toEqual(original.bytes)
+    expect(await fileRepo.findOne({ where: { id: thumb.id } })).toBeNull()
+    expect(await storage.exists(thumb.storageKey)).toBe(false)
+    expect((await svc.backupStatus(email)).files).toBe(1)
   })
 
   it('backupStatus is false for unknown users and missing manifests (A4)', async () => {
