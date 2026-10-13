@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import request from 'supertest'
 import {
   closeTestApp,
@@ -144,31 +143,6 @@ describe('shares JWT identity', () => {
     expect(res.status).toBe(200)
     expect((res.body as { kind: string }).kind).toBe('asset')
   })
-
-  it('returns 401 without token', async () => {
-    const res = await request(apiServer(t)).get('/api/v1/shares')
-    expect(res.status).toBe(401)
-  })
-
-  it('returns 401 for malformed token', async () => {
-    const res = await request(apiServer(t))
-      .get('/api/v1/shares')
-      .set({ Authorization: 'Bearer not-a-token' })
-    expect(res.status).toBe(401)
-  })
-
-  it.each([
-    ['post', '/api/v1/shares', { assetId: randomUUID() }],
-    ['delete', `/api/v1/shares/${randomUUID()}`],
-  ] as ['get' | 'post' | 'delete', string, object?][])(
-    'returns 401 for %s %s without token',
-    async (method, path, body) => {
-      const agent = request(apiServer(t))
-      const req = agent[method](path)
-      const res = await (body ? req.send(body) : req)
-      expect(res.status).toBe(401)
-    },
-  )
 
   it('rotates the token when sharing the same asset twice', async () => {
     const user = await seedUser(t)

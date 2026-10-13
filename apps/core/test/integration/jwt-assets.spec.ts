@@ -357,7 +357,8 @@ describe('assets JWT identity', () => {
     expect(res.status).toBe(401)
   })
 
-  // GET /api/v1/assets already has explicit no-token coverage above
+  // GET /api/v1/assets already has explicit no-token coverage above; per-prefix
+  // lines below guard the open-routes regex (auth/share/health/docs only)
   const noTokenRoutes: ['get' | 'patch' | 'post', string][] = [
     ['get', '/api/v1/assets/trashed'],
     ['get', `/api/v1/assets/${randomUUID()}`],
@@ -367,6 +368,10 @@ describe('assets JWT identity', () => {
     ['post', '/api/v1/assets/bulk-trash'],
     ['post', `/api/v1/assets/${randomUUID()}/reprocess-thumbnails`],
     ['post', `/api/v1/assets/${randomUUID()}/reprocess-video`],
+    ['get', '/api/v1/albums'],
+    ['get', '/api/v1/persons'],
+    ['get', '/api/v1/shares'],
+    ['get', `/api/v1/files/${randomUUID()}/stream`],
   ]
 
   it.each(noTokenRoutes)('returns 401 without token for %s %s', async (method, path) => {

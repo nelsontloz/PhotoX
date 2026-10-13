@@ -11,6 +11,8 @@ import {
   seedUser,
 } from './helpers'
 import type { ApiTestApp } from './helpers'
+import { seedSidecarAsset, sidecarHarness } from './helpers/sidecar'
+import { adminAuthHarness, reprocessMatrix } from './helpers/reprocess-matrix'
 
 const E0 = Array.from({ length: SEARCH_EMBEDDING_DIM }, (_, i) => (i === 0 ? 1 : 0))
 const DETECTIONS = {
@@ -40,22 +42,16 @@ describe('asset detections HTTP', () => {
   })
 
   async function seedOwnedAsset() {
-    const owner = await seedUser(t)
-    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role })
-    const act = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
-    const file = await seedFile(t, owner.id)
-    const asset = await seedAsset(t, owner.id, file.id)
-    return { owner, token, act, file, asset }
+    return seedSidecarAsset(t)
   }
 
   it('requires a token', async () => {
-    const { asset } = await seedOwnedAsset()
-    const post = await request(apiServer(t))
-      .post(`/worker/assets/${asset.id}/detections`)
-      .send(DETECTIONS)
-    expect(post.status).toBe(401)
-    const get = await request(apiServer(t)).get(`/api/v1/assets/${asset.id}/detections`)
-    expect(get.status).toBe(401)
+    await sidecarHarness(t, {
+      route: (id) => `/worker/assets/${id}/detections`,
+      body: DETECTIONS,
+      repo: t.detectionRepo,
+      getRoute: (id) => `/api/v1/assets/${id}/detections`,
+    })
   })
 
   it('registers detections and returns them ordered by confidence desc', async () => {
@@ -214,12 +210,10 @@ describe('asset detections HTTP', () => {
     }
 
     it('rejects unauthenticated and non-admin requests', async () => {
-      const anon = await request(apiServer(t)).post('/api/v1/admin/detections/reprocess')
-      expect(anon.status).toBe(401)
-      const user = await seedUser(t)
-      const auth = t.authHeader(t.signToken({ id: user.id, email: user.email, role: user.role }))
-      const res = await request(apiServer(t)).post('/api/v1/admin/detections/reprocess').set(auth)
-      expect(res.status).toBe(403)
+      await adminAuthHarness(t, {
+        post: ['/api/v1/admin/detections/reprocess'],
+        get: ['/api/v1/admin/detections/reprocess'],
+      })
     })
 
     it('enqueues detection jobs for non-trashed photos, records the run and counts the queue', async () => {
@@ -236,37 +230,15 @@ describe('asset detections HTTP', () => {
       const videoFile = await seedFile(t, owner.id, { mimeType: 'video/mp4' })
       await seedAsset(t, owner.id, videoFile.id, { kind: 'video' })
 
-      const before = await request(apiServer(t)).get('/api/v1/admin/detections/reprocess').set(auth)
-      expect(before.status).toBe(200)
-      expect((before.body as { lastRun: unknown }).lastRun).toBeNull()
-
-      const res = await request(apiServer(t)).post('/api/v1/admin/detections/reprocess').set(auth)
-      expect(res.status).toBe(200)
-      expect(res.body).toEqual({ enqueued: 2, total: 2 })
-
-      const queue = t.getQueue('process-detect')
-      for (const { file, asset } of [a, b]) {
-        const job = await queue.getJob(JOB_ID(asset.id))
-        expect(job).toBeTruthy()
-        expect(job?.opts.removeOnComplete).toBe(true)
-        expect(job?.data as Record<string, unknown>).toMatchObject({
-          assetId: asset.id,
-          fileId: file.id,
-          userId: owner.id,
-        })
-      }
-      expect(await queue.getJob(JOB_ID(trashed.asset.id))).toBeFalsy()
-
-      const status = await request(apiServer(t)).get('/api/v1/admin/detections/reprocess').set(auth)
-      expect(status.status).toBe(200)
-      const body = status.body as {
-        lastRun: { startedAt: string; total: number; enqueued: number }
-        queue: Record<string, number>
-      }
-      expect(body.lastRun.total).toBe(2)
-      expect(body.lastRun.enqueued).toBe(2)
-      expect(Number.isNaN(Date.parse(body.lastRun.startedAt))).toBe(false)
-      expect(body.queue.waiting).toBeGreaterThanOrEqual(2)
+      await reprocessMatrix(t, auth, owner.id, [a, b], {
+        route: '/api/v1/admin/detections/reprocess',
+        queue: 'process-detect',
+        jobIdFn: JOB_ID,
+        jobName: 'detect',
+        jobDataExtra: { reason: 'reprocess' },
+        respKeys: { enqueued: 2, total: 2 },
+        filter: [trashed.asset.id],
+      })
     })
   })
 })

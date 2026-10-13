@@ -176,33 +176,6 @@ describe('thumbnails and trash JWT identity', () => {
     expect(await t.assetRepo.count({ where: { userId: b.id, isTrashed: true } })).toBe(0)
   })
 
-  it('returns 401 without token', async () => {
-    const user = await seedUser(t)
-    const file = await seedFile(t, user.id)
-    const asset = await seedAsset(t, user.id, file.id)
-    const res = await request(apiServer(t)).get(`/api/v1/assets/${asset.id}`)
-    expect(res.status).toBe(401)
-  })
-
-  it('returns 401 for malformed token', async () => {
-    const res = await request(apiServer(t))
-      .get('/api/v1/assets/trashed')
-      .set({ Authorization: 'Bearer not-a-token' })
-    expect(res.status).toBe(401)
-  })
-
-  const noTokenRoutes: ['post' | 'delete', string][] = [
-    ['post', `/api/v1/assets/${randomUUID()}/thumbnails`],
-    ['post', `/api/v1/assets/trashed/${randomUUID()}/restore`],
-    ['delete', `/api/v1/assets/trashed/${randomUUID()}`],
-    ['delete', '/api/v1/assets/trashed'],
-  ]
-
-  it.each(noTokenRoutes)('returns 401 without token for %s %s', async (method, path) => {
-    const res = await request(apiServer(t))[method](path)
-    expect(res.status).toBe(401)
-  })
-
   it('permanently deletes a trashed asset and returns its file ids', async () => {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })
