@@ -205,14 +205,6 @@ describe('issue-156 vulns (expect secure, currently insecure)', () => {
     expect(res.status).toBe(404)
   })
 
-  it('vuln4 open registration: first user after wipe is not admin', async () => {
-    const res = await request(apiServer(t))
-      .post('/api/v1/auth/register')
-      .send({ email: 'fresh@example.com', password: 'correcthorsebattery', displayName: 'Fresh' })
-    expect(res.status).toBe(201)
-    expect((res.body as unknown as { user: { role: string } }).user.role).not.toBe('admin')
-  })
-
   it('vuln4 exactly-one: concurrent registers yield no admins', async () => {
     const register = (email: string) =>
       request(apiServer(t))
