@@ -98,9 +98,7 @@ export function MetricTile({
   bar?: ReactNode
 }) {
   const percent =
-    barPercent == null || !Number.isFinite(barPercent)
-      ? 0
-      : Math.min(100, Math.max(0, barPercent))
+    barPercent == null || !Number.isFinite(barPercent) ? 0 : Math.min(100, Math.max(0, barPercent))
   const track =
     barPercent != null ? (
       <div

@@ -16,7 +16,7 @@ describe('BullMqService.enqueueAssetJob', () => {
     ['detect', 'process-detect', 'detect-a1'],
   ] as const)('%s enqueues %s with the prefix jobId', async (kind, queue, jobId) => {
     const { service, add } = makeService()
-    service.enqueueAssetJob(kind, 'a1', 'f1', 'u1')
+    await service.enqueueAssetJob(kind, 'a1', 'f1', 'u1')
     await vi.waitFor(() => expect(add).toHaveBeenCalled())
     expect(add).toHaveBeenCalledWith(
       queue,

@@ -8,7 +8,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common'
 import { JwtService, type JwtVerifyOptions } from '@nestjs/jwt'
-import { randomUUID } from 'crypto'
+import { createHmac, randomUUID, timingSafeEqual } from 'crypto'
 import type { Request, Response } from 'express'
 import { DataSource } from 'typeorm'
 import { loadAuthEnv, loadEnv } from '@photox/shared-config'
@@ -57,6 +57,23 @@ function isActListRead(req: Request): boolean {
 
 function isUserMetadataWrite(method: string, path: string): boolean {
   return method === 'PATCH' && /^\/api\/v1\/assets\/[^/]+\/metadata$/.test(path)
+}
+
+// scope the HMAC binding to the route's target: path id/fileId, then the register-file
+// body asset, then the worker's claimed scope, else the sub itself (persons routes, whose
+// cluster jobs are user-scoped)
+function jobScopeFrom(req: Request, sub: string): string {
+  const params = req.params as Record<string, unknown> | undefined
+  const id = params?.id
+  if (typeof id === 'string' && id.length > 0) return id
+  const fileId = params?.fileId
+  if (typeof fileId === 'string' && fileId.length > 0) return fileId
+  const body = req.body as Record<string, unknown> | undefined
+  const assetId = body?.assetId
+  if (typeof assetId === 'string' && assetId.length > 0) return assetId
+  const scopeHeader = req.headers['x-job-scope']
+  if (typeof scopeHeader === 'string' && scopeHeader.length > 0) return scopeHeader
+  return sub
 }
 
 // req.body is parsed by express.json() before guards run; absent on unit-test mocks
@@ -149,10 +166,7 @@ export class JwtAuthGuard implements CanActivate {
       // which have no users row; user-sub worker tokens still hit the floor above
       if (!row && !payload.act) throw new UnauthorizedException()
       // second granularity: iat is seconds while the floor carries ms
-      if (
-        row?.tokensValidAfter &&
-        Math.floor(row.tokensValidAfter.getTime() / 1000) > payload.iat
-      )
+      if (row?.tokensValidAfter && Math.floor(row.tokensValidAfter.getTime() / 1000) > payload.iat)
         throw new UnauthorizedException()
     }
 
@@ -169,6 +183,14 @@ export class JwtAuthGuard implements CanActivate {
     // endpoint — the whitelist would only 400 them, hiding a worker-contract violation
     if (!payload.act && isUserMetadataWrite(method, path) && hasWorkerMetadataKey(req.body))
       throw new ForbiddenException('Worker field')
+    // ponytail: HMAC job binding — a worker-origin token alone proves only delegation, not that
+    // a job was enqueued for this target; mutating /worker/* calls must carry the X-Job-Signature
+    // the enqueue stamped (HMAC of sub:scope under WORKER_JWT_SECRET). Scoped to worker-origin
+    // because only the worker mints act tokens in prod (auth never sets act; the user-secret act
+    // tokens in specs are pre-binding stand-ins). Reads stay open. Ceiling: scope is the asset,
+    // not the job — a leaked token replays within its asset until it expires.
+    if (workerOrigin && payload.act && isWorkerRoute(path) && method !== 'GET' && method !== 'HEAD')
+      this.assertJobBinding(req, payload.sub)
 
     // sliding renewal: once past half of its own ttl, a cookie-borne token is re-minted
     // from the verified payload so subresources keep authenticating without client JS
@@ -201,5 +223,18 @@ export class JwtAuthGuard implements CanActivate {
       }
     }
     return true
+  }
+
+  private assertJobBinding(req: Request, sub: string): void {
+    const presented = req.headers['x-job-signature']
+    const expectedHex = createHmac('sha256', this.workerSecret)
+      .update(`${sub}:${jobScopeFrom(req, sub)}`)
+      .digest('hex')
+    // length-checked first: timingSafeEqual throws on mismatched lengths
+    const valid =
+      typeof presented === 'string' &&
+      presented.length === expectedHex.length &&
+      timingSafeEqual(Buffer.from(presented), Buffer.from(expectedHex))
+    if (!valid) throw new ForbiddenException('Missing or invalid job binding')
   }
 }

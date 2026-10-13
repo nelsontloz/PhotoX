@@ -51,6 +51,7 @@ export class ThumbnailProcessor implements OnModuleInit {
       fileId,
       size,
       userId,
+      sig,
       metadataWaits = 0,
     } = parseJobData(thumbnailJobSchema, job.data, 'process-thumbnail')
 
@@ -67,8 +68,8 @@ export class ThumbnailProcessor implements OnModuleInit {
     ) {
       // ponytail: no jobId — the current job is active, BullMQ would dedupe the re-add away; the
       // deferred copy re-fetches the asset itself, which is the ordering point. Ceiling: if this
-      // add fails (enqueue logs-and-swallows) the thumbnail is dropped; BullMQ retry the whole job
-      await this.bullMq.enqueue(
+      // add fails the whole job throws so BullMQ retries it (bounded by attempts:3)
+      const deferred = await this.bullMq.enqueue(
         'process-thumbnail',
         job.name,
         { ...job.data, metadataWaits: metadataWaits + 1 },
@@ -80,6 +81,7 @@ export class ThumbnailProcessor implements OnModuleInit {
           removeOnFail: true,
         },
       )
+      if (!deferred) throw new Error(`Failed to defer thumbnail for asset=${assetId}`)
       this.logger.log(
         `Thumbnail deferred (metadata pending): asset=${assetId}, size=${size}, wait=${metadataWaits + 1}`,
       )
@@ -87,16 +89,23 @@ export class ThumbnailProcessor implements OnModuleInit {
     }
 
     try {
-      await this.generateThumbnail(record, asset, size, userId)
+      await this.generateThumbnail(record, asset, size, userId, sig)
 
       this.logger.log(`Thumbnail complete: asset=${assetId}, size=${size}`)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       this.logger.error(`Thumbnail failed: asset=${assetId}, size=${size} — ${message}`)
 
-      await patchStatusFailed(this.core, this.logger, userId, assetId, {
-        thumbnailStatus: 'failed',
-      })
+      await patchStatusFailed(
+        this.core,
+        this.logger,
+        userId,
+        assetId,
+        {
+          thumbnailStatus: 'failed',
+        },
+        sig,
+      )
 
       throw err
     }
@@ -107,6 +116,7 @@ export class ThumbnailProcessor implements OnModuleInit {
     asset: Asset,
     size: ThumbnailJob['size'],
     userId: string,
+    sig?: string,
   ): Promise<void> {
     const mimeType = record.mimeType
 
@@ -141,7 +151,7 @@ export class ThumbnailProcessor implements OnModuleInit {
 
         const { data: thumbBuffer, info } = await this.encodeWebp(frameBuffer, size, degrees)
 
-        await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info)
+        await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info, sig)
 
         return
       }
@@ -161,7 +171,7 @@ export class ThumbnailProcessor implements OnModuleInit {
             '-',
           ])
           const { data: thumbBuffer, info } = await this.encodeWebp(frameBuffer, size)
-          await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info)
+          await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info, sig)
           return
         } catch (err) {
           this.logger.warn(
@@ -173,7 +183,7 @@ export class ThumbnailProcessor implements OnModuleInit {
 
       const { data: thumbBuffer, info } = await this.encodeWebp(tmpPath, size)
 
-      await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info)
+      await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info, sig)
     } finally {
       await unlink(tmpPath).catch(() => undefined)
     }
@@ -195,6 +205,7 @@ export class ThumbnailProcessor implements OnModuleInit {
     size: string,
     thumbBuffer: Buffer,
     info: { width: number; height: number },
+    sig?: string,
   ): Promise<void> {
     const checksum = createHash('sha256').update(thumbBuffer).digest('hex')
     const fileId = randomUUID()
@@ -203,28 +214,45 @@ export class ThumbnailProcessor implements OnModuleInit {
     await writeFile(staging, thumbBuffer)
     await this.storage.save(storageKey, staging)
 
-    const saved = await this.core.registerFile(userId, {
-      id: fileId,
-      kind: 'thumbnail',
-      ext: 'webp',
-      checksumSha256: checksum,
-      originalName: `thumb-${size}.webp`,
-      mimeType: 'image/webp',
-      sizeBytes: thumbBuffer.length,
-    })
+    const saved = await this.core.registerFile(
+      userId,
+      {
+        id: fileId,
+        kind: 'thumbnail',
+        ext: 'webp',
+        checksumSha256: checksum,
+        originalName: `thumb-${size}.webp`,
+        mimeType: 'image/webp',
+        sizeBytes: thumbBuffer.length,
+      },
+      // the register-file route carries no asset id, so the binding scope rides along too
+      sig === undefined ? undefined : { sig, scope: assetId },
+    )
     // ponytail: checksum dedupe returned another row's id — this uniquely-keyed copy is unreferenced
     if (saved.id !== fileId) await this.storage.delete(storageKey).catch(() => undefined)
 
-    await this.core.registerThumbnail(userId, assetId, {
-      size,
-      fileId: saved.id,
-      width: info.width,
-      height: info.height,
-      bytes: thumbBuffer.length,
-    })
+    await this.core.registerThumbnail(
+      userId,
+      assetId,
+      {
+        size,
+        fileId: saved.id,
+        width: info.width,
+        height: info.height,
+        bytes: thumbBuffer.length,
+      },
+      sig === undefined ? undefined : { sig },
+    )
 
-    await patchStatusFailed(this.core, this.logger, userId, assetId, {
-      thumbnailStatus: 'ready',
-    })
+    await patchStatusFailed(
+      this.core,
+      this.logger,
+      userId,
+      assetId,
+      {
+        thumbnailStatus: 'ready',
+      },
+      sig,
+    )
   }
 }

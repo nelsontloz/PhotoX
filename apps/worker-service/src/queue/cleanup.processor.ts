@@ -22,10 +22,10 @@ export class CleanupProcessor implements OnModuleInit {
   }
 
   private async processJob(job: Job<CleanupJob>) {
-    const { userId, fileId } = parseJobData(cleanupJobSchema, job.data, 'cleanup-asset')
+    const { userId, fileId, sig } = parseJobData(cleanupJobSchema, job.data, 'cleanup-asset')
 
     // endpoint deletes blob + row and is idempotent (204 even when missing)
-    await this.core.deleteOwnedFile(userId, fileId)
+    await this.core.deleteOwnedFile(userId, fileId, sig === undefined ? undefined : { sig })
     this.logger.log(`Cleanup complete: file=${fileId}`)
   }
 }

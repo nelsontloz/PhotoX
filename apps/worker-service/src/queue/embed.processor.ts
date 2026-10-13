@@ -32,19 +32,31 @@ export class EmbeddingProcessor implements OnModuleInit {
       schema: assetRefsJobSchema,
       label: 'Embedding',
       missingModelMarkers: ['Vision embedding model not found'],
-      onFailure: ({ userId, assetId }) =>
-        patchStatusFailed(this.core, this.logger, userId, assetId, { embeddingStatus: 'failed' }),
+      onFailure: ({ userId, assetId, sig }) =>
+        patchStatusFailed(
+          this.core,
+          this.logger,
+          userId,
+          assetId,
+          { embeddingStatus: 'failed' },
+          sig,
+        ),
       body: async ({ data, filePath }) => {
         // ponytail: same EXIF-oriented ≤2048px prep as face detection — the SigLIP processor
         // downscales to 224 itself; 2048 keeps texture detail without decoding full resolution
         const resized = await orientedResize(filePath, FACE_MAX_DIM)
 
         const embedding = await this.embedder.embed(resized)
-        await this.core.registerEmbedding(data.userId, data.assetId, {
-          kind: 'image',
-          model: SEARCH_EMBEDDING_MODEL,
-          embedding,
-        })
+        await this.core.registerEmbedding(
+          data.userId,
+          data.assetId,
+          {
+            kind: 'image',
+            model: SEARCH_EMBEDDING_MODEL,
+            embedding,
+          },
+          data.sig === undefined ? undefined : { sig: data.sig },
+        )
 
         this.logger.log(`Embedding complete: asset=${data.assetId}`)
       },

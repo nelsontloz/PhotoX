@@ -1,7 +1,8 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
-import { loadEnv } from '@photox/shared-config'
+import { loadAuthEnv, loadEnv } from '@photox/shared-config'
 import Redis from 'ioredis'
 import { Queue, Worker, type Job, type JobsOptions, type WorkerOptions } from 'bullmq'
+import { createHmac } from 'node:crypto'
 
 @Injectable()
 export class BullMqService implements OnModuleInit, OnModuleDestroy {
@@ -9,6 +10,7 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
   private connection!: Redis
   private readonly workers: Worker[] = []
   private readonly queues = new Map<string, Queue>()
+  private workerSecret: string | undefined
 
   async onModuleInit() {
     const env = loadEnv()
@@ -22,6 +24,13 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
       this.connection.once('ready', () => resolve())
       this.connection.once('error', (err) => reject(err))
     })
+    // best-effort: test harnesses boot without auth secrets (no core guard to satisfy there);
+    // without it re-enqueued jobs simply carry no fresh binding
+    try {
+      this.workerSecret = loadAuthEnv().WORKER_JWT_SECRET
+    } catch {
+      this.workerSecret = undefined
+    }
     this.logger.log('BullMQ Redis connection established')
   }
 
@@ -49,12 +58,33 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
       JobsOptions,
       'jobId' | 'attempts' | 'backoff' | 'removeOnFail' | 'removeOnComplete' | 'delay'
     > = {},
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
-      await this.getQueue(queueName).add(jobName, data, opts)
+      await this.getQueue(queueName).add(jobName, this.withJobSig(data), opts)
+      return true
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       this.logger.error(`Failed to enqueue ${queueName} job: ${msg}`)
+      return false
+    }
+  }
+
+  // ponytail: same binding as core's enqueue, stamp-if-absent — worker-originated jobs (cluster
+  // debounce, metadata-wait re-add, legacy re-embed) never pass through core, and a carried sig
+  // is already bound to the right scope, so only stamp when missing. Copies, never mutates, so
+  // callers' data objects (and enqueue spies) see exactly what they passed.
+  private withJobSig(data: Record<string, unknown>): Record<string, unknown> {
+    if (!this.workerSecret) return data
+    if (typeof data.sig === 'string' && data.sig.length > 0) return data
+    const sub = data.userId
+    if (typeof sub !== 'string' || sub.length === 0) return data
+    const scope = [data.assetId, data.fileId, data.userId].find(
+      (v): v is string => typeof v === 'string' && v.length > 0,
+    )
+    if (!scope) return data
+    return {
+      ...data,
+      sig: createHmac('sha256', this.workerSecret).update(`${sub}:${scope}`).digest('hex'),
     }
   }
 

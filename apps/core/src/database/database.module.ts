@@ -121,7 +121,11 @@ export class DatabaseModule {
           password: env.POSTGRES_PASSWORD,
           database: 'photox',
           autoLoadEntities: true,
-          synchronize: true,
+          // ponytail: synchronize is dev/test-only (same direct-process.env precedent as
+          // ADMIN_EMAIL above) — prod boots via the baseline migration (migrationsRun).
+          synchronize: process.env.NODE_ENV !== 'production',
+          migrationsRun: process.env.NODE_ENV === 'production',
+          migrations: [`${__dirname}/migrations/*.{js,ts}`],
           connectTimeoutMS: 3000,
           retryAttempts: 3,
           retryDelay: 3000,

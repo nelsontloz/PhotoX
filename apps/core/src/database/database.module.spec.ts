@@ -1,7 +1,7 @@
 import type { Mock } from 'vitest'
 import * as argon2 from 'argon2'
 import type { DataSource } from 'typeorm'
-import { ADMIN_SEED_PROVIDER } from './database.module'
+import { ADMIN_SEED_PROVIDER, DatabaseModule } from './database.module'
 
 const EMAIL = 'admin-seed@example.com'
 const PASSWORD = 'seed-password-123'
@@ -58,5 +58,38 @@ describe('ADMIN_SEED bootstrap', () => {
     const query = vi.fn().mockResolvedValueOnce([{ '?column?': 1 }])
     await bootstrap(query)
     expect(query).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('forRoot synchronize gate', () => {
+  const prevNodeEnv = process.env.NODE_ENV
+
+  afterEach(() => {
+    if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = prevNodeEnv
+  })
+
+  function findSynchronize(node: unknown, seen = new Set<unknown>()): unknown {
+    if (node === null || typeof node !== 'object' || seen.has(node)) return undefined
+    seen.add(node)
+    const rec = node as Record<string, unknown>
+    if ('synchronize' in rec) return rec.synchronize
+    for (const v of Object.values(rec)) {
+      const r = findSynchronize(v, seen)
+      if (r !== undefined) return r
+    }
+    return undefined
+  }
+
+  it('disables synchronize in production', () => {
+    process.env.NODE_ENV = 'production'
+    expect(findSynchronize(DatabaseModule.forRoot())).toBe(false)
+  })
+
+  it('enables synchronize elsewhere', () => {
+    process.env.NODE_ENV = 'test'
+    expect(findSynchronize(DatabaseModule.forRoot())).toBe(true)
+    delete process.env.NODE_ENV
+    expect(findSynchronize(DatabaseModule.forRoot())).toBe(true)
   })
 })

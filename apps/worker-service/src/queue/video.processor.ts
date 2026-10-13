@@ -33,7 +33,12 @@ export class VideoProcessor implements OnModuleInit {
   }
 
   private async processJob(job: Job<AssetRefsJob>) {
-    const { assetId, fileId, userId } = parseJobData(assetRefsJobSchema, job.data, 'process-video')
+    const { assetId, fileId, userId, sig } = parseJobData(
+      assetRefsJobSchema,
+      job.data,
+      'process-video',
+    )
+    const binding = sig === undefined ? undefined : { sig }
 
     this.logger.log(`Processing video transcode: asset=${assetId}`)
 
@@ -45,7 +50,7 @@ export class VideoProcessor implements OnModuleInit {
     assertOwnership({ assetId, fileId, userId }, { record, asset })
 
     try {
-      await this.core.patchMetadata(userId, assetId, { transcodeStatus: 'pending' })
+      await this.core.patchMetadata(userId, assetId, { transcodeStatus: 'pending' }, binding)
 
       const srcPath = await this.downloadSource(record, srcDir)
 
@@ -68,10 +73,15 @@ export class VideoProcessor implements OnModuleInit {
       const needsTranscode = videoCodec !== 'h264' || (audioStream && audioCodec !== 'aac')
 
       if (!needsTranscode) {
-        await this.core.patchMetadata(userId, assetId, {
-          transcodeStatus: 'ready',
-          transcodeFileId: null,
-        })
+        await this.core.patchMetadata(
+          userId,
+          assetId,
+          {
+            transcodeStatus: 'ready',
+            transcodeFileId: null,
+          },
+          binding,
+        )
         this.logger.log(`Video already browser-safe, skipping transcode: asset=${assetId}`)
         return
       }
@@ -100,21 +110,33 @@ export class VideoProcessor implements OnModuleInit {
 
       await runFfmpeg(ffmpegArgs, { timeoutMs: TRANSCODE_TIMEOUT_MS })
 
-      const derivativeFileId = await this.registerDerivative(assetId, userId, outPath)
+      const derivativeFileId = await this.registerDerivative(assetId, userId, outPath, sig)
 
-      await this.core.patchMetadata(userId, assetId, {
-        transcodeStatus: 'ready',
-        transcodeFileId: derivativeFileId,
-      })
+      await this.core.patchMetadata(
+        userId,
+        assetId,
+        {
+          transcodeStatus: 'ready',
+          transcodeFileId: derivativeFileId,
+        },
+        binding,
+      )
       this.logger.log(`Video transcode complete: asset=${assetId}`)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       this.logger.error(`Video transcode failed: asset=${assetId} — ${message}`)
 
-      await patchStatusFailed(this.core, this.logger, userId, assetId, {
-        transcodeStatus: 'failed',
-        metadata: { transcodeError: message },
-      })
+      await patchStatusFailed(
+        this.core,
+        this.logger,
+        userId,
+        assetId,
+        {
+          transcodeStatus: 'failed',
+          metadata: { transcodeError: message },
+        },
+        sig,
+      )
 
       throw err
     } finally {
@@ -141,6 +163,7 @@ export class VideoProcessor implements OnModuleInit {
     assetId: string,
     userId: string,
     outPath: string,
+    sig?: string,
   ): Promise<string> {
     const bytes = await readFile(outPath)
     const checksum = createHash('sha256').update(bytes).digest('hex')
@@ -148,16 +171,21 @@ export class VideoProcessor implements OnModuleInit {
     const storageKey = this.storage.buildKey('transcode', userId, fileId, 'webm')
     await this.storage.save(storageKey, outPath)
 
-    const saved = await this.core.registerFile(userId, {
-      id: fileId,
-      kind: 'transcode',
-      ext: 'webm',
-      checksumSha256: checksum,
-      originalName: 'video.webm',
-      mimeType: 'video/webm',
-      sizeBytes: bytes.length,
-      assetId,
-    })
+    const saved = await this.core.registerFile(
+      userId,
+      {
+        id: fileId,
+        kind: 'transcode',
+        ext: 'webm',
+        checksumSha256: checksum,
+        originalName: 'video.webm',
+        mimeType: 'video/webm',
+        sizeBytes: bytes.length,
+        assetId,
+      },
+      // assetId rides in the body here, so the guard derives the scope without a header
+      sig === undefined ? undefined : { sig },
+    )
     // ponytail: checksum+assetId dedupe returned an existing derivative — drop our unreferenced copy
     if (saved.id !== fileId) await this.storage.delete(storageKey).catch(() => undefined)
     return saved.id

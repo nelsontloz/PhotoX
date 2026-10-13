@@ -1,5 +1,11 @@
 import { api } from './client'
-import type { Asset, AssetLayout, AssetListResponse, AssetDetectionsResponse, SearchResponse } from '@photox/shared-types'
+import type {
+  Asset,
+  AssetLayout,
+  AssetListResponse,
+  AssetDetectionsResponse,
+  SearchResponse,
+} from '@photox/shared-types'
 
 interface ListAssetsParams {
   limit?: number

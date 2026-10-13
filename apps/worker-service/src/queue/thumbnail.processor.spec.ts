@@ -19,7 +19,7 @@ describe('ThumbnailProcessor job guards', () => {
         callbacks.push(cb)
         return {}
       }),
-      enqueue: vi.fn().mockResolvedValue(undefined),
+      enqueue: vi.fn().mockResolvedValue(true),
     }
     const processor = new ThumbnailProcessor(
       bullMq as never,

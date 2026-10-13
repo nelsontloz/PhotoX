@@ -49,7 +49,12 @@ export class DetectProcessor implements OnModuleInit {
 
         // replace-semantics: core deletes the asset's whole row set and inserts this one, so an
         // empty array MUST be registered — that is what clears stale rows on a re-run
-        await this.core.registerDetections(data.userId, data.assetId, { detections: scaled })
+        await this.core.registerDetections(
+          data.userId,
+          data.assetId,
+          { detections: scaled },
+          data.sig === undefined ? undefined : { sig: data.sig },
+        )
 
         this.logger.log(`Detection complete: asset=${data.assetId}, count=${scaled.length}`)
       },

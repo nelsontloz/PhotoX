@@ -61,9 +61,7 @@ export async function createTestApp(opts: CreateTestAppOptions = {}): Promise<Te
           useValue: { detect: opts.detect ?? vi.fn().mockResolvedValue([]) },
         },
         FaceProcessor,
-        ...(opts.processors === 'media'
-          ? []
-          : [FaceClusterService, CleanupProcessor]),
+        ...(opts.processors === 'media' ? [] : [FaceClusterService, CleanupProcessor]),
       ],
     }).compile()
 

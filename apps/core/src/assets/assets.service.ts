@@ -353,14 +353,14 @@ export class AssetsService {
 
   async reprocessThumbnails(userId: string, id: string): Promise<{ enqueued: number }> {
     const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
-    this.bullMq.enqueueThumbnails(asset.id, asset.fileId, asset.userId, 'thumb-reprocess')
+    void this.bullMq.enqueueThumbnails(asset.id, asset.fileId, asset.userId, 'thumb-reprocess')
     return { enqueued: 4 }
   }
 
   async reprocessVideo(userId: string, id: string): Promise<{ enqueued: number }> {
     const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
     if (asset.kind !== 'video') throw new BadRequestException('Not a video asset')
-    this.bullMq.enqueueVideo(asset.id, asset.fileId, asset.userId, { reprocess: true })
+    void this.bullMq.enqueueVideo(asset.id, asset.fileId, asset.userId, { reprocess: true })
     return { enqueued: 1 }
   }
 

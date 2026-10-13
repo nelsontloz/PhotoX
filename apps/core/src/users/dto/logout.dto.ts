@@ -4,7 +4,8 @@ import type { RefreshRequest } from '@photox/shared-types'
 
 export class RefreshDto implements RefreshRequest {
   @ApiProperty({
-    description: 'The opaque refresh token from the last auth response; omit when the HttpOnly refresh cookie carries it',
+    description:
+      'The opaque refresh token from the last auth response; omit when the HttpOnly refresh cookie carries it',
     required: false,
   })
   @IsOptional()

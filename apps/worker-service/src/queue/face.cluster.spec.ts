@@ -42,7 +42,7 @@ describe('FaceClusterService.cluster', () => {
     plans = []
     let personSeq = 0
 
-    enqueueMock = vi.fn().mockResolvedValue(undefined)
+    enqueueMock = vi.fn().mockResolvedValue(true)
     getAssetsByIdsMock = vi.fn().mockResolvedValue([{ id: 'asset-legacy', fileId: 'file-legacy' }])
     settingsMock = vi.fn().mockResolvedValue({
       detector: 'human',

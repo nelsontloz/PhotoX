@@ -11,6 +11,7 @@ export interface AssetFileJobData {
   assetId: string
   fileId: string
   userId: string
+  sig?: string
 }
 
 export interface AssetFileJobSpec<T extends AssetFileJobData> {
@@ -22,7 +23,12 @@ export interface AssetFileJobSpec<T extends AssetFileJobData> {
   missingModelMarkers: string[]
   body: (ctx: { data: T; record: FileRecord; asset: Asset; filePath: string }) => Promise<void>
   // runs on both the missing-model skip and a real failure — e.g. patch a status to failed
-  onFailure?: (ctx: { userId: string; assetId: string; message: string }) => Promise<void>
+  onFailure?: (ctx: {
+    userId: string
+    assetId: string
+    message: string
+    sig?: string
+  }) => Promise<void>
 }
 
 export async function runAssetFileJob<T extends AssetFileJobData>(
@@ -52,7 +58,7 @@ export async function runAssetFileJob<T extends AssetFileJobData>(
     } else {
       logger.error(`${spec.label} failed: asset=${assetId} — ${message}`)
     }
-    await spec.onFailure?.({ userId, assetId, message })
+    await spec.onFailure?.({ userId, assetId, message, sig: data.sig })
     if (!missingModel) throw err
   }
 }
@@ -93,9 +99,10 @@ export async function patchStatusFailed(
   userId: string,
   assetId: string,
   patch: MetadataPatch,
+  sig?: string,
 ): Promise<void> {
   try {
-    await core.patchMetadata(userId, assetId, patch)
+    await core.patchMetadata(userId, assetId, patch, sig === undefined ? undefined : { sig })
   } catch (patchErr) {
     const message = patchErr instanceof Error ? patchErr.message : String(patchErr)
     logger.warn(`Failed to patch status to failed for asset=${assetId}: ${message}`)
