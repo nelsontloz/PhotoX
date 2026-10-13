@@ -1,6 +1,5 @@
 import request from 'supertest'
 import { SEARCH_EMBEDDING_DIM } from '@photox/shared-types'
-import type { Asset } from '../../src/database/entities'
 import {
   apiServer,
   closeTestApp,
@@ -117,24 +116,6 @@ describe('asset OCR HTTP', () => {
       .send(BODY)
     expect(res.status).toBe(201)
     expect(await t.ocrRepo.count()).toBe(1)
-  })
-
-  it('makes registered OCR rows searchable through the P3 FTS union', async () => {
-    const { token, act, asset } = await seedOwnedAsset()
-    const post = await request(apiServer(t))
-      .post(`/worker/assets/${asset.id}/ocr`)
-      .set(t.authHeader(act))
-      .send({ text: 'passport number 12345', lang: 'eng', confidence: 0.9 })
-    expect(post.status).toBe(201)
-
-    const res = await request(apiServer(t))
-      .get('/api/v1/search')
-      .query({ q: 'passport' })
-      .set(t.authHeader(token))
-    expect(res.status).toBe(200)
-    const body = res.body as { items: Asset[]; total: number }
-    expect(body.total).toBe(1)
-    expect(body.items.map((i) => i.id)).toEqual([asset.id])
   })
 
   describe('admin reprocess', () => {

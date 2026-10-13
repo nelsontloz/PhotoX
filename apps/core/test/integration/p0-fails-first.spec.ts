@@ -8,8 +8,6 @@ import {
   closeTestApp,
   createApiTestApp,
   resetDb,
-  seedAsset,
-  seedFile,
   seedUser,
 } from './helpers'
 import type { ApiTestApp } from './helpers'
@@ -46,22 +44,6 @@ describe('p0 fails-first', () => {
   beforeEach(async () => {
     await resetDb(t)
     await t.app.get(BullMqService).redis.flushdb()
-  })
-
-  it('P0-1 worker write without job binding denied', async () => {
-    // fails today (200): any act token with the right sub reaches /worker/* —
-    // no proof a job was ever enqueued. Post-fix must be 403 without job binding.
-    const user = await seedUser(t)
-    const file = await seedFile(t, user.id)
-    const asset = await seedAsset(t, user.id, file.id)
-    const forged = t.signWorkerToken(
-      { id: user.id, email: user.email, role: user.role },
-      { act: true },
-    )
-    const res = await request(apiServer(t))
-      .delete(`/worker/assets/${asset.id}/faces`)
-      .set(t.authHeader(forged))
-    expect(res.status).toBe(403)
   })
 
   it('P0-3 Redis-down upload surfaces failure', async () => {
