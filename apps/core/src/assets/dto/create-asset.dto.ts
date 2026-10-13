@@ -1,13 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger'
-import {
-  IsUUID,
-  IsIn,
-  IsOptional,
-  IsString,
-  IsNumber,
-  Min,
-  IsDateString,
-} from 'class-validator'
+import { IsUUID, IsIn, IsOptional, IsString, IsNumber, Min, IsDateString } from 'class-validator'
 import { TitleDescriptionDto } from '../../common/title-description.dto'
 
 export class CreateAssetDto extends TitleDescriptionDto {

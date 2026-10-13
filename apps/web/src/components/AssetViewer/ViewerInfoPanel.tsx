@@ -33,11 +33,7 @@ export function ViewerInfoPanel({ asset, onClose, onFaceHover }: ViewerInfoPanel
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
         <AssetMetadataPanel asset={asset} />
         <CameraSection asset={asset} />
-        <SectionShell
-          compact
-          icon={<FaNoteSticky className="text-[18px]" />}
-          title="Description"
-        >
+        <SectionShell compact icon={<FaNoteSticky className="text-[18px]" />} title="Description">
           {asset.description ? (
             <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
               {asset.description}

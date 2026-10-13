@@ -46,11 +46,7 @@ function readNumber(tag: Record<string, unknown> | undefined, first = false): nu
   if (typeof tag.value === 'number') return tag.value
   if (Array.isArray(tag.value) && typeof tag.value[0] === 'number') {
     if (first) return tag.value[0]
-    if (
-      tag.value.length === 2 &&
-      typeof tag.value[1] === 'number' &&
-      tag.value[1] !== 0
-    ) {
+    if (tag.value.length === 2 && typeof tag.value[1] === 'number' && tag.value[1] !== 0) {
       return tag.value[0] / tag.value[1]
     }
   }
