@@ -5,8 +5,8 @@ import type { FaceDetectionSettings } from '@photox/shared-types'
 const api = vi.hoisted(() => ({
   getFaceDetection: vi.fn(),
   setFaceDetector: vi.fn(),
-  reprocessFaces: vi.fn(),
-  getFaceReprocessStatus: vi.fn(),
+  reprocessPipeline: vi.fn(),
+  getPipelineStatus: vi.fn(),
   reclusterFaces: vi.fn(),
 }))
 
@@ -34,7 +34,7 @@ const mixedParagraph = () =>
 
 beforeEach(() => {
   api.getFaceDetection.mockResolvedValue(settings())
-  api.getFaceReprocessStatus.mockResolvedValue(drained)
+  api.getPipelineStatus.mockResolvedValue(drained)
 })
 
 afterEach(() => {
@@ -100,7 +100,7 @@ describe('FacialDetectionCard (detector)', () => {
 
 describe('FacialDetectionCard (reprocess)', () => {
   it('confirms the reprocess dialog, POSTs, then renders polled progress', async () => {
-    api.getFaceReprocessStatus.mockResolvedValueOnce(drained).mockResolvedValueOnce({
+    api.getPipelineStatus.mockResolvedValueOnce(drained).mockResolvedValueOnce({
       lastRun: {
         startedAt: '2026-10-01T00:00:00.000Z',
         total: 5,
@@ -109,7 +109,7 @@ describe('FacialDetectionCard (reprocess)', () => {
       },
       queue: { waiting: 1, active: 1, completed: 4, failed: 0, delayed: 0 },
     })
-    api.reprocessFaces.mockResolvedValue({ enqueued: 5, total: 5, detector: 'human' })
+    api.reprocessPipeline.mockResolvedValue({ enqueued: 5, total: 5, detector: 'human' })
 
     render(<FacialDetectionCard />)
     await screen.findByText('No face reprocess runs yet.')
@@ -119,7 +119,7 @@ describe('FacialDetectionCard (reprocess)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
 
-    await waitFor(() => expect(api.reprocessFaces).toHaveBeenCalled())
+    await waitFor(() => expect(api.reprocessPipeline).toHaveBeenCalledWith('faces'))
     expect(await screen.findByText('Queued 5 face jobs for 5 photos.')).toBeTruthy()
 
     // progress counts come from waiting+active, never queue.completed (which is 4 here)
@@ -130,7 +130,7 @@ describe('FacialDetectionCard (reprocess)', () => {
   })
 
   it('shows the last-run summary when the queue is drained, ignoring queue.completed', async () => {
-    api.getFaceReprocessStatus.mockResolvedValue({
+    api.getPipelineStatus.mockResolvedValue({
       lastRun: {
         startedAt: '2026-10-01T00:00:00.000Z',
         total: 8,
@@ -152,7 +152,7 @@ describe('FacialDetectionCard (reprocess)', () => {
     api.getFaceDetection.mockResolvedValue(
       settings({ detector: 'scrfd', models: { scrfd: false } }),
     )
-    api.reprocessFaces.mockResolvedValue({ enqueued: 5, total: 5, detector: 'scrfd' })
+    api.reprocessPipeline.mockResolvedValue({ enqueued: 5, total: 5, detector: 'scrfd' })
 
     render(<FacialDetectionCard />)
     await screen.findByText('No face reprocess runs yet.')
@@ -171,7 +171,7 @@ describe('FacialDetectionCard (reprocess)', () => {
 
     // warn, don't block — parity with the "Switch to SCRFD anyway" flow
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
-    await waitFor(() => expect(api.reprocessFaces).toHaveBeenCalled())
+    await waitFor(() => expect(api.reprocessPipeline).toHaveBeenCalledWith('faces'))
   })
 
   it('shows no SCRFD warning in the confirm dialog when the model is installed', async () => {

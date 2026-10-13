@@ -19,6 +19,7 @@ import { envFaceDetectorKind, LocalStorageService } from '@photox/shared-config'
 import { findOwnedOr404 } from '../../common/asset-ownership'
 import { RegisterFileBodyDto } from './dto/register-file.body.dto'
 import type { UploadFileBodyDto } from './dto/upload-file.body.dto'
+import { FileRecordDto } from '../file-record.dto'
 import { AssetsService } from '../../assets/assets.service'
 import { BullMqService } from '../../queue/bullmq.service'
 import { SettingsService } from '../../settings/settings.service'
@@ -83,22 +84,6 @@ async function sniffMime(path: string): Promise<string | null> {
     await handle.close()
   }
   return isoBmffMime(buf) ?? MIME_SNIFFERS.find((s) => s.match(buf))?.mime ?? null
-}
-
-function toFileRecordResponse(record: FileRecord) {
-  return {
-    id: record.id,
-    userId: record.userId,
-    storageKey: record.storageKey,
-    originalName: record.originalName,
-    mimeType: record.mimeType,
-    // bigint columns come back as strings from pg — the wire type says number
-    sizeBytes: Number(record.sizeBytes),
-    checksumSha256: record.checksumSha256,
-    purpose: record.purpose,
-    assetId: record.assetId,
-    createdAt: record.createdAt.toISOString(),
-  }
 }
 
 @Injectable()
@@ -193,7 +178,7 @@ export class UserFilesService {
   async register(
     userId: string,
     dto: RegisterFileBodyDto,
-  ): Promise<{ file: ReturnType<typeof toFileRecordResponse>; created: boolean }> {
+  ): Promise<{ file: FileRecordDto; created: boolean }> {
     const purpose = dto.kind === 'transcode' ? 'transcode' : 'original'
     const naturalKey: FindOptionsWhere<FileRecord> = {
       userId,
@@ -202,7 +187,7 @@ export class UserFilesService {
       ...(dto.assetId ? { assetId: dto.assetId } : {}),
     }
     const existing = await this.fileRepo.findOne({ where: naturalKey })
-    if (existing) return { file: toFileRecordResponse(existing), created: false }
+    if (existing) return { file: FileRecordDto.from(existing), created: false }
 
     if (await this.fileRepo.exists({ where: { id: dto.id } })) {
       throw new ConflictException('File id already exists')
@@ -247,7 +232,7 @@ export class UserFilesService {
       ) {
         throw new ConflictException('File id already exists')
       }
-      return { file: toFileRecordResponse(row), created: true }
+      return { file: FileRecordDto.from(row), created: true }
     }
 
     // lost on the (userId, checksum) partial unique — re-read the winner (scoped first to
@@ -258,7 +243,7 @@ export class UserFilesService {
         where: { userId, checksumSha256: dto.checksumSha256, purpose },
       }))
     if (!winner) throw new ServiceUnavailableException('File register conflict, please retry')
-    return { file: toFileRecordResponse(winner), created: false }
+    return { file: FileRecordDto.from(winner), created: false }
   }
 
   private kindFromMime(mimetype: string): 'photo' | 'video' | null {
@@ -368,12 +353,7 @@ export class UserFilesService {
   }
 
   async getOne(userId: string, fileId: string) {
-    return toFileRecordResponse(await this.getOwnedRecord(userId, fileId))
-  }
-
-  async download(userId: string, fileId: string): Promise<{ path: string; record: FileRecord }> {
-    const record = await this.getOwnedRecord(userId, fileId)
-    return { path: this.storage.pathFor(record.storageKey), record }
+    return FileRecordDto.from(await this.getOwnedRecord(userId, fileId))
   }
 
   async serve(userId: string, fileId: string): Promise<{ path: string; record: FileRecord }> {

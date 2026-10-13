@@ -7,14 +7,7 @@ import { LocalStorageService } from '@photox/shared-config'
 import { assertOwnership, parseJobData } from './job-schemas'
 import type { CoreClient, MetadataPatch } from '../core/core-client.service'
 
-export interface AssetFileJobData {
-  assetId: string
-  fileId: string
-  userId: string
-  sig?: string
-}
-
-export interface AssetFileJobSpec<T extends AssetFileJobData> {
+export interface AssetFileJobSpec<T extends { assetId: string; fileId: string; userId: string; sig?: string }> {
   queue: string
   schema: z.ZodType<T>
   // human label for the start/skip/failure logs, e.g. 'Embedding'
@@ -31,7 +24,9 @@ export interface AssetFileJobSpec<T extends AssetFileJobData> {
   }) => Promise<void>
 }
 
-export async function runAssetFileJob<T extends AssetFileJobData>(
+export async function runAssetFileJob<
+  T extends { assetId: string; fileId: string; userId: string; sig?: string },
+>(
   deps: { core: CoreClient; storage: LocalStorageService; logger: Logger },
   job: Job<T>,
   spec: AssetFileJobSpec<T>,

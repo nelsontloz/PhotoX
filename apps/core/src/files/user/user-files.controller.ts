@@ -19,7 +19,7 @@ import { CurrentUserId } from '../../auth/jwt-auth.guard'
 import { UserFilesService, type UploadedDiskFile } from './user-files.service'
 import { FileRecordDto } from '../file-record.dto'
 import { UploadFileBodyDto } from './dto/upload-file.body.dto'
-import { attachmentDisposition, pipeFileResponse, serveFileBytes } from '../streaming.util'
+import { serveFileBytes } from '../streaming.util'
 
 const diskStorage = multer.diskStorage({
   destination: tmpdir(),
@@ -45,12 +45,7 @@ export class UserFilesController {
     @UploadedFile() file: UploadedDiskFile,
     @Body() body: UploadFileBodyDto,
   ) {
-    return this.userFilesService.upload(userId, file, {
-      kind: body.kind,
-      title: body.title,
-      description: body.description,
-      takenAt: body.takenAt,
-    })
+    return this.userFilesService.upload(userId, file, body)
   }
 
   @Get(':fileId/stream')
@@ -86,7 +81,6 @@ export class UserFilesController {
     @Req() req: Request,
     @CurrentUserId() userId: string,
   ) {
-    const { path, record } = await this.userFilesService.download(userId, fileId)
-    pipeFileResponse(req, res, { path, record }, attachmentDisposition(record.originalName))
+    await serveFileBytes(req, res, this.userFilesService, userId, fileId, { attachment: true })
   }
 }

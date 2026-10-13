@@ -12,6 +12,7 @@ import { TimelineAssets } from '../components/Timeline/TimelineAssets'
 import { DropZone } from '../components/DropZone'
 import { UploadButton } from '../components/UploadButton'
 import { trashAssets } from '../api/assets'
+import { toggleId } from '../lib/set'
 import { useAppStore } from '../store/app-store'
 
 function TimelineContent() {
@@ -34,12 +35,7 @@ function TimelineContent() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const toggle = useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+    setSelectedIds((prev) => toggleId(prev, id))
   }, [])
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), [])

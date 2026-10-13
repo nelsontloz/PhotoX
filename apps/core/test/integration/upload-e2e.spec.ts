@@ -47,10 +47,11 @@ import {
   VideoMetadataExtractor,
 } from '../../../worker-service/src/queue/metadata.extractor'
 import { FaceProcessor } from '../../../worker-service/src/queue/face.processor'
-import {
-  FaceDetectorService,
-  type DetectedFace,
-} from '../../../worker-service/src/queue/face.detector'
+import { FaceDetectorService } from '../../../worker-service/src/queue/face.detector'
+
+// ponytail: derived from the service shape (not imported) — face.detector.ts keeps
+// DetectedFace unexported, and this spec only needs the detect() return element
+type DetectedFace = Awaited<ReturnType<FaceDetectorService['detect']>>[number]
 import {
   FACE_MODEL_FILE,
   FaceEmbedderService,

@@ -1,5 +1,6 @@
 import { FaCamera } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
+import { SectionShell } from './SectionShell'
 
 interface CameraSectionProps {
   asset: Asset
@@ -58,22 +59,14 @@ export function CameraSection({ asset }: CameraSectionProps) {
 
   if (rows.length === 0) {
     return (
-      <section>
-        <div className="flex items-center gap-2 text-slate-400 mb-2">
-          <FaCamera className="text-[18px]" />
-          <h4 className="text-xs font-bold uppercase tracking-wider">Camera</h4>
-        </div>
+      <SectionShell compact icon={<FaCamera className="text-[18px]" />} title="Camera">
         <p className="text-sm text-slate-600 italic">No camera details</p>
-      </section>
+      </SectionShell>
     )
   }
 
   return (
-    <section>
-      <div className="flex items-center gap-2 text-slate-400 mb-3">
-        <FaCamera className="text-[18px]" />
-        <h4 className="text-xs font-bold uppercase tracking-wider">Camera</h4>
-      </div>
+    <SectionShell icon={<FaCamera className="text-[18px]" />} title="Camera">
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         {rows.map((row) => (
           <div key={row.label} className={`flex flex-col${row.wide ? ' col-span-2' : ''}`}>
@@ -82,6 +75,6 @@ export function CameraSection({ asset }: CameraSectionProps) {
           </div>
         ))}
       </dl>
-    </section>
+    </SectionShell>
   )
 }

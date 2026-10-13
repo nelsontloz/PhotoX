@@ -1,7 +1,8 @@
 // One IntersectionObserver per scroll root instead of one per tile: a timeline day can mount
 // hundreds of AssetThumbs, and each IO costs a main-thread registration + intersection pass.
-// ponytail: cache keyed by root only — the sole consumer (AssetThumb) always passes the same shared
-// margin; a second consumer with a different rootMargin must key the map by root+margin too.
+// ponytail: cache keyed by root only — AssetThumb (scroll root + prefetch margin) and AlbumCover
+// (viewport + 200px) never share a root in practice; a third consumer reusing a root with a
+// different margin must key the map by root+margin too.
 let callbacks = new WeakMap<Element, (entry: IntersectionObserverEntry) => void>()
 let roots = new WeakMap<Element, IntersectionObserver>()
 let viewport: IntersectionObserver | null = null

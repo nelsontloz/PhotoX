@@ -3,11 +3,9 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { AdminUserListResponse, AdminUserSortField } from '@photox/shared-types'
 import { AdminService } from './admin.service'
 import { ListAdminUsersQueryDto } from './dto/list-admin-users.query.dto'
-import { Roles } from '../../auth/roles.decorator'
 
 @ApiTags('admin')
 @Controller('api/v1/admin/users')
-@Roles('admin')
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
 
@@ -19,8 +17,8 @@ export class AdminController {
     const field = rawField as AdminUserSortField
     const dir = rawDir === 'asc' ? 'asc' : 'desc'
     return this.admin.listUsers({
-      limit: q.limit ?? 20,
-      offset: q.offset ?? 0,
+      limit: q.limit,
+      offset: q.offset,
       q: q.q,
       sortField: field,
       sortDir: dir,

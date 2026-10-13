@@ -102,6 +102,6 @@ export class AlbumsController {
     @CurrentUserId() userId: string,
     @Query() q: PaginationQueryDto,
   ) {
-    return this.albums.listAssets(userId, id, { limit: q.limit, offset: q.offset })
+    return this.albums.listAssets(userId, id, q)
   }
 }

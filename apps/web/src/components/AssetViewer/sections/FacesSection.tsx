@@ -4,6 +4,7 @@ import type { Asset, FaceDto, PersonDto } from '@photox/shared-types'
 import { listPersons } from '../../../api/persons'
 import { assignFace } from '../../../api/assets'
 import { FaceThumb } from '../../FaceThumb'
+import { SectionShell } from './SectionShell'
 
 interface FacesSectionProps {
   asset: Asset
@@ -113,53 +114,42 @@ export function FacesSection({ asset, onFaceHover }: FacesSectionProps) {
 
   if (status === 'pending') {
     return (
-      <section>
-        <div className="flex items-center gap-2 text-slate-400 mb-2">
-          <FaUser className="text-[18px]" />
-          <h4 className="text-xs font-bold uppercase tracking-wider">Faces</h4>
-        </div>
+      <SectionShell compact icon={<FaUser className="text-[18px]" />} title="Faces">
         <div className="flex items-center gap-2 text-sm text-slate-400">
           <FaSpinner className="text-primary animate-spin text-xs" />
           <span>Detecting faces…</span>
         </div>
-      </section>
+      </SectionShell>
     )
   }
 
   if (status === 'failed') {
     return (
-      <section>
-        <div className="flex items-center gap-2 text-slate-400 mb-2">
-          <FaUser className="text-[18px]" />
-          <h4 className="text-xs font-bold uppercase tracking-wider">Faces</h4>
-        </div>
+      <SectionShell compact icon={<FaUser className="text-[18px]" />} title="Faces">
         <p className="text-sm text-slate-500 inline-flex items-center gap-1.5">
           <FaTriangleExclamation className="text-amber-500 text-xs" />
           Face detection failed
         </p>
-      </section>
+      </SectionShell>
     )
   }
 
   if (faces.length === 0) {
     return (
-      <section>
-        <div className="flex items-center gap-2 text-slate-400 mb-2">
-          <FaUser className="text-[18px]" />
-          <h4 className="text-xs font-bold uppercase tracking-wider">Faces</h4>
-        </div>
+      <SectionShell compact icon={<FaUser className="text-[18px]" />} title="Faces">
         <p className="text-sm text-slate-600 italic">No faces detected</p>
-      </section>
+      </SectionShell>
     )
   }
 
   return (
-    <section>
-      <div className="flex items-center gap-2 text-slate-400 mb-3">
-        <FaUser className="text-[18px]" />
-        <h4 className="text-xs font-bold uppercase tracking-wider">Faces</h4>
+    <SectionShell
+      icon={<FaUser className="text-[18px]" />}
+      title="Faces"
+      action={
         <span className="ml-auto text-[10px] text-slate-500 tabular-nums">{faces.length}</span>
-      </div>
+      }
+    >
       <ul className="space-y-2">
         {faces.map((face, i) => (
           <FaceRow
@@ -175,6 +165,6 @@ export function FacesSection({ asset, onFaceHover }: FacesSectionProps) {
           />
         ))}
       </ul>
-    </section>
+    </SectionShell>
   )
 }

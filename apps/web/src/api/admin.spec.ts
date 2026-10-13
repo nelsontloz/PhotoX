@@ -12,9 +12,11 @@ vi.mock('./client', () => ({ api: { get: getMock, put: putMock, post: postMock }
 import {
   getFaceDetection,
   setFaceDetector,
-  reprocessFaces,
-  getFaceReprocessStatus,
+  reprocessPipeline,
+  getPipelineStatus,
   reclusterFaces,
+  type FaceReprocessResponse,
+  type FacePipelineRun,
 } from './admin'
 
 const settings: FaceDetectionSettings = {
@@ -42,19 +44,19 @@ describe('face detection admin API', () => {
     expect(putMock).toHaveBeenCalledWith('/v1/admin/face-detection', { detector: 'scrfd' })
   })
 
-  it('reprocessFaces posts without a body', async () => {
+  it('reprocessPipeline posts without a body', async () => {
     postMock.mockResolvedValue({ data: { enqueued: 5, total: 5, detector: 'human' } })
-    await reprocessFaces()
+    await reprocessPipeline<FaceReprocessResponse>('faces')
     expect(postMock).toHaveBeenCalledWith('/v1/admin/faces/reprocess')
   })
 
-  it('getFaceReprocessStatus reads last run and queue counts', async () => {
+  it('getPipelineStatus reads last run and queue counts', async () => {
     const status = {
       lastRun: { startedAt: '2026-10-01T00:00:00.000Z', total: 5, enqueued: 5, detector: 'human' },
       queue: { waiting: 1, active: 0, completed: 4, failed: 0, delayed: 0 },
     }
     getMock.mockResolvedValue({ data: status })
-    await expect(getFaceReprocessStatus()).resolves.toEqual(status)
+    await expect(getPipelineStatus<FacePipelineRun>('faces')).resolves.toEqual(status)
     expect(getMock).toHaveBeenCalledWith('/v1/admin/faces/reprocess')
   })
 

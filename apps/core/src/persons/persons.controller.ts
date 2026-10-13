@@ -69,7 +69,7 @@ export class PersonsController {
     @Query() q: PaginationQueryDto,
     @CurrentUserId() userId: string,
   ): Promise<PersonListResponse> {
-    return this.persons.list(userId, q.limit ?? 20, q.offset ?? 0)
+    return this.persons.list(userId, q.limit, q.offset)
   }
 
   @Get(':id')
@@ -101,6 +101,6 @@ export class PersonsController {
     @Query() q: PaginationQueryDto,
     @CurrentUserId() userId: string,
   ): Promise<PersonAssetsResponse> {
-    return this.persons.getAssetsForPerson(userId, id, q.limit ?? 20, q.offset ?? 0)
+    return this.persons.getAssetsForPerson(userId, id, q.limit, q.offset)
   }
 }

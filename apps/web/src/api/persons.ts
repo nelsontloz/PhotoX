@@ -1,9 +1,7 @@
-import { api } from './client'
+import { api, type PageParams } from './client'
 import type { PersonListResponse, PersonDto } from '@photox/shared-types'
 
-export async function listPersons(
-  params: { limit?: number; offset?: number } = {},
-): Promise<PersonListResponse> {
+export async function listPersons(params: PageParams = {}): Promise<PersonListResponse> {
   const { data } = await api.get<PersonListResponse>('/v1/persons', { params })
   return data
 }

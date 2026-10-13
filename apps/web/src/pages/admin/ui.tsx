@@ -81,6 +81,39 @@ export function AdminCard({ children, className }: { children: ReactNode; classN
   )
 }
 
+/** Grid-column class for a tile count: 2 → 2, 3 → 3, anything else → 4. */
+export function colsFor(n: number): string {
+  return n === 2 ? 'grid-cols-2' : n === 3 ? 'grid-cols-3' : 'grid-cols-4'
+}
+
+/**
+ * Single count tile (failures matrix + orphan grid). Bare inside a panel card by default;
+ * `boxed` adds the card surface for standalone grids.
+ */
+export function CountTile({
+  count,
+  label,
+  boxed = false,
+}: {
+  count: number
+  label: string
+  boxed?: boolean
+}) {
+  return (
+    <div className={boxed ? 'bg-surface-container rounded-lg p-4 text-center' : 'text-center'}>
+      <span
+        className={cx(
+          'text-2xl font-bold tabular-nums',
+          count > 0 ? 'text-status-error' : 'text-on-surface-variant',
+        )}
+      >
+        {count.toLocaleString()}
+      </span>
+      <p className="text-label-xs uppercase font-mono text-outline mt-1">{label}</p>
+    </div>
+  )
+}
+
 export function MetricTile({
   label,
   value,

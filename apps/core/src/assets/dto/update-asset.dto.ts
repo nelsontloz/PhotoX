@@ -1,19 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { IsOptional, IsString, MaxLength, IsDateString, IsBoolean } from 'class-validator'
+import { IsOptional, IsDateString, IsBoolean } from 'class-validator'
+import { TitleDescriptionDto } from '../../common/title-description.dto'
 
-export class UpdateAssetDto {
-  @ApiProperty({ required: false, maxLength: 255 })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  title?: string
-
-  @ApiProperty({ required: false, maxLength: 2000 })
-  @IsOptional()
-  @IsString()
-  @MaxLength(2000)
-  description?: string
-
+export class UpdateAssetDto extends TitleDescriptionDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsDateString()

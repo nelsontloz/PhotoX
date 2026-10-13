@@ -23,31 +23,49 @@ export interface ReprocessStatus<L> {
   queue: QueueCounts
 }
 
-export type FaceReprocessStatus = ReprocessStatus<{
+/** A completed pipeline run: when it started, how many photos it covered, how many got queued. */
+export interface PipelineRun {
   startedAt: string
   total: number
   enqueued: number
-  detector: FaceDetectorKind
-}>
+}
 
-interface FaceReprocessResponse {
+/** POST response of a pipeline reprocess: how many jobs were queued out of how many photos. */
+export interface PipelineResponse {
   enqueued: number
   total: number
+}
+
+export type PipelinePath = 'faces' | 'embeddings' | 'detections' | 'ocr'
+
+export async function reprocessPipeline<R extends PipelineResponse>(
+  path: PipelinePath,
+): Promise<R> {
+  const { data } = await api.post<R>(`/v1/admin/${path}/reprocess`)
+  return data
+}
+
+export async function getPipelineStatus<L extends PipelineRun>(
+  path: PipelinePath,
+): Promise<ReprocessStatus<L>> {
+  const { data } = await api.get<ReprocessStatus<L>>(`/v1/admin/${path}/reprocess`)
+  return data
+}
+
+export type FacePipelineRun = PipelineRun & { detector: FaceDetectorKind }
+export type FaceReprocessStatus = ReprocessStatus<FacePipelineRun>
+export interface FaceReprocessResponse extends PipelineResponse {
   detector: FaceDetectorKind
 }
 
-export type EmbeddingReprocessStatus = ReprocessStatus<{
-  startedAt: string
-  total: number
-  enqueued: number
-  model: string
-}>
-
-interface EmbeddingReprocessResponse {
-  enqueued: number
-  total: number
+export type EmbeddingPipelineRun = PipelineRun & { model: string }
+export type EmbeddingReprocessStatus = ReprocessStatus<EmbeddingPipelineRun>
+export interface EmbeddingReprocessResponse extends PipelineResponse {
   model: string
 }
+
+export type DetectionReprocessStatus = ReprocessStatus<PipelineRun>
+export type OcrReprocessStatus = ReprocessStatus<PipelineRun>
 
 export interface ListAdminUsersParams {
   limit?: number
@@ -119,69 +137,7 @@ export async function setFaceDetector(detector: FaceDetectorKind): Promise<FaceD
   return data
 }
 
-export async function reprocessFaces(): Promise<FaceReprocessResponse> {
-  const { data } = await api.post<FaceReprocessResponse>('/v1/admin/faces/reprocess')
-  return data
-}
-
-export async function getFaceReprocessStatus(): Promise<FaceReprocessStatus> {
-  const { data } = await api.get<FaceReprocessStatus>('/v1/admin/faces/reprocess')
-  return data
-}
-
 export async function reclusterFaces(): Promise<{ enqueued: number }> {
   const { data } = await api.post<{ enqueued: number }>('/v1/admin/faces/recluster')
-  return data
-}
-
-export async function reprocessEmbeddings(): Promise<EmbeddingReprocessResponse> {
-  const { data } = await api.post<EmbeddingReprocessResponse>('/v1/admin/embeddings/reprocess')
-  return data
-}
-
-export async function getEmbeddingReprocessStatus(): Promise<EmbeddingReprocessStatus> {
-  const { data } = await api.get<EmbeddingReprocessStatus>('/v1/admin/embeddings/reprocess')
-  return data
-}
-
-export type DetectionReprocessStatus = ReprocessStatus<{
-  startedAt: string
-  total: number
-  enqueued: number
-}>
-
-interface DetectionReprocessResponse {
-  enqueued: number
-  total: number
-}
-
-export async function reprocessDetections(): Promise<DetectionReprocessResponse> {
-  const { data } = await api.post<DetectionReprocessResponse>('/v1/admin/detections/reprocess')
-  return data
-}
-
-export async function getDetectionReprocessStatus(): Promise<DetectionReprocessStatus> {
-  const { data } = await api.get<DetectionReprocessStatus>('/v1/admin/detections/reprocess')
-  return data
-}
-
-export type OcrReprocessStatus = ReprocessStatus<{
-  startedAt: string
-  total: number
-  enqueued: number
-}>
-
-interface OcrReprocessResponse {
-  enqueued: number
-  total: number
-}
-
-export async function reprocessOcr(): Promise<OcrReprocessResponse> {
-  const { data } = await api.post<OcrReprocessResponse>('/v1/admin/ocr/reprocess')
-  return data
-}
-
-export async function getOcrReprocessStatus(): Promise<OcrReprocessStatus> {
-  const { data } = await api.get<OcrReprocessStatus>('/v1/admin/ocr/reprocess')
   return data
 }

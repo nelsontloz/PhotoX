@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, type PageParams } from './client'
 import type {
   AlbumDto,
   CreateAlbumDto,
@@ -7,18 +7,8 @@ import type {
 } from '@photox/shared-types'
 import type { Asset } from '@photox/shared-types'
 
-interface ListAlbumsParams {
-  limit?: number
-  offset?: number
-}
-
-interface ListAlbumAssetsParams {
-  limit?: number
-  offset?: number
-}
-
 export async function listAlbums(
-  params: ListAlbumsParams = {},
+  params: PageParams = {},
 ): Promise<{ items: AlbumDto[]; total: number }> {
   const { data } = await api.get<{ items: AlbumDto[]; total: number }>('/v1/albums', { params })
   return data
@@ -45,7 +35,7 @@ export async function deleteAlbum(id: string): Promise<void> {
 
 export async function listAlbumAssets(
   id: string,
-  params: ListAlbumAssetsParams = {},
+  params: PageParams = {},
 ): Promise<{ items: Asset[]; total: number }> {
   const { data } = await api.get<{ items: Asset[]; total: number }>(`/v1/albums/${id}/assets`, {
     params,

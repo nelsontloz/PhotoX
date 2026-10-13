@@ -1,7 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger'
-import type { FileRecord } from '@photox/shared-types'
+import type { FileRecord } from '../database/entities'
+import type { FileRecord as FileRecordWire } from '@photox/shared-types'
 
-export class FileRecordDto implements FileRecord {
+export class FileRecordDto implements FileRecordWire {
   @ApiProperty()
   id!: string
 
@@ -31,4 +32,20 @@ export class FileRecordDto implements FileRecord {
 
   @ApiProperty()
   createdAt!: string
+
+  static from(record: FileRecord): FileRecordDto {
+    const dto = new FileRecordDto()
+    dto.id = record.id
+    dto.userId = record.userId
+    dto.storageKey = record.storageKey
+    dto.originalName = record.originalName
+    dto.mimeType = record.mimeType
+    // bigint columns come back as strings from pg — the wire type says number
+    dto.sizeBytes = Number(record.sizeBytes)
+    dto.checksumSha256 = record.checksumSha256
+    dto.purpose = record.purpose
+    dto.assetId = record.assetId
+    dto.createdAt = record.createdAt.toISOString()
+    return dto
+  }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import {
   FaArrowDown,
   FaArrowUp,
@@ -36,12 +36,14 @@ import {
   AdminCard,
   AdminSection,
   AdminToast,
+  CountTile,
   GhostButton,
   PrimaryButton,
   ProgressBar,
   RefreshButton,
   StatStrip,
   StatusPill,
+  colsFor,
   cx,
 } from './ui'
 import {
@@ -52,20 +54,17 @@ import {
   getOrphanCounts,
   getFaceDetection,
   setFaceDetector,
-  reprocessFaces,
-  getFaceReprocessStatus,
   reclusterFaces,
-  reprocessEmbeddings,
-  getEmbeddingReprocessStatus,
-  reprocessDetections,
-  getDetectionReprocessStatus,
-  reprocessOcr,
-  getOcrReprocessStatus,
+  reprocessPipeline,
+  getPipelineStatus,
   type ListAdminUsersParams,
   type ReprocessStatus,
-  type EmbeddingReprocessStatus,
-  type DetectionReprocessStatus,
-  type OcrReprocessStatus,
+  type FacePipelineRun,
+  type FaceReprocessResponse,
+  type EmbeddingPipelineRun,
+  type EmbeddingReprocessResponse,
+  type PipelineRun,
+  type PipelineResponse,
 } from '../../api/admin'
 
 type SortDir = 'asc' | 'desc'
@@ -83,22 +82,6 @@ const DIALOG_TITLE_CLASS = 'text-base font-semibold text-slate-100'
 
 // --- small shared pieces ----------------------------------------------------------------
 
-function FailureTile({ count, label }: { count: number; label: string }) {
-  return (
-    <div className="text-center">
-      <span
-        className={cx(
-          'text-2xl font-bold tabular-nums',
-          count > 0 ? 'text-status-error' : 'text-on-surface-variant',
-        )}
-      >
-        {count.toLocaleString()}
-      </span>
-      <p className="text-label-xs uppercase font-mono text-outline mt-1">{label}</p>
-    </div>
-  )
-}
-
 interface MatrixPanelProps {
   title: string
   icon: typeof FaCamera
@@ -106,16 +89,15 @@ interface MatrixPanelProps {
 }
 
 function MatrixPanel({ title, icon: Icon, tiles }: MatrixPanelProps) {
-  const colClass = tiles.length === 4 ? 'grid-cols-4' : 'grid-cols-3'
   return (
     <div className="bg-surface-container rounded-lg p-4">
       <div className="flex items-center gap-2 mb-4">
         <Icon className="text-outline text-xs" />
         <span className="text-label-sm text-on-surface">{title}</span>
       </div>
-      <div className={`grid ${colClass} gap-2`}>
+      <div className={`grid ${colsFor(tiles.length)} gap-2`}>
         {tiles.map((t) => (
-          <FailureTile key={t.label} count={t.count} label={t.label} />
+          <CountTile key={t.label} count={t.count} label={t.label} />
         ))}
       </div>
     </div>
@@ -123,11 +105,10 @@ function MatrixPanel({ title, icon: Icon, tiles }: MatrixPanelProps) {
 }
 
 function SkeletonPanel({ tileCount = 4 }: { tileCount?: number }) {
-  const colClass = tileCount === 2 ? 'grid-cols-2' : tileCount === 3 ? 'grid-cols-3' : 'grid-cols-4'
   return (
     <div className="bg-surface-container rounded-lg p-4">
       <div className="h-3 w-32 rounded bg-surface-container-high animate-pulse mb-4" />
-      <div className={`grid ${colClass} gap-2`}>
+      <div className={`grid ${colsFor(tileCount)} gap-2`}>
         {Array.from({ length: tileCount }).map((_, i) => (
           <div key={i} className="text-center">
             <div className="h-8 w-10 mx-auto rounded bg-surface-container-high animate-pulse mb-2" />
@@ -362,7 +343,8 @@ export function FacialDetectionCard() {
     }
   }, [version])
 
-  const status = useQueuePoll(getFaceReprocessStatus, runToken)
+  const getFaceStatus = useCallback(() => getPipelineStatus<FacePipelineRun>('faces'), [])
+  const status = useQueuePoll(getFaceStatus, runToken)
 
   const applyDetector = async (detector: FaceDetectorKind) => {
     setSaving(true)
@@ -382,7 +364,7 @@ export function FacialDetectionCard() {
     setReprocessError(null)
     setResult(null)
     try {
-      const res = await reprocessFaces()
+      const res = await reprocessPipeline<FaceReprocessResponse>('faces')
       setResult(
         `Queued ${res.enqueued.toLocaleString()} face jobs for ${res.total.toLocaleString()} photos.`,
       )
@@ -811,7 +793,7 @@ function ReprocessPipelineCard<L extends ReprocessRun>({
 // package to build.commonjsOptions.include.
 const SEARCH_EMBEDDING_DIM = 768
 
-const EMBEDDINGS_PIPELINE: ReprocessPipeline<NonNullable<EmbeddingReprocessStatus['lastRun']>> = {
+const EMBEDDINGS_PIPELINE: ReprocessPipeline<EmbeddingPipelineRun> = {
   icon: FaWandMagicSparkles,
   title: 'Semantic Search',
   chip: `Embedding dim ${SEARCH_EMBEDDING_DIM}`,
@@ -830,8 +812,8 @@ const EMBEDDINGS_PIPELINE: ReprocessPipeline<NonNullable<EmbeddingReprocessStatu
   dialogTitle: 'Reprocess all embeddings?',
   dialogBody:
     'This re-embeds every non-trashed photo with the SigLIP2 vision model. Text search and visually similar photos update as jobs finish. The worker runs in the background, so large libraries take a while.',
-  getStatus: () => getEmbeddingReprocessStatus(),
-  reprocess: () => reprocessEmbeddings(),
+  getStatus: () => getPipelineStatus<EmbeddingPipelineRun>('embeddings'),
+  reprocess: () => reprocessPipeline<EmbeddingReprocessResponse>('embeddings'),
   resultText: (res) =>
     `Queued ${res.enqueued.toLocaleString()} embedding jobs for ${res.total.toLocaleString()} photos.`,
   statRows: (status) => [
@@ -840,7 +822,7 @@ const EMBEDDINGS_PIPELINE: ReprocessPipeline<NonNullable<EmbeddingReprocessStatu
   ],
 }
 
-const DETECTIONS_PIPELINE: ReprocessPipeline<NonNullable<DetectionReprocessStatus['lastRun']>> = {
+const DETECTIONS_PIPELINE: ReprocessPipeline<PipelineRun> = {
   icon: FaObjectGroup,
   title: 'Object & Scene Segmentation',
   prose:
@@ -852,8 +834,8 @@ const DETECTIONS_PIPELINE: ReprocessPipeline<NonNullable<DetectionReprocessStatu
   dialogTitle: 'Reprocess object detection?',
   dialogBody:
     'This runs object detection over every non-trashed photo. Boxes appear in the viewer overlay as jobs finish. The worker runs in the background, so large libraries take a while.',
-  getStatus: () => getDetectionReprocessStatus(),
-  reprocess: () => reprocessDetections(),
+  getStatus: () => getPipelineStatus<PipelineRun>('detections'),
+  reprocess: () => reprocessPipeline<PipelineResponse>('detections'),
   resultText: (res) =>
     `Queued ${res.enqueued.toLocaleString()} detection jobs for ${res.total.toLocaleString()} photos.`,
   statRows: (status) => [
@@ -862,7 +844,7 @@ const DETECTIONS_PIPELINE: ReprocessPipeline<NonNullable<DetectionReprocessStatu
   ],
 }
 
-const OCR_PIPELINE: ReprocessPipeline<NonNullable<OcrReprocessStatus['lastRun']>> = {
+const OCR_PIPELINE: ReprocessPipeline<PipelineRun> = {
   icon: FaFont,
   title: 'Text Extraction (OCR)',
   prose:
@@ -874,8 +856,8 @@ const OCR_PIPELINE: ReprocessPipeline<NonNullable<OcrReprocessStatus['lastRun']>
   dialogTitle: 'Reprocess OCR text?',
   dialogBody:
     'This runs OCR over every non-trashed photo. Extracted text feeds text search as jobs finish. The worker runs in the background, so large libraries take a while.',
-  getStatus: () => getOcrReprocessStatus(),
-  reprocess: () => reprocessOcr(),
+  getStatus: () => getPipelineStatus<PipelineRun>('ocr'),
+  reprocess: () => reprocessPipeline<PipelineResponse>('ocr'),
   resultText: (res) =>
     `Queued ${res.enqueued.toLocaleString()} OCR jobs for ${res.total.toLocaleString()} photos.`,
   statRows: (status) => [
@@ -1022,22 +1004,6 @@ function AssetHealthSection() {
 
 // --- orphan cleanup ---------------------------------------------------------------------
 
-function OrphanCountTile({ count, label }: { count: number; label: string }) {
-  return (
-    <div className="bg-surface-container rounded-lg p-4 text-center">
-      <span
-        className={cx(
-          'text-2xl font-bold tabular-nums',
-          count > 0 ? 'text-status-error' : 'text-on-surface-variant',
-        )}
-      >
-        {count.toLocaleString()}
-      </span>
-      <p className="text-label-xs uppercase font-mono text-outline mt-1">{label}</p>
-    </div>
-  )
-}
-
 function OrphanCleanupSection() {
   const [data, setData] = useState<{ orphanFiles: number; orphanThumbnails: number } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1108,8 +1074,8 @@ function OrphanCleanupSection() {
       ) : data ? (
         <>
           <div className="grid grid-cols-2 gap-4">
-            <OrphanCountTile count={data.orphanFiles} label="Orphan files" />
-            <OrphanCountTile count={data.orphanThumbnails} label="Orphan thumbnails" />
+            <CountTile boxed count={data.orphanFiles} label="Orphan files" />
+            <CountTile boxed count={data.orphanThumbnails} label="Orphan thumbnails" />
           </div>
           <div className="mt-4">
             <StatStrip

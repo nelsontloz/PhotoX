@@ -112,21 +112,10 @@ export function AssetViewer({
     onToggleFavorite?.(next)
   }
 
-  const handleReprocessThumbnails = async () => {
+  const runReprocess = async (fn: (id: string) => Promise<void>) => {
     setReprocessLoading(true)
     try {
-      await reprocessThumbnails(currentAsset.id)
-    } catch {
-      // ignore
-    } finally {
-      setReprocessLoading(false)
-    }
-  }
-
-  const handleReprocessVideo = async () => {
-    setReprocessLoading(true)
-    try {
-      await reprocessVideo(currentAsset.id)
+      await fn(currentAsset.id)
     } catch {
       // ignore
     } finally {
@@ -136,13 +125,13 @@ export function AssetViewer({
 
   const reprocessThumbnailsAction = !reprocessLoading
     ? () => {
-        void handleReprocessThumbnails()
+        void runReprocess(reprocessThumbnails)
       }
     : undefined
   const reprocessVideoAction =
     currentAsset.kind === 'video' && !reprocessLoading
       ? () => {
-          void handleReprocessVideo()
+          void runReprocess(reprocessVideo)
         }
       : undefined
 

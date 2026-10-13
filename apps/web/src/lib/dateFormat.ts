@@ -4,6 +4,14 @@ export function formatShortDate(d: Date): string {
   return SHORT.format(d)
 }
 
+/**
+ * `toLocaleDateString` for YYYY-MM-DD / YYYY-MM week keys: parsed as a LOCAL midnight (a bare
+ * 'YYYY-MM-DD' string would parse as UTC and shift the label in negative offsets).
+ */
+export function formatIsoDate(iso: string, options: Intl.DateTimeFormatOptions): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, options)
+}
+
 /** "Mar 1, 2024" — the full date used by the asset viewer top bar. */
 export function formatDate(dateStr: string): string {
   return DATED.format(new Date(dateStr))

@@ -10,12 +10,7 @@ import {
   ValidateNested,
 } from 'class-validator'
 
-export class ApplyClusterCreateDto {
-  @ApiProperty()
-  @IsString()
-  @MaxLength(200)
-  clusterLabel!: string
-
+class ApplyClusterFacesDto {
   @ApiProperty({ type: [String] })
   @IsArray()
   @ArrayMinSize(1)
@@ -28,21 +23,17 @@ export class ApplyClusterCreateDto {
   coverFaceId?: string
 }
 
-export class ApplyClusterAttachDto {
+export class ApplyClusterCreateDto extends ApplyClusterFacesDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(200)
+  clusterLabel!: string
+}
+
+export class ApplyClusterAttachDto extends ApplyClusterFacesDto {
   @ApiProperty()
   @IsUUID('4')
   personId!: string
-
-  @ApiProperty({ type: [String] })
-  @IsArray()
-  @ArrayMinSize(1)
-  @IsUUID('4', { each: true })
-  faceIds!: string[]
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsUUID('4')
-  coverFaceId?: string
 }
 
 export class ApplyClustersDto {

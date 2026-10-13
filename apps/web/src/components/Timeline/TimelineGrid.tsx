@@ -5,6 +5,7 @@ import {
   useMemo,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from 'react'
 import type { Asset } from '@photox/shared-types'
 import type { AssetGroup } from '../../hooks/useAssetGroups'
@@ -46,6 +47,29 @@ const DAY_HEADER_CLASS =
   'flex items-end gap-3 mb-4 sticky top-0 z-30 py-2 -mx-4 px-4 sm:-mx-8 sm:px-8 border-b border-transparent dark:border-transparent transition-all'
 const DAY_HEADER_PAGE_SURFACE =
   'bg-background-light/95 dark:bg-background-dark/95 text-slate-900 dark:text-white'
+
+/**
+ * Sticky day-header band. The title inherits the band's text color, so page grids pass a surface
+ * with one (the default) while callers with an explicit title color pass a bare background.
+ */
+export function DayHeader({
+  title,
+  surfaceClassName = DAY_HEADER_PAGE_SURFACE,
+  titleClassName = 'text-2xl font-bold tracking-tight',
+  action,
+}: {
+  title: string
+  surfaceClassName?: string
+  titleClassName?: string
+  action?: ReactNode
+}) {
+  return (
+    <div className={`${DAY_HEADER_CLASS} ${surfaceClassName}`}>
+      <h2 className={titleClassName}>{title}</h2>
+      {action}
+    </div>
+  )
+}
 
 export function TimelineGrid({
   layout,
@@ -176,30 +200,31 @@ export function TimelineGrid({
                   className="mb-10 last:mb-0"
                   style={{ height: day.height }}
                 >
-                  <div className={`${DAY_HEADER_CLASS} ${dayHeaderSurfaceClassName}`}>
-                    <h2 className="text-2xl font-bold tracking-tight">
-                      {group ? group.label : groupDateLabelFromSortKey(day.sortKey)}
-                    </h2>
-                    {onToggleSelect && items.length > 0 && (
-                      <div className="ml-auto flex items-center">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const target = !allSelected
-                            items.forEach((item) => {
-                              // flip only items whose state differs from the target
-                              if (selectedIds.has(item.id) !== target) {
-                                onToggleSelect(item.id)
-                              }
-                            })
-                          }}
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 px-2 py-1 rounded hover:bg-white/5 transition-colors"
-                        >
-                          {allSelected ? 'Deselect all' : 'Select all'}
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  <DayHeader
+                    title={group ? group.label : groupDateLabelFromSortKey(day.sortKey)}
+                    surfaceClassName={dayHeaderSurfaceClassName}
+                    action={
+                      onToggleSelect && items.length > 0 ? (
+                        <div className="ml-auto flex items-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const target = !allSelected
+                              items.forEach((item) => {
+                                // flip only items whose state differs from the target
+                                if (selectedIds.has(item.id) !== target) {
+                                  onToggleSelect(item.id)
+                                }
+                              })
+                            }}
+                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 px-2 py-1 rounded hover:bg-white/5 transition-colors"
+                          >
+                            {allSelected ? 'Deselect all' : 'Select all'}
+                          </button>
+                        </div>
+                      ) : undefined
+                    }
+                  />
                   <div
                     className="justified-grid-gallery fixed-row-gallery"
                     aria-hidden={!group && !monthReady}

@@ -3,6 +3,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { FaLocationDot } from 'react-icons/fa6'
 import type { Asset } from '@photox/shared-types'
+import { SectionShell } from './SectionShell'
 
 interface LocationSectionProps {
   asset: Asset
@@ -62,10 +63,9 @@ export function LocationSection({ asset }: LocationSectionProps) {
 
   if (!hasCoords) {
     return (
-      <section>
-        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Location</h4>
+      <SectionShell compact title="Location">
         <p className="text-sm text-slate-600 italic">No location data</p>
-      </section>
+      </SectionShell>
     )
   }
 
@@ -74,8 +74,7 @@ export function LocationSection({ asset }: LocationSectionProps) {
   const mapUrl = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}&zoom=15`
 
   return (
-    <section>
-      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Location</h4>
+    <SectionShell title="Location">
       <div
         ref={containerRef}
         className="h-40 w-full rounded-lg border border-border-dark overflow-hidden mb-3"
@@ -101,6 +100,6 @@ export function LocationSection({ asset }: LocationSectionProps) {
           Altitude {parseFloat(altitude.toFixed(1))} m
         </p>
       )}
-    </section>
+    </SectionShell>
   )
 }

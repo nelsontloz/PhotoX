@@ -2,23 +2,27 @@
 // import it; same split as geonames.ts vs import-geonames.ts).
 // Validation mirrors RegisterDto: pragmatic email shape (class-validator @IsEmail is stricter)
 // + the same 8..128 password bounds.
+import { parseArgs as parseNodeArgs } from 'node:util'
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export function parseArgs(argv: string[]): { email?: string; password?: string } {
-  const out: { email?: string; password?: string } = {}
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]
-    if (arg === undefined) continue
-    for (const key of ['email', 'password'] as const) {
-      if (arg === `--${key}`) {
-        const value = argv[i + 1]
-        if (value !== undefined) out[key] = value
-      } else if (arg.startsWith(`--${key}=`)) {
-        out[key] = arg.slice(key.length + 3)
-      }
-    }
+  try {
+    const { values } = parseNodeArgs({
+      args: argv,
+      options: { email: { type: 'string' }, password: { type: 'string' } },
+      // unknown flags land in positionals (ignored) — same tolerance as the hand-rolled loop
+      strict: false,
+      allowPositionals: true,
+    })
+    const out: { email?: string; password?: string } = {}
+    if (typeof values.email === 'string') out.email = values.email
+    if (typeof values.password === 'string') out.password = values.password
+    return out
+  } catch {
+    // e.g. a dangling `--email` with no value: treat as absent (old loop skipped it too)
+    return {}
   }
-  return out
 }
 
 /** null when valid, otherwise the message main() prints before exiting non-zero. */
