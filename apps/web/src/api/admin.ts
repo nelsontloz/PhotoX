@@ -141,3 +141,59 @@ export async function reclusterFaces(): Promise<{ enqueued: number }> {
   const { data } = await api.post<{ enqueued: number }>('/v1/admin/faces/recluster')
   return data
 }
+
+/** POST /v1/admin/backups response: what got copied, under which S3 prefix. */
+export interface BackupResult {
+  userId: string
+  email: string
+  prefix: string
+  backedUpAt: string
+  files: number
+  assets: number
+  albums: number
+  shares: number
+  persons: number
+}
+
+/** GET /v1/admin/backups/status response: manifest presence + row counts (absent fields when none). */
+export interface BackupStatus {
+  exists: boolean
+  userId?: string
+  emailAtBackup?: string
+  backedUpAt?: string
+  files?: number
+  assets?: number
+  albums?: number
+  shares?: number
+  persons?: number
+}
+
+/**
+ * Client-side preview of the S3 prefix a user's backup lands under. Mirrors
+ * backupPrefix() in @photox/shared-config (normalizeEmail + segment-wise
+ * encodeURIComponent) without taking a workspace dep.
+ */
+export function backupPrefixPreview(email: string, userId: string): string {
+  const normalized = email.trim().toLowerCase()
+  return `backups/${encodeURIComponent(normalized)}__${encodeURIComponent(userId)}/`
+}
+
+// Backups run inline in core (originals first, manifest last) and routinely outlive the client's
+// 10s default on multi-GB libraries — raise the cap instead of failing a healthy backup.
+const BACKUP_TIMEOUT_MS = 600_000
+
+export async function backupUser(emailOrId: string): Promise<BackupResult> {
+  const { data } = await api.post<BackupResult>(
+    '/v1/admin/backups',
+    { emailOrId },
+    { timeout: BACKUP_TIMEOUT_MS },
+  )
+  return data
+}
+
+export async function getBackupStatus(emailOrId: string): Promise<BackupStatus> {
+  const { data } = await api.get<BackupStatus>('/v1/admin/backups/status', {
+    params: { emailOrId },
+  })
+  return data
+}
