@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, Repository } from 'typeorm'
+import { DataSource, MoreThan, Repository } from 'typeorm'
 import { readFile } from 'fs/promises'
 import sharp from 'sharp'
 import { Face } from '../database/entities'
@@ -108,6 +108,43 @@ export class FacesService {
         personId: f.personId ?? null,
         ...(includeEmbeddings ? { embedding: f.embedding } : {}),
       }))
+  }
+
+  // ponytail: keyset page over (userId, id ASC); trashed filtered in memory like listForUser —
+  // pages can run short when trashed rows dominate; join-filter if that ever matters.
+  async listForUserPaginated(
+    userId: string,
+    opts: {
+      limit?: number
+      cursor?: string
+      includeEmbeddings?: boolean
+      excludeTrashed?: boolean
+    },
+  ) {
+    const limit = opts.limit ?? 500
+    const faces = await this.repo.find({
+      where: { userId, ...(opts.cursor ? { id: MoreThan(opts.cursor) } : {}) },
+      order: { id: 'ASC' },
+      take: limit,
+    })
+    const trashedAssetIds = opts.excludeTrashed
+      ? new Set(
+          (await this.assetRepo.find({ where: { userId, isTrashed: true }, select: ['id'] })).map(
+            (a) => a.id,
+          ),
+        )
+      : null
+    const items = faces
+      .filter((f) => !trashedAssetIds?.has(f.assetId))
+      .map((f) => ({
+        id: f.id,
+        assetId: f.assetId,
+        box: f.box,
+        confidence: f.confidence,
+        personId: f.personId ?? null,
+        ...(opts.includeEmbeddings ? { embedding: f.embedding } : {}),
+      }))
+    return { items, nextCursor: faces.length < limit ? null : (faces.at(-1)?.id ?? null) }
   }
 
   async assignPerson(userId: string, faceId: string, personId: string | null): Promise<void> {

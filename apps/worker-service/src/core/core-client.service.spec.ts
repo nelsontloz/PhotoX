@@ -101,8 +101,32 @@ describe('CoreClient', () => {
 
     expect(faces).toEqual([{ id: 'face-1' }])
     expect(fetchMock.mock.calls[0]![0]).toBe(
-      'http://localhost:3000/worker/faces?includeEmbeddings=true&excludeTrashed=true',
+      'http://localhost:3000/worker/faces?includeEmbeddings=true&excludeTrashed=true&limit=500',
     )
+  })
+
+  it('walks paginated faces with cursor until nextCursor is null', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { items: [{ id: 'face-1' }], nextCursor: 'f1' }))
+      .mockResolvedValueOnce(jsonResponse(200, { items: [{ id: 'face-2' }], nextCursor: null }))
+
+    const faces = await makeClient().getFacesForCluster('user-1')
+
+    expect(faces).toEqual([{ id: 'face-1' }, { id: 'face-2' }])
+    const urls = fetchMock.mock.calls.map((call) => call[0] as string)
+    expect(urls).toHaveLength(2)
+    expect(urls[0]).not.toContain('cursor=')
+    expect(urls[1]).toContain('cursor=f1')
+  })
+
+  it('fails without retry over 10k faces per user', async () => {
+    const items = Array.from({ length: 10_001 }, (_, i) => ({ id: `face-${i}` }))
+    fetchMock.mockResolvedValue(jsonResponse(200, { items, nextCursor: null }))
+
+    await expect(makeClient().getFacesForCluster('user-1')).rejects.toBeInstanceOf(
+      UnrecoverableError,
+    )
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('chunks asset id lookups at 100 ids per request', async () => {
