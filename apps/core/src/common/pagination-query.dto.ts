@@ -10,7 +10,7 @@ export class PaginationQueryDto {
   @Min(1)
   @Max(1000)
   @ApiProperty({ default: 20, required: false, maximum: 1000 })
-  limit: number = 20
+  limit = 20
 
   // @IsInt: inherited by search/admin-users (both had it); tightens albums/persons
   // float offsets from a potential 500 to a 400 — the safe direction
@@ -19,5 +19,5 @@ export class PaginationQueryDto {
   @IsInt()
   @Min(0)
   @ApiProperty({ default: 0, required: false })
-  offset: number = 0
+  offset = 0
 }

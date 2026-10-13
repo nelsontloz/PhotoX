@@ -13,7 +13,7 @@ export class ListAdminUsersQueryDto extends PaginationQueryDto {
   @IsInt()
   @Min(1)
   @Max(50)
-  override limit: number = 20
+  override limit = 20
 
   @ApiProperty({
     required: false,

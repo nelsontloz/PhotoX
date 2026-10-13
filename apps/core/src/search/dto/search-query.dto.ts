@@ -15,5 +15,5 @@ export class SearchQueryDto extends PaginationQueryDto {
   @IsInt()
   @Min(1)
   @Max(100)
-  override limit: number = 20
+  override limit = 20
 }
