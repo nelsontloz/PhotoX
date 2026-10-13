@@ -51,7 +51,12 @@ import { AuthModule } from '../../src/auth/auth.module'
 import { BullMqModule } from '../../src/queue/bullmq.module'
 import { BullMqService } from '../../src/queue/bullmq.service'
 import { HttpExceptionFilter } from '../../src/common/filters/http-exception.filter'
-import { TEST_AUTH_SECRET, TEST_WORKER_SECRET, setupTestInfra, teardownTestInfra } from './test-setup'
+import {
+  TEST_AUTH_SECRET,
+  TEST_WORKER_SECRET,
+  setupTestInfra,
+  teardownTestInfra,
+} from './test-setup'
 
 export interface MockUser {
   id: string

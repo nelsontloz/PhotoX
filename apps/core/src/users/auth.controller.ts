@@ -1,4 +1,13 @@
-import { BadRequestException, Controller, Post, Body, HttpCode, HttpStatus, Req, Res } from '@nestjs/common'
+import {
+  BadRequestException,
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  Req,
+  Res,
+} from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
 import { loadEnv } from '@photox/shared-config'
@@ -31,7 +40,12 @@ export class AuthController {
   // ponytail: every token-issuing response mirrors the access token into an HttpOnly
   // cookie so same-origin <img>/<video> subresources authenticate without JS; the refresh
   // token rides a Path=/api/v1/auth cookie so cookie-only clients can rotate and log out
-  private setAuthCookies(res: Response, accessToken: string, refreshToken: string, req: Request): void {
+  private setAuthCookies(
+    res: Response,
+    accessToken: string,
+    refreshToken: string,
+    req: Request,
+  ): void {
     const secure = isSecureRequest(req)
     setAccessCookie(res, accessToken, this.tokenService.accessCookieMaxAge(accessToken), secure)
     setRefreshCookie(res, refreshToken, loadEnv().AUTH_REFRESH_TTL, secure)

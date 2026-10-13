@@ -46,10 +46,7 @@ export class FaceProcessor implements OnModuleInit {
 
         // ponytail: detection + embedding both run off this downscaled buffer, and the embedder
         // warps 112px crops from it, so 2048 preserves small-face detail (~12MB raw at that size).
-        const { resized, scaleX, scaleY, origW, origH } = await orientedPrep(
-          filePath,
-          FACE_MAX_DIM,
-        )
+        const { resized, scaleX, scaleY, origW, origH } = await orientedPrep(filePath, FACE_MAX_DIM)
 
         const detections = await this.faceDetector.detect(resized, resolvedDetector)
         // ponytail: drop low-confidence detections before save — clustering separately ignores conf < 0.4

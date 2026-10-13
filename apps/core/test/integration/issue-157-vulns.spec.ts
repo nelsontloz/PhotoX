@@ -67,15 +67,16 @@ describe('issue-157 vulns (expect secure, currently insecure)', () => {
     (res.headers['set-cookie'] as unknown as string[] | undefined) ?? []
 
   const cookieJar = (res: AuthRes): string =>
-    setCookies(res).find((c) => c.startsWith(`${ACCESS_COOKIE}=`))?.split(';')[0] ?? ''
+    setCookies(res)
+      .find((c) => c.startsWith(`${ACCESS_COOKIE}=`))
+      ?.split(';')[0] ?? ''
 
   // gate-1: the session floor compares at second granularity (access iat is seconds), so a
   // logout/reuse in the same second as login can't kill the token — cross a second boundary
   // first to make the kill deterministic (bounded ≤1s poll, accepts the sub-second kill-window)
   const crossSecondBoundary = async (): Promise<void> => {
     const start = Math.floor(Date.now() / 1000)
-    while (Math.floor(Date.now() / 1000) === start)
-      await new Promise((r) => setTimeout(r, 25))
+    while (Math.floor(Date.now() / 1000) === start) await new Promise((r) => setTimeout(r, 25))
   }
 
   it('#6 logout kills access: Bearer and cookie are 401 after logout', async () => {
@@ -167,9 +168,7 @@ describe('issue-157 vulns (expect secure, currently insecure)', () => {
     await registerUser('failclosed@example.com')
     const bullMq = t.app.get<BullMqService>(BullMqService)
     // the "not yet connected" path: countHit returns null for an undefined client
-    const redisGet = vi
-      .spyOn(bullMq, 'redis', 'get')
-      .mockReturnValue(undefined as unknown as Redis)
+    const redisGet = vi.spyOn(bullMq, 'redis', 'get').mockReturnValue(undefined as unknown as Redis)
     try {
       // Redis down rejects even with the correct password — no free attempts from a blip
       expect((await loginUser('failclosed@example.com', PASSWORD)).status).toBe(503)
@@ -278,7 +277,7 @@ describe('issue-157 vulns (expect secure, currently insecure)', () => {
     // issue-157#13: Secure must be conditional — unconditional Secure would stop sending the
     // cookie over plain-HTTP host dev, while missing Secure on https leaks it to the network
     const cookieLines = (res: AuthRes): string[] =>
-      (setCookies(res).filter((line) => line.startsWith('photox_')))
+      setCookies(res).filter((line) => line.startsWith('photox_'))
     const https = await request(apiServer(t))
       .post('/api/v1/auth/register')
       .set('X-Forwarded-Proto', 'https')
@@ -365,8 +364,7 @@ describe('issue-157 vulns (expect secure, currently insecure)', () => {
     const asset = await seedAsset(t, u.id, file.id)
     const job = t.signWorkerToken({ id: u.id, email: u.email, role: u.role }, { act: true })
     expect(
-      (await request(apiServer(t)).get(`/worker/assets/${asset.id}`).set(t.authHeader(job)))
-        .status,
+      (await request(apiServer(t)).get(`/worker/assets/${asset.id}`).set(t.authHeader(job))).status,
     ).toBe(200)
   })
 

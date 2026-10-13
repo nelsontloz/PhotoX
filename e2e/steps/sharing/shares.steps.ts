@@ -278,14 +278,17 @@ When('I submit a share request with both an asset and an album id', async ({ req
   ctx.lastStatus = response.status()
 })
 
-Then('the second share request rotated the token and killed the old URL', async ({ request, ctx }) => {
-  const first = requireShare(ctx.assetShare, 'first asset')
-  const second = requireShare(ctx.assetShareAgain, 'second asset')
-  expect(second.id).not.toBe(first.id)
-  expect(second.token).not.toBe(first.token)
-  expect((await request.get(`/api/share/${first.token}`)).status()).toBe(404)
-  expect((await request.get(`/api/share/${second.token}`)).status()).toBe(200)
-})
+Then(
+  'the second share request rotated the token and killed the old URL',
+  async ({ request, ctx }) => {
+    const first = requireShare(ctx.assetShare, 'first asset')
+    const second = requireShare(ctx.assetShareAgain, 'second asset')
+    expect(second.id).not.toBe(first.id)
+    expect(second.token).not.toBe(first.token)
+    expect((await request.get(`/api/share/${first.token}`)).status()).toBe(404)
+    expect((await request.get(`/api/share/${second.token}`)).status()).toBe(200)
+  },
+)
 
 Then('the shares API lists exactly one share entry', async ({ request, ctx }) => {
   const list = await fetchShares(request, requireAuth(ctx))

@@ -149,10 +149,7 @@ export class JwtAuthGuard implements CanActivate {
       // which have no users row; user-sub worker tokens still hit the floor above
       if (!row && !payload.act) throw new UnauthorizedException()
       // second granularity: iat is seconds while the floor carries ms
-      if (
-        row?.tokensValidAfter &&
-        Math.floor(row.tokensValidAfter.getTime() / 1000) > payload.iat
-      )
+      if (row?.tokensValidAfter && Math.floor(row.tokensValidAfter.getTime() / 1000) > payload.iat)
         throw new UnauthorizedException()
     }
 
