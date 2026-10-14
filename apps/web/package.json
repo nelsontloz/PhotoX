@@ -15,6 +15,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@noble/hashes": "^1.8.0",
     "@photox/shared-types": "workspace:*",
     "axios": "^1.19.0",
     "leaflet": "^1.9.4",

@@ -339,7 +339,7 @@ Then('the seeded detection is replaced without duplicates', async ({ request, ct
 })
 
 Then('the admin page shows the last embedding reprocess run', async ({ page }) => {
-  await page.goto('/admin')
+  await page.goto('/admin?tab=ai')
   // three pipeline cards share the "Last run … photos queued." line — scope to the one whose
   // heading is "Semantic Search" (innermost div containing both heading and the last-run text)
   const card = page

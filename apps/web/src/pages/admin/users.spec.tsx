@@ -6,7 +6,7 @@ const api = vi.hoisted(() => ({ listAdminUsers: vi.fn() }))
 
 vi.mock('../../api/admin', () => api)
 
-import { UsersSection } from './index'
+import { UsersSection } from './users'
 
 const page = (over: Partial<AdminUserListResponse> = {}): AdminUserListResponse => ({
   items: [

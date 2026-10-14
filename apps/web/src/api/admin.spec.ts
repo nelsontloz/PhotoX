@@ -15,6 +15,10 @@ import {
   reprocessPipeline,
   getPipelineStatus,
   reclusterFaces,
+  backupUser,
+  getBackupStatus,
+  backupPrefixPreview,
+  type BackupResult,
   type FaceReprocessResponse,
   type FacePipelineRun,
 } from './admin'
@@ -64,5 +68,73 @@ describe('face detection admin API', () => {
     postMock.mockResolvedValue({ data: { enqueued: 2 } })
     await expect(reclusterFaces()).resolves.toEqual({ enqueued: 2 })
     expect(postMock).toHaveBeenCalledWith('/v1/admin/faces/recluster')
+  })
+})
+
+describe('user backup admin API', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const result: BackupResult = {
+    userId: 'u-1',
+    email: 'ada@example.com',
+    prefix: 'backups/ada@example.com__u-1/',
+    backedUpAt: '2026-10-01T00:00:00.000Z',
+    files: 3,
+    uploaded: 1,
+    skipped: 2,
+    assets: 2,
+    albums: 1,
+    shares: 0,
+    persons: 1,
+  }
+
+  it('backupUser posts the emailOrId with a timeout sized for inline S3 copies', async () => {
+    postMock.mockResolvedValue({ data: result })
+    await expect(backupUser('u-1')).resolves.toEqual(result)
+    expect(postMock).toHaveBeenCalledWith(
+      '/v1/admin/backups',
+      { emailOrId: 'u-1' },
+      { timeout: 600_000 },
+    )
+  })
+
+  it('getBackupStatus reads the status endpoint with emailOrId as a query param', async () => {
+    const status = {
+      exists: true,
+      userId: 'u-1',
+      emailAtBackup: 'ada@example.com',
+      backedUpAt: '2026-10-01T00:00:00.000Z',
+      files: 3,
+      assets: 2,
+    }
+    getMock.mockResolvedValue({ data: status })
+    await expect(getBackupStatus('ada@example.com')).resolves.toEqual(status)
+    expect(getMock).toHaveBeenCalledWith('/v1/admin/backups/status', {
+      params: { emailOrId: 'ada@example.com' },
+      timeout: 30_000,
+    })
+  })
+
+  it('getBackupStatus surfaces the empty-manifest shape for a user with no backup', async () => {
+    getMock.mockResolvedValue({ data: { exists: false } })
+    await expect(getBackupStatus('u-9')).resolves.toEqual({ exists: false })
+  })
+})
+
+describe('backupPrefixPreview', () => {
+  it('encodes @ and lowercases/trims the email like backupPrefix', () => {
+    expect(backupPrefixPreview('ada@example.com', 'u-1')).toBe('backups/ada%40example.com__u-1/')
+  })
+
+  it('trims whitespace and lowercases uppercase emails before encoding', () => {
+    expect(backupPrefixPreview('  Ada@Example.COM  ', 'u-1')).toBe(
+      'backups/ada%40example.com__u-1/',
+    )
+  })
+
+  it('encodes the userId segment', () => {
+    expect(backupPrefixPreview('ada@example.com', 'u 1/x')).toBe(
+      'backups/ada%40example.com__u%201%2Fx/',
+    )
   })
 })

@@ -156,3 +156,117 @@ describe('UserFilesService.register race', () => {
     )
   })
 })
+
+// file lookup keyed by checksum, asset lookup keyed by fileId — both scoped to the user
+function makeExistsService(scenario: {
+  files: Record<string, FileRecord | null>
+  assets: Record<string, Asset | null>
+}) {
+  const fileFindOne = vi.fn(
+    (opts?: { where?: { checksumSha256?: string } }): Promise<FileRecord | null> =>
+      Promise.resolve(scenario.files[opts?.where?.checksumSha256 ?? ''] ?? null),
+  )
+  const assetFindOne = vi.fn(
+    (opts?: { where?: { fileId?: string } }): Promise<Asset | null> =>
+      Promise.resolve(scenario.assets[opts?.where?.fileId ?? ''] ?? null),
+  )
+  const service = new UserFilesService(
+    { findOne: fileFindOne } as unknown as Repository<FileRecord>,
+    { findOne: assetFindOne } as unknown as Repository<Asset>,
+    {} as unknown as LocalStorageService,
+    {} as unknown as AssetsService,
+    {} as unknown as BullMqService,
+    {} as unknown as SettingsService,
+  )
+  return { service, fileFindOne, assetFindOne }
+}
+
+describe('UserFilesService.existsMany', () => {
+  const HIT = 'a'.repeat(64)
+  const ORPHAN = 'b'.repeat(64)
+  const MISS = 'c'.repeat(64)
+
+  function hitScenario() {
+    return makeExistsService({
+      files: {
+        [HIT]: fileRow({ id: 'file-hit', checksumSha256: HIT }),
+        [ORPHAN]: fileRow({ id: 'file-orphan', checksumSha256: ORPHAN }),
+        [MISS]: null,
+      },
+      assets: {
+        'file-hit': { id: 'asset-hit' } as Asset,
+        'file-orphan': null,
+      },
+    })
+  }
+
+  it('hit with asset returns both ids', async () => {
+    const { service } = hitScenario()
+    await expect(service.existsMany('u1', [{ checksumSha256: HIT }])).resolves.toEqual([
+      {
+        checksumSha256: HIT,
+        exists: true,
+        existingFileId: 'file-hit',
+        existingAssetId: 'asset-hit',
+      },
+    ])
+  })
+
+  it('hit without asset returns only the file id', async () => {
+    const { service } = hitScenario()
+    await expect(service.existsMany('u1', [{ checksumSha256: ORPHAN }])).resolves.toEqual([
+      { checksumSha256: ORPHAN, exists: true, existingFileId: 'file-orphan' },
+    ])
+  })
+
+  it('miss returns exists:false with no ids', async () => {
+    const { service } = hitScenario()
+    await expect(service.existsMany('u1', [{ checksumSha256: MISS }])).resolves.toEqual([
+      { checksumSha256: MISS, exists: false },
+    ])
+  })
+
+  it('dedupes repeated checksums server-side', async () => {
+    const { service, fileFindOne, assetFindOne } = hitScenario()
+    const res = await service.existsMany('u1', [
+      { checksumSha256: HIT },
+      { checksumSha256: HIT, sizeBytes: 5 },
+    ])
+    expect(fileFindOne).toHaveBeenCalledOnce()
+    expect(assetFindOne).toHaveBeenCalledOnce()
+    expect(res).toEqual([
+      {
+        checksumSha256: HIT,
+        exists: true,
+        existingFileId: 'file-hit',
+        existingAssetId: 'asset-hit',
+      },
+      {
+        checksumSha256: HIT,
+        exists: true,
+        existingFileId: 'file-hit',
+        existingAssetId: 'asset-hit',
+      },
+    ])
+  })
+
+  it('preserves input order across hits and misses', async () => {
+    const { service } = hitScenario()
+    await expect(
+      service.existsMany('u1', [
+        { checksumSha256: MISS },
+        { checksumSha256: HIT },
+        { checksumSha256: ORPHAN },
+      ]),
+    ).resolves.toEqual([
+      { checksumSha256: MISS, exists: false },
+      {
+        checksumSha256: HIT,
+        exists: true,
+        existingFileId: 'file-hit',
+        existingAssetId: 'asset-hit',
+      },
+      { checksumSha256: ORPHAN, exists: true, existingFileId: 'file-orphan' },
+    ])
+  })
+})

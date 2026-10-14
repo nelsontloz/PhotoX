@@ -19,6 +19,7 @@ import { CurrentUserId } from '../../auth/jwt-auth.guard'
 import { UserFilesService, type UploadedDiskFile } from './user-files.service'
 import { FileRecordDto } from '../file-record.dto'
 import { UploadFileBodyDto } from './dto/upload-file.body.dto'
+import { CheckFilesExistsBodyDto } from './dto/check-files-exists.body.dto'
 import { serveFileBytes } from '../streaming.util'
 
 const diskStorage = multer.diskStorage({
@@ -46,6 +47,14 @@ export class UserFilesController {
     @Body() body: UploadFileBodyDto,
   ) {
     return this.userFilesService.upload(userId, file, body)
+  }
+
+  @Post('exists')
+  @ApiOperation({ summary: 'Batch check which checksums already uploaded' })
+  @ApiResponse({ status: 200, description: 'Existence hits in input order' })
+  async exists(@CurrentUserId() userId: string, @Body() body: CheckFilesExistsBodyDto) {
+    const items = await this.userFilesService.existsMany(userId, body.items)
+    return { items }
   }
 
   @Get(':fileId/stream')

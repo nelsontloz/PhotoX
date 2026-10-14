@@ -1,8 +1,14 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { Asset, AssetListResponse } from '@photox/shared-types'
-import { getFileStreamUrl, listAllAssets } from './assets'
+import type { FileExistsResultItem } from './assets'
+import {
+  CHECK_FILES_EXIST_TIMEOUT_MS,
+  getFileStreamUrl,
+  listAllAssets,
+  checkFilesExist,
+} from './assets'
 
-const { getMock } = vi.hoisted(() => ({
+const { getMock, postMock } = vi.hoisted(() => ({
   getMock: vi.fn<
     (
       url: string,
@@ -11,9 +17,18 @@ const { getMock } = vi.hoisted(() => ({
       data: AssetListResponse
     }>
   >(),
+  postMock: vi.fn<
+    (
+      url: string,
+      body?: { items: { checksumSha256: string; sizeBytes?: number }[] },
+      config?: { timeout?: number },
+    ) => Promise<{
+      data: { items: FileExistsResultItem[] }
+    }>
+  >(),
 }))
 
-vi.mock('./client', () => ({ api: { get: getMock } }))
+vi.mock('./client', () => ({ api: { get: getMock, post: postMock } }))
 
 function makeAsset(id: string): Asset {
   return { id, kind: 'photo', uploadedAt: '2024-01-01T00:00:00Z' } as Asset
@@ -22,6 +37,58 @@ function makeAsset(id: string): Asset {
 describe('stream URL builders', () => {
   it('getFileStreamUrl targets core through the /api prefix', () => {
     expect(getFileStreamUrl('file-1')).toBe('/api/v1/files/file-1/stream')
+  })
+})
+
+describe('checkFilesExist', () => {
+  it('posts checksums to /v1/files/exists and returns the result items', async () => {
+    postMock.mockResolvedValue({
+      data: {
+        items: [
+          {
+            checksumSha256: 'abc',
+            exists: true,
+            existingFileId: 'file-1',
+            existingAssetId: 'asset-1',
+          },
+          { checksumSha256: 'def', exists: false },
+        ],
+      },
+    })
+
+    const items = await checkFilesExist([
+      { checksumSha256: 'abc', sizeBytes: 8 },
+      { checksumSha256: 'def' },
+    ])
+
+    expect(postMock).toHaveBeenCalledWith(
+      '/v1/files/exists',
+      {
+        items: [{ checksumSha256: 'abc', sizeBytes: 8 }, { checksumSha256: 'def' }],
+      },
+      { timeout: CHECK_FILES_EXIST_TIMEOUT_MS },
+    )
+    expect(items).toEqual([
+      {
+        checksumSha256: 'abc',
+        exists: true,
+        existingFileId: 'file-1',
+        existingAssetId: 'asset-1',
+      },
+      { checksumSha256: 'def', exists: false },
+    ])
+  })
+
+  it('passes an explicit timeout through to the exists POST', async () => {
+    postMock.mockResolvedValue({ data: { items: [] } })
+
+    await checkFilesExist([{ checksumSha256: 'abc' }], { timeout: 5000 })
+
+    expect(postMock).toHaveBeenCalledWith(
+      '/v1/files/exists',
+      { items: [{ checksumSha256: 'abc' }] },
+      { timeout: 5000 },
+    )
   })
 })
 

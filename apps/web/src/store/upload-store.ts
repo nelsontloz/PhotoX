@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type UploadStatus = 'queued' | 'uploading' | 'done' | 'error'
+export type UploadStatus = 'queued' | 'hashing' | 'uploading' | 'done' | 'error'
 
 export interface UploadItem {
   id: string
@@ -81,7 +81,7 @@ export const useUploadStore = create<UploadState>()(
       // never rehydrates a dead blob; in-flight items become retryable errors.
       partialize: (state) => ({
         items: state.items.map((item) =>
-          item.status === 'uploading' || item.status === 'queued'
+          item.status === 'uploading' || item.status === 'queued' || item.status === 'hashing'
             ? {
                 ...item,
                 progress: 0,

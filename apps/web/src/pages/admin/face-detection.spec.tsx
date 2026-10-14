@@ -12,7 +12,7 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../../api/admin', () => api)
 
-import { FacialDetectionCard } from './index'
+import { FacialDetectionCard } from './ai'
 
 const settings = (over: Partial<FaceDetectionSettings> = {}): FaceDetectionSettings => ({
   detector: 'human',

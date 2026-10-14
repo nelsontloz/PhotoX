@@ -1,11 +1,17 @@
 import axios from 'axios'
 import { useUploadStore } from '../store/upload-store'
 import { useAppStore } from '../store/app-store'
-import { uploadFile } from '../api/assets'
+import { checkFilesExist, uploadFile } from '../api/assets'
+import { hashFile } from './hash'
 
 const MAX_CONCURRENT = 3
 
+/** Files larger than this are rejected before hashing (core caps uploads at 4GB). */
+const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024 * 1024
+
 const filesRef = new Map<string, File>()
+/** Whole-file checksums stay memory-only (never in the persisted store). */
+const checksumsRef = new Map<string, string>()
 
 export function enqueueFiles(files: File[]): void {
   if (files.length === 0) return
@@ -22,9 +28,87 @@ export function enqueueFiles(files: File[]): void {
     filesRef.set(id, files[i]!)
   })
 
-  void processQueue(enqueuedIds).then(() => {
+  void runUploadFlow(enqueuedIds).then(() => {
     useAppStore.getState().bumpTimelineRefresh()
   })
+}
+
+function dropRefs(id: string): void {
+  filesRef.delete(id)
+  checksumsRef.delete(id)
+}
+
+async function runUploadFlow(ids: string[]): Promise<void> {
+  // Phase 0: pre-reject oversize files without hashing.
+  const hashableIds: string[] = []
+  for (const id of ids) {
+    const file = filesRef.get(id)
+    if (!file) continue
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      useUploadStore.getState().setStatus(id, 'error', { error: 'File exceeds the 4GB limit' })
+      dropRefs(id)
+      continue
+    }
+    hashableIds.push(id)
+  }
+  if (hashableIds.length === 0) return
+
+  // Phase 1: hash every file through the shared worker pool (fail-open miss on null).
+  // hashFile is time-bounded and never rejects, but the outer catch keeps any unexpected
+  // throw (store access, bookkeeping) from swallowing the upload lane below.
+  const hashed: { id: string; checksumSha256: string; sizeBytes: number }[] = []
+  try {
+    await Promise.all(
+      hashableIds.map(async (id) => {
+        const file = filesRef.get(id)
+        const item = useUploadStore.getState().items.find((i) => i.id === id)
+        if (!file || item?.status !== 'queued') return
+        useUploadStore.getState().setStatus(id, 'hashing')
+        let checksum: string | null = null
+        try {
+          checksum = await hashFile(file, (pct) => useUploadStore.getState().setProgress(id, pct))
+        } catch {
+          checksum = null
+        }
+        if (checksum) {
+          checksumsRef.set(id, checksum)
+          hashed.push({ id, checksumSha256: checksum, sizeBytes: file.size })
+        }
+      }),
+    )
+  } catch {
+    // Fall through: hashed items (if any) still get checked; the rest upload as misses.
+  }
+
+  // Phase 2: ONE existence check for the batch; hits skip the upload (and thumbnail) lane.
+  if (hashed.length > 0) {
+    try {
+      const results = await checkFilesExist(
+        hashed.map(({ checksumSha256, sizeBytes }) => ({ checksumSha256, sizeBytes })),
+      )
+      const byChecksum = new Map(results.map((result) => [result.checksumSha256, result]))
+      for (const entry of hashed) {
+        const match = byChecksum.get(entry.checksumSha256)
+        if (match?.exists && match.existingFileId && match.existingAssetId) {
+          useUploadStore.getState().setStatus(entry.id, 'done', {
+            fileId: match.existingFileId,
+            assetId: match.existingAssetId,
+            progress: 100,
+          })
+          dropRefs(entry.id)
+        }
+      }
+    } catch {
+      // Existence-check failure falls through: every hashed item uploads below.
+    }
+  }
+
+  // Phase 3: misses + check-failure fallback take the upload lane.
+  const toUpload = hashableIds.filter((id) => {
+    const item = useUploadStore.getState().items.find((i) => i.id === id)
+    return item?.status === 'hashing' || item?.status === 'queued'
+  })
+  await processQueue(toUpload)
 }
 
 async function processQueue(ids: string[]): Promise<void> {
@@ -35,12 +119,12 @@ async function processQueue(ids: string[]): Promise<void> {
       const currentIdx = idx++
       const id = ids[currentIdx]!
       const item = useUploadStore.getState().items.find((i) => i.id === id)
-      if (item?.status !== 'queued') continue
+      if (item?.status !== 'queued' && item?.status !== 'hashing') continue
 
       const file = filesRef.get(id)
       if (!file) continue
 
-      useUploadStore.getState().setStatus(id, 'uploading')
+      useUploadStore.getState().setStatus(id, 'uploading', { progress: 0 })
 
       try {
         const thumbBlob = await makeThumbnail(file)
@@ -59,7 +143,7 @@ async function processQueue(ids: string[]): Promise<void> {
           fileId: asset.fileId,
           assetId: asset.id,
         })
-        filesRef.delete(id)
+        dropRefs(id)
       } catch (err) {
         if (axios.isAxiosError(err) && err.response?.status === 409) {
           const { existingAssetId, existingFileId } = err.response.data as {
@@ -70,13 +154,13 @@ async function processQueue(ids: string[]): Promise<void> {
             fileId: existingFileId,
             assetId: existingAssetId,
           })
-          filesRef.delete(id)
+          dropRefs(id)
           continue
         }
         useUploadStore.getState().setStatus(id, 'error', {
           error: (err as Error).message ?? 'Upload failed',
         })
-        filesRef.delete(id)
+        dropRefs(id)
       }
     }
   }
