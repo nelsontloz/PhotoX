@@ -18,7 +18,7 @@ import {
   cx,
 } from './ui'
 import {
-  loadBackupOverview,
+  getBackupOverview,
   getBackupProgress,
   backupUser,
   restoreUser,
@@ -265,8 +265,8 @@ export function BackupSection() {
     setLoading(true)
     setLoadError(null)
     setLoadErrorIsStore(false)
-    loadBackupOverview()
-      .then(({ rows: next }) => {
+    getBackupOverview()
+      .then((next) => {
         if (!cancelled) {
           setRows(next)
           // A 409 restore bumps version to refetch: the same-userId row comes back live,

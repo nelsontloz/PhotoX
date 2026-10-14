@@ -16,4 +16,3 @@ export {
   parseBackupDir,
   resolveBackupPrefix,
 } from './backup-path'
-export type { BackupPrefixParams, ManifestKeyParams, OriginalKeyParams } from './backup-path'

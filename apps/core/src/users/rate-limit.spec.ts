@@ -111,4 +111,32 @@ describe('RateLimitService', () => {
     expect((err as HttpException).getStatus()).toBe(503)
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('Rate limit unavailable'))
   })
+
+  it('swallows a late eval rejection after the timeout wins (no unhandledRejection)', async () => {
+    const unhandled: unknown[] = []
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason)
+    }
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+      const { service } = makeService({
+        eval: () =>
+          new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('late redis fail')), RATE_LIMIT_TIMEOUT_MS + 100)
+          }),
+      })
+      const err = await service
+        .consume('login', '1.2.3.4', 'user@example.com')
+        .catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(HttpException)
+      expect((err as HttpException).getStatus()).toBe(503)
+      // let the late rejection settle past the timeout window
+      await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_TIMEOUT_MS + 300))
+      expect(unhandled).toEqual([])
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Rate limit unavailable'))
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+    }
+  })
 })

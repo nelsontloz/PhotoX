@@ -1,18 +1,5 @@
 import { loadEnv } from './env'
 
-export interface BackupPrefixParams {
-  email: string
-  userId: string
-  prefix?: string
-}
-
-export type ManifestKeyParams = BackupPrefixParams
-
-export interface OriginalKeyParams extends BackupPrefixParams {
-  fileId: string
-  ext: string
-}
-
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
 }
@@ -41,38 +28,15 @@ export function resolveBackupPrefix(prefix?: string): string {
   return cleaned.length > 0 ? `${cleaned}/` : ''
 }
 
-function resolvePrefixArg(prefix?: string): string {
-  return resolveBackupPrefix(prefix)
-}
-
-export function backupPrefix(email: string, userId: string, prefix?: string): string
-export function backupPrefix(params: BackupPrefixParams): string
-export function backupPrefix(
-  emailOrParams: string | BackupPrefixParams,
-  userId?: string,
-  prefix?: string,
-): string {
-  const email = typeof emailOrParams === 'string' ? emailOrParams : emailOrParams.email
-  const resolvedUserId = typeof emailOrParams === 'string' ? userId! : emailOrParams.userId
-  const resolvedPrefix = typeof emailOrParams === 'string' ? prefix : emailOrParams.prefix
+export function backupPrefix(email: string, userId: string, prefix?: string): string {
   const normalized = normalizeEmail(requireNonEmpty(email, 'email'))
-  requireNonEmpty(resolvedUserId, 'userId')
-  const base = resolvePrefixArg(resolvedPrefix)
-  return `${base}${encodeSegment(normalized)}__${encodeSegment(resolvedUserId)}/`
+  requireNonEmpty(userId, 'userId')
+  const base = resolveBackupPrefix(prefix)
+  return `${base}${encodeSegment(normalized)}__${encodeSegment(userId)}/`
 }
 
-export function manifestKey(email: string, userId: string, prefix?: string): string
-export function manifestKey(params: ManifestKeyParams): string
-export function manifestKey(
-  emailOrParams: string | ManifestKeyParams,
-  userId?: string,
-  prefix?: string,
-): string {
-  const prefixPart =
-    typeof emailOrParams === 'string'
-      ? backupPrefix(emailOrParams, userId!, prefix)
-      : backupPrefix(emailOrParams)
-  return `${prefixPart}manifest.json`
+export function manifestKey(email: string, userId: string, prefix?: string): string {
+  return `${backupPrefix(email, userId, prefix)}manifest.json`
 }
 
 export function originalKey(
@@ -81,22 +45,9 @@ export function originalKey(
   fileId: string,
   ext: string,
   prefix?: string,
-): string
-export function originalKey(params: OriginalKeyParams): string
-export function originalKey(
-  emailOrParams: string | OriginalKeyParams,
-  userId?: string,
-  fileId?: string,
-  ext?: string,
-  prefix?: string,
 ): string {
-  if (typeof emailOrParams !== 'string') {
-    const base = backupPrefix(emailOrParams)
-    requireNonEmpty(emailOrParams.fileId, 'fileId')
-    return joinOriginalKey(base, emailOrParams.fileId, emailOrParams.ext)
-  }
-  requireNonEmpty(fileId!, 'fileId')
-  return joinOriginalKey(backupPrefix(emailOrParams, userId!, prefix), fileId!, ext!)
+  requireNonEmpty(fileId, 'fileId')
+  return joinOriginalKey(backupPrefix(email, userId, prefix), fileId, ext)
 }
 
 function joinOriginalKey(base: string, fileId: string, ext: string): string {

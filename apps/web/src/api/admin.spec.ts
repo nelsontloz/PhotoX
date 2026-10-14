@@ -27,7 +27,6 @@ import {
   deleteAdminUser,
   getAdminUserDeleteStatus,
   pollAdminUserDelete,
-  getAdminUserDeletePreview,
   type BackupResult,
   type FaceReprocessResponse,
   type FacePipelineRun,
@@ -211,15 +210,16 @@ describe('user backup admin API', () => {
 describe('admin user deletion API', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('deleteAdminUser issues DELETE for the encoded user id', async () => {
-    deleteMock.mockResolvedValue({ data: { jobId: 'job-1' } })
-    await expect(deleteAdminUser('u-1')).resolves.toEqual({ jobId: 'job-1' })
+  it('deleteAdminUser passes the 202 body through untouched', async () => {
+    const accepted = {
+      jobId: 'job-1',
+      userId: 'u-1',
+      backupKept: true as const,
+      backupPrefix: 'backups/ada%40example.com__u-1/',
+    }
+    deleteMock.mockResolvedValue({ data: accepted })
+    await expect(deleteAdminUser('u-1')).resolves.toEqual(accepted)
     expect(deleteMock).toHaveBeenCalledWith('/v1/admin/users/u-1')
-  })
-
-  it('deleteAdminUser tolerates an empty synchronous body', async () => {
-    deleteMock.mockResolvedValue({ data: '' })
-    await expect(deleteAdminUser('u-1')).resolves.toEqual({})
   })
 
   it('getAdminUserDeleteStatus reads :id/delete-status and maps state to status', async () => {
@@ -297,17 +297,30 @@ describe('admin user deletion API', () => {
     )
   })
 
-  it('getAdminUserDeletePreview maps a 404 to null for older cores', async () => {
-    getMock.mockRejectedValue({ isAxiosError: true, response: { status: 404 } })
-    await expect(getAdminUserDeletePreview('u-1')).resolves.toBeNull()
-    expect(getMock).toHaveBeenCalledWith('/v1/admin/users/u-1/delete-preview')
-  })
-
-  it('getAdminUserDeletePreview rethrows non-404 failures', async () => {
-    getMock.mockRejectedValue({ isAxiosError: true, response: { status: 503 } })
-    await expect(getAdminUserDeletePreview('u-1')).rejects.toMatchObject({
-      response: { status: 503 },
-    })
+  it('pollAdminUserDelete keeps polling on unknown states instead of misreading them', async () => {
+    getMock
+      .mockResolvedValueOnce({
+        data: {
+          userId: 'u-1',
+          jobId: 'user-delete-u-1',
+          state: 'canceled',
+          backupKept: true,
+          backupPrefix: 'backups/ada%40example.com__u-1/',
+          queue: {},
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          userId: 'u-1',
+          jobId: 'user-delete-u-1',
+          state: 'completed',
+          backupKept: true,
+          backupPrefix: 'backups/ada%40example.com__u-1/',
+          queue: {},
+        },
+      })
+    await pollAdminUserDelete('u-1', { intervalMs: 1 })
+    expect(getMock).toHaveBeenCalledTimes(2)
   })
 })
 

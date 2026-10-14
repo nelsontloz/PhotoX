@@ -14,7 +14,14 @@ import type { Asset } from '@photox/shared-types'
 
 function PersonDetail({ id }: { id: string }) {
   const navigate = useNavigate()
-  const { person, setPerson, loading: personLoading } = usePersonDetail(id)
+  const {
+    person,
+    setPerson,
+    loading: personLoading,
+    error: personError,
+    notFound: personNotFound,
+    retry: retryPerson,
+  } = usePersonDetail(id)
   // Same lazy pipeline as the home timeline, scoped to this person (layout + per-month fetches).
   const view = useTimelineView({ personId: id })
   const { timeline, loadedAssets } = view
@@ -31,9 +38,10 @@ function PersonDetail({ id }: { id: string }) {
 
   if (personLoading || timeline.loading)
     return <LoadingState className="flex justify-center py-20" />
+  if (personError) return <ErrorState message={personError} onRetry={retryPerson} />
   if (timeline.error)
     return <ErrorState message={timeline.error} onRetry={() => window.location.reload()} />
-  if (!person)
+  if (personNotFound || !person)
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <FaFaceSmile className="text-4xl text-slate-500 mb-4" />

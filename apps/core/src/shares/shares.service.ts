@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { In, Repository } from 'typeorm'
 import * as crypto from 'crypto'
 import { Share } from './entities/share.entity'
+import { isPostgresUniqueViolation } from '../assets/assets.service'
 import { Asset } from '../database/entities'
 import { FileRecord } from '../database/entities'
 import { Album } from '../albums/entities/album.entity'
@@ -88,8 +89,29 @@ export class SharesService {
         token: this.hashToken(raw),
         expiresAt: this.expiresAt(),
       })
-      const saved = await this.shareRepo.save(share)
-      return { ...this.toAssetDto(saved), token: raw }
+      try {
+        const saved = await this.shareRepo.save(share)
+        return { ...this.toAssetDto(saved), token: raw }
+      } catch (err) {
+        if (isPostgresUniqueViolation(err)) {
+          // C10: concurrent rotation raced past the find-existing/delete above — inline retry
+          // (last-writer-wins) so double-submit returns a working capability instead of a 500.
+          // The winner's raw is unrecoverable (only its hash is stored), so returning the
+          // winner row would hand back a hash, not a working token.
+          await this.shareRepo.delete({ assetId, userId })
+          const retry = this.shareRepo.create({
+            userId,
+            kind: 'asset',
+            assetId,
+            albumId: null,
+            token: this.hashToken(raw),
+            expiresAt: this.expiresAt(),
+          })
+          const savedRetry = await this.shareRepo.save(retry)
+          return { ...this.toAssetDto(savedRetry), token: raw }
+        }
+        throw err
+      }
     }
 
     const album = await findOwnedOr404(this.albumRepo, albumId!, userId, 'Album')
@@ -106,8 +128,26 @@ export class SharesService {
       token: this.hashToken(rawAlbum),
       expiresAt: this.expiresAt(),
     })
-    const saved = await this.shareRepo.save(share)
-    return { ...(await this.toAlbumDto(saved, album)), token: rawAlbum }
+    try {
+      const saved = await this.shareRepo.save(share)
+      return { ...(await this.toAlbumDto(saved, album)), token: rawAlbum }
+    } catch (err) {
+      if (isPostgresUniqueViolation(err)) {
+        // C10: same concurrent-rotation retry as the asset branch above.
+        await this.shareRepo.delete({ albumId, userId })
+        const retry = this.shareRepo.create({
+          userId,
+          kind: 'album',
+          assetId: null,
+          albumId,
+          token: this.hashToken(rawAlbum),
+          expiresAt: this.expiresAt(),
+        })
+        const savedRetry = await this.shareRepo.save(retry)
+        return { ...(await this.toAlbumDto(savedRetry, album)), token: rawAlbum }
+      }
+      throw err
+    }
   }
 
   async list(userId: string): Promise<ShareListResponse> {

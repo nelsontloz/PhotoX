@@ -1,9 +1,9 @@
 import { api } from './client'
-import { isAxiosError } from 'axios'
+import { sleep } from '../lib/sleep'
 import type {
+  AdminUserDeleteResponse,
   AdminUserDeleteStatus as AdminUserDeleteBackendStatus,
   AdminUserListResponse,
-  AdminUserRow,
   AdminUserSortField,
   AdminAssetCountsResponse,
   AdminLibraryStatsResponse,
@@ -278,9 +278,9 @@ export async function deleteBackup(emailOrId: string): Promise<DeleteBackupResul
 
 /**
  * GET /v1/admin/backups/overview response row: one line per user — library size, what the
- * manifest on S3 already covers, and whether that manifest is usable. `unavailable` marks a
- * per-user probe failure in the fan-out fallback (old core without the endpoint).
- * `deleted` marks orphan backups whose account is gone (live counts are zero, identity
+ * manifest on S3 already covers, and whether that manifest is usable. `unavailable`
+ * marks a row whose status probe failed (shown as Unavailable instead of failing the
+ * whole table). `deleted` marks orphan backups whose account is gone (live counts are zero, identity
  * comes from the manifest); `emailAtBackup` is set only when the S3 prefix email differs
  * from the manifest email (stale rename leftover).
  */
@@ -301,98 +301,26 @@ export interface BackupOverviewRow {
 }
 
 export async function getBackupOverview(): Promise<BackupOverviewRow[]> {
-  const { data } = await api.get<BackupOverviewRow[] | { rows: BackupOverviewRow[] }>(
-    '/v1/admin/backups/overview',
-    { timeout: BACKUP_STATUS_TIMEOUT_MS },
-  )
-  return Array.isArray(data) ? data : (data.rows ?? [])
-}
-
-/**
- * Overview with a fan-out fallback for cores that predate the endpoint: page through users,
- * probe each manifest, and shape the same rows. A per-user probe failure becomes an
- * `unavailable` row instead of failing the whole table; counts fall back to the manifest's
- * own numbers (pending reads 0 — the old core never reported library size).
- */
-export async function loadBackupOverview(): Promise<{
-  rows: BackupOverviewRow[]
-  fallback: boolean
-}> {
-  try {
-    return { rows: await getBackupOverview(), fallback: false }
-  } catch (err: unknown) {
-    if (!isAxiosError(err) || err.response?.status !== 404) throw err
-  }
-  const users: AdminUserRow[] = []
-  const LIMIT = 100
-  let offset = 0
-  let total = Number.POSITIVE_INFINITY
-  while (users.length < total) {
-    const page = await listAdminUsers({ limit: LIMIT, offset, sortField: 'email', sortDir: 'asc' })
-    users.push(...page.items)
-    total = page.total
-    if (page.items.length === 0) break
-    offset += page.items.length
-    if (users.length > 2000) break
-  }
-  const rows = await Promise.all(
-    users.map(async (u): Promise<BackupOverviewRow> => {
-      try {
-        const s = await getBackupStatus(u.id)
-        return {
-          userId: u.id,
-          email: u.email,
-          role: u.role,
-          totalAssets: s.assets ?? 0,
-          backedUpAssets: s.assets ?? 0,
-          backedUpFiles: s.files ?? 0,
-          backedUpAt: s.backedUpAt,
-          exists: s.exists,
-          degraded: s.degraded,
-          notBackedUp: 0,
-          deleted: false,
-        }
-      } catch {
-        return {
-          userId: u.id,
-          email: u.email,
-          role: u.role,
-          totalAssets: 0,
-          backedUpAssets: 0,
-          backedUpFiles: 0,
-          exists: false,
-          unavailable: true,
-          notBackedUp: 0,
-          deleted: false,
-        }
-      }
-    }),
-  )
-  return { rows, fallback: true }
+  const { data } = await api.get<BackupOverviewRow[]>('/v1/admin/backups/overview', {
+    timeout: BACKUP_STATUS_TIMEOUT_MS,
+  })
+  return data
 }
 
 // --- admin user deletion --------------------------------------------------------------
 // DELETE /v1/admin/users/:id is async: the core answers 202 { jobId, userId, backupKept,
-// backupPrefix } while the worker removes the account in the background. The client
-// below tolerates cores that answer synchronously (200/204, empty body). Status polls
+// backupPrefix } while the worker removes the account in the background. Status polls
 // GET /v1/admin/users/:id/delete-status by userId (stays readable after the row is
 // gone); the backend { state, ... } shape is mapped to the { status, error? }
-// view-model so the dialog keeps polling on coarse lifecycles. A missing preview
-// falls back to generic wording (the backend has no preview endpoint).
+// view-model so the dialog keeps polling on coarse lifecycles.
 
-/** DELETE /v1/admin/users/:id response: 202 carries the background job id when async. */
-export interface AdminUserDeleteAccepted {
-  jobId?: string
-  userId?: string
-  backupKept?: true
-  backupPrefix?: string
-}
+/** DELETE /v1/admin/users/:id response: 202 carries the background job id. */
+export type AdminUserDeleteAccepted = AdminUserDeleteResponse
 
 export async function deleteAdminUser(id: string): Promise<AdminUserDeleteAccepted> {
   const { data } = await api.delete<AdminUserDeleteAccepted>(
     `/v1/admin/users/${encodeURIComponent(id)}`,
   )
-  if (!data || typeof data !== 'object') return {}
   return data
 }
 
@@ -410,16 +338,12 @@ export async function getAdminUserDeleteStatus(userId: string): Promise<AdminUse
   return { status: data.state, error }
 }
 
-const DELETE_DONE = new Set(['completed', 'done', 'succeeded', 'success', 'deleted'])
-const DELETE_FAILED = new Set(['failed', 'error', 'cancelled', 'canceled'])
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
+const DELETE_DONE = new Set(['completed'])
+const DELETE_FAILED = new Set(['failed'])
 
 /**
  * Poll the :id/delete-status endpoint until the removal lands or the budget runs out.
- * Only explicit terminal states settle the promise — anything unknown keeps polling.
+ * Only the core's terminal states settle the promise — anything unknown keeps polling.
  */
 export async function pollAdminUserDelete(
   userId: string,
@@ -440,34 +364,5 @@ export async function pollAdminUserDelete(
       throw new Error('Timed out waiting for the deletion — refresh the list to check.')
     }
     await sleep(intervalMs)
-  }
-}
-
-/**
- * GET delete-preview response: what removing the account would destroy. A 404 resolves
- * null (the endpoint may not exist yet, or the user is already gone) so the confirm
- * dialog falls back to generic wording and lets the DELETE surface the truth.
- */
-export interface AdminUserDeletePreview {
-  userId: string
-  displayName?: string
-  email?: string
-  assets?: number
-  files?: number
-  albums?: number
-  shares?: number
-}
-
-export async function getAdminUserDeletePreview(
-  id: string,
-): Promise<AdminUserDeletePreview | null> {
-  try {
-    const { data } = await api.get<AdminUserDeletePreview>(
-      `/v1/admin/users/${encodeURIComponent(id)}/delete-preview`,
-    )
-    return data
-  } catch (err: unknown) {
-    if (isAxiosError(err) && err.response?.status === 404) return null
-    throw err
   }
 }

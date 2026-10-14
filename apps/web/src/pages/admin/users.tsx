@@ -23,10 +23,8 @@ import { useAuthStore } from '../../store/auth-store'
 import { AdminCard, AdminSection, AdminToast, GhostButton, StatusPill, cx } from './ui'
 import {
   deleteAdminUser,
-  getAdminUserDeletePreview,
   listAdminUsers,
   pollAdminUserDelete,
-  type AdminUserDeletePreview,
   type ListAdminUsersParams,
 } from '../../api/admin'
 import { RoleBadge } from './shared'
@@ -60,17 +58,6 @@ function deleteErrorMessage(err: unknown): string {
     if (serverMessage) return serverMessage
   }
   return err instanceof Error ? err.message : 'Delete failed. Try again.'
-}
-
-function countsLine(preview: AdminUserDeletePreview | null): string {
-  if (preview == null) return GENERIC_COUNTS
-  const parts: string[] = []
-  if (typeof preview.assets === 'number') parts.push(`${preview.assets.toLocaleString()} assets`)
-  if (typeof preview.files === 'number') parts.push(`${preview.files.toLocaleString()} files`)
-  if (typeof preview.albums === 'number') parts.push(`${preview.albums.toLocaleString()} albums`)
-  if (typeof preview.shares === 'number') parts.push(`${preview.shares.toLocaleString()} shares`)
-  if (parts.length === 0) return GENERIC_COUNTS
-  return `${parts.join(' · ')} will be permanently removed.`
 }
 
 interface SortHeaderProps {
@@ -111,29 +98,8 @@ function DeleteUserDialog({
   onDeleted: (displayName: string) => void
 }) {
   const [confirmText, setConfirmText] = useState('')
-  const [preview, setPreview] = useState<AdminUserDeletePreview | null>(null)
-  const [previewLoading, setPreviewLoading] = useState(true)
   const [working, setWorking] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    setPreviewLoading(true)
-    getAdminUserDeletePreview(user.id)
-      .then((res) => {
-        if (!cancelled) setPreview(res)
-      })
-      .catch(() => {
-        // Preview is best-effort (older cores 404) — the DELETE still reports the truth.
-        if (!cancelled) setPreview(null)
-      })
-      .finally(() => {
-        if (!cancelled) setPreviewLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [user.id])
 
   const confirmed = confirmText === 'DELETE'
   const close = () => {
@@ -145,8 +111,8 @@ function DeleteUserDialog({
     setWorking(true)
     setError(null)
     try {
-      const res = await deleteAdminUser(user.id)
-      if (res.jobId) await pollAdminUserDelete(user.id)
+      await deleteAdminUser(user.id)
+      await pollAdminUserDelete(user.id)
       onDeleted(user.displayName)
     } catch (err: unknown) {
       setError(deleteErrorMessage(err))
@@ -182,14 +148,7 @@ function DeleteUserDialog({
           <RoleBadge role={user.role} />
         </div>
 
-        {previewLoading ? (
-          <div
-            aria-label="Loading account details"
-            className="h-4 rounded bg-surface-container-high animate-pulse"
-          />
-        ) : (
-          <p className="text-sm text-slate-300">{countsLine(preview)}</p>
-        )}
+        <p className="text-sm text-slate-300">{GENERIC_COUNTS}</p>
 
         <p className="flex items-start gap-2 rounded-lg bg-surface-container px-3 py-2.5 text-xs text-on-surface-variant">
           <FaDatabase className="mt-0.5 shrink-0 text-outline" aria-hidden="true" />

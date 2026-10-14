@@ -241,7 +241,6 @@ export class CoreClient {
     const faces: ClusterFace[] = []
     let cursor: string | undefined
     let pageCount = 0
-    let bytes = 0
     for (;;) {
       const query =
         `includeEmbeddings=true&excludeTrashed=true&limit=${FACES_PAGE_LIMIT}` +
@@ -253,11 +252,9 @@ export class CoreClient {
       )
       faces.push(...res.items)
       pageCount += 1
-      bytes += Buffer.byteLength(JSON.stringify(res.items))
       if (faces.length > MAX_FACES_PER_USER) {
         this.logger.error(
-          `Face cap exceeded: user=${userId} faceCount=${faces.length} ` +
-            `pageCount=${pageCount} bytes=${bytes}`,
+          `Face cap exceeded: user=${userId} faceCount=${faces.length} pageCount=${pageCount}`,
         )
         // deterministic overshoot — retries re-fetch the same pages, so fail without retry
         throw new UnrecoverableError(
@@ -269,8 +266,7 @@ export class CoreClient {
       cursor = res.nextCursor
     }
     this.logger.log(
-      `Cluster faces fetched: user=${userId} faceCount=${faces.length} ` +
-        `pageCount=${pageCount} bytes=${bytes}`,
+      `Cluster faces fetched: user=${userId} faceCount=${faces.length} pageCount=${pageCount}`,
     )
     return faces
   }

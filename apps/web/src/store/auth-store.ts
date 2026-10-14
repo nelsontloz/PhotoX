@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { User, AuthResponse, JwtPayload } from '@photox/shared-types'
 import * as authApi from '../api/auth'
+import { sleep } from '../lib/sleep'
 
 const AUTH_STORAGE_KEY = 'photox.auth'
 const REFRESH_LEAD_MS = 5 * 60 * 1000
@@ -40,10 +41,6 @@ export function isExpiringSoon(token: string | null, leadMs = REFRESH_LEAD_MS): 
   } catch {
     return true
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 // cookie session: tokens live in memory only — the persisted profile just restores the UI

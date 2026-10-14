@@ -20,7 +20,6 @@ const api = vi.hoisted(() => {
     listAdminUsers: vi.fn(pending),
     getBackupStatus: vi.fn(pending),
     getBackupOverview: vi.fn(pending),
-    loadBackupOverview: vi.fn(pending),
     getBackupProgress: vi.fn(pending),
     backupUser: vi.fn(pending),
     backupPrefixPreview: vi.fn(() => 'backups/preview/'),

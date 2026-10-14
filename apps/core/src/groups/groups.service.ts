@@ -34,6 +34,9 @@ export class GroupsService {
   ): Promise<SearchResponse> {
     await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset')
     const threshold = dto.threshold ?? DEFAULT_DUPLICATE_THRESHOLD
+    // C7-limit-only: LIMIT 200 bounds the response (ordering stays deterministic: distance
+    // ASC, id ASC). `total` is therefore capped at 200 — documented behavior change; the
+    // DuplicatesQueryDto @Max(64) range is intentionally untouched (product call).
     const rows: { id: string }[] = await this.dataSource.query(
       // ('x'||phash) is the hex→bit(64) form: plain text::bit(64) only parses 0/1 strings.
       // NULL phash on either side never matches; owner + non-trashed are enforced per candidate.
@@ -44,7 +47,8 @@ export class GroupsService {
        WHERE src.id = $1 AND src."userId" = $2
          AND src.phash IS NOT NULL AND a.phash IS NOT NULL
          AND bit_count(('x'||a.phash)::bit(64) # ('x'||src.phash)::bit(64)) <= $3
-       ORDER BY bit_count(('x'||a.phash)::bit(64) # ('x'||src.phash)::bit(64)) ASC, a.id ASC`,
+       ORDER BY bit_count(('x'||a.phash)::bit(64) # ('x'||src.phash)::bit(64)) ASC, a.id ASC
+       LIMIT 200`,
       [assetId, userId, threshold],
     )
     const items = await this.assets.listByIdsRanked(

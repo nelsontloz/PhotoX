@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { ConflictException, Injectable, Logger } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { backupPrefix, loadEnv, LocalStorageService } from '@photox/shared-config'
 import type { AdminUserDeleteState } from '@photox/shared-types'
@@ -190,6 +190,14 @@ export class UserDeleteService {
     const storageKeys = fileRows.map((f) => f.storageKey)
 
     await this.dataSource.transaction(async (m) => {
+      // C3: last-admin re-check inside the txn — the request-time count in AdminService is
+      // only the fast path; two concurrent deletes both passing it must not wipe all admins.
+      const fresh = await m.findOne(User, { where: { id: userId } })
+      if (!fresh) return
+      if (fresh.role === 'admin') {
+        const adminCount = await m.count(User, { where: { role: 'admin' } })
+        if (adminCount <= 1) throw new ConflictException('Cannot delete the last admin')
+      }
       // sessions first: refresh rows die and the floor kills in-flight access tokens
       await m.delete(RefreshToken, { userId })
       await m.update(User, userId, { tokensValidAfter: new Date() })

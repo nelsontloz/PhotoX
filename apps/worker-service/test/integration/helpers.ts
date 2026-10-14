@@ -17,6 +17,12 @@ import { MetadataExtractor, VideoMetadataExtractor } from '../../src/queue/metad
 import { FaceDetectorService } from '../../src/queue/face.detector'
 import { FaceProcessor } from '../../src/queue/face.processor'
 import { FaceClusterService } from '../../src/queue/face.cluster'
+import { EmbeddingService } from '../../src/queue/embedding.service'
+import { EmbeddingProcessor } from '../../src/queue/embed.processor'
+import { OcrService } from '../../src/queue/ocr.service'
+import { OcrProcessor } from '../../src/queue/ocr.processor'
+import { DetectService } from '../../src/queue/detect.service'
+import { DetectProcessor } from '../../src/queue/detect.processor'
 import { CleanupProcessor } from '../../src/queue/cleanup.processor'
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../fake-core-client'
 import { jobScopeOf } from '../../src/queue/job-schemas'
@@ -32,7 +38,7 @@ export interface TestApp {
 
 export interface CreateTestAppOptions {
   detect?: FaceDetectorService['detect']
-  // 'media' wires only the four media processors (thumbnail/video/metadata/face); default all six
+  // 'media' wires only the four media processors (thumbnail/video/metadata/face); default all nine
   processors?: 'all' | 'media'
 }
 
@@ -62,7 +68,18 @@ export async function createTestApp(opts: CreateTestAppOptions = {}): Promise<Te
           useValue: { detect: opts.detect ?? vi.fn().mockResolvedValue([]) },
         },
         FaceProcessor,
-        ...(opts.processors === 'media' ? [] : [FaceClusterService, CleanupProcessor]),
+        ...(opts.processors === 'media'
+          ? []
+          : [
+              FaceClusterService,
+              CleanupProcessor,
+              EmbeddingService,
+              EmbeddingProcessor,
+              OcrService,
+              OcrProcessor,
+              DetectService,
+              DetectProcessor,
+            ]),
       ],
     }).compile()
 
