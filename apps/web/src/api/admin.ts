@@ -1,6 +1,8 @@
 import { api } from './client'
+import { isAxiosError } from 'axios'
 import type {
   AdminUserListResponse,
+  AdminUserRow,
   AdminUserSortField,
   AdminAssetCountsResponse,
   AdminLibraryStatsResponse,
@@ -228,4 +230,86 @@ export async function getBackupProgress(emailOrId: string): Promise<BackupProgre
     timeout: BACKUP_STATUS_TIMEOUT_MS,
   })
   return data
+}
+
+/**
+ * GET /v1/admin/backups/overview response row: one line per user — library size, what the
+ * manifest on S3 already covers, and whether that manifest is usable. `unavailable` marks a
+ * per-user probe failure in the fan-out fallback (old core without the endpoint).
+ */
+export interface BackupOverviewRow {
+  userId: string
+  email: string
+  role: 'user' | 'admin'
+  totalAssets: number
+  backedUpAssets: number
+  backedUpFiles: number
+  backedUpAt?: string
+  exists: boolean
+  degraded?: 'unreadable' | 'corrupt'
+  unavailable?: boolean
+}
+
+export async function getBackupOverview(): Promise<BackupOverviewRow[]> {
+  const { data } = await api.get<BackupOverviewRow[] | { rows: BackupOverviewRow[] }>(
+    '/v1/admin/backups/overview',
+    { timeout: BACKUP_STATUS_TIMEOUT_MS },
+  )
+  return Array.isArray(data) ? data : (data.rows ?? [])
+}
+
+/**
+ * Overview with a fan-out fallback for cores that predate the endpoint: page through users,
+ * probe each manifest, and shape the same rows. A per-user probe failure becomes an
+ * `unavailable` row instead of failing the whole table; counts fall back to the manifest's
+ * own numbers (pending reads 0 — the old core never reported library size).
+ */
+export async function loadBackupOverview(): Promise<{ rows: BackupOverviewRow[]; fallback: boolean }> {
+  try {
+    return { rows: await getBackupOverview(), fallback: false }
+  } catch (err: unknown) {
+    if (!isAxiosError(err) || err.response?.status !== 404) throw err
+  }
+  const users: AdminUserRow[] = []
+  const LIMIT = 100
+  let offset = 0
+  let total = Number.POSITIVE_INFINITY
+  while (users.length < total) {
+    const page = await listAdminUsers({ limit: LIMIT, offset, sortField: 'email', sortDir: 'asc' })
+    users.push(...page.items)
+    total = page.total
+    if (page.items.length === 0) break
+    offset += page.items.length
+    if (users.length > 2000) break
+  }
+  const rows = await Promise.all(
+    users.map(async (u): Promise<BackupOverviewRow> => {
+      try {
+        const s = await getBackupStatus(u.id)
+        return {
+          userId: u.id,
+          email: u.email,
+          role: u.role,
+          totalAssets: s.assets ?? 0,
+          backedUpAssets: s.assets ?? 0,
+          backedUpFiles: s.files ?? 0,
+          backedUpAt: s.backedUpAt,
+          exists: s.exists,
+          degraded: s.degraded,
+        }
+      } catch {
+        return {
+          userId: u.id,
+          email: u.email,
+          role: u.role,
+          totalAssets: 0,
+          backedUpAssets: 0,
+          backedUpFiles: 0,
+          exists: false,
+          unavailable: true,
+        }
+      }
+    }),
+  )
+  return { rows, fallback: true }
 }

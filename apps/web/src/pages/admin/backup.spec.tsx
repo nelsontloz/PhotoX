@@ -1,11 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import type { AdminUserListResponse, AdminUserRow } from '@photox/shared-types'
-import type { BackupResult, BackupStatus } from '../../api/admin'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import type { BackupOverviewRow, BackupResult } from '../../api/admin'
 
 const api = vi.hoisted(() => ({
-  listAdminUsers: vi.fn(),
-  getBackupStatus: vi.fn(),
+  loadBackupOverview: vi.fn(),
+  getBackupProgress: vi.fn(),
   backupUser: vi.fn(),
   backupPrefixPreview: (email: string, userId: string) =>
     `backups/${encodeURIComponent(email.trim().toLowerCase())}__${encodeURIComponent(userId)}/`,
@@ -15,46 +14,27 @@ vi.mock('../../api/admin', () => api)
 
 import { BackupSection } from './backups'
 
-const ada: AdminUserRow = {
-  id: 'u-1',
-  displayName: 'Ada Lovelace',
+const ada: BackupOverviewRow = {
+  userId: 'u-1',
   email: 'ada@example.com',
   role: 'user',
-  createdAt: '2026-01-02T00:00:00.000Z',
+  totalAssets: 100,
+  backedUpAssets: 85,
+  backedUpFiles: 120,
+  backedUpAt: '2026-10-01T00:00:00.000Z',
+  exists: true,
 }
 
-const grace: AdminUserRow = {
-  id: 'u-2',
-  displayName: 'Grace Hopper',
+const grace: BackupOverviewRow = {
+  userId: 'u-2',
   email: 'grace@example.com',
   role: 'user',
-  createdAt: '2026-02-03T00:00:00.000Z',
+  totalAssets: 10,
+  backedUpAssets: 0,
+  backedUpFiles: 0,
+  backedUpAt: undefined,
+  exists: false,
 }
-
-const list = (items: AdminUserRow[]): AdminUserListResponse => ({
-  items,
-  total: items.length,
-  limit: 8,
-  offset: 0,
-})
-
-const backedUp: BackupStatus = {
-  exists: true,
-  userId: 'u-1',
-  emailAtBackup: 'ada@example.com',
-  backedUpAt: '2026-10-01T00:00:00.000Z',
-  files: 120,
-  assets: 85,
-  albums: 3,
-  shares: 1,
-  persons: 4,
-}
-
-const noBackup: BackupStatus = { exists: false }
-
-const unreadable: BackupStatus = { exists: true, degraded: 'unreadable', userId: 'u-1' }
-
-const corrupt: BackupStatus = { exists: true, degraded: 'corrupt', userId: 'u-1' }
 
 const result: BackupResult = {
   userId: 'u-1',
@@ -70,22 +50,11 @@ const result: BackupResult = {
   persons: 4,
 }
 
-const button = (name: string | RegExp) => screen.getByRole<HTMLButtonElement>('button', { name })
-
-/** Open the picker, type a query and wait for the debounced user search to land. */
-async function search(query: string) {
-  const input = screen.getByLabelText<HTMLInputElement>('Search users for backup')
-  fireEvent.change(input, { target: { value: query } })
-  await waitFor(() =>
-    expect(api.listAdminUsers).toHaveBeenLastCalledWith(
-      expect.objectContaining({ q: query, limit: 8 }),
-    ),
-  )
-}
+const notFound = () => ({ isAxiosError: true, response: { status: 404 }, message: 'Not found' })
 
 beforeEach(() => {
-  api.listAdminUsers.mockResolvedValue(list([ada, grace]))
-  api.getBackupStatus.mockResolvedValue(noBackup)
+  api.loadBackupOverview.mockResolvedValue({ rows: [ada, grace], fallback: false })
+  api.getBackupProgress.mockRejectedValue(notFound())
   api.backupUser.mockResolvedValue(result)
 })
 
@@ -94,34 +63,43 @@ afterEach(() => {
   vi.resetAllMocks()
 })
 
-describe('BackupSection', () => {
-  it('debounces the search, then picks a user and loads its backup status', async () => {
+async function rowsReady() {
+  expect(await screen.findByText('ada@example.com')).toBeTruthy()
+  expect(screen.getByText('grace@example.com')).toBeTruthy()
+}
+
+describe('BackupSection table', () => {
+  it('renders every user with status, counts, pending and last backup', async () => {
     render(<BackupSection />)
+    await rowsReady()
 
-    expect(button('Run backup').disabled).toBe(true)
-
-    // initial empty-query fetch, then nothing fires synchronously on typing
-    expect(api.listAdminUsers).toHaveBeenCalledTimes(1)
-    const input = screen.getByLabelText<HTMLInputElement>('Search users for backup')
-    fireEvent.change(input, { target: { value: 'ada' } })
-    expect(api.listAdminUsers).toHaveBeenCalledTimes(1)
-
-    await search('ada')
-    fireEvent.click(button(/ada@example.com/))
-
-    await waitFor(() => expect(api.getBackupStatus).toHaveBeenCalledWith('u-1'))
-    expect(await screen.findByText('Ada Lovelace')).toBeTruthy()
-    expect(button('Run backup').disabled).toBe(false)
-
-    api.getBackupStatus.mockResolvedValue(backedUp)
-    fireEvent.click(screen.getByLabelText('Refresh backup status'))
-    expect(await screen.findByText('Backed up')).toBeTruthy()
-    expect(screen.getByText('120')).toBeTruthy()
-    expect(screen.getByText('85')).toBeTruthy()
-    expect(screen.getByText('Email at backup')).toBeTruthy()
+    expect(screen.getByText('Backed up')).toBeTruthy()
+    expect(screen.getByText('None')).toBeTruthy()
+    // ada: 85 assets, 120 files, 15 pending
+    const adaRow = screen.getByText('ada@example.com').closest('tr') as HTMLElement
+    expect(within(adaRow).getByText('85')).toBeTruthy()
+    expect(within(adaRow).getByText('120')).toBeTruthy()
+    expect(within(adaRow).getByText('15')).toBeTruthy()
+    expect(screen.getByText('1 of 2 backed up · 25 assets pending')).toBeTruthy()
+    expect(screen.getByText('Showing 2 of 2 users')).toBeTruthy()
   })
 
-  it('confirms, runs the backup and shows the counts toast plus progress while in flight', async () => {
+  it('filters client-side by email without refetching', async () => {
+    render(<BackupSection />)
+    await rowsReady()
+    expect(api.loadBackupOverview).toHaveBeenCalledTimes(1)
+
+    fireEvent.change(screen.getByLabelText('Filter backups by email'), {
+      target: { value: 'grace' },
+    })
+
+    expect(screen.queryByText('ada@example.com')).toBeNull()
+    expect(screen.getByText('grace@example.com')).toBeTruthy()
+    expect(api.loadBackupOverview).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('Showing 1 of 1 user')).toBeTruthy()
+  })
+
+  it('confirms a per-row backup, toasts the counts and updates the row', async () => {
     let finish: (value: BackupResult) => void = () => undefined
     api.backupUser.mockReturnValue(
       new Promise<BackupResult>((resolve) => {
@@ -130,156 +108,162 @@ describe('BackupSection', () => {
     )
 
     render(<BackupSection />)
-    await search('ada')
-    fireEvent.click(button(/ada@example.com/))
-    await waitFor(() => expect(api.getBackupStatus).toHaveBeenCalledWith('u-1'))
+    await rowsReady()
 
-    fireEvent.click(button('Run backup'))
-    expect(screen.getByText('Back up ada@example.com?')).toBeTruthy()
-    expect(screen.getByText('backups/ada%40example.com__u-1/')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Back up grace@example.com' }))
+    expect(screen.getByText('Back up grace@example.com?')).toBeTruthy()
 
-    fireEvent.click(button('Confirm'))
-    await waitFor(() => expect(api.backupUser).toHaveBeenCalledWith('u-1'))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    await waitFor(() => expect(api.backupUser).toHaveBeenCalledWith('u-2'))
 
-    // progress + disabled while the inline backup runs
-    expect(await screen.findByRole('status')).toBeTruthy()
-    expect(screen.getByText('Backing up ada@example.com…')).toBeTruthy()
-    expect(button('Backing up…').disabled).toBe(true)
+    // disabled while the inline backup runs + indeterminate progress (old core, no progress endpoint)
+    expect(await screen.findByText('Backing up grace@example.com…')).toBeTruthy()
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Back up all users' }).disabled).toBe(
+      true,
+    )
 
     await act(async () => {
-      finish(result)
+      finish({ ...result, userId: 'u-2', email: 'grace@example.com' })
       await Promise.resolve()
     })
 
-    expect(await screen.findByText('Backed up 121 files (3 new, 118 unchanged)')).toBeTruthy()
-    expect(screen.getByText(/3 uploaded, 118 skipped/)).toBeTruthy()
-    expect(screen.queryByText('Nothing new — all files already backed up.')).toBeNull()
-    expect(screen.queryByRole('status')).toBeNull()
-    expect(button('Run backup').disabled).toBe(false)
-    // the status panel refreshes off the bumped version
-    await waitFor(() => expect(api.getBackupStatus).toHaveBeenCalledTimes(2))
+    expect(
+      await screen.findByText(/Backed up grace@example.com — 121 files \(3 new, 118 unchanged\)/),
+    ).toBeTruthy()
+    expect(screen.queryByText('Backing up grace@example.com…')).toBeNull()
   })
 
-  it('surfaces a backup failure as an error toast without axios verbatim', async () => {
+  it('surfaces a per-row failure as an error toast without axios verbatim', async () => {
     api.backupUser.mockRejectedValue(new Error('Request failed with status code 500'))
 
     render(<BackupSection />)
-    await search('grace')
-    fireEvent.click(button(/grace@example.com/))
-    await waitFor(() => expect(api.getBackupStatus).toHaveBeenCalledWith('u-2'))
+    await rowsReady()
 
-    fireEvent.click(button('Run backup'))
-    fireEvent.click(button('Confirm'))
+    fireEvent.click(screen.getByRole('button', { name: 'Back up ada@example.com' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
 
-    expect(await screen.findByText('Backup failed')).toBeTruthy()
+    expect(await screen.findByText(/Backup of ada@example.com failed/)).toBeTruthy()
     expect(screen.queryByText('Request failed with status code 500')).toBeNull()
-    expect(button('Run backup').disabled).toBe(false)
-    expect(screen.queryByText(/Backed up/)).toBeNull()
+    // row stays usable after the failure
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Back up ada@example.com' }).disabled).toBe(
+      false,
+    )
   })
 
-  it('shows the no-backup state when the manifest is missing', async () => {
-    render(<BackupSection />)
-    await search('grace')
-    fireEvent.click(button(/grace@example.com/))
-
-    expect(await screen.findByText('None')).toBeTruthy()
-    expect(await screen.findByText('No backup yet for this user.')).toBeTruthy()
-  })
-
-  it('shows the unreadable degraded state and hides a stale Last run', async () => {
-    api.getBackupStatus.mockResolvedValue(unreadable)
+  it('shows degraded pills with a rerun hint', async () => {
+    api.loadBackupOverview.mockResolvedValue({
+      rows: [
+        { ...ada, degraded: 'unreadable' },
+        { ...grace, degraded: 'corrupt', exists: true },
+      ],
+      fallback: false,
+    })
 
     render(<BackupSection />)
-    await search('ada')
-    fireEvent.click(button(/ada@example.com/))
-
     expect(await screen.findByText('Unreadable')).toBeTruthy()
-    expect(await screen.findByText('Backup listed but unreadable')).toBeTruthy()
-    expect(screen.getByText(/can't be fetched/)).toBeTruthy()
-    expect(screen.queryByText(/Last run/)).toBeNull()
-
-    // a fresh run must not resurrect the stale Last-run line while degraded
-    fireEvent.click(button('Run backup'))
-    fireEvent.click(button('Confirm'))
-    await waitFor(() => expect(api.backupUser).toHaveBeenCalledWith('u-1'))
-    expect(await screen.findByText(/Backed up 121 files/)).toBeTruthy()
-    expect(screen.queryByText(/Last run/)).toBeNull()
-    expect(screen.getByText('Unreadable')).toBeTruthy()
-  })
-
-  it('shows the corrupt degraded state and hides a stale Last run', async () => {
-    api.getBackupStatus.mockResolvedValue(corrupt)
-
-    render(<BackupSection />)
-    await search('ada')
-    fireEvent.click(button(/ada@example.com/))
-
-    expect(await screen.findByText('Corrupt')).toBeTruthy()
-    expect(await screen.findByText('Backup manifest is corrupt')).toBeTruthy()
-    expect(screen.getByText(/isn't valid JSON/)).toBeTruthy()
-    expect(screen.queryByText(/Last run/)).toBeNull()
-
-    fireEvent.click(button('Run backup'))
-    fireEvent.click(button('Confirm'))
-    await waitFor(() => expect(api.backupUser).toHaveBeenCalledWith('u-1'))
-    expect(await screen.findByText(/Backed up 121 files/)).toBeTruthy()
-    expect(screen.queryByText(/Last run/)).toBeNull()
     expect(screen.getByText('Corrupt')).toBeTruthy()
+    expect(screen.getAllByText(/rerun the backup/i).length).toBe(2)
   })
 
-  it('maps a 503 status probe to the Floci copy, keeps Last run and never leaks axios verbatim', async () => {
-    api.getBackupStatus.mockRejectedValue({
+  it('maps a 503 overview load to the Floci copy with a retry', async () => {
+    api.loadBackupOverview.mockRejectedValue({
       isAxiosError: true,
       response: { status: 503 },
       message: 'Request failed with status code 503',
     })
 
     render(<BackupSection />)
-    await search('grace')
-    fireEvent.click(button(/grace@example.com/))
-
-    expect(await screen.findByText('Unavailable')).toBeTruthy()
     expect(await screen.findByText("Can't reach backup storage")).toBeTruthy()
     expect(screen.getByText(/Floci is running/)).toBeTruthy()
     expect(screen.queryByText('Request failed with status code 503')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
 
-    // Last run from a successful backup stays visible even while status probes fail
-    fireEvent.click(button('Run backup'))
-    fireEvent.click(button('Confirm'))
-    await waitFor(() => expect(api.backupUser).toHaveBeenCalledWith('u-2'))
-    expect(await screen.findByText(/Last run/)).toBeTruthy()
-    expect(screen.queryByText('Request failed with status code 503')).toBeNull()
+    api.loadBackupOverview.mockResolvedValue({ rows: [ada], fallback: false })
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByText('ada@example.com')).toBeTruthy()
   })
 
   it('shows the all-skipped note when every file was already backed up', async () => {
     api.backupUser.mockResolvedValue({ ...result, uploaded: 0, skipped: 121 })
 
     render(<BackupSection />)
-    await search('ada')
-    fireEvent.click(button(/ada@example.com/))
-    await waitFor(() => expect(api.getBackupStatus).toHaveBeenCalledWith('u-1'))
+    await rowsReady()
 
-    fireEvent.click(button('Run backup'))
-    fireEvent.click(button('Confirm'))
+    fireEvent.click(screen.getByRole('button', { name: 'Back up ada@example.com' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
 
-    expect(await screen.findByText('Backed up 121 files (0 new, 121 unchanged)')).toBeTruthy()
-    expect(screen.getByText(/0 uploaded, 121 skipped/)).toBeTruthy()
-    expect(screen.getByText('Nothing new — all files already backed up.')).toBeTruthy()
+    expect(await screen.findByText(/0 new, 121 unchanged.*nothing new/)).toBeTruthy()
+    expect(screen.getByText('Nothing new — already backed up.')).toBeTruthy()
+  })
+
+  it('polls progress per row and renders the determinate bar', async () => {
+    let finish: (value: BackupResult) => void = () => undefined
+    api.backupUser.mockReturnValue(
+      new Promise<BackupResult>((resolve) => {
+        finish = resolve
+      }),
+    )
+    api.getBackupProgress.mockResolvedValue({
+      userId: 'u-1',
+      inProgress: true,
+      total: 10,
+      completed: 4,
+      uploaded: 1,
+      skipped: 3,
+    })
+
+    render(<BackupSection />)
+    await rowsReady()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back up ada@example.com' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+    expect(await screen.findByLabelText('Backup progress for ada@example.com')).toBeTruthy()
+    expect(screen.getByText('4/10 (1 new, 3 unchanged)')).toBeTruthy()
+    expect(api.getBackupProgress).toHaveBeenCalledWith('u-1')
+
+    await act(async () => {
+      finish(result)
+      await Promise.resolve()
+    })
+  })
+
+  it('backs up all users sequentially and finishes with a summary toast', async () => {
+    const calls: string[] = []
+    api.backupUser.mockImplementation((id: string) => {
+      calls.push(id)
+      if (id === 'u-1') return Promise.resolve({ ...result, userId: 'u-1' })
+      return Promise.resolve({
+        ...result,
+        userId: 'u-2',
+        email: 'grace@example.com',
+        assets: 10,
+        files: 12,
+      })
+    })
+
+    render(<BackupSection />)
+    await rowsReady()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back up all users' }))
+    expect(screen.getByText('Back up 2 users?')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back up all' }))
+    await waitFor(() => expect(api.backupUser).toHaveBeenCalledTimes(2))
+    expect(calls).toEqual(['u-1', 'u-2'])
+    expect(await screen.findByText('Backup-all finished — 2 users backed up.')).toBeTruthy()
   })
 
   it('previews an encoded prefix for uppercase emails in the confirm dialog', async () => {
-    const upper: AdminUserRow = { ...ada, email: 'Ada@Example.COM' }
-    api.listAdminUsers.mockResolvedValue(list([upper]))
+    api.loadBackupOverview.mockResolvedValue({
+      rows: [{ ...ada, email: 'Ada@Example.COM' }],
+      fallback: false,
+    })
 
     render(<BackupSection />)
-    await search('ada')
-    fireEvent.click(button(/Ada@Example.COM/))
-    await waitFor(() => expect(api.getBackupStatus).toHaveBeenCalledWith('u-1'))
+    expect(await screen.findByText('Ada@Example.COM')).toBeTruthy()
 
-    fireEvent.click(button('Run backup'))
+    fireEvent.click(screen.getByRole('button', { name: 'Back up Ada@Example.COM' }))
     expect(screen.getByText('Back up Ada@Example.COM?')).toBeTruthy()
     expect(screen.getByText('backups/ada%40example.com__u-1/')).toBeTruthy()
-    expect(screen.queryByText('backups/Ada@Example.COM__u-1/')).toBeNull()
   })
 })
