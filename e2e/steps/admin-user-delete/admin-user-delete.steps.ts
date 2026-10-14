@@ -701,9 +701,14 @@ Then('the backups tab keeps the sibling row and stays usable', async ({ page, ct
     timeout: 15_000,
   })
   const filter = page.getByLabel('Filter backups by email')
-  // the overview is live-users only, so the deleted account drops out of the table while
-  // its S3 prefix stays intact (proven by the status assert above)
+  // the overview now includes orphaned (deleted-user) backups, so the deleted account
+  // stays in the table flagged as a deleted user while its S3 prefix stays intact
+  // (proven by the status assert above)
   await filter.fill(victim.user.email)
+  await expect(page.getByText(victim.user.email)).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText('Deleted user').first()).toBeVisible()
+  // a filter matching nothing still shows the empty state
+  await filter.fill('nobody-matches-anything@example.com')
   await expect(page.getByText(/No users match/)).toBeVisible({ timeout: 15_000 })
   await filter.fill(sibling.user.email)
   await expect(page.getByText(sibling.user.email)).toBeVisible({ timeout: 15_000 })

@@ -7,6 +7,7 @@ const api = vi.hoisted(() => ({
   getBackupProgress: vi.fn(),
   backupUser: vi.fn(),
   restoreUser: vi.fn(),
+  deleteBackup: vi.fn(),
   backupPrefixPreview: (email: string, userId: string) =>
     `backups/${encodeURIComponent(email.trim().toLowerCase())}__${encodeURIComponent(userId)}/`,
 }))
@@ -97,6 +98,12 @@ beforeEach(() => {
   api.getBackupProgress.mockRejectedValue(notFound())
   api.backupUser.mockResolvedValue(result)
   api.restoreUser.mockResolvedValue(restoreResult)
+  api.deleteBackup.mockResolvedValue({
+    userId: 'u-1',
+    email: 'ada@example.com',
+    prefix: 'backups/ada%40example.com__u-1/',
+    deletedObjects: 125,
+  })
 })
 
 afterEach(() => {
@@ -500,5 +507,109 @@ describe('BackupSection orphans', () => {
     await waitFor(() => expect(api.backupUser).toHaveBeenCalledTimes(1))
     expect(calls).toEqual(['u-1'])
     expect(api.restoreUser).not.toHaveBeenCalled()
+  })
+})
+
+describe('BackupSection delete', () => {
+  beforeEach(() => {
+    api.loadBackupOverview.mockResolvedValue({ rows: [ada, orphan], fallback: false })
+  })
+
+  it('shows a Delete action on live rows next to Backup and on orphan rows next to Restore', async () => {
+    render(<BackupSection />)
+    expect(await screen.findByText('gone@example.com')).toBeTruthy()
+
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', {
+        name: 'Delete backup for ada@example.com',
+      }),
+    ).toBeTruthy()
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', {
+        name: 'Delete backup for gone@example.com',
+      }),
+    ).toBeTruthy()
+    // live rows keep Backup; orphans keep Restore with Backup disabled
+    expect(screen.getByRole('button', { name: 'Back up ada@example.com' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Restore gone@example.com' })).toBeTruthy()
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', {
+        name: 'Back up gone@example.com (deleted — restore first)',
+      }).disabled,
+    ).toBe(true)
+  })
+
+  it('keeps the delete confirm disabled until DELETE is typed', async () => {
+    render(<BackupSection />)
+    expect(await screen.findByText('gone@example.com')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete backup for ada@example.com' }))
+    expect(screen.getByText('Delete backup for ada@example.com?')).toBeTruthy()
+    expect(screen.getByText('backups/ada%40example.com__u-1/')).toBeTruthy()
+    expect(screen.getByText(/85 assets and 120 files/)).toBeTruthy()
+    expect(screen.getByText(/can't be undone/)).toBeTruthy()
+    expect(screen.getByText(/Only the S3 backup is removed.*next Backup recreates it/)).toBeTruthy()
+
+    const confirm = screen.getByRole<HTMLButtonElement>('button', { name: 'Delete backup' })
+    expect(confirm.disabled).toBe(true)
+
+    fireEvent.change(screen.getByLabelText(/Type DELETE to confirm/), {
+      target: { value: 'delet' },
+    })
+    expect(confirm.disabled).toBe(true)
+
+    fireEvent.change(screen.getByLabelText(/Type DELETE to confirm/), {
+      target: { value: 'DELETE' },
+    })
+    expect(confirm.disabled).toBe(false)
+    expect(api.deleteBackup).not.toHaveBeenCalled()
+  })
+
+  it('warns that the deleted account stays deleted on orphan rows', async () => {
+    render(<BackupSection />)
+    expect(await screen.findByText('gone@example.com')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete backup for gone@example.com' }))
+    expect(screen.getByText('Delete backup for gone@example.com?')).toBeTruthy()
+    expect(screen.getByText(/40 assets and 55 files/)).toBeTruthy()
+    expect(screen.getByText('The deleted account stays deleted.')).toBeTruthy()
+  })
+
+  it('confirms a delete, toasts the removed count and refreshes the list', async () => {
+    render(<BackupSection />)
+    expect(await screen.findByText('gone@example.com')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete backup for ada@example.com' }))
+    fireEvent.change(screen.getByLabelText(/Type DELETE to confirm/), {
+      target: { value: 'DELETE' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Delete backup' }))
+
+    await waitFor(() => expect(api.deleteBackup).toHaveBeenCalledWith('u-1'))
+    expect(
+      await screen.findByText(/Deleted backup for ada@example.com — 125 objects removed/),
+    ).toBeTruthy()
+    await waitFor(() => expect(api.loadBackupOverview).toHaveBeenCalledTimes(2))
+  })
+
+  it('maps a 404 delete to a row error and refreshes', async () => {
+    api.deleteBackup.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 404 },
+      message: 'Not found',
+    })
+    render(<BackupSection />)
+    expect(await screen.findByText('gone@example.com')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete backup for gone@example.com' }))
+    fireEvent.change(screen.getByLabelText(/Type DELETE to confirm/), {
+      target: { value: 'DELETE' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Delete backup' }))
+
+    await waitFor(() => expect(api.deleteBackup).toHaveBeenCalledWith('u-3'))
+    const row = screen.getByText('gone@example.com').closest('tr') as HTMLElement
+    expect(await within(row).findByText('No backup found — the list was refreshed.')).toBeTruthy()
+    await waitFor(() => expect(api.loadBackupOverview).toHaveBeenCalledTimes(2))
   })
 })

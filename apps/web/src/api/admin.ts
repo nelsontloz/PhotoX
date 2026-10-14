@@ -258,6 +258,25 @@ export async function restoreUser(emailOrId: string): Promise<RestoreResult> {
 }
 
 /**
+ * DELETE /v1/admin/backups response: the S3 prefix removed and how many objects went
+ * with it. Deletes are metadata-only, so the client's default 10s timeout is fine.
+ * Mirrors DeleteBackupResult in core.
+ */
+export interface DeleteBackupResult {
+  userId: string
+  email: string
+  prefix: string
+  deletedObjects: number
+}
+
+export async function deleteBackup(emailOrId: string): Promise<DeleteBackupResult> {
+  const { data } = await api.delete<DeleteBackupResult>('/v1/admin/backups', {
+    params: { emailOrId },
+  })
+  return data
+}
+
+/**
  * GET /v1/admin/backups/overview response row: one line per user — library size, what the
  * manifest on S3 already covers, and whether that manifest is usable. `unavailable` marks a
  * per-user probe failure in the fan-out fallback (old core without the endpoint).

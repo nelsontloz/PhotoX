@@ -1078,4 +1078,83 @@ describe('user backup round-trip', () => {
       expect((caught as ConflictException).message).toContain('already-restored')
     })
   })
+
+  describe('deleteBackup', () => {
+    async function backupSingleFile(
+      email: string,
+    ): Promise<{ user: User; prefix: string; fileId: string; assetId: string }> {
+      const u = await userRepo.save(
+        userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'test-hash',
+          displayName: 'Delete User',
+        }),
+      )
+      const seeded = await seedOriginal(u.id, Buffer.from(`delete-bytes-${email}`))
+      const asset = await assetRepo.save(
+        assetRepo.create({
+          userId: u.id,
+          kind: 'photo',
+          fileId: seeded.record.id,
+          isTrashed: false,
+        }),
+      )
+      const res = await svc.backupUser(u.id)
+      expect(res.files).toBe(1)
+      return { user: u, prefix: res.prefix, fileId: seeded.record.id, assetId: asset.id }
+    }
+
+    it('deletes a live user backup without touching DB rows, then re-backup works', async () => {
+      const email = `delete-live-${randomUUID()}@example.com`
+      const { user, prefix, fileId, assetId } = await backupSingleFile(email)
+
+      const deleted = await svc.deleteBackup(email)
+      expect(deleted).toEqual({ userId: user.id, email, prefix, deletedObjects: 2 })
+
+      // overview + status read exists:false while the rows stay live
+      await expect(svc.backupStatus(email)).resolves.toEqual({ exists: false })
+      const rows = await svc.backupOverview()
+      expect(rows.find((r) => r.userId === user.id)).toMatchObject({
+        email,
+        deleted: false,
+        exists: false,
+      })
+      await userRepo.findOneOrFail({ where: { id: user.id } })
+      await fileRepo.findOneOrFail({ where: { id: fileId } })
+      await assetRepo.findOneOrFail({ where: { id: assetId } })
+
+      // next backup recreates the prefix from scratch
+      const re = await svc.backupUser(user.id)
+      expect(re).toMatchObject({ userId: user.id, prefix, files: 1 })
+      await expect(svc.backupStatus(email)).resolves.toMatchObject({ exists: true, files: 1 })
+    })
+
+    it('deletes an orphan backup by userId and drops it from the overview', async () => {
+      const email = `delete-orphan-${randomUUID()}@example.com`
+      const { user, prefix } = await backupSingleFile(email)
+      await shareRepo.delete({ userId: user.id })
+      await personRepo.delete({ userId: user.id })
+      await assetRepo.delete({ userId: user.id })
+      await fileRepo.delete({ userId: user.id })
+      await albumRepo.delete({ userId: user.id })
+      await userRepo.delete(user.id)
+
+      const deleted = await svc.deleteBackup(user.id)
+      expect(deleted).toEqual({ userId: user.id, email, prefix, deletedObjects: 2 })
+      await expect(fake.listKeys(prefix)).resolves.toEqual([])
+      expect([...fake.objects.keys()].some((k) => k.startsWith(prefix))).toBe(false)
+
+      const rows = await svc.backupOverview()
+      expect(rows.some((r) => r.userId === user.id)).toBe(false)
+      await expect(svc.backupStatus(email)).resolves.toEqual({ exists: false })
+    })
+
+    it('throws 404 for unknown ids and emails', async () => {
+      await expect(svc.deleteBackup(randomUUID())).rejects.toThrow(NotFoundException)
+      await expect(svc.deleteBackup(`ghost-${randomUUID()}@example.com`)).rejects.toThrow(
+        NotFoundException,
+      )
+    })
+  })
 })

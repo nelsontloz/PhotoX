@@ -20,6 +20,7 @@ import {
   reclusterFaces,
   backupUser,
   restoreUser,
+  deleteBackup,
   getBackupStatus,
   getBackupOverview,
   backupPrefixPreview,
@@ -158,6 +159,20 @@ describe('user backup admin API', () => {
       { emailOrId: 'u-3' },
       { timeout: 600_000 },
     )
+  })
+
+  it('deleteBackup issues DELETE with emailOrId as a query param', async () => {
+    const deleted = {
+      userId: 'u-1',
+      email: 'ada@example.com',
+      prefix: 'backups/ada%40example.com__u-1/',
+      deletedObjects: 125,
+    }
+    deleteMock.mockResolvedValue({ data: deleted })
+    await expect(deleteBackup('u-1')).resolves.toEqual(deleted)
+    expect(deleteMock).toHaveBeenCalledWith('/v1/admin/backups', {
+      params: { emailOrId: 'u-1' },
+    })
   })
 
   it('getBackupOverview passes orphan rows through untouched', async () => {

@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { FaDatabase, FaMagnifyingGlass, FaSpinner } from 'react-icons/fa6'
+import {
+  FaDatabase,
+  FaMagnifyingGlass,
+  FaSpinner,
+  FaTrashCan,
+  FaTriangleExclamation,
+} from 'react-icons/fa6'
 import { isAxiosError } from 'axios'
 import {
   AdminSection,
@@ -9,12 +15,14 @@ import {
   ProgressBar,
   RefreshButton,
   StatusPill,
+  cx,
 } from './ui'
 import {
   loadBackupOverview,
   getBackupProgress,
   backupUser,
   restoreUser,
+  deleteBackup,
   backupPrefixPreview,
   type BackupOverviewRow,
   type BackupResult,
@@ -22,6 +30,7 @@ import {
   type RestoreResult,
 } from '../../api/admin'
 import { ConfirmDialog, RoleBadge } from './shared'
+import { Dialog, formInputClass } from '../../components/Dialog'
 
 // --- admin backups table -------------------------------------------------------------------
 // One row per user: manifest status, backed-up counts, pending count and last run. Per-row
@@ -46,6 +55,8 @@ const ALREADY_RESTORED_MESSAGE = 'That account is already back — the list was 
 const RESTORE_MISSING_MESSAGE =
   'No backup found for that user — it may have been removed from storage.'
 const RESTORE_CORRUPT_MESSAGE = 'That backup file is damaged and cannot be restored.'
+const DELETE_FALLBACK = 'Delete failed'
+const DELETE_MISSING_MESSAGE = 'No backup found — the list was refreshed.'
 
 const DEGRADED_HINT: Record<string, string> = {
   unreadable: 'Listed but unreadable — rerun the backup to replace it.',
@@ -67,6 +78,16 @@ function runErrorMessage(err: unknown): string {
     if (!err.response || err.code === 'ECONNABORTED') return BACKUP_TIMEOUT_MESSAGE
   }
   return RUN_FALLBACK
+}
+
+/** Delete failures use plain wording; a 404 means the manifest is already gone. */
+function deleteErrorMessage(err: unknown): string {
+  if (isAxiosError(err)) {
+    if (err.response?.status === 404) return DELETE_MISSING_MESSAGE
+    if (err.response?.status === 503) return S3_DOWN_BODY
+    if (!err.response || err.code === 'ECONNABORTED') return BACKUP_TIMEOUT_MESSAGE
+  }
+  return DELETE_FALLBACK
 }
 
 /** Restore failures use plain wording: 409 means the account is already back (list is stale). */
@@ -113,6 +134,96 @@ function pillFor(
   return { tone: 'muted', label: 'None' }
 }
 
+// --- delete dialog ----------------------------------------------------------------------
+// Mirrors the backup/restore confirms (S3 prefix preview + manifest counts) with the
+// typed-DELETE gate from DeleteUserDialog: the parent owns the API call, the dialog only
+// answers once DELETE is typed. Destructive stays last everywhere it appears.
+
+function DeleteBackupDialog({
+  row,
+  onClose,
+  onConfirm,
+}: {
+  row: BackupOverviewRow
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  const [confirmText, setConfirmText] = useState('')
+  const confirmed = confirmText === 'DELETE'
+
+  return (
+    <Dialog
+      title={`Delete backup for ${row.email}?`}
+      onClose={onClose}
+      ariaLabel="Delete backup confirmation"
+      closeOnOverlay={false}
+      escapeKey
+      panelClassName="bg-card-dark border border-border-dark rounded-xl p-6 max-w-lg w-full"
+      titleClassName="text-base font-semibold text-slate-100"
+      icon={
+        <span className="w-9 h-9 shrink-0 rounded-lg bg-status-error/10 flex items-center justify-center">
+          <FaTriangleExclamation className="text-status-error text-base" />
+        </span>
+      }
+    >
+      <div className="mt-4 space-y-4">
+        <p className="text-sm text-slate-300">
+          This permanently removes this user&apos;s S3 backup. This can&apos;t be undone.
+        </p>
+        <code className="block text-xs font-mono text-slate-300 bg-slate-900/60 border border-border-dark rounded px-2 py-1.5 break-all">
+          {backupPrefixPreview(row.email, row.userId)}
+        </code>
+        <p className="text-sm text-slate-400">
+          This backup holds {(row.backedUpAssets ?? 0).toLocaleString()} assets and{' '}
+          {(row.backedUpFiles ?? 0).toLocaleString()} files
+          {row.backedUpAt ? `, last backed up ${stamp(row.backedUpAt)}.` : '.'}
+        </p>
+        <p className="text-sm text-slate-400">
+          {row.deleted
+            ? 'The deleted account stays deleted.'
+            : 'Only the S3 backup is removed; the account and its library stay, and the next Backup recreates it.'}
+        </p>
+        <div>
+          <label
+            htmlFor="delete-backup-confirm"
+            className="block text-xs font-medium text-slate-300 mb-1.5"
+          >
+            Type <span className="font-mono font-bold">DELETE</span> to confirm
+          </label>
+          <input
+            id="delete-backup-confirm"
+            type="text"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder="DELETE"
+            autoComplete="off"
+            autoFocus
+            className={cx(formInputClass, 'font-mono tracking-widest')}
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-6">
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={!confirmed}
+          className="inline-flex items-center justify-center gap-2 text-sm font-medium text-white bg-status-error/90 hover:bg-status-error rounded-lg px-3 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Delete backup
+        </button>
+      </div>
+    </Dialog>
+  )
+}
+
 export function BackupSection() {
   const [rows, setRows] = useState<BackupOverviewRow[] | null>(null)
   const [loading, setLoading] = useState(true)
@@ -126,6 +237,7 @@ export function BackupSection() {
 
   const [busy, setBusy] = useState<Record<string, boolean>>({})
   const [restoring, setRestoring] = useState<Record<string, boolean>>({})
+  const [deleting, setDeleting] = useState<Record<string, boolean>>({})
   const [progressMap, setProgressMap] = useState<Record<string, BackupProgress | null>>({})
   const [unsupported, setUnsupported] = useState<Record<string, boolean>>({})
   const [rowErrors, setRowErrors] = useState<Record<string, string | null>>({})
@@ -133,6 +245,7 @@ export function BackupSection() {
 
   const [confirmUser, setConfirmUser] = useState<BackupOverviewRow | null>(null)
   const [confirmRestore, setConfirmRestore] = useState<BackupOverviewRow | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<BackupOverviewRow | null>(null)
   const [confirmAll, setConfirmAll] = useState(false)
   const [backupAllRunning, setBackupAllRunning] = useState(false)
   const [backupAllCursor, setBackupAllCursor] = useState<{ done: number; total: number } | null>(
@@ -209,7 +322,10 @@ export function BackupSection() {
   const paged = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
 
   const anyBusy =
-    backupAllRunning || Object.values(busy).some(Boolean) || Object.values(restoring).some(Boolean)
+    backupAllRunning ||
+    Object.values(busy).some(Boolean) ||
+    Object.values(restoring).some(Boolean) ||
+    Object.values(deleting).some(Boolean)
   // Backup-all covers live accounts only — orphan backups are restored, not re-backed-up.
   const liveTargets = useMemo(() => filtered.filter((r) => !r.deleted), [filtered])
 
@@ -305,6 +421,32 @@ export function BackupSection() {
       return false
     } finally {
       setRestoring((prev) => ({ ...prev, [row.userId]: false }))
+    }
+  }
+
+  const runDelete = async (row: BackupOverviewRow): Promise<boolean> => {
+    setDeleting((prev) => ({ ...prev, [row.userId]: true }))
+    setRowErrors((prev) => ({ ...prev, [row.userId]: null }))
+    try {
+      const res = await deleteBackup(row.userId)
+      notify(
+        `Deleted backup for ${res.email} — ${res.deletedObjects.toLocaleString()} objects removed.`,
+      )
+      setVersion((v) => v + 1)
+      return true
+    } catch (err: unknown) {
+      const message = deleteErrorMessage(err)
+      setRowErrors((prev) => ({ ...prev, [row.userId]: message }))
+      // A 404 means the manifest is already gone — the refreshed list is the recovery,
+      // so the row error carries it without an extra failure toast.
+      if (!isAxiosError(err) || err.response?.status !== 404) {
+        notify(`Delete of ${row.email} failed — ${message}`, 'error')
+      } else {
+        setVersion((v) => v + 1)
+      }
+      return false
+    } finally {
+      setDeleting((prev) => ({ ...prev, [row.userId]: false }))
     }
   }
 
@@ -473,6 +615,7 @@ export function BackupSection() {
                   {paged.map((row) => {
                     const isBusy = Boolean(busy[row.userId])
                     const isRestoring = Boolean(restoring[row.userId])
+                    const isDeleting = Boolean(deleting[row.userId])
                     const progress = progressMap[row.userId] ?? null
                     const showDeterminate =
                       progress && !unsupported[row.userId] && progress.total > 0
@@ -551,16 +694,58 @@ export function BackupSection() {
                                   Backup
                                 </GhostButton>
                               </span>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDelete(row)}
+                                disabled={anyBusy}
+                                title={`Delete backup for ${row.email}`}
+                                aria-label={`Delete backup for ${row.email}`}
+                                className={cx(
+                                  'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors',
+                                  anyBusy
+                                    ? 'text-outline/60 cursor-not-allowed'
+                                    : 'text-status-error/80 hover:text-status-error hover:bg-status-error/10',
+                                )}
+                              >
+                                {isDeleting ? (
+                                  <FaSpinner className="animate-spin text-xs" aria-hidden="true" />
+                                ) : (
+                                  <FaTrashCan className="text-xs" aria-hidden="true" />
+                                )}
+                                {isDeleting ? 'Deleting…' : 'Delete'}
+                              </button>
                             </div>
                           ) : (
-                            <GhostButton
-                              onClick={() => setConfirmUser(row)}
-                              disabled={anyBusy}
-                              ariaLabel={`Back up ${row.email}`}
-                              icon={isBusy ? <FaSpinner className="animate-spin" /> : undefined}
-                            >
-                              {isBusy ? 'Backing up…' : 'Backup'}
-                            </GhostButton>
+                            <div className="flex flex-col items-end gap-2">
+                              <GhostButton
+                                onClick={() => setConfirmUser(row)}
+                                disabled={anyBusy}
+                                ariaLabel={`Back up ${row.email}`}
+                                icon={isBusy ? <FaSpinner className="animate-spin" /> : undefined}
+                              >
+                                {isBusy ? 'Backing up…' : 'Backup'}
+                              </GhostButton>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDelete(row)}
+                                disabled={anyBusy}
+                                title={`Delete backup for ${row.email}`}
+                                aria-label={`Delete backup for ${row.email}`}
+                                className={cx(
+                                  'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors',
+                                  anyBusy
+                                    ? 'text-outline/60 cursor-not-allowed'
+                                    : 'text-status-error/80 hover:text-status-error hover:bg-status-error/10',
+                                )}
+                              >
+                                {isDeleting ? (
+                                  <FaSpinner className="animate-spin text-xs" aria-hidden="true" />
+                                ) : (
+                                  <FaTrashCan className="text-xs" aria-hidden="true" />
+                                )}
+                                {isDeleting ? 'Deleting…' : 'Delete'}
+                              </button>
+                            </div>
                           )}
                           {isBusy && (
                             <div
@@ -731,6 +916,17 @@ export function BackupSection() {
             finishes. The restored account keeps its old password.
           </p>
         </ConfirmDialog>
+      )}
+      {confirmDelete && (
+        <DeleteBackupDialog
+          row={confirmDelete}
+          onClose={() => setConfirmDelete(null)}
+          onConfirm={() => {
+            const target = confirmDelete
+            setConfirmDelete(null)
+            void runDelete(target)
+          }}
+        />
       )}
     </AdminSection>
   )

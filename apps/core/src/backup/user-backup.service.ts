@@ -233,6 +233,13 @@ export interface RestoreResult extends BackupResult {
   enqueued: { metadata: number; thumbnails: number; videos: number; faces: number; ai: number }
 }
 
+export interface DeleteBackupResult {
+  userId: string
+  email: string
+  prefix: string
+  deletedObjects: number
+}
+
 export interface BackupStatus {
   exists: boolean
   degraded?: 'unreadable' | 'corrupt'
@@ -908,6 +915,71 @@ export class UserBackupService {
       const existing = await this.users.findOne({ where: { email: candidate } })
       if (!existing) return candidate
     }
+  }
+
+  /**
+   * Deletes one user's backup bytes from S3 (manifest + originals, every key
+   * under the located prefix). Resolves live users by DB row and deleted users
+   * by S3 scan via locateBackup; an empty prefix reads as 404 (no backup), S3
+   * outages as 503. Never touches DB rows — the user/assets/files stay, only
+   * S3 bytes go. Deleting a live user's backup is allowed (the row then reads
+   * exists:false; the next backup recreates it).
+   */
+  async deleteBackup(emailOrId: string): Promise<DeleteBackupResult> {
+    try {
+      await this.s3.ensureBucket()
+    } catch {
+      throw new ServiceUnavailableException('Backup storage (S3) unreachable')
+    }
+    let located: { prefix: string; manifestObjectKey: string; userId: string }
+    try {
+      located = await this.locateBackup(emailOrId)
+    } catch (err) {
+      if (err instanceof NotFoundException) throw err
+      throw new ServiceUnavailableException('Backup storage (S3) unreachable')
+    }
+    let keys: string[]
+    try {
+      keys = await this.s3.listKeys(located.prefix)
+    } catch {
+      throw new ServiceUnavailableException('Backup storage (S3) unreachable')
+    }
+    if (keys.length === 0) throw new NotFoundException(`No backup found for ${emailOrId}`)
+    const email = await this.readDeleteBackupEmail(located)
+    try {
+      await this.s3.deleteKeys(keys)
+    } catch {
+      throw new ServiceUnavailableException('Backup storage (S3) unreachable')
+    }
+    this.logger.log(
+      `Deleted backup ${located.prefix} for user ${located.userId} (${keys.length} object(s))`,
+    )
+    return { userId: located.userId, email, prefix: located.prefix, deletedObjects: keys.length }
+  }
+
+  /**
+   * Backup-time email for a located backup: the manifest's emailAtBackup when
+   * readable, else the email parsed back out of the located prefix (identical
+   * except for a pending email-change rename, where the manifest wins). Never
+   * throws — a missing/unreadable manifest still deletes bytes via the prefix
+   * fallback (located prefixes are always backupPrefix-built or dir-parsed, so
+   * the fallback is defined in practice).
+   */
+  private async readDeleteBackupEmail(located: {
+    prefix: string
+    manifestObjectKey: string
+    userId: string
+  }): Promise<string> {
+    try {
+      const raw = await this.s3.getBuffer(located.manifestObjectKey)
+      const parsed = JSON.parse(raw.toString('utf-8')) as { emailAtBackup?: unknown }
+      if (typeof parsed.emailAtBackup === 'string' && parsed.emailAtBackup.length > 0) {
+        return parsed.emailAtBackup
+      }
+    } catch {
+      // prefix fallback below — the delete proceeds regardless
+    }
+    return this.prefixIdentity(located).emailAtBackup ?? located.userId
   }
 
   async backupStatus(emailOrId: string): Promise<BackupStatus> {

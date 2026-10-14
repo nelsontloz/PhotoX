@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Post, Query } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { IsNotEmpty, IsString } from 'class-validator'
 import {
@@ -7,6 +7,7 @@ import {
   type BackupProgress,
   type BackupResult,
   type BackupStatus,
+  type DeleteBackupResult,
   type RestoreResult,
 } from './user-backup.service'
 
@@ -29,6 +30,12 @@ class BackupStatusQueryDto {
 }
 
 class BackupProgressQueryDto {
+  @IsString()
+  @IsNotEmpty()
+  emailOrId!: string
+}
+
+class DeleteBackupQueryDto {
   @IsString()
   @IsNotEmpty()
   emailOrId!: string
@@ -94,5 +101,14 @@ export class BackupController {
   @ApiResponse({ status: 404, description: 'No user for emailOrId' })
   async progress(@Query() query: BackupProgressQueryDto): Promise<BackupProgress> {
     return this.backups.getBackupProgress(query.emailOrId)
+  }
+
+  @Delete('backups')
+  @ApiOperation({ summary: 'Delete one user backup from S3 (admin-only)' })
+  @ApiResponse({ status: 200, description: 'Deleted backup prefix and object count' })
+  @ApiResponse({ status: 404, description: 'No backup for emailOrId' })
+  @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
+  async deleteBackup(@Query() query: DeleteBackupQueryDto): Promise<DeleteBackupResult> {
+    return this.backups.deleteBackup(query.emailOrId)
   }
 }
