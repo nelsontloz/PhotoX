@@ -1,6 +1,7 @@
 import { api } from './client'
 import { isAxiosError } from 'axios'
 import type {
+  AdminUserDeleteStatus as AdminUserDeleteBackendStatus,
   AdminUserListResponse,
   AdminUserRow,
   AdminUserSortField,
@@ -264,7 +265,10 @@ export async function getBackupOverview(): Promise<BackupOverviewRow[]> {
  * `unavailable` row instead of failing the whole table; counts fall back to the manifest's
  * own numbers (pending reads 0 — the old core never reported library size).
  */
-export async function loadBackupOverview(): Promise<{ rows: BackupOverviewRow[]; fallback: boolean }> {
+export async function loadBackupOverview(): Promise<{
+  rows: BackupOverviewRow[]
+  fallback: boolean
+}> {
   try {
     return { rows: await getBackupOverview(), fallback: false }
   } catch (err: unknown) {
@@ -312,4 +316,105 @@ export async function loadBackupOverview(): Promise<{ rows: BackupOverviewRow[];
     }),
   )
   return { rows, fallback: true }
+}
+
+// --- admin user deletion --------------------------------------------------------------
+// DELETE /v1/admin/users/:id is async: the core answers 202 { jobId, userId, backupKept,
+// backupPrefix } while the worker removes the account in the background. The client
+// below tolerates cores that answer synchronously (200/204, empty body). Status polls
+// GET /v1/admin/users/:id/delete-status by userId (stays readable after the row is
+// gone); the backend { state, ... } shape is mapped to the { status, error? }
+// view-model so the dialog keeps polling on coarse lifecycles. A missing preview
+// falls back to generic wording (the backend has no preview endpoint).
+
+/** DELETE /v1/admin/users/:id response: 202 carries the background job id when async. */
+export interface AdminUserDeleteAccepted {
+  jobId?: string
+  userId?: string
+  backupKept?: true
+  backupPrefix?: string
+}
+
+export async function deleteAdminUser(id: string): Promise<AdminUserDeleteAccepted> {
+  const { data } = await api.delete<AdminUserDeleteAccepted>(
+    `/v1/admin/users/${encodeURIComponent(id)}`,
+  )
+  if (!data || typeof data !== 'object') return {}
+  return data
+}
+
+/** GET :id/delete-status view-model: coarse lifecycle of the background removal. */
+export interface AdminUserDeleteStatus {
+  status: string
+  error?: string | null
+}
+
+export async function getAdminUserDeleteStatus(userId: string): Promise<AdminUserDeleteStatus> {
+  const { data } = await api.get<AdminUserDeleteBackendStatus & { error?: unknown }>(
+    `/v1/admin/users/${encodeURIComponent(userId)}/delete-status`,
+  )
+  const error = typeof data.error === 'string' ? data.error : null
+  return { status: data.state, error }
+}
+
+const DELETE_DONE = new Set(['completed', 'done', 'succeeded', 'success', 'deleted'])
+const DELETE_FAILED = new Set(['failed', 'error', 'cancelled', 'canceled'])
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Poll the :id/delete-status endpoint until the removal lands or the budget runs out.
+ * Only explicit terminal states settle the promise — anything unknown keeps polling.
+ */
+export async function pollAdminUserDelete(
+  userId: string,
+  opts: { intervalMs?: number; timeoutMs?: number } = {},
+): Promise<void> {
+  const intervalMs = opts.intervalMs ?? 1000
+  const timeoutMs = opts.timeoutMs ?? 60000
+  const started = Date.now()
+  for (;;) {
+    const state = await getAdminUserDeleteStatus(userId)
+    const status = state.status?.toLowerCase() ?? ''
+    if (DELETE_DONE.has(status)) return
+    if (DELETE_FAILED.has(status)) {
+      const message = state.error ?? 'User deletion failed'
+      throw new Error(message === '' ? 'User deletion failed' : message)
+    }
+    if (Date.now() - started >= timeoutMs) {
+      throw new Error('Timed out waiting for the deletion — refresh the list to check.')
+    }
+    await sleep(intervalMs)
+  }
+}
+
+/**
+ * GET delete-preview response: what removing the account would destroy. A 404 resolves
+ * null (the endpoint may not exist yet, or the user is already gone) so the confirm
+ * dialog falls back to generic wording and lets the DELETE surface the truth.
+ */
+export interface AdminUserDeletePreview {
+  userId: string
+  displayName?: string
+  email?: string
+  assets?: number
+  files?: number
+  albums?: number
+  shares?: number
+}
+
+export async function getAdminUserDeletePreview(
+  id: string,
+): Promise<AdminUserDeletePreview | null> {
+  try {
+    const { data } = await api.get<AdminUserDeletePreview>(
+      `/v1/admin/users/${encodeURIComponent(id)}/delete-preview`,
+    )
+    return data
+  } catch (err: unknown) {
+    if (isAxiosError(err) && err.response?.status === 404) return null
+    throw err
+  }
 }

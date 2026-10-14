@@ -1,0 +1,712 @@
+import { createHmac } from 'node:crypto'
+import { readFile, stat, unlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { expect, type APIRequestContext, type Page } from '@playwright/test'
+import {
+  Given,
+  Then,
+  When,
+  PASSWORD,
+  addAssetsViaApi,
+  authHeaders,
+  createAlbumViaApi,
+  getAsset,
+  injectSession,
+  registerUser,
+  seedEmbedding,
+  uploadViaApi,
+  workerHeaders,
+  type AuthResponse,
+  type Ctx,
+} from '../support'
+
+const ADMIN_EMAIL = 'admin@photox.test'
+
+// Admin login against the seeded admin, sharing one session across the parallel `suite`
+// workers through the same tmp file as the backups steps (same path, same `{ auth, at }`
+// shape, same lock): exactly one leader spends a single login instead of tripping the
+// 5/900s per-email login throttle, followers adopt its session.
+let cachedAdmin: { auth: AuthResponse; at: number } | null = null
+const ADMIN_SESSION_REUSE_MS = 20 * 60 * 1000
+// run.sh exports a unique E2E_WEB_PORT per run, isolating parallel runs sharing this tmpdir
+const ADMIN_SESSION_FILE = join(
+  tmpdir(),
+  `photox-e2e-admin-session-${process.env.E2E_WEB_PORT ?? 'default'}.json`,
+)
+const ADMIN_SESSION_LOCK = `${ADMIN_SESSION_FILE}.lock`
+
+async function readSharedAdmin(): Promise<AuthResponse | null> {
+  try {
+    const parsed = JSON.parse(await readFile(ADMIN_SESSION_FILE, 'utf8')) as {
+      auth?: AuthResponse
+      at?: number
+    }
+    if (
+      parsed.auth?.accessToken &&
+      parsed.auth.user?.role === 'admin' &&
+      typeof parsed.at === 'number' &&
+      Date.now() - parsed.at < ADMIN_SESSION_REUSE_MS
+    ) {
+      return parsed.auth
+    }
+  } catch {
+    // cold start or a half-written file from a racing worker — fall through to the login path
+  }
+  return null
+}
+
+async function waitForSharedAdmin(timeoutMs: number): Promise<AuthResponse | null> {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const auth = await readSharedAdmin()
+    if (auth) return auth
+    if (Date.now() >= deadline) return null
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+}
+
+async function writeSharedAdmin(auth: AuthResponse): Promise<void> {
+  try {
+    await writeFile(ADMIN_SESSION_FILE, JSON.stringify({ auth, at: Date.now() }), 'utf8')
+  } catch {
+    // best-effort cross-worker hint; the in-memory cache still covers this worker
+  }
+}
+
+async function signInAdmin(request: APIRequestContext): Promise<AuthResponse> {
+  if (cachedAdmin && Date.now() - cachedAdmin.at < ADMIN_SESSION_REUSE_MS) {
+    return cachedAdmin.auth
+  }
+  const shared = await readSharedAdmin()
+  if (shared) {
+    cachedAdmin = { auth: shared, at: Date.now() }
+    return shared
+  }
+  // leader election so the cold-start herd spends exactly one login, not one per worker
+  let leader = false
+  try {
+    try {
+      const stale = await stat(ADMIN_SESSION_LOCK)
+      if (Date.now() - stale.mtimeMs > 60_000) await unlink(ADMIN_SESSION_LOCK)
+    } catch {
+      // no lock file — nothing stale to break
+    }
+    await writeFile(ADMIN_SESSION_LOCK, String(process.pid), { flag: 'wx' })
+    leader = true
+  } catch {
+    leader = false
+  }
+  if (!leader) {
+    const adopted = await waitForSharedAdmin(60_000)
+    if (adopted) {
+      cachedAdmin = { auth: adopted, at: Date.now() }
+      return adopted
+    }
+    // the leader died without writing — fall through and try the login ourselves
+  }
+  try {
+    let response = await request.post('/api/v1/auth/login', {
+      data: { email: ADMIN_EMAIL, password: PASSWORD },
+    })
+    if (!response.ok()) {
+      response = await request.post('/api/v1/auth/register', {
+        data: { email: ADMIN_EMAIL, password: PASSWORD, displayName: 'E2E Admin' },
+      })
+    }
+    expect(response.ok(), `admin auth failed with status ${response.status()}`).toBe(true)
+    const auth = (await response.json()) as AuthResponse
+    if (auth.user.role !== 'admin') {
+      throw new Error(`expected ${ADMIN_EMAIL} to have the admin role, got "${auth.user.role}"`)
+    }
+    cachedAdmin = { auth, at: Date.now() }
+    await writeSharedAdmin(auth)
+    return auth
+  } finally {
+    if (leader) await unlink(ADMIN_SESSION_LOCK).catch(() => undefined)
+  }
+}
+
+// The suite mints its own tokens with node:crypto (same precedent as workerHeaders in
+// support.ts). Open registration only ever mints role 'user' and there is no promote
+// endpoint, so the last-admin 409 (target admin != requester, single admin in the DB) is
+// unreachable with real sessions — this forges the admin role onto a REAL registered user
+// row (the guard's session floor still finds the row) purely to exercise the real server
+// guard chain end to end. Test seeding only, never prod.
+const E2E_AUTH_TOKEN_SECRET =
+  process.env.E2E_AUTH_TOKEN_SECRET ?? 'dev-auth-secret-32-characters-minimum!!'
+
+function base64url(input: string | Buffer): string {
+  return (typeof input === 'string' ? Buffer.from(input) : input).toString('base64url')
+}
+
+function forgedAdminHeaders(userId: string, email: string): Record<string, string> {
+  const now = Math.floor(Date.now() / 1000)
+  const encoded =
+    `${base64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.` +
+    `${base64url(JSON.stringify({ sub: userId, email, role: 'admin', iat: now, exp: now + 300 }))}`
+  const signature = base64url(createHmac('sha256', E2E_AUTH_TOKEN_SECRET).update(encoded).digest())
+  return { Authorization: `Bearer ${encoded}.${signature}` }
+}
+
+/** Per-scenario deletion state, keyed by the scenario ctx (support.ts Ctx untouched). */
+interface UserDeleteState {
+  admin?: AuthResponse
+  listed?: AuthResponse
+  victim?: AuthResponse
+  victimFileId?: string
+  victimAlbumId?: string
+  victimShareToken?: string
+  victimPersonId?: string
+  victimBackupAt?: string
+  victimBackupAssets?: number
+  sibling?: AuthResponse
+  siblingAlbumId?: string
+  siblingShareToken?: string
+  siblingPersonId?: string
+  siblingBackupAt?: string
+  lastAdminStatus?: number
+  lastAdminMessage?: string
+}
+
+const states = new WeakMap<Ctx, UserDeleteState>()
+
+function deleteState(ctx: Ctx): UserDeleteState {
+  let state = states.get(ctx)
+  if (!state) {
+    state = {}
+    states.set(ctx, state)
+  }
+  return state
+}
+
+function requireStateAdmin(ctx: Ctx): AuthResponse {
+  const admin = deleteState(ctx).admin
+  if (!admin) throw new Error('sign in as the seeded administrator first')
+  return admin
+}
+
+function requireListed(ctx: Ctx): AuthResponse {
+  const listed = deleteState(ctx).listed
+  if (!listed) throw new Error('register the listed user first')
+  return listed
+}
+
+function requireVictim(ctx: Ctx): AuthResponse {
+  const victim = deleteState(ctx).victim
+  if (!victim) throw new Error('register the deletion victim first')
+  return victim
+}
+
+function requireSibling(ctx: Ctx): AuthResponse {
+  const sibling = deleteState(ctx).sibling
+  if (!sibling) throw new Error('register the sibling user first')
+  return sibling
+}
+
+async function requireAdmin(request: APIRequestContext, ctx: Ctx): Promise<AuthResponse> {
+  const state = deleteState(ctx)
+  state.admin ??= await signInAdmin(request)
+  return state.admin
+}
+
+interface FullLibrary {
+  fileId: string
+  albumId: string
+  shareToken: string
+  personId: string
+  backupAt: string
+  backupAssets: number
+}
+
+/**
+ * Seeds a complete deletable library: one photo, one album holding it, one asset share,
+ * one clustered person (two identical-embedding faces), then an S3 backup capturing the
+ * counts the exclusion asserts compare against after deletion.
+ */
+async function seedFullLibrary(
+  request: APIRequestContext,
+  admin: AuthResponse,
+  user: AuthResponse,
+  fixture: 'photo.jpg' | 'photo-text.jpg',
+): Promise<FullLibrary> {
+  const assetId = await uploadViaApi(request, user, fixture)
+  const asset = await getAsset(request, user, assetId)
+  // the upload enqueues a real detection job that DELETEs + re-detects faces — wait for it
+  // to settle BEFORE seeding, or it wipes the seeded faces mid-scenario (same probe pattern
+  // as the faces steps)
+  await expect
+    .poll(
+      async () => {
+        const settled = await getAsset(request, user, assetId)
+        if (settled.faceStatus === 'failed') {
+          throw new Error(`face detection failed on asset ${assetId}`)
+        }
+        return settled.faceStatus ?? 'missing'
+      },
+      { timeout: 120_000 },
+    )
+    .toBe('ready')
+  const album = await createAlbumViaApi(request, user, 'E2E delete album')
+  expect(await addAssetsViaApi(request, user, album.id, [assetId])).toBe(201)
+  const shareResponse = await request.post('/api/v1/shares', {
+    headers: authHeaders(user),
+    data: { assetId },
+  })
+  expect(shareResponse.status()).toBe(201)
+  const share = (await shareResponse.json()) as { token?: string }
+  if (!share.token) throw new Error('share response is missing a token')
+  const facesResponse = await request.post(`/worker/assets/${assetId}/faces`, {
+    headers: workerHeaders(user.user.id),
+    data: {
+      detector: 'human',
+      faces: [
+        { box: { x: 10, y: 10, w: 60, h: 60 }, confidence: 0.9, embedding: seedEmbedding(0) },
+        { box: { x: 80, y: 10, w: 60, h: 60 }, confidence: 0.9, embedding: seedEmbedding(0) },
+      ],
+    },
+  })
+  expect(facesResponse.status()).toBe(201)
+  expect(((await facesResponse.json()) as { count: number }).count).toBe(2)
+  const clusterResponse = await request.post('/api/v1/persons/cluster', {
+    headers: authHeaders(user),
+  })
+  expect(clusterResponse.status()).toBe(202)
+  let personId = ''
+  await expect
+    .poll(
+      async () => {
+        const listResponse = await request.get('/api/v1/persons', { headers: authHeaders(user) })
+        if (listResponse.status() !== 200) return 0
+        const body = (await listResponse.json()) as { items?: { id: string; faceCount: number }[] }
+        const found = (body.items ?? []).find((person) => person.faceCount >= 2)
+        if (found) personId = found.id
+        return found ? found.faceCount : 0
+      },
+      { timeout: 120_000 },
+    )
+    .toBeGreaterThanOrEqual(2)
+  if (!personId) throw new Error('the cluster job never produced a person')
+  const backupResponse = await request.post('/api/v1/admin/backups', {
+    headers: authHeaders(admin),
+    data: { emailOrId: user.user.id },
+  })
+  expect(backupResponse.status()).toBe(200)
+  const backup = (await backupResponse.json()) as { backedUpAt: string; assets: number }
+  return {
+    fileId: asset.fileId,
+    albumId: album.id,
+    shareToken: share.token,
+    personId,
+    backupAt: backup.backedUpAt,
+    backupAssets: backup.assets,
+  }
+}
+
+/** Narrows the users table to one row and waits for the search-scoped footer to settle. */
+async function searchUsersFor(page: Page, email: string): Promise<void> {
+  await page.getByLabel('Search users').fill(email)
+  await expect(page.getByText('Showing 1 registered user(s)', { exact: true })).toBeVisible({
+    timeout: 15_000,
+  })
+}
+
+function deleteDialog(page: Page) {
+  return page.getByRole('dialog', { name: 'Delete user confirmation' })
+}
+
+async function openDeleteDialog(page: Page, displayName: string) {
+  await page.getByRole('button', { name: `Delete ${displayName}`, exact: true }).click()
+  const dialog = deleteDialog(page)
+  await expect(dialog).toBeVisible()
+  return dialog
+}
+
+Given('I am signed in as the seeded administrator', async ({ request, page, baseURL, ctx }) => {
+  const admin = await requireAdmin(request, ctx)
+  ctx.auth = admin
+  await injectSession(page, admin, baseURL)
+  await page.goto('/')
+})
+
+Given('a regular user is registered for the admin list', async ({ request, ctx }) => {
+  deleteState(ctx).listed = await registerUser(request)
+})
+
+Given('a regular user with one photo is registered for deletion', async ({ request, ctx }) => {
+  const victim = await registerUser(request)
+  deleteState(ctx).victim = victim
+  await uploadViaApi(request, victim, 'photo.jpg')
+})
+
+Given(
+  'a victim user with a full library and backup is registered',
+  async ({ request, ctx, $testInfo }) => {
+    // two full libraries + two inline S3 backups + two cluster runs — allow room past 120s
+    $testInfo.setTimeout(360_000)
+    const admin = await requireAdmin(request, ctx)
+    const victim = await registerUser(request)
+    const state = deleteState(ctx)
+    state.victim = victim
+    const library = await seedFullLibrary(request, admin, victim, 'photo.jpg')
+    state.victimFileId = library.fileId
+    state.victimAlbumId = library.albumId
+    state.victimShareToken = library.shareToken
+    state.victimPersonId = library.personId
+    state.victimBackupAt = library.backupAt
+    state.victimBackupAssets = library.backupAssets
+  },
+)
+
+Given('a sibling user with a full library and backup is registered', async ({ request, ctx }) => {
+  const admin = await requireAdmin(request, ctx)
+  const sibling = await registerUser(request)
+  const state = deleteState(ctx)
+  state.sibling = sibling
+  // a different fixture from the victim's so a shared checksum can never alias the two
+  const library = await seedFullLibrary(request, admin, sibling, 'photo-text.jpg')
+  state.siblingAlbumId = library.albumId
+  state.siblingShareToken = library.shareToken
+  state.siblingPersonId = library.personId
+  state.siblingBackupAt = library.backupAt
+})
+
+Then(
+  'the users table shows an Actions column with a Delete button for the listed user',
+  async ({ page, ctx }) => {
+    const listed = requireListed(ctx)
+    await searchUsersFor(page, listed.user.email)
+    await expect(page.getByText('Actions', { exact: true })).toBeVisible()
+    const remove = page.getByRole('button', {
+      name: `Delete ${listed.user.displayName}`,
+      exact: true,
+    })
+    await expect(remove).toHaveCount(1)
+    await expect(remove).toBeEnabled()
+    expect(await remove.getAttribute('title')).toBe(`Delete ${listed.user.displayName}`)
+  },
+)
+
+Then('my own admin row disables Delete with the self-delete guard', async ({ page, ctx }) => {
+  const admin = requireStateAdmin(ctx)
+  await searchUsersFor(page, admin.user.email)
+  const remove = page.getByRole('button', {
+    name: `Delete ${admin.user.displayName}`,
+    exact: true,
+  })
+  await expect(remove).toHaveCount(1)
+  await expect(remove).toBeDisabled()
+  expect(await remove.getAttribute('title')).toBe("You can't delete your own account.")
+})
+
+When('I open the delete dialog for that user', async ({ page, ctx }) => {
+  const victim = requireVictim(ctx)
+  await searchUsersFor(page, victim.user.email)
+  await openDeleteDialog(page, victim.user.displayName)
+})
+
+Then(
+  'the delete dialog shows the identity card, impact counts and the backup-kept note',
+  async ({ page, ctx }) => {
+    const victim = requireVictim(ctx)
+    const dialog = deleteDialog(page)
+    // the dialog title carries the name too, so the identity card is pinned by the email
+    await expect(
+      dialog.getByRole('heading', { name: `Delete ${victim.user.displayName}?` }),
+    ).toBeVisible()
+    await expect(dialog.getByText(victim.user.email)).toBeVisible()
+    // no backend preview endpoint exists — the client falls back to generic wording
+    await expect(
+      dialog.getByText('Their photos, videos, albums and shares will be permanently removed.', {
+        exact: true,
+      }),
+    ).toBeVisible()
+    await expect(dialog.getByText(/S3 backup is kept/)).toBeVisible()
+    await expect(dialog.locator('#delete-user-confirm')).toBeVisible()
+  },
+)
+
+Then('the delete confirm stays disabled until DELETE is typed exactly', async ({ page }) => {
+  const dialog = deleteDialog(page)
+  const input = dialog.locator('#delete-user-confirm')
+  const confirm = dialog.getByRole('button', { name: 'Delete user', exact: true })
+  await expect(confirm).toBeDisabled()
+  await input.fill('delete')
+  await expect(confirm).toBeDisabled()
+  await input.fill(' DELETE ')
+  await expect(confirm).toBeDisabled()
+  await input.fill('DELETE')
+  await expect(confirm).toBeEnabled()
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog).toHaveCount(0)
+})
+
+When('I search the users list for that user', async ({ page, ctx }) => {
+  await searchUsersFor(page, requireVictim(ctx).user.email)
+})
+
+Then('the users footer shows a single registered user', async ({ page }) => {
+  await expect(page.getByText('Showing 1 registered user(s)', { exact: true })).toBeVisible()
+})
+
+When(
+  'I confirm deletion of that user while the delete response is delayed',
+  async ({ page, ctx }) => {
+    const victim = requireVictim(ctx)
+    const name = victim.user.displayName
+    // hold the DELETE (but not the preview GET or status polls) so the working state is
+    // observable instead of flashing past before the asserts run
+    await page.route('**/api/v1/admin/users/**', async (route) => {
+      if (route.request().method() === 'DELETE') {
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+      }
+      await route.continue()
+    })
+    try {
+      const dialog = await openDeleteDialog(page, name)
+      await dialog.locator('#delete-user-confirm').fill('DELETE')
+      await dialog.getByRole('button', { name: 'Delete user', exact: true }).click()
+      await expect(dialog.getByRole('status')).toContainText(/Removing user/)
+      await expect(dialog.getByRole('button', { name: 'Deleting…', exact: true })).toBeDisabled()
+      await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+      await expect(dialog.getByRole('button', { name: 'Close' })).toBeDisabled()
+      // Escape and the overlay both stay dead while the removal is in flight
+      await page.keyboard.press('Escape')
+      await expect(dialog).toBeVisible()
+      await page.mouse.click(8, 8)
+      await expect(dialog).toBeVisible()
+      await expect(page.getByText(`Deleted ${name}.`, { exact: true })).toBeVisible({
+        timeout: 120_000,
+      })
+    } finally {
+      await page.unroute('**/api/v1/admin/users/**')
+    }
+  },
+)
+
+Then('the delete dialog is closed', async ({ page }) => {
+  await expect(deleteDialog(page)).toHaveCount(0)
+})
+
+Then('the users list no longer matches the deleted user', async ({ page, ctx }) => {
+  const victim = requireVictim(ctx)
+  await expect(
+    page.getByRole('button', { name: `Delete ${victim.user.displayName}`, exact: true }),
+  ).toHaveCount(0)
+  await expect(page.getByText('No users match the current filters.', { exact: true })).toBeVisible()
+})
+
+When('that user is removed through the API while the dialog is open', async ({ request, ctx }) => {
+  const admin = requireStateAdmin(ctx)
+  const victim = requireVictim(ctx)
+  // the dialog stays open on the users tab while the account disappears underneath it
+  const response = await request.delete(`/api/v1/admin/users/${victim.user.id}`, {
+    headers: authHeaders(admin),
+  })
+  expect(response.status()).toBe(202)
+  await expect
+    .poll(
+      async () => {
+        const status = await request.get(`/api/v1/admin/users/${victim.user.id}/delete-status`, {
+          headers: authHeaders(admin),
+        })
+        if (status.status() !== 200) return `http-${status.status()}`
+        return ((await status.json()) as { state?: string }).state ?? 'missing'
+      },
+      { timeout: 120_000 },
+    )
+    .toBe('completed')
+})
+
+When('I confirm deletion of that user', async ({ page }) => {
+  const dialog = deleteDialog(page)
+  await dialog.locator('#delete-user-confirm').fill('DELETE')
+  await dialog.getByRole('button', { name: 'Delete user', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toBeVisible({ timeout: 30_000 })
+})
+
+Then('the missing-user message is shown and the dialog stays open', async ({ page }) => {
+  // the raced delete answers 404, which the dialog maps to the fixed missing-user sentence
+  // (403/409 verbatim mapping is covered at the API level below plus the web unit specs)
+  const dialog = deleteDialog(page)
+  await expect(dialog.getByRole('alert')).toContainText(
+    'That user no longer exists. Close this and refresh the list.',
+  )
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog).toHaveCount(0)
+  // the account is really gone from the list — the external API removal cannot refresh
+  // the table by itself (same debounced query), so re-sort to force a refetch like a user would
+  await page.getByRole('button', { name: 'Email' }).click()
+  await expect(page.getByText('No users match the current filters.', { exact: true })).toBeVisible({
+    timeout: 15_000,
+  })
+})
+
+When(
+  'an admin delete is attempted on the last admin with an API setup token',
+  async ({ request, ctx }) => {
+    const admin = requireStateAdmin(ctx)
+    const setup = requireListed(ctx)
+    const response = await request.delete(`/api/v1/admin/users/${admin.user.id}`, {
+      headers: forgedAdminHeaders(setup.user.id, setup.user.email),
+    })
+    const state = deleteState(ctx)
+    state.lastAdminStatus = response.status()
+    const body = (await response.json()) as { message?: unknown }
+    state.lastAdminMessage = typeof body.message === 'string' ? body.message : JSON.stringify(body)
+  },
+)
+
+Then('the last-admin guard rejects with 409 verbatim', ({ ctx }) => {
+  const state = deleteState(ctx)
+  expect(state.lastAdminStatus).toBe(409)
+  expect(state.lastAdminMessage ?? '').toContain('Cannot delete the last admin')
+})
+
+Then('self-deletion through the API is rejected with 403 verbatim', async ({ request, ctx }) => {
+  // the guard chain rejects before draining or enqueuing, so this mutates nothing
+  const admin = requireStateAdmin(ctx)
+  const response = await request.delete(`/api/v1/admin/users/${admin.user.id}`, {
+    headers: authHeaders(admin),
+  })
+  expect(response.status()).toBe(403)
+  const body = (await response.json()) as { message?: unknown }
+  expect(typeof body.message === 'string' ? body.message : JSON.stringify(body)).toContain(
+    'Cannot delete your own account',
+  )
+})
+
+When('I delete the victim user through the confirmation dialog', async ({ page, ctx }) => {
+  const victim = requireVictim(ctx)
+  await searchUsersFor(page, victim.user.email)
+  const dialog = await openDeleteDialog(page, victim.user.displayName)
+  await dialog.locator('#delete-user-confirm').fill('DELETE')
+  await dialog.getByRole('button', { name: 'Delete user', exact: true }).click()
+  await expect(page.getByText(`Deleted ${victim.user.displayName}.`, { exact: true })).toBeVisible({
+    timeout: 120_000,
+  })
+})
+
+Then('the victim deletion reaches a terminal state', async ({ request, ctx }) => {
+  const admin = requireStateAdmin(ctx)
+  const victim = requireVictim(ctx)
+  await expect
+    .poll(
+      async () => {
+        const response = await request.get(`/api/v1/admin/users/${victim.user.id}/delete-status`, {
+          headers: authHeaders(admin),
+        })
+        if (response.status() !== 200) return `http-${response.status()}`
+        return ((await response.json()) as { state?: string }).state ?? 'missing'
+      },
+      { timeout: 120_000 },
+    )
+    .toBe('completed')
+})
+
+Then('the victim library is gone but the victim backup is kept', async ({ request, ctx }) => {
+  const state = deleteState(ctx)
+  const admin = requireStateAdmin(ctx)
+  const victim = requireVictim(ctx)
+  // the admin users list no longer carries the id
+  const listResponse = await request.get(
+    `/api/v1/admin/users?q=${encodeURIComponent(victim.user.email)}`,
+    { headers: authHeaders(admin) },
+  )
+  expect(listResponse.status()).toBe(200)
+  const list = (await listResponse.json()) as { items: { id: string }[]; total: number }
+  expect(list.total).toBe(0)
+  expect(list.items).toHaveLength(0)
+  // the victim session is dead on every owned surface
+  for (const path of ['/api/v1/assets', '/api/v1/albums', '/api/v1/shares', '/api/v1/persons']) {
+    const response = await request.get(path, { headers: authHeaders(victim) })
+    expect(response.status()).toBe(401)
+  }
+  // the known file bytes are gone
+  const fileId = state.victimFileId
+  if (!fileId) throw new Error('seed the victim library first')
+  const stream = await request.get(`/api/v1/files/${fileId}/stream`, {
+    headers: authHeaders(admin),
+  })
+  expect(stream.status()).toBe(404)
+  // the S3 backup prefix was never touched — same manifest counts as before the delete
+  const backupAt = state.victimBackupAt
+  if (!backupAt) throw new Error('back up the victim first')
+  const statusResponse = await request.get(
+    `/api/v1/admin/backups/status?emailOrId=${encodeURIComponent(victim.user.id)}`,
+    { headers: authHeaders(admin) },
+  )
+  expect(statusResponse.status()).toBe(200)
+  const status = (await statusResponse.json()) as {
+    exists: boolean
+    assets?: number
+    backedUpAt?: string
+  }
+  expect(status.exists).toBe(true)
+  expect(status.assets).toBe(state.victimBackupAssets)
+  expect(status.backedUpAt).toBe(backupAt)
+})
+
+Then('the sibling library and backup are untouched', async ({ request, page, ctx }) => {
+  const state = deleteState(ctx)
+  const sibling = requireSibling(ctx)
+  // still listed with a working Delete action
+  const listResponse = await request.get(
+    `/api/v1/admin/users?q=${encodeURIComponent(sibling.user.email)}`,
+    { headers: authHeaders(requireStateAdmin(ctx)) },
+  )
+  expect(listResponse.status()).toBe(200)
+  const list = (await listResponse.json()) as { items: { id: string }[]; total: number }
+  expect(list.total).toBe(1)
+  expect(list.items[0]?.id).toBe(sibling.user.id)
+  await searchUsersFor(page, sibling.user.email)
+  await expect(
+    page.getByRole('button', { name: `Delete ${sibling.user.displayName}`, exact: true }),
+  ).toBeEnabled()
+  // their album, share and person stay readable
+  const albumId = state.siblingAlbumId
+  const shareToken = state.siblingShareToken
+  const personId = state.siblingPersonId
+  if (!albumId || !shareToken || !personId) throw new Error('seed the sibling library first')
+  const albumResponse = await request.get(`/api/v1/albums/${albumId}`, {
+    headers: authHeaders(sibling),
+  })
+  expect(albumResponse.status()).toBe(200)
+  const shareResponse = await request.get(`/api/share/${shareToken}`)
+  expect(shareResponse.status()).toBe(200)
+  const personResponse = await request.get(`/api/v1/persons/${personId}`, {
+    headers: authHeaders(sibling),
+  })
+  expect(personResponse.status()).toBe(200)
+  // their backup status is unchanged since their backup
+  const backupAt = state.siblingBackupAt
+  if (!backupAt) throw new Error('back up the sibling first')
+  const statusResponse = await request.get(
+    `/api/v1/admin/backups/status?emailOrId=${encodeURIComponent(sibling.user.id)}`,
+    { headers: authHeaders(requireStateAdmin(ctx)) },
+  )
+  expect(statusResponse.status()).toBe(200)
+  const status = (await statusResponse.json()) as { exists: boolean; backedUpAt?: string }
+  expect(status.exists).toBe(true)
+  expect(status.backedUpAt).toBe(backupAt)
+})
+
+Then('the backups tab keeps the sibling row and stays usable', async ({ page, ctx }) => {
+  const victim = requireVictim(ctx)
+  const sibling = requireSibling(ctx)
+  await page.goto('/admin?tab=backups')
+  await expect(page.getByRole('heading', { name: 'User Backups' })).toBeVisible({
+    timeout: 15_000,
+  })
+  const filter = page.getByLabel('Filter backups by email')
+  // the overview is live-users only, so the deleted account drops out of the table while
+  // its S3 prefix stays intact (proven by the status assert above)
+  await filter.fill(victim.user.email)
+  await expect(page.getByText(/No users match/)).toBeVisible({ timeout: 15_000 })
+  await filter.fill(sibling.user.email)
+  await expect(page.getByText(sibling.user.email)).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText('Backed up', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Back up all users' })).toBeEnabled()
+})

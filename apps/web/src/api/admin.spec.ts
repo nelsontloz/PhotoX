@@ -1,13 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { FaceDetectionSettings } from '@photox/shared-types'
 
-const { getMock, putMock, postMock } = vi.hoisted(() => ({
+const { getMock, putMock, postMock, deleteMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   putMock: vi.fn(),
   postMock: vi.fn(),
+  deleteMock: vi.fn(),
 }))
 
-vi.mock('./client', () => ({ api: { get: getMock, put: putMock, post: postMock } }))
+vi.mock('./client', () => ({
+  api: { get: getMock, put: putMock, post: postMock, delete: deleteMock },
+}))
 
 import {
   getFaceDetection,
@@ -18,6 +21,10 @@ import {
   backupUser,
   getBackupStatus,
   backupPrefixPreview,
+  deleteAdminUser,
+  getAdminUserDeleteStatus,
+  pollAdminUserDelete,
+  getAdminUserDeletePreview,
   type BackupResult,
   type FaceReprocessResponse,
   type FacePipelineRun,
@@ -118,6 +125,109 @@ describe('user backup admin API', () => {
   it('getBackupStatus surfaces the empty-manifest shape for a user with no backup', async () => {
     getMock.mockResolvedValue({ data: { exists: false } })
     await expect(getBackupStatus('u-9')).resolves.toEqual({ exists: false })
+  })
+})
+
+describe('admin user deletion API', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('deleteAdminUser issues DELETE for the encoded user id', async () => {
+    deleteMock.mockResolvedValue({ data: { jobId: 'job-1' } })
+    await expect(deleteAdminUser('u-1')).resolves.toEqual({ jobId: 'job-1' })
+    expect(deleteMock).toHaveBeenCalledWith('/v1/admin/users/u-1')
+  })
+
+  it('deleteAdminUser tolerates an empty synchronous body', async () => {
+    deleteMock.mockResolvedValue({ data: '' })
+    await expect(deleteAdminUser('u-1')).resolves.toEqual({})
+  })
+
+  it('getAdminUserDeleteStatus reads :id/delete-status and maps state to status', async () => {
+    getMock.mockResolvedValue({
+      data: {
+        userId: 'u-1',
+        jobId: 'user-delete-u-1',
+        state: 'active',
+        backupKept: true,
+        backupPrefix: 'backups/ada%40example.com__u-1/',
+        queue: {},
+      },
+    })
+    await expect(getAdminUserDeleteStatus('u-1')).resolves.toEqual({
+      status: 'active',
+      error: null,
+    })
+    expect(getMock).toHaveBeenCalledWith('/v1/admin/users/u-1/delete-status')
+  })
+
+  it('pollAdminUserDelete returns once the job completes', async () => {
+    getMock
+      .mockResolvedValueOnce({
+        data: {
+          userId: 'u-1',
+          jobId: 'user-delete-u-1',
+          state: 'active',
+          backupKept: true,
+          backupPrefix: 'backups/ada%40example.com__u-1/',
+          queue: {},
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          userId: 'u-1',
+          jobId: 'user-delete-u-1',
+          state: 'completed',
+          backupKept: true,
+          backupPrefix: 'backups/ada%40example.com__u-1/',
+          queue: {},
+        },
+      })
+    await pollAdminUserDelete('u-1', { intervalMs: 1 })
+    expect(getMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('pollAdminUserDelete throws the server error when the job fails', async () => {
+    getMock.mockResolvedValue({
+      data: {
+        userId: 'u-1',
+        jobId: 'user-delete-u-1',
+        state: 'failed',
+        backupKept: true,
+        backupPrefix: 'backups/ada%40example.com__u-1/',
+        queue: {},
+        error: 'disk full',
+      },
+    })
+    await expect(pollAdminUserDelete('u-1', { intervalMs: 1 })).rejects.toThrow('disk full')
+  })
+
+  it('pollAdminUserDelete times out on a stuck job', async () => {
+    getMock.mockResolvedValue({
+      data: {
+        userId: 'u-1',
+        jobId: 'user-delete-u-1',
+        state: 'active',
+        backupKept: true,
+        backupPrefix: 'backups/ada%40example.com__u-1/',
+        queue: {},
+      },
+    })
+    await expect(pollAdminUserDelete('u-1', { intervalMs: 1, timeoutMs: 5 })).rejects.toThrow(
+      /Timed out/,
+    )
+  })
+
+  it('getAdminUserDeletePreview maps a 404 to null for older cores', async () => {
+    getMock.mockRejectedValue({ isAxiosError: true, response: { status: 404 } })
+    await expect(getAdminUserDeletePreview('u-1')).resolves.toBeNull()
+    expect(getMock).toHaveBeenCalledWith('/v1/admin/users/u-1/delete-preview')
+  })
+
+  it('getAdminUserDeletePreview rethrows non-404 failures', async () => {
+    getMock.mockRejectedValue({ isAxiosError: true, response: { status: 503 } })
+    await expect(getAdminUserDeletePreview('u-1')).rejects.toMatchObject({
+      response: { status: 503 },
+    })
   })
 })
 
