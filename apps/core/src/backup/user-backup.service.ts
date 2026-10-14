@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common'
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { isUUID } from 'class-validator'
 import { randomUUID } from 'crypto'
@@ -221,10 +227,17 @@ export interface BackupResult {
 }
 
 export interface RestoreResult extends BackupResult {
-  restoredFrom: string
+  restoredFrom: { emailAtBackup: string; prefix: string; manifestObjectKey: string }
   startedAt: string
   completedAt: string
   enqueued: { metadata: number; thumbnails: number; videos: number; faces: number; ai: number }
+}
+
+export interface DeleteBackupResult {
+  userId: string
+  email: string
+  prefix: string
+  deletedObjects: number
 }
 
 export interface BackupStatus {
@@ -232,6 +245,7 @@ export interface BackupStatus {
   degraded?: 'unreadable' | 'corrupt'
   userId?: string
   emailAtBackup?: string
+  role?: 'user' | 'admin'
   backedUpAt?: string
   files?: number
   assets?: number
@@ -263,6 +277,8 @@ export interface BackupOverviewRow {
   exists: boolean
   degraded?: 'unreadable' | 'corrupt'
   notBackedUp: number
+  deleted: boolean
+  emailAtBackup?: string
 }
 
 /**
@@ -287,9 +303,58 @@ export function buildBackupOverviewRow(
     backedUpAt: status.backedUpAt ?? null,
     exists: status.exists,
     notBackedUp: Math.max(0, totalAssets - backedUpAssets),
+    deleted: false,
   }
   if (status.degraded !== undefined) row.degraded = status.degraded
   return row
+}
+
+/**
+ * Pure orphan-row builder for the admin backups overview: deleted users have no
+ * live DB row, so the backup itself supplies identity (manifest email/role with
+ * prefix fallbacks) and live counts are zero (notBackedUp clamps to 0).
+ * `emailAtBackup` is set only when the prefix-dir email differs from the
+ * manifest email (stale rename leftover) — normally omitted.
+ */
+export function buildOrphanBackupOverviewRow(
+  prefixEmail: string,
+  prefixUserId: string,
+  status: BackupStatus,
+): BackupOverviewRow {
+  const backupEmail = status.emailAtBackup ?? prefixEmail
+  const role = status.role ?? 'user'
+  const userId = status.userId ?? prefixUserId
+  const row = buildBackupOverviewRow({ id: userId, email: backupEmail, role }, 0, status)
+  row.deleted = true
+  row.totalAssets = 0
+  row.notBackedUp = 0
+  if (
+    status.emailAtBackup !== undefined &&
+    normalizeEmail(status.emailAtBackup) !== normalizeEmail(prefixEmail)
+  ) {
+    row.emailAtBackup = status.emailAtBackup
+  }
+  return row
+}
+
+/**
+ * Pure fallback-email builder for restore-after-email-reuse: `restored-<ms>-<local>@<domain>`
+ * (`<local>@<domain>` is the backup-time email), lowercased via normalizeEmail so the
+ * result stays a valid email. `attempt > 0` appends `-<attempt>` to the local part to
+ * keep the address valid while guaranteeing uniqueness (callers loop until free).
+ */
+export function buildFallbackEmail(origEmail: string, nowMs: number, attempt = 0): string {
+  const normalized = normalizeEmail(origEmail)
+  const at = normalized.lastIndexOf('@')
+  if (at < 0) {
+    const base = `restored-${nowMs}-${normalized}`
+    return normalizeEmail(attempt === 0 ? base : `${base}-${attempt}`)
+  }
+  const local = normalized.slice(0, at)
+  const domain = normalized.slice(at + 1)
+  const baseLocal = `restored-${nowMs}-${local}`
+  const finalLocal = attempt === 0 ? baseLocal : `${baseLocal}-${attempt}`
+  return normalizeEmail(`${finalLocal}@${domain}`)
 }
 
 /**
@@ -648,12 +713,32 @@ export class UserBackupService {
     )
     await this.s3.ensureBucket()
     const located = await this.locateBackup(emailOrId)
+    // (a) same userId live → 409 already-restored: the row is already back, so a
+    // rerun would PK-collide — fail closed before touching S3 bytes.
+    const liveSameId = await this.users.findOne({ where: { id: located.userId } })
+    if (liveSameId) throw new ConflictException('already-restored')
     const raw = await this.s3.getBuffer(located.manifestObjectKey)
     // zod runtime-validates the downloaded manifest (untrusted S3 bytes)
     const manifest = userBackupManifestSchema.parse(JSON.parse(raw.toString('utf-8')))
     if (manifest.userId !== located.userId) {
       throw new Error(
         `Backup manifest userId ${manifest.userId} does not match prefix user ${located.userId}`,
+      )
+    }
+    // (b) email taken by a different live id (email reuse after delete) → restore
+    // under the ORIGINAL userId with a fallback `restored-<ms>-<orig>` email. The
+    // S3 prefix stays as-is (bytes still live under the backup-time email); the
+    // next backup for the fallback address renames via the existing email-change
+    // copy-forward path.
+    let actualEmail = manifest.user.email
+    const liveByEmail = await this.users.findOne({
+      where: { email: normalizeEmail(manifest.user.email) },
+    })
+    if (liveByEmail && liveByEmail.id !== manifest.userId) {
+      actualEmail = await this.allocateFallbackEmail(manifest.user.email)
+      this.logger.warn(
+        `Restore email ${manifest.user.email} taken by ${liveByEmail.id} — ` +
+          `restoring ${manifest.userId} as ${actualEmail}`,
       )
     }
 
@@ -678,7 +763,7 @@ export class UserBackupService {
         User,
         manager.create(User, {
           id: manifest.user.id,
-          email: manifest.user.email,
+          email: actualEmail,
           role: manifest.user.role,
           passwordHash: manifest.user.passwordHash,
           displayName: manifest.user.displayName,
@@ -788,10 +873,14 @@ export class UserBackupService {
     )
     return {
       userId: manifest.userId,
-      email: manifest.emailAtBackup,
+      email: actualEmail,
       prefix: located.prefix,
       backedUpAt: manifest.backedUpAt,
-      restoredFrom: located.manifestObjectKey,
+      restoredFrom: {
+        emailAtBackup: manifest.emailAtBackup,
+        prefix: located.prefix,
+        manifestObjectKey: located.manifestObjectKey,
+      },
       startedAt,
       completedAt,
       files: originalFiles.length,
@@ -807,6 +896,92 @@ export class UserBackupService {
     }
   }
 
+  /**
+   * Allocates a unique fallback email for restore-after-email-reuse:
+   * `restored-<ms>-<orig>` (normalized), retrying with `-<n>` local suffixes
+   * until free. The loop is bounded (100 tries) with a random-UUID escape hatch
+   * for pathological reuse storms — personal libraries never hit either bound.
+   */
+  private async allocateFallbackEmail(origEmail: string): Promise<string> {
+    const nowMs = Date.now()
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const candidate = buildFallbackEmail(origEmail, nowMs, attempt)
+      const existing = await this.users.findOne({ where: { email: candidate } })
+      if (!existing) return candidate
+    }
+    const domain = normalizeEmail(origEmail).split('@').pop() ?? 'restored.local'
+    for (;;) {
+      const candidate = normalizeEmail(`restored-${nowMs}-${randomUUID()}@${domain}`)
+      const existing = await this.users.findOne({ where: { email: candidate } })
+      if (!existing) return candidate
+    }
+  }
+
+  /**
+   * Deletes one user's backup bytes from S3 (manifest + originals, every key
+   * under the located prefix). Resolves live users by DB row and deleted users
+   * by S3 scan via locateBackup; an empty prefix reads as 404 (no backup), S3
+   * outages as 503. Never touches DB rows — the user/assets/files stay, only
+   * S3 bytes go. Deleting a live user's backup is allowed (the row then reads
+   * exists:false; the next backup recreates it).
+   */
+  async deleteBackup(emailOrId: string): Promise<DeleteBackupResult> {
+    try {
+      await this.s3.ensureBucket()
+    } catch {
+      throw new ServiceUnavailableException('Backup storage (S3) unreachable')
+    }
+    let located: { prefix: string; manifestObjectKey: string; userId: string }
+    try {
+      located = await this.locateBackup(emailOrId)
+    } catch (err) {
+      if (err instanceof NotFoundException) throw err
+      throw new ServiceUnavailableException('Backup storage (S3) unreachable')
+    }
+    let keys: string[]
+    try {
+      keys = await this.s3.listKeys(located.prefix)
+    } catch {
+      throw new ServiceUnavailableException('Backup storage (S3) unreachable')
+    }
+    if (keys.length === 0) throw new NotFoundException(`No backup found for ${emailOrId}`)
+    const email = await this.readDeleteBackupEmail(located)
+    try {
+      await this.s3.deleteKeys(keys)
+    } catch {
+      throw new ServiceUnavailableException('Backup storage (S3) unreachable')
+    }
+    this.logger.log(
+      `Deleted backup ${located.prefix} for user ${located.userId} (${keys.length} object(s))`,
+    )
+    return { userId: located.userId, email, prefix: located.prefix, deletedObjects: keys.length }
+  }
+
+  /**
+   * Backup-time email for a located backup: the manifest's emailAtBackup when
+   * readable, else the email parsed back out of the located prefix (identical
+   * except for a pending email-change rename, where the manifest wins). Never
+   * throws — a missing/unreadable manifest still deletes bytes via the prefix
+   * fallback (located prefixes are always backupPrefix-built or dir-parsed, so
+   * the fallback is defined in practice).
+   */
+  private async readDeleteBackupEmail(located: {
+    prefix: string
+    manifestObjectKey: string
+    userId: string
+  }): Promise<string> {
+    try {
+      const raw = await this.s3.getBuffer(located.manifestObjectKey)
+      const parsed = JSON.parse(raw.toString('utf-8')) as { emailAtBackup?: unknown }
+      if (typeof parsed.emailAtBackup === 'string' && parsed.emailAtBackup.length > 0) {
+        return parsed.emailAtBackup
+      }
+    } catch {
+      // prefix fallback below — the delete proceeds regardless
+    }
+    return this.prefixIdentity(located).emailAtBackup ?? located.userId
+  }
+
   async backupStatus(emailOrId: string): Promise<BackupStatus> {
     try {
       await this.s3.ensureBucket()
@@ -820,6 +995,21 @@ export class UserBackupService {
       if (err instanceof NotFoundException) return { exists: false }
       throw new ServiceUnavailableException('Backup storage (S3) unreachable')
     }
+    return this.readBackupStatus(located)
+  }
+
+  /**
+   * Manifest fetch + parse shared by backupStatus (per-user probe) and
+   * backupOverview (batch path). Takes an already-resolved location — no
+   * ensureBucket, no locateBackup LIST scan — so the overview can reuse its
+   * single base listing and one hoisted ensureBucket. S3-down still throws
+   * 503 (no partial table); a missing manifest reads as exists:false.
+   */
+  private async readBackupStatus(located: {
+    prefix: string
+    manifestObjectKey: string
+    userId: string
+  }): Promise<BackupStatus> {
     let raw: Buffer
     try {
       raw = await this.s3.getBuffer(located.manifestObjectKey)
@@ -857,6 +1047,7 @@ export class UserBackupService {
       exists: true,
       userId: manifest.userId,
       emailAtBackup: manifest.emailAtBackup,
+      role: manifest.user.role,
       backedUpAt: manifest.backedUpAt,
       files: originalFiles.length,
       assets: manifest.assets.length,
@@ -867,31 +1058,117 @@ export class UserBackupService {
   }
 
   /**
-   * Admin backups-table overview: one row per user joining the live DB asset
-   * count with that user's S3 manifest status.
-   * ponytail: O(users) S3 manifest reads via Promise.all over backupStatus
-   * (plus one grouped DB count) — fine for personal-library scale (tens of
-   * users); upgrade path is a single base listKeys + batched getBuffers when
-   * user counts grow. S3-down still throws 503 via backupStatus (no partial
-   * table) so a red table never masquerades as "nobody backed up".
+   * Admin backups-table overview: live users plus orphan (deleted-user) S3 prefixes.
+   * Live rows join the DB asset count with the manifest status (`deleted: false`);
+   * orphan rows are S3-only (`deleted: true`, `totalAssets: 0`, identity from the
+   * manifest/prefix with role fallback `user`). Manifest-less prefixes are skipped
+   * at debug. S3-down throws 503 via the hoisted ensureBucket, the base listing,
+   * or any manifest read (no partial table) so a red table never masquerades as
+   * "nobody backed up".
+   * ponytail: O(users + orphans) manifest GETs + one base listKeys + one
+   * ensureBucket — fine for personal-library scale (tens of users); upgrade path
+   * is batched getBuffers when user counts grow. Delimiter-style listing skipped:
+   * the S3 wrapper exposes only full-prefix listKeys (no Delimiter/CommonPrefixes
+   * path), so prefix-only enumeration would need a new op + fake parity.
    */
   async backupOverview(): Promise<BackupOverviewRow[]> {
     const users = await this.users.find({ order: { email: 'ASC' } })
-    if (users.length === 0) return []
-    const ids = users.map((u) => u.id)
-    const counts = await this.assets
-      .createQueryBuilder('a')
-      .select('a."userId"', 'userId')
-      .addSelect('COUNT(*)', 'count')
-      .where('a."userId" IN (:...ids)', { ids })
-      .groupBy('a."userId"')
-      .getRawMany<{ userId: string; count: string }>()
+    const liveIds = new Set(users.map((u) => u.id))
     const totalByUser = new Map<string, number>()
-    for (const row of counts) totalByUser.set(row.userId, Number(row.count))
-    const statuses = await Promise.all(users.map((u) => this.backupStatus(u.id)))
-    return users.map((user, i) =>
+    if (users.length > 0) {
+      const ids = users.map((u) => u.id)
+      const counts = await this.assets
+        .createQueryBuilder('a')
+        .select('a."userId"', 'userId')
+        .addSelect('COUNT(*)', 'count')
+        .where('a."userId" IN (:...ids)', { ids })
+        .groupBy('a."userId"')
+        .getRawMany<{ userId: string; count: string }>()
+      for (const row of counts) totalByUser.set(row.userId, Number(row.count))
+    }
+    try {
+      await this.s3.ensureBucket()
+    } catch {
+      throw new ServiceUnavailableException('Backup storage (S3) unreachable')
+    }
+    // Live locations need no S3 scan — the DB row already supplies the
+    // email-first layout locateBackup would rebuild (same prefix/key).
+    const liveLocated = users.map((u) => ({
+      prefix: backupPrefix(u.email, u.id),
+      manifestObjectKey: manifestKey(u.email, u.id),
+      userId: u.id,
+    }))
+    let statuses: BackupStatus[]
+    try {
+      statuses = await Promise.all(liveLocated.map((loc) => this.readBackupStatus(loc)))
+    } catch (err) {
+      if (err instanceof ServiceUnavailableException) throw err
+      throw new ServiceUnavailableException('Backup storage (S3) unreachable')
+    }
+    const liveRows = users.map((user, i) =>
       buildBackupOverviewRow(user, totalByUser.get(user.id) ?? 0, statuses[i]!),
     )
+    let base: string
+    let keys: string[]
+    try {
+      base = resolveBackupPrefix()
+      keys = await this.s3.listKeys(base)
+    } catch (err) {
+      if (err instanceof ServiceUnavailableException) throw err
+      throw new ServiceUnavailableException('Backup storage (S3) unreachable')
+    }
+    const keySet = new Set(keys)
+    const orphanById = new Map<string, { prefixEmail: string; prefix: string }>()
+    for (const key of keys) {
+      if (!key.startsWith(base)) continue
+      const rest = key.slice(base.length)
+      if (rest.length === 0) continue
+      const dir = rest.split('/')[0]!
+      if (!dir) continue
+      let parsed: { email: string; userId: string }
+      try {
+        parsed = parseBackupDir(dir)
+      } catch {
+        continue
+      }
+      if (liveIds.has(parsed.userId)) continue
+      if (orphanById.has(parsed.userId)) continue
+      orphanById.set(parsed.userId, { prefixEmail: parsed.email, prefix: `${base}${dir}/` })
+    }
+    const orphanEntries = [...orphanById].filter(([, info]) => {
+      if (keySet.has(`${info.prefix}manifest.json`)) return true
+      this.logger.debug(`Skipping manifest-less backup prefix ${info.prefix}`)
+      return false
+    })
+    // Orphan manifests resolve straight from the already-listed prefix dir
+    // (`<prefix>manifest.json`) — no per-orphan locateBackup base LIST scan.
+    let orphanStatuses: BackupStatus[]
+    try {
+      orphanStatuses = await Promise.all(
+        orphanEntries.map(([userId, info]) =>
+          this.readBackupStatus({
+            prefix: info.prefix,
+            manifestObjectKey: `${info.prefix}manifest.json`,
+            userId,
+          }),
+        ),
+      )
+    } catch (err) {
+      if (err instanceof ServiceUnavailableException) throw err
+      throw new ServiceUnavailableException('Backup storage (S3) unreachable')
+    }
+    const orphanRows: BackupOverviewRow[] = []
+    for (const [index, [userId, info]] of orphanEntries.entries()) {
+      const status = orphanStatuses[index]!
+      if (!status.exists) {
+        this.logger.debug(`Skipping missing backup for orphan ${userId}`)
+        continue
+      }
+      orphanRows.push(buildOrphanBackupOverviewRow(info.prefixEmail, userId, status))
+    }
+    const all = [...liveRows, ...orphanRows]
+    all.sort((a, b) => a.email.localeCompare(b.email) || a.userId.localeCompare(b.userId))
+    return all
   }
 
   /**

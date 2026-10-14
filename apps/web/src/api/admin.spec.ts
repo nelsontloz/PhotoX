@@ -19,7 +19,10 @@ import {
   getPipelineStatus,
   reclusterFaces,
   backupUser,
+  restoreUser,
+  deleteBackup,
   getBackupStatus,
+  getBackupOverview,
   backupPrefixPreview,
   deleteAdminUser,
   getAdminUserDeleteStatus,
@@ -125,6 +128,83 @@ describe('user backup admin API', () => {
   it('getBackupStatus surfaces the empty-manifest shape for a user with no backup', async () => {
     getMock.mockResolvedValue({ data: { exists: false } })
     await expect(getBackupStatus('u-9')).resolves.toEqual({ exists: false })
+  })
+
+  it('restoreUser posts the emailOrId with the long inline timeout', async () => {
+    const restored = {
+      userId: 'u-3',
+      email: 'gone@example.com',
+      prefix: 'backups/gone@example.com__u-3/',
+      backedUpAt: '2026-10-03T00:00:00.000Z',
+      files: 55,
+      uploaded: 55,
+      skipped: 0,
+      assets: 40,
+      albums: 2,
+      shares: 1,
+      persons: 3,
+      restoredFrom: {
+        emailAtBackup: 'gone@example.com',
+        prefix: 'backups/gone@example.com__u-3/',
+        manifestObjectKey: 'backups/gone@example.com__u-3/manifest.json',
+      },
+      startedAt: '2026-10-04T00:00:00.000Z',
+      completedAt: '2026-10-04T00:01:00.000Z',
+      enqueued: { metadata: 40, thumbnails: 40, videos: 0, faces: 40, ai: 0 },
+    }
+    postMock.mockResolvedValue({ data: restored })
+    await expect(restoreUser('u-3')).resolves.toEqual(restored)
+    expect(postMock).toHaveBeenCalledWith(
+      '/v1/admin/restores',
+      { emailOrId: 'u-3' },
+      { timeout: 600_000 },
+    )
+  })
+
+  it('deleteBackup issues DELETE with emailOrId as a query param', async () => {
+    const deleted = {
+      userId: 'u-1',
+      email: 'ada@example.com',
+      prefix: 'backups/ada%40example.com__u-1/',
+      deletedObjects: 125,
+    }
+    deleteMock.mockResolvedValue({ data: deleted })
+    await expect(deleteBackup('u-1')).resolves.toEqual(deleted)
+    expect(deleteMock).toHaveBeenCalledWith('/v1/admin/backups', {
+      params: { emailOrId: 'u-1' },
+    })
+  })
+
+  it('getBackupOverview passes orphan rows through untouched', async () => {
+    const rows = [
+      {
+        userId: 'u-1',
+        email: 'ada@example.com',
+        role: 'user',
+        totalAssets: 100,
+        backedUpAssets: 85,
+        backedUpFiles: 120,
+        backedUpAt: '2026-10-01T00:00:00.000Z',
+        exists: true,
+        notBackedUp: 15,
+        deleted: false,
+      },
+      {
+        userId: 'u-3',
+        email: 'gone@example.com',
+        role: 'user',
+        totalAssets: 0,
+        backedUpAssets: 40,
+        backedUpFiles: 55,
+        backedUpAt: '2026-10-03T00:00:00.000Z',
+        exists: true,
+        notBackedUp: 0,
+        deleted: true,
+      },
+    ]
+    getMock.mockResolvedValue({ data: rows })
+    await expect(getBackupOverview()).resolves.toEqual(rows)
+    expect(getMock).toHaveBeenCalledWith('/v1/admin/backups/overview', { timeout: 30_000 })
   })
 })
 

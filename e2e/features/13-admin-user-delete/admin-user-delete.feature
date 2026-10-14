@@ -51,3 +51,41 @@ Feature: Admin user deletion
     And the victim library is gone but the victim backup is kept
     And the sibling library and backup are untouched
     And the backups tab keeps the sibling row and stays usable
+
+  Scenario: A deleted backup surfaces as an orphan while the sibling stays active
+    Given I am signed in as the seeded administrator
+    And a victim user with a full library and backup is registered
+    And a sibling user with a full library and backup is registered
+    When I can open the admin dashboard
+    And I delete the victim user through the confirmation dialog
+    Then the victim deletion reaches a terminal state
+    When I open the backups tab
+    And I filter backups to deleted accounts
+    Then the victim backup shows as a deleted user with a restore action
+    When I filter backups to active accounts
+    Then the sibling backup stays active with a working backup action
+
+  Scenario: Restoring an already-restored backup reports the conflict and shows the live account
+    Given I am signed in as the seeded administrator
+    And a victim user with a full library and backup is registered
+    When I can open the admin dashboard
+    And I delete the victim user through the confirmation dialog
+    Then the victim deletion reaches a terminal state
+    When I open the backups tab
+    And I filter backups to deleted accounts
+    Then the victim backup shows as a deleted user with a restore action
+    When the victim backup is restored through the API
+    And I restore the victim backup through the confirmation dialog
+    Then the already-restored conflict is shown and the victim account is live again
+
+  Scenario: Restoring onto a re-registered email falls back to a restored- address
+    Given I am signed in as the seeded administrator
+    And a victim user with a full library and backup is registered
+    When I can open the admin dashboard
+    And I delete the victim user through the confirmation dialog
+    Then the victim deletion reaches a terminal state
+    When the victim email is re-registered by a new user
+    And I open the backups tab
+    And I restore the victim backup through the confirmation dialog
+    Then the restore toast names the fallback address
+    And the fallback account signs in with the old password while the re-registered account keeps the email

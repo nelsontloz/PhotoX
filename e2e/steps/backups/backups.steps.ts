@@ -1,13 +1,15 @@
+import { randomUUID } from 'node:crypto'
 import { readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, type APIRequestContext } from '@playwright/test'
+import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 import {
   Given,
   Then,
   When,
   PASSWORD,
   authHeaders,
+  getAsset,
   injectSession,
   registerUser,
   requireAuth,
@@ -67,6 +69,13 @@ interface BackupState {
   allUsers?: AuthResponse[]
   results: BackupResult[]
   myBackedUpAt?: string
+  victim?: AuthResponse
+  liveUser?: AuthResponse
+  liveAssetId?: string
+  activeUser?: AuthResponse
+  deletedVictim?: AuthResponse
+  orphanBackupAt?: string
+  backupAllTargets?: string[]
 }
 
 const states = new WeakMap<Ctx, BackupState>()
@@ -426,5 +435,407 @@ Then(
     })
     await expect(page.locator('table')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Back up all' })).toBeVisible()
+  },
+)
+
+// --- backup orphans / restore / delete ------------------------------------------------------
+// Deleted-user backups ("orphans") keep their S3 prefix after the account is gone. Every
+// setup below is API-only (register → photo → inline backup → async user delete to a
+// terminal delete-status); every assert is UI-first on the backups tab, reusing the shared
+// admin login above — no new login flows.
+
+/** Account deletion is async (202 + worker): poll delete-status to the terminal state. */
+async function deleteUserViaApi(
+  request: APIRequestContext,
+  admin: AuthResponse,
+  userId: string,
+): Promise<void> {
+  const response = await request.delete(`/api/v1/admin/users/${userId}`, {
+    headers: authHeaders(admin),
+  })
+  expect(response.status()).toBe(202)
+  await expect
+    .poll(
+      async () => {
+        const status = await request.get(`/api/v1/admin/users/${userId}/delete-status`, {
+          headers: authHeaders(admin),
+        })
+        if (status.status() !== 200) return `http-${status.status()}`
+        return ((await status.json()) as { state?: string }).state ?? 'missing'
+      },
+      { timeout: 120_000 },
+    )
+    .toBe('completed')
+}
+
+function requireVictim(state: BackupState): AuthResponse {
+  if (!state.victim) throw new Error('register the backup orphan victim first')
+  return state.victim
+}
+
+function requireLiveUser(state: BackupState): AuthResponse {
+  if (!state.liveUser) throw new Error('register the live backup user first')
+  return state.liveUser
+}
+
+function requireActiveUser(state: BackupState): AuthResponse {
+  if (!state.activeUser) throw new Error('register the backup-all users first')
+  return state.activeUser
+}
+
+function requireDeletedVictim(state: BackupState): AuthResponse {
+  if (!state.deletedVictim) throw new Error('register the backup-all users first')
+  return state.deletedVictim
+}
+
+async function openBackupsTab(
+  page: Page,
+  baseURL: string | undefined,
+  request: APIRequestContext,
+  state: BackupState,
+): Promise<void> {
+  await injectSession(page, await requireAdmin(request, state), baseURL)
+  await page.goto('/admin?tab=backups')
+  await expect(page.getByRole('heading', { name: 'User Backups' })).toBeVisible({
+    timeout: 15_000,
+  })
+}
+
+function searchBackups(page: Page, email: string): Promise<void> {
+  // the table lists every user in the shared instance — narrow to this scenario's row first
+  return page.getByLabel('Filter backups by email').fill(email)
+}
+
+function deleteBackupDialog(page: Page): Locator {
+  return page.getByRole('dialog', { name: 'Delete backup confirmation' })
+}
+
+async function confirmTypedDeleteBackup(page: Page, email: string): Promise<number> {
+  const dialog = deleteBackupDialog(page)
+  await expect(dialog).toBeVisible()
+  await dialog.locator('#delete-backup-confirm').fill('DELETE')
+  const answered = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'DELETE' &&
+      new URL(response.url()).pathname === '/api/v1/admin/backups',
+  )
+  await dialog.getByRole('button', { name: 'Delete backup', exact: true }).click()
+  const response = await answered
+  expect(response.status()).toBe(200)
+  // the delete bumps the overview version and refetches — the toast proves whose prefix went
+  await expect(page.getByText(`Deleted backup for ${email}`)).toBeVisible({ timeout: 15_000 })
+  return response.status()
+}
+
+Given(
+  'a backed-up user with one photo is registered as the backup orphan victim',
+  async ({ request, ctx, $testInfo }) => {
+    // one inline S3 backup plus an async user deletion — allow room past the 120s default
+    $testInfo.setTimeout(240_000)
+    const state = backupState(ctx)
+    const admin = await requireAdmin(request, state)
+    const victim = await registerUser(request, `victim-${randomUUID()}@photox.test`)
+    state.victim = victim
+    await uploadViaApi(request, victim, 'photo.jpg')
+    await runBackup(request, state, victim.user.id)
+    await deleteUserViaApi(request, admin, victim.user.id)
+  },
+)
+
+Given(
+  'a backed-up user with one photo is registered for live backup deletion',
+  async ({ request, ctx, $testInfo }) => {
+    $testInfo.setTimeout(240_000)
+    const state = backupState(ctx)
+    const user = await registerUser(request, `live-${randomUUID()}@photox.test`)
+    state.liveUser = user
+    state.liveAssetId = await uploadViaApi(request, user, 'photo.jpg')
+    await runBackup(request, state, user.user.id)
+  },
+)
+
+Given(
+  'an active backed-up user and a deleted backed-up orphan are registered',
+  async ({ request, ctx, $testInfo }) => {
+    // two inline S3 backups plus an async user deletion — allow room past the 120s default
+    $testInfo.setTimeout(360_000)
+    const state = backupState(ctx)
+    const admin = await requireAdmin(request, state)
+    const active = await registerUser(request, `active-${randomUUID()}@photox.test`)
+    state.activeUser = active
+    await uploadViaApi(request, active, 'photo.jpg')
+    await runBackup(request, state, active.user.id)
+    // a different fixture from the active user's so a shared checksum can never alias the two
+    const gone = await registerUser(request, `victim-${randomUUID()}@photox.test`)
+    state.deletedVictim = gone
+    await uploadViaApi(request, gone, 'photo-text.jpg')
+    state.orphanBackupAt = (await runBackup(request, state, gone.user.id)).backedUpAt
+    await deleteUserViaApi(request, admin, gone.user.id)
+  },
+)
+
+Given('an administrator opens the backups tab', async ({ request, page, baseURL, ctx }) => {
+  await openBackupsTab(page, baseURL, request, backupState(ctx))
+})
+
+When('I filter backups by {string}', async ({ page }, which: string) => {
+  const group = page.getByRole('group', { name: 'Filter by account status' })
+  const option = group.getByRole('button', { name: which, exact: true })
+  await option.click()
+  await expect(option).toHaveAttribute('aria-pressed', 'true')
+})
+
+When('I search backups for the orphan victim', async ({ page, ctx }) => {
+  await searchBackups(page, requireVictim(backupState(ctx)).user.email)
+})
+
+When('I search backups for the live backup user', async ({ page, ctx }) => {
+  await searchBackups(page, requireLiveUser(backupState(ctx)).user.email)
+})
+
+Then('the orphan victim row shows the deleted orphan actions', async ({ page, ctx }) => {
+  const email = requireVictim(backupState(ctx)).user.email
+  await searchBackups(page, email)
+  await expect(page.getByText('Deleted user').first()).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('button', { name: `Restore ${email}`, exact: true })).toBeEnabled()
+  // orphans restore, they never re-back-up: the per-row Backup stays disabled by design
+  await expect(
+    page.getByRole('button', {
+      name: `Back up ${email} (deleted — restore first)`,
+      exact: true,
+    }),
+  ).toBeDisabled()
+})
+
+Then('the orphan victim is hidden from the backups table', async ({ page, ctx }) => {
+  const email = requireVictim(backupState(ctx)).user.email
+  await searchBackups(page, email)
+  await expect(page.getByText(/No users match/)).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('button', { name: `Restore ${email}`, exact: true })).toHaveCount(0)
+})
+
+When(
+  'I restore the orphan victim through the confirmation dialog',
+  async ({ page, ctx, $testInfo }) => {
+    // the restore copies S3 bytes back inline — allow room past the 120s default
+    $testInfo.setTimeout(240_000)
+    const email = requireVictim(backupState(ctx)).user.email
+    const restore = page.getByRole('button', { name: `Restore ${email}`, exact: true })
+    await expect(restore).toBeEnabled()
+    await restore.click()
+    await expect(page.getByRole('heading', { name: `Restore ${email}?` })).toBeVisible()
+    // the ConfirmDialog shell carries no dialog role, so the confirm is pinned by its exact
+    // label: the row button's `Restore <email>` name can never match it
+    const answered = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/api/v1/admin/restores',
+      { timeout: 240_000 },
+    )
+    await page.getByRole('button', { name: 'Restore', exact: true }).click()
+    // the controller answers 200 (HttpCode OK) with the restored address in the body
+    expect((await answered).status()).toBe(200)
+  },
+)
+
+Then('the orphan victim restore toast names the restored account', async ({ page, ctx }) => {
+  const email = requireVictim(backupState(ctx)).user.email
+  // the toast fades after ~3s, so catch it on first paint — the address is the fallback-proof
+  // proof of who came back (restore falls back to restored-<ms>-<orig> when taken)
+  await expect(page.getByText(`Sign in as ${email}`)).toBeVisible({ timeout: 15_000 })
+})
+
+Then('the orphan victim row shows as active with backup enabled', async ({ page, ctx }) => {
+  const email = requireVictim(backupState(ctx)).user.email
+  await searchBackups(page, email)
+  // the restore bumps the overview version and refetches: wait for the live row to land
+  await expect(page.getByRole('button', { name: `Back up ${email}`, exact: true })).toBeEnabled({
+    timeout: 30_000,
+  })
+  await expect(page.getByText('Deleted user')).toHaveCount(0)
+  await expect(page.getByText('Backed up', { exact: true }).first()).toBeVisible()
+})
+
+When('I open the delete backup dialog for that live user', async ({ page, ctx }) => {
+  const email = requireLiveUser(backupState(ctx)).user.email
+  await page.getByRole('button', { name: `Delete backup for ${email}`, exact: true }).click()
+  await expect(deleteBackupDialog(page)).toBeVisible()
+})
+
+Then('the live delete dialog shows the prefix and counts', async ({ page, ctx }) => {
+  const user = requireLiveUser(backupState(ctx))
+  const dialog = deleteBackupDialog(page)
+  // the dialog previews the exact S3 prefix plus the manifest counts before anything is armed
+  await expect(dialog.locator('code')).toContainText('backups/')
+  await expect(dialog.locator('code')).toContainText(user.user.id)
+  await expect(dialog.getByText(/assets and/)).toBeVisible()
+})
+
+Then('the backup delete confirm stays disabled until DELETE is typed exactly', async ({ page }) => {
+  const dialog = deleteBackupDialog(page)
+  const input = dialog.locator('#delete-backup-confirm')
+  const confirm = dialog.getByRole('button', { name: 'Delete backup', exact: true })
+  await expect(confirm).toBeDisabled()
+  await input.fill('delete')
+  await expect(confirm).toBeDisabled()
+  await input.fill(' DELETE ')
+  await expect(confirm).toBeDisabled()
+  await input.fill('DELETE')
+  await expect(confirm).toBeEnabled()
+})
+
+Then(
+  'cancelling or escaping the live delete dialog issues no backup delete request',
+  async ({ page, ctx }) => {
+    const email = requireLiveUser(backupState(ctx)).user.email
+    // the dialog starts open with DELETE typed (previous step) — both dismissals must be
+    // network-silent, so count DELETEs instead of sleeping and asserting absence
+    let deletes = 0
+    await page.route('**/api/v1/admin/backups', async (route) => {
+      if (route.request().method() === 'DELETE') deletes += 1
+      await route.continue()
+    })
+    try {
+      await deleteBackupDialog(page).getByRole('button', { name: 'Cancel' }).click()
+      await expect(deleteBackupDialog(page)).toHaveCount(0)
+      await page.getByRole('button', { name: `Delete backup for ${email}`, exact: true }).click()
+      await expect(deleteBackupDialog(page)).toBeVisible()
+      await page.keyboard.press('Escape')
+      await expect(deleteBackupDialog(page)).toHaveCount(0)
+    } finally {
+      await page.unroute('**/api/v1/admin/backups')
+    }
+    expect(deletes).toBe(0)
+  },
+)
+
+When('I confirm live backup deletion with typed DELETE', async ({ page, ctx }) => {
+  const email = requireLiveUser(backupState(ctx)).user.email
+  await page.getByRole('button', { name: `Delete backup for ${email}`, exact: true }).click()
+  await confirmTypedDeleteBackup(page, email)
+})
+
+Then('the live backup row shows no backup', async ({ page, ctx }) => {
+  const email = requireLiveUser(backupState(ctx)).user.email
+  await searchBackups(page, email)
+  // the delete bumps the overview version and refetches: wait for the emptied row to land
+  await expect(page.getByText('None', { exact: true }).first()).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('button', { name: `Back up ${email}`, exact: true })).toBeEnabled()
+})
+
+Then('the live account and library stay intact', async ({ request, ctx }) => {
+  const state = backupState(ctx)
+  const user = requireLiveUser(state)
+  const assetId = state.liveAssetId
+  if (!assetId) throw new Error('upload a photo for the live backup user first')
+  // the delete is S3-keys-only: the photo still reads and the account still lists
+  expect((await getAsset(request, user, assetId)).id).toBe(assetId)
+  const list = await request.get(`/api/v1/admin/users?q=${encodeURIComponent(user.user.email)}`, {
+    headers: authHeaders(await requireAdmin(request, state)),
+  })
+  expect(list.status()).toBe(200)
+  expect(((await list.json()) as { total: number }).total).toBe(1)
+})
+
+Then('a fresh backup recreates the live backup', async ({ request, ctx, $testInfo }) => {
+  $testInfo.setTimeout(240_000)
+  const state = backupState(ctx)
+  const user = requireLiveUser(state)
+  expect((await runBackup(request, state, user.user.id)).assets).toBe(1)
+  const status = await fetchStatus(request, await requireAdmin(request, state), user.user.id)
+  expect(status.exists).toBe(true)
+  expect(status.assets).toBe(1)
+})
+
+When('I open the delete backup dialog for the orphan victim', async ({ page, ctx }) => {
+  const email = requireVictim(backupState(ctx)).user.email
+  await page.getByRole('button', { name: `Delete backup for ${email}`, exact: true }).click()
+  await expect(deleteBackupDialog(page)).toBeVisible()
+})
+
+Then('the orphan delete dialog shows the prefix and counts', async ({ page, ctx }) => {
+  const victim = requireVictim(backupState(ctx))
+  const dialog = deleteBackupDialog(page)
+  await expect(dialog.locator('code')).toContainText('backups/')
+  await expect(dialog.locator('code')).toContainText(victim.user.id)
+  await expect(dialog.getByText(/assets and/)).toBeVisible()
+})
+
+When('I confirm orphan backup deletion with typed DELETE', async ({ page, ctx }) => {
+  await confirmTypedDeleteBackup(page, requireVictim(backupState(ctx)).user.email)
+})
+
+Then('the orphan backup row is gone and its status is missing', async ({ page, request, ctx }) => {
+  const state = backupState(ctx)
+  const victim = requireVictim(state)
+  await searchBackups(page, victim.user.email)
+  // the delete bumps the overview version and refetches: the manifest-less orphan drops out
+  await expect(page.getByText(/No users match/)).toBeVisible({ timeout: 30_000 })
+  const status = await request.get(
+    `/api/v1/admin/backups/status?emailOrId=${encodeURIComponent(victim.user.id)}`,
+    { headers: authHeaders(await requireAdmin(request, state)) },
+  )
+  expect(status.status()).toBe(200)
+  expect(((await status.json()) as { exists: boolean }).exists).toBe(false)
+})
+
+Then('the orphan victim account stays deleted', async ({ request, ctx }) => {
+  const state = backupState(ctx)
+  const victim = requireVictim(state)
+  const list = await request.get(`/api/v1/admin/users?q=${encodeURIComponent(victim.user.email)}`, {
+    headers: authHeaders(await requireAdmin(request, state)),
+  })
+  expect(list.status()).toBe(200)
+  expect(((await list.json()) as { total: number }).total).toBe(0)
+})
+
+When('I run backup-all from the backups tab', async ({ page, ctx, $testInfo }) => {
+  // backup-all walks the filtered live rows serially — bound it with the search box below
+  $testInfo.setTimeout(360_000)
+  const state = backupState(ctx)
+  const active = requireActiveUser(state)
+  // Backup-all covers the filtered list, so narrow to this scenario's active user: the shared
+  // instance holds every parallel scenario's users and backing all of them up is unbounded
+  await searchBackups(page, active.user.email)
+  const targets: string[] = []
+  state.backupAllTargets = targets
+  await page.route('**/api/v1/admin/backups', async (route) => {
+    if (route.request().method() === 'POST') {
+      try {
+        const body = route.request().postDataJSON() as { emailOrId?: unknown } | null
+        if (typeof body?.emailOrId === 'string') targets.push(body.emailOrId)
+      } catch {
+        // non-JSON bodies never carry a backup target — keep the spy counting
+      }
+    }
+    await route.continue()
+  })
+  try {
+    await page.getByRole('button', { name: 'Back up all users' }).click()
+    await expect(page.getByRole('heading', { name: /Back up \d+ users?\?/ })).toBeVisible()
+    // the toolbar button's "Back up all users" label can never exactly match the confirm
+    await page.getByRole('button', { name: 'Back up all', exact: true }).click()
+    await expect(page.getByText('Backup-all finished')).toBeVisible({ timeout: 300_000 })
+  } finally {
+    await page.unroute('**/api/v1/admin/backups')
+  }
+})
+
+Then(
+  'backup-all backs up the active user and skips the deleted orphan',
+  async ({ request, ctx }) => {
+    const state = backupState(ctx)
+    const active = requireActiveUser(state)
+    const gone = requireDeletedVictim(state)
+    const calls = state.backupAllTargets ?? []
+    expect(calls).toContain(active.user.id)
+    expect(calls).not.toContain(gone.user.id)
+    expect(calls).not.toContain(gone.user.email)
+    // the orphan's manifest is untouched — same stamp as before backup-all ran
+    const stamped = state.orphanBackupAt
+    if (!stamped) throw new Error('back up the deleted orphan first')
+    const status = await fetchStatus(request, await requireAdmin(request, state), gone.user.id)
+    expect(status.exists).toBe(true)
+    expect(status.backedUpAt).toBe(stamped)
   },
 )
