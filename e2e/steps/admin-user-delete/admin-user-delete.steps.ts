@@ -165,6 +165,9 @@ interface UserDeleteState {
   siblingShareToken?: string
   siblingPersonId?: string
   siblingBackupAt?: string
+  reregistered?: AuthResponse
+  restoreStatus?: number
+  restoredEmail?: string
   lastAdminStatus?: number
   lastAdminMessage?: string
 }
@@ -715,3 +718,199 @@ Then('the backups tab keeps the sibling row and stays usable', async ({ page, ct
   await expect(page.getByText('Backed up', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Back up all users' })).toBeEnabled()
 })
+
+/** Narrows the backups table to one row; the email is unique per scenario. */
+function backupRow(page: Page, email: string) {
+  return page.locator('tbody tr').filter({ hasText: email })
+}
+
+When('I open the backups tab', async ({ page }) => {
+  await page.goto('/admin?tab=backups')
+  await expect(page.getByRole('heading', { name: 'User Backups' })).toBeVisible({
+    timeout: 15_000,
+  })
+})
+
+When('I filter backups to deleted accounts', async ({ page }) => {
+  await page
+    .getByRole('group', { name: 'Filter by account status' })
+    .getByRole('button', { name: 'Deleted', exact: true })
+    .click()
+})
+
+When('I filter backups to active accounts', async ({ page }) => {
+  await page
+    .getByRole('group', { name: 'Filter by account status' })
+    .getByRole('button', { name: 'Active', exact: true })
+    .click()
+})
+
+Then('the victim backup shows as a deleted user with a restore action', async ({ page, ctx }) => {
+  const victim = requireVictim(ctx)
+  await page.getByLabel('Filter backups by email').fill(victim.user.email)
+  const row = backupRow(page, victim.user.email)
+  await expect(row).toHaveCount(1, { timeout: 30_000 })
+  await expect(row.getByText('Deleted user')).toBeVisible()
+  await expect(
+    row.getByRole('button', { name: `Restore ${victim.user.email}` }),
+  ).toBeEnabled()
+  // orphan rows cannot be re-backed-up — only restored or deleted
+  await expect(
+    row.getByRole('button', {
+      name: `Back up ${victim.user.email} (deleted — restore first)`,
+    }),
+  ).toBeDisabled()
+})
+
+Then('the sibling backup stays active with a working backup action', async ({ page, ctx }) => {
+  const sibling = requireSibling(ctx)
+  await page.getByLabel('Filter backups by email').fill(sibling.user.email)
+  const row = backupRow(page, sibling.user.email)
+  await expect(row).toHaveCount(1, { timeout: 30_000 })
+  await expect(row.getByText('Deleted user')).toHaveCount(0)
+  await expect(
+    row.getByRole('button', { name: `Restore ${sibling.user.email}` }),
+  ).toHaveCount(0)
+  await expect(
+    row.getByRole('button', { name: `Back up ${sibling.user.email}`, exact: true }),
+  ).toBeEnabled()
+})
+
+When('the victim backup is restored through the API', async ({ request, ctx, $testInfo }) => {
+  // the restore rebuilds rows + copies bytes inline, then re-queues derivatives
+  $testInfo.setTimeout(360_000)
+  const response = await request.post('/api/v1/admin/restores', {
+    headers: authHeaders(requireStateAdmin(ctx)),
+    data: { emailOrId: requireVictim(ctx).user.id },
+  })
+  expect(response.status()).toBe(200)
+  const body = (await response.json()) as { email?: string }
+  if (!body.email) throw new Error('restore response is missing the restored email')
+  deleteState(ctx).restoredEmail = body.email
+})
+
+When('the victim email is re-registered by a new user', async ({ request, ctx }) => {
+  // the victim row is gone, so the address is free — a new account takes it, forcing the
+  // next restore of the victim backup onto the restored-<ms>-<orig> fallback
+  deleteState(ctx).reregistered = await registerUser(request, requireVictim(ctx).user.email)
+})
+
+When('I restore the victim backup through the confirmation dialog', async ({
+  page,
+  ctx,
+  $testInfo,
+}) => {
+  $testInfo.setTimeout(360_000)
+  const victim = requireVictim(ctx)
+  await page.getByLabel('Filter backups by email').fill(victim.user.email)
+  const restore = page.getByRole('button', { name: `Restore ${victim.user.email}` })
+  await expect(restore).toBeEnabled({ timeout: 30_000 })
+  await restore.click()
+  await expect(
+    page.getByRole('heading', { name: `Restore ${victim.user.email}?`, exact: true }),
+  ).toBeVisible()
+  // the confirm closes before the run, so register the waiter first and pin the outcome
+  // on the response — the Then steps assert the toast + refreshed list, never a bare wait
+  const pending = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/v1/admin/restores') &&
+      response.request().method() === 'POST',
+    { timeout: 120_000 },
+  )
+  await page.getByRole('button', { name: 'Restore', exact: true }).click()
+  deleteState(ctx).restoreStatus = (await pending).status()
+})
+
+Then(
+  'the already-restored conflict is shown and the victim account is live again',
+  async ({ page, ctx }) => {
+    const victim = requireVictim(ctx)
+    // the row the dialog was opened from went stale when the API restored first
+    expect(deleteState(ctx).restoreStatus).toBe(409)
+    // unlike the delete-user dialog (which stays open on failure) the restore confirm
+    // closes before the run — the 409 surfaces as a toast plus a row error, then the
+    // version bump refetches the overview
+    await expect(
+      page.getByRole('heading', { name: `Restore ${victim.user.email}?`, exact: true }),
+    ).toHaveCount(0)
+    await expect(page.getByText(/That account is already back/).first()).toBeVisible({
+      timeout: 10_000,
+    })
+    // the refetch drops the orphan flag, so the row comes back live with a working Backup
+    // the scenario's status filter is still Deleted from two steps earlier, which would
+    // filter out the refreshed live row — reset to All first (same selector as the
+    // `I filter backups to ...` helpers above)
+    await page
+      .getByRole('group', { name: 'Filter by account status' })
+      .getByRole('button', { name: 'All', exact: true })
+      .click()
+    await page.getByLabel('Filter backups by email').fill(victim.user.email)
+    const row = backupRow(page, victim.user.email)
+    await expect(row).toHaveCount(1, { timeout: 30_000 })
+    await expect(
+      row.getByRole('button', { name: `Back up ${victim.user.email}`, exact: true }),
+    ).toBeEnabled({ timeout: 30_000 })
+    await expect(row.getByText('Deleted user')).toHaveCount(0)
+    await expect(
+      row.getByRole('button', { name: `Restore ${victim.user.email}` }),
+    ).toHaveCount(0)
+  },
+)
+
+Then('the restore toast names the fallback address', async ({ page, request, ctx }) => {
+  const state = deleteState(ctx)
+  const victim = requireVictim(ctx)
+  expect(state.restoreStatus).toBe(200)
+  // the toast auto-dismisses after ~3s, so assert it before the overview poll below
+  await expect(page.getByText(/Restored restored-\d+-/).first()).toBeVisible({
+    timeout: 10_000,
+  })
+  await expect(page.getByText(/Sign in as restored-\d+-/).first()).toBeVisible({
+    timeout: 10_000,
+  })
+  // the live row for the restored userId carries the actual address the toast named
+  let fallback = ''
+  await expect
+    .poll(
+      async () => {
+        const response = await request.get('/api/v1/admin/backups/overview', {
+          headers: authHeaders(requireStateAdmin(ctx)),
+        })
+        if (response.status() !== 200) return ''
+        const rows = (await response.json()) as { userId: string; email: string }[]
+        fallback = rows.find((row) => row.userId === victim.user.id)?.email ?? ''
+        return fallback
+      },
+      { timeout: 60_000 },
+    )
+    .toMatch(/^restored-\d+-/)
+  state.restoredEmail = fallback
+})
+
+Then(
+  'the fallback account signs in with the old password while the re-registered account keeps the email',
+  async ({ request, ctx }) => {
+    const state = deleteState(ctx)
+    const victim = requireVictim(ctx)
+    const reregistered = state.reregistered
+    const fallback = state.restoredEmail
+    if (!reregistered) throw new Error('re-register the victim email first')
+    if (!fallback) throw new Error('restore the victim backup first')
+    // the restored account keeps its old password under the fallback address
+    const fallbackLogin = await request.post('/api/v1/auth/login', {
+      data: { email: fallback, password: PASSWORD },
+    })
+    expect(fallbackLogin.ok(), `fallback login failed with status ${fallbackLogin.status()}`).toBe(
+      true,
+    )
+    expect(((await fallbackLogin.json()) as AuthResponse).user.id).toBe(victim.user.id)
+    // the address itself still belongs to the re-registered account, untouched
+    const originalLogin = await request.post('/api/v1/auth/login', {
+      data: { email: victim.user.email, password: PASSWORD },
+    })
+    expect(originalLogin.ok(), `original login failed with status ${originalLogin.status()}`).toBe(
+      true,
+    )
+    expect(((await originalLogin.json()) as AuthResponse).user.id).toBe(reregistered.user.id)
+  },
+)
