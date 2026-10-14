@@ -151,9 +151,7 @@ describe('BackupSection', () => {
       await Promise.resolve()
     })
 
-    expect(
-      await screen.findByText('Backed up 121 files (3 new, 118 unchanged)'),
-    ).toBeTruthy()
+    expect(await screen.findByText('Backed up 121 files (3 new, 118 unchanged)')).toBeTruthy()
     expect(screen.getByText(/3 uploaded, 118 skipped/)).toBeTruthy()
     expect(screen.queryByText('Nothing new — all files already backed up.')).toBeNull()
     expect(screen.queryByRole('status')).toBeNull()
@@ -267,9 +265,7 @@ describe('BackupSection', () => {
 
     expect(await screen.findByText('Backed up 121 files (0 new, 121 unchanged)')).toBeTruthy()
     expect(screen.getByText(/0 uploaded, 121 skipped/)).toBeTruthy()
-    expect(
-      screen.getByText('Nothing new — all files already backed up.'),
-    ).toBeTruthy()
+    expect(screen.getByText('Nothing new — all files already backed up.')).toBeTruthy()
   })
 
   it('previews an encoded prefix for uppercase emails in the confirm dialog', async () => {

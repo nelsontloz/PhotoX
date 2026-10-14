@@ -203,7 +203,12 @@ describe('UserFilesService.existsMany', () => {
   it('hit with asset returns both ids', async () => {
     const { service } = hitScenario()
     await expect(service.existsMany('u1', [{ checksumSha256: HIT }])).resolves.toEqual([
-      { checksumSha256: HIT, exists: true, existingFileId: 'file-hit', existingAssetId: 'asset-hit' },
+      {
+        checksumSha256: HIT,
+        exists: true,
+        existingFileId: 'file-hit',
+        existingAssetId: 'asset-hit',
+      },
     ])
   })
 
@@ -230,8 +235,18 @@ describe('UserFilesService.existsMany', () => {
     expect(fileFindOne).toHaveBeenCalledOnce()
     expect(assetFindOne).toHaveBeenCalledOnce()
     expect(res).toEqual([
-      { checksumSha256: HIT, exists: true, existingFileId: 'file-hit', existingAssetId: 'asset-hit' },
-      { checksumSha256: HIT, exists: true, existingFileId: 'file-hit', existingAssetId: 'asset-hit' },
+      {
+        checksumSha256: HIT,
+        exists: true,
+        existingFileId: 'file-hit',
+        existingAssetId: 'asset-hit',
+      },
+      {
+        checksumSha256: HIT,
+        exists: true,
+        existingFileId: 'file-hit',
+        existingAssetId: 'asset-hit',
+      },
     ])
   })
 
@@ -245,7 +260,12 @@ describe('UserFilesService.existsMany', () => {
       ]),
     ).resolves.toEqual([
       { checksumSha256: MISS, exists: false },
-      { checksumSha256: HIT, exists: true, existingFileId: 'file-hit', existingAssetId: 'asset-hit' },
+      {
+        checksumSha256: HIT,
+        exists: true,
+        existingFileId: 'file-hit',
+        existingAssetId: 'asset-hit',
+      },
       { checksumSha256: ORPHAN, exists: true, existingFileId: 'file-orphan' },
     ])
   })

@@ -1,9 +1,7 @@
-import { join } from 'node:path'
 import { expect } from '@playwright/test'
 import {
   Then,
   When,
-  FIXTURES_DIR,
   expectSingleTimelineItem,
   expectThumbnailLoaded,
   uploadFixture,
@@ -20,17 +18,13 @@ Then('the timeline shows exactly one item', async ({ page }) => {
 
 When('I upload {string} again', async ({ page, ctx }, name: string) => {
   if (!ctx.assetId) throw new Error('upload the file once before uploading it again')
-  const [response] = await Promise.all([
-    page.waitForResponse(
-      (r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/v1/files',
-    ),
-    page.locator('input[type="file"]').first().setInputFiles(join(FIXTURES_DIR, name)),
-  ])
-  // duplicate checksum: core answers 409 pointing back at the SAME asset; the UI marks it done
-  expect(response.status()).toBe(409)
-  const body = (await response.json()) as { existingAssetId?: string; existingFileId?: string }
-  expect(body.existingAssetId).toBe(ctx.assetId)
-  expect(body.existingFileId).toBeTruthy()
+  const firstAssetId = ctx.assetId
+  // same-user re-uploads may resolve from the POST /api/v1/files/exists check and send NO
+  // POST /api/v1/files (neither 201 nor 409); uploadFixture races both POSTs and returns the
+  // existing asset id on either the skip or the 409 path.
+  const existingAssetId = await uploadFixture(page, name, { allowDuplicate: true })
+  // duplicate checksum: core points back at the SAME asset; the UI marks it done
+  expect(existingAssetId).toBe(firstAssetId)
   // the UI must accept the duplicate, not surface it: UploadNotification.tsx shows
   // "All 2 items uploaded" only when no item errored — an error-mapped 409 would read
   // "1 uploads failed"

@@ -82,9 +82,11 @@ describe('hashFile fail-open', () => {
     const files = [new File(['a'], 'a.txt'), new File(['b'], 'b.txt'), new File(['c'], 'c.txt')]
     // all three chain onto the single shared worker; each is bounded, so the second and third
     // settle after their own queue turn instead of hanging behind the stalled first call
-    await expect(
-      Promise.all(files.map((file) => hashFile(file, undefined, 30))),
-    ).resolves.toEqual([null, null, null])
+    await expect(Promise.all(files.map((file) => hashFile(file, undefined, 30)))).resolves.toEqual([
+      null,
+      null,
+      null,
+    ])
   })
 
   it('ignores a late worker response after timing out', async () => {

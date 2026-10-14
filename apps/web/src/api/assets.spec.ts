@@ -1,7 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { Asset, AssetListResponse } from '@photox/shared-types'
 import type { FileExistsResultItem } from './assets'
-import { CHECK_FILES_EXIST_TIMEOUT_MS, getFileStreamUrl, listAllAssets, checkFilesExist } from './assets'
+import {
+  CHECK_FILES_EXIST_TIMEOUT_MS,
+  getFileStreamUrl,
+  listAllAssets,
+  checkFilesExist,
+} from './assets'
 
 const { getMock, postMock } = vi.hoisted(() => ({
   getMock: vi.fn<
