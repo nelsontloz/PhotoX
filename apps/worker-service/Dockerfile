@@ -1,6 +1,7 @@
 # -- deps --
 FROM node:22-bookworm-slim AS deps
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
+# toolchain only needed to rebuild tfjs-node from source on arm64 (x64 uses the prebuilt)
+RUN if [ "$(uname -m)" = "aarch64" ]; then apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*; fi
 RUN corepack enable
 WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
@@ -9,7 +10,7 @@ COPY packages/shared-config/package.json ./packages/shared-config/
 COPY apps/worker-service/package.json ./apps/worker-service/
 # tfjs-node ships no linux-arm64 prebuilt (x64-only tarball) — rebuild its binding from source on arm64
 # face model is provisioned into the runtime storage volume, not baked into the image
-RUN FACE_MODEL_SKIP=1 pnpm install --frozen-lockfile || FACE_MODEL_SKIP=1 pnpm install
+RUN FACE_MODEL_SKIP=1 pnpm install --frozen-lockfile
 RUN if [ "$(uname -m)" = "aarch64" ]; then npm_config_build_from_source=true pnpm --filter @photox/worker-service rebuild @tensorflow/tfjs-node; fi
 
 # -- build --
@@ -21,26 +22,33 @@ COPY apps/worker-service/ ./apps/worker-service/
 RUN pnpm --filter @photox/shared-types build && \
     pnpm --filter @photox/shared-config build && \
     pnpm --filter @photox/worker-service build
+# prod-only deploy so the runtime carries only worker prod deps (tfjs/onnx/sharp incl.);
+# the fresh install in the deploy dir needs the same arm64 tfjs rebuild as above
+RUN FACE_MODEL_SKIP=1 pnpm --filter @photox/worker-service --prod deploy /prod/worker
+RUN if [ "$(uname -m)" = "aarch64" ]; then npm_config_build_from_source=true pnpm --dir /prod/worker rebuild @tensorflow/tfjs-node; fi
 
 # -- runtime --
 FROM node:22-bookworm-slim AS runtime
 RUN corepack enable
-WORKDIR /app
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/packages/shared-types ./packages/shared-types
-COPY --from=build /app/packages/shared-config ./packages/shared-config
-COPY --from=build /app/apps/worker-service ./apps/worker-service
-# ffprobe-static has no linux/arm64 binary and ffmpeg-static's lacks libsvtav1 — use system ffmpeg
+# ffprobe-static has no linux/arm64 binary and ffmpeg-static's lacks libsvtav1 — use system ffmpeg.
+# Installed before any source COPYs so apt re-runs only when the base image changes, not on code edits.
 RUN if [ "$(uname -m)" = "aarch64" ]; then \
       apt-get update \
       && apt-get install -y --no-install-recommends ffmpeg \
-      && rm -rf /var/lib/apt/lists/* \
-      && ffprobe="$(cd /app/apps/worker-service && node -p 'require("ffprobe-static").path')" \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi
+WORKDIR /app
+COPY --from=build /prod/worker/package.json ./package.json
+COPY --from=build /prod/worker/dist ./dist
+COPY --from=build /prod/worker/node_modules ./node_modules
+# arm64 shims pointing the static-binary paths at system ffmpeg/ffprobe (cheap, no apt)
+RUN if [ "$(uname -m)" = "aarch64" ]; then \
+      ffprobe="$(node -p 'require("ffprobe-static").path')" \
       && mkdir -p "$(dirname "$ffprobe")" \
       && ln -sf /usr/bin/ffprobe "$ffprobe" \
-      && ffmpeg_bin="$(cd /app/apps/worker-service && node -p 'require("ffmpeg-static")')" \
+      && ffmpeg_bin="$(node -p 'require("ffmpeg-static")')" \
       && ln -sf /usr/bin/ffmpeg "$ffmpeg_bin"; \
     fi
 ENV NODE_ENV=production
 EXPOSE 3004
-CMD ["node", "apps/worker-service/dist/main.js"]
+CMD ["node", "dist/main.js"]

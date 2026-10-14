@@ -18,14 +18,17 @@ COPY apps/core/ ./apps/core/
 RUN pnpm --filter @photox/shared-types build && \
     pnpm --filter @photox/shared-config build && \
     pnpm --filter @photox/core build
+# prod-only deploy: drops devDeps and unrelated workspace packages (worker/web heavies)
+# so the runtime carries only what core's dist imports (incl. argon2/sharp natives)
+RUN FACE_MODEL_SKIP=1 pnpm --filter @photox/core --prod deploy /prod/core
 
 # -- runtime --
 FROM node:22-alpine AS runtime
 RUN corepack enable
 WORKDIR /app
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/packages ./packages
-COPY --from=build /app/apps/core ./apps/core
+COPY --from=build /prod/core/package.json ./package.json
+COPY --from=build /prod/core/dist ./dist
+COPY --from=build /prod/core/node_modules ./node_modules
 ENV NODE_ENV=production
 EXPOSE 3000
-CMD ["node", "apps/core/dist/main.js"]
+CMD ["node", "dist/main.js"]
