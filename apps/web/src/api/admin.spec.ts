@@ -80,6 +80,8 @@ describe('user backup admin API', () => {
     prefix: 'backups/ada@example.com__u-1/',
     backedUpAt: '2026-10-01T00:00:00.000Z',
     files: 3,
+    uploaded: 1,
+    skipped: 2,
     assets: 2,
     albums: 1,
     shares: 0,

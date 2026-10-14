@@ -13,9 +13,10 @@ import { formatBytes } from '../lib/format'
 
 const STATUS_ORDER: Record<UploadStatus, number> = {
   uploading: 0,
-  queued: 1,
-  error: 2,
-  done: 3,
+  hashing: 1,
+  queued: 2,
+  error: 3,
+  done: 4,
 }
 
 function UploadListItem({ item }: { item: UploadItem }) {
@@ -23,6 +24,7 @@ function UploadListItem({ item }: { item: UploadItem }) {
   const isError = item.status === 'error'
   const isDone = item.status === 'done'
   const isUploading = item.status === 'uploading'
+  const isHashing = item.status === 'hashing'
 
   return (
     <li className="flex items-center gap-3 px-3 py-2">
@@ -39,7 +41,15 @@ function UploadListItem({ item }: { item: UploadItem }) {
         <div className="flex justify-between items-center">
           <span className="text-xs font-medium text-slate-300 truncate">{item.fileName}</span>
           <span className="text-[10px] font-medium text-primary tabular-nums shrink-0 ml-2">
-            {isUploading ? `${item.progress}%` : isDone ? 'Done' : isError ? 'Failed' : 'Queued'}
+            {isUploading
+              ? `${item.progress}%`
+              : isHashing
+                ? `Hashing ${item.progress}%`
+                : isDone
+                  ? 'Done'
+                  : isError
+                    ? 'Failed'
+                    : 'Queued'}
           </span>
         </div>
         <div className="mt-1 h-1 bg-slate-700 rounded-full overflow-hidden">
@@ -78,7 +88,12 @@ export function UploadNotification() {
   const allDone =
     items.length > 0 && items.every((i) => i.status === 'done' || i.status === 'error')
   const uploadingCount = items.filter((i) => i.status === 'uploading').length
-  const bytesUploaded = items.reduce((sum, i) => sum + (i.sizeBytes * i.progress) / 100, 0)
+  const hashingCount = items.filter((i) => i.status === 'hashing').length
+  // bytesUploaded counts uploads only: hashing progress reuses the same bar but must not
+  // inflate the byte counter.
+  const bytesUploaded = items
+    .filter((i) => i.status === 'uploading' || i.status === 'done')
+    .reduce((sum, i) => sum + (i.sizeBytes * i.progress) / 100, 0)
   const totalBytes = items.reduce((sum, i) => sum + i.sizeBytes, 0)
 
   let title: string
@@ -92,6 +107,14 @@ export function UploadNotification() {
     icon = <FaCircleExclamation className="text-amber-500" />
   } else if (uploadingCount > 0) {
     title = `Uploading ${inFlight.length} items`
+    icon = (
+      <span className="relative flex size-2">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+        <span className="relative inline-flex rounded-full size-2 bg-primary" />
+      </span>
+    )
+  } else if (hashingCount > 0) {
+    title = `Hashing ${inFlight.length} items`
     icon = (
       <span className="relative flex size-2">
         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />

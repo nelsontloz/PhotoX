@@ -9,6 +9,7 @@ export { LocalStorageService } from './storage'
 export {
   backupPrefix,
   encodeSegment,
+  findPrefixesForUserId,
   manifestKey,
   normalizeEmail,
   originalKey,

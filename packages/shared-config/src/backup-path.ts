@@ -124,3 +124,37 @@ export function parseBackupDir(dir: string): { email: string; userId: string } {
   requireNonEmpty(userId, 'userId')
   return { email, userId }
 }
+
+/**
+ * Finds every distinct backup prefix belonging to a userId by scanning S3 keys.
+ * Each key under `base` contributes its first path segment as a candidate dir;
+ * the dir is parsed with {@link parseBackupDir} (LAST `__` split, so emails
+ * containing `__` survive) and kept only on exact userId suffix-match. Returns
+ * full prefixes (`<base><dir>/`), deduped in first-seen order. Non-backup keys
+ * and email-reuse dirs (same email, different userId) are excluded.
+ */
+export function findPrefixesForUserId(keys: string[], base: string, userId: string): string[] {
+  const prefixes: string[] = []
+  const seen = new Set<string>()
+  if (userId.trim().length === 0) return prefixes
+  for (const key of keys) {
+    if (!key.startsWith(base)) continue
+    const rest = key.slice(base.length)
+    if (rest.length === 0) continue
+    const dir = rest.split('/')[0]!
+    if (!dir) continue
+    let parsed: { email: string; userId: string }
+    try {
+      parsed = parseBackupDir(dir)
+    } catch {
+      continue
+    }
+    if (parsed.userId !== userId) continue
+    const prefix = `${base}${dir}/`
+    if (!seen.has(prefix)) {
+      seen.add(prefix)
+      prefixes.push(prefix)
+    }
+  }
+  return prefixes
+}

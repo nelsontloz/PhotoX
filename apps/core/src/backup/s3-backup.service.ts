@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import {
+  CopyObjectCommand,
   CreateBucketCommand,
   DeleteObjectCommand,
   GetObjectCommand,
@@ -265,6 +266,58 @@ export class S3BackupService implements OnModuleInit {
   async deleteKeys(keys: string[]): Promise<void> {
     for (const key of keys) await this.deleteKey(key)
     if (keys.length > 0) this.logger.log(`Deleted ${keys.length} stale backup key(s)`)
+  }
+
+  /**
+   * Server-side copy of one key (lazy email-change rename). CopySource is the
+   * bucket + per-segment-encoded key; MetadataDirective COPY preserves metadata.
+   */
+  async copyKey(srcKey: string, dstKey: string): Promise<void> {
+    const encoded = srcKey
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/')
+    await this.withRetry(
+      () =>
+        this.client.send(
+          new CopyObjectCommand({
+            Bucket: this.bucket,
+            Key: dstKey,
+            CopySource: `${this.bucket}/${encoded}`,
+            MetadataDirective: 'COPY',
+          }),
+          { abortSignal: AbortSignal.timeout(30_000) },
+        ),
+      `CopyObject ${srcKey} -> ${dstKey}`,
+    )
+  }
+
+  /**
+   * Server-side copy of every key under srcPrefix into dstPrefix (suffix-mapped),
+   * skipping manifests (rewritten fresh by backupUser). Sequential to stay inside
+   * the Floci single-op budget; returns copy/skip counts for rename logging.
+   */
+  async copyPrefix(
+    srcPrefix: string,
+    dstPrefix: string,
+  ): Promise<{ copied: number; skipped: number }> {
+    const keys = await this.listKeys(srcPrefix)
+    let copied = 0
+    let skipped = 0
+    for (const key of keys) {
+      if (key.endsWith('/manifest.json')) {
+        skipped += 1
+        continue
+      }
+      await this.copyKey(key, `${dstPrefix}${key.slice(srcPrefix.length)}`)
+      copied += 1
+    }
+    if (copied > 0 || skipped > 0) {
+      this.logger.log(
+        `Copied prefix ${srcPrefix} -> ${dstPrefix} (${copied} copied, ${skipped} skipped)`,
+      )
+    }
+    return { copied, skipped }
   }
 
   private async withRetry<T>(op: () => Promise<T>, label: string): Promise<T> {

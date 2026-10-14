@@ -9,6 +9,7 @@ import { DataSource, EntityManager, Repository } from 'typeorm'
 import {
   LocalStorageService,
   backupPrefix,
+  findPrefixesForUserId,
   manifestKey,
   normalizeEmail,
   originalKey,
@@ -174,6 +175,37 @@ function isDerivativeStorageKey(storageKey: string): boolean {
   return storageKey.startsWith('derivatives/')
 }
 
+/** Previous-manifest file entry used by the incremental upload gate. */
+export interface PreviousFileEntry {
+  checksumSha256: string
+  sizeBytes: number
+}
+
+/**
+ * Pure incremental-upload gate: skip the S3 PUT only when all four hold —
+ * the previous manifest has this file id, checksum matches, size matches, and
+ * the destination key is already listed under the new prefix. Any miss (null
+ * map, unknown id, changed bytes, S3-missing key) forces a re-upload.
+ */
+export function shouldSkipUpload(
+  prev: Map<string, PreviousFileEntry> | null,
+  listed: Set<string>,
+  file: { id: string; checksumSha256: string; sizeBytes: number },
+  key: string,
+): boolean {
+  if (prev === null) return false
+  const entry = prev.get(file.id)
+  if (entry === undefined) return false
+  if (entry.checksumSha256 !== file.checksumSha256) return false
+  if (entry.sizeBytes !== file.sizeBytes) return false
+  if (!listed.has(key)) return false
+  return true
+}
+
+function errorName(err: unknown): string {
+  return (err as { name?: string }).name ?? 'Unknown'
+}
+
 export interface BackupResult {
   userId: string
   email: string
@@ -184,6 +216,8 @@ export interface BackupResult {
   albums: number
   shares: number
   persons: number
+  uploaded: number
+  skipped: number
 }
 
 export interface RestoreResult extends BackupResult {
@@ -235,9 +269,14 @@ export interface BackupStatus {
  * and `persons.faceCount` stays stale until the restore cluster job assigns fresh
  * covers/counts.
  *
- * Email changes orphan prefixes (A6): the S3 layout is keyed by backup-time email
- * (`backups/<email>__<userId>/`), so a later email change leaves the old prefix
- * behind — GC is deleting the stale prefix; restores resolve by userId suffix.
+ * Email changes auto-rename prefixes (A6): the S3 layout is keyed by backup-time
+ * email (`backups/<email>__<userId>/`), so backupUser copy-forwards bytes from
+ * every stale same-userId prefix into the current one (server-side copy, manifest
+ * skipped and rewritten fresh), gates uploads on the previous manifest + a
+ * pre-loop listKeys of the new prefix (uploaded/skipped counters), prunes the
+ * new prefix before the manifest lands (M3: bytes first, manifest last, HEAD
+ * verified), then deletes the old prefixes — restores still resolve by userId
+ * suffix for any leftover orphans.
  *
  * Floci runbook (docker-only, no host installs): `docker compose up -d floci`.
  * Host core uses `S3_ENDPOINT=http://localhost:4566`; in-Compose core uses
@@ -402,33 +441,100 @@ export class UserBackupService {
     // Pre-fix backups uploaded thumbnail bytes as originals/<thumbFileId>.webp;
     // the originals/% query filter stops new uploads, so prune those stale keys
     // here (before the manifest, keeping bytes-first/manifest-last).
+    // Incremental (manifest-diff + listKeys gate) + lazy email-change rename:
+    // copy-forward stale same-userId prefixes, diff against the previous
+    // manifest, gate each PUT on listed presence, prune the new prefix, write
+    // the manifest LAST + HEAD-verify it, then delete old prefixes.
     const prefix = backupPrefix(user.email, user.id)
+    const manifestObjectKey = manifestKey(user.email, user.id)
+    let stalePrefixes: string[] = []
+    try {
+      stalePrefixes = await this.findStalePrefixesForUser(user.id, prefix)
+    } catch (err) {
+      this.logger.warn(
+        `Stale prefix scan failed for user ${user.id} (${errorName(err)}) — skipping rename`,
+      )
+      stalePrefixes = []
+    }
+    if (stalePrefixes.length > 0) {
+      try {
+        await this.renameBackupPrefix(stalePrefixes, prefix)
+      } catch (err) {
+        this.logger.warn(
+          `Backup rename failed for user ${user.id} (${err instanceof Error ? err.message : String(err)}) — continuing with direct upload`,
+        )
+      }
+    }
+    let prevFileMap = await this.loadPreviousFileMap(manifestObjectKey)
+    if (prevFileMap === null) {
+      for (const stale of stalePrefixes) {
+        const fallback = await this.loadPreviousFileMap(`${stale}manifest.json`)
+        if (fallback !== null) {
+          prevFileMap = fallback
+          break
+        }
+      }
+    }
+    let listedSet = new Set<string>()
+    let canPrune = true
+    try {
+      listedSet = new Set(await this.s3.listKeys(prefix))
+    } catch (err) {
+      this.logger.warn(
+        `Backup listKeys failed for ${prefix} (${errorName(err)}) — uploading all, skipping prune`,
+      )
+      listedSet = new Set<string>()
+      canPrune = false
+    }
     const expectedKeys = new Set(
       parsed.files.map((file) => originalKey(user.email, user.id, file.id, extOf(file.storageKey))),
     )
+    let uploaded = 0
+    let skipped = 0
     for (const file of parsed.files) {
-      await this.s3.putFile(
-        originalKey(user.email, user.id, file.id, extOf(file.storageKey)),
-        this.storage.pathFor(file.storageKey),
-        file.mimeType,
-      )
+      const key = originalKey(user.email, user.id, file.id, extOf(file.storageKey))
+      if (shouldSkipUpload(prevFileMap, listedSet, file, key)) {
+        skipped += 1
+        continue
+      }
+      await this.s3.putFile(key, this.storage.pathFor(file.storageKey), file.mimeType)
+      uploaded += 1
+      listedSet.add(key)
     }
-    const staleKeys = (await this.s3.listKeys(`${prefix}originals/`)).filter(
-      (key) => !expectedKeys.has(key),
-    )
-    if (staleKeys.length > 0) {
-      await this.s3.deleteKeys(staleKeys)
-      this.logger.log(
-        `Pruned ${staleKeys.length} stale original(s) from pre-fix backup for user ${user.id}`,
+    if (canPrune) {
+      const staleKeys = [...listedSet].filter(
+        (key) => key.startsWith(`${prefix}originals/`) && !expectedKeys.has(key),
       )
+      if (staleKeys.length > 0) {
+        await this.s3.deleteKeys(staleKeys)
+        this.logger.log(
+          `Pruned ${staleKeys.length} stale original(s) from pre-fix backup for user ${user.id}`,
+        )
+      }
+    } else {
+      this.logger.warn(`Skipping prune for user ${user.id} — new-prefix listing failed`)
     }
     await this.s3.putObject(
-      manifestKey(user.email, user.id),
+      manifestObjectKey,
       Buffer.from(JSON.stringify(parsed)),
       'application/json',
     )
+    await this.s3.headObject(manifestObjectKey)
+    for (const stale of stalePrefixes) {
+      try {
+        const oldKeys = await this.s3.listKeys(stale)
+        if (oldKeys.length > 0) await this.s3.deleteKeys(oldKeys)
+        this.logger.log(`Deleted old backup prefix ${stale} for user ${user.id}`)
+      } catch (err) {
+        this.logger.warn(
+          `Failed to delete old backup prefix ${stale} (${errorName(err)}) — leaving orphan`,
+        )
+      }
+    }
 
-    this.logger.log(`Backed up user ${user.id} (${fileRows.length} files) to ${prefix}`)
+    this.logger.log(
+      `Backed up user ${user.id} (${fileRows.length} files, ${uploaded} uploaded, ${skipped} skipped) to ${prefix}`,
+    )
     return {
       userId: user.id,
       email: user.email,
@@ -439,6 +545,8 @@ export class UserBackupService {
       albums: albumRows.length,
       shares: shareRows.length,
       persons: personRows.length,
+      uploaded,
+      skipped,
     }
   }
 
@@ -602,6 +710,10 @@ export class UserBackupService {
       albums: manifest.albums.length,
       shares: manifest.shares.length,
       persons: manifest.persons.length,
+      // restore downloads bytes (no incremental S3 gate) — zero counters keep the
+      // BackupResult extension satisfied without implying skipped uploads
+      uploaded: 0,
+      skipped: 0,
       enqueued,
     }
   }
@@ -728,6 +840,79 @@ export class UserBackupService {
       if (byId) return byId
     }
     return this.users.findOne({ where: { email: normalizeEmail(emailOrId) } })
+  }
+
+  /**
+   * Loads the previous backup's file map for the incremental gate: fetches the
+   * manifest bytes, parses JSON, validates with the manifest schema, and indexes
+   * original-only entries by file id. Returns null (never throws) on a missing
+   * manifest (first backup), unreadable bytes, or corrupt JSON/schema — callers
+   * fall back to a full upload.
+   */
+  private async loadPreviousFileMap(
+    manifestObjectKey: string,
+  ): Promise<Map<string, PreviousFileEntry> | null> {
+    let raw: Buffer
+    try {
+      raw = await this.s3.getBuffer(manifestObjectKey)
+    } catch (err) {
+      if (isNotFound(err)) {
+        this.logger.log(`No previous backup manifest at ${manifestObjectKey} — full upload`)
+      } else {
+        this.logger.warn(
+          `Previous backup manifest at ${manifestObjectKey} unreadable (${errorName(err)}) — full upload`,
+        )
+      }
+      return null
+    }
+    try {
+      const parsed = userBackupManifestSchema.parse(JSON.parse(raw.toString('utf-8')))
+      const map = new Map<string, PreviousFileEntry>()
+      for (const f of parsed.files) {
+        if (isDerivativeStorageKey(f.storageKey)) continue
+        map.set(f.id, { checksumSha256: f.checksumSha256, sizeBytes: f.sizeBytes })
+      }
+      return map
+    } catch (err) {
+      this.logger.warn(
+        `Previous backup manifest at ${manifestObjectKey} corrupt (${errorName(err)}) — full upload`,
+      )
+      return null
+    }
+  }
+
+  /**
+   * Lists every stale same-userId prefix (old emails) excluding the current one,
+   * via the shared findPrefixesForUserId helper over a base listing.
+   */
+  private async findStalePrefixesForUser(userId: string, currentPrefix: string): Promise<string[]> {
+    const base = resolveBackupPrefix()
+    const keys = await this.s3.listKeys(base)
+    return findPrefixesForUserId(keys, base, userId).filter(
+      (prefix: string) => prefix !== currentPrefix,
+    )
+  }
+
+  /**
+   * Lazy S3 rename: server-side copy-forward of every stale prefix into the
+   * current prefix (manifests skipped — rewritten fresh after the upload loop).
+   * Sequential per prefix; returns aggregate copy/skip counts for logging.
+   */
+  private async renameBackupPrefix(
+    stalePrefixes: string[],
+    newPrefix: string,
+  ): Promise<{ copied: number; skipped: number }> {
+    let copied = 0
+    let skipped = 0
+    for (const stale of stalePrefixes) {
+      const result = await this.s3.copyPrefix(stale, newPrefix)
+      copied += result.copied
+      skipped += result.skipped
+      this.logger.log(
+        `Renamed backup prefix ${stale} -> ${newPrefix} (${result.copied} copied, ${result.skipped} skipped)`,
+      )
+    }
+    return { copied, skipped }
   }
 
   /**

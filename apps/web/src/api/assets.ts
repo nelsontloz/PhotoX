@@ -178,3 +178,27 @@ export async function getAssetDetections(assetId: string): Promise<AssetDetectio
 export async function assignFace(faceId: string, personId: string | null): Promise<void> {
   await api.patch(`/v1/faces/${faceId}/person`, { personId })
 }
+
+// Wire contract for POST /api/v1/files/exists — batch check which checksums the user
+// already uploaded. Mirrors core's FileExistsCheckItem/Hit (response preserves order;
+// exists=false rows carry no ids).
+export interface FileExistsCheckItem {
+  checksumSha256: string
+  sizeBytes?: number
+}
+
+export interface FileExistsResultItem {
+  checksumSha256: string
+  exists: boolean
+  existingFileId?: string
+  existingAssetId?: string
+}
+
+export async function checkFilesExist(
+  items: FileExistsCheckItem[],
+): Promise<FileExistsResultItem[]> {
+  const { data } = await api.post<{ items: FileExistsResultItem[] }>('/v1/files/exists', {
+    items,
+  })
+  return data.items
+}

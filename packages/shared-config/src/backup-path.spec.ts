@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   backupPrefix,
   encodeSegment,
+  findPrefixesForUserId,
   manifestKey,
   normalizeEmail,
   originalKey,
@@ -85,5 +86,45 @@ describe('parseBackupDir', () => {
     expect(() => parseBackupDir('no-separator')).toThrow()
     expect(() => parseBackupDir('__u1')).toThrow()
     expect(() => parseBackupDir('a%40b.c__')).toThrow()
+  })
+})
+
+describe('findPrefixesForUserId', () => {
+  it('matches a dir whose email contains __ via the last-__ split', () => {
+    const base = 'backups/'
+    const dir = 'we__ird%40x.com__user-1'
+    const keys = [`${base}${dir}/manifest.json`, `${base}${dir}/originals/f1.jpg`]
+    expect(findPrefixesForUserId(keys, base, 'user-1')).toEqual([`${base}${dir}/`])
+  })
+
+  it('returns every distinct prefix for one userId across email changes', () => {
+    const base = 'backups/'
+    const oldDir = 'old%40x.com__user-1'
+    const newDir = 'new%40x.com__user-1'
+    const keys = [
+      `${base}${oldDir}/manifest.json`,
+      `${base}${oldDir}/originals/f1.jpg`,
+      `${base}${oldDir}/originals/f1.jpg`,
+      `${base}${newDir}/manifest.json`,
+      `${base}other%40x.com__user-2/manifest.json`,
+    ]
+    expect(findPrefixesForUserId(keys, base, 'user-1')).toEqual([
+      `${base}${oldDir}/`,
+      `${base}${newDir}/`,
+    ])
+  })
+
+  it('excludes email-reuse dirs (same email, different userId) and non-backup keys', () => {
+    const base = 'backups/'
+    const keys = [
+      'backups/shared%40x.com__user-1/manifest.json',
+      'backups/shared%40x.com__user-2/manifest.json',
+      'backups/not-a-backup-dir/manifest.json',
+      'other-prefix/shared%40x.com__user-1/manifest.json',
+      'backups/shared%40x.com__user-1/originals/f1.jpg',
+    ]
+    expect(findPrefixesForUserId(keys, base, 'user-1')).toEqual(['backups/shared%40x.com__user-1/'])
+    expect(findPrefixesForUserId(keys, base, 'user-2')).toEqual(['backups/shared%40x.com__user-2/'])
+    expect(findPrefixesForUserId(keys, base, 'ghost')).toEqual([])
   })
 })

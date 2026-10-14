@@ -45,7 +45,7 @@ const ENTITIES = [
 ]
 
 interface FakeOp {
-  op: 'putObject' | 'putFile' | 'deleteKey'
+  op: 'putObject' | 'putFile' | 'deleteKey' | 'copyKey'
   key: string
 }
 
@@ -60,6 +60,8 @@ class FakeS3BackupService {
   ops: FakeOp[] = []
 
   failNextPuts = 0
+
+  failListKeys = false
 
   async ensureBucket(): Promise<void> {
     // in-memory stand-in — nothing to provision
@@ -94,11 +96,51 @@ class FakeS3BackupService {
     return Promise.resolve(Buffer.from(found))
   }
 
+  headObject(key: string): Promise<void> {
+    if (!this.objects.has(key)) {
+      const err = new Error(`missing key ${key}`)
+      err.name = 'NoSuchKey'
+      throw err
+    }
+    return Promise.resolve()
+  }
+
+  copyKey(srcKey: string, dstKey: string): Promise<void> {
+    const found = this.objects.get(srcKey)
+    if (!found) {
+      const err = new Error(`missing key ${srcKey}`)
+      err.name = 'NoSuchKey'
+      throw err
+    }
+    this.ops.push({ op: 'copyKey', key: dstKey })
+    this.objects.set(dstKey, Buffer.from(found))
+    return Promise.resolve()
+  }
+
+  async copyPrefix(
+    srcPrefix: string,
+    dstPrefix: string,
+  ): Promise<{ copied: number; skipped: number }> {
+    const keys = await this.listKeys(srcPrefix)
+    let copied = 0
+    let skipped = 0
+    for (const key of keys) {
+      if (key.endsWith('/manifest.json')) {
+        skipped += 1
+        continue
+      }
+      await this.copyKey(key, `${dstPrefix}${key.slice(srcPrefix.length)}`)
+      copied += 1
+    }
+    return { copied, skipped }
+  }
+
   async downloadToFile(key: string, destPath: string): Promise<void> {
     await writeFile(destPath, await this.getBuffer(key))
   }
 
   listKeys(prefix: string): Promise<string[]> {
+    if (this.failListKeys) return Promise.reject(new Error('injected listKeys failure'))
     return Promise.resolve([...this.objects.keys()].filter((k) => k.startsWith(prefix)))
   }
 
@@ -201,6 +243,7 @@ describe('user backup round-trip', () => {
     fake.objects.clear()
     fake.ops = []
     fake.failNextPuts = 0
+    fake.failListKeys = false
   })
 
   async function seedOriginal(
@@ -636,5 +679,171 @@ describe('user backup round-trip', () => {
     }
     // isNotFound covers NoSuchKey/NotFound/NoSuchBucket, not one name
     await expect(svc.backupStatus(email)).resolves.toEqual({ exists: false })
+  })
+
+  describe('incremental gate + lazy rename', () => {
+    async function seedUserWithFiles(
+      count: number,
+      prefixLabel: string,
+    ): Promise<{ user: User; seeded: { record: FileRecord; bytes: Buffer }[] }> {
+      const email = `${prefixLabel}-${randomUUID()}@example.com`
+      const user = await userRepo.save(
+        userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'test-hash',
+          displayName: `${prefixLabel} User`,
+        }),
+      )
+      const seeded = []
+      for (let i = 0; i < count; i++) {
+        seeded.push(await seedOriginal(user.id, Buffer.from(`${prefixLabel}-bytes-${i}`)))
+      }
+      return { user, seeded }
+    }
+
+    it('skips all uploads on an unchanged rerun (uploaded 0, empty prune)', async () => {
+      const { user } = await seedUserWithFiles(2, 'skipall')
+      const first = await svc.backupUser(user.id)
+      expect(first.uploaded).toBe(2)
+      expect(first.skipped).toBe(0)
+
+      fake.ops = []
+      const second = await svc.backupUser(user.id)
+      expect(second).toMatchObject({ files: 2, uploaded: 0, skipped: 2 })
+      expect(fake.ops.filter((o) => o.op === 'putFile')).toHaveLength(0)
+      expect(fake.ops.filter((o) => o.op === 'putObject')).toHaveLength(1)
+      // empty prune: no deletes when nothing is stale
+      expect(fake.ops.filter((o) => o.op === 'deleteKey')).toHaveLength(0)
+    })
+
+    it('uploads only new files on the next run (delta-only)', async () => {
+      const { user } = await seedUserWithFiles(2, 'delta')
+      await svc.backupUser(user.id)
+
+      await seedOriginal(user.id, Buffer.from('delta-new-bytes'))
+      fake.ops = []
+      const second = await svc.backupUser(user.id)
+      expect(second).toMatchObject({ files: 3, uploaded: 1, skipped: 2 })
+      expect(fake.ops.filter((o) => o.op === 'putFile')).toHaveLength(1)
+    })
+
+    it('re-uploads when the checksum changes', async () => {
+      const { user, seeded } = await seedUserWithFiles(2, 'checksum')
+      await svc.backupUser(user.id)
+
+      const target = seeded[0]!.record
+      const nextBytes = Buffer.from('checksum-changed-bytes')
+      await writeFile(storage.pathFor(target.storageKey), nextBytes)
+      await fileRepo.update(target.id, {
+        sizeBytes: nextBytes.length,
+        checksumSha256: createHash('sha256').update(nextBytes).digest('hex'),
+      })
+      fake.ops = []
+      const second = await svc.backupUser(user.id)
+      expect(second).toMatchObject({ files: 2, uploaded: 1, skipped: 1 })
+      const putKeys = fake.ops.filter((o) => o.op === 'putFile').map((o) => o.key)
+      expect(putKeys).toHaveLength(1)
+      expect(putKeys[0]).toContain(target.id)
+    })
+
+    it('falls back to a full upload on a missing manifest', async () => {
+      const { user } = await seedUserWithFiles(2, 'missing-manifest')
+      await svc.backupUser(user.id)
+
+      for (const key of [...fake.objects.keys()]) {
+        if (key.endsWith('manifest.json')) fake.objects.delete(key)
+      }
+      fake.ops = []
+      const second = await svc.backupUser(user.id)
+      expect(second).toMatchObject({ files: 2, uploaded: 2, skipped: 0 })
+    })
+
+    it('falls back to a full upload on a corrupt manifest', async () => {
+      const { user } = await seedUserWithFiles(2, 'corrupt-manifest')
+      await svc.backupUser(user.id)
+
+      const manifestKey = fake.ops.find((o) => o.key.endsWith('manifest.json'))!.key
+      fake.objects.set(manifestKey, Buffer.from('not-json{{{'))
+      fake.ops = []
+      const second = await svc.backupUser(user.id)
+      expect(second).toMatchObject({ files: 2, uploaded: 2, skipped: 0 })
+    })
+
+    it('re-uploads S3-missing keys despite a manifest match', async () => {
+      const { user } = await seedUserWithFiles(2, 's3missing')
+      await svc.backupUser(user.id)
+
+      const originalKeys = [...fake.objects.keys()].filter((k) => k.includes('/originals/'))
+      expect(originalKeys).toHaveLength(2)
+      fake.objects.delete(originalKeys[0]!)
+      fake.ops = []
+      const second = await svc.backupUser(user.id)
+      expect(second).toMatchObject({ files: 2, uploaded: 1, skipped: 1 })
+      expect(fake.ops.filter((o) => o.op === 'putFile').map((o) => o.key)).toEqual([
+        originalKeys[0],
+      ])
+    })
+
+    it('uploads all and skips prune when listKeys fails', async () => {
+      const { user } = await seedUserWithFiles(1, 'listfail')
+      await svc.backupUser(user.id)
+      // second run would skip, but listing fails so every byte re-uploads
+      fake.failListKeys = true
+      // stale key that prune would delete if listing worked
+      const staleKey = `${backupPrefix((await userRepo.findOneOrFail({ where: { id: user.id } })).email, user.id)}originals/stale.webp`
+      fake.objects.set(staleKey, Buffer.from('stale'))
+      fake.ops = []
+      const second = await svc.backupUser(user.id)
+      expect(second).toMatchObject({ files: 1, uploaded: 1, skipped: 0 })
+      expect(fake.ops.filter((o) => o.op === 'deleteKey')).toHaveLength(0)
+      expect(fake.objects.has(staleKey)).toBe(true)
+      fake.failListKeys = false
+    })
+
+    it('auto-renames on email change with ~0 uploads and copy→manifest→delete order', async () => {
+      const { user, seeded } = await seedUserWithFiles(2, 'rename')
+      const oldEmail = user.email
+      const oldPrefix = backupPrefix(oldEmail, user.id)
+      await svc.backupUser(user.id)
+      expect([...fake.objects.keys()].some((k) => k.startsWith(oldPrefix))).toBe(true)
+
+      const newEmail = `renamed-${randomUUID()}@example.com`
+      await userRepo.update(user.id, { email: newEmail })
+      const newPrefix = backupPrefix(newEmail, user.id)
+      fake.ops = []
+
+      const second = await svc.backupUser(user.id)
+      expect(second.prefix).toBe(newPrefix)
+      expect(second.uploaded).toBeLessThanOrEqual(1)
+      expect(second.skipped).toBeGreaterThanOrEqual(1)
+      expect(second.files).toBe(2)
+
+      // old prefix gone, new prefix holds the bytes + fresh manifest
+      expect([...fake.objects.keys()].some((k) => k.startsWith(oldPrefix))).toBe(false)
+      expect([...fake.objects.keys()].filter((k) => k.startsWith(newPrefix))).toHaveLength(3)
+      for (const f of seeded) {
+        const expectedSuffix = `/originals/${f.record.id}.`
+        expect(
+          [...fake.objects.keys()].some(
+            (k) => k.startsWith(newPrefix) && k.includes(expectedSuffix),
+          ),
+        ).toBe(true)
+      }
+
+      // call order: copy-forward first, manifest next, old-prefix deletes last
+      const copyIdx = fake.ops.findIndex((o) => o.op === 'copyKey')
+      const manifestIdx = fake.ops.findIndex(
+        (o) => o.op === 'putObject' && o.key.endsWith('manifest.json'),
+      )
+      const deleteIdx = fake.ops.findIndex((o) => o.op === 'deleteKey')
+      expect(copyIdx).toBeGreaterThanOrEqual(0)
+      expect(manifestIdx).toBeGreaterThan(copyIdx)
+      expect(deleteIdx).toBeGreaterThan(manifestIdx)
+      // empty prune: every delete targets the old prefix, none prunes the new one
+      for (const op of fake.ops.filter((o) => o.op === 'deleteKey')) {
+        expect(op.key.startsWith(oldPrefix)).toBe(true)
+      }
+    })
   })
 })

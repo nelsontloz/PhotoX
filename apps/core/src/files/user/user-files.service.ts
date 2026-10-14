@@ -24,7 +24,7 @@ import { FileRecordDto } from '../file-record.dto'
 import { AssetsService } from '../../assets/assets.service'
 import { BullMqService } from '../../queue/bullmq.service'
 import { SettingsService } from '../../settings/settings.service'
-import type { Asset as AssetResponse } from '@photox/shared-types'
+import type { Asset as AssetResponse, FileExistsCheckHit } from '@photox/shared-types'
 
 export interface UploadedDiskFile {
   path: string
@@ -373,6 +373,33 @@ export class UserFilesService {
 
   async getOne(userId: string, fileId: string) {
     return FileRecordDto.from(await this.getOwnedRecord(userId, fileId))
+  }
+
+  async existsMany(
+    userId: string,
+    items: { checksumSha256: string; sizeBytes?: number }[],
+  ): Promise<FileExistsCheckHit[]> {
+    const hits = new Map<string, FileExistsCheckHit>()
+    for (const item of items) {
+      if (hits.has(item.checksumSha256)) continue
+      const record = await this.fileRepo.findOne({
+        where: { userId, checksumSha256: item.checksumSha256, purpose: 'original' },
+      })
+      if (!record) {
+        hits.set(item.checksumSha256, { checksumSha256: item.checksumSha256, exists: false })
+        continue
+      }
+      const asset = await this.assetRepo.findOne({
+        where: { fileId: record.id, userId },
+      })
+      hits.set(item.checksumSha256, {
+        checksumSha256: item.checksumSha256,
+        exists: true,
+        existingFileId: record.id,
+        ...(asset ? { existingAssetId: asset.id } : {}),
+      })
+    }
+    return items.map((item) => hits.get(item.checksumSha256)!)
   }
 
   async serve(userId: string, fileId: string): Promise<{ path: string; record: FileRecord }> {

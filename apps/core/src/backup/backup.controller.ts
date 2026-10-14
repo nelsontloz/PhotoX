@@ -39,7 +39,10 @@ export class BackupController {
     summary: 'Back up one user (rows + original bytes) to S3 (admin-only)',
     description:
       'Original bytes first, manifest.json last (rerun-safe fixed keys). ' +
-      'Layout backups/<email>__<userId>/ — an email change orphans the old prefix (GC it).',
+      'Layout backups/<email>__<userId>/ — an email change auto-renames the old prefix ' +
+      'via server-side copy (manifest rewritten fresh, old deleted after HEAD verify). ' +
+      'Incremental: unchanged bytes are skipped via the previous manifest + S3 listing ' +
+      '(uploaded/skipped counters in the result).',
   })
   @ApiResponse({ status: 200, description: 'Backup counts and S3 prefix' })
   async backup(@Body() dto: BackupRequestDto): Promise<BackupResult> {

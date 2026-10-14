@@ -373,5 +373,23 @@ export interface UpdatePersonRequest {
   name: string | null
 }
 
+// Wire contract for POST /api/v1/files/exists — batch check which checksums the user
+// already uploaded; response preserves input order (exists=false rows carry no ids)
+export interface FileExistsCheckItem {
+  checksumSha256: string
+  sizeBytes?: number
+}
+
+export interface FileExistsCheckHit {
+  checksumSha256: string
+  exists: boolean
+  existingFileId?: string
+  existingAssetId?: string
+}
+
+export interface FileExistsCheckResponse {
+  items: FileExistsCheckHit[]
+}
+
 export * from './albums'
 export * from './shares'

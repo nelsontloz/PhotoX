@@ -329,10 +329,19 @@ export function BackupSection() {
           ) : null}
           {result && !status?.degraded && (
             <p className="mt-3 font-mono text-[10px] text-on-surface-variant break-all">
-              Last run {stamp(result.backedUpAt)} — {result.files.toLocaleString()} files,{' '}
-              {result.assets.toLocaleString()} assets · {result.prefix}
+              Last run {stamp(result.backedUpAt)} — {result.files.toLocaleString()} files (
+              {(result.uploaded ?? 0).toLocaleString()} uploaded,{' '}
+              {(result.skipped ?? 0).toLocaleString()} skipped)
             </p>
           )}
+          {result &&
+            !status?.degraded &&
+            (result.skipped ?? 0) === result.files &&
+            result.files > 0 && (
+              <p className="mt-1 text-xs text-outline">
+                Nothing new — all files already backed up.
+              </p>
+            )}
         </div>
       </div>
 
@@ -350,8 +359,8 @@ export function BackupSection() {
 
       <div className="border-t border-border-dark/40 pt-4 mt-4 flex items-start justify-between gap-4 flex-wrap">
         <p className="text-body-sm text-on-surface-variant max-w-lg">
-          Runs inline in the API — multi-GB libraries can take a while. Reruns overwrite the same S3
-          keys.
+          Runs inline in the API — multi-GB libraries can take a while. Reruns reuse the same S3
+          keys, skipping unchanged files.
         </p>
         <PrimaryButton
           onClick={() => setConfirming(true)}
@@ -364,7 +373,7 @@ export function BackupSection() {
 
       {result && (
         <AdminToast
-          message={`Backed up ${result.files.toLocaleString()} files, ${result.assets.toLocaleString()} assets → ${result.prefix}`}
+          message={`Backed up ${result.files.toLocaleString()} files (${(result.uploaded ?? 0).toLocaleString()} new, ${(result.skipped ?? 0).toLocaleString()} unchanged)`}
         />
       )}
       {runError && <AdminToast message={runError} tone="error" />}

@@ -62,6 +62,8 @@ const result: BackupResult = {
   prefix: 'backups/ada%40example.com__u-1/',
   backedUpAt: '2026-10-02T00:00:00.000Z',
   files: 121,
+  uploaded: 3,
+  skipped: 118,
   assets: 86,
   albums: 3,
   shares: 1,
@@ -150,8 +152,10 @@ describe('BackupSection', () => {
     })
 
     expect(
-      await screen.findByText('Backed up 121 files, 86 assets → backups/ada%40example.com__u-1/'),
+      await screen.findByText('Backed up 121 files (3 new, 118 unchanged)'),
     ).toBeTruthy()
+    expect(screen.getByText(/3 uploaded, 118 skipped/)).toBeTruthy()
+    expect(screen.queryByText('Nothing new — all files already backed up.')).toBeNull()
     expect(screen.queryByRole('status')).toBeNull()
     expect(button('Run backup').disabled).toBe(false)
     // the status panel refreshes off the bumped version
@@ -248,6 +252,24 @@ describe('BackupSection', () => {
     await waitFor(() => expect(api.backupUser).toHaveBeenCalledWith('u-2'))
     expect(await screen.findByText(/Last run/)).toBeTruthy()
     expect(screen.queryByText('Request failed with status code 503')).toBeNull()
+  })
+
+  it('shows the all-skipped note when every file was already backed up', async () => {
+    api.backupUser.mockResolvedValue({ ...result, uploaded: 0, skipped: 121 })
+
+    render(<BackupSection />)
+    await search('ada')
+    fireEvent.click(button(/ada@example.com/))
+    await waitFor(() => expect(api.getBackupStatus).toHaveBeenCalledWith('u-1'))
+
+    fireEvent.click(button('Run backup'))
+    fireEvent.click(button('Confirm'))
+
+    expect(await screen.findByText('Backed up 121 files (0 new, 121 unchanged)')).toBeTruthy()
+    expect(screen.getByText(/0 uploaded, 121 skipped/)).toBeTruthy()
+    expect(
+      screen.getByText('Nothing new — all files already backed up.'),
+    ).toBeTruthy()
   })
 
   it('previews an encoded prefix for uppercase emails in the confirm dialog', async () => {

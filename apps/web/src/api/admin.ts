@@ -142,13 +142,15 @@ export async function reclusterFaces(): Promise<{ enqueued: number }> {
   return data
 }
 
-/** POST /v1/admin/backups response: what got copied, under which S3 prefix. */
+/** POST /v1/admin/backups response: what got copied, under which S3 prefix. Mirrors the core backup contract (uploaded + skipped split of files for incremental runs). */
 export interface BackupResult {
   userId: string
   email: string
   prefix: string
   backedUpAt: string
   files: number
+  uploaded: number
+  skipped: number
   assets: number
   albums: number
   shares: number
