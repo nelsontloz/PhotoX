@@ -3,6 +3,7 @@ import { loadAuthEnv, loadEnv } from '@photox/shared-config'
 import Redis from 'ioredis'
 import { Queue, Worker, type Job, type JobsOptions, type WorkerOptions } from 'bullmq'
 import { createHmac } from 'node:crypto'
+import { jobScopeOf } from './job-schemas'
 
 @Injectable()
 export class BullMqService implements OnModuleInit, OnModuleDestroy {
@@ -78,9 +79,7 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     if (typeof data.sig === 'string' && data.sig.length > 0) return data
     const sub = data.userId
     if (typeof sub !== 'string' || sub.length === 0) return data
-    const scope = [data.assetId, data.fileId, data.userId].find(
-      (v): v is string => typeof v === 'string' && v.length > 0,
-    )
+    const scope = jobScopeOf(data)
     if (!scope) return data
     return {
       ...data,

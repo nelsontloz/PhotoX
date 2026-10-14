@@ -36,7 +36,7 @@ describe('backupPrefix', () => {
     expect(() => backupPrefix('', 'u1', 'backups/')).toThrow()
     expect(() => backupPrefix('   ', 'u1', 'backups/')).toThrow()
     expect(() => backupPrefix('a@b.c', '', 'backups/')).toThrow()
-    expect(() => backupPrefix({ email: 'a@b.c', userId: '', prefix: 'backups/' })).toThrow()
+    expect(() => backupPrefix('a@b.c', '   ', 'backups/')).toThrow()
   })
 })
 

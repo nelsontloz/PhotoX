@@ -19,8 +19,9 @@ export const thumbnailJobSchema = z.object({
   ...jobRefs,
   size: z.enum(['sm', 'md', 'lg', 'xl']),
   // bounded defer counter the thumbnail processor sets when it re-enqueues a video job while
-  // metadata is still pending — absent on upload payloads
-  metadataWaits: z.number().int().min(0).max(10).optional(),
+  // metadata is still pending — absent on upload payloads. Max mirrors MAX_METADATA_WAITS in
+  // thumbnail.processor.ts (a shared const would cycle: that file already imports this one)
+  metadataWaits: z.number().int().min(0).max(5).optional(),
 })
 
 // video/metadata/embedding/ocr/detection jobs carry only the three refs — one shared schema
@@ -128,15 +129,20 @@ export function verifyJobSig(data: unknown, queue: string): void {
 export function assertOwnership(
   job: { assetId: string; fileId: string; userId: string },
   loaded: {
-    // structural shapes — accept CoreClient DTOs and core entity rows alike
-    record: { userId: string } | null
-    asset: { userId: string; fileId?: string } | null
+    // structural shapes — CoreClient DTOs (the worker has no DB access, so no entity rows)
+    record: { userId: string }
+    asset: { userId: string; fileId?: string }
   },
 ): void {
+  if (loaded.record == null || loaded.asset == null) {
+    throw new UnrecoverableError(
+      `Ownership mismatch: asset=${job.assetId} file=${job.fileId} user=${job.userId}`,
+    )
+  }
   const mismatch =
-    (loaded.record !== null && loaded.record.userId !== job.userId) ||
-    (loaded.asset !== null && loaded.asset.userId !== job.userId) ||
-    (loaded.asset !== null && loaded.asset.fileId !== job.fileId)
+    loaded.record.userId !== job.userId ||
+    loaded.asset.userId !== job.userId ||
+    loaded.asset.fileId !== job.fileId
   if (mismatch) {
     throw new UnrecoverableError(
       `Ownership mismatch: asset=${job.assetId} file=${job.fileId} user=${job.userId}`,

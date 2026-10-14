@@ -6,6 +6,9 @@ import type {
   FaceDetectionSettings,
   FaceDetectorKind,
   FileRecord,
+  RegisterDetectionsRequestDto,
+  RegisterEmbeddingRequestDto,
+  RegisterOcrRequestDto,
 } from '@photox/shared-types'
 import type {
   ApplyClustersPayload,
@@ -226,6 +229,35 @@ export class FakeCoreClient {
     this.registerFaceDetectors.push(detector)
     this.faces.set(assetId, [...(this.faces.get(assetId) ?? []), ...faces])
     return Promise.resolve({ count: faces.length })
+  }
+
+  registerEmbedding(
+    userId: string,
+    assetId: string,
+    dto: RegisterEmbeddingRequestDto,
+  ): Promise<void> {
+    this.calls.push({ method: 'registerEmbedding', args: [assetId, dto] })
+    const err = this.assetError(userId, assetId)
+    if (err) return Promise.reject(err)
+    return Promise.resolve()
+  }
+
+  registerOcr(userId: string, assetId: string, dto: RegisterOcrRequestDto): Promise<void> {
+    this.calls.push({ method: 'registerOcr', args: [assetId, dto] })
+    const err = this.assetError(userId, assetId)
+    if (err) return Promise.reject(err)
+    return Promise.resolve()
+  }
+
+  registerDetections(
+    userId: string,
+    assetId: string,
+    dto: RegisterDetectionsRequestDto,
+  ): Promise<void> {
+    this.calls.push({ method: 'registerDetections', args: [assetId, dto] })
+    const err = this.assetError(userId, assetId)
+    if (err) return Promise.reject(err)
+    return Promise.resolve()
   }
 
   deleteAssetFaces(userId: string, assetId: string): Promise<{ deleted: number }> {

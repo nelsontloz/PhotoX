@@ -6,7 +6,6 @@ import { useAuthStore } from '../../store/auth-store'
 const api = vi.hoisted(() => ({
   listAdminUsers: vi.fn(),
   deleteAdminUser: vi.fn(),
-  getAdminUserDeletePreview: vi.fn(),
   pollAdminUserDelete: vi.fn(),
 }))
 
@@ -60,8 +59,7 @@ function confirmWith(text: string) {
 
 beforeEach(() => {
   api.listAdminUsers.mockResolvedValue(page())
-  api.getAdminUserDeletePreview.mockResolvedValue(null)
-  api.deleteAdminUser.mockResolvedValue({})
+  api.deleteAdminUser.mockResolvedValue({ jobId: 'job-1' })
   api.pollAdminUserDelete.mockResolvedValue(undefined)
   useAuthStore.setState({ ...idleAuth })
 })
@@ -207,18 +205,7 @@ describe('UsersSection delete actions', () => {
     expect(api.deleteAdminUser).not.toHaveBeenCalled()
   })
 
-  it('shows preview counts and the S3-kept note in the dialog', async () => {
-    api.getAdminUserDeletePreview.mockResolvedValue({ userId: 'u-2', assets: 12, files: 30 })
-    render(<UsersSection />)
-    await screen.findByText('Grace Hopper')
-    await openDeleteDialogFor('Grace Hopper')
-
-    expect(await screen.findByText('12 assets · 30 files will be permanently removed.'))
-    expect(screen.getByText(/S3 backup is kept/)).toBeTruthy()
-  })
-
-  it('falls back to generic wording when no preview is available', async () => {
-    api.getAdminUserDeletePreview.mockResolvedValue(null)
+  it('renders the generic impact wording directly with no preview fetch', async () => {
     render(<UsersSection />)
     await screen.findByText('Grace Hopper')
     await openDeleteDialogFor('Grace Hopper')
@@ -228,9 +215,10 @@ describe('UsersSection delete actions', () => {
         'Their photos, videos, albums and shares will be permanently removed.',
       ),
     ).toBeTruthy()
+    expect(screen.queryByLabelText('Loading account details')).toBeNull()
   })
 
-  it('deletes, shows a success note and refetches the list on confirm', async () => {
+  it('always polls the delete job after the 202 accept', async () => {
     render(<UsersSection />)
     await screen.findByText('Grace Hopper')
     expect(api.listAdminUsers).toHaveBeenCalledTimes(1)
@@ -239,20 +227,8 @@ describe('UsersSection delete actions', () => {
     confirmWith('DELETE')
 
     await waitFor(() => expect(api.deleteAdminUser).toHaveBeenCalledWith('u-2'))
-    expect(api.pollAdminUserDelete).not.toHaveBeenCalled()
-    await waitFor(() => expect(api.listAdminUsers).toHaveBeenCalledTimes(2))
-    expect(await screen.findByText('Deleted Grace Hopper.')).toBeTruthy()
-  })
-
-  it('polls the delete job when the server answers 202 with a job id', async () => {
-    api.deleteAdminUser.mockResolvedValue({ jobId: 'job-1' })
-    render(<UsersSection />)
-    await screen.findByText('Grace Hopper')
-
-    await openDeleteDialogFor('Grace Hopper')
-    confirmWith('DELETE')
-
     await waitFor(() => expect(api.pollAdminUserDelete).toHaveBeenCalledWith('u-2'))
+    await waitFor(() => expect(api.listAdminUsers).toHaveBeenCalledTimes(2))
     expect(await screen.findByText('Deleted Grace Hopper.')).toBeTruthy()
   })
 

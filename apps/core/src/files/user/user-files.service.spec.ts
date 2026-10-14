@@ -87,7 +87,8 @@ function makeUploadService(scenario: {
   const assetFindOne = vi.fn(
     (): Promise<Asset | null> => Promise.resolve(scenario.existingAsset ?? null),
   )
-  const assetCreate = vi.fn<(userId: string, dto: { fileId: string }) => Promise<AssetResponse>>()
+  const assetCreate =
+    vi.fn<(userId: string, dto: { fileId: string; kind?: string }) => Promise<AssetResponse>>()
   assetCreate.mockResolvedValue({ id: 'asset-new' } as AssetResponse)
   const service = new UserFilesService(
     fileRepo,
@@ -131,6 +132,23 @@ describe('UserFilesService upload race', () => {
   })
 })
 
+describe('UserFilesService upload kind override (C2-narrowed)', () => {
+  it('ignores client kind=video for JPEG bytes and runs the photo pipeline', async () => {
+    const mine = fileRow({ id: 'mine-1' })
+    const { service, assetCreate } = makeUploadService({ naturals: [null], byId: mine })
+    const res = await service.upload('u1', await tmpUpload(), { kind: 'video' })
+    expect(res.id).toBe('asset-new')
+    // derived solely from the sniffed mime, not the client override
+    expect(assetCreate.mock.calls[0]?.[1]?.kind).toBe('photo')
+  })
+
+  it('ignores client kind=photo metadata but still derives photo for JPEG', async () => {
+    const mine = fileRow({ id: 'mine-1' })
+    const { service, assetCreate } = makeUploadService({ naturals: [null], byId: mine })
+    await service.upload('u1', await tmpUpload(), { kind: 'photo' })
+    expect(assetCreate.mock.calls[0]?.[1]?.kind).toBe('photo')
+  })
+})
 describe('UserFilesService.register race', () => {
   it('winner registers with created:true', async () => {
     const row = fileRow({ id: 'reg-1' })
@@ -157,28 +175,25 @@ describe('UserFilesService.register race', () => {
   })
 })
 
-// file lookup keyed by checksum, asset lookup keyed by fileId — both scoped to the user
+// file lookup batched by checksum, asset lookup batched by fileId — both scoped to the user
 function makeExistsService(scenario: {
   files: Record<string, FileRecord | null>
   assets: Record<string, Asset | null>
 }) {
-  const fileFindOne = vi.fn(
-    (opts?: { where?: { checksumSha256?: string } }): Promise<FileRecord | null> =>
-      Promise.resolve(scenario.files[opts?.where?.checksumSha256 ?? ''] ?? null),
-  )
-  const assetFindOne = vi.fn(
-    (opts?: { where?: { fileId?: string } }): Promise<Asset | null> =>
-      Promise.resolve(scenario.assets[opts?.where?.fileId ?? ''] ?? null),
-  )
+  const allFiles = Object.values(scenario.files).filter((f): f is FileRecord => f !== null)
+  const allAssets = Object.values(scenario.assets).filter((a): a is Asset => a !== null)
+  // C6: batched to 2 queries — mocks return the full sets, the service filters via maps
+  const fileFind = vi.fn((): Promise<FileRecord[]> => Promise.resolve(allFiles))
+  const assetFind = vi.fn((): Promise<Asset[]> => Promise.resolve(allAssets))
   const service = new UserFilesService(
-    { findOne: fileFindOne } as unknown as Repository<FileRecord>,
-    { findOne: assetFindOne } as unknown as Repository<Asset>,
+    { find: fileFind } as unknown as Repository<FileRecord>,
+    { find: assetFind } as unknown as Repository<Asset>,
     {} as unknown as LocalStorageService,
     {} as unknown as AssetsService,
     {} as unknown as BullMqService,
     {} as unknown as SettingsService,
   )
-  return { service, fileFindOne, assetFindOne }
+  return { service, fileFind, assetFind }
 }
 
 describe('UserFilesService.existsMany', () => {
@@ -194,7 +209,7 @@ describe('UserFilesService.existsMany', () => {
         [MISS]: null,
       },
       assets: {
-        'file-hit': { id: 'asset-hit' } as Asset,
+        'file-hit': { id: 'asset-hit', fileId: 'file-hit' } as Asset,
         'file-orphan': null,
       },
     })
@@ -227,13 +242,13 @@ describe('UserFilesService.existsMany', () => {
   })
 
   it('dedupes repeated checksums server-side', async () => {
-    const { service, fileFindOne, assetFindOne } = hitScenario()
+    const { service, fileFind, assetFind } = hitScenario()
     const res = await service.existsMany('u1', [
       { checksumSha256: HIT },
       { checksumSha256: HIT, sizeBytes: 5 },
     ])
-    expect(fileFindOne).toHaveBeenCalledOnce()
-    expect(assetFindOne).toHaveBeenCalledOnce()
+    expect(fileFind).toHaveBeenCalledOnce()
+    expect(assetFind).toHaveBeenCalledOnce()
     expect(res).toEqual([
       {
         checksumSha256: HIT,
@@ -248,6 +263,19 @@ describe('UserFilesService.existsMany', () => {
         existingAssetId: 'asset-hit',
       },
     ])
+  })
+
+  it('batches to 2 queries for many items', async () => {
+    const { service, fileFind, assetFind } = hitScenario()
+    await service.existsMany('u1', [
+      { checksumSha256: HIT },
+      { checksumSha256: ORPHAN },
+      { checksumSha256: MISS },
+      { checksumSha256: HIT },
+    ])
+    // C6: one file query + one asset query total, regardless of input length/duplicates
+    expect(fileFind).toHaveBeenCalledOnce()
+    expect(assetFind).toHaveBeenCalledOnce()
   })
 
   it('preserves input order across hits and misses', async () => {

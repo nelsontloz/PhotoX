@@ -108,9 +108,9 @@ describe('Job binding (H1 ingress verification)', () => {
     const bullMq = testApp.app.get(BullMqService)
     const payload = signJob({ assetId: randomUUID(), fileId: randomUUID(), userId: randomUUID() })
 
-    // process-embeddings has no worker in this harness, so the probe job just sits there
-    await bullMq.enqueue('process-embeddings', 'probe', payload, { jobId: 'sig-carry-probe' })
-    const stored = await bullMq.getQueue('process-embeddings').getJob('sig-carry-probe')
+    // process-sig-probe has no worker in any harness mode, so the probe job just sits there
+    await bullMq.enqueue('process-sig-probe', 'probe', payload, { jobId: 'sig-carry-probe' })
+    const stored = await bullMq.getQueue('process-sig-probe').getJob('sig-carry-probe')
 
     expect(stored?.data).toMatchObject({ sig: payload.sig })
     await stored?.remove()
@@ -120,8 +120,8 @@ describe('Job binding (H1 ingress verification)', () => {
     const bullMq = testApp.app.get(BullMqService)
     const unsigned = { assetId: randomUUID(), fileId: randomUUID(), userId: randomUUID() }
 
-    await bullMq.enqueue('process-embeddings', 'probe', unsigned, { jobId: 'sig-stamp-probe' })
-    const stored = await bullMq.getQueue('process-embeddings').getJob('sig-stamp-probe')
+    await bullMq.enqueue('process-sig-probe', 'probe', unsigned, { jobId: 'sig-stamp-probe' })
+    const stored = await bullMq.getQueue('process-sig-probe').getJob('sig-stamp-probe')
 
     expect(stored?.data).toMatchObject({ sig: signJob(unsigned).sig })
     await stored?.remove()

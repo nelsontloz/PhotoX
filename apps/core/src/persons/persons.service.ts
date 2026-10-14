@@ -87,6 +87,9 @@ export class PersonsService {
     await findOwnedOr404(this.personRepo, id, userId, 'Person')
     await this.personRepo.update(id, { name })
     const updated = await this.personRepo.findOne({ where: { id } })
+    // C4: count live (non-trashed) faces like getOne/list — the stored faceCount goes stale
+    // as soon as an asset is trashed/deleted, so PATCH must not echo it.
+    updated!.faceCount = await countLiveFaces(this.faceRepo, id, userId)
     return this.toListItem(updated!)
   }
 

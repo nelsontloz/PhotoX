@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm'
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm'
 
 @Entity('refresh_tokens')
 export class RefreshToken {
@@ -12,6 +12,7 @@ export class RefreshToken {
   tokenHash!: string
 
   @Column({ type: 'timestamptz' })
+  @Index()
   expiresAt!: Date
 
   @Column({ type: 'timestamptz', nullable: true })

@@ -4,6 +4,8 @@
   "globalPassThroughEnv": [
     "DEBUG",
     "AUTH_TOKEN_SECRET",
+    "AUTH_TOKEN_SECRET_PREVIOUS",
+    "WORKER_JWT_SECRET",
     "AUTH_ACCESS_TTL",
     "AUTH_REFRESH_TTL",
     "AUTH_CLOCK_TOLERANCE_SEC",

@@ -6,13 +6,14 @@ import {
   Logger,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { IsNull, Repository, type EntityManager } from 'typeorm'
+import { IsNull, LessThan, Repository, type EntityManager } from 'typeorm'
 import * as argon2 from 'argon2'
 import { User } from './entities/user.entity'
 import { RefreshToken } from './entities/refresh-token.entity'
 import { TokenService } from './tokens/token.service'
 import { RateLimitService } from './rate-limit.service'
 import { hashPassword } from './password'
+import { isPostgresUniqueViolation } from '../assets/assets.service'
 import type { AuthResponse } from '@photox/shared-types'
 
 // argon2id hash of a throwaway password (generated once with the pinned options); verified
@@ -46,9 +47,15 @@ export class AuthService {
     // check-then-insert race (two concurrent count()===0 both won). Promote via DB/seed instead.
     const passwordHash = await hashPassword(password)
     const user = this.userRepo.create({ email, passwordHash, displayName, role: 'user' })
-    const saved = await this.userRepo.save(user)
-
-    return this.issueTokens(saved)
+    try {
+      const saved = await this.userRepo.save(user)
+      return this.issueTokens(saved)
+    } catch (err) {
+      if (isPostgresUniqueViolation(err)) {
+        throw new ConflictException('Email already registered')
+      }
+      throw err
+    }
   }
 
   async login(email: string, password: string, ip: string): Promise<AuthResponse> {
@@ -69,6 +76,14 @@ export class AuthService {
 
   async refresh(refreshToken: string, ip: string): Promise<AuthResponse> {
     await this.rateLimit.consume('refresh', ip)
+
+    // C5: opportunistic purge of expired refresh rows — single indexed query, best-effort.
+    // Never fails auth: any error is swallowed so a DB blip on the purge can't lock users out.
+    try {
+      await this.tokenRepo.delete({ expiresAt: LessThan(new Date()) })
+    } catch {
+      // ignore — the refresh below is authoritative
+    }
 
     const hash = this.tokenService.hash(refreshToken)
 

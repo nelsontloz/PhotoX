@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
@@ -12,8 +13,10 @@ import { isUUID } from 'class-validator'
 import { Asset } from '../database/entities'
 import { AssetThumbnail } from '../database/entities'
 import { FileRecord } from '../database/entities'
+import { Person } from '../database/entities'
 import { AlbumAsset } from '../albums/entities/album-asset.entity'
 import { Face } from '../database/entities'
+import { refreshPersonFaceCount } from '../faces/face-count'
 import { findOwnedOr404 } from '../common/asset-ownership'
 import { CreateAssetDto } from './dto/create-asset.dto'
 import { UpdateAssetDto } from './dto/update-asset.dto'
@@ -304,10 +307,32 @@ export class AssetsService {
     ]
 
     await this.dataSource.transaction(async (em) => {
+      // C4: mirror FacesService.deleteForAsset — collect deleted face ids, null matching
+      // person covers, and refresh live counts inside the same txn so hard-deleted assets
+      // can't leave dangling coverFaceUrl thumbs behind.
+      const existingFaces =
+        assetIds.length > 0 ? await em.find(Face, { where: { assetId: In(assetIds) } }) : []
+      const deletedFaceIds = new Set(existingFaces.map((f) => f.id))
+      const personIds = [
+        ...new Set(existingFaces.map((f) => f.personId).filter((p): p is string => p !== null)),
+      ]
       await em.delete(Face, { assetId: In(assetIds) })
       await em.delete(AlbumAsset, { assetId: In(assetIds) })
       // shares.assetId FK is ON DELETE CASCADE, so share rows fall with the asset
       await em.delete(Asset, { id: In(assetIds) })
+      for (const pid of personIds) {
+        const person = await em.findOne(Person, { where: { id: pid } })
+        if (!person) continue
+        if (person.coverFaceId && deletedFaceIds.has(person.coverFaceId)) {
+          await em.update(Person, { id: pid }, { coverFaceId: null })
+        }
+        await refreshPersonFaceCount(
+          em.getRepository(Face),
+          em.getRepository(Person),
+          pid,
+          person.userId,
+        )
+      }
     })
     return { fileIds }
   }
@@ -371,14 +396,23 @@ export class AssetsService {
 
   async reprocessThumbnails(userId: string, id: string): Promise<{ enqueued: number }> {
     const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
-    void this.bullMq.enqueueThumbnails(asset.id, asset.fileId, asset.userId, 'thumb-reprocess')
+    const ok = await this.bullMq.enqueueThumbnails(
+      asset.id,
+      asset.fileId,
+      asset.userId,
+      'thumb-reprocess',
+    )
+    if (!ok) throw new ServiceUnavailableException('Failed to enqueue thumbnail reprocess jobs')
     return { enqueued: 4 }
   }
 
   async reprocessVideo(userId: string, id: string): Promise<{ enqueued: number }> {
     const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
     if (asset.kind !== 'video') throw new BadRequestException('Not a video asset')
-    void this.bullMq.enqueueVideo(asset.id, asset.fileId, asset.userId, { reprocess: true })
+    const ok = await this.bullMq.enqueueVideo(asset.id, asset.fileId, asset.userId, {
+      reprocess: true,
+    })
+    if (!ok) throw new ServiceUnavailableException('Failed to enqueue video reprocess job')
     return { enqueued: 1 }
   }
 

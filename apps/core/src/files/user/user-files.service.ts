@@ -9,7 +9,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository, FindOptionsWhere } from 'typeorm'
+import { In, Repository, FindOptionsWhere } from 'typeorm'
 import { randomUUID, createHash } from 'crypto'
 import { createReadStream } from 'fs'
 import { open, unlink } from 'fs/promises'
@@ -108,7 +108,9 @@ export class UserFilesService {
     meta: UploadFileBodyDto = {},
   ): Promise<AssetResponse> {
     const { record, created } = await this.storeFile(userId, file)
-    const kind = meta.kind ?? this.kindFromMime(record.mimeType)
+    // C2-narrowed: client `kind` is accepted-but-ignored (see UploadFileBodyDto) — derive
+    // solely from the sniffed mime so JPEG bytes + kind=video can't enter the video pipeline.
+    const kind = this.kindFromMime(record.mimeType)
     if (!kind) {
       throw new BadRequestException('Unsupported file type')
     }
@@ -379,21 +381,29 @@ export class UserFilesService {
     userId: string,
     items: { checksumSha256: string; sizeBytes?: number }[],
   ): Promise<FileExistsCheckHit[]> {
+    // C6: batched to 2 queries (was N+1 sequential, up to 200 round trips) — same map shape.
+    const unique = [...new Set(items.map((item) => item.checksumSha256))]
+    if (unique.length === 0) return []
+    const files = await this.fileRepo.find({
+      where: { userId, checksumSha256: In(unique), purpose: 'original' },
+    })
+    const byChecksum = new Map(files.map((f) => [f.checksumSha256, f]))
+    const fileIds = files.map((f) => f.id)
+    const assets =
+      fileIds.length > 0
+        ? await this.assetRepo.find({ where: { fileId: In(fileIds), userId } })
+        : []
+    const assetByFileId = new Map(assets.map((a) => [a.fileId, a]))
     const hits = new Map<string, FileExistsCheckHit>()
-    for (const item of items) {
-      if (hits.has(item.checksumSha256)) continue
-      const record = await this.fileRepo.findOne({
-        where: { userId, checksumSha256: item.checksumSha256, purpose: 'original' },
-      })
+    for (const checksum of unique) {
+      const record = byChecksum.get(checksum)
       if (!record) {
-        hits.set(item.checksumSha256, { checksumSha256: item.checksumSha256, exists: false })
+        hits.set(checksum, { checksumSha256: checksum, exists: false })
         continue
       }
-      const asset = await this.assetRepo.findOne({
-        where: { fileId: record.id, userId },
-      })
-      hits.set(item.checksumSha256, {
-        checksumSha256: item.checksumSha256,
+      const asset = assetByFileId.get(record.id)
+      hits.set(checksum, {
+        checksumSha256: checksum,
         exists: true,
         existingFileId: record.id,
         ...(asset ? { existingAssetId: asset.id } : {}),

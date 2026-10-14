@@ -4,7 +4,7 @@ import type { Job } from 'bullmq'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { randomUUID, createHash } from 'crypto'
-import { copyFile, unlink, writeFile } from 'fs/promises'
+import { writeFile } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
 import {
   assertOwnership,
@@ -126,74 +126,70 @@ export class ThumbnailProcessor implements OnModuleInit {
     sig?: string,
   ): Promise<void> {
     const mimeType = record.mimeType
+    // storage is local-disk only — read the original in place, no tmp staging copy (a
+    // concurrent cleanup-asset delete surfaces as ENOENT at read time, same retry path)
+    const sourcePath = this.storage.pathFor(record.storageKey)
 
-    const tmpPath = join(tmpdir(), `thumb-${randomUUID()}`)
-    try {
-      await copyFile(this.storage.pathFor(record.storageKey), tmpPath)
+    if (mimeType?.startsWith('video/')) {
+      const rawDuration = asset.durationSeconds === null ? null : Number(asset.durationSeconds)
+      const durationSeconds =
+        rawDuration === null || !Number.isFinite(rawDuration) ? 0 : rawDuration
+      const degrees = asset.orientation === null ? 0 : ((asset.orientation % 360) + 360) % 360
 
-      if (mimeType?.startsWith('video/')) {
-        const rawDuration = asset.durationSeconds === null ? null : Number(asset.durationSeconds)
-        const durationSeconds =
-          rawDuration === null || !Number.isFinite(rawDuration) ? 0 : rawDuration
-        const degrees = asset.orientation === null ? 0 : ((asset.orientation % 360) + 360) % 360
+      const seekSec =
+        durationSeconds > 0
+          ? Math.min(Math.max(0, durationSeconds * 0.25), Math.max(0, durationSeconds - 0.1))
+          : 0
 
-        const seekSec =
-          durationSeconds > 0
-            ? Math.min(Math.max(0, durationSeconds * 0.25), Math.max(0, durationSeconds - 0.1))
-            : 0
+      const frameBuffer = await runFfmpeg([
+        '-y',
+        '-noautorotate',
+        '-ss',
+        String(seekSec),
+        '-i',
+        sourcePath,
+        '-vframes',
+        '1',
+        '-f',
+        'image2pipe',
+        '-',
+      ])
 
+      const { data: thumbBuffer, info } = await this.encodeWebp(frameBuffer, size, degrees)
+
+      await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info, sig)
+
+      return
+    }
+
+    // ponytail: stock sharp prebuilds have no HEIC (HEVC) decoder — route iPhone photos
+    // through ffmpeg (has libde265), upgrade to a libheif-capable sharp build if it lands
+    if (mimeType === 'image/heic' || mimeType === 'image/heif') {
+      try {
         const frameBuffer = await runFfmpeg([
           '-y',
-          '-noautorotate',
-          '-ss',
-          String(seekSec),
           '-i',
-          tmpPath,
+          sourcePath,
           '-vframes',
           '1',
           '-f',
           'image2pipe',
           '-',
         ])
-
-        const { data: thumbBuffer, info } = await this.encodeWebp(frameBuffer, size, degrees)
-
+        const { data: thumbBuffer, info } = await this.encodeWebp(frameBuffer, size)
         await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info, sig)
-
         return
+      } catch (err) {
+        this.logger.warn(
+          `ffmpeg HEIC decode failed for asset=${asset.id} — falling back to sharp: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`,
+        )
+        // fall through to sharp path, which throws a normal thumbnail failure if HEIC is unsupported
       }
-
-      // ponytail: stock sharp prebuilds have no HEIC (HEVC) decoder — route iPhone photos
-      // through ffmpeg (has libde265), upgrade to a libheif-capable sharp build if it lands
-      if (mimeType === 'image/heic' || mimeType === 'image/heif') {
-        try {
-          const frameBuffer = await runFfmpeg([
-            '-y',
-            '-i',
-            tmpPath,
-            '-vframes',
-            '1',
-            '-f',
-            'image2pipe',
-            '-',
-          ])
-          const { data: thumbBuffer, info } = await this.encodeWebp(frameBuffer, size)
-          await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info, sig)
-          return
-        } catch (err) {
-          this.logger.warn(
-            `ffmpeg HEIC decode failed for asset=${asset.id} — falling back to sharp: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`,
-          )
-          // fall through to sharp path, which throws a normal thumbnail failure if HEIC is unsupported
-        }
-      }
-
-      const { data: thumbBuffer, info } = await this.encodeWebp(tmpPath, size)
-
-      await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info, sig)
-    } finally {
-      await unlink(tmpPath).catch(() => undefined)
     }
+
+    const { data: thumbBuffer, info } = await this.encodeWebp(sourcePath, size)
+
+    await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info, sig)
   }
 
   private async encodeWebp(source: Buffer | string, size: ThumbnailJob['size'], rotateDegrees = 0) {

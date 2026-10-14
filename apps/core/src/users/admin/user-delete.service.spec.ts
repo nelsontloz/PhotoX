@@ -15,10 +15,12 @@ interface DeleteCall {
 
 function makeService(opts?: {
   storageRoot?: string
-  user?: { id: string; email: string } | null
+  user?: { id: string; email: string; role?: 'user' | 'admin' } | null
   assetIds?: string[]
+  adminCount?: number
 }) {
   const ops: DeleteCall[] = []
+  const txnUser = opts?.user === undefined ? { id: USER_ID, email: EMAIL, role: 'user' } : opts.user
   const manager = {
     delete: vi.fn((entity: { name: string }, criteria: unknown) => {
       ops.push({ entity, criteria })
@@ -26,6 +28,8 @@ function makeService(opts?: {
     }),
     update: vi.fn().mockResolvedValue({ affected: 1 }),
     find: vi.fn().mockResolvedValue([]),
+    findOne: vi.fn().mockResolvedValue(txnUser),
+    count: vi.fn().mockResolvedValue(opts?.adminCount ?? 2),
   }
   const repos = new Map<string, unknown>()
   const dataSource = {
@@ -156,6 +160,39 @@ describe('UserDeleteService.runUserDelete', () => {
     } finally {
       for (const spy of spies) spy.mockRestore()
     }
+  })
+
+  it('re-checks last-admin inside the txn and 409s when only one admin remains', async () => {
+    const { service, manager } = makeService({
+      user: { id: USER_ID, email: EMAIL, role: 'admin' },
+      adminCount: 1,
+    })
+    await expect(service.runUserDelete(USER_ID, 'backups/old/')).rejects.toMatchObject({
+      status: 409,
+    })
+    expect(manager.count).toHaveBeenCalled()
+    // user row must not be deleted when the txn guard trips
+    expect(manager.delete.mock.calls.some((c) => c[0].name === 'User')).toBe(false)
+  })
+
+  it('allows deleting an admin when another admin remains', async () => {
+    const { service, manager } = makeService({
+      user: { id: USER_ID, email: EMAIL, role: 'admin' },
+      adminCount: 2,
+    })
+    manager.find.mockResolvedValue([])
+    const res = await service.runUserDelete(USER_ID, 'backups/old/')
+    expect(res.alreadyGone).toBe(false)
+    expect(manager.delete.mock.calls.some((c) => c[0].name === 'User')).toBe(true)
+  })
+
+  it('skips the admin count for regular users', async () => {
+    const { service, manager } = makeService({
+      user: { id: USER_ID, email: EMAIL, role: 'user' },
+    })
+    manager.find.mockResolvedValue([])
+    await service.runUserDelete(USER_ID, 'backups/old/')
+    expect(manager.count).not.toHaveBeenCalled()
   })
 })
 

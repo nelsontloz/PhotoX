@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
-import { useRoutes, type RouteObject } from 'react-router-dom'
+import { Navigate, Outlet, useRoutes, type RouteObject } from 'react-router-dom'
 import { LoadingState } from './components/StateViews'
+import { RequireAuth } from './components/RequireAuth'
 
 const HomePage = lazy(() => import('./pages/index'))
 const AdminPage = lazy(() => import('./pages/admin'))
@@ -18,20 +19,30 @@ const SharedPage = lazy(() => import('./pages/shared'))
 const TrashPage = lazy(() => import('./pages/trash'))
 
 const routes: RouteObject[] = [
-  { path: '/', element: <HomePage /> },
-  { path: '/admin', element: <AdminPage /> },
-  { path: '/albums', element: <AlbumsPage /> },
-  { path: '/albums/:id', element: <AlbumDetailPage /> },
-  { path: '/favorites', element: <FavoritesPage /> },
   { path: '/login', element: <LoginPage /> },
-  { path: '/people', element: <PeoplePage /> },
-  { path: '/people/:id', element: <PersonDetailPage /> },
-  { path: '/places', element: <PlacesPage /> },
   { path: '/register', element: <RegisterPage /> },
-  { path: '/search', element: <SearchPage /> },
   { path: '/share/:token', element: <SharePage /> },
-  { path: '/shared', element: <SharedPage /> },
-  { path: '/trash', element: <TrashPage /> },
+  {
+    element: (
+      <RequireAuth>
+        <Outlet />
+      </RequireAuth>
+    ),
+    children: [
+      { path: '/', element: <HomePage /> },
+      { path: '/admin', element: <AdminPage /> },
+      { path: '/albums', element: <AlbumsPage /> },
+      { path: '/albums/:id', element: <AlbumDetailPage /> },
+      { path: '/favorites', element: <FavoritesPage /> },
+      { path: '/people', element: <PeoplePage /> },
+      { path: '/people/:id', element: <PersonDetailPage /> },
+      { path: '/places', element: <PlacesPage /> },
+      { path: '/search', element: <SearchPage /> },
+      { path: '/shared', element: <SharedPage /> },
+      { path: '/trash', element: <TrashPage /> },
+    ],
+  },
+  { path: '*', element: <Navigate to="/" replace /> },
 ]
 
 export function App() {

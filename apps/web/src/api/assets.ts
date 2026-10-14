@@ -4,6 +4,9 @@ import type {
   AssetLayout,
   AssetListResponse,
   AssetDetectionsResponse,
+  FileExistsCheckHit,
+  FileExistsCheckItem,
+  FileExistsCheckResponse,
   SearchResponse,
 } from '@photox/shared-types'
 
@@ -175,33 +178,14 @@ export async function getAssetDetections(assetId: string): Promise<AssetDetectio
   return data
 }
 
-export async function assignFace(faceId: string, personId: string | null): Promise<void> {
-  await api.patch(`/v1/faces/${faceId}/person`, { personId })
-}
-
-// Wire contract for POST /api/v1/files/exists — batch check which checksums the user
-// already uploaded. Mirrors core's FileExistsCheckItem/Hit (response preserves order;
-// exists=false rows carry no ids).
-export interface FileExistsCheckItem {
-  checksumSha256: string
-  sizeBytes?: number
-}
-
-export interface FileExistsResultItem {
-  checksumSha256: string
-  exists: boolean
-  existingFileId?: string
-  existingAssetId?: string
-}
-
 /** Exists-check budget: a stalled check throws, and the caller fail-open uploads. */
 export const CHECK_FILES_EXIST_TIMEOUT_MS = 20_000
 
 export async function checkFilesExist(
   items: FileExistsCheckItem[],
   options: { timeout?: number } = {},
-): Promise<FileExistsResultItem[]> {
-  const { data } = await api.post<{ items: FileExistsResultItem[] }>(
+): Promise<FileExistsCheckHit[]> {
+  const { data } = await api.post<FileExistsCheckResponse>(
     '/v1/files/exists',
     {
       items,

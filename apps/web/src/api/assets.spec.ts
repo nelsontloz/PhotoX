@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import type { Asset, AssetListResponse } from '@photox/shared-types'
-import type { FileExistsResultItem } from './assets'
+import type { Asset, AssetListResponse, FileExistsCheckHit } from '@photox/shared-types'
 import {
   CHECK_FILES_EXIST_TIMEOUT_MS,
   getFileStreamUrl,
@@ -23,7 +22,7 @@ const { getMock, postMock } = vi.hoisted(() => ({
       body?: { items: { checksumSha256: string; sizeBytes?: number }[] },
       config?: { timeout?: number },
     ) => Promise<{
-      data: { items: FileExistsResultItem[] }
+      data: { items: FileExistsCheckHit[] }
     }>
   >(),
 }))

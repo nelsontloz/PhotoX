@@ -49,6 +49,25 @@ describe('job payload schemas', () => {
     }
     expect(() => parseJobData(faceJobSchema, payload, 'process-faces')).toThrow(UnrecoverableError)
   })
+
+  it('rejects metadataWaits above the processor wait budget', () => {
+    const base = {
+      assetId: randomUUID(),
+      fileId: randomUUID(),
+      userId: randomUUID(),
+      size: 'sm' as const,
+    }
+    // 5 is the budget ceiling (MAX_METADATA_WAITS in thumbnail.processor.ts); 6-10 used to
+    // parse fine and then silently skip the defer they asked for
+    expect(
+      parseJobData(thumbnailJobSchema, { ...base, metadataWaits: 5 }, 'process-thumbnail'),
+    ).toMatchObject({ metadataWaits: 5 })
+    for (const metadataWaits of [6, 7, 8, 9, 10]) {
+      expect(() =>
+        parseJobData(thumbnailJobSchema, { ...base, metadataWaits }, 'process-thumbnail'),
+      ).toThrow(UnrecoverableError)
+    }
+  })
 })
 
 describe('job signature verification', () => {
@@ -151,6 +170,23 @@ describe('assertOwnership', () => {
       assertOwnership(job, {
         record: { userId: job.userId },
         asset: { userId: other, fileId: job.fileId },
+      }),
+    ).toThrow(UnrecoverableError)
+  })
+
+  it('rejects null records instead of passing vacuously', () => {
+    // the signature is non-null, but a JS caller can still hand over null — that must fail
+    // the job, never pass ownership
+    expect(() =>
+      assertOwnership(job, {
+        record: null as unknown as { userId: string },
+        asset: { userId: job.userId, fileId: job.fileId },
+      }),
+    ).toThrow(UnrecoverableError)
+    expect(() =>
+      assertOwnership(job, {
+        record: { userId: job.userId },
+        asset: null as unknown as { userId: string; fileId?: string },
       }),
     ).toThrow(UnrecoverableError)
   })

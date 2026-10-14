@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import type { BackupOverviewRow, BackupResult, RestoreResult } from '../../api/admin'
 
 const api = vi.hoisted(() => ({
-  loadBackupOverview: vi.fn(),
+  getBackupOverview: vi.fn(),
   getBackupProgress: vi.fn(),
   backupUser: vi.fn(),
   restoreUser: vi.fn(),
@@ -94,7 +94,7 @@ const restoreResult: RestoreResult = {
 const notFound = () => ({ isAxiosError: true, response: { status: 404 }, message: 'Not found' })
 
 beforeEach(() => {
-  api.loadBackupOverview.mockResolvedValue({ rows: [ada, grace], fallback: false })
+  api.getBackupOverview.mockResolvedValue([ada, grace])
   api.getBackupProgress.mockRejectedValue(notFound())
   api.backupUser.mockResolvedValue(result)
   api.restoreUser.mockResolvedValue(restoreResult)
@@ -135,7 +135,7 @@ describe('BackupSection table', () => {
   it('filters client-side by email without refetching', async () => {
     render(<BackupSection />)
     await rowsReady()
-    expect(api.loadBackupOverview).toHaveBeenCalledTimes(1)
+    expect(api.getBackupOverview).toHaveBeenCalledTimes(1)
 
     fireEvent.change(screen.getByLabelText('Filter backups by email'), {
       target: { value: 'grace' },
@@ -143,7 +143,7 @@ describe('BackupSection table', () => {
 
     expect(screen.queryByText('ada@example.com')).toBeNull()
     expect(screen.getByText('grace@example.com')).toBeTruthy()
-    expect(api.loadBackupOverview).toHaveBeenCalledTimes(1)
+    expect(api.getBackupOverview).toHaveBeenCalledTimes(1)
     expect(screen.getByText('Showing 1 of 1 user')).toBeTruthy()
   })
 
@@ -207,13 +207,10 @@ describe('BackupSection table', () => {
   })
 
   it('shows degraded pills with a rerun hint', async () => {
-    api.loadBackupOverview.mockResolvedValue({
-      rows: [
-        { ...ada, degraded: 'unreadable' },
-        { ...grace, degraded: 'corrupt', exists: true },
-      ],
-      fallback: false,
-    })
+    api.getBackupOverview.mockResolvedValue([
+      { ...ada, degraded: 'unreadable' },
+      { ...grace, degraded: 'corrupt', exists: true },
+    ])
 
     render(<BackupSection />)
     expect(await screen.findByText('Unreadable')).toBeTruthy()
@@ -222,7 +219,7 @@ describe('BackupSection table', () => {
   })
 
   it('maps a 503 overview load to the Floci copy with a retry', async () => {
-    api.loadBackupOverview.mockRejectedValue({
+    api.getBackupOverview.mockRejectedValue({
       isAxiosError: true,
       response: { status: 503 },
       message: 'Request failed with status code 503',
@@ -233,7 +230,7 @@ describe('BackupSection table', () => {
     expect(screen.getByText(/Floci is running/)).toBeTruthy()
     expect(screen.queryByText('Request failed with status code 503')).toBeNull()
 
-    api.loadBackupOverview.mockResolvedValue({ rows: [ada], fallback: false })
+    api.getBackupOverview.mockResolvedValue([ada])
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     expect(await screen.findByText('ada@example.com')).toBeTruthy()
   })
@@ -310,10 +307,7 @@ describe('BackupSection table', () => {
   })
 
   it('previews an encoded prefix for uppercase emails in the confirm dialog', async () => {
-    api.loadBackupOverview.mockResolvedValue({
-      rows: [{ ...ada, email: 'Ada@Example.COM' }],
-      fallback: false,
-    })
+    api.getBackupOverview.mockResolvedValue([{ ...ada, email: 'Ada@Example.COM' }])
 
     render(<BackupSection />)
     expect(await screen.findByText('Ada@Example.COM')).toBeTruthy()
@@ -326,7 +320,7 @@ describe('BackupSection table', () => {
 
 describe('BackupSection orphans', () => {
   beforeEach(() => {
-    api.loadBackupOverview.mockResolvedValue({ rows: [ada, orphan], fallback: false })
+    api.getBackupOverview.mockResolvedValue([ada, orphan])
   })
 
   it('renders orphan rows with a Deleted pill, zero pending and a Restore action', async () => {
@@ -350,10 +344,9 @@ describe('BackupSection orphans', () => {
   })
 
   it('shows the email-at-backup hint only when it differs', async () => {
-    api.loadBackupOverview.mockResolvedValue({
-      rows: [{ ...orphan, emailAtBackup: 'older@example.com' }],
-      fallback: false,
-    })
+    api.getBackupOverview.mockResolvedValue([
+      { ...orphan, emailAtBackup: 'older@example.com' },
+    ])
     render(<BackupSection />)
     expect(await screen.findByText('gone@example.com')).toBeTruthy()
     expect(screen.getByText('Backup saved as older@example.com')).toBeTruthy()
@@ -388,7 +381,7 @@ describe('BackupSection orphans', () => {
     await waitFor(() => expect(api.restoreUser).toHaveBeenCalledWith('u-3'))
     expect(await screen.findByText(/Restored gone@example.com — 40 assets, 55 files/)).toBeTruthy()
     // success re-reads the overview so the restored account shows as live
-    await waitFor(() => expect(api.loadBackupOverview).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(api.getBackupOverview).toHaveBeenCalledTimes(2))
   })
 
   it('toasts the fallback address when the backup-time address was taken', async () => {
@@ -417,7 +410,7 @@ describe('BackupSection orphans', () => {
 
     expect(await screen.findByText(/Restore of gone@example.com failed/)).toBeTruthy()
     expect(screen.getAllByText(/already back/).length).toBeGreaterThanOrEqual(1)
-    await waitFor(() => expect(api.loadBackupOverview).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(api.getBackupOverview).toHaveBeenCalledTimes(2))
   })
 
   it('maps a 404 missing backup to a row error without refreshing', async () => {
@@ -439,7 +432,7 @@ describe('BackupSection orphans', () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 10))
     })
-    expect(api.loadBackupOverview).toHaveBeenCalledTimes(1)
+    expect(api.getBackupOverview).toHaveBeenCalledTimes(1)
   })
 
   it('maps a 422 corrupt backup to a row error without refreshing', async () => {
@@ -461,7 +454,7 @@ describe('BackupSection orphans', () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 10))
     })
-    expect(api.loadBackupOverview).toHaveBeenCalledTimes(1)
+    expect(api.getBackupOverview).toHaveBeenCalledTimes(1)
   })
 
   it('clears the 409 row error once the reload shows the row as live', async () => {
@@ -471,9 +464,9 @@ describe('BackupSection orphans', () => {
       message: 'Conflict',
     })
     const liveOrphan: BackupOverviewRow = { ...orphan, deleted: false }
-    api.loadBackupOverview
-      .mockResolvedValueOnce({ rows: [ada, orphan], fallback: false })
-      .mockResolvedValue({ rows: [ada, liveOrphan], fallback: false })
+    api.getBackupOverview
+      .mockResolvedValueOnce([ada, orphan])
+      .mockResolvedValue([ada, liveOrphan])
     render(<BackupSection />)
     expect(await screen.findByText('gone@example.com')).toBeTruthy()
 
@@ -481,7 +474,7 @@ describe('BackupSection orphans', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Restore' }))
 
     expect(await screen.findByText(/Restore of gone@example.com failed/)).toBeTruthy()
-    await waitFor(() => expect(api.loadBackupOverview).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(api.getBackupOverview).toHaveBeenCalledTimes(2))
     await waitFor(() =>
       expect(
         screen.queryByText('That account is already back — the list was refreshed to show it.'),
@@ -512,7 +505,7 @@ describe('BackupSection orphans', () => {
 
 describe('BackupSection delete', () => {
   beforeEach(() => {
-    api.loadBackupOverview.mockResolvedValue({ rows: [ada, orphan], fallback: false })
+    api.getBackupOverview.mockResolvedValue([ada, orphan])
   })
 
   it('shows a Delete action on live rows next to Backup and on orphan rows next to Restore', async () => {
@@ -589,7 +582,7 @@ describe('BackupSection delete', () => {
     expect(
       await screen.findByText(/Deleted backup for ada@example.com — 125 objects removed/),
     ).toBeTruthy()
-    await waitFor(() => expect(api.loadBackupOverview).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(api.getBackupOverview).toHaveBeenCalledTimes(2))
   })
 
   it('maps a 404 delete to a row error and refreshes', async () => {
@@ -610,6 +603,6 @@ describe('BackupSection delete', () => {
     await waitFor(() => expect(api.deleteBackup).toHaveBeenCalledWith('u-3'))
     const row = screen.getByText('gone@example.com').closest('tr') as HTMLElement
     expect(await within(row).findByText('No backup found — the list was refreshed.')).toBeTruthy()
-    await waitFor(() => expect(api.loadBackupOverview).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(api.getBackupOverview).toHaveBeenCalledTimes(2))
   })
 })
