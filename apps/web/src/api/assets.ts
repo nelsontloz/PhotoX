@@ -194,11 +194,19 @@ export interface FileExistsResultItem {
   existingAssetId?: string
 }
 
+/** Exists-check budget: a stalled check throws, and the caller fail-open uploads. */
+export const CHECK_FILES_EXIST_TIMEOUT_MS = 20_000
+
 export async function checkFilesExist(
   items: FileExistsCheckItem[],
+  options: { timeout?: number } = {},
 ): Promise<FileExistsResultItem[]> {
-  const { data } = await api.post<{ items: FileExistsResultItem[] }>('/v1/files/exists', {
-    items,
-  })
+  const { data } = await api.post<{ items: FileExistsResultItem[] }>(
+    '/v1/files/exists',
+    {
+      items,
+    },
+    { timeout: options.timeout ?? CHECK_FILES_EXIST_TIMEOUT_MS },
+  )
   return data.items
 }

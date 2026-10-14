@@ -143,6 +143,25 @@ describe('enqueueFiles', () => {
     expect(uploadFileMock).toHaveBeenCalledTimes(2)
   })
 
+  it('uploads everything when hashing rejects (fail-open)', async () => {
+    hashFileMock.mockRejectedValue(new Error('worker boom'))
+    uploadFileMock.mockResolvedValue({ id: 'asset-1', fileId: 'file-1' } as never)
+
+    enqueueFiles([makeFile('a.jpg')])
+
+    await vi.waitFor(() => {
+      expect(useUploadStore.getState().items[0]?.status).toBe('done')
+    })
+
+    expect(checkFilesExistMock).not.toHaveBeenCalled()
+    expect(uploadFileMock).toHaveBeenCalledTimes(1)
+    expect(useUploadStore.getState().items[0]).toMatchObject({
+      status: 'done',
+      fileId: 'file-1',
+      assetId: 'asset-1',
+    })
+  })
+
   it('pre-rejects files larger than 4GB without hashing or uploading', async () => {
     const big = makeFile('big.mp4')
     Object.defineProperty(big, 'size', { value: 4 * 1024 * 1024 * 1024 + 1 })

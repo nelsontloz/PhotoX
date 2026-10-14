@@ -54,25 +54,31 @@ async function runUploadFlow(ids: string[]): Promise<void> {
   if (hashableIds.length === 0) return
 
   // Phase 1: hash every file through the shared worker pool (fail-open miss on null).
+  // hashFile is time-bounded and never rejects, but the outer catch keeps any unexpected
+  // throw (store access, bookkeeping) from swallowing the upload lane below.
   const hashed: { id: string; checksumSha256: string; sizeBytes: number }[] = []
-  await Promise.all(
-    hashableIds.map(async (id) => {
-      const file = filesRef.get(id)
-      const item = useUploadStore.getState().items.find((i) => i.id === id)
-      if (!file || item?.status !== 'queued') return
-      useUploadStore.getState().setStatus(id, 'hashing')
-      let checksum: string | null = null
-      try {
-        checksum = await hashFile(file, (pct) => useUploadStore.getState().setProgress(id, pct))
-      } catch {
-        checksum = null
-      }
-      if (checksum) {
-        checksumsRef.set(id, checksum)
-        hashed.push({ id, checksumSha256: checksum, sizeBytes: file.size })
-      }
-    }),
-  )
+  try {
+    await Promise.all(
+      hashableIds.map(async (id) => {
+        const file = filesRef.get(id)
+        const item = useUploadStore.getState().items.find((i) => i.id === id)
+        if (!file || item?.status !== 'queued') return
+        useUploadStore.getState().setStatus(id, 'hashing')
+        let checksum: string | null = null
+        try {
+          checksum = await hashFile(file, (pct) => useUploadStore.getState().setProgress(id, pct))
+        } catch {
+          checksum = null
+        }
+        if (checksum) {
+          checksumsRef.set(id, checksum)
+          hashed.push({ id, checksumSha256: checksum, sizeBytes: file.size })
+        }
+      }),
+    )
+  } catch {
+    // Fall through: hashed items (if any) still get checked; the rest upload as misses.
+  }
 
   // Phase 2: ONE existence check for the batch; hits skip the upload (and thumbnail) lane.
   if (hashed.length > 0) {

@@ -2,7 +2,7 @@ import { createHmac, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { expect, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, type APIRequestContext, type Page, type Response } from '@playwright/test'
 import { createBdd, test as base } from 'playwright-bdd'
 import {
   FACE_EMBEDDING_DIM,
@@ -276,18 +276,18 @@ export async function addAssetsViaApi(
   return response.status()
 }
 
-/** Uploads a fixture via the hidden file input (header input comes first) and returns the asset id. */
-export async function uploadFixture(
-  page: Page,
-  name: string,
-  options: { allowDuplicate?: boolean } = {},
+/** Hit-row subset of POST /api/v1/files/exists (exists=false rows carry no ids). */
+interface ExistsHit {
+  checksumSha256: string
+  exists: boolean
+  existingFileId?: string
+  existingAssetId?: string
+}
+
+async function extractFilesPostAssetId(
+  response: Response,
+  options: { allowDuplicate?: boolean },
 ): Promise<string> {
-  const [response] = await Promise.all([
-    page.waitForResponse(
-      (r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/v1/files',
-    ),
-    page.locator('input[type="file"]').first().setInputFiles(join(FIXTURES_DIR, name)),
-  ])
   if (options.allowDuplicate && response.status() === 409) {
     // the same user already uploaded this fixture earlier in the run; core points back at the
     // existing asset, which the upload path already embedded/processed
@@ -301,6 +301,45 @@ export async function uploadFixture(
   const asset = (await response.json()) as { id?: string }
   if (!asset.id) throw new Error('upload response did not include an asset id')
   return asset.id
+}
+
+/**
+ * Uploads a fixture via the hidden file input (header input comes first) and returns the
+ * asset id. Tolerates the same-user dedup-skip: when the browser resolves the upload from
+ * the exists check it sends NO POST /api/v1/files (neither 201 nor 409), so this races the
+ * files POST against the exists POST and returns the hit's existingAssetId — the same
+ * outcome as a 409, keeping `allowDuplicate` semantics for both paths.
+ */
+export async function uploadFixture(
+  page: Page,
+  name: string,
+  options: { allowDuplicate?: boolean } = {},
+): Promise<string> {
+  const isFilesPost = (r: Response): boolean =>
+    r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/v1/files'
+  const isExistsPost = (r: Response): boolean =>
+    r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/v1/files/exists'
+  // both waiters register BEFORE the file input triggers the flow: on the hash path the
+  // exists check always precedes the files POST, and a dedup hit sends no files POST at all.
+  // (Promise.race settles on the first match; the loser's later rejection is handled by the
+  // race itself, so no unhandled rejection escapes.)
+  const filesWaiter = page.waitForResponse(isFilesPost, { timeout: 240_000 })
+  const existsWaiter = page.waitForResponse(isExistsPost, { timeout: 240_000 })
+  await page.locator('input[type="file"]').first().setInputFiles(join(FIXTURES_DIR, name))
+  const first = await Promise.race([
+    filesWaiter.then((response) => ({ kind: 'files' as const, response })),
+    existsWaiter.then((response) => ({ kind: 'exists' as const, response })),
+  ])
+  if (first.kind === 'files') {
+    return extractFilesPostAssetId(first.response, options)
+  }
+  const body = (await first.response.json()) as { items?: ExistsHit[] }
+  const hit = body.items?.find((item) => item.exists && item.existingAssetId)
+  if (hit?.existingAssetId) {
+    return hit.existingAssetId
+  }
+  // exists MISS: the upload-lane POST follows.
+  return extractFilesPostAssetId(await filesWaiter, options)
 }
 
 const FIXTURE_MIME: Record<string, string> = {
