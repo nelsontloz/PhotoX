@@ -172,6 +172,22 @@ export interface BackupStatus {
 }
 
 /**
+ * GET /v1/admin/backups/progress response: per-file progress of an in-flight inline backup.
+ * total/completed cover original files; uploaded/skipped split the completed ones.
+ */
+export interface BackupProgress {
+  userId: string
+  inProgress: boolean
+  total: number
+  completed: number
+  uploaded: number
+  skipped: number
+  currentFile?: string
+  startedAt?: string
+  updatedAt?: string
+}
+
+/**
  * Client-side preview of the S3 prefix a user's backup lands under. Mirrors
  * backupPrefix() in @photox/shared-config (normalizeEmail + segment-wise
  * encodeURIComponent) without taking a workspace dep.
@@ -200,6 +216,14 @@ export async function backupUser(emailOrId: string): Promise<BackupResult> {
 
 export async function getBackupStatus(emailOrId: string): Promise<BackupStatus> {
   const { data } = await api.get<BackupStatus>('/v1/admin/backups/status', {
+    params: { emailOrId },
+    timeout: BACKUP_STATUS_TIMEOUT_MS,
+  })
+  return data
+}
+
+export async function getBackupProgress(emailOrId: string): Promise<BackupProgress> {
+  const { data } = await api.get<BackupProgress>('/v1/admin/backups/progress', {
     params: { emailOrId },
     timeout: BACKUP_STATUS_TIMEOUT_MS,
   })

@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { IsNotEmpty, IsString } from 'class-validator'
 import {
   UserBackupService,
+  type BackupProgress,
   type BackupResult,
   type BackupStatus,
   type RestoreResult,
@@ -21,6 +22,12 @@ class RestoreRequestDto {
 }
 
 class BackupStatusQueryDto {
+  @IsString()
+  @IsNotEmpty()
+  emailOrId!: string
+}
+
+class BackupProgressQueryDto {
   @IsString()
   @IsNotEmpty()
   emailOrId!: string
@@ -70,5 +77,13 @@ export class BackupController {
   @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
   async status(@Query() query: BackupStatusQueryDto): Promise<BackupStatus> {
     return this.backups.backupStatus(query.emailOrId)
+  }
+
+  @Get('backups/progress')
+  @ApiOperation({ summary: 'Live per-file backup progress for one user (admin-only)' })
+  @ApiResponse({ status: 200, description: 'In-progress flag plus per-file counters' })
+  @ApiResponse({ status: 404, description: 'No user for emailOrId' })
+  async progress(@Query() query: BackupProgressQueryDto): Promise<BackupProgress> {
+    return this.backups.getBackupProgress(query.emailOrId)
   }
 }

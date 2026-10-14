@@ -240,6 +240,18 @@ export interface BackupStatus {
   persons?: number
 }
 
+export interface BackupProgress {
+  userId: string
+  inProgress: boolean
+  total: number
+  completed: number
+  uploaded: number
+  skipped: number
+  currentFile?: string
+  startedAt: string
+  updatedAt: string
+}
+
 /**
  * Per-user backup/restore: user-scoped rows + original bytes to S3 (Floci,
  * docker-only), same-UUID reinsert + derivative regeneration on restore.
@@ -288,6 +300,11 @@ export interface BackupStatus {
 @Injectable()
 export class UserBackupService {
   private readonly logger = new Logger(UserBackupService.name)
+  // ponytail: in-memory progress only (no DB/S3 row) — backupUser mutates the
+  // entry each file while GET backups/progress polls a copy; a restart wipes
+  // it and a rerun overwrites the stale entry, so never treat it as durable
+  // history (upgrade path: persist the counters to app_settings/a job row)
+  private readonly backupProgress = new Map<string, BackupProgress>()
 
   constructor(
     private readonly s3: S3BackupService,
@@ -447,106 +464,138 @@ export class UserBackupService {
     // the manifest LAST + HEAD-verify it, then delete old prefixes.
     const prefix = backupPrefix(user.email, user.id)
     const manifestObjectKey = manifestKey(user.email, user.id)
-    let stalePrefixes: string[] = []
+    const backupStartedAt = new Date().toISOString()
+    this.backupProgress.set(user.id, {
+      userId: user.id,
+      inProgress: true,
+      total: fileRows.length,
+      completed: 0,
+      uploaded: 0,
+      skipped: 0,
+      currentFile: undefined,
+      startedAt: backupStartedAt,
+      updatedAt: backupStartedAt,
+    })
     try {
-      stalePrefixes = await this.findStalePrefixesForUser(user.id, prefix)
-    } catch (err) {
-      this.logger.warn(
-        `Stale prefix scan failed for user ${user.id} (${errorName(err)}) — skipping rename`,
-      )
-      stalePrefixes = []
-    }
-    if (stalePrefixes.length > 0) {
+      let stalePrefixes: string[] = []
       try {
-        await this.renameBackupPrefix(stalePrefixes, prefix)
+        stalePrefixes = await this.findStalePrefixesForUser(user.id, prefix)
       } catch (err) {
         this.logger.warn(
-          `Backup rename failed for user ${user.id} (${err instanceof Error ? err.message : String(err)}) — continuing with direct upload`,
+          `Stale prefix scan failed for user ${user.id} (${errorName(err)}) — skipping rename`,
         )
+        stalePrefixes = []
       }
-    }
-    let prevFileMap = await this.loadPreviousFileMap(manifestObjectKey)
-    if (prevFileMap === null) {
-      for (const stale of stalePrefixes) {
-        const fallback = await this.loadPreviousFileMap(`${stale}manifest.json`)
-        if (fallback !== null) {
-          prevFileMap = fallback
-          break
+      if (stalePrefixes.length > 0) {
+        try {
+          await this.renameBackupPrefix(stalePrefixes, prefix)
+        } catch (err) {
+          this.logger.warn(
+            `Backup rename failed for user ${user.id} (${err instanceof Error ? err.message : String(err)}) — continuing with direct upload`,
+          )
         }
       }
-    }
-    let listedSet = new Set<string>()
-    let canPrune = true
-    try {
-      listedSet = new Set(await this.s3.listKeys(prefix))
-    } catch (err) {
-      this.logger.warn(
-        `Backup listKeys failed for ${prefix} (${errorName(err)}) — uploading all, skipping prune`,
-      )
-      listedSet = new Set<string>()
-      canPrune = false
-    }
-    const expectedKeys = new Set(
-      parsed.files.map((file) => originalKey(user.email, user.id, file.id, extOf(file.storageKey))),
-    )
-    let uploaded = 0
-    let skipped = 0
-    for (const file of parsed.files) {
-      const key = originalKey(user.email, user.id, file.id, extOf(file.storageKey))
-      if (shouldSkipUpload(prevFileMap, listedSet, file, key)) {
-        skipped += 1
-        continue
+      let prevFileMap = await this.loadPreviousFileMap(manifestObjectKey)
+      if (prevFileMap === null) {
+        for (const stale of stalePrefixes) {
+          const fallback = await this.loadPreviousFileMap(`${stale}manifest.json`)
+          if (fallback !== null) {
+            prevFileMap = fallback
+            break
+          }
+        }
       }
-      await this.s3.putFile(key, this.storage.pathFor(file.storageKey), file.mimeType)
-      uploaded += 1
-      listedSet.add(key)
-    }
-    if (canPrune) {
-      const staleKeys = [...listedSet].filter(
-        (key) => key.startsWith(`${prefix}originals/`) && !expectedKeys.has(key),
-      )
-      if (staleKeys.length > 0) {
-        await this.s3.deleteKeys(staleKeys)
-        this.logger.log(
-          `Pruned ${staleKeys.length} stale original(s) from pre-fix backup for user ${user.id}`,
-        )
-      }
-    } else {
-      this.logger.warn(`Skipping prune for user ${user.id} — new-prefix listing failed`)
-    }
-    await this.s3.putObject(
-      manifestObjectKey,
-      Buffer.from(JSON.stringify(parsed)),
-      'application/json',
-    )
-    await this.s3.headObject(manifestObjectKey)
-    for (const stale of stalePrefixes) {
+      let listedSet = new Set<string>()
+      let canPrune = true
       try {
-        const oldKeys = await this.s3.listKeys(stale)
-        if (oldKeys.length > 0) await this.s3.deleteKeys(oldKeys)
-        this.logger.log(`Deleted old backup prefix ${stale} for user ${user.id}`)
+        listedSet = new Set(await this.s3.listKeys(prefix))
       } catch (err) {
         this.logger.warn(
-          `Failed to delete old backup prefix ${stale} (${errorName(err)}) — leaving orphan`,
+          `Backup listKeys failed for ${prefix} (${errorName(err)}) — uploading all, skipping prune`,
         )
+        listedSet = new Set<string>()
+        canPrune = false
       }
-    }
+      const expectedKeys = new Set(
+        parsed.files.map((file) =>
+          originalKey(user.email, user.id, file.id, extOf(file.storageKey)),
+        ),
+      )
+      let uploaded = 0
+      let skipped = 0
+      for (const file of parsed.files) {
+        const key = originalKey(user.email, user.id, file.id, extOf(file.storageKey))
+        if (shouldSkipUpload(prevFileMap, listedSet, file, key)) {
+          skipped += 1
+          this.updateBackupProgress(user.id, {
+            completed: skipped + uploaded,
+            uploaded,
+            skipped,
+            currentFile: file.originalName,
+          })
+          continue
+        }
+        await this.s3.putFile(key, this.storage.pathFor(file.storageKey), file.mimeType)
+        uploaded += 1
+        listedSet.add(key)
+        this.updateBackupProgress(user.id, {
+          completed: skipped + uploaded,
+          uploaded,
+          skipped,
+          currentFile: file.originalName,
+        })
+      }
+      if (canPrune) {
+        const staleKeys = [...listedSet].filter(
+          (key) => key.startsWith(`${prefix}originals/`) && !expectedKeys.has(key),
+        )
+        if (staleKeys.length > 0) {
+          await this.s3.deleteKeys(staleKeys)
+          this.logger.log(
+            `Pruned ${staleKeys.length} stale original(s) from pre-fix backup for user ${user.id}`,
+          )
+        }
+      } else {
+        this.logger.warn(`Skipping prune for user ${user.id} — new-prefix listing failed`)
+      }
+      await this.s3.putObject(
+        manifestObjectKey,
+        Buffer.from(JSON.stringify(parsed)),
+        'application/json',
+      )
+      await this.s3.headObject(manifestObjectKey)
+      for (const stale of stalePrefixes) {
+        try {
+          const oldKeys = await this.s3.listKeys(stale)
+          if (oldKeys.length > 0) await this.s3.deleteKeys(oldKeys)
+          this.logger.log(`Deleted old backup prefix ${stale} for user ${user.id}`)
+        } catch (err) {
+          this.logger.warn(
+            `Failed to delete old backup prefix ${stale} (${errorName(err)}) — leaving orphan`,
+          )
+        }
+      }
 
-    this.logger.log(
-      `Backed up user ${user.id} (${fileRows.length} files, ${uploaded} uploaded, ${skipped} skipped) to ${prefix}`,
-    )
-    return {
-      userId: user.id,
-      email: user.email,
-      prefix,
-      backedUpAt,
-      files: fileRows.length,
-      assets: assetRows.length,
-      albums: albumRows.length,
-      shares: shareRows.length,
-      persons: personRows.length,
-      uploaded,
-      skipped,
+      this.finishBackupProgress(user.id)
+      this.logger.log(
+        `Backed up user ${user.id} (${fileRows.length} files, ${uploaded} uploaded, ${skipped} skipped) to ${prefix}`,
+      )
+      return {
+        userId: user.id,
+        email: user.email,
+        prefix,
+        backedUpAt,
+        files: fileRows.length,
+        assets: assetRows.length,
+        albums: albumRows.length,
+        shares: shareRows.length,
+        persons: personRows.length,
+        uploaded,
+        skipped,
+      }
+    } catch (err) {
+      this.finishBackupProgress(user.id)
+      throw err
     }
   }
 
@@ -775,6 +824,53 @@ export class UserBackupService {
       shares: manifest.shares.length,
       persons: manifest.persons.length,
     }
+  }
+
+  /**
+   * Live per-file snapshot of the current (or last) backup run for one user.
+   * Unknown users throw like backupUser; known users with no run yet get an
+   * idle zero snapshot (queried-at timestamps — meaningless while total is 0).
+   * Returns a copy so pollers cannot mutate the stored entry.
+   */
+  async getBackupProgress(emailOrId: string): Promise<BackupProgress> {
+    const user = await this.findUser(emailOrId)
+    if (!user) throw new NotFoundException(`No user for ${emailOrId}`)
+    const current = this.backupProgress.get(user.id)
+    if (current) return { ...current }
+    const now = new Date().toISOString()
+    return {
+      userId: user.id,
+      inProgress: false,
+      total: 0,
+      completed: 0,
+      uploaded: 0,
+      skipped: 0,
+      currentFile: undefined,
+      startedAt: now,
+      updatedAt: now,
+    }
+  }
+
+  /** Per-iteration mutation of the stored entry (no-op when absent). */
+  private updateBackupProgress(
+    userId: string,
+    patch: Pick<BackupProgress, 'completed' | 'uploaded' | 'skipped' | 'currentFile'>,
+  ): void {
+    const current = this.backupProgress.get(userId)
+    if (!current) return
+    current.completed = patch.completed
+    current.uploaded = patch.uploaded
+    current.skipped = patch.skipped
+    current.currentFile = patch.currentFile
+    current.updatedAt = new Date().toISOString()
+  }
+
+  /** Clears the in-progress flag on success AND failure (callers rethrow). */
+  private finishBackupProgress(userId: string): void {
+    const current = this.backupProgress.get(userId)
+    if (!current) return
+    current.inProgress = false
+    current.updatedAt = new Date().toISOString()
   }
 
   /**

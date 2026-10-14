@@ -7,6 +7,7 @@ import {
   AdminToast,
   GhostButton,
   PrimaryButton,
+  ProgressBar,
   RefreshButton,
   StatStrip,
   StatusPill,
@@ -15,11 +16,13 @@ import {
 import {
   listAdminUsers,
   getBackupStatus,
+  getBackupProgress,
   backupUser,
   backupPrefixPreview,
   type ListAdminUsersParams,
   type BackupResult,
   type BackupStatus,
+  type BackupProgress,
 } from '../../api/admin'
 import { ConfirmDialog, RoleBadge } from './shared'
 
@@ -89,6 +92,8 @@ export function BackupSection() {
   const [inFlight, setInFlight] = useState(false)
   const [result, setResult] = useState<BackupResult | null>(null)
   const [runError, setRunError] = useState<string | null>(null)
+  const [progress, setProgress] = useState<BackupProgress | null>(null)
+  const [progressUnsupported, setProgressUnsupported] = useState(false)
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(searchInput.trim()), PICK_DEBOUNCE_MS)
@@ -145,12 +150,44 @@ export function BackupSection() {
     }
   }, [selected, statusVersion])
 
+  const selectedId = selected?.id
+
+  useEffect(() => {
+    if (!inFlight || !selectedId) return
+    const userId = selectedId
+    let cancelled = false
+    const fetchProgress = async () => {
+      try {
+        const snapshot = await getBackupProgress(userId)
+        if (!cancelled) setProgress(snapshot)
+      } catch (err: unknown) {
+        if (cancelled) return
+        // Core predates the progress endpoint: stop polling, keep the indeterminate bar.
+        if (isAxiosError(err) && err.response?.status === 404) {
+          setProgressUnsupported(true)
+          clearInterval(timer)
+        }
+        // Other transient failures keep the last snapshot (or the indeterminate fallback).
+      }
+    }
+    const timer = setInterval(() => {
+      void fetchProgress()
+    }, 1000)
+    void fetchProgress()
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [inFlight, selectedId])
+
   const runBackup = async () => {
     if (!selected) return
     setConfirming(false)
     setInFlight(true)
     setRunError(null)
     setResult(null)
+    setProgress(null)
+    setProgressUnsupported(false)
     try {
       const res = await backupUser(selected.id)
       setResult(res)
@@ -159,6 +196,7 @@ export function BackupSection() {
       setRunError(runErrorMessage(err))
     } finally {
       setInFlight(false)
+      setProgress(null)
     }
   }
 
@@ -166,6 +204,8 @@ export function BackupSection() {
     setSelected(user)
     setSearchInput('')
     setOpen(false)
+    setProgress(null)
+    setProgressUnsupported(false)
   }
 
   return (
@@ -346,14 +386,29 @@ export function BackupSection() {
       </div>
 
       {inFlight && (
-        <div className="mt-4" role="status">
+        <div className="mt-4" role="status" aria-live="polite">
           <div className="flex items-center gap-2 mb-2 text-xs font-medium text-on-surface">
             <FaSpinner className="animate-spin text-primary" />
             Backing up {selected?.email}…
           </div>
-          <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden">
-            <div className="h-full w-1/3 rounded-full bg-primary animate-pulse" />
-          </div>
+          {progress && !progressUnsupported && progress.total > 0 ? (
+            <div className="flex flex-col gap-2">
+              <ProgressBar
+                value={progress.completed}
+                max={progress.total}
+                label={`Backup progress for ${selected?.email ?? progress.userId}`}
+              />
+              <p className="text-xs text-on-surface-variant">
+                Backing up {progress.completed}/{progress.total}
+                {progress.currentFile ? ` — ${progress.currentFile}` : ''} ({progress.uploaded} new,{' '}
+                {progress.skipped} unchanged)
+              </p>
+            </div>
+          ) : (
+            <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden">
+              <div className="h-full w-1/3 rounded-full bg-primary animate-pulse" />
+            </div>
+          )}
         </div>
       )}
 
