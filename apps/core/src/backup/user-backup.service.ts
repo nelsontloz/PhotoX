@@ -923,6 +923,21 @@ export class UserBackupService {
       if (err instanceof NotFoundException) return { exists: false }
       throw new ServiceUnavailableException('Backup storage (S3) unreachable')
     }
+    return this.readBackupStatus(located)
+  }
+
+  /**
+   * Manifest fetch + parse shared by backupStatus (per-user probe) and
+   * backupOverview (batch path). Takes an already-resolved location — no
+   * ensureBucket, no locateBackup LIST scan — so the overview can reuse its
+   * single base listing and one hoisted ensureBucket. S3-down still throws
+   * 503 (no partial table); a missing manifest reads as exists:false.
+   */
+  private async readBackupStatus(located: {
+    prefix: string
+    manifestObjectKey: string
+    userId: string
+  }): Promise<BackupStatus> {
     let raw: Buffer
     try {
       raw = await this.s3.getBuffer(located.manifestObjectKey)
@@ -975,12 +990,14 @@ export class UserBackupService {
    * Live rows join the DB asset count with the manifest status (`deleted: false`);
    * orphan rows are S3-only (`deleted: true`, `totalAssets: 0`, identity from the
    * manifest/prefix with role fallback `user`). Manifest-less prefixes are skipped
-   * at debug. S3-down throws 503 via backupStatus or the base listing (no partial
-   * table) so a red table never masquerades as "nobody backed up".
-   * ponytail: O(users + orphans) S3 manifest reads via backupStatus (plus one grouped
-   * DB count and one base listKeys) — fine for personal-library scale (tens of
-   * users); upgrade path is a single base listKeys + batched getBuffers when
-   * user counts grow.
+   * at debug. S3-down throws 503 via the hoisted ensureBucket, the base listing,
+   * or any manifest read (no partial table) so a red table never masquerades as
+   * "nobody backed up".
+   * ponytail: O(users + orphans) manifest GETs + one base listKeys + one
+   * ensureBucket — fine for personal-library scale (tens of users); upgrade path
+   * is batched getBuffers when user counts grow. Delimiter-style listing skipped:
+   * the S3 wrapper exposes only full-prefix listKeys (no Delimiter/CommonPrefixes
+   * path), so prefix-only enumeration would need a new op + fake parity.
    */
   async backupOverview(): Promise<BackupOverviewRow[]> {
     const users = await this.users.find({ order: { email: 'ASC' } })
@@ -997,7 +1014,25 @@ export class UserBackupService {
         .getRawMany<{ userId: string; count: string }>()
       for (const row of counts) totalByUser.set(row.userId, Number(row.count))
     }
-    const statuses = await Promise.all(users.map((u) => this.backupStatus(u.id)))
+    try {
+      await this.s3.ensureBucket()
+    } catch {
+      throw new ServiceUnavailableException('Backup storage (S3) unreachable')
+    }
+    // Live locations need no S3 scan — the DB row already supplies the
+    // email-first layout locateBackup would rebuild (same prefix/key).
+    const liveLocated = users.map((u) => ({
+      prefix: backupPrefix(u.email, u.id),
+      manifestObjectKey: manifestKey(u.email, u.id),
+      userId: u.id,
+    }))
+    let statuses: BackupStatus[]
+    try {
+      statuses = await Promise.all(liveLocated.map((loc) => this.readBackupStatus(loc)))
+    } catch (err) {
+      if (err instanceof ServiceUnavailableException) throw err
+      throw new ServiceUnavailableException('Backup storage (S3) unreachable')
+    }
     const liveRows = users.map((user, i) =>
       buildBackupOverviewRow(user, totalByUser.get(user.id) ?? 0, statuses[i]!),
     )
@@ -1005,7 +1040,6 @@ export class UserBackupService {
     let keys: string[]
     try {
       base = resolveBackupPrefix()
-      await this.s3.ensureBucket()
       keys = await this.s3.listKeys(base)
     } catch (err) {
       if (err instanceof ServiceUnavailableException) throw err
@@ -1034,9 +1068,23 @@ export class UserBackupService {
       this.logger.debug(`Skipping manifest-less backup prefix ${info.prefix}`)
       return false
     })
-    const orphanStatuses = await Promise.all(
-      orphanEntries.map(([userId]) => this.backupStatus(userId)),
-    )
+    // Orphan manifests resolve straight from the already-listed prefix dir
+    // (`<prefix>manifest.json`) — no per-orphan locateBackup base LIST scan.
+    let orphanStatuses: BackupStatus[]
+    try {
+      orphanStatuses = await Promise.all(
+        orphanEntries.map(([userId, info]) =>
+          this.readBackupStatus({
+            prefix: info.prefix,
+            manifestObjectKey: `${info.prefix}manifest.json`,
+            userId,
+          }),
+        ),
+      )
+    } catch (err) {
+      if (err instanceof ServiceUnavailableException) throw err
+      throw new ServiceUnavailableException('Backup storage (S3) unreachable')
+    }
     const orphanRows: BackupOverviewRow[] = []
     for (const [index, [userId, info]] of orphanEntries.entries()) {
       const status = orphanStatuses[index]!
