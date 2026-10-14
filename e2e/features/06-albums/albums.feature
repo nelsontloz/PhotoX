@@ -67,7 +67,8 @@ Feature: Albums UI flows
     And I create an album through the UI named "Fresh album"
     And I open the album card "Fresh album"
     And I open the add photos dialog
-    And I select all album photos in the dialog
+    Then the add photos dialog lists 1 album photos
+    When I select all album photos in the dialog
     And I add the selected album photos
     Then the album page shows 1 album photos
 

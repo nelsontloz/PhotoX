@@ -252,6 +252,46 @@ export interface BackupProgress {
   updatedAt: string
 }
 
+export interface BackupOverviewRow {
+  userId: string
+  email: string
+  role: 'user' | 'admin'
+  totalAssets: number
+  backedUpAssets: number
+  backedUpFiles: number
+  backedUpAt: string | null
+  exists: boolean
+  degraded?: 'unreadable' | 'corrupt'
+  notBackedUp: number
+}
+
+/**
+ * Pure row math for the admin backups overview: live DB count vs manifest
+ * counts, with the notBackedUp clamp (a newer backup can hold more assets
+ * than the live DB after deletes — never report a negative gap).
+ */
+export function buildBackupOverviewRow(
+  user: Pick<User, 'id' | 'email' | 'role'>,
+  totalAssets: number,
+  status: BackupStatus,
+): BackupOverviewRow {
+  const backedUpAssets = status.assets ?? 0
+  const backedUpFiles = status.files ?? 0
+  const row: BackupOverviewRow = {
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+    totalAssets,
+    backedUpAssets,
+    backedUpFiles,
+    backedUpAt: status.backedUpAt ?? null,
+    exists: status.exists,
+    notBackedUp: Math.max(0, totalAssets - backedUpAssets),
+  }
+  if (status.degraded !== undefined) row.degraded = status.degraded
+  return row
+}
+
 /**
  * Per-user backup/restore: user-scoped rows + original bytes to S3 (Floci,
  * docker-only), same-UUID reinsert + derivative regeneration on restore.
@@ -824,6 +864,34 @@ export class UserBackupService {
       shares: manifest.shares.length,
       persons: manifest.persons.length,
     }
+  }
+
+  /**
+   * Admin backups-table overview: one row per user joining the live DB asset
+   * count with that user's S3 manifest status.
+   * ponytail: O(users) S3 manifest reads via Promise.all over backupStatus
+   * (plus one grouped DB count) — fine for personal-library scale (tens of
+   * users); upgrade path is a single base listKeys + batched getBuffers when
+   * user counts grow. S3-down still throws 503 via backupStatus (no partial
+   * table) so a red table never masquerades as "nobody backed up".
+   */
+  async backupOverview(): Promise<BackupOverviewRow[]> {
+    const users = await this.users.find({ order: { email: 'ASC' } })
+    if (users.length === 0) return []
+    const ids = users.map((u) => u.id)
+    const counts = await this.assets
+      .createQueryBuilder('a')
+      .select('a."userId"', 'userId')
+      .addSelect('COUNT(*)', 'count')
+      .where('a."userId" IN (:...ids)', { ids })
+      .groupBy('a."userId"')
+      .getRawMany<{ userId: string; count: string }>()
+    const totalByUser = new Map<string, number>()
+    for (const row of counts) totalByUser.set(row.userId, Number(row.count))
+    const statuses = await Promise.all(users.map((u) => this.backupStatus(u.id)))
+    return users.map((user, i) =>
+      buildBackupOverviewRow(user, totalByUser.get(user.id) ?? 0, statuses[i]!),
+    )
   }
 
   /**

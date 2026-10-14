@@ -171,14 +171,16 @@ interface ButtonProps {
   disabled?: boolean
   icon?: ReactNode
   children: ReactNode
+  ariaLabel?: string
 }
 
-export function PrimaryButton({ onClick, disabled, icon, children }: ButtonProps) {
+export function PrimaryButton({ onClick, disabled, icon, children, ariaLabel }: ButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      aria-label={ariaLabel}
       className={cx(
         BUTTON_BASE,
         'bg-primary-container text-on-primary-container hover:bg-primary-container/90 shadow-sm',
@@ -190,12 +192,13 @@ export function PrimaryButton({ onClick, disabled, icon, children }: ButtonProps
   )
 }
 
-export function GhostButton({ onClick, disabled, icon, children }: ButtonProps) {
+export function GhostButton({ onClick, disabled, icon, children, ariaLabel }: ButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      aria-label={ariaLabel}
       className={cx(
         BUTTON_BASE,
         'bg-surface-container text-on-surface hover:bg-surface-container-high',

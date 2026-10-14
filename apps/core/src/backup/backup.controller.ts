@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { IsNotEmpty, IsString } from 'class-validator'
 import {
   UserBackupService,
+  type BackupOverviewRow,
   type BackupProgress,
   type BackupResult,
   type BackupStatus,
@@ -69,6 +70,14 @@ export class BackupController {
   @ApiResponse({ status: 200, description: 'Restore counts and re-enqueue totals' })
   async restore(@Body() dto: RestoreRequestDto): Promise<RestoreResult> {
     return this.backups.restoreUser(dto.emailOrId)
+  }
+
+  @Get('backups/overview')
+  @ApiOperation({ summary: 'Aggregated backup overview, one row per user (admin-only)' })
+  @ApiResponse({ status: 200, description: 'Live asset counts joined with manifest status' })
+  @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
+  async overview(): Promise<BackupOverviewRow[]> {
+    return this.backups.backupOverview()
   }
 
   @Get('backups/status')

@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { FaDatabase, FaMagnifyingGlass, FaSpinner } from 'react-icons/fa6'
 import { isAxiosError } from 'axios'
-import { type AdminUserRow } from '@photox/shared-types'
 import {
   AdminSection,
   AdminToast,
@@ -9,27 +8,25 @@ import {
   PrimaryButton,
   ProgressBar,
   RefreshButton,
-  StatStrip,
   StatusPill,
-  cx,
 } from './ui'
 import {
-  listAdminUsers,
-  getBackupStatus,
+  loadBackupOverview,
   getBackupProgress,
   backupUser,
   backupPrefixPreview,
-  type ListAdminUsersParams,
+  type BackupOverviewRow,
   type BackupResult,
-  type BackupStatus,
   type BackupProgress,
 } from '../../api/admin'
 import { ConfirmDialog, RoleBadge } from './shared'
 
-// --- user backups ------------------------------------------------------------------------
+// --- admin backups table -------------------------------------------------------------------
+// One row per user: manifest status, backed-up counts, pending count and last run. Per-row
+// Backup reuses the single-user confirm + inline-run flow; Backup-all walks the filtered list
+// sequentially so multi-GB libraries never run concurrently in the API.
 
-const PICK_LIMIT = 8
-const PICK_DEBOUNCE_MS = 250
+const PAGE_SIZE = 15
 
 const S3_DOWN_HEADLINE = "Can't reach backup storage"
 const S3_DOWN_BODY =
@@ -39,12 +36,10 @@ const BACKUP_TIMEOUT_MESSAGE =
 const STATUS_LOAD_FALLBACK = "Couldn't load backup status."
 const RUN_FALLBACK = 'Backup failed'
 
-const DEGRADED_UNREADABLE_HEADLINE = 'Backup listed but unreadable'
-const DEGRADED_UNREADABLE_BODY =
-  "S3 still lists this user's backup, but the manifest can't be fetched — objects may have been deleted outside PhotoX. Run a new backup to replace it."
-const DEGRADED_CORRUPT_HEADLINE = 'Backup manifest is corrupt'
-const DEGRADED_CORRUPT_BODY =
-  "The manifest downloaded, but it isn't valid JSON or doesn't match the backup format — this backup can't be restored as-is."
+const DEGRADED_HINT: Record<string, string> = {
+  unreadable: 'Listed but unreadable — rerun the backup to replace it.',
+  corrupt: 'Manifest is corrupt — rerun the backup to replace it.',
+}
 
 /** 503 means S3/Floci is down; a timeout or no response means the store is slow. Never leak axios verbatim. */
 function statusErrorMessage(err: unknown): string {
@@ -63,6 +58,13 @@ function runErrorMessage(err: unknown): string {
   return RUN_FALLBACK
 }
 
+function isStoreDown(err: unknown): boolean {
+  return (
+    isAxiosError(err) &&
+    (err.response?.status === 503 || !err.response || err.code === 'ECONNABORTED')
+  )
+}
+
 /** Formats an ISO timestamp the way the rest of the admin console does, tolerating absence. */
 function stamp(value: string | undefined): string {
   if (!value) return '—'
@@ -70,382 +72,452 @@ function stamp(value: string | undefined): string {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString()
 }
 
-/**
- * Per-user S3 backup: searchable picker (debounced listAdminUsers), existing-backup status for
- * the selection, and a confirmed run with live disabled/progress state. Restore stays API-only.
- */
+function pendingOf(row: BackupOverviewRow): number {
+  return Math.max(0, (row.totalAssets ?? 0) - (row.backedUpAssets ?? 0))
+}
+
+function pillFor(row: BackupOverviewRow, error: string | null): { tone: 'ok' | 'warn' | 'muted'; label: string } {
+  if (error ?? row.unavailable) return { tone: 'warn', label: 'Unavailable' }
+  if (row.degraded === 'unreadable') return { tone: 'warn', label: 'Unreadable' }
+  if (row.degraded === 'corrupt') return { tone: 'warn', label: 'Corrupt' }
+  if (row.exists) return { tone: 'ok', label: 'Backed up' }
+  return { tone: 'muted', label: 'None' }
+}
+
 export function BackupSection() {
-  const [searchInput, setSearchInput] = useState('')
-  const [debouncedQ, setDebouncedQ] = useState('')
-  const [open, setOpen] = useState(false)
-  const [results, setResults] = useState<AdminUserRow[]>([])
-  const [listLoading, setListLoading] = useState(true)
-  const [listError, setListError] = useState<string | null>(null)
-  const [selected, setSelected] = useState<AdminUserRow | null>(null)
+  const [rows, setRows] = useState<BackupOverviewRow[] | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadErrorIsStore, setLoadErrorIsStore] = useState(false)
+  const [version, setVersion] = useState(0)
 
-  const [status, setStatus] = useState<BackupStatus | null>(null)
-  const [statusLoading, setStatusLoading] = useState(false)
-  const [statusError, setStatusError] = useState<string | null>(null)
-  const [statusVersion, setStatusVersion] = useState(0)
+  const [query, setQuery] = useState('')
+  const [page, setPage] = useState(0)
 
-  const [confirming, setConfirming] = useState(false)
-  const [inFlight, setInFlight] = useState(false)
-  const [result, setResult] = useState<BackupResult | null>(null)
-  const [runError, setRunError] = useState<string | null>(null)
-  const [progress, setProgress] = useState<BackupProgress | null>(null)
-  const [progressUnsupported, setProgressUnsupported] = useState(false)
+  const [busy, setBusy] = useState<Record<string, boolean>>({})
+  const [progressMap, setProgressMap] = useState<Record<string, BackupProgress | null>>({})
+  const [unsupported, setUnsupported] = useState<Record<string, boolean>>({})
+  const [rowErrors, setRowErrors] = useState<Record<string, string | null>>({})
+  const [lastResults, setLastResults] = useState<Record<string, BackupResult>>({})
 
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(searchInput.trim()), PICK_DEBOUNCE_MS)
-    return () => clearTimeout(t)
-  }, [searchInput])
+  const [confirmUser, setConfirmUser] = useState<BackupOverviewRow | null>(null)
+  const [confirmAll, setConfirmAll] = useState(false)
+  const [backupAllRunning, setBackupAllRunning] = useState(false)
+  const [backupAllCursor, setBackupAllCursor] = useState<{ done: number; total: number } | null>(null)
+
+  const [toast, setToast] = useState<{ key: number; message: ReactNode; tone: 'default' | 'error' } | null>(null)
+  const notify = (message: ReactNode, tone: 'default' | 'error' = 'default') =>
+    setToast((prev) => ({ key: (prev?.key ?? 0) + 1, message, tone }))
 
   useEffect(() => {
     let cancelled = false
-    setListLoading(true)
-    setListError(null)
-    const params: ListAdminUsersParams = {
-      limit: PICK_LIMIT,
-      sortField: 'email',
-      sortDir: 'asc',
-    }
-    if (debouncedQ) params.q = debouncedQ
-    listAdminUsers(params)
-      .then((res) => {
-        if (!cancelled) setResults(res.items)
-      })
-      .catch((err: Error) => {
-        if (!cancelled) setListError(err.message ?? 'Failed to load users')
-      })
-      .finally(() => {
-        if (!cancelled) setListLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [debouncedQ])
-
-  useEffect(() => {
-    if (!selected) {
-      setStatus(null)
-      setStatusError(null)
-      setStatusLoading(false)
-      return
-    }
-    let cancelled = false
-    setStatusLoading(true)
-    setStatusError(null)
-    getBackupStatus(selected.id)
-      .then((res) => {
-        if (!cancelled) setStatus(res)
+    setLoading(true)
+    setLoadError(null)
+    setLoadErrorIsStore(false)
+    loadBackupOverview()
+      .then(({ rows: next }) => {
+        if (!cancelled) setRows(next)
       })
       .catch((err: unknown) => {
-        if (!cancelled) setStatusError(statusErrorMessage(err))
+        if (!cancelled) {
+          setLoadError(statusErrorMessage(err))
+          setLoadErrorIsStore(isStoreDown(err))
+        }
       })
       .finally(() => {
-        if (!cancelled) setStatusLoading(false)
+        if (!cancelled) setLoading(false)
       })
     return () => {
       cancelled = true
     }
-  }, [selected, statusVersion])
+  }, [version])
 
-  const selectedId = selected?.id
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!rows || !q) return rows ?? []
+    return rows.filter((r) => r.email.toLowerCase().includes(q))
+  }, [rows, query])
 
   useEffect(() => {
-    if (!inFlight || !selectedId) return
-    const userId = selectedId
+    setPage(0)
+  }, [query])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages - 1)
+  const paged = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
+
+  const anyBusy = backupAllRunning || Object.values(busy).some(Boolean)
+
+  // Per-row progress: poll the progress endpoint once a second for every in-flight row.
+  // A 404 means the core predates the endpoint — fall back to the indeterminate bar.
+  useEffect(() => {
+    const ids = Object.keys(busy).filter((id) => busy[id] && !unsupported[id])
+    if (ids.length === 0) return
     let cancelled = false
-    const fetchProgress = async () => {
+    const poll = async (id: string) => {
       try {
-        const snapshot = await getBackupProgress(userId)
-        if (!cancelled) setProgress(snapshot)
+        const snapshot = await getBackupProgress(id)
+        if (!cancelled) setProgressMap((prev) => ({ ...prev, [id]: snapshot }))
       } catch (err: unknown) {
         if (cancelled) return
-        // Core predates the progress endpoint: stop polling, keep the indeterminate bar.
         if (isAxiosError(err) && err.response?.status === 404) {
-          setProgressUnsupported(true)
-          clearInterval(timer)
+          setUnsupported((prev) => ({ ...prev, [id]: true }))
         }
-        // Other transient failures keep the last snapshot (or the indeterminate fallback).
       }
     }
+    ids.forEach((id) => void poll(id))
     const timer = setInterval(() => {
-      void fetchProgress()
+      ids.forEach((id) => void poll(id))
     }, 1000)
-    void fetchProgress()
     return () => {
       cancelled = true
       clearInterval(timer)
     }
-  }, [inFlight, selectedId])
+  }, [busy, unsupported])
 
-  const runBackup = async () => {
-    if (!selected) return
-    setConfirming(false)
-    setInFlight(true)
-    setRunError(null)
-    setResult(null)
-    setProgress(null)
-    setProgressUnsupported(false)
+  const runOne = async (row: BackupOverviewRow): Promise<boolean> => {
+    setBusy((prev) => ({ ...prev, [row.userId]: true }))
+    setRowErrors((prev) => ({ ...prev, [row.userId]: null }))
+    setProgressMap((prev) => ({ ...prev, [row.userId]: null }))
+    setUnsupported((prev) => {
+      const next = { ...prev }
+      delete next[row.userId]
+      return next
+    })
     try {
-      const res = await backupUser(selected.id)
-      setResult(res)
-      setStatusVersion((v) => v + 1)
+      const res = await backupUser(row.userId)
+      setRows((prev) =>
+        (prev ?? []).map((r) =>
+          r.userId === row.userId
+            ? {
+                ...r,
+                exists: true,
+                degraded: undefined,
+                unavailable: undefined,
+                backedUpAssets: res.assets,
+                backedUpFiles: res.files,
+                backedUpAt: res.backedUpAt,
+              }
+            : r,
+        ),
+      )
+      setLastResults((prev) => ({ ...prev, [row.userId]: res }))
+      const allSkipped = res.files > 0 && (res.skipped ?? 0) === res.files
+      notify(
+        `Backed up ${row.email} — ${res.files.toLocaleString()} files (${(res.uploaded ?? 0).toLocaleString()} new, ${(res.skipped ?? 0).toLocaleString()} unchanged)${allSkipped ? ' — nothing new.' : ''}`,
+      )
+      return true
     } catch (err: unknown) {
-      setRunError(runErrorMessage(err))
+      const message = runErrorMessage(err)
+      setRowErrors((prev) => ({ ...prev, [row.userId]: message }))
+      notify(`Backup of ${row.email} failed — ${message}`, 'error')
+      return false
     } finally {
-      setInFlight(false)
-      setProgress(null)
+      setBusy((prev) => ({ ...prev, [row.userId]: false }))
+      setProgressMap((prev) => {
+        const next = { ...prev }
+        delete next[row.userId]
+        return next
+      })
     }
   }
 
-  const pick = (user: AdminUserRow) => {
-    setSelected(user)
-    setSearchInput('')
-    setOpen(false)
-    setProgress(null)
-    setProgressUnsupported(false)
+  const runAll = async () => {
+    const targets = [...filtered]
+    setConfirmAll(false)
+    if (targets.length === 0) return
+    setBackupAllRunning(true)
+    setBackupAllCursor({ done: 0, total: targets.length })
+    let ok = 0
+    let failed = 0
+    for (const target of targets) {
+      const success = await runOne(target)
+      if (success) ok += 1
+      else failed += 1
+      setBackupAllCursor({ done: ok + failed, total: targets.length })
+    }
+    notify(
+      failed === 0
+        ? `Backup-all finished — ${ok} user${ok === 1 ? '' : 's'} backed up.`
+        : `Backup-all finished — ${ok} ok, ${failed} failed.`,
+      failed === 0 ? 'default' : 'error',
+    )
+    setBackupAllRunning(false)
+    setBackupAllCursor(null)
   }
+
+  const backedUpCount = rows?.filter((r) => r.exists && !r.degraded && !r.unavailable).length ?? 0
+  const pendingAssets = rows?.reduce((sum, r) => sum + pendingOf(r), 0) ?? 0
 
   return (
     <AdminSection
       title="User Backups"
-      subtitle="Copy one user's rows and original files to S3."
+      subtitle="Every account's rows and original files, copied to S3. Reruns reuse the same keys and skip unchanged files."
       icon={<FaDatabase />}
       actions={
-        <RefreshButton
-          onClick={() => setStatusVersion((v) => v + 1)}
-          label="Refresh backup status"
-          disabled={!selected || inFlight}
-        />
-      }
-    >
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-surface-container rounded-lg p-4">
-          <p className="text-label-xs uppercase font-mono text-outline mb-2">User</p>
-          <div className="relative">
+        <>
+          <div className="relative w-full sm:w-56">
             <FaMagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 text-outline text-xs pointer-events-none" />
             <input
               type="text"
-              value={searchInput}
-              onChange={(e) => {
-                setSearchInput(e.target.value)
-                setOpen(true)
-              }}
-              onFocus={() => setOpen(true)}
-              onBlur={() => setOpen(false)}
-              placeholder="Search name or email…"
-              aria-label="Search users for backup"
-              disabled={inFlight}
-              className="w-full bg-surface-container-low border border-border-dark focus:border-primary/50 focus:ring-1 focus:ring-primary outline-none rounded-lg pl-9 pr-3 py-2 text-xs text-on-surface placeholder-outline transition-colors disabled:opacity-50"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Filter by email…"
+              aria-label="Filter backups by email"
+              disabled={loading && !rows}
+              className="w-full bg-surface-container border border-border-dark focus:border-primary/50 focus:ring-1 focus:ring-primary outline-none rounded-lg pl-9 pr-3 py-2 text-xs text-on-surface placeholder-outline transition-colors disabled:opacity-50"
             />
-            {open && (
-              <ul className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-border-dark bg-surface-container-low shadow-lg divide-y divide-border-dark/60">
-                {listError ? (
-                  <li className="px-3 py-2 text-xs text-status-error">{listError}</li>
-                ) : listLoading && results.length === 0 ? (
-                  <li className="px-3 py-2 text-xs text-outline">Searching…</li>
-                ) : results.length === 0 ? (
-                  <li className="px-3 py-2 text-xs text-outline">No users match.</li>
-                ) : (
-                  results.map((u) => (
-                    <li key={u.id}>
-                      <button
-                        type="button"
-                        // keep focus on the input so onBlur doesn't close the list before the click
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => pick(u)}
-                        disabled={inFlight}
-                        className={cx(
-                          'w-full text-left flex items-center gap-2.5 px-3 py-2 transition-colors disabled:opacity-50',
-                          selected?.id === u.id
-                            ? 'bg-primary/10'
-                            : 'hover:bg-surface-container-high',
-                        )}
-                      >
-                        <span className="w-6 h-6 shrink-0 rounded-full bg-surface-container-highest text-on-surface-variant text-[10px] font-bold flex items-center justify-center">
-                          {u.displayName.charAt(0).toUpperCase()}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block font-mono text-xs text-on-surface truncate">
-                            {u.email}
-                          </span>
-                          <span className="block text-[10px] text-outline truncate">
-                            {u.displayName}
-                          </span>
-                        </span>
-                      </button>
-                    </li>
-                  ))
-                )}
-              </ul>
-            )}
           </div>
-          {selected ? (
-            <div className="mt-3 flex items-center gap-3 rounded-lg bg-surface-container-low p-3">
-              <span className="w-8 h-8 shrink-0 rounded-full bg-surface-container-highest text-on-surface-variant text-xs font-bold flex items-center justify-center">
-                {selected.displayName.charAt(0).toUpperCase()}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium text-on-surface truncate">
-                  {selected.displayName}
-                </p>
-                <p className="font-mono text-[10px] text-on-surface-variant truncate">
-                  {selected.email}
-                </p>
-                <p className="font-mono text-[10px] text-outline truncate">{selected.id}</p>
-              </div>
-              <RoleBadge role={selected.role} />
-            </div>
-          ) : (
-            <p className="mt-3 text-xs text-outline">Pick a user to back up.</p>
-          )}
-        </div>
-
-        <div className="bg-surface-container rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <p className="text-label-xs uppercase font-mono text-outline mr-auto">
-              Existing backup
-            </p>
-            {(statusError ?? status) && (
-              <StatusPill
-                tone={(statusError ?? status?.degraded) ? 'warn' : status?.exists ? 'ok' : 'muted'}
-              >
-                {statusError
-                  ? 'Unavailable'
-                  : status?.degraded === 'unreadable'
-                    ? 'Unreadable'
-                    : status?.degraded === 'corrupt'
-                      ? 'Corrupt'
-                      : status?.exists
-                        ? 'Backed up'
-                        : 'None'}
-              </StatusPill>
-            )}
-          </div>
-          {!selected ? (
-            <p className="text-xs text-on-surface-variant">
-              Select a user to check for an existing backup.
-            </p>
-          ) : statusLoading ? (
-            <div className="h-24 rounded bg-surface-container-high/50 animate-pulse" />
-          ) : statusError ? (
-            <div className="py-2">
-              {statusError === S3_DOWN_BODY ? (
-                <>
-                  <p className="text-xs font-medium text-on-surface">{S3_DOWN_HEADLINE}</p>
-                  <p className="mt-1 mb-2 text-xs text-on-surface-variant">{S3_DOWN_BODY}</p>
-                </>
-              ) : (
-                <p className="text-xs text-status-error mb-2">{statusError}</p>
-              )}
-              <GhostButton onClick={() => setStatusVersion((v) => v + 1)}>Retry</GhostButton>
-            </div>
-          ) : status?.degraded ? (
-            <div className="py-2">
-              <p className="text-xs font-medium text-on-surface">
-                {status.degraded === 'unreadable'
-                  ? DEGRADED_UNREADABLE_HEADLINE
-                  : DEGRADED_CORRUPT_HEADLINE}
-              </p>
-              <p className="mt-1 text-xs text-on-surface-variant">
-                {status.degraded === 'unreadable'
-                  ? DEGRADED_UNREADABLE_BODY
-                  : DEGRADED_CORRUPT_BODY}
-              </p>
-            </div>
-          ) : status?.exists ? (
-            <StatStrip
-              rows={[
-                { label: 'Backed up', value: stamp(status.backedUpAt) },
-                { label: 'Files', value: (status.files ?? 0).toLocaleString() },
-                { label: 'Assets', value: (status.assets ?? 0).toLocaleString() },
-                { label: 'Email at backup', value: status.emailAtBackup ?? '—', tone: 'muted' },
-              ]}
-            />
-          ) : status ? (
-            <p className="text-xs text-on-surface-variant">No backup yet for this user.</p>
-          ) : null}
-          {result && !status?.degraded && (
-            <p className="mt-3 font-mono text-[10px] text-on-surface-variant break-all">
-              Last run {stamp(result.backedUpAt)} — {result.files.toLocaleString()} files (
-              {(result.uploaded ?? 0).toLocaleString()} uploaded,{' '}
-              {(result.skipped ?? 0).toLocaleString()} skipped)
-            </p>
-          )}
-          {result &&
-            !status?.degraded &&
-            (result.skipped ?? 0) === result.files &&
-            result.files > 0 && (
-              <p className="mt-1 text-xs text-outline">
-                Nothing new — all files already backed up.
-              </p>
-            )}
-        </div>
-      </div>
-
-      {inFlight && (
-        <div className="mt-4" role="status" aria-live="polite">
+          <RefreshButton
+            onClick={() => setVersion((v) => v + 1)}
+            label="Refresh backup overview"
+            disabled={loading || anyBusy}
+          />
+          <PrimaryButton
+            onClick={() => setConfirmAll(true)}
+            disabled={!rows || rows.length === 0 || loading || anyBusy}
+            icon={backupAllRunning ? <FaSpinner className="animate-spin" /> : undefined}
+            ariaLabel="Back up all users"
+          >
+            {backupAllRunning && backupAllCursor
+              ? `Backing up ${Math.min(backupAllCursor.done + 1, backupAllCursor.total)}/${backupAllCursor.total}…`
+              : 'Back up all'}
+          </PrimaryButton>
+        </>
+      }
+    >
+      {backupAllRunning && backupAllCursor && (
+        <div className="mb-4" role="status" aria-live="polite">
           <div className="flex items-center gap-2 mb-2 text-xs font-medium text-on-surface">
             <FaSpinner className="animate-spin text-primary" />
-            Backing up {selected?.email}…
+            Backing up {backupAllCursor.done + 1} of {backupAllCursor.total}…
           </div>
-          {progress && !progressUnsupported && progress.total > 0 ? (
-            <div className="flex flex-col gap-2">
-              <ProgressBar
-                value={progress.completed}
-                max={progress.total}
-                label={`Backup progress for ${selected?.email ?? progress.userId}`}
-              />
-              <p className="text-xs text-on-surface-variant">
-                Backing up {progress.completed}/{progress.total}
-                {progress.currentFile ? ` — ${progress.currentFile}` : ''} ({progress.uploaded} new,{' '}
-                {progress.skipped} unchanged)
-              </p>
-            </div>
-          ) : (
-            <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden">
-              <div className="h-full w-1/3 rounded-full bg-primary animate-pulse" />
-            </div>
-          )}
+          <ProgressBar
+            value={backupAllCursor.done}
+            max={backupAllCursor.total}
+            label="Backup-all progress"
+          />
         </div>
       )}
 
-      <div className="border-t border-border-dark/40 pt-4 mt-4 flex items-start justify-between gap-4 flex-wrap">
-        <p className="text-body-sm text-on-surface-variant max-w-lg">
-          Runs inline in the API — multi-GB libraries can take a while. Reruns reuse the same S3
-          keys, skipping unchanged files.
-        </p>
-        <PrimaryButton
-          onClick={() => setConfirming(true)}
-          disabled={!selected || inFlight}
-          icon={inFlight ? <FaSpinner className="animate-spin" /> : undefined}
-        >
-          {inFlight ? 'Backing up…' : 'Run backup'}
-        </PrimaryButton>
-      </div>
-
-      {result && (
-        <AdminToast
-          message={`Backed up ${result.files.toLocaleString()} files (${(result.uploaded ?? 0).toLocaleString()} new, ${(result.skipped ?? 0).toLocaleString()} unchanged)`}
-        />
+      {loading && !rows ? (
+        <div className="space-y-2" aria-label="Loading backups">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-14 rounded-lg bg-surface-container-high/50 animate-pulse" />
+          ))}
+        </div>
+      ) : loadError && !rows ? (
+        <div className="rounded-lg bg-surface-container p-6 text-center">
+          {loadErrorIsStore ? (
+            <>
+              <p className="text-xs font-medium text-on-surface">{S3_DOWN_HEADLINE}</p>
+              <p className="mt-1 mb-3 text-xs text-on-surface-variant">{S3_DOWN_BODY}</p>
+            </>
+          ) : (
+            <p className="text-xs text-status-error mb-3">{loadError}</p>
+          )}
+          <GhostButton onClick={() => setVersion((v) => v + 1)}>Retry</GhostButton>
+        </div>
+      ) : !rows || rows.length === 0 ? (
+        <div className="rounded-lg bg-surface-container p-12 text-center">
+          <p className="text-xs text-on-surface-variant">No users yet — nothing to back up.</p>
+        </div>
+      ) : (
+        <>
+          <p className="font-mono text-[11px] text-outline mb-3">
+            {backedUpCount.toLocaleString()} of {rows.length.toLocaleString()} backed up ·{' '}
+            {pendingAssets.toLocaleString()} assets pending
+          </p>
+          {filtered.length === 0 ? (
+            <div className="rounded-lg bg-surface-container p-12 text-center">
+              <p className="text-xs text-on-surface-variant">
+                No users match &ldquo;{query.trim()}&rdquo;.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl bg-surface-container-low border border-border-dark/60">
+              <table className="w-full text-xs min-w-[780px]">
+                <thead className="bg-surface-container text-on-surface-variant font-mono text-label-xs uppercase tracking-wider">
+                  <tr>
+                    <th className="text-left font-semibold px-4 py-3">User</th>
+                    <th className="text-left font-semibold px-4 py-3">Status</th>
+                    <th className="text-left font-semibold px-4 py-3">Assets</th>
+                    <th className="text-left font-semibold px-4 py-3">Files</th>
+                    <th className="text-left font-semibold px-4 py-3">Pending</th>
+                    <th className="text-left font-semibold px-4 py-3">Last backup</th>
+                    <th className="text-right font-semibold px-4 py-3">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-dark/60">
+                  {paged.map((row) => {
+                    const isBusy = Boolean(busy[row.userId])
+                    const progress = progressMap[row.userId] ?? null
+                    const showDeterminate =
+                      progress && !unsupported[row.userId] && progress.total > 0
+                    const pill = pillFor(row, rowErrors[row.userId] ?? null)
+                    const last = lastResults[row.userId]
+                    const allSkipped = last && last.files > 0 && (last.skipped ?? 0) === last.files
+                    return (
+                      <tr key={row.userId} className="hover:bg-surface-container/50 transition-colors">
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="w-7 h-7 shrink-0 rounded-full bg-surface-container-highest text-on-surface-variant text-[11px] font-bold flex items-center justify-center">
+                              {(row.email.charAt(0) || '?').toUpperCase()}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="font-mono text-xs text-on-surface truncate">{row.email}</p>
+                              <div className="mt-1">
+                                <RoleBadge role={row.role} />
+                              </div>
+                              {row.degraded && (
+                                <p className="mt-1 text-[11px] text-amber-300">
+                                  {DEGRADED_HINT[row.degraded]}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <StatusPill tone={pill.tone}>{pill.label}</StatusPill>
+                        </td>
+                        <td className="py-3 px-4 tabular-nums text-on-surface">
+                          {(row.backedUpAssets ?? 0).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 tabular-nums text-on-surface">
+                          {(row.backedUpFiles ?? 0).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 tabular-nums text-on-surface-variant">
+                          {pendingOf(row).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 font-mono text-[11px] text-outline whitespace-nowrap">
+                          {stamp(row.backedUpAt)}
+                        </td>
+                        <td className="py-3 px-4 text-right align-top">
+                          <GhostButton
+                            onClick={() => setConfirmUser(row)}
+                            disabled={anyBusy}
+                            ariaLabel={`Back up ${row.email}`}
+                            icon={isBusy ? <FaSpinner className="animate-spin" /> : undefined}
+                          >
+                            {isBusy ? 'Backing up…' : 'Backup'}
+                          </GhostButton>
+                          {isBusy && (
+                            <div
+                              className="mt-2 min-w-[190px] max-w-[240px] ml-auto text-left"
+                              role="status"
+                              aria-live="polite"
+                            >
+                              {showDeterminate ? (
+                                <>
+                                  <ProgressBar
+                                    value={progress.completed}
+                                    max={progress.total}
+                                    label={`Backup progress for ${row.email}`}
+                                  />
+                                  <p className="mt-1 text-[11px] text-on-surface-variant">
+                                    {progress.completed}/{progress.total} ({progress.uploaded} new,{' '}
+                                    {progress.skipped} unchanged)
+                                  </p>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden">
+                                    <div className="h-full w-1/3 rounded-full bg-primary animate-pulse" />
+                                  </div>
+                                  <p className="mt-1 text-[11px] text-on-surface-variant">
+                                    Backing up {row.email}…
+                                  </p>
+                                </>
+                              )}
+                            </div>
+                          )}
+                          {rowErrors[row.userId] && (
+                            <p className="mt-1 text-[11px] text-status-error max-w-[240px] ml-auto">
+                              {rowErrors[row.userId]}
+                            </p>
+                          )}
+                          {allSkipped && (
+                            <p className="mt-1 text-[11px] text-outline">
+                              Nothing new — already backed up.
+                            </p>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              <footer className="bg-surface-container px-4 py-3 flex items-center justify-between gap-3 text-xs text-outline font-mono flex-wrap">
+                <span>
+                  Showing {paged.length.toLocaleString()} of {filtered.length.toLocaleString()} user
+                  {filtered.length === 1 ? '' : 's'}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={safePage === 0}
+                    onClick={() => setPage(safePage - 1)}
+                    className="px-3 py-1.5 rounded-lg bg-surface-container-low border border-border-dark text-on-surface-variant disabled:opacity-40 disabled:cursor-not-allowed hover:border-primary/50 transition-colors"
+                  >
+                    Prev
+                  </button>
+                  <span className="px-2 tabular-nums">
+                    Page {safePage + 1} of {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={safePage + 1 >= totalPages}
+                    onClick={() => setPage(safePage + 1)}
+                    className="px-3 py-1.5 rounded-lg bg-surface-container-low border border-border-dark text-on-surface-variant disabled:opacity-40 disabled:cursor-not-allowed hover:border-primary/50 transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </footer>
+            </div>
+          )}
+        </>
       )}
-      {runError && <AdminToast message={runError} tone="error" />}
 
-      {confirming && selected && (
+      <p className="text-body-sm text-on-surface-variant max-w-lg mt-4">
+        Backups run inline in the API — multi-GB libraries can take a while. Backup-all runs users
+        one by one. Restore stays API-only.
+      </p>
+
+      {toast && <AdminToast key={toast.key} message={toast.message} tone={toast.tone} />}
+
+      {confirmUser && (
         <ConfirmDialog
-          title={`Back up ${selected.email}?`}
-          onClose={() => setConfirming(false)}
-          onConfirm={() => void runBackup()}
+          title={`Back up ${confirmUser.email}?`}
+          onClose={() => setConfirmUser(null)}
+          onConfirm={() => {
+            const target = confirmUser
+            setConfirmUser(null)
+            void runOne(target)
+          }}
         >
           <p className="text-sm text-slate-400 mt-2">
-            Copies this user's rows and original files to S3 under the prefix below. The backup runs
-            now, in the API process, so large libraries take a while.
+            Copies this user&apos;s rows and original files to S3 under the prefix below. The backup
+            runs now, in the API process, so large libraries take a while.
           </p>
           <code className="block text-xs font-mono text-slate-300 bg-slate-900/60 border border-border-dark rounded px-2 py-1.5 mt-2 break-all">
-            {backupPrefixPreview(selected.email, selected.id)}
+            {backupPrefixPreview(confirmUser.email, confirmUser.userId)}
           </code>
+        </ConfirmDialog>
+      )}
+
+      {confirmAll && (
+        <ConfirmDialog
+          title={`Back up ${filtered.length} user${filtered.length === 1 ? '' : 's'}?`}
+          confirmLabel="Back up all"
+          onClose={() => setConfirmAll(false)}
+          onConfirm={() => void runAll()}
+        >
+          <p className="text-sm text-slate-400 mt-2">
+            Runs one backup after another{query.trim() ? ' for the filtered users' : ''}, in the API
+            process, so large libraries take a while. Each user reuses its own S3 prefix and skips
+            unchanged files.
+          </p>
         </ConfirmDialog>
       )}
     </AdminSection>
