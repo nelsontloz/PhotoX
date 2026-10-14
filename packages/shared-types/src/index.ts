@@ -393,3 +393,34 @@ export interface FileExistsCheckResponse {
 
 export * from './albums'
 export * from './shares'
+
+// Async admin user deletion: DELETE /api/v1/admin/users/:id enqueues BullMQ job
+// `user-delete-<userId>` (202); GET :id/delete-status polls it. Backups are external
+// S3 (`backups/<email>__<userId>/`) and are NEVER touched — backupKept/backupPrefix
+// report the prefix that was deliberately left intact.
+export interface AdminUserDeleteResponse {
+  jobId: string
+  userId: string
+  backupKept: true
+  backupPrefix: string
+}
+
+export type AdminUserDeleteState = 'queued' | 'active' | 'completed' | 'failed' | 'unknown'
+
+export interface AdminUserDeleteStatus {
+  userId: string
+  jobId: string
+  state: AdminUserDeleteState
+  backupKept: true
+  backupPrefix: string
+  queue: Record<string, number>
+}
+
+// Core-side consumer payload for the `user-delete` queue. email/backupPrefix are
+// informational (the processor re-reads the user row as source of truth); userId is
+// the deletion scope.
+export interface UserDeleteJobData {
+  userId: string
+  email: string
+  backupPrefix: string
+}

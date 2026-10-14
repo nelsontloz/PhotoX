@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { loadAuthEnv, loadEnv } from '@photox/shared-config'
 import { SEARCH_EMBEDDING_MODEL } from '@photox/shared-types'
-import { Queue, type JobsOptions } from 'bullmq'
+import { Queue, Worker, type Job, type JobsOptions, type WorkerOptions } from 'bullmq'
 import Redis from 'ioredis'
 import { createHmac } from 'node:crypto'
 
@@ -23,6 +23,7 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BullMqService.name)
   private connection!: Redis
   private readonly queues = new Map<string, Queue>()
+  private readonly workers: Worker[] = []
   private workerSecret: string | undefined
 
   onModuleInit(): void {
@@ -181,9 +182,35 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    await Promise.all(this.workers.map((w) => w.close()))
     for (const queue of this.queues.values()) {
       await queue.close()
     }
     await this.connection.quit()
+  }
+
+  /**
+   * Core-side consumer factory (mirrors worker-service's BullMqService.createWorker).
+   * Only the user-delete queue consumes in core — core owns the DB + storage, and the
+   * worker-service must never gain DB access. Media queues stay worker-side.
+   */
+  createWorker<T>(
+    name: string,
+    processor: (job: Job<T>) => Promise<void>,
+    opts?: Partial<WorkerOptions>,
+  ): Worker<T> {
+    const worker = new Worker<T>(name, processor, {
+      connection: this.connection,
+      concurrency: 1,
+      ...opts,
+    })
+    this.workers.push(worker)
+    worker.on('failed', (job, err) => {
+      this.logger.error(`Job ${job?.id} on ${name} failed: ${err.message}`)
+    })
+    worker.on('error', (err) => {
+      this.logger.error(`Worker ${name} error: ${err.message}`)
+    })
+    return worker
   }
 }
