@@ -751,9 +751,7 @@ Then('the victim backup shows as a deleted user with a restore action', async ({
   const row = backupRow(page, victim.user.email)
   await expect(row).toHaveCount(1, { timeout: 30_000 })
   await expect(row.getByText('Deleted user')).toBeVisible()
-  await expect(
-    row.getByRole('button', { name: `Restore ${victim.user.email}` }),
-  ).toBeEnabled()
+  await expect(row.getByRole('button', { name: `Restore ${victim.user.email}` })).toBeEnabled()
   // orphan rows cannot be re-backed-up — only restored or deleted
   await expect(
     row.getByRole('button', {
@@ -768,9 +766,7 @@ Then('the sibling backup stays active with a working backup action', async ({ pa
   const row = backupRow(page, sibling.user.email)
   await expect(row).toHaveCount(1, { timeout: 30_000 })
   await expect(row.getByText('Deleted user')).toHaveCount(0)
-  await expect(
-    row.getByRole('button', { name: `Restore ${sibling.user.email}` }),
-  ).toHaveCount(0)
+  await expect(row.getByRole('button', { name: `Restore ${sibling.user.email}` })).toHaveCount(0)
   await expect(
     row.getByRole('button', { name: `Back up ${sibling.user.email}`, exact: true }),
   ).toBeEnabled()
@@ -795,31 +791,29 @@ When('the victim email is re-registered by a new user', async ({ request, ctx })
   deleteState(ctx).reregistered = await registerUser(request, requireVictim(ctx).user.email)
 })
 
-When('I restore the victim backup through the confirmation dialog', async ({
-  page,
-  ctx,
-  $testInfo,
-}) => {
-  $testInfo.setTimeout(360_000)
-  const victim = requireVictim(ctx)
-  await page.getByLabel('Filter backups by email').fill(victim.user.email)
-  const restore = page.getByRole('button', { name: `Restore ${victim.user.email}` })
-  await expect(restore).toBeEnabled({ timeout: 30_000 })
-  await restore.click()
-  await expect(
-    page.getByRole('heading', { name: `Restore ${victim.user.email}?`, exact: true }),
-  ).toBeVisible()
-  // the confirm closes before the run, so register the waiter first and pin the outcome
-  // on the response — the Then steps assert the toast + refreshed list, never a bare wait
-  const pending = page.waitForResponse(
-    (response) =>
-      response.url().includes('/api/v1/admin/restores') &&
-      response.request().method() === 'POST',
-    { timeout: 120_000 },
-  )
-  await page.getByRole('button', { name: 'Restore', exact: true }).click()
-  deleteState(ctx).restoreStatus = (await pending).status()
-})
+When(
+  'I restore the victim backup through the confirmation dialog',
+  async ({ page, ctx, $testInfo }) => {
+    $testInfo.setTimeout(360_000)
+    const victim = requireVictim(ctx)
+    await page.getByLabel('Filter backups by email').fill(victim.user.email)
+    const restore = page.getByRole('button', { name: `Restore ${victim.user.email}` })
+    await expect(restore).toBeEnabled({ timeout: 30_000 })
+    await restore.click()
+    await expect(
+      page.getByRole('heading', { name: `Restore ${victim.user.email}?`, exact: true }),
+    ).toBeVisible()
+    // the confirm closes before the run, so register the waiter first and pin the outcome
+    // on the response — the Then steps assert the toast + refreshed list, never a bare wait
+    const pending = page.waitForResponse(
+      (response) =>
+        response.url().includes('/api/v1/admin/restores') && response.request().method() === 'POST',
+      { timeout: 120_000 },
+    )
+    await page.getByRole('button', { name: 'Restore', exact: true }).click()
+    deleteState(ctx).restoreStatus = (await pending).status()
+  },
+)
 
 Then(
   'the already-restored conflict is shown and the victim account is live again',
@@ -851,9 +845,7 @@ Then(
       row.getByRole('button', { name: `Back up ${victim.user.email}`, exact: true }),
     ).toBeEnabled({ timeout: 30_000 })
     await expect(row.getByText('Deleted user')).toHaveCount(0)
-    await expect(
-      row.getByRole('button', { name: `Restore ${victim.user.email}` }),
-    ).toHaveCount(0)
+    await expect(row.getByRole('button', { name: `Restore ${victim.user.email}` })).toHaveCount(0)
   },
 )
 
