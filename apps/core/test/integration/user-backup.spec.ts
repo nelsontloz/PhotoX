@@ -3,9 +3,10 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { NotFoundException, type INestApplication } from '@nestjs/common'
+import { ConflictException, NotFoundException, type INestApplication } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm'
+import { vi } from 'vitest'
 import { LocalStorageService, backupPrefix } from '@photox/shared-config'
 import { DataSource, type Repository } from 'typeorm'
 import { Asset, AssetThumbnail, Face, FileRecord, Person } from '../../src/database/entities'
@@ -21,7 +22,7 @@ import { User } from '../../src/users/entities/user.entity'
 import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
 import { BackupModule } from '../../src/backup/backup.module'
 import { S3BackupService } from '../../src/backup/s3-backup.service'
-import { UserBackupService } from '../../src/backup/user-backup.service'
+import { UserBackupService, buildFallbackEmail } from '../../src/backup/user-backup.service'
 import { BullMqModule } from '../../src/queue/bullmq.module'
 import { BullMqService } from '../../src/queue/bullmq.service'
 import { setupTestInfra, teardownTestInfra } from './test-setup'
@@ -426,7 +427,10 @@ describe('user backup round-trip', () => {
     // M4: RestoreResult records the window cleanup-orphans must stay paused across
     const result = await svc.restoreUser(email.toUpperCase())
     expect(result.userId).toBe(user.id)
-    expect(result.restoredFrom.endsWith('manifest.json')).toBe(true)
+    expect(result.email).toBe(email)
+    expect(result.restoredFrom.emailAtBackup).toBe(email)
+    expect(result.restoredFrom.prefix).toBe(result.prefix)
+    expect(result.restoredFrom.manifestObjectKey.endsWith('manifest.json')).toBe(true)
     expect(new Date(result.completedAt).getTime()).toBeGreaterThanOrEqual(
       new Date(result.startedAt).getTime(),
     )
@@ -844,6 +848,234 @@ describe('user backup round-trip', () => {
       for (const op of fake.ops.filter((o) => o.op === 'deleteKey')) {
         expect(op.key.startsWith(oldPrefix)).toBe(true)
       }
+    })
+  })
+
+  describe('backupOverview orphans (Phase 1)', () => {
+    async function backupOneFile(
+      email: string,
+    ): Promise<{ user: User; prefix: string; manifestKey: string }> {
+      const u = await userRepo.save(
+        userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'test-hash',
+          displayName: 'Overview User',
+        }),
+      )
+      await seedOriginal(u.id, Buffer.from(`overview-bytes-${email}`))
+      const res = await svc.backupUser(u.id)
+      const manifestKey = `${res.prefix}manifest.json`
+      return { user: u, prefix: res.prefix, manifestKey }
+    }
+
+    async function deleteUserRowsKeepS3(userId: string): Promise<void> {
+      await shareRepo.delete({ userId })
+      await personRepo.delete({ userId })
+      await assetRepo.delete({ userId })
+      await fileRepo.delete({ userId })
+      await albumRepo.delete({ userId })
+      await userRepo.delete(userId)
+    }
+
+    it('unions live + orphan rows with deleted flags sorted by email', async () => {
+      const liveEmail = `live-${randomUUID()}@example.com`
+      const live = await backupOneFile(liveEmail)
+      const orphanEmail = `orphan-${randomUUID()}@example.com`
+      const orphan = await backupOneFile(orphanEmail)
+      await deleteUserRowsKeepS3(orphan.user.id)
+
+      const rows = await svc.backupOverview()
+      const byId = new Map(rows.map((r) => [r.userId, r]))
+      const liveRow = byId.get(live.user.id)!
+      expect(liveRow).toMatchObject({ email: liveEmail, deleted: false, exists: true })
+      expect(liveRow.totalAssets).toBe(0)
+      const orphanRow = byId.get(orphan.user.id)!
+      expect(orphanRow).toMatchObject({
+        email: orphanEmail,
+        deleted: true,
+        exists: true,
+        totalAssets: 0,
+        notBackedUp: 0,
+      })
+      expect(orphanRow.backedUpFiles).toBe(1)
+      expect(orphanRow.emailAtBackup).toBeUndefined()
+      const emails = rows.map((r) => r.email)
+      expect([...emails].sort()).toEqual(emails)
+    })
+
+    it('passes through corrupt/unreadable orphans and skips manifest-less prefixes', async () => {
+      const corruptEmail = `corrupt-${randomUUID()}@example.com`
+      const corrupt = await backupOneFile(corruptEmail)
+      fake.objects.set(corrupt.manifestKey, Buffer.from('not-json{{{'))
+      await deleteUserRowsKeepS3(corrupt.user.id)
+
+      const unreadEmail = `unread-${randomUUID()}@example.com`
+      const unread = await backupOneFile(unreadEmail)
+      await deleteUserRowsKeepS3(unread.user.id)
+      const unreadKey = unread.manifestKey
+      const origGet = fake.getBuffer.bind(fake)
+      fake.getBuffer = (key: string) => {
+        if (key === unreadKey) {
+          const err = new Error('injected unreadable')
+          err.name = 'InternalError'
+          throw err
+        }
+        return origGet(key)
+      }
+
+      const bareId = randomUUID()
+      const barePrefix = backupPrefix(`bare-${randomUUID()}@example.com`, bareId)
+      fake.objects.set(`${barePrefix}originals/stray.bin`, Buffer.from('stray'))
+
+      try {
+        const rows = await svc.backupOverview()
+        const byId = new Map(rows.map((r) => [r.userId, r]))
+        expect(byId.get(corrupt.user.id)).toMatchObject({
+          deleted: true,
+          exists: true,
+          degraded: 'corrupt',
+        })
+        expect(byId.get(unread.user.id)).toMatchObject({
+          deleted: true,
+          exists: true,
+          degraded: 'unreadable',
+        })
+        expect(byId.has(bareId)).toBe(false)
+      } finally {
+        fake.getBuffer = origGet
+      }
+    })
+  })
+
+  describe('restore collisions (Phase 1)', () => {
+    async function backupSingle(email: string): Promise<{ user: User; prefix: string }> {
+      const u = await userRepo.save(
+        userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'test-hash',
+          displayName: 'Collision User',
+        }),
+      )
+      await seedOriginal(u.id, Buffer.from(`collision-bytes-${email}`))
+      const res = await svc.backupUser(u.id)
+      return { user: u, prefix: res.prefix }
+    }
+
+    it('throws 409 already-restored when the same userId is live', async () => {
+      const email = `sameid-${randomUUID()}@example.com`
+      const { user } = await backupSingle(email)
+      const caught = await svc.restoreUser(user.id).catch((e: unknown) => e)
+      expect(caught).toBeInstanceOf(ConflictException)
+      expect((caught as ConflictException).getStatus()).toBe(409)
+      expect((caught as ConflictException).message).toContain('already-restored')
+    })
+
+    it('restores a gone user under the original id and email', async () => {
+      const email = `gone-${randomUUID()}@example.com`
+      const { user, prefix } = await backupSingle(email)
+      await dataSource.query(
+        'TRUNCATE users, files, assets, albums, album_assets, shares, persons ' +
+          'RESTART IDENTITY CASCADE',
+      )
+      rmSync(storageDir, { recursive: true, force: true })
+      await storage.ensureDir()
+      const result = await svc.restoreUser(user.id)
+      expect(result.userId).toBe(user.id)
+      expect(result.email).toBe(email)
+      expect(result.prefix).toBe(prefix)
+      expect(result.restoredFrom).toMatchObject({ emailAtBackup: email, prefix })
+      expect(result.restoredFrom.manifestObjectKey.endsWith('manifest.json')).toBe(true)
+      const row = await userRepo.findOneOrFail({ where: { id: user.id } })
+      expect(row.email).toBe(email)
+    })
+
+    it('falls back to restored-<ms>-<orig> when the email is taken by another id', async () => {
+      const origEmail = `reuse-${randomUUID()}@example.com`
+      const { user: orig, prefix } = await backupSingle(origEmail)
+      const origId = orig.id
+      await shareRepo.delete({ userId: origId })
+      await personRepo.delete({ userId: origId })
+      await assetRepo.delete({ userId: origId })
+      await fileRepo.delete({ userId: origId })
+      await userRepo.delete(origId)
+
+      const other = await userRepo.save(
+        userRepo.create({
+          email: origEmail,
+          role: 'user',
+          passwordHash: 'other-hash',
+          displayName: 'Email Reuse',
+        }),
+      )
+      expect(other.id).not.toBe(origId)
+
+      const result = await svc.restoreUser(origId)
+      expect(result.userId).toBe(origId)
+      expect(result.prefix).toBe(prefix)
+      expect(result.restoredFrom.emailAtBackup).toBe(origEmail)
+      expect(result.restoredFrom.prefix).toBe(prefix)
+      expect(result.email).not.toBe(origEmail)
+      expect(result.email).toMatch(/^restored-\d+-.*@example\.com$/)
+      expect(result.email).toContain(origEmail.split('@')[0]!.toLowerCase())
+
+      const restored = await userRepo.findOneOrFail({ where: { id: origId } })
+      expect(restored.email).toBe(result.email)
+      const holder = await userRepo.findOneOrFail({ where: { id: other.id } })
+      expect(holder.email).toBe(origEmail)
+    })
+
+    it('retries the fallback with a suffix when the first candidate is taken', async () => {
+      const origEmail = `retry-${randomUUID()}@example.com`
+      const { user: orig } = await backupSingle(origEmail)
+      const origId = orig.id
+      await assetRepo.delete({ userId: origId })
+      await fileRepo.delete({ userId: origId })
+      await userRepo.delete(origId)
+      await userRepo.save(
+        userRepo.create({
+          email: origEmail,
+          role: 'user',
+          passwordHash: 'other-hash',
+          displayName: 'Reuse Holder',
+        }),
+      )
+
+      const fixedNow = 1720000000000
+      const firstCandidate = buildFallbackEmail(origEmail, fixedNow, 0)
+      await userRepo.save(
+        userRepo.create({
+          email: firstCandidate,
+          role: 'user',
+          passwordHash: 'blocker-hash',
+          displayName: 'Fallback Blocker',
+        }),
+      )
+      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(fixedNow)
+      try {
+        const result = await svc.restoreUser(origId)
+        expect(result.email).toBe(buildFallbackEmail(origEmail, fixedNow, 1))
+      } finally {
+        nowSpy.mockRestore()
+      }
+    })
+
+    it('double restore throws 409 already-restored', async () => {
+      const email = `double-${randomUUID()}@example.com`
+      const { user } = await backupSingle(email)
+      const origId = user.id
+      await dataSource.query(
+        'TRUNCATE users, files, assets, albums, album_assets, shares, persons ' +
+          'RESTART IDENTITY CASCADE',
+      )
+      rmSync(storageDir, { recursive: true, force: true })
+      await storage.ensureDir()
+      const first = await svc.restoreUser(origId)
+      expect(first.userId).toBe(origId)
+      const caught = await svc.restoreUser(origId).catch((e: unknown) => e)
+      expect(caught).toBeInstanceOf(ConflictException)
+      expect((caught as ConflictException).message).toContain('already-restored')
     })
   })
 })

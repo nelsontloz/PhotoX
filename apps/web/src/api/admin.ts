@@ -234,9 +234,36 @@ export async function getBackupProgress(emailOrId: string): Promise<BackupProgre
 }
 
 /**
+ * POST /v1/admin/restores response: the account rebuilt from its S3 manifest (same userId),
+ * row counts plus the derivative jobs re-queued. `email` is the ACTUAL restored address —
+ * when the backup-time address is taken the core falls back to a `restored-<ms>-<orig>`
+ * address, so always show `email` (not the requested one). Mirrors RestoreResult in core.
+ */
+export interface RestoreResult extends BackupResult {
+  restoredFrom: { emailAtBackup: string; prefix: string; manifestObjectKey: string }
+  startedAt: string
+  completedAt: string
+  enqueued: { metadata: number; thumbnails: number; videos: number; faces: number; ai: number }
+}
+
+// Restores rebuild rows + copy bytes back from S3 inline, so they outlive the 10s client
+// default just like backups — reuse the same cap.
+export async function restoreUser(emailOrId: string): Promise<RestoreResult> {
+  const { data } = await api.post<RestoreResult>(
+    '/v1/admin/restores',
+    { emailOrId },
+    { timeout: BACKUP_TIMEOUT_MS },
+  )
+  return data
+}
+
+/**
  * GET /v1/admin/backups/overview response row: one line per user — library size, what the
  * manifest on S3 already covers, and whether that manifest is usable. `unavailable` marks a
  * per-user probe failure in the fan-out fallback (old core without the endpoint).
+ * `deleted` marks orphan backups whose account is gone (live counts are zero, identity
+ * comes from the manifest); `emailAtBackup` is set only when the S3 prefix email differs
+ * from the manifest email (stale rename leftover).
  */
 export interface BackupOverviewRow {
   userId: string
@@ -245,10 +272,13 @@ export interface BackupOverviewRow {
   totalAssets: number
   backedUpAssets: number
   backedUpFiles: number
-  backedUpAt?: string
+  backedUpAt?: string | null
   exists: boolean
   degraded?: 'unreadable' | 'corrupt'
   unavailable?: boolean
+  notBackedUp?: number
+  deleted: boolean
+  emailAtBackup?: string
 }
 
 export async function getBackupOverview(): Promise<BackupOverviewRow[]> {
@@ -300,6 +330,8 @@ export async function loadBackupOverview(): Promise<{
           backedUpAt: s.backedUpAt,
           exists: s.exists,
           degraded: s.degraded,
+          notBackedUp: 0,
+          deleted: false,
         }
       } catch {
         return {
@@ -311,6 +343,8 @@ export async function loadBackupOverview(): Promise<{
           backedUpFiles: 0,
           exists: false,
           unavailable: true,
+          notBackedUp: 0,
+          deleted: false,
         }
       }
     }),
