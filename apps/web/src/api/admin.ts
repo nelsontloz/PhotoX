@@ -265,7 +265,10 @@ export async function getBackupOverview(): Promise<BackupOverviewRow[]> {
  * `unavailable` row instead of failing the whole table; counts fall back to the manifest's
  * own numbers (pending reads 0 — the old core never reported library size).
  */
-export async function loadBackupOverview(): Promise<{ rows: BackupOverviewRow[]; fallback: boolean }> {
+export async function loadBackupOverview(): Promise<{
+  rows: BackupOverviewRow[]
+  fallback: boolean
+}> {
   try {
     return { rows: await getBackupOverview(), fallback: false }
   } catch (err: unknown) {

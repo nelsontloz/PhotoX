@@ -76,7 +76,10 @@ function pendingOf(row: BackupOverviewRow): number {
   return Math.max(0, (row.totalAssets ?? 0) - (row.backedUpAssets ?? 0))
 }
 
-function pillFor(row: BackupOverviewRow, error: string | null): { tone: 'ok' | 'warn' | 'muted'; label: string } {
+function pillFor(
+  row: BackupOverviewRow,
+  error: string | null,
+): { tone: 'ok' | 'warn' | 'muted'; label: string } {
   if (error ?? row.unavailable) return { tone: 'warn', label: 'Unavailable' }
   if (row.degraded === 'unreadable') return { tone: 'warn', label: 'Unreadable' }
   if (row.degraded === 'corrupt') return { tone: 'warn', label: 'Corrupt' }
@@ -103,9 +106,15 @@ export function BackupSection() {
   const [confirmUser, setConfirmUser] = useState<BackupOverviewRow | null>(null)
   const [confirmAll, setConfirmAll] = useState(false)
   const [backupAllRunning, setBackupAllRunning] = useState(false)
-  const [backupAllCursor, setBackupAllCursor] = useState<{ done: number; total: number } | null>(null)
+  const [backupAllCursor, setBackupAllCursor] = useState<{ done: number; total: number } | null>(
+    null,
+  )
 
-  const [toast, setToast] = useState<{ key: number; message: ReactNode; tone: 'default' | 'error' } | null>(null)
+  const [toast, setToast] = useState<{
+    key: number
+    message: ReactNode
+    tone: 'default' | 'error'
+  } | null>(null)
   const notify = (message: ReactNode, tone: 'default' | 'error' = 'default') =>
     setToast((prev) => ({ key: (prev?.key ?? 0) + 1, message, tone }))
 
@@ -358,14 +367,19 @@ export function BackupSection() {
                     const last = lastResults[row.userId]
                     const allSkipped = last && last.files > 0 && (last.skipped ?? 0) === last.files
                     return (
-                      <tr key={row.userId} className="hover:bg-surface-container/50 transition-colors">
+                      <tr
+                        key={row.userId}
+                        className="hover:bg-surface-container/50 transition-colors"
+                      >
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-3 min-w-0">
                             <span className="w-7 h-7 shrink-0 rounded-full bg-surface-container-highest text-on-surface-variant text-[11px] font-bold flex items-center justify-center">
                               {(row.email.charAt(0) || '?').toUpperCase()}
                             </span>
                             <div className="min-w-0">
-                              <p className="font-mono text-xs text-on-surface truncate">{row.email}</p>
+                              <p className="font-mono text-xs text-on-surface truncate">
+                                {row.email}
+                              </p>
                               <div className="mt-1">
                                 <RoleBadge role={row.role} />
                               </div>

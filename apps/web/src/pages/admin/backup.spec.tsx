@@ -118,9 +118,9 @@ describe('BackupSection table', () => {
 
     // disabled while the inline backup runs + indeterminate progress (old core, no progress endpoint)
     expect(await screen.findByText('Backing up grace@example.com…')).toBeTruthy()
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Back up all users' }).disabled).toBe(
-      true,
-    )
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Back up all users' }).disabled,
+    ).toBe(true)
 
     await act(async () => {
       finish({ ...result, userId: 'u-2', email: 'grace@example.com' })
@@ -145,9 +145,9 @@ describe('BackupSection table', () => {
     expect(await screen.findByText(/Backup of ada@example.com failed/)).toBeTruthy()
     expect(screen.queryByText('Request failed with status code 500')).toBeNull()
     // row stays usable after the failure
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Back up ada@example.com' }).disabled).toBe(
-      false,
-    )
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Back up ada@example.com' }).disabled,
+    ).toBe(false)
   })
 
   it('shows degraded pills with a rerun hint', async () => {
