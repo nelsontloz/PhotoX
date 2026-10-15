@@ -151,14 +151,15 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     assetId: string,
     fileId: string,
     userId: string,
-    opts?: { reprocess?: boolean },
+    opts?: { reprocess?: boolean; jobId?: string },
   ): Promise<boolean> {
     return this.enqueue(
       'process-video',
       'process-video',
       { assetId, fileId, userId },
       {
-        jobId: `${opts?.reprocess ? 'video-reprocess' : 'video'}-${assetId}`,
+        // restore passes a run-scoped jobId; the two shipped shapes stay the default
+        jobId: opts?.jobId ?? `${opts?.reprocess ? 'video-reprocess' : 'video'}-${assetId}`,
         // ponytail: a video retry can cost up to 1h of SVT-AV1 — one retry absorbs
         // transient flakes; the second retry is the most expensive one, cut it
         attempts: 2,

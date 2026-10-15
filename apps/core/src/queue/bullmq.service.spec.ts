@@ -46,4 +46,15 @@ describe('BullMqService.enqueueVideo', () => {
       expect.objectContaining({ jobId: 'video-a1', attempts: 2 }),
     )
   })
+
+  it('honors the restore run-scoped jobId override', async () => {
+    const { service, add } = makeService()
+    await service.enqueueVideo('a1', 'f1', 'u1', { jobId: 'video-restore-123-a1' })
+    await vi.waitFor(() => expect(add).toHaveBeenCalled())
+    expect(add).toHaveBeenCalledWith(
+      'process-video',
+      { assetId: 'a1', fileId: 'f1', userId: 'u1' },
+      expect.objectContaining({ jobId: 'video-restore-123-a1', attempts: 2 }),
+    )
+  })
 })

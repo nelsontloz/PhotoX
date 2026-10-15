@@ -1401,10 +1401,18 @@ export class UserBackupService {
    * offset-paged readers assume a stable set, so a second pass catches anything
    * the first missed under concurrent writes (jobIds dedupe, making it idempotent).
    * Existing reprocess filters are reused untouched.
+   *
+   * Every jobId carries a per-run tag: a previous restore's records stay retained in
+   * Redis (completed; removeOnComplete is unset for every family but metadata) and
+   * BullMQ silently rejects any add whose jobId already exists — without the tag, a
+   * later restore of the same user (delete → restore again) enqueues nothing while
+   * still reporting success. Both passes of one run share the tag, so their
+   * double-enqueue keeps deduping.
    */
   private async reenqueueDerivatives(userId: string): Promise<RestoreResult['enqueued']> {
     const detector = await this.settings.getFaceDetector()
     const totals = { metadata: 0, thumbnails: 0, videos: 0, faces: 0, ai: 0 }
+    const runTag = Date.now()
     for (let pass = 0; pass < 2; pass++) {
       const assets = await this.assets.find({ where: { userId } })
       const live = assets.filter((a) => !a.isTrashed)
@@ -1416,13 +1424,20 @@ export class UserBackupService {
           'process-metadata',
           'process-metadata',
           { assetId: asset.id, fileId: asset.fileId, userId, kind: asset.kind },
-          { jobId: `metadata-restore-${asset.id}`, removeOnComplete: true },
+          { jobId: `metadata-restore-${runTag}-${asset.id}`, removeOnComplete: true },
         )
         totals.metadata += pass === 0 ? 1 : 0
-        await this.bullMq.enqueueThumbnails(asset.id, asset.fileId, userId, 'thumb-restore')
+        await this.bullMq.enqueueThumbnails(
+          asset.id,
+          asset.fileId,
+          userId,
+          `thumb-restore-${runTag}`,
+        )
         totals.thumbnails += pass === 0 ? 4 : 0
         if (asset.kind === 'video') {
-          await this.bullMq.enqueueVideo(asset.id, asset.fileId, userId, { reprocess: true })
+          await this.bullMq.enqueueVideo(asset.id, asset.fileId, userId, {
+            jobId: `video-restore-${runTag}-${asset.id}`,
+          })
           totals.videos += pass === 0 ? 1 : 0
         }
         if (asset.kind === 'photo') {
@@ -1430,26 +1445,26 @@ export class UserBackupService {
             'process-faces',
             'process-faces',
             { assetId: asset.id, fileId: asset.fileId, userId, reason: 'restore', detector },
-            { jobId: `face-restore-${asset.id}` },
+            { jobId: `face-restore-${runTag}-${asset.id}` },
           )
           totals.faces += pass === 0 ? 1 : 0
           await this.bullMq.enqueue(
             'process-embeddings',
             'process-embeddings',
             { assetId: asset.id, fileId: asset.fileId, userId, reason: 'restore' },
-            { jobId: `embed-restore-${asset.id}-${SEARCH_EMBEDDING_MODEL}` },
+            { jobId: `embed-restore-${runTag}-${asset.id}-${SEARCH_EMBEDDING_MODEL}` },
           )
           await this.bullMq.enqueue(
             'process-ocr',
             'process-ocr',
             { assetId: asset.id, fileId: asset.fileId, userId, reason: 'restore' },
-            { jobId: `ocr-restore-${asset.id}` },
+            { jobId: `ocr-restore-${runTag}-${asset.id}` },
           )
           await this.bullMq.enqueue(
             'process-detect',
             'process-detect',
             { assetId: asset.id, fileId: asset.fileId, userId, reason: 'restore' },
-            { jobId: `detect-restore-${asset.id}` },
+            { jobId: `detect-restore-${runTag}-${asset.id}` },
           )
           totals.ai += pass === 0 ? 3 : 0
         }

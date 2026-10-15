@@ -17,13 +17,7 @@ vi.mock('../../components/RequireAuth', () => ({
 }))
 
 vi.mock('../../components/AppShell', () => ({
-  AppShell: ({
-    children,
-    mainClassName,
-  }: {
-    children: ReactNode
-    mainClassName?: string
-  }) => (
+  AppShell: ({ children, mainClassName }: { children: ReactNode; mainClassName?: string }) => (
     <main data-testid="places-shell" className={mainClassName}>
       {children}
     </main>
@@ -52,9 +46,7 @@ describe('PlacesPage shell', () => {
       </MemoryRouter>,
     )
 
-    expect(
-      await screen.findByText('No photos with location data found'),
-    ).toBeTruthy()
+    expect(await screen.findByText('No photos with location data found')).toBeTruthy()
     expect(screen.getByTestId('places-shell').getAttribute('class')).toBe(
       'flex-1 overflow-hidden relative',
     )

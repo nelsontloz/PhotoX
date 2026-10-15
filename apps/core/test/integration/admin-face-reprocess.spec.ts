@@ -19,6 +19,7 @@ function envDefault(): FaceDetectorKind {
 
 describe('admin face reprocess and recluster', () => {
   let t: ApiTestApp
+  let auth: Record<string, string>
 
   beforeAll(async () => {
     t = await createApiTestApp({ mockUser: null })
@@ -28,9 +29,12 @@ describe('admin face reprocess and recluster', () => {
     await closeTestApp(t)
   })
 
+  // the admin fixture is hoisted out of the test bodies: its DB seeding belongs to the
+  // hook budget, keeping the per-test window for the behavior under assertion
   beforeEach(async () => {
     await resetDb(t)
-  })
+    auth = await adminAuth()
+  }, 30_000)
 
   async function adminAuth(): Promise<Record<string, string>> {
     const admin = await seedUser(t, { role: 'admin' })
@@ -54,7 +58,6 @@ describe('admin face reprocess and recluster', () => {
   })
 
   it('reports lastRun null and queue counts before any run', async () => {
-    const auth = await adminAuth()
     const res = await request(apiServer(t)).get('/api/v1/admin/faces/reprocess').set(auth)
     expect(res.status).toBe(200)
     const body = res.body as { lastRun: unknown; queue: Record<string, number> }
@@ -63,7 +66,6 @@ describe('admin face reprocess and recluster', () => {
   })
 
   it('enqueues re-embed jobs for non-trashed photos and records the run', async () => {
-    const auth = await adminAuth()
     const owner = await seedUser(t)
     const a = await seedPhotoAsset(owner.id)
     const b = await seedPhotoAsset(owner.id)
@@ -84,7 +86,6 @@ describe('admin face reprocess and recluster', () => {
   })
 
   it('re-enqueues the same asset after a completed job is removed', async () => {
-    const auth = await adminAuth()
     const owner = await seedUser(t)
     const { asset } = await seedPhotoAsset(owner.id)
     const jobId = `face-reembed-${asset.id}`
@@ -106,7 +107,6 @@ describe('admin face reprocess and recluster', () => {
   })
 
   it('stamps the persisted detector on reprocess jobs', async () => {
-    const auth = await adminAuth()
     const put = await request(apiServer(t))
       .put('/api/v1/admin/face-detection')
       .set(auth)
@@ -128,7 +128,6 @@ describe('admin face reprocess and recluster', () => {
   })
 
   it('enqueues one manual cluster job per distinct user with faces', async () => {
-    const auth = await adminAuth()
     const u1 = await seedUser(t)
     const u2 = await seedUser(t)
     const faceRow = (userId: string) =>

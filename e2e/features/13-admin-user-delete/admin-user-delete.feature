@@ -89,3 +89,17 @@ Feature: Admin user deletion
     And I restore the victim backup through the confirmation dialog
     Then the restore toast names the fallback address
     And the fallback account signs in with the old password while the re-registered account keeps the email
+
+  Scenario: Deleting and restoring repeatedly still wipes the account and regenerates derivatives
+    Given I am signed in as the seeded administrator
+    And a victim user with a full library and backup is registered
+    When I can open the admin dashboard
+    And I delete the victim user through the confirmation dialog
+    Then the victim deletion reaches a terminal state
+    When the victim backup is restored through the API
+    And I can open the admin dashboard
+    And I delete the victim user through the confirmation dialog
+    Then the victim deletion reaches a terminal state
+    And the users list no longer matches the deleted user
+    When the victim backup is restored through the API
+    Then the victim's photo derivatives regenerate

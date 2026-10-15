@@ -29,6 +29,7 @@ function makeService(opts?: {
   }
   const deletes = {
     computeBackupPrefix: (email: string, id: string) => backupPrefix(email, id),
+    clearFinishedJob: vi.fn().mockResolvedValue(false),
     drainUserJobs: vi.fn().mockResolvedValue(0),
     markQueued: vi.fn(),
     getProgress: vi.fn().mockReturnValue(
@@ -90,8 +91,19 @@ describe('AdminService.requestUserDelete guards', () => {
         email: TARGET_EMAIL,
         backupPrefix: backupPrefix(TARGET_EMAIL, TARGET_ID),
       },
-      { jobId: `user-delete-${TARGET_ID}` },
+      { jobId: `user-delete-${TARGET_ID}`, removeOnComplete: true },
     )
+  })
+
+  it('clears a retained finished job before enqueueing so a re-delete is not swallowed', async () => {
+    const { service, deletes, bullMq } = makeService({ user: targetUser })
+    await service.requestUserDelete(TARGET_ID, ADMIN_ID)
+    // BullMQ dedups by jobId: a completed job for a restored account would absorb the
+    // add and the UI would poll its stale `completed`
+    expect(deletes.clearFinishedJob).toHaveBeenCalledWith(TARGET_ID)
+    const clearOrder = deletes.clearFinishedJob.mock.invocationCallOrder[0]!
+    const enqueueOrder = bullMq.enqueue.mock.invocationCallOrder[0]!
+    expect(clearOrder).toBeLessThan(enqueueOrder)
   })
 
   it('drains pending user jobs before enqueueing', async () => {

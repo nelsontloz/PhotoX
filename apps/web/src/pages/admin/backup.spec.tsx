@@ -344,9 +344,7 @@ describe('BackupSection orphans', () => {
   })
 
   it('shows the email-at-backup hint only when it differs', async () => {
-    api.getBackupOverview.mockResolvedValue([
-      { ...orphan, emailAtBackup: 'older@example.com' },
-    ])
+    api.getBackupOverview.mockResolvedValue([{ ...orphan, emailAtBackup: 'older@example.com' }])
     render(<BackupSection />)
     expect(await screen.findByText('gone@example.com')).toBeTruthy()
     expect(screen.getByText('Backup saved as older@example.com')).toBeTruthy()
@@ -464,9 +462,7 @@ describe('BackupSection orphans', () => {
       message: 'Conflict',
     })
     const liveOrphan: BackupOverviewRow = { ...orphan, deleted: false }
-    api.getBackupOverview
-      .mockResolvedValueOnce([ada, orphan])
-      .mockResolvedValue([ada, liveOrphan])
+    api.getBackupOverview.mockResolvedValueOnce([ada, orphan]).mockResolvedValue([ada, liveOrphan])
     render(<BackupSection />)
     expect(await screen.findByText('gone@example.com')).toBeTruthy()
 
