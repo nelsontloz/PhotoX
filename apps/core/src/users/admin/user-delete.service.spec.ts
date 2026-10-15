@@ -217,3 +217,34 @@ describe('UserDeleteService.drainUserJobs', () => {
     expect(stranger.remove).not.toHaveBeenCalled()
   })
 })
+
+describe('UserDeleteService.clearFinishedJob', () => {
+  it('removes a retained completed job so the next enqueue is not swallowed', async () => {
+    const { service, bullMq } = makeService()
+    const job = {
+      getState: vi.fn().mockResolvedValue('completed'),
+      remove: vi.fn().mockResolvedValue(undefined),
+    }
+    bullMq.getQueue.mockReturnValue({ getJob: vi.fn().mockResolvedValue(job) })
+    await expect(service.clearFinishedJob(USER_ID)).resolves.toBe(true)
+    expect(job.remove).toHaveBeenCalled()
+  })
+
+  it('leaves an in-flight job alone so a double-click stays idempotent', async () => {
+    const { service, bullMq } = makeService()
+    const job = { getState: vi.fn().mockResolvedValue('active'), remove: vi.fn() }
+    bullMq.getQueue.mockReturnValue({ getJob: vi.fn().mockResolvedValue(job) })
+    await expect(service.clearFinishedJob(USER_ID)).resolves.toBe(false)
+    expect(job.remove).not.toHaveBeenCalled()
+  })
+
+  it('returns false when no job exists and tolerates queue failures', async () => {
+    const { service, bullMq } = makeService()
+    bullMq.getQueue.mockReturnValue({ getJob: vi.fn().mockResolvedValue(null) })
+    await expect(service.clearFinishedJob(USER_ID)).resolves.toBe(false)
+    bullMq.getQueue.mockReturnValue({
+      getJob: vi.fn().mockRejectedValue(new Error('redis down')),
+    })
+    await expect(service.clearFinishedJob(USER_ID)).resolves.toBe(false)
+  })
+})

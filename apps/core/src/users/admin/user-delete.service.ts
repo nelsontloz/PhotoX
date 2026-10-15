@@ -135,6 +135,29 @@ export class UserDeleteService {
   }
 
   /**
+   * Drop a retained terminal (completed/failed) delete job for the user. BullMQ dedups
+   * by jobId, so such a job would silently swallow the next enqueue for the same id
+   * (restores re-create the account with its original userId), leaving the UI polling a
+   * stale `completed` while the row never dies. In-flight jobs are left alone.
+   */
+  async clearFinishedJob(userId: string): Promise<boolean> {
+    const jobId = userDeleteJobId(userId)
+    try {
+      const job = await this.bullMq.getQueue(USER_DELETE_QUEUE).getJob(jobId)
+      if (!job) return false
+      const state = await job.getState()
+      if (state !== 'completed' && state !== 'failed') return false
+      await job.remove()
+      return true
+    } catch (err) {
+      this.logger.warn(
+        `User-delete stale job clear failed for ${userId}: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      return false
+    }
+  }
+
+  /**
    * Best-effort removal of pending (waiting/delayed/prioritized) jobs scoped to the
    * user. Active jobs cannot be removed — they fail closed core-side once the rows are
    * gone. Runs both on enqueue and inside the job (jobs enqueued in between are caught).

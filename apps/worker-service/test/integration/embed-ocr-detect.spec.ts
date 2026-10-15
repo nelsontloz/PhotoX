@@ -68,10 +68,7 @@ describe('Embedding/OCR/Detection processors (integration)', () => {
     const { record, asset } = await seedPhoto(userId)
 
     const queue = testApp.getQueue('process-detect')
-    const job = await queue.add(
-      'detect',
-      signJob({ assetId: asset.id, fileId: record.id, userId }),
-    )
+    const job = await queue.add('detect', signJob({ assetId: asset.id, fileId: record.id, userId }))
 
     expect(await waitForJob(queue, job.id!)).toBe('completed')
     expect(testApp.fake.callsOf('registerDetections')).toHaveLength(0)

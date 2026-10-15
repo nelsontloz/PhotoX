@@ -7,7 +7,8 @@ import { ConflictException, NotFoundException, type INestApplication } from '@ne
 import { Test } from '@nestjs/testing'
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm'
 import { vi } from 'vitest'
-import { LocalStorageService, backupPrefix } from '@photox/shared-config'
+import { Worker } from 'bullmq'
+import { LocalStorageService, backupPrefix, loadEnv } from '@photox/shared-config'
 import { DataSource, type Repository } from 'typeorm'
 import { Asset, AssetThumbnail, Face, FileRecord, Person } from '../../src/database/entities'
 import { AppSetting } from '../../src/database/entities/app-setting.entity'
@@ -483,6 +484,121 @@ describe('user backup round-trip', () => {
     // M1: unknown email is a 404, never a uuid-typed 500 (QueryFailedError 22P02)
     await expect(svc.backupUser('no-such-user@example.com')).rejects.toThrow(NotFoundException)
   })
+
+  // Regression: BullMQ dedups by jobId, so the deterministic restore jobIds of a first
+  // restore stay retained (completed records, removeOnComplete unset for most families)
+  // and every add of a later restore of the same user was swallowed as `duplicated` —
+  // originals came back but no derivative regenerated (places worked: synchronous backfill).
+  it('re-enqueues derivatives on a second restore instead of deduping into retained records', async () => {
+    const email = `restore-twice-${randomUUID()}@example.com`
+    const user = await userRepo.save(
+      userRepo.create({
+        email,
+        role: 'user',
+        passwordHash: 'test-hash',
+        displayName: 'Twice User',
+      }),
+    )
+
+    const photo = await seedOriginal(user.id, Buffer.from('twice-photo-bytes'), {
+      mimeType: 'image/png',
+      originalName: 'photo.png',
+    })
+    const photoAsset = await assetRepo.save(
+      assetRepo.create({
+        userId: user.id,
+        kind: 'photo',
+        fileId: photo.record.id,
+        isTrashed: false,
+        mimeType: 'image/png',
+        metadataStatus: 'ready',
+        thumbnailStatus: 'ready',
+        faceStatus: 'ready',
+        embeddingStatus: 'ready',
+      }),
+    )
+    const video = await seedOriginal(user.id, Buffer.from('twice-video-bytes'), {
+      mimeType: 'video/mp4',
+      originalName: 'clip.mp4',
+    })
+    const videoAsset = await assetRepo.save(
+      assetRepo.create({
+        userId: user.id,
+        kind: 'video',
+        fileId: video.record.id,
+        isTrashed: false,
+        mimeType: 'video/mp4',
+        metadataStatus: 'ready',
+        thumbnailStatus: 'ready',
+        transcodeStatus: 'ready',
+        transcodeFileId: randomUUID(),
+      }),
+    )
+
+    await svc.backupUser(email)
+    await wipeUserData()
+
+    // no media workers run in this app: boot trivial ones so the first restore's jobs
+    // reach `completed` and their records are retained — exactly what the worker-service
+    // leaves behind. Closed in `finally` so they never consume later specs' jobs.
+    const runnableQueues = [
+      'process-thumbnail',
+      'process-video',
+      'process-metadata',
+      'process-faces',
+      'process-embeddings',
+      'process-ocr',
+      'process-detect',
+    ] as const
+    const env = loadEnv()
+    const workers = runnableQueues.map(
+      (name) =>
+        new Worker(name, () => Promise.resolve(undefined), {
+          connection: {
+            host: env.REDIS_HOST,
+            port: env.REDIS_PORT,
+            password: env.REDIS_PASSWORD,
+            maxRetriesPerRequest: null,
+          },
+        }),
+    )
+    try {
+      await svc.restoreUser(email)
+      for (const name of runnableQueues) {
+        let runnable = 1
+        for (let i = 0; i < 300 && runnable > 0; i++) {
+          runnable = (await queueJobsFor(name, user.id)).length
+          if (runnable > 0) await new Promise((r) => setTimeout(r, 100))
+        }
+        expect(runnable, `${name} still had runnable jobs`).toBe(0)
+      }
+    } finally {
+      await Promise.all(workers.map((w) => w.close()))
+    }
+
+    // the delete path drains pending media jobs only — the completed records stay put,
+    // so the second restore enqueues into ids that already exist
+    await wipeUserData()
+
+    const second = await svc.restoreUser(email)
+    expect(second.enqueued).toEqual({ metadata: 2, thumbnails: 8, videos: 1, faces: 1, ai: 3 })
+
+    // every family must be runnable again: pre-fix each of these adds was rejected as
+    // `duplicated` against the retained record and nothing regenerated
+    const thumbs = await queueJobsFor('process-thumbnail', user.id)
+    expect(thumbs.filter((d) => d.assetId === photoAsset.id)).toHaveLength(4)
+    expect(thumbs.filter((d) => d.assetId === videoAsset.id)).toHaveLength(4)
+    const faces = await queueJobsFor('process-faces', user.id)
+    expect(faces.filter((d) => d.assetId === photoAsset.id)).toHaveLength(1)
+    const videos = await queueJobsFor('process-video', user.id)
+    expect(videos.filter((d) => d.assetId === videoAsset.id)).toHaveLength(1)
+    const embeds = await queueJobsFor('process-embeddings', user.id)
+    expect(embeds.some((d) => d.assetId === photoAsset.id)).toBe(true)
+    const ocr = await queueJobsFor('process-ocr', user.id)
+    expect(ocr.some((d) => d.assetId === photoAsset.id)).toBe(true)
+    const detects = await queueJobsFor('process-detect', user.id)
+    expect(detects.some((d) => d.assetId === photoAsset.id)).toBe(true)
+  }, 120_000)
 
   it('reruns after a mid-run failure with bytes first and manifest last (M3)', async () => {
     const email = `rerun-${randomUUID()}@example.com`

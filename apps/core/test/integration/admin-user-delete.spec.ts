@@ -100,6 +100,25 @@ async function plantStray(t: ApiTestApp, key: string): Promise<string> {
   return full
 }
 
+/** Polls the delete-status endpoint until the run is terminal; returns the last state seen. */
+async function waitForDeleteState(
+  t: ApiTestApp,
+  adminAuth: Record<string, string>,
+  userId: string,
+): Promise<string> {
+  let state = ''
+  for (let i = 0; i < 80; i++) {
+    const status = await request(apiServer(t))
+      .get(`/api/v1/admin/users/${userId}/delete-status`)
+      .set(adminAuth)
+    expect(status.status).toBe(200)
+    state = (status.body as { state: string }).state
+    if (state === 'completed' || state === 'failed') return state
+    await new Promise((r) => setTimeout(r, 500))
+  }
+  return state
+}
+
 describe('admin async user deletion', () => {
   let t: ApiTestApp
 
@@ -262,5 +281,48 @@ describe('admin async user deletion', () => {
     expect(await t.fileRepo.findOne({ where: { id: otherFile.id } })).not.toBeNull()
     expect(await t.storage.exists(otherFile.storageKey)).toBe(true)
     expect(await t.userRepo.findOne({ where: { id: admin.id } })).not.toBeNull()
+  }, 120_000)
+
+  // Regression: BullMQ dedups by jobId, so a retained terminal job for a userId used to
+  // silently swallow every later delete of that id. The restore flow re-creates the
+  // account with its original userId, which made "delete" a reported-success no-op.
+  it('re-deletes an account that came back with the same id despite a retained job record', async () => {
+    const admin = await seedUser(t, { role: 'admin' })
+    const adminAuth = t.authHeader(
+      t.signToken({ id: admin.id, email: admin.email, role: admin.role }),
+    )
+    const user = await seedUser(t)
+    const queue = t.getQueue('user-delete')
+    const jobId = `user-delete-${user.id}`
+
+    // pre-fix residue: a completed job retained under the deterministic jobId (the old
+    // enqueue never passed removeOnComplete)
+    await queue.add(
+      'user-delete',
+      { userId: user.id, email: user.email, backupPrefix: backupPrefix(user.email, user.id) },
+      { jobId },
+    )
+    expect(await waitForDeleteState(t, adminAuth, user.id)).toBe('completed')
+    expect(await t.userRepo.findOne({ where: { id: user.id } })).toBeNull()
+
+    // the account comes back with the same id (restore rebuilds rows from the manifest)
+    await t.userRepo.save(
+      t.userRepo.create({
+        id: user.id,
+        email: user.email,
+        role: 'user',
+        passwordHash: 'test-hash',
+        displayName: 'Restored User',
+      }),
+    )
+
+    const del = await request(apiServer(t)).delete(`/api/v1/admin/users/${user.id}`).set(adminAuth)
+    expect(del.status).toBe(202)
+
+    expect(await waitForDeleteState(t, adminAuth, user.id)).toBe('completed')
+    // the row is really gone (pre-fix the API answered 202 while the row survived)
+    expect(await t.userRepo.findOne({ where: { id: user.id } })).toBeNull()
+    // and the fresh job is not retained under the id (removeOnComplete)
+    expect(await queue.getJob(jobId)).toBeUndefined()
   }, 120_000)
 })

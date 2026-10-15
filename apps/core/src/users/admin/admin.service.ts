@@ -86,13 +86,16 @@ export class AdminService {
 
     const jobId = userDeleteJobId(user.id)
     const prefix = this.deletes.computeBackupPrefix(user.email, user.id)
+    // a retained terminal job with this id would swallow the enqueue (BullMQ dedups by
+    // jobId), so a re-delete after a restore would silently no-op — drop it first
+    await this.deletes.clearFinishedJob(user.id)
     // drain first so pending media jobs cannot retry-noise into 404s mid-delete
     await this.deletes.drainUserJobs(user.id)
     const enqueued = await this.bullMq.enqueue(
       USER_DELETE_QUEUE,
       'user-delete',
       { userId: user.id, email: user.email, backupPrefix: prefix },
-      { jobId },
+      { jobId, removeOnComplete: true },
     )
     if (!enqueued) throw new ServiceUnavailableException('Failed to enqueue user deletion')
     this.deletes.markQueued(user.id, jobId, prefix)
