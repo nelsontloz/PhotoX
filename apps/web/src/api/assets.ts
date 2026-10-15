@@ -71,12 +71,21 @@ export async function getAssetLayout(filters: AssetFilters = {}): Promise<AssetL
   return data
 }
 
-export async function downloadFile(fileId: string): Promise<Blob> {
-  const { data } = await api.get<Blob>(`/v1/files/${fileId}/download`, {
-    responseType: 'blob',
-    timeout: 300_000,
-  })
-  return data
+/**
+ * HEADs the download route first so the axios refresh/401-retry interceptors run and auth or
+ * missing-file errors throw here — the caller then skips the anchor click instead of the tab
+ * navigating to a JSON error page mid-download.
+ */
+export async function preflightFileDownload(fileId: string): Promise<void> {
+  await api.head(`/v1/files/${fileId}/download`)
+}
+
+/**
+ * Same-origin URL the browser downloads natively: bytes stream straight to disk (no Blob in
+ * memory) and the server already sets the filename via Content-Disposition.
+ */
+export function getFileDownloadUrl(fileId: string): string {
+  return `/api/v1/files/${fileId}/download`
 }
 
 /**

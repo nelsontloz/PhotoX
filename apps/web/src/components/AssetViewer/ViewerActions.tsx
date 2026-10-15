@@ -13,7 +13,7 @@ import {
   FaArrowsRotate,
   FaFilm,
 } from 'react-icons/fa6'
-import { downloadFile } from '../../api/assets'
+import { getFileDownloadUrl, preflightFileDownload } from '../../api/assets'
 import { createShare, getShareUrl } from '../../api/shares'
 import type { Asset } from '@photox/shared-types'
 
@@ -42,13 +42,13 @@ export function ViewerActions({
 }: ViewerActionsProps) {
   const handleDownload = async () => {
     try {
-      const blob = await downloadFile(asset.fileId)
-      const url = URL.createObjectURL(blob)
+      // preflight: a failed HEAD is shown nowhere, but it keeps a dead session or a deleted file
+      // from turning the click into a browser navigation to the JSON error body
+      await preflightFileDownload(asset.fileId)
       const a = document.createElement('a')
-      a.href = url
+      a.href = getFileDownloadUrl(asset.fileId)
       a.download = asset.originalName ?? 'download'
       a.click()
-      URL.revokeObjectURL(url)
     } catch {
       /* ignore */
     }
