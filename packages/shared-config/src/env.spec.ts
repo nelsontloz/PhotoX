@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { join } from 'path'
-import {
-  FACE_DETECTOR_MODEL_FILE,
-  loadEnv,
-  resolveFaceDetectorModelPath,
-} from './env'
+import { FACE_DETECTOR_MODEL_FILE, loadEnv, resolveFaceDetectorModelPath } from './env'
 
 describe('AUTH_REFRESH_TTL parsing', () => {
   const original = process.env.AUTH_REFRESH_TTL

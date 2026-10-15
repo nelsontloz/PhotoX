@@ -1,9 +1,4 @@
-export {
-  loadEnv,
-  loadAuthEnv,
-  loadRootEnvFile,
-  resolveFaceDetectorModelPath,
-} from './env'
+export { loadEnv, loadAuthEnv, loadRootEnvFile, resolveFaceDetectorModelPath } from './env'
 export { LocalStorageService } from './storage'
 export {
   backupPrefix,
