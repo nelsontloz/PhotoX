@@ -10,7 +10,6 @@ const api = vi.hoisted(() => {
     getAdminLibraryStats: vi.fn(pending),
     getAdminAssetCounts: vi.fn(pending),
     getFaceDetection: vi.fn(pending),
-    setFaceDetector: vi.fn(pending),
     reclusterFaces: vi.fn(pending),
     reprocessPipeline: vi.fn(pending),
     getPipelineStatus: vi.fn(pending),

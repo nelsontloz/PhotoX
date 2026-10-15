@@ -240,7 +240,6 @@ function manifestJson(opts: {
       userId,
       emailAtBackup: email,
       backedUpAt,
-      detector: 'human',
       user: {
         id: userId,
         email,
@@ -304,7 +303,6 @@ function makeOverviewService(
   const nil = undefined as never
   const svc = new UserBackupService(
     s3,
-    nil,
     nil,
     nil,
     nil,

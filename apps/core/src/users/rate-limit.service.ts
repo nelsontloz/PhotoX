@@ -13,8 +13,8 @@ export const RATE_LIMITS: Record<RateLimitRoute, { limit: number; windowSec: num
   refresh: { limit: 30, windowSec: 900 },
 }
 
-// ponytail: register is env-overridable (direct process.env like FACE_DETECTOR/WORKER_SERVICE_PORT,
-// not zod) so the e2e suite can batched-register from one IP. Parsed per call so
+// ponytail: register is env-overridable (direct process.env like WORKER_SERVICE_PORT, not zod)
+// so the e2e suite can batched-register from one IP. Parsed per call so
 // loadRootEnvFile() ordering can't bite; invalid/absent values fall back to the constant.
 function routeLimit(route: RateLimitRoute): number {
   if (route !== 'register') return RATE_LIMITS[route].limit

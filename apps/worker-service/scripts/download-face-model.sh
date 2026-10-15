@@ -44,9 +44,10 @@ DET_DEST="${FACE_DETECTOR_MODEL_PATH:-$MODELS_DIR/det_10g.onnx}"
 
 if [ -n "$FORCE" ] || [ ! -s "$DET_DEST" ]; then
   echo "Downloading det_10g.onnx to $DET_DEST..."
-  # best-effort: human is the default detector, and the runtime/admin UI cover provisioning
+  # best-effort: SCRFD-10G is the only detector, so face jobs fail until this model is provisioned
+  # (the runtime logs and admin UI surface the missing model)
   fetch_file "$DET_URL" "$DET_DEST" ||
-    echo "WARNING: det_10g.onnx download failed — SCRFD stays unavailable until provisioned" >&2
+    echo "WARNING: det_10g.onnx download failed — SCRFD face detection stays unavailable until provisioned" >&2
 else
   echo "Detector model already present at $DET_DEST (use --force to re-fetch)"
 fi

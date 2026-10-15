@@ -4,7 +4,6 @@ import type { FaceDetectionSettings } from '@photox/shared-types'
 
 const api = vi.hoisted(() => ({
   getFaceDetection: vi.fn(),
-  setFaceDetector: vi.fn(),
   reprocessPipeline: vi.fn(),
   getPipelineStatus: vi.fn(),
   reclusterFaces: vi.fn(),
@@ -15,10 +14,7 @@ vi.mock('../../api/admin', () => api)
 import { FacialDetectionCard } from './ai'
 
 const settings = (over: Partial<FaceDetectionSettings> = {}): FaceDetectionSettings => ({
-  detector: 'human',
-  envDefault: 'human',
-  models: { scrfd: false },
-  facesByDetector: { human: 0, scrfd: 0, unset: 0 },
+  modelAvailable: true,
   ...over,
 })
 
@@ -26,11 +22,6 @@ const drained = {
   lastRun: null,
   queue: { waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0 },
 }
-
-const mixedParagraph = () =>
-  screen.queryByText(
-    (_content, el) => el?.tagName === 'P' && (el.textContent ?? '').includes('Faces are mixed'),
-  )
 
 beforeEach(() => {
   api.getFaceDetection.mockResolvedValue(settings())
@@ -42,59 +33,36 @@ afterEach(() => {
   vi.resetAllMocks()
 })
 
-describe('FacialDetectionCard (detector)', () => {
-  it('renders the detector radios, disables SCRFD and shows the provisioning hint', async () => {
+describe('FacialDetectionCard (fixed detector)', () => {
+  it('presents SCRFD 10G as a read-only fact instead of a detector switcher', async () => {
     render(<FacialDetectionCard />)
 
-    const human = await screen.findByRole<HTMLInputElement>('radio', {
-      name: /Human \(BlazeFace\)/,
-    })
-    const scrfd = screen.getByRole<HTMLInputElement>('radio', { name: /SCRFD 10G/ })
+    // the strip row names the fixed detector; no radio group survives
+    expect(await screen.findByText('Active detector')).toBeTruthy()
+    expect(screen.getByText('SCRFD 10G')).toBeTruthy()
+    expect(screen.queryByRole('radio')).toBeNull()
+    expect(screen.queryByRole('group')).toBeNull()
+  })
 
-    expect(human.checked).toBe(true)
-    expect(scrfd.disabled).toBe(true)
-    expect(screen.getByText(/SCRFD model not installed/)).toBeTruthy()
+  it('reports Online with no model warning when the SCRFD model is provisioned', async () => {
+    render(<FacialDetectionCard />)
+
+    expect(await screen.findByText('Online')).toBeTruthy()
+    expect(screen.queryByText(/isn't installed/)).toBeNull()
+  })
+
+  it('warns that face detection cannot run when the SCRFD model is missing', async () => {
+    api.getFaceDetection.mockResolvedValue(settings({ modelAvailable: false }))
+
+    render(<FacialDetectionCard />)
+
+    expect(
+      await screen.findByText(
+        "The SCRFD 10G model isn't installed — face detection cannot run until it is provisioned.",
+      ),
+    ).toBeTruthy()
+    expect(screen.getByText('Model missing')).toBeTruthy()
     expect(screen.getByText('pnpm --filter @photox/worker-service face-model')).toBeTruthy()
-  })
-
-  it('opens the SCRFD override dialog and PUTs the detector on confirm', async () => {
-    api.setFaceDetector.mockResolvedValue(settings({ detector: 'scrfd' }))
-    render(<FacialDetectionCard />)
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Switch to SCRFD anyway' }))
-    expect(screen.getByText('Switch to SCRFD anyway?')).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Switch anyway' }))
-
-    await waitFor(() => expect(api.setFaceDetector).toHaveBeenCalledWith('scrfd'))
-    await screen.findByText(/SCRFD is selected but its model is not installed/)
-    expect(screen.queryByRole('button', { name: 'Switch to SCRFD anyway' })).toBeNull()
-  })
-
-  it('warns when faces from both detectors are mixed and counts unrecorded ones', async () => {
-    api.getFaceDetection.mockResolvedValue(
-      settings({
-        models: { scrfd: true },
-        facesByDetector: { human: 3, scrfd: 2, unset: 1 },
-      }),
-    )
-    const { unmount } = render(<FacialDetectionCard />)
-    await screen.findByRole('radio', { name: /Human \(BlazeFace\)/ })
-
-    const warning = mixedParagraph()
-    expect(warning).not.toBeNull()
-    const text = warning?.textContent ?? ''
-    expect(text).toContain('3 with Human (BlazeFace)')
-    expect(text).toContain('2 with SCRFD 10G')
-    expect(text).toMatch(/1 more faces have no detector\s+recorded\./)
-
-    unmount()
-    api.getFaceDetection.mockResolvedValue(
-      settings({ models: { scrfd: true }, facesByDetector: { human: 3, scrfd: 0, unset: 0 } }),
-    )
-    render(<FacialDetectionCard />)
-    await screen.findByRole('radio', { name: /Human \(BlazeFace\)/ })
-    expect(mixedParagraph()).toBeNull()
   })
 })
 
@@ -105,11 +73,10 @@ describe('FacialDetectionCard (reprocess)', () => {
         startedAt: '2026-10-01T00:00:00.000Z',
         total: 5,
         enqueued: 5,
-        detector: 'human',
       },
       queue: { waiting: 1, active: 1, completed: 4, failed: 0, delayed: 0 },
     })
-    api.reprocessPipeline.mockResolvedValue({ enqueued: 5, total: 5, detector: 'human' })
+    api.reprocessPipeline.mockResolvedValue({ enqueued: 5, total: 5 })
 
     render(<FacialDetectionCard />)
     await screen.findByText('No face reprocess runs yet.')
@@ -135,55 +102,45 @@ describe('FacialDetectionCard (reprocess)', () => {
         startedAt: '2026-10-01T00:00:00.000Z',
         total: 8,
         enqueued: 5,
-        detector: 'scrfd',
       },
       queue: { waiting: 0, active: 0, completed: 5, failed: 0, delayed: 0 },
     })
 
     render(<FacialDetectionCard />)
 
-    expect(
-      await screen.findByText(/5 of 8 photos\s+queued with the SCRFD 10G detector\./),
-    ).toBeTruthy()
+    expect(await screen.findByText(/5 of 8 photos\s+queued\./)).toBeTruthy()
+    expect(screen.queryByText(/SCRFD 10G detector/)).toBeNull()
     expect(screen.queryByRole('progressbar')).toBeNull()
   })
 
-  it('warns in the confirm dialog when SCRFD is active but unprovisioned, and still allows confirm', async () => {
-    api.getFaceDetection.mockResolvedValue(
-      settings({ detector: 'scrfd', models: { scrfd: false } }),
-    )
-    api.reprocessPipeline.mockResolvedValue({ enqueued: 5, total: 5, detector: 'scrfd' })
+  it('warns in the confirm dialog when the model is missing, and still allows confirm', async () => {
+    api.getFaceDetection.mockResolvedValue(settings({ modelAvailable: false }))
+    api.reprocessPipeline.mockResolvedValue({ enqueued: 5, total: 5 })
 
     render(<FacialDetectionCard />)
     await screen.findByText('No face reprocess runs yet.')
 
     fireEvent.click(screen.getByRole('button', { name: 'Reprocess all faces' }))
 
-    expect(
-      screen.getByText(
-        "The SCRFD model isn't installed — these jobs will fail until it is provisioned.",
-      ),
-    ).toBeTruthy()
-    // the merged card also shows the provision command in its detector warning
+    // the card banner and the dialog both carry the warning
+    expect(screen.getAllByText(/The SCRFD 10G model isn't installed/)).toHaveLength(2)
     expect(
       screen.getAllByText('pnpm --filter @photox/worker-service face-model').length,
     ).toBeGreaterThan(0)
 
-    // warn, don't block — parity with the "Switch to SCRFD anyway" flow
+    // warn, don't block — a reprocess can still be queued for later
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
     await waitFor(() => expect(api.reprocessPipeline).toHaveBeenCalledWith('faces'))
   })
 
-  it('shows no SCRFD warning in the confirm dialog when the model is installed', async () => {
-    api.getFaceDetection.mockResolvedValue(settings({ detector: 'scrfd', models: { scrfd: true } }))
-
+  it('shows no model warning in the confirm dialog when the model is installed', async () => {
     render(<FacialDetectionCard />)
     await screen.findByText('No face reprocess runs yet.')
 
     fireEvent.click(screen.getByRole('button', { name: 'Reprocess all faces' }))
 
     expect(screen.getByText('Reprocess all faces?')).toBeTruthy()
-    expect(screen.queryByText(/The SCRFD model isn't installed/)).toBeNull()
+    expect(screen.queryByText(/isn't installed/)).toBeNull()
     expect(screen.queryAllByText('pnpm --filter @photox/worker-service face-model')).toHaveLength(0)
   })
 

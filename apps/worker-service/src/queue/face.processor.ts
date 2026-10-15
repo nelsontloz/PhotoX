@@ -6,7 +6,7 @@ import { orientedPrep, patchStatusFailed, runAssetFileJob } from './asset-file-j
 import { FaceDetectorService } from './face.detector'
 import { scaleDetectionsToOriginal } from './detect.service'
 import { CoreClient } from '../core/core-client.service'
-import { LocalStorageService, envFaceDetectorKind } from '@photox/shared-config'
+import { LocalStorageService } from '@photox/shared-config'
 
 export const CLUSTER_DEBOUNCE_MS = 30_000
 export const FACE_MAX_DIM = 2048
@@ -39,8 +39,6 @@ export class FaceProcessor implements OnModuleInit {
         patchStatusFailed(this.core, this.logger, userId, assetId, { faceStatus: 'failed' }, sig),
       body: async ({ data, filePath }) => {
         const { assetId, userId } = data
-        // ponytail: resolve once — the same kind drives detection and is persisted as provenance
-        const resolvedDetector = data.detector ?? envFaceDetectorKind()
         const binding = bindingOf(data)
 
         await this.core.patchMetadata(userId, assetId, { faceStatus: 'pending' }, binding)
@@ -49,7 +47,7 @@ export class FaceProcessor implements OnModuleInit {
         // warps 112px crops from it, so 2048 preserves small-face detail (~12MB raw at that size).
         const { resized, scaleX, scaleY, origW, origH } = await orientedPrep(filePath, FACE_MAX_DIM)
 
-        const detections = await this.faceDetector.detect(resized, resolvedDetector)
+        const detections = await this.faceDetector.detect(resized)
         // ponytail: drop low-confidence detections before save — clustering separately ignores conf < 0.4
         const faces = scaleDetectionsToOriginal(
           detections.filter((d) => d.confidence >= 0.5),
@@ -67,7 +65,7 @@ export class FaceProcessor implements OnModuleInit {
         // (was re-embed-only, so a retried job duplicated faces); never before detect, to avoid data loss
         await this.core.deleteAssetFaces(userId, assetId, binding)
         if (faces.length > 0) {
-          await this.core.registerFaces(userId, assetId, faces, resolvedDetector, binding)
+          await this.core.registerFaces(userId, assetId, faces, binding)
         }
 
         await this.core.patchMetadata(

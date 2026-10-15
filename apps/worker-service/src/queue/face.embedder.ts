@@ -144,7 +144,7 @@ export class FaceEmbedderService {
 
   private async createSession(): Promise<ort.InferenceSession> {
     // ponytail: lazy import so unit tests on Alpine (musl, no onnx native binding) never dlopen it —
-    // same reason FaceDetectorService lazy-loads tfjs-node
+    // nothing in this process loads onnxruntime at module import time
     const { InferenceSession } = await import('onnxruntime-node')
     const modelPath = this.modelPath()
     await requireModelFile(

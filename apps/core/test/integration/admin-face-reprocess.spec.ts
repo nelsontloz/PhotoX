@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto'
 import request from 'supertest'
-import type { FaceDetectorKind } from '@photox/shared-types'
 import {
   closeTestApp,
   createApiTestApp,
@@ -12,10 +11,6 @@ import {
 } from './helpers'
 import type { ApiTestApp } from './helpers'
 import { adminAuthHarness, reprocessMatrix } from './helpers/reprocess-matrix'
-
-function envDefault(): FaceDetectorKind {
-  return process.env.FACE_DETECTOR === 'scrfd' ? 'scrfd' : 'human'
-}
 
 describe('admin face reprocess and recluster', () => {
   let t: ApiTestApp
@@ -78,9 +73,8 @@ describe('admin face reprocess and recluster', () => {
       queue: 'process-faces',
       jobIdFn: (id) => `face-reembed-${id}`,
       jobName: 're-embed',
-      jobDataExtra: { reason: 're-embed', detector: envDefault() },
-      respKeys: { enqueued: 2, total: 2, detector: envDefault() },
-      lastRunExtra: { detector: envDefault() },
+      jobDataExtra: { reason: 're-embed' },
+      respKeys: { enqueued: 2, total: 2 },
       filter: [trashed.asset.id],
     })
   })
@@ -92,7 +86,7 @@ describe('admin face reprocess and recluster', () => {
 
     const first = await request(apiServer(t)).post('/api/v1/admin/faces/reprocess').set(auth)
     expect(first.status).toBe(200)
-    expect(first.body).toEqual({ enqueued: 1, total: 1, detector: envDefault() })
+    expect(first.body).toEqual({ enqueued: 1, total: 1 })
 
     const queue = t.getQueue('process-faces')
     const job = await queue.getJob(jobId)
@@ -102,29 +96,8 @@ describe('admin face reprocess and recluster', () => {
 
     const second = await request(apiServer(t)).post('/api/v1/admin/faces/reprocess').set(auth)
     expect(second.status).toBe(200)
-    expect(second.body).toEqual({ enqueued: 1, total: 1, detector: envDefault() })
+    expect(second.body).toEqual({ enqueued: 1, total: 1 })
     expect(await queue.getJob(jobId)).toBeTruthy()
-  })
-
-  it('stamps the persisted detector on reprocess jobs', async () => {
-    const put = await request(apiServer(t))
-      .put('/api/v1/admin/face-detection')
-      .set(auth)
-      .send({ detector: 'scrfd' })
-    expect(put.status).toBe(200)
-
-    const owner = await seedUser(t)
-    const { file, asset } = await seedPhotoAsset(owner.id)
-    const res = await request(apiServer(t)).post('/api/v1/admin/faces/reprocess').set(auth)
-    expect(res.status).toBe(200)
-    expect(res.body).toEqual({ enqueued: 1, total: 1, detector: 'scrfd' })
-
-    const job = await t.getQueue('process-faces').getJob(`face-reembed-${asset.id}`)
-    expect(job?.data as Record<string, unknown>).toMatchObject({
-      fileId: file.id,
-      detector: 'scrfd',
-      reason: 're-embed',
-    })
   })
 
   it('enqueues one manual cluster job per distinct user with faces', async () => {
@@ -138,7 +111,6 @@ describe('admin face reprocess and recluster', () => {
         confidence: 0.9,
         embedding: [0.1, 0.2, 0.3],
         personId: null,
-        detector: null,
       })
     await t.faceRepo.save([faceRow(u1.id), faceRow(u1.id), faceRow(u2.id)])
 

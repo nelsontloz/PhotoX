@@ -9,7 +9,6 @@ import {
   type Asset,
   type AuthResponse,
   type FaceDetectionSettings,
-  type FaceDetectorKind,
 } from '@photox/shared-types'
 
 export const PASSWORD = 'password123'
@@ -17,7 +16,7 @@ export const PASSWORD = 'password123'
 export const FIXTURES_DIR = fileURLToPath(new URL('../fixtures', import.meta.url))
 
 // re-exported for step files so they keep importing wire types from support, not shared-types
-export type { AuthResponse, FaceDetectionSettings, FaceDetectorKind }
+export type { AuthResponse, FaceDetectionSettings }
 
 /** Album id + name as returned by the album API. */
 export interface AlbumRef {
@@ -72,7 +71,6 @@ export interface Ctx {
   otherAuth?: AuthResponse
   otherAssetId?: string
   // faces
-  faceDetectorOriginal?: FaceDetectorKind
   faceReprocess?: ReprocessRun
   reclusterEnqueued?: number
   // favorites
@@ -90,7 +88,6 @@ export interface Ctx {
   placesWalkedIds?: string[]
   // semantic
   semanticUploads?: SemanticUpload[]
-  faceCountsBefore?: FaceDetectionSettings['facesByDetector']
   reprocessRuns?: Partial<Record<ReprocessKind, ReprocessRun>>
   // sharing
   assetShare?: ShareState

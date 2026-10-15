@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { IsIn } from 'class-validator'
-import { SEARCH_EMBEDDING_MODEL, type FaceDetectorKind } from '@photox/shared-types'
+import { SEARCH_EMBEDDING_MODEL } from '@photox/shared-types'
 import type { LastRun } from '../settings/settings.service'
 import { AdminAssetsService } from './admin-assets.service'
 import { AdminJobsService } from './admin-jobs.service'
@@ -77,11 +77,7 @@ export class AdminMaintenanceController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Enqueue face re-embed jobs for all non-trashed photos (admin-only)' })
   @ApiResponse({ status: 200, description: 'Re-embed jobs enqueued and the run recorded' })
-  async reprocessFaces(): Promise<{
-    enqueued: number
-    total: number
-    detector: FaceDetectorKind
-  }> {
+  async reprocessFaces(): Promise<{ enqueued: number; total: number }> {
     return this.adminJobs.reprocessFaces()
   }
 

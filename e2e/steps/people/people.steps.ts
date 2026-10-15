@@ -61,7 +61,6 @@ async function seedPersonFaces(
   const response = await request.post(`/worker/assets/${assetId}/faces`, {
     headers: workerHeaders(auth.user.id),
     data: {
-      detector: 'human',
       faces: faces.map((face) => ({ ...face, confidence: 0.9 })),
     },
   })

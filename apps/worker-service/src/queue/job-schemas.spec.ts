@@ -40,14 +40,17 @@ describe('job payload schemas', () => {
     )
   })
 
-  it('rejects an unknown face detector', () => {
+  it('accepts a face payload carrying the three refs and strips a legacy detector field', () => {
     const payload = {
       assetId: randomUUID(),
       fileId: randomUUID(),
       userId: randomUUID(),
-      detector: 'bogus',
     }
-    expect(() => parseJobData(faceJobSchema, payload, 'process-faces')).toThrow(UnrecoverableError)
+    expect(parseJobData(faceJobSchema, payload, 'process-faces')).toEqual(payload)
+    // redis may still hold pre-SCRFD-only jobs that carried `detector` — zod strips the unknown key
+    expect(
+      parseJobData(faceJobSchema, { ...payload, detector: 'legacy' }, 'process-faces'),
+    ).toEqual(payload)
   })
 
   it('rejects metadataWaits above the processor wait budget', () => {

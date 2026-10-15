@@ -4,7 +4,6 @@ import {
   Then,
   When,
   authHeaders,
-  fetchFaceSettings,
   requireAuth,
   uploadFixture,
   workerHeaders,
@@ -28,6 +27,7 @@ interface QueueStatus {
 interface FaceAsset {
   id: string
   faceStatus?: 'pending' | 'ready' | 'failed' | null
+  faceCount?: number | null
   faces?: { id: string }[]
 }
 
@@ -204,11 +204,6 @@ Then('the uploaded photos are visually similar to each other', async ({ request,
   await expectVisuallySimilar(request, auth, a.assetId, b.assetId)
 })
 
-Given('I remember the faces-by-detector counts', async ({ request, ctx }) => {
-  const settings = await fetchFaceSettings(request, requireAuth(ctx))
-  ctx.faceCountsBefore = settings.facesByDetector
-})
-
 Then(
   'face detection on the uploaded photo settles with a detected face',
   async ({ request, ctx }) => {
@@ -237,11 +232,16 @@ Then(
   },
 )
 
-Then('the new faces are counted under the active detector', async ({ request, ctx }) => {
-  const before = ctx.faceCountsBefore
-  if (!before) throw new Error('remember the faces-by-detector counts first')
-  const settings = await fetchFaceSettings(request, requireAuth(ctx))
-  expect(settings.facesByDetector[settings.detector]).toBeGreaterThan(before[settings.detector])
+Then('the uploaded photo records its detected face count', async ({ request, ctx }) => {
+  const auth = requireAuth(ctx)
+  const assetId = ctx.assetId
+  if (!assetId) throw new Error('upload a photo first')
+  const response = await request.get(`/api/v1/assets/${assetId}`, { headers: authHeaders(auth) })
+  expect(response.status()).toBe(200)
+  const asset = (await response.json()) as FaceAsset
+  // the worker patches faceCount alongside faceStatus=ready — the aggregate the UI renders
+  expect(asset.faceCount).toBeGreaterThanOrEqual(1)
+  expect(asset.faceCount).toBe((asset.faces ?? []).length)
 })
 
 Given('the initial semantic processing has settled', async ({ request, ctx }) => {

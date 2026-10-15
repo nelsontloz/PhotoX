@@ -28,7 +28,6 @@ function manifestJson(opts: { userId: string; email: string }): Buffer {
       userId,
       emailAtBackup: email,
       backedUpAt: '2026-10-01T00:00:00.000Z',
-      detector: 'human',
       user: {
         id: userId,
         email,
@@ -99,7 +98,6 @@ function makeDeleteService(opts: {
   const svc = new UserBackupService(
     s3 as never,
     dataSource as never,
-    nil,
     nil,
     nil,
     nil,

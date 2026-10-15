@@ -53,21 +53,7 @@ function makeProgressService(user: User | null) {
   // only the users repo is faked, so this stays a pure unit spec (no
   // testcontainers); full backupUser runs stay in test/integration/user-backup
   const nil = undefined as never
-  const svc = new UserBackupService(
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-    users,
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-  )
+  const svc = new UserBackupService(nil, nil, nil, nil, nil, users, nil, nil, nil, nil, nil, nil)
   return { svc, findOne }
 }
 

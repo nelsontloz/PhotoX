@@ -221,11 +221,7 @@ describe('JwtAuthGuard', () => {
         { expiresIn: 30 },
       )
       vi.setSystemTime(new Date('2030-01-01T00:00:20Z'))
-      const { context, cookie } = testContext(
-        'GET',
-        '/api/v1/admin/face-detection',
-        cookieHeader(stale),
-      )
+      const { context, cookie } = testContext('GET', '/worker/assets/a1', cookieHeader(stale))
 
       await expect(guard.canActivate(context)).resolves.toBe(true)
       const [, fresh] = cookie.mock.calls[0] as CookieArgs
@@ -233,7 +229,7 @@ describe('JwtAuthGuard', () => {
       expect(jwt.verify(fresh)).toMatchObject({
         sub: 'u1',
         role: 'admin',
-        // dropping act would turn this into a plain admin token, escaping the allowlist
+        // dropping act would turn this into a plain admin token, escaping the act-only rules
         act: { sub: 'worker-service' },
       })
     } finally {
@@ -287,7 +283,7 @@ describe('JwtAuthGuard', () => {
         { expiresIn: 30 },
       )
       vi.setSystemTime(new Date('2030-01-01T00:00:20Z'))
-      const { context, cookie } = testContext('GET', '/api/v1/admin/face-detection', {
+      const { context, cookie } = testContext('GET', '/worker/assets/a1', {
         ...cookieHeader(staleCookie),
         authorization: `Bearer ${bearer}`,
       })
@@ -338,23 +334,23 @@ describe('JwtAuthGuard', () => {
     expect(req.user?.role).toBe('admin')
   })
 
-  it('lets worker-actor admin tokens through on the allowlist', async () => {
+  it('lets worker-actor admin tokens through on worker routes and the act list read', async () => {
     const auth = { authorization: `Bearer ${workerTokenFor('admin')}` }
     const pass = (method: string, path: string, query: Record<string, unknown> = {}) =>
       guard.canActivate(testContext(method, path, auth, query).context)
-    await expect(pass('GET', '/api/v1/admin/face-detection')).resolves.toBe(true)
     await expect(pass('GET', '/worker/assets/a1')).resolves.toBe(true)
     await expect(pass('PATCH', '/worker/assets/a1/metadata')).resolves.toBe(true)
     await expect(pass('GET', '/api/v1/assets', { ids: 'a1,b2' })).resolves.toBe(true)
   })
 
-  it('rejects worker-actor tokens outside the allowlist with 403', async () => {
+  it('rejects worker-actor tokens outside the worker surface with 403', async () => {
     const adminAuth = { authorization: `Bearer ${workerTokenFor('admin')}` }
     const userAuth = { authorization: `Bearer ${workerTokenFor('user', 'u1')}` }
     const deny = (method: string, path: string, headers: Record<string, string>) =>
       expect(guard.canActivate(testContext(method, path, headers).context)).rejects.toThrow(
         ForbiddenException,
       )
+    await deny('GET', '/api/v1/admin/face-detection', adminAuth)
     await deny('DELETE', '/api/v1/admin/files/f1', adminAuth)
     await deny('POST', '/api/v1/admin/cleanup-orphans/run', adminAuth)
     await deny('GET', '/api/v1/assets/a1', userAuth)
@@ -370,7 +366,7 @@ describe('JwtAuthGuard', () => {
         ForbiddenException,
       )
     await deny('GET', '/api/v1/admin/users')
-    await deny('PUT', '/api/v1/admin/face-detection')
+    await deny('GET', '/api/v1/admin/face-detection')
   })
 
   it('rejects plain tokens on worker routes with 403', async () => {

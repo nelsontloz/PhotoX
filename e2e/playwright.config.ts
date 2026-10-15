@@ -1,11 +1,11 @@
 import { defineConfig } from '@playwright/test'
 import { defineBddProject } from 'playwright-bdd'
 
-// The stack has global state that forces an ordered serial prologue: 04-faces switches the active
-// face detector and reprocesses/reclusters faces for every user, and 05-semantic's
-// semantic-upload.feature reprocesses embeddings/OCR/detections for every photo — the parallel
-// suite must not observe faces or semantic rows while those run. Inside `setup` the numbered
-// folders run in alphabetical path order — do not rename or reorder them.
+// The stack has global state that forces an ordered serial prologue: 04-faces reprocesses/reclusters
+// faces for every user, and 05-semantic's semantic-upload.feature reprocesses embeddings/OCR/
+// detections for every photo — the parallel suite must not observe faces or semantic rows while
+// those run. Inside `setup` the numbered folders run in alphabetical path order — do not rename or
+// reorder them.
 // Everything else is scenario-scoped (each scenario registers its own random user), so the `suite`
 // project — which also runs 01-bootstrap, whose seeded-admin check searches the users table —
 // runs in parallel with the worker pool that playwright's native --workers flag raises.

@@ -1,10 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { DataSource } from 'typeorm'
-import {
-  SEARCH_EMBEDDING_MODEL,
-  type AdminAssetReprocessRow,
-  type FaceDetectorKind,
-} from '@photox/shared-types'
+import { SEARCH_EMBEDDING_MODEL, type AdminAssetReprocessRow } from '@photox/shared-types'
 import { AdminAssetsService } from './admin-assets.service'
 import { BullMqService } from '../queue/bullmq.service'
 import { PlacesResolveService } from '../places/places-resolve.service'
@@ -92,10 +88,8 @@ export class AdminJobsService {
     )
   }
 
-  // ponytail: detector read once per run — jobs enqueued mid-run keep the detector this run saw
-  async reprocessFaces(): Promise<{ enqueued: number; total: number; detector: FaceDetectorKind }> {
-    const detector = await this.settings.getFaceDetector()
-    const { enqueued, total } = await reprocessPhotos(
+  async reprocessFaces(): Promise<{ enqueued: number; total: number }> {
+    return reprocessPhotos(
       { admin: this.admin, bullMq: this.bullMq },
       'process-faces',
       're-embed',
@@ -105,13 +99,11 @@ export class AdminJobsService {
           fileId: item.fileId,
           userId: item.userId,
           reason: 're-embed',
-          detector,
         },
         jobId: `face-reembed-${item.id}`,
       }),
-      (run) => this.settings.setLastRun('face', { ...run, detector }),
+      (run) => this.settings.setLastRun('face', run),
     )
-    return { enqueued, total, detector }
   }
 
   faceStatus(): Promise<{

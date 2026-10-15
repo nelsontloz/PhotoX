@@ -67,8 +67,7 @@ export class AdminService {
   /**
    * Guard chain for async deletion: 404 unknown target, 403 self-delete, 409 last
    * admin. Worker `act` tokens never reach here — the central JwtAuthGuard denies
-   * act-carrying tokens on every /api/v1/admin/* route except the explicit allowlist
-   * (GET face-detection), and these routes are not allowlisted.
+   * act-carrying tokens on every /api/v1/admin/* route, none are allowlisted.
    */
   async requestUserDelete(
     targetUserId: string,

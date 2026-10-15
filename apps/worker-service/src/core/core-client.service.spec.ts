@@ -163,22 +163,18 @@ describe('CoreClient', () => {
     expect(result).toEqual({ created: 1, assigned: 2 })
   })
 
-  it('registers faces with the resolved detector in the body', async () => {
+  it('registers faces with the body carrying only the face list', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { count: 1 }))
 
-    const result = await makeClient().registerFaces(
-      'user-1',
-      'asset-1',
-      [{ box: { x: 1, y: 2, w: 3, h: 4 }, confidence: 0.9, embedding: [0.1, 0.2] }],
-      'scrfd',
-    )
+    const result = await makeClient().registerFaces('user-1', 'asset-1', [
+      { box: { x: 1, y: 2, w: 3, h: 4 }, confidence: 0.9, embedding: [0.1, 0.2] },
+    ])
 
     expect(result).toEqual({ count: 1 })
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('http://localhost:3000/worker/assets/asset-1/faces')
     expect(init.method).toBe('POST')
     expect(JSON.parse(init.body as string)).toEqual({
-      detector: 'scrfd',
       faces: [{ box: { x: 1, y: 2, w: 3, h: 4 }, confidence: 0.9, embedding: [0.1, 0.2] }],
     })
   })
@@ -205,29 +201,6 @@ describe('CoreClient', () => {
     expect(payload).toMatchObject({
       sub: 'user-1',
       role: 'user',
-      act: { sub: 'worker-service' },
-    })
-  })
-
-  it('fetches face detection settings with an admin token', async () => {
-    const settings = { detector: 'scrfd', envDefault: 'human', models: { scrfd: true } }
-    fetchMock.mockResolvedValue(jsonResponse(200, settings))
-
-    const result = await makeClient().getFaceDetectionSettings()
-
-    expect(result).toEqual(settings)
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('http://localhost:3000/api/v1/admin/face-detection')
-    expect(init.method).toBe('GET')
-    expect(init.body).toBeUndefined()
-    const token = (init.headers as Record<string, string>).Authorization!.replace('Bearer ', '')
-    const payload = new JwtService({ secret: 'x'.repeat(32) }).verify<{
-      sub: string
-      role: string
-    }>(token)
-    expect(payload).toMatchObject({
-      sub: 'worker-service',
-      role: 'admin',
       act: { sub: 'worker-service' },
     })
   })

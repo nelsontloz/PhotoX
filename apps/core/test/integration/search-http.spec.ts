@@ -157,7 +157,6 @@ describe('hybrid search HTTP', () => {
         confidence: 0.9,
         embedding: [0.1, 0.2, 0.3],
         personId: person.id,
-        detector: null,
       }),
     )
     const placeAsset = await seedAssetWith(userId, { placeCity: 'Paris', placeCountryCode: 'FR' })

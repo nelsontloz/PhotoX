@@ -6,12 +6,11 @@ Feature: Semantic processing on upload (embeddings, OCR, object detection)
     And I upload "photo-text.jpg" for semantic processing
     Then the uploaded photos are visually similar to each other
 
-  Scenario: A portrait is face-detected with provenance
+  Scenario: A portrait is face-detected on upload
     Given I am signed in as an administrator
-    And I remember the faces-by-detector counts
     When I upload "face.jpg" for semantic processing
     Then face detection on the uploaded photo settles with a detected face
-    And the new faces are counted under the active detector
+    And the uploaded photo records its detected face count
 
   Scenario: Admin reprocessing replaces semantic rows and drains the queues
     Given I am signed in as an administrator

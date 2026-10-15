@@ -1,26 +1,22 @@
-import { expect, type APIRequestContext, type Page, type Response } from '@playwright/test'
+import { expect, type APIRequestContext, type Response } from '@playwright/test'
 import {
   Given,
   Then,
   When,
   PASSWORD,
   authHeaders,
-  fetchFaceSettings,
   injectSession,
   requireAuth,
   seedEmbedding,
   workerHeaders,
   type AuthResponse,
-  type Ctx,
-  type FaceDetectionSettings,
-  type FaceDetectorKind,
 } from '../support'
 
 const ADMIN_EMAIL = 'admin@photox.test'
 
 /** Wire shape of GET /api/v1/admin/faces/reprocess. */
 interface FaceStatus {
-  lastRun: { startedAt: string; total: number; enqueued: number; detector: FaceDetectorKind } | null
+  lastRun: { startedAt: string; total: number; enqueued: number } | null
   queue: {
     waiting: number
     active: number
@@ -88,7 +84,6 @@ async function seedFaces(
   const response = await request.post(`/worker/assets/${assetId}/faces`, {
     headers: workerHeaders(auth.user.id),
     data: {
-      detector: 'human',
       faces: faces.map((face) => ({ ...face, confidence: 0.9, embedding: seedEmbedding() })),
     },
   })
@@ -106,10 +101,6 @@ async function fetchFaceAsset(
   return (await response.json()) as FaceAsset
 }
 
-const isDetectorPut = (response: Response): boolean =>
-  response.request().method() === 'PUT' &&
-  new URL(response.url()).pathname === '/api/v1/admin/face-detection'
-
 const isReprocessPost = (response: Response): boolean =>
   response.request().method() === 'POST' &&
   new URL(response.url()).pathname === '/api/v1/admin/faces/reprocess'
@@ -118,57 +109,6 @@ const isReclusterPost = (response: Response): boolean =>
   response.request().method() === 'POST' &&
   new URL(response.url()).pathname === '/api/v1/admin/faces/recluster'
 
-function parseDetector(value: string): FaceDetectorKind {
-  if (value !== 'human' && value !== 'scrfd') throw new Error(`unknown face detector: ${value}`)
-  return value
-}
-
-const detectorRadio = (page: Page, detector: FaceDetectorKind) =>
-  page.locator(`input[name="face-detector"][value="${detector}"]`)
-
-/** Applies `target`; a disabled SCRFD radio routes through the amber fallback confirm dialog. */
-async function switchDetector(
-  page: Page,
-  request: APIRequestContext,
-  ctx: Ctx,
-  target: FaceDetectorKind,
-): Promise<void> {
-  const active = (await fetchFaceSettings(request, requireAuth(ctx))).detector
-  if (active === target) {
-    // silently returning would let the scenario pass without ever exercising the PUT
-    throw new Error(`the active face detector is already "${target}" — nothing would be switched`)
-  }
-
-  const radio = detectorRadio(page, target)
-  const apply = async (click: () => Promise<void>): Promise<void> => {
-    const [response] = await Promise.all([page.waitForResponse(isDetectorPut), click()])
-    expect(response.status()).toBe(200)
-    const body = (await response.json()) as FaceDetectionSettings
-    expect(body.detector).toBe(target)
-  }
-
-  if (await radio.isDisabled()) {
-    await page.getByRole('button', { name: 'Switch to SCRFD anyway' }).click()
-    await expect(
-      page.getByRole('heading', { level: 3, name: 'Switch to SCRFD anyway?' }),
-    ).toBeVisible()
-    await apply(() => page.getByRole('button', { name: 'Switch anyway' }).click())
-  } else {
-    await apply(() => radio.click())
-  }
-  await expect(radio).toBeChecked()
-}
-
-async function expectActiveDetector(
-  page: Page,
-  request: APIRequestContext,
-  ctx: Ctx,
-  expected: FaceDetectorKind,
-): Promise<void> {
-  expect((await fetchFaceSettings(request, requireAuth(ctx))).detector).toBe(expected)
-  await expect(detectorRadio(page, expected)).toBeChecked()
-}
-
 Given('I am signed in as an administrator', async ({ request, page, baseURL, ctx }) => {
   ctx.auth = await signInAdmin(request)
   await injectSession(page, ctx.auth, baseURL)
@@ -176,7 +116,7 @@ Given('I am signed in as an administrator', async ({ request, page, baseURL, ctx
 })
 
 When('I open the admin dashboard', async ({ page }) => {
-  // the detector/reprocess/recluster controls live on the AI Pipelines tab
+  // the reprocess/recluster controls live on the AI Pipelines tab
   await page.goto('/admin?tab=ai')
   await expect(page.getByRole('heading', { level: 1, name: 'Admin Console' })).toBeVisible({
     timeout: 15_000,
@@ -187,35 +127,6 @@ When('I open the admin dashboard', async ({ page }) => {
   await expect(
     page.getByRole('heading', { level: 3, name: 'Facial Detection & Clustering' }),
   ).toBeVisible()
-})
-
-When('I remember the active face detector', async ({ request, page, ctx }) => {
-  const settings = await fetchFaceSettings(request, requireAuth(ctx))
-  ctx.faceDetectorOriginal = settings.detector
-  await expect(detectorRadio(page, settings.detector)).toBeChecked()
-})
-
-When('I switch the face detector to {string}', async ({ page, request, ctx }, target: string) => {
-  await switchDetector(page, request, ctx, parseDetector(target))
-})
-
-When(
-  'I switch the face detector back to the remembered detector',
-  async ({ page, request, ctx }) => {
-    const original = ctx.faceDetectorOriginal
-    if (!original) throw new Error('remember the active face detector first')
-    await switchDetector(page, request, ctx, original)
-  },
-)
-
-Then('the active face detector is {string}', async ({ page, request, ctx }, expected: string) => {
-  await expectActiveDetector(page, request, ctx, parseDetector(expected))
-})
-
-Then('the active face detector is the remembered detector', async ({ page, request, ctx }) => {
-  const original = ctx.faceDetectorOriginal
-  if (!original) throw new Error('remember the active face detector first')
-  await expectActiveDetector(page, request, ctx, original)
 })
 
 Given('the initial face detection has settled', async ({ request, ctx }) => {
@@ -328,9 +239,16 @@ Then('the face reprocess queue drains', async ({ request, ctx }) => {
 
 Then('the admin page shows the last face reprocess run', async ({ page }) => {
   await page.goto('/admin?tab=ai')
-  await expect(page.getByText(/Last run .+ queued with the .+ detector\./)).toBeVisible({
-    timeout: 20_000,
-  })
+  // the facial card is the only one under the "Facial Detection & Clustering" heading — scope the
+  // last-run line to it (the semantic card also renders a "Last run … photos queued." line)
+  const card = page
+    .locator('div')
+    .filter({
+      has: page.getByRole('heading', { name: 'Facial Detection & Clustering', exact: true }),
+    })
+    .filter({ hasText: /Last run .+queued/ })
+    .last()
+  await expect(card.getByText(/Last run .+queued/)).toBeVisible({ timeout: 20_000 })
 })
 
 Given('I seed two matching faces on my latest photo', async ({ request, ctx }) => {

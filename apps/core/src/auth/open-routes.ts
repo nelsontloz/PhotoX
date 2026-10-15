@@ -13,13 +13,11 @@ export function isAdminRoute(path: string): boolean {
   return path === '/api/v1/admin' || path.startsWith('/api/v1/admin/')
 }
 
-// The only admin route a worker-minted token (act claim present) may reach — everything
-// else under /api/v1/admin/* stays human-admin only.
-const WORKER_ADMIN_ROUTES: [string, RegExp][] = [['GET', /^\/api\/v1\/admin\/face-detection$/]]
-
-export function isWorkerAllowedRoute(method: string, path: string): boolean {
-  if (isWorkerRoute(path)) return true
-  return WORKER_ADMIN_ROUTES.some(([m, re]) => m === method && re.test(path))
+// act-carrying worker tokens are default-denied everywhere except the worker job surface;
+// no admin route is worker-reachable (the face-detection read was retired with the old
+// detector-setting contract).
+export function isWorkerAllowedRoute(path: string): boolean {
+  return isWorkerRoute(path)
 }
 
 // Worker job surface: act-required, owner-scoped by the job's sub through the reused services.

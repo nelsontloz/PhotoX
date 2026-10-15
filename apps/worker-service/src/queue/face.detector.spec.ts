@@ -1,20 +1,10 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import sharp from 'sharp'
 import type { FaceEmbedderService } from './face.embedder'
 
 const mocks = vi.hoisted(() => ({
-  humanLoad: vi.fn(),
-  humanDetect: vi.fn(),
   scrfdLoad: vi.fn(),
   scrfdDetect: vi.fn(),
-}))
-
-vi.mock('./face.detector.human', () => ({
-  landmarks5: vi.fn(),
-  HumanFaceDetector: class {
-    load = mocks.humanLoad
-    detect = mocks.humanDetect
-  },
 }))
 
 vi.mock('./face.detector.scrfd', () => ({
@@ -38,14 +28,10 @@ describe('FaceDetectorService', () => {
   const embed = vi.fn()
   let service: FaceDetectorService
   let image: Buffer
-  const prevDetector = process.env.FACE_DETECTOR
 
   beforeEach(async () => {
-    delete process.env.FACE_DETECTOR
     vi.clearAllMocks()
-    mocks.humanLoad.mockResolvedValue(undefined)
     mocks.scrfdLoad.mockResolvedValue(undefined)
-    mocks.humanDetect.mockResolvedValue([])
     mocks.scrfdDetect.mockResolvedValue([])
     embed.mockResolvedValue(new Array<number>(512).fill(0))
     service = new FaceDetectorService({ embed } as unknown as FaceEmbedderService)
@@ -56,29 +42,29 @@ describe('FaceDetectorService', () => {
       .toBuffer()
   })
 
-  afterEach(() => {
-    if (prevDetector === undefined) delete process.env.FACE_DETECTOR
-    else process.env.FACE_DETECTOR = prevDetector
-  })
-
-  it('defaults to the human backend when FACE_DETECTOR is unset', async () => {
-    await service.detect(image)
-
-    expect(mocks.humanDetect).toHaveBeenCalledTimes(1)
-    expect(mocks.scrfdDetect).not.toHaveBeenCalled()
-  })
-
-  it('defaults to the scrfd backend when FACE_DETECTOR=scrfd', async () => {
-    process.env.FACE_DETECTOR = 'scrfd'
-
+  it('always detects with the SCRFD backend', async () => {
     await service.detect(image)
 
     expect(mocks.scrfdDetect).toHaveBeenCalledTimes(1)
-    expect(mocks.humanDetect).not.toHaveBeenCalled()
+    expect(mocks.scrfdDetect).toHaveBeenCalledWith(image)
+  })
+
+  it('warms the SCRFD backend on module init', async () => {
+    await service.onModuleInit()
+
+    expect(mocks.scrfdLoad).toHaveBeenCalledTimes(1)
+  })
+
+  it('warns instead of crashing on module init when the model is missing', async () => {
+    mocks.scrfdLoad.mockRejectedValue(
+      new Error('Face detector model not found at /models/det_10g.onnx'),
+    )
+
+    await expect(service.onModuleInit()).resolves.toBeUndefined()
   })
 
   it('skips embedding below FACE_MIN_SIZE_PX and embeds at the limit', async () => {
-    mocks.humanDetect.mockResolvedValue([
+    mocks.scrfdDetect.mockResolvedValue([
       {
         box: { x: 10, y: 10, w: FACE_MIN_SIZE_PX - 1, h: FACE_MIN_SIZE_PX - 1 },
         score: 0.9,
@@ -99,7 +85,7 @@ describe('FaceDetectorService', () => {
   })
 
   it('rounds confidence to 4 decimals', async () => {
-    mocks.humanDetect.mockResolvedValue([
+    mocks.scrfdDetect.mockResolvedValue([
       { box: { x: 10, y: 10, w: 40, h: 40 }, score: 0.916666, points5: POINTS5 },
     ])
 

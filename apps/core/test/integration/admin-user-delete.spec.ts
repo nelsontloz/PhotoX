@@ -31,7 +31,6 @@ async function seedFullUser(t: ApiTestApp) {
       confidence: 0.9,
       embedding: new Array(FACE_EMBEDDING_DIM).fill(0.01),
       personId: null,
-      detector: null,
     }),
   )
   await t.embeddingRepo.save(
