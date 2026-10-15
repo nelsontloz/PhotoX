@@ -16,6 +16,7 @@ import {
   registerUser,
   seedEmbedding,
   uploadViaApi,
+  waitForThumbnails,
   workerHeaders,
   type AuthResponse,
   type Ctx,
@@ -154,6 +155,7 @@ interface UserDeleteState {
   admin?: AuthResponse
   listed?: AuthResponse
   victim?: AuthResponse
+  victimAssetId?: string
   victimFileId?: string
   victimAlbumId?: string
   victimShareToken?: string
@@ -214,6 +216,7 @@ async function requireAdmin(request: APIRequestContext, ctx: Ctx): Promise<AuthR
 }
 
 interface FullLibrary {
+  assetId: string
   fileId: string
   albumId: string
   shareToken: string
@@ -297,6 +300,7 @@ async function seedFullLibrary(
   expect(backupResponse.status()).toBe(200)
   const backup = (await backupResponse.json()) as { backedUpAt: string; assets: number }
   return {
+    assetId,
     fileId: asset.fileId,
     albumId: album.id,
     shareToken: share.token,
@@ -352,6 +356,7 @@ Given(
     const state = deleteState(ctx)
     state.victim = victim
     const library = await seedFullLibrary(request, admin, victim, 'photo.jpg')
+    state.victimAssetId = library.assetId
     state.victimFileId = library.fileId
     state.victimAlbumId = library.albumId
     state.victimShareToken = library.shareToken
@@ -607,6 +612,23 @@ Then('the victim deletion reaches a terminal state', async ({ request, ctx }) =>
       { timeout: 120_000 },
     )
     .toBe('completed')
+})
+
+Then("the victim's photo derivatives regenerate", async ({ request, ctx, $testInfo }) => {
+  // restore rebuilds rows plus original bytes only — the manifest carries no thumbnail rows,
+  // so registered sizes can only come back when the per-run restore jobs actually run
+  $testInfo.setTimeout(180_000)
+  const state = deleteState(ctx)
+  const victim = requireVictim(ctx)
+  const assetId = state.victimAssetId
+  if (!assetId) throw new Error('seed the victim library first')
+  // the delete bumped tokensValidAfter (kept through the restore) — mint a fresh victim session
+  const login = await request.post('/api/v1/auth/login', {
+    data: { email: victim.user.email, password: PASSWORD },
+  })
+  expect(login.ok(), `victim re-login failed with status ${login.status()}`).toBe(true)
+  const auth = (await login.json()) as AuthResponse
+  await waitForThumbnails(request, auth, assetId, ['sm', 'md', 'lg', 'xl'])
 })
 
 Then('the victim library is gone but the victim backup is kept', async ({ request, ctx }) => {
