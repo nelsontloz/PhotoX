@@ -62,6 +62,18 @@
   --text-label-xs--font-weight: 700;
 }
 
+/* Native <button>/<input type=button> default to the arrow cursor, and Tailwind v4's Preflight
+   no longer opts them into `cursor: pointer` (v3 did). One rule so every enabled button reads as
+   clickable; it lives in @layer base so utilities still win — cursor-ns-resize, cursor-grab,
+   disabled:cursor-not-allowed, etc. keep working, and disabled buttons keep the arrow. */
+@layer base {
+  button:not(:disabled),
+  input:not(:disabled):where([type='button'], [type='reset'], [type='submit']),
+  [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
