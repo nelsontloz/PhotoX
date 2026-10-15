@@ -303,17 +303,10 @@ export interface AssetDetectionsResponse {
   detections: AssetDetectionDto[]
 }
 
-export const FACE_DETECTOR_KINDS = ['human', 'scrfd'] as const
-export type FaceDetectorKind = (typeof FACE_DETECTOR_KINDS)[number]
-
-// Admin-configurable detector choice: `detector` is the persisted setting, `envDefault` the
-// FACE_DETECTOR env fallback, `models.scrfd` whether det_10g.onnx is provisioned on disk,
-// `facesByDetector` how many stored faces carry each provenance (null -> unset).
+// SCRFD-10G is the only face detector: `modelAvailable` reports whether det_10g.onnx is
+// provisioned on disk, which gates both detection and the admin reprocess card.
 export interface FaceDetectionSettings {
-  detector: FaceDetectorKind
-  envDefault: FaceDetectorKind
-  models: { scrfd: boolean }
-  facesByDetector: { human: number; scrfd: number; unset: number }
+  modelAvailable: boolean
 }
 
 export interface FaceDto {
@@ -332,7 +325,6 @@ export interface DetectedFaceInput {
 
 export interface RegisterFacesRequestDto {
   faces: DetectedFaceInput[]
-  detector?: FaceDetectorKind
 }
 
 export interface PersonDto {

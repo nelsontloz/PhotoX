@@ -95,33 +95,7 @@ describe('faces HTTP', () => {
     expect(rows[0]?.embedding).toHaveLength(512)
   })
 
-  it('stores detector provenance on registered faces and null when absent', async () => {
-    const owner = await seedUser(t)
-    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
-    const face = { box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }
-
-    const fileA = await seedFile(t, owner.id)
-    const assetA = await seedAsset(t, owner.id, fileA.id)
-    const withDetector = await request(apiServer(t))
-      .post(`/worker/assets/${assetA.id}/faces`)
-      .set(t.authHeader(token))
-      .send({ detector: 'scrfd', faces: [face] })
-    expect(withDetector.status).toBe(201)
-    const rowsA = await t.faceRepo.find({ where: { assetId: assetA.id } })
-    expect(rowsA[0]?.detector).toBe('scrfd')
-
-    const fileB = await seedFile(t, owner.id)
-    const assetB = await seedAsset(t, owner.id, fileB.id)
-    const withoutDetector = await request(apiServer(t))
-      .post(`/worker/assets/${assetB.id}/faces`)
-      .set(t.authHeader(token))
-      .send({ faces: [face] })
-    expect(withoutDetector.status).toBe(201)
-    const rowsB = await t.faceRepo.find({ where: { assetId: assetB.id } })
-    expect(rowsB[0]?.detector).toBeNull()
-  })
-
-  it('rejects an invalid detector on register with 400', async () => {
+  it('rejects the retired detector field on register with 400', async () => {
     const owner = await seedUser(t)
     const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
     const file = await seedFile(t, owner.id)
@@ -130,7 +104,7 @@ describe('faces HTTP', () => {
       .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
       .send({
-        detector: 'bogus',
+        detector: 'scrfd',
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }],
       })
     expect(res.status).toBe(400)

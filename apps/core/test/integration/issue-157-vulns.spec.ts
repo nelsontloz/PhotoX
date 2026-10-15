@@ -348,7 +348,8 @@ describe('issue-157 vulns (expect secure, currently insecure)', () => {
       (await request(apiServer(t)).get('/api/v1/assets').set(t.authHeader(ghost))).status,
     ).toBe(401)
 
-    // the worker face-detection call (act + admin on the allowlist) keeps working
+    // act-bearing worker admin tokens reach no admin route — the former face-detection
+    // allowlist is gone and no admin path is worker-reachable
     const face = t.signWorkerToken(
       { id: 'worker-service', email: 'worker@internal', role: 'admin' },
       { act: true },
@@ -356,7 +357,7 @@ describe('issue-157 vulns (expect secure, currently insecure)', () => {
     expect(
       (await request(apiServer(t)).get('/api/v1/admin/face-detection').set(t.authHeader(face)))
         .status,
-    ).toBe(200)
+    ).toBe(403)
 
     // act-bearing user-sub worker token on a /worker route works with a valid job
     // binding (floor applies as today); H1 requires the X-Job-Signature the enqueue stamped

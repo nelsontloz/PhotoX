@@ -161,12 +161,10 @@ describe('AdminService.requestUserDelete backup exclusion', () => {
   })
 
   it('keeps worker act tokens denied on both delete routes', () => {
-    // central JwtAuthGuard denies act-carrying tokens outside the worker allowlist —
+    // central JwtAuthGuard denies act-carrying tokens outside the worker job surface —
     // these routes must never be allowlisted
-    expect(isWorkerAllowedRoute('DELETE', `/api/v1/admin/users/${TARGET_ID}`)).toBe(false)
-    expect(isWorkerAllowedRoute('GET', `/api/v1/admin/users/${TARGET_ID}/delete-status`)).toBe(
-      false,
-    )
+    expect(isWorkerAllowedRoute(`/api/v1/admin/users/${TARGET_ID}`)).toBe(false)
+    expect(isWorkerAllowedRoute(`/api/v1/admin/users/${TARGET_ID}/delete-status`)).toBe(false)
   })
 })
 

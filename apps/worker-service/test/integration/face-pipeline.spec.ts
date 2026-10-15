@@ -300,7 +300,7 @@ describe('Face pipeline (integration)', () => {
       're-embed',
       // the spy observes enqueue's args pre-stamp; withJobSig stamps inside (covered by the
       // cluster queue.add assertion above and the job-binding re-enqueue probes)
-      { assetId, fileId, userId, detector: 'human' },
+      { assetId, fileId, userId },
       expect.objectContaining({
         jobId: `face-reembed-${assetId}`,
         attempts: 3,

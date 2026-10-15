@@ -3,8 +3,6 @@ import type { LocalStorageService } from '@photox/shared-config'
 import type {
   Asset,
   DetectedFaceInput,
-  FaceDetectionSettings,
-  FaceDetectorKind,
   FileRecord,
   RegisterDetectionsRequestDto,
   RegisterEmbeddingRequestDto,
@@ -96,16 +94,9 @@ export class FakeCoreClient {
   readonly thumbnails: (RegisterThumbnailInput & { assetId: string })[] = []
   readonly faces = new Map<string, DetectedFaceInput[]>()
   readonly deleteFacesCalls: string[] = []
-  readonly registerFaceDetectors: FaceDetectorKind[] = []
   readonly clusterFaces: ClusterFace[] = []
   readonly applyClustersCalls: ApplyClustersPayload[] = []
   readonly ownedDeletedFiles: string[] = []
-  faceDetectionSettings: FaceDetectionSettings = {
-    detector: 'human',
-    envDefault: 'human',
-    models: { scrfd: false },
-    facesByDetector: { human: 0, scrfd: 0, unset: 0 },
-  }
   deleteOwnedFileFailures = 0
   dedupeRegistrations = false
 
@@ -124,16 +115,9 @@ export class FakeCoreClient {
     this.thumbnails.length = 0
     this.faces.clear()
     this.deleteFacesCalls.length = 0
-    this.registerFaceDetectors.length = 0
     this.clusterFaces.length = 0
     this.applyClustersCalls.length = 0
     this.ownedDeletedFiles.length = 0
-    this.faceDetectionSettings = {
-      detector: 'human',
-      envDefault: 'human',
-      models: { scrfd: false },
-      facesByDetector: { human: 0, scrfd: 0, unset: 0 },
-    }
     this.deleteOwnedFileFailures = 0
     this.registeredByChecksum.clear()
     this.dedupeRegistrations = false
@@ -221,12 +205,10 @@ export class FakeCoreClient {
     userId: string,
     assetId: string,
     faces: DetectedFaceInput[],
-    detector: FaceDetectorKind,
   ): Promise<{ count: number }> {
-    this.calls.push({ method: 'registerFaces', args: [assetId, faces, detector] })
+    this.calls.push({ method: 'registerFaces', args: [assetId, faces] })
     const err = this.assetError(userId, assetId)
     if (err) return Promise.reject(err)
-    this.registerFaceDetectors.push(detector)
     this.faces.set(assetId, [...(this.faces.get(assetId) ?? []), ...faces])
     return Promise.resolve({ count: faces.length })
   }
@@ -323,15 +305,6 @@ export class FakeCoreClient {
     this.ownedDeletedFiles.push(fileId)
     this.files.delete(fileId)
     return Promise.resolve()
-  }
-
-  getFaceDetectionSettings(): Promise<FaceDetectionSettings> {
-    this.calls.push({ method: 'getFaceDetectionSettings', args: [] })
-    return Promise.resolve({
-      ...this.faceDetectionSettings,
-      models: { ...this.faceDetectionSettings.models },
-      facesByDetector: { ...this.faceDetectionSettings.facesByDetector },
-    })
   }
 
   private assignClusterFace(faceId: string, personId: string): void {

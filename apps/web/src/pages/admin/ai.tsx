@@ -5,13 +5,11 @@ import {
   FaFont,
   FaObjectGroup,
   FaSpinner,
-  FaTriangleExclamation,
   FaWandMagicSparkles,
 } from 'react-icons/fa6'
-import { type FaceDetectionSettings, type FaceDetectorKind } from '@photox/shared-types'
+import { type FaceDetectionSettings } from '@photox/shared-types'
 import {
   getFaceDetection,
-  setFaceDetector,
   reclusterFaces,
   reprocessPipeline,
   getPipelineStatus,
@@ -32,7 +30,6 @@ import {
   RefreshButton,
   StatStrip,
   StatusPill,
-  cx,
 } from './ui'
 import { ConfirmDialog, InlineError } from './shared'
 
@@ -157,20 +154,11 @@ function RunProgress({
 
 // --- facial detection & clustering ------------------------------------------------------
 
-const DETECTOR_LABELS: Record<FaceDetectorKind, string> = {
-  human: 'Human (BlazeFace)',
-  scrfd: 'SCRFD 10G',
-}
-
-// ponytail: mirrors shared-types' FACE_DETECTOR_KINDS — vite's commonjs pass only covers
-// node_modules, so a value import from the (CJS) workspace package fails the build.
-// Upgrade path: add the workspace package to build.commonjsOptions.include.
-const DETECTOR_KINDS = ['human', 'scrfd'] as const satisfies readonly FaceDetectorKind[]
-
-const DETECTOR_HINTS: Record<FaceDetectorKind, string> = {
-  human: 'Runs with the detector bundled in the worker.',
-  scrfd: 'InsightFace SCRFD 10G — needs its model file on disk.',
-}
+/**
+ * SCRFD-10G is the only face detector the worker ships, so there is nothing to choose: the card
+ * states it as a fixed fact and reports only whether its model file is provisioned on disk.
+ */
+const FACE_DETECTOR_LABEL = 'SCRFD 10G'
 
 const SCRFD_PROVISION_CMD = 'pnpm --filter @photox/worker-service face-model'
 const VISION_PROVISION_CMD = 'pnpm --filter @photox/worker-service vision-model'
@@ -181,9 +169,6 @@ export function FacialDetectionCard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [version, setVersion] = useState(0)
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const [confirmScrfd, setConfirmScrfd] = useState(false)
 
   const [confirming, setConfirming] = useState(false)
   const [inFlight, setInFlight] = useState(false)
@@ -217,18 +202,6 @@ export function FacialDetectionCard() {
 
   const getFaceStatus = useCallback(() => getPipelineStatus<FacePipelineRun>('faces'), [])
   const status = useQueuePoll(getFaceStatus, runToken)
-
-  const applyDetector = async (detector: FaceDetectorKind) => {
-    setSaving(true)
-    setSaveError(null)
-    try {
-      setData(await setFaceDetector(detector))
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Could not change the detector')
-    } finally {
-      setSaving(false)
-    }
-  }
 
   const onConfirm = async () => {
     setConfirming(false)
@@ -268,25 +241,25 @@ export function FacialDetectionCard() {
   }
 
   const { lastRun, runQueue, running, requested, done, percent } = useRunProgress(status)
-  const scrfdUnprovisioned = data?.detector === 'scrfd' && !data.models.scrfd
+  const modelMissing = data !== null && !data.modelAvailable
 
   const pillTone: 'ok' | 'warn' | 'muted' = error
     ? 'muted'
     : loading
       ? 'muted'
-      : scrfdUnprovisioned
+      : modelMissing
         ? 'warn'
         : 'ok'
   const pillLabel = error
     ? 'Unavailable'
     : loading || !data
       ? 'Checking…'
-      : scrfdUnprovisioned
+      : modelMissing
         ? 'Model missing'
         : 'Online'
 
-  const statRows: { label: string; value: ReactNode }[] = [
-    { label: 'Detector', value: data ? DETECTOR_LABELS[data.detector] : '—' },
+  const statRows: StatRow[] = [
+    { label: 'Active detector', value: FACE_DETECTOR_LABEL },
     {
       label: 'Queue',
       value: status ? (running ? runQueue.toLocaleString() : 'Idle') : '—',
@@ -298,124 +271,27 @@ export function FacialDetectionCard() {
       <ModelCardHeader
         icon={FaFaceSmile}
         title="Facial Detection & Clustering"
-        chip={data ? DETECTOR_LABELS[data.detector] : '—'}
         tone={pillTone}
         statusLabel={pillLabel}
       />
 
       <p className="text-body-sm text-on-surface-variant mt-4">
-        Re-detect and re-embed every photo with the current detector. Clustering catches up
+        Re-detect and re-embed every photo with {FACE_DETECTOR_LABEL}. Clustering catches up
         automatically as jobs finish.
       </p>
 
-      {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4">
-          <div className="h-16 rounded-lg bg-surface-container-high/50 animate-pulse" />
-          <div className="h-16 rounded-lg bg-surface-container-high/50 animate-pulse" />
+      {error && <InlineError message={error} onRetry={() => setVersion((v) => v + 1)} />}
+
+      {modelMissing && (
+        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+          <p className="text-xs text-amber-200">
+            The SCRFD 10G model isn't installed — face detection cannot run until it is provisioned.
+          </p>
+          <code className="block text-xs font-mono text-amber-200/80 mt-1.5 break-all">
+            {SCRFD_PROVISION_CMD}
+          </code>
         </div>
-      ) : error ? (
-        <InlineError message={error} onRetry={() => setVersion((v) => v + 1)} />
-      ) : data ? (
-        <div className="mt-4">
-          <fieldset disabled={saving}>
-            <legend className="text-label-xs uppercase font-mono text-outline mb-2">
-              Active detector
-            </legend>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {DETECTOR_KINDS.map((kind) => {
-                const selected = data.detector === kind
-                const unavailable = kind === 'scrfd' && !data.models.scrfd
-                return (
-                  <label
-                    key={kind}
-                    className={cx(
-                      'flex items-start gap-3 rounded-lg p-3 transition-colors',
-                      selected
-                        ? 'bg-primary/10 border-2 border-primary/40'
-                        : 'bg-surface-container hover:bg-surface-container-high border border-transparent',
-                      unavailable ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
-                    )}
-                  >
-                    <input
-                      type="radio"
-                      name="face-detector"
-                      value={kind}
-                      checked={selected}
-                      disabled={unavailable}
-                      onChange={() => void applyDetector(kind)}
-                      className="mt-0.5 h-4 w-4 shrink-0 accent-primary disabled:cursor-not-allowed"
-                    />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium text-on-surface">
-                        {DETECTOR_LABELS[kind]}
-                      </span>
-                      <span className="block text-xs text-on-surface-variant mt-0.5">
-                        {DETECTOR_HINTS[kind]}
-                      </span>
-                    </span>
-                  </label>
-                )
-              })}
-            </div>
-          </fieldset>
-
-          {saveError && <p className="text-xs text-status-error mt-2">{saveError}</p>}
-
-          {!data.models.scrfd && (
-            <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-              <p className="text-xs text-amber-200">
-                {data.detector === 'scrfd'
-                  ? 'SCRFD is selected but its model is not installed — detection jobs will fail until it is provisioned.'
-                  : 'SCRFD model not installed — the SCRFD choice stays disabled until it is provisioned.'}
-              </p>
-              <code className="block text-xs font-mono text-amber-200/80 mt-1.5 break-all">
-                {SCRFD_PROVISION_CMD}
-              </code>
-              {data.detector !== 'scrfd' && (
-                <button
-                  type="button"
-                  onClick={() => setConfirmScrfd(true)}
-                  className="text-xs font-medium text-amber-300 underline underline-offset-2 hover:text-amber-100 transition-colors mt-1.5"
-                >
-                  Switch to SCRFD anyway
-                </button>
-              )}
-            </div>
-          )}
-
-          {data.detector !== data.envDefault && (
-            <p className="text-xs text-outline mt-3">
-              Persisted — overrides the <code className="font-mono">FACE_DETECTOR</code> env
-              default, currently {DETECTOR_LABELS[data.envDefault]}.
-            </p>
-          )}
-
-          {data.facesByDetector.human > 0 && data.facesByDetector.scrfd > 0 && (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 mt-4">
-              <FaTriangleExclamation className="text-amber-400 shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-200">
-                Faces are mixed:{' '}
-                <span className="font-semibold tabular-nums">
-                  {data.facesByDetector.human.toLocaleString()}
-                </span>{' '}
-                with {DETECTOR_LABELS.human},{' '}
-                <span className="font-semibold tabular-nums">
-                  {data.facesByDetector.scrfd.toLocaleString()}
-                </span>{' '}
-                with {DETECTOR_LABELS.scrfd}.
-                {data.facesByDetector.unset > 0 ? (
-                  <>
-                    {' '}
-                    {data.facesByDetector.unset.toLocaleString()} more faces have no detector
-                    recorded.
-                  </>
-                ) : null}{' '}
-                Reprocess all faces below to put the library on one detector.
-              </p>
-            </div>
-          )}
-        </div>
-      ) : null}
+      )}
 
       {status && !lastRun && !running && (
         <p className="text-xs font-mono text-outline mt-3">No face reprocess runs yet.</p>
@@ -435,8 +311,7 @@ export function FacialDetectionCard() {
       {lastRun && !running && (
         <p className="text-xs font-mono text-outline mt-3">
           Last run {new Date(lastRun.startedAt).toLocaleString()} —{' '}
-          {lastRun.enqueued.toLocaleString()} of {lastRun.total.toLocaleString()} photos queued with
-          the {DETECTOR_LABELS[lastRun.detector]} detector.
+          {lastRun.enqueued.toLocaleString()} of {lastRun.total.toLocaleString()} photos queued.
         </p>
       )}
 
@@ -451,7 +326,6 @@ export function FacialDetectionCard() {
           <RefreshButton
             onClick={() => setVersion((v) => v + 1)}
             label="Refresh face detection settings"
-            disabled={saving}
           />
           <div className="flex items-center gap-2 flex-wrap ml-auto">
             <GhostButton
@@ -472,26 +346,6 @@ export function FacialDetectionCard() {
         </div>
       </div>
 
-      {confirmScrfd && (
-        <ConfirmDialog
-          title="Switch to SCRFD anyway?"
-          confirmLabel="Switch anyway"
-          onClose={() => setConfirmScrfd(false)}
-          onConfirm={() => {
-            setConfirmScrfd(false)
-            void applyDetector('scrfd')
-          }}
-        >
-          <p className="text-sm text-slate-400 mt-2">
-            The SCRFD model is not installed, so SCRFD detection jobs will fail until you provision
-            it.
-          </p>
-          <code className="block text-xs font-mono text-slate-300 bg-slate-900/60 border border-border-dark rounded px-2 py-1.5 mt-2 break-all">
-            {SCRFD_PROVISION_CMD}
-          </code>
-        </ConfirmDialog>
-      )}
-
       {confirming && (
         <ConfirmDialog
           title="Reprocess all faces?"
@@ -499,14 +353,15 @@ export function FacialDetectionCard() {
           onConfirm={() => void onConfirm()}
         >
           <p className="text-sm text-slate-400 mt-2">
-            This re-detects faces and rebuilds their embeddings for every photo, using the current
-            detector. People groups rebuild themselves as jobs finish — clustering catches up
-            automatically. The worker runs in the background, so large libraries take a while.
+            This re-detects faces and rebuilds their embeddings for every photo with{' '}
+            {FACE_DETECTOR_LABEL}. People groups rebuild themselves as jobs finish — clustering
+            catches up automatically. The worker runs in the background, so large libraries take a
+            while.
           </p>
-          {scrfdUnprovisioned && (
+          {modelMissing && (
             <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
               <p className="text-xs text-amber-200">
-                The SCRFD model isn't installed — these jobs will fail until it is provisioned.
+                The SCRFD 10G model isn't installed — these jobs will fail until it is provisioned.
               </p>
               <code className="block text-xs font-mono text-amber-200/80 mt-1.5 break-all">
                 {SCRFD_PROVISION_CMD}

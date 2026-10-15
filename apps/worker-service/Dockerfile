@@ -1,17 +1,13 @@
 # -- deps --
 FROM node:22-bookworm-slim AS deps
-# toolchain only needed to rebuild tfjs-node from source on arm64 (x64 uses the prebuilt)
-RUN if [ "$(uname -m)" = "aarch64" ]; then apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*; fi
 RUN corepack enable
 WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/shared-config/package.json ./packages/shared-config/
 COPY apps/worker-service/package.json ./apps/worker-service/
-# tfjs-node ships no linux-arm64 prebuilt (x64-only tarball) — rebuild its binding from source on arm64
 # face model is provisioned into the runtime storage volume, not baked into the image
 RUN FACE_MODEL_SKIP=1 pnpm install --frozen-lockfile
-RUN if [ "$(uname -m)" = "aarch64" ]; then npm_config_build_from_source=true pnpm --filter @photox/worker-service rebuild @tensorflow/tfjs-node; fi
 
 # -- build --
 FROM deps AS build
@@ -22,10 +18,8 @@ COPY apps/worker-service/ ./apps/worker-service/
 RUN pnpm --filter @photox/shared-types build && \
     pnpm --filter @photox/shared-config build && \
     pnpm --filter @photox/worker-service build
-# prod-only deploy so the runtime carries only worker prod deps (tfjs/onnx/sharp incl.);
-# the fresh install in the deploy dir needs the same arm64 tfjs rebuild as above
+# prod-only deploy so the runtime carries only worker prod deps (onnx/sharp incl.)
 RUN FACE_MODEL_SKIP=1 pnpm --filter @photox/worker-service --prod deploy /prod/worker
-RUN if [ "$(uname -m)" = "aarch64" ]; then npm_config_build_from_source=true pnpm --dir /prod/worker rebuild @tensorflow/tfjs-node; fi
 
 # -- runtime --
 FROM node:22-bookworm-slim AS runtime

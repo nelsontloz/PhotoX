@@ -2,7 +2,6 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  Logger,
   NotFoundException,
   PayloadTooLargeException,
   ServiceUnavailableException,
@@ -16,14 +15,13 @@ import { open, unlink } from 'fs/promises'
 import { extname } from 'path'
 import { pipeline } from 'stream/promises'
 import { Asset, FileRecord } from '../../database/entities'
-import { envFaceDetectorKind, loadEnv, LocalStorageService } from '@photox/shared-config'
+import { loadEnv, LocalStorageService } from '@photox/shared-config'
 import { findOwnedOr404 } from '../../common/asset-ownership'
 import { RegisterFileBodyDto } from './dto/register-file.body.dto'
 import type { UploadFileBodyDto } from './dto/upload-file.body.dto'
 import { FileRecordDto } from '../file-record.dto'
 import { AssetsService } from '../../assets/assets.service'
 import { BullMqService } from '../../queue/bullmq.service'
-import { SettingsService } from '../../settings/settings.service'
 import type { Asset as AssetResponse, FileExistsCheckHit } from '@photox/shared-types'
 
 export interface UploadedDiskFile {
@@ -89,8 +87,6 @@ async function sniffMime(path: string): Promise<string | null> {
 
 @Injectable()
 export class UserFilesService {
-  private readonly logger = new Logger(UserFilesService.name)
-
   constructor(
     @InjectRepository(FileRecord)
     private readonly fileRepo: Repository<FileRecord>,
@@ -99,7 +95,6 @@ export class UserFilesService {
     private readonly storage: LocalStorageService,
     private readonly assets: AssetsService,
     private readonly bullMq: BullMqService,
-    private readonly settings: SettingsService,
   ) {}
 
   async upload(
@@ -145,22 +140,11 @@ export class UserFilesService {
       }),
     ]
     if (kind === 'photo') {
-      // ponytail: detector stamped at enqueue time — a later admin switch only affects new uploads;
-      // the read is best-effort so a settings outage never fails an upload whose rows already exist
-      const detector = await this.settings.getFaceDetector().catch((err: unknown) => {
-        this.logger.warn(
-          `Face detector setting unavailable, using env default: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        )
-        return envFaceDetectorKind()
-      })
       enqueues.push(
         this.bullMq.enqueue('process-faces', 'process-faces', {
           assetId: asset.id,
           fileId: record.id,
           userId,
-          detector,
         }),
         // videos out of scope for vision search — only photos get image embeddings
         this.bullMq.enqueueAssetJob('embed', asset.id, record.id, userId),

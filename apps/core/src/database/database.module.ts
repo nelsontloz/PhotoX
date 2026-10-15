@@ -5,7 +5,7 @@ import { randomUUID } from 'crypto'
 import { loadEnv } from '@photox/shared-config'
 import { hashPassword } from '../users/password'
 
-// ponytail: 512 is the InsightFace buffalo_l w600k_r50 output dim (replaced human faceres 1024).
+// ponytail: 512 is the InsightFace buffalo_l w600k_r50 output dim.
 // Index rebuild fails while legacy 1024-dim rows remain (warn-caught) — the cluster re-embed backfill converts them.
 // Each group is best-effort and independent: a failure skips the rest of its statements, later groups still run.
 const BOOTSTRAP_SQL: { warn: string; statements: string[] }[] = [
@@ -66,8 +66,8 @@ const VECTOR_INIT_PROVIDER = {
   inject: [DataSource],
 }
 
-// Env-gated admin seed (same direct-process.env precedent as FACE_DETECTOR, not zod): empty env
-// is a no-op so dev/CI are untouched; the e2e compose stack sets both. Seeding here (not open
+// Env-gated admin seed (same direct-process.env precedent as WORKER_SERVICE_PORT, not zod): empty
+// env is a no-op so dev/CI are untouched; the e2e compose stack sets both. Seeding here (not open
 // registration) is the only way to mint an admin now that registration always yields 'user'.
 // Exported for the unit spec; wired below.
 export const ADMIN_SEED_PROVIDER = {

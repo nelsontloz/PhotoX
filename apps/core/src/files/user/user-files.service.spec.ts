@@ -12,7 +12,6 @@ import type { Asset } from '../../database/entities'
 import type { FileRecord } from '../../database/entities'
 import type { AssetsService } from '../../assets/assets.service'
 import type { BullMqService } from '../../queue/bullmq.service'
-import type { SettingsService } from '../../settings/settings.service'
 
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01])
 
@@ -100,9 +99,6 @@ function makeUploadService(scenario: {
       enqueue: vi.fn((): Promise<boolean> => Promise.resolve(true)),
       enqueueAssetJob: vi.fn((): Promise<boolean> => Promise.resolve(true)),
     } as unknown as BullMqService,
-    {
-      getFaceDetector: vi.fn((): Promise<string> => Promise.resolve('human')),
-    } as unknown as SettingsService,
   )
   return { service, execute, save, remove, assetCreate }
 }
@@ -191,7 +187,6 @@ function makeExistsService(scenario: {
     {} as unknown as LocalStorageService,
     {} as unknown as AssetsService,
     {} as unknown as BullMqService,
-    {} as unknown as SettingsService,
   )
   return { service, fileFind, assetFind }
 }

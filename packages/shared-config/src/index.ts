@@ -3,7 +3,6 @@ export {
   loadAuthEnv,
   loadRootEnvFile,
   resolveFaceDetectorModelPath,
-  envFaceDetectorKind,
 } from './env'
 export { LocalStorageService } from './storage'
 export {

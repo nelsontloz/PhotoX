@@ -49,7 +49,7 @@ export class Baseline1791882552125 implements MigrationInterface {
       `CREATE INDEX "IDX_3d46b210baad0f7117dd215e3d" ON "assets" ("userId", "uploadedAt") `,
     )
     await queryRunner.query(
-      `CREATE TABLE "faces" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "assetId" uuid NOT NULL, "userId" uuid NOT NULL, "box" jsonb NOT NULL, "confidence" real NOT NULL, "embedding" text NOT NULL, "personId" uuid, "detector" text, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_d7ce2dfda1e63bfba799ffa6737" PRIMARY KEY ("id"))`,
+      `CREATE TABLE "faces" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "assetId" uuid NOT NULL, "userId" uuid NOT NULL, "box" jsonb NOT NULL, "confidence" real NOT NULL, "embedding" text NOT NULL, "personId" uuid, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_d7ce2dfda1e63bfba799ffa6737" PRIMARY KEY ("id"))`,
     )
     await queryRunner.query(`CREATE INDEX "IDX_85d0decb698877c7133a294dfc" ON "faces" ("assetId") `)
     await queryRunner.query(`CREATE INDEX "IDX_81c11a6ba10be5c21e01bfa2ec" ON "faces" ("userId") `)

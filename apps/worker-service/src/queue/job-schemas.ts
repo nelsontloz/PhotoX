@@ -2,7 +2,6 @@ import { UnrecoverableError } from 'bullmq'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 import { loadAuthEnv } from '@photox/shared-config'
-import { FACE_DETECTOR_KINDS } from '@photox/shared-types'
 
 const uuid = z.string().uuid()
 
@@ -31,7 +30,6 @@ export const assetRefsJobSchema = z.object({
 
 export const faceJobSchema = z.object({
   ...jobRefs,
-  detector: z.enum(FACE_DETECTOR_KINDS).optional(),
 })
 
 export const clusterJobSchema = z.object({

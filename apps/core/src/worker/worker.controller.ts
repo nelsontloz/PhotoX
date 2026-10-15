@@ -89,7 +89,7 @@ export class WorkerController {
     @Body() dto: RegisterFacesDto,
     @CurrentUserId() userId: string,
   ) {
-    return this.faces.registerFaces(id, userId, dto.faces, dto.detector ?? null)
+    return this.faces.registerFaces(id, userId, dto.faces)
   }
 
   @Delete('assets/:id/faces')

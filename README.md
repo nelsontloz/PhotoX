@@ -26,7 +26,7 @@ pnpm install
 cp .env.example .env
 # Required: AUTH_TOKEN_SECRET + WORKER_JWT_SECRET (>= 32 chars each, must differ).
 # Notables: AUTH_TOKEN_SECRET_PREVIOUS (rotation), REDIS_PASSWORD (photox_dev),
-# CORE_URL, FACE_DETECTOR(+_MODEL_PATH), AUTH_* TTLs, RATE_LIMIT_REGISTER, STORAGE_QUOTA_BYTES.
+# CORE_URL, FACE_DETECTOR_MODEL_PATH, AUTH_* TTLs, RATE_LIMIT_REGISTER, STORAGE_QUOTA_BYTES.
 
 # Start infrastructure
 docker compose up -d postgres redis

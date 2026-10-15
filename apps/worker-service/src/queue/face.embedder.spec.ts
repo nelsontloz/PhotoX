@@ -8,7 +8,6 @@ import {
   similarityFromPoints,
   type RawImage,
 } from './face.embedder'
-import { landmarks5 } from './face.detector.human'
 
 const solid = (w: number, h: number, r: number, g: number, b: number): RawImage => {
   const data = Buffer.alloc(w * h * 3)
@@ -130,44 +129,5 @@ describe('l2Normalize', () => {
 
   it('passes zero vectors through without NaN', () => {
     expect(l2Normalize([0, 0])).toEqual([0, 0])
-  })
-})
-
-describe('landmarks5', () => {
-  const box = { x: 10, y: 20, w: 100, h: 100 }
-
-  it('falls back to box fractions without annotations', () => {
-    const lm = landmarks5({ annotations: {} } as never, box)
-    expect(lm.leftEye).toEqual([45, 58])
-    expect(lm.rightEye).toEqual([75, 58])
-    expect(lm.nose).toEqual([60, 75])
-  })
-
-  it('uses mesh annotation means when present', () => {
-    const lm = landmarks5(
-      {
-        annotations: {
-          leftEye: [
-            [30, 50, 0],
-            [34, 50, 0],
-          ],
-          rightEye: [
-            [70, 50, 0],
-            [74, 50, 0],
-          ],
-          noseTip: [[52, 70, 0]],
-          lipsUpperOuter: [
-            [40, 90, 0],
-            [64, 90, 0],
-          ],
-        },
-      } as never,
-      box,
-    )
-    expect(lm.leftEye).toEqual([32, 50])
-    expect(lm.rightEye).toEqual([72, 50])
-    expect(lm.nose).toEqual([52, 70])
-    expect(lm.mouthLeft).toEqual([40, 90])
-    expect(lm.mouthRight).toEqual([64, 90])
   })
 })

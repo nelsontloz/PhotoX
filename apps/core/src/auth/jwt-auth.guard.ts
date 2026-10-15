@@ -177,9 +177,10 @@ export class JwtAuthGuard implements CanActivate {
     if (isAdminRoute(path) && user.role !== 'admin') throw new ForbiddenException('Admin only')
     // the worker namespace is act-only: a plain user token proves no job delegation
     if (isWorkerRoute(path) && !payload.act) throw new ForbiddenException('Worker only')
-    // worker-actor tokens (act claim, RFC 8693) are default-denied outside the explicit
-    // allowlist; the user list-by-ids read stays act-usable for worker ranking fetches
-    if (payload.act && !isWorkerAllowedRoute(method, path) && !isActListRead(req))
+    // worker-actor tokens (act claim, RFC 8693) may reach only the worker job surface —
+    // no admin route is worker-reachable; the user list-by-ids read stays act-usable for
+    // worker ranking fetches
+    if (payload.act && !isWorkerAllowedRoute(path) && !isActListRead(req))
       throw new ForbiddenException('Not allowed for service tokens')
     // non-act callers may not smuggle worker-only extraction fields through the user metadata
     // endpoint — the whitelist would only 400 them, hiding a worker-contract violation

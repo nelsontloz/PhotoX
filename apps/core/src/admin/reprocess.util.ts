@@ -7,7 +7,7 @@ export const REPROCESS_PAGE_SIZE = 500
 
 /**
  * Shared paged reprocess: enqueue one job per non-trashed photo, then hand the run counts to the
- * caller's `saveLastRun` (kind-specific fields like detector/model are merged there).
+ * caller's `saveLastRun` (kind-specific fields like model are merged there).
  * ponytail: `enqueued` counts requested jobs, not new Redis entries — `enqueue` swallows Redis
  * failures and a custom jobId dedupes in any state (BullMQ); `removeOnComplete` in `enqueuePaged`
  * drops completed jobs so a later run can re-enqueue the same asset.

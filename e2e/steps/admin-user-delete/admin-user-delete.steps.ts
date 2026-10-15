@@ -265,7 +265,6 @@ async function seedFullLibrary(
   const facesResponse = await request.post(`/worker/assets/${assetId}/faces`, {
     headers: workerHeaders(user.user.id),
     data: {
-      detector: 'human',
       faces: [
         { box: { x: 10, y: 10, w: 60, h: 60 }, confidence: 0.9, embedding: seedEmbedding(0) },
         { box: { x: 80, y: 10, w: 60, h: 60 }, confidence: 0.9, embedding: seedEmbedding(0) },

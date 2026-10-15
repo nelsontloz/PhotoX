@@ -11,7 +11,7 @@ import { findOwnedOr404 } from '../common/asset-ownership'
 import { LocalStorageService } from '@photox/shared-config'
 import { FaceResponseDto } from './dto/face.dto'
 import { refreshPersonFaceCount } from './face-count'
-import type { DetectedFaceInput, FaceDetectorKind } from '@photox/shared-types'
+import type { DetectedFaceInput } from '@photox/shared-types'
 
 const DEFAULT_SIZE = 240
 const MAX_SIZE = 600
@@ -46,7 +46,6 @@ export class FacesService {
     assetId: string,
     userId: string,
     faces: DetectedFaceInput[],
-    detector: FaceDetectorKind | null = null,
   ): Promise<{ count: number }> {
     await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset')
     const entities = faces.map((f) => {
@@ -56,7 +55,6 @@ export class FacesService {
       face.box = f.box
       face.confidence = f.confidence
       face.embedding = f.embedding
-      face.detector = detector
       return face
     })
     await this.repo.save(entities)

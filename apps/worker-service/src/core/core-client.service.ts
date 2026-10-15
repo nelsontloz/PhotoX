@@ -7,8 +7,6 @@ import type {
   AssetListResponse,
   AssetThumbnail,
   DetectedFaceInput,
-  FaceDetectionSettings,
-  FaceDetectorKind,
   FaceDto,
   FileRecord,
   MetadataStatus,
@@ -117,7 +115,7 @@ export class CoreClient {
   constructor(private readonly jwt: JwtService) {}
 
   // ponytail: per-job delegated JWT — core's worker guard scopes every call by sub, so worker
-  // never needs DB access; only face-detection settings uses role 'admin'
+  // never needs DB access
   private signToken(sub: string, role: Role): string {
     return this.jwt.sign(
       // act (RFC 8693) marks every token as worker-origin — core's guard only lets act
@@ -176,14 +174,13 @@ export class CoreClient {
     userId: string,
     assetId: string,
     faces: DetectedFaceInput[],
-    detector: FaceDetectorKind,
     binding?: JobBinding,
   ): Promise<{ count: number }> {
     // the delegated token sub is the only identity core accepts; the body carries no userId
     // (forbidNonWhitelisted would 400 an extra field)
     return this.request('POST', `/worker/assets/${assetId}/faces`, {
       sub: userId,
-      body: { faces, detector },
+      body: { faces },
       ...binding,
     })
   }
@@ -309,13 +306,6 @@ export class CoreClient {
 
   async deleteOwnedFile(userId: string, fileId: string, binding?: JobBinding): Promise<void> {
     await this.request('DELETE', `/worker/files/${fileId}`, { sub: userId, ...binding })
-  }
-
-  async getFaceDetectionSettings(): Promise<FaceDetectionSettings> {
-    return this.request('GET', '/api/v1/admin/face-detection', {
-      sub: 'worker-service',
-      role: 'admin',
-    })
   }
 
   private async request<T>(

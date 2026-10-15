@@ -1,20 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { FaceDetectionSettings } from '@photox/shared-types'
 
-const { getMock, putMock, postMock, deleteMock } = vi.hoisted(() => ({
+const { getMock, postMock, deleteMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
-  putMock: vi.fn(),
   postMock: vi.fn(),
   deleteMock: vi.fn(),
 }))
 
 vi.mock('./client', () => ({
-  api: { get: getMock, put: putMock, post: postMock, delete: deleteMock },
+  api: { get: getMock, post: postMock, delete: deleteMock },
 }))
 
 import {
   getFaceDetection,
-  setFaceDetector,
   reprocessPipeline,
   getPipelineStatus,
   reclusterFaces,
@@ -33,10 +31,7 @@ import {
 } from './admin'
 
 const settings: FaceDetectionSettings = {
-  detector: 'human',
-  envDefault: 'human',
-  models: { scrfd: false },
-  facesByDetector: { human: 3, scrfd: 2, unset: 1 },
+  modelAvailable: false,
 }
 
 describe('face detection admin API', () => {
@@ -48,24 +43,15 @@ describe('face detection admin API', () => {
     expect(getMock).toHaveBeenCalledWith('/v1/admin/face-detection')
   })
 
-  it('setFaceDetector puts the chosen detector and returns the new state', async () => {
-    putMock.mockResolvedValue({ data: { ...settings, detector: 'scrfd' } })
-    await expect(setFaceDetector('scrfd')).resolves.toEqual({
-      ...settings,
-      detector: 'scrfd',
-    })
-    expect(putMock).toHaveBeenCalledWith('/v1/admin/face-detection', { detector: 'scrfd' })
-  })
-
   it('reprocessPipeline posts without a body', async () => {
-    postMock.mockResolvedValue({ data: { enqueued: 5, total: 5, detector: 'human' } })
+    postMock.mockResolvedValue({ data: { enqueued: 5, total: 5 } })
     await reprocessPipeline<FaceReprocessResponse>('faces')
     expect(postMock).toHaveBeenCalledWith('/v1/admin/faces/reprocess')
   })
 
   it('getPipelineStatus reads last run and queue counts', async () => {
     const status = {
-      lastRun: { startedAt: '2026-10-01T00:00:00.000Z', total: 5, enqueued: 5, detector: 'human' },
+      lastRun: { startedAt: '2026-10-01T00:00:00.000Z', total: 5, enqueued: 5 },
       queue: { waiting: 1, active: 0, completed: 4, failed: 0, delayed: 0 },
     }
     getMock.mockResolvedValue({ data: status })

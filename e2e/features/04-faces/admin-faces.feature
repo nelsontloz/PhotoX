@@ -1,15 +1,6 @@
 @faces
 Feature: Admin face detection and face reprocessing
 
-  Scenario: Switching the active face detector persists and restores it
-    Given I am signed in as an administrator
-    When I open the admin dashboard
-    And I remember the active face detector
-    When I switch the face detector to "scrfd"
-    Then the active face detector is "scrfd"
-    When I switch the face detector back to the remembered detector
-    Then the active face detector is the remembered detector
-
   Scenario: Reprocessing all faces records a run and drains the queue
     Given I am signed in as an administrator
     And I uploaded "photo.jpg"

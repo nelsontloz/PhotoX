@@ -24,8 +24,6 @@
     "@nestjs/platform-express": "^11.2.6",
     "@photox/shared-config": "workspace:*",
     "@photox/shared-types": "workspace:*",
-    "@tensorflow/tfjs-node": "^4.22.0",
-    "@vladmandic/human": "^3.3.6",
     "bullmq": "^5.81.3",
     "exifreader": "^4.46.0",
     "ffmpeg-static": "^5.2.0",

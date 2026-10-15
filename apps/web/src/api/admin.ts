@@ -9,7 +9,6 @@ import type {
   AdminLibraryStatsResponse,
   AdminReprocessThumbnailsResponse,
   FaceDetectionSettings,
-  FaceDetectorKind,
 } from '@photox/shared-types'
 
 export interface QueueCounts {
@@ -55,11 +54,11 @@ export async function getPipelineStatus<L extends PipelineRun>(
   return data
 }
 
-export type FacePipelineRun = PipelineRun & { detector: FaceDetectorKind }
+// SCRFD-10G is the only face detector, so face runs carry no detector provenance: the record is
+// the shared pipeline shape.
+export type FacePipelineRun = PipelineRun
 export type FaceReprocessStatus = ReprocessStatus<FacePipelineRun>
-export interface FaceReprocessResponse extends PipelineResponse {
-  detector: FaceDetectorKind
-}
+export type FaceReprocessResponse = PipelineResponse
 
 export type EmbeddingPipelineRun = PipelineRun & { model: string }
 export type EmbeddingReprocessStatus = ReprocessStatus<EmbeddingPipelineRun>
@@ -132,11 +131,6 @@ export async function getOrphanCounts(): Promise<{
 
 export async function getFaceDetection(): Promise<FaceDetectionSettings> {
   const { data } = await api.get<FaceDetectionSettings>('/v1/admin/face-detection')
-  return data
-}
-
-export async function setFaceDetector(detector: FaceDetectorKind): Promise<FaceDetectionSettings> {
-  const { data } = await api.put<FaceDetectionSettings>('/v1/admin/face-detection', { detector })
   return data
 }
 

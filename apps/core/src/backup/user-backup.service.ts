@@ -22,7 +22,7 @@ import {
   parseBackupDir,
   resolveBackupPrefix,
 } from '@photox/shared-config'
-import { FACE_DETECTOR_KINDS, SEARCH_EMBEDDING_MODEL } from '@photox/shared-types'
+import { SEARCH_EMBEDDING_MODEL } from '@photox/shared-types'
 import { z } from 'zod'
 import { Asset, FileRecord, Person } from '../database/entities'
 import { Album } from '../albums/entities/album.entity'
@@ -30,7 +30,6 @@ import { AlbumAsset } from '../albums/entities/album-asset.entity'
 import { Share } from '../shares/entities/share.entity'
 import { User } from '../users/entities/user.entity'
 import { BullMqService } from '../queue/bullmq.service'
-import { SettingsService } from '../settings/settings.service'
 import { PlacesResolveService } from '../places/places-resolve.service'
 import { S3BackupService, isNotFound } from './s3-backup.service'
 
@@ -139,7 +138,6 @@ const userBackupManifestSchema = z.object({
   userId: z.string().uuid(),
   emailAtBackup: z.string().email(),
   backedUpAt: z.string(),
-  detector: z.enum(FACE_DETECTOR_KINDS),
   user: userManifestSchema,
   files: z.array(fileManifestSchema),
   assets: z.array(assetManifestSchema),
@@ -415,7 +413,6 @@ export class UserBackupService {
     private readonly s3: S3BackupService,
     private readonly dataSource: DataSource,
     private readonly bullMq: BullMqService,
-    private readonly settings: SettingsService,
     private readonly places: PlacesResolveService,
     private readonly storage: LocalStorageService,
     @InjectRepository(User) private readonly users: Repository<User>,
@@ -457,14 +454,12 @@ export class UserBackupService {
             .getMany()
         : []
 
-    const detector = await this.settings.getFaceDetector()
     const backedUpAt = new Date().toISOString()
     const manifest: UserBackupManifest = {
       manifestVersion: 1,
       userId: user.id,
       emailAtBackup: user.email,
       backedUpAt,
-      detector,
       user: {
         id: user.id,
         email: user.email,
@@ -1410,7 +1405,6 @@ export class UserBackupService {
    * double-enqueue keeps deduping.
    */
   private async reenqueueDerivatives(userId: string): Promise<RestoreResult['enqueued']> {
-    const detector = await this.settings.getFaceDetector()
     const totals = { metadata: 0, thumbnails: 0, videos: 0, faces: 0, ai: 0 }
     const runTag = Date.now()
     for (let pass = 0; pass < 2; pass++) {
@@ -1444,7 +1438,7 @@ export class UserBackupService {
           await this.bullMq.enqueue(
             'process-faces',
             'process-faces',
-            { assetId: asset.id, fileId: asset.fileId, userId, reason: 'restore', detector },
+            { assetId: asset.id, fileId: asset.fileId, userId, reason: 'restore' },
             { jobId: `face-restore-${runTag}-${asset.id}` },
           )
           totals.faces += pass === 0 ? 1 : 0
