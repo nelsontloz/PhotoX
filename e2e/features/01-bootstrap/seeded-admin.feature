@@ -1,8 +1,10 @@
-@fresh
+# Core seeds ADMIN_EMAIL/ADMIN_PASSWORD as the admin at bootstrap when no admin exists (open
+# registration always mints 'user') — this feature pins both behaviors. Scenario-scoped, so it runs
+# in the parallel `suite` project; the users-table check searches instead of assuming page 1.
 Feature: Seeded administrator and open registration
 
   Scenario: The seeded admin signs in as admin
-    Given the instance database is freshly seeded
+    Given the instance was seeded with an administrator
     When I sign in as "admin@photox.test" through the login page
     Then I am signed in on the timeline
     And my session role is "admin"
