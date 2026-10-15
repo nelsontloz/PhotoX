@@ -2,12 +2,14 @@ import { describe, it, expect, vi } from 'vitest'
 import type { Asset, AssetListResponse, FileExistsCheckHit } from '@photox/shared-types'
 import {
   CHECK_FILES_EXIST_TIMEOUT_MS,
+  getFileDownloadUrl,
   getFileStreamUrl,
   listAllAssets,
   checkFilesExist,
+  preflightFileDownload,
 } from './assets'
 
-const { getMock, postMock } = vi.hoisted(() => ({
+const { getMock, postMock, headMock } = vi.hoisted(() => ({
   getMock: vi.fn<
     (
       url: string,
@@ -25,9 +27,10 @@ const { getMock, postMock } = vi.hoisted(() => ({
       data: { items: FileExistsCheckHit[] }
     }>
   >(),
+  headMock: vi.fn<(url: string) => Promise<void>>(),
 }))
 
-vi.mock('./client', () => ({ api: { get: getMock, post: postMock } }))
+vi.mock('./client', () => ({ api: { get: getMock, post: postMock, head: headMock } }))
 
 function makeAsset(id: string): Asset {
   return { id, kind: 'photo', uploadedAt: '2024-01-01T00:00:00Z' } as Asset
@@ -36,6 +39,20 @@ function makeAsset(id: string): Asset {
 describe('stream URL builders', () => {
   it('getFileStreamUrl targets core through the /api prefix', () => {
     expect(getFileStreamUrl('file-1')).toBe('/api/v1/files/file-1/stream')
+  })
+
+  it('getFileDownloadUrl targets core through the /api prefix', () => {
+    expect(getFileDownloadUrl('file-1')).toBe('/api/v1/files/file-1/download')
+  })
+})
+
+describe('preflightFileDownload', () => {
+  it('HEADs the download route through the axios client', async () => {
+    headMock.mockResolvedValue(undefined)
+
+    await preflightFileDownload('file-1')
+
+    expect(headMock).toHaveBeenCalledWith('/v1/files/file-1/download')
   })
 })
 

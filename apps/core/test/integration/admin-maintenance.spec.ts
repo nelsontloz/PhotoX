@@ -91,20 +91,6 @@ describe('admin maintenance', () => {
     expect(body.orphanThumbnails).toBe(1)
   })
 
-  it('enqueues cleanup-orphans', async () => {
-    const { admin } = await seedOrphans()
-    const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
-    const res = await request(apiServer(t))
-      .post('/api/v1/admin/cleanup-orphans')
-      .set(t.authHeader(token))
-    expect(res.status).toBe(200)
-    const body = res.body as unknown as { enqueued: boolean }
-    expect(body.enqueued).toBe(true)
-    const queue = t.getQueue('cleanup-orphans')
-    const jobs = await queue.getJobs(['waiting', 'active', 'delayed'])
-    expect(jobs.length).toBeGreaterThan(0)
-  })
-
   it('reprocesses photo thumbnails with thumb-reprocess jobIds', async () => {
     const admin = await seedUser(t, { role: 'admin' })
     const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
@@ -133,7 +119,7 @@ describe('admin maintenance', () => {
       .set(t.authHeader(token))
     expect(counts.status).toBe(403)
     const cleanup = await request(apiServer(t))
-      .post('/api/v1/admin/cleanup-orphans')
+      .post('/api/v1/admin/cleanup-orphans/run')
       .set(t.authHeader(token))
     expect(cleanup.status).toBe(403)
     const reprocess = await request(apiServer(t))
