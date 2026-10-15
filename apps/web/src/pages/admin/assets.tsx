@@ -1,12 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FaCamera, FaFilm, FaSpinner, FaTriangleExclamation, FaTrashCan } from 'react-icons/fa6'
 import { type AdminAssetCountsResponse } from '@photox/shared-types'
-import {
-  getAdminAssetCounts,
-  reprocessThumbnails,
-  cleanupOrphans,
-  getOrphanCounts,
-} from '../../api/admin'
+import { getAdminAssetCounts, reprocessThumbnails, getOrphanCounts } from '../../api/admin'
 import {
   AdminSection,
   AdminToast,
@@ -188,10 +183,6 @@ export function OrphanCleanupSection() {
   const [data, setData] = useState<{ orphanFiles: number; orphanThumbnails: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [confirming, setConfirming] = useState(false)
-  const [inFlight, setInFlight] = useState(false)
-  const [result, setResult] = useState<string | null>(null)
-  const [runError, setRunError] = useState<string | null>(null)
   const [version, setVersion] = useState(0)
 
   useEffect(() => {
@@ -215,24 +206,6 @@ export function OrphanCleanupSection() {
     }
   }, [version])
 
-  const runCleanup = async () => {
-    setConfirming(false)
-    setInFlight(true)
-    setRunError(null)
-    setResult(null)
-    try {
-      await cleanupOrphans()
-      setResult('Cleanup job enqueued — check worker logs for details.')
-      setVersion((v) => v + 1)
-    } catch (err) {
-      setRunError(err instanceof Error ? err.message : 'Cleanup failed')
-    } finally {
-      setInFlight(false)
-    }
-  }
-
-  const empty = data?.orphanFiles === 0 && data?.orphanThumbnails === 0
-
   return (
     <AdminSection
       headingTag="h3"
@@ -240,11 +213,7 @@ export function OrphanCleanupSection() {
       subtitle="Files and thumbnails in storage that no asset references."
       icon={<FaTrashCan />}
       actions={
-        <RefreshButton
-          onClick={() => setVersion((v) => v + 1)}
-          label="Refresh orphan counts"
-          disabled={inFlight}
-        />
+        <RefreshButton onClick={() => setVersion((v) => v + 1)} label="Refresh orphan counts" />
       }
     >
       {loading ? (
@@ -267,32 +236,6 @@ export function OrphanCleanupSection() {
           </div>
         </>
       ) : null}
-
-      <div className="border-t border-border-dark/40 pt-4 mt-4 flex justify-end">
-        <PrimaryButton
-          onClick={() => setConfirming(true)}
-          disabled={inFlight || empty}
-          icon={inFlight ? <FaSpinner className="animate-spin" /> : undefined}
-        >
-          Clean up
-        </PrimaryButton>
-      </div>
-
-      {result && <AdminToast message={result} />}
-      {runError && <AdminToast message={runError} tone="error" />}
-
-      {confirming && (
-        <ConfirmDialog
-          title="Run orphan cleanup?"
-          onClose={() => setConfirming(false)}
-          onConfirm={() => void runCleanup()}
-        >
-          <p className="text-sm text-slate-400 mt-2">
-            This scans all files and thumbnails, then deletes anything not referenced by an asset.
-            The worker processes this in the background.
-          </p>
-        </ConfirmDialog>
-      )}
     </AdminSection>
   )
 }

@@ -14,7 +14,6 @@ const api = vi.hoisted(() => {
     reprocessPipeline: vi.fn(pending),
     getPipelineStatus: vi.fn(pending),
     reprocessThumbnails: vi.fn(pending),
-    cleanupOrphans: vi.fn(pending),
     getOrphanCounts: vi.fn(pending),
     listAdminUsers: vi.fn(pending),
     getBackupStatus: vi.fn(pending),

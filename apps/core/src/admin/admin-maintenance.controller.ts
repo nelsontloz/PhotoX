@@ -28,15 +28,6 @@ export class AdminMaintenanceController {
     return this.admin.getOrphanCounts()
   }
 
-  @Post('cleanup-orphans')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Enqueue orphan cleanup job (admin-only)' })
-  @ApiResponse({ status: 200, description: 'Cleanup job enqueued' })
-  async cleanupOrphans(): Promise<{ enqueued: boolean }> {
-    await this.bullMq.enqueue('cleanup-orphans', 'cleanup-orphans', {})
-    return { enqueued: true }
-  }
-
   @Post('cleanup-orphans/run')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Run orphan cleanup inline (admin-only)' })
