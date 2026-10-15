@@ -35,9 +35,9 @@ Given('the instance database is empty', () => {
   // enforced by e2e/run.sh: the stack starts from `docker compose down -v`
 })
 
-Given('the instance database is freshly seeded', () => {
+Given('the instance was seeded with an administrator', () => {
   // enforced by docker-compose.e2e.yml (ADMIN_EMAIL/ADMIN_PASSWORD) + e2e/run.sh (`down -v`):
-  // core seeds the admin on bootstrap before serving traffic
+  // core seeds the admin on bootstrap before serving traffic — open registration only mints 'user'
 })
 
 Given('I am signed in', async ({ request, page, baseURL, ctx }) => {
@@ -140,6 +140,9 @@ Then('the admin API accepts my session', async ({ page, request, ctx }) => {
 })
 
 Then('the users table lists {string}', async ({ page }, email: string) => {
+  // the table is server-paged newest-first (limit 20), so search instead of trusting page 1: the
+  // seeded admin is the oldest row and pages off once the parallel suite has registered enough users
+  await page.getByLabel('Search users').fill(email)
   await expect(page.getByText(email)).toBeVisible({ timeout: 15_000 })
 })
 
