@@ -1,11 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, MoreThan, Repository } from 'typeorm'
-import { readFile } from 'fs/promises'
 import sharp from 'sharp'
 import { Face } from '../database/entities'
 import { Person } from '../database/entities'
 import { Asset } from '../database/entities'
+import { AssetThumbnail } from '../database/entities'
 import { FileRecord } from '../database/entities'
 import { findOwnedOr404 } from '../common/asset-ownership'
 import { LocalStorageService } from '@photox/shared-config'
@@ -36,6 +36,8 @@ export class FacesService {
     private readonly personRepo: Repository<Person>,
     @InjectRepository(Asset)
     private readonly assetRepo: Repository<Asset>,
+    @InjectRepository(AssetThumbnail)
+    private readonly thumbRepo: Repository<AssetThumbnail>,
     @InjectRepository(FileRecord)
     private readonly fileRepo: Repository<FileRecord>,
     private readonly dataSource: DataSource,
@@ -150,32 +152,86 @@ export class FacesService {
   }
 
   // ponytail: synchronous crop on demand. Caching the resulting jpeg (e.g. via a `face_thumbs` table or local disk) is the upgrade path when traffic warrants.
+  // single-flight map keyed by owner too: a non-owner request must run its own findOwnedOr404 (404s, never rides the owner's promise)
+  private readonly inflight = new Map<string, Promise<Buffer>>()
+
   async getThumb(faceId: string, userId: string, size: number): Promise<Buffer> {
     const target = Math.max(
       32,
       Math.min(MAX_SIZE, Math.floor(Number.isFinite(size) ? size : DEFAULT_SIZE)),
     )
+    const key = `${userId}:${faceId}:${target}`
+    const existing = this.inflight.get(key)
+    if (existing) return existing
+    const job = this.renderThumb(faceId, userId, target).finally(() => this.inflight.delete(key))
+    this.inflight.set(key, job)
+    return job
+  }
+
+  private async renderThumb(faceId: string, userId: string, target: number): Promise<Buffer> {
     const face = await findOwnedOr404(this.repo, faceId, userId, 'Face')
     const asset = await findOwnedOr404(this.assetRepo, face.assetId, userId, 'Asset')
-    const record = await findOwnedOr404(this.fileRepo, asset.fileId, userId, 'File')
-    const buf = await readFile(this.storage.pathFor(record.storageKey))
-
-    const meta = await sharp(buf).metadata()
-    const imgW = meta.width ?? 0
-    const imgH = meta.height ?? 0
-    if (!imgW || !imgH) throw new NotFoundException('Source image unreadable')
+    const src = await this.resolveThumbSource(asset, userId)
+    const box = {
+      x: face.box.x * src.scaleX,
+      y: face.box.y * src.scaleY,
+      w: face.box.w * src.scaleX,
+      h: face.box.h * src.scaleY,
+    }
 
     const pad = 0.35
-    const left = Math.max(0, Math.floor(face.box.x - face.box.w * pad))
-    const top = Math.max(0, Math.floor(face.box.y - face.box.h * pad))
-    const width = Math.min(imgW - left, Math.ceil(face.box.w * (1 + pad * 2)))
-    const height = Math.min(imgH - top, Math.ceil(face.box.h * (1 + pad * 2)))
+    const left = Math.max(0, Math.floor(box.x - box.w * pad))
+    const top = Math.max(0, Math.floor(box.y - box.h * pad))
+    const width = Math.min(src.sourceW - left, Math.ceil(box.w * (1 + pad * 2)))
+    const height = Math.min(src.sourceH - top, Math.ceil(box.h * (1 + pad * 2)))
     if (width <= 0 || height <= 0) throw new NotFoundException('Face box out of bounds')
 
-    return sharp(buf)
+    let pipeline = sharp(src.path)
+    // .rotate() runs before .extract() regardless of chain order and is a no-op at orientation 1
+    if (src.applyRotate) pipeline = pipeline.rotate()
+    return pipeline
       .extract({ left, top, width, height })
       .resize({ width: target, height: target, fit: 'cover' })
       .jpeg({ quality: 82 })
       .toBuffer()
+  }
+
+  // `face.box` lives in oriented-original pixel space; the xl derivative is already oriented,
+  // so its coords scale directly. The original fallback re-derives oriented dims from EXIF.
+  private async resolveThumbSource(
+    asset: Asset,
+    userId: string,
+  ): Promise<{
+    path: string
+    sourceW: number
+    sourceH: number
+    scaleX: number
+    scaleY: number
+    applyRotate: boolean
+  }> {
+    // asset.width/height are oriented dims; without them there is nothing to scale box coords from
+    if (asset.width && asset.height) {
+      const xl = await this.thumbRepo.findOne({ where: { assetId: asset.id, size: 'xl' } })
+      const file = xl ? await this.fileRepo.findOne({ where: { id: xl.fileId, userId } }) : null
+      if (xl && file) {
+        return {
+          path: this.storage.pathFor(file.storageKey),
+          sourceW: xl.width,
+          sourceH: xl.height,
+          scaleX: xl.width / asset.width,
+          scaleY: xl.height / asset.height,
+          applyRotate: false,
+        }
+      }
+    }
+
+    const file = await findOwnedOr404(this.fileRepo, asset.fileId, userId, 'File')
+    const path = this.storage.pathFor(file.storageKey)
+    const meta = await sharp(path).metadata()
+    const swapped = (meta.orientation ?? 1) >= 5
+    const w = swapped ? meta.height : meta.width
+    const h = swapped ? meta.width : meta.height
+    if (!w || !h) throw new NotFoundException('Source image unreadable')
+    return { path, sourceW: w, sourceH: h, scaleX: 1, scaleY: 1, applyRotate: swapped }
   }
 }

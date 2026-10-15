@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { rmSync } from 'node:fs'
 import request from 'supertest'
 import sharp from 'sharp'
 import {
@@ -242,11 +243,81 @@ describe('faces HTTP', () => {
       .set(t.authHeader(token))
     expect(res.status).toBe(200)
     expect(res.headers['content-type']).toBe('image/jpeg')
-    expect(res.headers['cache-control']).toContain('private')
+    expect(res.headers['cache-control']).toBe('private, max-age=31536000, immutable')
     expect(Number(res.headers['content-length'])).toBeGreaterThan(0)
     const meta = await sharp(res.body as Buffer).metadata()
     expect(meta.width).toBe(240)
     expect(meta.height).toBe(240)
+  })
+
+  it('crops from the xl derivative when the original bytes are gone', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+
+    const originalBytes = await sharp({
+      create: { width: 64, height: 64, channels: 3, background: '#804020' },
+    })
+      .jpeg()
+      .toBuffer()
+    const original = await seedFile(t, user.id, {
+      bytes: originalBytes,
+      mimeType: 'image/jpeg',
+      originalName: 'photo.jpg',
+    })
+    const asset = await seedAsset(t, user.id, original.id, { width: 64, height: 64 })
+    const face = await t.faceRepo.save(
+      t.faceRepo.create({
+        assetId: asset.id,
+        userId: user.id,
+        box: { x: 10, y: 10, w: 20, h: 20 },
+        confidence: 0.9,
+        embedding: [0.1, 0.2, 0.3],
+      }),
+    )
+
+    const xlBytes = await sharp({
+      create: { width: 320, height: 320, channels: 3, background: '#20a040' },
+    })
+      .jpeg()
+      .toBuffer()
+    const xlFile = await seedFile(t, user.id, {
+      bytes: xlBytes,
+      mimeType: 'image/jpeg',
+      originalName: 'photo-xl.jpg',
+    })
+    await t.thumbRepo.save(
+      t.thumbRepo.create({
+        assetId: asset.id,
+        fileId: xlFile.id,
+        size: 'xl',
+        width: 320,
+        height: 320,
+        bytes: xlBytes.length,
+      }),
+    )
+
+    // a fallback to the original would now fail — the xl derivative is the only usable source
+    rmSync(t.storage.pathFor(original.storageKey))
+
+    const res = await request(apiServer(t))
+      .get(`/api/v1/faces/${face.id}/thumb`)
+      .set(t.authHeader(token))
+    expect(res.status).toBe(200)
+    const meta = await sharp(res.body as Buffer).metadata()
+    expect(meta.width).toBe(240)
+    expect(meta.height).toBe(240)
+  })
+
+  it('serves identical concurrent thumb requests', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const { face } = await seedRealImageFace(user.id)
+    const responses = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        request(apiServer(t)).get(`/api/v1/faces/${face.id}/thumb`).set(t.authHeader(token)),
+      ),
+    )
+    for (const res of responses) expect(res.status).toBe(200)
   })
 
   it('clamps the thumb size to 32..600', async () => {

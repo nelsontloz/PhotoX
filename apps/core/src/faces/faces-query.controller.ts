@@ -49,7 +49,7 @@ export class FacesQueryController {
     res.set({
       'Content-Type': 'image/jpeg',
       'Content-Length': String(bytes.byteLength),
-      'Cache-Control': 'private, max-age=86400',
+      'Cache-Control': 'private, max-age=31536000, immutable',
     })
     res.status(200).end(bytes)
   }
