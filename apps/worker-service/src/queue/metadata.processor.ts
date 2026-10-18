@@ -71,6 +71,9 @@ export class MetadataProcessor implements OnModuleInit {
         const metadata = this.metadataExtractor.extract(await readFile(filePath))
         const hasAnyField = Object.values(metadata).some((v) => v !== null)
         const metadataStatus = hasAnyField ? 'ready' : 'failed'
+        // never send a null takenAt: the upload request may carry a client-supplied one that a
+        // patch field would overwrite
+        const { takenAt, ...metadataFields } = metadata
 
         // ponytail: dHash must never fail the metadata job — on error warn and OMIT the field
         // (a missing hash only costs dupe detection; a failed patch loses all metadata)
@@ -92,7 +95,7 @@ export class MetadataProcessor implements OnModuleInit {
           userId,
           assetId,
           {
-            ...metadata,
+            ...metadataFields,
             // EXIF iso can be rational (e.g. 201/2) — the DTO gates iso with @IsInt
             iso: metadata.iso === null ? null : Math.round(metadata.iso),
             mimeType,
@@ -101,6 +104,7 @@ export class MetadataProcessor implements OnModuleInit {
             status: metadataStatus,
             metadata: null,
             ...(phash === null ? {} : { phash }),
+            ...(takenAt === null ? {} : { takenAt }),
           },
           binding,
         )
@@ -108,28 +112,18 @@ export class MetadataProcessor implements OnModuleInit {
         const videoMeta = await this.videoMetadataExtractor.extract(filePath)
         const hasAnyVideoField = Object.values(videoMeta).some((v) => v !== null)
         const videoMetadataStatus = hasAnyVideoField ? 'ready' : 'failed'
+        // same rule as photos: an absent probe date must not clobber a client-supplied takenAt
+        const { takenAt: videoTakenAt, ...videoFields } = videoMeta
         await this.core.patchMetadata(
           userId,
           assetId,
           {
             status: videoMetadataStatus,
             mimeType,
-            durationSeconds: videoMeta.durationSeconds,
-            width: videoMeta.width,
-            height: videoMeta.height,
-            codec: videoMeta.codec,
-            fps: videoMeta.fps,
-            hasAudio: videoMeta.hasAudio,
-            orientation: videoMeta.orientation,
+            ...videoFields,
             sizeBytes,
             originalName,
-            takenAt: videoMeta.takenAt,
-            cameraMake: videoMeta.cameraMake,
-            cameraModel: videoMeta.cameraModel,
-            lensModel: videoMeta.lensModel,
-            latitude: videoMeta.latitude,
-            longitude: videoMeta.longitude,
-            altitude: videoMeta.altitude,
+            ...(videoTakenAt === null ? {} : { takenAt: videoTakenAt }),
             metadata: null,
           },
           binding,

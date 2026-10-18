@@ -37,6 +37,8 @@ const EMPTY: ExtractedMetadata = {
 }
 
 const DATE_RE = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/
+// EXIF OffsetTimeOriginal is a signed local UTC offset — either +02:00 or +0200 across vendors
+const OFFSET_RE = /^([+-])(\d{2}):?(\d{2})$/
 
 // first=true takes the first array element (Orientation/ISO lists) instead of dividing a
 // [num, den] rational — the two shapes are indistinguishable, so the tag decides, not sniffing
@@ -62,6 +64,21 @@ function readString(tag: Record<string, unknown> | undefined): string | null {
   if (typeof tag.value === 'string') return tag.value
   if (typeof tag.description === 'string') return tag.description
   return null
+}
+
+// East-of-UTC offsets are positive, so UTC = local wall time − offset
+function readUtcOffsetMinutes(tag: Record<string, unknown> | undefined): number | null {
+  const value = readString(tag)
+  if (!value) return null
+  const m = OFFSET_RE.exec(value.trim())
+  if (!m) return null
+  const hours = Number(m[2])
+  const minutes = Number(m[3])
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
+  // impossible zones (+99:99) would shift takenAt by days — treat them as absent
+  if (hours > 23 || minutes > 59) return null
+  const total = hours * 60 + minutes
+  return m[1] === '-' ? -total : total
 }
 
 @Injectable()
@@ -94,15 +111,21 @@ export class MetadataExtractor {
       const m = DATE_RE.exec(dateTimeOriginal)
       if (m) {
         const [, year, month, day, hour, min, sec] = m
+        const wallTimeUtc = Date.UTC(
+          Number(year),
+          Number(month) - 1,
+          Number(day),
+          Number(hour),
+          Number(min),
+          Number(sec),
+        )
+        // OffsetTimeOriginal is optional (and sometimes junk) — without a usable value the
+        // wall-time components are taken as UTC, as before
+        const offsetMinutes = readUtcOffsetMinutes(
+          exif.OffsetTimeOriginal as Record<string, unknown> | undefined,
+        )
         takenAt = new Date(
-          Date.UTC(
-            Number(year),
-            Number(month) - 1,
-            Number(day),
-            Number(hour),
-            Number(min),
-            Number(sec),
-          ),
+          offsetMinutes === null ? wallTimeUtc : wallTimeUtc - offsetMinutes * 60_000,
         )
       }
     }
@@ -117,14 +140,20 @@ export class MetadataExtractor {
       readNumber(exif.ExifImageHeight as Record<string, unknown> | undefined) ??
       readNumber(file['Image Height'] as Record<string, unknown> | undefined)
 
+    const orientation = readNumber(exif.Orientation as Record<string, unknown> | undefined, true)
+    // ponytail: orientations 5-8 are quarter turns, so the coded pixels are sideways — report the
+    // display aspect these dims feed (asset.width/height drive layout); the thumbnail/metadata
+    // side rotates the pixels itself via sharp().rotate()
+    const swapDisplayDims = orientation !== null && orientation >= 5 && orientation <= 8
+
     return {
       takenAt,
       cameraMake: readString(exif.Make as Record<string, unknown> | undefined),
       cameraModel: readString(exif.Model as Record<string, unknown> | undefined),
       lensModel: readString(exif.LensModel as Record<string, unknown> | undefined),
-      orientation: readNumber(exif.Orientation as Record<string, unknown> | undefined, true),
-      width,
-      height,
+      orientation,
+      width: swapDisplayDims ? height : width,
+      height: swapDisplayDims ? width : height,
       latitude: typeof gps.Latitude === 'number' ? gps.Latitude : null,
       longitude: typeof gps.Longitude === 'number' ? gps.Longitude : null,
       altitude: typeof gps.Altitude === 'number' ? gps.Altitude : null,

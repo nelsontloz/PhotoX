@@ -63,6 +63,8 @@ describe('AssetsService.create upload race', () => {
     )
     expect(caught).toBeInstanceOf(ConflictException)
     expect((caught as ConflictException).getResponse()).toEqual({
+      statusCode: 409,
+      message: 'File already uploaded',
       existingAssetId: 'asset-winner',
       existingFileId: 'file-1',
     })

@@ -22,7 +22,11 @@ import type { UploadFileBodyDto } from './dto/upload-file.body.dto'
 import { FileRecordDto } from '../file-record.dto'
 import { AssetsService } from '../../assets/assets.service'
 import { BullMqService } from '../../queue/bullmq.service'
-import type { Asset as AssetResponse, FileExistsCheckHit } from '@photox/shared-types'
+import type {
+  Asset as AssetResponse,
+  FileExistsCheckHit,
+  StorageQuotaResponse,
+} from '@photox/shared-types'
 
 export interface UploadedDiskFile {
   path: string
@@ -113,6 +117,8 @@ export class UserFilesService {
       const existing = await this.assetRepo.findOne({ where: { fileId: record.id, userId } })
       if (existing) {
         throw new ConflictException({
+          statusCode: 409,
+          message: 'File already uploaded',
           existingAssetId: existing.id,
           existingFileId: record.id,
         })
@@ -239,6 +245,18 @@ export class UserFilesService {
     return null
   }
 
+  // quota inputs: original-purpose bytes only (thumbnails/transcodes are system output);
+  // one raw SUM row, shared by the upload guard and GET /files/quota
+  private async sumOriginalBytes(userId: string): Promise<number> {
+    const { used } = (await this.fileRepo
+      .createQueryBuilder('f')
+      .select('COALESCE(SUM(f.sizeBytes), 0)', 'used')
+      .where('f.userId = :userId', { userId })
+      .andWhere('f.purpose = :purpose', { purpose: 'original' })
+      .getRawOne<{ used: string }>()) ?? { used: '0' }
+    return Number(used)
+  }
+
   private async storeFile(
     userId: string,
     file: UploadedDiskFile,
@@ -265,13 +283,8 @@ export class UserFilesService {
       // SELECT ... FOR UPDATE on a per-user counter only with abuse evidence.
       const quota = loadEnv().STORAGE_QUOTA_BYTES
       if (quota !== undefined) {
-        const { used } = (await this.fileRepo
-          .createQueryBuilder('f')
-          .select('COALESCE(SUM(f.sizeBytes), 0)', 'used')
-          .where('f.userId = :userId', { userId })
-          .andWhere('f.purpose = :purpose', { purpose: 'original' })
-          .getRawOne<{ used: string }>()) ?? { used: '0' }
-        if (Number(used) + file.size > quota) {
+        const used = await this.sumOriginalBytes(userId)
+        if (used + file.size > quota) {
           throw new PayloadTooLargeException('Storage quota exceeded')
         }
       }
@@ -394,6 +407,16 @@ export class UserFilesService {
       })
     }
     return items.map((item) => hits.get(item.checksumSha256)!)
+  }
+
+  // GET /api/v1/files/quota — usedBytes is the same original-only SUM the upload guard
+  // compares against; limit/remaining go null when the quota env is unset (unlimited).
+  // remaining is clamped at 0: it answers "how many more bytes may I upload", not debt.
+  async storageQuota(userId: string): Promise<StorageQuotaResponse> {
+    const usedBytes = await this.sumOriginalBytes(userId)
+    const limitBytes = loadEnv().STORAGE_QUOTA_BYTES ?? null
+    if (limitBytes === null) return { usedBytes, limitBytes: null, remainingBytes: null }
+    return { usedBytes, limitBytes, remainingBytes: Math.max(0, limitBytes - usedBytes) }
   }
 
   async serve(userId: string, fileId: string): Promise<{ path: string; record: FileRecord }> {

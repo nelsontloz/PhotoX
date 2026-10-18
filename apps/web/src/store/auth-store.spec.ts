@@ -40,6 +40,7 @@ describe('authStore', () => {
   it('login success sets user and tokens', async () => {
     mockLogin.mockResolvedValueOnce({
       accessToken: 'at1',
+      accessTokenExpiresIn: 1800,
       refreshToken: 'rt1',
       user: mockUser,
     })
@@ -87,6 +88,7 @@ describe('authStore', () => {
   it('logout clears state and calls API', async () => {
     mockLogin.mockResolvedValueOnce({
       accessToken: 'at1',
+      accessTokenExpiresIn: 1800,
       refreshToken: 'rt1',
       user: mockUser,
     })
@@ -107,6 +109,7 @@ describe('authStore', () => {
   it('register success sets user and tokens', async () => {
     mockRegister.mockResolvedValueOnce({
       accessToken: 'at2',
+      accessTokenExpiresIn: 1800,
       refreshToken: 'rt2',
       user: mockUser,
     })
@@ -169,6 +172,7 @@ describe('authStore', () => {
 
       mockRefresh.mockResolvedValueOnce({
         accessToken: 'new-at',
+        accessTokenExpiresIn: 1800,
         refreshToken: 'new-rt',
         user: mockUser,
       })
@@ -247,6 +251,7 @@ describe('authStore', () => {
         mockRefresh.mockRejectedValueOnce(new Error('network'))
         mockRefresh.mockResolvedValueOnce({
           accessToken: 'retry-at',
+          accessTokenExpiresIn: 1800,
           refreshToken: 'retry-rt',
           user: mockUser,
         })
@@ -282,6 +287,7 @@ describe('authStore', () => {
 
       mockRefresh.mockResolvedValueOnce({
         accessToken: 'new-at',
+        accessTokenExpiresIn: 1800,
         refreshToken: 'new-rt',
         user: mockUser,
       })
@@ -307,6 +313,7 @@ describe('authStore', () => {
 
       mockRefresh.mockResolvedValueOnce({
         accessToken: 'new-at',
+        accessTokenExpiresIn: 1800,
         refreshToken: 'new-rt',
         user: mockUser,
       })
@@ -330,11 +337,13 @@ describe('authStore', () => {
 
       let resolveFirst!: (v: {
         accessToken: string
+        accessTokenExpiresIn: number
         refreshToken: string
         user: typeof mockUser
       }) => void
       const firstPromise = new Promise<{
         accessToken: string
+        accessTokenExpiresIn: number
         refreshToken: string
         user: typeof mockUser
       }>((resolve) => {
@@ -350,6 +359,7 @@ describe('authStore', () => {
 
       resolveFirst({
         accessToken: 'fresh-at',
+        accessTokenExpiresIn: 1800,
         refreshToken: 'fresh-rt',
         user: mockUser,
       })
@@ -370,6 +380,7 @@ describe('authStore', () => {
 
       mockRefresh.mockResolvedValueOnce({
         accessToken: 'cookie-at',
+        accessTokenExpiresIn: 1800,
         refreshToken: 'cookie-rt',
         user: mockUser,
       })
@@ -398,6 +409,7 @@ describe('authStore', () => {
 
       mockRefresh.mockResolvedValueOnce({
         accessToken: 'wake-at',
+        accessTokenExpiresIn: 1800,
         refreshToken: 'wake-rt2',
         user: mockUser,
       })

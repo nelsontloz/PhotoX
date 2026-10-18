@@ -107,6 +107,57 @@ describe('MetadataProcessor (integration)', () => {
     })
   })
 
+  it('reports display dimensions and offset-corrected takenAt for a rotated phone JPEG', async () => {
+    const userId = randomUUID()
+    const bytes = await sharp({
+      create: { width: 100, height: 80, channels: 3, background: 'red' },
+    })
+      .jpeg()
+      .withMetadata({ orientation: 6 })
+      .withExif({
+        IFD2: { DateTimeOriginal: '2024:06:15 14:30:00', OffsetTimeOriginal: '+02:00' },
+      })
+      .toBuffer()
+    const { record, asset } = await seedOriginal(testApp, {
+      userId,
+      bytes,
+      mimeType: 'image/jpeg',
+      ext: 'jpg',
+    })
+
+    const { queue, job } = await runMetadata(asset.id, record.id, userId)
+    expect(await waitForJob(queue, job.id!)).toBe('completed')
+
+    const updated = testApp.fake.assets.get(asset.id)!
+    expect(updated.orientation).toBe(6)
+    // coded 100×80 tagged Orientation=6 → displayed 80×100
+    expect(updated.width).toBe(80)
+    expect(updated.height).toBe(100)
+    expect(updated.takenAt).toBe('2024-06-15T12:30:00.000Z')
+  })
+
+  it('keeps a client-supplied takenAt when the photo carries no EXIF date', async () => {
+    const userId = randomUUID()
+    const bytes = await sharp({
+      create: { width: 40, height: 30, channels: 3, background: 'blue' },
+    })
+      .jpeg()
+      .toBuffer()
+    const { record, asset } = await seedOriginal(testApp, {
+      userId,
+      bytes,
+      mimeType: 'image/jpeg',
+      ext: 'jpg',
+      asset: { takenAt: '2024-01-02T03:04:05.000Z' },
+    })
+
+    const { queue, job } = await runMetadata(asset.id, record.id, userId)
+    expect(await waitForJob(queue, job.id!)).toBe('completed')
+
+    expect(testApp.fake.callsOf('patchMetadata').at(-1)!.args[1]).not.toHaveProperty('takenAt')
+    expect(testApp.fake.assets.get(asset.id)!.takenAt).toBe('2024-01-02T03:04:05.000Z')
+  })
+
   it('extracts duration, dimensions and codec from a real mp4', async () => {
     const userId = randomUUID()
     const { record, asset } = await seedOriginal(testApp, {

@@ -8,6 +8,7 @@ import { RATE_LIMITS } from '../../src/users/rate-limit.service'
 
 interface AuthBody {
   accessToken: string
+  accessTokenExpiresIn: number
   refreshToken: string
   user: { id: string; email: string; role: 'user' | 'admin'; displayName: string }
 }
@@ -81,6 +82,13 @@ describe('auth HTTP surface', () => {
       expect(body.accessToken).toEqual(expect.any(String))
       expect(body.refreshToken).toEqual(expect.any(String))
       expect(body.user.email).toBe('login@example.com')
+      // accessTokenExpiresIn mirrors the access token's own exp claim (not a TTL re-read)
+      const payload = JSON.parse(
+        Buffer.from(body.accessToken.split('.')[1]!, 'base64url').toString('utf8'),
+      ) as { exp: number }
+      expect(
+        Math.abs(payload.exp - Math.floor(Date.now() / 1000) - body.accessTokenExpiresIn),
+      ).toBeLessThanOrEqual(2)
     })
 
     it('returns 401 for a wrong password', async () => {

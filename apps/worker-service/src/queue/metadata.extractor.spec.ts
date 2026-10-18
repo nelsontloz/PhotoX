@@ -21,6 +21,19 @@ describe('MetadataExtractor', () => {
     extractor = new MetadataExtractor()
   })
 
+  function photoWith(exif: Record<string, unknown>): ReturnType<typeof ExifReader.load> {
+    return {
+      exif: {
+        DateTimeOriginal: { value: ['2024:06:15 14:30:00'], description: '2024:06:15 14:30:00' },
+        PixelXDimension: { value: 4000 },
+        PixelYDimension: { value: 3000 },
+        ...exif,
+      },
+      gps: {},
+      file: {},
+    } as unknown as ReturnType<typeof ExifReader.load>
+  }
+
   it('extracts full metadata from iPhone photo with GPS', () => {
     vi.mocked(ExifReader.load).mockReturnValue({
       exif: {
@@ -72,6 +85,74 @@ describe('MetadataExtractor', () => {
     expect(result.altitude).toBe(10.5)
   })
 
+  it('applies OffsetTimeOriginal: takenAt is the UTC instant of the local wall time', () => {
+    vi.mocked(ExifReader.load).mockReturnValue(
+      photoWith({ OffsetTimeOriginal: { value: ['+02:00'], description: '+02:00' } }),
+    )
+
+    const result = extractor.extract(Buffer.from('fake-jpeg'))
+
+    expect(result.takenAt).toEqual(new Date('2024-06-15T12:30:00.000Z'))
+  })
+
+  it.each(['-05:00', '-0500'])('subtracts a negative OffsetTimeOriginal (%s)', (offset) => {
+    vi.mocked(ExifReader.load).mockReturnValue(
+      photoWith({ OffsetTimeOriginal: { value: [offset], description: offset } }),
+    )
+
+    const result = extractor.extract(Buffer.from('fake-jpeg'))
+
+    // 14:30 local at UTC−5 is 19:30Z
+    expect(result.takenAt).toEqual(new Date('2024-06-15T19:30:00.000Z'))
+  })
+
+  it.each([undefined, 'bogus', '+99:99'])(
+    'keeps UTC wall time for an absent or unusable offset (%s)',
+    (offset) => {
+      vi.mocked(ExifReader.load).mockReturnValue(
+        photoWith(
+          offset === undefined
+            ? {}
+            : { OffsetTimeOriginal: { value: [offset], description: offset } },
+        ),
+      )
+
+      const result = extractor.extract(Buffer.from('fake-jpeg'))
+
+      expect(result.takenAt).toEqual(new Date('2024-06-15T14:30:00.000Z'))
+    },
+  )
+
+  it.each([5, 6, 7, 8])('swaps reported width/height for EXIF orientation %i', (orientation) => {
+    vi.mocked(ExifReader.load).mockReturnValue(photoWith({ Orientation: { value: orientation } }))
+
+    const result = extractor.extract(Buffer.from('fake-jpeg'))
+
+    expect(result.orientation).toBe(orientation)
+    expect(result.width).toBe(3000)
+    expect(result.height).toBe(4000)
+  })
+
+  it.each([1, 2, 3, 4])('keeps reported width/height for EXIF orientation %i', (orientation) => {
+    vi.mocked(ExifReader.load).mockReturnValue(photoWith({ Orientation: { value: orientation } }))
+
+    const result = extractor.extract(Buffer.from('fake-jpeg'))
+
+    expect(result.orientation).toBe(orientation)
+    expect(result.width).toBe(4000)
+    expect(result.height).toBe(3000)
+  })
+
+  it('keeps reported width/height when no orientation tag is present', () => {
+    vi.mocked(ExifReader.load).mockReturnValue(photoWith({}))
+
+    const result = extractor.extract(Buffer.from('fake-jpeg'))
+
+    expect(result.orientation).toBeNull()
+    expect(result.width).toBe(4000)
+    expect(result.height).toBe(3000)
+  })
+
   it('extracts EXIF fields but returns null GPS when none present', () => {
     vi.mocked(ExifReader.load).mockReturnValue({
       exif: {
@@ -107,8 +188,9 @@ describe('MetadataExtractor', () => {
     expect(result.longitude).toBeNull()
     expect(result.altitude).toBeNull()
     expect(result.iso).toBe(100)
-    expect(result.width).toBe(4000)
-    expect(result.height).toBe(3000)
+    // orientation 6 is a quarter turn — the display dims are the swapped raw dims
+    expect(result.width).toBe(3000)
+    expect(result.height).toBe(4000)
     expect(result.orientation).toBe(6)
   })
 

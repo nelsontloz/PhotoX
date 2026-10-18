@@ -14,7 +14,7 @@ import {
   ParseBoolPipe,
   ParseUUIDPipe,
 } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
 import { CurrentUserId } from '../auth/jwt-auth.guard'
 import { AssetsService } from './assets.service'
@@ -25,6 +25,7 @@ import { TrashAssetsDto } from './dto/trash-assets.dto'
 import { RegisterThumbnailDto } from './dto/register-thumbnail.dto'
 
 @ApiTags('assets')
+@ApiBearerAuth()
 @Controller('api/v1/assets')
 export class AssetsController {
   constructor(private readonly assets: AssetsService) {}

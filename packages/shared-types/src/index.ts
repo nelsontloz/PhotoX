@@ -39,6 +39,8 @@ export interface JwtPayload {
 
 export interface AuthResponse {
   accessToken: string
+  // seconds until the access token's own `exp` claim — derived from the token, not a TTL copy
+  accessTokenExpiresIn: number
   refreshToken: string
   user: User
 }
@@ -381,6 +383,14 @@ export interface FileExistsCheckHit {
 
 export interface FileExistsCheckResponse {
   items: FileExistsCheckHit[]
+}
+
+// Wire contract for GET /api/v1/files/quota — sum of the user's purpose='original' bytes;
+// limitBytes/remainingBytes are null when STORAGE_QUOTA_BYTES is unset (unlimited)
+export interface StorageQuotaResponse {
+  usedBytes: number
+  limitBytes: number | null
+  remainingBytes: number | null
 }
 
 export * from './albums'
