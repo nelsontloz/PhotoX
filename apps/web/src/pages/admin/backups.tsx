@@ -484,7 +484,9 @@ export function BackupSection() {
       subtitle="Every account's rows and original files, copied to S3. Reruns reuse the same keys and skip unchanged files."
       icon={<FaDatabase />}
       actions={
-        <>
+        // Phones: the row wraps onto its own line and stacks — a nowrap row squeezes the email
+        // filter to ~50px and pushes Back up all past the card edge.
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <div className="relative w-full sm:w-56">
             <FaMagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 text-outline text-xs pointer-events-none" />
             <input
@@ -539,7 +541,7 @@ export function BackupSection() {
               ? `Backing up ${Math.min(backupAllCursor.done + 1, backupAllCursor.total)}/${backupAllCursor.total}…`
               : 'Back up all'}
           </PrimaryButton>
-        </>
+        </div>
       }
     >
       {backupAllRunning && backupAllCursor && (
@@ -602,13 +604,13 @@ export function BackupSection() {
               <table className="w-full text-xs min-w-[780px]">
                 <thead className="bg-surface-container text-on-surface-variant font-mono text-label-xs uppercase tracking-wider">
                   <tr>
-                    <th className="text-left font-semibold px-4 py-3">User</th>
-                    <th className="text-left font-semibold px-4 py-3">Status</th>
-                    <th className="text-left font-semibold px-4 py-3">Assets</th>
-                    <th className="text-left font-semibold px-4 py-3">Files</th>
-                    <th className="text-left font-semibold px-4 py-3">Pending</th>
-                    <th className="text-left font-semibold px-4 py-3">Last backup</th>
-                    <th className="text-right font-semibold px-4 py-3">Action</th>
+                    <th className="text-left font-semibold px-3 py-3 sm:px-4">User</th>
+                    <th className="text-left font-semibold px-3 py-3 sm:px-4">Status</th>
+                    <th className="text-left font-semibold px-3 py-3 sm:px-4">Assets</th>
+                    <th className="text-left font-semibold px-3 py-3 sm:px-4">Files</th>
+                    <th className="text-left font-semibold px-3 py-3 sm:px-4">Pending</th>
+                    <th className="text-left font-semibold px-3 py-3 sm:px-4">Last backup</th>
+                    <th className="text-right font-semibold px-3 py-3 sm:px-4">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-dark/60">
@@ -632,7 +634,7 @@ export function BackupSection() {
                         key={row.userId}
                         className="hover:bg-surface-container/50 transition-colors"
                       >
-                        <td className="py-3 px-4">
+                        <td className="py-3 px-3 sm:px-4">
                           <div className="flex items-center gap-3 min-w-0">
                             <span className="w-7 h-7 shrink-0 rounded-full bg-surface-container-highest text-on-surface-variant text-[11px] font-bold flex items-center justify-center">
                               {(row.email.charAt(0) || '?').toUpperCase()}
@@ -658,22 +660,22 @@ export function BackupSection() {
                             </div>
                           </div>
                         </td>
-                        <td className="py-3 px-4">
+                        <td className="py-3 px-3 sm:px-4">
                           <StatusPill tone={pill.tone}>{pill.label}</StatusPill>
                         </td>
-                        <td className="py-3 px-4 tabular-nums text-on-surface">
+                        <td className="py-3 px-3 sm:px-4 tabular-nums text-on-surface">
                           {(row.backedUpAssets ?? 0).toLocaleString()}
                         </td>
-                        <td className="py-3 px-4 tabular-nums text-on-surface">
+                        <td className="py-3 px-3 sm:px-4 tabular-nums text-on-surface">
                           {(row.backedUpFiles ?? 0).toLocaleString()}
                         </td>
-                        <td className="py-3 px-4 tabular-nums text-on-surface-variant">
+                        <td className="py-3 px-3 sm:px-4 tabular-nums text-on-surface-variant">
                           {pendingOf(row).toLocaleString()}
                         </td>
-                        <td className="py-3 px-4 font-mono text-[11px] text-outline whitespace-nowrap">
+                        <td className="py-3 px-3 sm:px-4 font-mono text-[11px] text-outline whitespace-nowrap">
                           {stamp(row.backedUpAt)}
                         </td>
-                        <td className="py-3 px-4 text-right align-top">
+                        <td className="py-3 px-3 sm:px-4 text-right align-top">
                           {row.deleted ? (
                             <div className="flex flex-col items-end gap-2">
                               <GhostButton
@@ -749,7 +751,7 @@ export function BackupSection() {
                           )}
                           {isBusy && (
                             <div
-                              className="mt-2 min-w-[190px] max-w-[240px] ml-auto text-left"
+                              className="mt-2 w-full max-w-[240px] ml-auto text-left sm:min-w-[190px]"
                               role="status"
                               aria-live="polite"
                             >
@@ -779,7 +781,7 @@ export function BackupSection() {
                           )}
                           {isRestoring && (
                             <div
-                              className="mt-2 min-w-[190px] max-w-[240px] ml-auto text-left"
+                              className="mt-2 w-full max-w-[240px] ml-auto text-left sm:min-w-[190px]"
                               role="status"
                               aria-live="polite"
                             >
