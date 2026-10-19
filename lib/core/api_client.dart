@@ -45,10 +45,20 @@ class ApiException implements Exception {
       if (rawCode is String) code = rawCode;
       final rawParts = data['receivedParts'];
       if (rawParts is List) {
-        receivedParts = <int>[
-          for (final part in rawParts)
-            if (part is num) part.toInt(),
-        ];
+        final parts = <int>[];
+        for (var index = 0; index < rawParts.length; index++) {
+          final part = rawParts[index];
+          if (part is! num) {
+            // Never silently drop a malformed entry; the bad index lets
+            // ApiClient.parseResponse normalize this to a typed ApiException.
+            throw FormatException(
+              'ApiException.receivedParts[$index] must be a number, '
+              'got ${part.runtimeType}',
+            );
+          }
+          parts.add(part.toInt());
+        }
+        receivedParts = parts;
       }
       final rawAssetId = data['existingAssetId'];
       if (rawAssetId is String) existingAssetId = rawAssetId;

@@ -54,6 +54,12 @@ class AuthManager extends ChangeNotifier {
   bool _restored = false;
   Future<void>? _refreshInFlight;
 
+  /// True while [signOut] is awaiting the server logout.
+  ///
+  /// A [forceRefresh] that starts in this window would rotate (and republish) a
+  /// token pair the logout is about to revoke, so it must fail instead.
+  bool _signingOut = false;
+
   /// Whether a token pair is currently held (the access token may be expired).
   bool get isSignedIn => _tokens != null;
 
@@ -100,30 +106,35 @@ class AuthManager extends ChangeNotifier {
   /// The core logout endpoint invalidates all of the user's sessions, not just
   /// the presented refresh-token family, so a local clear always follows it.
   Future<void> signOut() async {
-    await restore();
-    // A refresh that started before sign-out could otherwise publish a rotated
-    // pair after the clear. Wait for it (success or failure) first.
-    final inFlight = _refreshInFlight;
-    if (inFlight != null) {
-      try {
-        await inFlight;
-      } on Object {
-        // A failed refresh must not block sign-out.
+    _signingOut = true;
+    try {
+      await restore();
+      // A refresh that started before sign-out could otherwise publish a
+      // rotated pair after the clear. Wait for it (success or failure) first.
+      final inFlight = _refreshInFlight;
+      if (inFlight != null) {
+        try {
+          await inFlight;
+        } on Object {
+          // A failed refresh must not block sign-out.
+        }
       }
-    }
-    final refreshToken = _tokens?.refreshToken;
-    if (refreshToken != null) {
-      try {
-        await _dio.post<void>(
-          '/api/v1/auth/logout',
-          data: <String, dynamic>{'refreshToken': refreshToken},
-        );
-      } on DioException {
-        // ponytail: offline sign-out still clears locally; the server remains
-        // able to revoke every session on the next successful logout.
+      final refreshToken = _tokens?.refreshToken;
+      if (refreshToken != null) {
+        try {
+          await _dio.post<void>(
+            '/api/v1/auth/logout',
+            data: <String, dynamic>{'refreshToken': refreshToken},
+          );
+        } on DioException {
+          // ponytail: offline sign-out still clears locally; the server remains
+          // able to revoke every session on the next successful logout.
+        }
       }
+      await _clearSession();
+    } finally {
+      _signingOut = false;
     }
-    await _clearSession();
   }
 
   /// Returns a usable access token, refreshing when less than
@@ -147,6 +158,14 @@ class AuthManager extends ChangeNotifier {
   /// Forces one refresh, joining any in-flight refresh instead of starting a
   /// second rotation.
   Future<void> forceRefresh() {
+    if (_signingOut) {
+      return Future<void>.error(
+        const AuthException(
+          'Cannot refresh while signing out',
+          statusCode: 401,
+        ),
+      );
+    }
     final inFlight = _refreshInFlight;
     if (inFlight != null) return inFlight;
     final future = _refresh().whenComplete(() {
@@ -222,10 +241,12 @@ class AuthManager extends ChangeNotifier {
   }
 
   Future<bool> _acquireRefreshLock(String owner) async {
-    final deadline = _clock().add(_refreshLockWait);
+    // Lock waits must track real elapsed time, not the injected token clock:
+    // tests can move that clock arbitrarily and would otherwise spin forever.
+    final waited = Stopwatch()..start();
     while (true) {
       if (await refreshLock.acquire(owner, _refreshLockTtl)) return true;
-      if (!_clock().isBefore(deadline)) return false;
+      if (waited.elapsed >= _refreshLockWait) return false;
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
   }
