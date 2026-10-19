@@ -23,6 +23,9 @@ class AppSettings {
   final bool includeVideos;
 
   /// Show upload progress notifications.
+  ///
+  /// ponytail: persisted for a future notifier; nothing reads it today. Android
+  /// will need the POST_NOTIFICATIONS permission when one is wired up.
   final bool notificationsEnabled;
 
   /// Also enqueue assets that already existed before the app was installed.

@@ -1,4 +1,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Media read permissions. READ_EXTERNAL_STORAGE is capped at API 32;
+         READ_MEDIA_IMAGES/READ_MEDIA_VIDEO replace it on Android 13+ (video is
+         needed for the includeVideos setting) and
+         READ_MEDIA_VISUAL_USER_SELECTED covers partial ("selected photos")
+         access on Android 14+. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"/>
+    <!-- WorkManager keeps a wake lock while a sync pass runs. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <application
         android:label="photox_mobile"
         android:name="${applicationName}"

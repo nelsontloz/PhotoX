@@ -1,10 +1,108 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photox_mobile/app.dart';
+import 'package:photox_mobile/app_controller.dart';
+import 'package:photox_mobile/media/photo_observer.dart';
+import 'package:photox_mobile/settings/settings_store.dart';
+import 'package:photox_mobile/sync/sync_coordinator.dart';
+import 'package:photox_mobile/upload/upload_queue.dart';
+
+/// Inert controller so the shell can be pumped without a real stack.
+class FakeAppController extends AppController {
+  FakeAppController({
+    this.signedIn = true,
+    this.busyValue = false,
+    this.syncingValue = false,
+    this.authRequiredValue = false,
+    this.permissionValue = PhotoPermission.authorized,
+    this.statsValue = const QueueStats(
+      pending: 0,
+      uploaded: 0,
+      duplicate: 0,
+      failed: 0,
+    ),
+    this.lastReportValue,
+    this.errorValue,
+    this.settingsValue = const AppSettings(),
+  });
+
+  final bool signedIn;
+  final bool busyValue;
+  final bool syncingValue;
+  final bool authRequiredValue;
+  final PhotoPermission permissionValue;
+  final QueueStats statsValue;
+  final SyncReport? lastReportValue;
+  final String? errorValue;
+  final AppSettings settingsValue;
+
+  /// Names of the controller actions the shell invoked, in order.
+  final List<String> calls = <String>[];
+
+  @override
+  bool get isSignedIn => signedIn;
+
+  @override
+  bool get busy => busyValue;
+
+  @override
+  bool get syncing => syncingValue;
+
+  @override
+  bool get authRequired => authRequiredValue;
+
+  @override
+  PhotoPermission get permission => permissionValue;
+
+  @override
+  QueueStats get stats => statsValue;
+
+  @override
+  SyncReport? get lastReport => lastReportValue;
+
+  @override
+  String? get error => errorValue;
+
+  @override
+  AppSettings get settings => settingsValue;
+
+  @override
+  Future<void> initialize() async => calls.add('initialize');
+
+  @override
+  Future<void> signIn(String email, String password) async =>
+      calls.add('signIn:$email');
+
+  @override
+  Future<void> signOut() async => calls.add('signOut');
+
+  @override
+  Future<void> syncNow() async => calls.add('syncNow');
+
+  @override
+  Future<void> updateSettings(AppSettings settings) async =>
+      calls.add('updateSettings');
+}
 
 void main() {
-  testWidgets('PhotoXApp shows the PhotoX app bar', (tester) async {
-    await tester.pumpWidget(const PhotoXApp());
+  testWidgets('PhotoXApp shows the backup dashboard when signed in', (
+    tester,
+  ) async {
+    await tester.pumpWidget(PhotoXApp(controller: FakeAppController()));
+    await tester.pump();
 
     expect(find.text('PhotoX'), findsOneWidget);
+    expect(find.text('Sync now'), findsOneWidget);
+  });
+
+  testWidgets('PhotoXApp shows the login screen when signed out', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      PhotoXApp(controller: FakeAppController(signedIn: false)),
+    );
+    await tester.pump();
+
+    expect(find.text('Welcome back'), findsOneWidget);
+    expect(find.text('Sync now'), findsNothing);
   });
 }
