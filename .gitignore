@@ -43,9 +43,14 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/build/
 
 # Widget Preview related
 .widget_preview/
 
 # deepwork state
 .slim/deepwork/
+
+# e2e harness generated files
+tool/e2e/.tmp/
+tool/e2e/artifacts/
