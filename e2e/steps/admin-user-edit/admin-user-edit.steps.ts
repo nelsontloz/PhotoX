@@ -148,9 +148,12 @@ When('the account-editing admin opens the users tab', async ({ page }) => {
   })
 })
 
-When('the account-editing admin searches the users list for that account', async ({ page, ctx }) => {
-  await searchUsersFor(page, requireAccount(ctx).user.email)
-})
+When(
+  'the account-editing admin searches the users list for that account',
+  async ({ page, ctx }) => {
+    await searchUsersFor(page, requireAccount(ctx).user.email)
+  },
+)
 
 Then('the users table offers an enabled Edit action for that account', async ({ page, ctx }) => {
   const account = requireAccount(ctx)

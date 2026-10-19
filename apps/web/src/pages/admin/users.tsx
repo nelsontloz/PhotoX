@@ -22,7 +22,16 @@ import {
 import { LoadingState } from '../../components/StateViews'
 import { Dialog, formInputClass } from '../../components/Dialog'
 import { useAuthStore } from '../../store/auth-store'
-import { AdminCard, AdminSection, AdminToast, GhostButton, StatusPill, cx } from './ui'
+import {
+  AdminCard,
+  AdminSection,
+  AdminToast,
+  GhostButton,
+  OutlineDangerButton,
+  SecondaryButton,
+  StatusPill,
+  cx,
+} from './ui'
 import {
   deleteAdminUser,
   listAdminUsers,
@@ -198,14 +207,9 @@ function DeleteUserDialog({
       </div>
 
       <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-6">
-        <button
-          type="button"
-          onClick={close}
-          disabled={working}
-          className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
+        <SecondaryButton size="lg" onClick={close} disabled={working}>
           Cancel
-        </button>
+        </SecondaryButton>
         <button
           type="button"
           onClick={() => void onConfirm()}
@@ -287,19 +291,14 @@ function BackupMoveWarningBox({
               type="button"
               onClick={onRetry}
               disabled={retrying}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary-container px-2.5 py-1.5 text-[11px] font-semibold text-on-primary-container transition-colors hover:bg-primary-container/90 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary-container px-2.5 py-1.5 text-[11px] font-semibold text-on-primary-container transition-colors hover:bg-primary-container/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background-dark disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FaArrowsRotate className="text-[11px]" aria-hidden="true" />
               Retry move
             </button>
-            <button
-              type="button"
-              onClick={onDismiss}
-              disabled={retrying}
-              className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-on-surface-variant transition-colors hover:text-on-surface disabled:opacity-50 disabled:cursor-not-allowed"
-            >
+            <SecondaryButton size="sm" onClick={onDismiss} disabled={retrying}>
               Dismiss
-            </button>
+            </SecondaryButton>
           </div>
         </div>
       </div>
@@ -547,39 +546,26 @@ export function UsersSection() {
                     <td className="py-3.5 px-4">
                       {/* Destructive stays last: Edit reads as the neutral action, Delete as
                           the one that removes the account. */}
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          type="button"
+                      <div className="flex items-center justify-end gap-2">
+                        <SecondaryButton
+                          tone="accent"
                           onClick={() => setEditing(u)}
                           disabled={editGuard != null}
                           title={editGuard ?? `Edit ${u.displayName}`}
-                          aria-label={`Edit ${u.displayName}`}
-                          className={cx(
-                            'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors',
-                            editGuard != null
-                              ? 'text-outline/60 cursor-not-allowed'
-                              : 'text-primary/80 hover:text-primary hover:bg-primary/10',
-                          )}
+                          ariaLabel={`Edit ${u.displayName}`}
+                          icon={<FaPenToSquare className="text-xs" aria-hidden="true" />}
                         >
-                          <FaPenToSquare className="text-xs" aria-hidden="true" />
                           Edit
-                        </button>
-                        <button
-                          type="button"
+                        </SecondaryButton>
+                        <OutlineDangerButton
                           onClick={() => setTarget(u)}
                           disabled={guard != null}
                           title={guard ?? `Delete ${u.displayName}`}
-                          aria-label={`Delete ${u.displayName}`}
-                          className={cx(
-                            'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors',
-                            guard != null
-                              ? 'text-outline/60 cursor-not-allowed'
-                              : 'text-status-error/80 hover:text-status-error hover:bg-status-error/10',
-                          )}
+                          ariaLabel={`Delete ${u.displayName}`}
+                          icon={<FaTrashCan className="text-xs" aria-hidden="true" />}
                         >
-                          <FaTrashCan className="text-xs" aria-hidden="true" />
                           Delete
-                        </button>
+                        </OutlineDangerButton>
                       </div>
                     </td>
                   </tr>
@@ -590,25 +576,21 @@ export function UsersSection() {
           <footer className="bg-surface-container px-4 py-3 flex items-center justify-between text-xs text-outline font-mono">
             <span>Showing {total.toLocaleString()} registered user(s)</span>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
+              <SecondaryButton
                 disabled={offset === 0}
                 onClick={() => setOffset(Math.max(0, offset - DEFAULT_LIMIT))}
-                className="px-3 py-1.5 rounded-lg bg-surface-container-low border border-border-dark text-on-surface-variant disabled:opacity-40 disabled:cursor-not-allowed hover:border-primary/50 transition-colors"
               >
                 Prev
-              </button>
+              </SecondaryButton>
               <span className="px-2 tabular-nums">
                 Page {currentPage} of {totalPages}
               </span>
-              <button
-                type="button"
+              <SecondaryButton
                 disabled={currentPage >= totalPages}
                 onClick={() => setOffset(offset + DEFAULT_LIMIT)}
-                className="px-3 py-1.5 rounded-lg bg-surface-container-low border border-border-dark text-on-surface-variant disabled:opacity-40 disabled:cursor-not-allowed hover:border-primary/50 transition-colors"
               >
                 Next
-              </button>
+              </SecondaryButton>
             </div>
           </footer>
         </div>

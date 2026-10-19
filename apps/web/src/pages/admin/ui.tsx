@@ -164,7 +164,7 @@ export function MetricTile({
 }
 
 const BUTTON_BASE =
-  'inline-flex items-center gap-2 text-xs font-semibold rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
+  'inline-flex items-center gap-2 text-xs font-semibold rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low'
 
 interface ButtonProps {
   onClick?: () => void
@@ -210,12 +210,110 @@ export function GhostButton({ onClick, disabled, icon, children, ariaLabel }: Bu
   )
 }
 
+/**
+ * Neutral secondary action with a real surface. The admin tables sit on surface-container-low,
+ * where a ghost fill is all but the same value; this lifts the button to
+ * surface-container-highest behind a hairline border, so it reads as a button before any hover.
+ * `tone="accent"` tints the border primary for the one safe/main action in a row.
+ */
+export function SecondaryButton({
+  onClick,
+  disabled,
+  icon,
+  children,
+  ariaLabel,
+  title,
+  size = 'md',
+  tone = 'neutral',
+}: {
+  onClick?: () => void
+  disabled?: boolean
+  icon?: ReactNode
+  children: ReactNode
+  ariaLabel?: string
+  title?: string
+  size?: 'sm' | 'md' | 'lg'
+  tone?: 'neutral' | 'accent'
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      title={title}
+      className={cx(
+        'inline-flex items-center justify-center gap-1.5 rounded-lg border font-semibold transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low',
+        'disabled:opacity-50 disabled:cursor-not-allowed disabled:border-outline-variant',
+        size === 'sm'
+          ? 'px-2.5 py-1.5 text-[11px]'
+          : size === 'lg'
+            ? 'px-3 py-2 text-sm'
+            : 'px-3 py-1.5 text-xs',
+        tone === 'accent'
+          ? 'border-primary/50 bg-surface-container-highest text-on-surface enabled:hover:border-primary'
+          : 'border-outline-variant bg-surface-container-highest text-on-surface enabled:hover:border-primary/60',
+      )}
+    >
+      {icon}
+      {children}
+    </button>
+  )
+}
+
+/**
+ * Destructive table action: red outline + red text, no fill, so it stays quieter than the
+ * neutral action's filled surface. Kept last in the row by the call sites.
+ */
+export function OutlineDangerButton({
+  onClick,
+  disabled,
+  icon,
+  children,
+  ariaLabel,
+  title,
+  size = 'md',
+}: {
+  onClick?: () => void
+  disabled?: boolean
+  icon?: ReactNode
+  children: ReactNode
+  ariaLabel?: string
+  title?: string
+  size?: 'sm' | 'md' | 'lg'
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      title={title}
+      className={cx(
+        'inline-flex items-center justify-center gap-1.5 rounded-lg border font-semibold transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-status-error focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low',
+        'disabled:opacity-50 disabled:cursor-not-allowed disabled:border-outline/30',
+        size === 'sm'
+          ? 'px-2.5 py-1.5 text-[11px]'
+          : size === 'lg'
+            ? 'px-3 py-2 text-sm'
+            : 'px-3 py-1.5 text-xs',
+        'border-status-error/40 text-status-error enabled:hover:border-status-error/60 enabled:hover:bg-status-error/10',
+      )}
+    >
+      {icon}
+      {children}
+    </button>
+  )
+}
+
 /** Icon-only refresh; PrimaryButton/GhostButton require children, so this stays raw. */
 export function RefreshButton({
   onClick,
   label,
   disabled,
-  className = 'p-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high disabled:opacity-50 disabled:cursor-not-allowed transition-colors',
+  className = 'p-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low',
 }: {
   onClick: () => void
   label: string

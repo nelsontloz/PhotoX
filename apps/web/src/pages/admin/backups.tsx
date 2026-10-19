@@ -12,9 +12,11 @@ import {
   AdminSection,
   AdminToast,
   GhostButton,
+  OutlineDangerButton,
   PrimaryButton,
   ProgressBar,
   RefreshButton,
+  SecondaryButton,
   StatusPill,
   cx,
 } from './ui'
@@ -266,6 +268,7 @@ function DeleteActionButton({
       aria-label={label}
       className={cx(
         'inline-flex items-center gap-1.5 rounded-lg border font-semibold transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-status-error focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low',
         size === 'md' ? 'px-3 py-1.5 text-xs' : 'px-2.5 py-1.5 text-[11px]',
         disabled
           ? 'border-outline/30 text-outline/60 cursor-not-allowed'
@@ -308,7 +311,7 @@ function OutlineActionButton({
       disabled={disabled}
       title={title}
       aria-label={label}
-      className="inline-flex items-center gap-2 text-xs font-semibold rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-primary/50 text-primary hover:bg-primary/10"
+      className="inline-flex items-center gap-2 text-xs font-semibold rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-primary/50 text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low"
     >
       {children}
     </button>
@@ -615,13 +618,9 @@ function DeleteBackupDialog({
       </div>
 
       <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-6">
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
-        >
+        <SecondaryButton size="lg" onClick={onClose}>
           Cancel
-        </button>
+        </SecondaryButton>
         <button
           type="button"
           onClick={onConfirm}
@@ -1013,6 +1012,7 @@ export function BackupSection() {
             onClick={() => setVersion((v) => v + 1)}
             label="Refresh backup overview"
             disabled={loading || anyBusy}
+            className="inline-flex items-center justify-center p-2 rounded-lg border border-outline-variant bg-surface-container-highest text-on-surface-variant transition-colors enabled:hover:text-on-surface enabled:hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <PrimaryButton
             onClick={() => setConfirmAll(true)}
@@ -1166,7 +1166,8 @@ export function BackupSection() {
                           <td className="py-3 px-3 sm:px-4 text-right align-top">
                             {row.deleted ? (
                               <div className="flex flex-col items-end gap-2">
-                                <GhostButton
+                                <SecondaryButton
+                                  tone="accent"
                                   onClick={() => openRestore(rowSnapshot(row), false)}
                                   disabled={anyBusy}
                                   ariaLabel={`Restore ${row.email}`}
@@ -1175,38 +1176,63 @@ export function BackupSection() {
                                   }
                                 >
                                   {isRestoring ? 'Restoring…' : 'Restore'}
-                                </GhostButton>
+                                </SecondaryButton>
                                 <span title="That account is deleted — restore it before backing up.">
-                                  <GhostButton
+                                  <SecondaryButton
                                     disabled
                                     ariaLabel={`Back up ${row.email} (deleted — restore first)`}
                                   >
                                     Backup
-                                  </GhostButton>
+                                  </SecondaryButton>
                                 </span>
-                                <DeleteActionButton
-                                  label={`Delete backup for ${row.email}`}
+                                <OutlineDangerButton
+                                  title={`Delete backup for ${row.email}`}
+                                  ariaLabel={`Delete backup for ${row.email}`}
                                   disabled={anyBusy}
-                                  busy={isDeleting}
                                   onClick={() => openDelete(rowSnapshot(row), false)}
-                                />
+                                  icon={
+                                    isDeleting ? (
+                                      <FaSpinner
+                                        className="animate-spin text-xs"
+                                        aria-hidden="true"
+                                      />
+                                    ) : (
+                                      <FaTrashCan className="text-xs" aria-hidden="true" />
+                                    )
+                                  }
+                                >
+                                  {isDeleting ? 'Deleting…' : 'Delete'}
+                                </OutlineDangerButton>
                               </div>
                             ) : (
                               <div className="flex flex-col items-end gap-2">
-                                <GhostButton
+                                <SecondaryButton
+                                  tone="accent"
                                   onClick={() => setConfirmUser(row)}
                                   disabled={anyBusy}
                                   ariaLabel={`Back up ${row.email}`}
                                   icon={isBusy ? <FaSpinner className="animate-spin" /> : undefined}
                                 >
                                   {isBusy ? 'Backing up…' : 'Backup'}
-                                </GhostButton>
-                                <DeleteActionButton
-                                  label={`Delete backup for ${row.email}`}
+                                </SecondaryButton>
+                                <OutlineDangerButton
+                                  title={`Delete backup for ${row.email}`}
+                                  ariaLabel={`Delete backup for ${row.email}`}
                                   disabled={anyBusy}
-                                  busy={isDeleting}
                                   onClick={() => openDelete(rowSnapshot(row), false)}
-                                />
+                                  icon={
+                                    isDeleting ? (
+                                      <FaSpinner
+                                        className="animate-spin text-xs"
+                                        aria-hidden="true"
+                                      />
+                                    ) : (
+                                      <FaTrashCan className="text-xs" aria-hidden="true" />
+                                    )
+                                  }
+                                >
+                                  {isDeleting ? 'Deleting…' : 'Delete'}
+                                </OutlineDangerButton>
                               </div>
                             )}
                             {isBusy && (
@@ -1289,25 +1315,18 @@ export function BackupSection() {
                   {filtered.length === 1 ? '' : 's'}
                 </span>
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={safePage === 0}
-                    onClick={() => setPage(safePage - 1)}
-                    className="px-3 py-1.5 rounded-lg bg-surface-container-low border border-border-dark text-on-surface-variant disabled:opacity-40 disabled:cursor-not-allowed hover:border-primary/50 transition-colors"
-                  >
+                  <SecondaryButton disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>
                     Prev
-                  </button>
+                  </SecondaryButton>
                   <span className="px-2 tabular-nums">
                     Page {safePage + 1} of {totalPages}
                   </span>
-                  <button
-                    type="button"
+                  <SecondaryButton
                     disabled={safePage + 1 >= totalPages}
                     onClick={() => setPage(safePage + 1)}
-                    className="px-3 py-1.5 rounded-lg bg-surface-container-low border border-border-dark text-on-surface-variant disabled:opacity-40 disabled:cursor-not-allowed hover:border-primary/50 transition-colors"
                   >
                     Next
-                  </button>
+                  </SecondaryButton>
                 </div>
               </footer>
             </div>
