@@ -185,6 +185,111 @@ function isDerivativeStorageKey(storageKey: string): boolean {
   return storageKey.startsWith('derivatives/')
 }
 
+// Shared row→manifest projections: backupUser and backup adoption (merge) must
+// emit byte-identical entries for the same DB row, so both go through here.
+function fileToManifestEntry(f: FileRecord): UserBackupManifest['files'][number] {
+  return {
+    id: f.id,
+    userId: f.userId,
+    storageKey: f.storageKey,
+    originalName: f.originalName,
+    mimeType: f.mimeType,
+    sizeBytes: Number(f.sizeBytes),
+    checksumSha256: f.checksumSha256,
+    purpose: 'original',
+    assetId: f.assetId,
+  }
+}
+
+function assetToManifestEntry(a: Asset): UserBackupManifest['assets'][number] {
+  return {
+    id: a.id,
+    userId: a.userId,
+    kind: a.kind,
+    fileId: a.fileId,
+    isTrashed: a.isTrashed,
+    trashedAt: toIsoOrNull(a.trashedAt),
+    title: a.title,
+    description: a.description,
+    takenAt: toIsoOrNull(a.takenAt),
+    favorite: a.favorite,
+    mimeType: a.mimeType,
+    sizeBytes: toIntOrNull(a.sizeBytes),
+    originalName: a.originalName,
+    width: a.width,
+    height: a.height,
+    durationSeconds: toNumberOrNull(a.durationSeconds),
+    cameraMake: a.cameraMake,
+    cameraModel: a.cameraModel,
+    lensModel: a.lensModel,
+    orientation: a.orientation,
+    iso: a.iso,
+    fNumber: toNumberOrNull(a.fNumber),
+    exposureTime: toNumberOrNull(a.exposureTime),
+    focalLength: toNumberOrNull(a.focalLength),
+    latitude: toNumberOrNull(a.latitude),
+    longitude: toNumberOrNull(a.longitude),
+    altitude: toNumberOrNull(a.altitude),
+    placeCity: a.placeCity,
+    placeAdmin1: a.placeAdmin1,
+    placeCountryCode: a.placeCountryCode,
+    placeTimezone: a.placeTimezone,
+    placeDistanceKm: toNumberOrNull(a.placeDistanceKm),
+    fps: toNumberOrNull(a.fps),
+    codec: a.codec,
+    hasAudio: a.hasAudio,
+    metadata: a.metadata,
+    metadataStatus: a.metadataStatus,
+    transcodeStatus: a.transcodeStatus,
+    thumbnailStatus: a.thumbnailStatus,
+    faceStatus: a.faceStatus,
+    embeddingStatus: a.embeddingStatus,
+    faceCount: a.faceCount,
+  }
+}
+
+function albumToManifestEntry(a: Album): UserBackupManifest['albums'][number] {
+  return {
+    id: a.id,
+    userId: a.userId,
+    name: a.name,
+    description: a.description,
+  }
+}
+
+function shareToManifestEntry(s: Share): UserBackupManifest['shares'][number] {
+  return {
+    id: s.id,
+    userId: s.userId,
+    kind: s.kind,
+    assetId: s.assetId,
+    albumId: s.albumId,
+    token: s.token,
+    expiresAt: toIsoOrNull(s.expiresAt),
+  }
+}
+
+function personToManifestEntry(p: Person): UserBackupManifest['persons'][number] {
+  return {
+    id: p.id,
+    userId: p.userId,
+    name: p.name,
+    clusterLabel: p.clusterLabel,
+    faceCount: p.faceCount,
+  }
+}
+
+function userToManifest(u: User): UserBackupManifest['user'] {
+  return {
+    id: u.id,
+    email: u.email,
+    role: u.role,
+    passwordHash: u.passwordHash,
+    displayName: u.displayName,
+    tokensValidAfter: toIsoOrNull(u.tokensValidAfter),
+  }
+}
+
 /** Previous-manifest file entry used by the incremental upload gate. */
 export interface PreviousFileEntry {
   checksumSha256: string
@@ -358,12 +463,85 @@ export interface MergeBackupResult {
     shareTargetConflicts: number
   }
   enqueued: { metadata: number; thumbnails: number; videos: number; faces: number; ai: number }
+  // Adoption moves the source snapshot into the live account's prefix and unions
+  // it with any existing live manifest. null means adoption failed: the merge
+  // rows stay, the ledger/source delete are skipped and a retry is still allowed.
+  assigned: {
+    prefix: string
+    copiedObjects: number
+    reusedObjects: number
+    unionedWithExisting: boolean
+    sourceDeleted: boolean
+  } | null
+  adoptionError?: string
 }
 
 function timeOf(value: string | null | undefined): number {
   if (!value) return 0
   const time = new Date(value).getTime()
   return Number.isNaN(time) ? 0 : time
+}
+
+/** Live-order-first id-keyed union: a live entry always wins a collision. */
+function unionById<T extends { id: string }>(live: T[], adopted: T[]): T[] {
+  const seen = new Set(live.map((item) => item.id))
+  const merged = [...live]
+  for (const item of adopted) {
+    if (seen.has(item.id)) continue
+    seen.add(item.id)
+    merged.push(item)
+  }
+  return merged
+}
+
+/**
+ * Pure manifest union for backup adoption after a merge: the live account's
+ * manifest keeps precedence (its entries win on id collisions) and adopted-only
+ * entries append in source order. Shares also dedupe by token so one capability
+ * is never listed twice; album links dedupe by (albumId, assetId) pair.
+ * Top-level identity comes from `adopted` (its user row is the live target) and
+ * `backedUpAt` is the newer snapshot time. Result is schema-validated.
+ */
+export function unionBackupManifests(
+  live: UserBackupManifest | null,
+  adopted: UserBackupManifest,
+): UserBackupManifest {
+  if (live === null) return userBackupManifestSchema.parse(adopted)
+
+  const shareIds = new Set(live.shares.map((share) => share.id))
+  const shareTokens = new Set(live.shares.map((share) => share.token))
+  const shares = [...live.shares]
+  for (const share of adopted.shares) {
+    if (shareIds.has(share.id) || shareTokens.has(share.token)) continue
+    shareIds.add(share.id)
+    shareTokens.add(share.token)
+    shares.push(share)
+  }
+
+  const albumAssetKeys = new Set(live.albumAssets.map((link) => `${link.albumId}:${link.assetId}`))
+  const albumAssets = [...live.albumAssets]
+  for (const link of adopted.albumAssets) {
+    const key = `${link.albumId}:${link.assetId}`
+    if (albumAssetKeys.has(key)) continue
+    albumAssetKeys.add(key)
+    albumAssets.push(link)
+  }
+
+  const backedUpAt =
+    timeOf(adopted.backedUpAt) > timeOf(live.backedUpAt) ? adopted.backedUpAt : live.backedUpAt
+  return userBackupManifestSchema.parse({
+    manifestVersion: 1,
+    userId: adopted.userId,
+    emailAtBackup: adopted.emailAtBackup,
+    backedUpAt,
+    user: adopted.user,
+    files: unionById(live.files, adopted.files),
+    assets: unionById(live.assets, adopted.assets),
+    albums: unionById(live.albums, adopted.albums),
+    albumAssets,
+    shares,
+    persons: unionById(live.persons, adopted.persons),
+  })
 }
 
 /** Newest snapshot by backedUpAt; unreadable/corrupt snapshots sort last. Stable on ties. */
@@ -551,6 +729,13 @@ export function buildFallbackEmail(origEmail: string, nowMs: number, attempt = 0
  * verified), then deletes the old prefixes — restores still resolve by userId
  * suffix for any leftover orphans.
  *
+ * Merge adoption (admin): a matched legacy snapshot merges additively, then its
+ * source originals/manifest are adopted into the live account's own prefix and
+ * unioned with any live manifest (live entries win); the source prefix is
+ * deleted only after the ledger lands, so the live row reads as a normal
+ * backed-up row. Adoption failure keeps the source and writes no ledger, so a
+ * plain retry stays allowed (see mergeUserBackup).
+ *
  * Floci runbook (docker-only, no host installs): `docker compose up -d floci`.
  * Host core uses `S3_ENDPOINT=http://localhost:4566`; in-Compose core uses
  * `http://floci:4566`. E2E uses the `photox-e2e-backups` bucket — dev/prod share
@@ -623,92 +808,13 @@ export class UserBackupService {
       userId: user.id,
       emailAtBackup: user.email,
       backedUpAt,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        passwordHash: user.passwordHash,
-        displayName: user.displayName,
-        tokensValidAfter: toIsoOrNull(user.tokensValidAfter),
-      },
-      files: fileRows.map((f) => ({
-        id: f.id,
-        userId: f.userId,
-        storageKey: f.storageKey,
-        originalName: f.originalName,
-        mimeType: f.mimeType,
-        sizeBytes: Number(f.sizeBytes),
-        checksumSha256: f.checksumSha256,
-        purpose: 'original' as const,
-        assetId: f.assetId,
-      })),
-      assets: assetRows.map((a) => ({
-        id: a.id,
-        userId: a.userId,
-        kind: a.kind,
-        fileId: a.fileId,
-        isTrashed: a.isTrashed,
-        trashedAt: toIsoOrNull(a.trashedAt),
-        title: a.title,
-        description: a.description,
-        takenAt: toIsoOrNull(a.takenAt),
-        favorite: a.favorite,
-        mimeType: a.mimeType,
-        sizeBytes: toIntOrNull(a.sizeBytes),
-        originalName: a.originalName,
-        width: a.width,
-        height: a.height,
-        durationSeconds: toNumberOrNull(a.durationSeconds),
-        cameraMake: a.cameraMake,
-        cameraModel: a.cameraModel,
-        lensModel: a.lensModel,
-        orientation: a.orientation,
-        iso: a.iso,
-        fNumber: toNumberOrNull(a.fNumber),
-        exposureTime: toNumberOrNull(a.exposureTime),
-        focalLength: toNumberOrNull(a.focalLength),
-        latitude: toNumberOrNull(a.latitude),
-        longitude: toNumberOrNull(a.longitude),
-        altitude: toNumberOrNull(a.altitude),
-        placeCity: a.placeCity,
-        placeAdmin1: a.placeAdmin1,
-        placeCountryCode: a.placeCountryCode,
-        placeTimezone: a.placeTimezone,
-        placeDistanceKm: toNumberOrNull(a.placeDistanceKm),
-        fps: toNumberOrNull(a.fps),
-        codec: a.codec,
-        hasAudio: a.hasAudio,
-        metadata: a.metadata,
-        metadataStatus: a.metadataStatus,
-        transcodeStatus: a.transcodeStatus,
-        thumbnailStatus: a.thumbnailStatus,
-        faceStatus: a.faceStatus,
-        embeddingStatus: a.embeddingStatus,
-        faceCount: a.faceCount,
-      })),
-      albums: albumRows.map((a) => ({
-        id: a.id,
-        userId: a.userId,
-        name: a.name,
-        description: a.description,
-      })),
+      user: userToManifest(user),
+      files: fileRows.map(fileToManifestEntry),
+      assets: assetRows.map(assetToManifestEntry),
+      albums: albumRows.map(albumToManifestEntry),
       albumAssets: albumAssetRows.map((aa) => ({ albumId: aa.albumId, assetId: aa.assetId })),
-      shares: shareRows.map((s) => ({
-        id: s.id,
-        userId: s.userId,
-        kind: s.kind,
-        assetId: s.assetId,
-        albumId: s.albumId,
-        token: s.token,
-        expiresAt: toIsoOrNull(s.expiresAt),
-      })),
-      persons: personRows.map((p) => ({
-        id: p.id,
-        userId: p.userId,
-        name: p.name,
-        clusterLabel: p.clusterLabel,
-        faceCount: p.faceCount,
-      })),
+      shares: shareRows.map(shareToManifestEntry),
+      persons: personRows.map(personToManifestEntry),
     }
     // zod runtime-validates the manifest we just built (fail fast, never upload garbage)
     const parsed = userBackupManifestSchema.parse(manifest)
@@ -1222,9 +1328,17 @@ export class UserBackupService {
    * and trashed assets travel as trashed.
    *
    * Rows land first in one transaction, bytes second (same cleanup-orphans
-   * contract as restore), jobs third. The durable ledger row makes a plain rerun
-   * a 409; `force` re-plans and upserts the ledger for recovery after a partial
-   * run (already-inserted ids are skipped naturally).
+   * contract as restore), jobs third. Adoption runs next and before the ledger:
+   * the merged rows are projected into a source-style manifest, unioned with any
+   * existing live manifest (live entries win, shares dedupe by token), missing
+   * originals are server-side copied into the live prefix, and the union manifest
+   * is written last (HEAD-verified). The source prefix is then deleted, so the
+   * account reads as a normal backed-up row instead of a legacyBackups sub-row.
+   * The durable ledger row makes a plain rerun a 409; `force` re-plans and
+   * upserts the ledger for recovery after a partial run (already-inserted ids are
+   * skipped naturally). If adoption fails (unreadable live manifest or S3 error)
+   * rows/bytes stay, the ledger and source delete are skipped and the result
+   * carries `assigned: null` + `adoptionError`, so a plain retry stays allowed.
    */
   async mergeUserBackup(input: MergeUserBackupInput): Promise<MergeBackupResult> {
     const startedAt = new Date().toISOString()
@@ -1244,6 +1358,14 @@ export class UserBackupService {
     }
     const backupUserId = input.backupUserId
     if (backupUserId === target.id) throw new ConflictException('already-restored')
+    // The ledger check runs before source resolution: a successful merge adopts
+    // (and deletes) the source prefix, so a repeat plain merge must still answer
+    // 409 already-merged instead of 404 missing backup. Force keeps resolving the
+    // source — after adoption that is a 404, which is the expected recovery limit.
+    const prior = await this.backupMerges.findOne({
+      where: { backupUserId, targetUserId: target.id },
+    })
+    if (prior && input.force !== true) throw new ConflictException('already-merged')
 
     const base = resolveBackupPrefix()
     let prefix: string
@@ -1314,11 +1436,6 @@ export class UserBackupService {
     if (normalizeEmail(manifest.emailAtBackup) !== normalizeEmail(target.email)) {
       throw new ConflictException('email-mismatch')
     }
-
-    const prior = await this.backupMerges.findOne({
-      where: { backupUserId, targetUserId: target.id },
-    })
-    if (prior && input.force !== true) throw new ConflictException('already-merged')
 
     const guardKey = `${backupUserId}:${target.id}`
     if (this.mergesInFlight.has(guardKey)) throw new ConflictException('merge-in-progress')
@@ -1429,6 +1546,14 @@ export class UserBackupService {
       // phase. A force rerun re-queues them too, which is the recovery contract.
       const recoverAssetIds = new Set<string>()
       const assetIdMap = new Map<string, string>(targetAssets.map((row) => [row.id, row.id]))
+      // Adoption inputs must stay separate from assetIdMap/albumIdMap: those maps
+      // are pre-seeded with every existing target row, while these sets collect
+      // only rows this merge now represents in the live account. `adoptionCopies`
+      // maps target file id -> source/backup destination for the S3 copy phase.
+      const adoptedAssetIds = new Set<string>()
+      const adoptedFileIds = new Set<string>()
+      const adoptedAlbumIds = new Set<string>()
+      const adoptionCopies = new Map<string, { sourceKey: string; targetStorageKey: string }>()
 
       const buildAsset = (asset: UserBackupManifest['assets'][number], fileId: string): Asset =>
         this.assets.create({
@@ -1485,6 +1610,7 @@ export class UserBackupService {
         if (existing) {
           if (existing.userId !== target.id) throw new ConflictException('merge-conflict')
           skipped.assets += 1
+          adoptedAssetIds.add(existing.id)
           recoverAssetIds.add(asset.id)
           const manifestFile = manifestFileById.get(asset.fileId)
           if (manifestFile) {
@@ -1492,12 +1618,19 @@ export class UserBackupService {
             // Retry recovery: a prior partial run may have committed rows before
             // its byte phase — refill a missing target key from the source backup.
             const existingFile = targetFileById.get(existing.fileId)
-            if (existingFile && !(await this.storage.exists(existingFile.storageKey))) {
-              downloads.push({
-                id: existingFile.id,
-                storageKey: existingFile.storageKey,
+            if (existingFile) {
+              adoptedFileIds.add(existingFile.id)
+              adoptionCopies.set(existingFile.id, {
                 sourceKey: sourceKeyFor(manifestFile),
+                targetStorageKey: existingFile.storageKey,
               })
+              if (!(await this.storage.exists(existingFile.storageKey))) {
+                downloads.push({
+                  id: existingFile.id,
+                  storageKey: existingFile.storageKey,
+                  sourceKey: sourceKeyFor(manifestFile),
+                })
+              }
             }
           }
           assetIdMap.set(asset.id, asset.id)
@@ -1524,6 +1657,12 @@ export class UserBackupService {
             deduped.assets += 1
             deduped.files += 1
             assetIdMap.set(asset.id, liveAsset.id)
+            adoptedAssetIds.add(liveAsset.id)
+            adoptedFileIds.add(liveFile.id)
+            adoptionCopies.set(liveFile.id, {
+              sourceKey: sourceKeyFor(manifestFile),
+              targetStorageKey: liveFile.storageKey,
+            })
             if (!(await this.storage.exists(liveFile.storageKey))) {
               downloads.push({
                 id: liveFile.id,
@@ -1538,6 +1677,12 @@ export class UserBackupService {
           merged.assets += 1
           deduped.files += 1
           assetIdMap.set(asset.id, asset.id)
+          adoptedAssetIds.add(asset.id)
+          adoptedFileIds.add(liveFile.id)
+          adoptionCopies.set(liveFile.id, {
+            sourceKey: sourceKeyFor(manifestFile),
+            targetStorageKey: liveFile.storageKey,
+          })
           targetAssetById.set(asset.id, created)
           targetAssetByFileId.set(liveFile.id, created)
           if (liveFile.assetId === null) {
@@ -1569,6 +1714,12 @@ export class UserBackupService {
             deduped.assets += 1
             deduped.files += 1
             assetIdMap.set(asset.id, liveAsset.id)
+            adoptedAssetIds.add(liveAsset.id)
+            adoptedFileIds.add(sameIdFile.id)
+            adoptionCopies.set(sameIdFile.id, {
+              sourceKey: sourceKeyFor(manifestFile),
+              targetStorageKey: sameIdFile.storageKey,
+            })
             if (!(await this.storage.exists(sameIdFile.storageKey))) {
               downloads.push({
                 id: sameIdFile.id,
@@ -1583,6 +1734,12 @@ export class UserBackupService {
           merged.assets += 1
           deduped.files += 1
           assetIdMap.set(asset.id, asset.id)
+          adoptedAssetIds.add(asset.id)
+          adoptedFileIds.add(sameIdFile.id)
+          adoptionCopies.set(sameIdFile.id, {
+            sourceKey: sourceKeyFor(manifestFile),
+            targetStorageKey: sameIdFile.storageKey,
+          })
           targetAssetById.set(asset.id, created)
           targetAssetByFileId.set(sameIdFile.id, created)
           if (sameIdFile.assetId === null) {
@@ -1621,6 +1778,12 @@ export class UserBackupService {
         merged.files += 1
         merged.assets += 1
         assetIdMap.set(asset.id, asset.id)
+        adoptedAssetIds.add(asset.id)
+        adoptedFileIds.add(manifestFile.id)
+        adoptionCopies.set(manifestFile.id, {
+          sourceKey: sourceKeyFor(manifestFile),
+          targetStorageKey: storageKey,
+        })
         targetFileById.set(manifestFile.id, fileRow)
         targetAssetById.set(asset.id, created)
         targetAssetByFileId.set(manifestFile.id, created)
@@ -1637,6 +1800,7 @@ export class UserBackupService {
         if (existing) {
           if (existing.userId !== target.id) throw new ConflictException('merge-conflict')
           skipped.albums += 1
+          adoptedAlbumIds.add(album.id)
           albumIdMap.set(album.id, album.id)
           continue
         }
@@ -1648,6 +1812,7 @@ export class UserBackupService {
             description: album.description,
           }),
         )
+        adoptedAlbumIds.add(album.id)
         albumIdMap.set(album.id, album.id)
         merged.albums += 1
       }
@@ -1789,30 +1954,60 @@ export class UserBackupService {
           ? { metadata: 0, thumbnails: 0, videos: 0, faces: 0, ai: 0 }
           : await this.reenqueueDerivatives(target.id, derivativeAssetIds, 'merge')
 
-      const mergedAt = new Date()
-      const counts = { ...merged }
-      if (prior) {
-        await this.backupMerges.update(prior.id, { prefix, counts, mergedAt })
-      } else {
-        await this.backupMerges.save(
-          this.backupMerges.create({
-            backupUserId,
-            targetUserId: target.id,
-            prefix,
-            counts,
-            mergedAt,
-          }),
+      // Adopt the merged snapshot into the live account BEFORE the ledger: copy
+      // originals into the live prefix, union manifests and write the union last.
+      // Failure keeps the source and skips the ledger, so a plain retry is allowed.
+      let assigned: MergeBackupResult['assigned'] = null
+      let adoptionError: string | undefined
+      try {
+        const adopted = await this.adoptMergedBackup({
+          target,
+          sourceManifest: manifest,
+          adoptedAssetIds,
+          adoptedFileIds,
+          adoptedAlbumIds,
+          adoptionCopies,
+        })
+        assigned = { ...adopted, sourceDeleted: false }
+      } catch (err) {
+        adoptionError = err instanceof Error ? err.message : String(err)
+        this.logger.warn(
+          `Backup adoption for ${target.id} from ${prefix} failed (${adoptionError}) — ` +
+            'ledger not written, source kept; rerun the merge to retry',
         )
       }
+
+      if (assigned !== null) {
+        const mergedAt = new Date()
+        const counts = { ...merged }
+        if (prior) {
+          await this.backupMerges.update(prior.id, { prefix, counts, mergedAt })
+        } else {
+          await this.backupMerges.save(
+            this.backupMerges.create({
+              backupUserId,
+              targetUserId: target.id,
+              prefix,
+              counts,
+              mergedAt,
+            }),
+          )
+        }
+        // Ledger is durable, so the source snapshot can go; keep the ledger
+        // prefix as source-audit even though the S3 objects are now gone.
+        assigned.sourceDeleted = await this.deleteMergedSourceBackup(prefix, target, backupUserId)
+      }
+
       const completedAt = new Date().toISOString()
       this.logger.log(
         `Merged backup ${prefix} (source ${backupUserId}) into ${target.id}: ` +
           `files=${merged.files} assets=${merged.assets} albums=${merged.albums} ` +
           `albumAssets=${merged.albumAssets} shares=${merged.shares} persons=${merged.persons} ` +
           `dedupedFiles=${deduped.files} dedupedAssets=${deduped.assets} ` +
+          `adopted=${assigned === null ? 'failed' : `${assigned.copiedObjects}/${assigned.reusedObjects}`} ` +
           `startedAt=${startedAt} completedAt=${completedAt} — cleanup-orphans may resume`,
       )
-      return {
+      const result: MergeBackupResult = {
         targetUserId: target.id,
         targetEmail: target.email,
         backupUserId,
@@ -1825,9 +2020,192 @@ export class UserBackupService {
         deduped,
         skipped,
         enqueued,
+        assigned,
       }
+      if (adoptionError !== undefined) result.adoptionError = adoptionError
+      return result
     } finally {
       this.mergesInFlight.delete(guardKey)
+    }
+  }
+
+  /**
+   * Adopts a successfully merged source snapshot into the live account's own
+   * prefix: re-reads the rows this merge now represents, projects them with the
+   * shared manifest helpers, unions with any existing live manifest (live wins),
+   * server-side copies missing originals, then writes and HEAD-verifies the
+   * union manifest LAST. Throws on any failure — the caller keeps the source
+   * snapshot, skips the ledger and reports the error, so a plain retry is allowed.
+   */
+  private async adoptMergedBackup(params: {
+    target: User
+    sourceManifest: UserBackupManifest
+    adoptedAssetIds: Set<string>
+    adoptedFileIds: Set<string>
+    adoptedAlbumIds: Set<string>
+    adoptionCopies: Map<string, { sourceKey: string; targetStorageKey: string }>
+  }): Promise<{
+    prefix: string
+    copiedObjects: number
+    reusedObjects: number
+    unionedWithExisting: boolean
+  }> {
+    const {
+      target,
+      sourceManifest,
+      adoptedAssetIds,
+      adoptedFileIds,
+      adoptedAlbumIds,
+      adoptionCopies,
+    } = params
+    const targetPrefix = backupPrefix(target.email, target.id)
+    const targetManifestKey = manifestKey(target.email, target.id)
+
+    const [adoptedFiles, adoptedAssets, adoptedAlbums, adoptedShares, adoptedPersons] =
+      await Promise.all([
+        adoptedFileIds.size > 0
+          ? this.files.find({ where: { id: In([...adoptedFileIds]) } })
+          : Promise.resolve([] as FileRecord[]),
+        adoptedAssetIds.size > 0
+          ? this.assets.find({ where: { id: In([...adoptedAssetIds]) } })
+          : Promise.resolve([] as Asset[]),
+        adoptedAlbumIds.size > 0
+          ? this.albums.find({ where: { id: In([...adoptedAlbumIds]) } })
+          : Promise.resolve([] as Album[]),
+        sourceManifest.shares.length > 0
+          ? this.shares.find({
+              where: {
+                id: In(sourceManifest.shares.map((share) => share.id)),
+                userId: target.id,
+              },
+            })
+          : Promise.resolve([] as Share[]),
+        sourceManifest.persons.length > 0
+          ? this.persons.find({
+              where: {
+                id: In(sourceManifest.persons.map((person) => person.id)),
+                userId: target.id,
+              },
+            })
+          : Promise.resolve([] as Person[]),
+      ])
+    const adoptedAlbumAssets =
+      adoptedAlbumIds.size > 0 && adoptedAssetIds.size > 0
+        ? await this.albumAssets
+            .createQueryBuilder('aa')
+            .where('aa."albumId" IN (:...albumIds)', { albumIds: [...adoptedAlbumIds] })
+            .andWhere('aa."assetId" IN (:...assetIds)', { assetIds: [...adoptedAssetIds] })
+            .getMany()
+        : []
+
+    const adopted = userBackupManifestSchema.parse({
+      manifestVersion: 1,
+      userId: target.id,
+      emailAtBackup: target.email,
+      backedUpAt: sourceManifest.backedUpAt,
+      user: userToManifest(target),
+      files: adoptedFiles.map(fileToManifestEntry),
+      assets: adoptedAssets.map(assetToManifestEntry),
+      albums: adoptedAlbums.map(albumToManifestEntry),
+      albumAssets: adoptedAlbumAssets.map((link) => ({
+        albumId: link.albumId,
+        assetId: link.assetId,
+      })),
+      shares: adoptedShares.map(shareToManifestEntry),
+      persons: adoptedPersons.map(personToManifestEntry),
+    })
+
+    // Never overwrite a live manifest we could not read: a missing one is a
+    // first adoption (null), any other read/parse failure aborts the adoption.
+    let live: UserBackupManifest | null = null
+    let liveRaw: Buffer | null = null
+    try {
+      liveRaw = await this.s3.getBuffer(targetManifestKey)
+    } catch (err) {
+      if (!isNotFound(err)) {
+        throw new ServiceUnavailableException('existing live backup manifest is unreadable')
+      }
+    }
+    if (liveRaw !== null) {
+      try {
+        live = userBackupManifestSchema.parse(JSON.parse(liveRaw.toString('utf-8')))
+      } catch {
+        throw new ServiceUnavailableException('existing live backup manifest is unreadable')
+      }
+    }
+
+    const union = unionBackupManifests(live, adopted)
+    const listed = new Set(await this.s3.listKeys(targetPrefix))
+    let copiedObjects = 0
+    let reusedObjects = 0
+    for (const [targetFileId, copy] of adoptionCopies) {
+      const destKey = originalKey(
+        target.email,
+        target.id,
+        targetFileId,
+        extOf(copy.targetStorageKey),
+      )
+      if (listed.has(destKey)) {
+        reusedObjects += 1
+        continue
+      }
+      await this.s3.copyKey(copy.sourceKey, destKey)
+      listed.add(destKey)
+      copiedObjects += 1
+    }
+
+    // Manifest LAST: every copied key is already present and verified by copy,
+    // and the HEAD proves the union landed before the caller deletes the source.
+    await this.s3.putObject(
+      targetManifestKey,
+      Buffer.from(JSON.stringify(union)),
+      'application/json',
+    )
+    await this.s3.headObject(targetManifestKey)
+    this.logger.log(
+      `Adopted backup into ${targetPrefix} (${copiedObjects} copied, ${reusedObjects} reused, ` +
+        `unionedWithExisting=${live !== null})`,
+    )
+    return {
+      prefix: targetPrefix,
+      copiedObjects,
+      reusedObjects,
+      unionedWithExisting: live !== null,
+    }
+  }
+
+  /**
+   * Best-effort removal of an adopted source snapshot after the ledger write.
+   * Lists the backup root once, sweeps every prefix owned by `backupUserId`
+   * (plus the located source prefix defensively) and never touches the live
+   * account's own prefix. Never throws: a failed sweep reports `false` while
+   * the already-adopted live copy stays intact.
+   */
+  private async deleteMergedSourceBackup(
+    sourcePrefix: string,
+    target: User,
+    backupUserId: string,
+  ): Promise<boolean> {
+    try {
+      const base = resolveBackupPrefix()
+      const keys = await this.s3.listKeys(base)
+      const prefixes = new Set(findPrefixesForUserId(keys, base, backupUserId))
+      prefixes.add(sourcePrefix)
+      prefixes.delete(backupPrefix(target.email, target.id))
+      const prefixList = [...prefixes]
+      const doomed = keys.filter((key) => prefixList.some((prefix) => key.startsWith(prefix)))
+      if (doomed.length > 0) await this.s3.deleteKeys(doomed)
+      this.logger.log(
+        `Deleted merged source backup ${sourcePrefix} for ${backupUserId} ` +
+          `(${doomed.length} object(s))`,
+      )
+      return true
+    } catch (err) {
+      this.logger.warn(
+        `Failed to delete merged source backup ${sourcePrefix} for ${backupUserId} ` +
+          `(${err instanceof Error ? err.message : String(err)}) — leaving source bytes`,
+      )
+      return false
     }
   }
 

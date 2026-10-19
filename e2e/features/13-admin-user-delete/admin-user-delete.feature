@@ -102,7 +102,7 @@ Feature: Admin user deletion
     Then the matched backup row shows the previous-account merge action
     When I merge the matched backup into the live account
     Then the live account owns the backup library
-    And the source backup is still present
+    And the source backup is gone
     And a second merge is rejected
 
   Scenario: Deleting and restoring repeatedly still wipes the account and regenerates derivatives

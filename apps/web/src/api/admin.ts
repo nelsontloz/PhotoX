@@ -283,6 +283,20 @@ export interface MergeResult {
     shareTargetConflicts: number
   }
   enqueued: { metadata: number; thumbnails: number; videos: number; faces: number; ai: number }
+  /**
+   * Set when the merge moved the previous-account snapshot into the live account's own S3
+   * backup. `null` means the rows merged but the adoption failed, so the source snapshot was
+   * kept and the merge can be retried.
+   */
+  assigned: {
+    prefix: string
+    copiedObjects: number
+    reusedObjects: number
+    unionedWithExisting: boolean
+    sourceDeleted: boolean
+  } | null
+  /** Why the S3 adoption failed when `assigned` is null. */
+  adoptionError?: string
 }
 
 export interface MergeBackupInput {
