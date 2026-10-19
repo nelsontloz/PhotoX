@@ -229,13 +229,18 @@ export async function getBackupProgress(emailOrId: string): Promise<BackupProgre
  * POST /v1/admin/restores response: the account rebuilt from its S3 manifest (same userId),
  * row counts plus the derivative jobs re-queued. `email` is the ACTUAL restored address —
  * when the backup-time address is taken the core falls back to a `restored-<ms>-<orig>`
- * address, so always show `email` (not the requested one). Mirrors RestoreResult in core.
+ * address, so always show `email` (not the requested one). `prefix` is the FINAL S3 prefix
+ * and `restoredFrom.prefix` the original one: a different restored email immediately
+ * re-homes the backup under the new address, while a same-email restore leaves it in place.
+ * `reassignmentError` reports a failed move — the restore still succeeded and the next
+ * backup finishes the move. Mirrors RestoreResult in core.
  */
 export interface RestoreResult extends BackupResult {
   restoredFrom: { emailAtBackup: string; prefix: string; manifestObjectKey: string }
   startedAt: string
   completedAt: string
   enqueued: { metadata: number; thumbnails: number; videos: number; faces: number; ai: number }
+  reassignmentError?: string
 }
 
 // Restores rebuild rows + copy bytes back from S3 inline, so they outlive the 10s client

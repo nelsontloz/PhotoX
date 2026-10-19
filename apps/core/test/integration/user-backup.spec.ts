@@ -1127,8 +1127,13 @@ describe('user backup round-trip', () => {
       expect(result.userId).toBe(user.id)
       expect(result.email).toBe(email)
       expect(result.prefix).toBe(prefix)
+      expect(result.reassignmentError).toBeUndefined()
       expect(result.restoredFrom).toMatchObject({ emailAtBackup: email, prefix })
       expect(result.restoredFrom.manifestObjectKey.endsWith('manifest.json')).toBe(true)
+      // same email: no re-home — the source prefix keeps its bytes + manifest
+      const keptKeys = await fake.listKeys(prefix)
+      expect(keptKeys.some((k) => k.endsWith('manifest.json'))).toBe(true)
+      expect(keptKeys.length).toBe(2)
       const row = await userRepo.findOneOrFail({ where: { id: user.id } })
       expect(row.email).toBe(email)
     })
@@ -1155,17 +1160,44 @@ describe('user backup round-trip', () => {
 
       const result = await svc.restoreUser(origId)
       expect(result.userId).toBe(origId)
-      expect(result.prefix).toBe(prefix)
-      expect(result.restoredFrom.emailAtBackup).toBe(origEmail)
-      expect(result.restoredFrom.prefix).toBe(prefix)
       expect(result.email).not.toBe(origEmail)
       expect(result.email).toMatch(/^restored-\d+-.*@example\.com$/)
       expect(result.email).toContain(origEmail.split('@')[0]!.toLowerCase())
+      // the snapshot is re-homed to the fallback address, restoredFrom keeps the source
+      const restoredPrefix = backupPrefix(result.email, origId)
+      expect(result.prefix).toBe(restoredPrefix)
+      expect(result.reassignmentError).toBeUndefined()
+      expect(result.restoredFrom.emailAtBackup).toBe(origEmail)
+      expect(result.restoredFrom.prefix).toBe(prefix)
 
       const restored = await userRepo.findOneOrFail({ where: { id: origId } })
       expect(restored.email).toBe(result.email)
       const holder = await userRepo.findOneOrFail({ where: { id: other.id } })
       expect(holder.email).toBe(origEmail)
+
+      // old prefix fully swept, new prefix carries the manifest + original bytes
+      await expect(fake.listKeys(prefix)).resolves.toEqual([])
+      const file = await fileRepo.findOneOrFail({ where: { userId: origId } })
+      const newKeys = await fake.listKeys(restoredPrefix)
+      expect(newKeys).toEqual(
+        expect.arrayContaining([
+          manifestKey(result.email, origId),
+          originalKey(result.email, origId, file.id, 'bin'),
+        ]),
+      )
+      const rehomed = JSON.parse(
+        (await fake.getBuffer(manifestKey(result.email, origId))).toString('utf-8'),
+      ) as { userId: string; emailAtBackup: string; user: { id: string; email: string } }
+      expect(rehomed.emailAtBackup).toBe(result.email)
+      expect(rehomed.user.email).toBe(result.email)
+      expect(rehomed.userId).toBe(origId)
+      expect(rehomed.user.id).toBe(origId)
+
+      await expect(svc.backupStatus(origId)).resolves.toMatchObject({
+        exists: true,
+        userId: origId,
+        emailAtBackup: result.email,
+      })
     })
 
     it('uses an explicit restoreEmail instead of the manifest/fallback allocation', async () => {
@@ -1189,13 +1221,62 @@ describe('user backup round-trip', () => {
       const result = await svc.restoreUser(origId, requested.toUpperCase())
       expect(result.userId).toBe(origId)
       expect(result.email).toBe(requested)
-      // S3 prefix/bytes still come from the manifest backup
-      expect(result.prefix).toBe(prefix)
+      // the snapshot was re-homed to the requested address; restoredFrom keeps the source
+      const restoredPrefix = backupPrefix(requested, origId)
+      expect(result.prefix).toBe(restoredPrefix)
+      expect(result.reassignmentError).toBeUndefined()
       expect(result.restoredFrom).toMatchObject({ emailAtBackup: origEmail, prefix })
       const restored = await userRepo.findOneOrFail({ where: { id: origId } })
       expect(restored.email).toBe(requested)
       const holder = await userRepo.findOneOrFail({ where: { id: other.id } })
       expect(holder.email).toBe(origEmail)
+
+      await expect(fake.listKeys(prefix)).resolves.toEqual([])
+      const file = await fileRepo.findOneOrFail({ where: { userId: origId } })
+      const rehomed = JSON.parse(
+        (await fake.getBuffer(manifestKey(requested, origId))).toString('utf-8'),
+      ) as { userId: string; emailAtBackup: string; user: { id: string; email: string } }
+      expect(rehomed.emailAtBackup).toBe(requested)
+      expect(rehomed.user.email).toBe(requested)
+      expect(rehomed.userId).toBe(origId)
+      expect(rehomed.user.id).toBe(origId)
+      expect(fake.objects.has(originalKey(requested, origId, file.id, 'bin'))).toBe(true)
+    })
+
+    it('keeps the source prefix and reports reassignmentError when re-home fails', async () => {
+      const origEmail = `rehome-fail-${randomUUID()}@example.com`
+      const { user: orig, prefix } = await backupSingle(origEmail)
+      const origId = orig.id
+      await shareRepo.delete({ userId: origId })
+      await personRepo.delete({ userId: origId })
+      await assetRepo.delete({ userId: origId })
+      await fileRepo.delete({ userId: origId })
+      await userRepo.delete(origId)
+
+      await userRepo.save(
+        userRepo.create({
+          email: origEmail,
+          role: 'user',
+          passwordHash: 'other-hash',
+          displayName: 'Email Reuse',
+        }),
+      )
+
+      fake.failNextCopies = 1
+      const result = await svc.restoreUser(origId)
+      // the restore itself still succeeded under the fallback email
+      expect(result.userId).toBe(origId)
+      expect(result.email).toMatch(/^restored-\d+-.*@example\.com$/)
+      expect(result.reassignmentError).toBe('injected copyKey failure')
+      expect(result.prefix).toBe(prefix)
+      expect(result.restoredFrom.prefix).toBe(prefix)
+      const restored = await userRepo.findOneOrFail({ where: { id: origId } })
+      expect(restored.email).toBe(result.email)
+      // source prefix intact (bytes + manifest), nothing written under the fallback prefix
+      const keptKeys = await fake.listKeys(prefix)
+      expect(keptKeys.some((k) => k.endsWith('manifest.json'))).toBe(true)
+      expect(keptKeys.length).toBe(2)
+      await expect(fake.listKeys(backupPrefix(result.email, origId))).resolves.toEqual([])
     })
 
     it('rejects an explicit restoreEmail owned by another live user (409 email-taken)', async () => {
