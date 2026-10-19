@@ -1,11 +1,4 @@
-import {
-  Entity,
-  PrimaryColumn,
-  Column,
-  CreateDateColumn,
-  ManyToOne,
-  JoinColumn,
-} from 'typeorm'
+import { Entity, PrimaryColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm'
 import { UploadSession } from './upload-session.entity'
 
 // One row per received chunk; PK (sessionId, partIndex) makes an identical re-PUT idempotent
