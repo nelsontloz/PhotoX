@@ -7,6 +7,8 @@ const api = vi.hoisted(() => ({
   listAdminUsers: vi.fn(),
   deleteAdminUser: vi.fn(),
   pollAdminUserDelete: vi.fn(),
+  updateAdminUser: vi.fn(),
+  syncAdminUserBackup: vi.fn(),
 }))
 
 vi.mock('../../api/admin', () => api)
@@ -57,10 +59,62 @@ function confirmWith(text: string) {
   fireEvent.click(button('Delete user'))
 }
 
+const nameInput = () => screen.getByLabelText<HTMLInputElement>('Name')
+const emailInput = () => screen.getByLabelText<HTMLInputElement>('Email')
+const passwordInput = () => screen.getByLabelText<HTMLInputElement>('New password')
+const saveButton = () => button('Save changes')
+
+async function openEditDialogFor(name: string) {
+  fireEvent.click(button(`Edit ${name}`))
+  await screen.findByRole('dialog', { name: 'Edit user account' })
+}
+
+/** A save that has been accepted but not answered yet — the long backup-move window. */
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+const updatedAda = {
+  ...ada,
+  displayName: 'Ada Byron',
+  updatedAt: '2026-10-05T00:00:00.000Z',
+}
+
+const updatedGrace = {
+  ...grace,
+  email: 'grace@new.example',
+  updatedAt: '2026-10-05T00:00:00.000Z',
+}
+
+const selfAdmin = {
+  id: 'u-1',
+  email: 'ada@example.com',
+  role: 'admin' as const,
+  displayName: 'Ada Lovelace',
+  createdAt: '2026-01-02T00:00:00.000Z',
+  updatedAt: '2026-01-02T00:00:00.000Z',
+}
+
 beforeEach(() => {
   api.listAdminUsers.mockResolvedValue(page())
   api.deleteAdminUser.mockResolvedValue({ jobId: 'job-1' })
   api.pollAdminUserDelete.mockResolvedValue(undefined)
+  api.updateAdminUser.mockResolvedValue({
+    user: updatedAda,
+    backup: { synced: true, moved: false, to: 'backups/ada%40example.com__u-1/' },
+  })
+  api.syncAdminUserBackup.mockResolvedValue({
+    synced: true,
+    moved: true,
+    from: 'backups/grace%40example.com__u-2/',
+    to: 'backups/grace%40new.example__u-2/',
+  })
   useAuthStore.setState({ ...idleAuth })
 })
 
@@ -279,6 +333,261 @@ describe('UsersSection delete actions', () => {
 
     expect(
       await screen.findByText('That user no longer exists. Close this and refresh the list.'),
+    ).toBeTruthy()
+  })
+})
+
+describe('UsersSection edit actions', () => {
+  it('renders an Edit action beside Delete and opens the dialog prefilled', async () => {
+    render(<UsersSection />)
+    await screen.findByText('Ada Lovelace')
+
+    expect(button('Edit Ada Lovelace').disabled).toBe(false)
+    await openEditDialogFor('Ada Lovelace')
+
+    expect(nameInput().value).toBe('Ada Lovelace')
+    expect(emailInput().value).toBe('ada@example.com')
+    expect(passwordInput().value).toBe('')
+    expect(passwordInput().placeholder).toBe('Leave blank to keep current password')
+  })
+
+  it('keeps Save disabled until a field really changes', async () => {
+    render(<UsersSection />)
+    await screen.findByText('Ada Lovelace')
+    await openEditDialogFor('Ada Lovelace')
+
+    expect(saveButton().disabled).toBe(true)
+
+    // whitespace around the name and a differently-cased email are not changes
+    fireEvent.change(nameInput(), { target: { value: ' Ada Lovelace ' } })
+    fireEvent.change(emailInput(), { target: { value: 'ADA@example.com' } })
+    expect(saveButton().disabled).toBe(true)
+
+    fireEvent.change(passwordInput(), { target: { value: 'short' } })
+    expect(saveButton().disabled).toBe(true)
+    expect(screen.getByText('Use at least 8 characters.')).toBeTruthy()
+
+    fireEvent.change(passwordInput(), { target: { value: '' } })
+    fireEvent.change(nameInput(), { target: { value: 'Ada L.' } })
+    expect(saveButton().disabled).toBe(false)
+    expect(api.updateAdminUser).not.toHaveBeenCalled()
+  })
+
+  it('sends only the changed fields and refreshes the list', async () => {
+    render(<UsersSection />)
+    await screen.findByText('Ada Lovelace')
+    expect(api.listAdminUsers).toHaveBeenCalledTimes(1)
+
+    await openEditDialogFor('Ada Lovelace')
+    fireEvent.change(nameInput(), { target: { value: 'Ada Byron' } })
+    fireEvent.click(saveButton())
+
+    await waitFor(() =>
+      expect(api.updateAdminUser).toHaveBeenCalledWith('u-1', { displayName: 'Ada Byron' }),
+    )
+    await waitFor(() => expect(api.listAdminUsers).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText('Updated Ada Byron.')).toBeTruthy()
+    expect(screen.queryByRole('dialog', { name: 'Edit user account' })).toBeNull()
+  })
+
+  it('sends the new password and email when both are typed', async () => {
+    render(<UsersSection />)
+    await screen.findByText('Grace Hopper')
+    await openEditDialogFor('Grace Hopper')
+
+    fireEvent.change(emailInput(), { target: { value: 'Grace@New.Example' } })
+    fireEvent.change(passwordInput(), { target: { value: 'correcthorse' } })
+    fireEvent.click(saveButton())
+
+    await waitFor(() =>
+      expect(api.updateAdminUser).toHaveBeenCalledWith('u-2', {
+        email: 'Grace@New.Example',
+        password: 'correcthorse',
+      }),
+    )
+  })
+
+  it('shows the backup-move progress and refuses to close while the save is in flight', async () => {
+    const pending = deferred<{ user: typeof updatedGrace; backup: unknown }>()
+    api.updateAdminUser.mockReturnValue(pending.promise)
+
+    render(<UsersSection />)
+    await screen.findByText('Grace Hopper')
+    await openEditDialogFor('Grace Hopper')
+
+    fireEvent.change(emailInput(), { target: { value: 'grace@new.example' } })
+    fireEvent.click(saveButton())
+
+    expect(await screen.findByText('Moving the S3 backup to the new address…')).toBeTruthy()
+    expect(button('Updating…').disabled).toBe(true)
+    expect(button('Cancel').disabled).toBe(true)
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.getByRole('dialog', { name: 'Edit user account' })).toBeTruthy()
+
+    pending.resolve({
+      user: updatedGrace,
+      backup: {
+        synced: true,
+        moved: true,
+        from: 'backups/grace%40example.com__u-2/',
+        to: 'backups/grace%40new.example__u-2/',
+      },
+    })
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Edit user account' })).toBeNull(),
+    )
+    expect(
+      await screen.findByText('Updated Grace Hopper. S3 backup moved to the new address.'),
+    ).toBeTruthy()
+  })
+
+  it('warns that the account changed but the backup did not, and retries the move', async () => {
+    api.updateAdminUser.mockResolvedValue({
+      user: updatedGrace,
+      backup: {
+        synced: false,
+        moved: false,
+        to: 'backups/grace%40new.example__u-2/',
+        error: 'connect ECONNREFUSED 127.0.0.1:4566',
+      },
+    })
+
+    render(<UsersSection />)
+    await screen.findByText('Grace Hopper')
+    await openEditDialogFor('Grace Hopper')
+
+    fireEvent.change(emailInput(), { target: { value: 'grace@new.example' } })
+    fireEvent.click(saveButton())
+
+    const warning = await screen.findByRole('alert')
+    expect(warning.textContent).toContain(
+      "Grace Hopper's account was updated, but the S3 backup was not moved.",
+    )
+    expect(warning.textContent).toContain('connect ECONNREFUSED 127.0.0.1:4566')
+    // the dialog is done — the account itself was saved. No toast: the persistent box is the
+    // message, and a backdrop that fades in three seconds would understate it.
+    expect(screen.queryByRole('dialog', { name: 'Edit user account' })).toBeNull()
+    expect(screen.queryByText(/^Updated /)).toBeNull()
+
+    fireEvent.click(button('Retry move'))
+    await waitFor(() => expect(api.syncAdminUserBackup).toHaveBeenCalledWith('u-2'))
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+    expect(await screen.findByText('S3 backup moved for grace@new.example.')).toBeTruthy()
+  })
+
+  it('reports a retry that still cannot reach storage without losing the warning', async () => {
+    api.updateAdminUser.mockResolvedValue({
+      user: updatedGrace,
+      backup: {
+        synced: false,
+        moved: false,
+        to: 'backups/grace%40new.example__u-2/',
+        error: 'S3 down',
+      },
+    })
+    api.syncAdminUserBackup.mockResolvedValue({
+      synced: false,
+      moved: false,
+      to: 'backups/grace%40new.example__u-2/',
+      error: 'still down',
+    })
+
+    render(<UsersSection />)
+    await screen.findByText('Grace Hopper')
+    await openEditDialogFor('Grace Hopper')
+    fireEvent.change(emailInput(), { target: { value: 'grace@new.example' } })
+    fireEvent.click(saveButton())
+
+    await screen.findByRole('alert')
+    fireEvent.click(button('Retry move'))
+
+    expect(await screen.findByText('still down')).toBeTruthy()
+    expect(screen.getByRole('alert')).toBeTruthy()
+  })
+
+  it('treats a missing backup as nothing to move, not a failure', async () => {
+    api.updateAdminUser.mockResolvedValue({
+      user: updatedGrace,
+      backup: {
+        synced: false,
+        moved: false,
+        to: 'backups/grace%40new.example__u-2/',
+        reason: 'no-backup',
+      },
+    })
+
+    render(<UsersSection />)
+    await screen.findByText('Grace Hopper')
+    await openEditDialogFor('Grace Hopper')
+
+    fireEvent.change(emailInput(), { target: { value: 'grace@new.example' } })
+    fireEvent.click(saveButton())
+
+    expect(await screen.findByText(/No S3 backup found, so nothing was moved\./)).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(api.syncAdminUserBackup).not.toHaveBeenCalled()
+  })
+
+  it('keeps the backup warning accurate when only the name changed', async () => {
+    api.updateAdminUser.mockResolvedValue({
+      user: { ...grace, displayName: 'Grace B.', updatedAt: '2026-10-05T00:00:00.000Z' },
+      backup: {
+        synced: false,
+        moved: false,
+        to: 'backups/grace%40example.com__u-2/',
+        error: 'S3 down',
+      },
+    })
+
+    render(<UsersSection />)
+    await screen.findByText('Grace Hopper')
+    await openEditDialogFor('Grace Hopper')
+
+    fireEvent.change(nameInput(), { target: { value: 'Grace B.' } })
+    fireEvent.click(saveButton())
+
+    const warning = await screen.findByRole('alert')
+    expect(warning.textContent).toContain(
+      "Grace B.'s account was updated, but its S3 backup was left behind.",
+    )
+    expect(warning.textContent).not.toContain('still under the old address')
+  })
+
+  it('maps a 409 to a plain sentence and keeps the dialog open', async () => {
+    api.updateAdminUser.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 409, data: {} },
+      message: 'Conflict',
+    })
+
+    render(<UsersSection />)
+    await screen.findByText('Grace Hopper')
+    await openEditDialogFor('Grace Hopper')
+
+    fireEvent.change(emailInput(), { target: { value: 'ada@example.com' } })
+    fireEvent.click(saveButton())
+
+    expect(await screen.findByText('That email is already in use.')).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: 'Edit user account' })).toBeTruthy()
+    expect(api.listAdminUsers).toHaveBeenCalledTimes(1)
+  })
+
+  it('warns the signed-in admin only when their own email or password changes', async () => {
+    useAuthStore.setState({ ...idleAuth, user: selfAdmin })
+    render(<UsersSection />)
+    await screen.findByText('Ada Lovelace')
+    await openEditDialogFor('Ada Lovelace')
+
+    fireEvent.change(nameInput(), { target: { value: 'Ada L.' } })
+    expect(screen.queryByText(/ends this session on every device/)).toBeNull()
+
+    fireEvent.change(emailInput(), { target: { value: 'ada.l@example.com' } })
+    expect(await screen.findByText(/ends this session on every device/)).toBeTruthy()
+    expect(
+      screen.getByText(
+        "Changing the email also moves this account's S3 backup to the new address. A large library can take a few minutes.",
+      ),
     ).toBeTruthy()
   })
 })

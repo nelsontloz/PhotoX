@@ -33,5 +33,6 @@ import { UserBackupService } from './user-backup.service'
   ],
   controllers: [BackupController],
   providers: [S3BackupService, UserBackupService],
+  exports: [UserBackupService],
 })
 export class BackupModule {}

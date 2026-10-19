@@ -1,23 +1,33 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import type { Repository } from 'typeorm'
+import { backupPrefix, normalizeEmail } from '@photox/shared-config'
 import type {
+  AdminUserBackupSync,
   AdminUserDeleteResponse,
   AdminUserDeleteState,
   AdminUserDeleteStatus,
   AdminUserListResponse,
   AdminUserRow,
   AdminUserSortField,
+  AdminUserUpdateResponse,
 } from '@photox/shared-types'
+import { isPostgresUniqueViolation } from '../../assets/assets.service'
+import { UserBackupService } from '../../backup/user-backup.service'
 import { User } from '../entities/user.entity'
+import { AuthService } from '../auth.service'
+import { hashPassword } from '../password'
 import { BullMqService } from '../../queue/bullmq.service'
 import { USER_DELETE_QUEUE, UserDeleteService, userDeleteJobId } from './user-delete.service'
+import type { UpdateAdminUserDto } from './dto/update-admin-user.body.dto'
 
 interface ListAdminUsersParams {
   limit: number
@@ -28,12 +38,29 @@ interface ListAdminUsersParams {
   role?: 'user' | 'admin'
 }
 
+/**
+ * `backupPrefix` → `resolveBackupPrefix` → `loadEnv()` can throw (zod env error,
+ * empty email/userId, empty userId). A fallback `to` must never turn an already
+ * applied edit into a 500, so a failed computation degrades to `''`.
+ */
+function safeBackupPrefix(email: string, userId: string): string {
+  try {
+    return backupPrefix(email, userId)
+  } catch {
+    return ''
+  }
+}
+
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name)
+
   constructor(
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     private readonly bullMq: BullMqService,
     private readonly deletes: UserDeleteService,
+    private readonly auth: AuthService,
+    private readonly backups: UserBackupService,
   ) {}
 
   async listUsers(params: ListAdminUsersParams): Promise<AdminUserListResponse> {
@@ -62,6 +89,152 @@ export class AdminService {
     }))
 
     return { items, total, limit: params.limit, offset: params.offset }
+  }
+
+  /**
+   * Admin account edit. Only actually-changed fields are applied: an identical
+   * resubmission (email compared normalized, displayName trimmed) is a 400 no-op
+   * instead of a silent session wipe + S3 prefix move. Email/password changes
+   * revoke every session (the guard's tokensValidAfter floor kills live access
+   * tokens too); a displayName change never does. The row save and the revocation
+   * commit in ONE transaction, so a failed revocation leaves the edit unapplied
+   * and the admin's plain retry re-applies it. The S3 backup prefix is keyed by
+   * email, so it is relocated after the commit — a failed move never fails the
+   * edit (the response carries the error and POST :id/backup-sync retries).
+   */
+  async updateUser(
+    targetUserId: string,
+    patch: UpdateAdminUserDto,
+    requesterId: string,
+  ): Promise<AdminUserUpdateResponse> {
+    const user = await this.userRepo.findOne({ where: { id: targetUserId } })
+    if (!user) throw new NotFoundException('User not found')
+
+    const changedFields: ('displayName' | 'email' | 'password')[] = []
+    let newDisplayName: string | undefined
+    let newEmail: string | undefined
+    let newPassword: string | undefined
+
+    if (patch.displayName !== undefined) {
+      const value = patch.displayName.trim()
+      if (value.length === 0) {
+        throw new BadRequestException('displayName must not be blank')
+      }
+      if (value !== user.displayName) {
+        newDisplayName = value
+        changedFields.push('displayName')
+      }
+    }
+    if (patch.email !== undefined) {
+      // admin-set addresses are stored normalized; compare normalized so the same
+      // address in different casing is a no-op rather than a needless revoke/move
+      const value = normalizeEmail(patch.email)
+      if (value !== normalizeEmail(user.email)) {
+        newEmail = value
+        changedFields.push('email')
+      }
+    }
+    // passwords are hashed, so there is no value to compare against — always apply
+    if (patch.password !== undefined) {
+      newPassword = patch.password
+      changedFields.push('password')
+    }
+    if (changedFields.length === 0) throw new BadRequestException('No changes to apply')
+
+    if (newEmail !== undefined) {
+      // LOWER() on both sides: registration stores raw emails while admin-set
+      // addresses are normalized to lowercase, and the unique index on users.email
+      // is case-sensitive — an exact-match pre-check would let `Taken@Example.com`
+      // coexist with `taken@example.com`, two accounts colliding on the normalized
+      // address that locateBackup matches on. The target's own row is excluded so
+      // re-submitting the same address in another casing stays a no-op.
+      // ponytail: LOWER(email) cannot use the plain unique index, so this is a
+      // sequential scan — acceptable while the users table is small; upgrade path is
+      // a functional index, i.e. CREATE UNIQUE INDEX ... ON users (LOWER(email)).
+      const holder = await this.userRepo
+        .createQueryBuilder('u')
+        .where('LOWER(u.email) = LOWER(:email)', { email: newEmail })
+        .andWhere('u.id != :id', { id: targetUserId })
+        .getOne()
+      if (holder) throw new ConflictException('Email already registered')
+    }
+
+    if (newDisplayName !== undefined) user.displayName = newDisplayName
+    if (newEmail !== undefined) user.email = newEmail
+    if (newPassword !== undefined) user.passwordHash = await hashPassword(newPassword)
+    // The credential change and the session revocation are ONE transaction: a
+    // committed save with a failed revocation would leave the new credential live
+    // while old sessions survive, and the admin's retry would be a 400 no-op (no
+    // recovery path). Atomicity rolls the edit back instead, so a plain retry
+    // re-applies it. A displayName-only change never revokes.
+    const revoke = newEmail !== undefined || newPassword !== undefined
+    try {
+      await this.userRepo.manager.transaction(async (m) => {
+        await m.save(User, user)
+        if (revoke) await this.auth.revokeAllSessions(user.id, m)
+      })
+    } catch (err) {
+      // mapped OUTSIDE the transaction so a unique-violation race still answers 409
+      // pre-check races a concurrent registration on the unique email index
+      if (isPostgresUniqueViolation(err)) {
+        throw new ConflictException('Email already registered')
+      }
+      throw err
+    }
+
+    // re-read so the response carries the post-revocation row (tokensValidAfter bump)
+    const fresh = (await this.userRepo.findOne({ where: { id: user.id } })) ?? user
+
+    let backup: AdminUserBackupSync
+    try {
+      backup = await this.backups.moveBackupPrefix(fresh)
+    } catch (err) {
+      // never fail the edit on backup storage — the UI can retry the move.
+      // moveBackupPrefix itself never throws, but the fallback must not either:
+      // backupPrefix can throw (loadEnv/empty email), so compute `to` defensively.
+      backup = {
+        synced: false,
+        moved: false,
+        to: safeBackupPrefix(fresh.email, fresh.id),
+        error: err instanceof Error ? err.message : String(err),
+      }
+    }
+
+    // never log the password value or any hash — field names only
+    this.logger.log(`admin ${requesterId} updated user ${fresh.id}: ${changedFields.join(',')}`)
+
+    return {
+      user: {
+        id: fresh.id,
+        displayName: fresh.displayName,
+        email: fresh.email,
+        role: fresh.role,
+        createdAt: fresh.createdAt.toISOString(),
+        updatedAt: fresh.updatedAt.toISOString(),
+      },
+      backup,
+    }
+  }
+
+  /**
+   * Idempotent "retry the backup move" for an account edit that could not reach S3.
+   * moveBackupPrefix never throws: no existing prefix reports `{ synced: true }`, a
+   * storage failure reports `{ synced: false, error }` — and if it ever did throw,
+   * the retry endpoint reports the failure rather than 500ing.
+   */
+  async syncUserBackup(targetUserId: string): Promise<AdminUserBackupSync> {
+    const user = await this.userRepo.findOne({ where: { id: targetUserId } })
+    if (!user) throw new NotFoundException('User not found')
+    try {
+      return await this.backups.moveBackupPrefix(user)
+    } catch (err) {
+      return {
+        synced: false,
+        moved: false,
+        to: safeBackupPrefix(user.email, user.id),
+        error: err instanceof Error ? err.message : String(err),
+      }
+    }
   }
 
   /**

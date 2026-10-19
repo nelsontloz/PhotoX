@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import {
   FaArrowDown,
   FaArrowUp,
+  FaArrowsRotate,
   FaArrowsUpDown,
   FaCircleExclamation,
   FaDatabase,
   FaMagnifyingGlass,
+  FaPenToSquare,
   FaSpinner,
   FaTrashCan,
   FaTriangleExclamation,
@@ -25,9 +27,11 @@ import {
   deleteAdminUser,
   listAdminUsers,
   pollAdminUserDelete,
+  syncAdminUserBackup,
   type ListAdminUsersParams,
 } from '../../api/admin'
 import { RoleBadge } from './shared'
+import { EditUserDialog, backupRetryErrorMessage, type UserEditOutcome } from './edit-user-dialog'
 
 // --- users ------------------------------------------------------------------------------
 
@@ -216,6 +220,93 @@ function DeleteUserDialog({
   )
 }
 
+// --- post-edit backup warning ------------------------------------------------------------
+// An email edit relocates the S3 backup inline. When storage is unreachable the account edit
+// still stands and only the move failed, so the dialog closes (its job is done) and this box
+// stays put until the move lands or the admin dismisses it. The storage error is shown
+// verbatim — it is the one detail the admin can act on.
+
+interface BackupMoveWarning {
+  userId: string
+  displayName: string
+  email: string
+  to: string
+  error: string
+  /** An email change wants the whole prefix relocated; any other edit only syncs the manifest. */
+  emailChanged: boolean
+}
+
+function BackupMoveWarningBox({
+  warning,
+  retrying,
+  onRetry,
+  onDismiss,
+}: {
+  warning: BackupMoveWarning
+  retrying: boolean
+  onRetry: () => void
+  onDismiss: () => void
+}) {
+  return (
+    <div
+      role="alert"
+      className="mb-4 rounded-xl border border-status-error/40 bg-status-error/10 p-3 sm:p-4"
+    >
+      <div className="flex items-start gap-2.5">
+        <FaCircleExclamation className="mt-0.5 shrink-0 text-status-error" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold text-on-surface">
+            {warning.emailChanged
+              ? `${warning.displayName}'s account was updated, but the S3 backup was not moved.`
+              : `${warning.displayName}'s account was updated, but its S3 backup was left behind.`}
+          </p>
+          <p className="mt-1 text-[11px] text-on-surface-variant">
+            {warning.emailChanged
+              ? `The account, library, albums and shares are all on ${warning.email}. Only the backup copy is still under the old address.`
+              : 'The live account, library and shares are current; the backup copy on S3 still holds the old details.'}
+          </p>
+          {warning.emailChanged && (
+            <p className="mt-1.5 break-all font-mono text-[10px] text-outline">
+              Target: {warning.to}
+            </p>
+          )}
+          <p className="mt-1.5 break-words rounded-lg bg-surface-container px-2.5 py-2 font-mono text-[10px] text-status-error">
+            {warning.error}
+          </p>
+          {retrying && (
+            <p
+              role="status"
+              className="mt-2 flex items-center gap-2 text-[11px] text-on-surface-variant"
+            >
+              <FaSpinner className="animate-spin" aria-hidden="true" />
+              Moving the backup — this can take a few minutes.
+            </p>
+          )}
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={onRetry}
+              disabled={retrying}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary-container px-2.5 py-1.5 text-[11px] font-semibold text-on-primary-container transition-colors hover:bg-primary-container/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <FaArrowsRotate className="text-[11px]" aria-hidden="true" />
+              Retry move
+            </button>
+            <button
+              type="button"
+              onClick={onDismiss}
+              disabled={retrying}
+              className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-on-surface-variant transition-colors hover:text-on-surface disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function UsersSection() {
   const [searchInput, setSearchInput] = useState('')
   const [debouncedQ, setDebouncedQ] = useState('')
@@ -226,6 +317,9 @@ export function UsersSection() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [target, setTarget] = useState<AdminUserRow | null>(null)
+  const [editing, setEditing] = useState<AdminUserRow | null>(null)
+  const [backupWarning, setBackupWarning] = useState<BackupMoveWarning | null>(null)
+  const [retryingId, setRetryingId] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ id: number; text: string } | null>(null)
   const currentUserId = useAuthStore((s) => s.user?.id)
 
@@ -281,6 +375,83 @@ export function UsersSection() {
     return null
   }
 
+  // Editing is never blocked by the delete guards (self and last-admin are delete-only), but a
+  // backup move already in flight for a row would put a stale identity in the dialog.
+  const editGuardFor = (u: AdminUserRow): string | null =>
+    retryingId === u.id ? "Moving this user's S3 backup — wait for it to finish." : null
+
+  /** A save is done: the row is live, so refresh the list and report the backup outcome. */
+  const onEdited = (outcome: UserEditOutcome) => {
+    const { user: updated, backup, emailChanged, signedOut } = outcome
+    setEditing(null)
+    setVersion((v) => v + 1)
+
+    // Applied, but storage refused the sync: the failure lives outside the dialog so it
+    // survives until the admin actually retries it.
+    if (!backup.synced && backup.reason !== 'no-backup') {
+      setBackupWarning({
+        userId: updated.id,
+        displayName: updated.displayName,
+        email: updated.email,
+        to: backup.to,
+        error: backup.error ?? 'The backup store did not respond.',
+        emailChanged,
+      })
+      return
+    }
+
+    if (signedOut) {
+      // Every session for this user was revoked — including this one. The next API call
+      // fails its refresh and the app returns to the sign-in screen.
+      setNotice({ id: Date.now(), text: 'Your account was updated — sign in again.' })
+      return
+    }
+
+    const backupNote = !emailChanged
+      ? ''
+      : backup.reason === 'no-backup'
+        ? ' No S3 backup found, so nothing was moved.'
+        : backup.moved
+          ? ' S3 backup moved to the new address.'
+          : ' S3 backup was already at the new address.'
+    setNotice({ id: Date.now(), text: `Updated ${updated.displayName}.${backupNote}` })
+  }
+
+  const retryBackupMove = async () => {
+    const warning = backupWarning
+    if (!warning || retryingId != null) return
+    setRetryingId(warning.userId)
+    try {
+      const res = await syncAdminUserBackup(warning.userId)
+      if (res.synced) {
+        setBackupWarning(null)
+        setNotice({
+          id: Date.now(),
+          text: res.moved
+            ? `S3 backup moved for ${warning.email}.`
+            : `Backup for ${warning.email} is up to date.`,
+        })
+        return
+      }
+      if (res.reason === 'no-backup') {
+        setBackupWarning(null)
+        setNotice({
+          id: Date.now(),
+          text: `No S3 backup found for ${warning.email} — nothing to move.`,
+        })
+        return
+      }
+      // Still no storage: keep the box up with the freshest detail.
+      setBackupWarning((prev) =>
+        prev ? { ...prev, to: res.to, error: res.error ?? prev.error } : prev,
+      )
+    } catch (err: unknown) {
+      setBackupWarning((prev) => (prev ? { ...prev, error: backupRetryErrorMessage(err) } : prev))
+    } finally {
+      setRetryingId(null)
+    }
+  }
+
   const onSort = (field: AdminUserSortField) => {
     setSort((prev) => {
       if (prev.field === field) {
@@ -294,7 +465,7 @@ export function UsersSection() {
     <AdminSection
       card={false}
       title="Users Management"
-      subtitle="Manage roles for accounts on this instance"
+      subtitle="Manage accounts on this instance"
       icon={
         <span className="w-8 h-8 rounded-lg bg-primary-container/20 flex items-center justify-center">
           <FaUserShield className="text-primary text-sm" />
@@ -317,6 +488,15 @@ export function UsersSection() {
         </div>
       }
     >
+      {backupWarning && (
+        <BackupMoveWarningBox
+          warning={backupWarning}
+          retrying={retryingId != null}
+          onRetry={() => void retryBackupMove()}
+          onDismiss={() => setBackupWarning(null)}
+        />
+      )}
+
       {loading ? (
         <LoadingState className="flex items-center justify-center py-24" />
       ) : error ? (
@@ -343,6 +523,7 @@ export function UsersSection() {
             <tbody className="divide-y divide-border-dark">
               {items.map((u) => {
                 const guard = guardFor(u)
+                const editGuard = editGuardFor(u)
                 return (
                   <tr key={u.id} className="hover:bg-surface-container/50 transition-colors">
                     <td className="py-3.5 px-4">
@@ -364,7 +545,25 @@ export function UsersSection() {
                       {new Date(u.createdAt).toLocaleDateString()}
                     </td>
                     <td className="py-3.5 px-4">
-                      <div className="flex justify-end">
+                      {/* Destructive stays last: Edit reads as the neutral action, Delete as
+                          the one that removes the account. */}
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setEditing(u)}
+                          disabled={editGuard != null}
+                          title={editGuard ?? `Edit ${u.displayName}`}
+                          aria-label={`Edit ${u.displayName}`}
+                          className={cx(
+                            'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors',
+                            editGuard != null
+                              ? 'text-outline/60 cursor-not-allowed'
+                              : 'text-primary/80 hover:text-primary hover:bg-primary/10',
+                          )}
+                        >
+                          <FaPenToSquare className="text-xs" aria-hidden="true" />
+                          Edit
+                        </button>
                         <button
                           type="button"
                           onClick={() => setTarget(u)}
@@ -416,6 +615,15 @@ export function UsersSection() {
       )}
 
       {notice && <AdminToast key={notice.id} message={notice.text} />}
+
+      {editing && (
+        <EditUserDialog
+          user={editing}
+          isSelf={currentUserId != null && editing.id === currentUserId}
+          onClose={() => setEditing(null)}
+          onDone={onEdited}
+        />
+      )}
 
       {target && (
         <DeleteUserDialog

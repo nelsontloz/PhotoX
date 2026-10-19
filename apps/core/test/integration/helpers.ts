@@ -68,6 +68,12 @@ export interface MockUser {
   role: 'user' | 'admin'
 }
 
+/** Provider replaced wholesale before compile — the real class is never constructed. */
+export interface ProviderOverride {
+  token: unknown
+  value: unknown
+}
+
 export interface ApiTestApp {
   app: INestApplication
   dataSource: DataSource
@@ -127,6 +133,8 @@ export async function createApiTestApp(opts?: {
   storageDir?: string
   /** stubs TextEncodeService so search specs never need the real ONNX text tower */
   encodeQuery?: (q: string) => Promise<number[]>
+  /** replaces providers before compile (e.g. UserBackupService/S3BackupService for admin specs) */
+  overrides?: ProviderOverride[]
 }): Promise<ApiTestApp> {
   const mockUser = opts?.mockUser === undefined ? DEFAULT_MOCK_USER : opts.mockUser
   const { pgHost, pgPort } = await setupTestInfra()
@@ -174,6 +182,10 @@ export async function createApiTestApp(opts?: {
 
     if (opts?.encodeQuery) {
       builder.overrideProvider(TextEncodeService).useValue({ encode: opts.encodeQuery })
+    }
+
+    for (const override of opts?.overrides ?? []) {
+      builder.overrideProvider(override.token).useValue(override.value)
     }
 
     if (mockUser !== null) {

@@ -1,10 +1,13 @@
 import { api } from './client'
 import { sleep } from '../lib/sleep'
 import type {
+  AdminUserBackupSync,
   AdminUserDeleteResponse,
   AdminUserDeleteStatus as AdminUserDeleteBackendStatus,
   AdminUserListResponse,
   AdminUserSortField,
+  AdminUserUpdateRequest,
+  AdminUserUpdateResponse,
   AdminAssetCountsResponse,
   AdminLibraryStatsResponse,
   AdminReprocessThumbnailsResponse,
@@ -391,6 +394,40 @@ export async function getBackupOverview(): Promise<BackupOverviewRow[]> {
   const { data } = await api.get<BackupOverviewRow[]>('/v1/admin/backups/overview', {
     timeout: BACKUP_STATUS_TIMEOUT_MS,
   })
+  return data
+}
+
+// --- admin user account edits ----------------------------------------------------------
+// PATCH /v1/admin/users/:id applies only the fields that differ (the core rejects an
+// unchanged resubmission with 400) and answers with the updated row plus the backup-sync
+// outcome. An email change relocates the user's S3 backup inline — copy every stale
+// prefix forward, verify the new manifest, then drop the old keys — so that one call
+// outlives the client's 10s default on a multi-GB library. A name- or password-only edit
+// never relocates a prefix, so it keeps the default timeout and fails fast if the API hangs.
+
+export async function updateAdminUser(
+  id: string,
+  payload: AdminUserUpdateRequest,
+): Promise<AdminUserUpdateResponse> {
+  const { data } = await api.patch<AdminUserUpdateResponse>(
+    `/v1/admin/users/${encodeURIComponent(id)}`,
+    payload,
+    payload.email === undefined ? {} : { timeout: BACKUP_TIMEOUT_MS },
+  )
+  return data
+}
+
+/**
+ * POST :id/backup-sync — idempotent retry for a post-edit move that could not reach S3.
+ * Never 5xx: storage trouble comes back as `{ synced: false, error }`, so the caller
+ * reports the outcome instead of catching a failure. Same inline-copy budget as a backup.
+ */
+export async function syncAdminUserBackup(id: string): Promise<AdminUserBackupSync> {
+  const { data } = await api.post<AdminUserBackupSync>(
+    `/v1/admin/users/${encodeURIComponent(id)}/backup-sync`,
+    undefined,
+    { timeout: BACKUP_TIMEOUT_MS },
+  )
   return data
 }
 
