@@ -937,19 +937,15 @@ Then(
 // --- previous-account backup merge ---------------------------------------------------------
 // A deleted account's snapshot is matched to the live account that re-registered its email.
 // The live row keeps its own Back up / Delete pair while each matched snapshot renders in a
-// sub-row table under it; merging copies the source library into the live account while the
-// S3 snapshot itself stays untouched, and the ledger rejects a repeat.
+// sub-row table under it; merging copies the source library into the live account and moves
+// the S3 snapshot into the live account's prefix (deleting the source prefix), and the ledger
+// rejects a repeat.
 
 interface MergedOverviewRow {
   userId: string
-  email: string
-  totalAssets?: number
-  legacyBackups?: {
-    userId: string
-    assets?: number
-    backedUpAt?: string | null
-    mergedAt?: string | null
-  }[]
+  exists: boolean
+  backedUpAssets: number
+  legacyBackups?: { userId: string; assets?: number }[]
 }
 
 function escapeRegExp(value: string): string {
@@ -1017,12 +1013,12 @@ When('I merge the matched backup into the live account', async ({ page, ctx, $te
 
 Then('the live account owns the backup library', async ({ request, ctx }) => {
   const state = deleteState(ctx)
-  const victim = requireVictim(ctx)
   const admin = requireStateAdmin(ctx)
   const reregistered = state.reregistered
   if (!reregistered) throw new Error('re-register the victim email first')
-  // one row per live email: the merged snapshot is reported on the live account's row as a
-  // legacy backup carrying the source account id and its merge timestamp
+  const liveId = reregistered.user.id
+  // the merge moves the source snapshot under the live account's own prefix, so its row
+  // reports one merged library and no previous-account sub-row is left behind
   await expect
     .poll(
       async () => {
@@ -1031,30 +1027,36 @@ Then('the live account owns the backup library', async ({ request, ctx }) => {
         })
         if (response.status() !== 200) return false
         const rows = (await response.json()) as MergedOverviewRow[]
-        const row = rows.find((candidate) => candidate.userId === reregistered.user.id)
-        const merged = row?.legacyBackups?.some(
-          (snapshot) =>
-            snapshot.userId === victim.user.id &&
-            snapshot.assets === 1 &&
-            Boolean(snapshot.mergedAt),
+        const row = rows.find((candidate) => candidate.userId === liveId)
+        return Boolean(
+          row?.exists && row.backedUpAssets >= 1 && (row.legacyBackups ?? []).length === 0,
         )
-        return Boolean(row?.totalAssets === 1 && merged)
       },
       { timeout: 60_000 },
     )
     .toBe(true)
 })
 
-Then('the source backup is still present', async ({ request, ctx }) => {
+Then('the source backup is gone', async ({ request, ctx }) => {
+  const state = deleteState(ctx)
   const victim = requireVictim(ctx)
-  const response = await request.get(
-    `/api/v1/admin/backups/status?emailOrId=${encodeURIComponent(victim.user.id)}`,
-    { headers: authHeaders(requireStateAdmin(ctx)) },
-  )
-  expect(response.status()).toBe(200)
-  const status = (await response.json()) as { exists: boolean; assets?: number }
-  expect(status.exists).toBe(true)
-  expect(status.assets).toBe(1)
+  const admin = requireStateAdmin(ctx)
+  const reregistered = state.reregistered
+  if (!reregistered) throw new Error('re-register the victim email first')
+  const statusFor = async (emailOrId: string) => {
+    const response = await request.get(
+      `/api/v1/admin/backups/status?emailOrId=${encodeURIComponent(emailOrId)}`,
+      { headers: authHeaders(admin) },
+    )
+    expect(response.status()).toBe(200)
+    return (await response.json()) as { exists: boolean; assets?: number }
+  }
+  // moving the snapshot deletes the source prefix, so the deleted account no longer owns one
+  expect((await statusFor(victim.user.id)).exists).toBe(false)
+  // the live account is the one that now exists, owning the merged library
+  const live = await statusFor(reregistered.user.id)
+  expect(live.exists).toBe(true)
+  expect(live.assets).toBe(1)
 })
 
 Then('a second merge is rejected', async ({ request, ctx }) => {

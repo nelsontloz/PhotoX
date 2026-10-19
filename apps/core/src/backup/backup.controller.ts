@@ -109,9 +109,16 @@ export class BackupController {
       'Additive only: the target is the live account whose normalized email equals the ' +
       "manifest's emailAtBackup (email/password/role/profile untouched). Original bytes are " +
       'deduped by checksum and old asset ids are remapped to live assets for album/share ' +
-      'links. Rows first, bytes second, derivative jobs third. HARD PREREQUISITE: keep ' +
-      'cleanup-orphans paused until the merge completion log. A second plain merge of the ' +
-      'same source is 409 already-merged; force replays/upserts the ledger.',
+      'links. Rows first, bytes second, derivative jobs third. Adoption then moves the source ' +
+      'snapshot into the live prefix: missing originals are server-side copied, the source ' +
+      'manifest is unioned with any existing live manifest (live entries win, shares dedupe ' +
+      'by token), the union is written last and the source prefix is deleted — the account ' +
+      'reads as a normal backed-up row instead of a legacyBackups sub-row. HARD PREREQUISITE: ' +
+      'keep cleanup-orphans paused until the merge completion log. A second plain merge of the ' +
+      'same source is 409 already-merged; force replays/upserts the ledger. Partial failure: ' +
+      'if adoption fails (unreadable live manifest or S3 error) merge rows/bytes stay, the ' +
+      'ledger and source delete are skipped, and the response reports assigned:null plus ' +
+      'adoptionError so a plain retry stays allowed.',
   })
   @ApiResponse({ status: 200, description: 'Merge counts, dedupe/skip totals and jobs enqueued' })
   @ApiResponse({ status: 404, description: 'Target user or source backup not found' })

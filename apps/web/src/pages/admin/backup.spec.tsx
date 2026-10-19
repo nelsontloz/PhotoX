@@ -159,6 +159,13 @@ const mergeResult: MergeResult = {
     shareTargetConflicts: 1,
   },
   enqueued: { metadata: 48, thumbnails: 48, videos: 0, faces: 48, ai: 0 },
+  assigned: {
+    prefix: 'backups/admin%40example.com__u-live/',
+    copiedObjects: 7,
+    reusedObjects: 3,
+    unionedWithExisting: false,
+    sourceDeleted: true,
+  },
 }
 
 const notFound = () => ({ isAxiosError: true, response: { status: 404 }, message: 'Not found' })
@@ -717,6 +724,12 @@ describe('BackupSection previous accounts', () => {
     ).toBeGreaterThanOrEqual(2)
     expect(screen.getByText(/3 assets, 4 files, 0 albums, 0 shares and 1 people/)).toBeTruthy()
     expect(screen.getByText(/password, role and display name/)).toBeTruthy()
+    // The dialog promises the snapshot moves into the live backup and the sub-row goes away.
+    expect(screen.getByText(/moved into the live account's own S3 backup/)).toBeTruthy()
+    expect(
+      screen.getByText(/the live backup is updated \(or created if it had none\)/),
+    ).toBeTruthy()
+    expect(screen.getByText(/this previous-account entry disappears/)).toBeTruthy()
     expect(screen.getByText(/Duplicate photos are linked/)).toBeTruthy()
     expect(screen.getByText(/cleanup-orphans paused/)).toBeTruthy()
 
@@ -731,10 +744,100 @@ describe('BackupSection previous accounts', () => {
     )
     expect(
       await screen.findByText(
-        'Merged 48 assets (5 already present) into admin@example.com. 2 share links skipped on conflict.',
+        'Merged 48 assets (5 already present) into admin@example.com. 2 share links skipped on conflict. The backup now belongs to admin@example.com.',
       ),
     ).toBeTruthy()
     await waitFor(() => expect(api.getBackupOverview).toHaveBeenCalledTimes(2))
+  })
+
+  it('refetches after a merge so the live row turns into Backed up and the sub-row disappears', async () => {
+    const adopted: BackupOverviewRow = {
+      userId: 'u-live',
+      email: 'admin@example.com',
+      role: 'admin',
+      totalAssets: 48,
+      backedUpAssets: 48,
+      backedUpFiles: 52,
+      backedUpAt: mergeResult.backedUpAt,
+      exists: true,
+      notBackedUp: 0,
+      deleted: false,
+      prefix: 'backups/admin%40example.com__u-live/',
+    }
+    api.getBackupOverview.mockResolvedValueOnce([matched]).mockResolvedValue([adopted])
+
+    render(<BackupSection />)
+    expect(await screen.findByText('Previous account')).toBeTruthy()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Merge to current live account admin@example.com' }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Merge' }))
+
+    await waitFor(() => expect(api.getBackupOverview).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByText('Previous account')).toBeNull())
+
+    const row = screen.getByText('admin@example.com').closest('tr') as HTMLElement
+    expect(within(row).getByText('Backed up')).toBeTruthy()
+    expect(within(row).getByText('48')).toBeTruthy()
+    expect(within(row).getByText('52')).toBeTruthy()
+    expect(
+      screen.queryByRole('button', {
+        name: 'Merge to current live account admin@example.com',
+      }),
+    ).toBeNull()
+  })
+
+  it('warns that the backup could not be moved when the merge returns no assignment', async () => {
+    api.mergeBackup.mockResolvedValue({
+      ...mergeResult,
+      assigned: null,
+      adoptionError: 's3 unavailable',
+    })
+
+    render(<BackupSection />)
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Merge to current live account admin@example.com',
+      }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Merge' }))
+
+    expect(
+      await screen.findByText(
+        'Merged 48 assets (5 already present) into admin@example.com. 2 share links skipped on conflict. The library merged, but the backup could not be moved — retry the merge.',
+      ),
+    ).toBeTruthy()
+    expect(screen.queryByText(/The backup now belongs to/)).toBeNull()
+    // The source snapshot stays, so the merge can be retried after the store recovers.
+    await waitFor(() => expect(api.getBackupOverview).toHaveBeenCalledTimes(2))
+  })
+
+  it('notes the leftover snapshot copy when the source cleanup failed', async () => {
+    api.mergeBackup.mockResolvedValue({
+      ...mergeResult,
+      assigned: {
+        prefix: 'backups/admin%40example.com__u-live/',
+        copiedObjects: 7,
+        reusedObjects: 3,
+        unionedWithExisting: false,
+        sourceDeleted: false,
+      },
+    })
+
+    render(<BackupSection />)
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Merge to current live account admin@example.com',
+      }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Merge' }))
+
+    expect(
+      await screen.findByText(
+        /The backup now belongs to admin@example.com, but the old snapshot copy could not be removed\./,
+      ),
+    ).toBeTruthy()
   })
 
   it('restores the previous account by its snapshot user id', async () => {

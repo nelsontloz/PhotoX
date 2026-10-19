@@ -444,6 +444,10 @@ function MergeBackupDialog({
         {snapshot.backedUpAt ? `, last backed up ${stamp(snapshot.backedUpAt)}.` : '.'}
       </p>
       <p className="text-sm text-slate-400 mt-2">
+        On success the snapshot is moved into the live account&apos;s own S3 backup: the live backup
+        is updated (or created if it had none) and this previous-account entry disappears.
+      </p>
+      <p className="text-sm text-slate-400 mt-2">
         Duplicate photos are linked instead of copied. Albums and people with duplicate names are
         added as separate items. Old share links are restored when their token is free and skipped
         on conflict. Keep cleanup-orphans paused until the merge finishes.
@@ -893,11 +897,20 @@ export function BackupSection() {
         prefix: snapshot.prefix,
       })
       const shareSkips = res.skipped.shareTokenConflicts + res.skipped.shareTargetConflicts
+      // The rows are already merged; the S3 adoption is the follow-up step. Call out where the
+      // backup ended up (or why it still needs a retry) instead of claiming a clean merge.
+      const moveNote = res.assigned
+        ? res.assigned.sourceDeleted
+          ? ` The backup now belongs to ${row.email}.`
+          : ` The backup now belongs to ${row.email}, but the old snapshot copy could not be removed.`
+        : ' The library merged, but the backup could not be moved — retry the merge.'
       notify(
         `Merged ${res.merged.assets.toLocaleString()} assets (${res.deduped.assets.toLocaleString()} already present) into ${row.email}.` +
           (shareSkips > 0
             ? ` ${shareSkips.toLocaleString()} share link${shareSkips === 1 ? '' : 's'} skipped on conflict.`
-            : ''),
+            : '') +
+          moveNote,
+        res.assigned ? 'default' : 'error',
       )
       setVersion((v) => v + 1)
       return true
