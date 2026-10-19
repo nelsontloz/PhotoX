@@ -160,6 +160,27 @@ export interface AdminUserListResponse {
   offset: number
 }
 
+/** Outcome of relocating a user's backup after an account edit. */
+export interface AdminUserBackupSync {
+  synced: boolean
+  moved: boolean
+  from?: string
+  to: string
+  reason?: 'no-backup'
+  error?: string
+}
+
+export interface AdminUserUpdateRequest {
+  displayName?: string
+  email?: string
+  password?: string
+}
+
+export interface AdminUserUpdateResponse {
+  user: AdminUserRow & { updatedAt: string }
+  backup: AdminUserBackupSync
+}
+
 export interface AssetFailureCounts {
   processing: number
   metadata: number

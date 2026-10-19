@@ -36,6 +36,7 @@ import { User } from '../users/entities/user.entity'
 import { BullMqService } from '../queue/bullmq.service'
 import { PlacesResolveService } from '../places/places-resolve.service'
 import { S3BackupService, isNotFound } from './s3-backup.service'
+import { BackupSyncResult } from './backup-sync.types'
 import { BackupMerge } from './entities/backup-merge.entity'
 
 const fileManifestSchema = z.object({
@@ -213,6 +214,10 @@ export function shouldSkipUpload(
 
 function errorName(err: unknown): string {
   return (err as { name?: string }).name ?? 'Unknown'
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }
 
 export interface BackupResult {
@@ -854,6 +859,140 @@ export class UserBackupService {
     } catch (err) {
       this.finishBackupProgress(user.id)
       throw err
+    }
+  }
+
+  /**
+   * Relocates a user's backup to the prefix for the CURRENT email after an
+   * account edit (A6): copy-forward every stale same-userId prefix, patch the
+   * manifest identity block to the live user row, HEAD-verify the new manifest,
+   * and only then delete the old prefixes. The old prefix (and its manifest)
+   * survives until the new manifest is verified — same crash-safe ordering as
+   * backupUser.
+   *
+   * Never throws, including when the target prefix itself cannot be computed
+   * (loadEnv/zod failure, empty email/userId) — every path resolves to a
+   * BackupSyncResult so callers report the failure instead of 500ing. Failures
+   * are reported as `error`: an S3 outage (including a failed stale-prefix scan)
+   * must never masquerade as the benign `reason: 'no-backup'`, which is reserved
+   * for "no stale prefix and no manifest at the current prefix".
+   */
+  async moveBackupPrefix(user: User): Promise<BackupSyncResult> {
+    // computed outside the main try: a throw here must still return a result —
+    // updateUser's fallback and syncUserBackup both call this and rely on it
+    let to: string
+    try {
+      to = backupPrefix(user.email, user.id)
+    } catch (err) {
+      const message = errorMessage(err)
+      this.logger.warn(`Backup prefix unusable for user ${user.id} (${message})`)
+      return { synced: false, moved: false, to: '', error: message }
+    }
+    try {
+      await this.s3.ensureBucket()
+      let stale: string[] = []
+      try {
+        stale = await this.findStalePrefixesForUser(user.id, to)
+      } catch (err) {
+        // a listing outage is a failure to report, not "this user has no backup"
+        const message = errorMessage(err)
+        this.logger.warn(
+          `Stale prefix scan failed for user ${user.id} (${errorName(err)}) — reporting sync failure`,
+        )
+        return { synced: false, moved: false, to, error: `stale prefix scan failed: ${message}` }
+      }
+      for (const prefix of stale) {
+        await this.s3.copyPrefix(prefix, to)
+      }
+      // bytes are copied first (copyPrefix skips manifests), so the new manifest
+      // is either already there (prior move) or only under a stale prefix
+      const manifestObjectKey = `${to}manifest.json`
+      let manifest = await this.loadManifestForMove(manifestObjectKey)
+      if (manifest === null) {
+        for (const prefix of stale) {
+          manifest = await this.loadManifestForMove(`${prefix}manifest.json`)
+          if (manifest !== null) break
+        }
+      }
+      if (manifest === null) {
+        // stale prefixes carrying only bytes (no readable manifest) are an error:
+        // the backup exists in some form, it just cannot be relocated safely
+        if (stale.length > 0) {
+          this.logger.warn(`Backup manifest unreadable for user ${user.id} (${to})`)
+          return { synced: false, moved: false, to, error: 'backup manifest unreadable' }
+        }
+        this.logger.log(`No backup to move for user ${user.id} (${to})`)
+        return { synced: false, moved: false, to, reason: 'no-backup' }
+      }
+      // bytes stay from the last backup; only the identity block must match the
+      // live account so a later restore does not resurrect a stale email/hash
+      const patched = userBackupManifestSchema.parse({
+        ...manifest,
+        emailAtBackup: user.email,
+        user: {
+          ...manifest.user,
+          email: user.email,
+          role: user.role,
+          displayName: user.displayName,
+          passwordHash: user.passwordHash,
+          tokensValidAfter: user.tokensValidAfter
+            ? new Date(user.tokensValidAfter).toISOString()
+            : null,
+        },
+      })
+      await this.s3.putObject(
+        manifestObjectKey,
+        Buffer.from(JSON.stringify(patched)),
+        'application/json',
+      )
+      await this.s3.headObject(manifestObjectKey)
+      // new manifest verified — the stale prefixes are now redundant copies
+      for (const prefix of stale) {
+        try {
+          const oldKeys = await this.s3.listKeys(prefix)
+          if (oldKeys.length > 0) await this.s3.deleteKeys(oldKeys)
+          this.logger.log(`Deleted old backup prefix ${prefix} for user ${user.id}`)
+        } catch (err) {
+          this.logger.warn(
+            `Failed to delete old backup prefix ${prefix} (${errorName(err)}) — leaving orphan`,
+          )
+        }
+      }
+      this.logger.log(`Moved backup prefix for user ${user.id} to ${to}`)
+      return stale.length > 0
+        ? { synced: true, moved: true, from: stale[0]!, to }
+        : { synced: true, moved: false, to }
+    } catch (err) {
+      const message = errorMessage(err)
+      this.logger.warn(`Backup prefix move failed for user ${user.id} (${message})`)
+      return { synced: false, moved: false, to, error: message }
+    }
+  }
+
+  /**
+   * Reads + validates one backup manifest (the whole body, unlike
+   * loadPreviousFileMap's file map). Returns null (never throws) on a missing
+   * object (isNotFound — caller tries the next candidate), unreadable bytes, or
+   * corrupt JSON/schema; the caller decides whether that null is benign (no
+   * manifest anywhere) or a reported failure (stale prefixes that carry bytes).
+   */
+  private async loadManifestForMove(manifestObjectKey: string): Promise<UserBackupManifest | null> {
+    let raw: Buffer
+    try {
+      raw = await this.s3.getBuffer(manifestObjectKey)
+    } catch (err) {
+      if (isNotFound(err)) {
+        this.logger.log(`No backup manifest at ${manifestObjectKey}`)
+      } else {
+        this.logger.warn(`Backup manifest at ${manifestObjectKey} unreadable (${errorName(err)})`)
+      }
+      return null
+    }
+    try {
+      return userBackupManifestSchema.parse(JSON.parse(raw.toString('utf-8')))
+    } catch (err) {
+      this.logger.warn(`Backup manifest at ${manifestObjectKey} corrupt (${errorName(err)})`)
+      return null
     }
   }
 

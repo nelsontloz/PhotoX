@@ -1,14 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { FaceDetectionSettings } from '@photox/shared-types'
 
-const { getMock, postMock, deleteMock } = vi.hoisted(() => ({
+const { getMock, postMock, deleteMock, patchMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   postMock: vi.fn(),
   deleteMock: vi.fn(),
+  patchMock: vi.fn(),
 }))
 
 vi.mock('./client', () => ({
-  api: { get: getMock, post: postMock, delete: deleteMock },
+  api: { get: getMock, post: postMock, delete: deleteMock, patch: patchMock },
 }))
 
 import {
@@ -25,6 +26,8 @@ import {
   deleteAdminUser,
   getAdminUserDeleteStatus,
   pollAdminUserDelete,
+  updateAdminUser,
+  syncAdminUserBackup,
   type BackupResult,
   type FaceReprocessResponse,
   type FacePipelineRun,
@@ -307,6 +310,52 @@ describe('admin user deletion API', () => {
       })
     await pollAdminUserDelete('u-1', { intervalMs: 1 })
     expect(getMock).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('admin user account edit API', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const updated = {
+    user: {
+      id: 'u 1',
+      displayName: 'Ada L.',
+      email: 'ada.l@example.com',
+      role: 'admin' as const,
+      createdAt: '2026-01-02T00:00:00.000Z',
+      updatedAt: '2026-10-05T00:00:00.000Z',
+    },
+    backup: {
+      synced: true,
+      moved: true,
+      from: 'backups/ada%40example.com__u%201/',
+      to: 'backups/ada.l%40example.com__u%201/',
+    },
+  }
+
+  it('updateAdminUser patches the encoded id with the changed fields only', async () => {
+    patchMock.mockResolvedValue({ data: updated })
+    await expect(updateAdminUser('u 1', { displayName: 'Ada L.' })).resolves.toEqual(updated)
+    expect(patchMock).toHaveBeenCalledWith('/v1/admin/users/u%201', { displayName: 'Ada L.' }, {})
+  })
+
+  it('updateAdminUser gives an email change the long backup-move timeout', async () => {
+    patchMock.mockResolvedValue({ data: updated })
+    await updateAdminUser('u-1', { email: 'ada.l@example.com', password: 'correcthorse' })
+    expect(patchMock).toHaveBeenCalledWith(
+      '/v1/admin/users/u-1',
+      { email: 'ada.l@example.com', password: 'correcthorse' },
+      { timeout: 600_000 },
+    )
+  })
+
+  it('syncAdminUserBackup posts to :id/backup-sync with the long timeout and no body', async () => {
+    const outcome = { synced: false, moved: false, to: 'backups/x%40y__u-1/', error: 'S3 down' }
+    postMock.mockResolvedValue({ data: outcome })
+    await expect(syncAdminUserBackup('u-1')).resolves.toEqual(outcome)
+    expect(postMock).toHaveBeenCalledWith('/v1/admin/users/u-1/backup-sync', undefined, {
+      timeout: 600_000,
+    })
   })
 })
 
