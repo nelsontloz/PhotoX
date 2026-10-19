@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Post, Query } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import { IsNotEmpty, IsString } from 'class-validator'
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator'
 import {
   UserBackupService,
   type BackupOverviewRow,
@@ -8,6 +8,7 @@ import {
   type BackupResult,
   type BackupStatus,
   type DeleteBackupResult,
+  type MergeBackupResult,
   type RestoreResult,
 } from './user-backup.service'
 
@@ -21,6 +22,23 @@ class RestoreRequestDto {
   @IsString()
   @IsNotEmpty()
   emailOrId!: string
+}
+
+class MergeRestoreRequestDto {
+  @IsString()
+  @IsNotEmpty()
+  targetEmailOrId!: string
+
+  @IsUUID()
+  backupUserId!: string
+
+  @IsOptional()
+  @IsString()
+  prefix?: string
+
+  @IsOptional()
+  @IsBoolean()
+  force?: boolean
 }
 
 class BackupStatusQueryDto {
@@ -77,6 +95,28 @@ export class BackupController {
   @ApiResponse({ status: 200, description: 'Restore counts and re-enqueue totals' })
   async restore(@Body() dto: RestoreRequestDto): Promise<RestoreResult> {
     return this.backups.restoreUser(dto.emailOrId)
+  }
+
+  @Post('restores/merge')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Merge a matched legacy backup into a live account (admin-only)',
+    description:
+      'Additive only: the target is the live account whose normalized email equals the ' +
+      "manifest's emailAtBackup (email/password/role/profile untouched). Original bytes are " +
+      'deduped by checksum and old asset ids are remapped to live assets for album/share ' +
+      'links. Rows first, bytes second, derivative jobs third. HARD PREREQUISITE: keep ' +
+      'cleanup-orphans paused until the merge completion log. A second plain merge of the ' +
+      'same source is 409 already-merged; force replays/upserts the ledger.',
+  })
+  @ApiResponse({ status: 200, description: 'Merge counts, dedupe/skip totals and jobs enqueued' })
+  @ApiResponse({ status: 404, description: 'Target user or source backup not found' })
+  @ApiResponse({ status: 409, description: 'Email mismatch, already merged or id conflict' })
+  @ApiResponse({ status: 413, description: 'Storage quota exceeded (retry with force)' })
+  @ApiResponse({ status: 422, description: 'Backup manifest corrupt' })
+  @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
+  async merge(@Body() dto: MergeRestoreRequestDto): Promise<MergeBackupResult> {
+    return this.backups.mergeUserBackup(dto)
   }
 
   @Get('backups/overview')

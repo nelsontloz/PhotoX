@@ -59,6 +59,7 @@ interface DeleteMocks {
     ensureBucket: Mock<() => Promise<void>>
     listKeys: Mock<(prefix: string) => Promise<string[]>>
     getBuffer: Mock<(key: string) => Promise<Buffer>>
+    headObject: Mock<(key: string) => Promise<void>>
     deleteKeys: Mock<(keys: string[]) => Promise<void>>
   }
 }
@@ -92,6 +93,14 @@ function makeDeleteService(opts: {
       }
       return Promise.resolve(Buffer.from(hit))
     }),
+    headObject: vi.fn((key: string) => {
+      if (!objects.has(key)) {
+        const err = new Error(`missing key ${key}`)
+        err.name = 'NoSuchKey'
+        throw err
+      }
+      return Promise.resolve()
+    }),
     deleteKeys: vi.fn(() => Promise.resolve()),
   }
   const nil = undefined as never
@@ -104,6 +113,7 @@ function makeDeleteService(opts: {
     usersRepo as unknown as Repository<User>,
     filesRepo as never,
     assetsRepo as never,
+    nil,
     nil,
     nil,
     nil,
@@ -121,6 +131,100 @@ function expectNoDbWrites(mocks: DeleteMocks): void {
   expect(dataSource.transaction).not.toHaveBeenCalled()
   expect(dataSource.query).not.toHaveBeenCalled()
 }
+
+describe('locateBackup fallback (email-matched legacy backup)', () => {
+  it('resolves status/delete to an email-matched orphan when the live user has no exact manifest', async () => {
+    const ada = user({ email: 'ada@example.com' })
+    const orphanId = '33333333-3333-4333-8333-333333333333'
+    const orphanPrefix = backupPrefix(ada.email, orphanId)
+    const orphanManifest = `${orphanPrefix}manifest.json`
+    const orphanBytes = `${orphanPrefix}originals/a.bin`
+    const objects = new Map([
+      [orphanManifest, manifestJson({ userId: orphanId, email: ada.email })],
+    ])
+    const { svc, mocks } = makeDeleteService({
+      user: ada,
+      keys: [orphanManifest, orphanBytes],
+      objects,
+    })
+
+    await expect(svc.backupStatus(ada.id)).resolves.toMatchObject({
+      exists: true,
+      userId: orphanId,
+      emailAtBackup: ada.email,
+    })
+    const deleted = await svc.deleteBackup(ada.id)
+    expect(deleted).toMatchObject({ userId: orphanId, email: ada.email, prefix: orphanPrefix })
+    expect(mocks.s3.deleteKeys.mock.calls[0]![0].sort()).toEqual(
+      [orphanManifest, orphanBytes].sort(),
+    )
+  })
+
+  it('prefers the exact live prefix when its manifest exists', async () => {
+    const ada = user({ email: 'ada@example.com' })
+    const exactPrefix = backupPrefix(ada.email, ada.id)
+    const exactManifest = manifestKey(ada.email, ada.id)
+    const exactBytes = `${exactPrefix}originals/live.bin`
+    const orphanId = '33333333-3333-4333-8333-333333333333'
+    const orphanPrefix = backupPrefix(ada.email, orphanId)
+    const orphanManifest = `${orphanPrefix}manifest.json`
+    const objects = new Map([
+      [exactManifest, manifestJson({ userId: ada.id, email: ada.email })],
+      [orphanManifest, manifestJson({ userId: orphanId, email: ada.email })],
+    ])
+    const { svc, mocks } = makeDeleteService({
+      user: ada,
+      keys: [exactManifest, exactBytes, orphanManifest],
+      objects,
+    })
+
+    await expect(svc.backupStatus(ada.id)).resolves.toMatchObject({
+      exists: true,
+      userId: ada.id,
+    })
+    const deleted = await svc.deleteBackup(ada.id)
+    expect(deleted).toMatchObject({ userId: ada.id, prefix: exactPrefix, deletedObjects: 2 })
+    expect(mocks.s3.deleteKeys.mock.calls[0]![0].sort()).toEqual([exactManifest, exactBytes].sort())
+  })
+
+  it('restore of a listed-but-missing manifest is a 404, not an S3 error', async () => {
+    const orphanId = '33333333-3333-4333-8333-333333333333'
+    const orphanPrefix = backupPrefix('ghost@example.com', orphanId)
+    const { svc } = makeDeleteService({
+      user: null,
+      keys: [`${orphanPrefix}manifest.json`],
+    })
+    await expect(svc.restoreUser(orphanId)).rejects.toBeInstanceOf(NotFoundException)
+  })
+
+  it('picks the newest manifest for a deleted user with multiple prefixes', async () => {
+    const orphanId = '33333333-3333-4333-8333-333333333333'
+    const olderPrefix = backupPrefix('old@example.com', orphanId)
+    const newerPrefix = backupPrefix('new@example.com', orphanId)
+    const olderManifest = `${olderPrefix}manifest.json`
+    const newerManifest = `${newerPrefix}manifest.json`
+    const older = JSON.parse(
+      manifestJson({ userId: orphanId, email: 'old@example.com' }).toString(),
+    ) as { backedUpAt: string }
+    older.backedUpAt = '2026-01-01T00:00:00.000Z'
+    const newer = JSON.parse(
+      manifestJson({ userId: orphanId, email: 'new@example.com' }).toString(),
+    ) as { backedUpAt: string }
+    newer.backedUpAt = '2026-10-01T00:00:00.000Z'
+    const objects = new Map([
+      [olderManifest, Buffer.from(JSON.stringify(older))],
+      [newerManifest, Buffer.from(JSON.stringify(newer))],
+    ])
+    const { svc } = makeDeleteService({
+      user: null,
+      keys: [olderManifest, newerManifest, `${olderPrefix}originals/a.bin`],
+      objects,
+    })
+
+    const deleted = await svc.deleteBackup(orphanId)
+    expect(deleted).toMatchObject({ prefix: newerPrefix, email: 'new@example.com' })
+  })
+})
 
 describe('deleteBackup', () => {
   it('deletes every key under the live prefix and reports the manifest backup-time email', async () => {

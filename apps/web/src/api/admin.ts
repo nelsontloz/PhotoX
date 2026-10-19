@@ -246,6 +246,53 @@ export async function restoreUser(emailOrId: string): Promise<RestoreResult> {
   return data
 }
 
+/** POST /v1/admin/restores/merge response: what moved from a previous-account backup into the live account. */
+export interface MergeResult {
+  targetUserId: string
+  targetEmail: string
+  backupUserId: string
+  emailAtBackup: string
+  prefix: string
+  backedUpAt: string
+  startedAt: string
+  completedAt: string
+  merged: {
+    files: number
+    assets: number
+    albums: number
+    albumAssets: number
+    shares: number
+    persons: number
+  }
+  deduped: { files: number; assets: number }
+  skipped: {
+    files: number
+    assets: number
+    albums: number
+    albumAssets: number
+    shares: number
+    persons: number
+    shareTokenConflicts: number
+    shareTargetConflicts: number
+  }
+  enqueued: { metadata: number; thumbnails: number; videos: number; faces: number; ai: number }
+}
+
+export interface MergeBackupInput {
+  targetEmailOrId: string
+  backupUserId: string
+  prefix?: string
+  force?: boolean
+}
+
+// Merges rows inline like a restore (asset copies / album links), so reuse the long cap.
+export async function mergeBackup(input: MergeBackupInput): Promise<MergeResult> {
+  const { data } = await api.post<MergeResult>('/v1/admin/restores/merge', input, {
+    timeout: BACKUP_TIMEOUT_MS,
+  })
+  return data
+}
+
 /**
  * DELETE /v1/admin/backups response: the S3 prefix removed and how many objects went
  * with it. Deletes are metadata-only, so the client's default 10s timeout is fine.
@@ -266,12 +313,34 @@ export async function deleteBackup(emailOrId: string): Promise<DeleteBackupResul
 }
 
 /**
+ * One previous-account snapshot attached to a live overview row (or listed in
+ * `legacyBackups`): backup-time identity, S3 prefix and manifest counts. `mergedAt` is set
+ * once this snapshot's library was merged into the live account.
+ */
+export interface BackupSnapshot {
+  userId: string
+  emailAtBackup: string
+  prefix: string
+  backedUpAt?: string | null
+  assets: number
+  files: number
+  albums: number
+  shares: number
+  persons: number
+  mergedAt?: string
+}
+
+/**
  * GET /v1/admin/backups/overview response row: one line per user — library size, what the
  * manifest on S3 already covers, and whether that manifest is usable. `unavailable`
  * marks a row whose status probe failed (shown as Unavailable instead of failing the
  * whole table). `deleted` marks orphan backups whose account is gone (live counts are zero, identity
  * comes from the manifest); `emailAtBackup` is set only when the S3 prefix email differs
  * from the manifest email (stale rename leftover).
+ *
+ * A live row whose email now belongs to a new account can carry a previous-account backup:
+ * `backupUserId` differs from `userId` and the prefix/counts/last-backup fields describe that
+ * attached snapshot. `legacyBackups` lists any further snapshots matched by the same email.
  */
 export interface BackupOverviewRow {
   userId: string
@@ -287,6 +356,17 @@ export interface BackupOverviewRow {
   notBackedUp?: number
   deleted: boolean
   emailAtBackup?: string
+  /** Primary backup prefix (attached previous-account snapshot or the row's own backup). */
+  prefix?: string
+  /** Set when the primary backup belongs to a previous account matched by email. */
+  backupUserId?: string
+  /** When the attached previous-account backup was merged into the live account. */
+  mergedAt?: string
+  /** Additional previous-account snapshots matched to this live email. */
+  legacyBackups?: BackupSnapshot[]
+  backedUpAlbums?: number
+  backedUpShares?: number
+  backedUpPersons?: number
 }
 
 export async function getBackupOverview(): Promise<BackupOverviewRow[]> {

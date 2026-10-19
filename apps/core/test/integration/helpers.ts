@@ -32,6 +32,7 @@ import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
 import { Album } from '../../src/albums/entities/album.entity'
 import { AlbumAsset } from '../../src/albums/entities/album-asset.entity'
 import { Share } from '../../src/shares/entities/share.entity'
+import { BackupMerge } from '../../src/backup/entities/backup-merge.entity'
 import { AssetsModule } from '../../src/assets/assets.module'
 import { AlbumsModule } from '../../src/albums/albums.module'
 import { SharesModule } from '../../src/shares/shares.module'
@@ -118,6 +119,7 @@ const ENTITIES = [
   Place,
   UploadSession,
   UploadSessionPart,
+  BackupMerge,
 ]
 
 export async function createApiTestApp(opts?: {
@@ -254,7 +256,7 @@ export async function createApiTestApp(opts?: {
 
 export async function resetDb(t: ApiTestApp): Promise<void> {
   await t.dataSource.query(
-    'TRUNCATE users, refresh_tokens, albums, album_assets, shares, files, assets, asset_thumbnails, faces, persons, app_settings, asset_embeddings, asset_ocr, asset_detections, places, upload_sessions, upload_session_parts RESTART IDENTITY CASCADE',
+    'TRUNCATE users, refresh_tokens, albums, album_assets, shares, files, assets, asset_thumbnails, faces, persons, app_settings, asset_embeddings, asset_ocr, asset_detections, places, upload_sessions, upload_session_parts, backup_merges RESTART IDENTITY CASCADE',
   )
   rmSync(t.storageDir, { recursive: true, force: true })
   await t.storage.ensureDir()

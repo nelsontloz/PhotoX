@@ -50,6 +50,13 @@ interface BackupOverviewRow {
   backedUpAt: string | null
   exists: boolean
   degraded?: 'unreadable' | 'corrupt'
+  // a deleted snapshot whose email matches a live account is reported on that live row and
+  // carries the snapshot's own account id plus the merge marker (see the merge scenario in
+  // 13-admin-user-delete); older rows simply omit them
+  backupUserId?: string
+  prefix?: string
+  mergedAt?: string | null
+  legacyBackups?: unknown
 }
 
 interface BackupProgress {

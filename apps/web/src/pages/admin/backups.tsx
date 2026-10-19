@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
+  FaCodeMerge,
   FaDatabase,
   FaMagnifyingGlass,
   FaSpinner,
@@ -23,11 +24,13 @@ import {
   backupUser,
   restoreUser,
   deleteBackup,
+  mergeBackup,
   backupPrefixPreview,
   type BackupOverviewRow,
   type BackupResult,
   type BackupProgress,
   type RestoreResult,
+  type BackupSnapshot,
 } from '../../api/admin'
 import { ConfirmDialog, RoleBadge } from './shared'
 import { Dialog, formInputClass } from '../../components/Dialog'
@@ -57,6 +60,16 @@ const RESTORE_MISSING_MESSAGE =
 const RESTORE_CORRUPT_MESSAGE = 'That backup file is damaged and cannot be restored.'
 const DELETE_FALLBACK = 'Delete failed'
 const DELETE_MISSING_MESSAGE = 'No backup found — the list was refreshed.'
+const MERGE_FALLBACK = 'Merge failed'
+const MERGE_MISSING_MESSAGE =
+  'No backup found for that previous account — it may have been removed from storage.'
+const MERGE_ALREADY_MESSAGE = 'That backup was already merged into this account.'
+const MERGE_EMAIL_MESSAGE =
+  "The backup's email no longer matches this account — refresh the list and check the row."
+const MERGE_IN_PROGRESS_MESSAGE =
+  'A merge for this account is already running — wait for it to finish.'
+const MERGE_QUOTA_MESSAGE = 'That backup is too large for the storage quota — free space and retry.'
+const MERGE_CORRUPT_MESSAGE = 'That backup file is damaged and cannot be merged.'
 
 const DEGRADED_HINT: Record<string, string> = {
   unreadable: 'Listed but unreadable — rerun the backup to replace it.',
@@ -102,6 +115,34 @@ function restoreErrorMessage(err: unknown): string {
   return RESTORE_FALLBACK
 }
 
+/** Lowercased core error detail, used to split the three 409 merge conflicts. */
+function errorDetail(err: unknown): string {
+  if (!isAxiosError(err)) return ''
+  const body = err.response?.data as { message?: unknown } | undefined
+  const message = body?.message
+  const text = Array.isArray(message) ? message.join(' ') : message
+  return typeof text === 'string' ? text.toLowerCase() : ''
+}
+
+/** Merge failures use plain wording; 409 covers already-merged, email-mismatch and in-progress. */
+function mergeErrorMessage(err: unknown): string {
+  if (isAxiosError(err)) {
+    if (err.response?.status === 404) return MERGE_MISSING_MESSAGE
+    if (err.response?.status === 409) {
+      const detail = errorDetail(err)
+      if (detail.includes('already-merged')) return MERGE_ALREADY_MESSAGE
+      if (detail.includes('email-mismatch')) return MERGE_EMAIL_MESSAGE
+      if (detail.includes('merge-in-progress')) return MERGE_IN_PROGRESS_MESSAGE
+      return 'That backup cannot be merged into this account right now — refresh and retry.'
+    }
+    if (err.response?.status === 413) return MERGE_QUOTA_MESSAGE
+    if (err.response?.status === 422) return MERGE_CORRUPT_MESSAGE
+    if (err.response?.status === 503) return S3_DOWN_BODY
+    if (!err.response || err.code === 'ECONNABORTED') return BACKUP_TIMEOUT_MESSAGE
+  }
+  return MERGE_FALLBACK
+}
+
 function isStoreDown(err: unknown): boolean {
   return (
     isAxiosError(err) &&
@@ -123,6 +164,60 @@ function pendingOf(row: BackupOverviewRow): number {
   return Math.max(0, (row.totalAssets ?? 0) - (row.backedUpAssets ?? 0))
 }
 
+/** Backup snapshot view of the row's own primary backup (plain live row or orphan). */
+function rowSnapshot(row: BackupOverviewRow): BackupSnapshot {
+  return {
+    userId: row.userId,
+    emailAtBackup: row.emailAtBackup ?? row.email,
+    prefix: row.prefix ?? backupPrefixPreview(row.email, row.userId),
+    backedUpAt: row.backedUpAt ?? null,
+    assets: row.backedUpAssets ?? 0,
+    files: row.backedUpFiles ?? 0,
+    albums: row.backedUpAlbums ?? 0,
+    shares: row.backedUpShares ?? 0,
+    persons: row.backedUpPersons ?? 0,
+  }
+}
+
+/** The attached previous-account snapshot: the backup belongs to a different user id. */
+function attachedSnapshot(row: BackupOverviewRow): BackupSnapshot | null {
+  if (!row.backupUserId || row.backupUserId === row.userId) return null
+  return {
+    ...rowSnapshot(row),
+    userId: row.backupUserId,
+    emailAtBackup: row.emailAtBackup ?? row.email,
+    prefix: row.prefix ?? backupPrefixPreview(row.emailAtBackup ?? row.email, row.backupUserId),
+    mergedAt: row.mergedAt,
+  }
+}
+
+interface SnapshotLabels {
+  merge: string
+  restore: string
+  delete: string
+}
+
+/** Aria labels double as the unique locator for each snapshot's actions. */
+function snapshotLabels(
+  row: BackupOverviewRow,
+  snapshot: BackupSnapshot,
+  legacy: boolean,
+): SnapshotLabels {
+  if (legacy) {
+    const when = stamp(snapshot.backedUpAt)
+    return {
+      merge: `Merge backup for ${row.email} into this account (${when})`,
+      restore: `Restore ${row.email} from ${when}`,
+      delete: `Delete previous backup for ${row.email} from ${when}`,
+    }
+  }
+  return {
+    merge: `Merge backup for ${row.email} into this account`,
+    restore: `Restore ${row.email}`,
+    delete: `Delete backup for ${row.email}`,
+  }
+}
+
 function pillFor(
   row: BackupOverviewRow,
   error: string | null,
@@ -134,6 +229,194 @@ function pillFor(
   return { tone: 'muted', label: 'None' }
 }
 
+// --- snapshot actions -------------------------------------------------------------------
+// A live row can carry a previous-account backup matched by email (primary `backupUserId`
+// plus any `legacyBackups`). Each snapshot gets its own compact block with Merge / Restore /
+// Delete so the live row's own Backup action never doubles as a previous account's action.
+
+function DeleteActionButton({
+  label,
+  disabled,
+  busy,
+  onClick,
+}: {
+  label: string
+  disabled?: boolean
+  busy?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className={cx(
+        'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors',
+        disabled
+          ? 'text-outline/60 cursor-not-allowed'
+          : 'text-status-error/80 hover:text-status-error hover:bg-status-error/10',
+      )}
+    >
+      {busy ? (
+        <FaSpinner className="animate-spin text-xs" aria-hidden="true" />
+      ) : (
+        <FaTrashCan className="text-xs" aria-hidden="true" />
+      )}
+      {busy ? 'Deleting…' : 'Delete'}
+    </button>
+  )
+}
+
+function SnapshotBlock({
+  row,
+  snapshot,
+  legacy = false,
+  anyBusy,
+  deleting,
+  onMerge,
+  onRestore,
+  onDelete,
+}: {
+  row: BackupOverviewRow
+  snapshot: BackupSnapshot
+  legacy?: boolean
+  anyBusy: boolean
+  deleting: boolean
+  onMerge: () => void
+  onRestore: () => void
+  onDelete: () => void
+}) {
+  const labels = snapshotLabels(row, snapshot, legacy)
+  const merged = Boolean(snapshot.mergedAt)
+
+  return (
+    <div className="mt-2 w-full max-w-[300px] rounded-lg bg-surface-container border border-border-dark/60 px-2.5 py-2 space-y-1">
+      <p className="font-mono text-[10px] text-outline break-all">{snapshot.prefix}</p>
+      <p className="text-[11px] text-on-surface-variant">
+        {snapshot.assets.toLocaleString()} assets · {snapshot.files.toLocaleString()} files ·{' '}
+        {snapshot.albums.toLocaleString()} albums · {snapshot.shares.toLocaleString()} shares ·{' '}
+        {snapshot.persons.toLocaleString()} people
+      </p>
+      <p className="text-[11px] text-outline">Last backup {stamp(snapshot.backedUpAt)}</p>
+      {merged && <p className="text-[11px] text-amber-300">Merged {stamp(snapshot.mergedAt)}</p>}
+      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+        {!merged && (
+          <GhostButton
+            onClick={onMerge}
+            disabled={anyBusy}
+            ariaLabel={labels.merge}
+            icon={<FaCodeMerge />}
+          >
+            Merge
+          </GhostButton>
+        )}
+        <GhostButton onClick={onRestore} disabled={anyBusy} ariaLabel={labels.restore}>
+          Restore
+        </GhostButton>
+        <DeleteActionButton
+          label={labels.delete}
+          disabled={anyBusy}
+          busy={deleting}
+          onClick={onDelete}
+        />
+      </div>
+    </div>
+  )
+}
+
+// --- merge dialog -----------------------------------------------------------------------
+
+function MergeBackupDialog({
+  row,
+  snapshot,
+  onClose,
+  onConfirm,
+}: {
+  row: BackupOverviewRow
+  snapshot: BackupSnapshot
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <ConfirmDialog
+      title={`Merge backup into ${row.email}?`}
+      confirmLabel="Merge"
+      onClose={onClose}
+      onConfirm={onConfirm}
+    >
+      <p className="text-sm text-slate-400 mt-2">
+        Rebuilds this previous account&apos;s library inside the live account. The live account
+        keeps its email, password, role and display name.
+      </p>
+      <code className="block text-xs font-mono text-slate-300 bg-slate-900/60 border border-border-dark rounded px-2 py-1.5 mt-2 break-all">
+        {snapshot.prefix}
+      </code>
+      <p className="text-sm text-slate-400 mt-2">
+        This backup holds {snapshot.assets.toLocaleString()} assets,{' '}
+        {snapshot.files.toLocaleString()} files, {snapshot.albums.toLocaleString()} albums,{' '}
+        {snapshot.shares.toLocaleString()} shares and {snapshot.persons.toLocaleString()} people
+        {snapshot.backedUpAt ? `, last backed up ${stamp(snapshot.backedUpAt)}.` : '.'}
+      </p>
+      <p className="text-sm text-slate-400 mt-2">
+        Duplicate photos are linked instead of copied. Albums and people with duplicate names are
+        added as separate items. Old share links are restored when their token is free and skipped
+        on conflict. Keep cleanup-orphans paused until the merge finishes.
+      </p>
+    </ConfirmDialog>
+  )
+}
+
+// --- restore dialog ---------------------------------------------------------------------
+
+function RestoreSnapshotDialog({
+  row,
+  snapshot,
+  legacy,
+  onClose,
+  onConfirm,
+}: {
+  row: BackupOverviewRow
+  snapshot: BackupSnapshot
+  legacy: boolean
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  const title = legacy
+    ? `Restore ${row.email} from ${stamp(snapshot.backedUpAt)}?`
+    : `Restore ${row.email}?`
+
+  return (
+    <ConfirmDialog title={title} confirmLabel="Restore" onClose={onClose} onConfirm={onConfirm}>
+      <p className="text-sm text-slate-400 mt-2">
+        {row.deleted
+          ? 'Brings this deleted account back from its S3 backup — same files, albums, shares and people — then re-queues thumbnails and other processing. The restore runs now, in the API process, so large libraries take a while.'
+          : 'Brings this previous account back from its S3 backup — same files, albums, shares and people — then re-queues thumbnails and other processing. It creates a separate account and does not change the live account.'}
+      </p>
+      <code className="block text-xs font-mono text-slate-300 bg-slate-900/60 border border-border-dark rounded px-2 py-1.5 mt-2 break-all">
+        {snapshot.prefix}
+      </code>
+      <p className="text-sm text-slate-400 mt-2">
+        This backup holds {snapshot.assets.toLocaleString()} assets and{' '}
+        {snapshot.files.toLocaleString()} files
+        {snapshot.backedUpAt ? `, last backed up ${stamp(snapshot.backedUpAt)}.` : '.'}
+      </p>
+      {snapshot.mergedAt && (
+        <p className="text-sm text-amber-300 mt-2">
+          This backup was already merged into the live account — restoring it duplicates the
+          already-merged photos.
+        </p>
+      )}
+      <p className="text-sm text-slate-400 mt-2">
+        If that address is taken, it restores under a fallback like restored-&lt;time&gt;-
+        {snapshot.emailAtBackup} instead — sign in with the address shown after the restore
+        finishes. The restored account keeps its old password.
+      </p>
+    </ConfirmDialog>
+  )
+}
+
 // --- delete dialog ----------------------------------------------------------------------
 // Mirrors the backup/restore confirms (S3 prefix preview + manifest counts) with the
 // typed-DELETE gate from DeleteUserDialog: the parent owns the API call, the dialog only
@@ -141,19 +424,27 @@ function pillFor(
 
 function DeleteBackupDialog({
   row,
+  snapshot,
+  legacy = false,
   onClose,
   onConfirm,
 }: {
   row: BackupOverviewRow
+  snapshot: BackupSnapshot
+  legacy?: boolean
   onClose: () => void
   onConfirm: () => void
 }) {
   const [confirmText, setConfirmText] = useState('')
   const confirmed = confirmText === 'DELETE'
+  const previousSnapshot = !row.deleted && snapshot.userId !== row.userId
+  const title = legacy
+    ? `Delete previous backup for ${row.email}?`
+    : `Delete backup for ${row.email}?`
 
   return (
     <Dialog
-      title={`Delete backup for ${row.email}?`}
+      title={title}
       onClose={onClose}
       ariaLabel="Delete backup confirmation"
       closeOnOverlay={false}
@@ -168,20 +459,22 @@ function DeleteBackupDialog({
     >
       <div className="mt-4 space-y-4">
         <p className="text-sm text-slate-300">
-          This permanently removes this user&apos;s S3 backup. This can&apos;t be undone.
+          This permanently removes this snapshot&apos;s S3 backup. This can&apos;t be undone.
         </p>
         <code className="block text-xs font-mono text-slate-300 bg-slate-900/60 border border-border-dark rounded px-2 py-1.5 break-all">
-          {backupPrefixPreview(row.email, row.userId)}
+          {snapshot.prefix}
         </code>
         <p className="text-sm text-slate-400">
-          This backup holds {(row.backedUpAssets ?? 0).toLocaleString()} assets and{' '}
-          {(row.backedUpFiles ?? 0).toLocaleString()} files
-          {row.backedUpAt ? `, last backed up ${stamp(row.backedUpAt)}.` : '.'}
+          This backup holds {snapshot.assets.toLocaleString()} assets and{' '}
+          {snapshot.files.toLocaleString()} files
+          {snapshot.backedUpAt ? `, last backed up ${stamp(snapshot.backedUpAt)}.` : '.'}
         </p>
         <p className="text-sm text-slate-400">
           {row.deleted
             ? 'The deleted account stays deleted.'
-            : 'Only the S3 backup is removed; the account and its library stay, and the next Backup recreates it.'}
+            : previousSnapshot
+              ? 'The live account and any merged photos stay. If this was the only snapshot, the account shows as not backed up until the next backup.'
+              : 'Only the S3 backup is removed; the account and its library stay, and the next Backup recreates it.'}
         </p>
         <div>
           <label
@@ -238,14 +531,29 @@ export function BackupSection() {
   const [busy, setBusy] = useState<Record<string, boolean>>({})
   const [restoring, setRestoring] = useState<Record<string, boolean>>({})
   const [deleting, setDeleting] = useState<Record<string, boolean>>({})
+  const [merging, setMerging] = useState<Record<string, boolean>>({})
   const [progressMap, setProgressMap] = useState<Record<string, BackupProgress | null>>({})
   const [unsupported, setUnsupported] = useState<Record<string, boolean>>({})
   const [rowErrors, setRowErrors] = useState<Record<string, string | null>>({})
   const [lastResults, setLastResults] = useState<Record<string, BackupResult>>({})
 
+  // Snapshot actions key busy/error state by the LIVE row's userId; the snapshot itself
+  // supplies the API target id (a previous account's backupUserId).
   const [confirmUser, setConfirmUser] = useState<BackupOverviewRow | null>(null)
-  const [confirmRestore, setConfirmRestore] = useState<BackupOverviewRow | null>(null)
-  const [confirmDelete, setConfirmDelete] = useState<BackupOverviewRow | null>(null)
+  const [confirmRestore, setConfirmRestore] = useState<{
+    row: BackupOverviewRow
+    snapshot: BackupSnapshot
+    legacy: boolean
+  } | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<{
+    row: BackupOverviewRow
+    snapshot: BackupSnapshot
+    legacy: boolean
+  } | null>(null)
+  const [confirmMerge, setConfirmMerge] = useState<{
+    row: BackupOverviewRow
+    snapshot: BackupSnapshot
+  } | null>(null)
   const [confirmAll, setConfirmAll] = useState(false)
   const [backupAllRunning, setBackupAllRunning] = useState(false)
   const [backupAllCursor, setBackupAllCursor] = useState<{ done: number; total: number } | null>(
@@ -325,7 +633,8 @@ export function BackupSection() {
     backupAllRunning ||
     Object.values(busy).some(Boolean) ||
     Object.values(restoring).some(Boolean) ||
-    Object.values(deleting).some(Boolean)
+    Object.values(deleting).some(Boolean) ||
+    Object.values(merging).some(Boolean)
   // Backup-all covers live accounts only — orphan backups are restored, not re-backed-up.
   const liveTargets = useMemo(() => filtered.filter((r) => !r.deleted), [filtered])
 
@@ -367,21 +676,27 @@ export function BackupSection() {
     })
     try {
       const res = await backupUser(row.userId)
-      setRows((prev) =>
-        (prev ?? []).map((r) =>
-          r.userId === row.userId
-            ? {
-                ...r,
-                exists: true,
-                degraded: undefined,
-                unavailable: undefined,
-                backedUpAssets: res.assets,
-                backedUpFiles: res.files,
-                backedUpAt: res.backedUpAt,
-              }
-            : r,
-        ),
-      )
+      // A previous-account row's own backup becomes primary after a rerun, which can move
+      // the legacy block — a plain optimistic patch would lie, so refetch the overview.
+      if (row.backupUserId || (row.legacyBackups?.length ?? 0) > 0) {
+        setVersion((v) => v + 1)
+      } else {
+        setRows((prev) =>
+          (prev ?? []).map((r) =>
+            r.userId === row.userId
+              ? {
+                  ...r,
+                  exists: true,
+                  degraded: undefined,
+                  unavailable: undefined,
+                  backedUpAssets: res.assets,
+                  backedUpFiles: res.files,
+                  backedUpAt: res.backedUpAt,
+                }
+              : r,
+          ),
+        )
+      }
       setLastResults((prev) => ({ ...prev, [row.userId]: res }))
       const allSkipped = res.files > 0 && (res.skipped ?? 0) === res.files
       notify(
@@ -403,11 +718,11 @@ export function BackupSection() {
     }
   }
 
-  const runRestore = async (row: BackupOverviewRow): Promise<boolean> => {
+  const runRestore = async (row: BackupOverviewRow, snapshot: BackupSnapshot): Promise<boolean> => {
     setRestoring((prev) => ({ ...prev, [row.userId]: true }))
     setRowErrors((prev) => ({ ...prev, [row.userId]: null }))
     try {
-      const res: RestoreResult = await restoreUser(row.userId)
+      const res: RestoreResult = await restoreUser(snapshot.userId)
       notify(
         `Restored ${res.email} — ${res.assets.toLocaleString()} assets, ${res.files.toLocaleString()} files. Sign in as ${res.email}; the old password still works.`,
       )
@@ -424,11 +739,11 @@ export function BackupSection() {
     }
   }
 
-  const runDelete = async (row: BackupOverviewRow): Promise<boolean> => {
+  const runDelete = async (row: BackupOverviewRow, snapshot: BackupSnapshot): Promise<boolean> => {
     setDeleting((prev) => ({ ...prev, [row.userId]: true }))
     setRowErrors((prev) => ({ ...prev, [row.userId]: null }))
     try {
-      const res = await deleteBackup(row.userId)
+      const res = await deleteBackup(snapshot.userId)
       notify(
         `Deleted backup for ${res.email} — ${res.deletedObjects.toLocaleString()} objects removed.`,
       )
@@ -447,6 +762,37 @@ export function BackupSection() {
       return false
     } finally {
       setDeleting((prev) => ({ ...prev, [row.userId]: false }))
+    }
+  }
+
+  const runMerge = async (row: BackupOverviewRow, snapshot: BackupSnapshot): Promise<boolean> => {
+    setMerging((prev) => ({ ...prev, [row.userId]: true }))
+    setRowErrors((prev) => ({ ...prev, [row.userId]: null }))
+    try {
+      const res = await mergeBackup({
+        targetEmailOrId: row.userId,
+        backupUserId: snapshot.userId,
+        prefix: snapshot.prefix,
+      })
+      const shareSkips = res.skipped.shareTokenConflicts + res.skipped.shareTargetConflicts
+      notify(
+        `Merged ${res.merged.assets.toLocaleString()} assets (${res.deduped.assets.toLocaleString()} already present) into ${row.email}.` +
+          (shareSkips > 0
+            ? ` ${shareSkips.toLocaleString()} share link${shareSkips === 1 ? '' : 's'} skipped on conflict.`
+            : ''),
+      )
+      setVersion((v) => v + 1)
+      return true
+    } catch (err: unknown) {
+      const message = mergeErrorMessage(err)
+      setRowErrors((prev) => ({ ...prev, [row.userId]: message }))
+      notify(`Merge of ${row.email} failed — ${message}`, 'error')
+      // A stale row (already merged elsewhere) is fixed by the refreshed overview;
+      // an in-progress/email-mismatch 409 simply keeps the row as-is.
+      if (isAxiosError(err) && err.response?.status === 409) setVersion((v) => v + 1)
+      return false
+    } finally {
+      setMerging((prev) => ({ ...prev, [row.userId]: false }))
     }
   }
 
@@ -618,6 +964,11 @@ export function BackupSection() {
                     const isBusy = Boolean(busy[row.userId])
                     const isRestoring = Boolean(restoring[row.userId])
                     const isDeleting = Boolean(deleting[row.userId])
+                    // Orphans never carry snapshots — keep their Restore/disabled-Backup/Delete
+                    // action shape exactly as before.
+                    const primary = row.deleted ? null : attachedSnapshot(row)
+                    const legacySnapshots = row.deleted ? [] : (row.legacyBackups ?? [])
+                    const hasPrevious = primary !== null || legacySnapshots.length > 0
                     const progress = progressMap[row.userId] ?? null
                     const showDeterminate =
                       progress && !unsupported[row.userId] && progress.total > 0
@@ -629,6 +980,10 @@ export function BackupSection() {
                       row.emailAtBackup.toLowerCase() !== row.email.toLowerCase()
                         ? row.emailAtBackup
                         : null
+                    const openRestore = (snapshot: BackupSnapshot, legacy: boolean) =>
+                      setConfirmRestore({ row, snapshot, legacy })
+                    const openDelete = (snapshot: BackupSnapshot, legacy: boolean) =>
+                      setConfirmDelete({ row, snapshot, legacy })
                     return (
                       <tr
                         key={row.userId}
@@ -645,6 +1000,9 @@ export function BackupSection() {
                               </p>
                               <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                                 <RoleBadge role={row.role} />
+                                {hasPrevious && (
+                                  <StatusPill tone="warn">Previous account</StatusPill>
+                                )}
                                 {row.deleted && <StatusPill tone="warn">Deleted user</StatusPill>}
                               </div>
                               {emailHint && (
@@ -657,6 +1015,30 @@ export function BackupSection() {
                                   {DEGRADED_HINT[row.degraded]}
                                 </p>
                               )}
+                              {primary && (
+                                <SnapshotBlock
+                                  row={row}
+                                  snapshot={primary}
+                                  anyBusy={anyBusy}
+                                  deleting={isDeleting}
+                                  onMerge={() => setConfirmMerge({ row, snapshot: primary })}
+                                  onRestore={() => openRestore(primary, false)}
+                                  onDelete={() => openDelete(primary, false)}
+                                />
+                              )}
+                              {legacySnapshots.map((snap) => (
+                                <SnapshotBlock
+                                  key={`${snap.userId}-${snap.prefix}-${snap.backedUpAt ?? ''}`}
+                                  row={row}
+                                  snapshot={snap}
+                                  legacy
+                                  anyBusy={anyBusy}
+                                  deleting={isDeleting}
+                                  onMerge={() => setConfirmMerge({ row, snapshot: snap })}
+                                  onRestore={() => openRestore(snap, true)}
+                                  onDelete={() => openDelete(snap, true)}
+                                />
+                              ))}
                             </div>
                           </div>
                         </td>
@@ -679,7 +1061,7 @@ export function BackupSection() {
                           {row.deleted ? (
                             <div className="flex flex-col items-end gap-2">
                               <GhostButton
-                                onClick={() => setConfirmRestore(row)}
+                                onClick={() => openRestore(rowSnapshot(row), false)}
                                 disabled={anyBusy}
                                 ariaLabel={`Restore ${row.email}`}
                                 icon={
@@ -696,26 +1078,12 @@ export function BackupSection() {
                                   Backup
                                 </GhostButton>
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => setConfirmDelete(row)}
+                              <DeleteActionButton
+                                label={`Delete backup for ${row.email}`}
                                 disabled={anyBusy}
-                                title={`Delete backup for ${row.email}`}
-                                aria-label={`Delete backup for ${row.email}`}
-                                className={cx(
-                                  'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors',
-                                  anyBusy
-                                    ? 'text-outline/60 cursor-not-allowed'
-                                    : 'text-status-error/80 hover:text-status-error hover:bg-status-error/10',
-                                )}
-                              >
-                                {isDeleting ? (
-                                  <FaSpinner className="animate-spin text-xs" aria-hidden="true" />
-                                ) : (
-                                  <FaTrashCan className="text-xs" aria-hidden="true" />
-                                )}
-                                {isDeleting ? 'Deleting…' : 'Delete'}
-                              </button>
+                                busy={isDeleting}
+                                onClick={() => openDelete(rowSnapshot(row), false)}
+                              />
                             </div>
                           ) : (
                             <div className="flex flex-col items-end gap-2">
@@ -727,26 +1095,16 @@ export function BackupSection() {
                               >
                                 {isBusy ? 'Backing up…' : 'Backup'}
                               </GhostButton>
-                              <button
-                                type="button"
-                                onClick={() => setConfirmDelete(row)}
-                                disabled={anyBusy}
-                                title={`Delete backup for ${row.email}`}
-                                aria-label={`Delete backup for ${row.email}`}
-                                className={cx(
-                                  'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors',
-                                  anyBusy
-                                    ? 'text-outline/60 cursor-not-allowed'
-                                    : 'text-status-error/80 hover:text-status-error hover:bg-status-error/10',
-                                )}
-                              >
-                                {isDeleting ? (
-                                  <FaSpinner className="animate-spin text-xs" aria-hidden="true" />
-                                ) : (
-                                  <FaTrashCan className="text-xs" aria-hidden="true" />
-                                )}
-                                {isDeleting ? 'Deleting…' : 'Delete'}
-                              </button>
+                              {/* A previous-account primary backup owns its own Delete in the
+                                  snapshot block — don't duplicate it here. */}
+                              {!row.backupUserId && (
+                                <DeleteActionButton
+                                  label={`Delete backup for ${row.email}`}
+                                  disabled={anyBusy}
+                                  busy={isDeleting}
+                                  onClick={() => openDelete(rowSnapshot(row), false)}
+                                />
+                              )}
                             </div>
                           )}
                           {isBusy && (
@@ -886,47 +1244,41 @@ export function BackupSection() {
         </ConfirmDialog>
       )}
 
+      {confirmMerge && (
+        <MergeBackupDialog
+          row={confirmMerge.row}
+          snapshot={confirmMerge.snapshot}
+          onClose={() => setConfirmMerge(null)}
+          onConfirm={() => {
+            const target = confirmMerge
+            setConfirmMerge(null)
+            void runMerge(target.row, target.snapshot)
+          }}
+        />
+      )}
       {confirmRestore && (
-        <ConfirmDialog
-          title={`Restore ${confirmRestore.email}?`}
-          confirmLabel="Restore"
+        <RestoreSnapshotDialog
+          row={confirmRestore.row}
+          snapshot={confirmRestore.snapshot}
+          legacy={confirmRestore.legacy}
           onClose={() => setConfirmRestore(null)}
           onConfirm={() => {
             const target = confirmRestore
             setConfirmRestore(null)
-            void runRestore(target)
+            void runRestore(target.row, target.snapshot)
           }}
-        >
-          <p className="text-sm text-slate-400 mt-2">
-            Brings this deleted account back from its S3 backup — same files, albums, shares and
-            people — then re-queues thumbnails and other processing. The restore runs now, in the
-            API process, so large libraries take a while.
-          </p>
-          <code className="block text-xs font-mono text-slate-300 bg-slate-900/60 border border-border-dark rounded px-2 py-1.5 mt-2 break-all">
-            {backupPrefixPreview(confirmRestore.email, confirmRestore.userId)}
-          </code>
-          <p className="text-sm text-slate-400 mt-2">
-            This backup holds {(confirmRestore.backedUpAssets ?? 0).toLocaleString()} assets and{' '}
-            {(confirmRestore.backedUpFiles ?? 0).toLocaleString()} files
-            {confirmRestore.backedUpAt
-              ? `, last backed up ${stamp(confirmRestore.backedUpAt)}.`
-              : '.'}
-          </p>
-          <p className="text-sm text-slate-400 mt-2">
-            If that address is taken, it restores under a fallback like restored-&lt;time&gt;-
-            {confirmRestore.email} instead — sign in with the address shown after the restore
-            finishes. The restored account keeps its old password.
-          </p>
-        </ConfirmDialog>
+        />
       )}
       {confirmDelete && (
         <DeleteBackupDialog
-          row={confirmDelete}
+          row={confirmDelete.row}
+          snapshot={confirmDelete.snapshot}
+          legacy={confirmDelete.legacy}
           onClose={() => setConfirmDelete(null)}
           onConfirm={() => {
             const target = confirmDelete
             setConfirmDelete(null)
-            void runDelete(target)
+            void runDelete(target.row, target.snapshot)
           }}
         />
       )}

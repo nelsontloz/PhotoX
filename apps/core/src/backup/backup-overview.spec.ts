@@ -5,6 +5,7 @@ import type { Repository } from 'typeorm'
 import { backupPrefix, manifestKey, resolveBackupPrefix } from '@photox/shared-config'
 import { User } from '../users/entities/user.entity'
 import { Asset } from '../database/entities/asset.entity'
+import { BackupMerge } from './entities/backup-merge.entity'
 import {
   UserBackupService,
   buildBackupOverviewRow,
@@ -51,6 +52,9 @@ describe('buildBackupOverviewRow', () => {
       exists: true,
       notBackedUp: 5,
       deleted: false,
+      backedUpAlbums: 1,
+      backedUpShares: 0,
+      backedUpPersons: 0,
     })
   })
 
@@ -66,6 +70,9 @@ describe('buildBackupOverviewRow', () => {
       exists: false,
       notBackedUp: 3,
       deleted: false,
+      backedUpAlbums: 0,
+      backedUpShares: 0,
+      backedUpPersons: 0,
     })
   })
 
@@ -126,6 +133,9 @@ describe('buildOrphanBackupOverviewRow', () => {
       exists: true,
       notBackedUp: 0,
       deleted: true,
+      backedUpAlbums: 0,
+      backedUpShares: 0,
+      backedUpPersons: 0,
     })
   })
 
@@ -269,6 +279,7 @@ function makeOverviewService(
   counts: { userId: string; count: string }[],
   s3Keys: string[] = [],
   objects: Map<string, Buffer> = new Map<string, Buffer>(),
+  merges: BackupMerge[] = [],
 ) {
   const usersRepo = { find: vi.fn().mockResolvedValue(users) } as unknown as Repository<User>
   const qb = {
@@ -282,6 +293,9 @@ function makeOverviewService(
   const assetsRepo = {
     createQueryBuilder,
   } as unknown as Repository<Asset>
+  const backupMergesRepo = {
+    find: vi.fn().mockResolvedValue(merges),
+  } as unknown as Repository<BackupMerge>
   const getBuffer = vi.fn((key: string) => {
     const found = objects.get(key)
     if (!found) throw notFoundError(key)
@@ -314,8 +328,9 @@ function makeOverviewService(
     nil,
     nil,
     nil,
+    backupMergesRepo,
   )
-  return { svc, usersRepo, createQueryBuilder, qb, s3 }
+  return { svc, usersRepo, createQueryBuilder, qb, s3, backupMergesRepo }
 }
 
 describe('backupOverview', () => {
@@ -357,6 +372,9 @@ describe('backupOverview', () => {
         exists: true,
         notBackedUp: 5,
         deleted: false,
+        backedUpAlbums: 0,
+        backedUpShares: 0,
+        backedUpPersons: 0,
       },
       {
         userId: bob.id,
@@ -369,6 +387,9 @@ describe('backupOverview', () => {
         exists: false,
         notBackedUp: 0,
         deleted: false,
+        backedUpAlbums: 0,
+        backedUpShares: 0,
+        backedUpPersons: 0,
       },
     ])
     const s3Mock = s3 as unknown as {
@@ -417,6 +438,9 @@ describe('backupOverview', () => {
         exists: false,
         notBackedUp: 0,
         deleted: false,
+        backedUpAlbums: 0,
+        backedUpShares: 0,
+        backedUpPersons: 0,
       },
       {
         userId: orphanId,
@@ -429,6 +453,10 @@ describe('backupOverview', () => {
         exists: true,
         notBackedUp: 0,
         deleted: true,
+        prefix: orphanPrefix,
+        backedUpAlbums: 0,
+        backedUpShares: 0,
+        backedUpPersons: 0,
       },
     ])
   })
@@ -536,5 +564,229 @@ describe('backupOverview', () => {
       svc as unknown as { s3: { listKeys: Mock<(prefix: string) => Promise<string[]>> } }
     ).s3.listKeys.mockRejectedValue(new Error('s3 down'))
     await expect(svc.backupOverview()).rejects.toBeInstanceOf(ServiceUnavailableException)
+  })
+
+  it('folds an email-matched previous-account backup into the live row (no duplicate)', async () => {
+    const ada = user({ email: 'ada@example.com', role: 'admin' })
+    const orphanId = '33333333-3333-4333-8333-333333333333'
+    const orphanPrefix = backupPrefix(ada.email, orphanId)
+    const orphanManifest = `${orphanPrefix}manifest.json`
+    const objects = new Map([
+      [
+        orphanManifest,
+        manifestJson({
+          userId: orphanId,
+          email: ada.email,
+          files: 2,
+          assets: 2,
+          backedUpAt: '2026-10-05T00:00:00.000Z',
+        }),
+      ],
+    ])
+    const { svc } = makeOverviewService(
+      [ada],
+      [{ userId: ada.id, count: '4' }],
+      [orphanManifest],
+      objects,
+    )
+    const rows = await svc.backupOverview()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      userId: ada.id,
+      email: 'ada@example.com',
+      role: 'admin',
+      totalAssets: 4,
+      backedUpAssets: 2,
+      backedUpFiles: 2,
+      backedUpAt: '2026-10-05T00:00:00.000Z',
+      exists: true,
+      deleted: false,
+      backupUserId: orphanId,
+      prefix: orphanPrefix,
+    })
+    expect(rows[0]!.legacyBackups).toBeUndefined()
+  })
+
+  it('matches a previous account case-insensitively via manifest emailAtBackup', async () => {
+    const ada = user({ email: 'ada@example.com' })
+    const orphanId = '33333333-3333-4333-8333-333333333333'
+    const orphanPrefix = backupPrefix(ada.email, orphanId)
+    const orphanManifest = `${orphanPrefix}manifest.json`
+    const objects = new Map([
+      [
+        orphanManifest,
+        manifestJson({
+          userId: orphanId,
+          email: 'ADA@Example.COM',
+          files: 1,
+          assets: 1,
+          backedUpAt: '2026-10-05T00:00:00.000Z',
+        }),
+      ],
+    ])
+    const { svc } = makeOverviewService([ada], [], [orphanManifest], objects)
+    const rows = await svc.backupOverview()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      userId: ada.id,
+      backupUserId: orphanId,
+      backedUpAssets: 1,
+    })
+    // normalized emails are equal — no stale-email label
+    expect(rows[0]!.emailAtBackup).toBeUndefined()
+  })
+
+  it('keeps the exact own backup primary and lists email-matched sources as legacy', async () => {
+    const ada = user({ email: 'ada@example.com' })
+    const ownManifest = manifestKey(ada.email, ada.id)
+    const orphanId = '33333333-3333-4333-8333-333333333333'
+    const orphanPrefix = backupPrefix(ada.email, orphanId)
+    const orphanManifest = `${orphanPrefix}manifest.json`
+    const mergedAt = new Date('2026-10-06T12:00:00.000Z')
+    const objects = new Map([
+      [
+        ownManifest,
+        manifestJson({
+          userId: ada.id,
+          email: ada.email,
+          files: 7,
+          assets: 5,
+          backedUpAt: '2026-10-01T00:00:00.000Z',
+        }),
+      ],
+      [
+        orphanManifest,
+        manifestJson({
+          userId: orphanId,
+          email: ada.email,
+          files: 2,
+          assets: 2,
+          backedUpAt: '2026-10-05T00:00:00.000Z',
+        }),
+      ],
+    ])
+    const merges = [
+      {
+        id: randomUUID(),
+        backupUserId: orphanId,
+        targetUserId: ada.id,
+        prefix: orphanPrefix,
+        counts: {},
+        mergedAt,
+      } as BackupMerge,
+    ]
+    const { svc } = makeOverviewService(
+      [ada],
+      [{ userId: ada.id, count: '7' }],
+      [ownManifest, orphanManifest],
+      objects,
+      merges,
+    )
+    const rows = await svc.backupOverview()
+    expect(rows).toHaveLength(1)
+    const row = rows[0]!
+    expect(row).toMatchObject({
+      userId: ada.id,
+      backedUpAssets: 5,
+      backedUpFiles: 7,
+      exists: true,
+      deleted: false,
+    })
+    expect(row.backupUserId).toBeUndefined()
+    expect(row.prefix).toBeUndefined()
+    expect(row.mergedAt).toBeUndefined()
+    expect(row.legacyBackups).toHaveLength(1)
+    expect(row.legacyBackups![0]).toMatchObject({
+      userId: orphanId,
+      prefix: orphanPrefix,
+      backedUpAt: '2026-10-05T00:00:00.000Z',
+      assets: 2,
+      files: 2,
+      mergedAt: mergedAt.toISOString(),
+    })
+  })
+
+  it('picks the newest of multiple previous-account sources as primary', async () => {
+    const ada = user({ email: 'ada@example.com' })
+    const olderId = '33333333-3333-4333-8333-333333333333'
+    const newerId = '44444444-4444-4444-8444-444444444444'
+    const olderPrefix = backupPrefix(ada.email, olderId)
+    const newerPrefix = backupPrefix(ada.email, newerId)
+    const olderManifest = `${olderPrefix}manifest.json`
+    const newerManifest = `${newerPrefix}manifest.json`
+    const objects = new Map([
+      [
+        olderManifest,
+        manifestJson({
+          userId: olderId,
+          email: ada.email,
+          files: 1,
+          assets: 1,
+          backedUpAt: '2026-01-01T00:00:00.000Z',
+        }),
+      ],
+      [
+        newerManifest,
+        manifestJson({
+          userId: newerId,
+          email: ada.email,
+          files: 3,
+          assets: 3,
+          backedUpAt: '2026-10-01T00:00:00.000Z',
+        }),
+      ],
+    ])
+    const { svc } = makeOverviewService([ada], [], [olderManifest, newerManifest], objects)
+    const rows = await svc.backupOverview()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      backupUserId: newerId,
+      prefix: newerPrefix,
+      backedUpAssets: 3,
+      backedUpFiles: 3,
+    })
+    expect(rows[0]!.legacyBackups).toHaveLength(1)
+    expect(rows[0]!.legacyBackups![0]).toMatchObject({ userId: olderId, prefix: olderPrefix })
+  })
+
+  it('passes through degraded email-matched previous accounts', async () => {
+    const ada = user({ email: 'ada@example.com' })
+    const orphanId = '33333333-3333-4333-8333-333333333333'
+    const orphanPrefix = backupPrefix(ada.email, orphanId)
+    const orphanManifest = `${orphanPrefix}manifest.json`
+    const objects = new Map([[orphanManifest, Buffer.from('not-json{{{')]])
+    const { svc } = makeOverviewService([ada], [], [orphanManifest], objects)
+    const rows = await svc.backupOverview()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      userId: ada.id,
+      backupUserId: orphanId,
+      prefix: orphanPrefix,
+      exists: true,
+      deleted: false,
+      degraded: 'corrupt',
+    })
+  })
+
+  it('keeps truly unmatched deleted-user backups as orphan rows', async () => {
+    const ada = user({ email: 'ada@example.com' })
+    const otherId = '33333333-3333-4333-8333-333333333333'
+    const otherPrefix = backupPrefix('other@example.com', otherId)
+    const otherManifest = `${otherPrefix}manifest.json`
+    const objects = new Map([
+      [
+        otherManifest,
+        manifestJson({ userId: otherId, email: 'other@example.com', files: 1, assets: 1 }),
+      ],
+    ])
+    const { svc } = makeOverviewService([ada], [], [otherManifest], objects)
+    const rows = await svc.backupOverview()
+    expect(rows).toHaveLength(2)
+    expect(rows.find((r) => r.userId === ada.id)?.deleted).toBe(false)
+    expect(rows.find((r) => r.userId === otherId)).toMatchObject({
+      deleted: true,
+      prefix: otherPrefix,
+      exists: true,
+    })
   })
 })

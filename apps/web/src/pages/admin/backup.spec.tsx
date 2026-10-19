@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import type { BackupOverviewRow, BackupResult, RestoreResult } from '../../api/admin'
+import type {
+  BackupOverviewRow,
+  BackupResult,
+  BackupSnapshot,
+  MergeResult,
+  RestoreResult,
+} from '../../api/admin'
 
 const api = vi.hoisted(() => ({
   getBackupOverview: vi.fn(),
@@ -8,6 +14,7 @@ const api = vi.hoisted(() => ({
   backupUser: vi.fn(),
   restoreUser: vi.fn(),
   deleteBackup: vi.fn(),
+  mergeBackup: vi.fn(),
   backupPrefixPreview: (email: string, userId: string) =>
     `backups/${encodeURIComponent(email.trim().toLowerCase())}__${encodeURIComponent(userId)}/`,
 }))
@@ -91,6 +98,60 @@ const restoreResult: RestoreResult = {
   enqueued: { metadata: 40, thumbnails: 40, videos: 0, faces: 40, ai: 0 },
 }
 
+const matched: BackupOverviewRow = {
+  userId: 'u-live',
+  email: 'admin@example.com',
+  role: 'admin',
+  totalAssets: 48,
+  backedUpAssets: 48,
+  backedUpFiles: 48,
+  backedUpAt: '2026-10-05T00:00:00.000Z',
+  exists: true,
+  notBackedUp: 0,
+  deleted: false,
+  backupUserId: 'u-old',
+  prefix: 'backups/admin%40example.com__u-old/',
+  backedUpAlbums: 2,
+  backedUpShares: 1,
+  backedUpPersons: 7,
+}
+
+const legacySnap: BackupSnapshot = {
+  userId: 'u-legacy',
+  emailAtBackup: 'admin@legacy.example.com',
+  prefix: 'backups/admin%40legacy.example.com__u-legacy/',
+  backedUpAt: '2026-09-01T00:00:00.000Z',
+  assets: 3,
+  files: 4,
+  albums: 0,
+  shares: 0,
+  persons: 1,
+}
+
+const mergeResult: MergeResult = {
+  targetUserId: 'u-live',
+  targetEmail: 'admin@example.com',
+  backupUserId: 'u-old',
+  emailAtBackup: 'admin@example.com',
+  prefix: 'backups/admin%40example.com__u-old/',
+  backedUpAt: '2026-10-05T00:00:00.000Z',
+  startedAt: '2026-10-06T00:00:00.000Z',
+  completedAt: '2026-10-06T00:01:00.000Z',
+  merged: { files: 48, assets: 48, albums: 2, albumAssets: 50, shares: 1, persons: 7 },
+  deduped: { files: 5, assets: 5 },
+  skipped: {
+    files: 0,
+    assets: 0,
+    albums: 0,
+    albumAssets: 0,
+    shares: 0,
+    persons: 0,
+    shareTokenConflicts: 1,
+    shareTargetConflicts: 1,
+  },
+  enqueued: { metadata: 48, thumbnails: 48, videos: 0, faces: 48, ai: 0 },
+}
+
 const notFound = () => ({ isAxiosError: true, response: { status: 404 }, message: 'Not found' })
 
 beforeEach(() => {
@@ -98,6 +159,7 @@ beforeEach(() => {
   api.getBackupProgress.mockRejectedValue(notFound())
   api.backupUser.mockResolvedValue(result)
   api.restoreUser.mockResolvedValue(restoreResult)
+  api.mergeBackup.mockResolvedValue(mergeResult)
   api.deleteBackup.mockResolvedValue({
     userId: 'u-1',
     email: 'ada@example.com',
@@ -496,6 +558,192 @@ describe('BackupSection orphans', () => {
     await waitFor(() => expect(api.backupUser).toHaveBeenCalledTimes(1))
     expect(calls).toEqual(['u-1'])
     expect(api.restoreUser).not.toHaveBeenCalled()
+  })
+})
+
+describe('BackupSection previous accounts', () => {
+  beforeEach(() => {
+    api.getBackupOverview.mockResolvedValue([matched])
+  })
+
+  it('renders one live row with the previous-account badge and snapshot actions', async () => {
+    render(<BackupSection />)
+    expect(await screen.findByText('admin@example.com')).toBeTruthy()
+
+    // The live email appears exactly once — no separate orphan row for the matched backup.
+    expect(screen.getAllByText('admin@example.com')).toHaveLength(1)
+    expect(screen.getByText('Previous account')).toBeTruthy()
+    expect(screen.queryByText('Deleted user')).toBeNull()
+
+    const row = screen.getByText('admin@example.com').closest('tr') as HTMLElement
+    // Snapshot counts drive the columns and the compact block.
+    expect(within(row).getAllByText('48').length).toBeGreaterThanOrEqual(2)
+    expect(within(row).getByText(/7 people/)).toBeTruthy()
+    expect(within(row).getByText('backups/admin%40example.com__u-old/')).toBeTruthy()
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Merge backup for admin@example.com into this account',
+      }),
+    ).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Restore admin@example.com' })).toBeTruthy()
+    // Delete lives in the snapshot block only — the live action column keeps Backup alone.
+    expect(
+      screen.getAllByRole('button', { name: 'Delete backup for admin@example.com' }),
+    ).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Back up admin@example.com' })).toBeTruthy()
+  })
+
+  it('confirms a merge, calls mergeBackup with the live/source ids and refetches', async () => {
+    render(<BackupSection />)
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Merge backup for admin@example.com into this account',
+      }),
+    )
+
+    expect(screen.getByText('Merge backup into admin@example.com?')).toBeTruthy()
+    // The compact block and the dialog both show the source prefix.
+    expect(
+      screen.getAllByText('backups/admin%40example.com__u-old/').length,
+    ).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText(/48 assets, 48 files, 2 albums, 1 shares and 7 people/)).toBeTruthy()
+    expect(screen.getByText(/password, role and display name/)).toBeTruthy()
+    expect(screen.getByText(/Duplicate photos are linked/)).toBeTruthy()
+    expect(screen.getByText(/cleanup-orphans paused/)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Merge' }))
+
+    await waitFor(() =>
+      expect(api.mergeBackup).toHaveBeenCalledWith({
+        targetEmailOrId: 'u-live',
+        backupUserId: 'u-old',
+        prefix: 'backups/admin%40example.com__u-old/',
+      }),
+    )
+    expect(
+      await screen.findByText(
+        'Merged 48 assets (5 already present) into admin@example.com. 2 share links skipped on conflict.',
+      ),
+    ).toBeTruthy()
+    await waitFor(() => expect(api.getBackupOverview).toHaveBeenCalledTimes(2))
+  })
+
+  it('restores the previous account by its snapshot user id', async () => {
+    render(<BackupSection />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Restore admin@example.com' }))
+
+    expect(screen.getByText('Restore admin@example.com?')).toBeTruthy()
+    expect(
+      screen.getByText(/creates a separate account and does not change the live account/),
+    ).toBeTruthy()
+    expect(
+      screen.getAllByText('backups/admin%40example.com__u-old/').length,
+    ).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText(/48 assets and 48 files/)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Restore' }))
+    await waitFor(() => expect(api.restoreUser).toHaveBeenCalledWith('u-old'))
+  })
+
+  it('deletes the previous-account backup by its snapshot user id', async () => {
+    render(<BackupSection />)
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Delete backup for admin@example.com' }),
+    )
+
+    expect(screen.getByText('Delete backup for admin@example.com?')).toBeTruthy()
+    expect(
+      screen.getAllByText('backups/admin%40example.com__u-old/').length,
+    ).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText(/48 assets and 48 files/)).toBeTruthy()
+    expect(screen.getByText(/The live account and any merged photos stay/)).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText(/Type DELETE to confirm/), {
+      target: { value: 'DELETE' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Delete backup' }))
+
+    await waitFor(() => expect(api.deleteBackup).toHaveBeenCalledWith('u-old'))
+  })
+
+  it('renders extra legacy snapshots with unique labels and routes their actions', async () => {
+    api.getBackupOverview.mockResolvedValue([{ ...matched, legacyBackups: [legacySnap] }])
+    const when = new Date(legacySnap.backedUpAt!).toLocaleString()
+    render(<BackupSection />)
+    expect(await screen.findByText('admin@example.com')).toBeTruthy()
+
+    expect(
+      screen.getByRole('button', {
+        name: `Merge backup for admin@example.com into this account (${when})`,
+      }),
+    ).toBeTruthy()
+    expect(
+      screen.getByRole('button', { name: `Restore admin@example.com from ${when}` }),
+    ).toBeTruthy()
+    expect(
+      screen.getByRole('button', {
+        name: `Delete previous backup for admin@example.com from ${when}`,
+      }),
+    ).toBeTruthy()
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `Merge backup for admin@example.com into this account (${when})`,
+      }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Merge' }))
+    await waitFor(() =>
+      expect(api.mergeBackup).toHaveBeenCalledWith({
+        targetEmailOrId: 'u-live',
+        backupUserId: 'u-legacy',
+        prefix: legacySnap.prefix,
+      }),
+    )
+  })
+
+  it('routes legacy restore and delete to the snapshot user id', async () => {
+    api.getBackupOverview.mockResolvedValue([{ ...matched, legacyBackups: [legacySnap] }])
+    const when = new Date(legacySnap.backedUpAt!).toLocaleString()
+    render(<BackupSection />)
+    expect(await screen.findByText('admin@example.com')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: `Restore admin@example.com from ${when}` }))
+    expect(screen.getByText(`Restore admin@example.com from ${when}?`)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Restore' }))
+    await waitFor(() => expect(api.restoreUser).toHaveBeenCalledWith('u-legacy'))
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: `Delete previous backup for admin@example.com from ${when}`,
+      }),
+    )
+    expect(screen.getByText('Delete previous backup for admin@example.com?')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText(/Type DELETE to confirm/), {
+      target: { value: 'DELETE' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Delete backup' }))
+    await waitFor(() => expect(api.deleteBackup).toHaveBeenCalledWith('u-legacy'))
+  })
+
+  it('hides Merge for an already-merged legacy snapshot and shows the merged date', async () => {
+    const mergedAt = '2026-10-07T00:00:00.000Z'
+    api.getBackupOverview.mockResolvedValue([
+      { ...matched, legacyBackups: [{ ...legacySnap, mergedAt }] },
+    ])
+    const when = new Date(legacySnap.backedUpAt!).toLocaleString()
+    render(<BackupSection />)
+    expect(await screen.findByText('admin@example.com')).toBeTruthy()
+
+    expect(
+      screen.queryByRole('button', {
+        name: `Merge backup for admin@example.com into this account (${when})`,
+      }),
+    ).toBeNull()
+    expect(
+      screen.getByRole('button', { name: `Restore admin@example.com from ${when}` }),
+    ).toBeTruthy()
+    expect(screen.getByText(`Merged ${new Date(mergedAt).toLocaleString()}`)).toBeTruthy()
   })
 })
 

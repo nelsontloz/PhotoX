@@ -927,3 +927,133 @@ Then(
     expect(((await originalLogin.json()) as AuthResponse).user.id).toBe(reregistered.user.id)
   },
 )
+
+// --- previous-account backup merge ---------------------------------------------------------
+// A deleted account's snapshot is matched to the live account that re-registered its email.
+// The live row carries one merge action; merging copies the source library into the live
+// account while the S3 snapshot itself stays untouched, and the ledger rejects a repeat.
+
+interface MergedOverviewRow {
+  userId: string
+  email: string
+  totalAssets?: number
+  backedUpAssets?: number
+  backupUserId?: string
+  mergedAt?: string | null
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+When('I search backups for the victim email', async ({ page, ctx }) => {
+  await page.getByLabel('Filter backups by email').fill(requireVictim(ctx).user.email)
+})
+
+Then('the matched backup row shows the previous-account merge action', async ({ page, ctx }) => {
+  const email = requireVictim(ctx).user.email
+  const row = backupRow(page, email)
+  await expect(row).toHaveCount(1, { timeout: 30_000 })
+  await expect(row.getByText('Previous account')).toBeVisible()
+  await expect(page.getByText('Deleted user')).toHaveCount(0)
+  // the merge action sits on the live row, next to restore/delete and the normal backup action
+  await expect(
+    row.getByRole('button', { name: `Merge backup for ${email} into this account`, exact: true }),
+  ).toBeEnabled()
+  await expect(row.getByRole('button', { name: `Restore ${email}`, exact: true })).toBeVisible()
+  await expect(
+    row.getByRole('button', { name: `Delete backup for ${email}`, exact: true }),
+  ).toBeVisible()
+  await expect(row.getByRole('button', { name: `Back up ${email}`, exact: true })).toBeEnabled()
+})
+
+When('I merge the matched backup into the live account', async ({ page, ctx, $testInfo }) => {
+  // the merge copies the source originals inline (deduping checksums) — allow room past 120s
+  $testInfo.setTimeout(360_000)
+  const email = requireVictim(ctx).user.email
+  const merge = page.getByRole('button', {
+    name: `Merge backup for ${email} into this account`,
+    exact: true,
+  })
+  await expect(merge).toBeEnabled({ timeout: 30_000 })
+  await merge.click()
+  await expect(
+    page.getByRole('heading', { name: `Merge backup into ${email}?`, exact: true }),
+  ).toBeVisible()
+  // the confirm closes before the run, so register the waiter first and pin the outcome on
+  // the response — the toast proves the overview refreshed afterwards
+  const pending = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/v1/admin/restores/merge',
+    { timeout: 240_000 },
+  )
+  await page.getByRole('button', { name: 'Merge', exact: true }).click()
+  expect((await pending).status()).toBe(200)
+  await expect(
+    page.getByText(new RegExp(`Merged .* into ${escapeRegExp(email)}`)).first(),
+  ).toBeVisible({ timeout: 15_000 })
+})
+
+Then('the live account owns the backup library', async ({ request, ctx }) => {
+  const state = deleteState(ctx)
+  const victim = requireVictim(ctx)
+  const admin = requireStateAdmin(ctx)
+  const reregistered = state.reregistered
+  if (!reregistered) throw new Error('re-register the victim email first')
+  // one row per live email: the merged snapshot is reported on the live account's row
+  await expect
+    .poll(
+      async () => {
+        const response = await request.get('/api/v1/admin/backups/overview', {
+          headers: authHeaders(admin),
+        })
+        if (response.status() !== 200) return false
+        const rows = (await response.json()) as MergedOverviewRow[]
+        const row = rows.find((candidate) => candidate.userId === reregistered.user.id)
+        return Boolean(
+          row?.totalAssets === 1 &&
+          row?.backedUpAssets === 1 &&
+          row?.backupUserId === victim.user.id &&
+          row?.mergedAt,
+        )
+      },
+      { timeout: 60_000 },
+    )
+    .toBe(true)
+})
+
+Then('the source backup is still present', async ({ request, ctx }) => {
+  const victim = requireVictim(ctx)
+  const response = await request.get(
+    `/api/v1/admin/backups/status?emailOrId=${encodeURIComponent(victim.user.id)}`,
+    { headers: authHeaders(requireStateAdmin(ctx)) },
+  )
+  expect(response.status()).toBe(200)
+  const status = (await response.json()) as { exists: boolean; assets?: number }
+  expect(status.exists).toBe(true)
+  expect(status.assets).toBe(1)
+})
+
+Then('a second merge is rejected', async ({ request, ctx }) => {
+  const state = deleteState(ctx)
+  const victim = requireVictim(ctx)
+  const reregistered = state.reregistered
+  if (!reregistered) throw new Error('re-register the victim email first')
+  const response = await request.post('/api/v1/admin/restores/merge', {
+    headers: authHeaders(requireStateAdmin(ctx)),
+    data: { targetEmailOrId: reregistered.user.id, backupUserId: victim.user.id },
+  })
+  expect(response.status()).toBe(409)
+  let body: { message?: unknown } = {}
+  try {
+    body = (await response.json()) as { message?: unknown }
+  } catch {
+    // a bodyless 409 still proves the repeat merge was rejected
+  }
+  if (body.message !== undefined) {
+    // the HTTP filter may shape the message as a string or an array of strings
+    const message = typeof body.message === 'string' ? body.message : JSON.stringify(body.message)
+    expect(message).toContain('already-merged')
+  }
+})

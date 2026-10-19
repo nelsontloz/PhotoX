@@ -90,6 +90,21 @@ Feature: Admin user deletion
     Then the restore toast names the fallback address
     And the fallback account signs in with the old password while the re-registered account keeps the email
 
+  Scenario: Merging a deleted user's backup into the re-registered account
+    Given I am signed in as the seeded administrator
+    And a victim user with a full library and backup is registered
+    When I can open the admin dashboard
+    And I delete the victim user through the confirmation dialog
+    Then the victim deletion reaches a terminal state
+    When the victim email is re-registered by a new user
+    And I open the backups tab
+    And I search backups for the victim email
+    Then the matched backup row shows the previous-account merge action
+    When I merge the matched backup into the live account
+    Then the live account owns the backup library
+    And the source backup is still present
+    And a second merge is rejected
+
   Scenario: Deleting and restoring repeatedly still wipes the account and regenerates derivatives
     Given I am signed in as the seeded administrator
     And a victim user with a full library and backup is registered
