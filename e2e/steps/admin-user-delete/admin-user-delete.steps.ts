@@ -818,12 +818,18 @@ When(
     $testInfo.setTimeout(360_000)
     const victim = requireVictim(ctx)
     await page.getByLabel('Filter backups by email').fill(victim.user.email)
-    const restore = page.getByRole('button', { name: `Restore ${victim.user.email}` })
+    // this step serves both rows: the true-orphan main row keeps `Restore ${email}` while the
+    // previous-account sub-row carries `Restore to a new account ${email}`
+    const restore = page.getByRole('button', {
+      name: new RegExp(`^Restore( to a new account)? ${escapeRegExp(victim.user.email)}$`),
+    })
     await expect(restore).toBeEnabled({ timeout: 30_000 })
     await restore.click()
     await expect(
       page.getByRole('heading', { name: `Restore ${victim.user.email}?`, exact: true }),
     ).toBeVisible()
+    // the optional target-address input must be offered; leaving it empty keeps the fallback
+    await expect(page.getByLabel('New account email')).toBeVisible()
     // the confirm closes before the run, so register the waiter first and pin the outcome
     // on the response — the Then steps assert the toast + refreshed list, never a bare wait
     const pending = page.waitForResponse(
@@ -930,16 +936,20 @@ Then(
 
 // --- previous-account backup merge ---------------------------------------------------------
 // A deleted account's snapshot is matched to the live account that re-registered its email.
-// The live row carries one merge action; merging copies the source library into the live
-// account while the S3 snapshot itself stays untouched, and the ledger rejects a repeat.
+// The live row keeps its own Back up / Delete pair while each matched snapshot renders in a
+// sub-row table under it; merging copies the source library into the live account while the
+// S3 snapshot itself stays untouched, and the ledger rejects a repeat.
 
 interface MergedOverviewRow {
   userId: string
   email: string
   totalAssets?: number
-  backedUpAssets?: number
-  backupUserId?: string
-  mergedAt?: string | null
+  legacyBackups?: {
+    userId: string
+    assets?: number
+    backedUpAt?: string | null
+    mergedAt?: string | null
+  }[]
 }
 
 function escapeRegExp(value: string): string {
@@ -952,19 +962,29 @@ When('I search backups for the victim email', async ({ page, ctx }) => {
 
 Then('the matched backup row shows the previous-account merge action', async ({ page, ctx }) => {
   const email = requireVictim(ctx).user.email
+  // the live account's main row is the only row carrying the email text — the snapshot's
+  // sub-row table below it labels its buttons with the address, never as plain text
   const row = backupRow(page, email)
   await expect(row).toHaveCount(1, { timeout: 30_000 })
-  await expect(row.getByText('Previous account')).toBeVisible()
-  await expect(page.getByText('Deleted user')).toHaveCount(0)
-  // the merge action sits on the live row, next to restore/delete and the normal backup action
-  await expect(
-    row.getByRole('button', { name: `Merge backup for ${email} into this account`, exact: true }),
-  ).toBeEnabled()
-  await expect(row.getByRole('button', { name: `Restore ${email}`, exact: true })).toBeVisible()
+  await expect(row.getByText('Deleted user')).toHaveCount(0)
+  // the live account has no own backup, so its main row shows the plain Back up / Delete pair
+  await expect(row.getByRole('button', { name: `Back up ${email}`, exact: true })).toBeEnabled()
   await expect(
     row.getByRole('button', { name: `Delete backup for ${email}`, exact: true }),
   ).toBeVisible()
-  await expect(row.getByRole('button', { name: `Back up ${email}`, exact: true })).toBeEnabled()
+  // the previous account's snapshot renders in the sub-row table under the main row
+  await expect(page.getByText('Previous account').first()).toBeVisible()
+  // the first snapshot carries the un-dated labels — exact matching keeps them apart from the
+  // dated variants reserved for any further snapshots
+  await expect(
+    page.getByRole('button', { name: `Merge to current live account ${email}`, exact: true }),
+  ).toBeEnabled()
+  await expect(
+    page.getByRole('button', { name: `Restore to a new account ${email}`, exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: `Delete previous backup for ${email}`, exact: true }),
+  ).toBeVisible()
 })
 
 When('I merge the matched backup into the live account', async ({ page, ctx, $testInfo }) => {
@@ -972,7 +992,7 @@ When('I merge the matched backup into the live account', async ({ page, ctx, $te
   $testInfo.setTimeout(360_000)
   const email = requireVictim(ctx).user.email
   const merge = page.getByRole('button', {
-    name: `Merge backup for ${email} into this account`,
+    name: `Merge to current live account ${email}`,
     exact: true,
   })
   await expect(merge).toBeEnabled({ timeout: 30_000 })
@@ -1001,7 +1021,8 @@ Then('the live account owns the backup library', async ({ request, ctx }) => {
   const admin = requireStateAdmin(ctx)
   const reregistered = state.reregistered
   if (!reregistered) throw new Error('re-register the victim email first')
-  // one row per live email: the merged snapshot is reported on the live account's row
+  // one row per live email: the merged snapshot is reported on the live account's row as a
+  // legacy backup carrying the source account id and its merge timestamp
   await expect
     .poll(
       async () => {
@@ -1011,12 +1032,13 @@ Then('the live account owns the backup library', async ({ request, ctx }) => {
         if (response.status() !== 200) return false
         const rows = (await response.json()) as MergedOverviewRow[]
         const row = rows.find((candidate) => candidate.userId === reregistered.user.id)
-        return Boolean(
-          row?.totalAssets === 1 &&
-          row?.backedUpAssets === 1 &&
-          row?.backupUserId === victim.user.id &&
-          row?.mergedAt,
+        const merged = row?.legacyBackups?.some(
+          (snapshot) =>
+            snapshot.userId === victim.user.id &&
+            snapshot.assets === 1 &&
+            Boolean(snapshot.mergedAt),
         )
+        return Boolean(row?.totalAssets === 1 && merged)
       },
       { timeout: 60_000 },
     )

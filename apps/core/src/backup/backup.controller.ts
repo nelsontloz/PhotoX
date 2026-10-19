@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Post, Query } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator'
+import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator'
 import {
   UserBackupService,
   type BackupOverviewRow,
@@ -22,6 +22,10 @@ class RestoreRequestDto {
   @IsString()
   @IsNotEmpty()
   emailOrId!: string
+
+  @IsOptional()
+  @IsEmail()
+  restoreEmail?: string
 }
 
 class MergeRestoreRequestDto {
@@ -94,7 +98,7 @@ export class BackupController {
   })
   @ApiResponse({ status: 200, description: 'Restore counts and re-enqueue totals' })
   async restore(@Body() dto: RestoreRequestDto): Promise<RestoreResult> {
-    return this.backups.restoreUser(dto.emailOrId)
+    return this.backups.restoreUser(dto.emailOrId, dto.restoreEmail)
   }
 
   @Post('restores/merge')

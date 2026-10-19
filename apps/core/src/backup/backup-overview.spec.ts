@@ -566,7 +566,7 @@ describe('backupOverview', () => {
     await expect(svc.backupOverview()).rejects.toBeInstanceOf(ServiceUnavailableException)
   })
 
-  it('folds an email-matched previous-account backup into the live row (no duplicate)', async () => {
+  it('reports an email-matched previous-account backup as legacyBackups, not as the live row status', async () => {
     const ada = user({ email: 'ada@example.com', role: 'admin' })
     const orphanId = '33333333-3333-4333-8333-333333333333'
     const orphanPrefix = backupPrefix(ada.email, orphanId)
@@ -591,20 +591,31 @@ describe('backupOverview', () => {
     )
     const rows = await svc.backupOverview()
     expect(rows).toHaveLength(1)
+    // the live account has no backup of its own — its row stays the exact own
+    // prefix (exists:false) and never adopts the previous account's numbers
     expect(rows[0]).toMatchObject({
       userId: ada.id,
       email: 'ada@example.com',
       role: 'admin',
       totalAssets: 4,
-      backedUpAssets: 2,
-      backedUpFiles: 2,
-      backedUpAt: '2026-10-05T00:00:00.000Z',
-      exists: true,
+      backedUpAssets: 0,
+      backedUpFiles: 0,
+      backedUpAt: null,
+      exists: false,
+      notBackedUp: 4,
       deleted: false,
-      backupUserId: orphanId,
-      prefix: orphanPrefix,
     })
-    expect(rows[0]!.legacyBackups).toBeUndefined()
+    expect(rows[0]!.backupUserId).toBeUndefined()
+    expect(rows[0]!.prefix).toBeUndefined()
+    expect(rows[0]!.mergedAt).toBeUndefined()
+    expect(rows[0]!.legacyBackups).toHaveLength(1)
+    expect(rows[0]!.legacyBackups![0]).toMatchObject({
+      userId: orphanId,
+      prefix: orphanPrefix,
+      backedUpAt: '2026-10-05T00:00:00.000Z',
+      assets: 2,
+      files: 2,
+    })
   })
 
   it('matches a previous account case-insensitively via manifest emailAtBackup', async () => {
@@ -629,8 +640,16 @@ describe('backupOverview', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({
       userId: ada.id,
-      backupUserId: orphanId,
-      backedUpAssets: 1,
+      exists: false,
+      backedUpAssets: 0,
+    })
+    expect(rows[0]!.backupUserId).toBeUndefined()
+    expect(rows[0]!.legacyBackups).toHaveLength(1)
+    expect(rows[0]!.legacyBackups![0]).toMatchObject({
+      userId: orphanId,
+      prefix: orphanPrefix,
+      assets: 1,
+      files: 1,
     })
     // normalized emails are equal — no stale-email label
     expect(rows[0]!.emailAtBackup).toBeUndefined()
@@ -706,7 +725,7 @@ describe('backupOverview', () => {
     })
   })
 
-  it('picks the newest of multiple previous-account sources as primary', async () => {
+  it('lists multiple previous-account sources newest first without adopting one as primary', async () => {
     const ada = user({ email: 'ada@example.com' })
     const olderId = '33333333-3333-4333-8333-333333333333'
     const newerId = '44444444-4444-4444-8444-444444444444'
@@ -740,16 +759,27 @@ describe('backupOverview', () => {
     const rows = await svc.backupOverview()
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({
-      backupUserId: newerId,
-      prefix: newerPrefix,
-      backedUpAssets: 3,
-      backedUpFiles: 3,
+      userId: ada.id,
+      exists: false,
+      backedUpAssets: 0,
+      backedUpFiles: 0,
     })
-    expect(rows[0]!.legacyBackups).toHaveLength(1)
-    expect(rows[0]!.legacyBackups![0]).toMatchObject({ userId: olderId, prefix: olderPrefix })
+    expect(rows[0]!.backupUserId).toBeUndefined()
+    expect(rows[0]!.prefix).toBeUndefined()
+    expect(rows[0]!.legacyBackups).toHaveLength(2)
+    expect(rows[0]!.legacyBackups![0]).toMatchObject({
+      userId: newerId,
+      prefix: newerPrefix,
+      assets: 3,
+    })
+    expect(rows[0]!.legacyBackups![1]).toMatchObject({
+      userId: olderId,
+      prefix: olderPrefix,
+      assets: 1,
+    })
   })
 
-  it('passes through degraded email-matched previous accounts', async () => {
+  it('passes through degraded email-matched previous accounts as legacyBackups', async () => {
     const ada = user({ email: 'ada@example.com' })
     const orphanId = '33333333-3333-4333-8333-333333333333'
     const orphanPrefix = backupPrefix(ada.email, orphanId)
@@ -760,10 +790,16 @@ describe('backupOverview', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({
       userId: ada.id,
-      backupUserId: orphanId,
+      exists: false,
+      deleted: false,
+    })
+    expect(rows[0]!.degraded).toBeUndefined()
+    expect(rows[0]!.backupUserId).toBeUndefined()
+    expect(rows[0]!.legacyBackups).toHaveLength(1)
+    expect(rows[0]!.legacyBackups![0]).toMatchObject({
+      userId: orphanId,
       prefix: orphanPrefix,
       exists: true,
-      deleted: false,
       degraded: 'corrupt',
     })
   })

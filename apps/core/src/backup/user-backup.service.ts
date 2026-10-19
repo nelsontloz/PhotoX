@@ -298,8 +298,9 @@ export interface BackupOverviewRow {
   notBackedUp: number
   deleted: boolean
   emailAtBackup?: string
-  // Live row whose primary snapshot is a previous account with the same email:
-  // these identify the source prefix the numbers came from and its merge state.
+  // Orphan rows use `prefix` to point at their S3 directory; live rows leave
+  // `prefix`/`backupUserId`/`mergedAt` unset — a live row's numbers never come
+  // from a previous account (those sources are sub-row `legacyBackups` material).
   prefix?: string
   backupUserId?: string
   mergedAt?: string
@@ -856,7 +857,7 @@ export class UserBackupService {
     }
   }
 
-  async restoreUser(emailOrId: string): Promise<RestoreResult> {
+  async restoreUser(emailOrId: string, restoreEmail?: string): Promise<RestoreResult> {
     const startedAt = new Date().toISOString()
     this.logger.warn(
       `Restore started at ${startedAt} — keep cleanup-orphans paused until restore ` +
@@ -896,16 +897,25 @@ export class UserBackupService {
     // S3 prefix stays as-is (bytes still live under the backup-time email); the
     // next backup for the fallback address renames via the existing email-change
     // copy-forward path.
+    // An explicit restoreEmail short-circuits that allocation: normalized, it must
+    // be free of any live holder (409 email-taken) and becomes the restored
+    // account's actual address as-is.
     let actualEmail = manifest.user.email
-    const liveByEmail = await this.users.findOne({
-      where: { email: normalizeEmail(manifest.user.email) },
-    })
-    if (liveByEmail && liveByEmail.id !== manifest.userId) {
-      actualEmail = await this.allocateFallbackEmail(manifest.user.email)
-      this.logger.warn(
-        `Restore email ${manifest.user.email} taken by ${liveByEmail.id} — ` +
-          `restoring ${manifest.userId} as ${actualEmail}`,
-      )
+    if (restoreEmail !== undefined) {
+      actualEmail = normalizeEmail(restoreEmail)
+      const liveHolder = await this.users.findOne({ where: { email: actualEmail } })
+      if (liveHolder) throw new ConflictException('email-taken')
+    } else {
+      const liveByEmail = await this.users.findOne({
+        where: { email: normalizeEmail(manifest.user.email) },
+      })
+      if (liveByEmail && liveByEmail.id !== manifest.userId) {
+        actualEmail = await this.allocateFallbackEmail(manifest.user.email)
+        this.logger.warn(
+          `Restore email ${manifest.user.email} taken by ${liveByEmail.id} — ` +
+            `restoring ${manifest.userId} as ${actualEmail}`,
+        )
+      }
     }
 
     // Legacy manifests (pre thumbnail-leak fix) embed derivatives/thumbnails/...
@@ -1853,11 +1863,13 @@ export class UserBackupService {
    * "nobody backed up".
    *
    * Email reconciliation: a deleted account's backup whose manifest email matches
-   * a live account is folded into that live row instead of showing as an orphan.
-   * Selection precedence per live user: exact own manifest, then a stale
-   * same-userId prefix (email-change leftover), then the newest email-matched
-   * previous-account snapshot. Previous-account sources are reported in
-   * `legacyBackups` (with their own merge timestamps) and never duplicate a row.
+   * a live account is reported as sub-row material in that live row's
+   * `legacyBackups` (with its own merge timestamp) instead of showing as an
+   * orphan — never as the main row's status, even when the live account has no
+   * backup of its own. Main-row precedence per live user: exact own manifest,
+   * then a stale same-userId prefix (email-change leftover), then the exact own
+   * prefix as exists:false. Previous-account snapshots (different userId) are
+   * never the main row.
    *
    * ponytail: O(users + prefixes) manifest GETs + one base listKeys + one
    * ensureBucket — fine for personal-library scale (tens of users); upgrade path
@@ -1999,32 +2011,24 @@ export class UserBackupService {
       }
       previousAccounts.sort((a, b) => timeOf(b.backedUpAt) - timeOf(a.backedUpAt))
 
+      // Main-row status is never a previous-account snapshot: the exact own prefix
+      // when it exists; otherwise the newest stale same-userId prefix (email-change
+      // leftover); otherwise the exact own prefix reads as exists:false.
       let primary = exactSnapshot
-      let primaryIsPrevious = false
-      if (!exactStatus.exists) {
-        if (staleOwn.length > 0) {
-          primary = pickNewest(staleOwn)
-        } else if (previousAccounts.length > 0) {
-          primary = previousAccounts[0]!
-          primaryIsPrevious = true
-        }
+      if (!exactStatus.exists && staleOwn.length > 0) {
+        primary = pickNewest(staleOwn)
       }
       const ledger = mergedAtByTarget.get(user.id)
       const withMergedAt = (snapshot: BackupSnapshot): BackupSnapshot => {
         const mergedAt = ledger?.get(snapshot.userId)
         return mergedAt === undefined ? { ...snapshot } : { ...snapshot, mergedAt }
       }
-      // Same-userId stale prefixes are own-account leftovers, not "previous
-      // accounts" — keeping them out of legacyBackups avoids false labels.
-      const legacySource = primaryIsPrevious
-        ? previousAccounts.filter((snapshot) => snapshot.prefix !== primary.prefix)
-        : previousAccounts
-      const extras: BackupOverviewExtras = { legacyBackups: legacySource.map(withMergedAt) }
-      if (primaryIsPrevious) {
-        extras.prefix = primary.prefix
-        extras.backupUserId = primary.userId
-        const mergedAt = ledger?.get(primary.userId)
-        if (mergedAt !== undefined) extras.mergedAt = mergedAt
+      // Every email-matched previous account (different userId, source not live) is
+      // sub-row material, newest first — even when the live account has no own
+      // backup. Same-userId stale prefixes are own-account leftovers, not "previous
+      // accounts", so they never land here.
+      const extras: BackupOverviewExtras = {
+        legacyBackups: previousAccounts.map(withMergedAt),
       }
       const row = buildBackupOverviewRow(
         user,

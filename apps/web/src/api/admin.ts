@@ -236,11 +236,15 @@ export interface RestoreResult extends BackupResult {
 }
 
 // Restores rebuild rows + copy bytes back from S3 inline, so they outlive the 10s client
-// default just like backups — reuse the same cap.
-export async function restoreUser(emailOrId: string): Promise<RestoreResult> {
+// default just like backups — reuse the same cap. `restoreEmail` (optional) overrides the
+// backup-time address so a previous-account snapshot can land under a different email.
+export async function restoreUser(
+  emailOrId: string,
+  restoreEmail?: string,
+): Promise<RestoreResult> {
   const { data } = await api.post<RestoreResult>(
     '/v1/admin/restores',
-    { emailOrId },
+    { emailOrId, ...(restoreEmail ? { restoreEmail } : {}) },
     { timeout: BACKUP_TIMEOUT_MS },
   )
   return data

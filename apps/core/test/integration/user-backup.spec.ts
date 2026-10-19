@@ -1151,6 +1151,67 @@ describe('user backup round-trip', () => {
       expect(holder.email).toBe(origEmail)
     })
 
+    it('uses an explicit restoreEmail instead of the manifest/fallback allocation', async () => {
+      const origEmail = `explicit-${randomUUID()}@example.com`
+      const { user: orig, prefix } = await backupSingle(origEmail)
+      const origId = orig.id
+      await fileRepo.delete({ userId: origId })
+      await userRepo.delete(origId)
+      // manifest email reused by another live account: the default path would
+      // allocate restored-<ms>-<orig>, but the explicit address must win instead
+      const other = await userRepo.save(
+        userRepo.create({
+          email: origEmail,
+          role: 'user',
+          passwordHash: 'other-hash',
+          displayName: 'Email Reuse',
+        }),
+      )
+
+      const requested = `requested-${randomUUID()}@example.com`
+      const result = await svc.restoreUser(origId, requested.toUpperCase())
+      expect(result.userId).toBe(origId)
+      expect(result.email).toBe(requested)
+      // S3 prefix/bytes still come from the manifest backup
+      expect(result.prefix).toBe(prefix)
+      expect(result.restoredFrom).toMatchObject({ emailAtBackup: origEmail, prefix })
+      const restored = await userRepo.findOneOrFail({ where: { id: origId } })
+      expect(restored.email).toBe(requested)
+      const holder = await userRepo.findOneOrFail({ where: { id: other.id } })
+      expect(holder.email).toBe(origEmail)
+    })
+
+    it('rejects an explicit restoreEmail owned by another live user (409 email-taken)', async () => {
+      const origEmail = `taken-${randomUUID()}@example.com`
+      const { user: orig } = await backupSingle(origEmail)
+      const origId = orig.id
+      await fileRepo.delete({ userId: origId })
+      await userRepo.delete(origId)
+
+      const holderEmail = `holder-${randomUUID()}@example.com`
+      const holder = await userRepo.save(
+        userRepo.create({
+          email: holderEmail,
+          role: 'user',
+          passwordHash: 'holder-hash',
+          displayName: 'Holder',
+        }),
+      )
+
+      const caught = await svc
+        .restoreUser(origId, holderEmail.toUpperCase())
+        .catch((e: unknown) => e)
+      expect(caught).toBeInstanceOf(ConflictException)
+      expect((caught as ConflictException).getStatus()).toBe(409)
+      expect((caught as ConflictException).message).toContain('email-taken')
+      // restores nothing: no row/files for the backup user, holder unchanged
+      expect(await userRepo.findOne({ where: { id: origId } })).toBeNull()
+      expect(await fileRepo.findOne({ where: { userId: origId } })).toBeNull()
+      const stillHolding = await userRepo.findOneOrFail({ where: { id: holder.id } })
+      expect(stillHolding.email).toBe(holderEmail)
+      await expect(svc.backupStatus(origEmail)).resolves.toMatchObject({ exists: true })
+    })
+
     it('retries the fallback with a suffix when the first candidate is taken', async () => {
       const origEmail = `retry-${randomUUID()}@example.com`
       const { user: orig } = await backupSingle(origEmail)
@@ -1451,16 +1512,22 @@ describe('user backup round-trip', () => {
       expect(ledger.prefix).toBe(legacyPrefix)
       expect(ledger.counts).toMatchObject({ files: 1, assets: 1 })
 
-      // overview folds the source into the live row with the merge timestamp
+      // overview keeps the previous account as sub-row material: the live row stays
+      // its own (missing) prefix, the source lands in legacyBackups with counts and
+      // the merge timestamp
       const row = (await svc.backupOverview()).find((r) => r.userId === target.id)!
-      expect(row).toMatchObject({
-        deleted: false,
-        exists: true,
-        backupUserId: legacyId,
+      expect(row).toMatchObject({ deleted: false, exists: false, totalAssets: 1 })
+      expect(row.backupUserId).toBeUndefined()
+      expect(row.prefix).toBeUndefined()
+      expect(row.mergedAt).toBeUndefined()
+      expect(row.backedUpAssets).toBe(0)
+      expect(row.legacyBackups).toHaveLength(1)
+      expect(row.legacyBackups![0]).toMatchObject({
+        userId: legacyId,
         prefix: legacyPrefix,
+        assets: 1,
         mergedAt: ledger.mergedAt.toISOString(),
       })
-      expect(row.backedUpAssets).toBe(1)
 
       const metadataJobs = await queueJobsFor('process-metadata', target.id)
       expect(metadataJobs.map((data) => data.assetId)).toContain(legacy.asset.id)

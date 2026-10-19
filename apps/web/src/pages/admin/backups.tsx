@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   FaCodeMerge,
   FaDatabase,
@@ -40,7 +40,9 @@ import { Dialog, formInputClass } from '../../components/Dialog'
 // Backup reuses the single-user confirm + inline-run flow; Backup-all walks the filtered list
 // sequentially so multi-GB libraries never run concurrently in the API. Deleted rows are
 // orphan S3 backups whose account is gone: they show Restore instead of Backup, and
-// Backup-all skips them. Live rows never show Restore (nothing to bring back).
+// Backup-all skips them. Live rows never show Restore (nothing to bring back). Email-matched
+// previous-account snapshots never take over the live row: each one (`legacyBackups`) gets
+// its own sub-row underneath with Merge / Restore / Delete.
 
 const PAGE_SIZE = 15
 
@@ -58,6 +60,8 @@ const ALREADY_RESTORED_MESSAGE = 'That account is already back — the list was 
 const RESTORE_MISSING_MESSAGE =
   'No backup found for that user — it may have been removed from storage.'
 const RESTORE_CORRUPT_MESSAGE = 'That backup file is damaged and cannot be restored.'
+const RESTORE_EMAIL_TAKEN_MESSAGE = 'That email is already in use — choose another address.'
+const RESTORE_INVALID_EMAIL_MESSAGE = "That email address isn't valid."
 const DELETE_FALLBACK = 'Delete failed'
 const DELETE_MISSING_MESSAGE = 'No backup found — the list was refreshed.'
 const MERGE_FALLBACK = 'Merge failed'
@@ -103,10 +107,19 @@ function deleteErrorMessage(err: unknown): string {
   return DELETE_FALLBACK
 }
 
-/** Restore failures use plain wording: 409 means the account is already back (list is stale). */
+/**
+ * Restore failures use plain wording: a 409 means the account is already back (list is stale)
+ * unless its detail says the requested address is taken; a 400 means the typed address is
+ * malformed and retrying the same one will not help.
+ */
 function restoreErrorMessage(err: unknown): string {
   if (isAxiosError(err)) {
-    if (err.response?.status === 409) return ALREADY_RESTORED_MESSAGE
+    if (err.response?.status === 409) {
+      return errorDetail(err).includes('email-taken')
+        ? RESTORE_EMAIL_TAKEN_MESSAGE
+        : ALREADY_RESTORED_MESSAGE
+    }
+    if (err.response?.status === 400) return RESTORE_INVALID_EMAIL_MESSAGE
     if (err.response?.status === 404) return RESTORE_MISSING_MESSAGE
     if (err.response?.status === 422) return RESTORE_CORRUPT_MESSAGE
     if (err.response?.status === 503) return S3_DOWN_BODY
@@ -179,25 +192,17 @@ function rowSnapshot(row: BackupOverviewRow): BackupSnapshot {
   }
 }
 
-/** The attached previous-account snapshot: the backup belongs to a different user id. */
-function attachedSnapshot(row: BackupOverviewRow): BackupSnapshot | null {
-  if (!row.backupUserId || row.backupUserId === row.userId) return null
-  return {
-    ...rowSnapshot(row),
-    userId: row.backupUserId,
-    emailAtBackup: row.emailAtBackup ?? row.email,
-    prefix: row.prefix ?? backupPrefixPreview(row.emailAtBackup ?? row.email, row.backupUserId),
-    mergedAt: row.mergedAt,
-  }
-}
-
 interface SnapshotLabels {
   merge: string
   restore: string
   delete: string
 }
 
-/** Aria labels double as the unique locator for each snapshot's actions. */
+/**
+ * Aria labels double as the unique locator for each snapshot's actions. The first previous
+ * account (index 0) keeps the short labels — its Delete says "previous" so it never collides
+ * with the live row's own Delete — and later snapshots append their backup date.
+ */
 function snapshotLabels(
   row: BackupOverviewRow,
   snapshot: BackupSnapshot,
@@ -206,15 +211,15 @@ function snapshotLabels(
   if (legacy) {
     const when = stamp(snapshot.backedUpAt)
     return {
-      merge: `Merge backup for ${row.email} into this account (${when})`,
-      restore: `Restore ${row.email} from ${when}`,
+      merge: `Merge to current live account ${row.email} (${when})`,
+      restore: `Restore to a new account ${row.email} (${when})`,
       delete: `Delete previous backup for ${row.email} from ${when}`,
     }
   }
   return {
-    merge: `Merge backup for ${row.email} into this account`,
-    restore: `Restore ${row.email}`,
-    delete: `Delete backup for ${row.email}`,
+    merge: `Merge to current live account ${row.email}`,
+    restore: `Restore to a new account ${row.email}`,
+    delete: `Delete previous backup for ${row.email}`,
   }
 }
 
@@ -229,21 +234,28 @@ function pillFor(
   return { tone: 'muted', label: 'None' }
 }
 
-// --- snapshot actions -------------------------------------------------------------------
-// A live row can carry a previous-account backup matched by email (primary `backupUserId`
-// plus any `legacyBackups`). Each snapshot gets its own compact block with Merge / Restore /
-// Delete so the live row's own Backup action never doubles as a previous account's action.
+// --- snapshot sub-rows ------------------------------------------------------------------
+// A live row can carry previous-account backups matched by email (`legacyBackups`). Each
+// snapshot renders as its own sub-row right under the live row with Merge / Restore / Delete,
+// so the live row keeps its own status, counts and Backup action untouched.
 
+/**
+ * Destructive action. The red text stays, plus a red outline so the button reads as a button
+ * rather than plain text. `size="md"` matches the shared button box for the sub-row's
+ * right-aligned action cluster; main rows keep the compact default.
+ */
 function DeleteActionButton({
   label,
   disabled,
   busy,
   onClick,
+  size = 'sm',
 }: {
   label: string
   disabled?: boolean
   busy?: boolean
   onClick: () => void
+  size?: 'sm' | 'md'
 }) {
   return (
     <button
@@ -253,10 +265,11 @@ function DeleteActionButton({
       title={label}
       aria-label={label}
       className={cx(
-        'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors',
+        'inline-flex items-center gap-1.5 rounded-lg border font-semibold transition-colors',
+        size === 'md' ? 'px-3 py-1.5 text-xs' : 'px-2.5 py-1.5 text-[11px]',
         disabled
-          ? 'text-outline/60 cursor-not-allowed'
-          : 'text-status-error/80 hover:text-status-error hover:bg-status-error/10',
+          ? 'border-outline/30 text-outline/60 cursor-not-allowed'
+          : 'border-status-error/40 text-status-error hover:bg-status-error/10',
       )}
     >
       {busy ? (
@@ -269,10 +282,43 @@ function DeleteActionButton({
   )
 }
 
-function SnapshotBlock({
+/**
+ * Secondary sub-row action: outlined in primary instead of ghost-grey, so it reads as a real
+ * choice next to the filled merge. Sized like the shared ui.tsx buttons; that file is shared by
+ * every admin tab, so the outline variant lives here. Takes a hover title that differs from the
+ * visible text and aria-label.
+ */
+function OutlineActionButton({
+  label,
+  title,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string
+  title: string
+  disabled?: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={label}
+      className="inline-flex items-center gap-2 text-xs font-semibold rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-primary/50 text-primary hover:bg-primary/10"
+    >
+      {children}
+    </button>
+  )
+}
+
+function SnapshotSubRow({
   row,
   snapshot,
-  legacy = false,
+  legacy,
   anyBusy,
   deleting,
   onMerge,
@@ -281,7 +327,7 @@ function SnapshotBlock({
 }: {
   row: BackupOverviewRow
   snapshot: BackupSnapshot
-  legacy?: boolean
+  legacy: boolean
   anyBusy: boolean
   deleting: boolean
   onMerge: () => void
@@ -292,37 +338,75 @@ function SnapshotBlock({
   const merged = Boolean(snapshot.mergedAt)
 
   return (
-    <div className="mt-2 w-full max-w-[300px] rounded-lg bg-surface-container border border-border-dark/60 px-2.5 py-2 space-y-1">
-      <p className="font-mono text-[10px] text-outline break-all">{snapshot.prefix}</p>
-      <p className="text-[11px] text-on-surface-variant">
-        {snapshot.assets.toLocaleString()} assets · {snapshot.files.toLocaleString()} files ·{' '}
-        {snapshot.albums.toLocaleString()} albums · {snapshot.shares.toLocaleString()} shares ·{' '}
-        {snapshot.persons.toLocaleString()} people
-      </p>
-      <p className="text-[11px] text-outline">Last backup {stamp(snapshot.backedUpAt)}</p>
-      {merged && <p className="text-[11px] text-amber-300">Merged {stamp(snapshot.mergedAt)}</p>}
-      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-        {!merged && (
-          <GhostButton
-            onClick={onMerge}
-            disabled={anyBusy}
-            ariaLabel={labels.merge}
-            icon={<FaCodeMerge />}
-          >
-            Merge
-          </GhostButton>
-        )}
-        <GhostButton onClick={onRestore} disabled={anyBusy} ariaLabel={labels.restore}>
-          Restore
-        </GhostButton>
-        <DeleteActionButton
-          label={labels.delete}
-          disabled={anyBusy}
-          busy={deleting}
-          onClick={onDelete}
-        />
-      </div>
-    </div>
+    <tr className="bg-surface-container/40">
+      <td colSpan={7} className="py-3 px-3 sm:px-4">
+        <div className="rounded-lg bg-surface-container border border-border-dark/60 px-3 py-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <StatusPill tone="warn">Previous account</StatusPill>
+            <code className="font-mono text-[10px] text-outline break-all">{snapshot.prefix}</code>
+          </div>
+          <table className="mt-2 w-full table-fixed text-[11px]">
+            <thead>
+              <tr className="text-left font-mono text-[10px] uppercase tracking-wider text-outline">
+                <th className="w-1/6 font-semibold pr-3">Assets</th>
+                <th className="w-1/6 font-semibold pr-3">Files</th>
+                <th className="w-1/6 font-semibold pr-3">Albums</th>
+                <th className="w-1/6 font-semibold pr-3">Shares</th>
+                <th className="w-1/6 font-semibold pr-3">People</th>
+                <th className="w-1/6 font-semibold pr-3">Last backup</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="text-on-surface">
+                <td className="tabular-nums pr-3">{snapshot.assets.toLocaleString()}</td>
+                <td className="tabular-nums pr-3">{snapshot.files.toLocaleString()}</td>
+                <td className="tabular-nums pr-3">{snapshot.albums.toLocaleString()}</td>
+                <td className="tabular-nums pr-3">{snapshot.shares.toLocaleString()}</td>
+                <td className="tabular-nums pr-3">{snapshot.persons.toLocaleString()}</td>
+                <td className="font-mono text-outline whitespace-nowrap pr-3">
+                  {stamp(snapshot.backedUpAt)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          {merged && (
+            <p className="mt-1 text-[11px] text-amber-300">Merged {stamp(snapshot.mergedAt)}</p>
+          )}
+          {/* Right-aligned action cluster: filled merge, outlined restore, red-outlined delete.
+              Wraps on narrow screens instead of squeezing. */}
+          <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+            {!merged && (
+              // PrimaryButton takes no title prop, so the hover title sits on the wrapper.
+              <span className="inline-flex" title={`Merge this backup into ${row.email}`}>
+                <PrimaryButton
+                  onClick={onMerge}
+                  disabled={anyBusy}
+                  ariaLabel={labels.merge}
+                  icon={<FaCodeMerge />}
+                >
+                  Merge to current live account
+                </PrimaryButton>
+              </span>
+            )}
+            <OutlineActionButton
+              onClick={onRestore}
+              disabled={anyBusy}
+              label={labels.restore}
+              title="Restore this backup as a separate account"
+            >
+              Restore to a new account
+            </OutlineActionButton>
+            <DeleteActionButton
+              label={labels.delete}
+              disabled={anyBusy}
+              busy={deleting}
+              size="md"
+              onClick={onDelete}
+            />
+          </div>
+        </div>
+      </td>
+    </tr>
   )
 }
 
@@ -347,8 +431,8 @@ function MergeBackupDialog({
       onConfirm={onConfirm}
     >
       <p className="text-sm text-slate-400 mt-2">
-        Rebuilds this previous account&apos;s library inside the live account. The live account
-        keeps its email, password, role and display name.
+        Rebuilds this previous account&apos;s library inside the live account {row.email}. The live
+        account keeps its email, password, role and display name.
       </p>
       <code className="block text-xs font-mono text-slate-300 bg-slate-900/60 border border-border-dark rounded px-2 py-1.5 mt-2 break-all">
         {snapshot.prefix}
@@ -381,14 +465,20 @@ function RestoreSnapshotDialog({
   snapshot: BackupSnapshot
   legacy: boolean
   onClose: () => void
-  onConfirm: () => void
+  onConfirm: (restoreEmail?: string) => void
 }) {
+  const [email, setEmail] = useState('')
   const title = legacy
     ? `Restore ${row.email} from ${stamp(snapshot.backedUpAt)}?`
     : `Restore ${row.email}?`
 
   return (
-    <ConfirmDialog title={title} confirmLabel="Restore" onClose={onClose} onConfirm={onConfirm}>
+    <ConfirmDialog
+      title={title}
+      confirmLabel="Restore"
+      onClose={onClose}
+      onConfirm={() => onConfirm(email.trim() || undefined)}
+    >
       <p className="text-sm text-slate-400 mt-2">
         {row.deleted
           ? 'Brings this deleted account back from its S3 backup — same files, albums, shares and people — then re-queues thumbnails and other processing. The restore runs now, in the API process, so large libraries take a while.'
@@ -409,10 +499,34 @@ function RestoreSnapshotDialog({
         </p>
       )}
       <p className="text-sm text-slate-400 mt-2">
-        If that address is taken, it restores under a fallback like restored-&lt;time&gt;-
-        {snapshot.emailAtBackup} instead — sign in with the address shown after the restore
-        finishes. The restored account keeps its old password.
+        Sign in with the restored address; the restored account keeps its old password.
       </p>
+      {/* The address ask closes the dialog body, right above Cancel / Restore, and opens focused. */}
+      <div className="mt-4 rounded-lg border border-border-dark/70 bg-surface-container/40 p-3">
+        <div className="flex items-baseline justify-between gap-2 mb-1.5">
+          <label htmlFor="restore-new-email" className="block text-xs font-semibold text-slate-200">
+            New account email
+          </label>
+          <span className="font-mono text-[10px] uppercase tracking-wider text-outline">
+            Optional
+          </span>
+        </div>
+        <input
+          id="restore-new-email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder={snapshot.emailAtBackup}
+          autoComplete="off"
+          autoFocus
+          className={formInputClass}
+        />
+        <p className="mt-1.5 text-xs text-slate-400">
+          Leave empty to use the backup address; if it is taken, the account is restored as
+          restored-&lt;time&gt;-&lt;address&gt;. Set a different address to restore under that
+          email.
+        </p>
+      </div>
     </ConfirmDialog>
   )
 }
@@ -676,8 +790,8 @@ export function BackupSection() {
     })
     try {
       const res = await backupUser(row.userId)
-      // A previous-account row's own backup becomes primary after a rerun, which can move
-      // the legacy block — a plain optimistic patch would lie, so refetch the overview.
+      // A rerun can re-derive a row carrying previous-account snapshots, so re-read the
+      // overview instead of optimistically patching it.
       if (row.backupUserId || (row.legacyBackups?.length ?? 0) > 0) {
         setVersion((v) => v + 1)
       } else {
@@ -718,11 +832,15 @@ export function BackupSection() {
     }
   }
 
-  const runRestore = async (row: BackupOverviewRow, snapshot: BackupSnapshot): Promise<boolean> => {
+  const runRestore = async (
+    row: BackupOverviewRow,
+    snapshot: BackupSnapshot,
+    restoreEmail?: string,
+  ): Promise<boolean> => {
     setRestoring((prev) => ({ ...prev, [row.userId]: true }))
     setRowErrors((prev) => ({ ...prev, [row.userId]: null }))
     try {
-      const res: RestoreResult = await restoreUser(snapshot.userId)
+      const res: RestoreResult = await restoreUser(snapshot.userId, restoreEmail)
       notify(
         `Restored ${res.email} — ${res.assets.toLocaleString()} assets, ${res.files.toLocaleString()} files. Sign in as ${res.email}; the old password still works.`,
       )
@@ -964,11 +1082,9 @@ export function BackupSection() {
                     const isBusy = Boolean(busy[row.userId])
                     const isRestoring = Boolean(restoring[row.userId])
                     const isDeleting = Boolean(deleting[row.userId])
-                    // Orphans never carry snapshots — keep their Restore/disabled-Backup/Delete
-                    // action shape exactly as before.
-                    const primary = row.deleted ? null : attachedSnapshot(row)
+                    // Previous-account snapshots render as sub-rows under this one. Orphan
+                    // rows never carry them and keep their action shape exactly as before.
                     const legacySnapshots = row.deleted ? [] : (row.legacyBackups ?? [])
-                    const hasPrevious = primary !== null || legacySnapshots.length > 0
                     const progress = progressMap[row.userId] ?? null
                     const showDeterminate =
                       progress && !unsupported[row.userId] && progress.total > 0
@@ -985,184 +1101,165 @@ export function BackupSection() {
                     const openDelete = (snapshot: BackupSnapshot, legacy: boolean) =>
                       setConfirmDelete({ row, snapshot, legacy })
                     return (
-                      <tr
-                        key={row.userId}
-                        className="hover:bg-surface-container/50 transition-colors"
-                      >
-                        <td className="py-3 px-3 sm:px-4">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className="w-7 h-7 shrink-0 rounded-full bg-surface-container-highest text-on-surface-variant text-[11px] font-bold flex items-center justify-center">
-                              {(row.email.charAt(0) || '?').toUpperCase()}
-                            </span>
-                            <div className="min-w-0">
-                              <p className="font-mono text-xs text-on-surface truncate">
-                                {row.email}
-                              </p>
-                              <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                                <RoleBadge role={row.role} />
-                                {hasPrevious && (
-                                  <StatusPill tone="warn">Previous account</StatusPill>
-                                )}
-                                {row.deleted && <StatusPill tone="warn">Deleted user</StatusPill>}
-                              </div>
-                              {emailHint && (
-                                <p className="mt-1 text-[11px] text-outline">
-                                  Backup saved as {emailHint}
-                                </p>
-                              )}
-                              {row.degraded && (
-                                <p className="mt-1 text-[11px] text-amber-300">
-                                  {DEGRADED_HINT[row.degraded]}
-                                </p>
-                              )}
-                              {primary && (
-                                <SnapshotBlock
-                                  row={row}
-                                  snapshot={primary}
-                                  anyBusy={anyBusy}
-                                  deleting={isDeleting}
-                                  onMerge={() => setConfirmMerge({ row, snapshot: primary })}
-                                  onRestore={() => openRestore(primary, false)}
-                                  onDelete={() => openDelete(primary, false)}
-                                />
-                              )}
-                              {legacySnapshots.map((snap) => (
-                                <SnapshotBlock
-                                  key={`${snap.userId}-${snap.prefix}-${snap.backedUpAt ?? ''}`}
-                                  row={row}
-                                  snapshot={snap}
-                                  legacy
-                                  anyBusy={anyBusy}
-                                  deleting={isDeleting}
-                                  onMerge={() => setConfirmMerge({ row, snapshot: snap })}
-                                  onRestore={() => openRestore(snap, true)}
-                                  onDelete={() => openDelete(snap, true)}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3 px-3 sm:px-4">
-                          <StatusPill tone={pill.tone}>{pill.label}</StatusPill>
-                        </td>
-                        <td className="py-3 px-3 sm:px-4 tabular-nums text-on-surface">
-                          {(row.backedUpAssets ?? 0).toLocaleString()}
-                        </td>
-                        <td className="py-3 px-3 sm:px-4 tabular-nums text-on-surface">
-                          {(row.backedUpFiles ?? 0).toLocaleString()}
-                        </td>
-                        <td className="py-3 px-3 sm:px-4 tabular-nums text-on-surface-variant">
-                          {pendingOf(row).toLocaleString()}
-                        </td>
-                        <td className="py-3 px-3 sm:px-4 font-mono text-[11px] text-outline whitespace-nowrap">
-                          {stamp(row.backedUpAt)}
-                        </td>
-                        <td className="py-3 px-3 sm:px-4 text-right align-top">
-                          {row.deleted ? (
-                            <div className="flex flex-col items-end gap-2">
-                              <GhostButton
-                                onClick={() => openRestore(rowSnapshot(row), false)}
-                                disabled={anyBusy}
-                                ariaLabel={`Restore ${row.email}`}
-                                icon={
-                                  isRestoring ? <FaSpinner className="animate-spin" /> : undefined
-                                }
-                              >
-                                {isRestoring ? 'Restoring…' : 'Restore'}
-                              </GhostButton>
-                              <span title="That account is deleted — restore it before backing up.">
-                                <GhostButton
-                                  disabled
-                                  ariaLabel={`Back up ${row.email} (deleted — restore first)`}
-                                >
-                                  Backup
-                                </GhostButton>
+                      <Fragment key={row.userId}>
+                        <tr className="hover:bg-surface-container/50 transition-colors">
+                          <td className="py-3 px-3 sm:px-4">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="w-7 h-7 shrink-0 rounded-full bg-surface-container-highest text-on-surface-variant text-[11px] font-bold flex items-center justify-center">
+                                {(row.email.charAt(0) || '?').toUpperCase()}
                               </span>
-                              <DeleteActionButton
-                                label={`Delete backup for ${row.email}`}
-                                disabled={anyBusy}
-                                busy={isDeleting}
-                                onClick={() => openDelete(rowSnapshot(row), false)}
-                              />
+                              <div className="min-w-0">
+                                <p className="font-mono text-xs text-on-surface truncate">
+                                  {row.email}
+                                </p>
+                                <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                  <RoleBadge role={row.role} />
+                                  {row.deleted && <StatusPill tone="warn">Deleted user</StatusPill>}
+                                </div>
+                                {emailHint && (
+                                  <p className="mt-1 text-[11px] text-outline">
+                                    Backup saved as {emailHint}
+                                  </p>
+                                )}
+                                {row.degraded && (
+                                  <p className="mt-1 text-[11px] text-amber-300">
+                                    {DEGRADED_HINT[row.degraded]}
+                                  </p>
+                                )}
+                              </div>
                             </div>
-                          ) : (
-                            <div className="flex flex-col items-end gap-2">
-                              <GhostButton
-                                onClick={() => setConfirmUser(row)}
-                                disabled={anyBusy}
-                                ariaLabel={`Back up ${row.email}`}
-                                icon={isBusy ? <FaSpinner className="animate-spin" /> : undefined}
-                              >
-                                {isBusy ? 'Backing up…' : 'Backup'}
-                              </GhostButton>
-                              {/* A previous-account primary backup owns its own Delete in the
-                                  snapshot block — don't duplicate it here. */}
-                              {!row.backupUserId && (
+                          </td>
+                          <td className="py-3 px-3 sm:px-4">
+                            <StatusPill tone={pill.tone}>{pill.label}</StatusPill>
+                          </td>
+                          <td className="py-3 px-3 sm:px-4 tabular-nums text-on-surface">
+                            {(row.backedUpAssets ?? 0).toLocaleString()}
+                          </td>
+                          <td className="py-3 px-3 sm:px-4 tabular-nums text-on-surface">
+                            {(row.backedUpFiles ?? 0).toLocaleString()}
+                          </td>
+                          <td className="py-3 px-3 sm:px-4 tabular-nums text-on-surface-variant">
+                            {pendingOf(row).toLocaleString()}
+                          </td>
+                          <td className="py-3 px-3 sm:px-4 font-mono text-[11px] text-outline whitespace-nowrap">
+                            {stamp(row.backedUpAt)}
+                          </td>
+                          <td className="py-3 px-3 sm:px-4 text-right align-top">
+                            {row.deleted ? (
+                              <div className="flex flex-col items-end gap-2">
+                                <GhostButton
+                                  onClick={() => openRestore(rowSnapshot(row), false)}
+                                  disabled={anyBusy}
+                                  ariaLabel={`Restore ${row.email}`}
+                                  icon={
+                                    isRestoring ? <FaSpinner className="animate-spin" /> : undefined
+                                  }
+                                >
+                                  {isRestoring ? 'Restoring…' : 'Restore'}
+                                </GhostButton>
+                                <span title="That account is deleted — restore it before backing up.">
+                                  <GhostButton
+                                    disabled
+                                    ariaLabel={`Back up ${row.email} (deleted — restore first)`}
+                                  >
+                                    Backup
+                                  </GhostButton>
+                                </span>
                                 <DeleteActionButton
                                   label={`Delete backup for ${row.email}`}
                                   disabled={anyBusy}
                                   busy={isDeleting}
                                   onClick={() => openDelete(rowSnapshot(row), false)}
                                 />
-                              )}
-                            </div>
-                          )}
-                          {isBusy && (
-                            <div
-                              className="mt-2 w-full max-w-[240px] ml-auto text-left sm:min-w-[190px]"
-                              role="status"
-                              aria-live="polite"
-                            >
-                              {showDeterminate ? (
-                                <>
-                                  <ProgressBar
-                                    value={progress.completed}
-                                    max={progress.total}
-                                    label={`Backup progress for ${row.email}`}
-                                  />
-                                  <p className="mt-1 text-[11px] text-on-surface-variant">
-                                    {progress.completed}/{progress.total} ({progress.uploaded} new,{' '}
-                                    {progress.skipped} unchanged)
-                                  </p>
-                                </>
-                              ) : (
-                                <>
-                                  <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden">
-                                    <div className="h-full w-1/3 rounded-full bg-primary animate-pulse" />
-                                  </div>
-                                  <p className="mt-1 text-[11px] text-on-surface-variant">
-                                    Backing up {row.email}…
-                                  </p>
-                                </>
-                              )}
-                            </div>
-                          )}
-                          {isRestoring && (
-                            <div
-                              className="mt-2 w-full max-w-[240px] ml-auto text-left sm:min-w-[190px]"
-                              role="status"
-                              aria-live="polite"
-                            >
-                              <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden">
-                                <div className="h-full w-1/3 rounded-full bg-primary animate-pulse" />
                               </div>
-                              <p className="mt-1 text-[11px] text-on-surface-variant">
-                                Restoring {row.email}…
+                            ) : (
+                              <div className="flex flex-col items-end gap-2">
+                                <GhostButton
+                                  onClick={() => setConfirmUser(row)}
+                                  disabled={anyBusy}
+                                  ariaLabel={`Back up ${row.email}`}
+                                  icon={isBusy ? <FaSpinner className="animate-spin" /> : undefined}
+                                >
+                                  {isBusy ? 'Backing up…' : 'Backup'}
+                                </GhostButton>
+                                <DeleteActionButton
+                                  label={`Delete backup for ${row.email}`}
+                                  disabled={anyBusy}
+                                  busy={isDeleting}
+                                  onClick={() => openDelete(rowSnapshot(row), false)}
+                                />
+                              </div>
+                            )}
+                            {isBusy && (
+                              <div
+                                className="mt-2 w-full max-w-[240px] ml-auto text-left sm:min-w-[190px]"
+                                role="status"
+                                aria-live="polite"
+                              >
+                                {showDeterminate ? (
+                                  <>
+                                    <ProgressBar
+                                      value={progress.completed}
+                                      max={progress.total}
+                                      label={`Backup progress for ${row.email}`}
+                                    />
+                                    <p className="mt-1 text-[11px] text-on-surface-variant">
+                                      {progress.completed}/{progress.total} ({progress.uploaded}{' '}
+                                      new, {progress.skipped} unchanged)
+                                    </p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden">
+                                      <div className="h-full w-1/3 rounded-full bg-primary animate-pulse" />
+                                    </div>
+                                    <p className="mt-1 text-[11px] text-on-surface-variant">
+                                      Backing up {row.email}…
+                                    </p>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                            {isRestoring && (
+                              <div
+                                className="mt-2 w-full max-w-[240px] ml-auto text-left sm:min-w-[190px]"
+                                role="status"
+                                aria-live="polite"
+                              >
+                                <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden">
+                                  <div className="h-full w-1/3 rounded-full bg-primary animate-pulse" />
+                                </div>
+                                <p className="mt-1 text-[11px] text-on-surface-variant">
+                                  Restoring {row.email}…
+                                </p>
+                              </div>
+                            )}
+                            {rowErrors[row.userId] && (
+                              <p className="mt-1 text-[11px] text-status-error max-w-[240px] ml-auto">
+                                {rowErrors[row.userId]}
                               </p>
-                            </div>
-                          )}
-                          {rowErrors[row.userId] && (
-                            <p className="mt-1 text-[11px] text-status-error max-w-[240px] ml-auto">
-                              {rowErrors[row.userId]}
-                            </p>
-                          )}
-                          {allSkipped && !row.deleted && (
-                            <p className="mt-1 text-[11px] text-outline">
-                              Nothing new — already backed up.
-                            </p>
-                          )}
-                        </td>
-                      </tr>
+                            )}
+                            {allSkipped && !row.deleted && (
+                              <p className="mt-1 text-[11px] text-outline">
+                                Nothing new — already backed up.
+                              </p>
+                            )}
+                          </td>
+                        </tr>
+                        {legacySnapshots.map((snap, index) => (
+                          <SnapshotSubRow
+                            key={`${snap.userId}-${snap.prefix}-${snap.backedUpAt ?? ''}`}
+                            row={row}
+                            snapshot={snap}
+                            legacy={index > 0}
+                            anyBusy={anyBusy}
+                            deleting={isDeleting}
+                            onMerge={() => setConfirmMerge({ row, snapshot: snap })}
+                            onRestore={() => openRestore(snap, index > 0)}
+                            onDelete={() => openDelete(snap, index > 0)}
+                          />
+                        ))}
+                      </Fragment>
                     )
                   })}
                 </tbody>
@@ -1262,10 +1359,10 @@ export function BackupSection() {
           snapshot={confirmRestore.snapshot}
           legacy={confirmRestore.legacy}
           onClose={() => setConfirmRestore(null)}
-          onConfirm={() => {
+          onConfirm={(restoreEmail) => {
             const target = confirmRestore
             setConfirmRestore(null)
-            void runRestore(target.row, target.snapshot)
+            void runRestore(target.row, target.snapshot, restoreEmail)
           }}
         />
       )}
