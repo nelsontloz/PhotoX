@@ -19,6 +19,8 @@ import {
   FileRecord,
   Person,
   AppSetting,
+  UploadSession,
+  UploadSessionPart,
 } from '../../src/database/entities'
 import { AssetEmbedding } from '../../src/database/entities/asset-embedding.entity'
 import { AssetOcr } from '../../src/database/entities/asset-ocr.entity'
@@ -42,6 +44,7 @@ import { DetectionsModule } from '../../src/detections/detections.module'
 import { GroupsModule } from '../../src/groups/groups.module'
 import { TextEncodeService } from '../../src/search/text-encode.service'
 import { UserFilesModule } from '../../src/files/user/user-files.module'
+import { UploadsModule } from '../../src/uploads/uploads.module'
 import { StorageModule } from '../../src/files/storage/storage.module'
 import { WorkerModule } from '../../src/worker/worker.module'
 import { AdminModule } from '../../src/admin/admin.module'
@@ -82,6 +85,8 @@ export interface ApiTestApp {
   embeddingRepo: Repository<AssetEmbedding>
   ocrRepo: Repository<AssetOcr>
   detectionRepo: Repository<AssetDetection>
+  uploadSessionRepo: Repository<UploadSession>
+  uploadPartRepo: Repository<UploadSessionPart>
   getQueue: (name: string) => Queue
   signToken: (user: MockUser, opts?: { act?: boolean }) => string
   authHeader: (token: string) => Record<string, string>
@@ -111,6 +116,8 @@ const ENTITIES = [
   AssetOcr,
   AssetDetection,
   Place,
+  UploadSession,
+  UploadSessionPart,
 ]
 
 export async function createApiTestApp(opts?: {
@@ -156,6 +163,7 @@ export async function createApiTestApp(opts?: {
         DetectionsModule,
         GroupsModule,
         UserFilesModule,
+        UploadsModule,
         AdminModule,
         FilesAdminModule,
         WorkerModule,
@@ -230,6 +238,8 @@ export async function createApiTestApp(opts?: {
       embeddingRepo: app.get<Repository<AssetEmbedding>>(getRepositoryToken(AssetEmbedding)),
       ocrRepo: app.get<Repository<AssetOcr>>(getRepositoryToken(AssetOcr)),
       detectionRepo: app.get<Repository<AssetDetection>>(getRepositoryToken(AssetDetection)),
+      uploadSessionRepo: app.get<Repository<UploadSession>>(getRepositoryToken(UploadSession)),
+      uploadPartRepo: app.get<Repository<UploadSessionPart>>(getRepositoryToken(UploadSessionPart)),
       getQueue: (name: string) => bullMq.getQueue(name),
       signToken,
       signWorkerToken,
@@ -244,7 +254,7 @@ export async function createApiTestApp(opts?: {
 
 export async function resetDb(t: ApiTestApp): Promise<void> {
   await t.dataSource.query(
-    'TRUNCATE users, refresh_tokens, albums, album_assets, shares, files, assets, asset_thumbnails, faces, persons, app_settings, asset_embeddings, asset_ocr, asset_detections, places RESTART IDENTITY CASCADE',
+    'TRUNCATE users, refresh_tokens, albums, album_assets, shares, files, assets, asset_thumbnails, faces, persons, app_settings, asset_embeddings, asset_ocr, asset_detections, places, upload_sessions, upload_session_parts RESTART IDENTITY CASCADE',
   )
   rmSync(t.storageDir, { recursive: true, force: true })
   await t.storage.ensureDir()

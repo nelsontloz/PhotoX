@@ -187,15 +187,24 @@ export class ThumbnailProcessor implements OnModuleInit {
       }
     }
 
-    const { data: thumbBuffer, info } = await this.encodeWebp(sourcePath, size)
+    // photo sources are auto-oriented from their EXIF Orientation tag — phone JPEGs store
+    // sideways pixels plus a rotation flag, so skipping this renders them sideways
+    const { data: thumbBuffer, info } = await this.encodeWebp(sourcePath, size, 'exif')
 
     await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info, sig)
   }
 
-  private async encodeWebp(source: Buffer | string, size: ThumbnailJob['size'], rotateDegrees = 0) {
+  // 'exif' = sharp auto-orient from the file's Orientation tag; explicit degrees = video rotation
+  // (the frame is captured with -noautorotate, so the asset's orientation is the only source)
+  private async encodeWebp(
+    source: Buffer | string,
+    size: ThumbnailJob['size'],
+    rotation: number | 'exif' = 0,
+  ) {
     const [width, height] = STANDARD_SIZES[size]
     let pipeline = sharp(source)
-    if (rotateDegrees !== 0) pipeline = pipeline.rotate(rotateDegrees)
+    if (rotation === 'exif') pipeline = pipeline.rotate()
+    else if (rotation !== 0) pipeline = pipeline.rotate(rotation)
     return pipeline
       .resize(width, height, RESIZE_OPTIONS)
       .webp({ quality: size === 'xl' ? 85 : 80 })

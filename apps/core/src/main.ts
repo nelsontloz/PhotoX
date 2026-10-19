@@ -38,6 +38,9 @@ async function bootstrap() {
     .setTitle('Photox API')
     .setDescription('Photo hosting API')
     .setVersion('1.0')
+    // Swagger UI can send the same Bearer access token the API accepts (cookie auth
+    // works without this — the browser attaches it)
+    .addBearerAuth()
     .build()
   const document = SwaggerModule.createDocument(app, config)
   SwaggerModule.setup('docs', app, document, { jsonDocumentUrl: 'docs-json' })

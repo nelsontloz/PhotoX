@@ -156,6 +156,7 @@ export class AuthService {
 
     return {
       accessToken,
+      accessTokenExpiresIn: this.tokenService.accessTokenExpiresIn(accessToken),
       refreshToken: refreshRaw,
       user: {
         id: user.id,

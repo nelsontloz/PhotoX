@@ -121,7 +121,15 @@ describe('upload pipeline', () => {
       .set(t.authHeader(token))
       .attach('file', bytes, 'dup.png')
     expect(second.status).toBe(409)
-    const body = second.body as unknown as { existingAssetId: string; existingFileId: string }
+    const body = second.body as unknown as {
+      statusCode: number
+      message: string
+      existingAssetId: string
+      existingFileId: string
+    }
+    // additive envelope: statusCode/message join the pre-existing ids
+    expect(body.statusCode).toBe(409)
+    expect(body.message).toBe('File already uploaded')
     expect(body.existingAssetId).toBe(firstAsset.id)
     expect(body.existingFileId).toBe(firstAsset.fileId)
   })
@@ -195,6 +203,50 @@ describe('upload pipeline', () => {
       .attach('file', png, 'reuse.png')
     expect(second.status).toBe(409)
     expect(await t.fileRepo.count()).toBe(filesBefore)
+  })
+
+  it('POST /api/v1/files/exists answers 200, not the POST-default 201', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const missing = 'f'.repeat(64)
+    const res = await request(apiServer(t))
+      .post('/api/v1/files/exists')
+      .set(t.authHeader(token))
+      .send({ items: [{ checksumSha256: missing }] })
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ items: [{ checksumSha256: missing, exists: false }] })
+  })
+
+  it('GET /api/v1/files/quota sums the caller originals and reports limit/remaining', async () => {
+    const user = await seedUser(t)
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const other = await seedUser(t)
+    // another user's bytes must not count toward the caller's usage
+    await seedFile(t, other.id, { bytes: Buffer.alloc(5000, 'x') })
+    const png = await pngBytes()
+
+    const before = await request(apiServer(t)).get('/api/v1/files/quota').set(t.authHeader(token))
+    // the literal route must win over GET :fileId — a fallthrough would 404
+    expect(before.status).toBe(200)
+    expect(before.body).toEqual({
+      usedBytes: 0,
+      limitBytes: STORAGE_QUOTA_BYTES,
+      remainingBytes: STORAGE_QUOTA_BYTES,
+    })
+
+    const upload = await request(apiServer(t))
+      .post('/api/v1/files')
+      .set(t.authHeader(token))
+      .attach('file', png, 'quota.png')
+    expect(upload.status).toBe(201)
+
+    const after = await request(apiServer(t)).get('/api/v1/files/quota').set(t.authHeader(token))
+    expect(after.status).toBe(200)
+    expect(after.body).toEqual({
+      usedBytes: png.length,
+      limitBytes: STORAGE_QUOTA_BYTES,
+      remainingBytes: STORAGE_QUOTA_BYTES - png.length,
+    })
   })
 
   it('stores the sniffed mime even when the client contentType lies', async () => {

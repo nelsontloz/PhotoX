@@ -118,6 +118,28 @@ describe('UserFilesService upload race', () => {
     expect(assetCreate.mock.calls[0]?.[1]?.fileId).toBe('winner-1')
   })
 
+  it('dedup hit with an existing asset throws the additive 409 envelope', async () => {
+    const existingFile = fileRow({ id: 'file-dup' })
+    const { service, save } = makeUploadService({
+      naturals: [existingFile],
+      byId: null,
+      existingAsset: { id: 'asset-dup' } as Asset,
+    })
+    const caught: unknown = await service.upload('u1', await tmpUpload()).then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(caught).toBeInstanceOf(ConflictException)
+    expect((caught as ConflictException).getResponse()).toEqual({
+      statusCode: 409,
+      message: 'File already uploaded',
+      existingAssetId: 'asset-dup',
+      existingFileId: 'file-dup',
+    })
+    // the fast path already found the bytes — no re-store, no asset creation
+    expect(save).not.toHaveBeenCalled()
+  })
+
   it('winner keeps its bytes and never deletes', async () => {
     const mine = fileRow({ id: 'mine-1' })
     const { service, remove, assetCreate } = makeUploadService({ naturals: [null], byId: mine })
@@ -291,5 +313,84 @@ describe('UserFilesService.existsMany', () => {
       },
       { checksumSha256: ORPHAN, exists: true, existingFileId: 'file-orphan' },
     ])
+  })
+})
+
+// fileRepo stubs for GET /files/quota: one raw SUM row (or no row at all)
+function makeQuotaService(used: string | null) {
+  const getRawOne = vi.fn(() => Promise.resolve(used === null ? undefined : { used }))
+  const qb = {
+    select: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    andWhere: vi.fn().mockReturnThis(),
+    getRawOne,
+  }
+  const service = new UserFilesService(
+    { createQueryBuilder: vi.fn(() => qb) } as unknown as Repository<FileRecord>,
+    {} as unknown as Repository<Asset>,
+    {} as unknown as LocalStorageService,
+    {} as unknown as AssetsService,
+    {} as unknown as BullMqService,
+  )
+  return { service, qb }
+}
+
+describe('UserFilesService.storageQuota', () => {
+  async function withQuota(value: string | undefined, fn: () => Promise<void>): Promise<void> {
+    const prev = process.env.STORAGE_QUOTA_BYTES
+    if (value === undefined) delete process.env.STORAGE_QUOTA_BYTES
+    else process.env.STORAGE_QUOTA_BYTES = value
+    try {
+      await fn()
+    } finally {
+      if (prev === undefined) delete process.env.STORAGE_QUOTA_BYTES
+      else process.env.STORAGE_QUOTA_BYTES = prev
+    }
+  }
+
+  it('reports used/limit/remaining from the original-purpose SUM', async () => {
+    await withQuota('1000', async () => {
+      const { service, qb } = makeQuotaService('400')
+      await expect(service.storageQuota('u1')).resolves.toEqual({
+        usedBytes: 400,
+        limitBytes: 1000,
+        remainingBytes: 600,
+      })
+      expect(qb.andWhere).toHaveBeenCalledWith('f.purpose = :purpose', { purpose: 'original' })
+      expect(qb.where).toHaveBeenCalledWith('f.userId = :userId', { userId: 'u1' })
+    })
+  })
+
+  it('clamps remaining at zero when usage is over the limit', async () => {
+    await withQuota('1000', async () => {
+      const { service } = makeQuotaService('1500')
+      await expect(service.storageQuota('u1')).resolves.toEqual({
+        usedBytes: 1500,
+        limitBytes: 1000,
+        remainingBytes: 0,
+      })
+    })
+  })
+
+  it('returns null limit/remaining when STORAGE_QUOTA_BYTES is unset', async () => {
+    await withQuota(undefined, async () => {
+      const { service } = makeQuotaService('400')
+      await expect(service.storageQuota('u1')).resolves.toEqual({
+        usedBytes: 400,
+        limitBytes: null,
+        remainingBytes: null,
+      })
+    })
+  })
+
+  it('treats a missing SUM row as zero used bytes', async () => {
+    await withQuota('1000', async () => {
+      const { service } = makeQuotaService(null)
+      await expect(service.storageQuota('u1')).resolves.toEqual({
+        usedBytes: 0,
+        limitBytes: 1000,
+        remainingBytes: 1000,
+      })
+    })
   })
 })

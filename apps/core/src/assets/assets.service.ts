@@ -74,6 +74,8 @@ export class AssetsService {
         const existing = await this.repo.findOne({ where: { fileId: dto.fileId } })
         if (existing) {
           throw new ConflictException({
+            statusCode: 409,
+            message: 'File already uploaded',
             existingAssetId: existing.id,
             existingFileId: dto.fileId,
           })

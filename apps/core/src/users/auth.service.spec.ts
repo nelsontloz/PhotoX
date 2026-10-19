@@ -32,6 +32,7 @@ function makeRegisterService(save: () => Promise<never> | Promise<unknown>) {
     {} as never,
     {
       signAccessToken: vi.fn(() => Promise.resolve('access')),
+      accessTokenExpiresIn: () => 1800,
       generate: () => 'raw',
       hash: () => 'hash',
       getRefreshExpiresAt: () => new Date(),
@@ -89,6 +90,7 @@ function makeRefreshService(opts: {
       generate: () => 'raw-refresh',
       getRefreshExpiresAt: () => new Date(Date.now() + 1000),
       signAccessToken: vi.fn(() => Promise.resolve('access')),
+      accessTokenExpiresIn: () => 1800,
     } as unknown as TokenService,
     { consume: vi.fn(() => Promise.resolve()) } as unknown as RateLimitService,
   )
@@ -129,6 +131,7 @@ describe('AuthService.refresh opportunistic purge (C5)', () => {
     })
     const res = await service.refresh('refresh-token', '1.2.3.4')
     expect(res.accessToken).toBe('access')
+    expect(res.accessTokenExpiresIn).toBe(1800)
   })
 
   it('keeps expiresAt indexed for the purge query', () => {

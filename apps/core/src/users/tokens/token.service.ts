@@ -24,9 +24,21 @@ export class TokenService {
 
   // remaining lifetime of an access token for the cookie's maxAge; 0 when it has no exp
   accessCookieMaxAge(accessToken: string): number {
-    const payload = this.jwtService.decode<{ exp?: number } | null>(accessToken)
-    if (!payload?.exp) return 0
-    return Math.max(0, payload.exp * 1000 - Date.now())
+    const exp = this.accessTokenExp(accessToken)
+    if (!exp) return 0
+    return Math.max(0, exp * 1000 - Date.now())
+  }
+
+  // seconds until the access token's own exp — the wire AuthResponse mirrors this instead of
+  // re-reading AUTH_ACCESS_TTL; 0 when it has no exp (our signer always sets one)
+  accessTokenExpiresIn(accessToken: string): number {
+    const exp = this.accessTokenExp(accessToken)
+    if (!exp) return 0
+    return Math.max(0, exp - Math.floor(Date.now() / 1000))
+  }
+
+  private accessTokenExp(accessToken: string): number | undefined {
+    return this.jwtService.decode<{ exp?: number } | null>(accessToken)?.exp
   }
 
   generate(): string {

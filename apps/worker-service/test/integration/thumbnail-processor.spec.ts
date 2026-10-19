@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { stat } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import sharp from 'sharp'
 import type { RegisterFileInput } from '../../src/core/core-client.service'
 import { makeAsset, makeFileRecord } from '../fake-core-client'
@@ -73,6 +73,42 @@ describe('ThumbnailProcessor (integration)', () => {
         thumbnailStatus: 'ready',
       })
       expect(testApp.fake.assets.get(asset.id)!.thumbnailStatus).toBe('ready')
+    })
+  })
+
+  describe('photo EXIF orientation', () => {
+    it('auto-orients the thumbnail from EXIF orientation 6', async () => {
+      const userId = randomUUID()
+      // 800×600 stored pixels tagged Orientation=6 — must render portrait, not sideways
+      const imageBuffer = await sharp({
+        create: { width: 800, height: 600, channels: 3, background: 'red' },
+      })
+        .jpeg()
+        .withMetadata({ orientation: 6 })
+        .toBuffer()
+      const { record, asset } = await seedOriginal(testApp, {
+        userId,
+        bytes: imageBuffer,
+        mimeType: 'image/jpeg',
+        ext: 'jpg',
+      })
+
+      const queue = testApp.getQueue('process-thumbnail')
+      const job = await queue.add(
+        'thumbnail',
+        signJob({ assetId: asset.id, fileId: record.id, size: 'lg', userId }),
+      )
+      expect(await waitForJob(queue, job.id!)).toBe('completed')
+
+      const thumb = testApp.fake.thumbnails.at(-1)!
+      expect(thumb.height).toBeGreaterThan(thumb.width)
+
+      const dto = testApp.fake.callsOf('registerFile').at(-1)!.args[0] as RegisterFileInput
+      const key = testApp.storage.buildKey('thumbnail', userId, dto.id, dto.ext)
+      const meta = await sharp(await readFile(testApp.storage.pathFor(key))).metadata()
+      expect(meta.height).toBeGreaterThan(meta.width)
+      // the orientation tag itself is resolved away, not just re-tagged
+      expect(meta.orientation).toBeUndefined()
     })
   })
 

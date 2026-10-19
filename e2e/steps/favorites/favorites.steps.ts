@@ -155,8 +155,9 @@ Then("the other user's favorites list holds only their own asset", ({ ctx }) => 
 When('I set the uploaded asset date for favorites grouping', async ({ request, ctx }) => {
   if (!ctx.assetId) throw new Error('upload an asset first')
   const auth = requireAuth(ctx)
-  // the metadata worker PATCHes takenAt (null for these EXIF-less fixtures) asynchronously — wait
-  // for its status to leave 'pending' so the pinned date is not overwritten after the fact
+  // the metadata worker PATCHes the asset asynchronously — wait for its status to leave
+  // 'pending' so the pinned date settles first (it no longer nulls takenAt for EXIF-less
+  // files; other metadata fields still land late)
   await expect
     .poll(
       async () => {
