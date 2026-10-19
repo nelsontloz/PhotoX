@@ -433,7 +433,10 @@ Then(
     await expect(page.getByRole('heading', { name: 'User Backups' })).toBeVisible({
       timeout: 15_000,
     })
-    await expect(page.locator('table')).toBeVisible()
+    // the overview reads every user's manifest back from S3 and the web client allows 30s
+    // (BACKUP_STATUS_TIMEOUT_MS) before it gives up — a busy 4-worker run can exceed 15s, so
+    // wait past the client's own cap; a genuinely failed load still shows the Retry card
+    await expect(page.locator('table')).toBeVisible({ timeout: 45_000 })
     await expect(page.getByRole('button', { name: 'Back up all' })).toBeVisible()
   },
 )
