@@ -473,6 +473,25 @@ describe('BackupSection orphans', () => {
     expect(screen.getByText(/Sign in as restored-1-gone@example.com/)).toBeTruthy()
   })
 
+  it('warns that the backup could not be moved when the restore re-homes under a new email', async () => {
+    api.restoreUser.mockResolvedValue({
+      ...restoreResult,
+      email: 'new@example.com',
+      reassignmentError: 's3 unavailable',
+    })
+    render(<BackupSection />)
+    expect(await screen.findByText('gone@example.com')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Restore gone@example.com' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Restore' }))
+
+    expect(
+      await screen.findByText(
+        'Restored new@example.com — 40 assets, 55 files. Sign in as new@example.com; the old password still works. The S3 backup could not be moved to new@example.com — the next backup will finish the move.',
+      ),
+    ).toBeTruthy()
+  })
+
   it('maps a 409 already-restored to a row error and refreshes', async () => {
     api.restoreUser.mockRejectedValue({
       isAxiosError: true,

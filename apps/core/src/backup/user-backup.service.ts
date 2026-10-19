@@ -339,6 +339,11 @@ export interface RestoreResult extends BackupResult {
   startedAt: string
   completedAt: string
   enqueued: { metadata: number; thumbnails: number; videos: number; faces: number; ai: number }
+  /**
+   * Set when the restored email differs and re-homing the S3 prefix failed
+   * (the restore itself still succeeded).
+   */
+  reassignmentError?: string
 }
 
 export interface DeleteBackupResult {
@@ -1000,9 +1005,8 @@ export class UserBackupService {
     }
     // (b) email taken by a different live id (email reuse after delete) → restore
     // under the ORIGINAL userId with a fallback `restored-<ms>-<orig>` email. The
-    // S3 prefix stays as-is (bytes still live under the backup-time email); the
-    // next backup for the fallback address renames via the existing email-change
-    // copy-forward path.
+    // snapshot is re-homed to the fallback address's prefix below (bytes still
+    // live under the backup-time email until then).
     // An explicit restoreEmail short-circuits that allocation: normalized, it must
     // be free of any live holder (409 email-taken) and becomes the restored
     // account's actual address as-is.
@@ -1147,16 +1151,69 @@ export class UserBackupService {
       await rm(tmpRoot, { recursive: true, force: true })
     }
 
+    // Restoring under a different email re-homes the snapshot to the restored
+    // address's canonical prefix now — otherwise bytes/manifest stay under the
+    // backup-time email until the next backupUser renames them.
+    // Phase 1 (copy + manifest rewrite, manifest LAST): a failure keeps the
+    // snapshot at the source prefix, reports reassignmentError and never fails the
+    // restore (rows/bytes are already committed).
+    const targetPrefix = backupPrefix(actualEmail, manifest.userId)
+    let finalPrefix = located.prefix
+    let reassignmentError: string | undefined
+    if (targetPrefix !== located.prefix) {
+      const targetManifestKey = manifestKey(actualEmail, manifest.userId)
+      try {
+        await this.renameBackupPrefix([located.prefix], targetPrefix)
+        // same snapshot, same rows/backedUpAt — only the email fields move
+        const rehomed = userBackupManifestSchema.parse({
+          ...manifest,
+          emailAtBackup: actualEmail,
+          user: { ...manifest.user, email: actualEmail },
+        })
+        await this.s3.putObject(
+          targetManifestKey,
+          Buffer.from(JSON.stringify(rehomed)),
+          'application/json',
+        )
+        await this.s3.headObject(targetManifestKey)
+        finalPrefix = targetPrefix
+      } catch (err) {
+        reassignmentError = err instanceof Error ? err.message : String(err)
+        this.logger.warn(
+          `Backup reassignment for restored user ${manifest.userId} -> ${targetPrefix} failed ` +
+            `(${reassignmentError}) — keeping ${located.prefix}`,
+        )
+      }
+      // Phase 2 (cleanup), only after the copy+manifest landed; log-only on failure
+      // (the live copy is valid and the old prefix is a same-userId stale prefix
+      // the next backup sweeps).
+      if (reassignmentError === undefined) {
+        try {
+          const oldKeys = await this.s3.listKeys(located.prefix)
+          if (oldKeys.length > 0) await this.s3.deleteKeys(oldKeys)
+          this.logger.log(
+            `Deleted old backup prefix ${located.prefix} after restoring ${manifest.userId}`,
+          )
+        } catch (err) {
+          this.logger.warn(
+            `Failed to delete old backup prefix ${located.prefix} (${errorName(err)}) — leaving orphan`,
+          )
+        }
+      }
+    }
+
     const enqueued = await this.reenqueueDerivatives(manifest.userId)
     const completedAt = new Date().toISOString()
     this.logger.log(
       `Restored user ${manifest.userId} (${originalFiles.length} files) ` +
-        `startedAt=${startedAt} completedAt=${completedAt} — cleanup-orphans may resume`,
+        `startedAt=${startedAt} completedAt=${completedAt} prefix=${finalPrefix}` +
+        (reassignmentError !== undefined ? ` reassignmentError=${reassignmentError}` : '') +
+        ` — cleanup-orphans may resume`,
     )
     return {
       userId: manifest.userId,
       email: actualEmail,
-      prefix: located.prefix,
+      prefix: finalPrefix,
       backedUpAt: manifest.backedUpAt,
       restoredFrom: {
         emailAtBackup: manifest.emailAtBackup,
@@ -1175,6 +1232,7 @@ export class UserBackupService {
       uploaded: 0,
       skipped: 0,
       enqueued,
+      reassignmentError,
     }
   }
 

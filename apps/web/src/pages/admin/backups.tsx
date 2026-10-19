@@ -845,8 +845,14 @@ export function BackupSection() {
     setRowErrors((prev) => ({ ...prev, [row.userId]: null }))
     try {
       const res: RestoreResult = await restoreUser(snapshot.userId, restoreEmail)
+      // A different restored address re-homes the S3 backup inline; a failed move does not fail
+      // the restore — the next backup retries it through the email-change rename.
+      const moveNote = res.reassignmentError
+        ? ` The S3 backup could not be moved to ${res.email} — the next backup will finish the move.`
+        : ''
       notify(
-        `Restored ${res.email} — ${res.assets.toLocaleString()} assets, ${res.files.toLocaleString()} files. Sign in as ${res.email}; the old password still works.`,
+        `Restored ${res.email} — ${res.assets.toLocaleString()} assets, ${res.files.toLocaleString()} files. Sign in as ${res.email}; the old password still works.` +
+          moveNote,
       )
       setVersion((v) => v + 1)
       return true

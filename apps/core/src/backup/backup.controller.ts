@@ -94,7 +94,13 @@ export class BackupController {
       'HARD PREREQUISITE: keep cleanup-orphans paused until the restore completion ' +
       'log (multi-GB restores can exceed the ~10-min orphan grace window). Derivative ' +
       'statuses stay stale until jobs complete (metadata pending for all, ' +
-      'persons.faceCount until cluster).',
+      'persons.faceCount until cluster). Restoring under a different email (explicit ' +
+      'restoreEmail or the restored-<ms>-<orig> fallback) re-homes the S3 snapshot to ' +
+      'the restored address: the prefix is server-side copied, the manifest is rewritten ' +
+      'with the new emailAtBackup/user.email (userId and rows unchanged) and written last, ' +
+      'then the old prefix is deleted. A failed move does not fail the restore — the ' +
+      'snapshot stays at the source prefix and the response reports reassignmentError ' +
+      '(prefix then points at the source).',
   })
   @ApiResponse({ status: 200, description: 'Restore counts and re-enqueue totals' })
   async restore(@Body() dto: RestoreRequestDto): Promise<RestoreResult> {
