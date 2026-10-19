@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module'
 import { BullMqModule } from './queue/bullmq.module'
 import { UsersModule } from './users/users.module'
 import { UserFilesModule } from './files/user/user-files.module'
+import { UploadsModule } from './uploads/uploads.module'
 import { AdminModule as FilesAdminModule } from './files/admin/admin.module'
 import { AssetsModule } from './assets/assets.module'
 import { AlbumsModule } from './albums/albums.module'
@@ -32,6 +33,7 @@ loadRootEnvFile()
     BullMqModule,
     UsersModule,
     UserFilesModule,
+    UploadsModule,
     FilesAdminModule,
     AssetsModule,
     AlbumsModule,

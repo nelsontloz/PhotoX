@@ -393,6 +393,78 @@ export interface StorageQuotaResponse {
   remainingBytes: number | null
 }
 
+// Resumable upload sessions — `api/v1/uploads` (owner-scoped, Bearer). A session is created with
+// the total size, chunked 8 MiB parts are PUT out of order, then `complete` assembles/dedups.
+// Status lifecycle: pending → assembling → assembled → completed (terminal: failed/expired).
+export type UploadSessionStatus =
+  | 'pending'
+  | 'assembling'
+  | 'assembled'
+  | 'completed'
+  | 'failed'
+  | 'expired'
+
+// Machine-readable `code` on error envelopes, mirroring the P0-B 409 style:
+// `{statusCode, message, code}` (plus `receivedParts` for PARTS_MISSING).
+export type UploadSessionErrorCode =
+  | 'SIZE_LIMIT'
+  | 'QUOTA_EXCEEDED'
+  | 'SESSION_LIMIT'
+  | 'SESSION_EXPIRED'
+  | 'PARTS_MISSING'
+  | 'PART_CONFLICT'
+  | 'PART_TOO_LARGE'
+  | 'MISSING_LENGTH'
+  | 'INDEX_RANGE'
+  | 'CHECKSUM_MISMATCH'
+  | 'UNSUPPORTED_TYPE'
+  | 'ENQUEUE_FAILED'
+
+export interface CreateUploadSessionBody {
+  sizeBytes: number
+  originalName: string
+  checksumSha256?: string
+  mimeHint?: string
+  title?: string
+  description?: string
+  takenAt?: string
+}
+
+// POST /api/v1/uploads — chunkSizeBytes/totalParts are server-fixed (8 MiB chunks)
+export interface UploadSessionCreated {
+  uploadId: string
+  chunkSizeBytes: number
+  totalParts: number
+  expiresAt: string
+  status: UploadSessionStatus
+}
+
+// GET /api/v1/uploads/:id — assetId/fileId appear once the session reached `completed`
+export interface UploadSessionStatusResponse {
+  status: UploadSessionStatus
+  chunkSizeBytes: number
+  totalParts: number
+  receivedParts: number[]
+  receivedBytes: number
+  expiresAt: string
+  assetId?: string
+  fileId?: string
+}
+
+// POST /api/v1/uploads/:id/complete — deduplicated=true means the checksum already existed
+// (the returned asset is the pre-existing one; no new bytes were stored)
+export interface UploadCompleteResponse {
+  asset: Asset
+  deduplicated: boolean
+}
+
+export interface UploadSessionErrorBody {
+  statusCode: number
+  message: string
+  code: UploadSessionErrorCode
+  receivedParts?: number[]
+}
+
 export * from './albums'
 export * from './shares'
 

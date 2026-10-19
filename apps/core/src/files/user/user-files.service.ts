@@ -28,11 +28,26 @@ import type {
   StorageQuotaResponse,
 } from '@photox/shared-types'
 
-export interface UploadedDiskFile {
+// the subset persistOriginal needs: bytes on disk plus the display name/size for the row.
+// mimetype is deliberately absent — the sniffer is authoritative.
+export interface OriginalFileInput {
   path: string
   originalname: string
-  mimetype: string
   size: number
+}
+
+export interface UploadedDiskFile extends OriginalFileInput {
+  mimetype: string
+}
+
+// meta accepted by createAssetAndEnqueue — title/description/takenAt plus the file-derived
+// originalName/sizeBytes the asset row records
+export interface AssetUploadMeta {
+  title?: string
+  description?: string
+  takenAt?: string
+  originalName: string
+  sizeBytes: number
 }
 
 // ponytail: header sniff only (no full decode) — enough to keep svg/html and unknown bytes out of
@@ -78,7 +93,9 @@ function isoBmffMime(b: Buffer): string | null {
   return 'video/mp4'
 }
 
-async function sniffMime(path: string): Promise<string | null> {
+// exported for the upload-session complete path — the assembled head must be sniffed with this
+// exact table, never with a client-supplied mimeHint
+export async function sniffMime(path: string): Promise<string | null> {
   const buf = Buffer.alloc(12)
   const handle = await open(path, 'r')
   try {
@@ -87,6 +104,15 @@ async function sniffMime(path: string): Promise<string | null> {
     await handle.close()
   }
   return isoBmffMime(buf) ?? MIME_SNIFFERS.find((s) => s.match(buf))?.mime ?? null
+}
+
+// pipeline decision, derived solely from the sniffed mime (never the client's `kind`): jpeg
+// bytes with kind=video cannot enter the video pipeline. Exported so the upload-session
+// complete path derives the same kind from the same stored mimeType.
+export function kindFromMime(mimetype: string): 'photo' | 'video' | null {
+  if (mimetype.startsWith('image/')) return 'photo'
+  if (mimetype.startsWith('video/')) return 'video'
+  return null
 }
 
 @Injectable()
@@ -106,10 +132,10 @@ export class UserFilesService {
     file: UploadedDiskFile,
     meta: UploadFileBodyDto = {},
   ): Promise<AssetResponse> {
-    const { record, created } = await this.storeFile(userId, file)
+    const { record, created } = await this.persistOriginal(userId, file)
     // C2-narrowed: client `kind` is accepted-but-ignored (see UploadFileBodyDto) — derive
     // solely from the sniffed mime so JPEG bytes + kind=video can't enter the video pipeline.
-    const kind = this.kindFromMime(record.mimeType)
+    const kind = kindFromMime(record.mimeType)
     if (!kind) {
       throw new BadRequestException('Unsupported file type')
     }
@@ -124,23 +150,65 @@ export class UserFilesService {
         })
       }
     }
-    const asset = await this.assets.create(userId, {
+    return this.createAssetAndEnqueue(userId, record, kind, {
+      title: meta.title,
+      description: meta.description,
+      takenAt: meta.takenAt,
+      originalName: file.originalname,
+      sizeBytes: file.size,
+    })
+  }
+
+  // shared by legacy upload and upload-session complete: create the asset row, then enqueue its
+  // processing jobs. The two halves are separately public so a complete() whose enqueues failed
+  // can persist the asset id and re-run only the enqueue half on retry.
+  async createAssetAndEnqueue(
+    userId: string,
+    record: FileRecord,
+    kind: 'photo' | 'video',
+    meta: AssetUploadMeta,
+  ): Promise<AssetResponse> {
+    const asset = await this.createAsset(userId, record, kind, meta)
+    await this.enqueueAssetJobs(userId, record, kind, asset.id)
+    return asset
+  }
+
+  /** Asset row only — no jobs. Callers must follow with enqueueAssetJobs for a usable asset. */
+  async createAsset(
+    userId: string,
+    record: FileRecord,
+    kind: 'photo' | 'video',
+    meta: AssetUploadMeta,
+  ): Promise<AssetResponse> {
+    return this.assets.create(userId, {
       fileId: record.id,
       kind,
       title: meta.title,
       description: meta.description,
       takenAt: meta.takenAt,
       mimeType: record.mimeType,
-      sizeBytes: file.size,
-      originalName: file.originalname,
+      sizeBytes: meta.sizeBytes,
+      originalName: meta.originalName,
     })
+  }
+
+  /**
+   * Every job the asset needs, awaited. `file` only supplies the fileId — the retry half of an
+   * upload session has the id but no loaded FileRecord. Throws 503 when any enqueue failed.
+   */
+  async enqueueAssetJobs(
+    userId: string,
+    file: Pick<FileRecord, 'id'>,
+    kind: 'photo' | 'video',
+    assetId: string,
+  ): Promise<void> {
     // P0-3: every enqueue is awaited and a single Redis loss fails the upload — the rows
     // already exist, but a silent 201 would orphan them with no job ever coming
     const enqueues: Promise<boolean>[] = [
-      this.bullMq.enqueueThumbnails(asset.id, record.id, userId),
+      this.bullMq.enqueueThumbnails(assetId, file.id, userId),
       this.bullMq.enqueue('process-metadata', 'process-metadata', {
-        assetId: asset.id,
-        fileId: record.id,
+        assetId,
+        fileId: file.id,
         userId,
         kind,
       }),
@@ -148,22 +216,21 @@ export class UserFilesService {
     if (kind === 'photo') {
       enqueues.push(
         this.bullMq.enqueue('process-faces', 'process-faces', {
-          assetId: asset.id,
-          fileId: record.id,
+          assetId,
+          fileId: file.id,
           userId,
         }),
         // videos out of scope for vision search — only photos get image embeddings
-        this.bullMq.enqueueAssetJob('embed', asset.id, record.id, userId),
-        this.bullMq.enqueueAssetJob('ocr', asset.id, record.id, userId),
-        this.bullMq.enqueueAssetJob('detect', asset.id, record.id, userId),
+        this.bullMq.enqueueAssetJob('embed', assetId, file.id, userId),
+        this.bullMq.enqueueAssetJob('ocr', assetId, file.id, userId),
+        this.bullMq.enqueueAssetJob('detect', assetId, file.id, userId),
       )
     } else {
-      enqueues.push(this.bullMq.enqueueVideo(asset.id, record.id, userId))
+      enqueues.push(this.bullMq.enqueueVideo(assetId, file.id, userId))
     }
     if ((await Promise.all(enqueues)).includes(false)) {
       throw new ServiceUnavailableException('Failed to enqueue background processing jobs')
     }
-    return asset
   }
 
   // ponytail: workers write bytes first, then register the row; core recomputes the
@@ -195,7 +262,7 @@ export class UserFilesService {
       throw new UnprocessableEntityException('File bytes not found in storage')
     }
 
-    // P1-5: same ON CONFLICT DO NOTHING arbiter as storeFile — concurrent registers of
+    // P1-5: same ON CONFLICT DO NOTHING arbiter as persistOriginal — concurrent registers of
     // identical bytes both pass the checks above; the partial unique index decides.
     await this.fileRepo
       .createQueryBuilder()
@@ -239,12 +306,6 @@ export class UserFilesService {
     return { file: FileRecordDto.from(winner), created: false }
   }
 
-  private kindFromMime(mimetype: string): 'photo' | 'video' | null {
-    if (mimetype.startsWith('image/')) return 'photo'
-    if (mimetype.startsWith('video/')) return 'video'
-    return null
-  }
-
   // quota inputs: original-purpose bytes only (thumbnails/transcodes are system output);
   // one raw SUM row, shared by the upload guard and GET /files/quota
   private async sumOriginalBytes(userId: string): Promise<number> {
@@ -257,9 +318,12 @@ export class UserFilesService {
     return Number(used)
   }
 
-  private async storeFile(
+  // shared by legacy upload and upload-session complete: sniff, checksum, dedup fast path,
+  // quota, atomic save and the ON CONFLICT arbiter. The incoming temp file is unlinked
+  // either way (finally below) — callers must treat `path` as consume-once.
+  async persistOriginal(
     userId: string,
-    file: UploadedDiskFile,
+    file: OriginalFileInput,
   ): Promise<{ record: FileRecord; created: boolean }> {
     if (!file) {
       throw new BadRequestException('No file provided')
