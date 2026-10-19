@@ -1,5 +1,6 @@
 import { createHmac, randomUUID } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { readFile, stat, unlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, type APIRequestContext, type Page, type Response } from '@playwright/test'
@@ -187,6 +188,113 @@ export async function readSessionRole(page: Page): Promise<string> {
 
 export function authHeaders(auth: AuthResponse): Record<string, string> {
   return { Authorization: `Bearer ${auth.accessToken}` }
+}
+
+const ADMIN_EMAIL = 'admin@photox.test'
+
+// Admin login against the seeded admin, sharing one session across the parallel `suite`
+// workers through the same tmp file as the backups steps (same path, same `{ auth, at }`
+// shape, same lock): exactly one leader spends a single login instead of tripping the
+// 5/900s per-email login throttle, followers adopt its session.
+let cachedAdmin: { auth: AuthResponse; at: number } | null = null
+const ADMIN_SESSION_REUSE_MS = 20 * 60 * 1000
+// run.sh exports a unique E2E_WEB_PORT per run, isolating parallel runs sharing this tmpdir
+const ADMIN_SESSION_FILE = join(
+  tmpdir(),
+  `photox-e2e-admin-session-${process.env.E2E_WEB_PORT ?? 'default'}.json`,
+)
+const ADMIN_SESSION_LOCK = `${ADMIN_SESSION_FILE}.lock`
+
+async function readSharedAdmin(): Promise<AuthResponse | null> {
+  try {
+    const parsed = JSON.parse(await readFile(ADMIN_SESSION_FILE, 'utf8')) as {
+      auth?: AuthResponse
+      at?: number
+    }
+    if (
+      parsed.auth?.accessToken &&
+      parsed.auth.user?.role === 'admin' &&
+      typeof parsed.at === 'number' &&
+      Date.now() - parsed.at < ADMIN_SESSION_REUSE_MS
+    ) {
+      return parsed.auth
+    }
+  } catch {
+    // cold start or a half-written file from a racing worker — fall through to the login path
+  }
+  return null
+}
+
+async function waitForSharedAdmin(timeoutMs: number): Promise<AuthResponse | null> {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const auth = await readSharedAdmin()
+    if (auth) return auth
+    if (Date.now() >= deadline) return null
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+}
+
+async function writeSharedAdmin(auth: AuthResponse): Promise<void> {
+  try {
+    await writeFile(ADMIN_SESSION_FILE, JSON.stringify({ auth, at: Date.now() }), 'utf8')
+  } catch {
+    // best-effort cross-worker hint; the in-memory cache still covers this worker
+  }
+}
+
+/** Signs in as the seeded admin, reusing the session shared across the parallel suite workers. */
+export async function signInAdmin(request: APIRequestContext): Promise<AuthResponse> {
+  if (cachedAdmin && Date.now() - cachedAdmin.at < ADMIN_SESSION_REUSE_MS) {
+    return cachedAdmin.auth
+  }
+  const shared = await readSharedAdmin()
+  if (shared) {
+    cachedAdmin = { auth: shared, at: Date.now() }
+    return shared
+  }
+  // leader election so the cold-start herd spends exactly one login, not one per worker
+  let leader = false
+  try {
+    try {
+      const stale = await stat(ADMIN_SESSION_LOCK)
+      if (Date.now() - stale.mtimeMs > 60_000) await unlink(ADMIN_SESSION_LOCK)
+    } catch {
+      // no lock file — nothing stale to break
+    }
+    await writeFile(ADMIN_SESSION_LOCK, String(process.pid), { flag: 'wx' })
+    leader = true
+  } catch {
+    leader = false
+  }
+  if (!leader) {
+    const adopted = await waitForSharedAdmin(60_000)
+    if (adopted) {
+      cachedAdmin = { auth: adopted, at: Date.now() }
+      return adopted
+    }
+    // the leader died without writing — fall through and try the login ourselves
+  }
+  try {
+    let response = await request.post('/api/v1/auth/login', {
+      data: { email: ADMIN_EMAIL, password: PASSWORD },
+    })
+    if (!response.ok()) {
+      response = await request.post('/api/v1/auth/register', {
+        data: { email: ADMIN_EMAIL, password: PASSWORD, displayName: 'E2E Admin' },
+      })
+    }
+    expect(response.ok(), `admin auth failed with status ${response.status()}`).toBe(true)
+    const auth = (await response.json()) as AuthResponse
+    if (auth.user.role !== 'admin') {
+      throw new Error(`expected ${ADMIN_EMAIL} to have the admin role, got "${auth.user.role}"`)
+    }
+    cachedAdmin = { auth, at: Date.now() }
+    await writeSharedAdmin(auth)
+    return auth
+  } finally {
+    if (leader) await unlink(ADMIN_SESSION_LOCK).catch(() => undefined)
+  }
 }
 
 // e2e seeding hits the act-required worker routes (#156 moved extraction writes there), so the
