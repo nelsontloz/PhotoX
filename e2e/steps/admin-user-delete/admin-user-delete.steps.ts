@@ -818,12 +818,18 @@ When(
     $testInfo.setTimeout(360_000)
     const victim = requireVictim(ctx)
     await page.getByLabel('Filter backups by email').fill(victim.user.email)
-    const restore = page.getByRole('button', { name: `Restore ${victim.user.email}` })
+    // this step serves both rows: the true-orphan main row keeps `Restore ${email}` while the
+    // previous-account sub-row carries `Restore to a new account ${email}`
+    const restore = page.getByRole('button', {
+      name: new RegExp(`^Restore( to a new account)? ${escapeRegExp(victim.user.email)}$`),
+    })
     await expect(restore).toBeEnabled({ timeout: 30_000 })
     await restore.click()
     await expect(
       page.getByRole('heading', { name: `Restore ${victim.user.email}?`, exact: true }),
     ).toBeVisible()
+    // the optional target-address input must be offered; leaving it empty keeps the fallback
+    await expect(page.getByLabel('New account email')).toBeVisible()
     // the confirm closes before the run, so register the waiter first and pin the outcome
     // on the response — the Then steps assert the toast + refreshed list, never a bare wait
     const pending = page.waitForResponse(
@@ -927,3 +933,151 @@ Then(
     expect(((await originalLogin.json()) as AuthResponse).user.id).toBe(reregistered.user.id)
   },
 )
+
+// --- previous-account backup merge ---------------------------------------------------------
+// A deleted account's snapshot is matched to the live account that re-registered its email.
+// The live row keeps its own Back up / Delete pair while each matched snapshot renders in a
+// sub-row table under it; merging copies the source library into the live account and moves
+// the S3 snapshot into the live account's prefix (deleting the source prefix), and the ledger
+// rejects a repeat.
+
+interface MergedOverviewRow {
+  userId: string
+  exists: boolean
+  backedUpAssets: number
+  legacyBackups?: { userId: string; assets?: number }[]
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+When('I search backups for the victim email', async ({ page, ctx }) => {
+  await page.getByLabel('Filter backups by email').fill(requireVictim(ctx).user.email)
+})
+
+Then('the matched backup row shows the previous-account merge action', async ({ page, ctx }) => {
+  const email = requireVictim(ctx).user.email
+  // the live account's main row is the only row carrying the email text — the snapshot's
+  // sub-row table below it labels its buttons with the address, never as plain text
+  const row = backupRow(page, email)
+  await expect(row).toHaveCount(1, { timeout: 30_000 })
+  await expect(row.getByText('Deleted user')).toHaveCount(0)
+  // the live account has no own backup, so its main row shows the plain Back up / Delete pair
+  await expect(row.getByRole('button', { name: `Back up ${email}`, exact: true })).toBeEnabled()
+  await expect(
+    row.getByRole('button', { name: `Delete backup for ${email}`, exact: true }),
+  ).toBeVisible()
+  // the previous account's snapshot renders in the sub-row table under the main row
+  await expect(page.getByText('Previous account').first()).toBeVisible()
+  // the first snapshot carries the un-dated labels — exact matching keeps them apart from the
+  // dated variants reserved for any further snapshots
+  await expect(
+    page.getByRole('button', { name: `Merge to current live account ${email}`, exact: true }),
+  ).toBeEnabled()
+  await expect(
+    page.getByRole('button', { name: `Restore to a new account ${email}`, exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: `Delete previous backup for ${email}`, exact: true }),
+  ).toBeVisible()
+})
+
+When('I merge the matched backup into the live account', async ({ page, ctx, $testInfo }) => {
+  // the merge copies the source originals inline (deduping checksums) — allow room past 120s
+  $testInfo.setTimeout(360_000)
+  const email = requireVictim(ctx).user.email
+  const merge = page.getByRole('button', {
+    name: `Merge to current live account ${email}`,
+    exact: true,
+  })
+  await expect(merge).toBeEnabled({ timeout: 30_000 })
+  await merge.click()
+  await expect(
+    page.getByRole('heading', { name: `Merge backup into ${email}?`, exact: true }),
+  ).toBeVisible()
+  // the confirm closes before the run, so register the waiter first and pin the outcome on
+  // the response — the toast proves the overview refreshed afterwards
+  const pending = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/v1/admin/restores/merge',
+    { timeout: 240_000 },
+  )
+  await page.getByRole('button', { name: 'Merge', exact: true }).click()
+  expect((await pending).status()).toBe(200)
+  await expect(
+    page.getByText(new RegExp(`Merged .* into ${escapeRegExp(email)}`)).first(),
+  ).toBeVisible({ timeout: 15_000 })
+})
+
+Then('the live account owns the backup library', async ({ request, ctx }) => {
+  const state = deleteState(ctx)
+  const admin = requireStateAdmin(ctx)
+  const reregistered = state.reregistered
+  if (!reregistered) throw new Error('re-register the victim email first')
+  const liveId = reregistered.user.id
+  // the merge moves the source snapshot under the live account's own prefix, so its row
+  // reports one merged library and no previous-account sub-row is left behind
+  await expect
+    .poll(
+      async () => {
+        const response = await request.get('/api/v1/admin/backups/overview', {
+          headers: authHeaders(admin),
+        })
+        if (response.status() !== 200) return false
+        const rows = (await response.json()) as MergedOverviewRow[]
+        const row = rows.find((candidate) => candidate.userId === liveId)
+        return Boolean(
+          row?.exists && row.backedUpAssets >= 1 && (row.legacyBackups ?? []).length === 0,
+        )
+      },
+      { timeout: 60_000 },
+    )
+    .toBe(true)
+})
+
+Then('the source backup is gone', async ({ request, ctx }) => {
+  const state = deleteState(ctx)
+  const victim = requireVictim(ctx)
+  const admin = requireStateAdmin(ctx)
+  const reregistered = state.reregistered
+  if (!reregistered) throw new Error('re-register the victim email first')
+  const statusFor = async (emailOrId: string) => {
+    const response = await request.get(
+      `/api/v1/admin/backups/status?emailOrId=${encodeURIComponent(emailOrId)}`,
+      { headers: authHeaders(admin) },
+    )
+    expect(response.status()).toBe(200)
+    return (await response.json()) as { exists: boolean; assets?: number }
+  }
+  // moving the snapshot deletes the source prefix, so the deleted account no longer owns one
+  expect((await statusFor(victim.user.id)).exists).toBe(false)
+  // the live account is the one that now exists, owning the merged library
+  const live = await statusFor(reregistered.user.id)
+  expect(live.exists).toBe(true)
+  expect(live.assets).toBe(1)
+})
+
+Then('a second merge is rejected', async ({ request, ctx }) => {
+  const state = deleteState(ctx)
+  const victim = requireVictim(ctx)
+  const reregistered = state.reregistered
+  if (!reregistered) throw new Error('re-register the victim email first')
+  const response = await request.post('/api/v1/admin/restores/merge', {
+    headers: authHeaders(requireStateAdmin(ctx)),
+    data: { targetEmailOrId: reregistered.user.id, backupUserId: victim.user.id },
+  })
+  expect(response.status()).toBe(409)
+  let body: { message?: unknown } = {}
+  try {
+    body = (await response.json()) as { message?: unknown }
+  } catch {
+    // a bodyless 409 still proves the repeat merge was rejected
+  }
+  if (body.message !== undefined) {
+    // the HTTP filter may shape the message as a string or an array of strings
+    const message = typeof body.message === 'string' ? body.message : JSON.stringify(body.message)
+    expect(message).toContain('already-merged')
+  }
+})

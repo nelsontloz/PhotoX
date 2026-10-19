@@ -3,13 +3,24 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { ConflictException, NotFoundException, type INestApplication } from '@nestjs/common'
+import {
+  ConflictException,
+  NotFoundException,
+  PayloadTooLargeException,
+  type INestApplication,
+} from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm'
 import { vi } from 'vitest'
 import { Worker } from 'bullmq'
-import { LocalStorageService, backupPrefix, loadEnv } from '@photox/shared-config'
-import { DataSource, type Repository } from 'typeorm'
+import {
+  LocalStorageService,
+  backupPrefix,
+  loadEnv,
+  manifestKey,
+  originalKey,
+} from '@photox/shared-config'
+import { DataSource, In, type Repository } from 'typeorm'
 import { Asset, AssetThumbnail, Face, FileRecord, Person } from '../../src/database/entities'
 import { AppSetting } from '../../src/database/entities/app-setting.entity'
 import { AssetEmbedding } from '../../src/database/entities/asset-embedding.entity'
@@ -22,8 +33,13 @@ import { Share } from '../../src/shares/entities/share.entity'
 import { User } from '../../src/users/entities/user.entity'
 import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
 import { BackupModule } from '../../src/backup/backup.module'
+import { BackupMerge } from '../../src/backup/entities/backup-merge.entity'
 import { S3BackupService } from '../../src/backup/s3-backup.service'
-import { UserBackupService, buildFallbackEmail } from '../../src/backup/user-backup.service'
+import {
+  UserBackupService,
+  buildFallbackEmail,
+  type UserBackupManifest,
+} from '../../src/backup/user-backup.service'
 import { BullMqModule } from '../../src/queue/bullmq.module'
 import { BullMqService } from '../../src/queue/bullmq.service'
 import { setupTestInfra, teardownTestInfra } from './test-setup'
@@ -44,6 +60,7 @@ const ENTITIES = [
   AssetOcr,
   AssetDetection,
   Place,
+  BackupMerge,
 ]
 
 interface FakeOp {
@@ -62,6 +79,8 @@ class FakeS3BackupService {
   ops: FakeOp[] = []
 
   failNextPuts = 0
+
+  failNextCopies = 0
 
   failListKeys = false
 
@@ -108,6 +127,10 @@ class FakeS3BackupService {
   }
 
   copyKey(srcKey: string, dstKey: string): Promise<void> {
+    if (this.failNextCopies > 0) {
+      this.failNextCopies -= 1
+      throw new Error('injected copyKey failure')
+    }
     const found = this.objects.get(srcKey)
     if (!found) {
       const err = new Error(`missing key ${srcKey}`)
@@ -179,6 +202,7 @@ describe('user backup round-trip', () => {
   let albumAssetRepo: Repository<AlbumAsset>
   let shareRepo: Repository<Share>
   let personRepo: Repository<Person>
+  let mergeRepo: Repository<BackupMerge>
 
   beforeAll(async () => {
     const { pgHost, pgPort } = await setupTestInfra()
@@ -220,6 +244,7 @@ describe('user backup round-trip', () => {
       albumAssetRepo = app.get<Repository<AlbumAsset>>(getRepositoryToken(AlbumAsset))
       shareRepo = app.get<Repository<Share>>(getRepositoryToken(Share))
       personRepo = app.get<Repository<Person>>(getRepositoryToken(Person))
+      mergeRepo = app.get<Repository<BackupMerge>>(getRepositoryToken(BackupMerge))
     } catch (err) {
       if (prevStorageDir === undefined) delete process.env.STORAGE_DIR
       else process.env.STORAGE_DIR = prevStorageDir
@@ -238,13 +263,14 @@ describe('user backup round-trip', () => {
   beforeEach(async () => {
     await dataSource.query(
       'TRUNCATE users, files, assets, albums, album_assets, shares, persons, ' +
-        'app_settings RESTART IDENTITY CASCADE',
+        'app_settings, backup_merges RESTART IDENTITY CASCADE',
     )
     rmSync(storageDir, { recursive: true, force: true })
     await storage.ensureDir()
     fake.objects.clear()
     fake.ops = []
     fake.failNextPuts = 0
+    fake.failNextCopies = 0
     fake.failListKeys = false
   })
 
@@ -295,7 +321,7 @@ describe('user backup round-trip', () => {
 
   async function wipeUserData(): Promise<void> {
     await dataSource.query(
-      'TRUNCATE users, files, assets, albums, album_assets, shares, persons ' +
+      'TRUNCATE users, files, assets, albums, album_assets, shares, persons, backup_merges ' +
         'RESTART IDENTITY CASCADE',
     )
     rmSync(storageDir, { recursive: true, force: true })
@@ -1142,6 +1168,67 @@ describe('user backup round-trip', () => {
       expect(holder.email).toBe(origEmail)
     })
 
+    it('uses an explicit restoreEmail instead of the manifest/fallback allocation', async () => {
+      const origEmail = `explicit-${randomUUID()}@example.com`
+      const { user: orig, prefix } = await backupSingle(origEmail)
+      const origId = orig.id
+      await fileRepo.delete({ userId: origId })
+      await userRepo.delete(origId)
+      // manifest email reused by another live account: the default path would
+      // allocate restored-<ms>-<orig>, but the explicit address must win instead
+      const other = await userRepo.save(
+        userRepo.create({
+          email: origEmail,
+          role: 'user',
+          passwordHash: 'other-hash',
+          displayName: 'Email Reuse',
+        }),
+      )
+
+      const requested = `requested-${randomUUID()}@example.com`
+      const result = await svc.restoreUser(origId, requested.toUpperCase())
+      expect(result.userId).toBe(origId)
+      expect(result.email).toBe(requested)
+      // S3 prefix/bytes still come from the manifest backup
+      expect(result.prefix).toBe(prefix)
+      expect(result.restoredFrom).toMatchObject({ emailAtBackup: origEmail, prefix })
+      const restored = await userRepo.findOneOrFail({ where: { id: origId } })
+      expect(restored.email).toBe(requested)
+      const holder = await userRepo.findOneOrFail({ where: { id: other.id } })
+      expect(holder.email).toBe(origEmail)
+    })
+
+    it('rejects an explicit restoreEmail owned by another live user (409 email-taken)', async () => {
+      const origEmail = `taken-${randomUUID()}@example.com`
+      const { user: orig } = await backupSingle(origEmail)
+      const origId = orig.id
+      await fileRepo.delete({ userId: origId })
+      await userRepo.delete(origId)
+
+      const holderEmail = `holder-${randomUUID()}@example.com`
+      const holder = await userRepo.save(
+        userRepo.create({
+          email: holderEmail,
+          role: 'user',
+          passwordHash: 'holder-hash',
+          displayName: 'Holder',
+        }),
+      )
+
+      const caught = await svc
+        .restoreUser(origId, holderEmail.toUpperCase())
+        .catch((e: unknown) => e)
+      expect(caught).toBeInstanceOf(ConflictException)
+      expect((caught as ConflictException).getStatus()).toBe(409)
+      expect((caught as ConflictException).message).toContain('email-taken')
+      // restores nothing: no row/files for the backup user, holder unchanged
+      expect(await userRepo.findOne({ where: { id: origId } })).toBeNull()
+      expect(await fileRepo.findOne({ where: { userId: origId } })).toBeNull()
+      const stillHolding = await userRepo.findOneOrFail({ where: { id: holder.id } })
+      expect(stillHolding.email).toBe(holderEmail)
+      await expect(svc.backupStatus(origEmail)).resolves.toMatchObject({ exists: true })
+    })
+
     it('retries the fallback with a suffix when the first candidate is taken', async () => {
       const origEmail = `retry-${randomUUID()}@example.com`
       const { user: orig } = await backupSingle(origEmail)
@@ -1272,5 +1359,466 @@ describe('user backup round-trip', () => {
         NotFoundException,
       )
     })
+  })
+
+  describe('merge backups', () => {
+    async function deleteAccountRows(userId: string): Promise<void> {
+      const albums = await albumRepo.find({ where: { userId } })
+      if (albums.length > 0) {
+        await albumAssetRepo.delete({ albumId: In(albums.map((album) => album.id)) })
+      }
+      await shareRepo.delete({ userId })
+      await personRepo.delete({ userId })
+      await assetRepo.delete({ userId })
+      await fileRepo.delete({ userId })
+      await albumRepo.delete({ userId })
+      await userRepo.delete(userId)
+    }
+
+    async function seedAccount(email: string): Promise<{
+      user: User
+      file: FileRecord
+      bytes: Buffer
+      asset: Asset
+      album: Album
+      share: Share
+      person: Person
+    }> {
+      const user = await userRepo.save(
+        userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'legacy-hash',
+          displayName: 'Legacy User',
+        }),
+      )
+      const seeded = await seedOriginal(user.id, Buffer.from(`merge-bytes-${email}`), {
+        mimeType: 'image/png',
+        originalName: 'merge.png',
+      })
+      const asset = await assetRepo.save(
+        assetRepo.create({
+          userId: user.id,
+          kind: 'photo',
+          fileId: seeded.record.id,
+          isTrashed: false,
+          mimeType: 'image/png',
+          width: 64,
+          height: 64,
+          favorite: true,
+          faceCount: 2,
+          metadataStatus: 'ready',
+          thumbnailStatus: 'ready',
+          faceStatus: 'ready',
+          embeddingStatus: 'ready',
+        }),
+      )
+      const album = await albumRepo.save(
+        albumRepo.create({ userId: user.id, name: 'Legacy Trip', description: 'old album' }),
+      )
+      await albumAssetRepo.save(albumAssetRepo.create({ albumId: album.id, assetId: asset.id }))
+      const share = await shareRepo.save(
+        shareRepo.create({
+          userId: user.id,
+          kind: 'asset',
+          assetId: asset.id,
+          albumId: null,
+          token: createHash('sha256').update(randomUUID()).digest('hex'),
+          expiresAt: new Date('2027-01-01T00:00:00.000Z'),
+        }),
+      )
+      const person = await personRepo.save(
+        personRepo.create({
+          userId: user.id,
+          name: 'Mom',
+          coverFaceId: randomUUID(),
+          clusterLabel: 'c1',
+          faceCount: 5,
+        }),
+      )
+      return { user, file: seeded.record, bytes: seeded.bytes, asset, album, share, person }
+    }
+
+    it('merges a matched legacy snapshot, adopts it into the live prefix and removes the source', async () => {
+      const email = `merge-${randomUUID()}@example.com`
+      const legacy = await seedAccount(email)
+      const legacyBackup = await svc.backupUser(legacy.user.id)
+      const legacyPrefix = legacyBackup.prefix
+      const legacyId = legacy.user.id
+      await deleteAccountRows(legacyId)
+
+      const target = await userRepo.save(
+        userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'target-hash',
+          displayName: 'Target Profile',
+        }),
+      )
+      const result = await svc.mergeUserBackup({
+        targetEmailOrId: target.id,
+        backupUserId: legacyId,
+      })
+      expect(result).toMatchObject({
+        targetUserId: target.id,
+        targetEmail: email,
+        backupUserId: legacyId,
+        emailAtBackup: email,
+        // the top-level prefix stays the SOURCE prefix for audit; adoption
+        // reports the live prefix it moved the snapshot to
+        prefix: legacyPrefix,
+        merged: { files: 1, assets: 1, albums: 1, albumAssets: 1, shares: 1, persons: 1 },
+        deduped: { files: 0, assets: 0 },
+      })
+      expect(result.adoptionError).toBeUndefined()
+      expect(result.assigned).toMatchObject({
+        prefix: backupPrefix(email, target.id),
+        copiedObjects: 1,
+        reusedObjects: 0,
+        unionedWithExisting: false,
+        sourceDeleted: true,
+      })
+      expect(new Date(result.completedAt).getTime()).toBeGreaterThanOrEqual(
+        new Date(result.startedAt).getTime(),
+      )
+      expect(result.enqueued).toEqual({ metadata: 1, thumbnails: 4, videos: 0, faces: 1, ai: 3 })
+
+      // live profile untouched
+      const after = await userRepo.findOneOrFail({ where: { id: target.id } })
+      expect(after).toMatchObject({
+        email,
+        role: 'user',
+        passwordHash: 'target-hash',
+        displayName: 'Target Profile',
+        tokensValidAfter: null,
+      })
+
+      // old UUIDs re-created under the target; bytes live under the target namespace
+      const fileAfter = await fileRepo.findOneOrFail({ where: { id: legacy.file.id } })
+      expect(fileAfter.userId).toBe(target.id)
+      expect(fileAfter.storageKey.startsWith(`originals/${target.id}/`)).toBe(true)
+      expect(await readFile(storage.pathFor(fileAfter.storageKey))).toEqual(legacy.bytes)
+      const assetAfter = await assetRepo.findOneOrFail({ where: { id: legacy.asset.id } })
+      expect(assetAfter).toMatchObject({
+        userId: target.id,
+        fileId: legacy.file.id,
+        favorite: true,
+        faceCount: 2,
+        metadataStatus: 'pending',
+        thumbnailStatus: 'pending',
+        faceStatus: 'pending',
+        embeddingStatus: 'pending',
+        phash: null,
+        transcodeFileId: null,
+      })
+      const albumAfter = await albumRepo.findOneOrFail({ where: { id: legacy.album.id } })
+      expect(albumAfter.userId).toBe(target.id)
+      await albumAssetRepo.findOneOrFail({
+        where: { albumId: legacy.album.id, assetId: legacy.asset.id },
+      })
+      const shareAfter = await shareRepo.findOneOrFail({ where: { id: legacy.share.id } })
+      expect(shareAfter).toMatchObject({ userId: target.id, assetId: legacy.asset.id })
+      expect(shareAfter.expiresAt).toEqual(new Date('2027-01-01T00:00:00.000Z'))
+      const personAfter = await personRepo.findOneOrFail({ where: { id: legacy.person.id } })
+      expect(personAfter).toMatchObject({
+        userId: target.id,
+        name: 'Mom',
+        clusterLabel: 'c1',
+        faceCount: 5,
+        coverFaceId: null,
+      })
+
+      // adoption moved the snapshot into the target's own prefix and deleted the
+      // source: no legacyBackups sub-row material remains
+      const targetPrefix = backupPrefix(email, target.id)
+      expect(result.assigned!.prefix).toBe(targetPrefix)
+      await expect(fake.listKeys(legacyPrefix)).resolves.toEqual([])
+      const targetKeys = await fake.listKeys(targetPrefix)
+      expect(targetKeys).toHaveLength(2)
+      expect(targetKeys).toEqual(
+        expect.arrayContaining([
+          manifestKey(email, target.id),
+          originalKey(email, target.id, legacy.file.id, 'bin'),
+        ]),
+      )
+
+      const targetManifest = JSON.parse(
+        (await fake.getBuffer(manifestKey(email, target.id))).toString('utf-8'),
+      ) as UserBackupManifest
+      expect(targetManifest).toMatchObject({
+        userId: target.id,
+        emailAtBackup: email,
+        user: { id: target.id, passwordHash: 'target-hash' },
+      })
+      // adoption reuses the source snapshot's backedUpAt — same content, one run
+      expect(targetManifest.backedUpAt).toBe(legacyBackup.backedUpAt)
+      expect(targetManifest.files).toHaveLength(1)
+      expect(targetManifest.assets).toHaveLength(1)
+      expect(targetManifest.albums).toHaveLength(1)
+      expect(targetManifest.albumAssets).toHaveLength(1)
+      expect(targetManifest.shares).toHaveLength(1)
+      expect(targetManifest.persons).toHaveLength(1)
+      expect(targetManifest.files[0]).toMatchObject({
+        userId: target.id,
+        assetId: legacy.asset.id,
+      })
+      expect(targetManifest.assets[0]!.userId).toBe(target.id)
+      // every manifest entry has its original bytes under the target prefix
+      for (const entry of targetManifest.files) {
+        const ext = entry.storageKey.slice(entry.storageKey.lastIndexOf('.') + 1)
+        expect(fake.objects.has(originalKey(email, target.id, entry.id, ext))).toBe(true)
+      }
+
+      // durable ledger
+      const ledger = await mergeRepo.findOneOrFail({
+        where: { backupUserId: legacyId, targetUserId: target.id },
+      })
+      expect(ledger.prefix).toBe(legacyPrefix)
+      expect(ledger.counts).toMatchObject({ files: 1, assets: 1 })
+
+      // the live row is now the normal backup: its own manifest at the target
+      // prefix, no previous-account sub-row and no mergedAt/backupUserId extras
+      const row = (await svc.backupOverview()).find((r) => r.userId === target.id)!
+      expect(row).toMatchObject({
+        deleted: false,
+        exists: true,
+        totalAssets: 1,
+        backedUpAssets: 1,
+        backedUpFiles: 1,
+      })
+      // live rows never carry prefix/backupUserId/mergedAt — only orphans and
+      // legacyBackups snapshots do; the adopted backup is the live row itself
+      expect(row.backupUserId).toBeUndefined()
+      expect(row.prefix).toBeUndefined()
+      expect(row.mergedAt).toBeUndefined()
+      expect(row.legacyBackups).toBeUndefined()
+      await expect(svc.backupStatus(email)).resolves.toMatchObject({ exists: true, files: 1 })
+
+      // the adopted manifest is a valid incremental predecessor: a rerun re-uploads
+      // nothing
+      const nextBackup = await svc.backupUser(target.id)
+      expect(nextBackup).toMatchObject({ uploaded: 0, skipped: 1 })
+
+      const metadataJobs = await queueJobsFor('process-metadata', target.id)
+      expect(metadataJobs.map((data) => data.assetId)).toContain(legacy.asset.id)
+    }, 120_000)
+
+    it('recovers from a failed adoption with a retry that replays the merge', async () => {
+      const email = `merge-retry-${randomUUID()}@example.com`
+      const legacy = await seedAccount(email)
+      const legacyPrefix = (await svc.backupUser(legacy.user.id)).prefix
+      const legacyId = legacy.user.id
+      await deleteAccountRows(legacyId)
+
+      const target = await userRepo.save(
+        userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'target-hash',
+          displayName: 'Retry Target',
+        }),
+      )
+
+      // Rows/bytes land, then adoption's S3 copy fails: no ledger, source kept, so
+      // a plain retry is still allowed.
+      fake.failNextCopies = 1
+      const failed = await svc.mergeUserBackup({
+        targetEmailOrId: target.id,
+        backupUserId: legacyId,
+      })
+      expect(failed.assigned).toBeNull()
+      expect(failed.adoptionError).toContain('injected copyKey failure')
+      expect((await fake.listKeys(legacyPrefix)).length).toBeGreaterThan(0)
+      expect(
+        await mergeRepo.findOne({
+          where: { backupUserId: legacyId, targetUserId: target.id },
+        }),
+      ).toBeNull()
+
+      // The retry finds the already-merged rows (skipped), re-enqueues their
+      // derivatives, adopts the source and removes it.
+      const retry = await svc.mergeUserBackup({
+        targetEmailOrId: target.id,
+        backupUserId: legacyId,
+        force: true,
+      })
+      expect(retry.skipped.assets).toBe(1)
+      expect(retry.enqueued).toEqual({ metadata: 1, thumbnails: 4, videos: 0, faces: 1, ai: 3 })
+      expect(retry.assigned).toMatchObject({
+        prefix: backupPrefix(email, target.id),
+        sourceDeleted: true,
+      })
+      await expect(fake.listKeys(legacyPrefix)).resolves.toEqual([])
+    }, 120_000)
+
+    it('dedupes identical originals and relinks album/share targets to the live asset', async () => {
+      const email = `merge-dedupe-${randomUUID()}@example.com`
+      const bytes = Buffer.from('merge-dedupe-shared-bytes')
+      const legacyUser = await userRepo.save(
+        userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'legacy-hash',
+          displayName: 'Legacy Dedupe',
+        }),
+      )
+      const legacyFile = await seedOriginal(legacyUser.id, bytes)
+      const legacyAsset = await assetRepo.save(
+        assetRepo.create({ userId: legacyUser.id, kind: 'photo', fileId: legacyFile.record.id }),
+      )
+      const legacyAlbum = await albumRepo.save(
+        albumRepo.create({ userId: legacyUser.id, name: 'Dedupe Album', description: null }),
+      )
+      await albumAssetRepo.save(
+        albumAssetRepo.create({ albumId: legacyAlbum.id, assetId: legacyAsset.id }),
+      )
+      const legacyShare = await shareRepo.save(
+        shareRepo.create({
+          userId: legacyUser.id,
+          kind: 'asset',
+          assetId: legacyAsset.id,
+          albumId: null,
+          token: createHash('sha256').update(randomUUID()).digest('hex'),
+          expiresAt: null,
+        }),
+      )
+      await svc.backupUser(legacyUser.id)
+      await deleteAccountRows(legacyUser.id)
+
+      const target = await userRepo.save(
+        userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'target-hash',
+          displayName: 'Target Dedupe',
+        }),
+      )
+      const targetFile = await seedOriginal(target.id, bytes)
+      const targetAsset = await assetRepo.save(
+        assetRepo.create({ userId: target.id, kind: 'photo', fileId: targetFile.record.id }),
+      )
+
+      const result = await svc.mergeUserBackup({
+        targetEmailOrId: email,
+        backupUserId: legacyUser.id,
+      })
+      expect(result.deduped).toEqual({ files: 1, assets: 1 })
+      expect(result.merged).toMatchObject({ files: 0, assets: 0, albums: 1, shares: 1 })
+      expect(await assetRepo.findOne({ where: { id: legacyAsset.id } })).toBeNull()
+      expect(await fileRepo.findOne({ where: { id: legacyFile.record.id } })).toBeNull()
+      await albumAssetRepo.findOneOrFail({
+        where: { albumId: legacyAlbum.id, assetId: targetAsset.id },
+      })
+      const shareAfter = await shareRepo.findOneOrFail({ where: { id: legacyShare.id } })
+      expect(shareAfter).toMatchObject({ userId: target.id, assetId: targetAsset.id })
+      expect(result.assigned).toMatchObject({
+        prefix: backupPrefix(email, target.id),
+        copiedObjects: 1,
+        reusedObjects: 0,
+        unionedWithExisting: false,
+        sourceDeleted: true,
+      })
+      // the adopted manifest references the live rows the merge relinked to, never
+      // the deduped legacy ids
+      const targetManifest = JSON.parse(
+        (await fake.getBuffer(manifestKey(email, target.id))).toString('utf-8'),
+      ) as UserBackupManifest
+      expect(targetManifest.files.map((file) => file.id)).toEqual([targetFile.record.id])
+      expect(targetManifest.assets.map((asset) => asset.id)).toEqual([targetAsset.id])
+      expect(targetManifest.files.some((file) => file.id === legacyFile.record.id)).toBe(false)
+      expect(targetManifest.assets.some((asset) => asset.id === legacyAsset.id)).toBe(false)
+      // the source copy is gone; the single remaining original lives under the
+      // target prefix under the live file id
+      expect([...fake.objects.keys()].filter((key) => key.includes('/originals/'))).toEqual([
+        originalKey(email, target.id, targetFile.record.id, 'bin'),
+      ])
+      expect(result.enqueued).toEqual({ metadata: 0, thumbnails: 0, videos: 0, faces: 0, ai: 0 })
+    }, 120_000)
+
+    it('rejects an email mismatch, a second merge and a missing source', async () => {
+      const email = `merge-conflict-${randomUUID()}@example.com`
+      const legacy = await seedAccount(email)
+      await svc.backupUser(legacy.user.id)
+      await deleteAccountRows(legacy.user.id)
+
+      const target = await userRepo.save(
+        userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'target-hash',
+          displayName: 'Conflict Target',
+        }),
+      )
+      const other = await userRepo.save(
+        userRepo.create({
+          email: `other-${randomUUID()}@example.com`,
+          role: 'user',
+          passwordHash: 'other-hash',
+          displayName: 'Other',
+        }),
+      )
+
+      // Mismatch runs before the successful merge: adoption deletes the source, so
+      // the email check must see the snapshot while it still exists.
+      const mismatch = await svc
+        .mergeUserBackup({ targetEmailOrId: other.id, backupUserId: legacy.user.id, force: true })
+        .catch((err: unknown) => err)
+      expect(mismatch).toBeInstanceOf(ConflictException)
+      expect((mismatch as ConflictException).message).toContain('email-mismatch')
+
+      await svc.mergeUserBackup({ targetEmailOrId: target.id, backupUserId: legacy.user.id })
+
+      // The ledger check runs before source resolution: the source is gone now, but
+      // a plain repeat must still answer 409 already-merged instead of 404.
+      const second = await svc
+        .mergeUserBackup({ targetEmailOrId: target.id, backupUserId: legacy.user.id })
+        .catch((err: unknown) => err)
+      expect(second).toBeInstanceOf(ConflictException)
+      expect((second as ConflictException).message).toContain('already-merged')
+
+      await expect(
+        svc.mergeUserBackup({ targetEmailOrId: target.id, backupUserId: randomUUID() }),
+      ).rejects.toThrow(NotFoundException)
+    }, 120_000)
+
+    it('enforces STORAGE_QUOTA_BYTES on incoming bytes unless force is set', async () => {
+      const previous = process.env.STORAGE_QUOTA_BYTES
+      process.env.STORAGE_QUOTA_BYTES = '8'
+      try {
+        const email = `merge-quota-${randomUUID()}@example.com`
+        const legacy = await seedAccount(email)
+        const legacyPrefix = (await svc.backupUser(legacy.user.id)).prefix
+        await deleteAccountRows(legacy.user.id)
+        const target = await userRepo.save(
+          userRepo.create({
+            email,
+            role: 'user',
+            passwordHash: 'target-hash',
+            displayName: 'Quota Target',
+          }),
+        )
+
+        const rejected = await svc
+          .mergeUserBackup({ targetEmailOrId: target.id, backupUserId: legacy.user.id })
+          .catch((err: unknown) => err)
+        expect(rejected).toBeInstanceOf(PayloadTooLargeException)
+        expect((rejected as Error).message).toMatch(/used \d+ \+ incoming \d+ > quota 8/)
+
+        const forced = await svc.mergeUserBackup({
+          targetEmailOrId: target.id,
+          backupUserId: legacy.user.id,
+          force: true,
+        })
+        expect(forced.merged.files).toBe(1)
+        expect(forced.assigned).toMatchObject({
+          prefix: backupPrefix(email, target.id),
+          sourceDeleted: true,
+        })
+        await expect(fake.listKeys(legacyPrefix)).resolves.toEqual([])
+      } finally {
+        if (previous === undefined) delete process.env.STORAGE_QUOTA_BYTES
+        else process.env.STORAGE_QUOTA_BYTES = previous
+      }
+    }, 120_000)
   })
 })

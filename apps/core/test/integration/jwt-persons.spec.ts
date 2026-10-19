@@ -304,6 +304,10 @@ describe('persons JWT identity', () => {
     await t.personRepo.save(
       t.personRepo.create({ userId: user.id, name: null, clusterLabel: `c-${randomUUID()}` }),
     )
+    // named but empty (e.g. inserted by a backup restore/merge) is kept
+    const namedEmpty = await t.personRepo.save(
+      t.personRepo.create({ userId: user.id, name: 'Alice', clusterLabel: null }),
+    )
     // only face sits in a trashed asset
     const trashedOnly = await seedPersonWithFace(user.id)
     await t.assetRepo.update({ id: trashedOnly.asset.id }, { isTrashed: true })
@@ -320,7 +324,7 @@ describe('persons JWT identity', () => {
 
     const remaining = await t.personRepo.find()
     expect(new Set(remaining.map((p) => p.id))).toEqual(
-      new Set([kept.person.id, otherPerson.person.id]),
+      new Set([namedEmpty.id, kept.person.id, otherPerson.person.id]),
     )
     expect((await t.faceRepo.findOneByOrFail({ id: trashedOnly.face.id })).personId).toBeNull()
     expect((await t.faceRepo.findOneByOrFail({ id: kept.face.id })).personId).toBe(kept.person.id)

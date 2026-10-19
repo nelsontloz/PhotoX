@@ -11,6 +11,7 @@ import { Album } from '../../albums/entities/album.entity'
 import { AlbumAsset } from '../../albums/entities/album-asset.entity'
 import { Asset, Face, FileRecord, Person } from '../../database/entities'
 import { Share } from '../../shares/entities/share.entity'
+import { BackupMerge } from '../../backup/entities/backup-merge.entity'
 import { BullMqService } from '../../queue/bullmq.service'
 import { User } from '../entities/user.entity'
 import { RefreshToken } from '../entities/refresh-token.entity'
@@ -225,6 +226,9 @@ export class UserDeleteService {
       await m.delete(RefreshToken, { userId })
       await m.update(User, userId, { tokensValidAfter: new Date() })
       await m.delete(Share, { userId })
+      // merge ledger rows are metadata about the deleted target account; the S3
+      // legacy backup itself stays in place (backups are never deleted here)
+      await m.delete(BackupMerge, { targetUserId: userId })
       await m.delete(Face, { userId })
       await m.delete(Person, { userId })
       const albumIds = (await m.find(Album, { where: { userId }, select: ['id'] })).map((a) => a.id)

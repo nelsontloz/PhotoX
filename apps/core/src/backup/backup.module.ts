@@ -9,6 +9,7 @@ import { StorageModule } from '../files/storage/storage.module'
 import { SettingsModule } from '../settings/settings.module'
 import { PlacesModule } from '../places/places.module'
 import { BackupController } from './backup.controller'
+import { BackupMerge } from './entities/backup-merge.entity'
 import { S3BackupService } from './s3-backup.service'
 import { UserBackupService } from './user-backup.service'
 
@@ -16,7 +17,16 @@ import { UserBackupService } from './user-backup.service'
 // this module only declares the TypeORM scope its own queries touch
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, FileRecord, Asset, Album, AlbumAsset, Share, Person]),
+    TypeOrmModule.forFeature([
+      User,
+      FileRecord,
+      Asset,
+      Album,
+      AlbumAsset,
+      Share,
+      Person,
+      BackupMerge,
+    ]),
     StorageModule,
     SettingsModule,
     PlacesModule,
