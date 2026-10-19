@@ -9,20 +9,17 @@ abstract final class AppConfig {
   /// Assets at or below this size use the single-request multipart upload path.
   static const int singleUploadThresholdBytes = 64 * 1024 * 1024;
 
-  /// Smallest part size the session API accepts.
-  static const int partSizeMinBytes = 5 * 1024 * 1024;
+  /// Fixed part size of the resumable upload API (server contract: 8 MiB).
+  static const int sessionChunkSizeBytes = 8 * 1024 * 1024;
 
-  /// Largest part size the session API accepts.
-  static const int partSizeMaxBytes = 64 * 1024 * 1024;
+  /// Largest asset the core API accepts, in bytes (4 GiB).
+  static const int maxUploadSizeBytes = 4 * 1024 * 1024 * 1024;
 
-  /// Part size requested when the server does not dictate one.
-  static const int partSizeDefaultBytes = 8 * 1024 * 1024;
-
-  /// Maximum concurrent resumable sessions allowed per user.
+  /// Maximum concurrent resumable sessions the server allows per user.
   static const int maxActiveSessionsPerUser = 5;
 
-  /// Window during which the previous refresh token is still accepted.
-  static const Duration refreshGraceWindow = Duration(seconds: 60);
+  /// Refresh the access token when this much time (or less) remains.
+  static const Duration refreshSkew = Duration(seconds: 60);
 
   // TODO(spec §2.2, §3.1): confirm these constants against the core capability
   // endpoint once it exists instead of hardcoding them here.
