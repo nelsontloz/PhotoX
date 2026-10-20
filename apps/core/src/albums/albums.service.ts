@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
+import { In, Repository } from 'typeorm'
 import { Album } from './entities/album.entity'
 import { AlbumAsset } from './entities/album-asset.entity'
 import { Asset } from '../database/entities'
@@ -97,16 +97,18 @@ export class AlbumsService {
     await this.repo.delete({ id, userId })
   }
 
-  async addAssets(userId: string, albumId: string, assetIds: string[]): Promise<AlbumDto> {
+  async addAssets(userId: string, albumId: string, assetIds: string[]): Promise<void> {
     await findOwnedOr404(this.repo, albumId, userId, 'Album')
 
-    for (const assetId of assetIds) {
-      const asset = await this.assetRepo.findOne({
-        where: { id: assetId, userId, isTrashed: false },
-      })
-      if (!asset) {
-        throw new NotFoundException(`Asset ${assetId} not found`)
-      }
+    const uniqueIds = [...new Set(assetIds)]
+    const found = await this.assetRepo.find({
+      where: { id: In(uniqueIds), userId, isTrashed: false },
+      select: ['id'],
+    })
+    if (found.length !== uniqueIds.length) {
+      const foundIds = new Set(found.map((a) => a.id))
+      const missing = uniqueIds.find((id) => !foundIds.has(id))
+      throw new NotFoundException(`Asset ${missing} not found`)
     }
 
     const rows = assetIds.map((assetId) => ({ albumId, assetId }))
@@ -118,8 +120,6 @@ export class AlbumsService {
       .values(rows)
       .orIgnore()
       .execute()
-
-    return this.getOne(userId, albumId)
   }
 
   async removeAsset(userId: string, albumId: string, assetId: string): Promise<void> {
@@ -140,7 +140,6 @@ export class AlbumsService {
     const joins = await this.albumAssetRepo
       .createQueryBuilder('aa')
       .select('aa.assetId', 'assetId')
-      .addSelect('aa.addedAt', 'addedAt')
       .innerJoin('assets', 'asset', 'asset.id = aa."assetId"')
       .where('aa.albumId = :albumId', { albumId })
       .andWhere('asset.isTrashed = false')
@@ -149,23 +148,11 @@ export class AlbumsService {
       .limit(limit)
       .getRawMany<{ assetId: string }>()
 
-    const total = await this.assetRepo
-      .createQueryBuilder('a')
-      .where('a.id IN (SELECT aa."assetId" FROM album_assets aa WHERE aa."albumId" = :albumId)', {
-        albumId,
-      })
-      .andWhere('a.userId = :userId', { userId })
-      .andWhere('a.isTrashed = false')
-      .getCount()
-
-    if (joins.length === 0) {
-      return { items: [], total }
-    }
-
-    const ids = joins.map((j) => j.assetId)
-    const { items: fetched } = await this.assets.list(userId, { ids, limit: ids.length })
-    const orderMap = new Map(ids.map((id, i) => [id, i]))
-    const items = fetched.sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0))
+    const total = await this.countAssets(albumId)
+    const items = await this.assets.listByIdsRanked(
+      userId,
+      joins.map((j) => j.assetId),
+    )
 
     return { items, total }
   }

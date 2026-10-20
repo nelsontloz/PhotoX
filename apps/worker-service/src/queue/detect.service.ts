@@ -3,6 +3,7 @@ import { join } from 'path'
 import sharp from 'sharp'
 import { loadEnv } from '@photox/shared-config'
 import { lazyOnce, requireModelFile } from './model-loader'
+import { toNchw } from './nchw'
 import type { DetectedObjectInput } from '@photox/shared-types'
 import type * as ort from 'onnxruntime-node'
 
@@ -266,12 +267,7 @@ export class DetectService {
       .toBuffer()
 
     const size = DETECT_INPUT_SIZE
-    const chw = new Float32Array(3 * size * size)
-    for (let i = 0; i < size * size; i++) {
-      chw[i] = padded[i * 3]! / 255
-      chw[size * size + i] = padded[i * 3 + 1]! / 255
-      chw[2 * size * size + i] = padded[i * 3 + 2]! / 255
-    }
+    const chw = toNchw(padded, size, size, 0, 255)
 
     const tensor = new Tensor('float32', chw, [1, 3, size, size])
     const output = await session.run({ [this.inputName]: tensor })

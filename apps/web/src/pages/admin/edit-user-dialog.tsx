@@ -6,7 +6,6 @@ import {
   FaSpinner,
   FaTriangleExclamation,
 } from 'react-icons/fa6'
-import { isAxiosError } from 'axios'
 import type {
   AdminUserBackupSync,
   AdminUserRow,
@@ -17,6 +16,7 @@ import { Dialog, formInputClass } from '../../components/Dialog'
 import { updateAdminUser } from '../../api/admin'
 import { RoleBadge } from './shared'
 import { StatusPill, cx } from './ui'
+import { httpErrorMessage, type HttpErrorMessages } from './http-error'
 
 // --- account edit dialog -----------------------------------------------------------------
 // Three fields (name, email, new password) over the same identity card + impact-note language
@@ -42,41 +42,30 @@ const LOST_CONTACT =
   'Lost contact with the server — the account may already be updated. Refresh the list and check before retrying.'
 const BAD_REQUEST = "That change can't be saved — check the fields and try again."
 
-/** The core's own plain-language detail (validation arrays joined), never raw axios text. */
-function serverMessage(err: unknown): string | null {
-  if (!isAxiosError(err)) return null
-  const data = err.response?.data as { message?: unknown } | undefined
-  const message = Array.isArray(data?.message) ? data.message.join(' ') : data?.message
-  const text = typeof message === 'string' ? message.trim() : ''
-  return text === '' ? null : text
-}
-
 /** Never leak axios verbatim; the server statuses map to plain sentences. */
-export function updateErrorMessage(err: unknown): string {
-  if (isAxiosError(err)) {
-    const status = err.response?.status
-    if (status === 409) return 'That email is already in use.'
-    if (status === 404) return 'That user no longer exists. Close this and refresh the list.'
-    if (status === 403) return 'Only an admin can do that.'
-    if (!err.response || err.code === 'ECONNABORTED') return LOST_CONTACT
-    if (status === 400) return serverMessage(err) ?? BAD_REQUEST
-    return serverMessage(err) ?? UPDATE_FAILED
-  }
-  return err instanceof Error ? err.message : UPDATE_FAILED
+export const UPDATE_ERROR_MESSAGES: HttpErrorMessages = {
+  fallback: UPDATE_FAILED,
+  byStatus: {
+    409: 'That email is already in use.',
+    404: 'That user no longer exists. Close this and refresh the list.',
+    403: 'Only an admin can do that.',
+    400: ({ text }) => text.trim() || BAD_REQUEST,
+  },
+  timeout: LOST_CONTACT,
+  serverDetail: true,
+  rawMessage: true,
 }
 
 /** Retry-move failures land in the persistent warning box, so the 404 wording drops "close this". */
-export function backupRetryErrorMessage(err: unknown): string {
-  if (isAxiosError(err)) {
-    const status = err.response?.status
-    if (status === 404) return 'That user no longer exists — refresh the list.'
-    if (status === 403) return 'Only an admin can do that.'
-    if (!err.response || err.code === 'ECONNABORTED') {
-      return "Couldn't reach the server — try the move again."
-    }
-    return serverMessage(err) ?? "The backup move didn't go through — try again."
-  }
-  return err instanceof Error ? err.message : "The backup move didn't go through — try again."
+export const BACKUP_RETRY_ERROR_MESSAGES: HttpErrorMessages = {
+  fallback: "The backup move didn't go through — try again.",
+  byStatus: {
+    404: 'That user no longer exists — refresh the list.',
+    403: 'Only an admin can do that.',
+  },
+  timeout: "Couldn't reach the server — try the move again.",
+  serverDetail: true,
+  rawMessage: true,
 }
 
 /** What the section needs after a successful save: the fresh row, the backup outcome, the diff. */
@@ -139,7 +128,7 @@ export function EditUserDialog({
       const res = await updateAdminUser(user.id, payload)
       onDone({ user: res.user, backup: res.backup, emailChanged, signedOut })
     } catch (err: unknown) {
-      setError(updateErrorMessage(err))
+      setError(httpErrorMessage(err, UPDATE_ERROR_MESSAGES))
       setWorking(false)
     }
   }

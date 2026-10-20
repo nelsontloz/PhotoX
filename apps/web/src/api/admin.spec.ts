@@ -20,7 +20,6 @@ import {
   backupUser,
   restoreUser,
   deleteBackup,
-  getBackupStatus,
   getBackupOverview,
   backupPrefixPreview,
   deleteAdminUser,
@@ -94,28 +93,6 @@ describe('user backup admin API', () => {
       { emailOrId: 'u-1' },
       { timeout: 600_000 },
     )
-  })
-
-  it('getBackupStatus reads the status endpoint with emailOrId as a query param', async () => {
-    const status = {
-      exists: true,
-      userId: 'u-1',
-      emailAtBackup: 'ada@example.com',
-      backedUpAt: '2026-10-01T00:00:00.000Z',
-      files: 3,
-      assets: 2,
-    }
-    getMock.mockResolvedValue({ data: status })
-    await expect(getBackupStatus('ada@example.com')).resolves.toEqual(status)
-    expect(getMock).toHaveBeenCalledWith('/v1/admin/backups/status', {
-      params: { emailOrId: 'ada@example.com' },
-      timeout: 30_000,
-    })
-  })
-
-  it('getBackupStatus surfaces the empty-manifest shape for a user with no backup', async () => {
-    getMock.mockResolvedValue({ data: { exists: false } })
-    await expect(getBackupStatus('u-9')).resolves.toEqual({ exists: false })
   })
 
   it('restoreUser posts the emailOrId with the long inline timeout', async () => {

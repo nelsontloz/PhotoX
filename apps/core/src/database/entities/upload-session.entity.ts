@@ -10,7 +10,7 @@ import type { UploadSessionStatus } from '@photox/shared-types'
 
 // Resumable chunked upload session (`api/v1/uploads`). Created pending, chunk rows land in
 // upload_session_parts, complete() assembles/dedups and stamps completedFileId/completedAssetId.
-// originalName/mimeHint are display-only hints — storage keys and MIME sniffing never trust them.
+// originalName is a display-only hint — storage keys and MIME sniffing never trust it.
 @Entity('upload_sessions')
 export class UploadSession {
   @PrimaryGeneratedColumn('uuid')
@@ -37,9 +37,6 @@ export class UploadSession {
 
   @Column({ type: 'text' })
   originalName!: string
-
-  @Column({ type: 'varchar', nullable: true })
-  mimeHint!: string | null
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   title!: string | null

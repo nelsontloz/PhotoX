@@ -5,7 +5,7 @@ Personal photo/video hosting: one NestJS `core` API (the only HTTP app; external
 ## Layout
 
 - `apps/core/` (`@photox/core`, :3000, no published port in compose) — the sole API app: auth, assets, files, albums, shares, faces/persons, places, search, backups, trash, admin
-- `apps/worker-service/` (`@photox/worker-service`, internal-only) — 9 BullMQ consumers; no DB access: reads/writes go through core HTTP via `CoreClient`, media bytes go directly to `STORAGE_DIR`
+- `apps/worker-service/` (`@photox/worker-service`, internal-only) — 8 BullMQ consumers; no DB access: reads/writes go through core HTTP via `CoreClient`, media bytes go directly to `STORAGE_DIR`
 - `apps/web/` (`@photox/web`, :5173) — Vite + React, talks to core same-origin via `/api` (a `/worker` proxy exists for e2e; browsers never call it)
 - `apps/core/src/database/` — TypeORM entities + core-only `DatabaseModule` + migrations
 - `packages/shared-config/` — zod `loadEnv()`/`loadAuthEnv()`/`loadRootEnvFile()`, `LocalStorageService`, backup-path helpers; `packages/shared-types/` — wire interfaces, `JwtPayload`, embedding constants (`FACE_EMBEDDING_DIM` 512, `SEARCH_EMBEDDING_DIM` 768, `SEARCH_EMBEDDING_MODEL` `siglip2-b16-224`)
@@ -47,10 +47,10 @@ Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 
 ## Jobs (BullMQ over Redis)
 
-- Publisher: `apps/core/src/queue/bullmq.service.ts`. Worker consumes 9 queues: `process-thumbnail`, `process-video`, `process-metadata`, `process-faces`, `process-faces-cluster`, `process-embeddings`, `process-ocr`, `process-detect`, `cleanup-asset` (each processor self-starts its own worker; no shared bootstrap). Core consumes exactly one queue itself: `user-delete` (async account deletion). Orphan cleanup is inline-only (`POST api/v1/admin/cleanup-orphans/run`; there is no queue or consumer for it), and nothing in-repo enqueues `cleanup-asset` (trash delete returns `fileIds` no one consumes).
+- Publisher: `apps/core/src/queue/bullmq.service.ts`. Worker consumes 8 queues: `process-thumbnail`, `process-video`, `process-metadata`, `process-faces`, `process-faces-cluster`, `process-embeddings`, `process-ocr`, `process-detect` (each processor self-starts its own worker; no shared bootstrap). Core consumes exactly one queue itself: `user-delete` (async account deletion). Orphan cleanup is inline-only (`POST api/v1/admin/cleanup-orphans/run`; there is no queue or consumer for it). There is no `cleanup-asset` queue: permanently deleting a trashed asset removes its rows only, so the bytes stay on disk until an orphan sweep runs.
 - Defaults: `attempts: 3`, exponential backoff, `removeOnFail: true`; video overrides `attempts: 2` (a retry can cost ~1h of SVT-AV1). jobIds are the dedup contract (`thumb*`/`video*` per asset+size, `embed-`/`ocr-`/`detect-` per asset, `face-reembed-`, cluster per user per click, `user-delete-<userId>`); restore re-enqueues are run-tagged because a retained completed jobId silently swallows later runs.
 - Worker has **no DB access**: every read/write is a core HTTP call via `apps/worker-service/src/core/core-client.service.ts`; bytes go straight to `STORAGE_DIR`. Each call mints a per-job delegated JWT (`WORKER_JWT_SECRET`, `act`) so core scopes by the job's user. Mapping: 400/404/422 → `UnrecoverableError` (no retry); 401/403/429/5xx/timeout → plain error → BullMQ retries (there is no in-process retry loop).
-- Payloads zod-validated (`job-schemas.ts`); invalid payloads → `UnrecoverableError`. Processors assert fetched DTOs match the job's ids; core re-enforces ownership via the token. `cleanup-asset` requires `{assetId, fileId, userId}` and calls `DELETE /worker/files/:fileId`.
+- Payloads zod-validated (`job-schemas.ts`); invalid payloads → `UnrecoverableError`. Processors assert fetched DTOs match the job's ids; core re-enforces ownership via the token.
 - Missing models don't fail jobs: the worker warns, patches a `failed` status where a column exists, and completes (a retry would not help); detect/ocr have no status column (logs only).
 - Redis trust model: the worker mints a JWT for whatever `userId` a payload implies, so a compromised Redis lets an attacker act as any user over core's HTTP API (never as admin) — same blast radius as the old direct-Postgres access.
 - Video: h264+aac → skip & mark `ready`. Else one SVT-AV1 pass (`libsvtav1 -preset 8 -crf 32`, `libopus 96k` only with an audio track, downscale only >720p) → webm registered through core as a separate `FileRecord` (`purpose: 'transcode'`); originals immutable. Caps: 4h / 7680px / 1h ffmpeg; `transcodeStatus` stays `pending` if the worker dies mid-job.
@@ -62,7 +62,7 @@ Node 22 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 - Single hardcoded `photox` DB; only core connects. `DatabaseModule.forRoot()`: `synchronize: NODE_ENV !== 'production'`, `migrationsRun` in production over `apps/core/src/database/migrations` (Baseline + FileChecksumUnique); **new entity columns need a migration for prod**, and a synchronize-era dev DB must be manually marked migrated before later ones apply. `retryAttempts: 3`, `retryDelay: 3000`, `connectTimeoutMS: 3000` — don't zero them.
 - Boot bootstrap SQL (pgvector ext, `assets_layout_idx`, `asset_embeddings_hnsw` halfvec index, cube/earthdistance + places GiST) is warn-only per group — core boots degraded rather than failing; search/places fail at query time.
 - `LocalStorageService`: files at `STORAGE_DIR/<storageKey>`, atomic save via tmp+rename (EXDEV-safe copy fallback). E2e shares one `storage-data` volume.
-- `HealthService` (core) uses `DataSource.query('SELECT 1')` + a Redis ping, not `@InjectRepository()`; worker health probes Redis only.
+- `HealthService` (core) uses `DataSource.query('SELECT 1')` + a Redis ping, not `@InjectRepository()`; the ping reuses `BullMqService`'s global redis client (no second connection); worker health probes Redis only.
 
 ## Web
 

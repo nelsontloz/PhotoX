@@ -6,14 +6,8 @@ import { join } from 'path'
 import { randomUUID, createHash } from 'crypto'
 import { writeFile } from 'fs/promises'
 import { BullMqService } from './bullmq.service'
-import {
-  assertOwnership,
-  bindingOf,
-  parseJobData,
-  thumbnailJobSchema,
-  type ThumbnailJob,
-} from './job-schemas'
-import { patchStatusFailed } from './asset-file-job'
+import { thumbnailJobSchema, type ThumbnailJob } from './job-schemas'
+import { patchStatusFailed, runAssetFileJob } from './asset-file-job'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
 import type { Asset, FileRecord } from '@photox/shared-types'
@@ -52,70 +46,57 @@ export class ThumbnailProcessor implements OnModuleInit {
   }
 
   private async processJob(job: Job<ThumbnailJob>) {
-    const {
-      assetId,
-      fileId,
-      size,
-      userId,
-      sig,
-      metadataWaits = 0,
-    } = parseJobData(thumbnailJobSchema, job.data, 'process-thumbnail')
-    const binding = bindingOf({ assetId, fileId, userId, sig })
+    await runAssetFileJob({ core: this.core, storage: this.storage, logger: this.logger }, job, {
+      queue: 'process-thumbnail',
+      schema: thumbnailJobSchema,
+      label: 'thumbnail',
+      failureLabel: 'Thumbnail',
+      detail: (data) => `size=${data.size}`,
+      missingModelMarkers: [],
+      // video thumbs wait for the metadata job's orientation/duration
+      beforeBody: async ({ data, record, asset }) => {
+        if (
+          !record.mimeType?.startsWith('video/') ||
+          asset.metadataStatus !== 'pending' ||
+          (data.metadataWaits ?? 0) >= MAX_METADATA_WAITS
+        ) {
+          return false
+        }
+        // ponytail: no jobId — the current job is active, BullMQ would dedupe the re-add away; the
+        // deferred copy re-fetches the asset itself, which is the ordering point. Ceiling: if this
+        // add fails the whole job throws so BullMQ retries it (bounded by attempts:3)
+        await this.bullMq.enqueue(
+          'process-thumbnail',
+          job.name,
+          { ...job.data, metadataWaits: (data.metadataWaits ?? 0) + 1 },
+          {
+            delay: METADATA_WAIT_DELAY_MS,
+            attempts: 3,
+            backoff: { type: 'exponential' },
+            removeOnComplete: true,
+            removeOnFail: true,
+          },
+        )
+        this.logger.log(
+          `Thumbnail deferred (metadata pending): asset=${data.assetId}, size=${data.size}, wait=${(data.metadataWaits ?? 0) + 1}`,
+        )
+        return true
+      },
+      onFailure: ({ userId, assetId, sig }) =>
+        patchStatusFailed(
+          this.core,
+          this.logger,
+          userId,
+          assetId,
+          { thumbnailStatus: 'failed' },
+          sig,
+        ),
+      body: async ({ data, record, asset, filePath }) => {
+        await this.generateThumbnail(record, asset, data.size, data.userId, filePath, data.sig)
 
-    this.logger.log(`Processing thumbnail: asset=${assetId}, size=${size}`)
-
-    const record = await this.core.getFile(userId, fileId, binding)
-    const asset = await this.core.getAsset(userId, assetId, binding)
-    assertOwnership({ assetId, fileId, userId }, { record, asset })
-
-    if (
-      record.mimeType?.startsWith('video/') &&
-      asset.metadataStatus === 'pending' &&
-      metadataWaits < MAX_METADATA_WAITS
-    ) {
-      // ponytail: no jobId — the current job is active, BullMQ would dedupe the re-add away; the
-      // deferred copy re-fetches the asset itself, which is the ordering point. Ceiling: if this
-      // add fails the whole job throws so BullMQ retries it (bounded by attempts:3)
-      const deferred = await this.bullMq.enqueue(
-        'process-thumbnail',
-        job.name,
-        { ...job.data, metadataWaits: metadataWaits + 1 },
-        {
-          delay: METADATA_WAIT_DELAY_MS,
-          attempts: 3,
-          backoff: { type: 'exponential' },
-          removeOnComplete: true,
-          removeOnFail: true,
-        },
-      )
-      if (!deferred) throw new Error(`Failed to defer thumbnail for asset=${assetId}`)
-      this.logger.log(
-        `Thumbnail deferred (metadata pending): asset=${assetId}, size=${size}, wait=${metadataWaits + 1}`,
-      )
-      return
-    }
-
-    try {
-      await this.generateThumbnail(record, asset, size, userId, sig)
-
-      this.logger.log(`Thumbnail complete: asset=${assetId}, size=${size}`)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      this.logger.error(`Thumbnail failed: asset=${assetId}, size=${size} — ${message}`)
-
-      await patchStatusFailed(
-        this.core,
-        this.logger,
-        userId,
-        assetId,
-        {
-          thumbnailStatus: 'failed',
-        },
-        sig,
-      )
-
-      throw err
-    }
+        this.logger.log(`Thumbnail complete: asset=${data.assetId}, size=${data.size}`)
+      },
+    })
   }
 
   private async generateThumbnail(
@@ -123,12 +104,10 @@ export class ThumbnailProcessor implements OnModuleInit {
     asset: Asset,
     size: ThumbnailJob['size'],
     userId: string,
+    sourcePath: string,
     sig?: string,
   ): Promise<void> {
     const mimeType = record.mimeType
-    // storage is local-disk only — read the original in place, no tmp staging copy (a
-    // concurrent cleanup-asset delete surfaces as ENOENT at read time, same retry path)
-    const sourcePath = this.storage.pathFor(record.storageKey)
 
     if (mimeType?.startsWith('video/')) {
       const rawDuration = asset.durationSeconds === null ? null : Number(asset.durationSeconds)
@@ -165,26 +144,19 @@ export class ThumbnailProcessor implements OnModuleInit {
     // ponytail: stock sharp prebuilds have no HEIC (HEVC) decoder — route iPhone photos
     // through ffmpeg (has libde265), upgrade to a libheif-capable sharp build if it lands
     if (mimeType === 'image/heic' || mimeType === 'image/heif') {
-      try {
-        const frameBuffer = await runFfmpeg([
-          '-y',
-          '-i',
-          sourcePath,
-          '-vframes',
-          '1',
-          '-f',
-          'image2pipe',
-          '-',
-        ])
-        const { data: thumbBuffer, info } = await this.encodeWebp(frameBuffer, size)
-        await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info, sig)
-        return
-      } catch (err) {
-        this.logger.warn(
-          `ffmpeg HEIC decode failed for asset=${asset.id} — falling back to sharp: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`,
-        )
-        // fall through to sharp path, which throws a normal thumbnail failure if HEIC is unsupported
-      }
+      const frameBuffer = await runFfmpeg([
+        '-y',
+        '-i',
+        sourcePath,
+        '-vframes',
+        '1',
+        '-f',
+        'image2pipe',
+        '-',
+      ])
+      const { data: thumbBuffer, info } = await this.encodeWebp(frameBuffer, size)
+      await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info, sig)
+      return
     }
 
     // photo sources are auto-oriented from their EXIF Orientation tag — phone JPEGs store

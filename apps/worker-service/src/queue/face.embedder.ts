@@ -3,6 +3,7 @@ import { join } from 'path'
 import { loadEnv } from '@photox/shared-config'
 import { FACE_EMBEDDING_DIM, l2Normalize } from '@photox/shared-types'
 import { lazyOnce, requireModelFile } from './model-loader'
+import { toNchw } from './nchw'
 import type * as ort from 'onnxruntime-node'
 
 // ponytail: InsightFace buffalo_l recognition weights (w600k_r50.onnx, ~174MB) are for
@@ -121,13 +122,7 @@ export function preprocessArcFace(rgb112: Buffer): Float32Array {
   if (rgb112.length !== size * size * 3) {
     throw new Error(`Expected ${size}x${size} RGB buffer, got ${rgb112.length} bytes`)
   }
-  const chw = new Float32Array(3 * size * size)
-  for (let i = 0; i < size * size; i++) {
-    chw[i] = (rgb112[i * 3]! - 127.5) / 128
-    chw[size * size + i] = (rgb112[i * 3 + 1]! - 127.5) / 128
-    chw[2 * size * size + i] = (rgb112[i * 3 + 2]! - 127.5) / 128
-  }
-  return chw
+  return toNchw(rgb112, size, size, 127.5, 128)
 }
 
 @Injectable()

@@ -60,17 +60,12 @@ export async function getPipelineStatus<L extends PipelineRun>(
 // SCRFD-10G is the only face detector, so face runs carry no detector provenance: the record is
 // the shared pipeline shape.
 export type FacePipelineRun = PipelineRun
-export type FaceReprocessStatus = ReprocessStatus<FacePipelineRun>
 export type FaceReprocessResponse = PipelineResponse
 
 export type EmbeddingPipelineRun = PipelineRun & { model: string }
-export type EmbeddingReprocessStatus = ReprocessStatus<EmbeddingPipelineRun>
 export interface EmbeddingReprocessResponse extends PipelineResponse {
   model: string
 }
-
-export type DetectionReprocessStatus = ReprocessStatus<PipelineRun>
-export type OcrReprocessStatus = ReprocessStatus<PipelineRun>
 
 export interface ListAdminUsersParams {
   limit?: number
@@ -152,20 +147,6 @@ export interface BackupResult {
   persons: number
 }
 
-/** GET /v1/admin/backups/status response: manifest presence + row counts (absent fields when none). */
-export interface BackupStatus {
-  exists: boolean
-  degraded?: 'unreadable' | 'corrupt'
-  userId?: string
-  emailAtBackup?: string
-  backedUpAt?: string
-  files?: number
-  assets?: number
-  albums?: number
-  shares?: number
-  persons?: number
-}
-
 /**
  * GET /v1/admin/backups/progress response: per-file progress of an in-flight inline backup.
  * total/completed cover original files; uploaded/skipped split the completed ones.
@@ -196,7 +177,7 @@ export function backupPrefixPreview(email: string, userId: string): string {
 // 10s default on multi-GB libraries — raise the cap instead of failing a healthy backup.
 const BACKUP_TIMEOUT_MS = 600_000
 
-// Status reads the manifest back from S3 and can stall when the store is slow — give it
+// Progress reads the manifest back from S3 and can stall when the store is slow — give it
 // headroom over the generic 10s client default without touching the shared timeout.
 const BACKUP_STATUS_TIMEOUT_MS = 30_000
 
@@ -206,14 +187,6 @@ export async function backupUser(emailOrId: string): Promise<BackupResult> {
     { emailOrId },
     { timeout: BACKUP_TIMEOUT_MS },
   )
-  return data
-}
-
-export async function getBackupStatus(emailOrId: string): Promise<BackupStatus> {
-  const { data } = await api.get<BackupStatus>('/v1/admin/backups/status', {
-    params: { emailOrId },
-    timeout: BACKUP_STATUS_TIMEOUT_MS,
-  })
   return data
 }
 
@@ -365,8 +338,8 @@ export interface BackupSnapshot {
  * from the manifest email (stale rename leftover).
  *
  * A live row whose email now belongs to a new account can carry a previous-account backup:
- * `backupUserId` differs from `userId` and the prefix/counts/last-backup fields describe that
- * attached snapshot. `legacyBackups` lists any further snapshots matched by the same email.
+ * the prefix/counts/last-backup fields describe that attached snapshot, and the snapshot
+ * itself (with its own userId) is listed in `legacyBackups`.
  */
 export interface BackupOverviewRow {
   userId: string
@@ -384,10 +357,6 @@ export interface BackupOverviewRow {
   emailAtBackup?: string
   /** Primary backup prefix (attached previous-account snapshot or the row's own backup). */
   prefix?: string
-  /** Set when the primary backup belongs to a previous account matched by email. */
-  backupUserId?: string
-  /** When the attached previous-account backup was merged into the live account. */
-  mergedAt?: string
   /** Additional previous-account snapshots matched to this live email. */
   legacyBackups?: BackupSnapshot[]
   backedUpAlbums?: number

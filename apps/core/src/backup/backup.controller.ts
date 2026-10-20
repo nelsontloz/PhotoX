@@ -12,7 +12,7 @@ import {
   type RestoreResult,
 } from './user-backup.service'
 
-class BackupRequestDto {
+class EmailOrIdQueryDto {
   @IsString()
   @IsNotEmpty()
   emailOrId!: string
@@ -45,24 +45,6 @@ class MergeRestoreRequestDto {
   force?: boolean
 }
 
-class BackupStatusQueryDto {
-  @IsString()
-  @IsNotEmpty()
-  emailOrId!: string
-}
-
-class BackupProgressQueryDto {
-  @IsString()
-  @IsNotEmpty()
-  emailOrId!: string
-}
-
-class DeleteBackupQueryDto {
-  @IsString()
-  @IsNotEmpty()
-  emailOrId!: string
-}
-
 // ponytail: admin-only is enforced centrally by JwtAuthGuard (every /api/v1/admin*
 // route requires the admin role) — no per-handler role checks here
 @ApiTags('admin')
@@ -82,7 +64,7 @@ export class BackupController {
       '(uploaded/skipped counters in the result).',
   })
   @ApiResponse({ status: 200, description: 'Backup counts and S3 prefix' })
-  async backup(@Body() dto: BackupRequestDto): Promise<BackupResult> {
+  async backup(@Body() dto: EmailOrIdQueryDto): Promise<BackupResult> {
     return this.backups.backupUser(dto.emailOrId)
   }
 
@@ -148,7 +130,7 @@ export class BackupController {
   @ApiOperation({ summary: 'Backup manifest status for one user (admin-only)' })
   @ApiResponse({ status: 200, description: 'Manifest presence and row counts' })
   @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
-  async status(@Query() query: BackupStatusQueryDto): Promise<BackupStatus> {
+  async status(@Query() query: EmailOrIdQueryDto): Promise<BackupStatus> {
     return this.backups.backupStatus(query.emailOrId)
   }
 
@@ -156,7 +138,7 @@ export class BackupController {
   @ApiOperation({ summary: 'Live per-file backup progress for one user (admin-only)' })
   @ApiResponse({ status: 200, description: 'In-progress flag plus per-file counters' })
   @ApiResponse({ status: 404, description: 'No user for emailOrId' })
-  async progress(@Query() query: BackupProgressQueryDto): Promise<BackupProgress> {
+  async progress(@Query() query: EmailOrIdQueryDto): Promise<BackupProgress> {
     return this.backups.getBackupProgress(query.emailOrId)
   }
 
@@ -165,7 +147,7 @@ export class BackupController {
   @ApiResponse({ status: 200, description: 'Deleted backup prefix and object count' })
   @ApiResponse({ status: 404, description: 'No backup for emailOrId' })
   @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
-  async deleteBackup(@Query() query: DeleteBackupQueryDto): Promise<DeleteBackupResult> {
+  async deleteBackup(@Query() query: EmailOrIdQueryDto): Promise<DeleteBackupResult> {
     return this.backups.deleteBackup(query.emailOrId)
   }
 }

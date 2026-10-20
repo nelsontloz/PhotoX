@@ -83,7 +83,7 @@ export class FaceProcessor implements OnModuleInit {
         // a lost cluster debounce fails the face job so BullMQ retries it — detection itself is
         // idempotent (delete + re-save above), so the retry is cheap
         if (faces.length > 0) {
-          const clusterQueued = await this.bullMq.enqueue(
+          await this.bullMq.enqueue(
             'process-faces-cluster',
             'cluster',
             { userId },
@@ -100,7 +100,6 @@ export class FaceProcessor implements OnModuleInit {
               backoff: { type: 'exponential' },
             },
           )
-          if (!clusterQueued) throw new Error(`Failed to enqueue cluster job for user=${userId}`)
         }
       },
     })

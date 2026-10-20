@@ -699,7 +699,7 @@ describe('BackupSection previous accounts', () => {
     const merge = within(subRow).getByRole('button', {
       name: 'Merge to current live account admin@example.com',
     })
-    // PrimaryButton takes no title prop — the hover title rides on the wrapper span.
+    // The primary button variant takes no title prop — the hover title rides on the wrapper span.
     const mergeWrap = merge.parentElement!
     expect(mergeWrap.title).toBe('Merge this backup into admin@example.com')
     expect(within(subRow).getByText('Restore to a new account')).toBeTruthy()

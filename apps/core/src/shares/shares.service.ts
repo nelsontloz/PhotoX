@@ -25,6 +25,10 @@ import type {
 // ponytail: hardcoded 30d share lifetime — per-share expiresIn on the create DTO if owners need control
 const SHARE_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
+type ShareTarget =
+  | { kind: 'asset'; assetId: string; albumId: null }
+  | { kind: 'album'; assetId: null; albumId: string }
+
 @Injectable()
 export class SharesService {
   constructor(
@@ -64,89 +68,57 @@ export class SharesService {
   }
 
   async create(userId: string, dto: CreateShareDto): Promise<ShareDto> {
-    const assetId = dto.assetId
-    const albumId = dto.albumId
+    const { assetId, albumId } = dto
     if ((assetId === undefined) === (albumId === undefined)) {
       throw new BadRequestException('Provide exactly one of assetId or albumId')
     }
 
-    if (assetId !== undefined) {
+    const target: ShareTarget =
+      assetId !== undefined
+        ? { kind: 'asset', assetId, albumId: null }
+        : { kind: 'album', assetId: null, albumId: albumId! }
+
+    let album: Album | null = null
+    if (target.kind === 'asset') {
       const asset = await this.assetRepo.findOne({
-        where: { id: assetId, userId, isTrashed: false },
+        where: { id: target.assetId, userId, isTrashed: false },
       })
       if (!asset) throw new NotFoundException('Asset not found')
+    } else {
+      album = await findOwnedOr404(this.albumRepo, target.albumId, userId, 'Album')
+    }
 
-      const existing = await this.shareRepo.findOne({ where: { assetId, userId } })
-      // rotation: re-sharing mints a new token and kills the old URL (compat break by design)
-      if (existing) await this.shareRepo.delete(existing.id)
+    const ownerFilter =
+      target.kind === 'asset'
+        ? { assetId: target.assetId, userId }
+        : { albumId: target.albumId, userId }
+    const existing = await this.shareRepo.findOne({ where: ownerFilter })
+    // rotation: re-sharing mints a new token and kills the old URL (compat break by design)
+    if (existing) await this.shareRepo.delete(existing.id)
 
-      const raw = crypto.randomBytes(16).toString('base64url')
-      const share = this.shareRepo.create({
+    const raw = crypto.randomBytes(16).toString('base64url')
+    const build = () =>
+      this.shareRepo.create({
         userId,
-        kind: 'asset',
-        assetId,
-        albumId: null,
+        ...target,
         token: this.hashToken(raw),
         expiresAt: this.expiresAt(),
       })
-      try {
-        const saved = await this.shareRepo.save(share)
-        return { ...this.toAssetDto(saved), token: raw }
-      } catch (err) {
-        if (isPostgresUniqueViolation(err)) {
-          // C10: concurrent rotation raced past the find-existing/delete above — inline retry
-          // (last-writer-wins) so double-submit returns a working capability instead of a 500.
-          // The winner's raw is unrecoverable (only its hash is stored), so returning the
-          // winner row would hand back a hash, not a working token.
-          await this.shareRepo.delete({ assetId, userId })
-          const retry = this.shareRepo.create({
-            userId,
-            kind: 'asset',
-            assetId,
-            albumId: null,
-            token: this.hashToken(raw),
-            expiresAt: this.expiresAt(),
-          })
-          const savedRetry = await this.shareRepo.save(retry)
-          return { ...this.toAssetDto(savedRetry), token: raw }
-        }
-        throw err
-      }
-    }
+    const toDto = async (saved: Share): Promise<ShareDto> =>
+      target.kind === 'asset'
+        ? { ...this.toAssetDto(saved), token: raw }
+        : { ...(await this.toAlbumDto(saved, album)), token: raw }
 
-    const album = await findOwnedOr404(this.albumRepo, albumId!, userId, 'Album')
-
-    const existingAlbum = await this.shareRepo.findOne({ where: { albumId, userId } })
-    if (existingAlbum) await this.shareRepo.delete(existingAlbum.id)
-
-    const rawAlbum = crypto.randomBytes(16).toString('base64url')
-    const share = this.shareRepo.create({
-      userId,
-      kind: 'album',
-      assetId: null,
-      albumId,
-      token: this.hashToken(rawAlbum),
-      expiresAt: this.expiresAt(),
-    })
     try {
-      const saved = await this.shareRepo.save(share)
-      return { ...(await this.toAlbumDto(saved, album)), token: rawAlbum }
+      return await toDto(await this.shareRepo.save(build()))
     } catch (err) {
-      if (isPostgresUniqueViolation(err)) {
-        // C10: same concurrent-rotation retry as the asset branch above.
-        await this.shareRepo.delete({ albumId, userId })
-        const retry = this.shareRepo.create({
-          userId,
-          kind: 'album',
-          assetId: null,
-          albumId,
-          token: this.hashToken(rawAlbum),
-          expiresAt: this.expiresAt(),
-        })
-        const savedRetry = await this.shareRepo.save(retry)
-        return { ...(await this.toAlbumDto(savedRetry, album)), token: rawAlbum }
-      }
-      throw err
+      if (!isPostgresUniqueViolation(err)) throw err
+      // C10: concurrent rotation raced past the find-existing/delete above — inline retry
+      // (last-writer-wins) so double-submit returns a working capability instead of a 500.
+      // The winner's raw is unrecoverable (only its hash is stored), so returning the
+      // winner row would hand back a hash, not a working token.
+      await this.shareRepo.delete(ownerFilter)
+      return await toDto(await this.shareRepo.save(build()))
     }
   }
 

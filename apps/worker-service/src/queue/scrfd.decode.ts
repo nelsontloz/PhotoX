@@ -1,3 +1,5 @@
+import { toNchw } from './nchw'
+
 export const SCRFD_INPUT_SIZE = 640
 
 export interface ScrfdTensorLike {
@@ -50,17 +52,8 @@ export function scrfdPreprocess(rgb: ScrfdRgb): Float32Array {
   if (width <= 0 || height <= 0) {
     throw new Error(`SCRFD preprocessing expects positive dimensions, got ${width}x${height}`)
   }
-  const pixels = width * height
-  if (data.length !== pixels * 3) {
-    throw new Error(`SCRFD preprocessing expected ${pixels * 3} bytes, got ${data.length}`)
-  }
-  const chw = new Float32Array(pixels * 3)
-  for (let i = 0; i < pixels; i++) {
-    chw[i] = (data[i * 3]! - 127.5) / 128
-    chw[pixels + i] = (data[i * 3 + 1]! - 127.5) / 128
-    chw[2 * pixels + i] = (data[i * 3 + 2]! - 127.5) / 128
-  }
-  return chw
+  // InsightFace normalization: (x - 127.5) / 128 into CHW float32
+  return toNchw(data, width, height, 127.5, 128)
 }
 
 interface IouBox {

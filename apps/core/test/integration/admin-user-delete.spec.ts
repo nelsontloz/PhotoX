@@ -41,9 +41,7 @@ async function seedFullUser(t: ApiTestApp) {
       embedding: new Array(SEARCH_EMBEDDING_DIM).fill(0.02),
     }),
   )
-  await t.ocrRepo.save(
-    t.ocrRepo.create({ assetId: photo.id, text: 'hello', lang: null, confidence: null }),
-  )
+  await t.ocrRepo.save(t.ocrRepo.create({ assetId: photo.id, text: 'hello' }))
   await t.detectionRepo.save(
     t.detectionRepo.create({
       assetId: photo.id,
@@ -234,12 +232,10 @@ describe('admin async user deletion', () => {
         jobId: string
         backupKept: boolean
         backupPrefix: string
-        queue: Record<string, number>
       }
       expect(payload.jobId).toBe(`user-delete-${user.id}`)
       expect(payload.backupKept).toBe(true)
       expect(payload.backupPrefix).toBe(backupPrefix(user.email, user.id))
-      expect(payload.queue).toBeDefined()
       state = payload.state
       if (state === 'completed' || state === 'failed') break
       await new Promise((r) => setTimeout(r, 500))

@@ -3,14 +3,8 @@ import type { Job } from 'bullmq'
 import { readFile } from 'fs/promises'
 import sharp from 'sharp'
 import { BullMqService } from './bullmq.service'
-import {
-  assertOwnership,
-  bindingOf,
-  parseJobData,
-  assetRefsJobSchema,
-  type AssetRefsJob,
-} from './job-schemas'
-import { patchStatusFailed } from './asset-file-job'
+import { assetRefsJobSchema, bindingOf, type AssetRefsJob } from './job-schemas'
+import { patchStatusFailed, runAssetFileJob } from './asset-file-job'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
 import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor'
@@ -41,103 +35,91 @@ export class MetadataProcessor implements OnModuleInit {
   }
 
   private async processJob(job: Job<AssetRefsJob>) {
-    const { assetId, fileId, userId, sig } = parseJobData(
-      assetRefsJobSchema,
-      job.data,
-      'process-metadata',
-    )
-    const binding = bindingOf({ assetId, fileId, userId, sig })
+    await runAssetFileJob({ core: this.core, storage: this.storage, logger: this.logger }, job, {
+      queue: 'process-metadata',
+      schema: assetRefsJobSchema,
+      label: 'metadata',
+      failureLabel: 'Metadata',
+      missingModelMarkers: [],
+      onFailure: ({ userId, assetId, sig }) =>
+        patchStatusFailed(this.core, this.logger, userId, assetId, { status: 'failed' }, sig),
+      body: async ({ data, record, filePath }) => {
+        const { assetId, userId } = data
+        const mimeType = record.mimeType ?? null
+        const sizeBytes = record.sizeBytes
+        const originalName = record.originalName ?? null
 
-    this.logger.log(`Processing metadata: asset=${assetId}`)
-
-    const record = await this.core.getFile(userId, fileId, binding)
-    const asset = await this.core.getAsset(userId, assetId, binding)
-    assertOwnership({ assetId, fileId, userId }, { record, asset })
-
-    // storage is local-disk only — read the original in place, no tmp staging copy
-    const filePath = this.storage.pathFor(record.storageKey)
-    try {
-      const mimeType = record.mimeType ?? null
-      const sizeBytes = record.sizeBytes
-      const originalName = record.originalName ?? null
-
-      const branch = branchFor(mimeType)
-      if (!branch) {
-        this.logger.warn(`Unknown mime type ${mimeType}, skipping metadata: asset=${assetId}`)
-        return
-      }
-
-      if (branch === 'photo') {
-        const metadata = this.metadataExtractor.extract(await readFile(filePath))
-        const hasAnyField = Object.values(metadata).some((v) => v !== null)
-        const metadataStatus = hasAnyField ? 'ready' : 'failed'
-        // never send a null takenAt: the upload request may carry a client-supplied one that a
-        // patch field would overwrite
-        const { takenAt, ...metadataFields } = metadata
-
-        // ponytail: dHash must never fail the metadata job — on error warn and OMIT the field
-        // (a missing hash only costs dupe detection; a failed patch loses all metadata)
-        let phash: string | null = null
-        try {
-          const grayscale = await sharp(filePath)
-            .rotate()
-            .resize(DHASH_WIDTH, DHASH_HEIGHT, { fit: 'fill' })
-            .grayscale()
-            .raw()
-            .toBuffer()
-          phash = computeDhash(grayscale, DHASH_WIDTH, DHASH_HEIGHT)
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err)
-          this.logger.warn(`dHash failed: asset=${assetId} — ${message}`)
+        const branch = branchFor(mimeType)
+        if (!branch) {
+          this.logger.warn(`Unknown mime type ${mimeType}, skipping metadata: asset=${assetId}`)
+          return
         }
 
-        await this.core.patchMetadata(
-          userId,
-          assetId,
-          {
-            ...metadataFields,
-            // EXIF iso can be rational (e.g. 201/2) — the DTO gates iso with @IsInt
-            iso: metadata.iso === null ? null : Math.round(metadata.iso),
-            mimeType,
-            sizeBytes,
-            originalName,
-            status: metadataStatus,
-            metadata: null,
-            ...(phash === null ? {} : { phash }),
-            ...(takenAt === null ? {} : { takenAt }),
-          },
-          binding,
-        )
-      } else if (branch === 'video') {
-        const videoMeta = await this.videoMetadataExtractor.extract(filePath)
-        const hasAnyVideoField = Object.values(videoMeta).some((v) => v !== null)
-        const videoMetadataStatus = hasAnyVideoField ? 'ready' : 'failed'
-        // same rule as photos: an absent probe date must not clobber a client-supplied takenAt
-        const { takenAt: videoTakenAt, ...videoFields } = videoMeta
-        await this.core.patchMetadata(
-          userId,
-          assetId,
-          {
-            status: videoMetadataStatus,
-            mimeType,
-            ...videoFields,
-            sizeBytes,
-            originalName,
-            ...(videoTakenAt === null ? {} : { takenAt: videoTakenAt }),
-            metadata: null,
-          },
-          binding,
-        )
-      }
+        if (branch === 'photo') {
+          const metadata = this.metadataExtractor.extract(await readFile(filePath))
+          const hasAnyField = Object.values(metadata).some((v) => v !== null)
+          const metadataStatus = hasAnyField ? 'ready' : 'failed'
+          // never send a null takenAt: the upload request may carry a client-supplied one that a
+          // patch field would overwrite
+          const { takenAt, ...metadataFields } = metadata
 
-      this.logger.log(`Metadata complete: asset=${assetId}`)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      this.logger.error(`Metadata failed: asset=${assetId} — ${message}`)
+          // ponytail: dHash must never fail the metadata job — on error warn and OMIT the field
+          // (a missing hash only costs dupe detection; a failed patch loses all metadata)
+          let phash: string | null = null
+          try {
+            const grayscale = await sharp(filePath)
+              .rotate()
+              .resize(DHASH_WIDTH, DHASH_HEIGHT, { fit: 'fill' })
+              .grayscale()
+              .raw()
+              .toBuffer()
+            phash = computeDhash(grayscale, DHASH_WIDTH, DHASH_HEIGHT)
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err)
+            this.logger.warn(`dHash failed: asset=${assetId} — ${message}`)
+          }
 
-      await patchStatusFailed(this.core, this.logger, userId, assetId, { status: 'failed' }, sig)
+          await this.core.patchMetadata(
+            userId,
+            assetId,
+            {
+              ...metadataFields,
+              // EXIF iso can be rational (e.g. 201/2) — the DTO gates iso with @IsInt
+              iso: metadata.iso === null ? null : Math.round(metadata.iso),
+              mimeType,
+              sizeBytes,
+              originalName,
+              status: metadataStatus,
+              metadata: null,
+              ...(phash === null ? {} : { phash }),
+              ...(takenAt === null ? {} : { takenAt }),
+            },
+            bindingOf(data),
+          )
+        } else if (branch === 'video') {
+          const videoMeta = await this.videoMetadataExtractor.extract(filePath)
+          const hasAnyVideoField = Object.values(videoMeta).some((v) => v !== null)
+          const videoMetadataStatus = hasAnyVideoField ? 'ready' : 'failed'
+          // same rule as photos: an absent probe date must not clobber a client-supplied takenAt
+          const { takenAt: videoTakenAt, ...videoFields } = videoMeta
+          await this.core.patchMetadata(
+            userId,
+            assetId,
+            {
+              status: videoMetadataStatus,
+              mimeType,
+              ...videoFields,
+              sizeBytes,
+              originalName,
+              ...(videoTakenAt === null ? {} : { takenAt: videoTakenAt }),
+              metadata: null,
+            },
+            bindingOf(data),
+          )
+        }
 
-      throw err
-    }
+        this.logger.log(`Metadata complete: asset=${assetId}`)
+      },
+    })
   }
 }

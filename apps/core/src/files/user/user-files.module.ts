@@ -3,17 +3,11 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 import { Asset, FileRecord } from '../../database/entities'
 import { StorageModule } from '../storage/storage.module'
 import { AssetsModule } from '../../assets/assets.module'
-import { SettingsModule } from '../../settings/settings.module'
 import { UserFilesService } from './user-files.service'
 import { UserFilesController } from './user-files.controller'
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([FileRecord, Asset]),
-    StorageModule,
-    AssetsModule,
-    SettingsModule,
-  ],
+  imports: [TypeOrmModule.forFeature([FileRecord, Asset]), StorageModule, AssetsModule],
   providers: [UserFilesService],
   controllers: [UserFilesController],
   exports: [UserFilesService],

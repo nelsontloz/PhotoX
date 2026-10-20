@@ -7,6 +7,7 @@ import {
   authHeaders,
   injectSession,
   registerUser,
+  signIn,
   signInAdmin,
   type AuthResponse,
   type Ctx,
@@ -148,9 +149,12 @@ When('the account-editing admin opens the users tab', async ({ page }) => {
   })
 })
 
-When('the account-editing admin searches the users list for that account', async ({ page, ctx }) => {
-  await searchUsersFor(page, requireAccount(ctx).user.email)
-})
+When(
+  'the account-editing admin searches the users list for that account',
+  async ({ page, ctx }) => {
+    await searchUsersFor(page, requireAccount(ctx).user.email)
+  },
+)
 
 Then('the users table offers an enabled Edit action for that account', async ({ page, ctx }) => {
   const account = requireAccount(ctx)
@@ -244,11 +248,7 @@ When(
 
 Then('the edited account signs in with the new address', async ({ request, ctx }) => {
   const account = requireAccount(ctx)
-  const login = await request.post('/api/v1/auth/login', {
-    data: { email: requireNewEmail(ctx), password: PASSWORD },
-  })
-  expect(login.status(), 'login with the new address should succeed').toBe(200)
-  const auth = (await login.json()) as AuthResponse
+  const auth = await signIn(request, requireNewEmail(ctx))
   expect(auth.user.id).toBe(account.user.id)
 })
 

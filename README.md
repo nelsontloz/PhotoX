@@ -78,14 +78,14 @@ Core health check (host dev): `curl localhost:3000/health`; Swagger UI at `http:
 
 ## Services
 
-| Service        | Port       | Description                                                                                                                                                                |
-| -------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| core           | 3000       | The only HTTP API (auth, assets, files, albums, shares, faces/persons, places, search, backups, admin)                                                                     |
-| worker-service | (internal) | BullMQ consumers: process-thumbnail, process-video, process-metadata, process-faces, process-faces-cluster, process-embeddings, process-detect, process-ocr, cleanup-asset |
-| web            | 5173       | React frontend (proxies `/api`, `/worker` and `/health` to core)                                                                                                           |
-| postgres       | 5432       | PostgreSQL (pgvector image; single `photox` DB)                                                                                                                            |
-| redis          | 6379       | Redis (BullMQ queues)                                                                                                                                                      |
-| floci          | 4566       | S3-compatible object store backing per-user backups (dev/local)                                                                                                            |
+| Service        | Port       | Description                                                                                                                                                 |
+| -------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| core           | 3000       | The only HTTP API (auth, assets, files, albums, shares, faces/persons, places, search, backups, admin)                                                      |
+| worker-service | (internal) | BullMQ consumers: process-thumbnail, process-video, process-metadata, process-faces, process-faces-cluster, process-embeddings, process-detect, process-ocr |
+| web            | 5173       | React frontend (proxies `/api`, `/worker` and `/health` to core)                                                                                            |
+| postgres       | 5432       | PostgreSQL (pgvector image; single `photox` DB)                                                                                                             |
+| redis          | 6379       | Redis (BullMQ queues)                                                                                                                                       |
+| floci          | 4566       | S3-compatible object store backing per-user backups (dev/local)                                                                                             |
 
 `core` also runs one BullMQ consumer of its own (`user-delete`, async account deletion) and the inline orphan sweep (`POST /api/v1/admin/cleanup-orphans/run`). Media lives on local disk (`STORAGE_DIR`, default `./data/storage`) shared by core and worker — the object store above only holds backups.
 

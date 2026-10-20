@@ -6,14 +6,13 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { UnrecoverableError, type Job } from 'bullmq'
 import { LocalStorageService } from '@photox/shared-config'
-import type { FileRecord } from '@photox/shared-types'
 import { VideoProcessor } from './video.processor'
 import type { CoreClient, RegisterFileInput } from '../core/core-client.service'
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../../test/fake-core-client'
+import { signJob, useTestAuthEnv } from '../../test/sign-job'
 import type { AssetRefsJob } from './job-schemas'
 
 interface PrivateVideoProcessor {
-  downloadSource(record: FileRecord, destDir: string): Promise<string>
   registerDerivative(assetId: string, userId: string, outPath: string): Promise<string>
 }
 
@@ -26,6 +25,7 @@ describe('VideoProcessor disk paths', () => {
   let processor: VideoProcessor
 
   beforeEach(() => {
+    useTestAuthEnv()
     storageDir = mkdtempSync(join(tmpdir(), 'photox-vp-test-'))
     prevStorageDir = process.env.STORAGE_DIR
     process.env.STORAGE_DIR = storageDir
@@ -38,31 +38,6 @@ describe('VideoProcessor disk paths', () => {
     if (prevStorageDir === undefined) delete process.env.STORAGE_DIR
     else process.env.STORAGE_DIR = prevStorageDir
     rmSync(storageDir, { recursive: true, force: true })
-  })
-
-  it('copies the stored source bytes to the destination directory', async () => {
-    const fileId = randomUUID()
-    const fileBytes = Buffer.from([0, 1, 2, 3, 4, 5, 6, 7])
-    const storageKey = storage.buildKey('original', userId, fileId, 'mp4')
-    const staging = join(storageDir, 'staging.mp4')
-    await writeFile(staging, fileBytes)
-    await storage.save(storageKey, staging)
-    const record = makeFileRecord({
-      id: fileId,
-      userId,
-      storageKey,
-      mimeType: 'video/mp4',
-    })
-
-    const downloadSource = (processor as unknown as PrivateVideoProcessor).downloadSource.bind(
-      processor,
-    )
-
-    const destDir = join(storageDir, 'dest')
-    const result = await downloadSource(record, destDir)
-
-    expect(result.startsWith(destDir)).toBe(true)
-    expect(await readFile(result)).toEqual(fileBytes)
   })
 
   it('registers a derivative as a transcode FileRecord with bytes on disk', async () => {
@@ -136,7 +111,7 @@ describe('VideoProcessor disk paths', () => {
     )
 
     await expect(
-      callbacks[0]!({ data: base } as unknown as Job<AssetRefsJob>),
+      callbacks[0]!({ data: signJob(base) } as unknown as Job<AssetRefsJob>),
     ).rejects.toBeInstanceOf(UnrecoverableError)
 
     expect(fake.callsOf('patchMetadata')).toHaveLength(0)
@@ -144,7 +119,7 @@ describe('VideoProcessor disk paths', () => {
 })
 
 // ponytail: unbounded video concurrency lets 1h SVT-AV1 jobs pile up — the worker must
-// pass a concurrency opt (cleanup.processor.ts:17-19 precedent) instead of the default 1
+// pass a concurrency opt instead of bullmq's default of 1
 describe('VideoProcessor concurrency', () => {
   it('requests concurrency >1 on the process-video worker', () => {
     const createWorker = vi.fn(

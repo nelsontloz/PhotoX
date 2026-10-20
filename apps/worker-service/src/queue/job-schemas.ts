@@ -28,9 +28,8 @@ export const assetRefsJobSchema = z.object({
   ...jobRefs,
 })
 
-export const faceJobSchema = z.object({
-  ...jobRefs,
-})
+// face jobs carry the same three refs
+export const faceJobSchema = assetRefsJobSchema
 
 export const clusterJobSchema = z.object({
   userId: uuid,
@@ -82,31 +81,12 @@ export function bindingOf(data: {
   return { sig: data.sig, scope }
 }
 
-function workerSecret(): string | undefined {
-  try {
-    return loadAuthEnv().WORKER_JWT_SECRET
-  } catch {
-    return undefined
-  }
-}
-
-let warnedNoSecret = false
-
 // H1: a Redis-forged job mints a delegated token for whatever userId it claims, so the payload
 // itself must prove core enqueued it — HMAC(sub:scope) under WORKER_JWT_SECRET, same secret
-// source and construction as core's guard. Fail-closed when configured; legacy pass-through
-// (warn once) when the secret is unavailable, which is dev-only — compose always passes it
+// source and construction as core's guard. Fail-closed: the secret is required (compose always
+// passes it; a missing one is a deployment error, not a pass-through).
 export function verifyJobSig(data: unknown, queue: string): void {
-  const secret = workerSecret()
-  if (!secret) {
-    if (!warnedNoSecret) {
-      warnedNoSecret = true
-      console.warn(
-        '[worker] WORKER_JWT_SECRET is not configured — job signatures are not verified (dev only)',
-      )
-    }
-    return
-  }
+  const secret = loadAuthEnv().WORKER_JWT_SECRET
   const record = (typeof data === 'object' && data !== null ? data : {}) as Record<string, unknown>
   const sub = record.userId
   const scope = jobScopeOf(record)
@@ -132,11 +112,6 @@ export function assertOwnership(
     asset: { userId: string; fileId?: string }
   },
 ): void {
-  if (loaded.record == null || loaded.asset == null) {
-    throw new UnrecoverableError(
-      `Ownership mismatch: asset=${job.assetId} file=${job.fileId} user=${job.userId}`,
-    )
-  }
   const mismatch =
     loaded.record.userId !== job.userId ||
     loaded.asset.userId !== job.userId ||

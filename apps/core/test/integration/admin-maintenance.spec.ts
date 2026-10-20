@@ -204,30 +204,6 @@ describe('admin maintenance', () => {
     }
   })
 
-  it('deletes any file record and blob as admin, idempotently', async () => {
-    const admin = await seedUser(t, { role: 'admin' })
-    const owner = await seedUser(t)
-    const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
-    const record = await seedFile(t, owner.id, { bytes: Buffer.from('admin-delete-bytes') })
-
-    const first = await request(apiServer(t))
-      .delete(`/api/v1/admin/files/${record.id}`)
-      .set(t.authHeader(token))
-    expect(first.status).toBe(204)
-    expect(await t.fileRepo.findOne({ where: { id: record.id } })).toBeNull()
-    expect(await t.storage.exists(record.storageKey)).toBe(false)
-
-    const repeat = await request(apiServer(t))
-      .delete(`/api/v1/admin/files/${record.id}`)
-      .set(t.authHeader(token))
-    expect(repeat.status).toBe(204)
-
-    const unknown = await request(apiServer(t))
-      .delete(`/api/v1/admin/files/${randomUUID()}`)
-      .set(t.authHeader(token))
-    expect(unknown.status).toBe(204)
-  })
-
   it('runs orphan cleanup inline with exact counts', async () => {
     const admin = await seedUser(t, { role: 'admin' })
     const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role })
@@ -283,16 +259,9 @@ describe('admin maintenance', () => {
     expect(again.body).toEqual({ deletedFiles: 0, deletedThumbnails: 0, deletedStrays: 0 })
   })
 
-  it('rejects non-admin on file delete and cleanup run', async () => {
+  it('rejects non-admin on cleanup run', async () => {
     const user = await seedUser(t, { role: 'user' })
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const record = await seedFile(t, user.id)
-
-    const del = await request(apiServer(t))
-      .delete(`/api/v1/admin/files/${record.id}`)
-      .set(t.authHeader(token))
-    expect(del.status).toBe(403)
-    expect(await t.fileRepo.findOne({ where: { id: record.id } })).not.toBeNull()
 
     const run = await request(apiServer(t))
       .post('/api/v1/admin/cleanup-orphans/run')

@@ -5,19 +5,14 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, type APIRequestContext, type Page, type Response } from '@playwright/test'
 import { createBdd, test as base } from 'playwright-bdd'
-import {
-  FACE_EMBEDDING_DIM,
-  type Asset,
-  type AuthResponse,
-  type FaceDetectionSettings,
-} from '@photox/shared-types'
+import { FACE_EMBEDDING_DIM, type Asset, type AuthResponse } from '@photox/shared-types'
 
 export const PASSWORD = 'password123'
 // apps/web is "type": "module" — steps load as ESM, so no __dirname
 export const FIXTURES_DIR = fileURLToPath(new URL('../fixtures', import.meta.url))
 
 // re-exported for step files so they keep importing wire types from support, not shared-types
-export type { AuthResponse, FaceDetectionSettings }
+export type { AuthResponse }
 
 /** Album id + name as returned by the album API. */
 export interface AlbumRef {
@@ -137,6 +132,17 @@ export async function registerUser(
     },
   })
   expect(response.status()).toBe(201)
+  return (await response.json()) as AuthResponse
+}
+
+/** Signs in through the API and returns the session; asserts the login succeeded. */
+export async function signIn(
+  request: APIRequestContext,
+  email: string,
+  password: string = PASSWORD,
+): Promise<AuthResponse> {
+  const response = await request.post('/api/v1/auth/login', { data: { email, password } })
+  expect(response.ok(), `login for ${email} failed with status ${response.status()}`).toBe(true)
   return (await response.json()) as AuthResponse
 }
 
@@ -339,16 +345,6 @@ export function requireAssetId(ctx: Ctx): string {
 /** Deterministic unit vector along `axis` — fixtures have no real faces, so seeds are synthetic. */
 export function seedEmbedding(axis = 0): number[] {
   return Array.from({ length: FACE_EMBEDDING_DIM }, (_, i) => (i === axis ? 1 : 0))
-}
-
-/** GETs the admin face-detection settings (same wire shape as the PUT response). */
-export async function fetchFaceSettings(
-  request: APIRequestContext,
-  auth: AuthResponse,
-): Promise<FaceDetectionSettings> {
-  const response = await request.get('/api/v1/admin/face-detection', { headers: authHeaders(auth) })
-  expect(response.status()).toBe(200)
-  return (await response.json()) as FaceDetectionSettings
 }
 
 /** Creates an album via the API and returns it as an AlbumRef. */

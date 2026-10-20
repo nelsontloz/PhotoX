@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { FaArrowsRotate, FaCircleCheck, FaCircleExclamation } from 'react-icons/fa6'
+import { FaCircleCheck, FaCircleExclamation } from 'react-icons/fa6'
 
 /**
  * Shared admin-console primitives. Every admin section used to copy-paste the same header/card
@@ -164,45 +164,125 @@ export function MetricTile({
 }
 
 const BUTTON_BASE =
-  'inline-flex items-center gap-2 text-xs font-semibold rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
+  'inline-flex items-center gap-2 text-xs font-semibold rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low'
+
+const OUTLINE_BASE =
+  'inline-flex items-center justify-center gap-1.5 rounded-lg border font-semibold transition-colors'
+
+const FOCUS_PRIMARY =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low'
+const FOCUS_DANGER =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-status-error focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low'
+
+const ICON_BUTTON_CLASS =
+  'p-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low'
+
+type ButtonVariant =
+  | 'primary'
+  | 'ghost'
+  | 'secondary'
+  | 'danger'
+  | 'dangerFlat'
+  | 'outlinePrimary'
+  | 'icon'
 
 interface ButtonProps {
+  /** Visual treatment. Primary/ghost are the filled compact buttons; the outline variants back tables. */
+  variant?: ButtonVariant
+  size?: 'sm' | 'md' | 'lg'
+  /** Outline variants only: `accent` tints the border primary for the one safe/main action in a row. */
+  tone?: 'neutral' | 'accent'
   onClick?: () => void
   disabled?: boolean
   icon?: ReactNode
-  children: ReactNode
+  title?: string
   ariaLabel?: string
+  /** Icon variant only: replaces the default icon-button classes entirely. */
+  className?: string
+  children?: ReactNode
 }
 
-export function PrimaryButton({ onClick, disabled, icon, children, ariaLabel }: ButtonProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={ariaLabel}
-      className={cx(
-        BUTTON_BASE,
-        'bg-primary-container text-on-primary-container hover:bg-primary-container/90 shadow-sm',
-      )}
-    >
-      {icon}
-      {children}
-    </button>
-  )
-}
-
-export function GhostButton({ onClick, disabled, icon, children, ariaLabel }: ButtonProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={ariaLabel}
-      className={cx(
+/**
+ * The admin console's one button. Every variant reproduces the exact class string its
+ * predecessor used, so consolidating them is a structural change only.
+ */
+export function Button({
+  variant = 'primary',
+  size = 'md',
+  tone = 'neutral',
+  onClick,
+  disabled,
+  icon,
+  title,
+  ariaLabel,
+  className,
+  children,
+}: ButtonProps) {
+  const sizeClass =
+    size === 'sm'
+      ? 'px-2.5 py-1.5 text-[11px]'
+      : size === 'lg'
+        ? 'px-3 py-2 text-sm'
+        : 'px-3 py-1.5 text-xs'
+  let classes: string
+  switch (variant) {
+    case 'ghost':
+      classes = cx(
         BUTTON_BASE,
         'bg-surface-container text-on-surface hover:bg-surface-container-high',
-      )}
+      )
+      break
+    case 'secondary':
+      classes = cx(
+        OUTLINE_BASE,
+        FOCUS_PRIMARY,
+        'disabled:opacity-50 disabled:cursor-not-allowed disabled:border-outline-variant',
+        sizeClass,
+        tone === 'accent'
+          ? 'border-primary/50 bg-surface-container-highest text-on-surface enabled:hover:border-primary'
+          : 'border-outline-variant bg-surface-container-highest text-on-surface enabled:hover:border-primary/60',
+      )
+      break
+    case 'danger':
+      classes = cx(
+        OUTLINE_BASE,
+        FOCUS_DANGER,
+        'disabled:opacity-50 disabled:cursor-not-allowed disabled:border-outline/30',
+        sizeClass,
+        'border-status-error/40 text-status-error enabled:hover:border-status-error/60 enabled:hover:bg-status-error/10',
+      )
+      break
+    case 'dangerFlat':
+      classes = cx(
+        'inline-flex items-center gap-1.5 rounded-lg border font-semibold transition-colors',
+        FOCUS_DANGER,
+        size === 'md' ? 'px-3 py-1.5 text-xs' : 'px-2.5 py-1.5 text-[11px]',
+        disabled
+          ? 'border-outline/30 text-outline/60 cursor-not-allowed'
+          : 'border-status-error/40 text-status-error hover:bg-status-error/10',
+      )
+      break
+    case 'outlinePrimary':
+      classes =
+        'inline-flex items-center gap-2 text-xs font-semibold rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-primary/50 text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low'
+      break
+    case 'icon':
+      classes = className ?? ICON_BUTTON_CLASS
+      break
+    default:
+      classes = cx(
+        BUTTON_BASE,
+        'bg-primary-container text-on-primary-container hover:bg-primary-container/90 shadow-sm',
+      )
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      title={title}
+      className={classes}
     >
       {icon}
       {children}
@@ -210,36 +290,13 @@ export function GhostButton({ onClick, disabled, icon, children, ariaLabel }: Bu
   )
 }
 
-/** Icon-only refresh; PrimaryButton/GhostButton require children, so this stays raw. */
-export function RefreshButton({
-  onClick,
-  label,
-  disabled,
-  className = 'p-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high disabled:opacity-50 disabled:cursor-not-allowed transition-colors',
-}: {
-  onClick: () => void
+export interface StatRow {
   label: string
-  disabled?: boolean
-  className?: string
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      className={className}
-    >
-      <FaArrowsRotate />
-    </button>
-  )
+  value: ReactNode
+  tone?: 'default' | 'muted'
 }
 
-export function StatStrip({
-  rows,
-}: {
-  rows: { label: string; value: ReactNode; tone?: 'default' | 'muted' }[]
-}) {
+export function StatStrip({ rows }: { rows: StatRow[] }) {
   return (
     <div className="rounded-lg bg-surface-container p-3 font-mono text-xs flex flex-col gap-1">
       {rows.map((row) => (

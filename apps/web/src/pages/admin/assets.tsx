@@ -1,17 +1,16 @@
-import { useEffect, useState } from 'react'
-import { FaCamera, FaFilm, FaSpinner, FaTriangleExclamation, FaTrashCan } from 'react-icons/fa6'
-import { type AdminAssetCountsResponse } from '@photox/shared-types'
-import { getAdminAssetCounts, reprocessThumbnails, getOrphanCounts } from '../../api/admin'
+import { useState } from 'react'
 import {
-  AdminSection,
-  AdminToast,
-  CountTile,
-  PrimaryButton,
-  RefreshButton,
-  StatStrip,
-  colsFor,
-} from './ui'
+  FaArrowsRotate,
+  FaCamera,
+  FaFilm,
+  FaSpinner,
+  FaTriangleExclamation,
+  FaTrashCan,
+} from 'react-icons/fa6'
+import { getAdminAssetCounts, reprocessThumbnails, getOrphanCounts } from '../../api/admin'
+import { AdminSection, AdminToast, Button, CountTile, StatStrip, colsFor } from './ui'
 import { ConfirmDialog, InlineError } from './shared'
+import { useAsyncFetch } from '../../hooks/useAsyncFetch'
 
 // --- small shared panels ----------------------------------------------------------------
 
@@ -56,36 +55,17 @@ function SkeletonPanel({ tileCount = 4 }: { tileCount?: number }) {
 // --- asset health & queues (merges the counts matrix + thumbnail reprocess) -------------
 
 export function AssetHealthSection() {
-  const [data, setData] = useState<AdminAssetCountsResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [version, setVersion] = useState(0)
+  const { data, loading, error } = useAsyncFetch(() => getAdminAssetCounts(), {
+    refreshKey: version,
+    errorMessage: 'Failed to load asset counts',
+    loadingMode: 'always',
+  })
 
   const [confirming, setConfirming] = useState(false)
   const [inFlight, setInFlight] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const [reprocessError, setReprocessError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    getAdminAssetCounts()
-      .then((res) => {
-        if (cancelled) return
-        setData(res)
-      })
-      .catch((err: Error) => {
-        if (cancelled) return
-        setError(err.message ?? 'Failed to load asset counts')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [version])
 
   const onConfirm = async () => {
     setConfirming(false)
@@ -110,7 +90,12 @@ export function AssetHealthSection() {
       title="Asset Health & Pipeline Queues"
       icon={<FaTriangleExclamation />}
       actions={
-        <RefreshButton onClick={() => setVersion((v) => v + 1)} label="Refresh asset health" />
+        <Button
+          variant="icon"
+          onClick={() => setVersion((v) => v + 1)}
+          ariaLabel="Refresh asset health"
+          icon={<FaArrowsRotate />}
+        />
       }
     >
       {loading ? (
@@ -148,13 +133,13 @@ export function AssetHealthSection() {
         <p className="text-body-sm text-on-surface-variant max-w-lg">
           Regenerate thumbnails for all pictures. Existing thumbs are replaced.
         </p>
-        <PrimaryButton
+        <Button
           onClick={() => setConfirming(true)}
           disabled={inFlight}
           icon={inFlight ? <FaSpinner className="animate-spin" /> : undefined}
         >
           {inFlight ? 'Enqueuing…' : 'Reprocess pictures'}
-        </PrimaryButton>
+        </Button>
       </div>
 
       {result && <AdminToast message={result} />}
@@ -180,31 +165,12 @@ export function AssetHealthSection() {
 // --- orphan cleanup ---------------------------------------------------------------------
 
 export function OrphanCleanupSection() {
-  const [data, setData] = useState<{ orphanFiles: number; orphanThumbnails: number } | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [version, setVersion] = useState(0)
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    getOrphanCounts()
-      .then((res) => {
-        if (cancelled) return
-        setData(res)
-      })
-      .catch((err: Error) => {
-        if (cancelled) return
-        setError(err.message ?? 'Failed to load orphan counts')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [version])
+  const { data, loading, error } = useAsyncFetch(() => getOrphanCounts(), {
+    refreshKey: version,
+    errorMessage: 'Failed to load orphan counts',
+    loadingMode: 'always',
+  })
 
   return (
     <AdminSection
@@ -213,7 +179,12 @@ export function OrphanCleanupSection() {
       subtitle="Files and thumbnails in storage that no asset references."
       icon={<FaTrashCan />}
       actions={
-        <RefreshButton onClick={() => setVersion((v) => v + 1)} label="Refresh orphan counts" />
+        <Button
+          variant="icon"
+          onClick={() => setVersion((v) => v + 1)}
+          ariaLabel="Refresh orphan counts"
+          icon={<FaArrowsRotate />}
+        />
       }
     >
       {loading ? (

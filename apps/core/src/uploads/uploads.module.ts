@@ -17,6 +17,5 @@ import { UploadSessionsSweeper } from './upload-sessions.sweeper'
   ],
   controllers: [UploadsController],
   providers: [UploadsService, UploadSessionsSweeper],
-  exports: [UploadsService],
 })
 export class UploadsModule {}

@@ -3,15 +3,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Repository } from 'typeorm'
 import { AppSetting } from '../database/entities/app-setting.entity'
-import {
-  DETECTIONS_REPROCESS_LAST_RUN_KEY,
-  EMBEDDING_REPROCESS_LAST_RUN_KEY,
-  FACE_REPROCESS_LAST_RUN_KEY,
-  METADATA_REPROCESS_LAST_RUN_KEY,
-  OCR_REPROCESS_LAST_RUN_KEY,
-  PLACES_BACKFILL_LAST_RUN_KEY,
-  SettingsService,
-} from './settings.service'
+import { SettingsService } from './settings.service'
+
+const FACE_REPROCESS_LAST_RUN_KEY = 'face.reprocess.lastRun'
+const EMBEDDING_REPROCESS_LAST_RUN_KEY = 'embedding.reprocess.lastRun'
+const OCR_REPROCESS_LAST_RUN_KEY = 'ocr.reprocess.lastRun'
+const DETECTIONS_REPROCESS_LAST_RUN_KEY = 'detections.reprocess.lastRun'
+const PLACES_BACKFILL_LAST_RUN_KEY = 'places.backfill.lastRun'
+const METADATA_REPROCESS_LAST_RUN_KEY = 'metadata.reprocess.lastRun'
 
 function makeService(row?: Partial<AppSetting>) {
   const findOne = vi.fn().mockResolvedValue(row ?? null)

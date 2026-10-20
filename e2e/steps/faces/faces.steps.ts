@@ -3,16 +3,14 @@ import {
   Given,
   Then,
   When,
-  PASSWORD,
   authHeaders,
   injectSession,
   requireAuth,
   seedEmbedding,
+  signInAdmin,
   workerHeaders,
   type AuthResponse,
 } from '../support'
-
-const ADMIN_EMAIL = 'admin@photox.test'
 
 /** Wire shape of GET /api/v1/admin/faces/reprocess. */
 interface FaceStatus {
@@ -36,35 +34,6 @@ interface FaceAsset {
 /** Wire shape of GET /api/v1/persons, trimmed to the fields the cluster assertion needs. */
 interface PersonList {
   items: { id: string; faceCount: number }[]
-}
-
-/** Admin login against the seeded admin (core inserts ADMIN_EMAIL on bootstrap when no
- * admin exists); the register fallback only covers seed-less environments and can never mint
- * admin, so the role assertion still guards the admin flows below. The session is memoized per
- * worker process (under the 30m access TTL) so serial admin scenarios share one login instead
- * of tripping the 5/900s login throttle — production throttle untouched. */
-let cachedAdmin: { auth: AuthResponse; at: number } | null = null
-const ADMIN_SESSION_REUSE_MS = 20 * 60 * 1000
-
-async function signInAdmin(request: APIRequestContext): Promise<AuthResponse> {
-  if (cachedAdmin && Date.now() - cachedAdmin.at < ADMIN_SESSION_REUSE_MS) {
-    return cachedAdmin.auth
-  }
-  let response = await request.post('/api/v1/auth/login', {
-    data: { email: ADMIN_EMAIL, password: PASSWORD },
-  })
-  if (!response.ok()) {
-    response = await request.post('/api/v1/auth/register', {
-      data: { email: ADMIN_EMAIL, password: PASSWORD, displayName: 'E2E Admin' },
-    })
-  }
-  expect(response.ok()).toBe(true)
-  const auth = (await response.json()) as AuthResponse
-  if (auth.user.role !== 'admin') {
-    throw new Error(`expected ${ADMIN_EMAIL} to have the admin role, got "${auth.user.role}"`)
-  }
-  cachedAdmin = { auth, at: Date.now() }
-  return auth
 }
 
 interface SeedFace {

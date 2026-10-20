@@ -3,11 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, In, Repository } from 'typeorm'
 import { Person } from '../database/entities'
 import { Face } from '../database/entities'
-import { Asset } from '../database/entities'
 import { refreshPersonFaceCount, countLiveFaces } from '../faces/face-count'
 import { findOwnedOr404 } from '../common/asset-ownership'
 import type { ApplyClustersDto } from './dto/apply-clusters.dto'
-import type { PersonDto, PersonListResponse, PersonAssetsResponse } from '@photox/shared-types'
+import type { PersonDto, PersonListResponse } from '@photox/shared-types'
 
 @Injectable()
 export class PersonsService {
@@ -16,8 +15,6 @@ export class PersonsService {
     private readonly personRepo: Repository<Person>,
     @InjectRepository(Face)
     private readonly faceRepo: Repository<Face>,
-    @InjectRepository(Asset)
-    private readonly assetRepo: Repository<Asset>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -91,69 +88,6 @@ export class PersonsService {
     // as soon as an asset is trashed/deleted, so PATCH must not echo it.
     updated!.faceCount = await countLiveFaces(this.faceRepo, id, userId)
     return this.toListItem(updated!)
-  }
-
-  async getAssetsForPerson(
-    userId: string,
-    id: string,
-    limit = 20,
-    offset = 0,
-  ): Promise<PersonAssetsResponse> {
-    await findOwnedOr404(this.personRepo, id, userId, 'Person')
-
-    // ponytail: per-asset rollup — one row per asset containing this person; faceId is the person's face in that asset, ordered by photo date like the timeline
-    const rows = await this.faceRepo
-      .createQueryBuilder('f')
-      .innerJoin('assets', 'a', 'a.id = f."assetId"')
-      .select('f."assetId"', 'assetId')
-      .addSelect(`MIN(f.id::text)::uuid`, 'faceId')
-      .addSelect('COUNT(*)', 'faceCount')
-      .addSelect('MAX(COALESCE(a."takenAt", a."uploadedAt"))', 'photoDate')
-      .where('f."personId" = :personId', { personId: id })
-      .andWhere('f."userId" = :userId', { userId })
-      .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
-      .groupBy('f."assetId"')
-      .orderBy('"photoDate"', 'DESC')
-      .limit(limit)
-      .offset(offset)
-      .getRawMany<{ assetId: string; faceId: string; faceCount: string; photoDate: string }>()
-
-    const total = await this.faceRepo
-      .createQueryBuilder('f')
-      .innerJoin('assets', 'a', 'a.id = f."assetId"')
-      .select('COUNT(DISTINCT f."assetId")')
-      .where('f."personId" = :personId', { personId: id })
-      .andWhere('f."userId" = :userId', { userId })
-      .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
-      .getRawOne<{ count: string }>()
-      .then((r) => Number(r?.count ?? 0))
-
-    if (rows.length === 0) {
-      return { personId: id, items: [], total, limit, offset }
-    }
-
-    const assets = await this.assetRepo
-      .createQueryBuilder('a')
-      .select('a.id', 'id')
-      .addSelect('a."uploadedAt"', 'uploadedAt')
-      .where('a.id IN (:...assetIds)', { assetIds: rows.map((r) => r.assetId) })
-      .getRawMany<{ id: string; uploadedAt: Date }>()
-
-    const uploadedById = new Map(
-      assets.map((a) => [
-        a.id,
-        a.uploadedAt instanceof Date ? a.uploadedAt.toISOString() : String(a.uploadedAt),
-      ]),
-    )
-
-    const items = rows.map((r) => ({
-      assetId: r.assetId,
-      faceId: r.faceId,
-      uploadedAt: uploadedById.get(r.assetId) ?? '',
-      faceCount: Number(r.faceCount),
-    }))
-
-    return { personId: id, items, total, limit, offset }
   }
 
   // ponytail: worker cluster job applies its whole plan atomically; re-running after a success is a

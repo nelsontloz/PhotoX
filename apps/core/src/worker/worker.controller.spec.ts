@@ -1,6 +1,5 @@
 import type { AssetsService } from '../assets/assets.service'
 import type { UserFilesService } from '../files/user/user-files.service'
-import type { AdminService as FilesAdminService } from '../files/admin/admin.service'
 import type { FacesService } from '../faces/faces.service'
 import type { PersonsService } from '../persons/persons.service'
 import type { EmbeddingsService } from '../embeddings/embeddings.service'
@@ -18,7 +17,6 @@ function controllerWith(register: ReturnType<typeof vi.fn>): WorkerController {
     svc,
     { register } as unknown as OcrService,
     { register } as unknown as DetectionsService,
-    {} as FilesAdminService,
   )
 }
 

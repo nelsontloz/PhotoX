@@ -258,28 +258,6 @@ describe('assets JWT identity', () => {
     expect(res.status).toBe(400)
   })
 
-  it('rejects cross-user metadata update without mutating the asset', async () => {
-    const a = await seedUser(t)
-    const b = await seedUser(t)
-    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
-    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
-    const file = await seedFile(t, a.id)
-    const asset = await seedAsset(t, a.id, file.id)
-    const cross = await request(apiServer(t))
-      .patch(`/api/v1/assets/${asset.id}/metadata`)
-      .set(t.authHeader(tokenB))
-      .send({ title: 'pwned' })
-    expect(cross.status).toBe(404)
-    const untouched = await t.assetRepo.findOneByOrFail({ id: asset.id })
-    expect(untouched.title).toBeNull()
-    const own = await request(apiServer(t))
-      .patch(`/api/v1/assets/${asset.id}/metadata`)
-      .set(t.authHeader(tokenA))
-      .send({ title: 'mine' })
-    expect(own.status).toBe(200)
-    expect((own.body as unknown as { title: string }).title).toBe('mine')
-  })
-
   it('accepts worker-set GPS altitude on the worker metadata route', async () => {
     const a = await seedUser(t)
     const actA = t.signToken({ id: a.id, email: a.email, role: a.role }, { act: true })
@@ -363,7 +341,6 @@ describe('assets JWT identity', () => {
     ['get', '/api/v1/assets/trashed'],
     ['get', `/api/v1/assets/${randomUUID()}`],
     ['patch', `/api/v1/assets/${randomUUID()}`],
-    ['patch', `/api/v1/assets/${randomUUID()}/metadata`],
     ['post', `/api/v1/assets/${randomUUID()}/trash`],
     ['post', '/api/v1/assets/bulk-trash'],
     ['post', `/api/v1/assets/${randomUUID()}/reprocess-thumbnails`],

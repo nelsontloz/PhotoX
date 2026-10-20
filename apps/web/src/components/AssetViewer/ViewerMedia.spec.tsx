@@ -12,13 +12,8 @@ function renderMedia(overrides: {
 }) {
   return render(
     <ViewerMedia
-      isVideo={false}
-      videoSrc={null}
-      videoFallbackSrc={undefined}
       videoPoster={undefined}
-      videoTitle={undefined}
       imageUrl={overrides.imageUrl ?? null}
-      imageAlt="Photo"
       loading={overrides.loading ?? false}
       placeholderUrl={overrides.placeholderUrl ?? null}
       hasPrev={false}

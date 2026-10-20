@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Asset } from '@photox/shared-types'
-import { getAsset, getFileStreamUrl, reprocessThumbnails, reprocessVideo } from '../../api/assets'
+import { getAsset, reprocessThumbnails, reprocessVideo } from '../../api/assets'
 import { ViewerTopBar } from './ViewerTopBar'
 import { ViewerActions } from './ViewerActions'
 import { useAssetMedia } from './useAssetMedia'
@@ -89,20 +89,6 @@ export function AssetViewer({
   const relatedEnabled = !currentAsset.isTrashed
   const similar = useSimilarAssets(currentAsset.id, relatedEnabled)
   const duplicates = useAssetDuplicates(currentAsset.id, relatedEnabled)
-  const primaryVideoSrc = isVideo
-    ? getFileStreamUrl(currentAsset.transcodeFileId ?? currentAsset.fileId)
-    : null
-  const videoFallbackSrc =
-    isVideo && currentAsset.transcodeFileId ? getFileStreamUrl(currentAsset.fileId) : undefined
-  // video.js picks a source via canPlayType(type); the transcode is always AV1-in-webm.
-  const videoType = isVideo
-    ? currentAsset.transcodeFileId
-      ? 'video/webm'
-      : (currentAsset.mimeType ?? undefined)
-    : undefined
-  const videoFallbackType = isVideo ? (currentAsset.mimeType ?? undefined) : undefined
-  const imageAlt = currentAsset.originalName ?? currentAsset.title ?? 'Photo'
-  const videoTitle = currentAsset.title ?? currentAsset.originalName ?? undefined
   const displayAsset =
     favOverride !== null ? { ...currentAsset, favorite: favOverride } : currentAsset
 
@@ -171,15 +157,8 @@ export function AssetViewer({
           onReprocessVideo={reprocessVideoAction}
         />
         <ViewerMedia
-          isVideo={isVideo}
-          videoSrc={primaryVideoSrc}
-          videoFallbackSrc={videoFallbackSrc}
-          videoType={videoType}
-          videoFallbackType={videoFallbackType}
           videoPoster={videoPosterUrl ?? placeholderUrl ?? undefined}
-          videoTitle={videoTitle}
           imageUrl={imageUrl}
-          imageAlt={imageAlt}
           loading={loading}
           placeholderUrl={placeholderUrl}
           hasPrev={hasPrev}

@@ -13,16 +13,11 @@ import {
   FaTriangleExclamation,
   FaUserShield,
 } from 'react-icons/fa6'
-import { isAxiosError } from 'axios'
-import {
-  type AdminUserListResponse,
-  type AdminUserRow,
-  type AdminUserSortField,
-} from '@photox/shared-types'
+import { type AdminUserRow, type AdminUserSortField } from '@photox/shared-types'
 import { LoadingState } from '../../components/StateViews'
 import { Dialog, formInputClass } from '../../components/Dialog'
 import { useAuthStore } from '../../store/auth-store'
-import { AdminCard, AdminSection, AdminToast, GhostButton, StatusPill, cx } from './ui'
+import { AdminCard, AdminSection, AdminToast, Button, StatusPill, cx } from './ui'
 import {
   deleteAdminUser,
   listAdminUsers,
@@ -31,7 +26,13 @@ import {
   type ListAdminUsersParams,
 } from '../../api/admin'
 import { RoleBadge } from './shared'
-import { EditUserDialog, backupRetryErrorMessage, type UserEditOutcome } from './edit-user-dialog'
+import {
+  EditUserDialog,
+  BACKUP_RETRY_ERROR_MESSAGES,
+  type UserEditOutcome,
+} from './edit-user-dialog'
+import { useAsyncFetch } from '../../hooks/useAsyncFetch'
+import { httpErrorMessage, type HttpErrorMessages } from './http-error'
 
 // --- users ------------------------------------------------------------------------------
 
@@ -50,18 +51,15 @@ const LAST_ADMIN_GUARD = "The last admin can't be deleted."
 const GENERIC_COUNTS = 'Their photos, videos, albums and shares will be permanently removed.'
 
 /** Never leak axios verbatim; the server guards map to plain sentences. */
-function deleteErrorMessage(err: unknown): string {
-  if (isAxiosError(err)) {
-    const data = err.response?.data as { message?: unknown } | undefined
-    const serverMessage = typeof data?.message === 'string' ? data.message : null
-    if (err.response?.status === 403) return serverMessage ?? SELF_DELETE_GUARD
-    if (err.response?.status === 409) return serverMessage ?? LAST_ADMIN_GUARD
-    if (err.response?.status === 404) {
-      return 'That user no longer exists. Close this and refresh the list.'
-    }
-    if (serverMessage) return serverMessage
-  }
-  return err instanceof Error ? err.message : 'Delete failed. Try again.'
+const DELETE_ERROR_MESSAGES: HttpErrorMessages = {
+  fallback: 'Delete failed. Try again.',
+  byStatus: {
+    403: ({ text }) => text || SELF_DELETE_GUARD,
+    409: ({ text }) => text || LAST_ADMIN_GUARD,
+    404: 'That user no longer exists. Close this and refresh the list.',
+  },
+  serverDetail: true,
+  rawMessage: true,
 }
 
 interface SortHeaderProps {
@@ -119,7 +117,7 @@ function DeleteUserDialog({
       await pollAdminUserDelete(user.id)
       onDeleted(user.displayName)
     } catch (err: unknown) {
-      setError(deleteErrorMessage(err))
+      setError(httpErrorMessage(err, DELETE_ERROR_MESSAGES))
       setWorking(false)
     }
   }
@@ -198,14 +196,9 @@ function DeleteUserDialog({
       </div>
 
       <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-6">
-        <button
-          type="button"
-          onClick={close}
-          disabled={working}
-          className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
+        <Button variant="secondary" size="lg" onClick={close} disabled={working}>
           Cancel
-        </button>
+        </Button>
         <button
           type="button"
           onClick={() => void onConfirm()}
@@ -287,19 +280,14 @@ function BackupMoveWarningBox({
               type="button"
               onClick={onRetry}
               disabled={retrying}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary-container px-2.5 py-1.5 text-[11px] font-semibold text-on-primary-container transition-colors hover:bg-primary-container/90 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary-container px-2.5 py-1.5 text-[11px] font-semibold text-on-primary-container transition-colors hover:bg-primary-container/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background-dark disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FaArrowsRotate className="text-[11px]" aria-hidden="true" />
               Retry move
             </button>
-            <button
-              type="button"
-              onClick={onDismiss}
-              disabled={retrying}
-              className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-on-surface-variant transition-colors hover:text-on-surface disabled:opacity-50 disabled:cursor-not-allowed"
-            >
+            <Button variant="secondary" size="sm" onClick={onDismiss} disabled={retrying}>
               Dismiss
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -313,9 +301,6 @@ export function UsersSection() {
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT)
   const [offset, setOffset] = useState(0)
   const [version, setVersion] = useState(0)
-  const [data, setData] = useState<AdminUserListResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [target, setTarget] = useState<AdminUserRow | null>(null)
   const [editing, setEditing] = useState<AdminUserRow | null>(null)
   const [backupWarning, setBackupWarning] = useState<BackupMoveWarning | null>(null)
@@ -332,33 +317,24 @@ export function UsersSection() {
     setOffset(0)
   }, [debouncedQ, sort])
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    const params: ListAdminUsersParams = {
-      limit: DEFAULT_LIMIT,
-      offset,
-      sortField: sort.field,
-      sortDir: sort.dir,
-    }
-    if (debouncedQ) params.q = debouncedQ
-    listAdminUsers(params)
-      .then((res) => {
-        if (cancelled) return
-        setData(res)
-      })
-      .catch((err: Error) => {
-        if (cancelled) return
-        setError(err.message ?? 'Failed to load users')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [debouncedQ, sort, offset, version])
+  const { data, loading, error } = useAsyncFetch(
+    () => {
+      const params: ListAdminUsersParams = {
+        limit: DEFAULT_LIMIT,
+        offset,
+        sortField: sort.field,
+        sortDir: sort.dir,
+      }
+      if (debouncedQ) params.q = debouncedQ
+      return listAdminUsers(params)
+    },
+    {
+      // Any filter/page change (or an explicit refresh bump) is a new request key.
+      refreshKey: `${debouncedQ}|${sort.field}|${sort.dir}|${offset}|${version}`,
+      errorMessage: 'Failed to load users',
+      loadingMode: 'always',
+    },
+  )
 
   const total = data?.total ?? 0
   const currentPage = Math.floor(offset / DEFAULT_LIMIT) + 1
@@ -446,7 +422,9 @@ export function UsersSection() {
         prev ? { ...prev, to: res.to, error: res.error ?? prev.error } : prev,
       )
     } catch (err: unknown) {
-      setBackupWarning((prev) => (prev ? { ...prev, error: backupRetryErrorMessage(err) } : prev))
+      setBackupWarning((prev) =>
+        prev ? { ...prev, error: httpErrorMessage(err, BACKUP_RETRY_ERROR_MESSAGES) } : prev,
+      )
     } finally {
       setRetryingId(null)
     }
@@ -502,7 +480,9 @@ export function UsersSection() {
       ) : error ? (
         <AdminCard className="text-center">
           <p className="text-sm text-status-error mb-3">{error}</p>
-          <GhostButton onClick={() => setVersion((v) => v + 1)}>Retry</GhostButton>
+          <Button variant="ghost" onClick={() => setVersion((v) => v + 1)}>
+            Retry
+          </Button>
         </AdminCard>
       ) : items.length === 0 ? (
         <AdminCard className="p-12 text-center">
@@ -547,39 +527,28 @@ export function UsersSection() {
                     <td className="py-3.5 px-4">
                       {/* Destructive stays last: Edit reads as the neutral action, Delete as
                           the one that removes the account. */}
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          type="button"
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="secondary"
+                          tone="accent"
                           onClick={() => setEditing(u)}
                           disabled={editGuard != null}
                           title={editGuard ?? `Edit ${u.displayName}`}
-                          aria-label={`Edit ${u.displayName}`}
-                          className={cx(
-                            'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors',
-                            editGuard != null
-                              ? 'text-outline/60 cursor-not-allowed'
-                              : 'text-primary/80 hover:text-primary hover:bg-primary/10',
-                          )}
+                          ariaLabel={`Edit ${u.displayName}`}
+                          icon={<FaPenToSquare className="text-xs" aria-hidden="true" />}
                         >
-                          <FaPenToSquare className="text-xs" aria-hidden="true" />
                           Edit
-                        </button>
-                        <button
-                          type="button"
+                        </Button>
+                        <Button
+                          variant="danger"
                           onClick={() => setTarget(u)}
                           disabled={guard != null}
                           title={guard ?? `Delete ${u.displayName}`}
-                          aria-label={`Delete ${u.displayName}`}
-                          className={cx(
-                            'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors',
-                            guard != null
-                              ? 'text-outline/60 cursor-not-allowed'
-                              : 'text-status-error/80 hover:text-status-error hover:bg-status-error/10',
-                          )}
+                          ariaLabel={`Delete ${u.displayName}`}
+                          icon={<FaTrashCan className="text-xs" aria-hidden="true" />}
                         >
-                          <FaTrashCan className="text-xs" aria-hidden="true" />
                           Delete
-                        </button>
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -590,25 +559,23 @@ export function UsersSection() {
           <footer className="bg-surface-container px-4 py-3 flex items-center justify-between text-xs text-outline font-mono">
             <span>Showing {total.toLocaleString()} registered user(s)</span>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
+              <Button
+                variant="secondary"
                 disabled={offset === 0}
                 onClick={() => setOffset(Math.max(0, offset - DEFAULT_LIMIT))}
-                className="px-3 py-1.5 rounded-lg bg-surface-container-low border border-border-dark text-on-surface-variant disabled:opacity-40 disabled:cursor-not-allowed hover:border-primary/50 transition-colors"
               >
                 Prev
-              </button>
+              </Button>
               <span className="px-2 tabular-nums">
                 Page {currentPage} of {totalPages}
               </span>
-              <button
-                type="button"
+              <Button
+                variant="secondary"
                 disabled={currentPage >= totalPages}
                 onClick={() => setOffset(offset + DEFAULT_LIMIT)}
-                className="px-3 py-1.5 rounded-lg bg-surface-container-low border border-border-dark text-on-surface-variant disabled:opacity-40 disabled:cursor-not-allowed hover:border-primary/50 transition-colors"
               >
                 Next
-              </button>
+              </Button>
             </div>
           </footer>
         </div>

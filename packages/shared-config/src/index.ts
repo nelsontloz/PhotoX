@@ -2,7 +2,6 @@ export { loadEnv, loadAuthEnv, loadRootEnvFile, resolveFaceDetectorModelPath } f
 export { LocalStorageService } from './storage'
 export {
   backupPrefix,
-  encodeSegment,
   findPrefixesForUserId,
   manifestKey,
   normalizeEmail,

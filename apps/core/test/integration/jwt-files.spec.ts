@@ -29,14 +29,10 @@ describe('files JWT identity', () => {
     await resetDb(t)
   })
 
-  it('gets and downloads own file without userId', async () => {
+  it('downloads own file without userId', async () => {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })
     const record = await seedFile(t, user.id, { bytes: Buffer.from('hello-bytes') })
-    const get = await request(apiServer(t))
-      .get(`/api/v1/files/${record.id}`)
-      .set(t.authHeader(token))
-    expect(get.status).toBe(200)
     const download = await request(apiServer(t))
       .get(`/api/v1/files/${record.id}/download`)
       .set(t.authHeader(token))
@@ -63,7 +59,7 @@ describe('files JWT identity', () => {
     const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
     const record = await seedFile(t, a.id)
     const res = await request(apiServer(t))
-      .get(`/api/v1/files/${record.id}`)
+      .get(`/api/v1/files/${record.id}/download`)
       .query({ userId: a.id })
       .set(t.authHeader(tokenB))
     expect(res.status).toBe(404)
@@ -92,7 +88,7 @@ describe('files JWT identity', () => {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })
     const res = await request(apiServer(t))
-      .get(`/api/v1/files/${randomUUID()}`)
+      .get(`/api/v1/files/${randomUUID()}/download`)
       .set(t.authHeader(token))
     expect(res.status).toBe(404)
   })

@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 interface UseAsyncFetchOptions {
   /** Changing this key re-runs the fetch. Same-key calls while one is in flight are dropped
-   *  (StrictMode dev double-mount, duplicate refresh clicks). */
-  refreshKey?: number
+   *  (StrictMode dev double-mount, duplicate refresh clicks). Numbers and strings both work. */
+  refreshKey?: string | number
   errorMessage: string
   /**
    * 'once' (default) sets `loading` only for the first load so refreshes update in place
@@ -28,7 +28,7 @@ export function useAsyncFetch<T>(
   fetcherRef.current = fetcher
   const fetchIdRef = useRef(0)
   const loadedOnceRef = useRef(false)
-  const inFlightKeyRef = useRef<number | null>(null)
+  const inFlightKeyRef = useRef<string | number | null>(null)
 
   const refresh = useCallback(async () => {
     if (inFlightKeyRef.current === refreshKey) return
@@ -56,5 +56,5 @@ export function useAsyncFetch<T>(
     void refresh()
   }, [refresh])
 
-  return { data, loading, error, refresh }
+  return { data, loading, error, refresh, setData }
 }

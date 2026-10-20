@@ -30,13 +30,13 @@ export class UserDeleteProcessor implements OnModuleInit {
       throw new UnrecoverableError(`Invalid user-delete job payload: ${parsed.error.message}`)
     }
     const { userId, backupPrefix } = parsed.data
-    this.deletes.markActive(userId, backupPrefix, job.id ?? userId)
+    this.deletes.setProgress(userId, 'active', job.id ?? userId, backupPrefix)
     try {
       // jobs enqueued between the enqueue-time drain and now are caught here
       await this.deletes.drainUserJobs(userId)
       await this.deletes.runUserDelete(userId, backupPrefix)
     } catch (err) {
-      this.deletes.markFinished(userId, 'failed')
+      this.deletes.setProgress(userId, 'failed')
       throw err
     }
   }

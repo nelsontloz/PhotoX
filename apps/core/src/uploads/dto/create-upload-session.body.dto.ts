@@ -19,12 +19,6 @@ export class CreateUploadSessionBodyDto extends TitleDescriptionDto {
   @Matches(/^[0-9a-fA-F]{64}$/)
   checksumSha256?: string
 
-  @ApiProperty({ required: false, description: 'advisory only — MIME is sniffed at complete' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  mimeHint?: string
-
   @ApiProperty({ required: false })
   @IsOptional()
   @IsDateString()

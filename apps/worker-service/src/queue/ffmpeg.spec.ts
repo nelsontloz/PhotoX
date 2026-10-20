@@ -90,15 +90,3 @@ describeIfFfmpeg('ffmpeg wrapper', () => {
     await expect(runFfmpeg(['-help_that_does_not_exist'])).rejects.toThrow()
   })
 })
-
-describeIfFfmpeg('skip notice', () => {
-  it('logs that ffmpeg is available', () => {
-    console.log('[ffmpeg.spec.ts] ffmpeg is available — running full test suite')
-  })
-})
-
-if (!HAS_FFMPEG) {
-  it('skips all ffmpeg tests — ffmpeg not found on PATH', () => {
-    console.log(`[ffmpeg.spec.ts] ffmpeg not found at ${FFMPEG_PATH} — all tests skipped`)
-  })
-}

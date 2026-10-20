@@ -11,7 +11,7 @@ import { describe, expect, it, vi, type Mock } from 'vitest'
 import { backupPrefix } from '@photox/shared-config'
 import type { AdminUserBackupSync } from '@photox/shared-types'
 import { S3BackupService } from '../../backup/s3-backup.service'
-import { isWorkerAllowedRoute } from '../../auth/open-routes'
+import { isWorkerRoute } from '../../auth/open-routes'
 import { User } from '../entities/user.entity'
 import { AdminService } from './admin.service'
 import { UpdateAdminUserDto } from './dto/update-admin-user.body.dto'
@@ -127,25 +127,21 @@ function makeService(opts?: {
   }
   const queue = {
     getJob: vi.fn().mockResolvedValue(opts?.job === undefined ? null : opts.job),
-    getJobCounts: vi.fn().mockResolvedValue({ waiting: 0 }),
   }
   const bullMq = {
     enqueue: vi.fn().mockResolvedValue(opts?.enqueueResult ?? true),
     getQueue: vi.fn().mockReturnValue(queue),
   }
   const deletes = {
-    computeBackupPrefix: (email: string, id: string) => backupPrefix(email, id),
     clearFinishedJob: vi.fn().mockResolvedValue(false),
     drainUserJobs: vi.fn().mockResolvedValue(0),
-    markQueued: vi.fn(),
+    setProgress: vi.fn(),
     getProgress: vi.fn().mockReturnValue(
       opts?.progress
         ? {
-            userId: TARGET_ID,
             jobId: `user-delete-${TARGET_ID}`,
             state: opts.progress.state,
             backupPrefix: backupPrefix(TARGET_EMAIL, TARGET_ID),
-            updatedAt: new Date().toISOString(),
           }
         : undefined,
     ),
@@ -257,12 +253,11 @@ describe('AdminService.requestUserDelete guards', () => {
 })
 
 // ponytail: hard-rule pin — user deletion must never mutate S3 backups (no
-// listKeys/deleteKeys/deleteKey/copyPrefix, no manifest/originals enumeration)
+// listKeys/deleteKeys/copyPrefix, no manifest/originals enumeration)
 describe('AdminService.requestUserDelete backup exclusion', () => {
   const S3_MUTATING_METHODS = [
     'listKeys',
     'deleteKeys',
-    'deleteKey',
     'copyPrefix',
     'copyKey',
     'putObject',
@@ -297,9 +292,9 @@ describe('AdminService.requestUserDelete backup exclusion', () => {
   it('keeps worker act tokens denied on both delete routes and the backup-sync retry', () => {
     // central JwtAuthGuard denies act-carrying tokens outside the worker job surface —
     // these routes must never be allowlisted
-    expect(isWorkerAllowedRoute(`/api/v1/admin/users/${TARGET_ID}`)).toBe(false)
-    expect(isWorkerAllowedRoute(`/api/v1/admin/users/${TARGET_ID}/delete-status`)).toBe(false)
-    expect(isWorkerAllowedRoute(`/api/v1/admin/users/${TARGET_ID}/backup-sync`)).toBe(false)
+    expect(isWorkerRoute(`/api/v1/admin/users/${TARGET_ID}`)).toBe(false)
+    expect(isWorkerRoute(`/api/v1/admin/users/${TARGET_ID}/delete-status`)).toBe(false)
+    expect(isWorkerRoute(`/api/v1/admin/users/${TARGET_ID}/backup-sync`)).toBe(false)
   })
 })
 
@@ -311,7 +306,6 @@ describe('AdminService.getUserDeleteStatus', () => {
     expect(res.jobId).toBe(`user-delete-${TARGET_ID}`)
     expect(res.backupKept).toBe(true)
     expect(res.backupPrefix).toBe(backupPrefix(TARGET_EMAIL, TARGET_ID))
-    expect(res.queue).toEqual({ waiting: 0 })
   })
 
   it('maps a live BullMQ job state', async () => {

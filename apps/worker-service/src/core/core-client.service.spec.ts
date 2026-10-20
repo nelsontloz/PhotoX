@@ -178,30 +178,4 @@ describe('CoreClient', () => {
       faces: [{ box: { x: 1, y: 2, w: 3, h: 4 }, confidence: 0.9, embedding: [0.1, 0.2] }],
     })
   })
-
-  it('deletes an owned file with a per-user token and no body', async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 204,
-      json: () => Promise.resolve(undefined),
-      text: () => Promise.resolve(''),
-    })
-
-    await makeClient().deleteOwnedFile('user-1', 'file-1')
-
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('http://localhost:3000/worker/files/file-1')
-    expect(init.method).toBe('DELETE')
-    expect(init.body).toBeUndefined()
-    const token = (init.headers as Record<string, string>).Authorization!.replace('Bearer ', '')
-    const payload = new JwtService({ secret: 'x'.repeat(32) }).verify<{
-      sub: string
-      role: string
-    }>(token)
-    expect(payload).toMatchObject({
-      sub: 'user-1',
-      role: 'user',
-      act: { sub: 'worker-service' },
-    })
-  })
 })

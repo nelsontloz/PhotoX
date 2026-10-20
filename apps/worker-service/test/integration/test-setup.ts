@@ -1,10 +1,10 @@
 import { randomBytes } from 'node:crypto'
 import { GenericContainer, type StartedTestContainer } from 'testcontainers'
+import { TEST_AUTH_SECRET, TEST_WORKER_SECRET } from '../sign-job'
 
 // mirror apps/core/test/integration/test-setup.ts — the worker verifies job sigs against the
 // same secret core stamps, so the harness configures it before processors boot
-export const TEST_AUTH_SECRET = '0123456789abcdef0123456789abcdef'
-export const TEST_WORKER_SECRET = 'worker-test-secret-9f8e7d6c5b4a3210'
+export { TEST_AUTH_SECRET, TEST_WORKER_SECRET }
 
 let redis: StartedTestContainer | null = null
 

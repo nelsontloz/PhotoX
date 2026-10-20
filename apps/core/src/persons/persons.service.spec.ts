@@ -39,12 +39,7 @@ function makeService(countResult: { count: string }) {
   }
   const qb = chain(countResult)
   const faceRepo = { createQueryBuilder: vi.fn(() => qb) }
-  const service = new PersonsService(
-    personRepo as never,
-    faceRepo as never,
-    {} as never,
-    {} as never,
-  )
+  const service = new PersonsService(personRepo as never, faceRepo as never, {} as never)
   return { service, personRepo, faceRepo, qb }
 }
 

@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react'
 import { FaUser, FaUserShield } from 'react-icons/fa6'
 import { Dialog } from '../../components/Dialog'
-import { GhostButton } from './ui'
+import { Button } from './ui'
 
 // --- cross-tab pieces -------------------------------------------------------------------
 // Bits used by more than one admin tab (confirm dialogs, retry line, role pill). Chrome that
@@ -14,7 +14,9 @@ export function InlineError({ message, onRetry }: { message: string; onRetry: ()
   return (
     <div className="py-2 text-center">
       <p className="text-xs text-status-error mb-2">{message}</p>
-      <GhostButton onClick={onRetry}>Retry</GhostButton>
+      <Button variant="ghost" onClick={onRetry}>
+        Retry
+      </Button>
     </div>
   )
 }

@@ -1,30 +1,17 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { DataSource } from 'typeorm'
-import Redis from 'ioredis'
-import { loadEnv } from '@photox/shared-config'
+import { BullMqService } from '../queue/bullmq.service'
+
+// BullMQ's client queues commands while Redis is unreachable (maxRetriesPerRequest: null),
+// so the probe is capped — a dead Redis must degrade the payload, not hang the endpoint
+const REDIS_PING_TIMEOUT_MS = 1000
 
 @Injectable()
-export class HealthService implements OnModuleDestroy {
-  private redis?: Redis
-
-  constructor(private readonly dataSource: DataSource) {}
-
-  // ponytail: one client per process instead of one per check; ping latency is the signal we keep
-  private getRedis(): Redis {
-    if (!this.redis) {
-      const env = loadEnv()
-      this.redis = new Redis({
-        host: env.REDIS_HOST,
-        port: env.REDIS_PORT,
-        password: env.REDIS_PASSWORD,
-        maxRetriesPerRequest: 1,
-        enableReadyCheck: true,
-      })
-      // ioredis reconnects on its own; ping() surfaces failures, so don't let error events bubble
-      this.redis.on('error', () => undefined)
-    }
-    return this.redis
-  }
+export class HealthService {
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly bullMq: BullMqService,
+  ) {}
 
   async check() {
     const checks: Record<string, { status: string; latencyMs?: number }> = {}
@@ -38,14 +25,22 @@ export class HealthService implements OnModuleDestroy {
     }
 
     const redisStart = Date.now()
+    let timer: NodeJS.Timeout | undefined
     try {
-      const pong = await this.getRedis().ping()
+      const pong = await Promise.race([
+        this.bullMq.redis.ping(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('redis ping timed out')), REDIS_PING_TIMEOUT_MS)
+        }),
+      ])
       checks.redis = {
         status: pong === 'PONG' ? 'up' : 'down',
         latencyMs: Date.now() - redisStart,
       }
     } catch {
       checks.redis = { status: 'down', latencyMs: Date.now() - redisStart }
+    } finally {
+      clearTimeout(timer)
     }
 
     const allUp = Object.values(checks).every((c) => c.status === 'up')
@@ -56,9 +51,5 @@ export class HealthService implements OnModuleDestroy {
       timestamp: new Date().toISOString(),
       checks,
     }
-  }
-
-  onModuleDestroy(): void {
-    this.redis?.disconnect()
   }
 }

@@ -114,11 +114,9 @@ describe('trash lifecycle', () => {
     expect(register.status).toBe(201)
     expect((register.body as { count: number }).count).toBe(1)
 
-    const before = await request(apiServer(t)).get('/api/v1/faces').set(t.authHeader(token))
-    expect(before.status).toBe(200)
-    const beforeItems = (before.body as { items: { assetId: string }[] }).items
-    expect(beforeItems).toHaveLength(1)
-    expect(beforeItems[0]?.assetId).toBe(asset.id)
+    const before = await t.faceRepo.find()
+    expect(before).toHaveLength(1)
+    expect(before[0]?.assetId).toBe(asset.id)
 
     const trash = await request(apiServer(t))
       .post(`/api/v1/assets/${asset.id}/trash`)
@@ -130,9 +128,7 @@ describe('trash lifecycle', () => {
       .set(t.authHeader(token))
     expect(del.status).toBe(200)
 
-    const after = await request(apiServer(t)).get('/api/v1/faces').set(t.authHeader(token))
-    expect(after.status).toBe(200)
-    expect((after.body as { items: unknown[] }).items).toHaveLength(0)
+    expect(await t.faceRepo.find()).toHaveLength(0)
   })
 
   it('keeps a trashed asset retrievable by id until it is permanently deleted', async () => {

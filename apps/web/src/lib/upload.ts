@@ -56,7 +56,7 @@ async function runUploadFlow(ids: string[]): Promise<void> {
   // Phase 1: hash every file through the shared worker pool (fail-open miss on null).
   // hashFile is time-bounded and never rejects, but the outer catch keeps any unexpected
   // throw (store access, bookkeeping) from swallowing the upload lane below.
-  const hashed: { id: string; checksumSha256: string; sizeBytes: number }[] = []
+  const hashed: { id: string; checksumSha256: string }[] = []
   try {
     await Promise.all(
       hashableIds.map(async (id) => {
@@ -72,7 +72,7 @@ async function runUploadFlow(ids: string[]): Promise<void> {
         }
         if (checksum) {
           checksumsRef.set(id, checksum)
-          hashed.push({ id, checksumSha256: checksum, sizeBytes: file.size })
+          hashed.push({ id, checksumSha256: checksum })
         }
       }),
     )
@@ -84,7 +84,7 @@ async function runUploadFlow(ids: string[]): Promise<void> {
   if (hashed.length > 0) {
     try {
       const results = await checkFilesExist(
-        hashed.map(({ checksumSha256, sizeBytes }) => ({ checksumSha256, sizeBytes })),
+        hashed.map(({ checksumSha256 }) => ({ checksumSha256 })),
       )
       const byChecksum = new Map(results.map((result) => [result.checksumSha256, result]))
       for (const entry of hashed) {

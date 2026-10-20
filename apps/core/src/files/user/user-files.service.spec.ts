@@ -52,11 +52,7 @@ function registerDto(partial: Partial<RegisterFileBodyDto> & { id: string }): Re
 
 // naturals: every findOne without an id in `where`, consumed in call order (fast path first,
 // winner re-read later); byId: every findOne by id (the insert-arbitration read).
-function makeUploadService(scenario: {
-  naturals: (FileRecord | null)[]
-  byId: FileRecord | null
-  existingAsset?: Asset | null
-}) {
+function makeUploadService(scenario: { naturals: (FileRecord | null)[]; byId: FileRecord | null }) {
   const queue = [...scenario.naturals]
   const fileFindOne = vi.fn((opts?: { where?: { id?: string } }): Promise<FileRecord | null> => {
     if (typeof opts?.where?.id === 'string') return Promise.resolve(scenario.byId)
@@ -83,15 +79,12 @@ function makeUploadService(scenario: {
     ),
   } as unknown as LocalStorageService
 
-  const assetFindOne = vi.fn(
-    (): Promise<Asset | null> => Promise.resolve(scenario.existingAsset ?? null),
-  )
   const assetCreate =
     vi.fn<(userId: string, dto: { fileId: string; kind?: string }) => Promise<AssetResponse>>()
   assetCreate.mockResolvedValue({ id: 'asset-new' } as AssetResponse)
   const service = new UserFilesService(
     fileRepo,
-    { findOne: assetFindOne } as unknown as Repository<Asset>,
+    { findOne: vi.fn() } as unknown as Repository<Asset>,
     storage,
     { create: assetCreate } as unknown as AssetsService,
     {
@@ -116,28 +109,6 @@ describe('UserFilesService upload race', () => {
     expect(save).toHaveBeenCalledOnce()
     expect(remove).toHaveBeenCalledWith(save.mock.calls[0]?.[0])
     expect(assetCreate.mock.calls[0]?.[1]?.fileId).toBe('winner-1')
-  })
-
-  it('dedup hit with an existing asset throws the additive 409 envelope', async () => {
-    const existingFile = fileRow({ id: 'file-dup' })
-    const { service, save } = makeUploadService({
-      naturals: [existingFile],
-      byId: null,
-      existingAsset: { id: 'asset-dup' } as Asset,
-    })
-    const caught: unknown = await service.upload('u1', await tmpUpload()).then(
-      () => null,
-      (e: unknown) => e,
-    )
-    expect(caught).toBeInstanceOf(ConflictException)
-    expect((caught as ConflictException).getResponse()).toEqual({
-      statusCode: 409,
-      message: 'File already uploaded',
-      existingAssetId: 'asset-dup',
-      existingFileId: 'file-dup',
-    })
-    // the fast path already found the bytes — no re-store, no asset creation
-    expect(save).not.toHaveBeenCalled()
   })
 
   it('winner keeps its bytes and never deletes', async () => {
@@ -260,10 +231,7 @@ describe('UserFilesService.existsMany', () => {
 
   it('dedupes repeated checksums server-side', async () => {
     const { service, fileFind, assetFind } = hitScenario()
-    const res = await service.existsMany('u1', [
-      { checksumSha256: HIT },
-      { checksumSha256: HIT, sizeBytes: 5 },
-    ])
+    const res = await service.existsMany('u1', [{ checksumSha256: HIT }, { checksumSha256: HIT }])
     expect(fileFind).toHaveBeenCalledOnce()
     expect(assetFind).toHaveBeenCalledOnce()
     expect(res).toEqual([
@@ -316,7 +284,7 @@ describe('UserFilesService.existsMany', () => {
   })
 })
 
-// fileRepo stubs for GET /files/quota: one raw SUM row (or no row at all)
+// fileRepo stubs for UserFilesService.storageQuota: one raw SUM row (or no row at all)
 function makeQuotaService(used: string | null) {
   const getRawOne = vi.fn(() => Promise.resolve(used === null ? undefined : { used }))
   const qb = {

@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, In, LessThanOrEqual, type QueryRunner, type Repository } from 'typeorm'
+import { isUUID } from 'class-validator'
 import { createHash, randomUUID } from 'node:crypto'
 import { once } from 'node:events'
 import { createReadStream, createWriteStream } from 'node:fs'
@@ -36,8 +37,8 @@ import type { CreateUploadSessionBodyDto } from './dto/create-upload-session.bod
 // Resumable chunked upload sessions (`api/v1/uploads`): create with the total size, PUT 8 MiB
 // parts in any order, then `complete` assembles them into one temp file, dedups by checksum and
 // hands off to the shared persistOriginal/createAsset/enqueue path. Nothing about the client's
-// bytes is trusted: storage keys are built from ids only (originalName/mimeHint are display
-// hints), the MIME type is sniffed from the assembled head and the checksum is recomputed.
+// bytes is trusted: storage keys are built from ids only (originalName is a display hint), the
+// MIME type is sniffed from the assembled head and the checksum is recomputed.
 export const UPLOAD_CHUNK_SIZE_BYTES = 8 * 1024 * 1024
 export const UPLOAD_MAX_SIZE_BYTES = 4 * 1024 * 1024 * 1024
 export const UPLOAD_MAX_ACTIVE_SESSIONS = 5
@@ -50,8 +51,6 @@ const UPLOAD_SESSIONS_KEY = 'upload-sessions'
 
 // statuses that still hold a slot in the per-user active-session cap
 const ACTIVE_STATUSES: UploadSessionStatus[] = ['pending', 'assembling', 'assembled']
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // P0-B envelope style: machine-readable `code` (plus extras such as receivedParts) next to
 // statusCode/message on the exception body the HttpExceptionFilter serializes verbatim
@@ -167,7 +166,6 @@ export class UploadsService {
     session.expectedSizeBytes = body.sizeBytes
     session.checksumSha256 = body.checksumSha256?.toLowerCase() ?? null
     session.originalName = body.originalName
-    session.mimeHint = body.mimeHint ?? null
     session.title = body.title ?? null
     session.description = body.description ?? null
     session.takenAt = body.takenAt ? new Date(body.takenAt) : null
@@ -215,7 +213,7 @@ export class UploadsService {
       )
     }
     const partIndex = Number(indexRaw)
-    if (!UUID_RE.test(uploadId)) throw new NotFoundException('Upload session not found')
+    if (!isUUID(uploadId)) throw new NotFoundException('Upload session not found')
     const checksum = createHash('sha256').update(body).digest('hex')
 
     return this.withLockedSession(userId, uploadId, async (runner, session) => {
@@ -292,7 +290,7 @@ export class UploadsService {
 
   // POST /api/v1/uploads/:id/complete
   async complete(userId: string, uploadId: string): Promise<UploadCompleteResponse> {
-    if (!UUID_RE.test(uploadId)) throw new NotFoundException('Upload session not found')
+    if (!isUUID(uploadId)) throw new NotFoundException('Upload session not found')
 
     return this.withLockedSession(userId, uploadId, async (runner, session) => {
       if (session.status === 'completed') {
@@ -350,7 +348,7 @@ export class UploadsService {
 
   // DELETE /api/v1/uploads/:id — idempotent: parts CASCADE with the row, bytes are removed here
   async remove(userId: string, uploadId: string): Promise<void> {
-    if (!UUID_RE.test(uploadId)) return
+    if (!isUUID(uploadId)) return
     const session = await this.sessionRepo.findOne({ where: { id: uploadId, userId } })
     if (!session) return
     await this.sessionRepo.delete({ id: session.id })
@@ -610,7 +608,7 @@ export class UploadsService {
 
   private async loadOwned(userId: string, uploadId: string): Promise<UploadSession> {
     // a malformed id must read as missing — the uuid cast would 500 it instead
-    if (!UUID_RE.test(uploadId)) throw new NotFoundException('Upload session not found')
+    if (!isUUID(uploadId)) throw new NotFoundException('Upload session not found')
     const session = await this.sessionRepo.findOne({ where: { id: uploadId, userId } })
     if (!session) throw new NotFoundException('Upload session not found')
     return session

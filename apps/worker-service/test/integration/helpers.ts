@@ -1,9 +1,10 @@
-import { createHash, createHmac, randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { Test } from '@nestjs/testing'
+import { vi } from 'vitest'
 import type { INestApplicationContext } from '@nestjs/common'
 import type { Queue } from 'bullmq'
 import type { Asset, FileRecord } from '@photox/shared-types'
@@ -23,10 +24,10 @@ import { OcrService } from '../../src/queue/ocr.service'
 import { OcrProcessor } from '../../src/queue/ocr.processor'
 import { DetectService } from '../../src/queue/detect.service'
 import { DetectProcessor } from '../../src/queue/detect.processor'
-import { CleanupProcessor } from '../../src/queue/cleanup.processor'
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../fake-core-client'
-import { jobScopeOf } from '../../src/queue/job-schemas'
-import { setupRedis, teardownRedis, TEST_WORKER_SECRET } from './test-setup'
+import { setupRedis, teardownRedis } from './test-setup'
+
+export { signJob } from '../sign-job'
 
 export interface TestApp {
   app: INestApplicationContext
@@ -38,7 +39,7 @@ export interface TestApp {
 
 export interface CreateTestAppOptions {
   detect?: FaceDetectorService['detect']
-  // 'media' wires only the four media processors (thumbnail/video/metadata/face); default all nine
+  // 'media' wires only the four media processors (thumbnail/video/metadata/face); default all eight
   processors?: 'all' | 'media'
 }
 
@@ -72,7 +73,6 @@ export async function createTestApp(opts: CreateTestAppOptions = {}): Promise<Te
           ? []
           : [
               FaceClusterService,
-              CleanupProcessor,
               EmbeddingService,
               EmbeddingProcessor,
               OcrService,
@@ -116,25 +116,7 @@ export async function waitUntil(
   cond: () => boolean | Promise<boolean>,
   timeoutMs = 30_000,
 ): Promise<void> {
-  const start = Date.now()
-  while (Date.now() - start < timeoutMs) {
-    if (await cond()) return
-    await new Promise((r) => setTimeout(r, 100))
-  }
-  throw new Error(`Condition not met within ${timeoutMs}ms`)
-}
-
-// stamp a test job the way core's enqueue does — same scope derivation (jobScopeOf) and HMAC
-// construction, so processor verification passes with the harness secret
-export function signJob<T extends { userId: string; assetId?: string; fileId?: string }>(
-  data: T,
-): T & { sig: string } {
-  const scope = jobScopeOf(data)
-  if (!scope) throw new Error('signJob needs assetId, fileId, or userId')
-  return {
-    ...data,
-    sig: createHmac('sha256', TEST_WORKER_SECRET).update(`${data.userId}:${scope}`).digest('hex'),
-  }
+  await vi.waitUntil(cond, { timeout: timeoutMs, interval: 100 })
 }
 
 export async function waitForJob(
@@ -142,16 +124,17 @@ export async function waitForJob(
   jobId: string,
   timeoutMs = 30_000,
 ): Promise<'completed' | 'failed'> {
-  const start = Date.now()
-  while (Date.now() - start < timeoutMs) {
-    const job = await queue.getJob(jobId)
-    if (job) {
-      const state = await job.getState()
-      if (state === 'completed' || state === 'failed') return state
-    }
-    await new Promise((r) => setTimeout(r, 100))
-  }
-  throw new Error(`Job ${jobId} did not finish in ${timeoutMs}ms`)
+  return vi.waitFor(
+    async () => {
+      const job = await queue.getJob(jobId)
+      const state = job ? await job.getState() : undefined
+      if (state !== 'completed' && state !== 'failed') {
+        throw new Error(`Job ${jobId} did not finish yet`)
+      }
+      return state
+    },
+    { timeout: timeoutMs, interval: 100 },
+  )
 }
 
 export async function seedOriginal(

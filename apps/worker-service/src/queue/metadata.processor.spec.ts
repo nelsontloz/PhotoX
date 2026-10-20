@@ -8,6 +8,7 @@ import { branchFor, MetadataProcessor } from './metadata.processor'
 import type { AssetRefsJob } from './job-schemas'
 import type { CoreClient } from '../core/core-client.service'
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../../test/fake-core-client'
+import { signJob, useTestAuthEnv } from '../../test/sign-job'
 
 describe('branchFor', () => {
   it('branches on the probed mime type', () => {
@@ -31,6 +32,8 @@ describe('MetadataProcessor job guards', () => {
     userId: randomUUID(),
   }
   const fakeJob = (data: unknown) => ({ data }) as unknown as Job<AssetRefsJob>
+
+  beforeEach(useTestAuthEnv)
 
   function setup(
     opts: {
@@ -77,7 +80,7 @@ describe('MetadataProcessor job guards', () => {
       makeAsset({ id: base.assetId, userId: otherUser, fileId: base.fileId }),
     )
 
-    await expect(run(fakeJob(base))).rejects.toBeInstanceOf(UnrecoverableError)
+    await expect(run(fakeJob(signJob(base)))).rejects.toBeInstanceOf(UnrecoverableError)
 
     expect(fake.callsOf('patchMetadata')).toHaveLength(0)
   })
@@ -99,7 +102,7 @@ describe('MetadataProcessor job guards', () => {
         makeAsset({ id: base.assetId, userId: base.userId, fileId: base.fileId }),
       )
 
-      await run(fakeJob(base))
+      await run(fakeJob(signJob(base)))
 
       const patch = fake.callsOf('patchMetadata').at(-1)!.args[1] as { iso: number; status: string }
       expect(patch.iso).toBe(101)
@@ -132,7 +135,7 @@ describe('MetadataProcessor job guards', () => {
         }),
       )
 
-      await run(fakeJob(base))
+      await run(fakeJob(signJob(base)))
 
       const patch = fake.callsOf('patchMetadata').at(-1)!.args[1] as Record<string, unknown>
       expect('takenAt' in patch).toBe(false)
@@ -160,7 +163,7 @@ describe('MetadataProcessor job guards', () => {
         makeAsset({ id: base.assetId, userId: base.userId, fileId: base.fileId }),
       )
 
-      await run(fakeJob(base))
+      await run(fakeJob(signJob(base)))
 
       const patch = fake.callsOf('patchMetadata').at(-1)!.args[1] as Record<string, unknown>
       expect(patch.takenAt).toEqual(takenAt)
@@ -195,7 +198,7 @@ describe('MetadataProcessor job guards', () => {
         }),
       )
 
-      await run(fakeJob(base))
+      await run(fakeJob(signJob(base)))
 
       const patch = fake.callsOf('patchMetadata').at(-1)!.args[1] as Record<string, unknown>
       expect('takenAt' in patch).toBe(false)
@@ -226,7 +229,7 @@ describe('MetadataProcessor job guards', () => {
         makeAsset({ id: base.assetId, userId: base.userId, fileId: base.fileId, kind: 'video' }),
       )
 
-      await run(fakeJob(base))
+      await run(fakeJob(signJob(base)))
 
       const patch = fake.callsOf('patchMetadata').at(-1)!.args[1] as Record<string, unknown>
       expect(patch.takenAt).toEqual(takenAt)

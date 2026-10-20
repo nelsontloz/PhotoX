@@ -290,7 +290,7 @@ Given('I seed OCR text on the uploaded text photo', async ({ request, ctx }) => 
   const { assetId } = uploadByName(ctx, TEXT_FIXTURE)
   const response = await request.post(`/worker/assets/${assetId}/ocr`, {
     headers: workerHeaders(auth.user.id),
-    data: { text: SEEDED_OCR_TEXT, lang: 'eng', confidence: 0.9 },
+    data: { text: SEEDED_OCR_TEXT },
   })
   expect(response.status()).toBe(201)
   // no GET :id/ocr route exists, and /search can't run in the e2e core image (node:22-alpine lacks

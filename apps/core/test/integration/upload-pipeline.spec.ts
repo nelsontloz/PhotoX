@@ -217,38 +217,6 @@ describe('upload pipeline', () => {
     expect(res.body).toEqual({ items: [{ checksumSha256: missing, exists: false }] })
   })
 
-  it('GET /api/v1/files/quota sums the caller originals and reports limit/remaining', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const other = await seedUser(t)
-    // another user's bytes must not count toward the caller's usage
-    await seedFile(t, other.id, { bytes: Buffer.alloc(5000, 'x') })
-    const png = await pngBytes()
-
-    const before = await request(apiServer(t)).get('/api/v1/files/quota').set(t.authHeader(token))
-    // the literal route must win over GET :fileId — a fallthrough would 404
-    expect(before.status).toBe(200)
-    expect(before.body).toEqual({
-      usedBytes: 0,
-      limitBytes: STORAGE_QUOTA_BYTES,
-      remainingBytes: STORAGE_QUOTA_BYTES,
-    })
-
-    const upload = await request(apiServer(t))
-      .post('/api/v1/files')
-      .set(t.authHeader(token))
-      .attach('file', png, 'quota.png')
-    expect(upload.status).toBe(201)
-
-    const after = await request(apiServer(t)).get('/api/v1/files/quota').set(t.authHeader(token))
-    expect(after.status).toBe(200)
-    expect(after.body).toEqual({
-      usedBytes: png.length,
-      limitBytes: STORAGE_QUOTA_BYTES,
-      remainingBytes: STORAGE_QUOTA_BYTES - png.length,
-    })
-  })
-
   it('stores the sniffed mime even when the client contentType lies', async () => {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })

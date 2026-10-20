@@ -13,7 +13,6 @@ import type {
   RegisterDetectionsRequestDto,
   RegisterEmbeddingRequestDto,
   RegisterOcrRequestDto,
-  Role,
 } from '@photox/shared-types'
 
 export type MetadataPatch = Partial<
@@ -115,12 +114,12 @@ export class CoreClient {
   constructor(private readonly jwt: JwtService) {}
 
   // ponytail: per-job delegated JWT — core's worker guard scopes every call by sub, so worker
-  // never needs DB access
-  private signToken(sub: string, role: Role): string {
+  // never needs DB access. Worker tokens are always role 'user'.
+  private signToken(sub: string): string {
     return this.jwt.sign(
       // act (RFC 8693) marks every token as worker-origin — core's guard only lets act
       // tokens reach the admin allowlist in core's auth/open-routes.ts
-      { sub, email: 'worker@internal', role, act: { sub: 'worker-service' } },
+      { sub, email: 'worker@internal', role: 'user', act: { sub: 'worker-service' } },
       {
         algorithm: 'HS256',
         expiresIn: loadEnv().AUTH_ACCESS_TTL as JwtSignOptions['expiresIn'],
@@ -304,17 +303,13 @@ export class CoreClient {
     return this.request('POST', '/worker/persons/prune-empty', { sub: userId, ...binding })
   }
 
-  async deleteOwnedFile(userId: string, fileId: string, binding?: JobBinding): Promise<void> {
-    await this.request('DELETE', `/worker/files/${fileId}`, { sub: userId, ...binding })
-  }
-
   private async request<T>(
     method: 'GET' | 'PATCH' | 'POST' | 'DELETE',
     path: string,
-    opts: { sub: string; role?: Role; body?: unknown; sig?: string; scope?: string },
+    opts: { sub: string; body?: unknown; sig?: string; scope?: string },
     timeoutMs = REQUEST_TIMEOUT_MS,
   ): Promise<T> {
-    const token = this.signToken(opts.sub, opts.role ?? 'user')
+    const token = this.signToken(opts.sub)
     const hasBody = opts.body !== undefined
 
     let res: Response

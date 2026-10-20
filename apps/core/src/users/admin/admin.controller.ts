@@ -110,7 +110,7 @@ export class AdminController {
 
   @Get(':id/delete-status')
   @ApiOperation({ summary: 'Poll async user-deletion state (admin-only)' })
-  @ApiResponse({ status: 200, description: 'Job state plus queue counts' })
+  @ApiResponse({ status: 200, description: 'Job state plus the kept backup prefix' })
   @ApiResponse({ status: 404, description: 'User not found and no finished run recorded' })
   async deleteStatus(@Param() params: AdminUserIdParamsDto): Promise<AdminUserDeleteStatus> {
     return this.admin.getUserDeleteStatus(params.id)

@@ -5,6 +5,12 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // the hash worker is the only importer of @noble/hashes — without this the dev server
+  // discovers it mid-session, re-optimizes the deps and force-reloads the page, which kills
+  // an in-flight upload (the e2e stack runs the dev server)
+  optimizeDeps: {
+    include: ['@noble/hashes/sha2'],
+  },
   build: {
     rollupOptions: {
       output: {

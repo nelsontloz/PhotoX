@@ -19,7 +19,6 @@ import { ListAssetsQueryDto } from '../assets/dto/list-assets-query.dto'
 import { RegisterThumbnailDto } from '../assets/dto/register-thumbnail.dto'
 import { UserFilesService } from '../files/user/user-files.service'
 import { RegisterFileBodyDto } from '../files/user/dto/register-file.body.dto'
-import { AdminService as FilesAdminService } from '../files/admin/admin.service'
 import { FacesService } from '../faces/faces.service'
 import { RegisterFacesDto } from '../faces/dto/register-faces.dto'
 import { PersonsService } from '../persons/persons.service'
@@ -47,7 +46,6 @@ export class WorkerController {
     private readonly embeddings: EmbeddingsService,
     private readonly ocr: OcrService,
     private readonly detections: DetectionsService,
-    private readonly adminFiles: FilesAdminService,
   ) {}
 
   @Get('assets')
@@ -162,11 +160,6 @@ export class WorkerController {
   async listFaces(@Query() q: ListFacesQueryDto, @CurrentUserId() userId: string) {
     const includeEmbeddings = q.includeEmbeddings ?? false
     const excludeTrashed = q.excludeTrashed ?? false
-    // deprecated fallback: no limit/cursor keeps the old unpaginated { items } shape green
-    if (q.limit === undefined && q.cursor === undefined) {
-      const items = await this.faces.listForUser(userId, includeEmbeddings, excludeTrashed)
-      return { items }
-    }
     return this.faces.listForUserPaginated(userId, {
       limit: q.limit ?? 500,
       cursor: q.cursor,
@@ -187,14 +180,5 @@ export class WorkerController {
   @ApiOperation({ summary: 'Worker delete of persons with no live faces' })
   async pruneEmpty(@CurrentUserId() userId: string): Promise<{ deleted: number }> {
     return this.persons.pruneEmpty(userId)
-  }
-
-  @Delete('files/:fileId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Worker delete of a file bound to the job user (cleanup-asset)' })
-  @ApiResponse({ status: 204, description: 'File deleted' })
-  @ApiResponse({ status: 404, description: 'File not found or not owned by the job user' })
-  async deleteFile(@Param('fileId') fileId: string, @CurrentUserId() userId: string) {
-    await this.adminFiles.deleteFile(fileId, userId)
   }
 }

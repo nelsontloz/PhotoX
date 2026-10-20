@@ -15,25 +15,11 @@ import { CurrentUserId } from '../auth/jwt-auth.guard'
 import { FacesService } from './faces.service'
 import { AssignPersonDto } from './dto/assign-person.dto'
 import { FaceThumbQueryDto } from './dto/face-thumb-query.dto'
-import { isQueryTrue } from '../common/query-params'
 
 @ApiTags('faces-query')
 @Controller('api/v1/faces')
 export class FacesQueryController {
   constructor(private readonly faces: FacesService) {}
-
-  @Get()
-  @ApiOperation({ summary: 'List faces for a user (used by cluster job)' })
-  @ApiResponse({ status: 200, description: 'Face list' })
-  async list(
-    @Query('includeEmbeddings') includeEmbeddings: string | undefined,
-    @Query('excludeTrashed') excludeTrashed: string | undefined,
-    @CurrentUserId() userId: string,
-  ) {
-    const wantEmbeddings = isQueryTrue(includeEmbeddings)
-    const items = await this.faces.listForUser(userId, wantEmbeddings, isQueryTrue(excludeTrashed))
-    return { items }
-  }
 
   @Get(':id/thumb')
   @ApiOperation({ summary: 'Crop a face thumbnail from the source asset on demand' })
