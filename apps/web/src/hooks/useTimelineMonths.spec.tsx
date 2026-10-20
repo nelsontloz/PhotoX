@@ -102,7 +102,6 @@ describe('useTimelineMonths', () => {
     act(() => {
       useAppStore.setState({ timelineRefreshKey: 1 })
     })
-    expect(result.current.refreshKey).toBe(1)
     expect(result.current.groups).toHaveLength(1)
 
     listAllAssetsMock.mockResolvedValue([makeAsset('b', '2024-05-20T10:00:00Z')])

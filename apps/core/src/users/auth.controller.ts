@@ -47,7 +47,8 @@ export class AuthController {
     req: Request,
   ): void {
     const secure = isSecureRequest(req)
-    setAccessCookie(res, accessToken, this.tokenService.accessCookieMaxAge(accessToken), secure)
+    const maxAgeMs = this.tokenService.expiresInSeconds(accessToken) * 1000
+    setAccessCookie(res, accessToken, maxAgeMs, secure)
     setRefreshCookie(res, refreshToken, loadEnv().AUTH_REFRESH_TTL, secure)
   }
 

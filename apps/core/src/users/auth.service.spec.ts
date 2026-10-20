@@ -32,7 +32,7 @@ function makeRegisterService(save: () => Promise<never> | Promise<unknown>) {
     {} as never,
     {
       signAccessToken: vi.fn(() => Promise.resolve('access')),
-      accessTokenExpiresIn: () => 1800,
+      expiresInSeconds: () => 1800,
       generate: () => 'raw',
       hash: () => 'hash',
       getRefreshExpiresAt: () => new Date(),
@@ -90,7 +90,7 @@ function makeRefreshService(opts: {
       generate: () => 'raw-refresh',
       getRefreshExpiresAt: () => new Date(Date.now() + 1000),
       signAccessToken: vi.fn(() => Promise.resolve('access')),
-      accessTokenExpiresIn: () => 1800,
+      expiresInSeconds: () => 1800,
     } as unknown as TokenService,
     { consume: vi.fn(() => Promise.resolve()) } as unknown as RateLimitService,
   )

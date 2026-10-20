@@ -48,12 +48,8 @@ export class OcrProcessor implements OnModuleInit {
         await this.core.registerOcr(
           data.userId,
           data.assetId,
-          {
-            text: extracted.text,
-            // language detection is out of scope — the v6 model is multilingual, null is the honest value
-            lang: null,
-            confidence: extracted.confidence,
-          },
+          // the v6 model is multilingual and we store no language/confidence columns — text only
+          { text: extracted.text },
           bindingOf(data),
         )
 

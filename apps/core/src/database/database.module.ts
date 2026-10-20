@@ -1,9 +1,8 @@
-import { Module, Global, Logger } from '@nestjs/common'
+import { Global, Injectable, Logger, Module, type OnApplicationBootstrap } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { DataSource } from 'typeorm'
-import { randomUUID } from 'crypto'
 import { loadEnv } from '@photox/shared-config'
-import { hashPassword } from '../users/password'
+import { insertAdminUser } from '../scripts/admin-seed'
 
 // ponytail: 512 is the InsightFace buffalo_l w600k_r50 output dim.
 // Index rebuild fails while legacy 1024-dim rows remain (warn-caught) — the cluster re-embed backfill converts them.
@@ -47,62 +46,53 @@ const BOOTSTRAP_SQL: { warn: string; statements: string[] }[] = [
   },
 ]
 
-const VECTOR_INIT_PROVIDER = {
-  provide: 'VECTOR_INIT',
-  useFactory: (dataSource: DataSource) => {
-    return {
-      onApplicationBootstrap: async () => {
-        const logger = new Logger('DatabaseModule')
-        for (const step of BOOTSTRAP_SQL) {
-          try {
-            for (const sql of step.statements) await dataSource.query(sql)
-          } catch {
-            logger.warn(step.warn)
-          }
-        }
-      },
+@Injectable()
+export class VectorInitService implements OnApplicationBootstrap {
+  private readonly logger = new Logger('DatabaseModule')
+
+  constructor(private readonly dataSource: DataSource) {}
+
+  async onApplicationBootstrap(): Promise<void> {
+    for (const step of BOOTSTRAP_SQL) {
+      try {
+        for (const sql of step.statements) await this.dataSource.query(sql)
+      } catch {
+        this.logger.warn(step.warn)
+      }
     }
-  },
-  inject: [DataSource],
+  }
 }
 
 // Env-gated admin seed (same direct-process.env precedent as WORKER_SERVICE_PORT, not zod): empty
 // env is a no-op so dev/CI are untouched; the e2e compose stack sets both. Seeding here (not open
 // registration) is the only way to mint an admin now that registration always yields 'user'.
-// Exported for the unit spec; wired below.
-export const ADMIN_SEED_PROVIDER = {
-  provide: 'ADMIN_SEED',
-  useFactory: (dataSource: DataSource) => {
-    return {
-      onApplicationBootstrap: async () => {
-        const logger = new Logger('DatabaseModule')
-        const email = process.env.ADMIN_EMAIL
-        const password = process.env.ADMIN_PASSWORD
-        if (!email && !password) return
-        if (!email || !password) {
-          logger.warn('ADMIN_EMAIL/ADMIN_PASSWORD partially set — skipping admin seed')
-          return
-        }
-        try {
-          const existing: unknown[] = await dataSource.query(
-            `SELECT 1 FROM users WHERE role = 'admin' LIMIT 1`,
-          )
-          if (existing.length > 0) return
-          await dataSource.query(
-            `INSERT INTO users (id, email, role, "passwordHash", "displayName") ` +
-              `VALUES ($1, $2, 'admin', $3, 'Administrator')`,
-            [randomUUID(), email, await hashPassword(password)],
-          )
-          logger.log(`Seeded admin user ${email} from ADMIN_EMAIL`)
-        } catch {
-          logger.warn(
-            'Admin seed failed — register a user and promote it, or retry with ADMIN_* set',
-          )
-        }
-      },
+@Injectable()
+export class AdminSeedService implements OnApplicationBootstrap {
+  private readonly logger = new Logger('DatabaseModule')
+
+  constructor(private readonly dataSource: DataSource) {}
+
+  async onApplicationBootstrap(): Promise<void> {
+    const email = process.env.ADMIN_EMAIL
+    const password = process.env.ADMIN_PASSWORD
+    if (!email && !password) return
+    if (!email || !password) {
+      this.logger.warn('ADMIN_EMAIL/ADMIN_PASSWORD partially set — skipping admin seed')
+      return
     }
-  },
-  inject: [DataSource],
+    try {
+      const existing: unknown[] = await this.dataSource.query(
+        `SELECT 1 FROM users WHERE role = 'admin' LIMIT 1`,
+      )
+      if (existing.length > 0) return
+      await insertAdminUser(this.dataSource, email, password)
+      this.logger.log(`Seeded admin user ${email} from ADMIN_EMAIL`)
+    } catch {
+      this.logger.warn(
+        'Admin seed failed — register a user and promote it, or retry with ADMIN_* set',
+      )
+    }
+  }
 }
 
 @Global()
@@ -131,7 +121,7 @@ export class DatabaseModule {
           retryDelay: 3000,
         }),
       ],
-      providers: [VECTOR_INIT_PROVIDER, ADMIN_SEED_PROVIDER],
+      providers: [VectorInitService, AdminSeedService],
       exports: [TypeOrmModule],
     }
   }

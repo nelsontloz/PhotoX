@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { FaChevronLeft, FaChevronRight, FaImage, FaSpinner } from 'react-icons/fa6'
 import type { Asset, AssetDetectionDto, FaceDto } from '@photox/shared-types'
+import { getFileStreamUrl } from '../../api/assets'
 import { FaceOverlay } from './FaceOverlay'
 import { DetectionOverlay } from './DetectionOverlay'
 import { summarizeDetections } from './detectionView'
@@ -16,15 +17,8 @@ const TRANSPARENT_PIXEL =
   'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
 
 interface ViewerMediaProps {
-  isVideo: boolean
-  videoSrc: string | null
-  videoFallbackSrc: string | undefined
-  videoType?: string
-  videoFallbackType?: string
   videoPoster: string | undefined
-  videoTitle: string | undefined
   imageUrl: string | null
-  imageAlt: string
   loading: boolean
   placeholderUrl?: string | null
   hasPrev: boolean
@@ -42,15 +36,8 @@ interface ViewerMediaProps {
 }
 
 export function ViewerMedia({
-  isVideo,
-  videoSrc,
-  videoFallbackSrc,
-  videoType,
-  videoFallbackType,
   videoPoster,
-  videoTitle,
   imageUrl,
-  imageAlt,
   loading,
   placeholderUrl,
   hasPrev,
@@ -67,6 +54,20 @@ export function ViewerMedia({
   onSelectSibling,
 }: ViewerMediaProps) {
   const faces: FaceDto[] = asset.faces ?? []
+  // Every media field is a function of the asset; only the resolved URLs/progress are runtime state.
+  const isVideo = asset.kind === 'video'
+  const videoSrc = isVideo ? getFileStreamUrl(asset.transcodeFileId ?? asset.fileId) : null
+  const videoFallbackSrc =
+    isVideo && asset.transcodeFileId ? getFileStreamUrl(asset.fileId) : undefined
+  // video.js picks a source via canPlayType(type); the transcode is always AV1-in-webm.
+  const videoType = isVideo
+    ? asset.transcodeFileId
+      ? 'video/webm'
+      : (asset.mimeType ?? undefined)
+    : undefined
+  const videoFallbackType = isVideo ? (asset.mimeType ?? undefined) : undefined
+  const videoTitle = asset.title ?? asset.originalName ?? undefined
+  const imageAlt = asset.originalName ?? asset.title ?? 'Photo'
   const dims =
     asset.width != null && asset.height != null ? { w: asset.width, h: asset.height } : null
   const showOverlay = infoOpen && !isVideo && imageUrl != null && dims != null && faces.length > 0

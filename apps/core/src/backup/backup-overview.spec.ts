@@ -605,9 +605,7 @@ describe('backupOverview', () => {
       notBackedUp: 4,
       deleted: false,
     })
-    expect(rows[0]!.backupUserId).toBeUndefined()
     expect(rows[0]!.prefix).toBeUndefined()
-    expect(rows[0]!.mergedAt).toBeUndefined()
     expect(rows[0]!.legacyBackups).toHaveLength(1)
     expect(rows[0]!.legacyBackups![0]).toMatchObject({
       userId: orphanId,
@@ -643,7 +641,6 @@ describe('backupOverview', () => {
       exists: false,
       backedUpAssets: 0,
     })
-    expect(rows[0]!.backupUserId).toBeUndefined()
     expect(rows[0]!.legacyBackups).toHaveLength(1)
     expect(rows[0]!.legacyBackups![0]).toMatchObject({
       userId: orphanId,
@@ -711,9 +708,7 @@ describe('backupOverview', () => {
       exists: true,
       deleted: false,
     })
-    expect(row.backupUserId).toBeUndefined()
     expect(row.prefix).toBeUndefined()
-    expect(row.mergedAt).toBeUndefined()
     expect(row.legacyBackups).toHaveLength(1)
     expect(row.legacyBackups![0]).toMatchObject({
       userId: orphanId,
@@ -764,7 +759,6 @@ describe('backupOverview', () => {
       backedUpAssets: 0,
       backedUpFiles: 0,
     })
-    expect(rows[0]!.backupUserId).toBeUndefined()
     expect(rows[0]!.prefix).toBeUndefined()
     expect(rows[0]!.legacyBackups).toHaveLength(2)
     expect(rows[0]!.legacyBackups![0]).toMatchObject({
@@ -794,7 +788,6 @@ describe('backupOverview', () => {
       deleted: false,
     })
     expect(rows[0]!.degraded).toBeUndefined()
-    expect(rows[0]!.backupUserId).toBeUndefined()
     expect(rows[0]!.legacyBackups).toHaveLength(1)
     expect(rows[0]!.legacyBackups![0]).toMatchObject({
       userId: orphanId,

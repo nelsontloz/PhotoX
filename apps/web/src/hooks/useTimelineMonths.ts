@@ -30,8 +30,6 @@ export interface UseTimelineMonthsResult {
    * does not re-render.
    */
   retainMonths: (keys: readonly string[]) => void
-  /** Current `timelineRefreshKey` — bumping it makes TimelineGrid re-trigger ensureMonth for visible months */
-  refreshKey: number
 }
 
 /**
@@ -48,7 +46,6 @@ export function useTimelineMonths({
   favorite,
   albumId,
 }: AssetFilters = {}): UseTimelineMonthsResult {
-  const refreshKey = useAppStore((s) => s.timelineRefreshKey)
   const [entries, setEntries] = useState<Map<string, MonthEntry>>(() => new Map())
   // sync mirror of `entries` so ensureMonth reads fresh data without waiting for a re-render
   const entriesRef = useRef(entries)
@@ -157,5 +154,5 @@ export function useTimelineMonths({
     return status
   }, [entries])
 
-  return { groups, monthStatus, ensureMonth, retainMonths, refreshKey }
+  return { groups, monthStatus, ensureMonth, retainMonths }
 }

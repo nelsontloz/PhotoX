@@ -14,9 +14,8 @@ import { DataSource } from 'typeorm'
 import { loadAuthEnv, loadEnv } from '@photox/shared-config'
 import type { JwtPayload, Role } from '@photox/shared-types'
 import { readAccessCookie, isSecureRequest, setAccessCookie } from './auth-cookie'
-import { isAdminRoute, isOpenRoute, isWorkerAllowedRoute, isWorkerRoute } from './open-routes'
+import { isAdminRoute, isOpenRoute, isWorkerRoute } from './open-routes'
 import { User } from '../users/entities/user.entity'
-import { WORKER_ONLY_METADATA_KEYS } from '../assets/dto/update-metadata.dto'
 
 declare global {
   // ponytail: replaces the passport Request.user augmentation removed with passport
@@ -24,8 +23,6 @@ declare global {
   namespace Express {
     interface Request {
       user?: { id: string; email: string; role: Role }
-      // set when the token verified under WORKER_JWT_SECRET rather than the user secret
-      workerOrigin?: boolean
     }
   }
 }
@@ -55,10 +52,6 @@ function isActListRead(req: Request): boolean {
   return typeof ids === 'string' ? ids.length > 0 : Array.isArray(ids) && ids.length > 0
 }
 
-function isUserMetadataWrite(method: string, path: string): boolean {
-  return method === 'PATCH' && /^\/api\/v1\/assets\/[^/]+\/metadata$/.test(path)
-}
-
 // candidate scopes for the HMAC binding, in request-priority order: the route target
 // (path id/fileId), then the register-file body asset, then the worker's claimed scope,
 // else the sub itself (persons routes, whose cluster jobs are user-scoped). The enqueue
@@ -76,13 +69,6 @@ function jobScopesFrom(req: Request, sub: string): string[] {
     if (typeof v === 'string' && v.length > 0 && !scopes.includes(v)) scopes.push(v)
   }
   return scopes
-}
-
-// req.body is parsed by express.json() before guards run; absent on unit-test mocks
-function hasWorkerMetadataKey(body: unknown): boolean {
-  if (!body || typeof body !== 'object') return false
-  const workerKeys: readonly string[] = WORKER_ONLY_METADATA_KEYS
-  return Object.keys(body).some((k) => workerKeys.includes(k))
 }
 
 @Injectable()
@@ -105,7 +91,7 @@ export class JwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<Request>()
-    const { method, path } = req
+    const { path } = req
     if (isOpenRoute(path)) return true
 
     // explicit credentials win: the Authorization header is a deliberate, request-scoped
@@ -141,7 +127,6 @@ export class JwtAuthGuard implements CanActivate {
     if (!payload) {
       throw new UnauthorizedException()
     }
-    if (workerOrigin) req.workerOrigin = true
     // a worker-secret token without act borrows no identity: even with a real sub it never
     // reaches the floor check (every legit CoreClient token carries act, so nothing breaks)
     if (workerOrigin && !payload.act) throw new UnauthorizedException()
@@ -180,12 +165,8 @@ export class JwtAuthGuard implements CanActivate {
     // worker-actor tokens (act claim, RFC 8693) may reach only the worker job surface —
     // no admin route is worker-reachable; the user list-by-ids read stays act-usable for
     // worker ranking fetches
-    if (payload.act && !isWorkerAllowedRoute(path) && !isActListRead(req))
+    if (payload.act && !isWorkerRoute(path) && !isActListRead(req))
       throw new ForbiddenException('Not allowed for service tokens')
-    // non-act callers may not smuggle worker-only extraction fields through the user metadata
-    // endpoint — the whitelist would only 400 them, hiding a worker-contract violation
-    if (!payload.act && isUserMetadataWrite(method, path) && hasWorkerMetadataKey(req.body))
-      throw new ForbiddenException('Worker field')
     // ponytail: HMAC job binding — a worker-origin token alone proves only delegation, not that
     // a job was enqueued for this target; every /worker/* call (reads included — a forged
     // act token otherwise reads any victim row) must carry the X-Job-Signature the enqueue

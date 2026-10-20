@@ -3,13 +3,10 @@ import type { Request, Response } from 'express'
 export const ACCESS_COOKIE = 'photox_access'
 export const REFRESH_COOKIE = 'photox_refresh'
 
-// ponytail: Secure is per-request, not a constant — trust-proxy-1 is set, so req.secure follows
-// X-Forwarded-Proto and plain-HTTP host dev keeps working while https gets Secure cookies
+// ponytail: trust-proxy-1 is set in main.ts, so req.secure already follows
+// X-Forwarded-Proto — plain-HTTP host dev keeps working while https gets Secure cookies
 export function isSecureRequest(req: Request): boolean {
-  if (req.secure) return true
-  const proto = req.headers['x-forwarded-proto']
-  const first = Array.isArray(proto) ? proto[0] : proto?.split(',')[0]
-  return first?.trim().toLowerCase() === 'https'
+  return req.secure
 }
 
 function attrs(secure: boolean, path: string, maxAge?: number) {

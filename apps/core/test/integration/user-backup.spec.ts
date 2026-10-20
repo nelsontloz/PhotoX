@@ -88,10 +88,6 @@ class FakeS3BackupService {
     // in-memory stand-in — nothing to provision
   }
 
-  getBucket(): string {
-    return 'photox-test-backups'
-  }
-
   putObject(key: string, body: Buffer): Promise<void> {
     this.ops.push({ op: 'putObject', key })
     this.objects.set(key, Buffer.from(body))
@@ -142,22 +138,11 @@ class FakeS3BackupService {
     return Promise.resolve()
   }
 
-  async copyPrefix(
-    srcPrefix: string,
-    dstPrefix: string,
-  ): Promise<{ copied: number; skipped: number }> {
-    const keys = await this.listKeys(srcPrefix)
-    let copied = 0
-    let skipped = 0
-    for (const key of keys) {
-      if (key.endsWith('/manifest.json')) {
-        skipped += 1
-        continue
-      }
+  async copyPrefix(srcPrefix: string, dstPrefix: string): Promise<void> {
+    for (const key of await this.listKeys(srcPrefix)) {
+      if (key.endsWith('/manifest.json')) continue
       await this.copyKey(key, `${dstPrefix}${key.slice(srcPrefix.length)}`)
-      copied += 1
     }
-    return { copied, skipped }
   }
 
   async downloadToFile(key: string, destPath: string): Promise<void> {
@@ -169,14 +154,12 @@ class FakeS3BackupService {
     return Promise.resolve([...this.objects.keys()].filter((k) => k.startsWith(prefix)))
   }
 
-  deleteKey(key: string): Promise<void> {
-    this.ops.push({ op: 'deleteKey', key })
-    this.objects.delete(key)
+  deleteKeys(keys: string[]): Promise<void> {
+    for (const key of keys) {
+      this.ops.push({ op: 'deleteKey', key })
+      this.objects.delete(key)
+    }
     return Promise.resolve()
-  }
-
-  async deleteKeys(keys: string[]): Promise<void> {
-    for (const key of keys) await this.deleteKey(key)
   }
 }
 
@@ -1667,11 +1650,9 @@ describe('user backup round-trip', () => {
         backedUpAssets: 1,
         backedUpFiles: 1,
       })
-      // live rows never carry prefix/backupUserId/mergedAt — only orphans and
-      // legacyBackups snapshots do; the adopted backup is the live row itself
-      expect(row.backupUserId).toBeUndefined()
+      // live rows never carry prefix/legacyBackups — only orphans and snapshot
+      // sub-rows do; the adopted backup is the live row itself
       expect(row.prefix).toBeUndefined()
-      expect(row.mergedAt).toBeUndefined()
       expect(row.legacyBackups).toBeUndefined()
       await expect(svc.backupStatus(email)).resolves.toMatchObject({ exists: true, files: 1 })
 

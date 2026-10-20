@@ -290,11 +290,9 @@ export interface RegisterEmbeddingRequestDto {
 }
 
 // Wire contract for POST /api/v1/assets/:id/ocr — the worker registers ONE concatenated text row
-// per asset (asset_ocr PK is assetId); text/lang/confidence are enforced core-side with 422
+// per asset (asset_ocr PK is assetId); text is enforced core-side with 422
 export interface RegisterOcrRequestDto {
   text: string
-  lang: string | null
-  confidence: number | null
 }
 
 // Wire contracts for POST/GET /api/v1/assets/:id/detections — box is ORIGINAL-image pixel coords.
@@ -369,21 +367,6 @@ export interface PersonListResponse {
   offset: number
 }
 
-export interface PersonAssetItem {
-  assetId: string
-  faceId: string
-  uploadedAt: string
-  faceCount: number
-}
-
-export interface PersonAssetsResponse {
-  personId: string
-  items: PersonAssetItem[]
-  total: number
-  limit: number
-  offset: number
-}
-
 export interface UpdatePersonRequest {
   name: string | null
 }
@@ -392,7 +375,6 @@ export interface UpdatePersonRequest {
 // already uploaded; response preserves input order (exists=false rows carry no ids)
 export interface FileExistsCheckItem {
   checksumSha256: string
-  sizeBytes?: number
 }
 
 export interface FileExistsCheckHit {
@@ -440,16 +422,6 @@ export type UploadSessionErrorCode =
   | 'CHECKSUM_MISMATCH'
   | 'UNSUPPORTED_TYPE'
   | 'ENQUEUE_FAILED'
-
-export interface CreateUploadSessionBody {
-  sizeBytes: number
-  originalName: string
-  checksumSha256?: string
-  mimeHint?: string
-  title?: string
-  description?: string
-  takenAt?: string
-}
 
 // POST /api/v1/uploads — chunkSizeBytes/totalParts are server-fixed (8 MiB chunks)
 export interface UploadSessionCreated {
@@ -503,12 +475,10 @@ export interface AdminUserDeleteResponse {
 export type AdminUserDeleteState = 'queued' | 'active' | 'completed' | 'failed' | 'unknown'
 
 export interface AdminUserDeleteStatus {
-  userId: string
   jobId: string
   state: AdminUserDeleteState
   backupKept: true
   backupPrefix: string
-  queue: Record<string, number>
 }
 
 // Core-side consumer payload for the `user-delete` queue. email/backupPrefix are

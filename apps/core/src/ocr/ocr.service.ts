@@ -7,8 +7,6 @@ import { findOwnedOr404 } from '../common/asset-ownership'
 import type { RegisterOcrDto } from './dto/register-ocr.dto'
 
 const TEXT_MAX = 50_000
-const LANG_MIN = 2
-const LANG_MAX = 8
 
 @Injectable()
 export class OcrService {
@@ -30,8 +28,6 @@ export class OcrService {
         {
           assetId,
           text: dto.text.trim(),
-          lang: dto.lang ?? null,
-          confidence: dto.confidence ?? null,
         },
       ],
       ['assetId'],
@@ -45,25 +41,6 @@ export class OcrService {
     const trimmed = typeof text === 'string' ? text.trim() : ''
     if (trimmed.length === 0 || trimmed.length > TEXT_MAX) {
       throw new UnprocessableEntityException(`text must be 1-${TEXT_MAX} non-whitespace characters`)
-    }
-
-    const lang: unknown = dto.lang
-    if (lang !== null && lang !== undefined) {
-      if (typeof lang !== 'string' || lang.length < LANG_MIN || lang.length > LANG_MAX) {
-        throw new UnprocessableEntityException(`lang must be ${LANG_MIN}-${LANG_MAX} characters`)
-      }
-    }
-
-    const confidence: unknown = dto.confidence
-    if (confidence !== null && confidence !== undefined) {
-      if (
-        typeof confidence !== 'number' ||
-        !Number.isFinite(confidence) ||
-        confidence < 0 ||
-        confidence > 1
-      ) {
-        throw new UnprocessableEntityException('confidence must be between 0 and 1')
-      }
     }
   }
 }

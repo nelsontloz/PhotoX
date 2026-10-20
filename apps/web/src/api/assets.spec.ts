@@ -72,15 +72,12 @@ describe('checkFilesExist', () => {
       },
     })
 
-    const items = await checkFilesExist([
-      { checksumSha256: 'abc', sizeBytes: 8 },
-      { checksumSha256: 'def' },
-    ])
+    const items = await checkFilesExist([{ checksumSha256: 'abc' }, { checksumSha256: 'def' }])
 
     expect(postMock).toHaveBeenCalledWith(
       '/v1/files/exists',
       {
-        items: [{ checksumSha256: 'abc', sizeBytes: 8 }, { checksumSha256: 'def' }],
+        items: [{ checksumSha256: 'abc' }, { checksumSha256: 'def' }],
       },
       { timeout: CHECK_FILES_EXIST_TIMEOUT_MS },
     )

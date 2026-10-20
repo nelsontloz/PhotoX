@@ -6,7 +6,6 @@ import { AlbumAsset } from '../albums/entities/album-asset.entity'
 import { Share } from '../shares/entities/share.entity'
 import { User } from '../users/entities/user.entity'
 import { StorageModule } from '../files/storage/storage.module'
-import { SettingsModule } from '../settings/settings.module'
 import { PlacesModule } from '../places/places.module'
 import { BackupController } from './backup.controller'
 import { BackupMerge } from './entities/backup-merge.entity'
@@ -28,7 +27,6 @@ import { UserBackupService } from './user-backup.service'
       BackupMerge,
     ]),
     StorageModule,
-    SettingsModule,
     PlacesModule,
   ],
   controllers: [BackupController],

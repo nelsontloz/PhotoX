@@ -3,7 +3,8 @@
  * `dim` guards writes to fixed-dimension columns (faces.embedding is unguarded: legacy rows vary).
  */
 export function toVectorSql(v: number[]): string {
-  return `[${v.join(',')}]`
+  // JSON.stringify(number[]) is exactly '[1,2,3]' — the inverse of the from side's JSON.parse
+  return JSON.stringify(v)
 }
 
 export function vectorTransformer(dim?: number, label = 'embedding') {

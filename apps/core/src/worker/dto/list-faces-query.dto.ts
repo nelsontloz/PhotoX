@@ -4,7 +4,7 @@ import { Transform, Type } from 'class-transformer'
 import { isQueryTrue } from '../../common/query-params'
 
 // ponytail: cursor is the last seen face id (keyset over id ASC); nextCursor=null ends the walk.
-// limit/cursor both absent keeps the deprecated unpaginated { items } fallback in the controller.
+// limit defaults to 500 in the controller, so every call takes the paginated path.
 export class ListFacesQueryDto {
   @IsOptional()
   @Type(() => Number)

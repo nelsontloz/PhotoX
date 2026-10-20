@@ -70,7 +70,7 @@ function manifestJson(opts: ManifestInput): Buffer {
 interface MoveS3 {
   ensureBucket: Mock<() => Promise<void>>
   listKeys: Mock<(prefix: string) => Promise<string[]>>
-  copyPrefix: Mock<(src: string, dst: string) => Promise<{ copied: number; skipped: number }>>
+  copyPrefix: Mock<(src: string, dst: string) => Promise<void>>
   getBuffer: Mock<(key: string) => Promise<Buffer>>
   putObject: Mock<(key: string, body: Buffer, contentType?: string) => Promise<void>>
   headObject: Mock<(key: string) => Promise<void>>
@@ -90,17 +90,11 @@ function makeMoveService(objects: Map<string, Buffer> = new Map<string, Buffer>(
       Promise.resolve([...store.keys()].filter((key) => key.startsWith(prefix))),
     ),
     copyPrefix: vi.fn((src: string, dst: string) => {
-      let copied = 0
-      let skipped = 0
       for (const key of [...store.keys()].filter((k) => k.startsWith(src))) {
-        if (key.endsWith('/manifest.json')) {
-          skipped += 1
-          continue
-        }
+        if (key.endsWith('/manifest.json')) continue
         store.set(`${dst}${key.slice(src.length)}`, Buffer.from(store.get(key)!))
-        copied += 1
       }
-      return Promise.resolve({ copied, skipped })
+      return Promise.resolve()
     }),
     getBuffer: vi.fn((key: string) => {
       const hit = store.get(key)

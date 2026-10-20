@@ -37,7 +37,6 @@ export default defineConfig({
     viewport: { width: 1280, height: 800 },
     trace: 'retain-on-failure',
     video: 'retain-on-failure',
-    screenshot: 'on',
   },
   projects: [
     { ...setup, workers: 1 },

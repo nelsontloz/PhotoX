@@ -25,7 +25,7 @@ interface OcrExtract {
 
 // pure: normalize the library's concatenated text (one detected line per '\n'), trim/drop blank
 // lines. The confidence floor is per item inside ppu-paddle-ocr, so this only rejects empty
-// output; the surviving mean confidence is carried through for the register payload.
+// output; the surviving mean confidence stays available to callers (the register wire is text-only).
 export function finalizeOcrText(text: string, confidence: number): OcrExtract | null {
   const normalized = text
     .split('\n')

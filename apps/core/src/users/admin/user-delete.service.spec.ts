@@ -109,10 +109,15 @@ describe('UserDeleteService.runUserDelete', () => {
     expect(updateCall[2].tokensValidAfter).toBeInstanceOf(Date)
   })
 
-  it('returns alreadyGone without touching the DB when the row is missing', async () => {
+  it('returns a zero-count result without touching the DB when the row is missing', async () => {
     const { service, manager } = makeService({ user: null })
     const res = await service.runUserDelete(USER_ID, 'backups/old/')
-    expect(res.alreadyGone).toBe(true)
+    expect(res).toEqual({
+      userId: USER_ID,
+      backupPrefix: 'backups/old/',
+      deletedFiles: 0,
+      deletedStrays: 0,
+    })
     expect(manager.delete).not.toHaveBeenCalled()
   })
 
@@ -128,7 +133,6 @@ describe('UserDeleteService.runUserDelete', () => {
     const s3methods = [
       'listKeys',
       'deleteKeys',
-      'deleteKey',
       'copyPrefix',
       'copyKey',
       'putObject',
@@ -182,7 +186,7 @@ describe('UserDeleteService.runUserDelete', () => {
     })
     manager.find.mockResolvedValue([])
     const res = await service.runUserDelete(USER_ID, 'backups/old/')
-    expect(res.alreadyGone).toBe(false)
+    expect(res.deletedFiles).toBe(2)
     expect(manager.delete.mock.calls.some((c) => c[0].name === 'User')).toBe(true)
   })
 

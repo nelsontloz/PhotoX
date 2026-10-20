@@ -19,38 +19,29 @@ function parseDurationMs(duration: string): number {
   }
 }
 
-const envSchema = z
-  .object({
-    API_PORT: z.coerce.number().default(3000),
-    CORE_URL: z.string().default('http://localhost:3000'),
-    POSTGRES_HOST: z.string().default('localhost'),
-    POSTGRES_PORT: z.coerce.number().default(5432),
-    POSTGRES_USER: z.string().default('photox'),
-    POSTGRES_PASSWORD: z.string().default('photox_dev'),
-    REDIS_HOST: z.string().default('localhost'),
-    REDIS_PORT: z.coerce.number().default(6379),
-    REDIS_PASSWORD: z.string().optional(),
-    STORAGE_DIR: z.string().default('./data/storage'),
-    STORAGE_QUOTA_BYTES: z.coerce.number().int().positive().optional(),
-    S3_BACKUP_BUCKET: z.string().default('photox-dev-backups'),
-    S3_ENDPOINT: z.string().default('http://localhost:4566'),
-    S3_PUBLIC_ENDPOINT: z.preprocess(
-      (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
-      z.string().optional(),
-    ),
-    AWS_REGION: z.string().default('us-east-1'),
-    AWS_ACCESS_KEY_ID: z.string().default('test'),
-    AWS_SECRET_ACCESS_KEY: z.string().default('test'),
-    S3_BACKUP_PREFIX: z.string().default('backups/'),
-    AUTH_ACCESS_TTL: z.string().default('30m'),
-    // raw env value is a duration string; consumers get milliseconds, parsed exactly once
-    AUTH_REFRESH_TTL: z.string().default('1d').transform(parseDurationMs),
-    AUTH_CLOCK_TOLERANCE_SEC: z.coerce.number().default(60),
-  })
-  .transform((data) => ({
-    ...data,
-    S3_PUBLIC_ENDPOINT: data.S3_PUBLIC_ENDPOINT ?? data.S3_ENDPOINT,
-  }))
+const envSchema = z.object({
+  API_PORT: z.coerce.number().default(3000),
+  CORE_URL: z.string().default('http://localhost:3000'),
+  POSTGRES_HOST: z.string().default('localhost'),
+  POSTGRES_PORT: z.coerce.number().default(5432),
+  POSTGRES_USER: z.string().default('photox'),
+  POSTGRES_PASSWORD: z.string().default('photox_dev'),
+  REDIS_HOST: z.string().default('localhost'),
+  REDIS_PORT: z.coerce.number().default(6379),
+  REDIS_PASSWORD: z.string().optional(),
+  STORAGE_DIR: z.string().default('./data/storage'),
+  STORAGE_QUOTA_BYTES: z.coerce.number().int().positive().optional(),
+  S3_BACKUP_BUCKET: z.string().default('photox-dev-backups'),
+  S3_ENDPOINT: z.string().default('http://localhost:4566'),
+  AWS_REGION: z.string().default('us-east-1'),
+  AWS_ACCESS_KEY_ID: z.string().default('test'),
+  AWS_SECRET_ACCESS_KEY: z.string().default('test'),
+  S3_BACKUP_PREFIX: z.string().default('backups/'),
+  AUTH_ACCESS_TTL: z.string().default('30m'),
+  // raw env value is a duration string; consumers get milliseconds, parsed exactly once
+  AUTH_REFRESH_TTL: z.string().default('1d').transform(parseDurationMs),
+  AUTH_CLOCK_TOLERANCE_SEC: z.coerce.number().default(60),
+})
 
 type Env = z.infer<typeof envSchema>
 

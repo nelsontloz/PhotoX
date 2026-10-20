@@ -342,7 +342,7 @@ export class FaceClusterService implements OnModuleInit {
     const assets = await this.core.getAssetsByIds(userId, assetIds, binding)
     for (const a of assets) {
       // the worker's own enqueue stamps the asset-scoped binding; a loss throws so BullMQ retries
-      const reembedQueued = await this.bullMq.enqueue(
+      await this.bullMq.enqueue(
         'process-faces',
         're-embed',
         { assetId: a.id, fileId: a.fileId, userId },
@@ -355,7 +355,6 @@ export class FaceClusterService implements OnModuleInit {
           removeOnComplete: true,
         },
       )
-      if (!reembedQueued) throw new Error(`Failed to enqueue re-embed for asset=${a.id}`)
     }
   }
 }

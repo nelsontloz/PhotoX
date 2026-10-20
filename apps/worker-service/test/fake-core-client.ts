@@ -96,8 +96,6 @@ export class FakeCoreClient {
   readonly deleteFacesCalls: string[] = []
   readonly clusterFaces: ClusterFace[] = []
   readonly applyClustersCalls: ApplyClustersPayload[] = []
-  readonly ownedDeletedFiles: string[] = []
-  deleteOwnedFileFailures = 0
   dedupeRegistrations = false
 
   private readonly registeredByChecksum = new Map<string, string>()
@@ -117,8 +115,6 @@ export class FakeCoreClient {
     this.deleteFacesCalls.length = 0
     this.clusterFaces.length = 0
     this.applyClustersCalls.length = 0
-    this.ownedDeletedFiles.length = 0
-    this.deleteOwnedFileFailures = 0
     this.registeredByChecksum.clear()
     this.dedupeRegistrations = false
     this.personSeq = 0
@@ -290,21 +286,6 @@ export class FakeCoreClient {
   pruneEmptyPersons(userId: string): Promise<{ deleted: number }> {
     this.calls.push({ method: 'pruneEmptyPersons', args: [userId] })
     return Promise.resolve({ deleted: 0 })
-  }
-
-  deleteOwnedFile(userId: string, fileId: string): Promise<void> {
-    this.calls.push({ method: 'deleteOwnedFile', args: [userId, fileId] })
-    if (this.deleteOwnedFileFailures > 0) {
-      this.deleteOwnedFileFailures--
-      return Promise.reject(new Error('core 503'))
-    }
-    const file = this.files.get(fileId)
-    if (file?.userId !== userId) {
-      return Promise.reject(new UnrecoverableError(`File not found: ${fileId}`))
-    }
-    this.ownedDeletedFiles.push(fileId)
-    this.files.delete(fileId)
-    return Promise.resolve()
   }
 
   private assignClusterFace(faceId: string, personId: string): void {

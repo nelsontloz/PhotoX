@@ -45,7 +45,7 @@ spec:
                     steps {
                         container('dind') {
                             sh 'timeout 30 sh -c "until docker info >/dev/null 2>&1; do sleep 1; done"'
-                            sh 'docker pull postgres:16-alpine'
+                            sh 'docker pull pgvector/pgvector:0.8.7-pg16'
                             sh 'docker pull redis:7-alpine'
                         }
                         container('node') {

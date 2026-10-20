@@ -31,10 +31,6 @@ async function readPersistedAuthState(page: Page): Promise<PersistedAuthState | 
   }
 }
 
-Given('the instance database is empty', () => {
-  // enforced by e2e/run.sh: the stack starts from `docker compose down -v`
-})
-
 Given('the instance was seeded with an administrator', () => {
   // enforced by docker-compose.e2e.yml (ADMIN_EMAIL/ADMIN_PASSWORD) + e2e/run.sh (`down -v`):
   // core seeds the admin on bootstrap before serving traffic — open registration only mints 'user'

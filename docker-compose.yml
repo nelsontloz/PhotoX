@@ -44,8 +44,6 @@ services:
       # SigV4 verification on all services: unknown keys / bad signatures get AWS-style 403s.
       # Authenticates signed requests only — unsigned requests remain allowed (parity flag, not a boundary).
       FLOCI_AUTH_VALIDATE_SIGNATURES: 'true'
-      # Seed IAM user floci-deployer (AdministratorAccess) with static keys floci/floci.
-      FLOCI_SERVICES_IAM_SEED_DEPLOYER_PRINCIPAL: 'true'
     volumes:
       - ./data/floci:/app/data
     networks:

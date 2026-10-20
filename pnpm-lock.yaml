@@ -313,9 +313,6 @@ importers:
 
   packages/shared-config:
     dependencies:
-      '@photox/shared-types':
-        specifier: workspace:*
-        version: link:../shared-types
       zod:
         specifier: ^3.24.0
         version: 3.25.76

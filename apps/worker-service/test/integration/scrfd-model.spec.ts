@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs'
 import sharp from 'sharp'
 import { resolveFaceDetectorModelPath } from '@photox/shared-config'
-import { ScrfdFaceDetector } from '../../src/queue/face.detector.scrfd'
+import { FaceDetectorService } from '../../src/queue/face.detector'
+import type { FaceEmbedderService } from '../../src/queue/face.embedder'
 
 // not testcontainers: real ONNX session load + run + decode, skipped when the weights are absent
 const modelPath = resolveFaceDetectorModelPath()
@@ -14,7 +15,9 @@ describe.skipIf(!existsSync(modelPath))('SCRFD face detector (integration)', () 
       .jpeg()
       .toBuffer()
 
-    const detections = await new ScrfdFaceDetector().detect(jpeg)
+    const detections = await new FaceDetectorService({
+      embed: () => Promise.resolve([]),
+    } as unknown as FaceEmbedderService).detect(jpeg)
 
     expect(Array.isArray(detections)).toBe(true)
   }, 120_000)

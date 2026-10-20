@@ -49,7 +49,6 @@ import { UploadsModule } from '../../src/uploads/uploads.module'
 import { StorageModule } from '../../src/files/storage/storage.module'
 import { WorkerModule } from '../../src/worker/worker.module'
 import { AdminModule } from '../../src/admin/admin.module'
-import { AdminModule as FilesAdminModule } from '../../src/files/admin/admin.module'
 import { UsersModule } from '../../src/users/users.module'
 import { AuthModule } from '../../src/auth/auth.module'
 import { BullMqModule } from '../../src/queue/bullmq.module'
@@ -175,7 +174,6 @@ export async function createApiTestApp(opts?: {
         UserFilesModule,
         UploadsModule,
         AdminModule,
-        FilesAdminModule,
         WorkerModule,
       ],
     })

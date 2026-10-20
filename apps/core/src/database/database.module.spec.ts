@@ -1,12 +1,12 @@
 import type { Mock } from 'vitest'
 import * as argon2 from 'argon2'
 import type { DataSource } from 'typeorm'
-import { ADMIN_SEED_PROVIDER, DatabaseModule } from './database.module'
+import { AdminSeedService, DatabaseModule } from './database.module'
 
 const EMAIL = 'admin-seed@example.com'
 const PASSWORD = 'seed-password-123'
 
-describe('ADMIN_SEED bootstrap', () => {
+describe('AdminSeedService bootstrap', () => {
   const prevEmail = process.env.ADMIN_EMAIL
   const prevPassword = process.env.ADMIN_PASSWORD
 
@@ -23,8 +23,8 @@ describe('ADMIN_SEED bootstrap', () => {
   })
 
   function bootstrap(query: Mock) {
-    const hook = ADMIN_SEED_PROVIDER.useFactory({ query } as unknown as DataSource)
-    return hook.onApplicationBootstrap()
+    const service = new AdminSeedService({ query } as unknown as DataSource)
+    return service.onApplicationBootstrap()
   }
 
   it('is a no-op when neither ADMIN_EMAIL nor ADMIN_PASSWORD is set', async () => {

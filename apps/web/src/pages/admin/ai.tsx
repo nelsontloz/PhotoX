@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import {
+  FaArrowsRotate,
   FaBrain,
   FaFaceSmile,
   FaFont,
@@ -7,7 +8,6 @@ import {
   FaSpinner,
   FaWandMagicSparkles,
 } from 'react-icons/fa6'
-import { type FaceDetectionSettings } from '@photox/shared-types'
 import {
   getFaceDetection,
   reclusterFaces,
@@ -24,28 +24,17 @@ import {
 import {
   AdminCard,
   AdminToast,
-  GhostButton,
-  PrimaryButton,
+  Button,
   ProgressBar,
-  RefreshButton,
   StatStrip,
   StatusPill,
+  cx,
+  type StatRow,
 } from './ui'
 import { ConfirmDialog, InlineError } from './shared'
+import { useAsyncFetch } from '../../hooks/useAsyncFetch'
 
 // --- model card chrome + queue polling --------------------------------------------------
-
-interface ReprocessRun {
-  startedAt: string
-  total: number
-  enqueued: number
-}
-
-interface StatRow {
-  label: string
-  value: ReactNode
-  tone?: 'default' | 'muted'
-}
 
 interface ModelCardHeaderProps {
   icon: typeof FaBrain
@@ -111,7 +100,7 @@ function useQueuePoll<T extends ReprocessStatus<unknown>>(
 }
 
 /** The reprocess counters both card shapes render from a queue status. */
-function useRunProgress<L extends ReprocessRun>(status: ReprocessStatus<L> | null) {
+function useRunProgress<L extends PipelineRun>(status: ReprocessStatus<L> | null) {
   const lastRun = status?.lastRun ?? null
   const runQueue = status ? status.queue.waiting + status.queue.active : 0
   const running = runQueue > 0
@@ -163,63 +152,33 @@ const FACE_DETECTOR_LABEL = 'SCRFD 10G'
 const SCRFD_PROVISION_CMD = 'pnpm --filter @photox/worker-service face-model'
 const VISION_PROVISION_CMD = 'pnpm --filter @photox/worker-service vision-model'
 
-/** The merged detector + reprocess card. */
-export function FacialDetectionCard() {
-  const [data, setData] = useState<FaceDetectionSettings | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [version, setVersion] = useState(0)
+/** Amber provisioning note shared by the card banner and its confirm dialog. */
+function ModelMissingNote({ message }: { message: string }) {
+  return (
+    <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+      <p className="text-xs text-amber-200">{message}</p>
+      <code className="block text-xs font-mono text-amber-200/80 mt-1.5 break-all">
+        {SCRFD_PROVISION_CMD}
+      </code>
+    </div>
+  )
+}
 
-  const [confirming, setConfirming] = useState(false)
-  const [inFlight, setInFlight] = useState(false)
-  const [result, setResult] = useState<string | null>(null)
-  const [reprocessError, setReprocessError] = useState<string | null>(null)
-  const [runToken, setRunToken] = useState(0)
+/** The detector + reprocess card: the generic pipeline card with the detector fact + clustering. */
+export function FacialDetectionCard() {
+  const [version, setVersion] = useState(0)
+  const { data, loading, error } = useAsyncFetch(() => getFaceDetection(), {
+    refreshKey: version,
+    errorMessage: 'Failed to load face detection settings',
+    loadingMode: 'always',
+  })
+
   const [clustering, setClustering] = useState(false)
   const [clusterResult, setClusterResult] = useState<string | null>(null)
   const [clusterError, setClusterError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    getFaceDetection()
-      .then((res) => {
-        if (cancelled) return
-        setData(res)
-      })
-      .catch((err: Error) => {
-        if (cancelled) return
-        setError(err.message ?? 'Failed to load face detection settings')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [version])
-
   const getFaceStatus = useCallback(() => getPipelineStatus<FacePipelineRun>('faces'), [])
-  const status = useQueuePoll(getFaceStatus, runToken)
-
-  const onConfirm = async () => {
-    setConfirming(false)
-    setInFlight(true)
-    setReprocessError(null)
-    setResult(null)
-    try {
-      const res = await reprocessPipeline<FaceReprocessResponse>('faces')
-      setResult(
-        `Queued ${res.enqueued.toLocaleString()} face jobs for ${res.total.toLocaleString()} photos.`,
-      )
-      setRunToken((v) => v + 1)
-    } catch (err) {
-      setReprocessError(err instanceof Error ? err.message : 'Reprocess failed')
-    } finally {
-      setInFlight(false)
-    }
-  }
+  const reprocessFaces = useCallback(() => reprocessPipeline<FaceReprocessResponse>('faces'), [])
 
   const onRecluster = async () => {
     if (clustering) return
@@ -240,9 +199,7 @@ export function FacialDetectionCard() {
     }
   }
 
-  const { lastRun, runQueue, running, requested, done, percent } = useRunProgress(status)
-  const modelMissing = data !== null && !data.modelAvailable
-
+  const modelMissing = data !== undefined && !data.modelAvailable
   const pillTone: 'ok' | 'warn' | 'muted' = error
     ? 'muted'
     : loading
@@ -258,125 +215,70 @@ export function FacialDetectionCard() {
         ? 'Model missing'
         : 'Online'
 
-  const statRows: StatRow[] = [
-    { label: 'Active detector', value: FACE_DETECTOR_LABEL },
-    {
-      label: 'Queue',
-      value: status ? (running ? runQueue.toLocaleString() : 'Idle') : '—',
-    },
-  ]
-
-  return (
-    <AdminCard className="flex flex-col">
-      <ModelCardHeader
-        icon={FaFaceSmile}
-        title="Facial Detection & Clustering"
-        tone={pillTone}
-        statusLabel={pillLabel}
+  const pipeline: ReprocessPipeline<FacePipelineRun> = {
+    icon: FaFaceSmile,
+    title: 'Facial Detection & Clustering',
+    prose: `Re-detect and re-embed every photo with ${FACE_DETECTOR_LABEL}. Clustering catches up automatically as jobs finish.`,
+    emptyLabel: 'No face reprocess runs yet.',
+    runningLabel: 'Reprocessing faces…',
+    progressLabel: 'Face reprocess progress',
+    buttonLabel: 'Reprocess all faces',
+    dialogTitle: 'Reprocess all faces?',
+    dialogBody: `This re-detects faces and rebuilds their embeddings for every photo with ${FACE_DETECTOR_LABEL}. People groups rebuild themselves as jobs finish — clustering catches up automatically. The worker runs in the background, so large libraries take a while.`,
+    getStatus: getFaceStatus,
+    reprocess: reprocessFaces,
+    resultText: (res) =>
+      `Queued ${res.enqueued.toLocaleString()} face jobs for ${res.total.toLocaleString()} photos.`,
+    statRows: (status) => [
+      { label: 'Active detector', value: FACE_DETECTOR_LABEL },
+      { label: 'Queue', value: queueValue(status) },
+    ],
+    statusTone: pillTone,
+    statusLabel: pillLabel,
+    beforeStatus: (
+      <>
+        {error && <InlineError message={error} onRetry={() => setVersion((v) => v + 1)} />}
+        {modelMissing && (
+          <ModelMissingNote message="The SCRFD 10G model isn't installed — face detection cannot run until it is provisioned." />
+        )}
+      </>
+    ),
+    footerClassName: 'flex items-center justify-between gap-3 flex-wrap',
+    footerStart: (
+      <Button
+        variant="icon"
+        onClick={() => setVersion((v) => v + 1)}
+        ariaLabel="Refresh face detection settings"
+        icon={<FaArrowsRotate />}
       />
+    ),
+    extraActions: (
+      <Button
+        variant="ghost"
+        onClick={() => void onRecluster()}
+        disabled={clustering}
+        icon={clustering ? <FaSpinner className="animate-spin" /> : undefined}
+      >
+        Recluster users
+      </Button>
+    ),
+    extraToasts: (
+      <>
+        {clusterResult && <AdminToast message={clusterResult} />}
+        {clusterError && <AdminToast message={clusterError} tone="error" />}
+      </>
+    ),
+    dialogExtra: modelMissing && (
+      <ModelMissingNote message="The SCRFD 10G model isn't installed — these jobs will fail until it is provisioned." />
+    ),
+  }
 
-      <p className="text-body-sm text-on-surface-variant mt-4">
-        Re-detect and re-embed every photo with {FACE_DETECTOR_LABEL}. Clustering catches up
-        automatically as jobs finish.
-      </p>
-
-      {error && <InlineError message={error} onRetry={() => setVersion((v) => v + 1)} />}
-
-      {modelMissing && (
-        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-          <p className="text-xs text-amber-200">
-            The SCRFD 10G model isn't installed — face detection cannot run until it is provisioned.
-          </p>
-          <code className="block text-xs font-mono text-amber-200/80 mt-1.5 break-all">
-            {SCRFD_PROVISION_CMD}
-          </code>
-        </div>
-      )}
-
-      {status && !lastRun && !running && (
-        <p className="text-xs font-mono text-outline mt-3">No face reprocess runs yet.</p>
-      )}
-
-      {running && requested > 0 && (
-        <RunProgress
-          runningLabel="Reprocessing faces…"
-          progressLabel="Face reprocess progress"
-          runQueue={runQueue}
-          requested={requested}
-          done={done}
-          percent={percent}
-        />
-      )}
-
-      {lastRun && !running && (
-        <p className="text-xs font-mono text-outline mt-3">
-          Last run {new Date(lastRun.startedAt).toLocaleString()} —{' '}
-          {lastRun.enqueued.toLocaleString()} of {lastRun.total.toLocaleString()} photos queued.
-        </p>
-      )}
-
-      {result && <AdminToast message={result} />}
-      {reprocessError && <AdminToast message={reprocessError} tone="error" />}
-      {clusterResult && <AdminToast message={clusterResult} />}
-      {clusterError && <AdminToast message={clusterError} tone="error" />}
-
-      <div className="mt-auto pt-5">
-        <StatStrip rows={statRows} />
-        <div className="mt-4 border-t border-border-dark/40 pt-4 flex items-center justify-between gap-3 flex-wrap">
-          <RefreshButton
-            onClick={() => setVersion((v) => v + 1)}
-            label="Refresh face detection settings"
-          />
-          <div className="flex items-center gap-2 flex-wrap ml-auto">
-            <GhostButton
-              onClick={() => void onRecluster()}
-              disabled={clustering}
-              icon={clustering ? <FaSpinner className="animate-spin" /> : undefined}
-            >
-              Recluster users
-            </GhostButton>
-            <PrimaryButton
-              onClick={() => setConfirming(true)}
-              disabled={inFlight || running}
-              icon={inFlight ? <FaSpinner className="animate-spin" /> : undefined}
-            >
-              {inFlight ? 'Enqueuing…' : 'Reprocess all faces'}
-            </PrimaryButton>
-          </div>
-        </div>
-      </div>
-
-      {confirming && (
-        <ConfirmDialog
-          title="Reprocess all faces?"
-          onClose={() => setConfirming(false)}
-          onConfirm={() => void onConfirm()}
-        >
-          <p className="text-sm text-slate-400 mt-2">
-            This re-detects faces and rebuilds their embeddings for every photo with{' '}
-            {FACE_DETECTOR_LABEL}. People groups rebuild themselves as jobs finish — clustering
-            catches up automatically. The worker runs in the background, so large libraries take a
-            while.
-          </p>
-          {modelMissing && (
-            <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-              <p className="text-xs text-amber-200">
-                The SCRFD 10G model isn't installed — these jobs will fail until it is provisioned.
-              </p>
-              <code className="block text-xs font-mono text-amber-200/80 mt-1.5 break-all">
-                {SCRFD_PROVISION_CMD}
-              </code>
-            </div>
-          )}
-        </ConfirmDialog>
-      )}
-    </AdminCard>
-  )
+  return <ReprocessPipelineCard pipeline={pipeline} />
 }
 
 // --- single-pipeline model cards (embeddings / detections / OCR) ------------------------
 
-interface ReprocessPipeline<L extends ReprocessRun> {
+interface ReprocessPipeline<L extends PipelineRun> {
   icon: typeof FaBrain
   title: string
   chip?: string
@@ -392,6 +294,19 @@ interface ReprocessPipeline<L extends ReprocessRun> {
   reprocess: () => Promise<{ enqueued: number; total: number }>
   resultText: (res: { enqueued: number; total: number }) => string
   statRows: (status: ReprocessStatus<L> | null) => StatRow[]
+  /** Header pill; defaults to Online once queue status loads. */
+  statusTone?: 'ok' | 'warn' | 'muted'
+  statusLabel?: string
+  /** Extra content between the prose and the empty/last-run lines (error line, model banner). */
+  beforeStatus?: ReactNode
+  /** Extra toasts after the result/error pair. */
+  extraToasts?: ReactNode
+  /** Replaces the default right-aligned footer row. */
+  footerClassName?: string
+  footerStart?: ReactNode
+  extraActions?: ReactNode
+  /** Extra dialog body under the standard paragraph. */
+  dialogExtra?: ReactNode
 }
 
 function queueValue(status: ReprocessStatus<unknown> | null): string {
@@ -400,11 +315,11 @@ function queueValue(status: ReprocessStatus<unknown> | null): string {
   return depth > 0 ? depth.toLocaleString() : 'Idle'
 }
 
-function lastRunValue(lastRun: ReprocessRun | null): string {
+function lastRunValue(lastRun: PipelineRun | null): string {
   return lastRun ? new Date(lastRun.startedAt).toLocaleString() : '—'
 }
 
-function ReprocessPipelineCard<L extends ReprocessRun>({
+function ReprocessPipelineCard<L extends PipelineRun>({
   pipeline,
 }: {
   pipeline: ReprocessPipeline<L>
@@ -436,18 +351,29 @@ function ReprocessPipelineCard<L extends ReprocessRun>({
 
   const { lastRun, runQueue, running, requested, done, percent } = useRunProgress(status)
 
+  const confirmButton = (
+    <Button
+      onClick={() => setConfirming(true)}
+      disabled={inFlight || running}
+      icon={inFlight ? <FaSpinner className="animate-spin" /> : undefined}
+    >
+      {inFlight ? 'Enqueuing…' : pipeline.buttonLabel}
+    </Button>
+  )
+
   return (
     <AdminCard className="flex flex-col">
       <ModelCardHeader
         icon={pipeline.icon}
         title={pipeline.title}
         chip={pipeline.chip}
-        tone={status ? 'ok' : 'muted'}
-        statusLabel={status ? 'Online' : 'Checking…'}
+        tone={pipeline.statusTone ?? (status ? 'ok' : 'muted')}
+        statusLabel={pipeline.statusLabel ?? (status ? 'Online' : 'Checking…')}
       />
 
       <p className="text-body-sm text-on-surface-variant mt-4">{pipeline.prose}</p>
       {pipeline.note && <p className="text-xs font-mono text-outline mt-2">{pipeline.note}</p>}
+      {pipeline.beforeStatus}
 
       {status && !lastRun && !running && (
         <p className="text-xs font-mono text-outline mt-3">{pipeline.emptyLabel}</p>
@@ -473,17 +399,25 @@ function ReprocessPipelineCard<L extends ReprocessRun>({
 
       {result && <AdminToast message={result} />}
       {error && <AdminToast message={error} tone="error" />}
+      {pipeline.extraToasts}
 
       <div className="mt-auto pt-5">
         <StatStrip rows={pipeline.statRows(status)} />
-        <div className="mt-4 border-t border-border-dark/40 pt-4 flex justify-end">
-          <PrimaryButton
-            onClick={() => setConfirming(true)}
-            disabled={inFlight || running}
-            icon={inFlight ? <FaSpinner className="animate-spin" /> : undefined}
-          >
-            {inFlight ? 'Enqueuing…' : pipeline.buttonLabel}
-          </PrimaryButton>
+        <div
+          className={cx(
+            'mt-4 border-t border-border-dark/40 pt-4',
+            pipeline.footerClassName ?? 'flex justify-end',
+          )}
+        >
+          {pipeline.footerStart}
+          {pipeline.extraActions ? (
+            <div className="flex items-center gap-2 flex-wrap ml-auto">
+              {pipeline.extraActions}
+              {confirmButton}
+            </div>
+          ) : (
+            confirmButton
+          )}
         </div>
       </div>
 
@@ -494,6 +428,7 @@ function ReprocessPipelineCard<L extends ReprocessRun>({
           onConfirm={() => void onConfirm()}
         >
           <p className="text-sm text-slate-400 mt-2">{pipeline.dialogBody}</p>
+          {pipeline.dialogExtra}
         </ConfirmDialog>
       )}
     </AdminCard>

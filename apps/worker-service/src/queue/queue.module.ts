@@ -16,7 +16,6 @@ import { OcrService } from './ocr.service'
 import { OcrProcessor } from './ocr.processor'
 import { DetectService } from './detect.service'
 import { DetectProcessor } from './detect.processor'
-import { CleanupProcessor } from './cleanup.processor'
 import { CoreClient } from '../core/core-client.service'
 
 @Module({
@@ -51,7 +50,6 @@ import { CoreClient } from '../core/core-client.service'
     OcrProcessor,
     DetectService,
     DetectProcessor,
-    CleanupProcessor,
   ],
   exports: [BullMqService],
 })

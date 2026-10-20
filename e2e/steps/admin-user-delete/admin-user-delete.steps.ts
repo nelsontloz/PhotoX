@@ -4,7 +4,6 @@ import {
   Given,
   Then,
   When,
-  PASSWORD,
   addAssetsViaApi,
   authHeaders,
   createAlbumViaApi,
@@ -12,6 +11,7 @@ import {
   injectSession,
   registerUser,
   seedEmbedding,
+  signIn,
   signInAdmin,
   uploadViaApi,
   waitForThumbnails,
@@ -514,11 +514,7 @@ Then("the victim's photo derivatives regenerate", async ({ request, ctx, $testIn
   const assetId = state.victimAssetId
   if (!assetId) throw new Error('seed the victim library first')
   // the delete bumped tokensValidAfter (kept through the restore) — mint a fresh victim session
-  const login = await request.post('/api/v1/auth/login', {
-    data: { email: victim.user.email, password: PASSWORD },
-  })
-  expect(login.ok(), `victim re-login failed with status ${login.status()}`).toBe(true)
-  const auth = (await login.json()) as AuthResponse
+  const auth = await signIn(request, victim.user.email)
   await waitForThumbnails(request, auth, assetId, ['sm', 'md', 'lg', 'xl'])
 })
 
@@ -808,21 +804,11 @@ Then(
     if (!reregistered) throw new Error('re-register the victim email first')
     if (!fallback) throw new Error('restore the victim backup first')
     // the restored account keeps its old password under the fallback address
-    const fallbackLogin = await request.post('/api/v1/auth/login', {
-      data: { email: fallback, password: PASSWORD },
-    })
-    expect(fallbackLogin.ok(), `fallback login failed with status ${fallbackLogin.status()}`).toBe(
-      true,
-    )
-    expect(((await fallbackLogin.json()) as AuthResponse).user.id).toBe(victim.user.id)
+    const fallbackAuth = await signIn(request, fallback)
+    expect(fallbackAuth.user.id).toBe(victim.user.id)
     // the address itself still belongs to the re-registered account, untouched
-    const originalLogin = await request.post('/api/v1/auth/login', {
-      data: { email: victim.user.email, password: PASSWORD },
-    })
-    expect(originalLogin.ok(), `original login failed with status ${originalLogin.status()}`).toBe(
-      true,
-    )
-    expect(((await originalLogin.json()) as AuthResponse).user.id).toBe(reregistered.user.id)
+    const originalAuth = await signIn(request, victim.user.email)
+    expect(originalAuth.user.id).toBe(reregistered.user.id)
   },
 )
 

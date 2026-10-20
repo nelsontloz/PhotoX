@@ -20,9 +20,7 @@ import { CurrentUserId } from '../auth/jwt-auth.guard'
 import { AssetsService } from './assets.service'
 import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
-import { UpdateMetadataDto } from './dto/update-metadata.dto'
 import { TrashAssetsDto } from './dto/trash-assets.dto'
-import { RegisterThumbnailDto } from './dto/register-thumbnail.dto'
 
 @ApiTags('assets')
 @ApiBearerAuth()
@@ -70,18 +68,6 @@ export class AssetsController {
     res.json(body)
   }
 
-  @Patch(':id/metadata')
-  @ApiOperation({ summary: 'Update extracted metadata (called by metadata process)' })
-  @ApiResponse({ status: 200 })
-  @ApiResponse({ status: 404, description: 'Asset not found' })
-  async updateMetadata(
-    @Param('id') id: string,
-    @Body() dto: UpdateMetadataDto,
-    @CurrentUserId() userId: string,
-  ) {
-    return this.assets.updateMetadata(id, userId, dto)
-  }
-
   @Get('trashed')
   @ApiOperation({ summary: 'List trashed assets' })
   @ApiResponse({ status: 200, description: 'Paginated trashed asset list' })
@@ -90,19 +76,19 @@ export class AssetsController {
   }
 
   @Delete('trashed')
-  @ApiOperation({ summary: 'Permanently delete all trashed assets. Returns file IDs for cleanup.' })
+  @ApiOperation({ summary: 'Permanently delete all trashed assets' })
   @ApiResponse({ status: 200, description: 'Trash emptied' })
   async emptyTrash(@CurrentUserId() userId: string) {
-    return this.assets.emptyTrash(userId)
+    await this.assets.emptyTrash(userId)
   }
 
   @Delete('trashed/:id')
-  @ApiOperation({ summary: 'Permanently delete a trashed asset. Returns file IDs for cleanup.' })
+  @ApiOperation({ summary: 'Permanently delete a trashed asset' })
   @ApiResponse({ status: 200, description: 'Asset deleted' })
   @ApiResponse({ status: 400, description: 'Asset is not trashed' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async deleteTrashed(@Param('id') id: string, @CurrentUserId() userId: string) {
-    return this.assets.delete(userId, id)
+    await this.assets.delete(userId, id)
   }
 
   @Post('trashed/:id/restore')
@@ -168,20 +154,5 @@ export class AssetsController {
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async reprocessVideo(@Param('id') id: string, @CurrentUserId() userId: string) {
     return this.assets.reprocessVideo(userId, id)
-  }
-
-  @Post(':id/thumbnails')
-  @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({
-    summary: 'Register a thumbnail (idempotent upsert on assetId+size)',
-  })
-  @ApiResponse({ status: 201, description: 'Thumbnail registered' })
-  @ApiResponse({ status: 404, description: 'Asset not found' })
-  async registerThumbnail(
-    @Param('id') id: string,
-    @Body() dto: RegisterThumbnailDto,
-    @CurrentUserId() userId: string,
-  ) {
-    return this.assets.registerThumbnail(userId, id, dto)
   }
 }

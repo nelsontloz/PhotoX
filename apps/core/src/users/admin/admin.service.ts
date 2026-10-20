@@ -257,7 +257,7 @@ export class AdminService {
     }
 
     const jobId = userDeleteJobId(user.id)
-    const prefix = this.deletes.computeBackupPrefix(user.email, user.id)
+    const prefix = backupPrefix(user.email, user.id)
     // a retained terminal job with this id would swallow the enqueue (BullMQ dedups by
     // jobId), so a re-delete after a restore would silently no-op — drop it first
     await this.deletes.clearFinishedJob(user.id)
@@ -270,7 +270,7 @@ export class AdminService {
       { jobId, removeOnComplete: true },
     )
     if (!enqueued) throw new ServiceUnavailableException('Failed to enqueue user deletion')
-    this.deletes.markQueued(user.id, jobId, prefix)
+    this.deletes.setProgress(user.id, 'queued', jobId, prefix)
     // the S3 backup prefix is deliberately left intact — never enumerated or deleted
     return { jobId, userId: user.id, backupKept: true, backupPrefix: prefix }
   }
@@ -283,53 +283,28 @@ export class AdminService {
    */
   async getUserDeleteStatus(targetUserId: string): Promise<AdminUserDeleteStatus> {
     const jobId = userDeleteJobId(targetUserId)
-    const queue = this.bullMq.getQueue(USER_DELETE_QUEUE)
-    const [job, counts] = await Promise.all([queue.getJob(jobId), queue.getJobCounts()])
+    const job = await this.bullMq.getQueue(USER_DELETE_QUEUE).getJob(jobId)
     const progress = this.deletes.getProgress(targetUserId)
 
+    let state: AdminUserDeleteState = progress?.state ?? 'unknown'
+    let prefix = progress?.backupPrefix ?? ''
     if (job) {
-      const raw = await job.getState()
-      const state = mapJobState(raw)
+      state = mapJobState(await job.getState())
       const data = job.data as { backupPrefix?: unknown } | null | undefined
-      const fromProgress = progress?.backupPrefix
       const fromData = typeof data?.backupPrefix === 'string' ? data.backupPrefix : undefined
-      const prefix = fromProgress ?? fromData ?? (await this.prefixForLiveUser(targetUserId))
-      return {
-        userId: targetUserId,
-        jobId,
-        state,
-        backupKept: true,
-        backupPrefix: prefix,
-        queue: { ...counts },
-      }
+      prefix = progress?.backupPrefix ?? fromData ?? (await this.prefixForLiveUser(targetUserId))
+    } else if (progress?.state !== 'completed' && progress?.state !== 'failed') {
+      const user = await this.userRepo.findOne({ where: { id: targetUserId } })
+      if (!user) throw new NotFoundException('User not found')
+      prefix = progress?.backupPrefix ?? backupPrefix(user.email, user.id)
     }
 
-    if (progress && (progress.state === 'completed' || progress.state === 'failed')) {
-      return {
-        userId: targetUserId,
-        jobId: progress.jobId,
-        state: progress.state,
-        backupKept: true,
-        backupPrefix: progress.backupPrefix,
-        queue: { ...counts },
-      }
-    }
-
-    const user = await this.userRepo.findOne({ where: { id: targetUserId } })
-    if (!user) throw new NotFoundException('User not found')
-    return {
-      userId: targetUserId,
-      jobId,
-      state: progress?.state ?? 'unknown',
-      backupKept: true,
-      backupPrefix: progress?.backupPrefix ?? this.deletes.computeBackupPrefix(user.email, user.id),
-      queue: { ...counts },
-    }
+    return { jobId, state, backupKept: true, backupPrefix: prefix }
   }
 
   private async prefixForLiveUser(userId: string): Promise<string> {
     const user = await this.userRepo.findOne({ where: { id: userId } })
-    return user ? this.deletes.computeBackupPrefix(user.email, user.id) : ''
+    return user ? backupPrefix(user.email, user.id) : ''
   }
 }
 

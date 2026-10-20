@@ -113,8 +113,6 @@ describe('hybrid search HTTP', () => {
       t.ocrRepo.create({
         assetId: ocrAsset.id,
         text: 'passport number 12345',
-        lang: 'en',
-        confidence: 0.9,
       }),
     )
 

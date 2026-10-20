@@ -6,7 +6,6 @@ import { EmbeddingsModule } from '../embeddings/embeddings.module'
 import { OcrModule } from '../ocr/ocr.module'
 import { DetectionsModule } from '../detections/detections.module'
 import { UserFilesModule } from '../files/user/user-files.module'
-import { AdminModule as FilesAdminModule } from '../files/admin/admin.module'
 import { WorkerController } from './worker.controller'
 
 @Module({
@@ -18,7 +17,6 @@ import { WorkerController } from './worker.controller'
     OcrModule,
     DetectionsModule,
     UserFilesModule,
-    FilesAdminModule,
   ],
   controllers: [WorkerController],
 })

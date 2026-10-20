@@ -16,7 +16,7 @@ function makeService(owned = true) {
 }
 
 function validDto(): RegisterOcrDto {
-  return { text: 'passport number 12345', lang: 'eng', confidence: 0.92 }
+  return { text: 'passport number 12345' }
 }
 
 describe('OcrService.register', () => {
@@ -33,29 +33,13 @@ describe('OcrService.register', () => {
     await expect(
       service.register('asset-1', 'u1', { ...validDto(), text: '  hello  ' }),
     ).resolves.toEqual({ ok: true })
-    expect(upsert).toHaveBeenCalledWith(
-      [{ assetId: 'asset-1', text: 'hello', lang: 'eng', confidence: 0.92 }],
-      ['assetId'],
-    )
-  })
-
-  it('defaults absent lang/confidence to null', async () => {
-    const { service, upsert } = makeService()
-    await service.register('asset-1', 'u1', { text: 'hello' })
-    expect(upsert).toHaveBeenCalledWith(
-      [{ assetId: 'asset-1', text: 'hello', lang: null, confidence: null }],
-      ['assetId'],
-    )
+    expect(upsert).toHaveBeenCalledWith([{ assetId: 'asset-1', text: 'hello' }], ['assetId'])
   })
 
   const invalid: [string, RegisterOcrDto][] = [
     ['empty text', { ...validDto(), text: '' }],
     ['whitespace-only text', { ...validDto(), text: '   \n\t' }],
     ['oversized text', { ...validDto(), text: 'x'.repeat(50_001) }],
-    ['too-short lang', { ...validDto(), lang: 'e' }],
-    ['too-long lang', { ...validDto(), lang: 'toolonglang' }],
-    ['confidence above 1', { ...validDto(), confidence: 1.5 }],
-    ['confidence below 0', { ...validDto(), confidence: -0.1 }],
   ]
 
   it.each(invalid)('422s %s without writing', async (_label, dto) => {

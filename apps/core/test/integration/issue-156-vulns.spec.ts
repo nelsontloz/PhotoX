@@ -66,30 +66,18 @@ describe('issue-156 vulns (expect secure, currently insecure)', () => {
     expect(res.status).toBe(404)
   })
 
-  it('transcodeFileId overwrite: foreign file id is rejected', async () => {
+  it('transcodeFileId overwrite: the user metadata route is gone', async () => {
     const victim = await seedUser(t)
     const attacker = await seedUser(t)
     const victimFile = await seedFile(t, victim.id)
     const attackerFile = await seedFile(t, attacker.id)
     const attackerAsset = await seedAsset(t, attacker.id, attackerFile.id)
+    // transcodeFileId is worker-only now; the user route that accepted it was removed
     const res = await request(apiServer(t))
       .patch(`/api/v1/assets/${attackerAsset.id}/metadata`)
       .set(t.authHeader(userTok(attacker)))
       .send({ transcodeFileId: victimFile.id })
-    expect([404, 422]).toContain(res.status)
-  })
-
-  it('worker admin JWT: act token cannot delete a victim file', async () => {
-    const victim = await seedUser(t)
-    const victimFile = await seedFile(t, victim.id)
-    await seedAsset(t, victim.id, victimFile.id)
-    // cleanup-asset carries only { fileId } (cleanup.processor.ts:24-28) and proxies to
-    // adminDeleteFile (core-client.service.ts:221-226) with a worker-minted admin JWT carrying
-    // no user context — a poisoned Redis job deletes ANY file via admin.service deleteFile.
-    const res = await request(apiServer(t))
-      .delete(`/api/v1/admin/files/${victimFile.id}`)
-      .set(t.authHeader(workerAdmin()))
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(404)
   })
 
   it('vuln1 victim read: forged act token cannot GET victim asset', async () => {
@@ -102,16 +90,16 @@ describe('issue-156 vulns (expect secure, currently insecure)', () => {
     expect(res.status).toBe(403)
   })
 
-  it('vuln1 victim write: forged act token cannot PATCH victim metadata', async () => {
+  it('vuln1 victim write: the user metadata route is gone, so a forged act token has no write path', async () => {
     const a = await seedUser(t)
     const file = await seedFile(t, a.id)
     const asset = await seedAsset(t, a.id, file.id)
-    // title is not in UpdateMetadataDto (whitelist would 400) — width proves the auth gap
+    // the user metadata route only existed for the worker contract and is gone now
     const res = await request(apiServer(t))
       .patch(`/api/v1/assets/${asset.id}/metadata`)
       .set(t.authHeader(forgedAs(a)))
       .send({ width: 999 })
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(404)
   })
 
   it('vuln1 orphan run: worker admin token cannot run orphan cleanup', async () => {
@@ -121,13 +109,14 @@ describe('issue-156 vulns (expect secure, currently insecure)', () => {
     expect(res.status).toBe(403)
   })
 
-  it('vuln1 no escalation: user act token cannot admin-delete (passing guard)', async () => {
+  it('vuln1 no escalation: the admin file-delete route no longer exists (passing guard)', async () => {
     const victim = await seedUser(t)
     const file = await seedFile(t, victim.id)
     const res = await request(apiServer(t))
       .delete(`/api/v1/admin/files/${file.id}`)
       .set(t.authHeader(forgedAs(victim)))
-    expect(res.status).toBe(403)
+    // the route was deleted, so the guard never sees it and the request 404s
+    expect(res.status).toBe(404)
   })
 
   it('vuln2 enumeration: worker admin ids filter leaks no victim rows', async () => {
@@ -143,11 +132,12 @@ describe('issue-156 vulns (expect secure, currently insecure)', () => {
     expect((res.body as unknown as { items: { id: string }[] }).items).toHaveLength(0)
   })
 
-  it('vuln2 unknown-id oracle: worker admin delete of random file id is rejected', async () => {
+  it('vuln2 unknown-id oracle: admin file-delete is gone, so a worker token cannot probe it', async () => {
     const res = await request(apiServer(t))
       .delete(`/api/v1/admin/files/${randomUUID()}`)
       .set(t.authHeader(workerAdmin()))
-    expect(res.status).toBe(403)
+    // the route was deleted, so the guard never sees it and the request 404s
+    expect(res.status).toBe(404)
   })
 
   it('vuln3 share→stream chain: public JSON exposes no ids to chain from (hash-era)', async () => {
@@ -218,18 +208,19 @@ describe('issue-156 vulns (expect secure, currently insecure)', () => {
     expect(admins).toHaveLength(0)
   })
 
-  it('vuln5 phash: user token cannot set phash on own asset', async () => {
+  it('vuln5 phash: the user metadata route is gone, so phash is unreachable', async () => {
     const u = await seedUser(t)
     const file = await seedFile(t, u.id)
     const asset = await seedAsset(t, u.id, file.id)
+    // extraction fields (phash/status/GPS) are worker-only now; the user route was removed
     const res = await request(apiServer(t))
       .patch(`/api/v1/assets/${asset.id}/metadata`)
       .set(t.authHeader(userTok(u)))
       .send({ phash: 'deadbeefdeadbeef' })
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(404)
   })
 
-  it('vuln5 fake status/GPS: user token cannot set transcodeStatus/coords', async () => {
+  it('vuln5 fake status/GPS: the user metadata route is gone', async () => {
     const u = await seedUser(t)
     const file = await seedFile(t, u.id)
     const asset = await seedAsset(t, u.id, file.id)
@@ -237,7 +228,7 @@ describe('issue-156 vulns (expect secure, currently insecure)', () => {
       .patch(`/api/v1/assets/${asset.id}/metadata`)
       .set(t.authHeader(userTok(u)))
       .send({ transcodeStatus: 'ready', latitude: 1, longitude: 2 })
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(404)
   })
 
   it('vuln5 index poison: user token cannot register embedding on own asset', async () => {
@@ -255,7 +246,7 @@ describe('issue-156 vulns (expect secure, currently insecure)', () => {
     expect(res.status).toBe(403)
   })
 
-  it('vuln5 unbounded thumbs: arbitrary sizes are rejected', async () => {
+  it('vuln5 unbounded thumbs: the user thumbnail route is gone', async () => {
     const victim = await seedUser(t)
     const attacker = await seedUser(t)
     const victimFile = await seedFile(t, victim.id)
@@ -266,7 +257,7 @@ describe('issue-156 vulns (expect secure, currently insecure)', () => {
         .post(`/api/v1/assets/${asset.id}/thumbnails`)
         .set(t.authHeader(userTok(attacker)))
         .send({ size, fileId: victimFile.id, width: 320, height: 240, bytes: 1024 })
-      expect([400, 422]).toContain(res.status)
+      expect(res.status).toBe(404)
     }
   })
 

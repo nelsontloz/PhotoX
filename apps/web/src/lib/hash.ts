@@ -1,21 +1,4 @@
-import { sha256 } from '@noble/hashes/sha2'
 import type { HashWorkerMessage } from '../workers/hash.worker'
-
-function toHex(bytes: Uint8Array): string {
-  let out = ''
-  for (const byte of bytes) out += byte.toString(16).padStart(2, '0')
-  return out
-}
-
-/**
- * Pure incremental whole-file SHA-256 over ordered chunks. Must equal the server's
- * whole-file hex digest (NOT hash-of-hashes); chunk boundaries must not change the result.
- */
-export function hashBytes(chunks: Uint8Array[]): string {
-  const hasher = sha256.create()
-  for (const chunk of chunks) hasher.update(chunk)
-  return toHex(hasher.digest())
-}
 
 type ProgressCallback = (pct: number) => void
 

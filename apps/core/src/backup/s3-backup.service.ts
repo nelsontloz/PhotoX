@@ -104,10 +104,6 @@ export class S3BackupService implements OnModuleInit {
     }
   }
 
-  getBucket(): string {
-    return this.bucket
-  }
-
   /** HeadBucket probe, creating the bucket when absent (race-tolerant). */
   async ensureBucket(): Promise<void> {
     try {
@@ -251,20 +247,17 @@ export class S3BackupService implements OnModuleInit {
     return keys
   }
 
-  /** Deletes a single key (S3 deletes are idempotent — missing keys succeed). */
-  async deleteKey(key: string): Promise<void> {
-    await this.withRetry(
-      () =>
-        this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }), {
-          abortSignal: AbortSignal.timeout(30_000),
-        }),
-      `DeleteObject ${key}`,
-    )
-  }
-
   /** Sequential prune of stale keys; logs the count. */
   async deleteKeys(keys: string[]): Promise<void> {
-    for (const key of keys) await this.deleteKey(key)
+    for (const key of keys) {
+      await this.withRetry(
+        () =>
+          this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }), {
+            abortSignal: AbortSignal.timeout(30_000),
+          }),
+        `DeleteObject ${key}`,
+      )
+    }
     if (keys.length > 0) this.logger.log(`Deleted ${keys.length} stale backup key(s)`)
   }
 
@@ -295,12 +288,9 @@ export class S3BackupService implements OnModuleInit {
   /**
    * Server-side copy of every key under srcPrefix into dstPrefix (suffix-mapped),
    * skipping manifests (rewritten fresh by backupUser). Sequential to stay inside
-   * the Floci single-op budget; returns copy/skip counts for rename logging.
+   * the Floci single-op budget; logs the copy/skip counts per prefix.
    */
-  async copyPrefix(
-    srcPrefix: string,
-    dstPrefix: string,
-  ): Promise<{ copied: number; skipped: number }> {
+  async copyPrefix(srcPrefix: string, dstPrefix: string): Promise<void> {
     const keys = await this.listKeys(srcPrefix)
     let copied = 0
     let skipped = 0
@@ -317,7 +307,6 @@ export class S3BackupService implements OnModuleInit {
         `Copied prefix ${srcPrefix} -> ${dstPrefix} (${copied} copied, ${skipped} skipped)`,
       )
     }
-    return { copied, skipped }
   }
 
   private async withRetry<T>(op: () => Promise<T>, label: string): Promise<T> {

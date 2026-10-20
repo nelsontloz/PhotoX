@@ -157,34 +157,6 @@ describe('faces HTTP', () => {
     expect(await t.faceRepo.count()).toBe(0)
   })
 
-  it('lists only own faces and omits embeddings by default', async () => {
-    const a = await seedUser(t)
-    const b = await seedUser(t)
-    const { asset } = await seedFace(a.id)
-    await seedFace(b.id)
-    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
-    const res = await request(apiServer(t)).get('/api/v1/faces').set(t.authHeader(tokenA))
-    expect(res.status).toBe(200)
-    const body = res.body as { items: { assetId: string; embedding?: number[] }[] }
-    expect(body.items).toHaveLength(1)
-    expect(body.items[0]?.assetId).toBe(asset.id)
-    expect(body.items[0]?.embedding).toBeUndefined()
-  })
-
-  it('includes embeddings when includeEmbeddings=true', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const { face } = await seedFace(user.id)
-    const res = await request(apiServer(t))
-      .get('/api/v1/faces')
-      .query({ includeEmbeddings: 'true' })
-      .set(t.authHeader(token))
-    expect(res.status).toBe(200)
-    const body = res.body as { items: { id: string; embedding: number[] }[] }
-    expect(body.items[0]?.id).toBe(face.id)
-    expect(body.items[0]?.embedding).toEqual([0.1, 0.2, 0.3])
-  })
-
   it('assigns a face to a person and refreshes faceCount', async () => {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })
@@ -358,40 +330,6 @@ describe('faces HTTP', () => {
       .get(`/api/v1/faces/${randomUUID()}/thumb`)
       .set(t.authHeader(tokenB))
     expect(unknown.status).toBe(404)
-  })
-
-  it('includes confidence in the face list', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const { face } = await seedFace(user.id)
-    const res = await request(apiServer(t)).get('/api/v1/faces').set(t.authHeader(token))
-    expect(res.status).toBe(200)
-    const body = res.body as { items: { id: string; confidence: number }[] }
-    expect(body.items[0]?.id).toBe(face.id)
-    expect(body.items[0]?.confidence).toBe(0.9)
-  })
-
-  it('excludeTrashed=true drops faces whose asset is soft-deleted', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const alive = await seedFace(user.id)
-    const trashed = await seedFace(user.id)
-    const trash = await request(apiServer(t))
-      .post(`/api/v1/assets/${trashed.asset.id}/trash`)
-      .set(t.authHeader(token))
-    expect(trash.status).toBe(204)
-
-    const all = await request(apiServer(t)).get('/api/v1/faces').set(t.authHeader(token))
-    expect((all.body as { items: unknown[] }).items).toHaveLength(2)
-
-    const filtered = await request(apiServer(t))
-      .get('/api/v1/faces')
-      .query({ excludeTrashed: 'true' })
-      .set(t.authHeader(token))
-    expect(filtered.status).toBe(200)
-    const items = (filtered.body as { items: { assetId: string }[] }).items
-    expect(items).toHaveLength(1)
-    expect(items[0]?.assetId).toBe(alive.asset.id)
   })
 
   it('deletes all faces for an asset, nulls dangling cover and refreshes faceCount', async () => {

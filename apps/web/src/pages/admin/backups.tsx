@@ -1,5 +1,6 @@
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
+  FaArrowsRotate,
   FaCodeMerge,
   FaDatabase,
   FaMagnifyingGlass,
@@ -8,18 +9,7 @@ import {
   FaTriangleExclamation,
 } from 'react-icons/fa6'
 import { isAxiosError } from 'axios'
-import {
-  AdminSection,
-  AdminToast,
-  GhostButton,
-  OutlineDangerButton,
-  PrimaryButton,
-  ProgressBar,
-  RefreshButton,
-  SecondaryButton,
-  StatusPill,
-  cx,
-} from './ui'
+import { AdminSection, AdminToast, Button, ProgressBar, StatusPill, cx } from './ui'
 import {
   getBackupOverview,
   getBackupProgress,
@@ -36,6 +26,8 @@ import {
 } from '../../api/admin'
 import { ConfirmDialog, RoleBadge } from './shared'
 import { Dialog, formInputClass } from '../../components/Dialog'
+import { useAsyncFetch } from '../../hooks/useAsyncFetch'
+import { httpErrorMessage, type HttpErrorMessages } from './http-error'
 
 // --- admin backups table -------------------------------------------------------------------
 // One row per user: manifest status, backed-up counts, pending count and last run. Per-row
@@ -83,86 +75,55 @@ const DEGRADED_HINT: Record<string, string> = {
 }
 
 /** 503 means S3/Floci is down; a timeout or no response means the store is slow. Never leak axios verbatim. */
-function statusErrorMessage(err: unknown): string {
-  if (isAxiosError(err)) {
-    if (err.response?.status === 503) return S3_DOWN_BODY
-    if (!err.response || err.code === 'ECONNABORTED') return BACKUP_TIMEOUT_MESSAGE
-  }
-  return STATUS_LOAD_FALLBACK
-}
+const STORE_ERRORS = { offline: S3_DOWN_BODY, timeout: BACKUP_TIMEOUT_MESSAGE } as const
 
-function runErrorMessage(err: unknown): string {
-  if (isAxiosError(err)) {
-    if (err.response?.status === 503) return S3_DOWN_BODY
-    if (!err.response || err.code === 'ECONNABORTED') return BACKUP_TIMEOUT_MESSAGE
-  }
-  return RUN_FALLBACK
-}
-
+const STATUS_ERRORS: HttpErrorMessages = { fallback: STATUS_LOAD_FALLBACK, ...STORE_ERRORS }
+const RUN_ERRORS: HttpErrorMessages = { fallback: RUN_FALLBACK, ...STORE_ERRORS }
 /** Delete failures use plain wording; a 404 means the manifest is already gone. */
-function deleteErrorMessage(err: unknown): string {
-  if (isAxiosError(err)) {
-    if (err.response?.status === 404) return DELETE_MISSING_MESSAGE
-    if (err.response?.status === 503) return S3_DOWN_BODY
-    if (!err.response || err.code === 'ECONNABORTED') return BACKUP_TIMEOUT_MESSAGE
-  }
-  return DELETE_FALLBACK
+const DELETE_ERRORS: HttpErrorMessages = {
+  fallback: DELETE_FALLBACK,
+  byStatus: { 404: DELETE_MISSING_MESSAGE },
+  ...STORE_ERRORS,
 }
-
 /**
  * Restore failures use plain wording: a 409 means the account is already back (list is stale)
  * unless its detail says the requested address is taken; a 400 means the typed address is
  * malformed and retrying the same one will not help.
  */
-function restoreErrorMessage(err: unknown): string {
-  if (isAxiosError(err)) {
-    if (err.response?.status === 409) {
-      return errorDetail(err).includes('email-taken')
-        ? RESTORE_EMAIL_TAKEN_MESSAGE
-        : ALREADY_RESTORED_MESSAGE
-    }
-    if (err.response?.status === 400) return RESTORE_INVALID_EMAIL_MESSAGE
-    if (err.response?.status === 404) return RESTORE_MISSING_MESSAGE
-    if (err.response?.status === 422) return RESTORE_CORRUPT_MESSAGE
-    if (err.response?.status === 503) return S3_DOWN_BODY
-    if (!err.response || err.code === 'ECONNABORTED') return BACKUP_TIMEOUT_MESSAGE
-  }
-  return RESTORE_FALLBACK
+const RESTORE_ERRORS: HttpErrorMessages = {
+  fallback: RESTORE_FALLBACK,
+  byStatus: {
+    409: ({ lower }) =>
+      lower.includes('email-taken') ? RESTORE_EMAIL_TAKEN_MESSAGE : ALREADY_RESTORED_MESSAGE,
+    400: RESTORE_INVALID_EMAIL_MESSAGE,
+    404: RESTORE_MISSING_MESSAGE,
+    422: RESTORE_CORRUPT_MESSAGE,
+  },
+  ...STORE_ERRORS,
 }
 
-/** Lowercased core error detail, used to split the three 409 merge conflicts. */
-function errorDetail(err: unknown): string {
-  if (!isAxiosError(err)) return ''
-  const body = err.response?.data as { message?: unknown } | undefined
-  const message = body?.message
-  const text = Array.isArray(message) ? message.join(' ') : message
-  return typeof text === 'string' ? text.toLowerCase() : ''
-}
+const MERGE_CONFLICT_MESSAGE =
+  'That backup cannot be merged into this account right now — refresh and retry.'
 
 /** Merge failures use plain wording; 409 covers already-merged, email-mismatch and in-progress. */
-function mergeErrorMessage(err: unknown): string {
-  if (isAxiosError(err)) {
-    if (err.response?.status === 404) return MERGE_MISSING_MESSAGE
-    if (err.response?.status === 409) {
-      const detail = errorDetail(err)
-      if (detail.includes('already-merged')) return MERGE_ALREADY_MESSAGE
-      if (detail.includes('email-mismatch')) return MERGE_EMAIL_MESSAGE
-      if (detail.includes('merge-in-progress')) return MERGE_IN_PROGRESS_MESSAGE
-      return 'That backup cannot be merged into this account right now — refresh and retry.'
-    }
-    if (err.response?.status === 413) return MERGE_QUOTA_MESSAGE
-    if (err.response?.status === 422) return MERGE_CORRUPT_MESSAGE
-    if (err.response?.status === 503) return S3_DOWN_BODY
-    if (!err.response || err.code === 'ECONNABORTED') return BACKUP_TIMEOUT_MESSAGE
-  }
-  return MERGE_FALLBACK
+const MERGE_ERRORS: HttpErrorMessages = {
+  fallback: MERGE_FALLBACK,
+  byStatus: {
+    404: MERGE_MISSING_MESSAGE,
+    409: ({ lower }) => {
+      if (lower.includes('already-merged')) return MERGE_ALREADY_MESSAGE
+      if (lower.includes('email-mismatch')) return MERGE_EMAIL_MESSAGE
+      if (lower.includes('merge-in-progress')) return MERGE_IN_PROGRESS_MESSAGE
+      return MERGE_CONFLICT_MESSAGE
+    },
+    413: MERGE_QUOTA_MESSAGE,
+    422: MERGE_CORRUPT_MESSAGE,
+  },
+  ...STORE_ERRORS,
 }
 
-function isStoreDown(err: unknown): boolean {
-  return (
-    isAxiosError(err) &&
-    (err.response?.status === 503 || !err.response || err.code === 'ECONNABORTED')
-  )
+function isStoreDown(message: string | null): boolean {
+  return message === S3_DOWN_BODY || message === BACKUP_TIMEOUT_MESSAGE
 }
 
 /** Formats an ISO timestamp the way the rest of the admin console does, tolerating absence. */
@@ -198,6 +159,22 @@ interface SnapshotLabels {
   merge: string
   restore: string
   delete: string
+}
+
+/**
+ * One per-row view-model: in-flight lanes, backup progress, the last failed sentence and the
+ * last successful run all describe the same row, so they share one map keyed by the LIVE row's
+ * userId (a snapshot action targets its own backupUserId but reports under the live row).
+ */
+interface RowState {
+  busy?: boolean
+  restoring?: boolean
+  deleting?: boolean
+  merging?: boolean
+  progress?: BackupProgress | null
+  progressUnsupported?: boolean
+  error?: string | null
+  lastResult?: BackupResult
 }
 
 /**
@@ -240,83 +217,6 @@ function pillFor(
 // A live row can carry previous-account backups matched by email (`legacyBackups`). Each
 // snapshot renders as its own sub-row right under the live row with Merge / Restore / Delete,
 // so the live row keeps its own status, counts and Backup action untouched.
-
-/**
- * Destructive action. The red text stays, plus a red outline so the button reads as a button
- * rather than plain text. `size="md"` matches the shared button box for the sub-row's
- * right-aligned action cluster; main rows keep the compact default.
- */
-function DeleteActionButton({
-  label,
-  disabled,
-  busy,
-  onClick,
-  size = 'sm',
-}: {
-  label: string
-  disabled?: boolean
-  busy?: boolean
-  onClick: () => void
-  size?: 'sm' | 'md'
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={label}
-      aria-label={label}
-      className={cx(
-        'inline-flex items-center gap-1.5 rounded-lg border font-semibold transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-status-error focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low',
-        size === 'md' ? 'px-3 py-1.5 text-xs' : 'px-2.5 py-1.5 text-[11px]',
-        disabled
-          ? 'border-outline/30 text-outline/60 cursor-not-allowed'
-          : 'border-status-error/40 text-status-error hover:bg-status-error/10',
-      )}
-    >
-      {busy ? (
-        <FaSpinner className="animate-spin text-xs" aria-hidden="true" />
-      ) : (
-        <FaTrashCan className="text-xs" aria-hidden="true" />
-      )}
-      {busy ? 'Deleting…' : 'Delete'}
-    </button>
-  )
-}
-
-/**
- * Secondary sub-row action: outlined in primary instead of ghost-grey, so it reads as a real
- * choice next to the filled merge. Sized like the shared ui.tsx buttons; that file is shared by
- * every admin tab, so the outline variant lives here. Takes a hover title that differs from the
- * visible text and aria-label.
- */
-function OutlineActionButton({
-  label,
-  title,
-  disabled,
-  onClick,
-  children,
-}: {
-  label: string
-  title: string
-  disabled?: boolean
-  onClick: () => void
-  children: ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      aria-label={label}
-      className="inline-flex items-center gap-2 text-xs font-semibold rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-primary/50 text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low"
-    >
-      {children}
-    </button>
-  )
-}
 
 function SnapshotSubRow({
   row,
@@ -379,33 +279,44 @@ function SnapshotSubRow({
               Wraps on narrow screens instead of squeezing. */}
           <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
             {!merged && (
-              // PrimaryButton takes no title prop, so the hover title sits on the wrapper.
+              // Button takes no title prop in its primary variant, so the hover title sits on the wrapper.
               <span className="inline-flex" title={`Merge this backup into ${row.email}`}>
-                <PrimaryButton
+                <Button
                   onClick={onMerge}
                   disabled={anyBusy}
                   ariaLabel={labels.merge}
                   icon={<FaCodeMerge />}
                 >
                   Merge to current live account
-                </PrimaryButton>
+                </Button>
               </span>
             )}
-            <OutlineActionButton
+            <Button
+              variant="outlinePrimary"
               onClick={onRestore}
               disabled={anyBusy}
-              label={labels.restore}
+              ariaLabel={labels.restore}
               title="Restore this backup as a separate account"
             >
               Restore to a new account
-            </OutlineActionButton>
-            <DeleteActionButton
-              label={labels.delete}
+            </Button>
+            <Button
+              variant="dangerFlat"
+              ariaLabel={labels.delete}
+              title={labels.delete}
               disabled={anyBusy}
-              busy={deleting}
               size="md"
               onClick={onDelete}
-            />
+              icon={
+                deleting ? (
+                  <FaSpinner className="animate-spin text-xs" aria-hidden="true" />
+                ) : (
+                  <FaTrashCan className="text-xs" aria-hidden="true" />
+                )
+              }
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </Button>
           </div>
         </div>
       </td>
@@ -618,9 +529,9 @@ function DeleteBackupDialog({
       </div>
 
       <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-6">
-        <SecondaryButton size="lg" onClick={onClose}>
+        <Button variant="secondary" size="lg" onClick={onClose}>
           Cancel
-        </SecondaryButton>
+        </Button>
         <button
           type="button"
           onClick={onConfirm}
@@ -635,27 +546,22 @@ function DeleteBackupDialog({
 }
 
 export function BackupSection() {
-  const [rows, setRows] = useState<BackupOverviewRow[] | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [loadErrorIsStore, setLoadErrorIsStore] = useState(false)
   const [version, setVersion] = useState(0)
 
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<BackupFilter>('all')
   const [page, setPage] = useState(0)
 
-  const [busy, setBusy] = useState<Record<string, boolean>>({})
-  const [restoring, setRestoring] = useState<Record<string, boolean>>({})
-  const [deleting, setDeleting] = useState<Record<string, boolean>>({})
-  const [merging, setMerging] = useState<Record<string, boolean>>({})
-  const [progressMap, setProgressMap] = useState<Record<string, BackupProgress | null>>({})
-  const [unsupported, setUnsupported] = useState<Record<string, boolean>>({})
-  const [rowErrors, setRowErrors] = useState<Record<string, string | null>>({})
-  const [lastResults, setLastResults] = useState<Record<string, BackupResult>>({})
+  // One per-row view-model: in-flight lanes, backup progress, the last failed sentence and the
+  // last successful run all describe the same row, so they share one map keyed by the LIVE row's
+  // userId (a snapshot action targets its own backupUserId but reports under the live row).
+  const [rowState, setRowState] = useState<Record<string, RowState>>({})
+  const patchRow = useCallback(
+    (id: string, patch: Partial<RowState>) =>
+      setRowState((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } })),
+    [],
+  )
 
-  // Snapshot actions key busy/error state by the LIVE row's userId; the snapshot itself
-  // supplies the API target id (a previous account's backupUserId).
   const [confirmUser, setConfirmUser] = useState<BackupOverviewRow | null>(null)
   const [confirmRestore, setConfirmRestore] = useState<{
     row: BackupOverviewRow
@@ -685,47 +591,41 @@ export function BackupSection() {
   const notify = (message: ReactNode, tone: 'default' | 'error' = 'default') =>
     setToast((prev) => ({ key: (prev?.key ?? 0) + 1, message, tone }))
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setLoadError(null)
-    setLoadErrorIsStore(false)
-    getBackupOverview()
-      .then((next) => {
-        if (!cancelled) {
-          setRows(next)
-          // A 409 restore bumps version to refetch: the same-userId row comes back live,
-          // so drop its "already back" row error once the reload lands. Rows still deleted
-          // keep their errors; missing rows have nothing to show under.
-          setRowErrors((prev) => {
-            if (Object.keys(prev).length === 0) return prev
-            const freshById = new Map(next.map((r) => [r.userId, r] as const))
-            let changed = false
-            const out = { ...prev }
-            for (const id of Object.keys(prev)) {
-              if (!prev[id]) continue
-              if (!freshById.get(id)?.deleted) {
-                out[id] = null
-                changed = true
-              }
+  const {
+    data,
+    loading,
+    error: loadError,
+    setData: setRows,
+  } = useAsyncFetch(
+    async () => {
+      try {
+        const next = await getBackupOverview()
+        // A 409 restore bumps version to refetch: the same-userId row comes back live, so drop
+        // its "already back" row error once the reload lands. Rows still deleted keep their
+        // errors; missing rows have nothing to show under.
+        setRowState((prev) => {
+          if (Object.keys(prev).length === 0) return prev
+          const freshById = new Map(next.map((r) => [r.userId, r] as const))
+          let changed = false
+          const out = { ...prev }
+          for (const id of Object.keys(prev)) {
+            if (!prev[id]?.error) continue
+            if (!freshById.get(id)?.deleted) {
+              out[id] = { ...out[id], error: null }
+              changed = true
             }
-            return changed ? out : prev
-          })
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setLoadError(statusErrorMessage(err))
-          setLoadErrorIsStore(isStoreDown(err))
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [version])
+          }
+          return changed ? out : prev
+        })
+        return next
+      } catch (err) {
+        throw new Error(httpErrorMessage(err, STATUS_ERRORS))
+      }
+    },
+    { refreshKey: version, errorMessage: STATUS_LOAD_FALLBACK, loadingMode: 'always' },
+  )
+  const rows = data ?? null
+  const loadErrorIsStore = isStoreDown(loadError)
 
   const filtered = useMemo(() => {
     const list = rows ?? []
@@ -748,27 +648,33 @@ export function BackupSection() {
 
   const anyBusy =
     backupAllRunning ||
-    Object.values(busy).some(Boolean) ||
-    Object.values(restoring).some(Boolean) ||
-    Object.values(deleting).some(Boolean) ||
-    Object.values(merging).some(Boolean)
+    Object.values(rowState).some(
+      (s) => Boolean(s.busy) || Boolean(s.restoring) || Boolean(s.deleting) || Boolean(s.merging),
+    )
   // Backup-all covers live accounts only — orphan backups are restored, not re-backed-up.
   const liveTargets = useMemo(() => filtered.filter((r) => !r.deleted), [filtered])
 
   // Per-row progress: poll the progress endpoint once a second for every in-flight row.
   // A 404 means the core predates the endpoint — fall back to the indeterminate bar.
+  const pollIds = Object.entries(rowState)
+    .filter(([, state]) => state.busy && !state.progressUnsupported)
+    .map(([id]) => id)
+    .sort()
+  // A stable string key keeps the interval alive across progress updates (only the set of
+  // in-flight ids restarts it).
+  const pollKey = pollIds.join('|')
   useEffect(() => {
-    const ids = Object.keys(busy).filter((id) => busy[id] && !unsupported[id])
+    const ids = pollKey === '' ? [] : pollKey.split('|')
     if (ids.length === 0) return
     let cancelled = false
     const poll = async (id: string) => {
       try {
         const snapshot = await getBackupProgress(id)
-        if (!cancelled) setProgressMap((prev) => ({ ...prev, [id]: snapshot }))
+        if (!cancelled) patchRow(id, { progress: snapshot })
       } catch (err: unknown) {
         if (cancelled) return
         if (isAxiosError(err) && err.response?.status === 404) {
-          setUnsupported((prev) => ({ ...prev, [id]: true }))
+          patchRow(id, { progressUnsupported: true })
         }
       }
     }
@@ -780,22 +686,15 @@ export function BackupSection() {
       cancelled = true
       clearInterval(timer)
     }
-  }, [busy, unsupported])
+  }, [pollKey, patchRow])
 
   const runOne = async (row: BackupOverviewRow): Promise<boolean> => {
-    setBusy((prev) => ({ ...prev, [row.userId]: true }))
-    setRowErrors((prev) => ({ ...prev, [row.userId]: null }))
-    setProgressMap((prev) => ({ ...prev, [row.userId]: null }))
-    setUnsupported((prev) => {
-      const next = { ...prev }
-      delete next[row.userId]
-      return next
-    })
+    patchRow(row.userId, { busy: true, error: null, progress: null, progressUnsupported: false })
     try {
       const res = await backupUser(row.userId)
       // A rerun can re-derive a row carrying previous-account snapshots, so re-read the
       // overview instead of optimistically patching it.
-      if (row.backupUserId || (row.legacyBackups?.length ?? 0) > 0) {
+      if ((row.legacyBackups?.length ?? 0) > 0) {
         setVersion((v) => v + 1)
       } else {
         setRows((prev) =>
@@ -814,24 +713,19 @@ export function BackupSection() {
           ),
         )
       }
-      setLastResults((prev) => ({ ...prev, [row.userId]: res }))
+      patchRow(row.userId, { lastResult: res })
       const allSkipped = res.files > 0 && (res.skipped ?? 0) === res.files
       notify(
         `Backed up ${row.email} — ${res.files.toLocaleString()} files (${(res.uploaded ?? 0).toLocaleString()} new, ${(res.skipped ?? 0).toLocaleString()} unchanged)${allSkipped ? ' — nothing new.' : ''}`,
       )
       return true
     } catch (err: unknown) {
-      const message = runErrorMessage(err)
-      setRowErrors((prev) => ({ ...prev, [row.userId]: message }))
+      const message = httpErrorMessage(err, RUN_ERRORS)
+      patchRow(row.userId, { error: message })
       notify(`Backup of ${row.email} failed — ${message}`, 'error')
       return false
     } finally {
-      setBusy((prev) => ({ ...prev, [row.userId]: false }))
-      setProgressMap((prev) => {
-        const next = { ...prev }
-        delete next[row.userId]
-        return next
-      })
+      patchRow(row.userId, { busy: false, progress: null })
     }
   }
 
@@ -840,8 +734,7 @@ export function BackupSection() {
     snapshot: BackupSnapshot,
     restoreEmail?: string,
   ): Promise<boolean> => {
-    setRestoring((prev) => ({ ...prev, [row.userId]: true }))
-    setRowErrors((prev) => ({ ...prev, [row.userId]: null }))
+    patchRow(row.userId, { restoring: true, error: null })
     try {
       const res: RestoreResult = await restoreUser(snapshot.userId, restoreEmail)
       // A different restored address re-homes the S3 backup inline; a failed move does not fail
@@ -856,19 +749,18 @@ export function BackupSection() {
       setVersion((v) => v + 1)
       return true
     } catch (err: unknown) {
-      const message = restoreErrorMessage(err)
-      setRowErrors((prev) => ({ ...prev, [row.userId]: message }))
+      const message = httpErrorMessage(err, RESTORE_ERRORS)
+      patchRow(row.userId, { error: message })
       notify(`Restore of ${row.email} failed — ${message}`, 'error')
       if (isAxiosError(err) && err.response?.status === 409) setVersion((v) => v + 1)
       return false
     } finally {
-      setRestoring((prev) => ({ ...prev, [row.userId]: false }))
+      patchRow(row.userId, { restoring: false })
     }
   }
 
   const runDelete = async (row: BackupOverviewRow, snapshot: BackupSnapshot): Promise<boolean> => {
-    setDeleting((prev) => ({ ...prev, [row.userId]: true }))
-    setRowErrors((prev) => ({ ...prev, [row.userId]: null }))
+    patchRow(row.userId, { deleting: true, error: null })
     try {
       const res = await deleteBackup(snapshot.userId)
       notify(
@@ -877,8 +769,8 @@ export function BackupSection() {
       setVersion((v) => v + 1)
       return true
     } catch (err: unknown) {
-      const message = deleteErrorMessage(err)
-      setRowErrors((prev) => ({ ...prev, [row.userId]: message }))
+      const message = httpErrorMessage(err, DELETE_ERRORS)
+      patchRow(row.userId, { error: message })
       // A 404 means the manifest is already gone — the refreshed list is the recovery,
       // so the row error carries it without an extra failure toast.
       if (!isAxiosError(err) || err.response?.status !== 404) {
@@ -888,13 +780,12 @@ export function BackupSection() {
       }
       return false
     } finally {
-      setDeleting((prev) => ({ ...prev, [row.userId]: false }))
+      patchRow(row.userId, { deleting: false })
     }
   }
 
   const runMerge = async (row: BackupOverviewRow, snapshot: BackupSnapshot): Promise<boolean> => {
-    setMerging((prev) => ({ ...prev, [row.userId]: true }))
-    setRowErrors((prev) => ({ ...prev, [row.userId]: null }))
+    patchRow(row.userId, { merging: true, error: null })
     try {
       const res = await mergeBackup({
         targetEmailOrId: row.userId,
@@ -920,15 +811,15 @@ export function BackupSection() {
       setVersion((v) => v + 1)
       return true
     } catch (err: unknown) {
-      const message = mergeErrorMessage(err)
-      setRowErrors((prev) => ({ ...prev, [row.userId]: message }))
+      const message = httpErrorMessage(err, MERGE_ERRORS)
+      patchRow(row.userId, { error: message })
       notify(`Merge of ${row.email} failed — ${message}`, 'error')
       // A stale row (already merged elsewhere) is fixed by the refreshed overview;
       // an in-progress/email-mismatch 409 simply keeps the row as-is.
       if (isAxiosError(err) && err.response?.status === 409) setVersion((v) => v + 1)
       return false
     } finally {
-      setMerging((prev) => ({ ...prev, [row.userId]: false }))
+      patchRow(row.userId, { merging: false })
     }
   }
 
@@ -1008,13 +899,15 @@ export function BackupSection() {
               </button>
             ))}
           </div>
-          <RefreshButton
+          <Button
+            variant="icon"
             onClick={() => setVersion((v) => v + 1)}
-            label="Refresh backup overview"
+            ariaLabel="Refresh backup overview"
             disabled={loading || anyBusy}
             className="inline-flex items-center justify-center p-2 rounded-lg border border-outline-variant bg-surface-container-highest text-on-surface-variant transition-colors enabled:hover:text-on-surface enabled:hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low disabled:opacity-50 disabled:cursor-not-allowed"
+            icon={<FaArrowsRotate />}
           />
-          <PrimaryButton
+          <Button
             onClick={() => setConfirmAll(true)}
             disabled={liveTargets.length === 0 || loading || anyBusy}
             icon={backupAllRunning ? <FaSpinner className="animate-spin" /> : undefined}
@@ -1023,7 +916,7 @@ export function BackupSection() {
             {backupAllRunning && backupAllCursor
               ? `Backing up ${Math.min(backupAllCursor.done + 1, backupAllCursor.total)}/${backupAllCursor.total}…`
               : 'Back up all'}
-          </PrimaryButton>
+          </Button>
         </div>
       }
     >
@@ -1057,7 +950,9 @@ export function BackupSection() {
           ) : (
             <p className="text-xs text-status-error mb-3">{loadError}</p>
           )}
-          <GhostButton onClick={() => setVersion((v) => v + 1)}>Retry</GhostButton>
+          <Button variant="ghost" onClick={() => setVersion((v) => v + 1)}>
+            Retry
+          </Button>
         </div>
       ) : !rows || rows.length === 0 ? (
         <div className="rounded-lg bg-surface-container p-12 text-center">
@@ -1098,17 +993,18 @@ export function BackupSection() {
                 </thead>
                 <tbody className="divide-y divide-border-dark/60">
                   {paged.map((row) => {
-                    const isBusy = Boolean(busy[row.userId])
-                    const isRestoring = Boolean(restoring[row.userId])
-                    const isDeleting = Boolean(deleting[row.userId])
+                    const state = rowState[row.userId]
+                    const isBusy = Boolean(state?.busy)
+                    const isRestoring = Boolean(state?.restoring)
+                    const isDeleting = Boolean(state?.deleting)
                     // Previous-account snapshots render as sub-rows under this one. Orphan
                     // rows never carry them and keep their action shape exactly as before.
                     const legacySnapshots = row.deleted ? [] : (row.legacyBackups ?? [])
-                    const progress = progressMap[row.userId] ?? null
+                    const progress = state?.progress ?? null
                     const showDeterminate =
-                      progress && !unsupported[row.userId] && progress.total > 0
-                    const pill = pillFor(row, rowErrors[row.userId] ?? null)
-                    const last = lastResults[row.userId]
+                      progress && !state?.progressUnsupported && progress.total > 0
+                    const pill = pillFor(row, state?.error ?? null)
+                    const last = state?.lastResult
                     const allSkipped = last && last.files > 0 && (last.skipped ?? 0) === last.files
                     const emailHint =
                       row.emailAtBackup &&
@@ -1166,7 +1062,8 @@ export function BackupSection() {
                           <td className="py-3 px-3 sm:px-4 text-right align-top">
                             {row.deleted ? (
                               <div className="flex flex-col items-end gap-2">
-                                <SecondaryButton
+                                <Button
+                                  variant="secondary"
                                   tone="accent"
                                   onClick={() => openRestore(rowSnapshot(row), false)}
                                   disabled={anyBusy}
@@ -1176,16 +1073,18 @@ export function BackupSection() {
                                   }
                                 >
                                   {isRestoring ? 'Restoring…' : 'Restore'}
-                                </SecondaryButton>
+                                </Button>
                                 <span title="That account is deleted — restore it before backing up.">
-                                  <SecondaryButton
+                                  <Button
+                                    variant="secondary"
                                     disabled
                                     ariaLabel={`Back up ${row.email} (deleted — restore first)`}
                                   >
                                     Backup
-                                  </SecondaryButton>
+                                  </Button>
                                 </span>
-                                <OutlineDangerButton
+                                <Button
+                                  variant="danger"
                                   title={`Delete backup for ${row.email}`}
                                   ariaLabel={`Delete backup for ${row.email}`}
                                   disabled={anyBusy}
@@ -1202,11 +1101,12 @@ export function BackupSection() {
                                   }
                                 >
                                   {isDeleting ? 'Deleting…' : 'Delete'}
-                                </OutlineDangerButton>
+                                </Button>
                               </div>
                             ) : (
                               <div className="flex flex-col items-end gap-2">
-                                <SecondaryButton
+                                <Button
+                                  variant="secondary"
                                   tone="accent"
                                   onClick={() => setConfirmUser(row)}
                                   disabled={anyBusy}
@@ -1214,8 +1114,9 @@ export function BackupSection() {
                                   icon={isBusy ? <FaSpinner className="animate-spin" /> : undefined}
                                 >
                                   {isBusy ? 'Backing up…' : 'Backup'}
-                                </SecondaryButton>
-                                <OutlineDangerButton
+                                </Button>
+                                <Button
+                                  variant="danger"
                                   title={`Delete backup for ${row.email}`}
                                   ariaLabel={`Delete backup for ${row.email}`}
                                   disabled={anyBusy}
@@ -1232,7 +1133,7 @@ export function BackupSection() {
                                   }
                                 >
                                   {isDeleting ? 'Deleting…' : 'Delete'}
-                                </OutlineDangerButton>
+                                </Button>
                               </div>
                             )}
                             {isBusy && (
@@ -1279,9 +1180,9 @@ export function BackupSection() {
                                 </p>
                               </div>
                             )}
-                            {rowErrors[row.userId] && (
+                            {state?.error && (
                               <p className="mt-1 text-[11px] text-status-error max-w-[240px] ml-auto">
-                                {rowErrors[row.userId]}
+                                {state.error}
                               </p>
                             )}
                             {allSkipped && !row.deleted && (
@@ -1315,18 +1216,23 @@ export function BackupSection() {
                   {filtered.length === 1 ? '' : 's'}
                 </span>
                 <div className="flex items-center gap-2">
-                  <SecondaryButton disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>
+                  <Button
+                    variant="secondary"
+                    disabled={safePage === 0}
+                    onClick={() => setPage(safePage - 1)}
+                  >
                     Prev
-                  </SecondaryButton>
+                  </Button>
                   <span className="px-2 tabular-nums">
                     Page {safePage + 1} of {totalPages}
                   </span>
-                  <SecondaryButton
+                  <Button
+                    variant="secondary"
                     disabled={safePage + 1 >= totalPages}
                     onClick={() => setPage(safePage + 1)}
                   >
                     Next
-                  </SecondaryButton>
+                  </Button>
                 </div>
               </footer>
             </div>

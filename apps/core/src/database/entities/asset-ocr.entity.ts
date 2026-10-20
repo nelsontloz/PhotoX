@@ -13,12 +13,6 @@ export class AssetOcr {
   @Column('text')
   text!: string
 
-  @Column({ type: 'text', nullable: true })
-  lang!: string | null
-
-  @Column({ type: 'real', nullable: true })
-  confidence!: number | null
-
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date
 }

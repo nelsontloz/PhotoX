@@ -9,15 +9,15 @@ import {
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, DataSource, In, QueryFailedError } from 'typeorm'
+import type { SelectQueryBuilder } from 'typeorm'
 import { isUUID } from 'class-validator'
 import { Asset } from '../database/entities'
 import { AssetThumbnail } from '../database/entities'
 import { FileRecord } from '../database/entities'
-import { Person } from '../database/entities'
 import { AlbumAsset } from '../albums/entities/album-asset.entity'
 import { Face } from '../database/entities'
-import { refreshPersonFaceCount } from '../faces/face-count'
 import { findOwnedOr404 } from '../common/asset-ownership'
+import { refreshPersonsAfterFaceDelete } from '../common/face-cleanup'
 import { CreateAssetDto } from './dto/create-asset.dto'
 import { UpdateAssetDto } from './dto/update-asset.dto'
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
@@ -120,19 +120,7 @@ export class AssetsService {
       qb.andWhere('(asset.latitude IS NULL OR asset.longitude IS NULL)')
     }
 
-    if (q.personId) {
-      qb.andWhere(
-        'EXISTS (SELECT 1 FROM faces f WHERE f."assetId" = asset.id AND f."personId" = :personId)',
-        { personId: q.personId },
-      )
-    }
-
-    if (q.albumId) {
-      qb.andWhere(
-        'EXISTS (SELECT 1 FROM album_assets aa WHERE aa."assetId" = asset.id AND aa."albumId" = :albumId)',
-        { albumId: q.albumId },
-      )
-    }
+    this.applyAssetFilters(qb, q)
 
     const [items, total] = await qb
       .orderBy(`COALESCE(asset.takenAt, asset.uploadedAt)`, 'DESC')
@@ -180,23 +168,7 @@ export class AssetsService {
       .where('asset.userId = :userId', { userId })
       .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false })
 
-    if (personId) {
-      qb.andWhere(
-        'EXISTS (SELECT 1 FROM faces f WHERE f."assetId" = asset.id AND f."personId" = :personId)',
-        { personId },
-      )
-    }
-
-    if (favorite !== undefined) {
-      qb.andWhere('asset.favorite = :favorite', { favorite })
-    }
-
-    if (albumId) {
-      qb.andWhere(
-        'EXISTS (SELECT 1 FROM album_assets aa WHERE aa."assetId" = asset.id AND aa."albumId" = :albumId)',
-        { albumId },
-      )
-    }
+    this.applyAssetFilters(qb, { personId, favorite, albumId })
 
     const rows = await qb
       .orderBy('COALESCE(asset.takenAt, asset.uploadedAt)', 'DESC')
@@ -286,57 +258,33 @@ export class AssetsService {
     }
   }
 
-  async emptyTrash(userId: string): Promise<{ fileIds: string[] }> {
+  async emptyTrash(userId: string): Promise<void> {
     const assets = await this.repo.find({ where: { userId, isTrashed: true } })
-    if (assets.length === 0) return { fileIds: [] }
-    return this.hardDelete(assets.map((a) => a.id))
+    if (assets.length === 0) return
+    await this.hardDelete(assets.map((a) => a.id))
   }
 
-  async delete(userId: string, id: string): Promise<{ fileIds: string[] }> {
+  async delete(userId: string, id: string): Promise<void> {
     const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
     if (!asset.isTrashed)
       throw new BadRequestException('Asset must be trashed before permanent deletion')
 
-    return this.hardDelete([id])
+    await this.hardDelete([id])
   }
 
-  private async hardDelete(assetIds: string[]): Promise<{ fileIds: string[] }> {
-    const assets = await this.repo.find({ where: { id: In(assetIds) } })
-    const thumbRows = await this.thumbRepo.find({ where: { assetId: In(assetIds) } })
-    const fileIds = [
-      ...assets.flatMap((a) => [a.fileId, a.transcodeFileId].filter(Boolean) as string[]),
-      ...thumbRows.map((t) => t.fileId),
-    ]
-
+  private async hardDelete(assetIds: string[]): Promise<void> {
     await this.dataSource.transaction(async (em) => {
       // C4: mirror FacesService.deleteForAsset — collect deleted face ids, null matching
       // person covers, and refresh live counts inside the same txn so hard-deleted assets
       // can't leave dangling coverFaceUrl thumbs behind.
       const existingFaces =
         assetIds.length > 0 ? await em.find(Face, { where: { assetId: In(assetIds) } }) : []
-      const deletedFaceIds = new Set(existingFaces.map((f) => f.id))
-      const personIds = [
-        ...new Set(existingFaces.map((f) => f.personId).filter((p): p is string => p !== null)),
-      ]
       await em.delete(Face, { assetId: In(assetIds) })
       await em.delete(AlbumAsset, { assetId: In(assetIds) })
       // shares.assetId FK is ON DELETE CASCADE, so share rows fall with the asset
       await em.delete(Asset, { id: In(assetIds) })
-      for (const pid of personIds) {
-        const person = await em.findOne(Person, { where: { id: pid } })
-        if (!person) continue
-        if (person.coverFaceId && deletedFaceIds.has(person.coverFaceId)) {
-          await em.update(Person, { id: pid }, { coverFaceId: null })
-        }
-        await refreshPersonFaceCount(
-          em.getRepository(Face),
-          em.getRepository(Person),
-          pid,
-          person.userId,
-        )
-      }
+      await refreshPersonsAfterFaceDelete(em, existingFaces)
     })
-    return { fileIds }
   }
 
   // WorkerMetadataDto extends UpdateMetadataDto, so the user DTO is assignable here; both
@@ -447,6 +395,29 @@ export class AssetsService {
     return toThumbnailResponse(row)
   }
 
+  private applyAssetFilters(
+    qb: SelectQueryBuilder<Asset>,
+    filters: { personId?: string; favorite?: boolean; albumId?: string },
+  ): void {
+    if (filters.personId) {
+      qb.andWhere(
+        'EXISTS (SELECT 1 FROM faces f WHERE f."assetId" = asset.id AND f."personId" = :personId)',
+        { personId: filters.personId },
+      )
+    }
+
+    if (filters.favorite !== undefined) {
+      qb.andWhere('asset.favorite = :favorite', { favorite: filters.favorite })
+    }
+
+    if (filters.albumId) {
+      qb.andWhere(
+        'EXISTS (SELECT 1 FROM album_assets aa WHERE aa."assetId" = asset.id AND aa."albumId" = :albumId)',
+        { albumId: filters.albumId },
+      )
+    }
+  }
+
   private async fetchThumbs(assetIds: string[]): Promise<Map<string, AssetThumbnail[]>> {
     if (assetIds.length === 0) return new Map()
     const rows = await this.thumbRepo.find({
@@ -457,30 +428,38 @@ export class AssetsService {
   }
 
   private toResponse(asset: Asset, thumbnails?: AssetThumbnail[]): AssetResponse {
+    const {
+      placeCity,
+      placeAdmin1,
+      placeCountryCode,
+      placeTimezone,
+      placeDistanceKm,
+      phash,
+      embeddingStatus,
+      updatedAt,
+      thumbnails: _thumbnails,
+      ...wire
+    } = asset
+    // non-wire columns are destructured out so the rest spread is exactly the wire projection
+    void [
+      placeCity,
+      placeAdmin1,
+      placeCountryCode,
+      placeTimezone,
+      placeDistanceKm,
+      phash,
+      embeddingStatus,
+      updatedAt,
+      _thumbnails,
+    ]
     return {
-      id: asset.id,
-      userId: asset.userId,
-      kind: asset.kind,
-      fileId: asset.fileId,
+      ...wire,
       uploadedAt:
         asset.uploadedAt instanceof Date ? asset.uploadedAt.toISOString() : asset.uploadedAt,
-      isTrashed: asset.isTrashed,
       trashedAt: asset.trashedAt instanceof Date ? asset.trashedAt.toISOString() : null,
-      title: asset.title,
-      description: asset.description,
       takenAt: asset.takenAt instanceof Date ? asset.takenAt.toISOString() : null,
-      favorite: asset.favorite,
-      mimeType: asset.mimeType,
       sizeBytes: asset.sizeBytes !== null ? Number(asset.sizeBytes) : null,
-      originalName: asset.originalName,
-      width: asset.width,
-      height: asset.height,
       durationSeconds: asset.durationSeconds !== null ? Number(asset.durationSeconds) : null,
-      cameraMake: asset.cameraMake,
-      cameraModel: asset.cameraModel,
-      lensModel: asset.lensModel,
-      orientation: asset.orientation,
-      iso: asset.iso,
       fNumber: asset.fNumber !== null ? Number(asset.fNumber) : null,
       exposureTime: asset.exposureTime !== null ? Number(asset.exposureTime) : null,
       focalLength: asset.focalLength !== null ? Number(asset.focalLength) : null,
@@ -488,17 +467,8 @@ export class AssetsService {
       longitude: asset.longitude !== null ? Number(asset.longitude) : null,
       altitude: asset.altitude !== null ? Number(asset.altitude) : null,
       fps: asset.fps !== null ? Number(asset.fps) : null,
-      codec: asset.codec,
-      hasAudio: asset.hasAudio,
-      metadata: asset.metadata,
-      metadataStatus: asset.metadataStatus,
       metadataExtractedAt:
         asset.metadataExtractedAt instanceof Date ? asset.metadataExtractedAt.toISOString() : null,
-      transcodeStatus: asset.transcodeStatus,
-      transcodeFileId: asset.transcodeFileId,
-      thumbnailStatus: asset.thumbnailStatus,
-      faceStatus: asset.faceStatus,
-      faceCount: asset.faceCount,
       ...(thumbnails ? { thumbnails: thumbnails.map((t) => toThumbnailResponse(t)) } : {}),
     }
   }

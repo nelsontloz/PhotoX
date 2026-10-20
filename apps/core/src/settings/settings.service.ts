@@ -6,12 +6,12 @@ import { resolveFaceDetectorModelPath } from '@photox/shared-config'
 import type { FaceDetectionSettings } from '@photox/shared-types'
 import { AppSetting } from '../database/entities'
 
-export const FACE_REPROCESS_LAST_RUN_KEY = 'face.reprocess.lastRun'
-export const EMBEDDING_REPROCESS_LAST_RUN_KEY = 'embedding.reprocess.lastRun'
-export const OCR_REPROCESS_LAST_RUN_KEY = 'ocr.reprocess.lastRun'
-export const DETECTIONS_REPROCESS_LAST_RUN_KEY = 'detections.reprocess.lastRun'
-export const PLACES_BACKFILL_LAST_RUN_KEY = 'places.backfill.lastRun'
-export const METADATA_REPROCESS_LAST_RUN_KEY = 'metadata.reprocess.lastRun'
+const FACE_REPROCESS_LAST_RUN_KEY = 'face.reprocess.lastRun'
+const EMBEDDING_REPROCESS_LAST_RUN_KEY = 'embedding.reprocess.lastRun'
+const OCR_REPROCESS_LAST_RUN_KEY = 'ocr.reprocess.lastRun'
+const DETECTIONS_REPROCESS_LAST_RUN_KEY = 'detections.reprocess.lastRun'
+const PLACES_BACKFILL_LAST_RUN_KEY = 'places.backfill.lastRun'
+const METADATA_REPROCESS_LAST_RUN_KEY = 'metadata.reprocess.lastRun'
 
 export interface EnqueuedRun {
   startedAt: string

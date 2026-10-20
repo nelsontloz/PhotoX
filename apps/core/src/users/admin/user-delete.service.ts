@@ -42,11 +42,9 @@ const USER_JOB_QUEUES = [
 ] as const
 
 export interface UserDeleteProgress {
-  userId: string
   jobId: string
   state: AdminUserDeleteState
   backupPrefix: string
-  updatedAt: string
 }
 
 export interface UserDeleteResult {
@@ -54,7 +52,6 @@ export interface UserDeleteResult {
   backupPrefix: string
   deletedFiles: number
   deletedStrays: number
-  alreadyGone: boolean
 }
 
 /**
@@ -95,44 +92,20 @@ export class UserDeleteService {
     @InjectRepository(FileRecord) private readonly files: Repository<FileRecord>,
   ) {}
 
-  markQueued(userId: string, jobId: string, prefix: string): void {
-    this.progress.set(userId, {
-      userId,
-      jobId,
-      state: 'queued',
-      backupPrefix: prefix,
-      updatedAt: new Date().toISOString(),
-    })
-  }
-
-  markActive(userId: string, prefix: string, jobId: string): void {
-    this.progress.set(userId, {
-      userId,
-      jobId,
-      state: 'active',
-      backupPrefix: prefix,
-      updatedAt: new Date().toISOString(),
-    })
-  }
-
-  markFinished(userId: string, state: 'completed' | 'failed'): void {
+  // one setter for every lifecycle write; jobId/prefix default to the recorded run (a
+  // finished step has no ids of its own) or to the deterministic job id / unknown prefix
+  setProgress(userId: string, state: AdminUserDeleteState, jobId?: string, prefix?: string): void {
     const current = this.progress.get(userId)
     this.progress.set(userId, {
-      userId,
-      jobId: current?.jobId ?? userDeleteJobId(userId),
+      jobId: jobId ?? current?.jobId ?? userDeleteJobId(userId),
       state,
-      backupPrefix: current?.backupPrefix ?? '',
-      updatedAt: new Date().toISOString(),
+      backupPrefix: prefix ?? current?.backupPrefix ?? '',
     })
   }
 
   getProgress(userId: string): UserDeleteProgress | undefined {
     const current = this.progress.get(userId)
     return current ? { ...current } : undefined
-  }
-
-  computeBackupPrefix(email: string, userId: string): string {
-    return backupPrefix(email, userId)
   }
 
   /**
@@ -193,16 +166,15 @@ export class UserDeleteService {
     const user = await this.users.findOne({ where: { id: userId } })
     if (!user) {
       // idempotent retry: a previous attempt already dropped the row
-      this.markFinished(userId, 'completed')
+      this.setProgress(userId, 'completed')
       return {
         userId,
         backupPrefix: fallbackPrefix,
         deletedFiles: 0,
         deletedStrays: 0,
-        alreadyGone: true,
       }
     }
-    const prefix = this.computeBackupPrefix(user.email, user.id)
+    const prefix = backupPrefix(user.email, user.id)
 
     const assetRows = await this.dataSource
       .getRepository(Asset)
@@ -256,11 +228,11 @@ export class UserDeleteService {
     }
     const deletedStrays = await this.sweepUserPrefixes(userId)
 
-    this.markFinished(userId, 'completed')
+    this.setProgress(userId, 'completed')
     this.logger.log(
       `Deleted user ${userId} (${assetIds.length} assets, ${deletedFiles} files, ${deletedStrays} strays; backup ${prefix} kept)`,
     )
-    return { userId, backupPrefix: prefix, deletedFiles, deletedStrays, alreadyGone: false }
+    return { userId, backupPrefix: prefix, deletedFiles, deletedStrays }
   }
 
   /**

@@ -92,7 +92,7 @@ describe('enqueueFiles', () => {
       'checksum-hit-a.jpg',
       'checksum-hit-b.jpg',
     ])
-    expect(sentItems?.every((i) => typeof i.sizeBytes === 'number')).toBe(true)
+    expect(sentItems?.every((i) => Object.keys(i).join() === 'checksumSha256')).toBe(true)
     expect(uploadFileMock).not.toHaveBeenCalled()
     const items = useUploadStore.getState().items
     expect(items.map((i) => i.assetId).sort()).toEqual([

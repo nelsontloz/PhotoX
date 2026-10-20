@@ -7,6 +7,7 @@ import {
   authHeaders,
   injectSession,
   registerUser,
+  signIn,
   signInAdmin,
   type AuthResponse,
   type Ctx,
@@ -247,11 +248,7 @@ When(
 
 Then('the edited account signs in with the new address', async ({ request, ctx }) => {
   const account = requireAccount(ctx)
-  const login = await request.post('/api/v1/auth/login', {
-    data: { email: requireNewEmail(ctx), password: PASSWORD },
-  })
-  expect(login.status(), 'login with the new address should succeed').toBe(200)
-  const auth = (await login.json()) as AuthResponse
+  const auth = await signIn(request, requireNewEmail(ctx))
   expect(auth.user.id).toBe(account.user.id)
 })
 

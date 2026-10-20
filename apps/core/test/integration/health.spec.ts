@@ -3,8 +3,11 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 import request from 'supertest'
 import type { Express } from 'express'
 import type { INestApplication } from '@nestjs/common'
+import Redis from 'ioredis'
 import { AuthModule } from '../../src/auth/auth.module'
 import { HealthModule } from '../../src/health/health.module'
+import { BullMqModule } from '../../src/queue/bullmq.module'
+import { BullMqService } from '../../src/queue/bullmq.service'
 import { setupTestInfra, stopRedisContainer, teardownTestInfra } from './test-setup'
 
 interface HealthBody {
@@ -17,9 +20,14 @@ interface HealthBody {
 
 describe('health endpoint', () => {
   let app: INestApplication
+  let redis: Redis
 
   beforeAll(async () => {
-    const { pgHost, pgPort } = await setupTestInfra()
+    const { redisHost, redisPort, pgHost, pgPort } = await setupTestInfra()
+    // stand in for the global BullMqService's shared client (the real service's
+    // onModuleDestroy quit() would hang teardown once this test kills Redis)
+    redis = new Redis({ host: redisHost, port: redisPort, maxRetriesPerRequest: null })
+    redis.on('error', () => undefined)
     const moduleRef = await Test.createTestingModule({
       imports: [
         TypeOrmModule.forRoot({
@@ -33,14 +41,19 @@ describe('health endpoint', () => {
         }),
         // real global guard, so a non-whitelisted /health would come back 401
         AuthModule,
+        BullMqModule,
         HealthModule,
       ],
-    }).compile()
+    })
+      .overrideProvider(BullMqService)
+      .useValue({ redis })
+      .compile()
     app = moduleRef.createNestApplication()
     await app.init()
   }, 120_000)
 
   afterAll(async () => {
+    redis.disconnect()
     await app.close()
     await teardownTestInfra()
   })

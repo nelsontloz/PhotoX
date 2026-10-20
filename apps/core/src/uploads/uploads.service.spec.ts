@@ -54,7 +54,6 @@ function sessionRow(partial: Partial<UploadSession> & { id: string }): UploadSes
     expectedSizeBytes: JPEG.length,
     checksumSha256: null,
     originalName: 'pic.jpg',
-    mimeHint: null,
     title: null,
     description: null,
     takenAt: null,

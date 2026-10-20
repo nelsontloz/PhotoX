@@ -24,10 +24,8 @@ import type { Request, Response } from 'express'
 import { randomUUID } from 'crypto'
 import { tmpdir } from 'os'
 import multer from 'multer'
-import type { StorageQuotaResponse } from '@photox/shared-types'
 import { CurrentUserId } from '../../auth/jwt-auth.guard'
 import { UserFilesService, type UploadedDiskFile } from './user-files.service'
-import { FileRecordDto } from '../file-record.dto'
 import { UploadFileBodyDto } from './dto/upload-file.body.dto'
 import { CheckFilesExistsBodyDto } from './dto/check-files-exists.body.dto'
 import { serveFileBytes } from '../streaming.util'
@@ -84,18 +82,6 @@ export class UserFilesController {
     return { items }
   }
 
-  // declared before the `:fileId` routes — Nest matches in declaration order, so `quota`
-  // must not fall through to GET :fileId
-  @Get('quota')
-  @ApiOperation({ summary: 'Get per-user storage quota usage' })
-  @ApiResponse({
-    status: 200,
-    description: 'Used bytes plus limit/remaining; both null when no quota is configured',
-  })
-  async quota(@CurrentUserId() userId: string): Promise<StorageQuotaResponse> {
-    return this.userFilesService.storageQuota(userId)
-  }
-
   @Get(':fileId/stream')
   @ApiOperation({ summary: 'Stream file bytes for video playback (authenticated)' })
   @ApiResponse({ status: 200, description: 'File stream' })
@@ -109,14 +95,6 @@ export class UserFilesController {
     @CurrentUserId() userId: string,
   ) {
     await serveFileBytes(req, res, this.userFilesService, userId, fileId, { attachment: true })
-  }
-
-  @Get(':fileId')
-  @ApiOperation({ summary: 'Get file metadata' })
-  @ApiResponse({ status: 200, description: 'File record', type: FileRecordDto })
-  @ApiResponse({ status: 404, description: 'File not found' })
-  async getOne(@Param('fileId') fileId: string, @CurrentUserId() userId: string) {
-    return this.userFilesService.getOne(userId, fileId)
   }
 
   @Get(':fileId/download')

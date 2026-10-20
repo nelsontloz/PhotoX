@@ -354,7 +354,7 @@ describe('JwtAuthGuard', () => {
     await deny('DELETE', '/api/v1/admin/files/f1', adminAuth)
     await deny('POST', '/api/v1/admin/cleanup-orphans/run', adminAuth)
     await deny('GET', '/api/v1/assets/a1', userAuth)
-    await deny('PATCH', '/api/v1/assets/a1/metadata', userAuth)
+    await deny('PATCH', '/api/v1/assets/a1', userAuth)
     await deny('GET', '/api/v1/files/f1/stream', userAuth)
     await deny('GET', '/api/v1/assets', userAuth)
   })
@@ -374,20 +374,6 @@ describe('JwtAuthGuard', () => {
     await expect(
       guard.canActivate(testContext('GET', '/worker/assets/a1', auth).context),
     ).rejects.toThrow(ForbiddenException)
-  })
-
-  it('rejects worker-only metadata fields from non-act callers with 403', async () => {
-    const req = {
-      method: 'PATCH',
-      path: '/api/v1/assets/a1/metadata',
-      headers: { authorization: `Bearer ${tokenFor()}` },
-      body: { width: 100 },
-    } as unknown as Request
-    const cookie = vi.fn()
-    const context = {
-      switchToHttp: () => ({ getRequest: () => req, getResponse: () => ({ cookie }) }),
-    } as unknown as ExecutionContext
-    await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException)
   })
 
   it('lets non-admins through on normal routes', async () => {

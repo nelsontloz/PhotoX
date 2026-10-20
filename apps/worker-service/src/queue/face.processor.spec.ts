@@ -12,6 +12,7 @@ import { FaceProcessor, FACE_MAX_DIM } from './face.processor'
 import { FaceDetectorService } from './face.detector'
 import type { CoreClient } from '../core/core-client.service'
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../../test/fake-core-client'
+import { signJob, useTestAuthEnv } from '../../test/sign-job'
 import type { FaceJob } from './job-schemas'
 
 function emb512(): number[] {
@@ -46,6 +47,7 @@ describe('FaceProcessor', () => {
   }
 
   beforeEach(() => {
+    useTestAuthEnv()
     storageDir = mkdtempSync(join(tmpdir(), 'photox-fp-test-'))
     prevStorageDir = process.env.STORAGE_DIR
     process.env.STORAGE_DIR = storageDir
@@ -101,7 +103,9 @@ describe('FaceProcessor', () => {
       makeAsset({ id: base.assetId, userId: randomUUID(), fileId: base.fileId }),
     )
 
-    await expect(run({ data: base } as Job<FaceJob>)).rejects.toBeInstanceOf(UnrecoverableError)
+    await expect(run({ data: signJob(base) } as Job<FaceJob>)).rejects.toBeInstanceOf(
+      UnrecoverableError,
+    )
 
     expect(fake.callsOf('patchMetadata')).toHaveLength(0)
     expect(fake.deleteFacesCalls).toHaveLength(0)
@@ -117,7 +121,7 @@ describe('FaceProcessor', () => {
       { box: { x: 10, y: 20, w: 30, h: 40 }, confidence: 0.92, embedding: emb512() },
     ])
 
-    await run({ data: { assetId: asset.id, fileId, userId } } as Job<FaceJob>)
+    await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>)
 
     expect(fake.calls.map((c) => c.method)).toEqual([
       'getFile',
@@ -155,7 +159,7 @@ describe('FaceProcessor', () => {
       return [{ box: { x: 10, y: 20, w: 30, h: 40 }, confidence: 0.92, embedding: emb512() }]
     })
 
-    await run({ data: { assetId: asset.id, fileId, userId } } as Job<FaceJob>)
+    await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>)
 
     const meta = await sharp(seen).metadata()
     expect(meta.width).toBe(150)
@@ -184,7 +188,7 @@ describe('FaceProcessor', () => {
       return [{ box: { x: 100, y: 50, w: 200, h: 120 }, confidence: 0.9, embedding: emb512() }]
     })
 
-    await run({ data: { assetId: asset.id, fileId, userId } } as Job<FaceJob>)
+    await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>)
 
     const meta = await sharp(seen).metadata()
     expect(Math.max(meta.width, meta.height)).toBe(FACE_MAX_DIM)
@@ -209,7 +213,7 @@ describe('FaceProcessor', () => {
       { box: { x: 190, y: 140, w: 50, h: 50 }, confidence: 0.9, embedding: emb512() },
     ])
 
-    await run({ data: { assetId: asset.id, fileId, userId } } as Job<FaceJob>)
+    await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>)
 
     const faces = fake.faces.get(asset.id)!
     expect(faces).toHaveLength(2)
@@ -222,7 +226,7 @@ describe('FaceProcessor', () => {
     const { userId, fileId, asset } = await seedPhoto()
     detect.mockResolvedValue([])
 
-    await run({ data: { assetId: asset.id, fileId, userId } } as Job<FaceJob>)
+    await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>)
 
     expect(fake.deleteFacesCalls).toEqual([asset.id])
     expect(fake.callsOf('registerFaces')).toHaveLength(0)
@@ -237,7 +241,7 @@ describe('FaceProcessor', () => {
     detect.mockRejectedValue(new Error('Face embedding model not found: /models/x.onnx'))
 
     await expect(
-      run({ data: { assetId: asset.id, fileId, userId } } as Job<FaceJob>),
+      run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>),
     ).resolves.toBeUndefined()
 
     expect(fake.callsOf('registerFaces')).toHaveLength(0)
@@ -252,7 +256,7 @@ describe('FaceProcessor', () => {
       { box: { x: 10, y: 20, w: 30, h: 40 }, confidence: 0.92, embedding: emb512() },
     ])
 
-    await run({ data: { assetId: asset.id, fileId, userId } } as Job<FaceJob>)
+    await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>)
 
     expect(detect).toHaveBeenCalledTimes(1)
     expect(detect.mock.calls[0]![0]).toBeInstanceOf(Buffer)
@@ -268,7 +272,7 @@ describe('FaceProcessor', () => {
     detect.mockRejectedValue(new Error('Face detector model not found at /models/det_10g.onnx'))
 
     await expect(
-      run({ data: { assetId: asset.id, fileId, userId } } as Job<FaceJob>),
+      run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>),
     ).resolves.toBeUndefined()
 
     expect(fake.assets.get(asset.id)!.faceStatus).toBe('failed')

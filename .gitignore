@@ -20,8 +20,5 @@ e2e/.features-gen/
 e2e/playwright-report/
 e2e/test-results/
 
-# deepwork state (git-local, OpenCode-readable)
-.slim/deepwork/
-
 # vitest browser failure screenshots
 __screenshots__/

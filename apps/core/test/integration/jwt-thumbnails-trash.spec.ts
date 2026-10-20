@@ -1,5 +1,5 @@
 import request from 'supertest'
-import { randomUUID } from 'node:crypto'
+import { createHmac, randomUUID } from 'node:crypto'
 import {
   closeTestApp,
   createApiTestApp,
@@ -10,6 +10,7 @@ import {
   apiServer,
 } from './helpers'
 import type { ApiTestApp } from './helpers'
+import { TEST_WORKER_SECRET } from './test-setup'
 import type { Asset, AssetListResponse } from '@photox/shared-types'
 
 describe('thumbnails and trash JWT identity', () => {
@@ -95,29 +96,38 @@ describe('thumbnails and trash JWT identity', () => {
   it('rejects cross-user thumbnail register and keeps owner writes working', async () => {
     const a = await seedUser(t)
     const b = await seedUser(t)
-    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
-    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
     const file = await seedFile(t, a.id)
     const asset = await seedAsset(t, a.id, file.id)
     const thumbFile = await seedFile(t, a.id)
     const body = { size: 'sm', fileId: thumbFile.id, width: 10, height: 10, bytes: 5 }
+    // worker-origin act token + the job binding core's guard recomputes (HMAC of sub:assetId)
+    const workerAuth = (userId: string) => {
+      const token = t.signWorkerToken(
+        { id: userId, email: 'worker@internal', role: 'user' },
+        { act: true },
+      )
+      const sig = createHmac('sha256', TEST_WORKER_SECRET)
+        .update(`${userId}:${asset.id}`)
+        .digest('hex')
+      return { ...t.authHeader(token), 'X-Job-Signature': sig }
+    }
 
     const crossRegister = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/thumbnails`)
-      .set(t.authHeader(tokenB))
+      .post(`/worker/assets/${asset.id}/thumbnails`)
+      .set(workerAuth(b.id))
       .send(body)
     expect(crossRegister.status).toBe(404)
     expect(await t.thumbRepo.findOne({ where: { assetId: asset.id, size: 'sm' } })).toBeNull()
 
     const ownRegister = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/thumbnails`)
-      .set(t.authHeader(tokenA))
+      .post(`/worker/assets/${asset.id}/thumbnails`)
+      .set(workerAuth(a.id))
       .send(body)
     expect(ownRegister.status).toBe(201)
 
     const crossOverwrite = await request(apiServer(t))
-      .post(`/api/v1/assets/${asset.id}/thumbnails`)
-      .set(t.authHeader(tokenB))
+      .post(`/worker/assets/${asset.id}/thumbnails`)
+      .set(workerAuth(b.id))
       .send({ ...body, fileId: randomUUID(), width: 99 })
     expect(crossOverwrite.status).toBe(404)
     const afterCross = await t.thumbRepo.findOneOrFail({
@@ -171,12 +181,11 @@ describe('thumbnails and trash JWT identity', () => {
       .delete('/api/v1/assets/trashed')
       .set(t.authHeader(tokenB))
     expect(res.status).toBe(200)
-    expect((res.body as unknown as { fileIds: string[] }).fileIds).toEqual([fileB.id])
     expect(await t.assetRepo.findOne({ where: { id: assetA.id } })).not.toBeNull()
     expect(await t.assetRepo.count({ where: { userId: b.id, isTrashed: true } })).toBe(0)
   })
 
-  it('permanently deletes a trashed asset and returns its file ids', async () => {
+  it('permanently deletes a trashed asset', async () => {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })
     const file = await seedFile(t, user.id)
@@ -197,24 +206,18 @@ describe('thumbnails and trash JWT identity', () => {
       .delete(`/api/v1/assets/trashed/${asset.id}`)
       .set(t.authHeader(token))
     expect(res.status).toBe(200)
-    const body = res.body as unknown as { fileIds: string[] }
-    expect(new Set(body.fileIds)).toEqual(new Set([file.id, thumbFileId]))
     expect(await t.assetRepo.findOne({ where: { id: asset.id } })).toBeNull()
-    // core returns the ids only; nothing calls the worker's cleanup-asset queue from here
-    const jobs = await t.getQueue('cleanup-asset').getJobs(['waiting', 'active', 'delayed'])
-    expect(jobs).toHaveLength(0)
+    // thumbnail rows cascade with the asset
+    expect(await t.thumbRepo.count({ where: { assetId: asset.id } })).toBe(0)
   })
 
-  it('empties trash returning every file id', async () => {
+  it('empties trash', async () => {
     const user = await seedUser(t)
     const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const fileIds: string[] = []
     for (let i = 0; i < 2; i++) {
       const file = await seedFile(t, user.id)
-      fileIds.push(file.id)
       const asset = await seedAsset(t, user.id, file.id, { isTrashed: true })
       const thumbFileId = randomUUID()
-      fileIds.push(thumbFileId)
       await t.thumbRepo.save(
         t.thumbRepo.create({
           assetId: asset.id,
@@ -231,11 +234,7 @@ describe('thumbnails and trash JWT identity', () => {
       .delete('/api/v1/assets/trashed')
       .set(t.authHeader(token))
     expect(res.status).toBe(200)
-    const body = res.body as unknown as { fileIds: string[] }
-    expect(new Set(body.fileIds)).toEqual(new Set(fileIds))
     expect(await t.assetRepo.count({ where: { isTrashed: true } })).toBe(0)
-    // core returns the ids only; nothing calls the worker's cleanup-asset queue from here
-    const jobs = await t.getQueue('cleanup-asset').getJobs(['waiting', 'active', 'delayed'])
-    expect(jobs).toHaveLength(0)
+    expect(await t.thumbRepo.count()).toBe(0)
   })
 })

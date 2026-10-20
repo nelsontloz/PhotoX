@@ -9,8 +9,11 @@ import {
   parseJobData,
   thumbnailJobSchema,
 } from './job-schemas'
+import { signJob, useTestAuthEnv } from '../../test/sign-job'
 
 describe('job payload schemas', () => {
+  beforeEach(useTestAuthEnv)
+
   it('passes a valid producer payload through', () => {
     const payload = {
       assetId: randomUUID(),
@@ -18,7 +21,8 @@ describe('job payload schemas', () => {
       userId: randomUUID(),
       size: 'sm' as const,
     }
-    expect(parseJobData(thumbnailJobSchema, payload, 'process-thumbnail')).toEqual(payload)
+    const signed = signJob(payload)
+    expect(parseJobData(thumbnailJobSchema, signed, 'process-thumbnail')).toEqual(signed)
   })
 
   it('rejects a payload with a missing field', () => {
@@ -46,11 +50,12 @@ describe('job payload schemas', () => {
       fileId: randomUUID(),
       userId: randomUUID(),
     }
-    expect(parseJobData(faceJobSchema, payload, 'process-faces')).toEqual(payload)
+    const signed = signJob(payload)
+    expect(parseJobData(faceJobSchema, signed, 'process-faces')).toEqual(signed)
     // redis may still hold pre-SCRFD-only jobs that carried `detector` — zod strips the unknown key
-    expect(
-      parseJobData(faceJobSchema, { ...payload, detector: 'legacy' }, 'process-faces'),
-    ).toEqual(payload)
+    expect(parseJobData(faceJobSchema, { ...signed, detector: 'legacy' }, 'process-faces')).toEqual(
+      signed,
+    )
   })
 
   it('rejects metadataWaits above the processor wait budget', () => {
@@ -63,11 +68,11 @@ describe('job payload schemas', () => {
     // 5 is the budget ceiling (MAX_METADATA_WAITS in thumbnail.processor.ts); 6-10 used to
     // parse fine and then silently skip the defer they asked for
     expect(
-      parseJobData(thumbnailJobSchema, { ...base, metadataWaits: 5 }, 'process-thumbnail'),
+      parseJobData(thumbnailJobSchema, signJob({ ...base, metadataWaits: 5 }), 'process-thumbnail'),
     ).toMatchObject({ metadataWaits: 5 })
     for (const metadataWaits of [6, 7, 8, 9, 10]) {
       expect(() =>
-        parseJobData(thumbnailJobSchema, { ...base, metadataWaits }, 'process-thumbnail'),
+        parseJobData(thumbnailJobSchema, signJob({ ...base, metadataWaits }), 'process-thumbnail'),
       ).toThrow(UnrecoverableError)
     }
   })
@@ -173,23 +178,6 @@ describe('assertOwnership', () => {
       assertOwnership(job, {
         record: { userId: job.userId },
         asset: { userId: other, fileId: job.fileId },
-      }),
-    ).toThrow(UnrecoverableError)
-  })
-
-  it('rejects null records instead of passing vacuously', () => {
-    // the signature is non-null, but a JS caller can still hand over null — that must fail
-    // the job, never pass ownership
-    expect(() =>
-      assertOwnership(job, {
-        record: null as unknown as { userId: string },
-        asset: { userId: job.userId, fileId: job.fileId },
-      }),
-    ).toThrow(UnrecoverableError)
-    expect(() =>
-      assertOwnership(job, {
-        record: { userId: job.userId },
-        asset: null as unknown as { userId: string; fileId?: string },
       }),
     ).toThrow(UnrecoverableError)
   })

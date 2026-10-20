@@ -8,6 +8,7 @@ import { Asset } from '../database/entities'
 import { AssetThumbnail } from '../database/entities'
 import { FileRecord } from '../database/entities'
 import { findOwnedOr404 } from '../common/asset-ownership'
+import { refreshPersonsAfterFaceDelete } from '../common/face-cleanup'
 import { LocalStorageService } from '@photox/shared-config'
 import { FaceResponseDto } from './dto/face.dto'
 import { refreshPersonFaceCount } from './face-count'
@@ -71,19 +72,8 @@ export class FacesService {
       const existing = await em.find(Face, { where: { assetId, userId } })
       if (existing.length === 0) return { deleted: 0 }
 
-      const deletedIds = new Set(existing.map((f) => f.id))
-      const personIds = [
-        ...new Set(existing.map((f) => f.personId).filter((p): p is string => p !== null)),
-      ]
       await em.delete(Face, { assetId, userId })
-
-      for (const pid of personIds) {
-        const person = await em.findOne(Person, { where: { id: pid, userId } })
-        if (person?.coverFaceId && deletedIds.has(person.coverFaceId)) {
-          await em.update(Person, { id: pid, userId }, { coverFaceId: null })
-        }
-        await refreshPersonFaceCount(em.getRepository(Face), em.getRepository(Person), pid, userId)
-      }
+      await refreshPersonsAfterFaceDelete(em, existing, userId)
       return { deleted: existing.length }
     })
   }
@@ -94,15 +84,7 @@ export class FacesService {
     return faces.map((f) => toFaceDto(f))
   }
 
-  async listForUser(userId: string, includeEmbeddings: boolean, excludeTrashed = false) {
-    const faces = await this.repo.find({ where: { userId } })
-    const trashedAssetIds = await this.trashedAssetIds(userId, excludeTrashed)
-    return faces
-      .filter((f) => !trashedAssetIds?.has(f.assetId))
-      .map((f) => toFaceDto(f, includeEmbeddings))
-  }
-
-  // ponytail: keyset page over (userId, id ASC); trashed filtered in memory like listForUser —
+  // ponytail: keyset page over (userId, id ASC); trashed filtered in memory —
   // pages can run short when trashed rows dominate; join-filter if that ever matters.
   async listForUserPaginated(
     userId: string,

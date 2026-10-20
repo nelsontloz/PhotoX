@@ -59,14 +59,13 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
       JobsOptions,
       'jobId' | 'attempts' | 'backoff' | 'removeOnFail' | 'removeOnComplete' | 'delay'
     > = {},
-  ): Promise<boolean> {
+  ): Promise<void> {
     try {
       await this.getQueue(queueName).add(jobName, this.withJobSig(data), opts)
-      return true
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       this.logger.error(`Failed to enqueue ${queueName} job: ${msg}`)
-      return false
+      throw err instanceof Error ? err : new Error(msg)
     }
   }
 

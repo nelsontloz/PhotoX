@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { In, Repository, FindOptionsWhere } from 'typeorm'
+import { isUUID } from 'class-validator'
 import { randomUUID, createHash } from 'crypto'
 import { createReadStream } from 'fs'
 import { open, unlink } from 'fs/promises'
@@ -52,49 +53,45 @@ export interface AssetUploadMeta {
 
 // ponytail: header sniff only (no full decode) — enough to keep svg/html and unknown bytes out of
 // storage while allowing the image/video whitelist; upgrade to a real decode scan (sharp/ffprobe)
-// if uploads ever become publicly reachable
-const MIME_SNIFFERS: { mime: string; match: (b: Buffer) => boolean }[] = [
-  { mime: 'image/jpeg', match: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
-  {
-    mime: 'image/png',
-    match: (b) =>
-      b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
-  },
-  { mime: 'image/gif', match: (b) => b.subarray(0, 4).toString('latin1') === 'GIF8' },
+// if uploads ever become publicly reachable. Each entry lists its latin1 byte signatures and
+// offsets; every part must match.
+const MIME_SNIFFERS: { mime: string; parts: [offset: number, sig: string][] }[] = [
+  { mime: 'image/jpeg', parts: [[0, '\xff\xd8\xff']] },
+  { mime: 'image/png', parts: [[0, '\x89PNG\r\n\x1a\n']] },
+  { mime: 'image/gif', parts: [[0, 'GIF8']] },
   {
     mime: 'image/webp',
-    match: (b) =>
-      b.subarray(0, 4).toString('latin1') === 'RIFF' &&
-      b.subarray(8, 12).toString('latin1') === 'WEBP',
+    parts: [
+      [0, 'RIFF'],
+      [8, 'WEBP'],
+    ],
   },
   {
     mime: 'video/x-msvideo',
-    match: (b) =>
-      b.subarray(0, 4).toString('latin1') === 'RIFF' &&
-      b.subarray(8, 12).toString('latin1') === 'AVI ',
+    parts: [
+      [0, 'RIFF'],
+      [8, 'AVI '],
+    ],
   },
-  {
-    mime: 'video/webm',
-    match: (b) => b.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3])),
-  },
+  { mime: 'video/webm', parts: [[0, '\x1a\x45\xdf\xa3']] },
 ]
 
 // ISO-BMFF: `ftyp` box at offset 4, major brand at offset 8 decides the canonical type —
-// heic family (iPhone photos), heif, avif, quicktime (iPhone .mov) and mp4 fall back
-function isoBmffMime(b: Buffer): string | null {
-  if (b.subarray(4, 8).toString('latin1') !== 'ftyp') return null
-  const brand = b.subarray(8, 12).toString('latin1')
-  if (brand === 'heic' || brand === 'heix' || brand === 'hevc' || brand === 'hevx') {
-    return 'image/heic'
-  }
-  if (brand === 'mif1' || brand === 'msf1') return 'image/heif'
-  if (brand === 'avif' || brand === 'avis') return 'image/avif'
-  if (brand === 'qt  ') return 'video/quicktime'
-  return 'video/mp4'
+// heic family (iPhone photos), heif, avif and quicktime (iPhone .mov), everything else mp4.
+const ISO_BMFF_MIME: Record<string, string> = {
+  heic: 'image/heic',
+  heix: 'image/heic',
+  hevc: 'image/heic',
+  hevx: 'image/heic',
+  mif1: 'image/heif',
+  msf1: 'image/heif',
+  avif: 'image/avif',
+  avis: 'image/avif',
+  'qt  ': 'video/quicktime',
 }
 
 // exported for the upload-session complete path — the assembled head must be sniffed with this
-// exact table, never with a client-supplied mimeHint
+// exact table, never with a client-supplied MIME hint
 export async function sniffMime(path: string): Promise<string | null> {
   const buf = Buffer.alloc(12)
   const handle = await open(path, 'r')
@@ -103,7 +100,16 @@ export async function sniffMime(path: string): Promise<string | null> {
   } finally {
     await handle.close()
   }
-  return isoBmffMime(buf) ?? MIME_SNIFFERS.find((s) => s.match(buf))?.mime ?? null
+  if (buf.subarray(4, 8).toString('latin1') === 'ftyp') {
+    return ISO_BMFF_MIME[buf.subarray(8, 12).toString('latin1')] ?? 'video/mp4'
+  }
+  return (
+    MIME_SNIFFERS.find((s) =>
+      s.parts.every(
+        ([offset, sig]) => buf.subarray(offset, offset + sig.length).toString('latin1') === sig,
+      ),
+    )?.mime ?? null
+  )
 }
 
 // pipeline decision, derived solely from the sniffed mime (never the client's `kind`): jpeg
@@ -132,23 +138,12 @@ export class UserFilesService {
     file: UploadedDiskFile,
     meta: UploadFileBodyDto = {},
   ): Promise<AssetResponse> {
-    const { record, created } = await this.persistOriginal(userId, file)
+    const { record } = await this.persistOriginal(userId, file)
     // C2-narrowed: client `kind` is accepted-but-ignored (see UploadFileBodyDto) — derive
     // solely from the sniffed mime so JPEG bytes + kind=video can't enter the video pipeline.
     const kind = kindFromMime(record.mimeType)
     if (!kind) {
       throw new BadRequestException('Unsupported file type')
-    }
-    if (!created) {
-      const existing = await this.assetRepo.findOne({ where: { fileId: record.id, userId } })
-      if (existing) {
-        throw new ConflictException({
-          statusCode: 409,
-          message: 'File already uploaded',
-          existingAssetId: existing.id,
-          existingFileId: record.id,
-        })
-      }
     }
     return this.createAssetAndEnqueue(userId, record, kind, {
       title: meta.title,
@@ -307,7 +302,7 @@ export class UserFilesService {
   }
 
   // quota inputs: original-purpose bytes only (thumbnails/transcodes are system output);
-  // one raw SUM row, shared by the upload guard and GET /files/quota
+  // one raw SUM row, shared by the upload guard and the upload-session advisory check
   private async sumOriginalBytes(userId: string): Promise<number> {
     const { used } = (await this.fileRepo
       .createQueryBuilder('f')
@@ -421,8 +416,7 @@ export class UserFilesService {
 
   private async getRecord(fileId: string): Promise<FileRecord> {
     // malformed ids must read as missing — the uuid cast below would 500 them instead
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(fileId))
-      throw new NotFoundException('File not found')
+    if (!isUUID(fileId)) throw new NotFoundException('File not found')
     const record = await this.fileRepo.findOne({ where: { id: fileId } })
     if (!record) throw new NotFoundException('File not found')
     return record
@@ -440,7 +434,7 @@ export class UserFilesService {
 
   async existsMany(
     userId: string,
-    items: { checksumSha256: string; sizeBytes?: number }[],
+    items: { checksumSha256: string }[],
   ): Promise<FileExistsCheckHit[]> {
     // C6: batched to 2 queries (was N+1 sequential, up to 200 round trips) — same map shape.
     const unique = [...new Set(items.map((item) => item.checksumSha256))]
@@ -473,8 +467,8 @@ export class UserFilesService {
     return items.map((item) => hits.get(item.checksumSha256)!)
   }
 
-  // GET /api/v1/files/quota — usedBytes is the same original-only SUM the upload guard
-  // compares against; limit/remaining go null when the quota env is unset (unlimited).
+  // usedBytes is the same original-only SUM the upload guard compares against;
+  // limit/remaining go null when the quota env is unset (unlimited).
   // remaining is clamped at 0: it answers "how many more bytes may I upload", not debt.
   async storageQuota(userId: string): Promise<StorageQuotaResponse> {
     const usedBytes = await this.sumOriginalBytes(userId)

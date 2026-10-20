@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
+  FaArrowsRotate,
   FaCamera,
   FaChartColumn,
   FaChartLine,
@@ -11,7 +12,7 @@ import {
 import { getAdminAssetCounts, getAdminLibraryStats } from '../../api/admin'
 import { formatBytes } from '../../lib/format'
 import { formatIsoDate } from '../../lib/dateFormat'
-import { AdminCard, AdminSection, GhostButton, MetricTile, RefreshButton, cx } from './ui'
+import { AdminCard, AdminSection, Button, MetricTile, cx } from './ui'
 import type {
   AdminAssetCountsResponse,
   AdminLibraryCounts,
@@ -505,10 +506,12 @@ export function LibraryStatsSection() {
       subtitle="Uploads, storage growth, and library composition"
       icon={<FaChartPie />}
       actions={
-        <RefreshButton
+        <Button
+          variant="icon"
           onClick={retry}
-          label="Refresh library stats"
+          ariaLabel="Refresh library stats"
           className="inline-flex items-center rounded-lg bg-surface-container p-2 text-on-surface transition-colors hover:bg-surface-container-high"
+          icon={<FaArrowsRotate />}
         />
       }
     >
@@ -517,7 +520,9 @@ export function LibraryStatsSection() {
       ) : error ? (
         <AdminCard className="text-center">
           <p className="mb-3 text-xs text-status-error">{error}</p>
-          <GhostButton onClick={retry}>Retry</GhostButton>
+          <Button variant="ghost" onClick={retry}>
+            Retry
+          </Button>
         </AdminCard>
       ) : data ? (
         <div className="space-y-4">
