@@ -216,6 +216,10 @@ describe('issue-157 vulns (expect secure, currently insecure)', () => {
       '/./api/v1/admin/users',
       '/api//v1//admin//users',
       '/api/v1/admin/users/',
+      // the router matches paths case-insensitively while isAdminRoute compares a
+      // case-sensitive prefix — the casing of the URL must not decide the policy
+      '/API/V1/ADMIN/USERS',
+      '/Api/V1/Admin/users',
     ]) {
       const res = await request(apiServer(t)).get(evasive).set(t.authHeader(accessToken))
       expect([403, 404]).toContain(res.status)
