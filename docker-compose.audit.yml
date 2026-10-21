@@ -1,0 +1,86 @@
+# Audit stack for the API security audit of the `core` service.
+#
+# Modelled on docker-compose.e2e.yml: the full core definition is repeated here (not just an
+# override) because this file is merged over the infra-only docker-compose.yml by audit/run.sh.
+#
+# Differences from the e2e stack, and why:
+#   * core's port IS published on 127.0.0.1 (e2e publishes only the web SPA). The audit probes
+#     the API directly with raw HTTP, so it needs to reach core without going through the SPA.
+#   * `web` is omitted — it is a browser client, not part of the API boundary under test.
+#   * `worker-service` is omitted — the audit exercises core's `/worker/*` surface by minting
+#     worker tokens directly with WORKER_JWT_SECRET (known to the harness). That is a stricter
+#     test than waiting for a real worker to mint one.
+#   * RATE_LIMIT_REGISTER is left at the product default (10/h) instead of the e2e override
+#     (1000) so the registration limiter is actually exercised. The audit registers <= 4 users.
+#
+# Isolation: audit/run.sh uses its own compose project name, so the project gets its own
+# postgres/redis volumes and its own bridge network. Host ports of the infra services are
+# unpublished so the audit stack cannot collide with a running dev/e2e stack.
+services:
+  core:
+    build:
+      context: .
+      dockerfile: apps/core/Dockerfile
+    image: photox-audit-core:latest
+    ports:
+      - '127.0.0.1:${AUDIT_CORE_PORT:-3999}:3000'
+    environment:
+      NODE_ENV: production
+      API_PORT: 3000
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: photox
+      POSTGRES_PASSWORD: photox_dev
+      POSTGRES_DB: photox
+      STORAGE_DIR: /data/storage
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-photox_dev}
+      AUTH_ACCESS_TTL: 30m
+      AUTH_REFRESH_TTL: 1d
+      AUTH_TOKEN_SECRET: dev-auth-secret-32-characters-minimum!!
+      WORKER_JWT_SECRET: dev-worker-secret-32-characters-minimum!!
+      # NOTE: RATE_LIMIT_REGISTER intentionally unset -> product default (10/hour per IP).
+      # seeded admin (open registration only mints 'user'): core inserts this admin on
+      # bootstrap when no admin exists
+      ADMIN_EMAIL: admin@photox.test
+      ADMIN_PASSWORD: password123
+      # per-user backup S3 (Floci): in-Compose endpoint for server-side ops
+      S3_ENDPOINT: http://floci:4566
+      S3_BACKUP_BUCKET: photox-audit-backups
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    volumes:
+      - storage-data:/data/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      floci:
+        condition: service_started
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - photox-net
+
+  # keep the audit stack isolated from the host
+  postgres:
+    ports: !override []
+
+  redis:
+    ports: !override []
+
+  # Floci S3 for the backup endpoints under test (image/env come from the infra base compose).
+  # Ports unpublished — parallel audit runs must not contend on host :4566.
+  floci:
+    ports: !override []
+
+# declared here (not in the infra-only base compose) — only the audit stack mounts it
+volumes:
+  storage-data:
