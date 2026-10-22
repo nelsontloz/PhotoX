@@ -15,6 +15,7 @@ import {
   clearAccessCookie,
   clearRefreshCookie,
   isSecureRequest,
+  readAccessCookie,
   readRefreshCookie,
   setAccessCookie,
   setRefreshCookie,
@@ -28,6 +29,15 @@ import { RefreshDto } from './dto/logout.dto'
 // ponytail: socket peer address via req.ip — main.ts sets 'trust proxy', so behind the
 // reverse proxy this is the X-Forwarded-For client, not the proxy itself
 const clientIp = (req: Request): string => req.ip ?? 'unknown'
+
+// the explicit credential wins over the cookie (same precedence as the auth guard): an API
+// client's stale cookie jar must not shadow the bearer token it presents
+const bearerToken = (req: Request): string | undefined => {
+  const header = req.headers.authorization
+  if (!header) return undefined
+  const [scheme, token] = header.split(' ')
+  return scheme?.toLowerCase() === 'bearer' && token ? token : undefined
+}
 
 @ApiTags('auth')
 @Controller('api/v1/auth')
@@ -106,8 +116,8 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Revoke a refresh token (idempotent)' })
-  @ApiResponse({ status: 204, description: 'Token revoked' })
+  @ApiOperation({ summary: 'Revoke the caller session (idempotent)' })
+  @ApiResponse({ status: 204, description: 'Session revoked' })
   async logout(
     @Body() dto: RefreshDto,
     @Req() req: Request,
@@ -115,6 +125,14 @@ export class AuthController {
   ) {
     const raw = dto.refreshToken ?? readRefreshCookie(req)
     if (raw) await this.authService.logout(raw)
+    // A bearer-only client — or an attacker holding nothing but an access token — must still
+    // be able to end its own session: the access token identifies the caller, so the session
+    // floor is raised for that user even when no refresh token is presented. The token is
+    // verified with the USER secrets only, so a delegated service token fails closed and
+    // revokes nothing (revoking another user's sessions would be a DoS).
+    const accessToken = bearerToken(req) ?? readAccessCookie(req)
+    const caller = accessToken ? this.tokenService.verifyAccessToken(accessToken) : null
+    if (caller) await this.authService.revokeAllSessions(caller.sub)
     const secure = isSecureRequest(req)
     clearAccessCookie(res, secure)
     clearRefreshCookie(res, secure)

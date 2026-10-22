@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { IsNull, LessThan, Repository, type EntityManager } from 'typeorm'
+import { isUUID } from 'class-validator'
 import * as argon2 from 'argon2'
 import { User } from './entities/user.entity'
 import { RefreshToken } from './entities/refresh-token.entity'
@@ -115,6 +116,9 @@ export class AuthService {
 
   // ponytail: global logout kills every device session — per-jti denylist if selective logout matters
   async revokeAllSessions(userId: string, manager?: EntityManager): Promise<void> {
+    // a subject that is not a user id (a crafted or foreign token) owns no rows — fail
+    // closed instead of letting Postgres raise an invalid-uuid error (500)
+    if (!isUUID(userId)) return
     const store = manager ?? this.userRepo.manager
     await store.delete(RefreshToken, { userId })
     await store.update(User, userId, { tokensValidAfter: new Date() })

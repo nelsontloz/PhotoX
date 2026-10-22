@@ -22,6 +22,21 @@ const ADMIN_ROUTE = /^\/api\/v1\/admin(?:\/|$)/i
 /** The worker job surface: `/worker` itself or anything under it. */
 const WORKER_ROUTE = /^\/worker(?:\/|$)/i
 
+/**
+ * The ONE non-worker route a delegated service token (`act`) may read: the asset collection
+ * list (`GET /api/v1/assets`) with an `ids` query — the worker ranking fetch pages the list
+ * by ids. API security audit, finding #3: the exception used to be keyed on the query SHAPE
+ * alone ("the request carries a non-empty `ids`"), so every route carrying `?ids=` became
+ * service-token reachable — including the byte-serving `GET /api/v1/files/:fileId/stream?ids=x`,
+ * with no X-Job-Signature job binding attached.
+ *
+ * Matched with the same case-insensitive RegExp as the rules above: the router resolves
+ * `/API/V1/ASSETS` to the very same controller, so the casing of the URL must not decide the
+ * policy. The trailing slash is optional because the router matches it too (Express strict
+ * routing is off), so the policy and the router agree on the path by construction.
+ */
+const ACT_LIST_ROUTE = /^\/api\/v1\/assets\/?$/i
+
 const AUTH_ROUTE = /^\/api\/v1\/auth(?:\/|$)/i
 const SHARE_ROUTE = /^\/api\/share(?:\/|$)/i
 /** Swagger UI and its JSON asset. */
@@ -46,4 +61,14 @@ export function isAdminRoute(path: string): boolean {
 // Single-resource user GET /assets/:id, user PATCH :id/metadata and stream/download stay out.
 export function isWorkerRoute(path: string): boolean {
   return WORKER_ROUTE.test(path)
+}
+
+/**
+ * The single list read a delegated service token (`act`) may perform outside the worker
+ * surface: the asset collection list with an `ids` query (the worker ranking fetch).
+ * Every other route — including the byte-serving file stream — rejects a service token.
+ * API security audit, finding #3.
+ */
+export function isActListRoute(path: string): boolean {
+  return ACT_LIST_ROUTE.test(path)
 }
