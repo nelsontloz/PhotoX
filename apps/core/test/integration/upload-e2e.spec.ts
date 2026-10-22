@@ -11,21 +11,10 @@ import { ValidationPipe, type INestApplication } from '@nestjs/common'
 import { JwtModule, JwtService } from '@nestjs/jwt'
 import type { Express } from 'express'
 import type { Repository } from 'typeorm'
-import {
-  Asset,
-  AssetThumbnail,
-  Face,
-  FileRecord,
-  Person,
-  AppSetting,
-} from '../../src/database/entities'
+import { Asset, AssetThumbnail, Face, FileRecord } from '../../src/database/entities'
 import { LocalStorageService, loadEnv } from '@photox/shared-config'
 import { FACE_EMBEDDING_DIM } from '@photox/shared-types'
 import { User } from '../../src/users/entities/user.entity'
-import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
-import { Album } from '../../src/albums/entities/album.entity'
-import { AlbumAsset } from '../../src/albums/entities/album-asset.entity'
-import { Share } from '../../src/shares/entities/share.entity'
 import { AssetsModule } from '../../src/assets/assets.module'
 import { AlbumsModule } from '../../src/albums/albums.module'
 import { SharesModule } from '../../src/shares/shares.module'
@@ -66,20 +55,7 @@ import {
   setupTestInfra,
   teardownTestInfra,
 } from './test-setup'
-
-const ENTITIES = [
-  User,
-  RefreshToken,
-  Album,
-  AlbumAsset,
-  Share,
-  FileRecord,
-  Asset,
-  AssetThumbnail,
-  Face,
-  Person,
-  AppSetting,
-]
+import { ENTITIES } from './entities'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -267,7 +243,8 @@ describe('upload e2e pipeline', () => {
             password: 'photox',
             database: pgDb,
             entities: ENTITIES,
-            synchronize: true,
+            // schema comes from the template database the global setup bakes per run
+            synchronize: false,
             poolSize: 5,
           }),
           TypeOrmModule.forFeature(ENTITIES),

@@ -6,8 +6,11 @@ export const TEST_AUTH_SECRET = '0123456789abcdef0123456789abcdef'
 export const TEST_AUTH_SECRET_PREVIOUS = 'previous-test-secret-0123456789abcd'
 export const TEST_WORKER_SECRET = 'worker-test-secret-9f8e7d6c5b4a3210'
 
-/** Template database built by the global setup — carries the pgvector extensions. */
-const TEMPLATE_DB = 'photox_tmpl'
+/**
+ * Template database built by the global setup — carries the pgvector extensions *and* the
+ * full schema, so a per-file clone needs no DDL at all.
+ */
+export const TEMPLATE_DB = 'photox_tmpl'
 /** Must stay below the shared Redis container's `--databases 256`. */
 const MAX_SLOTS = 200
 
@@ -44,23 +47,24 @@ function claimSlot(): number {
   throw new Error(`no free test slot left (MAX_SLOTS=${MAX_SLOTS})`)
 }
 
-/** Admin connection to the container's default database, for CREATE/DROP DATABASE. */
-async function withAdminDb(
+/** Admin connection to the container — `database` is where the statements run. */
+export async function withAdminDb<T>(
   pgHost: string,
   pgPort: number,
-  fn: (ds: DataSource) => Promise<void>,
-): Promise<void> {
+  database: string,
+  fn: (ds: DataSource) => Promise<T>,
+): Promise<T> {
   const ds = new DataSource({
     type: 'postgres',
     host: pgHost,
     port: pgPort,
     username: 'photox',
     password: 'photox',
-    database: 'photox',
+    database,
   })
   await ds.initialize()
   try {
-    await fn(ds)
+    return await fn(ds)
   } finally {
     await ds.destroy()
   }
@@ -68,8 +72,8 @@ async function withAdminDb(
 
 /**
  * Per-spec-file infrastructure inside the shared containers: a private Postgres database
- * (cloned from the extension-carrying template) plus a private Redis logical database.
- * The containers themselves are started once by the global setup and stopped with it.
+ * (cloned from the template, so extensions *and* schema come for free) plus a private Redis
+ * logical database. The containers themselves are owned by the global setup.
  */
 export async function setupTestInfra(): Promise<TestInfra> {
   if (infra) return infra
@@ -80,7 +84,7 @@ export async function setupTestInfra(): Promise<TestInfra> {
   const redisDb = claimSlot()
   const pgDb = `photox_t_s${redisDb}`
 
-  await withAdminDb(pgHost, pgPort, async (ds) => {
+  await withAdminDb(pgHost, pgPort, 'photox', async (ds) => {
     await ds.query(`CREATE DATABASE "${pgDb}" TEMPLATE "${TEMPLATE_DB}"`)
   })
 
@@ -100,7 +104,7 @@ export async function teardownTestInfra(): Promise<void> {
   if (!infra) return
   const { pgHost, pgPort, pgDb } = infra
   infra = null
-  await withAdminDb(pgHost, pgPort, async (ds) => {
+  await withAdminDb(pgHost, pgPort, 'photox', async (ds) => {
     await ds.query(`DROP DATABASE IF EXISTS "${pgDb}" WITH (FORCE)`)
   })
 }
