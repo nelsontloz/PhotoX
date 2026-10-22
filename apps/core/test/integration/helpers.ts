@@ -18,21 +18,18 @@ import {
   Face,
   FileRecord,
   Person,
-  AppSetting,
   UploadSession,
   UploadSessionPart,
 } from '../../src/database/entities'
 import { AssetEmbedding } from '../../src/database/entities/asset-embedding.entity'
 import { AssetOcr } from '../../src/database/entities/asset-ocr.entity'
 import { AssetDetection } from '../../src/database/entities/asset-detection.entity'
-import { Place } from '../../src/database/entities/place.entity'
 import { LocalStorageService } from '@photox/shared-config'
 import { User } from '../../src/users/entities/user.entity'
 import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
 import { Album } from '../../src/albums/entities/album.entity'
 import { AlbumAsset } from '../../src/albums/entities/album-asset.entity'
 import { Share } from '../../src/shares/entities/share.entity'
-import { BackupMerge } from '../../src/backup/entities/backup-merge.entity'
 import { AssetsModule } from '../../src/assets/assets.module'
 import { AlbumsModule } from '../../src/albums/albums.module'
 import { SharesModule } from '../../src/shares/shares.module'
@@ -60,6 +57,7 @@ import {
   setupTestInfra,
   teardownTestInfra,
 } from './test-setup'
+import { ENTITIES } from './entities'
 
 export interface MockUser {
   id: string
@@ -106,27 +104,6 @@ const DEFAULT_MOCK_USER: MockUser = {
   role: 'user',
 }
 
-const ENTITIES = [
-  User,
-  RefreshToken,
-  Album,
-  AlbumAsset,
-  Share,
-  FileRecord,
-  Asset,
-  AssetThumbnail,
-  Face,
-  Person,
-  AppSetting,
-  AssetEmbedding,
-  AssetOcr,
-  AssetDetection,
-  Place,
-  UploadSession,
-  UploadSessionPart,
-  BackupMerge,
-]
-
 export async function createApiTestApp(opts?: {
   mockUser?: MockUser | null
   storageDir?: string
@@ -153,7 +130,9 @@ export async function createApiTestApp(opts?: {
           password: 'photox',
           database: pgDb,
           entities: ENTITIES,
-          synchronize: true,
+          // the schema (and the pgvector extensions) come from the template database the
+          // global setup bakes once per run — see test/global-setup.ts
+          synchronize: false,
           // every spec file holds its own pool; 10 (the default) x ~15 parallel files
           // would blow past the container's 100 max_connections
           poolSize: 5,

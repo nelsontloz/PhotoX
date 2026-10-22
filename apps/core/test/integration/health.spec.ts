@@ -56,7 +56,9 @@ describe('health endpoint', () => {
           username: 'photox',
           password: 'photox',
           database: pgDb,
-          synchronize: true,
+          // /health only pings the connection — this app registers no entities and needs no
+          // tables, but it must not run DDL against the shared container either
+          synchronize: false,
           poolSize: 5,
         }),
         // real global guard, so a non-whitelisted /health would come back 401

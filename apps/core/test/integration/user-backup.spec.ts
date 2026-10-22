@@ -21,17 +21,11 @@ import {
   originalKey,
 } from '@photox/shared-config'
 import { DataSource, In, type Repository } from 'typeorm'
-import { Asset, AssetThumbnail, Face, FileRecord, Person } from '../../src/database/entities'
-import { AppSetting } from '../../src/database/entities/app-setting.entity'
-import { AssetEmbedding } from '../../src/database/entities/asset-embedding.entity'
-import { AssetOcr } from '../../src/database/entities/asset-ocr.entity'
-import { AssetDetection } from '../../src/database/entities/asset-detection.entity'
-import { Place } from '../../src/database/entities/place.entity'
+import { Asset, FileRecord, Person } from '../../src/database/entities'
 import { Album } from '../../src/albums/entities/album.entity'
 import { AlbumAsset } from '../../src/albums/entities/album-asset.entity'
 import { Share } from '../../src/shares/entities/share.entity'
 import { User } from '../../src/users/entities/user.entity'
-import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
 import { BackupModule } from '../../src/backup/backup.module'
 import { BackupMerge } from '../../src/backup/entities/backup-merge.entity'
 import { S3BackupService } from '../../src/backup/s3-backup.service'
@@ -43,25 +37,7 @@ import {
 import { BullMqModule } from '../../src/queue/bullmq.module'
 import { BullMqService } from '../../src/queue/bullmq.service'
 import { setupTestInfra, teardownTestInfra } from './test-setup'
-
-const ENTITIES = [
-  User,
-  RefreshToken,
-  Album,
-  AlbumAsset,
-  Share,
-  FileRecord,
-  Asset,
-  AssetThumbnail,
-  Face,
-  Person,
-  AppSetting,
-  AssetEmbedding,
-  AssetOcr,
-  AssetDetection,
-  Place,
-  BackupMerge,
-]
+import { ENTITIES } from './entities'
 
 interface FakeOp {
   op: 'putObject' | 'putFile' | 'deleteKey' | 'copyKey'
@@ -204,7 +180,8 @@ describe('user backup round-trip', () => {
             password: 'photox',
             database: pgDb,
             entities: ENTITIES,
-            synchronize: true,
+            // schema comes from the template database the global setup bakes per run
+            synchronize: false,
             poolSize: 5,
           }),
           TypeOrmModule.forFeature(ENTITIES),
