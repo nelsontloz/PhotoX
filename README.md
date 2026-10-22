@@ -21,7 +21,7 @@ Personal photo and video hosting. `core` (NestJS, :3000) is the only public/busi
 
 ## Prerequisites
 
-- Node.js 22 (`.nvmrc`)
+- Node.js 24 (`.nvmrc`)
 - pnpm 9.15 (see `packageManager`)
 - Docker & Docker Compose
 
@@ -56,7 +56,7 @@ Infrastructure only: `docker-compose.yml` runs `postgres` + `redis` + `floci` (S
 | -------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `pnpm dev`                 | core + worker-service + web with hot reload                                                            |
 | `pnpm build`               | build all packages                                                                                     |
-| `pnpm test` / `test:watch` | unit + integration tests (integration shares two reused Testcontainers — Docker must be running)         |
+| `pnpm test` / `test:watch` | unit + integration tests (integration shares two reused Testcontainers — Docker must be running)       |
 | `pnpm lint` / `typecheck`  | ESLint (type-aware) / `tsc --noEmit` across all packages                                               |
 | `pnpm format`              | Prettier write                                                                                         |
 | `pnpm test:e2e`            | boot the self-contained e2e stack, then run the Playwright/BDD suite (report: `e2e/playwright-report`) |
@@ -64,7 +64,7 @@ Infrastructure only: `docker-compose.yml` runs `postgres` + `redis` + `floci` (S
 
 Single app: `pnpm --filter @photox/core dev` (also `@photox/worker-service`, `@photox/web`); any package script accepts the same `--filter`.
 
-Integration tests share **two reused Testcontainers containers** (`pgvector/pgvector:0.8.7-pg16` + `redis:7-alpine`, plus one Redis for the worker's run) instead of starting a pair per spec file. The global setup bakes a template database once (pgvector/cube/earthdistance + the schema) and each spec file clones it into a private database and claims a private Redis logical DB, so isolation is unchanged. Containers are labelled `photox.test=*`, survive the run so the next one skips the image start, and are wiped at the start of every run — a crashed run cannot leak a database, a schema or a rate-limit bucket into the next one. To drop them by hand: `docker ps -q --filter label=photox.test | xargs docker rm -f`.
+Integration tests share **two Testcontainers containers** (`pgvector/pgvector:0.8.7-pg16` + `redis:7-alpine`, plus one Redis for the worker's run) instead of starting a pair per spec file. The global setup bakes a template database once (pgvector/cube/earthdistance + the schema) and each spec file clones it into a private database and claims a private Redis logical DB, so isolation is unchanged. Containers are labelled `photox.test=*` and are session-owned: the run's teardown stops them, and Ryuk reaps them if the run is killed, so nothing outlives a run. The run-start wipe stays as a guard, and to drop leftovers by hand: `docker ps -q --filter label=photox.test | xargs docker rm -f`.
 
 ### Flags and env
 
@@ -73,7 +73,6 @@ Integration tests share **two reused Testcontainers containers** (`pgvector/pgve
 - `E2E_KEEP=1` — keep the stack running after the suite (prints the web URL) and skip artifact cleanup.
 - `E2E_PROJECT=` / `E2E_WEB_PORT=` — override the auto-generated compose project / web port. Each invocation is stack-isolated, but `e2e/.features-gen`, `e2e/test-results` and `e2e/playwright-report` are shared between concurrent runs.
 - `FACE_MODEL_SKIP=1 pnpm install` — skip the root postinstall loop over all 4 worker model scripts.
-- `TESTCONTAINERS_REUSE_ENABLE=false` — opt out of container reuse for the test run: each package starts fresh containers and removes them at teardown (slower, but leaves nothing behind).
 - `ADMIN_EMAIL` / `ADMIN_PASSWORD` — seed an admin on core bootstrap when no admin exists (open registration only mints `user`); empty disables the seed.
 - `pnpm --filter @photox/worker-service <script>` — 4 separate (re)download scripts in `apps/worker-service`: `face-model`, `vision-model`, `ocr-model`, `detect-model` (root `postinstall` loops all four).
 

@@ -1,5 +1,5 @@
 # -- deps --
-FROM node:22-alpine AS deps
+FROM node:24-alpine AS deps
 RUN corepack enable
 WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
@@ -23,7 +23,7 @@ RUN pnpm --filter @photox/shared-types build && \
 RUN FACE_MODEL_SKIP=1 pnpm --filter @photox/core --prod deploy /prod/core
 
 # -- runtime --
-FROM node:22-alpine AS runtime
+FROM node:24-alpine AS runtime
 RUN corepack enable
 WORKDIR /app
 COPY --from=build /prod/core/package.json ./package.json

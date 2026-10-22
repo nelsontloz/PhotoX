@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
-import { page, userEvent } from '@vitest/browser/context'
+import { page, userEvent } from 'vitest/browser'
 import { MemoryRouter } from 'react-router-dom'
 import '../../src/app.css'
 import LoginPage from '../../src/pages/login/index'

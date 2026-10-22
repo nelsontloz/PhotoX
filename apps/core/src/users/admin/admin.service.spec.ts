@@ -269,9 +269,11 @@ describe('AdminService.requestUserDelete backup exclusion', () => {
   ] as const
 
   it('makes zero S3 calls and reports the kept prefix', async () => {
-    const spies = S3_MUTATING_METHODS.map((m) =>
-      vi.spyOn(S3BackupService.prototype, m as never).mockResolvedValue([] as never),
-    )
+    const s3Proto = S3BackupService.prototype as unknown as Record<
+      string,
+      (...args: never[]) => Promise<unknown>
+    >
+    const spies = S3_MUTATING_METHODS.map((m) => vi.spyOn(s3Proto, m).mockResolvedValue([]))
     try {
       const { service } = makeService({ user: targetUser })
       // the services hold no S3 reference at all — exclusion is structural, not behavioral

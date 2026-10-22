@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest'
 import { useAuthStore, subscribeAuthFailure, isExpiringSoon } from './auth-store'
 import * as authApi from '../api/auth'
 
@@ -150,7 +150,7 @@ describe('authStore', () => {
   })
 
   describe('refresh', () => {
-    let failureCb: ReturnType<typeof vi.fn>
+    let failureCb: Mock<() => void>
     let unsub: () => void
 
     beforeEach(() => {

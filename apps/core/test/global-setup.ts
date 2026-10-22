@@ -8,7 +8,7 @@ import { ENTITIES } from './integration/entities'
 import { TEMPLATE_DB, withAdminDb } from './integration/test-setup'
 
 /**
- * One Postgres + one Redis container for the whole core integration run, reused across runs.
+ * One Postgres + one Redis container for the whole core integration run.
  *
  * Isolation used to come from the container itself (one pair per spec file, ~80 containers per
  * run). It now comes from inside the shared containers:
@@ -18,27 +18,19 @@ import { TEMPLATE_DB, withAdminDb } from './integration/test-setup'
  *   - Redis: each spec file claims a private logical DB index, so flushdb() and the
  *     rate-limit buckets stay file-local.
  *
- * The containers are started with `withReuse()`, so a second run skips the image start
- * entirely (~1.4 s saved). That makes leftover state the harness's problem, not the
- * container's: the wipe below is what a fresh container used to give us for free.
+ * The pair is session-owned: testcontainers registers it with Ryuk, so a killed run is reaped,
+ * and the teardown below stops it when the run ends. Nothing survives a run — a long-lived
+ * container is exactly the leak that used to leave these behind after a Ctrl-C.
  */
 
 const PG_USER = 'photox'
 const PG_PASSWORD = 'photox'
 const REDIS_DATABASES = 256
 
-/**
- * testcontainers only skips reuse when this is exactly 'false', and a reused container is
- * never registered with Ryuk — mirror the same gate so the teardown knows whether these
- * containers are meant to outlive the run.
- */
-const reuseEnabled = process.env.TESTCONTAINERS_REUSE_ENABLE !== 'false'
-
 export default async function setup(): Promise<() => Promise<void>> {
   const slotsDir = mkdtempSync(join(tmpdir(), 'photox-core-slots-'))
 
   const redis = await new GenericContainer('redis:7-alpine')
-    .withReuse()
     .withLabels({ 'photox.test': 'core-redis' })
     // one logical DB per spec file (MAX_SLOTS in test/integration/test-setup.ts)
     .withCommand(['redis-server', '--databases', String(REDIS_DATABASES)])
@@ -46,7 +38,6 @@ export default async function setup(): Promise<() => Promise<void>> {
     .start()
 
   const postgres = await new GenericContainer('pgvector/pgvector:0.8.7-pg16')
-    .withReuse()
     .withLabels({ 'photox.test': 'core-postgres' })
     .withExposedPorts(5432)
     .withEnvironment({
@@ -61,8 +52,8 @@ export default async function setup(): Promise<() => Promise<void>> {
   const redisHost = redis.getHost()
   const redisPort = redis.getMappedPort(6379)
 
-  // A reused container still holds the previous run's keys and databases (its teardown may
-  // never have run). Wipe both so the run starts from the state a fresh container would give.
+  // Both containers are fresh, so this is a guard, not a repair: if the harness is ever pointed
+  // at a long-lived container (or a run crashes before teardown), the next run still starts clean.
   await wipeRedis(redisHost, redisPort)
   await dropSuiteDatabases(pgHost, pgPort)
   await bakeTemplate(pgHost, pgPort)
@@ -79,12 +70,10 @@ export default async function setup(): Promise<() => Promise<void>> {
 
   return async () => {
     rmSync(slotsDir, { recursive: true, force: true })
-    // Reused containers stay up so the next run skips the start. Only a run that opted out of
-    // reuse owns (and must remove) its containers.
-    if (!reuseEnabled) {
-      await stopQuietly(postgres)
-      await stopQuietly(redis)
-    }
+    // Session-owned containers: stop them so a finished run leaves nothing behind (a killed run
+    // is reaped by Ryuk instead).
+    await stopQuietly(postgres)
+    await stopQuietly(redis)
   }
 }
 
@@ -120,8 +109,8 @@ async function dropSuiteDatabases(pgHost: string, pgPort: number): Promise<void>
  * Rebuilds the template from scratch on every run: extensions first (search ANN casts to
  * halfvec, places reverse-geocoding uses the cube/earthdistance KNN operators, and core's
  * VectorInitService is not part of the test module graph), then the schema from the entity
- * metadata. Rebuilding rather than reusing is what keeps a reused container from serving a
- * stale schema after an entity change.
+ * metadata. Rebuilding on every run also means an entity change can never be served from a
+ * stale template.
  */
 async function bakeTemplate(pgHost: string, pgPort: number): Promise<void> {
   await withAdminDb(pgHost, pgPort, 'photox', async (ds) => {

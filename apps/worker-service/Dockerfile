@@ -1,5 +1,5 @@
 # -- deps --
-FROM node:22-bookworm-slim AS deps
+FROM node:24-bookworm-slim AS deps
 RUN corepack enable
 WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
@@ -22,7 +22,7 @@ RUN pnpm --filter @photox/shared-types build && \
 RUN FACE_MODEL_SKIP=1 pnpm --filter @photox/worker-service --prod deploy /prod/worker
 
 # -- runtime --
-FROM node:22-bookworm-slim AS runtime
+FROM node:24-bookworm-slim AS runtime
 RUN corepack enable
 # ffprobe-static has no linux/arm64 binary and ffmpeg-static's lacks libsvtav1 — use system ffmpeg.
 # Installed before any source COPYs so apt re-runs only when the base image changes, not on code edits.
