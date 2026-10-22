@@ -1,83 +1,106 @@
-import { randomBytes } from 'node:crypto'
-import { GenericContainer, type StartedTestContainer } from 'testcontainers'
+import { closeSync, openSync } from 'node:fs'
+import { join } from 'node:path'
+import { DataSource } from 'typeorm'
 
 export const TEST_AUTH_SECRET = '0123456789abcdef0123456789abcdef'
 export const TEST_AUTH_SECRET_PREVIOUS = 'previous-test-secret-0123456789abcd'
 export const TEST_WORKER_SECRET = 'worker-test-secret-9f8e7d6c5b4a3210'
 
-let redis: StartedTestContainer | null = null
-let postgres: StartedTestContainer | null = null
+/** Template database built by the global setup — carries the pgvector extensions. */
+const TEMPLATE_DB = 'photox_tmpl'
+/** Must stay below the shared Redis container's `--databases 256`. */
+const MAX_SLOTS = 200
 
-export async function setupTestInfra() {
-  const hash = randomBytes(3).toString('hex')
+export interface TestInfra {
+  pgHost: string
+  pgPort: number
+  /** Private database for this spec file, inside the shared Postgres container. */
+  pgDb: string
+  redisHost: string
+  redisPort: number
+  /** Private Redis logical DB index for this spec file. */
+  redisDb: number
+}
 
-  redis = await new GenericContainer('redis:7-alpine')
-    .withName(`api-redis-${hash}`)
-    .withExposedPorts(6379)
-    .start()
+let infra: TestInfra | null = null
 
-  postgres = await new GenericContainer('pgvector/pgvector:0.8.7-pg16')
-    .withName(`api-pg-${hash}`)
-    .withExposedPorts(5432)
-    .withEnvironment({
-      POSTGRES_USER: 'photox',
-      POSTGRES_PASSWORD: 'photox',
-      POSTGRES_DB: 'photox',
-    })
-    .start()
+/**
+ * Claims a slot index no other spec file in this run holds. The claim file is created
+ * with O_EXCL, so two files racing for the same index cannot both win it. Slots are
+ * never released: a spec file keeps its database and its Redis DB for the whole run,
+ * which is what the old one-container-per-file setup gave us.
+ */
+function claimSlot(): number {
+  const dir = process.env.PHOTOX_TEST_SLOTS_DIR
+  if (!dir) throw new Error('PHOTOX_TEST_SLOTS_DIR is not set — the global setup did not run')
+  for (let index = 0; index < MAX_SLOTS; index++) {
+    try {
+      closeSync(openSync(join(dir, `slot-${index}.claim`), 'wx'))
+      return index
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    }
+  }
+  throw new Error(`no free test slot left (MAX_SLOTS=${MAX_SLOTS})`)
+}
 
-  // search ANN casts to halfvec — the extension must exist before any query runs (core's
-  // VectorInitService bootstrap is not part of the test app's module graph); cube/earthdistance
-  // back the places reverse-geocoding KNN query
-  await postgres.exec([
-    'psql',
-    '-U',
-    'photox',
-    '-d',
-    'photox',
-    '-c',
-    'CREATE EXTENSION IF NOT EXISTS vector',
-    '-c',
-    'CREATE EXTENSION IF NOT EXISTS cube',
-    '-c',
-    'CREATE EXTENSION IF NOT EXISTS earthdistance',
-  ])
+/** Admin connection to the container's default database, for CREATE/DROP DATABASE. */
+async function withAdminDb(
+  pgHost: string,
+  pgPort: number,
+  fn: (ds: DataSource) => Promise<void>,
+): Promise<void> {
+  const ds = new DataSource({
+    type: 'postgres',
+    host: pgHost,
+    port: pgPort,
+    username: 'photox',
+    password: 'photox',
+    database: 'photox',
+  })
+  await ds.initialize()
+  try {
+    await fn(ds)
+  } finally {
+    await ds.destroy()
+  }
+}
 
-  const redisHost = redis.getHost()
-  const redisPort = redis.getMappedPort(6379)
-  const pgHost = postgres.getHost()
-  const pgPort = postgres.getMappedPort(5432)
+/**
+ * Per-spec-file infrastructure inside the shared containers: a private Postgres database
+ * (cloned from the extension-carrying template) plus a private Redis logical database.
+ * The containers themselves are started once by the global setup and stopped with it.
+ */
+export async function setupTestInfra(): Promise<TestInfra> {
+  if (infra) return infra
+  const pgHost = process.env.POSTGRES_HOST ?? 'localhost'
+  const pgPort = Number(process.env.POSTGRES_PORT ?? 5432)
+  const redisHost = process.env.REDIS_HOST ?? 'localhost'
+  const redisPort = Number(process.env.REDIS_PORT ?? 6379)
+  const redisDb = claimSlot()
+  const pgDb = `photox_t_s${redisDb}`
 
-  process.env.REDIS_HOST = redisHost
-  process.env.REDIS_PORT = String(redisPort)
-  process.env.POSTGRES_HOST = pgHost
-  process.env.POSTGRES_PORT = String(pgPort)
-  process.env.POSTGRES_USER = 'photox'
-  process.env.POSTGRES_PASSWORD = 'photox'
+  await withAdminDb(pgHost, pgPort, async (ds) => {
+    await ds.query(`CREATE DATABASE "${pgDb}" TEMPLATE "${TEMPLATE_DB}"`)
+  })
+
   process.env.AUTH_TOKEN_SECRET = TEST_AUTH_SECRET
   process.env.WORKER_JWT_SECRET = TEST_WORKER_SECRET
+  process.env.REDIS_DB = String(redisDb)
+  // the shared test Redis is passwordless — a REDIS_PASSWORD inherited from the shell
+  // or from .env would break every connection
+  delete process.env.REDIS_PASSWORD
 
-  return { redisHost, redisPort, pgHost, pgPort }
+  infra = { pgHost, pgPort, pgDb, redisHost, redisPort, redisDb }
+  return infra
 }
 
-/** Stops only the Redis container, e.g. for degraded-health tests. */
-export async function stopRedisContainer() {
-  if (redis) await redis.stop()
-}
-
-export async function teardownTestInfra() {
-  if (redis) {
-    try {
-      // testcontainers' stop() is cached per instance, but be tolerant if the
-      // container was already stopped/removed elsewhere (degraded-health test)
-      await redis.stop()
-    } catch {
-      // already stopped — nothing to clean up
-    }
-    redis = null
-  }
-  if (postgres) {
-    await postgres.stop()
-    postgres = null
-  }
+/** Drops this spec file's database. The containers are stopped once by the global setup. */
+export async function teardownTestInfra(): Promise<void> {
+  if (!infra) return
+  const { pgHost, pgPort, pgDb } = infra
+  infra = null
+  await withAdminDb(pgHost, pgPort, async (ds) => {
+    await ds.query(`DROP DATABASE IF EXISTS "${pgDb}" WITH (FORCE)`)
+  })
 }

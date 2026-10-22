@@ -46,6 +46,9 @@ export interface CreateTestAppOptions {
 // ponytail: Redis-only harness for the worker's processors — no Postgres anywhere in the worker.
 // Processors start via their own OnModuleInit hook when moduleRef.init() runs.
 export async function createTestApp(opts: CreateTestAppOptions = {}): Promise<TestApp> {
+  // must run before the testing module compiles: BullMqService.onModuleInit reads loadEnv()
+  // (REDIS_HOST/REDIS_PORT/REDIS_DB) when moduleRef.init() runs, so the slot this file claimed
+  // has to be in process.env by then
   await setupRedis()
 
   const storageDir = mkdtempSync(join(tmpdir(), 'worker-int-storage-'))

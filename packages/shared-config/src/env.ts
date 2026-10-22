@@ -29,6 +29,9 @@ const envSchema = z.object({
   REDIS_HOST: z.string().default('localhost'),
   REDIS_PORT: z.coerce.number().default(6379),
   REDIS_PASSWORD: z.string().optional(),
+  // logical Redis database index (SELECT n). 0 in production; the integration harness gives
+  // every spec file its own index so rate-limit buckets and BullMQ keys stay file-local.
+  REDIS_DB: z.coerce.number().int().min(0).default(0),
   STORAGE_DIR: z.string().default('./data/storage'),
   STORAGE_QUOTA_BYTES: z.coerce.number().int().positive().optional(),
   S3_BACKUP_BUCKET: z.string().default('photox-dev-backups'),

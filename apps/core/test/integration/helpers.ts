@@ -136,7 +136,7 @@ export async function createApiTestApp(opts?: {
   overrides?: ProviderOverride[]
 }): Promise<ApiTestApp> {
   const mockUser = opts?.mockUser === undefined ? DEFAULT_MOCK_USER : opts.mockUser
-  const { pgHost, pgPort } = await setupTestInfra()
+  const { pgHost, pgPort, pgDb } = await setupTestInfra()
 
   const storageDir = opts?.storageDir ?? mkdtempSync(join(tmpdir(), 'api-int-storage-'))
   const prevStorageDir = process.env.STORAGE_DIR
@@ -151,9 +151,12 @@ export async function createApiTestApp(opts?: {
           port: pgPort,
           username: 'photox',
           password: 'photox',
-          database: 'photox',
+          database: pgDb,
           entities: ENTITIES,
           synchronize: true,
+          // every spec file holds its own pool; 10 (the default) x ~15 parallel files
+          // would blow past the container's 100 max_connections
+          poolSize: 5,
         }),
         TypeOrmModule.forFeature(ENTITIES),
         JwtModule.register({ secret: TEST_AUTH_SECRET, signOptions: { algorithm: 'HS256' } }),
