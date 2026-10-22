@@ -9,6 +9,25 @@ export default defineConfig({
     passWithNoTests: true,
     testTimeout: 60_000,
     hookTimeout: 120_000,
-    include: ['src/**/*.spec.ts', 'test/**/*.spec.ts'],
+    // Split so the shared Redis container is only started for the integration project: the
+    // unit project needs no Redis at all, and the integration project owns the container via
+    // its globalSetup (one container for the whole run, one logical DB per spec file).
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'unit',
+          include: ['src/**/*.spec.ts'],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'integration',
+          include: ['test/**/*.spec.ts'],
+          globalSetup: './test/global-setup.ts',
+        },
+      },
+    ],
   },
 })

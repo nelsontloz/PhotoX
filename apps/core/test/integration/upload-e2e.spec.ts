@@ -239,7 +239,7 @@ describe('upload e2e pipeline', () => {
   }
 
   beforeAll(async () => {
-    const { pgHost, pgPort } = await setupTestInfra()
+    const { pgHost, pgPort, pgDb } = await setupTestInfra()
     // resolve the host's provisioned ONNX weights BEFORE STORAGE_DIR is repointed at the temp dir
     const modelPath =
       process.env.FACE_MODEL_PATH ?? join(loadEnv().STORAGE_DIR, 'models', FACE_MODEL_FILE)
@@ -265,9 +265,10 @@ describe('upload e2e pipeline', () => {
             port: pgPort,
             username: 'photox',
             password: 'photox',
-            database: 'photox',
+            database: pgDb,
             entities: ENTITIES,
             synchronize: true,
+            poolSize: 5,
           }),
           TypeOrmModule.forFeature(ENTITIES),
           JwtModule.register({ secret: TEST_AUTH_SECRET, signOptions: { algorithm: 'HS256' } }),

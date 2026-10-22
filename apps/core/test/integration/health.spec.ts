@@ -8,7 +8,7 @@ import { AuthModule } from '../../src/auth/auth.module'
 import { HealthModule } from '../../src/health/health.module'
 import { BullMqModule } from '../../src/queue/bullmq.module'
 import { BullMqService } from '../../src/queue/bullmq.service'
-import { setupTestInfra, stopRedisContainer, teardownTestInfra } from './test-setup'
+import { setupTestInfra, teardownTestInfra } from './test-setup'
 
 interface HealthBody {
   status: string
@@ -21,13 +21,32 @@ interface HealthBody {
 describe('health endpoint', () => {
   let app: INestApplication
   let redis: Redis
+  let deadRedis: Redis
+  /** The BullMqService override is read per request, so swapping the client is enough. */
+  let redisHolder: { redis: Redis }
 
   beforeAll(async () => {
-    const { redisHost, redisPort, pgHost, pgPort } = await setupTestInfra()
-    // stand in for the global BullMqService's shared client (the real service's
-    // onModuleDestroy quit() would hang teardown once this test kills Redis)
-    redis = new Redis({ host: redisHost, port: redisPort, maxRetriesPerRequest: null })
+    const { redisHost, redisPort, redisDb, pgHost, pgPort, pgDb } = await setupTestInfra()
+    // stand in for the global BullMqService's shared client
+    redis = new Redis({
+      host: redisHost,
+      port: redisPort,
+      db: redisDb,
+      maxRetriesPerRequest: null,
+    })
     redis.on('error', () => undefined)
+    await redis.ping()
+    // The shared Redis container stays up for every other spec file, so "Redis is down"
+    // is simulated with a client pointed at a closed port instead of stopping it.
+    // enableOfflineQueue makes the ping fail fast instead of queueing forever.
+    deadRedis = new Redis({
+      host: '127.0.0.1',
+      port: 1,
+      maxRetriesPerRequest: null,
+      enableOfflineQueue: false,
+    })
+    deadRedis.on('error', () => undefined)
+    redisHolder = { redis }
     const moduleRef = await Test.createTestingModule({
       imports: [
         TypeOrmModule.forRoot({
@@ -36,8 +55,9 @@ describe('health endpoint', () => {
           port: pgPort,
           username: 'photox',
           password: 'photox',
-          database: 'photox',
+          database: pgDb,
           synchronize: true,
+          poolSize: 5,
         }),
         // real global guard, so a non-whitelisted /health would come back 401
         AuthModule,
@@ -46,15 +66,16 @@ describe('health endpoint', () => {
       ],
     })
       .overrideProvider(BullMqService)
-      .useValue({ redis })
+      .useValue(redisHolder)
       .compile()
     app = moduleRef.createNestApplication()
     await app.init()
   }, 120_000)
 
   afterAll(async () => {
-    redis.disconnect()
-    await app.close()
+    if (redis) redis.disconnect()
+    if (deadRedis) deadRedis.disconnect()
+    if (app) await app.close()
     await teardownTestInfra()
   })
 
@@ -71,9 +92,8 @@ describe('health endpoint', () => {
     expect(body.checks.redis?.status).toBe('up')
   })
 
-  // must stay LAST: this stops the shared Redis container for the rest of the file
   it('reports degraded with Redis down while Postgres stays up', async () => {
-    await stopRedisContainer()
+    redisHolder.redis = deadRedis
     const server = app.getHttpServer() as Express
     const res = await request(server).get('/health')
     expect(res.status).toBe(200)

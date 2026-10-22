@@ -25,6 +25,9 @@ export default defineConfig({
         test: {
           name: 'integration',
           include: ['test/integration/**/*.spec.ts'],
+          // one Postgres + one Redis container for the whole project; each spec file
+          // gets a private database and a private Redis logical DB inside them
+          globalSetup: './test/global-setup.ts',
           testTimeout: 30_000,
           hookTimeout: 60_000,
           retry: 1,

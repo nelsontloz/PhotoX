@@ -188,7 +188,7 @@ describe('user backup round-trip', () => {
   let mergeRepo: Repository<BackupMerge>
 
   beforeAll(async () => {
-    const { pgHost, pgPort } = await setupTestInfra()
+    const { pgHost, pgPort, pgDb } = await setupTestInfra()
     storageDir = mkdtempSync(join(tmpdir(), 'backup-int-storage-'))
     prevStorageDir = process.env.STORAGE_DIR
     process.env.STORAGE_DIR = storageDir
@@ -202,9 +202,10 @@ describe('user backup round-trip', () => {
             port: pgPort,
             username: 'photox',
             password: 'photox',
-            database: 'photox',
+            database: pgDb,
             entities: ENTITIES,
             synchronize: true,
+            poolSize: 5,
           }),
           TypeOrmModule.forFeature(ENTITIES),
           BullMqModule,
@@ -567,6 +568,7 @@ describe('user backup round-trip', () => {
             host: env.REDIS_HOST,
             port: env.REDIS_PORT,
             password: env.REDIS_PASSWORD,
+            db: env.REDIS_DB,
             maxRetriesPerRequest: null,
           },
         }),
