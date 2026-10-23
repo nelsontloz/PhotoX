@@ -400,12 +400,7 @@ export interface StorageQuotaResponse {
 // the total size, chunked 8 MiB parts are PUT out of order, then `complete` assembles/dedups.
 // Status lifecycle: pending → assembling → assembled → completed (terminal: failed/expired).
 export type UploadSessionStatus =
-  | 'pending'
-  | 'assembling'
-  | 'assembled'
-  | 'completed'
-  | 'failed'
-  | 'expired'
+  'pending' | 'assembling' | 'assembled' | 'completed' | 'failed' | 'expired'
 
 // Machine-readable `code` on error envelopes, mirroring the P0-B 409 style:
 // `{statusCode, message, code}` (plus `receivedParts` for PARTS_MISSING).

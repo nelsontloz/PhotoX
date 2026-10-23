@@ -1,6 +1,6 @@
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, waitFor } from '@testing-library/react'
-import { page } from '@vitest/browser/context'
+import { page } from 'vitest/browser'
 import '../../src/app.css'
 import type { Asset } from '@photox/shared-types'
 import { buildBuckets, type TimelineItem } from '../../src/lib/timelineLayout'

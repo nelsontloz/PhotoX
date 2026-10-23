@@ -11,9 +11,9 @@
   },
   "devDependencies": {
     "@photox/shared-types": "workspace:*",
-    "@playwright/test": "^1.63.0",
-    "@types/node": "^22.0.0",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^24.19.2",
     "playwright-bdd": "^9.2.1",
-    "typescript": "^5.7.0"
+    "typescript": "^5.9.3"
   }
 }

@@ -142,9 +142,11 @@ describe('UserDeleteService.runUserDelete', () => {
       'downloadToFile',
       'ensureBucket',
     ] as const
-    const spies = s3methods.map((m) =>
-      vi.spyOn(S3BackupService.prototype, m as never).mockResolvedValue([] as never),
-    )
+    const s3Proto = S3BackupService.prototype as unknown as Record<
+      string,
+      (...args: never[]) => Promise<unknown>
+    >
+    const spies = s3methods.map((m) => vi.spyOn(s3Proto, m).mockResolvedValue([]))
     try {
       const { service, storage } = makeService({ storageRoot })
       const res = await service.runUserDelete(USER_ID, 'backups/old/')

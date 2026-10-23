@@ -68,14 +68,11 @@ describe('DetectionsService.register', () => {
     [
       'more than 200 detections',
       {
-        detections: Array.from(
-          { length: 201 },
-          (): DetectedObjectDto => ({
-            label: 'person',
-            confidence: 0.9,
-            box: box(),
-          }),
-        ),
+        detections: Array.from({ length: 201 }, (): DetectedObjectDto => ({
+          label: 'person',
+          confidence: 0.9,
+          box: box(),
+        })),
       },
     ],
     ['an empty label', { detections: [{ label: '', confidence: 0.9, box: box() }] }],

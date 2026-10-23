@@ -23,3 +23,5 @@ audit/
 
 # vitest browser failure screenshots
 __screenshots__/
+# vitest browser-mode artifacts
+.vitest/

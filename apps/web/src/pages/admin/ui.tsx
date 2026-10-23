@@ -178,13 +178,7 @@ const ICON_BUTTON_CLASS =
   'p-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low'
 
 type ButtonVariant =
-  | 'primary'
-  | 'ghost'
-  | 'secondary'
-  | 'danger'
-  | 'dangerFlat'
-  | 'outlinePrimary'
-  | 'icon'
+  'primary' | 'ghost' | 'secondary' | 'danger' | 'dangerFlat' | 'outlinePrimary' | 'icon'
 
 interface ButtonProps {
   /** Visual treatment. Primary/ghost are the filled compact buttons; the outline variants back tables. */
