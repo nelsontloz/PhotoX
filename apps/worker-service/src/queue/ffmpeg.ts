@@ -5,7 +5,7 @@ import { buffer, text } from 'stream/consumers'
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const ffmpegStatic: string | null = (require('ffmpeg-static') as string | null) ?? null
 const ffprobeBin: { path: string } | null =
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   (require('ffprobe-static') as { path: string } | null) ?? null
 
 export const FFMPEG_PATH: string | null = process.env.FFMPEG_PATH ?? ffmpegStatic

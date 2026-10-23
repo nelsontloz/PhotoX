@@ -64,7 +64,7 @@ async function runUploadFlow(ids: string[]): Promise<void> {
         const item = useUploadStore.getState().items.find((i) => i.id === id)
         if (!file || item?.status !== 'queued') return
         useUploadStore.getState().setStatus(id, 'hashing')
-        let checksum: string | null = null
+        let checksum: string | null
         try {
           checksum = await hashFile(file, (pct) => useUploadStore.getState().setProgress(id, pct))
         } catch {

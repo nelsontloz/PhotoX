@@ -111,7 +111,7 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
   ): Promise<{ enqueued: number; total: number }> {
     let offset = 0
     let enqueued = 0
-    let total = 0
+    let total: number
     for (;;) {
       const page = await fetchPage(offset)
       total = page.total

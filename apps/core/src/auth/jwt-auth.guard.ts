@@ -166,7 +166,7 @@ export class JwtAuthGuard implements CanActivate {
       if (typeof payload.iat !== 'number') throw new UnauthorizedException()
       // a failed lookup reads as "no row": non-act tokens still fail closed below, while
       // worker-actor pseudo-subs (e.g. worker-service, not a uuid Postgres can cast) pass
-      let row: { tokensValidAfter: Date | null } | null = null
+      let row: { tokensValidAfter: Date | null } | null
       try {
         row = await this.dataSource
           .getRepository(User)

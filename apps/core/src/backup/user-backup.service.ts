@@ -87,7 +87,7 @@ const assetManifestSchema = z.object({
   fps: z.number().nullable(),
   codec: z.string().nullable(),
   hasAudio: z.boolean().nullable(),
-  metadata: z.record(z.unknown()).nullable(),
+  metadata: z.record(z.string(), z.unknown()).nullable(),
   metadataStatus: z.enum(['pending', 'ready', 'failed']),
   transcodeStatus: z.enum(['pending', 'ready', 'failed']).nullable(),
   thumbnailStatus: z.enum(['pending', 'ready', 'failed']).nullable(),

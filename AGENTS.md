@@ -75,7 +75,7 @@ Node 24 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 
 ## Style
 
-- Prettier: no semicolons, single quotes, trailing commas, 100-col, 2-space. Strict TS (`noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters`). ESLint type-aware (`project: true`) — don't add files it can't typecheck without updating `.eslintrc.cjs`.
+- Prettier: no semicolons, single quotes, trailing commas, 100-col, 2-space. Strict TS (`noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters`). ESLint 10 flat config (`eslint.config.mjs` at the root, type-aware via `projectService: true`) — don't add files it can't typecheck without extending that config's ignores. TS 6 defaults `types` to `[]` and `rootDir` to the tsconfig's directory: every package must list its `types` explicitly (`["node"]`), and core's `tsconfig.json` widens `rootDir` to the workspace because integration specs import worker sources (`tsconfig.build.json` keeps `rootDir: src` for `nest build`).
 - `typescript` + `@types/node` pinned versions in devDeps — never `workspace:*`. Workspace deps use `workspace:*`.
 - Deliberate simplifications are marked `ponytail:` with ceiling + upgrade path — keep the convention, don't "clean them up".
 
