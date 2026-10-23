@@ -1,11 +1,7 @@
 import { ConflictException, Injectable, Logger } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { backupPrefix, loadEnv, LocalStorageService } from '@photox/shared-config'
-import {
-  USER_DELETE_QUEUE,
-  userDeleteJobId,
-  type AdminUserDeleteState,
-} from '@photox/shared-types'
+import { USER_DELETE_QUEUE, userDeleteJobId, type AdminUserDeleteState } from '@photox/shared-types'
 import { readdir, rm } from 'fs/promises'
 import type { Dirent } from 'fs'
 import { join, relative, resolve } from 'path'

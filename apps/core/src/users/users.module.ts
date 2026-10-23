@@ -25,13 +25,7 @@ import { UserDeleteService } from './admin/user-delete.service'
     BackupModule,
   ],
   controllers: [AuthController, AdminController],
-  providers: [
-    AuthService,
-    AdminService,
-    UserDeleteService,
-    TokenService,
-    RateLimitService,
-  ],
+  providers: [AuthService, AdminService, UserDeleteService, TokenService, RateLimitService],
   // UserDeleteService is also driven by the worker's `user-delete` consumer through
   // WorkerController's purge route — core consumes no queue itself.
   exports: [UserDeleteService],

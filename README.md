@@ -83,7 +83,7 @@ Core health check (host dev): `curl localhost:3000/health` (200 even when degrad
 | Service        | Port            | Description                                                                                                                                             |
 | -------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | core           | 3000            | The only public/business HTTP API (auth, assets, files, uploads, albums, shares, faces/persons, search, backups, admin); sole Postgres owner; S3 client |
-| worker-service | 3004 (internal) | `GET /health` only; 9 BullMQ consumers: thumbnail, video, metadata, faces, faces-cluster, embeddings, detect, ocr, user-delete; no DB driver                         |
+| worker-service | 3004 (internal) | `GET /health` only; 9 BullMQ consumers: thumbnail, video, metadata, faces, faces-cluster, embeddings, detect, ocr, user-delete; no DB driver            |
 | web            | 5173            | React frontend (proxies `/api`, `/worker` and `/health` to core)                                                                                        |
 | postgres       | 5432            | PostgreSQL with pgvector/cube/earthdistance (single `photox` DB, 18 tables)                                                                             |
 | redis          | 6379            | BullMQ (8 worker queues + 1 core queue), auth rate limits, health pings; no volume, so all of it is transient                                           |

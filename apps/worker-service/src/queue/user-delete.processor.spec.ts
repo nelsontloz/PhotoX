@@ -25,10 +25,7 @@ describe('UserDeleteProcessor', () => {
       }),
       drainUserJobs,
     }
-    const processor = new UserDeleteProcessor(
-      bullMq as never,
-      fake as unknown as CoreClient,
-    )
+    const processor = new UserDeleteProcessor(bullMq as never, fake as unknown as CoreClient)
     processor.onModuleInit()
     return callbacks[0]!
   }
