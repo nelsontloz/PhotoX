@@ -2,6 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
+    // TS 6 defaults rootDir to this file's dir; test/integration imports worker sources,
+    // so the program's root is the workspace. nest build uses tsconfig.build.json (rootDir src).
+    "rootDir": "../..",
     "types": ["vitest/globals", "node"]
   },
   "include": ["src", "test"],

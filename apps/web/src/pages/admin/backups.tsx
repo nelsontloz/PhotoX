@@ -619,7 +619,7 @@ export function BackupSection() {
         })
         return next
       } catch (err) {
-        throw new Error(httpErrorMessage(err, STATUS_ERRORS))
+        throw new Error(httpErrorMessage(err, STATUS_ERRORS), { cause: err })
       }
     },
     { refreshKey: version, errorMessage: STATUS_LOAD_FALLBACK, loadingMode: 'always' },

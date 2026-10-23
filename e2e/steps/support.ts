@@ -260,7 +260,7 @@ export async function signInAdmin(request: APIRequestContext): Promise<AuthRespo
     return shared
   }
   // leader election so the cold-start herd spends exactly one login, not one per worker
-  let leader = false
+  let leader: boolean
   try {
     try {
       const stale = await stat(ADMIN_SESSION_LOCK)
