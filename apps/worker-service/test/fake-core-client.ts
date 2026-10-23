@@ -288,6 +288,11 @@ export class FakeCoreClient {
     return Promise.resolve({ deleted: 0 })
   }
 
+  purgeUser(userId: string, backupPrefix: string, binding?: JobBinding): Promise<void> {
+    this.calls.push({ method: 'purgeUser', args: [userId, backupPrefix], binding })
+    return Promise.resolve()
+  }
+
   private assignClusterFace(faceId: string, personId: string): void {
     const face = this.clusterFaces.find((f) => f.id === faceId)
     if (face) face.personId = personId

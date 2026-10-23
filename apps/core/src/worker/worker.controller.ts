@@ -2,10 +2,12 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -31,6 +33,8 @@ import { DetectionsService } from '../detections/detections.service'
 import { RegisterDetectionsDto } from '../detections/dto/register-detections.dto'
 import { WorkerMetadataDto } from './dto/worker-metadata.dto'
 import { ListFacesQueryDto } from './dto/list-faces-query.dto'
+import { PurgeUserDto } from './dto/purge-user.dto'
+import { UserDeleteService } from '../users/admin/user-delete.service'
 
 // Worker job surface (agreed interface with the worker lane — do not rename paths). Every route
 // is act-required via JwtAuthGuard; ownership is scoped by the job's sub through the reused
@@ -46,6 +50,7 @@ export class WorkerController {
     private readonly embeddings: EmbeddingsService,
     private readonly ocr: OcrService,
     private readonly detections: DetectionsService,
+    private readonly deletes: UserDeleteService,
   ) {}
 
   @Get('assets')
@@ -180,5 +185,20 @@ export class WorkerController {
   @ApiOperation({ summary: 'Worker delete of persons with no live faces' })
   async pruneEmpty(@CurrentUserId() userId: string): Promise<{ deleted: number }> {
     return this.persons.pruneEmpty(userId)
+  }
+
+  // The `user-delete` queue consumer lives in the worker-service (no DB access), so the wipe
+  // itself is requested here. The route target must be the job's own sub: the job binding
+  // already pins (sub, scope=userId), and this keeps a purge from ever naming another account.
+  @Post('users/:id/purge')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Worker-triggered full wipe of the job user account' })
+  async purgeUser(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: PurgeUserDto,
+    @CurrentUserId() userId: string,
+  ) {
+    if (id !== userId) throw new ForbiddenException('Purge target must be the job user')
+    return this.deletes.purge(id, dto.backupPrefix)
   }
 }

@@ -1,6 +1,6 @@
 # PhotoX
 
-Personal photo and video hosting. `core` (NestJS, :3000) is the only public/business HTTP API and the sole owner of Postgres. `worker-service` (NestJS, :3004, unpublished) runs 8 BullMQ consumers, exposes `GET /health` only, and has no DB driver — every read/write is a `core` HTTP call. `web` is a Vite/React SPA (:5173) that talks to core same-origin through `/api`. Core and worker-service share Redis (queues, rate limits, health pings) and `STORAGE_DIR` on local disk (originals, derivatives, upload-session chunks, model weights, GeoNames cache). Media bytes stay on local disk; per-user backups are the only thing that leaves it, written to S3-compatible object storage (Floci in dev).
+Personal photo and video hosting. `core` (NestJS, :3000) is the only public/business HTTP API and the sole owner of Postgres. `worker-service` (NestJS, :3004, unpublished) runs 9 BullMQ consumers, exposes `GET /health` only, and has no DB driver — every read/write is a `core` HTTP call. `web` is a Vite/React SPA (:5173) that talks to core same-origin through `/api`. Core and worker-service share Redis (queues, rate limits, health pings) and `STORAGE_DIR` on local disk (originals, derivatives, upload-session chunks, model weights, GeoNames cache). Media bytes stay on local disk; per-user backups are the only thing that leaves it, written to S3-compatible object storage (Floci in dev).
 
 ## Architecture
 
@@ -83,13 +83,13 @@ Core health check (host dev): `curl localhost:3000/health` (200 even when degrad
 | Service        | Port            | Description                                                                                                                                             |
 | -------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | core           | 3000            | The only public/business HTTP API (auth, assets, files, uploads, albums, shares, faces/persons, search, backups, admin); sole Postgres owner; S3 client |
-| worker-service | 3004 (internal) | `GET /health` only; 8 BullMQ consumers: thumbnail, video, metadata, faces, faces-cluster, embeddings, detect, ocr; no DB driver                         |
+| worker-service | 3004 (internal) | `GET /health` only; 9 BullMQ consumers: thumbnail, video, metadata, faces, faces-cluster, embeddings, detect, ocr, user-delete; no DB driver            |
 | web            | 5173            | React frontend (proxies `/api`, `/worker` and `/health` to core)                                                                                        |
 | postgres       | 5432            | PostgreSQL with pgvector/cube/earthdistance (single `photox` DB, 18 tables)                                                                             |
 | redis          | 6379            | BullMQ (8 worker queues + 1 core queue), auth rate limits, health pings; no volume, so all of it is transient                                           |
 | floci          | 4566            | S3-compatible object store backing per-user backups only (dev/local)                                                                                    |
 
-`core` also runs one BullMQ consumer of its own (`user-delete`, async account deletion) and the inline orphan sweep (`POST /api/v1/admin/cleanup-orphans/run`). `STORAGE_DIR` (default `./data/storage`) is shared by core and worker: `originals/`, `derivatives/thumbnails/`, `derivatives/transcodes/`, `upload-sessions/<userId>/<sessionId>/part-<n>`, `models/` (face/vision/OCR/detect weights) and `geo/` (GeoNames cache for the places import). Core writes originals and session chunks; the worker reads originals/models and writes derivatives.
+`core` runs no BullMQ consumer: it produces jobs and the admin delete-status poll reads their state, while the account wipe itself still executes in core on the worker's request (`POST /worker/users/:id/purge`). It also runs the inline orphan sweep (`POST /api/v1/admin/cleanup-orphans/run`). `STORAGE_DIR` (default `./data/storage`) is shared by core and worker: `originals/`, `derivatives/thumbnails/`, `derivatives/transcodes/`, `upload-sessions/<userId>/<sessionId>/part-<n>`, `models/` (face/vision/OCR/detect weights) and `geo/` (GeoNames cache for the places import). Core writes originals and session chunks; the worker reads originals/models and writes derivatives.
 
 ## Uploads
 

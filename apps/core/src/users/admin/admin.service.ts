@@ -26,7 +26,8 @@ import { User } from '../entities/user.entity'
 import { AuthService } from '../auth.service'
 import { hashPassword } from '../password'
 import { BullMqService } from '../../queue/bullmq.service'
-import { USER_DELETE_QUEUE, UserDeleteService, userDeleteJobId } from './user-delete.service'
+import { USER_DELETE_QUEUE, userDeleteJobId } from '@photox/shared-types'
+import { UserDeleteService } from './user-delete.service'
 import type { UpdateAdminUserDto } from './dto/update-admin-user.body.dto'
 
 interface ListAdminUsersParams {
@@ -261,8 +262,8 @@ export class AdminService {
     // a retained terminal job with this id would swallow the enqueue (BullMQ dedups by
     // jobId), so a re-delete after a restore would silently no-op — drop it first
     await this.deletes.clearFinishedJob(user.id)
-    // drain first so pending media jobs cannot retry-noise into 404s mid-delete
-    await this.deletes.drainUserJobs(user.id)
+    // pending per-user media jobs are drained by the worker's consumer at job start (the
+    // worker owns those queues); core only enqueues the wipe here
     const enqueued = await this.bullMq.enqueue(
       USER_DELETE_QUEUE,
       'user-delete',

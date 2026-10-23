@@ -476,11 +476,15 @@ export interface AdminUserDeleteStatus {
   backupPrefix: string
 }
 
-// Core-side consumer payload for the `user-delete` queue. email/backupPrefix are
-// informational (the processor re-reads the user row as source of truth); userId is
-// the deletion scope.
+// Worker consumer payload for the `user-delete` queue. email/backupPrefix are
+// informational (core re-reads the user row as source of truth); userId is the
+// deletion scope. The queue + job-id contract lives here because core produces and
+// the worker consumes.
 export interface UserDeleteJobData {
   userId: string
   email: string
   backupPrefix: string
 }
+
+export const USER_DELETE_QUEUE = 'user-delete'
+export const userDeleteJobId = (userId: string): string => `user-delete-${userId}`
