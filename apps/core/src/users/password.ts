@@ -6,7 +6,7 @@ const ARGON2_OPTIONS = {
   memoryCost: 65536,
   timeCost: 3,
   parallelism: 1,
-} satisfies argon2.Options
+} satisfies argon2.HashOptions
 
 // Shared password hasher (argon2id, core dep — never bcrypt). Side-effect-free on purpose:
 // the admin:create CLI imports this without pulling the TypeORM entities (which tsx/esbuild

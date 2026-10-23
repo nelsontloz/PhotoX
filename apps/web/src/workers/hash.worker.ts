@@ -1,4 +1,4 @@
-import { sha256 } from '@noble/hashes/sha2'
+import { sha256 } from '@noble/hashes/sha2.js'
 
 /** 8 MiB read slices: incremental whole-file SHA-256 (NOT hash-of-hashes). */
 export const HASH_CHUNK_SIZE = 8 * 1024 * 1024
