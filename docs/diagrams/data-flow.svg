@@ -3,8 +3,8 @@
           viewBox="0 0 960 600"
           xmlns="http://www.w3.org/2000/svg"
           role="img"
-          aria-labelledby="data-flow-title data-flow-desc"
-         id="data-flow-root">
+          aria-labelledby="data-flow-title data-flow-desc" id="data-flow-root"
+        >
           <title id="data-flow-title">How PhotoX processes an uploaded asset</title>
           <desc id="data-flow-desc">
             Data-flow diagram of one asset in PhotoX: a web multipart upload or a resumable mobile
@@ -31,7 +31,9 @@
       #data-flow-root { font-family: var(--font-sans); color: var(--color-ink); }
       #data-flow-root .diagram-container { width: 100%;
         overflow-x: auto; }
-      #data-flow-root .diagram-container { overflow-x: visible; }</style>
+      @media print {
+#data-flow-root .diagram-container { overflow-x: visible; }
+}</style>
             <marker id="data-flow-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
               <polygon points="0 0, 8 3, 0 6" fill="#4f5d75" />
             </marker>
@@ -62,46 +64,46 @@
           <!-- ============ LANES (background) ============ -->
 
           <g aria-hidden="true">
-            <line x1="0" y1="44" x2="960" y2="44" stroke="#2d3142" stroke-opacity="0.12" stroke-width="0.8" />
+            <line x1="0" y1="44" x2="960" y2="44" stroke="#2d3142" stroke-width="0.8" stroke-opacity="0.12" />
             <line
               x1="0"
               y1="164"
               x2="960"
               y2="164"
-              stroke="#2d3142" stroke-opacity="0.12"
-              stroke-width="0.8"
+              stroke="#2d3142"
+              stroke-width="0.8" stroke-opacity="0.12"
             />
             <line
               x1="0"
               y1="308"
               x2="960"
               y2="308"
-              stroke="#2d3142" stroke-opacity="0.12"
-              stroke-width="0.8"
+              stroke="#2d3142"
+              stroke-width="0.8" stroke-opacity="0.12"
             />
             <line
               x1="0"
               y1="380"
               x2="960"
               y2="380"
-              stroke="#2d3142" stroke-opacity="0.12"
-              stroke-width="0.8"
+              stroke="#2d3142"
+              stroke-width="0.8" stroke-opacity="0.12"
             />
             <line
               x1="0"
               y1="524"
               x2="960"
               y2="524"
-              stroke="#2d3142" stroke-opacity="0.12"
-              stroke-width="0.8"
+              stroke="#2d3142"
+              stroke-width="0.8" stroke-opacity="0.12"
             />
             <line
               x1="96"
               y1="44"
               x2="96"
               y2="524"
-              stroke="#2d3142" stroke-opacity="0.12"
-              stroke-width="0.8"
+              stroke="#2d3142"
+              stroke-width="0.8" stroke-opacity="0.12"
             />
           </g>
 
@@ -285,9 +287,9 @@
             width="200"
             height="88"
             rx="6"
-            fill="#4f5d75" fill-opacity="0.10"
+            fill="#4f5d75"
             stroke="#7a8399"
-            stroke-width="1"
+            stroke-width="1" fill-opacity="0.10"
           />
           <rect
             x="116"
@@ -296,8 +298,8 @@
             height="12"
             rx="2"
             fill="none"
-            stroke="#7a8399" stroke-opacity="0.40"
-            stroke-width="0.8"
+            stroke="#7a8399"
+            stroke-width="0.8" stroke-opacity="0.40"
           />
           <text
             x="130"
@@ -360,9 +362,9 @@
             width="220"
             height="88"
             rx="6"
-            fill="#4f5d75" fill-opacity="0.10"
+            fill="#4f5d75"
             stroke="#7a8399"
-            stroke-width="1"
+            stroke-width="1" fill-opacity="0.10"
           />
           <rect
             x="336"
@@ -371,8 +373,8 @@
             height="12"
             rx="2"
             fill="none"
-            stroke="#7a8399" stroke-opacity="0.40"
-            stroke-width="0.8"
+            stroke="#7a8399"
+            stroke-width="0.8" stroke-opacity="0.40"
           />
           <text
             x="350"
@@ -435,9 +437,9 @@
             width="212"
             height="88"
             rx="6"
-            fill="#4f5d75" fill-opacity="0.10"
+            fill="#4f5d75"
             stroke="#7a8399"
-            stroke-width="1"
+            stroke-width="1" fill-opacity="0.10"
           />
           <rect
             x="708"
@@ -446,8 +448,8 @@
             height="12"
             rx="2"
             fill="none"
-            stroke="#7a8399" stroke-opacity="0.40"
-            stroke-width="0.8"
+            stroke="#7a8399"
+            stroke-width="0.8" stroke-opacity="0.40"
           />
           <text
             x="722"
@@ -510,9 +512,9 @@
             width="432"
             height="88"
             rx="6"
-            fill="#eb6c36" fill-opacity="0.08"
+            fill="#eb6c36"
             stroke="#eb6c36"
-            stroke-width="1"
+            stroke-width="1" fill-opacity="0.08"
           />
           <rect
             x="116"
@@ -521,8 +523,8 @@
             height="12"
             rx="2"
             fill="none"
-            stroke="#eb6c36" stroke-opacity="0.50"
-            stroke-width="0.8"
+            stroke="#eb6c36"
+            stroke-width="0.8" stroke-opacity="0.50"
           />
           <text
             x="132"
@@ -596,8 +598,8 @@
             height="12"
             rx="2"
             fill="none"
-            stroke="#2d3142" stroke-opacity="0.40"
-            stroke-width="0.8"
+            stroke="#2d3142"
+            stroke-width="0.8" stroke-opacity="0.40"
           />
           <text
             x="722"
@@ -660,9 +662,9 @@
             width="160"
             height="56"
             rx="6"
-            fill="#2d3142" fill-opacity="0.05"
+            fill="#2d3142"
             stroke="#4f5d75"
-            stroke-width="1"
+            stroke-width="1" fill-opacity="0.05"
           />
           <rect
             x="368"
@@ -671,8 +673,8 @@
             height="12"
             rx="2"
             fill="none"
-            stroke="#4f5d75" stroke-opacity="0.50"
-            stroke-width="0.8"
+            stroke="#4f5d75"
+            stroke-width="0.8" stroke-opacity="0.50"
           />
           <text
             x="388"
@@ -704,7 +706,7 @@
             font-family="'Geist Mono', monospace"
             text-anchor="middle"
           >
-            8 worker queues
+            9 queues · 8 media + delete
           </text>
 
           <!-- Photo pipeline (service) -->
@@ -726,8 +728,8 @@
             height="12"
             rx="2"
             fill="none"
-            stroke="#2d3142" stroke-opacity="0.40"
-            stroke-width="0.8"
+            stroke="#2d3142"
+            stroke-width="0.8" stroke-opacity="0.40"
           />
           <text
             x="202"
@@ -801,8 +803,8 @@
             height="12"
             rx="2"
             fill="none"
-            stroke="#2d3142" stroke-opacity="0.40"
-            stroke-width="0.8"
+            stroke="#2d3142"
+            stroke-width="0.8" stroke-opacity="0.40"
           />
           <text
             x="642"
@@ -864,8 +866,8 @@
             y1="536"
             x2="912"
             y2="536"
-            stroke="#2d3142" stroke-opacity="0.10"
-            stroke-width="0.8"
+            stroke="#2d3142"
+            stroke-width="0.8" stroke-opacity="0.10"
           />
           <text
             x="48"
@@ -884,9 +886,9 @@
             width="14"
             height="10"
             rx="2"
-            fill="#4f5d75" fill-opacity="0.10"
+            fill="#4f5d75"
             stroke="#7a8399"
-            stroke-width="1"
+            stroke-width="1" fill-opacity="0.10"
           />
           <text x="132" y="560" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
             Client / UI
@@ -912,9 +914,9 @@
             width="14"
             height="10"
             rx="2"
-            fill="#2d3142" fill-opacity="0.05"
+            fill="#2d3142"
             stroke="#4f5d75"
-            stroke-width="1"
+            stroke-width="1" fill-opacity="0.05"
           />
           <text x="350" y="560" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
             Data store
@@ -926,9 +928,9 @@
             width="14"
             height="10"
             rx="2"
-            fill="#eb6c36" fill-opacity="0.08"
+            fill="#eb6c36"
             stroke="#eb6c36"
-            stroke-width="1"
+            stroke-width="1" fill-opacity="0.08"
           />
           <text x="464" y="560" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">
             Ingest core
