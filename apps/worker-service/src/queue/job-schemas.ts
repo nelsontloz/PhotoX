@@ -36,10 +36,20 @@ export const clusterJobSchema = z.object({
   sig: z.string().optional(),
 })
 
+// Admin account wipe: core enqueues it, the worker consumes and asks core to run the wipe
+// (the worker has no DB/storage access). email is informational.
+export const userDeleteJobSchema = z.object({
+  userId: uuid,
+  email: z.string().email(),
+  backupPrefix: z.string().min(1),
+  sig: z.string().optional(),
+})
+
 export type ThumbnailJob = z.infer<typeof thumbnailJobSchema>
 export type AssetRefsJob = z.infer<typeof assetRefsJobSchema>
 export type FaceJob = z.infer<typeof faceJobSchema>
 export type ClusterJob = z.infer<typeof clusterJobSchema>
+export type UserDeleteJob = z.infer<typeof userDeleteJobSchema>
 
 export function parseJobData<T>(schema: z.ZodType<T>, data: unknown, queue: string): T {
   const parsed = schema.safeParse(data)

@@ -134,7 +134,6 @@ function makeService(opts?: {
   }
   const deletes = {
     clearFinishedJob: vi.fn().mockResolvedValue(false),
-    drainUserJobs: vi.fn().mockResolvedValue(0),
     setProgress: vi.fn(),
     getProgress: vi.fn().mockReturnValue(
       opts?.progress
@@ -188,12 +187,11 @@ describe('AdminService.requestUserDelete guards', () => {
     )
   })
 
-  it('403s on self-delete without draining or enqueuing', async () => {
-    const { service, bullMq, deletes } = makeService({ user: targetUser })
+  it('403s on self-delete without enqueuing', async () => {
+    const { service, bullMq } = makeService({ user: targetUser })
     await expect(service.requestUserDelete(TARGET_ID, TARGET_ID)).rejects.toBeInstanceOf(
       ForbiddenException,
     )
-    expect(deletes.drainUserJobs).not.toHaveBeenCalled()
     expect(bullMq.enqueue).not.toHaveBeenCalled()
   })
 
@@ -234,14 +232,6 @@ describe('AdminService.requestUserDelete guards', () => {
     const clearOrder = deletes.clearFinishedJob.mock.invocationCallOrder[0]!
     const enqueueOrder = bullMq.enqueue.mock.invocationCallOrder[0]!
     expect(clearOrder).toBeLessThan(enqueueOrder)
-  })
-
-  it('drains pending user jobs before enqueueing', async () => {
-    const { service, deletes, bullMq } = makeService({ user: targetUser })
-    await service.requestUserDelete(TARGET_ID, ADMIN_ID)
-    const drainOrder = deletes.drainUserJobs.mock.invocationCallOrder[0]!
-    const enqueueOrder = bullMq.enqueue.mock.invocationCallOrder[0]!
-    expect(drainOrder).toBeLessThan(enqueueOrder)
   })
 
   it('503s when the enqueue fails', async () => {

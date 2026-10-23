@@ -11,7 +11,6 @@ import { RateLimitService } from './rate-limit.service'
 import { TokenService } from './tokens/token.service'
 import { AdminController } from './admin/admin.controller'
 import { AdminService } from './admin/admin.service'
-import { UserDeleteProcessor } from './admin/user-delete.processor'
 import { UserDeleteService } from './admin/user-delete.service'
 
 @Module({
@@ -30,9 +29,11 @@ import { UserDeleteService } from './admin/user-delete.service'
     AuthService,
     AdminService,
     UserDeleteService,
-    UserDeleteProcessor,
     TokenService,
     RateLimitService,
   ],
+  // UserDeleteService is also driven by the worker's `user-delete` consumer through
+  // WorkerController's purge route — core consumes no queue itself.
+  exports: [UserDeleteService],
 })
 export class UsersModule {}

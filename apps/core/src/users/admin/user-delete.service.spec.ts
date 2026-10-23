@@ -202,28 +202,6 @@ describe('UserDeleteService.runUserDelete', () => {
   })
 })
 
-describe('UserDeleteService.drainUserJobs', () => {
-  it('removes only jobs scoped to the user and tolerates queue failures', async () => {
-    const { service, bullMq } = makeService()
-    const victim = { data: { userId: USER_ID }, remove: vi.fn().mockResolvedValue(undefined) }
-    const stranger = { data: { userId: 'other' }, remove: vi.fn() }
-    const unscoped = { data: {}, remove: vi.fn() }
-    const queues = new Map([
-      ['process-thumbnail', { getJobs: vi.fn().mockResolvedValue([victim, stranger, unscoped]) }],
-      ['process-video', { getJobs: vi.fn().mockRejectedValue(new Error('redis down')) }],
-    ])
-    bullMq.getQueue.mockImplementation((name: string) => {
-      const q = queues.get(name)
-      if (!q) return { getJobs: vi.fn().mockResolvedValue([]) }
-      return q
-    })
-    const removed = await service.drainUserJobs(USER_ID)
-    expect(removed).toBe(1)
-    expect(victim.remove).toHaveBeenCalled()
-    expect(stranger.remove).not.toHaveBeenCalled()
-  })
-})
-
 describe('UserDeleteService.clearFinishedJob', () => {
   it('removes a retained completed job so the next enqueue is not swallowed', async () => {
     const { service, bullMq } = makeService()

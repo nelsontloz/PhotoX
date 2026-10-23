@@ -1,7 +1,7 @@
 import request from 'supertest'
 import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { randomBytes, randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID, createHmac } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { backupPrefix } from '@photox/shared-config'
 import { FACE_EMBEDDING_DIM, SEARCH_EMBEDDING_DIM } from '@photox/shared-types'
@@ -16,6 +16,7 @@ import {
   apiServer,
 } from './helpers'
 import type { ApiTestApp } from './helpers'
+import { TEST_WORKER_SECRET } from './test-setup'
 
 async function seedFullUser(t: ApiTestApp) {
   const user = await seedUser(t)
@@ -116,6 +117,30 @@ async function waitForDeleteState(
   return state
 }
 
+/**
+ * Plays the worker's `user-delete` consumer: the queue consumer lives in the worker-service,
+ * which is not booted here, so the harness reads the enqueued job and calls core's purge route
+ * with that job's own identity + binding.
+ */
+async function runQueuedDelete(t: ApiTestApp, userId: string): Promise<void> {
+  const job = await t.getQueue('user-delete').getJob(`user-delete-${userId}`)
+  expect(job).not.toBeNull()
+  const data = job!.data as { backupPrefix: string; sig: string }
+  const res = await request(apiServer(t))
+    .post(`/worker/users/${userId}/purge`)
+    .set(
+      t.authHeader(
+        t.signWorkerToken({ id: userId, email: 'worker@internal', role: 'user' }, { act: true }),
+      ),
+    )
+    .set('X-Job-Signature', data.sig)
+    .send({ backupPrefix: data.backupPrefix })
+  expect(res.status).toBe(200)
+  // the real consumer was enqueued with removeOnComplete, so the record is gone afterwards
+  // and the status poll falls back to core's progress
+  await job!.remove()
+}
+
 describe('admin async user deletion', () => {
   let t: ApiTestApp
 
@@ -197,14 +222,8 @@ describe('admin async user deletion', () => {
     await mkdir(join(t.storageDir, 'models'), { recursive: true })
     await writeFile(modelSentinel, Buffer.from('model'))
 
-    // a pending media job for the target must be drained, not left to 404-noise
-    const thumbQueue = t.getQueue('process-thumbnail')
-    await thumbQueue.add(
-      'process-thumbnail',
-      { assetId: otherAsset.id, fileId: otherFile.id, userId: user.id, size: 'sm' },
-      { jobId: `thumb-${randomUUID()}-sm` },
-    )
-
+    // a pending media job for the target is drained by the worker's consumer (covered by its
+    // own spec); the API half only has to enqueue the wipe and report the prefix
     const del = await request(apiServer(t)).delete(`/api/v1/admin/users/${user.id}`).set(adminAuth)
     expect(del.status).toBe(202)
     const body = del.body as unknown as {
@@ -220,26 +239,9 @@ describe('admin async user deletion', () => {
       backupPrefix: backupPrefix(user.email, user.id),
     })
 
-    // poll the status endpoint until the core-side consumer finishes the wipe
-    let state = ''
-    for (let i = 0; i < 80; i++) {
-      const status = await request(apiServer(t))
-        .get(`/api/v1/admin/users/${user.id}/delete-status`)
-        .set(adminAuth)
-      expect(status.status).toBe(200)
-      const payload = status.body as unknown as {
-        state: string
-        jobId: string
-        backupKept: boolean
-        backupPrefix: string
-      }
-      expect(payload.jobId).toBe(`user-delete-${user.id}`)
-      expect(payload.backupKept).toBe(true)
-      expect(payload.backupPrefix).toBe(backupPrefix(user.email, user.id))
-      state = payload.state
-      if (state === 'completed' || state === 'failed') break
-      await new Promise((r) => setTimeout(r, 500))
-    }
+    // the worker consumes the job and asks core to run the wipe; then poll until terminal
+    await runQueuedDelete(t, user.id)
+    const state = await waitForDeleteState(t, adminAuth, user.id)
     expect(state).toBe('completed')
 
     // every owned row is gone, incl. trashed assets and CASCADE tables
@@ -264,12 +266,6 @@ describe('admin async user deletion', () => {
     expect(existsSync(strayTranscode)).toBe(false)
     expect(existsSync(modelSentinel)).toBe(true)
 
-    // the pending victim job was drained
-    const pending = await thumbQueue.getJobs(['waiting', 'delayed', 'prioritized'])
-    expect(pending.filter((j) => (j.data as { userId?: string }).userId === user.id)).toHaveLength(
-      0,
-    )
-
     // other users are unaffected
     expect(await t.userRepo.findOne({ where: { id: other.id } })).not.toBeNull()
     expect(await t.assetRepo.findOne({ where: { id: otherAsset.id } })).not.toBeNull()
@@ -278,26 +274,31 @@ describe('admin async user deletion', () => {
     expect(await t.userRepo.findOne({ where: { id: admin.id } })).not.toBeNull()
   }, 120_000)
 
-  // Regression: BullMQ dedups by jobId, so a retained terminal job for a userId used to
-  // silently swallow every later delete of that id. The restore flow re-creates the
-  // account with its original userId, which made "delete" a reported-success no-op.
+  // Regression: BullMQ dedups by jobId, so a retained job for a userId used to silently
+  // swallow every later delete of that id. The restore flow re-creates the account with its
+  // original userId. The queue is consumed by the worker now, but the retained job still
+  // carries a valid binding, so the wipe must still run for the restored account.
   it('re-deletes an account that came back with the same id despite a retained job record', async () => {
     const admin = await seedUser(t, { role: 'admin' })
     const adminAuth = t.authHeader(
       t.signToken({ id: admin.id, email: admin.email, role: admin.role }),
     )
     const user = await seedUser(t)
-    const queue = t.getQueue('user-delete')
     const jobId = `user-delete-${user.id}`
 
-    // pre-fix residue: a completed job retained under the deterministic jobId (the old
-    // enqueue never passed removeOnComplete)
-    await queue.add(
+    // pre-fix residue: a job retained under the deterministic jobId
+    await t.getQueue('user-delete').add(
       'user-delete',
-      { userId: user.id, email: user.email, backupPrefix: backupPrefix(user.email, user.id) },
+      {
+        userId: user.id,
+        email: user.email,
+        backupPrefix: backupPrefix(user.email, user.id),
+        // core stamps this at enqueue; the worker's consumer rejects an unsigned payload
+        sig: createHmac('sha256', TEST_WORKER_SECRET).update(`${user.id}:${user.id}`).digest('hex'),
+      },
       { jobId },
     )
-    expect(await waitForDeleteState(t, adminAuth, user.id)).toBe('completed')
+    await runQueuedDelete(t, user.id)
     expect(await t.userRepo.findOne({ where: { id: user.id } })).toBeNull()
 
     // the account comes back with the same id (restore rebuilds rows from the manifest)
@@ -314,10 +315,8 @@ describe('admin async user deletion', () => {
     const del = await request(apiServer(t)).delete(`/api/v1/admin/users/${user.id}`).set(adminAuth)
     expect(del.status).toBe(202)
 
-    expect(await waitForDeleteState(t, adminAuth, user.id)).toBe('completed')
-    // the row is really gone (pre-fix the API answered 202 while the row survived)
+    // the retained job still supplies the wipe for the restored account
+    await runQueuedDelete(t, user.id)
     expect(await t.userRepo.findOne({ where: { id: user.id } })).toBeNull()
-    // and the fresh job is not retained under the id (removeOnComplete)
-    expect(await queue.getJob(jobId)).toBeUndefined()
   }, 120_000)
 })

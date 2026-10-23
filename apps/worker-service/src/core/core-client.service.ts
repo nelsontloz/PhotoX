@@ -94,6 +94,9 @@ export interface ApplyClustersResult {
 }
 
 const REQUEST_TIMEOUT_MS = 30_000
+// a full account wipe plus the stray-byte sweep can outrun the default budget; the call is
+// idempotent (a retry finds no user row), but an abort mid-sweep costs a whole job attempt
+const PURGE_TIMEOUT_MS = 15 * 60_000
 const ASSET_IDS_CHUNK = 100
 // ponytail: keyset walk over GET /worker/faces (id ASC, cursor = last id); 500 matches core's default
 const FACES_PAGE_LIMIT = 500
@@ -301,6 +304,16 @@ export class CoreClient {
   // last live face left and unassigns any faces left behind in trash
   async pruneEmptyPersons(userId: string, binding?: JobBinding): Promise<{ deleted: number }> {
     return this.request('POST', '/worker/persons/prune-empty', { sub: userId, ...binding })
+  }
+
+  /** Runs the full account wipe in core (the worker has no DB/storage access). Idempotent. */
+  async purgeUser(userId: string, backupPrefix: string, binding?: JobBinding): Promise<void> {
+    await this.request(
+      'POST',
+      `/worker/users/${userId}/purge`,
+      { sub: userId, body: { backupPrefix }, ...binding },
+      PURGE_TIMEOUT_MS,
+    )
   }
 
   private async request<T>(

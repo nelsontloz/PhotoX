@@ -1,12 +1,15 @@
 import { ConflictException, Injectable, Logger } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { backupPrefix, loadEnv, LocalStorageService } from '@photox/shared-config'
-import type { AdminUserDeleteState } from '@photox/shared-types'
+import {
+  USER_DELETE_QUEUE,
+  userDeleteJobId,
+  type AdminUserDeleteState,
+} from '@photox/shared-types'
 import { readdir, rm } from 'fs/promises'
 import type { Dirent } from 'fs'
 import { join, relative, resolve } from 'path'
 import { DataSource, In, Repository } from 'typeorm'
-import { z } from 'zod'
 import { Album } from '../../albums/entities/album.entity'
 import { AlbumAsset } from '../../albums/entities/album-asset.entity'
 import { Asset, Face, FileRecord, Person } from '../../database/entities'
@@ -15,31 +18,6 @@ import { BackupMerge } from '../../backup/entities/backup-merge.entity'
 import { BullMqService } from '../../queue/bullmq.service'
 import { User } from '../entities/user.entity'
 import { RefreshToken } from '../entities/refresh-token.entity'
-
-export const USER_DELETE_QUEUE = 'user-delete'
-
-export const userDeleteJobId = (userId: string): string => `user-delete-${userId}`
-
-export const userDeleteJobSchema = z.object({
-  userId: z.string().uuid(),
-  email: z.string().email(),
-  backupPrefix: z.string().min(1),
-})
-
-// Per-user media queues whose pending jobs must not retry-noise into 404s after the
-// rows are gone. JobId prefixes are the dedup contract (`<prefix>-<assetId>-<size>`,
-// `video-<assetId>`, ...); the sweep matches on job DATA userId, so every present and
-// future prefix in these queues is covered without enumerating them.
-const USER_JOB_QUEUES = [
-  'process-thumbnail',
-  'process-video',
-  'process-metadata',
-  'process-faces',
-  'process-faces-cluster',
-  'process-embeddings',
-  'process-ocr',
-  'process-detect',
-] as const
 
 export interface UserDeleteProgress {
   jobId: string
@@ -55,8 +33,9 @@ export interface UserDeleteResult {
 }
 
 /**
- * Full per-user wipe. Core-side only (core owns the DB + storage; the worker-service
- * must never gain DB access).
+ * Full per-user wipe. Executed in core (core owns the DB + storage; the worker-service
+ * must never gain DB access) but driven by the worker's `user-delete` consumer through
+ * `POST /worker/users/:id/purge` — core no longer consumes any queue itself.
  *
  * HARD RULE — backups excluded: per-user backups live in external S3
  * (`backups/<email>__<userId>/`, see UserBackupService/S3BackupService). This service
@@ -132,46 +111,33 @@ export class UserDeleteService {
   }
 
   /**
-   * Best-effort removal of pending (waiting/delayed/prioritized) jobs scoped to the
-   * user. Active jobs cannot be removed — they fail closed core-side once the rows are
-   * gone. Runs both on enqueue and inside the job (jobs enqueued in between are caught).
+   * Worker-triggered wipe for `POST /worker/users/:id/purge`. Progress is recorded here
+   * because core runs the work, so the admin status poll (and its completed-after-the-row-is-
+   * gone case) is unchanged. Idempotent: a retried job finds no user row and returns cleanly.
    */
-  async drainUserJobs(userId: string): Promise<number> {
-    let removed = 0
-    for (const name of USER_JOB_QUEUES) {
-      try {
-        const queue = this.bullMq.getQueue(name)
-        const jobs = await queue.getJobs(['waiting', 'delayed', 'prioritized'])
-        for (const job of jobs) {
-          const data = job.data as { userId?: unknown } | null | undefined
-          if (data?.userId !== userId) continue
-          try {
-            await job.remove()
-            removed++
-          } catch {
-            // raced with a worker pickup — the job fails closed on the missing rows
-          }
-        }
-      } catch (err) {
-        this.logger.warn(
-          `User-delete drain failed for queue ${name}: ${err instanceof Error ? err.message : String(err)}`,
-        )
-      }
+  async purge(userId: string, fallbackPrefix: string, jobId?: string): Promise<UserDeleteResult> {
+    this.setProgress(userId, 'active', jobId, fallbackPrefix)
+    try {
+      return await this.runUserDelete(userId, fallbackPrefix)
+    } catch (err) {
+      this.setProgress(userId, 'failed')
+      throw err
     }
-    if (removed > 0) this.logger.log(`User-delete drained ${removed} pending job(s)`)
-    return removed
   }
 
   async runUserDelete(userId: string, fallbackPrefix: string): Promise<UserDeleteResult> {
     const user = await this.users.findOne({ where: { id: userId } })
     if (!user) {
-      // idempotent retry: a previous attempt already dropped the row
+      // idempotent retry: a previous attempt already dropped the row. The row sweep still
+      // runs — a crash between the txn commit and the byte deletions must not orphan files
+      // with no later retry able to reach them.
+      const deletedStrays = await this.sweepUserPrefixes(userId)
       this.setProgress(userId, 'completed')
       return {
         userId,
         backupPrefix: fallbackPrefix,
         deletedFiles: 0,
-        deletedStrays: 0,
+        deletedStrays,
       }
     }
     const prefix = backupPrefix(user.email, user.id)

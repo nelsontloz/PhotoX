@@ -5,6 +5,19 @@ import { Queue, Worker, type Job, type JobsOptions, type WorkerOptions } from 'b
 import { createHmac } from 'node:crypto'
 import { jobScopeOf } from './job-schemas'
 
+// Per-user media queues whose pending jobs must not retry-noise into 404s after the rows
+// are gone. The sweep matches on job DATA userId, so jobId prefixes stay out of this list.
+const USER_JOB_QUEUES = [
+  'process-thumbnail',
+  'process-video',
+  'process-metadata',
+  'process-faces',
+  'process-faces-cluster',
+  'process-embeddings',
+  'process-ocr',
+  'process-detect',
+] as const
+
 @Injectable()
 export class BullMqService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BullMqService.name)
@@ -85,6 +98,38 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
       ...data,
       sig: createHmac('sha256', this.workerSecret).update(`${sub}:${scope}`).digest('hex'),
     }
+  }
+
+  /**
+   * Best-effort removal of the departing user's pending (waiting/delayed/prioritized) media
+   * jobs, so they cannot retry-noise into 404s after core drops the rows. Active jobs cannot
+   * be removed — they fail closed core-side. Every media queue is owned here, so the sweep
+   * matches on job DATA userId and covers present and future jobId prefixes alike.
+   */
+  async drainUserJobs(userId: string): Promise<number> {
+    let removed = 0
+    for (const name of USER_JOB_QUEUES) {
+      try {
+        const queue = this.getQueue(name)
+        const jobs = await queue.getJobs(['waiting', 'delayed', 'prioritized'])
+        for (const job of jobs) {
+          const data = job.data as { userId?: unknown } | null | undefined
+          if (data?.userId !== userId) continue
+          try {
+            await job.remove()
+            removed++
+          } catch {
+            // raced with a pickup — the job fails closed on the missing rows
+          }
+        }
+      } catch (err) {
+        this.logger.warn(
+          `User-delete drain failed for queue ${name}: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    }
+    if (removed > 0) this.logger.log(`User-delete drained ${removed} pending job(s)`)
+    return removed
   }
 
   createWorker<T>(
