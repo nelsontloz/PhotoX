@@ -43,8 +43,9 @@ function bearerToken(req: Request): string | undefined {
 /** 401s when the request carries no verified user; guarded routes only, never open routes. */
 export function requireUserId(ctx: ExecutionContext): string {
   const req = ctx.switchToHttp().getRequest<Request>()
-  // defense in depth: an empty id must never reach the ownership filters — TypeORM drops
-  // undefined where values, so a missing userId predicate matches ANY row (audit #1/#2)
+  // defense in depth: an empty id must never reach the ownership filters. Under TypeORM 0.3 a
+  // missing userId predicate matched ANY row; 1.x throws on undefined where values, so both
+  // layers now fail closed (audit #1/#2)
   const user = req.user
   if (!user?.id) throw new UnauthorizedException()
   return user.id
@@ -144,12 +145,13 @@ export class JwtAuthGuard implements CanActivate {
     if (!payload) {
       throw new UnauthorizedException()
     }
-    // a token without a subject is not an identity: TypeORM drops undefined where values, so
-    // `findOne({ where: { id: undefined } })` matches an ARBITRARY user row and the ownership
-    // filter (findOne({ where: { id, userId: undefined } })) loses its tenant predicate — a
-    // subject-less token reads another user's asset (API security audit, findings #1/#2).
-    // The worker-actor pseudo-sub ('worker-service') is a non-empty string and stays legal:
-    // its users-row lookup fails closed (invalid uuid -> no row -> act tokens pass).
+    // a token without a subject is not an identity — this check is load-bearing: under
+    // TypeORM 0.3 `findOne({ where: { id: undefined } })` matched an ARBITRARY user row and
+    // ownership filters lost their tenant predicate, so a subject-less token read another
+    // user's asset (API security audit, findings #1/#2). TypeORM 1.x throws on undefined where
+    // values instead, but the explicit 401 stays the outer gate. The worker-actor pseudo-sub
+    // ('worker-service') is a non-empty string and stays legal: its users-row lookup fails
+    // closed (invalid uuid -> no row -> act tokens pass).
     const sub = payload.sub
     if (typeof sub !== 'string' || sub.length === 0) throw new UnauthorizedException()
     // a worker-secret token without act borrows no identity: even with a real sub it never
@@ -170,7 +172,7 @@ export class JwtAuthGuard implements CanActivate {
       try {
         row = await this.dataSource
           .getRepository(User)
-          .findOne({ where: { id: sub }, select: ['id', 'tokensValidAfter'] })
+          .findOne({ where: { id: sub }, select: { id: true, tokensValidAfter: true } })
       } catch {
         row = null
       }

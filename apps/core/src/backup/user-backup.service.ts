@@ -1453,7 +1453,7 @@ export class UserBackupService {
             ? this.shares.find({ where: { id: In(manifestShareIds) } })
             : Promise.resolve([]),
           manifestTokens.length > 0
-            ? this.shares.find({ where: { token: In(manifestTokens) }, select: ['token'] })
+            ? this.shares.find({ where: { token: In(manifestTokens) }, select: { token: true } })
             : Promise.resolve([] as Share[]),
         ])
       const globalFileById = new Map(globalFiles.map((row) => [row.id, row]))

@@ -155,11 +155,11 @@ function TimelineContent() {
       />
       <div
         // inert, not aria-hidden: aria-hidden on an ancestor that still holds focus (bar button
-        // clicked) is refused by Chrome, and slid-out buttons would stay tabbable. React 18 only
-        // passes unknown attrs through as strings, hence `inert: ''` instead of `inert={true}`.
+        // clicked) is refused by Chrome, and slid-out buttons would stay tabbable. React 19 types
+        // `inert` as a boolean, so it spreads instead of being passed through as a string attr.
         // data-selection-bar lifts the upload toast above the bar (see app.css) so the two
         // bottom-anchored overlays never intercept each other's clicks.
-        {...(selectionBarVisible ? { 'data-selection-bar': 'visible' } : { inert: '' })}
+        {...(selectionBarVisible ? { 'data-selection-bar': 'visible' } : { inert: true })}
         className={`fixed bottom-0 left-0 right-0 z-40 bg-card-dark/95 backdrop-blur border-t border-border-dark px-4 py-3 flex items-center gap-3 transition-transform duration-300 ease-out ${
           selectionBarVisible ? 'translate-y-0' : 'translate-y-full pointer-events-none'
         }`}

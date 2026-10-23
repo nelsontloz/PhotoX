@@ -166,7 +166,7 @@ export class AdminAssetsService {
 
     // ponytail: disk strays — files under STORAGE_DIR with no FileRecord row (crashed uploads, manual copies); *.tmp staging files are mid-write, leave them
     const knownKeys = new Set(
-      (await this.files.find({ select: ['storageKey'] })).map((r) => r.storageKey),
+      (await this.files.find({ select: { storageKey: true } })).map((r) => r.storageKey),
     )
     let deletedStrays = 0
     for (const key of await this.listDiskKeys()) {
@@ -203,7 +203,10 @@ export class AdminAssetsService {
 
   private async getStaleFileIds(): Promise<string[]> {
     const cutoff = new Date(Date.now() - ORPHAN_GRACE_MS)
-    const rows = await this.files.find({ select: ['id'], where: { createdAt: LessThan(cutoff) } })
+    const rows = await this.files.find({
+      select: { id: true },
+      where: { createdAt: LessThan(cutoff) },
+    })
     return rows.map((r) => r.id)
   }
 
