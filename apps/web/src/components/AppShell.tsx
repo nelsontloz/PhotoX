@@ -6,9 +6,9 @@ import { UploadNotification } from './UploadNotification'
 
 // The scroll container of AppShell's <main>: sticky day headers and timeline virtualization both
 // key off it. Consumers get the ref (stable object) and read/listen themselves.
-export const ScrollContainerContext = createContext<RefObject<HTMLDivElement> | null>(null)
+export const ScrollContainerContext = createContext<RefObject<HTMLDivElement | null> | null>(null)
 
-export function useScrollContainer(): RefObject<HTMLDivElement> | null {
+export function useScrollContainer(): RefObject<HTMLDivElement | null> | null {
   return useContext(ScrollContainerContext)
 }
 

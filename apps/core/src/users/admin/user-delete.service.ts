@@ -178,11 +178,11 @@ export class UserDeleteService {
 
     const assetRows = await this.dataSource
       .getRepository(Asset)
-      .find({ where: { userId }, select: ['id'] })
+      .find({ where: { userId }, select: { id: true } })
     const assetIds = assetRows.map((a) => a.id)
     // thumb bytes live in FileRecords under the same userId (registerFile is owner-scoped
     // and thumb fileId carries no FK), so the files sweep below collects them explicitly
-    const fileRows = await this.files.find({ where: { userId }, select: ['storageKey'] })
+    const fileRows = await this.files.find({ where: { userId }, select: { storageKey: true } })
     const storageKeys = fileRows.map((f) => f.storageKey)
 
     await this.dataSource.transaction(async (m) => {
@@ -203,7 +203,9 @@ export class UserDeleteService {
       await m.delete(BackupMerge, { targetUserId: userId })
       await m.delete(Face, { userId })
       await m.delete(Person, { userId })
-      const albumIds = (await m.find(Album, { where: { userId }, select: ['id'] })).map((a) => a.id)
+      const albumIds = (await m.find(Album, { where: { userId }, select: { id: true } })).map(
+        (a) => a.id,
+      )
       if (albumIds.length > 0) await m.delete(AlbumAsset, { albumId: In(albumIds) })
       // the user's assets may sit in foreign albums — clear those links too
       if (assetIds.length > 0) await m.delete(AlbumAsset, { assetId: In(assetIds) })

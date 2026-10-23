@@ -103,7 +103,7 @@ export class AlbumsService {
     const uniqueIds = [...new Set(assetIds)]
     const found = await this.assetRepo.find({
       where: { id: In(uniqueIds), userId, isTrashed: false },
-      select: ['id'],
+      select: { id: true },
     })
     if (found.length !== uniqueIds.length) {
       const foundIds = new Set(found.map((a) => a.id))

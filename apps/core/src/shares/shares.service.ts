@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { In, Repository } from 'typeorm'
+import { In, Repository, type FindOptionsRelations } from 'typeorm'
 import * as crypto from 'crypto'
 import { Share } from './entities/share.entity'
 import { isPostgresUniqueViolation } from '../assets/assets.service'
@@ -54,7 +54,10 @@ export class SharesService {
    * rows store plaintext (raw fallback). Presenting T matches only rows storing T or sha256(T)
    * — no escalation beyond the pre-hash contract — and misses stay uniform-404 downstream.
    */
-  private async findShareByToken(token: string, relations?: string[]): Promise<Share | null> {
+  private async findShareByToken(
+    token: string,
+    relations?: FindOptionsRelations<Share>,
+  ): Promise<Share | null> {
     const hashed = await this.shareRepo.findOne({
       where: { token: this.hashToken(token) },
       relations,
@@ -150,7 +153,7 @@ export class SharesService {
   }
 
   async getByToken(token: string): Promise<PublicShareResponse> {
-    const share = await this.findShareByToken(token, ['asset', 'asset.thumbnails', 'album'])
+    const share = await this.findShareByToken(token, { asset: { thumbnails: true }, album: true })
     // expired and unknown share identically: never distinguish the two
     if (!share || (share.expiresAt && new Date() > share.expiresAt))
       throw new NotFoundException('Share not found')
@@ -220,7 +223,7 @@ export class SharesService {
 
     const asset = await this.assetRepo.findOne({
       where: { id: assetId },
-      relations: ['thumbnails'],
+      relations: { thumbnails: true },
     })
     if (!asset) throw new NotFoundException('Asset not found')
 
@@ -268,7 +271,7 @@ export class SharesService {
    * projection never has to expose file ids. Transcode-guarded playable logic unchanged.
    */
   async getAssetStreamTarget(token: string): Promise<{ fileId: string; userId: string }> {
-    const share = await this.findShareByToken(token, ['asset', 'asset.thumbnails'])
+    const share = await this.findShareByToken(token, { asset: { thumbnails: true } })
     // optional chains: a missing share must read the same as a wrong-kind/expired one
     const expiresAt = share?.expiresAt ?? null
     if (share?.kind !== 'asset' || (expiresAt && new Date() > expiresAt))

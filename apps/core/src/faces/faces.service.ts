@@ -115,7 +115,7 @@ export class FacesService {
     if (!excludeTrashed) return null
     const trashed = await this.assetRepo.find({
       where: { userId, isTrashed: true },
-      select: ['id'],
+      select: { id: true },
     })
     return new Set(trashed.map((a) => a.id))
   }
