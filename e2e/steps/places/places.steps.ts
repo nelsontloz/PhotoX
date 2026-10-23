@@ -4,6 +4,7 @@ import {
   Then,
   When,
   authHeaders,
+  expectImageLoaded,
   getAsset,
   requireAuth,
   uploadViaApi,
@@ -238,9 +239,7 @@ When('I close the places viewer', async ({ page }) => {
 Then('the places map shows a single location marker', async ({ page }) => {
   const marker = page.locator('.photox-thumb-marker')
   await expect(marker).toHaveCount(1)
-  await expect
-    .poll(() => marker.locator('img').evaluate((el) => (el as HTMLImageElement).naturalWidth))
-    .toBeGreaterThan(0)
+  await expectImageLoaded(marker.locator('img'))
 })
 
 Then('the URL holds the map view parameters', async ({ page, ctx }) => {
@@ -315,9 +314,7 @@ Then('the video marker shows a play badge', async ({ page }) => {
   const marker = page.locator('.photox-thumb-marker')
   await expect(marker).toHaveCount(1)
   await expect(marker.locator('.photox-thumb-play')).toBeVisible()
-  await expect
-    .poll(() => marker.locator('img').evaluate((el) => (el as HTMLImageElement).naturalWidth))
-    .toBeGreaterThan(0)
+  await expectImageLoaded(marker.locator('img'))
 })
 
 Then('the video bubble is selected without a popup', async ({ page }) => {

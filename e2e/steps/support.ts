@@ -3,7 +3,13 @@ import { readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { expect, type APIRequestContext, type Page, type Response } from '@playwright/test'
+import {
+  expect,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+  type Response,
+} from '@playwright/test'
 import { createBdd, test as base } from 'playwright-bdd'
 import { FACE_EMBEDDING_DIM, type Asset, type AuthResponse } from '@photox/shared-types'
 
@@ -480,8 +486,13 @@ export async function expectThumbnailLoaded(page: Page): Promise<void> {
   const img = page.locator('figure[role="button"] img').first()
   await img.waitFor({ state: 'attached', timeout: 60_000 })
   await img.scrollIntoViewIfNeeded()
+  await expectImageLoaded(img)
+}
+
+/** Waits until the element has decoded bytes (naturalWidth 0 = still in flight or failed). */
+export async function expectImageLoaded(img: Locator, timeout = 60_000): Promise<void> {
   await expect
-    .poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth), { timeout: 60_000 })
+    .poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth), { timeout })
     .toBeGreaterThan(0)
 }
 

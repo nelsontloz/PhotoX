@@ -47,8 +47,13 @@ function markerIconFor(asset: Asset, selected = false, groupSize = 1): L.DivIcon
   const thumb = asset.thumbnails?.find((t) => t.size === 'md') ?? asset.thumbnails?.[0]
   const pending = thumb === undefined && asset.thumbnailStatus === 'pending'
   if (thumb === undefined && !pending) return selected ? selectedDotIcon : locationMarkerIcon
+  // Eager, not lazy: icons are built while the map still sits at the dummy [0, 0] view and only
+  // then move by CSS transform, so the browser's lazy-image viewport check may never run again and
+  // the bubble stays an empty blue circle until a zoom/pan rebuilds the marker.
+  // shortcut: at zoom >= 16 (clustering off) every placed asset's thumbnail loads; gate on a
+  // viewport check if a placed library ever grows past a few thousand photos.
   const inner = thumb
-    ? `<img src="${getFileStreamUrl(thumb.fileId)}" alt="" loading="lazy" decoding="async" draggable="false">${asset.kind === 'video' ? PLAY_BADGE : ''}`
+    ? `<img src="${getFileStreamUrl(thumb.fileId)}" alt="" decoding="async" draggable="false">${asset.kind === 'video' ? PLAY_BADGE : ''}`
     : '<span class="photox-thumb-spinner"></span>'
   // The count chip is a sibling of the circle: the circle's overflow: hidden would clip a corner
   // chip, while the leaflet icon element (position: absolute, 40x40) is already a positioning box.
