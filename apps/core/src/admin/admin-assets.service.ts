@@ -193,7 +193,7 @@ export class AdminAssetsService {
     const mediaFileIds = await this.getReferencedFileIds()
     const storageFileIds = await this.getStaleFileIds()
     const orphanFileIds = storageFileIds.filter((id) => !mediaFileIds.has(id))
-    return { orphanFileIds, orphanThumbs: await this.findOrphanThumbs(storageFileIds) }
+    return { orphanFileIds, orphanThumbs: await this.findOrphanThumbs() }
   }
 
   private async getReferencedFileIds(): Promise<Set<string>> {
@@ -210,12 +210,16 @@ export class AdminAssetsService {
     return rows.map((r) => r.id)
   }
 
-  private async findOrphanThumbs(staleFileIds: string[]): Promise<AssetThumbnail[]> {
-    if (staleFileIds.length === 0) return []
+  /**
+   * Thumbs past the grace window whose FileRecord is already gone. The file check must be
+   * "not in files" rather than "not among the aged files": a regenerated thumbnail has an old
+   * row and a freshly registered FileRecord, and the old shape deleted exactly those.
+   */
+  private async findOrphanThumbs(): Promise<AssetThumbnail[]> {
     const cutoff = new Date(Date.now() - ORPHAN_GRACE_MS)
     return this.thumbs
       .createQueryBuilder('t')
-      .where('t."fileId" NOT IN (:...ids)', { ids: staleFileIds })
+      .where('t."fileId" NOT IN (SELECT id FROM files)')
       .andWhere('t."createdAt" < :cutoff', { cutoff })
       .getMany()
   }
@@ -229,6 +233,9 @@ export class AdminAssetsService {
       if (!entry.isFile() || entry.name.endsWith('.tmp')) continue
       const key = relative(root, join(entry.parentPath, entry.name))
       if (key === 'models' || key.startsWith('models/')) continue
+      // in-flight resumable chunks have no FileRecord (only upload_session_parts rows), so
+      // this sweep would delete live uploads; the session sweeper owns that prefix
+      if (key === 'upload-sessions' || key.startsWith('upload-sessions/')) continue
       keys.push(key)
     }
     return keys

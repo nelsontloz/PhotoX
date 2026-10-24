@@ -284,13 +284,13 @@ export class AdminService {
    */
   async getUserDeleteStatus(targetUserId: string): Promise<AdminUserDeleteStatus> {
     const jobId = userDeleteJobId(targetUserId)
-    const job = await this.bullMq.getQueue(USER_DELETE_QUEUE).getJob(jobId)
+    const job = await this.bullMq.getJobSnapshot(USER_DELETE_QUEUE, jobId)
     const progress = this.deletes.getProgress(targetUserId)
 
     let state: AdminUserDeleteState = progress?.state ?? 'unknown'
     let prefix = progress?.backupPrefix ?? ''
     if (job) {
-      state = mapJobState(await job.getState())
+      state = mapJobState(job.state)
       const data = job.data as { backupPrefix?: unknown } | null | undefined
       const fromData = typeof data?.backupPrefix === 'string' ? data.backupPrefix : undefined
       prefix = progress?.backupPrefix ?? fromData ?? (await this.prefixForLiveUser(targetUserId))
