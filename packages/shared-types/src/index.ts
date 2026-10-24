@@ -32,6 +32,9 @@ export interface JwtPayload {
   iat: number
   exp: number
   jti?: string
+  // session start (epoch seconds): stamped by core on access tokens and carried through
+  // sliding renewals so the guard can enforce the absolute session cap
+  sst?: number
   // RFC 8693 actor claim — present only on worker-minted tokens; core's guard locks
   // act-carrying tokens to the admin-route allowlist in auth/open-routes.ts
   act?: { sub: string }

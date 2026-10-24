@@ -15,6 +15,7 @@ import { TokenService } from './tokens/token.service'
 import { RateLimitService } from './rate-limit.service'
 import { hashPassword } from './password'
 import { isPostgresUniqueViolation } from '../assets/assets.service'
+import { ABSOLUTE_SESSION_MS } from '../auth/session.constants'
 import type { AuthResponse } from '@photox/shared-types'
 
 // argon2id hash of a throwaway password (generated once with the pinned options); verified
@@ -136,17 +137,22 @@ export class AuthService {
   }
 
   private async issueTokens(user: User, absoluteExpiresAt?: Date | null): Promise<AuthResponse> {
-    const accessToken = await this.tokenService.signAccessToken({
-      id: user.id,
-      email: user.email,
-      role: user.role,
-    })
+    // a refresh carries the original absolute expiry, so the session start is derived from it;
+    // a fresh login starts now. Either way the access token is stamped with `sst`, which the
+    // guard checks against the cap on every renewal.
+    const absolute = absoluteExpiresAt ?? new Date(Date.now() + ABSOLUTE_SESSION_MS)
+    const accessToken = await this.tokenService.signAccessToken(
+      {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      },
+      absoluteExpiresAt ? new Date(absolute.getTime() - ABSOLUTE_SESSION_MS) : new Date(),
+    )
 
     const refreshRaw = this.tokenService.generate()
     const refreshHash = this.tokenService.hash(refreshRaw)
 
-    // ponytail: hardcoded 7d absolute session cap — promote to env if it needs tuning
-    const absolute = absoluteExpiresAt ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
     const sliding = this.tokenService.getRefreshExpiresAt()
 
     await this.tokenRepo.save(

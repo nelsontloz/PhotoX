@@ -16,13 +16,18 @@ export class TokenService {
 
   constructor(private readonly jwtService: JwtService) {}
 
-  signAccessToken(user: { id: string; email: string; role: Role }): Promise<string> {
+  signAccessToken(
+    user: { id: string; email: string; role: Role },
+    sessionStartedAt?: Date,
+  ): Promise<string> {
     return this.jwtService.signAsync(
       {
         sub: user.id,
         email: user.email,
         role: user.role,
         jti: randomUUID(),
+        // the guard rejects once sst is a full ABSOLUTE_SESSION_MS old, even when renewing
+        ...(sessionStartedAt ? { sst: Math.floor(sessionStartedAt.getTime() / 1000) } : {}),
       },
       // kid names the signing secret ('cur' = AUTH_TOKEN_SECRET); rotation verifiers try
       // current, then AUTH_TOKEN_SECRET_PREVIOUS — no extra JwtModule needed

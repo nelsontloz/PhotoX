@@ -191,8 +191,13 @@ describe('audit fixes (fails first)', () => {
       .set('Cookie', `${ACCESS_COOKIE}=${token}`)
 
     expect(res.status).toBe(401)
+    // a cleared cookie (empty value) is fine; a re-minted token is not
     const setCookie = (res.headers['set-cookie'] ?? []) as unknown as string[]
-    expect(setCookie.some((line) => line.startsWith(`${ACCESS_COOKIE}=`))).toBe(false)
+    for (const line of setCookie) {
+      if (line.startsWith(`${ACCESS_COOKIE}=`)) {
+        expect(line.split(';')[0]).toBe(`${ACCESS_COOKIE}=`)
+      }
+    }
   })
 
   it('5. orphan cleanup keeps a thumbnail whose file is newer than the grace window', async () => {

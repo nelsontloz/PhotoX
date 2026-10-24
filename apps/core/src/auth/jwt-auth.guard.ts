@@ -13,8 +13,9 @@ import type { Request, Response } from 'express'
 import { DataSource } from 'typeorm'
 import { loadAuthEnv, loadEnv } from '@photox/shared-config'
 import type { JwtPayload, Role } from '@photox/shared-types'
-import { readAccessCookie, isSecureRequest, setAccessCookie } from './auth-cookie'
+import { clearAccessCookie, isSecureRequest, readAccessCookie, setAccessCookie } from './auth-cookie'
 import { isActListRoute, isAdminRoute, isOpenRoute, isWorkerRoute } from './open-routes'
+import { ABSOLUTE_SESSION_MS } from './session.constants'
 import { User } from '../users/entities/user.entity'
 
 declare global {
@@ -185,6 +186,15 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const user = { id: sub, email: payload.email, role: payload.role }
+    // absolute session cap: sliding renewal must never outlive sst + 7d. Enforced for Bearer
+    // and cookie alike — a cookie replayed as a Bearer header would otherwise evade it.
+    if (typeof payload.sst === 'number' && Date.now() - payload.sst * 1000 >= ABSOLUTE_SESSION_MS) {
+      // drop the dead cookie so the browser stops replaying it on every subresource
+      if (cookieToken !== undefined) {
+        clearAccessCookie(context.switchToHttp().getResponse<Response>(), isSecureRequest(req))
+      }
+      throw new UnauthorizedException()
+    }
     req.user = user
     if (isAdminRoute(path) && user.role !== 'admin') throw new ForbiddenException('Admin only')
     // the worker namespace is act-only: a plain user token proves no job delegation
@@ -222,6 +232,8 @@ export class JwtAuthGuard implements CanActivate {
             jti: randomUUID(),
             // a worker-actor token must stay locked to the admin allowlist after renewal
             ...(payload.act ? { act: payload.act } : {}),
+            // the session start must survive every renewal or the cap resets each time
+            ...(typeof payload.sst === 'number' ? { sst: payload.sst } : {}),
           },
           { keyid: 'cur' },
         )

@@ -75,7 +75,7 @@ function makeService(opts?: {
   user?: MockUser | null
   adminCount?: number
   enqueueResult?: boolean
-  job?: { getState: () => Promise<string>; data: unknown } | null
+  job?: { state: string; data: unknown } | null
   progress?: { jobId: string; state: 'completed' } | undefined
   /** rows the case-insensitive holder lookup may match (the query excludes the target id) */
   emailHolders?: { id: string; email: string }[]
@@ -125,12 +125,9 @@ function makeService(opts?: {
     count: vi.fn().mockResolvedValue(opts?.adminCount ?? 2),
     createQueryBuilder: vi.fn(() => holderChain),
   }
-  const queue = {
-    getJob: vi.fn().mockResolvedValue(opts?.job === undefined ? null : opts.job),
-  }
   const bullMq = {
     enqueue: vi.fn().mockResolvedValue(opts?.enqueueResult ?? true),
-    getQueue: vi.fn().mockReturnValue(queue),
+    getJobSnapshot: vi.fn().mockResolvedValue(opts?.job === undefined ? null : opts.job),
   }
   const deletes = {
     clearFinishedJob: vi.fn().mockResolvedValue(false),
@@ -171,7 +168,6 @@ function makeService(opts?: {
     deletes,
     auth,
     backups,
-    queue,
     tx: txManager,
     holderChain,
   }
@@ -303,7 +299,7 @@ describe('AdminService.getUserDeleteStatus', () => {
   it('maps a live BullMQ job state', async () => {
     const { service } = makeService({
       user: targetUser,
-      job: { getState: () => Promise.resolve('active'), data: { backupPrefix: 'backups/kept/' } },
+      job: { state: 'active', data: { backupPrefix: 'backups/kept/' } },
     })
     const res = await service.getUserDeleteStatus(TARGET_ID)
     expect(res.state).toBe('active')
