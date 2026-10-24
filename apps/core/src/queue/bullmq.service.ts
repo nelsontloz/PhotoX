@@ -20,6 +20,10 @@ type AssetJobKind = keyof typeof ASSET_JOBS
 
 @Injectable()
 export class BullMqService implements OnModuleInit, OnModuleDestroy {
+  // maxRetriesPerRequest: null makes ioredis queue commands instead of rejecting while Redis is
+  // down, so a bare await would hang the HTTP request — every queue round-trip is bounded by this
+  private static readonly QUEUE_OP_TIMEOUT_MS = 1000
+
   private readonly logger = new Logger(BullMqService.name)
   private connection!: Redis
   private readonly queues = new Map<string, Queue>()
@@ -62,18 +66,53 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
   ): Promise<boolean> {
     try {
       // ponytail: retry defaults live here; callers pass only what they override
-      await this.getQueue(queueName).add(jobName, this.withJobSig(data), {
-        attempts: 3,
-        backoff: { type: 'exponential' },
-        removeOnFail: true,
-        ...opts,
-      })
+      await this.withTimeout(
+        this.getQueue(queueName).add(jobName, this.withJobSig(data), {
+          attempts: 3,
+          backoff: { type: 'exponential' },
+          removeOnFail: true,
+          ...opts,
+        }),
+      )
       return true
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       this.logger.error(`Failed to enqueue ${queueName} job: ${msg}`)
       return false
     }
+  }
+
+  /**
+   * State snapshot for polling routes: the job's state + payload, or null when the job is gone
+   * or Redis never answers (a dead Redis must not hang the poll).
+   */
+  async getJobSnapshot(
+    queueName: string,
+    jobId: string,
+  ): Promise<{ state: string; data: unknown } | null> {
+    try {
+      const job = await this.withTimeout(this.getQueue(queueName).getJob(jobId))
+      if (!job) return null
+      return { state: await this.withTimeout(job.getState()), data: job.data }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      this.logger.warn(`Failed to read ${queueName} job ${jobId}: ${msg}`)
+      return null
+    }
+  }
+
+  // rejects on timeout; the source promise's late settlement is swallowed so a failing Redis
+  // after the timeout won, never surfaces as an unhandledRejection
+  private withTimeout<T>(promise: Promise<T>): Promise<T> {
+    promise.catch(() => undefined)
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error('Redis did not answer in time')),
+        BullMqService.QUEUE_OP_TIMEOUT_MS,
+      )
+    })
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
   }
 
   // ponytail: HMAC job binding — stamps proof that core enqueued this (sub, scope) pair; the

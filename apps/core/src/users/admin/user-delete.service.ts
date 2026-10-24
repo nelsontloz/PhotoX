@@ -8,7 +8,7 @@ import { join, relative, resolve } from 'path'
 import { DataSource, In, Repository } from 'typeorm'
 import { Album } from '../../albums/entities/album.entity'
 import { AlbumAsset } from '../../albums/entities/album-asset.entity'
-import { Asset, Face, FileRecord, Person } from '../../database/entities'
+import { Asset, Face, FileRecord, Person, UploadSession } from '../../database/entities'
 import { Share } from '../../shares/entities/share.entity'
 import { BackupMerge } from '../../backup/entities/backup-merge.entity'
 import { BullMqService } from '../../queue/bullmq.service'
@@ -176,6 +176,9 @@ export class UserDeleteService {
       // asset_thumbnails/embeddings/ocr/detections, shares.assetId FK drops foreign shares
       if (assetIds.length > 0) await m.delete(Asset, { id: In(assetIds) })
       await m.delete(FileRecord, { userId })
+      // resumable sessions have no FK to users; leaving them behind both leaks up to 4 GiB
+      // per session and, because restore re-creates the same userId, eats the 5-session cap
+      await m.delete(UploadSession, { userId })
       await m.delete(User, userId)
     })
 
@@ -200,7 +203,7 @@ export class UserDeleteService {
   }
 
   /**
-   * Sweep stray bytes under the user's three storage prefixes (crashed uploads, rows
+   * Sweep stray bytes under the user's four storage prefixes (crashed uploads, rows
    * already gone). ENOENT (nothing ever written) is the normal case. models/ is never
    * listed — the prefixes are user-scoped literals by construction.
    */
@@ -210,6 +213,7 @@ export class UserDeleteService {
       `originals/${userId}/`,
       `derivatives/thumbnails/${userId}/`,
       `derivatives/transcodes/${userId}/`,
+      `upload-sessions/${userId}/`,
     ]
     let strays = 0
     for (const prefix of prefixes) {

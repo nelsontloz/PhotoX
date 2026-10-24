@@ -205,6 +205,36 @@ describe('JwtAuthGuard', () => {
     }
   })
 
+  it('rejects a token past the 7-day absolute session cap, bearer or cookie', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date('2030-01-01T00:00:00Z'))
+      const dead = jwt.sign(
+        {
+          sub: 'u1',
+          email: 'u@example.com',
+          role: 'user',
+          sst: Math.floor(Date.now() / 1000) - 8 * 24 * 3600,
+        },
+        { expiresIn: 30 },
+      )
+      // past half-TTL, so the sliding renewal would otherwise keep the session alive forever
+      vi.setSystemTime(new Date('2030-01-01T00:00:20Z'))
+      const { context, cookie } = testContext('GET', '/api/v1/assets', cookieHeader(dead))
+
+      await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException)
+      expect(cookie).not.toHaveBeenCalled()
+      // the same token replayed as a Bearer header must not bypass the cap
+      await expect(
+        guard.canActivate(
+          testContext('GET', '/api/v1/assets', { authorization: `Bearer ${dead}` }).context,
+        ),
+      ).rejects.toThrow(UnauthorizedException)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('does not renew a fresh cookie token', async () => {
     const token = jwt.sign({ sub: 'u1', email: 'u@example.com', role: 'user' }, { expiresIn: 3600 })
     const { context, cookie } = testContext('GET', '/api/v1/assets', cookieHeader(token))
