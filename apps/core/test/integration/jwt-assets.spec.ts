@@ -1,5 +1,5 @@
 import request from 'supertest'
-import { randomUUID } from 'node:crypto'
+import { createHmac, randomUUID } from 'node:crypto'
 import {
   closeTestApp,
   createApiTestApp,
@@ -10,6 +10,7 @@ import {
   apiServer,
 } from './helpers'
 import type { ApiTestApp } from './helpers'
+import { TEST_WORKER_SECRET } from './test-setup'
 
 describe('assets JWT identity', () => {
   let t: ApiTestApp
@@ -269,6 +270,39 @@ describe('assets JWT identity', () => {
       .send({ altitude: -12.5 })
     expect(res.status).toBe(200)
     expect((res.body as unknown as { altitude: number }).altitude).toBe(-12.5)
+    const row = await t.assetRepo.findOneByOrFail({ id: asset.id })
+    expect(Number(row.altitude)).toBe(-12.5)
+  })
+
+  // the test above uses an auth-secret act token, which the guard's job-binding gate skips;
+  // this exercises the real trust domain: worker-minted token + X-Job-Signature
+  it('applies a job-bound worker metadata patch and rejects a tampered signature', async () => {
+    const user = await seedUser(t)
+    const token = t.signWorkerToken(
+      { id: user.id, email: 'worker@internal', role: 'user' },
+      { act: true },
+    )
+    const file = await seedFile(t, user.id)
+    const asset = await seedAsset(t, user.id, file.id)
+    const valid = createHmac('sha256', TEST_WORKER_SECRET)
+      .update(`${user.id}:${asset.id}`)
+      .digest('hex')
+    // sub is always an accepted scope, so a "wrong route scope" sig would pass for the wrong
+    // reason: tamper the correct-length hex instead
+    const tampered = (valid.startsWith('0') ? '1' : '0') + valid.slice(1)
+
+    const ok = await request(apiServer(t))
+      .patch(`/worker/assets/${asset.id}/metadata`)
+      .set({ ...t.authHeader(token), 'X-Job-Signature': valid })
+      .send({ altitude: -12.5 })
+    expect(ok.status).toBe(200)
+    expect((ok.body as unknown as { altitude: number }).altitude).toBe(-12.5)
+
+    const bad = await request(apiServer(t))
+      .patch(`/worker/assets/${asset.id}/metadata`)
+      .set({ ...t.authHeader(token), 'X-Job-Signature': tampered })
+      .send({ altitude: -99 })
+    expect(bad.status).toBe(403)
     const row = await t.assetRepo.findOneByOrFail({ id: asset.id })
     expect(Number(row.altitude)).toBe(-12.5)
   })

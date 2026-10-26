@@ -92,14 +92,17 @@ describe('Face pipeline (integration)', () => {
 
   async function runClusterJob(userId: string) {
     const queue = testApp.getQueue('process-faces-cluster')
-    const job = await queue.add('cluster', signJob({ userId }))
+    const data = signJob({ userId })
+    const job = await queue.add('cluster', data)
     expect(await waitForJob(queue, job.id!)).toBe('completed')
+    return data.sig
   }
 
   async function runFaceJob(assetId: string, fileId: string, userId: string) {
     const queue = testApp.getQueue('process-faces')
-    const job = await queue.add('face', signJob({ assetId, fileId, userId }))
-    return { queue, job }
+    const data = signJob({ assetId, fileId, userId })
+    const job = await queue.add('face', data)
+    return { queue, job, sig: data.sig }
   }
 
   it('saves a detected face and auto-enqueues clustering for the asset', async () => {
@@ -147,10 +150,15 @@ describe('Face pipeline (integration)', () => {
       { box: { x: 5, y: 5, w: 50, h: 50 }, confidence: 0.8, embedding: emb512([0, 1]) },
     ])
 
-    const { queue, job } = await runFaceJob(asset.id, record.id, userId)
+    const { queue, job, sig } = await runFaceJob(asset.id, record.id, userId)
     expect(await waitForJob(queue, job.id!)).toBe('completed')
 
     expect(testApp.fake.deleteFacesCalls).toEqual([asset.id])
+    expect(testApp.fake.callsOf('deleteAssetFaces').at(-1)!.binding).toEqual({
+      sig,
+      scope: asset.id,
+    })
+    expect(testApp.fake.callsOf('registerFaces').at(-1)!.binding).toEqual({ sig, scope: asset.id })
     const faces = testApp.fake.faces.get(asset.id)!
     expect(faces).toHaveLength(1)
     expect(faces[0]!.box).toEqual({ x: 5, y: 5, w: 50, h: 50 })
@@ -209,10 +217,11 @@ describe('Face pipeline (integration)', () => {
     })
     const faceB = seedClusterFace(randomUUID(), emb512([1, 1]))
 
-    await runClusterJob(userId)
+    const sig = await runClusterJob(userId)
 
     expect(testApp.fake.callsOf('getFacesForCluster').map((c) => c.args[0])).toEqual([userId])
     expect(testApp.fake.applyClustersCalls).toHaveLength(1)
+    expect(testApp.fake.callsOf('applyClusters').at(-1)!.binding).toEqual({ sig, scope: userId })
     const plan = testApp.fake.applyClustersCalls[0]!
     expect(plan.attaches).toEqual([])
     expect(plan).toHaveProperty('creates')
@@ -228,12 +237,16 @@ describe('Face pipeline (integration)', () => {
     // core's E1 excludeTrashed coverage lives in jwt-persons.spec.ts; the worker just sees []
     const userId = randomUUID()
 
-    await runClusterJob(userId)
+    const sig = await runClusterJob(userId)
 
     expect(testApp.fake.callsOf('getFacesForCluster')).toHaveLength(1)
     expect(testApp.fake.callsOf('applyClusters')).toHaveLength(0)
     // a no-op run still prunes stale empty clusters
     expect(testApp.fake.callsOf('pruneEmptyPersons').map((c) => c.args[0])).toEqual([userId])
+    expect(testApp.fake.callsOf('pruneEmptyPersons').at(-1)!.binding).toEqual({
+      sig,
+      scope: userId,
+    })
   })
 
   it('leaves manually assigned faces untouched and only plans unassigned ones', async () => {

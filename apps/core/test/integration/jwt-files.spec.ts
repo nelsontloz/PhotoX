@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import request from 'supertest'
@@ -13,6 +13,7 @@ import {
   apiServer,
 } from './helpers'
 import type { ApiTestApp } from './helpers'
+import { TEST_WORKER_SECRET } from './test-setup'
 
 describe('files JWT identity', () => {
   let t: ApiTestApp
@@ -254,5 +255,71 @@ describe('files JWT identity', () => {
       .set(t.authHeader(token))
       .send(registerBody(Buffer.from('register-missing-bytes')))
     expect(res.status).toBe(422)
+  })
+
+  function jobSig(sub: string, scope: string): string {
+    return createHmac('sha256', TEST_WORKER_SECRET).update(`${sub}:${scope}`).digest('hex')
+  }
+
+  // the tests above use auth-secret act tokens, which the guard's job-binding gate skips;
+  // these exercise the real trust domain: worker-minted token + X-Job-Signature
+  it('registers a file for a worker-secret token with its job signature', async () => {
+    const user = await seedUser(t)
+    const token = t.signWorkerToken(
+      { id: user.id, email: 'worker@internal', role: 'user' },
+      { act: true },
+    )
+    const bytes = Buffer.from('worker-register-bytes')
+    const id = randomUUID()
+    const storageKey = await writeBytes('original', user.id, id, 'jpg', bytes)
+
+    const res = await request(apiServer(t))
+      .post('/worker/files/register')
+      // register has no path/body asset id, so the enqueue stamps the user scope (sub:sub)
+      .set({ ...t.authHeader(token), 'X-Job-Signature': jobSig(user.id, user.id) })
+      .send(registerBody(bytes, { id }))
+    expect(res.status).toBe(201)
+    const row = await t.fileRepo.findOne({ where: { id } })
+    expect(row?.storageKey).toBe(storageKey)
+    expect(row?.userId).toBe(user.id)
+  })
+
+  it('rejects a worker-secret register signature minted for another user', async () => {
+    const user = await seedUser(t)
+    const other = await seedUser(t)
+    const token = t.signWorkerToken(
+      { id: user.id, email: 'worker@internal', role: 'user' },
+      { act: true },
+    )
+    const bytes = Buffer.from('cross-user-register-bytes')
+    const id = randomUUID()
+    await writeBytes('original', user.id, id, 'jpg', bytes)
+
+    // sub is always an accepted scope, so a "wrong route scope" sig would pass for the wrong
+    // reason: the negative must be another user's scope
+    const res = await request(apiServer(t))
+      .post('/worker/files/register')
+      .set({ ...t.authHeader(token), 'X-Job-Signature': jobSig(other.id, other.id) })
+      .send(registerBody(bytes, { id }))
+    expect(res.status).toBe(403)
+    expect(await t.fileRepo.findOne({ where: { id } })).toBeNull()
+  })
+
+  it('rejects a worker-secret register call without a job signature', async () => {
+    const user = await seedUser(t)
+    const token = t.signWorkerToken(
+      { id: user.id, email: 'worker@internal', role: 'user' },
+      { act: true },
+    )
+    const bytes = Buffer.from('unsigned-register-bytes')
+    const id = randomUUID()
+    await writeBytes('original', user.id, id, 'jpg', bytes)
+
+    const res = await request(apiServer(t))
+      .post('/worker/files/register')
+      .set(t.authHeader(token))
+      .send(registerBody(bytes, { id }))
+    expect(res.status).toBe(403)
+    expect(await t.fileRepo.findOne({ where: { id } })).toBeNull()
   })
 })

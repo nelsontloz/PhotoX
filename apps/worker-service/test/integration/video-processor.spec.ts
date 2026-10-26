@@ -110,10 +110,8 @@ describe('VideoProcessor (integration)', () => {
         })
 
         const queue = testApp.getQueue('process-video')
-        const job = await queue.add(
-          'video',
-          signJob({ assetId: asset.id, fileId: record.id, userId }),
-        )
+        const payload = signJob({ assetId: asset.id, fileId: record.id, userId })
+        const job = await queue.add('video', payload)
 
         expect(await waitForJob(queue, job.id!)).toBe('completed')
 
@@ -121,7 +119,9 @@ describe('VideoProcessor (integration)', () => {
         expect(updated.transcodeStatus).toBe('ready')
         expect(updated.transcodeFileId).toBeTruthy()
 
-        const dto = testApp.fake.callsOf('registerFile')[0]!.args[0] as RegisterFileInput
+        const registerFileCall = testApp.fake.callsOf('registerFile')[0]!
+        const dto = registerFileCall.args[0] as RegisterFileInput
+        expect(registerFileCall.binding).toEqual({ sig: payload.sig })
         expect(dto).toMatchObject({
           id: updated.transcodeFileId,
           kind: 'transcode',
