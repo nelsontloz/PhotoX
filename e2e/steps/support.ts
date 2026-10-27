@@ -14,6 +14,9 @@ import { createBdd, test as base } from 'playwright-bdd'
 import { FACE_EMBEDDING_DIM, type Asset, type AuthResponse } from '@photox/shared-types'
 
 export const PASSWORD = 'password123'
+/** Copy the register page shows in place of the form when public sign-ups are closed. */
+export const SIGNUPS_CLOSED_NOTICE =
+  'Public sign-ups are disabled. Ask an administrator for an account.'
 // apps/web is "type": "module" — steps load as ESM, so no __dirname
 export const FIXTURES_DIR = fileURLToPath(new URL('../fixtures', import.meta.url))
 
@@ -117,7 +120,7 @@ export const test = base.extend<{ ctx: Ctx }>({
   },
 })
 
-export const { Given, When, Then, AfterStep } = createBdd(test)
+export const { Given, When, Then, AfterStep, After } = createBdd(test)
 
 // One screenshot per Gherkin step, nested under that step in the HTML report.
 // AfterStep runs inside the step's test.step() — even when the step throws — so failures get a frame.

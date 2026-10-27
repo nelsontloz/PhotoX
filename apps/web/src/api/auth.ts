@@ -1,5 +1,10 @@
 import { api } from './client'
-import type { AuthResponse, LoginRequest, RegisterRequest } from '@photox/shared-types'
+import type {
+  AuthResponse,
+  LoginRequest,
+  RegisterRequest,
+  RegistrationSettings,
+} from '@photox/shared-types'
 
 export async function login(req: LoginRequest): Promise<AuthResponse> {
   const { data } = await api.post<AuthResponse>('/v1/auth/login', req)
@@ -8,6 +13,11 @@ export async function login(req: LoginRequest): Promise<AuthResponse> {
 
 export async function register(req: RegisterRequest): Promise<AuthResponse> {
   const { data } = await api.post<AuthResponse>('/v1/auth/register', req)
+  return data
+}
+
+export async function getRegistrationSettings(): Promise<RegistrationSettings> {
+  const { data } = await api.get<RegistrationSettings>('/v1/auth/registration')
   return data
 }
 

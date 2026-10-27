@@ -1,6 +1,7 @@
 import {
   Injectable,
   ConflictException,
+  ForbiddenException,
   UnauthorizedException,
   NotFoundException,
   Logger,
@@ -16,6 +17,7 @@ import { RateLimitService } from './rate-limit.service'
 import { hashPassword } from './password'
 import { isPostgresUniqueViolation } from '../assets/assets.service'
 import { ABSOLUTE_SESSION_MS } from '../auth/session.constants'
+import { SettingsService } from '../settings/settings.service'
 import type { AuthResponse } from '@photox/shared-types'
 
 // argon2id hash of a throwaway password (generated once with the pinned options); verified
@@ -32,6 +34,7 @@ export class AuthService {
     @InjectRepository(RefreshToken) private readonly tokenRepo: Repository<RefreshToken>,
     private readonly tokenService: TokenService,
     private readonly rateLimit: RateLimitService,
+    private readonly settings: SettingsService,
   ) {}
 
   async register(
@@ -40,9 +43,23 @@ export class AuthService {
     displayName: string,
     ip: string,
   ): Promise<AuthResponse> {
+    // checked before the rate-limit slot so a disabled server does not burn the caller's quota
+    if (!(await this.settings.isRegistrationEnabled())) {
+      throw new ForbiddenException('Registration is disabled')
+    }
     await this.rateLimit.consume('register', ip)
 
-    const existing = await this.userRepo.findOne({ where: { email } })
+    // LOWER() on both sides: open sign-up stores the address raw while admin-created and
+    // admin-edited accounts store it normalized, so an exact-match check would let
+    // `Bob@x.com` register beside `bob@x.com` — two accounts on one normalized identity
+    // (backup prefixes and the admin edit guard key on the normalized address).
+    // ponytail: LOWER(email) cannot use the plain unique index, so this is a sequential
+    // scan — acceptable while the users table is small; upgrade path is a functional
+    // index, i.e. CREATE UNIQUE INDEX ... ON users (LOWER(email)).
+    const existing = await this.userRepo
+      .createQueryBuilder('u')
+      .where('LOWER(u.email) = LOWER(:email)', { email })
+      .getOne()
     if (existing) throw new ConflictException('Email already registered')
 
     // ponytail: open registration never mints admin — the first-admin bootstrap was a

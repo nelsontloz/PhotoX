@@ -9,6 +9,9 @@ const api = vi.hoisted(() => ({
   pollAdminUserDelete: vi.fn(),
   updateAdminUser: vi.fn(),
   syncAdminUserBackup: vi.fn(),
+  getRegistrationSettings: vi.fn(),
+  setRegistrationSettings: vi.fn(),
+  createAdminUser: vi.fn(),
 }))
 
 vi.mock('../../api/admin', () => api)
@@ -115,6 +118,8 @@ beforeEach(() => {
     from: 'backups/grace%40example.com__u-2/',
     to: 'backups/grace%40new.example__u-2/',
   })
+  api.getRegistrationSettings.mockResolvedValue({ enabled: true })
+  api.setRegistrationSettings.mockResolvedValue({ enabled: false })
   useAuthStore.setState({ ...idleAuth })
 })
 
@@ -589,5 +594,95 @@ describe('UsersSection edit actions', () => {
         "Changing the email also moves this account's S3 backup to the new address. A large library can take a few minutes.",
       ),
     ).toBeTruthy()
+  })
+})
+
+describe('UsersSection create action', () => {
+  const mary: AdminUserRow = {
+    id: 'u-3',
+    displayName: 'Mary Jackson',
+    email: 'mary@example.com',
+    role: 'admin',
+    createdAt: '2026-03-04T00:00:00.000Z',
+  }
+
+  it('creates an account, closes the dialog, refreshes the list and toasts', async () => {
+    api.createAdminUser.mockResolvedValue(mary)
+    render(<UsersSection />)
+    await screen.findByText('Ada Lovelace')
+    expect(api.listAdminUsers).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(button('New user'))
+    await screen.findByRole('dialog', { name: 'Create user account' })
+
+    // submit stays disabled until every field is usable
+    expect(button('Create user').disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Mary Jackson' } })
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'mary@example.com' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correcthorse' } })
+    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'admin' } })
+    fireEvent.click(button('Create user'))
+
+    await waitFor(() =>
+      expect(api.createAdminUser).toHaveBeenCalledWith({
+        displayName: 'Mary Jackson',
+        email: 'mary@example.com',
+        password: 'correcthorse',
+        role: 'admin',
+      }),
+    )
+    await waitFor(() => expect(api.listAdminUsers).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText('Created Mary Jackson.')).toBeTruthy()
+    expect(screen.queryByRole('dialog', { name: 'Create user account' })).toBeNull()
+  })
+
+  it('maps a 409 to a plain sentence and keeps the dialog open', async () => {
+    api.createAdminUser.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 409, data: { message: 'Email already registered' } },
+      message: 'Conflict',
+    })
+    render(<UsersSection />)
+    await screen.findByText('Ada Lovelace')
+
+    fireEvent.click(button('New user'))
+    await screen.findByRole('dialog', { name: 'Create user account' })
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Mary Jackson' } })
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'ada@example.com' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correcthorse' } })
+    fireEvent.click(button('Create user'))
+
+    expect(await screen.findByText('That email is already registered.')).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: 'Create user account' })).toBeTruthy()
+    expect(api.listAdminUsers).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('UsersSection registration setting', () => {
+  it('flips public sign-ups through the PATCH endpoint', async () => {
+    render(<UsersSection />)
+
+    const toggle = await screen.findByRole('switch', { name: 'Allow public sign-ups' })
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+
+    fireEvent.click(toggle)
+
+    await waitFor(() => expect(api.setRegistrationSettings).toHaveBeenCalledWith(false))
+    await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('false'))
+  })
+
+  it('reverts the switch and shows the error when the save fails', async () => {
+    api.setRegistrationSettings.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 500, data: {} },
+      message: 'boom',
+    })
+    render(<UsersSection />)
+
+    const toggle = await screen.findByRole('switch', { name: 'Allow public sign-ups' })
+    fireEvent.click(toggle)
+
+    expect(await screen.findByText("Couldn't save the sign-up setting. Try again.")).toBeTruthy()
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
   })
 })

@@ -14,7 +14,7 @@ import type {
 } from '@photox/shared-types'
 import { Dialog, formInputClass } from '../../components/Dialog'
 import { updateAdminUser } from '../../api/admin'
-import { RoleBadge } from './shared'
+import { RoleBadge, emailLooksValid } from './shared'
 import { StatusPill, cx } from './ui'
 import { httpErrorMessage, type HttpErrorMessages } from './http-error'
 
@@ -28,10 +28,6 @@ import { httpErrorMessage, type HttpErrorMessages } from './http-error'
 /** The core normalizes emails before saving, so casing/whitespace alone is not a change. */
 function sameEmail(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase()
-}
-
-function emailLooksValid(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
 }
 
 const PASSWORD_MIN = 8

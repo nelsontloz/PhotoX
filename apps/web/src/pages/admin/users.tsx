@@ -11,6 +11,7 @@ import {
   FaSpinner,
   FaTrashCan,
   FaTriangleExclamation,
+  FaUserPlus,
   FaUserShield,
 } from 'react-icons/fa6'
 import { type AdminUserRow, type AdminUserSortField } from '@photox/shared-types'
@@ -20,8 +21,10 @@ import { useAuthStore } from '../../store/auth-store'
 import { AdminCard, AdminSection, AdminToast, Button, StatusPill, cx } from './ui'
 import {
   deleteAdminUser,
+  getRegistrationSettings,
   listAdminUsers,
   pollAdminUserDelete,
+  setRegistrationSettings,
   syncAdminUserBackup,
   type ListAdminUsersParams,
 } from '../../api/admin'
@@ -33,6 +36,7 @@ import {
 } from './edit-user-dialog'
 import { useAsyncFetch } from '../../hooks/useAsyncFetch'
 import { httpErrorMessage, type HttpErrorMessages } from './http-error'
+import { CreateUserDialog } from './create-user-dialog'
 
 // --- users ------------------------------------------------------------------------------
 
@@ -295,6 +299,109 @@ function BackupMoveWarningBox({
   )
 }
 
+// --- registration settings ---------------------------------------------------------------
+// One global switch, saved on toggle: it flips optimistically and reverts with the error
+// inline when the PATCH fails. Admin-created accounts are unaffected either way.
+
+const REGISTRATION_ERROR_MESSAGES: HttpErrorMessages = {
+  fallback: "Couldn't save the sign-up setting. Try again.",
+  byStatus: { 403: 'Only an admin can change this.' },
+  timeout: "Couldn't reach the server — the setting was not changed.",
+  serverDetail: true,
+  rawMessage: true,
+}
+
+function RegistrationSettingsCard() {
+  const { data, loading, error, setData, refresh } = useAsyncFetch(getRegistrationSettings, {
+    errorMessage: "Couldn't load the sign-up setting.",
+  })
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const enabled = data?.enabled ?? false
+
+  const toggle = async () => {
+    if (saving || !data) return
+    const next = !data.enabled
+    setSaving(true)
+    setSaveError(null)
+    setData({ enabled: next })
+    try {
+      setData(await setRegistrationSettings(next))
+    } catch (err: unknown) {
+      setData({ enabled: !next })
+      setSaveError(httpErrorMessage(err, REGISTRATION_ERROR_MESSAGES))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <AdminCard className="mb-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h3 id="registration-switch-label" className="text-sm font-semibold text-on-surface">
+            Allow public sign-ups
+          </h3>
+          <p className="mt-1 max-w-xl text-xs text-on-surface-variant">
+            When off, the public sign-up page is closed. Accounts you create here still work.
+          </p>
+          {saveError && (
+            <p role="alert" className="mt-2 text-xs text-status-error">
+              {saveError}
+            </p>
+          )}
+          {error && (
+            <p role="alert" className="mt-2 flex items-center gap-2 text-xs text-status-error">
+              {error}
+              <Button variant="ghost" size="sm" onClick={() => void refresh()}>
+                Retry
+              </Button>
+            </p>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {saving && (
+            <span
+              role="status"
+              className="font-mono text-[10px] uppercase tracking-wider text-outline"
+            >
+              Saving…
+            </span>
+          )}
+          {loading ? (
+            <span role="status" className="text-outline">
+              <FaSpinner className="animate-spin" aria-hidden="true" />
+              <span className="sr-only">Loading sign-up setting…</span>
+            </span>
+          ) : (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={enabled}
+              aria-labelledby="registration-switch-label"
+              disabled={saving || data == null}
+              onClick={() => void toggle()}
+              className={cx(
+                'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low',
+                enabled ? 'bg-primary' : 'bg-surface-container-highest',
+              )}
+            >
+              <span
+                aria-hidden="true"
+                className={cx(
+                  'inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform',
+                  enabled ? 'translate-x-[22px]' : 'translate-x-0.5',
+                )}
+              />
+            </button>
+          )}
+        </div>
+      </div>
+    </AdminCard>
+  )
+}
+
 export function UsersSection() {
   const [searchInput, setSearchInput] = useState('')
   const [debouncedQ, setDebouncedQ] = useState('')
@@ -303,6 +410,7 @@ export function UsersSection() {
   const [version, setVersion] = useState(0)
   const [target, setTarget] = useState<AdminUserRow | null>(null)
   const [editing, setEditing] = useState<AdminUserRow | null>(null)
+  const [creating, setCreating] = useState(false)
   const [backupWarning, setBackupWarning] = useState<BackupMoveWarning | null>(null)
   const [retryingId, setRetryingId] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ id: number; text: string } | null>(null)
@@ -451,6 +559,12 @@ export function UsersSection() {
       }
       actions={
         <div className="flex items-center gap-3 flex-wrap">
+          <Button
+            onClick={() => setCreating(true)}
+            icon={<FaUserPlus className="text-xs" aria-hidden="true" />}
+          >
+            New user
+          </Button>
           <StatusPill tone="warn">Admin only</StatusPill>
           <div className="relative w-full sm:w-72">
             <FaMagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 text-outline text-xs" />
@@ -474,6 +588,8 @@ export function UsersSection() {
           onDismiss={() => setBackupWarning(null)}
         />
       )}
+
+      <RegistrationSettingsCard />
 
       {loading ? (
         <LoadingState className="flex items-center justify-center py-24" />
@@ -589,6 +705,17 @@ export function UsersSection() {
           isSelf={currentUserId != null && editing.id === currentUserId}
           onClose={() => setEditing(null)}
           onDone={onEdited}
+        />
+      )}
+
+      {creating && (
+        <CreateUserDialog
+          onClose={() => setCreating(false)}
+          onCreated={(user) => {
+            setCreating(false)
+            setNotice({ id: Date.now(), text: `Created ${user.displayName}.` })
+            setVersion((v) => v + 1)
+          }}
         />
       )}
 

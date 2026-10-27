@@ -15,6 +15,18 @@ export interface RegisterRequest {
   displayName: string
 }
 
+/** Public (and admin) view of the `registration.enabled` app setting. */
+export interface RegistrationSettings {
+  enabled: boolean
+}
+
+export interface AdminUserCreateRequest {
+  email: string
+  password: string
+  displayName: string
+  role?: Role
+}
+
 export interface LoginRequest {
   email: string
   password: string

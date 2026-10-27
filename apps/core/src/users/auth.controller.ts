@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Controller,
+  Get,
   Post,
   Body,
   HttpCode,
@@ -11,6 +12,7 @@ import {
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
 import { loadEnv } from '@photox/shared-config'
+import type { RegistrationSettings } from '@photox/shared-types'
 import {
   clearAccessCookie,
   clearRefreshCookie,
@@ -22,6 +24,7 @@ import {
 } from '../auth/auth-cookie'
 import { AuthService } from './auth.service'
 import { TokenService } from './tokens/token.service'
+import { SettingsService } from '../settings/settings.service'
 import { RegisterDto } from './dto/register.dto'
 import { LoginDto } from './dto/login.dto'
 import { RefreshDto } from './dto/logout.dto'
@@ -45,6 +48,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly tokenService: TokenService,
+    private readonly settings: SettingsService,
   ) {}
 
   // ponytail: every token-issuing response mirrors the access token into an HttpOnly
@@ -60,6 +64,13 @@ export class AuthController {
     const maxAgeMs = this.tokenService.expiresInSeconds(accessToken) * 1000
     setAccessCookie(res, accessToken, maxAgeMs, secure)
     setRefreshCookie(res, refreshToken, loadEnv().AUTH_REFRESH_TTL, secure)
+  }
+
+  @Get('registration')
+  @ApiOperation({ summary: 'Whether public sign-up is enabled' })
+  @ApiResponse({ status: 200, description: 'Current registration setting' })
+  async registration(): Promise<RegistrationSettings> {
+    return { enabled: await this.settings.isRegistrationEnabled() }
   }
 
   @Post('register')

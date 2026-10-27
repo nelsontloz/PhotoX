@@ -8,6 +8,7 @@ import { AdminAssetsService } from './admin-assets.service'
 import { AdminFacesController } from './admin-faces.controller'
 import { AdminJobsService } from './admin-jobs.service'
 import { AdminMaintenanceController } from './admin-maintenance.controller'
+import { AdminRegistrationController } from './admin-registration.controller'
 import { PlacesModule } from '../places/places.module'
 
 @Module({
@@ -17,7 +18,12 @@ import { PlacesModule } from '../places/places.module'
     SettingsModule,
     PlacesModule,
   ],
-  controllers: [AdminAssetsController, AdminMaintenanceController, AdminFacesController],
+  controllers: [
+    AdminAssetsController,
+    AdminMaintenanceController,
+    AdminFacesController,
+    AdminRegistrationController,
+  ],
   providers: [AdminAssetsService, AdminJobsService],
 })
 export class AdminModule {}

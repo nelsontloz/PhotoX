@@ -8,7 +8,8 @@ export function AuthShell({
   children,
 }: {
   subtitle: string
-  footer: ReactNode
+  /** Omitted → no footer strip at all (the card ends with the children). */
+  footer?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -26,9 +27,11 @@ export function AuthShell({
 
         <div className="w-full rounded-xl bg-white dark:bg-card-dark border border-slate-200 dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-black/20 overflow-hidden">
           {children}
-          <div className="px-8 py-5 bg-slate-50 dark:bg-footer-dark border-t border-slate-200 dark:border-slate-800 text-center">
-            <p className="text-slate-500 dark:text-slate-400 text-sm">{footer}</p>
-          </div>
+          {footer != null && (
+            <div className="px-8 py-5 bg-slate-50 dark:bg-footer-dark border-t border-slate-200 dark:border-slate-800 text-center">
+              <p className="text-slate-500 dark:text-slate-400 text-sm">{footer}</p>
+            </div>
+          )}
         </div>
 
         <div className="mt-8 text-center">

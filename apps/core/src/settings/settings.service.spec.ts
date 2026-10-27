@@ -5,6 +5,7 @@ import type { Repository } from 'typeorm'
 import { AppSetting } from '../database/entities/app-setting.entity'
 import { SettingsService } from './settings.service'
 
+const REGISTRATION_ENABLED_KEY = 'registration.enabled'
 const FACE_REPROCESS_LAST_RUN_KEY = 'face.reprocess.lastRun'
 const EMBEDDING_REPROCESS_LAST_RUN_KEY = 'embedding.reprocess.lastRun'
 const OCR_REPROCESS_LAST_RUN_KEY = 'ocr.reprocess.lastRun'
@@ -17,6 +18,20 @@ function makeService(row?: Partial<AppSetting>) {
   const upsert = vi.fn().mockResolvedValue({})
   const repo = { findOne, upsert } as unknown as Repository<AppSetting>
   return { service: new SettingsService(repo), findOne, upsert }
+}
+
+/** Round-trips through one in-memory row, so the set → read pair is exercised together. */
+function makeStatefulService() {
+  let stored: Partial<AppSetting> | null = null
+  const upsert = vi.fn((row: Partial<AppSetting>) => {
+    stored = row
+    return Promise.resolve({})
+  })
+  const repo = {
+    findOne: vi.fn(() => Promise.resolve(stored)),
+    upsert,
+  } as unknown as Repository<AppSetting>
+  return { service: new SettingsService(repo), upsert }
 }
 
 describe('SettingsService', () => {
@@ -179,5 +194,24 @@ describe('SettingsService', () => {
   it('returns null for a non-object stored run', async () => {
     const { service } = makeService({ key: FACE_REPROCESS_LAST_RUN_KEY, value: 'corrupt' })
     expect(await service.getLastRun('face')).toBeNull()
+  })
+
+  describe('registration setting', () => {
+    it('defaults to enabled when the row is missing', async () => {
+      const { service } = makeService()
+      expect(await service.isRegistrationEnabled()).toBe(true)
+    })
+
+    it('reads back false after setRegistrationEnabled(false)', async () => {
+      const { service, upsert } = makeStatefulService()
+      await service.setRegistrationEnabled(false)
+      expect(upsert).toHaveBeenCalledWith({ key: REGISTRATION_ENABLED_KEY, value: false }, ['key'])
+      expect(await service.isRegistrationEnabled()).toBe(false)
+    })
+
+    it('treats a non-boolean stored value as enabled', async () => {
+      const { service } = makeService({ key: REGISTRATION_ENABLED_KEY, value: 'off' })
+      expect(await service.isRegistrationEnabled()).toBe(true)
+    })
   })
 })
