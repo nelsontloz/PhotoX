@@ -70,6 +70,11 @@ export function ConfirmDialog({
   )
 }
 
+/** Shape check shared by the account dialogs; the core validates for real. */
+export function emailLooksValid(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+}
+
 export function RoleBadge({ role }: { role: 'user' | 'admin' }) {
   if (role === 'admin') {
     return (

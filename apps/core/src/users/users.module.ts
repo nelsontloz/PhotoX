@@ -5,6 +5,7 @@ import { User } from './entities/user.entity'
 import { RefreshToken } from './entities/refresh-token.entity'
 import { StorageModule } from '../files/storage/storage.module'
 import { BackupModule } from '../backup/backup.module'
+import { SettingsModule } from '../settings/settings.module'
 import { AuthController } from './auth.controller'
 import { AuthService } from './auth.service'
 import { RateLimitService } from './rate-limit.service'
@@ -23,6 +24,7 @@ import { UserDeleteService } from './admin/user-delete.service'
     TypeOrmModule.forFeature([User, RefreshToken, FileRecord]),
     StorageModule,
     BackupModule,
+    SettingsModule,
   ],
   controllers: [AuthController, AdminController],
   providers: [AuthService, AdminService, UserDeleteService, TokenService, RateLimitService],

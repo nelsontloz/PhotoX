@@ -1,10 +1,11 @@
-import { ConflictException } from '@nestjs/common'
+import { ConflictException, ForbiddenException } from '@nestjs/common'
 import { QueryFailedError } from 'typeorm'
 import { getMetadataArgsStorage } from 'typeorm'
 import { AuthService } from './auth.service'
 import { RefreshToken } from './entities/refresh-token.entity'
 import type { TokenService } from './tokens/token.service'
 import type { RateLimitService } from './rate-limit.service'
+import type { SettingsService } from '../settings/settings.service'
 
 vi.mock('./password', () => ({
   hashPassword: vi.fn(() => Promise.resolve('hashed')),
@@ -20,16 +21,29 @@ function uniqueViolation(): QueryFailedError {
   )
 }
 
-function makeRegisterService(save: () => Promise<never> | Promise<unknown>) {
+function makeRegisterService(
+  save: () => Promise<never> | Promise<unknown>,
+  registrationEnabled = true,
+  existing: unknown = null,
+) {
   const saveMock = vi.fn(save)
+  const consume = vi.fn(() => Promise.resolve())
+  const isRegistrationEnabled = vi.fn(() => Promise.resolve(registrationEnabled))
+  // register() looks the address up case-insensitively: chainable query builder, no holder
+  const where = vi.fn()
+  const qb = { where, getOne: vi.fn(() => Promise.resolve(existing)) }
+  where.mockReturnValue(qb)
   const userRepo = {
-    findOne: vi.fn(() => Promise.resolve(null)),
+    createQueryBuilder: vi.fn(() => qb),
     create: vi.fn((v: unknown) => v),
     save: saveMock,
   }
   const service = new AuthService(
     userRepo as never,
-    {} as never,
+    {
+      create: vi.fn((v: unknown) => v),
+      save: vi.fn((v: unknown) => Promise.resolve(v)),
+    } as never,
     {
       signAccessToken: vi.fn(() => Promise.resolve('access')),
       expiresInSeconds: () => 1800,
@@ -37,9 +51,10 @@ function makeRegisterService(save: () => Promise<never> | Promise<unknown>) {
       hash: () => 'hash',
       getRefreshExpiresAt: () => new Date(),
     } as unknown as TokenService,
-    { consume: vi.fn(() => Promise.resolve()) } as unknown as RateLimitService,
+    { consume } as unknown as RateLimitService,
+    { isRegistrationEnabled } as unknown as SettingsService,
   )
-  return { service, saveMock }
+  return { service, saveMock, consume, isRegistrationEnabled }
 }
 
 describe('AuthService.register concurrent duplicate (C1)', () => {
@@ -61,6 +76,50 @@ describe('AuthService.register concurrent duplicate (C1)', () => {
     const err = new Error('connection lost')
     const { service } = makeRegisterService(() => Promise.reject(err))
     await expect(service.register('a@b.c', 'pw123456', 'A', '1.2.3.4')).rejects.toBe(err)
+  })
+})
+
+describe('AuthService.register registration setting', () => {
+  it('rejects with 403 before consuming the rate limit when disabled', async () => {
+    const { service, consume, saveMock } = makeRegisterService(() => Promise.resolve(null), false)
+    const caught: unknown = await service
+      .register('new@example.com', 'pw123456', 'New', '1.2.3.4')
+      .then(
+        () => null,
+        (e: unknown) => e,
+      )
+    expect(caught).toBeInstanceOf(ForbiddenException)
+    expect((caught as ForbiddenException).message).toBe('Registration is disabled')
+    expect(consume).not.toHaveBeenCalled()
+    expect(saveMock).not.toHaveBeenCalled()
+  })
+
+  it('409s when a differently-cased account already owns the address', async () => {
+    const { service, saveMock } = makeRegisterService(() => Promise.resolve(null), true, {
+      id: 'u1',
+      email: 'Bob@example.com',
+    })
+    await expect(
+      service.register('bob@example.com', 'pw123456', 'Bob', '1.2.3.4'),
+    ).rejects.toBeInstanceOf(ConflictException)
+    expect(saveMock).not.toHaveBeenCalled()
+  })
+
+  it('registers normally when the setting is on', async () => {
+    const now = new Date()
+    const user = {
+      id: 'u1',
+      email: 'new@example.com',
+      role: 'user',
+      displayName: 'New',
+      createdAt: now,
+      updatedAt: now,
+    }
+    const { service, consume } = makeRegisterService(() => Promise.resolve(user))
+    const res = await service.register('new@example.com', 'pw123456', 'New', '1.2.3.4')
+    expect(res.accessToken).toBe('access')
+    expect(res.user.email).toBe('new@example.com')
+    expect(consume).toHaveBeenCalledOnce()
   })
 })
 
@@ -93,6 +152,7 @@ function makeRefreshService(opts: {
       expiresInSeconds: () => 1800,
     } as unknown as TokenService,
     { consume: vi.fn(() => Promise.resolve()) } as unknown as RateLimitService,
+    { isRegistrationEnabled: vi.fn(() => Promise.resolve(true)) } as unknown as SettingsService,
   )
   return { service, purgeMock, tokenRepo, userRepo }
 }

@@ -15,6 +15,7 @@ import type {
   AdminUserDeleteResponse,
   AdminUserDeleteStatus,
   AdminUserListResponse,
+  AdminUserRow,
   AdminUserSortField,
   AdminUserUpdateResponse,
 } from '@photox/shared-types'
@@ -22,6 +23,7 @@ import { Query } from '@nestjs/common'
 import { CurrentUserId } from '../../auth/jwt-auth.guard'
 import { AdminService } from './admin.service'
 import { AdminUserIdParamsDto } from './dto/admin-user-id.params.dto'
+import { CreateAdminUserDto } from './dto/create-admin-user.body.dto'
 import { ListAdminUsersQueryDto } from './dto/list-admin-users.query.dto'
 import { UpdateAdminUserDto } from './dto/update-admin-user.body.dto'
 
@@ -48,6 +50,19 @@ export class AdminController {
       sortDir: dir,
       role: q.role,
     })
+  }
+
+  @Post()
+  @ApiOperation({
+    summary: 'Create a user account (admin-only)',
+    description:
+      'Works regardless of the public registration switch. Email is stored normalized, ' +
+      'displayName trimmed; role defaults to `user`. No session is minted.',
+  })
+  @ApiResponse({ status: 201, description: 'Created user row' })
+  @ApiResponse({ status: 409, description: 'Email already registered' })
+  async create(@Body() body: CreateAdminUserDto): Promise<AdminUserRow> {
+    return this.admin.createUser(body)
   }
 
   @Patch(':id')

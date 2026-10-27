@@ -6,6 +6,7 @@ import { resolveFaceDetectorModelPath } from '@photox/shared-config'
 import type { FaceDetectionSettings } from '@photox/shared-types'
 import { AppSetting } from '../database/entities'
 
+const REGISTRATION_ENABLED_KEY = 'registration.enabled'
 const FACE_REPROCESS_LAST_RUN_KEY = 'face.reprocess.lastRun'
 const EMBEDDING_REPROCESS_LAST_RUN_KEY = 'embedding.reprocess.lastRun'
 const OCR_REPROCESS_LAST_RUN_KEY = 'ocr.reprocess.lastRun'
@@ -50,6 +51,16 @@ export class SettingsService {
 
   async getSettings(): Promise<FaceDetectionSettings> {
     return { modelAvailable: await this.scrfdModelAvailable() }
+  }
+
+  /** Missing row or a non-boolean value means the default: registration is on. */
+  async isRegistrationEnabled(): Promise<boolean> {
+    const row = await this.repo.findOne({ where: { key: REGISTRATION_ENABLED_KEY } })
+    return typeof row?.value === 'boolean' ? row.value : true
+  }
+
+  async setRegistrationEnabled(enabled: boolean): Promise<void> {
+    await this.repo.upsert({ key: REGISTRATION_ENABLED_KEY, value: enabled }, ['key'])
   }
 
   async getLastRun<K extends LastRunKind>(kind: K): Promise<LastRun<K> | null> {

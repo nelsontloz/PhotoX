@@ -28,6 +28,7 @@ import { hashPassword } from '../password'
 import { BullMqService } from '../../queue/bullmq.service'
 import { USER_DELETE_QUEUE, userDeleteJobId } from '@photox/shared-types'
 import { UserDeleteService } from './user-delete.service'
+import type { CreateAdminUserDto } from './dto/create-admin-user.body.dto'
 import type { UpdateAdminUserDto } from './dto/update-admin-user.body.dto'
 
 interface ListAdminUsersParams {
@@ -214,6 +215,45 @@ export class AdminService {
         updatedAt: fresh.updatedAt.toISOString(),
       },
       backup,
+    }
+  }
+
+  /**
+   * Admin account creation. Ignores the `registration.enabled` switch on purpose — the
+   * admin surface is the way to add accounts while public sign-up is off. No session is
+   * minted and no backup work happens here (the prefix is created on first backup).
+   */
+  async createUser(body: CreateAdminUserDto): Promise<AdminUserRow> {
+    const email = normalizeEmail(body.email)
+    // LOWER() on both sides: open registration stores raw emails while admin-set
+    // addresses are normalized — an exact-match pre-check would miss casing variants.
+    const holder = await this.userRepo
+      .createQueryBuilder('u')
+      .where('LOWER(u.email) = LOWER(:email)', { email })
+      .getOne()
+    if (holder) throw new ConflictException('Email already registered')
+
+    const user = this.userRepo.create({
+      email,
+      passwordHash: await hashPassword(body.password),
+      displayName: body.displayName.trim(),
+      role: body.role ?? 'user',
+    })
+    try {
+      const saved = await this.userRepo.save(user)
+      return {
+        id: saved.id,
+        displayName: saved.displayName,
+        email: saved.email,
+        role: saved.role,
+        createdAt: saved.createdAt.toISOString(),
+      }
+    } catch (err) {
+      // the pre-check races a concurrent registration on the unique email index
+      if (isPostgresUniqueViolation(err)) {
+        throw new ConflictException('Email already registered')
+      }
+      throw err
     }
   }
 

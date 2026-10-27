@@ -2,9 +2,11 @@ import { api } from './client'
 import { sleep } from '../lib/sleep'
 import type {
   AdminUserBackupSync,
+  AdminUserCreateRequest,
   AdminUserDeleteResponse,
   AdminUserDeleteStatus as AdminUserDeleteBackendStatus,
   AdminUserListResponse,
+  AdminUserRow,
   AdminUserSortField,
   AdminUserUpdateRequest,
   AdminUserUpdateResponse,
@@ -12,6 +14,7 @@ import type {
   AdminLibraryStatsResponse,
   AdminReprocessThumbnailsResponse,
   FaceDetectionSettings,
+  RegistrationSettings,
 } from '@photox/shared-types'
 
 export interface QueueCounts {
@@ -89,6 +92,25 @@ export async function listAdminUsers(
       role: params.role,
     },
   })
+  return data
+}
+
+export async function createAdminUser(payload: AdminUserCreateRequest): Promise<AdminUserRow> {
+  const { data } = await api.post<AdminUserRow>('/v1/admin/users', payload)
+  return data
+}
+
+// --- registration settings --------------------------------------------------------------
+// One global switch: with it off the public register page closes. Admin-created accounts
+// keep working either way.
+
+export async function getRegistrationSettings(): Promise<RegistrationSettings> {
+  const { data } = await api.get<RegistrationSettings>('/v1/admin/registration')
+  return data
+}
+
+export async function setRegistrationSettings(enabled: boolean): Promise<RegistrationSettings> {
+  const { data } = await api.patch<RegistrationSettings>('/v1/admin/registration', { enabled })
   return data
 }
 
