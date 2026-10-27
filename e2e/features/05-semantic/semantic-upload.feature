@@ -1,4 +1,4 @@
-Feature: Semantic processing on upload (embeddings, OCR, object detection)
+Feature: Semantic processing on upload (embeddings, object detection)
 
   Scenario: Uploaded photos are embedded for visual similarity
     Given I am signed in
@@ -18,12 +18,9 @@ Feature: Semantic processing on upload (embeddings, OCR, object detection)
     And I upload "photo-text.jpg" for semantic processing
     And the initial semantic processing has settled
     And I seed a detection on the uploaded text photo
-    And I seed OCR text on the uploaded text photo
     And I open the admin dashboard
     When I start an embedding reprocess run
     And the embedding reprocess queue drains
-    And I start an OCR reprocess run
-    And the OCR reprocess queue drains
     And I start a detection reprocess run
     And the detection reprocess queue drains
     Then the seeded detection is replaced without duplicates

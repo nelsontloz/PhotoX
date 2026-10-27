@@ -5,14 +5,13 @@ import { Queue, type JobsOptions } from 'bullmq'
 import Redis from 'ioredis'
 import { createHmac } from 'node:crypto'
 
-// ponytail: one table for the three identical asset job wrappers; jobId prefixes are the dedup
+// ponytail: one table for the identical asset job wrappers; jobId prefixes are the dedup
 // contract — `embed-` also pins the model so a switch never collides with the old model's job
 const ASSET_JOBS = {
   embed: {
     queue: 'process-embeddings',
     jobId: (assetId: string) => `embed-${assetId}-${SEARCH_EMBEDDING_MODEL}`,
   },
-  ocr: { queue: 'process-ocr', jobId: (assetId: string) => `ocr-${assetId}` },
   detect: { queue: 'process-detect', jobId: (assetId: string) => `detect-${assetId}` },
 } as const
 

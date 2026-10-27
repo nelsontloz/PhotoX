@@ -14,10 +14,9 @@ import {
 } from '../support'
 
 const TEXT_FIXTURE = 'photo-text.jpg'
-const SEEDED_OCR_TEXT = 'ZEBRAQUUX77'
 const SEEDED_DETECTION_LABEL = 'e2e-seeded-object'
 
-/** Wire shape of GET /api/v1/admin/{embeddings,ocr,detections}/reprocess. */
+/** Wire shape of GET /api/v1/admin/{embeddings,detections}/reprocess. */
 interface QueueStatus {
   lastRun: { enqueued: number; total: number } | null
   queue: { waiting: number; active: number; completed: number; failed: number; delayed: number }
@@ -56,7 +55,6 @@ function uploadByName(ctx: Ctx, name: string): SemanticUpload {
 
 const STATUS_SEGMENT: Record<ReprocessKind, string> = {
   embedding: 'embeddings',
-  ocr: 'ocr',
   detection: 'detections',
 }
 
@@ -69,12 +67,6 @@ const REPROCESS: Record<
     dialog: 'Reprocess all embeddings?',
     result: (enqueued, total) =>
       `Queued ${enqueued.toLocaleString()} embedding jobs for ${total.toLocaleString()} photos.`,
-  },
-  ocr: {
-    button: 'Reprocess OCR text',
-    dialog: 'Reprocess OCR text?',
-    result: (enqueued, total) =>
-      `Queued ${enqueued.toLocaleString()} OCR jobs for ${total.toLocaleString()} photos.`,
   },
   detection: {
     button: 'Reprocess object detection',
@@ -185,7 +177,7 @@ async function drainReprocess(
 When(
   'I upload {string} for semantic processing',
   async ({ page, ctx, $testInfo }, name: string) => {
-    // scenario 4 runs three global reprocess queues; give it room beyond the 120s default
+    // scenario 4 runs two global reprocess queues; give it room beyond the 120s default
     $testInfo.setTimeout(240_000)
     // 06 uploads photo.jpg as the admin first, so scenario 4 legitimately gets a 409 pointing at
     // the already-processed asset — the duplicate is fine, only the asset id matters here
@@ -250,8 +242,8 @@ Given('the initial semantic processing has settled', async ({ request, ctx }) =>
   const [a, b] = uploads
   if (!a || !b) throw new Error('upload two photos for semantic processing first')
   // queue drain proves the upload-path jobs finished; the similarity probe proves the embeddings
-  // landed (OCR/detection rows have no read path in e2e — see feature notes in the summary)
-  for (const kind of ['embedding', 'ocr', 'detection'] as const) {
+  // landed (detection rows have no read path in e2e — see feature notes in the summary)
+  for (const kind of ['embedding', 'detection'] as const) {
     await expect
       .poll(
         async () => {
@@ -285,25 +277,8 @@ Given('I seed a detection on the uploaded text photo', async ({ request, ctx }) 
   expect(list.detections.map((detection) => detection.label)).toContain(SEEDED_DETECTION_LABEL)
 })
 
-Given('I seed OCR text on the uploaded text photo', async ({ request, ctx }) => {
-  const auth = requireAuth(ctx)
-  const { assetId } = uploadByName(ctx, TEXT_FIXTURE)
-  const response = await request.post(`/worker/assets/${assetId}/ocr`, {
-    headers: workerHeaders(auth.user.id),
-    data: { text: SEEDED_OCR_TEXT },
-  })
-  expect(response.status()).toBe(201)
-  // no GET :id/ocr route exists, and /search can't run in the e2e core image (node:22-alpine lacks
-  // the glibc loader onnxruntime-node needs), so OCR replacement is not observable — the seed only
-  // gives the reprocess a row to replace
-})
-
 When('I start an embedding reprocess run', async ({ page, ctx }) => {
   await startReprocess(page, ctx, 'embedding')
-})
-
-When('I start an OCR reprocess run', async ({ page, ctx }) => {
-  await startReprocess(page, ctx, 'ocr')
 })
 
 When('I start a detection reprocess run', async ({ page, ctx }) => {
@@ -312,10 +287,6 @@ When('I start a detection reprocess run', async ({ page, ctx }) => {
 
 Then('the embedding reprocess queue drains', async ({ request, ctx }) => {
   await drainReprocess(request, ctx, 'embedding')
-})
-
-Then('the OCR reprocess queue drains', async ({ request, ctx }) => {
-  await drainReprocess(request, ctx, 'ocr')
 })
 
 Then('the detection reprocess queue drains', async ({ request, ctx }) => {

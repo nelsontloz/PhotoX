@@ -28,7 +28,7 @@ const ANN_MARGIN = 0.25
 
 // labels enter as an aggregated subquery (one row per asset) — a direct join would fan out and
 // inflate ts_rank_cd/duplicate assets in the FTS branch
-const FTS_DOCUMENT = `to_tsvector('simple', COALESCE(a.title, '') || ' ' || COALESCE(a.description, '') || ' ' || COALESCE(o.text, '') || ' ' || COALESCE(d.labels, ''))`
+const FTS_DOCUMENT = `to_tsvector('simple', COALESCE(a.title, '') || ' ' || COALESCE(a.description, '') || ' ' || COALESCE(d.labels, ''))`
 
 @Injectable()
 export class SearchService {
@@ -89,7 +89,6 @@ export class SearchService {
     const rows: { id: string }[] = await this.dataSource.query(
       `SELECT a.id AS id
        FROM assets a
-       LEFT JOIN asset_ocr o ON o."assetId" = a.id
        LEFT JOIN (
          SELECT "assetId", string_agg(label, ' ') AS labels
          FROM asset_detections

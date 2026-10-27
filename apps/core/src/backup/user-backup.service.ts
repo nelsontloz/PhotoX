@@ -681,7 +681,7 @@ export function buildFallbackEmail(origEmail: string, nowMs: number, attempt = 0
  * Backup set: users row (same UUID) + files (originals only — transcode rows are
  * dropped, videos re-transcode) + assets + albums + album_assets + shares +
  * persons. Skipped: refresh_tokens (restored clients re-login), faces/embeddings/
- * ocr/detections/thumbnails (all regenerable via re-enqueue). Trashed rows+bytes
+ * detections/thumbnails (all regenerable via re-enqueue). Trashed rows+bytes
  * travel as-is and stay degraded (reprocess filters exclude trashed).
  *
  * Restore runs rows-first in one transaction (fresh `createdAt = now()` keeps new
@@ -2798,7 +2798,7 @@ export class UserBackupService {
    * for both kinds (every restored/merged asset is `pending`; mirrors the upload
    * path which enqueues process-metadata for photos and videos alike), thumbnails
    * photo+video, per-asset video loop (no admin bulk exists), faces re-embed,
-   * embeddings/ocr/detect, cluster, then places backfill. Runs twice:
+   * embeddings/detect, cluster, then places backfill. Runs twice:
    * offset-paged readers assume a stable set, so a second pass catches anything
    * the first missed under concurrent writes (jobIds dedupe, making it idempotent).
    * Existing reprocess filters are reused untouched.
@@ -2868,18 +2868,12 @@ export class UserBackupService {
             { jobId: `embed-${mode}-${runTag}-${asset.id}-${SEARCH_EMBEDDING_MODEL}` },
           )
           await this.bullMq.enqueue(
-            'process-ocr',
-            'process-ocr',
-            { assetId: asset.id, fileId: asset.fileId, userId, reason: mode },
-            { jobId: `ocr-${mode}-${runTag}-${asset.id}` },
-          )
-          await this.bullMq.enqueue(
             'process-detect',
             'process-detect',
             { assetId: asset.id, fileId: asset.fileId, userId, reason: mode },
             { jobId: `detect-${mode}-${runTag}-${asset.id}` },
           )
-          totals.ai += pass === 0 ? 3 : 0
+          totals.ai += pass === 0 ? 2 : 0
         }
       }
     }

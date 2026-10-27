@@ -9,7 +9,6 @@ import {
   UploadSessionPart,
 } from '../../src/database/entities'
 import { AssetEmbedding } from '../../src/database/entities/asset-embedding.entity'
-import { AssetOcr } from '../../src/database/entities/asset-ocr.entity'
 import { AssetDetection } from '../../src/database/entities/asset-detection.entity'
 import { Place } from '../../src/database/entities/place.entity'
 import { User } from '../../src/users/entities/user.entity'
@@ -38,7 +37,6 @@ export const ENTITIES = [
   Person,
   AppSetting,
   AssetEmbedding,
-  AssetOcr,
   AssetDetection,
   Place,
   UploadSession,

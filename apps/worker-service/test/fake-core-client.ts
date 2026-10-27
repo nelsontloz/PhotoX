@@ -6,7 +6,6 @@ import type {
   FileRecord,
   RegisterDetectionsRequestDto,
   RegisterEmbeddingRequestDto,
-  RegisterOcrRequestDto,
 } from '@photox/shared-types'
 import type {
   ApplyClustersPayload,
@@ -227,18 +226,6 @@ export class FakeCoreClient {
     binding?: JobBinding,
   ): Promise<void> {
     this.calls.push({ method: 'registerEmbedding', args: [assetId, dto], binding })
-    const err = this.assetError(userId, assetId)
-    if (err) return Promise.reject(err)
-    return Promise.resolve()
-  }
-
-  registerOcr(
-    userId: string,
-    assetId: string,
-    dto: RegisterOcrRequestDto,
-    binding?: JobBinding,
-  ): Promise<void> {
-    this.calls.push({ method: 'registerOcr', args: [assetId, dto], binding })
     const err = this.assetError(userId, assetId)
     if (err) return Promise.reject(err)
     return Promise.resolve()

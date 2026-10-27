@@ -78,7 +78,7 @@ export async function runAssetFileJob<
   }
 }
 
-// EXIF-oriented downscale to a max long side — shared prep for face/embedding/detection/OCR bodies
+// EXIF-oriented downscale to a max long side — shared prep for face/embedding/detection bodies
 export async function orientedResize(filePath: string, maxPx: number): Promise<Buffer> {
   return sharp(filePath)
     .rotate()

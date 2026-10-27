@@ -44,7 +44,7 @@ export interface PipelineResponse {
   total: number
 }
 
-export type PipelinePath = 'faces' | 'embeddings' | 'detections' | 'ocr'
+export type PipelinePath = 'faces' | 'embeddings' | 'detections'
 
 export async function reprocessPipeline<R extends PipelineResponse>(
   path: PipelinePath,

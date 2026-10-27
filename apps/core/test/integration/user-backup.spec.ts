@@ -423,7 +423,7 @@ describe('user backup round-trip', () => {
       new Date(result.startedAt).getTime(),
     )
     // M2: video gets a metadata job too — 2 live assets (trashed excluded)
-    expect(result.enqueued).toEqual({ metadata: 2, thumbnails: 8, videos: 1, faces: 1, ai: 3 })
+    expect(result.enqueued).toEqual({ metadata: 2, thumbnails: 8, videos: 1, faces: 1, ai: 2 })
 
     const restoredUser = await userRepo.findOneOrFail({ where: { id: user.id } })
     expect(restoredUser.email).toBe(email)
@@ -534,7 +534,6 @@ describe('user backup round-trip', () => {
       'process-metadata',
       'process-faces',
       'process-embeddings',
-      'process-ocr',
       'process-detect',
     ] as const
     const env = loadEnv()
@@ -569,7 +568,7 @@ describe('user backup round-trip', () => {
     await wipeUserData()
 
     const second = await svc.restoreUser(email)
-    expect(second.enqueued).toEqual({ metadata: 2, thumbnails: 8, videos: 1, faces: 1, ai: 3 })
+    expect(second.enqueued).toEqual({ metadata: 2, thumbnails: 8, videos: 1, faces: 1, ai: 2 })
 
     // every family must be runnable again: pre-fix each of these adds was rejected as
     // `duplicated` against the retained record and nothing regenerated
@@ -582,8 +581,6 @@ describe('user backup round-trip', () => {
     expect(videos.filter((d) => d.assetId === videoAsset.id)).toHaveLength(1)
     const embeds = await queueJobsFor('process-embeddings', user.id)
     expect(embeds.some((d) => d.assetId === photoAsset.id)).toBe(true)
-    const ocr = await queueJobsFor('process-ocr', user.id)
-    expect(ocr.some((d) => d.assetId === photoAsset.id)).toBe(true)
     const detects = await queueJobsFor('process-detect', user.id)
     expect(detects.some((d) => d.assetId === photoAsset.id)).toBe(true)
   }, 120_000)
@@ -1524,7 +1521,7 @@ describe('user backup round-trip', () => {
       expect(new Date(result.completedAt).getTime()).toBeGreaterThanOrEqual(
         new Date(result.startedAt).getTime(),
       )
-      expect(result.enqueued).toEqual({ metadata: 1, thumbnails: 4, videos: 0, faces: 1, ai: 3 })
+      expect(result.enqueued).toEqual({ metadata: 1, thumbnails: 4, videos: 0, faces: 1, ai: 2 })
 
       // live profile untouched
       const after = await userRepo.findOneOrFail({ where: { id: target.id } })
@@ -1684,7 +1681,7 @@ describe('user backup round-trip', () => {
         force: true,
       })
       expect(retry.skipped.assets).toBe(1)
-      expect(retry.enqueued).toEqual({ metadata: 1, thumbnails: 4, videos: 0, faces: 1, ai: 3 })
+      expect(retry.enqueued).toEqual({ metadata: 1, thumbnails: 4, videos: 0, faces: 1, ai: 2 })
       expect(retry.assigned).toMatchObject({
         prefix: backupPrefix(email, target.id),
         sourceDeleted: true,

@@ -1,6 +1,6 @@
 # PhotoX
 
-Personal photo and video hosting. `core` (NestJS, :3000) is the only public/business HTTP API and the sole owner of Postgres. `worker-service` (NestJS, :3004, unpublished) runs 9 BullMQ consumers, exposes `GET /health` only, and has no DB driver — every read/write is a `core` HTTP call. `web` is a Vite/React SPA (:5173) that talks to core same-origin through `/api`. Core and worker-service share Redis (queues, rate limits, health pings) and `STORAGE_DIR` on local disk (originals, derivatives, upload-session chunks, model weights, GeoNames cache). Media bytes stay on local disk; per-user backups are the only thing that leaves it, written to S3-compatible object storage (Floci in dev).
+Personal photo and video hosting. `core` (NestJS, :3000) is the only public/business HTTP API and the sole owner of Postgres. `worker-service` (NestJS, :3004, unpublished) runs 8 BullMQ consumers, exposes `GET /health` only, and has no DB driver — every read/write is a `core` HTTP call. `web` is a Vite/React SPA (:5173) that talks to core same-origin through `/api`. Core and worker-service share Redis (queues, rate limits, health pings) and `STORAGE_DIR` on local disk (originals, derivatives, upload-session chunks, model weights, GeoNames cache). Media bytes stay on local disk; per-user backups are the only thing that leaves it, written to S3-compatible object storage (Floci in dev).
 
 ## Architecture
 
@@ -14,10 +14,10 @@ Personal photo and video hosting. `core` (NestJS, :3000) is the only public/busi
 
 - **Library** — timeline browsing, albums, favorites, trash, share links, places. Places are asset columns filled by offline GeoNames reverse geocoding during metadata processing; there is no places API (`pnpm --filter @photox/core places:import` seeds the table).
 - **Uploads** — per-user SHA-256 dedupe fast-path, optional `STORAGE_QUOTA_BYTES`, and two front doors: legacy multipart `POST /api/v1/files` (used by `web`) and resumable `api/v1/uploads` sessions (8 MiB chunks, 4 GiB max, ≤5 active, 24h pending TTL). Over-quota originals are rejected with 413 before the original is stored.
-- **Processing** — thumbnails (`sm/md/lg/xl`, 150/300/600/1920px, WebP), EXIF/video metadata + 9×8 dHash, AV1/Opus WebM transcode (h264 with AAC or no audio skips it; downscaled only above 720p; 4h/7680px inputs, 1h ffmpeg timeout), SCRFD-10G face detection + 512-dim ArcFace embeddings + DBSCAN clustering into People, PaddleOCR v6-small, YOLO26n detections, SigLIP2 768-dim vision embeddings.
-- **Search** — pgvector ANN over the 768-dim embeddings plus Postgres full-text over title/description/OCR text/detection labels, fused with RRF; person/place routing, duplicates and similar-photo lookups.
+- **Processing** — thumbnails (`sm/md/lg/xl`, 150/300/600/1920px, WebP), EXIF/video metadata + 9×8 dHash, AV1/Opus WebM transcode (h264 with AAC or no audio skips it; downscaled only above 720p; 4h/7680px inputs, 1h ffmpeg timeout), SCRFD-10G face detection + 512-dim ArcFace embeddings + DBSCAN clustering into People, YOLO26n detections, SigLIP2 768-dim vision embeddings.
+- **Search** — pgvector ANN over the 768-dim embeddings plus Postgres full-text over title/description/detection labels, fused with RRF; person/place routing, duplicates and similar-photo lookups.
 - **Backups** — admin per-user backup/restore to S3-compatible storage, incremental via a `manifest.json` written last; delete, merge previous-account snapshots, prefix sync on email change, overview/progress.
-- **Admin console** — five tabs: Overview, AI Pipelines (faces reprocess/recluster, embeddings, detections, OCR), Assets & Maintenance (thumbnail reprocess, orphan sweep), Users (edit, backup-prefix sync, async delete), Backups (overview, progress, backup/restore/merge/delete). Metadata reprocess and places backfill are API-only.
+- **Admin console** — five tabs: Overview, AI Pipelines (faces reprocess/recluster, embeddings, detections), Assets & Maintenance (thumbnail reprocess, orphan sweep), Users (edit, backup-prefix sync, async delete), Backups (overview, progress, backup/restore/merge/delete). Metadata reprocess and places backfill are API-only.
 
 ## Prerequisites
 
@@ -28,7 +28,7 @@ Personal photo and video hosting. `core` (NestJS, :3000) is the only public/busi
 ## Quick Start
 
 ```bash
-# Install dependencies (root postinstall loops all 4 worker model scripts; FACE_MODEL_SKIP=1 to skip)
+# Install dependencies (root postinstall loops all 3 worker model scripts; FACE_MODEL_SKIP=1 to skip)
 pnpm install
 
 # Configure env, then re-diff .env against .env.example after every pull (new required keys land there)
@@ -72,9 +72,9 @@ Integration tests share **two Testcontainers containers** (`pgvector/pgvector:0.
 - `E2E_BUILD=1` — rebuild the `photox-e2e-*` images before booting the stack (`pnpm verify` sets it); without it existing images are reused.
 - `E2E_KEEP=1` — keep the stack running after the suite (prints the web URL) and skip artifact cleanup.
 - `E2E_PROJECT=` / `E2E_WEB_PORT=` — override the auto-generated compose project / web port. Each invocation is stack-isolated, but `e2e/.features-gen`, `e2e/test-results` and `e2e/playwright-report` are shared between concurrent runs.
-- `FACE_MODEL_SKIP=1 pnpm install` — skip the root postinstall loop over all 4 worker model scripts.
+- `FACE_MODEL_SKIP=1 pnpm install` — skip the root postinstall loop over all 3 worker model scripts.
 - `ADMIN_EMAIL` / `ADMIN_PASSWORD` — seed an admin on core bootstrap when no admin exists (open registration only mints `user`); empty disables the seed.
-- `pnpm --filter @photox/worker-service <script>` — 4 separate (re)download scripts in `apps/worker-service`: `face-model`, `vision-model`, `ocr-model`, `detect-model` (root `postinstall` loops all four).
+- `pnpm --filter @photox/worker-service <script>` — 3 separate (re)download scripts in `apps/worker-service`: `face-model`, `vision-model`, `detect-model` (root `postinstall` loops all three).
 
 Core health check (host dev): `curl localhost:3000/health` (200 even when degraded, with per-dependency status). Worker health: `curl localhost:3004/health` (503 when Redis is down). Swagger UI at `http://localhost:3000/docs`.
 
@@ -83,13 +83,13 @@ Core health check (host dev): `curl localhost:3000/health` (200 even when degrad
 | Service        | Port            | Description                                                                                                                                             |
 | -------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | core           | 3000            | The only public/business HTTP API (auth, assets, files, uploads, albums, shares, faces/persons, search, backups, admin); sole Postgres owner; S3 client |
-| worker-service | 3004 (internal) | `GET /health` only; 9 BullMQ consumers: thumbnail, video, metadata, faces, faces-cluster, embeddings, detect, ocr, user-delete; no DB driver            |
+| worker-service | 3004 (internal) | `GET /health` only; 8 BullMQ consumers: thumbnail, video, metadata, faces, faces-cluster, embeddings, detect, user-delete; no DB driver                 |
 | web            | 5173            | React frontend (proxies `/api`, `/worker` and `/health` to core)                                                                                        |
 | postgres       | 5432            | PostgreSQL with pgvector/cube/earthdistance (single `photox` DB, 18 tables)                                                                             |
-| redis          | 6379            | BullMQ (8 worker queues + 1 core queue), auth rate limits, health pings; no volume, so all of it is transient                                           |
+| redis          | 6379            | BullMQ (7 worker queues + 1 core queue), auth rate limits, health pings; no volume, so all of it is transient                                           |
 | floci          | 4566            | S3-compatible object store backing per-user backups only (dev/local)                                                                                    |
 
-`core` runs no BullMQ consumer: it produces jobs and the admin delete-status poll reads their state, while the account wipe itself still executes in core on the worker's request (`POST /worker/users/:id/purge`). It also runs the inline orphan sweep (`POST /api/v1/admin/cleanup-orphans/run`). `STORAGE_DIR` (default `./data/storage`) is shared by core and worker: `originals/`, `derivatives/thumbnails/`, `derivatives/transcodes/`, `upload-sessions/<userId>/<sessionId>/part-<n>`, `models/` (face/vision/OCR/detect weights) and `geo/` (GeoNames cache for the places import). Core writes originals and session chunks; the worker reads originals/models and writes derivatives.
+`core` runs no BullMQ consumer: it produces jobs and the admin delete-status poll reads their state, while the account wipe itself still executes in core on the worker's request (`POST /worker/users/:id/purge`). It also runs the inline orphan sweep (`POST /api/v1/admin/cleanup-orphans/run`). `STORAGE_DIR` (default `./data/storage`) is shared by core and worker: `originals/`, `derivatives/thumbnails/`, `derivatives/transcodes/`, `upload-sessions/<userId>/<sessionId>/part-<n>`, `models/` (face/vision/detect weights) and `geo/` (GeoNames cache for the places import). Core writes originals and session chunks; the worker reads originals/models and writes derivatives.
 
 ## Uploads
 
@@ -123,7 +123,7 @@ No global prefix; controllers declare `api/v1/...`. Health and docs are unversio
 | Worker          | `/worker/*` — 14 job routes, core-internal                                                                                                                                                            |
 | Docs            | `/docs`, `/docs-json`                                                                                                                                                                                 |
 
-Open routes are exactly `/docs*`, `/health`, `/api/v1/auth*` and `/api/share*`; everything else needs auth. There is no places route group — places are asset columns resolved during metadata writes and by the admin backfill. OCR text and embeddings have no user routes of their own; they surface through assets and search. Detection labels are readable at `GET /api/v1/assets/:id/detections` (the viewer overlay).
+Open routes are exactly `/docs*`, `/health`, `/api/v1/auth*` and `/api/share*`; everything else needs auth. There is no places route group — places are asset columns resolved during metadata writes and by the admin backfill. Detection labels are readable at `GET /api/v1/assets/:id/detections` (the viewer overlay).
 
 ## Security
 

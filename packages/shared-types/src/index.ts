@@ -304,12 +304,6 @@ export interface RegisterEmbeddingRequestDto {
   embedding: number[]
 }
 
-// Wire contract for POST /api/v1/assets/:id/ocr — the worker registers ONE concatenated text row
-// per asset (asset_ocr PK is assetId); text is enforced core-side with 422
-export interface RegisterOcrRequestDto {
-  text: string
-}
-
 // Wire contracts for POST/GET /api/v1/assets/:id/detections — box is ORIGINAL-image pixel coords.
 // POST replaces the asset's whole row set; GET returns the viewer-overlay payload.
 export interface DetectionBox {

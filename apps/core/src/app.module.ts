@@ -13,7 +13,6 @@ import { SharesModule } from './shares/shares.module'
 import { FacesModule } from './faces/faces.module'
 import { EmbeddingsModule } from './embeddings/embeddings.module'
 import { SearchModule } from './search/search.module'
-import { OcrModule } from './ocr/ocr.module'
 import { DetectionsModule } from './detections/detections.module'
 import { GroupsModule } from './groups/groups.module'
 import { PersonsModule } from './persons/persons.module'
@@ -39,7 +38,6 @@ loadRootEnvFile()
     FacesModule,
     EmbeddingsModule,
     SearchModule,
-    OcrModule,
     DetectionsModule,
     GroupsModule,
     PersonsModule,

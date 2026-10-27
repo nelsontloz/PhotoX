@@ -42,7 +42,7 @@ export async function adminAuthHarness(t: ApiTestApp, opts: AdminAuthHarnessOpts
   }
 }
 
-// ponytail: one matrix for queued reprocess (ocr/detect/embed/faces/metadata/thumbnails fanout).
+// ponytail: one matrix for queued reprocess (detect/embed/faces/metadata/thumbnails fanout).
 export async function reprocessMatrix(
   t: ApiTestApp,
   auth: Record<string, string>,

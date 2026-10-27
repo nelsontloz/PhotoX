@@ -232,7 +232,7 @@ export class DetectService {
     )
     const session = await InferenceSession.create(modelPath, {
       executionProviders: ['cpu'],
-      // ponytail: 2 ORT threads instead of the all-cores default — SigLIP/PP-OCR/SCRFD sessions
+      // ponytail: 2 ORT threads instead of the all-cores default — SigLIP/SCRFD sessions
       // are co-hosted in this process; raise only if detection throughput starves the other queues
       intraOpNumThreads: 2,
     })

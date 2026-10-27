@@ -13,12 +13,7 @@ import { useAuthStore } from '../../store/auth-store'
 import { AppShell, useScrollContainer } from '../../components/AppShell'
 import { LibraryStatsSection } from './library-stats'
 import { AdminSection, cx } from './ui'
-import {
-  DetectionsReprocessSection,
-  EmbeddingsReprocessSection,
-  FacialDetectionCard,
-  OcrReprocessSection,
-} from './ai'
+import { DetectionsReprocessSection, EmbeddingsReprocessSection, FacialDetectionCard } from './ai'
 import { AssetHealthSection, OrphanCleanupSection } from './assets'
 import { UsersSection } from './users'
 import { BackupSection } from './backups'
@@ -124,14 +119,13 @@ function TabPanelContent({ tab }: { tab: TabId }) {
         <AdminSection
           card={false}
           title="Machine Learning Models & Inference"
-          subtitle="Vision embeddings, facial clustering, object detection, and OCR pipelines."
+          subtitle="Vision embeddings, facial clustering, and object detection pipelines."
           icon={<FaBrain />}
         >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FacialDetectionCard />
             <EmbeddingsReprocessSection />
             <DetectionsReprocessSection />
-            <OcrReprocessSection />
           </div>
         </AdminSection>
       )

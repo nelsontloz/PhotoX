@@ -20,7 +20,7 @@ import { TEST_WORKER_SECRET } from './test-setup'
 
 async function seedFullUser(t: ApiTestApp) {
   const user = await seedUser(t)
-  // photo asset + thumbnail + face + embedding + ocr + detection
+  // photo asset + thumbnail + face + embedding + detection
   const photoFile = await seedFile(t, user.id)
   const photo = await seedAsset(t, user.id, photoFile.id, { kind: 'photo' })
   await seedThumbnail(t, photo.id)
@@ -42,7 +42,6 @@ async function seedFullUser(t: ApiTestApp) {
       embedding: new Array(SEARCH_EMBEDDING_DIM).fill(0.02),
     }),
   )
-  await t.ocrRepo.save(t.ocrRepo.create({ assetId: photo.id, text: 'hello' }))
   await t.detectionRepo.save(
     t.detectionRepo.create({
       assetId: photo.id,
@@ -256,7 +255,6 @@ describe('admin async user deletion', () => {
     expect(await t.fileRepo.count({ where: { userId: user.id } })).toBe(0)
     expect(await t.thumbRepo.count()).toBe(0)
     expect(await t.embeddingRepo.count()).toBe(0)
-    expect(await t.ocrRepo.count()).toBe(0)
     expect(await t.detectionRepo.count()).toBe(0)
 
     // every owned byte is gone, strays swept, models untouched

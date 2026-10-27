@@ -10,10 +10,10 @@ import {
   type TestApp,
 } from './helpers'
 
-// processor wiring smokes for the three newest queues — the model weights are absent in the
+// processor wiring smokes for the two newest queues — the model weights are absent in the
 // harness storage dir, so each job must take the warn-skip path (missing model is provisioning,
 // not a job bug): completed, no register call, no retry
-describe('Embedding/OCR/Detection processors (integration)', () => {
+describe('Embedding/Detection processors (integration)', () => {
   let testApp: TestApp
 
   beforeAll(async () => {
@@ -50,17 +50,6 @@ describe('Embedding/OCR/Detection processors (integration)', () => {
     expect(testApp.fake.callsOf('patchMetadata').at(-1)!.args[1]).toEqual({
       embeddingStatus: 'failed',
     })
-  })
-
-  it('warn-skips an OCR job when the OCR model is absent', async () => {
-    const userId = randomUUID()
-    const { record, asset } = await seedPhoto(userId)
-
-    const queue = testApp.getQueue('process-ocr')
-    const job = await queue.add('ocr', signJob({ assetId: asset.id, fileId: record.id, userId }))
-
-    expect(await waitForJob(queue, job.id!)).toBe('completed')
-    expect(testApp.fake.callsOf('registerOcr')).toHaveLength(0)
   })
 
   it('warn-skips a detection job when the detection model is absent', async () => {

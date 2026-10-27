@@ -12,7 +12,6 @@ import type {
   MetadataStatus,
   RegisterDetectionsRequestDto,
   RegisterEmbeddingRequestDto,
-  RegisterOcrRequestDto,
 } from '@photox/shared-types'
 
 export type MetadataPatch = Partial<
@@ -194,19 +193,6 @@ export class CoreClient {
     binding?: JobBinding,
   ): Promise<void> {
     await this.request('POST', `/worker/assets/${assetId}/embedding`, {
-      sub: userId,
-      body: dto,
-      ...binding,
-    })
-  }
-
-  async registerOcr(
-    userId: string,
-    assetId: string,
-    dto: RegisterOcrRequestDto,
-    binding?: JobBinding,
-  ): Promise<void> {
-    await this.request('POST', `/worker/assets/${assetId}/ocr`, {
       sub: userId,
       body: dto,
       ...binding,

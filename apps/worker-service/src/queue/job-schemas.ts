@@ -23,7 +23,7 @@ export const thumbnailJobSchema = z.object({
   metadataWaits: z.number().int().min(0).max(5).optional(),
 })
 
-// video/metadata/embedding/ocr/detection jobs carry only the three refs — one shared schema
+// video/metadata/embedding/detection jobs carry only the three refs — one shared schema
 export const assetRefsJobSchema = z.object({
   ...jobRefs,
 })

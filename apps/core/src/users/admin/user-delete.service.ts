@@ -42,7 +42,7 @@ export interface UserDeleteResult {
  *
  * DB order: sessions invalidate (refresh_tokens + tokensValidAfter bump, killing
  * in-flight access tokens) → shares → faces/persons → album_assets/albums → assets
- * (CASCADE drops asset_thumbnails/embeddings/ocr/detections; shares.assetId FK
+ * (CASCADE drops asset_thumbnails/embeddings/detections; shares.assetId FK
  * cascades foreign shares on the user's assets) → files (original+transcode+thumbnail
  * FileRecords — thumb fileId has no FK, so keys are collected explicitly) → user row.
  * Global tables (places/app_settings) are untouched.
@@ -173,7 +173,7 @@ export class UserDeleteService {
       if (assetIds.length > 0) await m.delete(AlbumAsset, { assetId: In(assetIds) })
       await m.delete(Album, { userId })
       // incl. trashed (no isTrashed filter — reuse hardDelete semantics); CASCADE drops
-      // asset_thumbnails/embeddings/ocr/detections, shares.assetId FK drops foreign shares
+      // asset_thumbnails/embeddings/detections, shares.assetId FK drops foreign shares
       if (assetIds.length > 0) await m.delete(Asset, { id: In(assetIds) })
       await m.delete(FileRecord, { userId })
       // resumable sessions have no FK to users; leaving them behind both leaks up to 4 GiB

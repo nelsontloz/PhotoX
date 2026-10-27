@@ -12,7 +12,6 @@ describe('BullMqService.enqueueAssetJob', () => {
 
   it.each([
     ['embed', 'process-embeddings', `embed-a1-${SEARCH_EMBEDDING_MODEL}`],
-    ['ocr', 'process-ocr', 'ocr-a1'],
     ['detect', 'process-detect', 'detect-a1'],
   ] as const)('%s enqueues %s with the prefix jobId', async (kind, queue, jobId) => {
     const { service, add } = makeService()

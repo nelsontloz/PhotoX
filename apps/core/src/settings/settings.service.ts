@@ -9,7 +9,6 @@ import { AppSetting } from '../database/entities'
 const REGISTRATION_ENABLED_KEY = 'registration.enabled'
 const FACE_REPROCESS_LAST_RUN_KEY = 'face.reprocess.lastRun'
 const EMBEDDING_REPROCESS_LAST_RUN_KEY = 'embedding.reprocess.lastRun'
-const OCR_REPROCESS_LAST_RUN_KEY = 'ocr.reprocess.lastRun'
 const DETECTIONS_REPROCESS_LAST_RUN_KEY = 'detections.reprocess.lastRun'
 const PLACES_BACKFILL_LAST_RUN_KEY = 'places.backfill.lastRun'
 const METADATA_REPROCESS_LAST_RUN_KEY = 'metadata.reprocess.lastRun'
@@ -23,7 +22,6 @@ export interface EnqueuedRun {
 interface LastRuns {
   face: EnqueuedRun
   embedding: EnqueuedRun & { model: string }
-  ocr: EnqueuedRun
   detections: EnqueuedRun
   metadata: EnqueuedRun
   places: { startedAt: string; total: number; updated: number }
@@ -36,7 +34,6 @@ export type LastRun<K extends LastRunKind> = LastRuns[K]
 const LAST_RUN_KEYS: Record<LastRunKind, string> = {
   face: FACE_REPROCESS_LAST_RUN_KEY,
   embedding: EMBEDDING_REPROCESS_LAST_RUN_KEY,
-  ocr: OCR_REPROCESS_LAST_RUN_KEY,
   detections: DETECTIONS_REPROCESS_LAST_RUN_KEY,
   metadata: METADATA_REPROCESS_LAST_RUN_KEY,
   places: PLACES_BACKFILL_LAST_RUN_KEY,
