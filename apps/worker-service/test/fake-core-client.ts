@@ -166,11 +166,7 @@ export class FakeCoreClient {
     return Promise.resolve()
   }
 
-  registerFile(
-    userId: string,
-    dto: RegisterFileInput,
-    binding?: JobBinding,
-  ): Promise<FileRecord> {
+  registerFile(userId: string, dto: RegisterFileInput, binding?: JobBinding): Promise<FileRecord> {
     this.calls.push({ method: 'registerFile', args: [dto], binding })
     const purpose = dto.kind === 'transcode' ? 'transcode' : 'original'
     const dedupeKey = `${dto.checksumSha256}:${purpose}:${dto.assetId ?? ''}`
