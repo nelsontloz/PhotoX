@@ -120,27 +120,6 @@ export class AdminMaintenanceController {
     return this.adminJobs.embeddingsStatus()
   }
 
-  @Post('ocr/reprocess')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Enqueue OCR jobs for all non-trashed photos (admin-only)' })
-  @ApiResponse({ status: 200, description: 'OCR jobs enqueued and the run recorded' })
-  async reprocessOcr(): Promise<{ enqueued: number; total: number }> {
-    return this.adminJobs.reprocessOcr()
-  }
-
-  @Get('ocr/reprocess')
-  @ApiOperation({ summary: 'OCR reprocess last-run record and process-ocr queue counts' })
-  @ApiResponse({
-    status: 200,
-    description: 'Last run record (null when never run) and queue counts',
-  })
-  async ocrReprocessStatus(): Promise<{
-    lastRun: LastRun<'ocr'> | null
-    queue: Record<string, number>
-  }> {
-    return this.adminJobs.ocrStatus()
-  }
-
   @Post('detections/reprocess')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

@@ -16,7 +16,7 @@
     "test:watch": "turbo run test:watch",
     "test:e2e": "pnpm --filter @photox/e2e test:e2e",
     "verify": "pnpm run lint && turbo run test --force && pnpm run typecheck && pnpm run build && E2E_BUILD=1 pnpm run test:e2e",
-    "postinstall": "test \"${FACE_MODEL_SKIP:-}\" = 1 || for s in face vision ocr detect; do bash apps/worker-service/scripts/download-$s-model.sh; done"
+    "postinstall": "test \"${FACE_MODEL_SKIP:-}\" = 1 || for s in face vision detect; do bash apps/worker-service/scripts/download-$s-model.sh; done"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

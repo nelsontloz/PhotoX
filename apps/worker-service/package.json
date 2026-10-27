@@ -11,7 +11,6 @@
     "typecheck": "tsc --noEmit",
     "face-model": "bash scripts/download-face-model.sh",
     "vision-model": "bash scripts/download-vision-model.sh",
-    "ocr-model": "bash scripts/download-ocr-model.sh",
     "detect-model": "bash scripts/download-detect-model.sh",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -30,7 +29,6 @@
     "ffprobe-static": "^3.1.0",
     "ioredis": "^6.0.0",
     "onnxruntime-node": "^1.30.0",
-    "ppu-paddle-ocr": "6.6.1",
     "reflect-metadata": "^0.2.2",
     "sharp": "^0.35.5",
     "zod": "^4.6.7"

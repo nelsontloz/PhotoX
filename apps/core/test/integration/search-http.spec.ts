@@ -105,31 +105,6 @@ describe('hybrid search HTTP', () => {
     expect(body.items[0]).toEqual(listItem)
   })
 
-  it('matches titles and OCR text through FTS', async () => {
-    const { userId, auth } = await ownerAuth()
-    const titleAsset = await seedAssetWith(userId, { title: 'beach sunset over the ocean' })
-    const ocrAsset = await seedAssetWith(userId)
-    await t.ocrRepo.save(
-      t.ocrRepo.create({
-        assetId: ocrAsset.id,
-        text: 'passport number 12345',
-      }),
-    )
-
-    const byTitle = await request(apiServer(t))
-      .get('/api/v1/search')
-      .query({ q: 'beach sunset' })
-      .set(auth)
-    expect(byTitle.status).toBe(200)
-    expect((byTitle.body as { items: Asset[] }).items.map((i) => i.id)).toEqual([titleAsset.id])
-
-    const byOcr = await request(apiServer(t))
-      .get('/api/v1/search')
-      .query({ q: 'passport' })
-      .set(auth)
-    expect((byOcr.body as { items: Asset[] }).items.map((i) => i.id)).toEqual([ocrAsset.id])
-  })
-
   it('excludes trashed and cross-user assets', async () => {
     const { userId, auth } = await ownerAuth()
     await seedAssetWith(userId, { title: 'beach sunset', isTrashed: true })

@@ -535,7 +535,7 @@ export class UploadsService {
   /**
    * Enqueue half of complete(): the asset + file rows exist, only the processing jobs are
    * outstanding. A failure leaves the session `assembled` (503) so a retry re-runs exactly this.
-   * thumb/video/embed/ocr/detect re-enqueues reuse the same jobIds — an enqueue that failed stored
+   * thumb/video/embed/detect re-enqueues reuse the same jobIds — an enqueue that failed stored
    * no job, and jobId dedup swallows the ones that already landed. process-metadata and
    * process-faces enqueue without explicit jobIds, so an assembled-retry can double-enqueue them;
    * that is harmless because both processors are idempotent (metadata patches, faces delete +

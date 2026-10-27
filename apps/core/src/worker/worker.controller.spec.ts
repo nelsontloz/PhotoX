@@ -3,7 +3,6 @@ import type { UserFilesService } from '../files/user/user-files.service'
 import type { FacesService } from '../faces/faces.service'
 import type { PersonsService } from '../persons/persons.service'
 import type { EmbeddingsService } from '../embeddings/embeddings.service'
-import type { OcrService } from '../ocr/ocr.service'
 import type { DetectionsService } from '../detections/detections.service'
 import type { UserDeleteService } from '../users/admin/user-delete.service'
 import { ForbiddenException } from '@nestjs/common'
@@ -22,7 +21,6 @@ function controllerWith(
     {} as FacesService,
     {} as PersonsService,
     svc,
-    { register } as unknown as OcrService,
     { register } as unknown as DetectionsService,
     { purge } as unknown as UserDeleteService,
   )
@@ -36,9 +34,6 @@ describe('WorkerController identity resolution', () => {
     const embedding = { kind: 'image', model: 'm', embedding: [] }
     await controller.registerEmbedding('asset-1', embedding, 'u1')
     expect(register).toHaveBeenCalledWith('asset-1', 'u1', embedding)
-    const ocr = { text: 'hello', lang: 'eng', confidence: 0.9 }
-    await controller.registerOcr('asset-1', ocr, 'u1')
-    expect(register).toHaveBeenCalledWith('asset-1', 'u1', ocr)
     const detections = { detections: [] }
     await controller.registerDetections('asset-1', detections, 'u1')
     expect(register).toHaveBeenCalledWith('asset-1', 'u1', detections)

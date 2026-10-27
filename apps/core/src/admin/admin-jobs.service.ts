@@ -11,14 +11,14 @@ import { REPROCESS_PAGE_SIZE, reprocessPhotos, reprocessStatus } from './reproce
 const METADATA_QUEUE = 'process-metadata'
 const BACKFILL_PAGE_SIZE = 500
 
-/** Job data shared by the ocr/detect/embed reprocess jobs. */
+/** Job data shared by the detect/embed reprocess jobs. */
 function reprocessData(item: AdminAssetReprocessRow): Record<string, unknown> {
   return { assetId: item.id, fileId: item.fileId, userId: item.userId, reason: 'reprocess' }
 }
 
 /**
  * ponytail: the `-reprocess` suffix keeps backfill jobs from deduping against upload-path jobs
- * (`ocr-<assetId>` / `detect-<assetId>` / `embed-<assetId>-<model>`); `removeOnComplete` (see
+ * (`detect-<assetId>` / `embed-<assetId>-<model>`); `removeOnComplete` (see
  * reprocessPhotos) lets a later run re-enqueue the same asset.
  */
 @Injectable()
@@ -32,20 +32,6 @@ export class AdminJobsService {
     private readonly dataSource: DataSource,
     private readonly places: PlacesResolveService,
   ) {}
-
-  reprocessOcr(): Promise<{ enqueued: number; total: number }> {
-    return reprocessPhotos(
-      { admin: this.admin, bullMq: this.bullMq },
-      'process-ocr',
-      'ocr',
-      (item) => ({ data: reprocessData(item), jobId: `ocr-reprocess-${item.id}` }),
-      (run) => this.settings.setLastRun('ocr', run),
-    )
-  }
-
-  ocrStatus(): Promise<{ lastRun: LastRun<'ocr'> | null; queue: Record<string, number> }> {
-    return reprocessStatus(this.bullMq, 'process-ocr', () => this.settings.getLastRun('ocr'))
-  }
 
   reprocessDetections(): Promise<{ enqueued: number; total: number }> {
     return reprocessPhotos(

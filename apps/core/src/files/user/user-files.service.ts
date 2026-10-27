@@ -217,7 +217,6 @@ export class UserFilesService {
         }),
         // videos out of scope for vision search — only photos get image embeddings
         this.bullMq.enqueueAssetJob('embed', assetId, file.id, userId),
-        this.bullMq.enqueueAssetJob('ocr', assetId, file.id, userId),
         this.bullMq.enqueueAssetJob('detect', assetId, file.id, userId),
       )
     } else {

@@ -208,7 +208,6 @@ describe('upload sessions', () => {
     expect(await waitForJobWithAsset(t, 'process-metadata', body.asset.id)).toBe(true)
     expect(await waitForJobWithAsset(t, 'process-faces', body.asset.id)).toBe(true)
     expect(await waitForJobWithAsset(t, 'process-embeddings', body.asset.id)).toBe(true)
-    expect(await waitForJobWithAsset(t, 'process-ocr', body.asset.id)).toBe(true)
     expect(await waitForJobWithAsset(t, 'process-detect', body.asset.id)).toBe(true)
 
     // session is completed, its ids are stamped and the part bytes are gone

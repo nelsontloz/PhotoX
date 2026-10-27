@@ -16,9 +16,9 @@ FFMPEG="$ROOT/apps/worker-service/node_modules/ffmpeg-static/ffmpeg"
 "$FFMPEG" -y -hide_banner -f lavfi -i "testsrc2=size=320x240:rate=10" -f lavfi -i "sine=frequency=440:sample_rate=44100" -t 2 -c:v libx264 -preset veryfast -pix_fmt yuv420p -c:a aac -b:a 64k -shortest video-h264.mp4
 "$FFMPEG" -y -hide_banner -f lavfi -i "testsrc2=size=320x240:rate=10" -f lavfi -i "sine=frequency=440:sample_rate=44100" -t 2 -c:v libvpx -deadline realtime -cpu-used 8 -b:v 200k -c:a libopus -b:a 64k -shortest video-vp8.webm
 
-# OCR target: rendered with sharp (a worker dep) instead of ffmpeg drawtext — PP-OCRv6 misreads
-# drawtext's rasterization of the trailing digits ("PHOTOX-OCR-123" -> "PHOTOX-OCR-12" + CJK
-# noise); this SVG text path reads back exactly (same approach as the worker's OCR smoke test).
+# photo-text.jpg: a high-contrast text card, uploaded alongside photo.jpg by features that need a
+# second, text-bearing image. Rendered with sharp (a worker dep) instead of ffmpeg drawtext for
+# clean glyphs.
 FIXTURE_ROOT="$ROOT" node - <<'EOF'
 const { createRequire } = require('node:module')
 const workerRequire = createRequire(process.env.FIXTURE_ROOT + '/apps/worker-service/package.json')

@@ -12,8 +12,6 @@ import { FaceProcessor } from './face.processor'
 import { FaceClusterService } from './face.cluster'
 import { EmbeddingService } from './embedding.service'
 import { EmbeddingProcessor } from './embed.processor'
-import { OcrService } from './ocr.service'
-import { OcrProcessor } from './ocr.processor'
 import { DetectService } from './detect.service'
 import { DetectProcessor } from './detect.processor'
 import { UserDeleteProcessor } from './user-delete.processor'
@@ -47,8 +45,6 @@ import { CoreClient } from '../core/core-client.service'
     FaceClusterService,
     EmbeddingService,
     EmbeddingProcessor,
-    OcrService,
-    OcrProcessor,
     DetectService,
     DetectProcessor,
     UserDeleteProcessor,

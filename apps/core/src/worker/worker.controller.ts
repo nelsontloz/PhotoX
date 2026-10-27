@@ -27,8 +27,6 @@ import { PersonsService } from '../persons/persons.service'
 import { ApplyClustersDto } from '../persons/dto/apply-clusters.dto'
 import { EmbeddingsService } from '../embeddings/embeddings.service'
 import { RegisterEmbeddingDto } from '../embeddings/dto/register-embedding.dto'
-import { OcrService } from '../ocr/ocr.service'
-import { RegisterOcrDto } from '../ocr/dto/register-ocr.dto'
 import { DetectionsService } from '../detections/detections.service'
 import { RegisterDetectionsDto } from '../detections/dto/register-detections.dto'
 import { WorkerMetadataDto } from './dto/worker-metadata.dto'
@@ -48,7 +46,6 @@ export class WorkerController {
     private readonly faces: FacesService,
     private readonly persons: PersonsService,
     private readonly embeddings: EmbeddingsService,
-    private readonly ocr: OcrService,
     private readonly detections: DetectionsService,
     private readonly deletes: UserDeleteService,
   ) {}
@@ -110,17 +107,6 @@ export class WorkerController {
     @CurrentUserId() userId: string,
   ): Promise<{ ok: true }> {
     return this.embeddings.register(id, userId, dto)
-  }
-
-  @Post('assets/:id/ocr')
-  @ApiOperation({ summary: 'Worker register of the OCR text (idempotent upsert)' })
-  @ApiResponse({ status: 201, description: 'OCR row registered' })
-  async registerOcr(
-    @Param('id') id: string,
-    @Body() dto: RegisterOcrDto,
-    @CurrentUserId() userId: string,
-  ): Promise<{ ok: true }> {
-    return this.ocr.register(id, userId, dto)
   }
 
   @Post('assets/:id/detections')

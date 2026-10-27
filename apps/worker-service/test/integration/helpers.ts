@@ -20,8 +20,6 @@ import { FaceProcessor } from '../../src/queue/face.processor'
 import { FaceClusterService } from '../../src/queue/face.cluster'
 import { EmbeddingService } from '../../src/queue/embedding.service'
 import { EmbeddingProcessor } from '../../src/queue/embed.processor'
-import { OcrService } from '../../src/queue/ocr.service'
-import { OcrProcessor } from '../../src/queue/ocr.processor'
 import { DetectService } from '../../src/queue/detect.service'
 import { DetectProcessor } from '../../src/queue/detect.processor'
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../fake-core-client'
@@ -39,7 +37,7 @@ export interface TestApp {
 
 export interface CreateTestAppOptions {
   detect?: FaceDetectorService['detect']
-  // 'media' wires only the four media processors (thumbnail/video/metadata/face); default all eight
+  // 'media' wires only the four media processors (thumbnail/video/metadata/face); default all seven
   processors?: 'all' | 'media'
 }
 
@@ -78,8 +76,6 @@ export async function createTestApp(opts: CreateTestAppOptions = {}): Promise<Te
               FaceClusterService,
               EmbeddingService,
               EmbeddingProcessor,
-              OcrService,
-              OcrProcessor,
               DetectService,
               DetectProcessor,
             ]),

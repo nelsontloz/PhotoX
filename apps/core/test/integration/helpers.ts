@@ -22,7 +22,6 @@ import {
   UploadSessionPart,
 } from '../../src/database/entities'
 import { AssetEmbedding } from '../../src/database/entities/asset-embedding.entity'
-import { AssetOcr } from '../../src/database/entities/asset-ocr.entity'
 import { AssetDetection } from '../../src/database/entities/asset-detection.entity'
 import { LocalStorageService } from '@photox/shared-config'
 import { User } from '../../src/users/entities/user.entity'
@@ -37,7 +36,6 @@ import { PersonsModule } from '../../src/persons/persons.module'
 import { FacesModule } from '../../src/faces/faces.module'
 import { EmbeddingsModule } from '../../src/embeddings/embeddings.module'
 import { SearchModule } from '../../src/search/search.module'
-import { OcrModule } from '../../src/ocr/ocr.module'
 import { DetectionsModule } from '../../src/detections/detections.module'
 import { GroupsModule } from '../../src/groups/groups.module'
 import { TextEncodeService } from '../../src/search/text-encode.service'
@@ -87,7 +85,6 @@ export interface ApiTestApp {
   faceRepo: Repository<Face>
   personRepo: Repository<Person>
   embeddingRepo: Repository<AssetEmbedding>
-  ocrRepo: Repository<AssetOcr>
   detectionRepo: Repository<AssetDetection>
   uploadSessionRepo: Repository<UploadSession>
   uploadPartRepo: Repository<UploadSessionPart>
@@ -150,7 +147,6 @@ export async function createApiTestApp(opts?: {
         FacesModule,
         EmbeddingsModule,
         SearchModule,
-        OcrModule,
         DetectionsModule,
         GroupsModule,
         UserFilesModule,
@@ -230,7 +226,6 @@ export async function createApiTestApp(opts?: {
       faceRepo: app.get<Repository<Face>>(getRepositoryToken(Face)),
       personRepo: app.get<Repository<Person>>(getRepositoryToken(Person)),
       embeddingRepo: app.get<Repository<AssetEmbedding>>(getRepositoryToken(AssetEmbedding)),
-      ocrRepo: app.get<Repository<AssetOcr>>(getRepositoryToken(AssetOcr)),
       detectionRepo: app.get<Repository<AssetDetection>>(getRepositoryToken(AssetDetection)),
       uploadSessionRepo: app.get<Repository<UploadSession>>(getRepositoryToken(UploadSession)),
       uploadPartRepo: app.get<Repository<UploadSessionPart>>(getRepositoryToken(UploadSessionPart)),
@@ -248,7 +243,7 @@ export async function createApiTestApp(opts?: {
 
 export async function resetDb(t: ApiTestApp): Promise<void> {
   await t.dataSource.query(
-    'TRUNCATE users, refresh_tokens, albums, album_assets, shares, files, assets, asset_thumbnails, faces, persons, app_settings, asset_embeddings, asset_ocr, asset_detections, places, upload_sessions, upload_session_parts, backup_merges RESTART IDENTITY CASCADE',
+    'TRUNCATE users, refresh_tokens, albums, album_assets, shares, files, assets, asset_thumbnails, faces, persons, app_settings, asset_embeddings, asset_detections, places, upload_sessions, upload_session_parts, backup_merges RESTART IDENTITY CASCADE',
   )
   rmSync(t.storageDir, { recursive: true, force: true })
   await t.storage.ensureDir()

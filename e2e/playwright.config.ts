@@ -4,7 +4,7 @@ import { defineBddProject } from 'playwright-bdd'
 // The stack has global state that forces an ordered serial prologue: 00-serial flips the global
 // `registration.enabled` row (the parallel suite registers users constantly), 04-faces reprocesses/
 // reclusters faces for every user, and 05-semantic's semantic-upload.feature reprocesses embeddings/
-// OCR/ detections for every photo — the parallel suite must not observe those mid-run. Inside
+// detections for every photo — the parallel suite must not observe those mid-run. Inside
 // `setup` the numbered folders run in alphabetical path order — do not rename or reorder them.
 // Everything else is scenario-scoped (each scenario registers its own random user), so the `suite`
 // project — which also runs 01-bootstrap, whose seeded-admin check searches the users table —

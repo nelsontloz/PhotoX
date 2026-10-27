@@ -14,7 +14,6 @@ const USER_JOB_QUEUES = [
   'process-faces',
   'process-faces-cluster',
   'process-embeddings',
-  'process-ocr',
   'process-detect',
 ] as const
 

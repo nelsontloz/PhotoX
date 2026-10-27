@@ -3,7 +3,6 @@ import {
   FaArrowsRotate,
   FaBrain,
   FaFaceSmile,
-  FaFont,
   FaObjectGroup,
   FaSpinner,
   FaWandMagicSparkles,
@@ -276,7 +275,7 @@ export function FacialDetectionCard() {
   return <ReprocessPipelineCard pipeline={pipeline} />
 }
 
-// --- single-pipeline model cards (embeddings / detections / OCR) ------------------------
+// --- single-pipeline model cards (embeddings / detections) ------------------------------
 
 interface ReprocessPipeline<L extends PipelineRun> {
   icon: typeof FaBrain
@@ -494,36 +493,10 @@ const DETECTIONS_PIPELINE: ReprocessPipeline<PipelineRun> = {
   ],
 }
 
-const OCR_PIPELINE: ReprocessPipeline<PipelineRun> = {
-  icon: FaFont,
-  title: 'Text Extraction (OCR)',
-  prose:
-    'Photos are scanned for text automatically on upload. Reprocessing runs OCR over the whole library — text feeds text search.',
-  emptyLabel: 'No OCR reprocess runs yet.',
-  runningLabel: 'Reading text…',
-  progressLabel: 'OCR reprocess progress',
-  buttonLabel: 'Reprocess OCR text',
-  dialogTitle: 'Reprocess OCR text?',
-  dialogBody:
-    'This runs OCR over every non-trashed photo. Extracted text feeds text search as jobs finish. The worker runs in the background, so large libraries take a while.',
-  getStatus: () => getPipelineStatus<PipelineRun>('ocr'),
-  reprocess: () => reprocessPipeline<PipelineResponse>('ocr'),
-  resultText: (res) =>
-    `Queued ${res.enqueued.toLocaleString()} OCR jobs for ${res.total.toLocaleString()} photos.`,
-  statRows: (status) => [
-    { label: 'Last run', value: lastRunValue(status?.lastRun ?? null) },
-    { label: 'Queue', value: queueValue(status) },
-  ],
-}
-
 export function EmbeddingsReprocessSection() {
   return <ReprocessPipelineCard pipeline={EMBEDDINGS_PIPELINE} />
 }
 
 export function DetectionsReprocessSection() {
   return <ReprocessPipelineCard pipeline={DETECTIONS_PIPELINE} />
-}
-
-export function OcrReprocessSection() {
-  return <ReprocessPipelineCard pipeline={OCR_PIPELINE} />
 }

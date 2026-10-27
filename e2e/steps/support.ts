@@ -46,7 +46,7 @@ export interface SemanticUpload {
   assetId: string
 }
 
-export type ReprocessKind = 'embedding' | 'ocr' | 'detection'
+export type ReprocessKind = 'embedding' | 'detection'
 
 export interface ReprocessRun {
   enqueued: number
