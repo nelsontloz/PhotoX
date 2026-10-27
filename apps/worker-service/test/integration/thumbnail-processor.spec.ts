@@ -42,22 +42,26 @@ describe('ThumbnailProcessor (integration)', () => {
       })
 
       const queue = testApp.getQueue('process-thumbnail')
-      const job = await queue.add(
-        'thumbnail',
-        signJob({
-          assetId: asset.id,
-          fileId: record.id,
-          size: 'sm',
-          userId,
-        }),
-      )
+      const payload = signJob({
+        assetId: asset.id,
+        fileId: record.id,
+        size: 'sm',
+        userId,
+      })
+      const job = await queue.add('thumbnail', payload)
 
       expect(await waitForJob(queue, job.id!)).toBe('completed')
 
       const thumb = testApp.fake.thumbnails[0]!
       expect(thumb).toMatchObject({ assetId: asset.id, size: 'sm' })
 
-      const dto = testApp.fake.callsOf('registerFile')[0]!.args[0] as RegisterFileInput
+      const registerFileCall = testApp.fake.callsOf('registerFile')[0]!
+      const dto = registerFileCall.args[0] as RegisterFileInput
+      // the register-file route carries no asset id, so its binding rides the scope too
+      expect(registerFileCall.binding).toEqual({ sig: payload.sig, scope: asset.id })
+      expect(testApp.fake.callsOf('registerThumbnail').at(-1)!.binding).toEqual({
+        sig: payload.sig,
+      })
       expect(dto).toMatchObject({
         kind: 'thumbnail',
         ext: 'webp',

@@ -142,8 +142,13 @@ export class FakeCoreClient {
     return Promise.resolve({ ...asset })
   }
 
-  patchMetadata(userId: string, assetId: string, dto: MetadataPatch): Promise<void> {
-    this.calls.push({ method: 'patchMetadata', args: [assetId, dto] })
+  patchMetadata(
+    userId: string,
+    assetId: string,
+    dto: MetadataPatch,
+    binding?: JobBinding,
+  ): Promise<void> {
+    this.calls.push({ method: 'patchMetadata', args: [assetId, dto], binding })
     const asset = this.assets.get(assetId)
     if (asset?.userId !== userId) {
       return Promise.reject(new UnrecoverableError(`Asset not found: ${assetId}`))
@@ -161,8 +166,8 @@ export class FakeCoreClient {
     return Promise.resolve()
   }
 
-  registerFile(userId: string, dto: RegisterFileInput): Promise<FileRecord> {
-    this.calls.push({ method: 'registerFile', args: [dto] })
+  registerFile(userId: string, dto: RegisterFileInput, binding?: JobBinding): Promise<FileRecord> {
+    this.calls.push({ method: 'registerFile', args: [dto], binding })
     const purpose = dto.kind === 'transcode' ? 'transcode' : 'original'
     const dedupeKey = `${dto.checksumSha256}:${purpose}:${dto.assetId ?? ''}`
     const existingId = this.dedupeRegistrations
@@ -189,8 +194,13 @@ export class FakeCoreClient {
     return Promise.resolve({ ...record })
   }
 
-  registerThumbnail(userId: string, assetId: string, dto: RegisterThumbnailInput): Promise<void> {
-    this.calls.push({ method: 'registerThumbnail', args: [assetId, dto] })
+  registerThumbnail(
+    userId: string,
+    assetId: string,
+    dto: RegisterThumbnailInput,
+    binding?: JobBinding,
+  ): Promise<void> {
+    this.calls.push({ method: 'registerThumbnail', args: [assetId, dto], binding })
     const err = this.assetError(userId, assetId)
     if (err) return Promise.reject(err)
     this.thumbnails.push({ assetId, ...dto })
@@ -201,8 +211,9 @@ export class FakeCoreClient {
     userId: string,
     assetId: string,
     faces: DetectedFaceInput[],
+    binding?: JobBinding,
   ): Promise<{ count: number }> {
-    this.calls.push({ method: 'registerFaces', args: [assetId, faces] })
+    this.calls.push({ method: 'registerFaces', args: [assetId, faces], binding })
     const err = this.assetError(userId, assetId)
     if (err) return Promise.reject(err)
     this.faces.set(assetId, [...(this.faces.get(assetId) ?? []), ...faces])
@@ -213,15 +224,21 @@ export class FakeCoreClient {
     userId: string,
     assetId: string,
     dto: RegisterEmbeddingRequestDto,
+    binding?: JobBinding,
   ): Promise<void> {
-    this.calls.push({ method: 'registerEmbedding', args: [assetId, dto] })
+    this.calls.push({ method: 'registerEmbedding', args: [assetId, dto], binding })
     const err = this.assetError(userId, assetId)
     if (err) return Promise.reject(err)
     return Promise.resolve()
   }
 
-  registerOcr(userId: string, assetId: string, dto: RegisterOcrRequestDto): Promise<void> {
-    this.calls.push({ method: 'registerOcr', args: [assetId, dto] })
+  registerOcr(
+    userId: string,
+    assetId: string,
+    dto: RegisterOcrRequestDto,
+    binding?: JobBinding,
+  ): Promise<void> {
+    this.calls.push({ method: 'registerOcr', args: [assetId, dto], binding })
     const err = this.assetError(userId, assetId)
     if (err) return Promise.reject(err)
     return Promise.resolve()
@@ -231,15 +248,20 @@ export class FakeCoreClient {
     userId: string,
     assetId: string,
     dto: RegisterDetectionsRequestDto,
+    binding?: JobBinding,
   ): Promise<void> {
-    this.calls.push({ method: 'registerDetections', args: [assetId, dto] })
+    this.calls.push({ method: 'registerDetections', args: [assetId, dto], binding })
     const err = this.assetError(userId, assetId)
     if (err) return Promise.reject(err)
     return Promise.resolve()
   }
 
-  deleteAssetFaces(userId: string, assetId: string): Promise<{ deleted: number }> {
-    this.calls.push({ method: 'deleteAssetFaces', args: [assetId] })
+  deleteAssetFaces(
+    userId: string,
+    assetId: string,
+    binding?: JobBinding,
+  ): Promise<{ deleted: number }> {
+    this.calls.push({ method: 'deleteAssetFaces', args: [assetId], binding })
     const err = this.assetError(userId, assetId)
     if (err) return Promise.reject(err)
     const deleted = this.faces.get(assetId)?.length ?? 0
@@ -267,8 +289,12 @@ export class FakeCoreClient {
     )
   }
 
-  applyClusters(userId: string, payload: ApplyClustersPayload): Promise<ApplyClustersResult> {
-    this.calls.push({ method: 'applyClusters', args: [userId, payload] })
+  applyClusters(
+    userId: string,
+    payload: ApplyClustersPayload,
+    binding?: JobBinding,
+  ): Promise<ApplyClustersResult> {
+    this.calls.push({ method: 'applyClusters', args: [userId, payload], binding })
     this.applyClustersCalls.push(payload)
     // mirror core's writes so a re-run sees the faces as assigned
     for (const create of payload.creates) {
@@ -283,8 +309,8 @@ export class FakeCoreClient {
     return Promise.resolve({ created: payload.creates.length, assigned: new Set(faceIds).size })
   }
 
-  pruneEmptyPersons(userId: string): Promise<{ deleted: number }> {
-    this.calls.push({ method: 'pruneEmptyPersons', args: [userId] })
+  pruneEmptyPersons(userId: string, binding?: JobBinding): Promise<{ deleted: number }> {
+    this.calls.push({ method: 'pruneEmptyPersons', args: [userId], binding })
     return Promise.resolve({ deleted: 0 })
   }
 

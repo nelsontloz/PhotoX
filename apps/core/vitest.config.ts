@@ -6,7 +6,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    passWithNoTests: true,
+    // a typo'd filter or a moved spec dir must fail, not report a green empty run
+    passWithNoTests: false,
     // Split so container-backed integration specs get headroom without loosening the
     // tight defaults for unit specs: each integration test does DB + HTTP roundtrips
     // whose latency stretches under parallel-load contention (observed as 5s-timeout

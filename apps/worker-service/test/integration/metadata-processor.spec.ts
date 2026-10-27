@@ -64,8 +64,9 @@ describe('MetadataProcessor (integration)', () => {
 
   async function runMetadata(assetId: string, fileId: string, userId: string) {
     const queue = testApp.getQueue('process-metadata')
-    const job = await queue.add('metadata', signJob({ assetId, fileId, userId }))
-    return { queue, job }
+    const data = signJob({ assetId, fileId, userId })
+    const job = await queue.add('metadata', data)
+    return { queue, job, sig: data.sig }
   }
 
   it('extracts dimensions and EXIF from a real JPEG', async () => {
@@ -86,7 +87,7 @@ describe('MetadataProcessor (integration)', () => {
       ext: 'jpg',
     })
 
-    const { queue, job } = await runMetadata(asset.id, record.id, userId)
+    const { queue, job, sig } = await runMetadata(asset.id, record.id, userId)
     expect(await waitForJob(queue, job.id!)).toBe('completed')
 
     const updated = testApp.fake.assets.get(asset.id)!
@@ -101,10 +102,12 @@ describe('MetadataProcessor (integration)', () => {
     expect(updated.sizeBytes).toBe(bytes.length)
     expect(updated.metadataExtractedAt).toBeTruthy()
 
-    expect(testApp.fake.callsOf('patchMetadata').at(-1)!.args[1]).toMatchObject({
+    const successPatch = testApp.fake.callsOf('patchMetadata').at(-1)!
+    expect(successPatch.args[1]).toMatchObject({
       status: 'ready',
       metadata: null,
     })
+    expect(successPatch.binding).toEqual({ sig, scope: asset.id })
   })
 
   it('reports display dimensions and offset-corrected takenAt for a rotated phone JPEG', async () => {
@@ -216,10 +219,13 @@ describe('MetadataProcessor (integration)', () => {
     const asset = makeAsset({ id: randomUUID(), userId, fileId, kind: 'photo' })
     testApp.fake.assets.set(asset.id, asset)
 
-    const { queue, job } = await runMetadata(asset.id, fileId, userId)
+    const { queue, job, sig } = await runMetadata(asset.id, fileId, userId)
     expect(await waitForJob(queue, job.id!)).toBe('failed')
 
-    expect(testApp.fake.callsOf('patchMetadata').at(-1)!.args[1]).toEqual({ status: 'failed' })
+    const failurePatch = testApp.fake.callsOf('patchMetadata').at(-1)!
+    expect(failurePatch.args[1]).toEqual({ status: 'failed' })
+    // patchStatusFailed threads the signature alone — the route derives the scope from the path
+    expect(failurePatch.binding).toEqual({ sig })
     expect(testApp.fake.assets.get(asset.id)!.metadataStatus).toBe('failed')
   })
 

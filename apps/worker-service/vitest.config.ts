@@ -6,7 +6,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    passWithNoTests: true,
+    // a typo'd filter or a moved spec dir must fail, not report a green empty run
+    passWithNoTests: false,
     testTimeout: 60_000,
     hookTimeout: 120_000,
     // Split so the shared Redis container is only started for the integration project: the

@@ -8,7 +8,6 @@ import { TEST_AUTH_SECRET_PREVIOUS, TEST_WORKER_SECRET } from './test-setup'
 import { ACCESS_COOKIE } from '../../src/auth/auth-cookie'
 import { RATE_LIMITS } from '../../src/users/rate-limit.service'
 import { BullMqService } from '../../src/queue/bullmq.service'
-import { Share } from '../../src/shares/entities/share.entity'
 import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
 import {
   apiServer,
@@ -226,11 +225,35 @@ describe('issue-157 vulns (expect secure, currently insecure)', () => {
     }
   })
 
-  it('#12a share expiry: Share rows carry an expiresAt bound', () => {
-    // issue-157#12: shares must expire — FAILS today because share.entity.ts:21-50 has no
-    // expiresAt column and getByToken never checks one
-    const columns = t.dataSource.getMetadata(Share).columns.map((c) => c.propertyName)
-    expect(columns).toContain('expiresAt')
+  it('#12a share expiry: an expired share is 404 on JSON and stream, a fresh one is 200', async () => {
+    // issue-157#12: shares must expire — the JSON path (getByToken) and the stream path
+    // (getAssetStreamTarget) both enforce expiresAt, and a fresh share proves the 404 is expiry
+    const u = await seedUser(t)
+    const file = await seedFile(t, u.id)
+    const asset = await seedAsset(t, u.id, file.id)
+    const auth = t.authHeader(t.signToken({ id: u.id, email: u.email, role: u.role }))
+    const created = await request(apiServer(t))
+      .post('/api/v1/shares')
+      .set(auth)
+      .send({ assetId: asset.id })
+    expect(created.status).toBe(201)
+    const { id, token } = created.body as unknown as { id: string; token: string }
+
+    await t.shareRepo.update(id, { expiresAt: new Date(Date.now() - 1000) })
+
+    expect((await request(apiServer(t)).get(`/api/share/${token}`)).status).toBe(404)
+    expect((await request(apiServer(t)).get(`/api/share/${token}/stream`)).status).toBe(404)
+
+    // control: expiry, not a broken token — a fresh share from the same user still resolves
+    const freshFile = await seedFile(t, u.id)
+    const freshAsset = await seedAsset(t, u.id, freshFile.id)
+    const fresh = await request(apiServer(t))
+      .post('/api/v1/shares')
+      .set(auth)
+      .send({ assetId: freshAsset.id })
+    expect(fresh.status).toBe(201)
+    const freshToken = (fresh.body as unknown as { token: string }).token
+    expect((await request(apiServer(t)).get(`/api/share/${freshToken}`)).status).toBe(200)
   })
 
   it('#12b share rotation: re-sharing an asset mints a new token', async () => {
@@ -272,9 +295,9 @@ describe('issue-157 vulns (expect secure, currently insecure)', () => {
     )
     expect(pub.status).toBe(200)
     const body = pub.body as unknown as { asset: Record<string, unknown> }
-    expect(Object.keys(body.asset)).toEqual(
-      expect.not.arrayContaining(['fileId', 'transcodeFileId', 'userId']),
-    )
+    for (const key of ['fileId', 'transcodeFileId', 'userId']) {
+      expect(body.asset).not.toHaveProperty(key)
+    }
   })
 
   it('#13 cookie flags: Secure follows X-Forwarded-Proto (https yes, plain http no)', async () => {
