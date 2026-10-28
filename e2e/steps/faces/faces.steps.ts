@@ -222,10 +222,21 @@ Then('the admin page shows the last face reprocess run', async ({ page }) => {
 
 Given('I seed two matching faces on my latest photo', async ({ request, ctx }) => {
   const auth = requireAuth(ctx)
-  const response = await request.get('/api/v1/assets?limit=1', { headers: authHeaders(auth) })
-  expect(response.status()).toBe(200)
-  const list = (await response.json()) as { items?: { id: string }[] }
-  const assetId = list.items?.[0]?.id
+  // the upload just happened: the timeline gate hides it from list reads until metadata +
+  // thumbnail settle, so poll instead of assuming the first read sees it
+  let assetId: string | undefined
+  await expect
+    .poll(
+      async () => {
+        const response = await request.get('/api/v1/assets?limit=1', { headers: authHeaders(auth) })
+        expect(response.status()).toBe(200)
+        const list = (await response.json()) as { items?: { id: string }[] }
+        assetId = list.items?.[0]?.id
+        return assetId
+      },
+      { timeout: 60_000 },
+    )
+    .toBeTruthy()
   if (!assetId) throw new Error('no asset found — upload one first')
   // identical embeddings -> one DBSCAN cluster -> one person with two faces
   await seedFaces(request, auth, assetId, [

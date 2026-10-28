@@ -82,6 +82,10 @@ function TimelineContent() {
 
   if (timeline.loading) return <LoadingState />
 
+  // An upload can still be processing (hidden by core's gate): show the loading state instead of
+  // claiming the library is empty while the poll is about to fill it in.
+  if (timeline.layout.buckets.length === 0 && timeline.pending > 0) return <LoadingState />
+
   if (timeline.layout.buckets.length === 0)
     return (
       <div className="flex flex-col items-center justify-center py-24 px-4 text-center max-w-lg mx-auto">
