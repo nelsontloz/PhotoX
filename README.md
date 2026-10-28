@@ -36,11 +36,22 @@ OS-discretionary; see [Background behaviour](#background-behaviour).
 
 ## Default scope
 
-- **Camera roll only** (`source: cameraRoll`); other albums are not scanned.
+- **Camera album by default.** The pipeline scans the camera album (DCIM/Camera
+  on Android, Recents on iOS) unless a folder selection is stored; Settings →
+  Folders can pick specific albums or turn on "All folders" (`uploadAllFolders`).
+  If the platform exposes no recognisable camera album, or the album listing
+  fails, the pass falls back to the whole library rather than scanning nothing.
+  Selected albums are deduped by asset id, since a photo can live in several.
 - **Photos only by default.** Videos are opt-in in Settings
   (`includeVideos: false`).
 - Backfill of pre-existing assets is on by default (`backfill: true`).
-- Wi-Fi only is on by default (`wifiOnly: true`); charging-only is off.
+- Wi-Fi only is on by default (`wifiOnly: true`); charging-only is off. The
+  background worker gets this from the OS (WorkManager `Constraints`); every
+  foreground/resume pass re-checks the link itself (`NetworkStatus`) and stops
+  before uploading when it is metered — discovery still runs, uploads wait.
+- Backups can be paused from the home screen (`AppSettings.paused`); a paused
+  pass holds before scanning and between assets, in foreground and background
+  alike, until the user resumes.
 - RAW/DNG/TIFF/MKV and other formats the core rejects are filtered client-side
   before they reach the wire.
 
@@ -56,7 +67,8 @@ flutter run --dart-define=PHOTOX_API_URL=http://localhost:3000
 ```
 
 Toolchain: Flutter 3.47 stable / Dart 3.13, drift, Dio, Workmanager,
-photo_manager, flutter_secure_storage. (`background_downloader` is declared
+photo_manager, flutter_secure_storage, connectivity_plus. (`background_downloader`
+is declared
 for a possible native-transfer path but is not used yet; background work runs
 through Workmanager + Dio.)
 
@@ -67,7 +79,7 @@ codegen and commit the regenerated file.
 
 | Setting | Default | How |
 | --- | --- | --- |
-| Core API URL | `http://localhost:3000` | `--dart-define=PHOTOX_API_URL=...` |
+| Core API URL | prefilled `http://localhost:3000` | First-launch "Connect your server" screen (persisted in the drift `KeyValues` table); `--dart-define=PHOTOX_API_URL=...` only pre-fills that field |
 | Single-upload threshold | 64 MiB | `AppConfig.singleUploadThresholdBytes` (client policy, not a server limit) |
 | Session part size | 8 MiB | Fixed by the core upload-session contract |
 | Max upload | 4 GiB | Core limit |

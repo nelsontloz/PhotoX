@@ -5,6 +5,17 @@ import 'ui/home_screen.dart';
 import 'ui/login_screen.dart';
 import 'ui/settings_screen.dart';
 
+/// Dark Material 3 theme shared by the shell and the first-launch screens.
+ThemeData photoXTheme() {
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: const Color(0xFF4C6FFF),
+      brightness: Brightness.dark,
+    ),
+  );
+}
+
 /// Root widget of the PhotoX mobile app; dark Material 3 by default.
 class PhotoXApp extends StatefulWidget {
   const PhotoXApp({super.key, required this.controller});
@@ -30,24 +41,23 @@ class _PhotoXAppState extends State<PhotoXApp> {
         debugShowCheckedModeBanner: false,
         navigatorKey: _navigatorKey,
         themeMode: ThemeMode.dark,
-        darkTheme: ThemeData(
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF4C6FFF),
-            brightness: Brightness.dark,
-          ),
-        ),
+        darkTheme: photoXTheme(),
         home: controller.isSignedIn
             ? HomeScreen(
                 stats: controller.stats,
+                progress: controller.progress,
                 permission: controller.permission,
                 syncing: controller.syncing,
+                paused: controller.paused,
                 authRequired: controller.authRequired,
                 lastReport: controller.lastReport,
                 error: controller.error,
                 onSyncNow: controller.syncNow,
+                onPause: controller.pause,
+                onResume: controller.resume,
                 onOpenSettings: _openSettings,
                 onSignOut: controller.signOut,
+                thumbnail: controller.thumbnail,
               )
             : LoginScreen(
                 onSignIn: controller.signIn,
@@ -66,6 +76,7 @@ class _PhotoXAppState extends State<PhotoXApp> {
           builder: (context, _) => SettingsScreen(
             settings: widget.controller.settings,
             onSave: widget.controller.updateSettings,
+            onLoadFolders: widget.controller.folders,
             onSignOut: _signOutFromSettings,
             busy: widget.controller.busy,
           ),

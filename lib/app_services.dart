@@ -9,6 +9,7 @@ import 'media/photo_manager_observer.dart';
 import 'media/photo_observer.dart';
 import 'settings/settings_store.dart';
 import 'sync/sync_coordinator.dart';
+import 'sync/transfer_progress.dart';
 import 'upload/database.dart';
 import 'upload/retry_policy.dart';
 import 'upload/session_client.dart';
@@ -84,9 +85,11 @@ class AppServices {
     PhotoObserver? observer,
     BackgroundScheduler? scheduler,
   }) async {
+    final db = database ?? AppDatabase();
     final services = _build(
       withController: true,
-      database: database,
+      database: db,
+      baseUrl: await _baseUrl(db),
       auth: auth,
       observer: observer,
       scheduler: scheduler,
@@ -102,12 +105,22 @@ class AppServices {
     AuthManager? auth,
     PhotoObserver? observer,
   }) async {
+    final db = database ?? AppDatabase();
     return _build(
       withController: false,
-      database: database,
+      database: db,
+      // The worker isolate must hit the same server the user configured.
+      baseUrl: await _baseUrl(db),
       auth: auth,
       observer: observer,
     );
+  }
+
+  /// Server the user configured at setup, or null to fall back to
+  /// [AppConfig.apiBaseUrl] (nothing stored yet).
+  static Future<String?> _baseUrl(AppDatabase db) async {
+    final url = (await SettingsStore(db).load()).apiBaseUrl;
+    return url.isEmpty ? null : url;
   }
 
   bool _disposed = false;
@@ -130,6 +143,7 @@ class AppServices {
 
   static AppServices _build({
     required bool withController,
+    String? baseUrl,
     AppDatabase? database,
     AuthManager? auth,
     PhotoObserver? observer,
@@ -141,8 +155,14 @@ class AppServices {
         AuthManager(
           store: SecureTokenStore(),
           refreshLock: DriftRefreshLock(db),
+          baseUrl: baseUrl,
         );
-    final api = ApiClient(auth: authManager);
+    final progress = TransferProgress();
+    final api = ApiClient(
+      auth: authManager,
+      baseUrl: baseUrl,
+      progress: progress,
+    );
     final sessions = SessionClient(api);
     final mediaObserver = observer ?? PhotoManagerObserver();
     final queue = UploadQueue(db);
@@ -153,6 +173,7 @@ class AppServices {
       sessionTransport: SessionApiTransport(sessions),
       hasher: const Hasher(),
       observer: mediaObserver,
+      progress: progress,
     );
     final coordinator = SyncCoordinator(
       queue: queue,
@@ -181,6 +202,8 @@ class AppServices {
               coordinator: coordinator,
               settingsStore: settingsStore,
               scheduler: backgroundScheduler,
+              observer: mediaObserver,
+              progress: progress,
             )
           : null,
     );

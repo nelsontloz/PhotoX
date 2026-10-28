@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photox_mobile/media/photo_observer.dart';
 import 'package:photox_mobile/settings/settings_store.dart';
 import 'package:photox_mobile/sync/sync_coordinator.dart';
+import 'package:photox_mobile/sync/transfer_progress.dart';
 import 'package:photox_mobile/ui/home_screen.dart';
 import 'package:photox_mobile/ui/login_screen.dart';
 import 'package:photox_mobile/ui/settings_screen.dart';
@@ -34,6 +37,99 @@ Widget _app(Widget home, {double textScale = 1}) {
 
 Finder _filledButton() {
   return find.byWidgetPredicate((widget) => widget is FilledButton);
+}
+
+/// Home screen with the state the test cares about; everything else is quiet.
+Widget _home({
+  QueueStats stats = const QueueStats(
+    pending: 0,
+    uploaded: 0,
+    duplicate: 0,
+    failed: 0,
+  ),
+  TransferProgress? progress,
+  PhotoPermission permission = PhotoPermission.authorized,
+  bool syncing = false,
+  bool paused = false,
+  bool authRequired = false,
+  SyncReport? lastReport,
+  String? error,
+  Future<void> Function()? onSyncNow,
+  Future<void> Function()? onPause,
+  Future<void> Function()? onResume,
+  VoidCallback? onOpenSettings,
+  Future<void> Function()? onSignOut,
+  double textScale = 1,
+}) {
+  return _app(
+    HomeScreen(
+      stats: stats,
+      progress: progress ?? TransferProgress(),
+      permission: permission,
+      syncing: syncing,
+      paused: paused,
+      authRequired: authRequired,
+      lastReport: lastReport,
+      error: error,
+      onSyncNow: onSyncNow ?? () async {},
+      onPause: onPause ?? () async {},
+      onResume: onResume ?? () async {},
+      onOpenSettings: onOpenSettings ?? () {},
+      onSignOut: onSignOut ?? () async {},
+    ),
+    textScale: textScale,
+  );
+}
+
+/// A transfer whose clock the test moves by hand, so speeds are deterministic.
+({TransferProgress progress, void Function(Duration elapsed) tick})
+_transfer() {
+  var now = DateTime(2026, 1, 1);
+  return (
+    progress: TransferProgress(clock: () => now),
+    tick: (elapsed) => now = now.add(elapsed),
+  );
+}
+
+/// Two albums, the first flagged as the camera roll.
+const List<MediaFolder> _albums = <MediaFolder>[
+  MediaFolder(id: 'camera', name: 'Camera', assetCount: 120, isCamera: true),
+  MediaFolder(id: 'screens', name: 'Screenshots', assetCount: 12),
+];
+
+/// Settings screen with a fake album list; overrides replace one behaviour.
+Widget _settings({
+  AppSettings settings = const AppSettings(),
+  Future<void> Function(AppSettings settings)? onSave,
+  Future<List<MediaFolder>> Function()? onLoadFolders,
+  Future<void> Function()? onSignOut,
+  double textScale = 1,
+}) {
+  return _app(
+    SettingsScreen(
+      settings: settings,
+      onSave: onSave ?? (settings) async {},
+      onLoadFolders: onLoadFolders ?? () async => _albums,
+      onSignOut: onSignOut ?? () async {},
+    ),
+    textScale: textScale,
+  );
+}
+
+/// The one-line scope summary in the folders card.
+Future<String> _summary(WidgetTester tester) async {
+  final finder = find.byKey(const Key('folder-scope-summary'));
+  await tester.scrollUntilVisible(finder, 150);
+  await tester.pumpAndSettle();
+  return tester.widget<Text>(finder).data!;
+}
+
+/// Scrolls [finder] into view, then taps it.
+Future<void> _tapInView(WidgetTester tester, Finder finder) async {
+  await tester.scrollUntilVisible(finder, 150);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -151,23 +247,16 @@ void main() {
         ..remaining = 4;
 
       await tester.pumpWidget(
-        _app(
-          HomeScreen(
-            stats: const QueueStats(
-              pending: 4,
-              uploaded: 12,
-              duplicate: 3,
-              failed: 1,
-            ),
-            permission: PhotoPermission.denied,
-            syncing: false,
-            authRequired: false,
-            lastReport: report,
-            error: 'The network is unavailable.',
-            onSyncNow: () async {},
-            onOpenSettings: () {},
-            onSignOut: () async {},
+        _home(
+          stats: const QueueStats(
+            pending: 4,
+            uploaded: 12,
+            duplicate: 3,
+            failed: 1,
           ),
+          permission: PhotoPermission.denied,
+          lastReport: report,
+          error: 'The network is unavailable.',
         ),
       );
       await tester.pumpAndSettle();
@@ -200,24 +289,7 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        _app(
-          HomeScreen(
-            stats: const QueueStats(
-              pending: 0,
-              uploaded: 0,
-              duplicate: 0,
-              failed: 0,
-            ),
-            permission: PhotoPermission.authorized,
-            syncing: false,
-            authRequired: true,
-            lastReport: null,
-            error: 'Session expired.',
-            onSyncNow: () async {},
-            onOpenSettings: () {},
-            onSignOut: () async {},
-          ),
-        ),
+        _home(authRequired: true, error: 'Session expired.'),
       );
       await tester.pump();
 
@@ -238,31 +310,12 @@ void main() {
         (
           PhotoPermission.notDetermined,
           'Photo access not set up',
-          'Tap Sync now to let PhotoX read your camera roll.',
+          'Tap the button below to let PhotoX read your camera roll.',
         ),
       ];
 
       for (final (permission, title, message) in cases) {
-        await tester.pumpWidget(
-          _app(
-            HomeScreen(
-              stats: const QueueStats(
-                pending: 0,
-                uploaded: 0,
-                duplicate: 0,
-                failed: 0,
-              ),
-              permission: permission,
-              syncing: false,
-              authRequired: false,
-              lastReport: null,
-              error: null,
-              onSyncNow: () async {},
-              onOpenSettings: () {},
-              onSignOut: () async {},
-            ),
-          ),
-        );
+        await tester.pumpWidget(_home(permission: permission));
         await tester.pump();
 
         expect(find.text(title), findsOneWidget);
@@ -275,27 +328,13 @@ void main() {
       var settingsOpened = 0;
 
       await tester.pumpWidget(
-        _app(
-          HomeScreen(
-            stats: const QueueStats(
-              pending: 0,
-              uploaded: 0,
-              duplicate: 0,
-              failed: 0,
-            ),
-            permission: PhotoPermission.authorized,
-            syncing: false,
-            authRequired: false,
-            lastReport: null,
-            error: null,
-            onSyncNow: () async {
-              syncs++;
-            },
-            onOpenSettings: () {
-              settingsOpened++;
-            },
-            onSignOut: () async {},
-          ),
+        _home(
+          onSyncNow: () async {
+            syncs++;
+          },
+          onOpenSettings: () {
+            settingsOpened++;
+          },
         ),
       );
 
@@ -308,37 +347,257 @@ void main() {
       expect(settingsOpened, 1);
     });
 
-    testWidgets('disables Sync now while a pass is running', (tester) async {
+    testWidgets('a running pass swaps Sync now for Pause', (tester) async {
       var syncs = 0;
+      var pauses = 0;
       await tester.pumpWidget(
-        _app(
-          HomeScreen(
-            stats: const QueueStats(
-              pending: 0,
-              uploaded: 0,
-              duplicate: 0,
-              failed: 0,
-            ),
-            permission: PhotoPermission.authorized,
-            syncing: true,
-            authRequired: false,
-            lastReport: null,
-            error: null,
-            onSyncNow: () async {
-              syncs++;
-            },
-            onOpenSettings: () {},
-            onSignOut: () async {},
-          ),
+        _home(
+          syncing: true,
+          onSyncNow: () async {
+            syncs++;
+          },
+          onPause: () async {
+            pauses++;
+          },
         ),
       );
 
-      expect(find.text('Syncing…'), findsOneWidget);
-      expect(tester.widget<FilledButton>(_filledButton()).onPressed, isNull);
+      expect(find.text('Pause'), findsOneWidget);
+      expect(find.text('Sync now'), findsNothing);
+      expect(find.text('Syncing'), findsOneWidget);
 
-      await tester.tap(find.text('Syncing…'));
+      await tester.tap(find.text('Pause'));
       await tester.pump();
+
+      expect(pauses, 1);
       expect(syncs, 0);
+    });
+
+    testWidgets('paused shows Resume backup and no error or Wi-Fi hold', (
+      tester,
+    ) async {
+      var resumes = 0;
+      // The pass that was running when the user paused may still report a
+      // Wi-Fi hold; it must not outlive the pause.
+      final report = SyncReport(permission: PhotoPermission.authorized)
+        ..waitingForWifi = true
+        ..remaining = 2;
+
+      await tester.pumpWidget(
+        _home(
+          paused: true,
+          lastReport: report,
+          onResume: () async {
+            resumes++;
+          },
+        ),
+      );
+
+      expect(find.text('Resume backup'), findsOneWidget);
+      expect(find.text('Paused'), findsOneWidget);
+      expect(find.text('Sync now'), findsNothing);
+      expect(find.text('Pause'), findsNothing);
+      expect(find.text('Wi-Fi only is on'), findsNothing);
+
+      await tester.tap(find.text('Resume backup'));
+      await tester.pump();
+      expect(resumes, 1);
+    });
+
+    testWidgets('a Wi-Fi hold explains why uploads are waiting', (
+      tester,
+    ) async {
+      final report = SyncReport(permission: PhotoPermission.authorized)
+        ..scanned = 4
+        ..enqueued = 2
+        ..waitingForWifi = true
+        ..remaining = 2;
+
+      await tester.pumpWidget(_home(lastReport: report));
+
+      expect(find.text('Waiting for Wi-Fi'), findsOneWidget);
+      expect(find.text('Wi-Fi only is on'), findsOneWidget);
+      expect(
+        find.text(
+          'Uploads wait until Wi-Fi is available. New photos stay queued on '
+          'this phone.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Sync now'), findsOneWidget);
+    });
+
+    testWidgets('shows photo and video counts with overall progress', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _home(
+          stats: const QueueStats(
+            pending: 100,
+            uploaded: 1184,
+            duplicate: 24,
+            failed: 3,
+            photos: 1284,
+            videos: 37,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Photos 1,284 · Videos 37'), findsOneWidget);
+      expect(find.text('91%'), findsOneWidget);
+      expect(find.text('1,208 of 1,321 backed up'), findsOneWidget);
+
+      final bar = tester.widget<LinearProgressIndicator>(
+        find.byKey(const Key('backup-overall-progress')),
+      );
+      expect(bar.value, closeTo(1208 / 1321, 0.0001));
+    });
+
+    testWidgets('overall progress starts at zero', (tester) async {
+      await tester.pumpWidget(
+        _home(
+          stats: const QueueStats(
+            pending: 8,
+            uploaded: 0,
+            duplicate: 0,
+            failed: 0,
+            photos: 8,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('0%'), findsOneWidget);
+      expect(find.text('0 of 8 backed up'), findsOneWidget);
+      final bar = tester.widget<LinearProgressIndicator>(
+        find.byKey(const Key('backup-overall-progress')),
+      );
+      expect(bar.value, 0);
+    });
+
+    testWidgets('an active transfer shows its speed, and idle hides it', (
+      tester,
+    ) async {
+      final transfer = _transfer();
+      final progress = transfer.progress
+        ..begin(
+          localId: 'asset-1',
+          fileName: 'IMG_4821.HEIC',
+          totalBytes: 48000000,
+          phase: TransferPhase.uploading,
+        );
+
+      await tester.pumpWidget(_home(syncing: true, progress: progress));
+      await tester.pump();
+
+      // A full sample window is needed before the speed is measurable.
+      expect(find.textContaining('/s'), findsNothing);
+
+      // The panel listens to the notifier, so a later chunk updates the speed.
+      transfer.tick(const Duration(seconds: 1));
+      progress.advance(12000000);
+      await tester.pump();
+
+      expect(find.text('12.0 MB/s'), findsOneWidget);
+
+      // Nothing in flight: the speed goes away entirely.
+      await tester.pumpWidget(
+        _home(
+          stats: const QueueStats(
+            pending: 2,
+            uploaded: 3,
+            duplicate: 0,
+            failed: 0,
+            photos: 4,
+            videos: 1,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.textContaining('/s'), findsNothing);
+      expect(find.text('3 of 5 backed up'), findsOneWidget);
+    });
+
+    testWidgets('a paused transfer hides the speed and says why', (
+      tester,
+    ) async {
+      final transfer = _transfer();
+      final progress = transfer.progress
+        ..begin(
+          localId: 'asset-1',
+          fileName: 'IMG_4821.HEIC',
+          totalBytes: 48000000,
+          phase: TransferPhase.uploading,
+        );
+      transfer.tick(const Duration(seconds: 1));
+      progress.advance(12000000);
+
+      await tester.pumpWidget(
+        _home(syncing: true, paused: true, progress: progress),
+      );
+      await tester.pump();
+
+      expect(find.text('Pausing'), findsOneWidget);
+      expect(find.textContaining('/s'), findsNothing);
+      expect(
+        find.text('Backups are paused. Resume when you are ready.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('paused with nothing in flight says so in the progress card', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_home(paused: true));
+      await tester.pump();
+
+      expect(
+        find.text('Backups are paused. Resume when you are ready.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('/s'), findsNothing);
+    });
+
+    testWidgets('the progress header holds up on a narrow screen', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final transfer = _transfer();
+      final progress = transfer.progress
+        ..begin(
+          localId: 'asset-1',
+          fileName: 'IMG_4821.HEIC',
+          totalBytes: 48000000,
+          phase: TransferPhase.uploading,
+        );
+      transfer.tick(const Duration(seconds: 1));
+      progress.advance(12000000);
+
+      await tester.pumpWidget(
+        _home(
+          syncing: true,
+          progress: progress,
+          stats: const QueueStats(
+            pending: 1284,
+            uploaded: 1184,
+            duplicate: 24,
+            failed: 3,
+            photos: 1284,
+            videos: 37,
+          ),
+          textScale: 1.5,
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('91%'), findsOneWidget);
+      expect(find.text('12.0 MB/s'), findsOneWidget);
     });
   });
 
@@ -346,13 +605,7 @@ void main() {
     testWidgets('toggling switches saves the updated settings', (tester) async {
       final saved = <AppSettings>[];
       await tester.pumpWidget(
-        _app(
-          SettingsScreen(
-            settings: const AppSettings(),
-            onSave: (settings) async => saved.add(settings),
-            onSignOut: () async {},
-          ),
-        ),
+        _settings(onSave: (settings) async => saved.add(settings)),
       );
 
       await tester.tap(find.text('Wi-Fi only'));
@@ -378,14 +631,10 @@ void main() {
     ) async {
       var signOuts = 0;
       await tester.pumpWidget(
-        _app(
-          SettingsScreen(
-            settings: const AppSettings(),
-            onSave: (settings) async {},
-            onSignOut: () async {
-              signOuts++;
-            },
-          ),
+        _settings(
+          onSignOut: () async {
+            signOuts++;
+          },
         ),
       );
 
@@ -423,6 +672,136 @@ void main() {
 
       expect(signOuts, 1);
     });
+
+    testWidgets('names the backup scope at a glance', (tester) async {
+      await tester.pumpWidget(_settings());
+      await tester.pumpAndSettle();
+      expect(await _summary(tester), 'Camera folder');
+
+      await tester.pumpWidget(
+        _settings(
+          settings: const AppSettings(
+            uploadFolderIds: <String>['camera', 'screens'],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(await _summary(tester), '2 folders: Camera, Screenshots');
+
+      await tester.pumpWidget(
+        _settings(settings: const AppSettings(uploadAllFolders: true)),
+      );
+      await tester.pumpAndSettle();
+      expect(await _summary(tester), 'All folders');
+    });
+
+    testWidgets('picking an album saves just that folder', (tester) async {
+      final saved = <AppSettings>[];
+      await tester.pumpWidget(
+        _settings(onSave: (settings) async => saved.add(settings)),
+      );
+      await tester.pumpAndSettle();
+
+      // The library is only read once the picker is opened.
+      expect(find.text('Screenshots'), findsNothing);
+
+      await _tapInView(tester, find.byKey(const Key('folder-scope-picker')));
+
+      expect(find.text('Camera album · 120 items'), findsOneWidget);
+      expect(find.text('12 items'), findsOneWidget);
+      expect(
+        find.text('Nothing picked, so the camera folder is used.'),
+        findsOneWidget,
+      );
+
+      await _tapInView(tester, find.text('Screenshots'));
+
+      expect(saved, hasLength(1));
+      expect(saved.single.uploadFolderIds, <String>['screens']);
+      expect(saved.single.uploadAllFolders, isFalse);
+      expect(await _summary(tester), '1 folder: Screenshots');
+
+      // Dropping the last album leaves the camera album, not "nothing".
+      await _tapInView(tester, find.text('Screenshots'));
+
+      expect(saved, hasLength(2));
+      expect(saved.last.uploadFolderIds, isEmpty);
+      expect(saved.last.uploadAllFolders, isFalse);
+      expect(await _summary(tester), 'Camera folder');
+    });
+
+    testWidgets('the All folders switch saves the whole library', (
+      tester,
+    ) async {
+      final saved = <AppSettings>[];
+      await tester.pumpWidget(
+        _settings(
+          settings: const AppSettings(uploadFolderIds: <String>['camera']),
+          onSave: (settings) async => saved.add(settings),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _tapInView(tester, find.text('All folders'));
+
+      expect(saved, hasLength(1));
+      expect(saved.single.uploadAllFolders, isTrue);
+      expect(saved.single.uploadFolderIds, isEmpty);
+      expect(await _summary(tester), 'All folders');
+      expect(
+        find.text('Every album is included.'),
+        findsNothing,
+        reason: 'the album list is still collapsed',
+      );
+    });
+
+    testWidgets('the picker shows a loading row while albums load', (
+      tester,
+    ) async {
+      final folders = Completer<List<MediaFolder>>();
+      await tester.pumpWidget(_settings(onLoadFolders: () => folders.future));
+
+      final picker = find.byKey(const Key('folder-scope-picker'));
+      await tester.scrollUntilVisible(picker, 150);
+      await tester.pumpAndSettle();
+      await tester.tap(picker);
+      await tester.pump();
+      expect(find.byKey(const Key('folders-loading')), findsOneWidget);
+
+      folders.complete(_albums);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('folders-loading')), findsNothing);
+      expect(find.text('Screenshots'), findsOneWidget);
+    });
+
+    testWidgets('a failed album load explains itself and can retry', (
+      tester,
+    ) async {
+      var calls = 0;
+      await tester.pumpWidget(
+        _settings(
+          onLoadFolders: () async {
+            calls++;
+            if (calls == 1) throw StateError('library unavailable');
+            return _albums;
+          },
+        ),
+      );
+
+      await _tapInView(tester, find.byKey(const Key('folder-scope-picker')));
+
+      expect(find.byKey(const Key('folders-error')), findsOneWidget);
+      expect(find.text('Could not read your albums.'), findsOneWidget);
+      // The rest of the screen is still there.
+      expect(find.text('Settings'), findsOneWidget);
+
+      await _tapInView(tester, find.text('Retry'));
+
+      expect(calls, 2);
+      expect(find.byKey(const Key('folders-error')), findsNothing);
+      expect(find.text('Screenshots'), findsOneWidget);
+    });
   });
 
   testWidgets('all three screens hold up on a narrow screen with large text', (
@@ -442,25 +821,19 @@ void main() {
       ..remaining = 40;
 
     await tester.pumpWidget(
-      _app(
-        HomeScreen(
-          stats: const QueueStats(
-            pending: 40,
-            uploaded: 12874,
-            duplicate: 30,
-            failed: 10,
-          ),
-          permission: PhotoPermission.limited,
-          syncing: false,
-          authRequired: true,
-          lastReport: report,
-          error:
-              'The server could not be reached. Check your connection and try '
-              'Sync now again.',
-          onSyncNow: () async {},
-          onOpenSettings: () {},
-          onSignOut: () async {},
+      _home(
+        stats: const QueueStats(
+          pending: 40,
+          uploaded: 12874,
+          duplicate: 30,
+          failed: 10,
         ),
+        permission: PhotoPermission.limited,
+        authRequired: true,
+        lastReport: report,
+        error:
+            'The server could not be reached. Check your connection and try '
+            'Sync now again.',
         textScale: 1.5,
       ),
     );
@@ -468,22 +841,30 @@ void main() {
     expect(find.text('Sync now'), findsOneWidget);
     expect(find.text('12,874'), findsOneWidget);
 
-    await tester.pumpWidget(
-      _app(
-        SettingsScreen(
-          settings: const AppSettings(),
-          onSave: (settings) async {},
-          onSignOut: () async {},
-        ),
-        textScale: 1.5,
-      ),
-    );
+    await tester.pumpWidget(_settings(textScale: 1.5));
     await tester.pumpAndSettle();
     expect(find.text('Wi-Fi only'), findsOneWidget);
 
+    // The new folder picker is the densest row set; it must not overflow.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('folder-scope-picker')),
+      300,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('folder-scope-picker')));
+    await tester.pumpAndSettle();
+    expect(await _summary(tester), 'Camera folder');
+
+    await tester.scrollUntilVisible(find.text('Screenshots'), 200);
+    await tester.pumpAndSettle();
+    expect(find.text('12 items'), findsOneWidget);
+
     await tester.scrollUntilVisible(find.text('Sign out'), 300);
     await tester.pumpAndSettle();
-    expect(find.text('Read only'), findsOneWidget);
+    expect(
+      find.textContaining('Backups stop until you sign in again.'),
+      findsOneWidget,
+    );
 
     await tester.pumpWidget(
       _app(

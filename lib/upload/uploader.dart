@@ -7,6 +7,7 @@ import '../core/app_config.dart';
 import '../core/auth_models.dart';
 import '../media/hasher.dart';
 import '../media/photo_observer.dart';
+import '../sync/transfer_progress.dart';
 import 'database.dart';
 import 'models.dart';
 import 'transports.dart';
@@ -120,6 +121,7 @@ class Uploader {
     String? spoolDirectory,
     int? thresholdBytes,
     this.maxPartsPerPass = 8,
+    this.progress,
   }) : spoolDirectory =
            spoolDirectory ?? '${Directory.systemTemp.path}/photox-upload-spool',
        thresholdBytes = thresholdBytes ?? AppConfig.singleUploadThresholdBytes;
@@ -148,6 +150,9 @@ class Uploader {
   /// Maximum part PUTs in one pass, so background work can stop and resume.
   final int maxPartsPerPass;
 
+  /// Live progress slot shared with the UI, when one is wired.
+  final TransferProgress? progress;
+
   /// Copies [item]'s exact bytes into a stable spool and hashes them.
   ///
   /// A previously prepared spool is reused only when its file still exists and
@@ -168,6 +173,13 @@ class Uploader {
         code: 'ASSET_UNAVAILABLE',
       );
     }
+
+    progress?.begin(
+      localId: item.localId,
+      fileName: _fileName(item),
+      totalBytes: item.sizeBytes,
+      phase: TransferPhase.preparing,
+    );
 
     final spool = File(_spoolPathFor(item.localId));
     final directory = spool.parent;
@@ -212,6 +224,10 @@ class Uploader {
         }
       }
       rethrow;
+    } finally {
+      // Copying and hashing ends here either way; `process` starts a fresh
+      // uploading slot so a failed prepare never leaves progress active.
+      progress?.finish();
     }
   }
 
@@ -247,10 +263,21 @@ class Uploader {
       );
     }
 
-    if (prepared.sizeBytes <= thresholdBytes) {
-      return _processSingle(item, prepared);
+    progress?.begin(
+      localId: item.localId,
+      fileName: prepared.fileName,
+      totalBytes: prepared.sizeBytes,
+      phase: TransferPhase.uploading,
+    );
+    try {
+      if (prepared.sizeBytes <= thresholdBytes) {
+        return await _processSingle(item, prepared);
+      }
+      return await _processSession(item, prepared);
+    } finally {
+      // A failure or duplicate must never leave the bar spinning forever.
+      progress?.finish();
     }
-    return _processSession(item, prepared);
   }
 
   Future<PreparedUpload?> _reusablePrepared(QueuedAsset item) async {

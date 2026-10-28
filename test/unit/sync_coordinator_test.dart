@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photox_mobile/core/api_client.dart';
+import 'package:photox_mobile/core/network_status.dart';
 import 'package:photox_mobile/media/hasher.dart';
 import 'package:photox_mobile/media/photo_observer.dart';
 import 'package:photox_mobile/settings/settings_store.dart';
@@ -27,6 +29,7 @@ void main() {
   late SettingsStore settings;
   late _FakeObserver observer;
   late _FakeTransport transport;
+  late _FakeNetwork network;
   late DateTime now;
 
   setUp(() async {
@@ -36,6 +39,7 @@ void main() {
     settings = SettingsStore(db);
     observer = _FakeObserver();
     transport = _FakeTransport();
+    network = _FakeNetwork();
     now = DateTime.utc(2026, 10, 19, 12);
   });
 
@@ -64,6 +68,7 @@ void main() {
       dedupTransport: transport,
       retryPolicy: RetryPolicy(jitter: 0),
       clock: () => now,
+      network: network,
     );
   }
 
@@ -105,6 +110,56 @@ void main() {
     expect(await db.select(db.queuedAssets).get(), isEmpty);
   });
 
+  test('does nothing at all while paused', () async {
+    await settings.save(const AppSettings(paused: true));
+    await seed('asset-a');
+
+    final report = await makeCoordinator().run();
+
+    expect(report.paused, isTrue);
+    expect(observer.scanCalls, 0);
+    expect(transport.uploadCalls, 0);
+    expect(await db.select(db.queuedAssets).get(), isEmpty);
+  });
+
+  test('holds uploads on a metered link when wifiOnly is on', () async {
+    await seed('asset-a');
+    network.unmetered = false;
+
+    final report = await makeCoordinator().run();
+
+    // Discovery is local, so the asset is queued; only the upload waits.
+    expect(report.waitingForWifi, isTrue);
+    expect(report.enqueued, 1);
+    expect(report.uploaded, 0);
+    expect(transport.uploadCalls, 0);
+    expect((await queue.byLocalId('asset-a'))?.state, 'discovered');
+  });
+
+  test('uploads on a metered link when wifiOnly is off', () async {
+    await settings.save(const AppSettings(wifiOnly: false));
+    network.unmetered = false;
+    await seed('asset-a');
+
+    final report = await makeCoordinator().run();
+
+    expect(report.waitingForWifi, isFalse);
+    expect(report.uploaded, 1);
+  });
+
+  test('a pause persisted mid-pass stops before the next asset', () async {
+    await seed('asset-a');
+    await seed('asset-b');
+    // Flip the flag as soon as the first asset is hashed and in flight.
+    transport.onUpload = () => settings.save(const AppSettings(paused: true));
+
+    final report = await makeCoordinator().run();
+
+    expect(report.paused, isTrue);
+    expect(report.uploaded, lessThan(2));
+    expect((await queue.byLocalId('asset-b'))?.state, isNot('uploaded'));
+  });
+
   test('scans, enqueues and uploads new assets', () async {
     final taken = DateTime.utc(2026, 10, 18, 9);
     final modified = DateTime.utc(2026, 10, 18, 10);
@@ -129,6 +184,67 @@ void main() {
       await queue.getMeta(SyncCoordinator.scanWatermarkKey),
       modified.toIso8601String(),
     );
+  });
+
+  test('defaults the scan scope to the camera album', () async {
+    await seed('asset-a');
+    observer.foldersValue = const <MediaFolder>[
+      MediaFolder(id: 'screens', name: 'Screenshots', assetCount: 50),
+      MediaFolder(id: 'camera', name: 'Camera', assetCount: 2, isCamera: true),
+    ];
+
+    await makeCoordinator().run();
+
+    expect(observer.lastFolderIds, <String>['camera']);
+    expect(observer.folderCalls, 1);
+  });
+
+  test('falls back to the whole library when no album is flagged', () async {
+    await seed('asset-a');
+    observer.foldersValue = const <MediaFolder>[
+      MediaFolder(id: 'screens', name: 'Screenshots', assetCount: 2),
+    ];
+
+    await makeCoordinator().run();
+
+    expect(observer.lastFolderIds, isNull);
+  });
+
+  test('scans exactly the chosen albums', () async {
+    await settings.save(
+      const AppSettings(uploadFolderIds: <String>['album-a', 'album-b']),
+    );
+    await seed('asset-a');
+
+    await makeCoordinator().run();
+
+    expect(observer.lastFolderIds, <String>['album-a', 'album-b']);
+    expect(observer.folderCalls, 0, reason: 'a choice skips the camera lookup');
+  });
+
+  test('uploadAllFolders scans the whole library', () async {
+    await settings.save(
+      const AppSettings(
+        uploadAllFolders: true,
+        uploadFolderIds: <String>['album-a'],
+      ),
+    );
+    await seed('asset-a');
+
+    await makeCoordinator().run();
+
+    expect(observer.lastFolderIds, isNull);
+    expect(observer.folderCalls, 0);
+  });
+
+  test('a broken album listing falls back to the whole library', () async {
+    await seed('asset-a');
+    observer.foldersError = StateError('no photo library');
+
+    final report = await makeCoordinator().run();
+
+    expect(observer.lastFolderIds, isNull);
+    expect(report.enqueued, 1);
   });
 
   test('marks a dedup hit with an existing asset uploaded', () async {
@@ -395,16 +511,33 @@ class _FakeObserver implements PhotoObserver {
   PhotoPermission permission = PhotoPermission.authorized;
   final List<AssetCandidate> candidates = <AssetCandidate>[];
   final Map<String, File> files = <String, File>{};
+  final Map<String, Uint8List> thumbnails = <String, Uint8List>{};
+  List<MediaFolder> foldersValue = const <MediaFolder>[];
+  Object? foldersError;
   DateTime? lastSince;
+  List<String>? lastFolderIds;
   int scanCalls = 0;
+  int folderCalls = 0;
 
   @override
   Future<PhotoPermission> ensurePermission() async => permission;
 
   @override
-  Future<List<AssetCandidate>> scanNew({DateTime? since}) async {
+  Future<List<MediaFolder>> folders() async {
+    folderCalls++;
+    final error = foldersError;
+    if (error != null) throw error;
+    return foldersValue;
+  }
+
+  @override
+  Future<List<AssetCandidate>> scanNew({
+    DateTime? since,
+    List<String>? folderIds,
+  }) async {
     scanCalls++;
     lastSince = since;
+    lastFolderIds = folderIds;
     if (since == null) return List<AssetCandidate>.of(candidates);
     return candidates
         .where(
@@ -418,10 +551,25 @@ class _FakeObserver implements PhotoObserver {
   Future<File?> fileFor(String localId) async => files[localId];
 
   @override
+  Future<Uint8List?> thumbnailFor(String localId, {int size = 128}) async =>
+      thumbnails[localId];
+
+  @override
   Stream<void> get changes => const Stream<void>.empty();
 
   @override
   Future<void> dispose() async {}
+}
+
+class _FakeNetwork implements NetworkStatus {
+  bool unmetered = true;
+  int checks = 0;
+
+  @override
+  Future<bool> isUnmetered() async {
+    checks++;
+    return unmetered;
+  }
 }
 
 class _FakeTransport implements UploadTransport {
@@ -429,6 +577,9 @@ class _FakeTransport implements UploadTransport {
   final List<List<DedupCheck>> existsRequests = <List<DedupCheck>>[];
   int uploadCalls = 0;
   Object? uploadError;
+
+  /// Runs after each successful upload, to observe mid-pass changes.
+  Future<void> Function()? onUpload;
 
   @override
   Future<List<DedupHit>> exists(List<DedupCheck> items) async {
@@ -457,6 +608,8 @@ class _FakeTransport implements UploadTransport {
     uploadCalls++;
     final error = uploadError;
     if (error != null) throw error;
+    final hook = onUpload;
+    if (hook != null) await hook();
     return AssetSummary(
       id: 'server-$originalName',
       fileId: 'file-$originalName',

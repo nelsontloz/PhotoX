@@ -1,15 +1,20 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../media/photo_observer.dart';
 import '../sync/sync_coordinator.dart';
+import '../sync/transfer_progress.dart';
 import '../upload/upload_queue.dart';
 import 'widgets/app_background.dart';
+import 'widgets/backup_progress.dart';
 import 'widgets/last_sync_panel.dart';
 import 'widgets/queue_summary.dart';
 import 'widgets/sign_out_dialog.dart';
 import 'widgets/status_banner.dart';
 
-/// Backup dashboard: queue counts, access state, and the last pass summary.
+/// Backup dashboard: live progress, queue counts, access state, and the last
+/// pass summary.
 ///
 /// Every value and action is supplied by the caller so widgets never touch
 /// services directly.
@@ -17,24 +22,35 @@ class HomeScreen extends StatelessWidget {
   const HomeScreen({
     super.key,
     required this.stats,
+    required this.progress,
     required this.permission,
     required this.syncing,
+    required this.paused,
     required this.authRequired,
     required this.lastReport,
     required this.error,
     required this.onSyncNow,
+    required this.onPause,
+    required this.onResume,
     required this.onOpenSettings,
     required this.onSignOut,
+    this.thumbnail,
   });
 
   /// Aggregate queue counts.
   final QueueStats stats;
+
+  /// Live progress of the asset currently in flight.
+  final TransferProgress progress;
 
   /// Current photo-library permission.
   final PhotoPermission permission;
 
   /// True while a sync pass is running.
   final bool syncing;
+
+  /// True when the user has stopped backups; the primary action resumes them.
+  final bool paused;
 
   /// True when the stored session can no longer be used.
   final bool authRequired;
@@ -48,11 +64,21 @@ class HomeScreen extends StatelessWidget {
   /// Starts a sync pass, including the permission prompt when needed.
   final Future<void> Function() onSyncNow;
 
+  /// Stops backups after the asset currently in flight.
+  final Future<void> Function() onPause;
+
+  /// Clears the pause and starts a pass immediately.
+  final Future<void> Function() onResume;
+
   /// Opens the settings screen.
   final VoidCallback onOpenSettings;
 
   /// Signs out of the current account.
   final Future<void> Function() onSignOut;
+
+  /// Loads thumbnail bytes for a library id shown in the upload row; when it
+  /// is absent or returns null the row keeps a neutral icon.
+  final Future<Uint8List?> Function(String localId)? thumbnail;
 
   @override
   Widget build(BuildContext context) {
@@ -85,6 +111,31 @@ class HomeScreen extends StatelessWidget {
 
     final permissionBanner = _permissionBanner(context);
     if (permissionBanner != null) banners.add(permissionBanner);
+
+    // A finished pass held by `wifiOnly`. Paused wins, and a running pass has
+    // its own status, so a stale hold from the previous report stays hidden.
+    final wifiHold = !paused && !syncing && lastReport?.waitingForWifi == true;
+    if (wifiHold) {
+      banners.add(
+        StatusBanner(
+          tone: StatusTone.warning,
+          icon: Icons.wifi_off_rounded,
+          title: 'Wi-Fi only is on',
+          message:
+              'Uploads wait until Wi-Fi is available. New photos stay queued '
+              'on this phone.',
+          action: TextButton(
+            onPressed: onOpenSettings,
+            style: TextButton.styleFrom(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(0, 40),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('Change in Settings'),
+          ),
+        ),
+      );
+    }
 
     final errorText = error?.trim();
     // The auth banner already explains a 401; a second red banner would just
@@ -140,6 +191,8 @@ class HomeScreen extends StatelessWidget {
                       child: _StatusPill(
                         status: _statusFor(
                           syncing: syncing,
+                          paused: paused,
+                          waitingForWifi: lastReport?.waitingForWifi == true,
                           authRequired: authRequired,
                           permission: permission,
                           stats: stats,
@@ -168,6 +221,13 @@ class HomeScreen extends StatelessWidget {
                       banner,
                       const SizedBox(height: 12),
                     ],
+                    BackupProgressPanel(
+                      stats: stats,
+                      progress: progress,
+                      paused: paused,
+                      thumbnail: thumbnail,
+                    ),
+                    const SizedBox(height: 16),
                     QueueSummary(stats: stats),
                     const SizedBox(height: 16),
                     LastSyncPanel(report: lastReport),
@@ -191,7 +251,13 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
         ),
-        bottomNavigationBar: _SyncBar(syncing: syncing, onSyncNow: onSyncNow),
+        bottomNavigationBar: _BackupBar(
+          syncing: syncing,
+          paused: paused,
+          onSyncNow: onSyncNow,
+          onPause: onPause,
+          onResume: onResume,
+        ),
       ),
     );
   }
@@ -214,15 +280,14 @@ class HomeScreen extends StatelessWidget {
           tone: StatusTone.warning,
           icon: Icons.photo_library_outlined,
           title: 'Photo access not set up',
-          message: 'Tap Sync now to let PhotoX read your camera roll.',
+          message: 'Tap the button below to let PhotoX read your camera roll.',
         );
       case PhotoPermission.denied:
         return const StatusBanner(
           tone: StatusTone.danger,
           icon: Icons.block_rounded,
           title: 'Photo access is off',
-          message:
-              'Allow photo access in your device settings, then tap Sync now.',
+          message: 'Allow photo access in your device settings, then start a backup.',
         );
       case PhotoPermission.restricted:
         return const StatusBanner(
@@ -231,7 +296,7 @@ class HomeScreen extends StatelessWidget {
           title: 'Photo access is restricted',
           message:
               'Device restrictions are blocking access. Change that in your '
-              'device settings, then tap Sync now.',
+              'device settings, then start a backup.',
         );
     }
   }
@@ -263,11 +328,22 @@ class _StatusInfo {
 
 _StatusInfo _statusFor({
   required bool syncing,
+  required bool paused,
+  required bool waitingForWifi,
   required bool authRequired,
   required PhotoPermission permission,
   required QueueStats stats,
   required String? error,
 }) {
+  // Paused outranks everything: the user stopped backups on purpose, and a
+  // pass that is finishing the asset in flight is still "pausing".
+  if (paused) {
+    return _StatusInfo(
+      syncing ? 'Pausing' : 'Paused',
+      Icons.pause_rounded,
+      _StatusTone.neutral,
+    );
+  }
   if (syncing) {
     return const _StatusInfo('Syncing', Icons.sync_rounded, _StatusTone.active);
   }
@@ -298,6 +374,13 @@ _StatusInfo _statusFor({
       'Needs attention',
       Icons.error_outline_rounded,
       _StatusTone.danger,
+    );
+  }
+  if (waitingForWifi) {
+    return const _StatusInfo(
+      'Waiting for Wi-Fi',
+      Icons.wifi_off_rounded,
+      _StatusTone.warning,
     );
   }
   if (permission == PhotoPermission.limited) {
@@ -380,16 +463,50 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
-class _SyncBar extends StatelessWidget {
-  const _SyncBar({required this.syncing, required this.onSyncNow});
+/// What the bottom bar's single button does, derived from app state.
+enum _BackupMode { idle, syncing, paused }
+
+class _BackupBar extends StatelessWidget {
+  const _BackupBar({
+    required this.syncing,
+    required this.paused,
+    required this.onSyncNow,
+    required this.onPause,
+    required this.onResume,
+  });
 
   final bool syncing;
+  final bool paused;
   final Future<void> Function() onSyncNow;
+  final Future<void> Function() onPause;
+  final Future<void> Function() onResume;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    // Paused outranks syncing: the user asked to stop, and Resume must stay
+    // reachable while the asset in flight finishes.
+    final mode = paused
+        ? _BackupMode.paused
+        : syncing
+        ? _BackupMode.syncing
+        : _BackupMode.idle;
+    final (
+      IconData icon,
+      String label,
+      Future<void> Function() action,
+    ) = switch (mode) {
+      _BackupMode.idle => (Icons.sync_rounded, 'Sync now', onSyncNow),
+      _BackupMode.syncing => (Icons.pause_rounded, 'Pause', onPause),
+      _BackupMode.paused => (
+        Icons.play_arrow_rounded,
+        'Resume backup',
+        onResume,
+      ),
+    };
+    // Stopping is a calmer action than starting, so it gets the tonal fill.
+    final tonal = mode == _BackupMode.syncing;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -409,7 +526,7 @@ class _SyncBar extends StatelessWidget {
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: syncing ? null : onSyncNow,
+                  onPressed: action,
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(54),
                     padding: const EdgeInsets.symmetric(
@@ -419,21 +536,14 @@ class _SyncBar extends StatelessWidget {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
+                    backgroundColor: tonal ? scheme.secondaryContainer : null,
+                    foregroundColor: tonal ? scheme.onSecondaryContainer : null,
                     textStyle: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  icon: syncing
-                      ? SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: scheme.onSurface.withValues(alpha: 0.7),
-                          ),
-                        )
-                      : const Icon(Icons.sync_rounded, size: 21),
-                  label: Text(syncing ? 'Syncing…' : 'Sync now'),
+                  icon: Icon(icon, size: 21),
+                  label: Text(label),
                 ),
               ),
             ),

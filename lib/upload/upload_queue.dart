@@ -13,6 +13,8 @@ class QueueStats {
     required this.uploaded,
     required this.duplicate,
     required this.failed,
+    this.photos = 0,
+    this.videos = 0,
   });
 
   /// Assets still waiting for work, including retryable failures.
@@ -27,6 +29,21 @@ class QueueStats {
   /// Assets that gave up permanently (including quota skips).
   final int failed;
 
+  /// Photo rows ever queued (terminal rows included).
+  final int photos;
+
+  /// Video rows ever queued (terminal rows included).
+  final int videos;
+
+  /// Rows still in play, for an overall progress denominator.
+  int get total => photos + videos;
+
+  /// Rows that will never be retried again (uploaded or known duplicates).
+  int get completed => uploaded + duplicate;
+
+  /// Overall progress, `0`..`1`.
+  double get fraction => total == 0 ? 0 : (completed / total).clamp(0.0, 1.0);
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -34,15 +51,19 @@ class QueueStats {
           other.pending == pending &&
           other.uploaded == uploaded &&
           other.duplicate == duplicate &&
-          other.failed == failed);
+          other.failed == failed &&
+          other.photos == photos &&
+          other.videos == videos);
 
   @override
-  int get hashCode => Object.hash(pending, uploaded, duplicate, failed);
+  int get hashCode =>
+      Object.hash(pending, uploaded, duplicate, failed, photos, videos);
 
   @override
   String toString() =>
       'QueueStats(pending: $pending, uploaded: $uploaded, '
-      'duplicate: $duplicate, failed: $failed)';
+      'duplicate: $duplicate, failed: $failed, photos: $photos, '
+      'videos: $videos)';
 }
 
 /// Persistence facade over [AppDatabase] used by the upload pipeline.
@@ -344,6 +365,18 @@ class UploadQueue {
         .write(QueuedAssetsCompanion(state: Value(UploadState.pending.name)));
   }
 
+  /// Deletes every row that still has work left, returning how many went.
+  ///
+  /// Only un-uploaded work is dropped: uploaded, duplicate and skipped rows
+  /// are history and stay, so the counters keep describing past backups.
+  Future<int> clearNonTerminal() {
+    return db.transaction(() async {
+      return (db.delete(
+        db.queuedAssets,
+      )..where((t) => t.state.isNotIn(terminalStates))).go();
+    });
+  }
+
   /// Counts assets by coarse UI-facing status.
   Future<QueueStats> stats() {
     return db.transaction(() async {
@@ -359,11 +392,19 @@ class UploadQueue {
       final failed = await _countWhere(
         db.queuedAssets.state.isIn(_failedStates),
       );
+      final photos = await _countWhere(
+        db.queuedAssets.kind.equals(MediaKind.photo.name),
+      );
+      final videos = await _countWhere(
+        db.queuedAssets.kind.equals(MediaKind.video.name),
+      );
       return QueueStats(
         pending: pending,
         uploaded: uploaded,
         duplicate: duplicate,
         failed: failed,
+        photos: photos,
+        videos: videos,
       );
     });
   }

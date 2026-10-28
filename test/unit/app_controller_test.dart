@@ -18,6 +18,7 @@ import 'package:photox_mobile/media/hasher.dart';
 import 'package:photox_mobile/media/photo_observer.dart';
 import 'package:photox_mobile/settings/settings_store.dart';
 import 'package:photox_mobile/sync/sync_coordinator.dart';
+import 'package:photox_mobile/sync/transfer_progress.dart';
 import 'package:photox_mobile/upload/database.dart';
 import 'package:photox_mobile/upload/models.dart';
 import 'package:photox_mobile/upload/retry_policy.dart';
@@ -49,6 +50,9 @@ class _StubAdapter implements HttpClientAdapter {
 class _DeniedObserver implements PhotoObserver {
   int permissionCalls = 0;
 
+  /// Album listing returned by [folders].
+  List<MediaFolder> foldersValue = const <MediaFolder>[];
+
   /// When set, [ensurePermission] blocks until it completes so a test can
   /// interleave account actions with an in-flight pass.
   Completer<void>? gate;
@@ -62,12 +66,22 @@ class _DeniedObserver implements PhotoObserver {
   }
 
   @override
-  Future<List<AssetCandidate>> scanNew({DateTime? since}) async {
+  Future<List<MediaFolder>> folders() async => foldersValue;
+
+  @override
+  Future<List<AssetCandidate>> scanNew({
+    DateTime? since,
+    List<String>? folderIds,
+  }) async {
     throw StateError('a denied pass must not scan');
   }
 
   @override
   Future<File?> fileFor(String localId) async => null;
+
+  @override
+  Future<Uint8List?> thumbnailFor(String localId, {int size = 128}) async =>
+      null;
 
   @override
   Stream<void> get changes => const Stream<void>.empty();
@@ -178,6 +192,17 @@ class _FakeRegistrar implements WorkRegistrar {
   }
 }
 
+/// Settings store whose writes always fail, to prove a failed save never
+/// purges queued work.
+class _FailingSettingsStore extends SettingsStore {
+  _FailingSettingsStore(super.db);
+
+  @override
+  Future<void> save(AppSettings settings) {
+    throw StateError('settings write failed');
+  }
+}
+
 AuthTokens _tokens() => AuthTokens(
   accessToken: 'access-1',
   refreshToken: 'refresh-1',
@@ -190,6 +215,15 @@ AuthTokens _tokens() => AuthTokens(
     createdAt: DateTime.utc(2026, 1, 1),
     updatedAt: DateTime.utc(2026, 1, 2),
   ),
+);
+
+AssetCandidate _assetCandidate(String localId) => AssetCandidate(
+  localId: localId,
+  platform: 'ios',
+  kind: MediaKind.photo,
+  fileName: '$localId.jpg',
+  mimeType: 'image/jpeg',
+  sizeBytes: 3,
 );
 
 Map<String, dynamic> _tokenPayload() => <String, dynamic>{
@@ -229,6 +263,8 @@ void main() {
   late BackgroundScheduler scheduler;
   late SettingsStore settingsStore;
   late UploadQueue queue;
+  late TransferProgress progress;
+  late SyncCoordinator coordinator;
   late PhotoXController controller;
 
   var rejectLogin = false;
@@ -263,6 +299,7 @@ void main() {
     scheduler = BackgroundScheduler(registrar: registrar, isIOS: false);
     settingsStore = SettingsStore(db);
     queue = UploadQueue(db);
+    progress = TransferProgress();
     final uploader = Uploader(
       queue: queue,
       uploadTransport: _FailingUploadTransport(),
@@ -270,24 +307,28 @@ void main() {
       hasher: const Hasher(),
       observer: observer,
     );
+    coordinator = SyncCoordinator(
+      queue: queue,
+      observer: observer,
+      uploader: uploader,
+      settingsStore: settingsStore,
+      dedupTransport: _FailingUploadTransport(),
+      retryPolicy: RetryPolicy(jitter: 0),
+    );
     controller = PhotoXController(
       auth: auth,
       queue: queue,
-      coordinator: SyncCoordinator(
-        queue: queue,
-        observer: observer,
-        uploader: uploader,
-        settingsStore: settingsStore,
-        dedupTransport: _FailingUploadTransport(),
-        retryPolicy: RetryPolicy(jitter: 0),
-      ),
+      coordinator: coordinator,
       settingsStore: settingsStore,
       scheduler: scheduler,
+      observer: observer,
+      progress: progress,
     );
   });
 
   tearDown(() async {
     controller.dispose();
+    progress.dispose();
     await db.close();
   });
 
@@ -304,6 +345,57 @@ void main() {
       );
       expect(controller.settings, const AppSettings());
       expect(controller.syncing, isFalse);
+    },
+  );
+
+  test('folders delegates to the platform observer', () async {
+    observer.foldersValue = const <MediaFolder>[
+      MediaFolder(id: 'camera', name: 'Camera', assetCount: 3, isCamera: true),
+      MediaFolder(id: 'screens', name: 'Screenshots', assetCount: 9),
+    ];
+
+    expect(await controller.folders(), observer.foldersValue);
+  });
+
+  test(
+    'forwards progress ticks and refreshes counters on completion',
+    () async {
+      await queue.enqueue(
+        const AssetCandidate(
+          localId: 'asset-a',
+          platform: 'ios',
+          kind: MediaKind.photo,
+          fileName: 'asset-a.jpg',
+          mimeType: 'image/jpeg',
+          sizeBytes: 3,
+        ),
+      );
+      await controller.initialize();
+      expect(controller.stats.pending, 1);
+      expect(controller.stats.uploaded, 0);
+
+      var notifications = 0;
+      controller.addListener(() => notifications++);
+      final before = notifications;
+
+      progress.begin(
+        localId: 'asset-a',
+        fileName: 'asset-a.jpg',
+        totalBytes: 3,
+        phase: TransferPhase.uploading,
+      );
+
+      expect(controller.progress, same(progress));
+      expect(controller.progress.active, isTrue);
+      expect(notifications, greaterThan(before));
+
+      await queue.markState(localId: 'asset-a', state: UploadState.uploaded);
+      progress.finish();
+      await pumpEventQueue();
+
+      expect(controller.progress.active, isFalse);
+      expect(controller.stats.uploaded, 1);
+      expect(controller.stats.pending, 0);
     },
   );
 
@@ -460,6 +552,87 @@ void main() {
       expect(controller.busy, isFalse);
     },
   );
+
+  test(
+    'changing the folder scope purges queued work and the watermark',
+    () async {
+      await tokenStore.write(_tokens());
+      await queue.enqueueAll(<AssetCandidate>[
+        _assetCandidate('uploaded'),
+        _assetCandidate('pending'),
+      ]);
+      await queue.markState(localId: 'uploaded', state: UploadState.uploaded);
+      await queue.markState(localId: 'pending', state: UploadState.pending);
+      const watermark = '2026-10-19T12:00:00.000Z';
+      await queue.setMeta(SyncCoordinator.scanWatermarkKey, watermark);
+      await controller.initialize();
+      await controller.syncNow();
+      final passes = observer.permissionCalls;
+
+      await controller.updateSettings(
+        const AppSettings(uploadFolderIds: <String>['camera']),
+      );
+      await pumpEventQueue();
+
+      expect(await queue.byLocalId('pending'), isNull);
+      expect(
+        (await queue.byLocalId('uploaded'))?.state,
+        UploadState.uploaded.name,
+      );
+      expect(await queue.getMeta(SyncCoordinator.scanWatermarkKey), '');
+      expect(controller.stats.pending, 0);
+      expect(controller.stats.uploaded, 1);
+      expect(observer.permissionCalls, passes + 1, reason: 'a pass kicks off');
+    },
+  );
+
+  test('turning uploadAllFolders on purges queued work', () async {
+    await queue.enqueue(_assetCandidate('pending'));
+    await queue.markState(localId: 'pending', state: UploadState.pending);
+
+    await controller.updateSettings(const AppSettings(uploadAllFolders: true));
+
+    expect(await queue.byLocalId('pending'), isNull);
+  });
+
+  test('an unrelated settings change keeps the queue and watermark', () async {
+    await queue.enqueue(_assetCandidate('pending'));
+    await queue.markState(localId: 'pending', state: UploadState.pending);
+    const watermark = '2026-10-19T12:00:00.000Z';
+    await queue.setMeta(SyncCoordinator.scanWatermarkKey, watermark);
+
+    await controller.updateSettings(const AppSettings(wifiOnly: false));
+
+    expect((await queue.byLocalId('pending'))?.state, UploadState.pending.name);
+    expect(await queue.getMeta(SyncCoordinator.scanWatermarkKey), watermark);
+  });
+
+  test('a failed settings save does not purge queued work', () async {
+    final scoped = PhotoXController(
+      auth: auth,
+      queue: queue,
+      coordinator: coordinator,
+      settingsStore: _FailingSettingsStore(db),
+      scheduler: scheduler,
+      observer: observer,
+      progress: progress,
+    );
+    addTearDown(scoped.dispose);
+    await queue.enqueue(_assetCandidate('pending'));
+    await queue.markState(localId: 'pending', state: UploadState.pending);
+    const watermark = '2026-10-19T12:00:00.000Z';
+    await queue.setMeta(SyncCoordinator.scanWatermarkKey, watermark);
+
+    await expectLater(
+      scoped.updateSettings(
+        const AppSettings(uploadFolderIds: <String>['camera']),
+      ),
+      throwsA(isA<StateError>()),
+    );
+
+    expect((await queue.byLocalId('pending'))?.state, UploadState.pending.name);
+    expect(await queue.getMeta(SyncCoordinator.scanWatermarkKey), watermark);
+  });
 
   test('signOut during an in-flight pass discards its stale results', () async {
     await tokenStore.write(_tokens());

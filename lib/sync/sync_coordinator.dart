@@ -2,6 +2,7 @@ import 'dart:math';
 
 import '../core/api_client.dart';
 import '../core/auth_models.dart';
+import '../core/network_status.dart';
 import '../media/media_filter.dart';
 import '../media/photo_observer.dart';
 import '../settings/settings_store.dart';
@@ -43,6 +44,13 @@ class SyncReport {
   /// True when the pass stopped because the token pair is unusable.
   bool authRequired = false;
 
+  /// True when the pass did nothing because backups are paused.
+  bool paused = false;
+
+  /// True when uploads are held because `wifiOnly` is on and the link is
+  /// metered. Discovery still ran.
+  bool waitingForWifi = false;
+
   /// Last unexpected error, when the pass could not inspect or scan.
   String? error;
 
@@ -51,7 +59,8 @@ class SyncReport {
       'SyncReport(permission: $permission, scanned: $scanned, '
       'enqueued: $enqueued, uploaded: $uploaded, duplicates: $duplicates, '
       'failed: $failed, skipped: $skipped, remaining: $remaining, '
-      'authRequired: $authRequired'
+      'authRequired: $authRequired, paused: $paused, '
+      'waitingForWifi: $waitingForWifi'
       '${error == null ? '' : ', error: $error'})';
 }
 
@@ -71,6 +80,7 @@ class SyncCoordinator {
     required this.retryPolicy,
     DateTime Function()? clock,
     this.filter = const MediaFilter(),
+    this.network = const ConnectivityNetworkStatus(),
   }) : clock = clock ?? DateTime.now;
 
   /// Queue persistence for discovery and per-asset state.
@@ -97,6 +107,9 @@ class SyncCoordinator {
   /// Client-side container/MIME filter.
   final MediaFilter filter;
 
+  /// Link check for the `wifiOnly` preference during a foreground pass.
+  final NetworkStatus network;
+
   /// Queue metadata key holding the ISO-8601 watermark.
   static const String scanWatermarkKey = 'scanWatermark';
 
@@ -111,6 +124,13 @@ class SyncCoordinator {
 
     await queue.resetInterrupted();
     final settings = await settingsStore.load();
+
+    // Paused means paused: no permission prompt, no scan, no upload.
+    if (settings.paused) {
+      report.paused = true;
+      report.remaining = (await queue.stats()).pending;
+      return report;
+    }
 
     final permission = await observer.ensurePermission();
     report.permission = permission;
@@ -128,9 +148,10 @@ class SyncCoordinator {
       );
     }
 
+    final folderIds = await _scanScope(settings);
     final List<AssetCandidate> scanned;
     try {
-      scanned = await observer.scanNew(since: watermark);
+      scanned = await observer.scanNew(since: watermark, folderIds: folderIds);
     } on Object catch (error) {
       report.error = error.toString();
       return report;
@@ -170,6 +191,18 @@ class SyncCoordinator {
     while (true) {
       if (_budgetExhausted(uploadBudgetStart, budget)) break;
 
+      // Pause and the link check are re-read every batch: both can change
+      // while this pass is running.
+      final current = await settingsStore.load();
+      if (current.paused) {
+        report.paused = true;
+        break;
+      }
+      if (current.wifiOnly && !await _allowsUpload()) {
+        report.waitingForWifi = true;
+        break;
+      }
+
       final batch = await queue.nextBatch(batchSize, now: clock());
       if (batch.isEmpty) break;
 
@@ -188,6 +221,12 @@ class SyncCoordinator {
 
       for (final item in batch) {
         if (_budgetExhausted(uploadBudgetStart, budget)) break;
+        // A pause hit mid-batch stops after the asset that is already in
+        // flight, so no acknowledged part or spool is thrown away.
+        if ((await settingsStore.load()).paused) {
+          report.paused = true;
+          break;
+        }
         final preparedItem = prepared[item.localId];
         if (preparedItem == null) continue;
         try {
@@ -200,11 +239,40 @@ class SyncCoordinator {
           if (await _handleFailure(item, error, report)) break;
         }
       }
-      if (report.authRequired) break;
+      if (report.authRequired || report.paused) break;
     }
 
     report.remaining = (await queue.stats()).pending;
     return report;
+  }
+
+  /// Albums this pass scans; null means the whole library.
+  ///
+  /// Nothing chosen yet means the camera album. A broken album listing must
+  /// never shrink discovery, so that falls back to the whole library too.
+  Future<List<String>?> _scanScope(AppSettings settings) async {
+    if (settings.uploadAllFolders) return null;
+    if (settings.uploadFolderIds.isNotEmpty) return settings.uploadFolderIds;
+    try {
+      for (final folder in await observer.folders()) {
+        if (folder.isCamera) return <String>[folder.id];
+      }
+    } on Object {
+      // Fall through and scan everything.
+    }
+    return null;
+  }
+
+  /// True when the current link permits uploads under `wifiOnly`.
+  ///
+  /// A failing platform check counts as "not allowed": silently burning mobile
+  /// data is worse than stalling, and the UI says why it is waiting.
+  Future<bool> _allowsUpload() async {
+    try {
+      return await network.isUnmetered();
+    } on Object {
+      return false;
+    }
   }
 
   void _countOutcome(UploadOutcome outcome, SyncReport report) {

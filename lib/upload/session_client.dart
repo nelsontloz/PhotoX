@@ -16,6 +16,12 @@ class SessionClient {
   /// Signed transport used for every session call.
   final ApiClient api;
 
+  /// Upload whose parts are currently streaming, with the bytes its
+  /// acknowledged parts already account for, so per-part callbacks can report
+  /// a cumulative offset. Only one asset uploads at a time.
+  String? _progressUploadId;
+  int _progressSent = 0;
+
   /// Opens a session for a file whose bytes hash to [sha256Hex].
   ///
   /// The server fixes the part size at 8 MiB; only whitelisted body fields are
@@ -87,6 +93,10 @@ class SessionClient {
   }) async {
     final payload = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
     final digest = sha256Hex ?? sha256.convert(payload).toString();
+    if (_progressUploadId != uploadId) {
+      _progressUploadId = uploadId;
+      _progressSent = 0;
+    }
     await api.put<dynamic>(
       '/api/v1/uploads/$uploadId/parts/$partIndex',
       data: payload,
@@ -97,7 +107,10 @@ class SessionClient {
           'X-Part-Sha256': digest.toLowerCase(),
         },
       ),
+      onSendProgress: (sent, total) =>
+          api.progress?.advance(_progressSent + sent),
     );
+    _progressSent += payload.length;
   }
 
   /// Completes the session; a 409 carries the missing part indices.

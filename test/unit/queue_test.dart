@@ -397,6 +397,53 @@ void main() {
     });
   });
 
+  group('clearNonTerminal', () {
+    test('deletes pending work and keeps terminal rows', () async {
+      await queue.enqueueAll(<AssetCandidate>[
+        _candidate('discovered'),
+        _candidate('pending'),
+        _candidate('retryable'),
+        _candidate('creating'),
+        _candidate('uploaded'),
+        _candidate('duplicate'),
+        _candidate('quota'),
+        _candidate('permanent'),
+        _candidate('excluded'),
+      ]);
+      await queue.markState(localId: 'pending', state: UploadState.pending);
+      await queue.markState(
+        localId: 'retryable',
+        state: UploadState.failedRetryable,
+        nextAttemptAt: DateTime.utc(2026, 10, 20, 12),
+      );
+      await queue.markState(localId: 'creating', state: UploadState.creating);
+      await queue.markState(localId: 'uploaded', state: UploadState.uploaded);
+      await queue.markState(localId: 'duplicate', state: UploadState.duplicate);
+      await queue.markState(localId: 'quota', state: UploadState.skippedQuota);
+      await queue.markState(
+        localId: 'permanent',
+        state: UploadState.failedPermanent,
+      );
+      await queue.markState(localId: 'excluded', state: UploadState.excluded);
+
+      expect(await queue.clearNonTerminal(), 4);
+
+      final rows = await db.select(db.queuedAssets).get();
+      expect(rows.map((row) => row.localId).toSet(), <String>{
+        'uploaded',
+        'duplicate',
+        'quota',
+        'permanent',
+        'excluded',
+      });
+    });
+
+    test('is a no-op on an empty queue', () async {
+      expect(await queue.clearNonTerminal(), 0);
+      expect(await db.select(db.queuedAssets).get(), isEmpty);
+    });
+  });
+
   group('stats and states', () {
     test('counts pending, uploaded, duplicate and failed rows', () async {
       await queue.enqueueAll(<AssetCandidate>[
@@ -431,6 +478,31 @@ void main() {
         'duplicate',
       });
       expect(await queue.byStates(const <UploadState>[]), isEmpty);
+    });
+
+    test('splits photos and videos and exposes the overall fraction', () async {
+      await queue.enqueueAll(<AssetCandidate>[
+        _candidate('photo-1'),
+        _candidate('photo-2'),
+        _candidate('video-1', kind: MediaKind.video),
+      ]);
+      await queue.markState(localId: 'photo-1', state: UploadState.uploaded);
+      await queue.markState(localId: 'video-1', state: UploadState.duplicate);
+
+      final stats = await queue.stats();
+      expect(stats.photos, 2);
+      expect(stats.videos, 1);
+      expect(stats.total, 3);
+      expect(stats.completed, 2);
+      expect(stats.fraction, closeTo(2 / 3, 1e-9));
+    });
+
+    test('reports a zero fraction before anything is queued', () async {
+      final stats = await queue.stats();
+
+      expect(stats.total, 0);
+      expect(stats.completed, 0);
+      expect(stats.fraction, 0);
     });
   });
 
@@ -557,6 +629,7 @@ void main() {
 AssetCandidate _candidate(
   String localId, {
   int sizeBytes = 100,
+  MediaKind kind = MediaKind.photo,
   DateTime? takenAt,
   DateTime? modifiedAt,
   String? fileName,
@@ -565,7 +638,7 @@ AssetCandidate _candidate(
   return AssetCandidate(
     localId: localId,
     platform: 'ios',
-    kind: MediaKind.photo,
+    kind: kind,
     fileName: fileName ?? '$localId.jpg',
     mimeType: mimeType ?? 'image/jpeg',
     sizeBytes: sizeBytes,

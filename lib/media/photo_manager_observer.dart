@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/services.dart' show MethodCall;
 import 'package:photo_manager/photo_manager.dart';
@@ -31,6 +32,13 @@ class PhotoManagerObserver implements PhotoObserver {
   /// whose bytes are already on disk. Cleared at the start of every scan.
   final Map<String, File> _scanFiles = <String, File>{};
 
+  /// Folder listing memoised for the process.
+  ///
+  /// shortcut: the listing never refreshes, so an album created after the
+  /// first call stays invisible until restart; refresh it from [changes] when
+  /// album management becomes a workflow.
+  List<MediaFolder>? _folders;
+
   bool _disposed = false;
 
   @override
@@ -46,7 +54,40 @@ class PhotoManagerObserver implements PhotoObserver {
   }
 
   @override
-  Future<List<AssetCandidate>> scanNew({DateTime? since}) async {
+  Future<List<MediaFolder>> folders() async {
+    final cached = _folders;
+    if (cached != null) return cached;
+
+    final paths = await PhotoManager.getAssetPathList(
+      onlyAll: false,
+      type: RequestType.common,
+      filterOption: FilterOptionGroup(
+        imageOption: const FilterOption(needTitle: true),
+        videoOption: const FilterOption(needTitle: true),
+      ),
+    );
+    final folders = <MediaFolder>[
+      for (final path in paths)
+        MediaFolder(
+          id: path.id,
+          name: path.name,
+          assetCount: await path.assetCountAsync,
+          isCamera: _isCameraPath(path),
+        ),
+    ];
+    folders.sort((left, right) {
+      if (left.isCamera != right.isCamera) return left.isCamera ? -1 : 1;
+      return right.assetCount.compareTo(left.assetCount);
+    });
+    _folders = List<MediaFolder>.unmodifiable(folders);
+    return _folders!;
+  }
+
+  @override
+  Future<List<AssetCandidate>> scanNew({
+    DateTime? since,
+    List<String>? folderIds,
+  }) async {
     _scanFiles.clear();
     final now = DateTime.now();
     final filterOption = FilterOptionGroup(
@@ -62,25 +103,27 @@ class PhotoManagerObserver implements PhotoObserver {
       ],
     );
 
-    final paths = await PhotoManager.getAssetPathList(
-      onlyAll: true,
-      type: RequestType.common,
-      filterOption: filterOption,
-    );
-    if (paths.isEmpty) return const <AssetCandidate>[];
-
-    final album = paths.first;
+    final albums = await _albums(folderIds, filterOption);
     final candidates = <AssetCandidate>[];
-    var page = 0;
-    while (true) {
-      final assets = await album.getAssetListPaged(page: page, size: pageSize);
-      if (assets.isEmpty) break;
-      for (final asset in assets) {
-        final candidate = await _toCandidate(asset);
-        if (candidate != null) candidates.add(candidate);
+    // A photo can sit in several albums (smart albums, Recents), so the same
+    // id must reach the queue only once.
+    final seen = <String>{};
+    for (final album in albums) {
+      var page = 0;
+      while (true) {
+        final assets = await album.getAssetListPaged(
+          page: page,
+          size: pageSize,
+        );
+        if (assets.isEmpty) break;
+        for (final asset in assets) {
+          if (!seen.add(asset.id)) continue;
+          final candidate = await _toCandidate(asset);
+          if (candidate != null) candidates.add(candidate);
+        }
+        if (assets.length < pageSize) break;
+        page++;
       }
-      if (assets.length < pageSize) break;
-      page++;
     }
 
     candidates.sort((left, right) {
@@ -92,6 +135,34 @@ class PhotoManagerObserver implements PhotoObserver {
       return leftDate.compareTo(rightDate);
     });
     return candidates;
+  }
+
+  /// Whole library for an empty selection, else the chosen albums.
+  ///
+  /// A chosen album can disappear between the settings write and this scan;
+  /// it is skipped rather than aborting the whole pass.
+  Future<List<AssetPathEntity>> _albums(
+    List<String>? folderIds,
+    FilterOptionGroup filterOption,
+  ) async {
+    if (folderIds == null || folderIds.isEmpty) {
+      return PhotoManager.getAssetPathList(
+        onlyAll: true,
+        type: RequestType.common,
+        filterOption: filterOption,
+      );
+    }
+    final albums = <AssetPathEntity>[];
+    for (final id in folderIds) {
+      try {
+        albums.add(
+          await AssetPathEntity.fromId(id, filterOption: filterOption),
+        );
+      } on Object {
+        // The album is gone; the remaining selection still scans.
+      }
+    }
+    return albums;
   }
 
   @override
@@ -117,6 +188,27 @@ class PhotoManagerObserver implements PhotoObserver {
   }
 
   @override
+  Future<Uint8List?> thumbnailFor(String localId, {int size = 128}) async {
+    // A bad caller must not turn a preview into a full-size decode.
+    final pixels = size.clamp(64, 512).toInt();
+    try {
+      final entity = await AssetEntity.fromId(localId);
+      if (entity == null) return null;
+      final bytes = await entity.thumbnailDataWithSize(
+        ThumbnailSize.square(pixels),
+        quality: 80,
+      );
+      if (bytes == null || bytes.isEmpty) return null;
+      return bytes;
+    } on Object {
+      // PlatformException (asset deleted, iCloud fetch failed) or
+      // UnsupportedError (format without a renderable thumbnail). The
+      // dashboard asks on every library change, so this must never throw.
+      return null;
+    }
+  }
+
+  @override
   Stream<void> get changes => _changes.stream;
 
   @override
@@ -124,6 +216,7 @@ class PhotoManagerObserver implements PhotoObserver {
     if (_disposed) return;
     _disposed = true;
     _scanFiles.clear();
+    _folders = null;
     PhotoManager.removeChangeCallback(_onChange);
     await _changes.close();
   }
@@ -194,6 +287,15 @@ class PhotoManagerObserver implements PhotoObserver {
     if (Platform.isIOS) return 'ios';
     if (Platform.isAndroid) return 'android';
     return Platform.operatingSystem;
+  }
+
+  /// MediaStore names the camera bucket `Camera` (DCIM/Camera); PhotoKit
+  /// exposes it as the "all assets" collection (Recents).
+  bool _isCameraPath(AssetPathEntity path) {
+    if (Platform.isAndroid) {
+      return path.name.endsWith('Camera') || path.id.endsWith('Camera');
+    }
+    return path.isAll;
   }
 
   static String _basename(String path) {

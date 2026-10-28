@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/widgets.dart';
 
 import 'background/scheduler.dart';
@@ -9,6 +11,7 @@ import 'core/auth_models.dart';
 import 'media/photo_observer.dart';
 import 'settings/settings_store.dart';
 import 'sync/sync_coordinator.dart';
+import 'sync/transfer_progress.dart';
 import 'upload/upload_queue.dart';
 
 /// State and actions the app shell needs from the sync stack.
@@ -32,8 +35,17 @@ abstract class AppController extends ChangeNotifier {
   /// Photo-library permission observed by the most recent pass.
   PhotoPermission get permission;
 
+  /// Albums the device exposes, so the user can choose the backup scope.
+  Future<List<MediaFolder>> folders();
+
+  /// Small encoded preview of [localId], or null when none is available.
+  Future<Uint8List?> thumbnail(String localId);
+
   /// Aggregate queue counts.
   QueueStats get stats;
+
+  /// Live progress of the asset currently being prepared or uploaded.
+  TransferProgress get progress;
 
   /// Summary of the most recent pass, or null before the first one.
   SyncReport? get lastReport;
@@ -43,6 +55,15 @@ abstract class AppController extends ChangeNotifier {
 
   /// Current persisted preferences.
   AppSettings get settings;
+
+  /// True when backups are stopped by the user; passes hold until [resume].
+  bool get paused;
+
+  /// Stops backups after the asset currently in flight.
+  Future<void> pause();
+
+  /// Clears the pause and starts a pass immediately.
+  Future<void> resume();
 
   /// Restores auth, loads settings and queue counts, then starts a pass when
   /// the user is already signed in.
@@ -74,7 +95,12 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     required this.coordinator,
     required this.settingsStore,
     required this.scheduler,
-  });
+    required this.observer,
+    required this.progress,
+  }) {
+    _completedTransfers = progress.completedTransfers;
+    progress.addListener(_onProgress);
+  }
 
   /// Token owner; also the source of [isSignedIn].
   final AuthManager auth;
@@ -91,6 +117,13 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   /// OS schedule used by [signOut] and settings changes.
   final BackgroundScheduler scheduler;
 
+  /// Platform library used by [folders].
+  final PhotoObserver observer;
+
+  /// Live progress of the asset currently in flight.
+  @override
+  final TransferProgress progress;
+
   static const QueueStats _emptyStats = QueueStats(
     pending: 0,
     uploaded: 0,
@@ -106,6 +139,12 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   SyncReport? _lastReport;
   String? _error;
   AppSettings _settings = const AppSettings();
+
+  /// Last [TransferProgress.completedTransfers] value already handled.
+  int _completedTransfers = 0;
+
+  /// True while a progress-triggered stats reload is running.
+  bool _reloadingStats = false;
 
   /// The in-flight pass, so callers join instead of stacking passes.
   Future<void>? _pass;
@@ -133,6 +172,13 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   PhotoPermission get permission => _permission;
 
   @override
+  Future<List<MediaFolder>> folders() => observer.folders();
+
+  @override
+  Future<Uint8List?> thumbnail(String localId) =>
+      observer.thumbnailFor(localId);
+
+  @override
   QueueStats get stats => _stats;
 
   @override
@@ -145,6 +191,30 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   AppSettings get settings => _settings;
 
   @override
+  bool get paused => _settings.paused;
+
+  @override
+  Future<void> pause() async {
+    if (_settings.paused) return;
+    // Persisted first: the running pass reads the flag between assets.
+    final next = _settings.copyWith(paused: true);
+    await settingsStore.save(next);
+    _settings = next;
+    _notify();
+  }
+
+  @override
+  Future<void> resume() async {
+    if (_settings.paused) {
+      final next = _settings.copyWith(paused: false);
+      await settingsStore.save(next);
+      _settings = next;
+      _notify();
+    }
+    await syncNow();
+  }
+
+  @override
   Future<void> initialize() async {
     if (!_observing) {
       _observing = true;
@@ -155,7 +225,7 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     _settings = await settingsStore.load();
     _stats = await queue.stats();
     _notify();
-    if (auth.isSignedIn) {
+    if (auth.isSignedIn && !_settings.paused) {
       // Not awaited: the first frame must not wait for a full pass.
       unawaited(syncNow());
     }
@@ -163,7 +233,9 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && auth.isSignedIn) {
+    if (state == AppLifecycleState.resumed &&
+        auth.isSignedIn &&
+        !_settings.paused) {
       unawaited(syncNow());
     }
   }
@@ -248,6 +320,7 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   @override
   Future<void> updateSettings(AppSettings next) async {
     if (_busy) return;
+    final scopeChanged = _scopeChanged(next);
     _busy = true;
     _notify();
     try {
@@ -258,15 +331,43 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
       // Only expose the new settings once both the save and re-register
       // succeeded, so a failed write leaves the UI on the persisted values.
       _settings = next;
+      if (scopeChanged) await _resetScope();
     } finally {
       _busy = false;
       _notify();
     }
+    if (scopeChanged) {
+      // Rows queued under the old scope would otherwise keep uploading.
+      unawaited(_syncNewScope());
+    }
+  }
+
+  /// True when [next] changes which albums get scanned.
+  bool _scopeChanged(AppSettings next) =>
+      next.uploadAllFolders != _settings.uploadAllFolders ||
+      !listEquals(next.uploadFolderIds, _settings.uploadFolderIds);
+
+  /// Forgets queued work discovered under the previous folder scope.
+  Future<void> _resetScope() async {
+    // Empty parses back as "no watermark", so the new scope scans from zero.
+    await queue.setMeta(SyncCoordinator.scanWatermarkKey, '');
+    await queue.clearNonTerminal();
+    _stats = await queue.stats();
+    _notify();
+  }
+
+  /// Runs a pass for the new scope after any in-flight pass, because [syncNow]
+  /// joins one instead of starting another.
+  Future<void> _syncNewScope() async {
+    final inFlight = _pass;
+    if (inFlight != null) await inFlight;
+    await syncNow();
   }
 
   @override
   void dispose() {
     _disposed = true;
+    progress.removeListener(_onProgress);
     auth.removeListener(_onAuthChanged);
     if (_observing) {
       WidgetsBinding.instance.removeObserver(this);
@@ -314,6 +415,29 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   }
 
   void _onAuthChanged() => _notify();
+
+  /// Forwards progress ticks to the shell and refreshes counters when an
+  /// asset finishes so the dashboard moves while a pass runs.
+  void _onProgress() {
+    if (progress.completedTransfers != _completedTransfers) {
+      _completedTransfers = progress.completedTransfers;
+      unawaited(_reloadStats());
+    }
+    _notify();
+  }
+
+  Future<void> _reloadStats() async {
+    if (_reloadingStats) return;
+    _reloadingStats = true;
+    try {
+      _stats = await queue.stats();
+      _notify();
+    } on Object {
+      // A queue read must never escape into the progress listener.
+    } finally {
+      _reloadingStats = false;
+    }
+  }
 
   void _notify() {
     if (_disposed) return;

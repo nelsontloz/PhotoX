@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 
 import '../upload/database.dart';
 
@@ -11,7 +14,20 @@ class AppSettings {
     this.notificationsEnabled = true,
     this.backfill = true,
     this.source = 'cameraRoll',
+    this.apiBaseUrl = '',
+    this.paused = false,
+    this.uploadFolderIds = const <String>[],
+    this.uploadAllFolders = false,
   });
+
+  /// Base URL of the PhotoX core API the user entered on first launch.
+  ///
+  /// Empty means "not configured yet": `AppConfig.apiBaseUrl` is only the
+  /// prefilled suggestion, so a build-time default never hides the setup step.
+  final String apiBaseUrl;
+
+  /// True while the user has stopped backups; every pass holds until resumed.
+  final bool paused;
 
   /// Upload only while on an unmetered network.
   final bool wifiOnly;
@@ -34,6 +50,14 @@ class AppSettings {
   /// Library scope, `cameraRoll` for the whole library.
   final String source;
 
+  /// Album ids the user chose to back up.
+  ///
+  /// Empty means "not chosen": the pipeline then defaults to the camera album.
+  final List<String> uploadFolderIds;
+
+  /// Back up the whole library instead of [uploadFolderIds].
+  final bool uploadAllFolders;
+
   AppSettings copyWith({
     bool? wifiOnly,
     bool? chargingOnly,
@@ -41,6 +65,10 @@ class AppSettings {
     bool? notificationsEnabled,
     bool? backfill,
     String? source,
+    String? apiBaseUrl,
+    bool? paused,
+    List<String>? uploadFolderIds,
+    bool? uploadAllFolders,
   }) {
     return AppSettings(
       wifiOnly: wifiOnly ?? this.wifiOnly,
@@ -49,6 +77,10 @@ class AppSettings {
       notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
       backfill: backfill ?? this.backfill,
       source: source ?? this.source,
+      apiBaseUrl: apiBaseUrl ?? this.apiBaseUrl,
+      paused: paused ?? this.paused,
+      uploadFolderIds: uploadFolderIds ?? this.uploadFolderIds,
+      uploadAllFolders: uploadAllFolders ?? this.uploadAllFolders,
     );
   }
 
@@ -60,6 +92,10 @@ class AppSettings {
     'notificationsEnabled': notificationsEnabled.toString(),
     'backfill': backfill.toString(),
     'source': source,
+    'apiBaseUrl': apiBaseUrl,
+    'paused': paused.toString(),
+    'uploadFolderIds': jsonEncode(uploadFolderIds),
+    'uploadAllFolders': uploadAllFolders.toString(),
   };
 
   @override
@@ -71,7 +107,11 @@ class AppSettings {
           other.includeVideos == includeVideos &&
           other.notificationsEnabled == notificationsEnabled &&
           other.backfill == backfill &&
-          other.source == source);
+          other.source == source &&
+          other.apiBaseUrl == apiBaseUrl &&
+          other.paused == paused &&
+          listEquals(other.uploadFolderIds, uploadFolderIds) &&
+          other.uploadAllFolders == uploadAllFolders);
 
   @override
   int get hashCode => Object.hash(
@@ -81,6 +121,10 @@ class AppSettings {
     notificationsEnabled,
     backfill,
     source,
+    apiBaseUrl,
+    paused,
+    Object.hashAll(uploadFolderIds),
+    uploadAllFolders,
   );
 
   @override
@@ -88,7 +132,9 @@ class AppSettings {
       'AppSettings(wifiOnly: $wifiOnly, chargingOnly: $chargingOnly, '
       'includeVideos: $includeVideos, '
       'notificationsEnabled: $notificationsEnabled, backfill: $backfill, '
-      'source: $source)';
+      'source: $source, apiBaseUrl: $apiBaseUrl, paused: $paused, '
+      'uploadFolderIds: $uploadFolderIds, '
+      'uploadAllFolders: $uploadAllFolders)';
 }
 
 /// Persists [AppSettings] in the drift [KeyValues] table.
@@ -121,6 +167,13 @@ class SettingsStore {
       ),
       backfill: _readBool(values['backfill'], defaults.backfill),
       source: _readString(values['source'], defaults.source),
+      apiBaseUrl: _readString(values['apiBaseUrl'], defaults.apiBaseUrl),
+      paused: _readBool(values['paused'], defaults.paused),
+      uploadFolderIds: _readStringList(values['uploadFolderIds']),
+      uploadAllFolders: _readBool(
+        values['uploadAllFolders'],
+        defaults.uploadAllFolders,
+      ),
     );
   }
 
@@ -157,5 +210,21 @@ class SettingsStore {
   static String _readString(String? raw, String fallback) {
     final trimmed = raw?.trim();
     return trimmed == null || trimmed.isEmpty ? fallback : trimmed;
+  }
+
+  /// Decodes a JSON string array; malformed input falls back to "not chosen"
+  /// and non-string entries are dropped.
+  static List<String> _readStringList(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return const <String>[];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const <String>[];
+      return <String>[
+        for (final entry in decoded)
+          if (entry is String) entry,
+      ];
+    } on FormatException {
+      return const <String>[];
+    }
   }
 }

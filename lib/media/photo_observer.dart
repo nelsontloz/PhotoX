@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 /// Media kinds the backup queue tracks.
 enum MediaKind { photo, video }
@@ -49,6 +50,28 @@ class AssetCandidate {
   final String? relativePath;
 }
 
+/// A library album the user can scope backups to.
+class MediaFolder {
+  const MediaFolder({
+    required this.id,
+    required this.name,
+    required this.assetCount,
+    this.isCamera = false,
+  });
+
+  /// Platform album id (MediaStore bucket id / PhotoKit localIdentifier).
+  final String id;
+
+  /// Display name reported by the platform.
+  final String name;
+
+  /// Assets the platform currently counts in this album.
+  final int assetCount;
+
+  /// True for the camera roll / Recents album picked by default.
+  final bool isCamera;
+}
+
 /// Discovers newly added library assets on iOS and Android.
 ///
 /// Implementations live next to the platforms (PhotoKit / MediaStore); the
@@ -57,12 +80,25 @@ abstract class PhotoObserver {
   /// Returns whether the app may read the library, requesting access once.
   Future<PhotoPermission> ensurePermission();
 
+  /// Lists the albums the platform exposes, camera album flagged.
+  Future<List<MediaFolder>> folders();
+
   /// Returns assets added since [since], or since the last successful scan
   /// when [since] is null, oldest first.
-  Future<List<AssetCandidate>> scanNew({DateTime? since});
+  ///
+  /// [folderIds] limits the scan to those albums; null or empty means the
+  /// whole library.
+  Future<List<AssetCandidate>> scanNew({
+    DateTime? since,
+    List<String>? folderIds,
+  });
 
   /// Resolves the original bytes for [localId], or null when it disappeared.
   Future<File?> fileFor(String localId);
+
+  /// Returns a small encoded thumbnail (JPEG/PNG) for [localId], or null when
+  /// the asset is gone or the platform cannot produce one.
+  Future<Uint8List?> thumbnailFor(String localId, {int size = 128});
 
   /// Emits whenever the platform library reports a change.
   Stream<void> get changes;

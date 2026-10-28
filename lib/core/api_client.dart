@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'app_config.dart';
 import 'auth_manager.dart';
 import 'auth_models.dart';
+import '../sync/transfer_progress.dart';
 import '../upload/models.dart';
 
 /// Typed failure for every non-2xx core API response.
@@ -140,7 +141,7 @@ class ApiException implements Exception {
 
 /// Dio transport for the PhotoX core API, signed with the stored Bearer token.
 class ApiClient {
-  ApiClient({required this.auth, Dio? dio, String? baseUrl})
+  ApiClient({required this.auth, Dio? dio, String? baseUrl, this.progress})
     : dio = dio ?? Dio() {
     final configured = this.dio.options.baseUrl;
     this.dio.options.baseUrl =
@@ -160,6 +161,9 @@ class ApiClient {
 
   /// Shared Dio instance; feature clients layer options on top of it.
   final Dio dio;
+
+  /// Live byte progress fed from every upload request this client sends.
+  final TransferProgress? progress;
 
   Future<void> _onRequest(
     RequestOptions options,
@@ -243,7 +247,11 @@ class ApiClient {
       });
       late final Response<dynamic> response;
       try {
-        response = await dio.post<dynamic>('/api/v1/files', data: form);
+        response = await dio.post<dynamic>(
+          '/api/v1/files',
+          data: form,
+          onSendProgress: (sent, total) => progress?.advance(sent),
+        );
       } on DioException catch (error) {
         throw ApiException.fromDio(error);
       }
@@ -334,10 +342,20 @@ class ApiClient {
   }
 
   /// PUT helper converting every transport failure to [ApiException].
-  Future<T> put<T>(String path, {Object? data, Options? options}) async {
+  Future<T> put<T>(
+    String path, {
+    Object? data,
+    Options? options,
+    ProgressCallback? onSendProgress,
+  }) async {
     late final Response<dynamic> response;
     try {
-      response = await dio.put<dynamic>(path, data: data, options: options);
+      response = await dio.put<dynamic>(
+        path,
+        data: data,
+        options: options,
+        onSendProgress: onSendProgress,
+      );
     } on DioException catch (error) {
       throw ApiException.fromDio(error);
     }

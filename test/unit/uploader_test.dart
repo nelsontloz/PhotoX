@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
@@ -564,11 +565,20 @@ class _FakeObserver implements PhotoObserver {
       PhotoPermission.authorized;
 
   @override
-  Future<List<AssetCandidate>> scanNew({DateTime? since}) async =>
-      const <AssetCandidate>[];
+  Future<List<AssetCandidate>> scanNew({
+    DateTime? since,
+    List<String>? folderIds,
+  }) async => const <AssetCandidate>[];
+
+  @override
+  Future<List<MediaFolder>> folders() async => const <MediaFolder>[];
 
   @override
   Future<File?> fileFor(String localId) async => files[localId];
+
+  @override
+  Future<Uint8List?> thumbnailFor(String localId, {int size = 128}) async =>
+      null;
 
   @override
   Stream<void> get changes => const Stream<void>.empty();

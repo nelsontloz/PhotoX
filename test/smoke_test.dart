@@ -1,9 +1,12 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photox_mobile/app.dart';
 import 'package:photox_mobile/app_controller.dart';
 import 'package:photox_mobile/media/photo_observer.dart';
 import 'package:photox_mobile/settings/settings_store.dart';
 import 'package:photox_mobile/sync/sync_coordinator.dart';
+import 'package:photox_mobile/sync/transfer_progress.dart';
 import 'package:photox_mobile/upload/upload_queue.dart';
 
 /// Inert controller so the shell can be pumped without a real stack.
@@ -12,6 +15,7 @@ class FakeAppController extends AppController {
     this.signedIn = true,
     this.busyValue = false,
     this.syncingValue = false,
+    this.pausedValue = false,
     this.authRequiredValue = false,
     this.permissionValue = PhotoPermission.authorized,
     this.statsValue = const QueueStats(
@@ -28,12 +32,14 @@ class FakeAppController extends AppController {
   final bool signedIn;
   final bool busyValue;
   final bool syncingValue;
+  final bool pausedValue;
   final bool authRequiredValue;
   final PhotoPermission permissionValue;
   final QueueStats statsValue;
   final SyncReport? lastReportValue;
   final String? errorValue;
   final AppSettings settingsValue;
+  final TransferProgress progressValue = TransferProgress();
 
   /// Names of the controller actions the shell invoked, in order.
   final List<String> calls = <String>[];
@@ -48,10 +54,19 @@ class FakeAppController extends AppController {
   bool get syncing => syncingValue;
 
   @override
+  bool get paused => pausedValue;
+
+  @override
   bool get authRequired => authRequiredValue;
 
   @override
   PhotoPermission get permission => permissionValue;
+
+  @override
+  Future<List<MediaFolder>> folders() async => const <MediaFolder>[];
+
+  @override
+  Future<Uint8List?> thumbnail(String localId) async => null;
 
   @override
   QueueStats get stats => statsValue;
@@ -66,6 +81,9 @@ class FakeAppController extends AppController {
   AppSettings get settings => settingsValue;
 
   @override
+  TransferProgress get progress => progressValue;
+
+  @override
   Future<void> initialize() async => calls.add('initialize');
 
   @override
@@ -77,6 +95,12 @@ class FakeAppController extends AppController {
 
   @override
   Future<void> syncNow() async => calls.add('syncNow');
+
+  @override
+  Future<void> pause() async => calls.add('pause');
+
+  @override
+  Future<void> resume() async => calls.add('resume');
 
   @override
   Future<void> updateSettings(AppSettings settings) async =>

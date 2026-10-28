@@ -1,6 +1,7 @@
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photox_mobile/settings/settings_store.dart';
+import 'package:photox_mobile/ui/server_setup_screen.dart';
 import 'package:photox_mobile/upload/database.dart';
 
 void main() {
@@ -26,6 +27,10 @@ void main() {
       notificationsEnabled: false,
       backfill: false,
       source: 'albums',
+      apiBaseUrl: 'http://192.168.1.10:3000',
+      paused: true,
+      uploadFolderIds: <String>['camera', 'favorites'],
+      uploadAllFolders: true,
     );
 
     await store.save(settings);
@@ -65,6 +70,16 @@ void main() {
             updatedAt: now,
           ),
         );
+    await db
+        .into(db.keyValues)
+        .insert(
+          KeyValuesCompanion.insert(
+            namespace: SettingsStore.namespace,
+            key: 'uploadFolderIds',
+            value: '{not a list',
+            updatedAt: now,
+          ),
+        );
 
     final loaded = await store.load();
 
@@ -75,6 +90,31 @@ void main() {
     expect(loaded.notificationsEnabled, isFalse);
     expect(loaded.backfill, isTrue);
     expect(loaded.source, 'cameraRoll');
+    expect(loaded.uploadFolderIds, isEmpty);
+    expect(loaded.uploadAllFolders, isFalse);
+  });
+
+  test('decodes the folder list defensively', () async {
+    final now = DateTime(2026, 10, 19);
+    Future<void> setRaw(String value) => db
+        .into(db.keyValues)
+        .insertOnConflictUpdate(
+          KeyValuesCompanion.insert(
+            namespace: SettingsStore.namespace,
+            key: 'uploadFolderIds',
+            value: value,
+            updatedAt: now,
+          ),
+        );
+
+    await setRaw('["camera", 7, {"id": "x"}, "screens"]');
+    expect((await store.load()).uploadFolderIds, <String>['camera', 'screens']);
+
+    await setRaw('not json');
+    expect((await store.load()).uploadFolderIds, isEmpty);
+
+    await setRaw('{"folder": "camera"}');
+    expect((await store.load()).uploadFolderIds, isEmpty);
   });
 
   test('save overwrites previous values instead of duplicating rows', () async {
@@ -82,9 +122,24 @@ void main() {
     await store.save(const AppSettings(wifiOnly: true, includeVideos: true));
 
     final rows = await db.select(db.keyValues).get();
-    expect(rows, hasLength(6));
+    expect(rows, hasLength(10));
     final loaded = await store.load();
     expect(loaded.wifiOnly, isTrue);
     expect(loaded.includeVideos, isTrue);
+  });
+
+  test('accepts only absolute http(s) server URLs', () {
+    expect(
+      normalizeServerUrl(' http://10.0.2.2:3000/ '),
+      'http://10.0.2.2:3000',
+    );
+    expect(
+      normalizeServerUrl('https://photos.example.com/core/'),
+      'https://photos.example.com/core',
+    );
+    expect(normalizeServerUrl('10.0.2.2:3000'), isNull);
+    expect(normalizeServerUrl('ftp://10.0.2.2:3000'), isNull);
+    expect(normalizeServerUrl('http://'), isNull);
+    expect(normalizeServerUrl('   '), isNull);
   });
 }

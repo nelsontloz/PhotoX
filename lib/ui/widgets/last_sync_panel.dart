@@ -47,7 +47,7 @@ class LastSyncPanel extends StatelessWidget {
           const SizedBox(height: 10),
           if (current == null)
             Text(
-              'No sync yet. Tap Sync now to check the camera roll.',
+              'No sync yet. Start a backup to check the camera roll.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: scheme.onSurfaceVariant,
                 height: 1.4,
