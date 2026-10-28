@@ -8,10 +8,12 @@ import '../sync/transfer_progress.dart';
 import '../upload/upload_queue.dart';
 import 'widgets/app_background.dart';
 import 'widgets/backup_progress.dart';
+import 'widgets/count_format.dart';
 import 'widgets/last_sync_panel.dart';
 import 'widgets/queue_summary.dart';
 import 'widgets/sign_out_dialog.dart';
 import 'widgets/status_banner.dart';
+import 'widgets/uploading_file_row.dart';
 
 /// Backup dashboard: live progress, queue counts, access state, and the last
 /// pass summary.
@@ -35,6 +37,8 @@ class HomeScreen extends StatelessWidget {
     required this.onOpenSettings,
     required this.onSignOut,
     this.thumbnail,
+    this.albumCount = 1,
+    this.uploadAllFolders = false,
   });
 
   /// Aggregate queue counts.
@@ -79,6 +83,18 @@ class HomeScreen extends StatelessWidget {
   /// Loads thumbnail bytes for a library id shown in the upload row; when it
   /// is absent or returns null the row keeps a neutral icon.
   final Future<Uint8List?> Function(String localId)? thumbnail;
+
+  /// Albums in the saved backup scope; `0` means the default camera album.
+  final int albumCount;
+
+  /// True when every album is backed up, whatever [albumCount] says.
+  final bool uploadAllFolders;
+
+  /// One line naming how much of the library is in scope.
+  String get _scopeLabel {
+    if (uploadAllFolders) return 'All albums';
+    return albumCount > 1 ? '${formatCount(albumCount)} albums' : '1 album';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -155,96 +171,99 @@ class HomeScreen extends StatelessWidget {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
-          scrolledUnderElevation: 0,
           titleSpacing: 20,
-          title: const Text('PhotoX'),
-          titleTextStyle: theme.textTheme.titleLarge?.copyWith(
-            color: scheme.onSurface,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.3,
+          title: Row(
+            children: <Widget>[
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.backup_rounded,
+                  size: 18,
+                  color: scheme.onPrimaryContainer,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  'PhotoX',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: scheme.onSurface,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ),
+            ],
           ),
           actions: <Widget>[
             IconButton(
-              tooltip: 'Settings',
-              onPressed: onOpenSettings,
-              icon: const Icon(Icons.settings_outlined),
+              tooltip: 'Sync now',
+              onPressed: syncing ? null : () => onSyncNow(),
+              icon: const Icon(Icons.sync_rounded),
             ),
-            const SizedBox(width: 8),
+            // The avatar is the account door: signing out is the one account
+            // action this screen has, and it always asks first.
+            Padding(
+              padding: const EdgeInsets.only(right: 20),
+              child: Tooltip(
+                message: 'Sign out',
+                child: InkResponse(
+                  onTap: syncing ? null : () => _confirmSignOut(context),
+                  radius: 20,
+                  child: CircleAvatar(
+                    radius: 16,
+                    backgroundColor: scheme.primary,
+                    child: Icon(
+                      Icons.person_rounded,
+                      size: 18,
+                      color: scheme.onPrimary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
         body: SafeArea(
           top: false,
           bottom: false,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 680),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: _StatusPill(
-                        status: _statusFor(
-                          syncing: syncing,
-                          paused: paused,
-                          waitingForWifi: lastReport?.waitingForWifi == true,
-                          authRequired: authRequired,
-                          permission: permission,
-                          stats: stats,
-                          error: errorText,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      'Camera roll',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.4,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Backs up your photos and videos to your PhotoX server.',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                        height: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
+                    _buildSubBar(context),
+                    const SizedBox(height: 18),
                     for (final banner in banners) ...<Widget>[
                       banner,
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
                     ],
+                    QueueSummary(stats: stats),
+                    const SizedBox(height: 12),
                     BackupProgressPanel(
                       stats: stats,
+                      paused: paused,
+                      animate: progress.active && !paused,
+                    ),
+                    const SizedBox(height: 12),
+                    UploadingFileRow(
                       progress: progress,
+                      waiting: stats.pending,
                       paused: paused,
                       thumbnail: thumbnail,
                     ),
-                    const SizedBox(height: 16),
-                    QueueSummary(stats: stats),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     LastSyncPanel(report: lastReport),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.center,
-                      child: TextButton.icon(
-                        onPressed: syncing
-                            ? null
-                            : () => _confirmSignOut(context),
-                        icon: const Icon(Icons.logout_rounded, size: 18),
-                        label: const Text('Sign out'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -257,8 +276,61 @@ class HomeScreen extends StatelessWidget {
           onSyncNow: onSyncNow,
           onPause: onPause,
           onResume: onResume,
+          onOpenSettings: onOpenSettings,
         ),
       ),
+    );
+  }
+
+  /// Screen title, the two state pills, and the settings shortcut.
+  Widget _buildSubBar(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'Backup Status',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  color: theme.colorScheme.onSurface,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.5,
+                  height: 1.15,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  _StatusPill(
+                    status: _statusFor(
+                      syncing: syncing,
+                      paused: paused,
+                      waitingForWifi: lastReport?.waitingForWifi == true,
+                      authRequired: authRequired,
+                      permission: permission,
+                      stats: stats,
+                      error: error?.trim(),
+                    ),
+                  ),
+                  _ScopePill(label: _scopeLabel),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        _SquareButton(
+          tooltip: 'Settings',
+          icon: Icons.tune_rounded,
+          onPressed: onOpenSettings,
+        ),
+      ],
     );
   }
 
@@ -276,6 +348,9 @@ class HomeScreen extends StatelessWidget {
               'your device settings.',
         );
       case PhotoPermission.notDetermined:
+        // A running pass is the first proof that access works, so the banner
+        // must not claim it is missing while photos are already uploading.
+        if (syncing) return null;
         return const StatusBanner(
           tone: StatusTone.warning,
           icon: Icons.photo_library_outlined,
@@ -463,7 +538,100 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
-/// What the bottom bar's single button does, derived from app state.
+/// How many albums the pass reads, next to the live status.
+class _ScopePill extends StatelessWidget {
+  const _ScopePill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Semantics(
+      container: true,
+      label: 'Backup scope: $label',
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainer,
+            borderRadius: BorderRadius.circular(100),
+            border: Border.all(
+              color: scheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: scheme.primary,
+                ),
+                child: const SizedBox.square(dimension: 6),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Square icon shortcut used next to the screen title.
+class _SquareButton extends StatelessWidget {
+  const _SquareButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: scheme.surfaceContainer,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(
+            color: scheme.outlineVariant.withValues(alpha: 0.45),
+          ),
+        ),
+        child: InkWell(
+          onTap: onPressed,
+          child: SizedBox.square(
+            dimension: 40,
+            child: Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// What the bottom bar's primary button does, derived from app state.
 enum _BackupMode { idle, syncing, paused }
 
 class _BackupBar extends StatelessWidget {
@@ -473,6 +641,7 @@ class _BackupBar extends StatelessWidget {
     required this.onSyncNow,
     required this.onPause,
     required this.onResume,
+    required this.onOpenSettings,
   });
 
   final bool syncing;
@@ -480,11 +649,11 @@ class _BackupBar extends StatelessWidget {
   final Future<void> Function() onSyncNow;
   final Future<void> Function() onPause;
   final Future<void> Function() onResume;
+  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final scheme = Theme.of(context).colorScheme;
     // Paused outranks syncing: the user asked to stop, and Resume must stay
     // reachable while the asset in flight finishes.
     final mode = paused
@@ -505,8 +674,6 @@ class _BackupBar extends StatelessWidget {
         onResume,
       ),
     };
-    // Stopping is a calmer action than starting, so it gets the tonal fill.
-    final tonal = mode == _BackupMode.syncing;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -523,30 +690,84 @@ class _BackupBar extends StatelessWidget {
             heightFactor: 1,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 680),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: action,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(54),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 14,
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: _BarButton(
+                      icon: icon,
+                      label: label,
+                      foreground: scheme.primary,
+                      onPressed: action,
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _BarButton(
+                      icon: Icons.tune_rounded,
+                      label: 'Settings',
+                      foreground: scheme.onSurfaceVariant,
+                      onPressed: onOpenSettings,
                     ),
-                    backgroundColor: tonal ? scheme.secondaryContainer : null,
-                    foregroundColor: tonal ? scheme.onSecondaryContainer : null,
-                    textStyle: theme.textTheme.titleMedium?.copyWith(
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Half-width bottom action: icon plus a label that shrinks, never truncates.
+class _BarButton extends StatelessWidget {
+  const _BarButton({
+    required this.icon,
+    required this.label,
+    required this.foreground,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color foreground;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Material(
+      color: scheme.surfaceContainer,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+      ),
+      child: InkWell(
+        onTap: onPressed,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Icon(icon, size: 18, color: foreground),
+              const SizedBox(width: 8),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: foreground,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  icon: Icon(icon, size: 21),
-                  label: Text(label),
                 ),
               ),
-            ),
+            ],
           ),
         ),
       ),

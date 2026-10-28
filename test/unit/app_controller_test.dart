@@ -10,6 +10,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photox_mobile/app_controller.dart';
 import 'package:photox_mobile/background/scheduler.dart';
+import 'package:photox_mobile/core/api_client.dart';
 import 'package:photox_mobile/core/auth_manager.dart';
 import 'package:photox_mobile/core/auth_models.dart';
 import 'package:photox_mobile/core/refresh_lock.dart';
@@ -257,6 +258,7 @@ void main() {
 
   late AppDatabase db;
   late MemoryTokenStore tokenStore;
+  late Dio authDio;
   late AuthManager auth;
   late _DeniedObserver observer;
   late _FakeRegistrar registrar;
@@ -273,26 +275,27 @@ void main() {
     rejectLogin = false;
     db = AppDatabase(NativeDatabase.memory());
     tokenStore = MemoryTokenStore();
+    authDio = Dio()
+      ..httpClientAdapter = _StubAdapter((options) async {
+        switch (options.path) {
+          case '/api/v1/auth/login':
+            if (rejectLogin) {
+              return _json(401, <String, dynamic>{
+                'statusCode': 401,
+                'message': 'Invalid credentials',
+              });
+            }
+            return _json(200, _tokenPayload());
+          case '/api/v1/auth/logout':
+            return ResponseBody.fromString('', 204);
+          default:
+            return _json(404, <String, dynamic>{'message': 'not found'});
+        }
+      });
     auth = AuthManager(
       store: tokenStore,
       refreshLock: MemoryRefreshLock(),
-      dio: Dio()
-        ..httpClientAdapter = _StubAdapter((options) async {
-          switch (options.path) {
-            case '/api/v1/auth/login':
-              if (rejectLogin) {
-                return _json(401, <String, dynamic>{
-                  'statusCode': 401,
-                  'message': 'Invalid credentials',
-                });
-              }
-              return _json(200, _tokenPayload());
-            case '/api/v1/auth/logout':
-              return ResponseBody.fromString('', 204);
-            default:
-              return _json(404, <String, dynamic>{'message': 'not found'});
-          }
-        }),
+      dio: authDio,
     );
     observer = _DeniedObserver();
     registrar = _FakeRegistrar();
@@ -317,6 +320,7 @@ void main() {
     );
     controller = PhotoXController(
       auth: auth,
+      api: ApiClient(auth: auth),
       queue: queue,
       coordinator: coordinator,
       settingsStore: settingsStore,
@@ -440,7 +444,7 @@ void main() {
   test('signIn surfaces the server error and stays signed out', () async {
     rejectLogin = true;
 
-    await controller.signIn('ada@example.com', 'wrong password');
+    await controller.signIn('ada@example.com', 'wrong password', '');
 
     expect(controller.isSignedIn, isFalse);
     expect(controller.error, 'Invalid credentials');
@@ -448,8 +452,44 @@ void main() {
     expect(observer.permissionCalls, 0);
   });
 
+  test('signIn retargets both transports to a new server address', () async {
+    await controller.signIn(
+      'ada@example.com',
+      'correct horse',
+      ' https://photos.example.com/ ',
+    );
+
+    expect(controller.settings.apiBaseUrl, 'https://photos.example.com');
+    expect(
+      (await settingsStore.load()).apiBaseUrl,
+      'https://photos.example.com',
+      reason: 'the background isolate reads this on its next boot',
+    );
+    expect(authDio.options.baseUrl, 'https://photos.example.com');
+    expect(controller.api.dio.options.baseUrl, 'https://photos.example.com');
+  });
+
+  test('signIn leaves the stored server alone for an unchanged or empty '
+      'address', () async {
+    await settingsStore.save(
+      const AppSettings(apiBaseUrl: 'http://10.0.2.2:3000'),
+    );
+    await controller.initialize();
+    final before = authDio.options.baseUrl;
+
+    await controller.signIn('ada@example.com', 'correct horse', '');
+    await controller.signIn('ada@example.com', 'correct horse', '10.0.2.2');
+
+    expect(controller.settings.apiBaseUrl, 'http://10.0.2.2:3000');
+    expect(
+      authDio.options.baseUrl,
+      before,
+      reason: 'an empty or unparseable address must not retarget anything',
+    );
+  });
+
   test('signIn stores the session and starts a pass', () async {
-    await controller.signIn('ada@example.com', 'correct horse');
+    await controller.signIn('ada@example.com', 'correct horse', '');
     await controller.syncNow();
 
     expect(controller.isSignedIn, isTrue);
@@ -465,7 +505,7 @@ void main() {
     expect(registrar.cancelled, contains(BackgroundScheduler.periodicTask));
     final registrations = registrar.periodicConstraints.length;
 
-    await controller.signIn('ada@example.com', 'correct horse');
+    await controller.signIn('ada@example.com', 'correct horse', '');
 
     expect(controller.isSignedIn, isTrue);
     expect(controller.error, isNull);
@@ -475,7 +515,7 @@ void main() {
   test('signIn keeps the session when re-registration fails', () async {
     registrar.failPeriodic = true;
 
-    await controller.signIn('ada@example.com', 'correct horse');
+    await controller.signIn('ada@example.com', 'correct horse', '');
 
     expect(controller.isSignedIn, isTrue);
     expect(await tokenStore.read(), isNotNull);
@@ -610,6 +650,7 @@ void main() {
   test('a failed settings save does not purge queued work', () async {
     final scoped = PhotoXController(
       auth: auth,
+      api: ApiClient(auth: auth),
       queue: queue,
       coordinator: coordinator,
       settingsStore: _FailingSettingsStore(db),

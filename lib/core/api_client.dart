@@ -162,6 +162,9 @@ class ApiClient {
   /// Shared Dio instance; feature clients layer options on top of it.
   final Dio dio;
 
+  /// Points every later upload request at the server the user just entered.
+  set baseUrl(String url) => dio.options.baseUrl = url;
+
   /// Live byte progress fed from every upload request this client sends.
   final TransferProgress? progress;
 

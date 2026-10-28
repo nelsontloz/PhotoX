@@ -37,6 +37,9 @@ class AuthManager extends ChangeNotifier {
   /// Persistence for the single token document.
   final TokenStore store;
 
+  /// Points every later auth request at the server the user just entered.
+  set baseUrl(String url) => _dio.options.baseUrl = url;
+
   /// Cross-isolate mutex guarding refresh rotation.
   final RefreshLock refreshLock;
 

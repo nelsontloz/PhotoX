@@ -87,7 +87,7 @@ class FakeAppController extends AppController {
   Future<void> initialize() async => calls.add('initialize');
 
   @override
-  Future<void> signIn(String email, String password) async =>
+  Future<void> signIn(String email, String password, String serverUrl) async =>
       calls.add('signIn:$email');
 
   @override

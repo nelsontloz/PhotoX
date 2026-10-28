@@ -23,6 +23,7 @@ class LastSyncPanel extends StatelessWidget {
     final lines = current == null ? const <String>[] : _summaryLines(current);
 
     return Panel(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -30,21 +31,25 @@ class LastSyncPanel extends StatelessWidget {
             children: <Widget>[
               Icon(
                 Icons.history_rounded,
-                size: 18,
+                size: 15,
                 color: scheme.onSurfaceVariant,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'Last sync',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
+                  'LAST SYNC',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.3,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           if (current == null)
             Text(
               'No sync yet. Start a backup to check the camera roll.',

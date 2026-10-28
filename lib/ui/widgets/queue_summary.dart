@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../upload/upload_queue.dart';
 import 'count_format.dart';
-import 'panel.dart';
 
-/// Queue counts for the home screen: uploaded, duplicate, waiting, failed.
+/// The three queue counts that matter at a glance: uploaded, remaining,
+/// skipped.
 ///
-/// Renders two columns on phones and four on wider layouts, and explains the
-/// duplicate count the first time it is non-zero.
+/// Laid out as a fixed three-column grid, so the wording stays short and each
+/// cell scales down instead of wrapping: the row keeps its shape at large text
+/// sizes.
 class QueueSummary extends StatelessWidget {
   const QueueSummary({super.key, required this.stats});
 
@@ -18,146 +19,219 @@ class QueueSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final total =
-        stats.pending + stats.uploaded + stats.duplicate + stats.failed;
+    final failed = stats.failed;
 
-    return Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            'Backup queue',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 16),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = constraints.maxWidth >= 440 ? 4 : 2;
-              const gap = 12.0;
-              final cellWidth =
-                  (constraints.maxWidth - gap * (columns - 1)) / columns;
-              final cells = <Widget>[
-                _StatCell(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        // IntrinsicHeight keeps the three cards level even when one sublabel
+        // is longer than the others.
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Expanded(
+                child: _MetricCard(
                   label: 'Uploaded',
                   value: stats.uploaded,
-                  color: scheme.primary,
+                  detail: stats.uploaded == 1 ? 'file safe' : 'files safe',
+                  icon: Icons.cloud_done_rounded,
+                  accent: scheme.primary,
+                  glow: true,
+                  semanticsLabel:
+                      'Uploaded: ${formatCount(stats.uploaded)} files safe',
                 ),
-                _StatCell(
-                  label: 'Already backed up',
-                  value: stats.duplicate,
-                  color: scheme.secondary,
-                ),
-                _StatCell(
-                  label: 'Waiting',
-                  value: stats.pending,
-                  color: scheme.onSurfaceVariant,
-                ),
-                _StatCell(
-                  label: 'Failed',
-                  value: stats.failed,
-                  color: scheme.error,
-                ),
-              ];
-
-              return Wrap(
-                spacing: gap,
-                runSpacing: 16,
-                children: <Widget>[
-                  for (final cell in cells)
-                    SizedBox(width: cellWidth, child: cell),
-                ],
-              );
-            },
-          ),
-          if (total == 0) ...<Widget>[
-            const SizedBox(height: 16),
-            Text(
-              'Nothing queued yet. New camera roll items show up after a sync.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-                height: 1.4,
               ),
-            ),
-          ] else if (stats.duplicate > 0) ...<Widget>[
-            const SizedBox(height: 14),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Icon(
-                  Icons.info_outline_rounded,
-                  size: 15,
-                  color: scheme.onSurfaceVariant,
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MetricCard(
+                  label: 'Remaining',
+                  value: stats.pending,
+                  detail: 'in queue',
+                  icon: Icons.hourglass_bottom_rounded,
+                  accent: scheme.tertiary,
+                  glow: true,
+                  semanticsLabel:
+                      'Remaining: ${formatCount(stats.pending)} in queue',
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Already backed up means the server had the same file, so '
-                    'it was skipped.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                      height: 1.35,
-                    ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MetricCard(
+                  label: 'Skipped',
+                  value: stats.duplicate,
+                  detail: failed > 0
+                      ? countLabel(failed, 'error')
+                      : 'no errors',
+                  icon: Icons.rule_rounded,
+                  accent: failed > 0 ? scheme.error : scheme.outline,
+                  semanticsLabel: failed > 0
+                      ? 'Skipped: ${formatCount(stats.duplicate)}, '
+                            '${countLabel(failed, 'error')}'
+                      : 'Skipped: ${formatCount(stats.duplicate)}, no errors',
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (stats.duplicate > 0) ...<Widget>[
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Icon(
+                Icons.info_outline_rounded,
+                size: 14,
+                color: scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Skipped means the server already had the same file.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    height: 1.35,
                   ),
                 ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ],
-      ),
+      ],
     );
   }
 }
 
-class _StatCell extends StatelessWidget {
-  const _StatCell({
+/// One cell of the metric grid: uppercase label, big count, coloured sublabel.
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({
     required this.label,
     required this.value,
-    required this.color,
+    required this.detail,
+    required this.icon,
+    required this.accent,
+    required this.semanticsLabel,
+    this.glow = false,
   });
 
   final String label;
   final int value;
-  final Color color;
+  final String detail;
+  final IconData icon;
+  final Color accent;
+  final String semanticsLabel;
+
+  /// Soft blurred blob in the top-right corner, as on the mockup's first two
+  /// cards.
+  final bool glow;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final formatted = formatCount(value);
+    final scheme = theme.colorScheme;
 
     return Semantics(
       container: true,
-      label: '$label: $formatted',
+      label: semanticsLabel,
       child: ExcludeSemantics(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                formatted,
-                maxLines: 1,
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.5,
-                  fontFeatures: const <FontFeature>[
-                    FontFeature.tabularFigures(),
-                  ],
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: scheme.outlineVariant.withValues(alpha: 0.32),
+            ),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              // The card fills the grid row so the numbers line up.
+              fit: StackFit.passthrough,
+              children: <Widget>[
+                if (glow)
+                  Positioned(
+                    top: -24,
+                    right: -24,
+                    child: IgnorePointer(
+                      child: Container(
+                        width: 64,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: <Color>[
+                              accent.withValues(alpha: 0.34),
+                              accent.withValues(alpha: 0),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                label.toUpperCase(),
+                                maxLines: 1,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.1,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(icon, size: 14, color: accent),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          formatCount(value),
+                          maxLines: 1,
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            color: scheme.onSurface,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.6,
+                            height: 1.1,
+                            fontFeatures: const <FontFeature>[
+                              FontFeature.tabularFigures(),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          detail,
+                          maxLines: 1,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: accent,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                height: 1.3,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

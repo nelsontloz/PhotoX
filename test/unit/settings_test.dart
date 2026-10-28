@@ -1,7 +1,7 @@
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:photox_mobile/core/app_config.dart';
 import 'package:photox_mobile/settings/settings_store.dart';
-import 'package:photox_mobile/ui/server_setup_screen.dart';
 import 'package:photox_mobile/upload/database.dart';
 
 void main() {

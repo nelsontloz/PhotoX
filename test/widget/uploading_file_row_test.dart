@@ -51,9 +51,18 @@ Future<void> _pumpRow(
   WidgetTester tester,
   TransferProgress progress, {
   Future<Uint8List?> Function(String localId)? thumbnail,
+  int waiting = 0,
+  bool paused = false,
 }) {
   return tester.pumpWidget(
-    _app(UploadingFileRow(progress: progress, thumbnail: thumbnail)),
+    _app(
+      UploadingFileRow(
+        progress: progress,
+        waiting: waiting,
+        paused: paused,
+        thumbnail: thumbnail,
+      ),
+    ),
   );
 }
 
@@ -95,16 +104,27 @@ void main() {
     await _pumpRow(tester, progress);
     transfer.tick(const Duration(seconds: 1));
     progress.advance(2500000);
-    await tester.pumpAndSettle();
+    // The live dot repeats while bytes move, so this pumps a fixed span
+    // instead of settling.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
 
     expect(find.text('IMG_4821.HEIC'), findsOneWidget);
-    expect(find.text('2.5 MB of 10.0 MB'), findsOneWidget);
+    expect(find.text('2.5 MB / 10.0 MB · Uploading'), findsOneWidget);
     expect(find.text('25%'), findsOneWidget);
+    expect(find.text('HEIC'), findsOneWidget);
 
     final bar = tester.widget<LinearProgressIndicator>(
       find.byKey(const Key('uploading-file-progress')),
     );
     expect(bar.value, closeTo(0.25, 0.001));
+    expect(
+      bar.color,
+      Theme.of(tester.element(find.byType(UploadingFileRow)))
+          .colorScheme
+          .primaryContainer,
+      reason: 'the file bar uses the same solid blue as the overall bar',
+    );
 
     // A finished transfer keeps the last file at its final state.
     progress.finish();
@@ -126,13 +146,44 @@ void main() {
     );
 
     await _pumpRow(tester, progress);
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
 
-    expect(find.text('Preparing · 0 B of 4.0 KB'), findsOneWidget);
+    expect(find.text('0 B / 4.0 KB · Preparing'), findsOneWidget);
     final bar = tester.widget<LinearProgressIndicator>(
       find.byKey(const Key('uploading-file-progress')),
     );
     expect(bar.value, 0);
+  });
+
+  testWidgets('the footer counts what is still queued', (tester) async {
+    final progress = TransferProgress();
+    addTearDown(progress.dispose);
+    await _pumpRow(tester, progress);
+    expect(find.text('Nothing queued'), findsOneWidget);
+
+    await _pumpRow(tester, progress, waiting: 7);
+    expect(find.text('7 files still waiting'), findsOneWidget);
+
+    await _pumpRow(tester, progress, waiting: 1);
+    expect(find.text('1 file still waiting'), findsOneWidget);
+  });
+
+  testWidgets('a paused transfer says so instead of the phase', (tester) async {
+    final progress = TransferProgress();
+    addTearDown(progress.dispose);
+    progress.begin(
+      localId: 'asset-1',
+      fileName: 'IMG_4821.HEIC',
+      totalBytes: 1000,
+      phase: TransferPhase.uploading,
+    );
+
+    await _pumpRow(tester, progress, paused: true);
+    await tester.pump();
+
+    expect(find.text('0 B / 1.0 KB · Paused'), findsOneWidget);
+    expect(tester.hasRunningAnimations, isFalse);
   });
 
   testWidgets('thumbnail bytes are painted with gapless playback', (
@@ -260,11 +311,10 @@ void main() {
       totalBytes: 10000000,
       phase: TransferPhase.uploading,
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
     final uploading = tester.getSize(find.byType(UploadingFileRow));
 
     expect(uploading, idle);
-    expect(idle.height, 72);
   });
 
   testWidgets('HomeScreen hands its thumbnail callback to the row', (

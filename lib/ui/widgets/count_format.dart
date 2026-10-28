@@ -19,6 +19,9 @@ String countLabel(int value, String singular) {
   return '$formatted ${value == 1 ? singular : '${singular}s'}';
 }
 
+/// `840 KB/s` or `12.4 MB/s`; decimal units, one decimal below 100.
+String formatSpeed(double bytesPerSecond) => '${formatBytes(bytesPerSecond)}/s';
+
 /// `840 KB` or `12.4 MB`; decimal units, one decimal below 100.
 String formatBytes(num bytes) {
   const units = <String>['B', 'KB', 'MB', 'GB', 'TB'];

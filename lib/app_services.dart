@@ -198,6 +198,7 @@ class AppServices {
       controller: withController
           ? PhotoXController(
               auth: authManager,
+              api: api,
               queue: queue,
               coordinator: coordinator,
               settingsStore: settingsStore,

@@ -5,7 +5,7 @@ class Panel extends StatelessWidget {
   const Panel({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(20),
+    this.padding = const EdgeInsets.all(16),
   });
 
   /// Content laid out inside the panel.
@@ -19,11 +19,11 @@ class Panel extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
 
     return Material(
-      color: scheme.surfaceContainerLow,
+      color: scheme.surfaceContainer,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.3)),
       ),
       child: Padding(padding: padding, child: child),
     );

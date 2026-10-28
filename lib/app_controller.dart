@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 
 import 'background/scheduler.dart';
 import 'core/api_client.dart';
+import 'core/app_config.dart';
 import 'core/auth_manager.dart';
 import 'core/auth_models.dart';
 import 'media/photo_observer.dart';
@@ -70,7 +71,10 @@ abstract class AppController extends ChangeNotifier {
   Future<void> initialize();
 
   /// Signs in and, on success, starts an immediate sync pass.
-  Future<void> signIn(String email, String password);
+  ///
+  /// [serverUrl] is the address the user confirmed on the sign-in form; an
+  /// empty or unchanged value keeps the stored one.
+  Future<void> signIn(String email, String password, String serverUrl);
 
   /// Revokes the session, cancels background work and resets counters.
   Future<void> signOut();
@@ -91,6 +95,7 @@ abstract class AppController extends ChangeNotifier {
 class PhotoXController extends AppController with WidgetsBindingObserver {
   PhotoXController({
     required this.auth,
+    required this.api,
     required this.queue,
     required this.coordinator,
     required this.settingsStore,
@@ -104,6 +109,9 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
 
   /// Token owner; also the source of [isSignedIn].
   final AuthManager auth;
+
+  /// Signed transport; retargeted when the server address changes.
+  final ApiClient api;
 
   /// Queue persistence used for the home-screen counters.
   final UploadQueue queue;
@@ -214,6 +222,21 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     await syncNow();
   }
 
+  /// Persists a server address typed on the sign-in form and retargets both
+  /// transports, so this session and the next background isolate agree.
+  Future<void> _applyServerUrl(String serverUrl) async {
+    final target = normalizeServerUrl(serverUrl);
+    if (target == null) return;
+    // Applied even when unchanged: the transports may still carry the
+    // compile-time default, and pointing them at the stored address is free.
+    auth.baseUrl = target;
+    api.baseUrl = target;
+    if (target == _settings.apiBaseUrl) return;
+    final next = _settings.copyWith(apiBaseUrl: target);
+    await settingsStore.save(next);
+    _settings = next;
+  }
+
   @override
   Future<void> initialize() async {
     if (!_observing) {
@@ -251,7 +274,7 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   }
 
   @override
-  Future<void> signIn(String email, String password) async {
+  Future<void> signIn(String email, String password, String serverUrl) async {
     if (_busy) return;
     _busy = true;
     _error = null;
@@ -260,6 +283,7 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     var signedIn = false;
     String? scheduleError;
     try {
+      await _applyServerUrl(serverUrl);
       await auth.signIn(email: email, password: password);
       _authRequired = false;
       signedIn = true;

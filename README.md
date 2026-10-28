@@ -79,7 +79,7 @@ codegen and commit the regenerated file.
 
 | Setting | Default | How |
 | --- | --- | --- |
-| Core API URL | prefilled `http://localhost:3000` | First-launch "Connect your server" screen (persisted in the drift `KeyValues` table); `--dart-define=PHOTOX_API_URL=...` only pre-fills that field |
+| Core API URL | prefilled `http://localhost:3000` | First-launch "Connect your server" screen, and editable on the sign-in screen (persisted in the drift `KeyValues` table); `--dart-define=PHOTOX_API_URL=...` only pre-fills that field |
 | Single-upload threshold | 64 MiB | `AppConfig.singleUploadThresholdBytes` (client policy, not a server limit) |
 | Session part size | 8 MiB | Fixed by the core upload-session contract |
 | Max upload | 4 GiB | Core limit |

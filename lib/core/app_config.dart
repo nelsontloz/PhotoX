@@ -24,3 +24,13 @@ abstract final class AppConfig {
   // TODO(spec §2.2, §3.1): confirm these constants against the core capability
   // endpoint once it exists instead of hardcoding them here.
 }
+
+/// Returns [raw] as a usable base URL (trimmed, no trailing slash), or null
+/// when it is not an absolute http(s) address.
+String? normalizeServerUrl(String raw) {
+  final trimmed = raw.trim();
+  final uri = Uri.tryParse(trimmed);
+  if (uri == null || uri.host.isEmpty) return null;
+  if (!uri.isScheme('http') && !uri.isScheme('https')) return null;
+  return trimmed.replaceAll(RegExp(r'/+$'), '');
+}

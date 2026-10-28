@@ -9,6 +9,7 @@ import 'package:photox_mobile/sync/transfer_progress.dart';
 import 'package:photox_mobile/ui/home_screen.dart';
 import 'package:photox_mobile/ui/login_screen.dart';
 import 'package:photox_mobile/ui/settings_screen.dart';
+import 'package:photox_mobile/ui/widgets/backup_progress.dart';
 import 'package:photox_mobile/upload/upload_queue.dart';
 
 Widget _app(Widget home, {double textScale = 1}) {
@@ -59,6 +60,8 @@ Widget _home({
   Future<void> Function()? onResume,
   VoidCallback? onOpenSettings,
   Future<void> Function()? onSignOut,
+  int albumCount = 1,
+  bool uploadAllFolders = false,
   double textScale = 1,
 }) {
   return _app(
@@ -71,6 +74,8 @@ Widget _home({
       authRequired: authRequired,
       lastReport: lastReport,
       error: error,
+      albumCount: albumCount,
+      uploadAllFolders: uploadAllFolders,
       onSyncNow: onSyncNow ?? () async {},
       onPause: onPause ?? () async {},
       onResume: onResume ?? () async {},
@@ -141,7 +146,7 @@ void main() {
       await tester.pumpWidget(
         _app(
           LoginScreen(
-            onSignIn: (email, password) async {
+            onSignIn: (email, password, serverUrl) async {
               calls++;
             },
           ),
@@ -151,6 +156,7 @@ void main() {
       await tester.tap(find.text('Sign in'));
       await tester.pumpAndSettle();
 
+      expect(find.text('Enter your server address.'), findsOneWidget);
       expect(find.text('Enter your email address.'), findsOneWidget);
       expect(find.text('Enter your password.'), findsOneWidget);
       expect(calls, 0);
@@ -161,27 +167,34 @@ void main() {
     ) async {
       String? email;
       String? password;
+      String? server;
       await tester.pumpWidget(
         _app(
           LoginScreen(
-            onSignIn: (value, secret) async {
+            onSignIn: (value, secret, serverUrl) async {
               email = value;
               password = secret;
+              server = serverUrl;
             },
           ),
         ),
       );
 
       await tester.enterText(
-        find.byType(TextFormField).at(0),
+        find.byType(TextFormField).at(1),
         '  ada@example.com  ',
       );
-      await tester.enterText(find.byType(TextFormField).at(1), 'correct horse');
+      await tester.enterText(find.byType(TextFormField).at(2), 'correct horse');
+      await tester.enterText(
+        find.byType(TextFormField).at(0),
+        '  http://10.0.2.2:3000/  ',
+      );
       await tester.tap(find.text('Sign in'));
       await tester.pumpAndSettle();
 
       expect(email, 'ada@example.com');
       expect(password, 'correct horse');
+      expect(server, 'http://10.0.2.2:3000');
     });
 
     testWidgets('shows the supplied sign-in error until the user edits', (
@@ -190,7 +203,7 @@ void main() {
       await tester.pumpWidget(
         _app(
           LoginScreen(
-            onSignIn: (email, password) async {},
+            onSignIn: (email, password, serverUrl) async {},
             error: 'Wrong email or password.',
           ),
         ),
@@ -200,13 +213,17 @@ void main() {
       expect(find.text('Could not sign in'), findsOneWidget);
 
       await tester.enterText(
-        find.byType(TextFormField).at(0),
+        find.byType(TextFormField).at(1),
         'ada@example.com',
       );
       await tester.pumpAndSettle();
       expect(find.text('Wrong email or password.'), findsNothing);
 
-      await tester.enterText(find.byType(TextFormField).at(1), 'secret');
+      await tester.enterText(find.byType(TextFormField).at(2), 'secret');
+      await tester.enterText(
+        find.byType(TextFormField).at(0),
+        'http://10.0.2.2:3000',
+      );
       await tester.tap(find.text('Sign in'));
       await tester.pumpAndSettle();
       expect(find.text('Wrong email or password.'), findsOneWidget);
@@ -218,7 +235,7 @@ void main() {
         _app(
           LoginScreen(
             busy: true,
-            onSignIn: (email, password) async {
+            onSignIn: (email, password, serverUrl) async {
               calls++;
             },
           ),
@@ -230,6 +247,44 @@ void main() {
 
       await tester.tap(find.text('Signing in…'));
       await tester.pump();
+      expect(calls, 0);
+    });
+
+    testWidgets('the server address is editable and prefilled', (tester) async {
+      var calls = 0;
+      await tester.pumpWidget(
+        _app(
+          LoginScreen(
+            onSignIn: (email, password, serverUrl) async {
+              calls++;
+            },
+            serverUrl: 'https://photos.example.com',
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('PhotoX APP'), findsOneWidget);
+      expect(find.text('https://photos.example.com'), findsOneWidget);
+      expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+      expect(find.byType(TextFormField), findsNWidgets(3));
+
+      // An address that cannot be parsed is refused before any request.
+      await tester.enterText(find.byType(TextFormField).at(0), 'photos.local');
+      await tester.pump();
+      expect(find.byIcon(Icons.check_rounded), findsNothing);
+      await tester.tap(find.text('Sign in'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Use a full http:// or https:// address.'),
+        findsOneWidget,
+      );
+      expect(calls, 0);
+
+      await tester.enterText(find.byType(TextFormField).at(0), '');
+      await tester.tap(find.text('Sign in'));
+      await tester.pumpAndSettle();
+      expect(find.text('Enter your server address.'), findsOneWidget);
       expect(calls, 0);
     });
   });
@@ -261,14 +316,15 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Uploaded'), findsOneWidget);
-      expect(find.text('Already backed up'), findsOneWidget);
-      expect(find.text('Waiting'), findsOneWidget);
-      expect(find.text('Failed'), findsOneWidget);
+      expect(find.text('UPLOADED'), findsOneWidget);
+      expect(find.text('REMAINING'), findsOneWidget);
+      expect(find.text('SKIPPED'), findsOneWidget);
       expect(find.text('12'), findsOneWidget);
-      expect(find.text('3'), findsOneWidget);
       expect(find.text('4'), findsOneWidget);
-      expect(find.text('1'), findsOneWidget);
+      expect(find.text('3'), findsOneWidget);
+      expect(find.text('files safe'), findsOneWidget);
+      expect(find.text('in queue'), findsOneWidget);
+      expect(find.text('1 error'), findsOneWidget);
 
       expect(find.text('Photo access is off'), findsOneWidget);
       expect(find.text('Sync problem'), findsOneWidget);
@@ -283,6 +339,91 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('4 items still waiting.'), findsOneWidget);
+    });
+
+    testWidgets('the scope pill names the album count, not the queue', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_home(albumCount: 1));
+      await tester.pump();
+      expect(find.text('1 album'), findsOneWidget);
+
+      await tester.pumpWidget(_home(albumCount: 3));
+      await tester.pump();
+      expect(find.text('3 albums'), findsOneWidget);
+      expect(find.text('1 album'), findsNothing);
+
+      await tester.pumpWidget(_home(albumCount: 0));
+      await tester.pump();
+      expect(
+        find.text('1 album'),
+        findsOneWidget,
+        reason: 'an empty selection still means the camera album',
+      );
+
+      await tester.pumpWidget(_home(albumCount: 4, uploadAllFolders: true));
+      await tester.pump();
+      expect(find.text('All albums'), findsOneWidget);
+    });
+
+    testWidgets('the live dot animates only while bytes are moving', (
+      tester,
+    ) async {
+      final progress = TransferProgress();
+      addTearDown(progress.dispose);
+
+      await tester.pumpWidget(_home(progress: progress));
+      await tester.pump();
+      expect(
+        tester.hasRunningAnimations,
+        isFalse,
+        reason: 'an idle dashboard must not schedule frames',
+      );
+
+      progress.begin(
+        localId: 'asset-1',
+        fileName: 'IMG_4821.JPG',
+        totalBytes: 1000,
+        phase: TransferPhase.uploading,
+      );
+      await tester.pumpWidget(_home(progress: progress, syncing: true));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(tester.hasRunningAnimations, isTrue);
+
+      progress.finish();
+      await tester.pump(const Duration(seconds: 1));
+      expect(
+        tester.hasRunningAnimations,
+        isFalse,
+        reason: 'the dot and the bar sheen both stop when nothing moves',
+      );
+    });
+
+    testWidgets('the bar sheen only pulses while bytes are moving', (
+      tester,
+    ) async {
+      Future<void> pumpTrack({required bool animate}) => tester.pumpWidget(
+        _app(BackupProgressTrack(value: 0.4, animate: animate)),
+      );
+
+      await pumpTrack(animate: false);
+      await tester.pump();
+      expect(tester.hasRunningAnimations, isFalse);
+
+      await pumpTrack(animate: true);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(tester.hasRunningAnimations, isTrue);
+
+      // The fill stays put and the sheen is reset when the pass stops.
+      await pumpTrack(animate: false);
+      await tester.pump();
+      expect(tester.hasRunningAnimations, isFalse);
+      expect(
+        tester
+            .widget<BackupProgressTrack>(find.byType(BackupProgressTrack))
+            .value,
+        0.4,
+      );
     });
 
     testWidgets('auth-required banner takes over the generic error slot', (
@@ -321,6 +462,28 @@ void main() {
         expect(find.text(title), findsOneWidget);
         expect(find.text(message), findsOneWidget);
       }
+    });
+
+    testWidgets('a running pass never claims photo access is missing', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _home(
+          permission: PhotoPermission.notDetermined,
+          syncing: true,
+          progress: TransferProgress()
+            ..begin(
+              localId: 'asset-1',
+              fileName: 'IMG_4821.JPG',
+              totalBytes: 1000,
+              phase: TransferPhase.uploading,
+            ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Photo access not set up'), findsNothing);
+      expect(find.text('Syncing'), findsOneWidget);
     });
 
     testWidgets('Sync now and settings invoke their callbacks', (tester) async {
@@ -444,11 +607,11 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('Photos 1,284 · Videos 37'), findsOneWidget);
+      expect(find.text('1,284 photos · 37 videos'), findsOneWidget);
       expect(find.text('91%'), findsOneWidget);
-      expect(find.text('1,208 of 1,321 backed up'), findsOneWidget);
+      expect(find.text('1,208 / 1,321 files synced'), findsOneWidget);
 
-      final bar = tester.widget<LinearProgressIndicator>(
+      final bar = tester.widget<BackupProgressTrack>(
         find.byKey(const Key('backup-overall-progress')),
       );
       expect(bar.value, closeTo(1208 / 1321, 0.0001));
@@ -469,8 +632,8 @@ void main() {
       await tester.pump();
 
       expect(find.text('0%'), findsOneWidget);
-      expect(find.text('0 of 8 backed up'), findsOneWidget);
-      final bar = tester.widget<LinearProgressIndicator>(
+      expect(find.text('0 / 8 files synced'), findsOneWidget);
+      final bar = tester.widget<BackupProgressTrack>(
         find.byKey(const Key('backup-overall-progress')),
       );
       expect(bar.value, 0);
@@ -517,7 +680,7 @@ void main() {
       await tester.pump();
 
       expect(find.textContaining('/s'), findsNothing);
-      expect(find.text('3 of 5 backed up'), findsOneWidget);
+      expect(find.text('3 / 5 files synced'), findsOneWidget);
     });
 
     testWidgets('a paused transfer hides the speed and says why', (
@@ -869,7 +1032,7 @@ void main() {
     await tester.pumpWidget(
       _app(
         LoginScreen(
-          onSignIn: (email, password) async {},
+          onSignIn: (email, password, serverUrl) async {},
           error:
               'The server rejected this sign-in attempt. Check the email and '
               'password, then try again.',

@@ -2,16 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/app_config.dart';
 import 'widgets/app_background.dart';
-
-/// Returns [raw] as a usable base URL (trimmed, no trailing slash), or null
-/// when it is not an absolute http(s) address.
-String? normalizeServerUrl(String raw) {
-  final trimmed = raw.trim();
-  final uri = Uri.tryParse(trimmed);
-  if (uri == null || uri.host.isEmpty) return null;
-  if (!uri.isScheme('http') && !uri.isScheme('https')) return null;
-  return trimmed.replaceAll(RegExp(r'/+$'), '');
-}
+import 'widgets/form_style.dart';
 
 /// First-launch form that records the PhotoX server address.
 ///
@@ -77,7 +68,8 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: SafeArea(
-          child: Center(
+          child: Align(
+            alignment: Alignment.topCenter,
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(24, 40, 24, 32),
               child: ConstrainedBox(
@@ -104,9 +96,12 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
+                      const FieldLabel('Server address'),
+                      const SizedBox(height: 6),
                       TextFormField(
                         controller: _url,
                         enabled: !_submitting,
+                        style: theme.textTheme.bodyMedium,
                         keyboardType: TextInputType.url,
                         textInputAction: TextInputAction.done,
                         autocorrect: false,
@@ -114,27 +109,10 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                         validator: _validateUrl,
                         autovalidateMode: AutovalidateMode.onUserInteraction,
                         onFieldSubmitted: (_) => _submit(),
-                        decoration: InputDecoration(
-                          labelText: 'Server address',
-                          hintText: 'http://192.168.1.10:3000',
-                          prefixIcon: const Icon(Icons.dns_outlined, size: 20),
-                          filled: true,
-                          fillColor: scheme.surfaceContainerHighest.withValues(
-                            alpha: 0.35,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 16,
-                          ),
-                          border: _border(
-                            scheme.outlineVariant.withValues(alpha: 0.7),
-                          ),
-                          enabledBorder: _border(
-                            scheme.outlineVariant.withValues(alpha: 0.7),
-                          ),
-                          focusedBorder: _border(scheme.primary, width: 1.6),
-                          errorBorder: _border(scheme.error),
-                          focusedErrorBorder: _border(scheme.error, width: 1.6),
+                        decoration: fieldBoxDecoration(
+                          context,
+                          icon: Icons.dns_outlined,
+                          hint: 'http://192.168.1.10:3000',
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -158,15 +136,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                       const SizedBox(height: 22),
                       FilledButton(
                         onPressed: _submitting ? null : _submit,
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size.fromHeight(54),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          textStyle: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        style: primaryButtonStyle(context),
                         child: _submitting
                             ? const SizedBox(
                                 width: 18,
@@ -175,7 +145,14 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Text('Connect'),
+                            : const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: <Widget>[
+                                  Text('Connect'),
+                                  SizedBox(width: 8),
+                                  Icon(Icons.arrow_forward_rounded, size: 18),
+                                ],
+                              ),
                       ),
                     ],
                   ),
@@ -185,13 +162,6 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
           ),
         ),
       ),
-    );
-  }
-
-  OutlineInputBorder _border(Color color, {double width = 1}) {
-    return OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
-      borderSide: BorderSide(color: color, width: width),
     );
   }
 }
