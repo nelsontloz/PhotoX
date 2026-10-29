@@ -166,7 +166,7 @@ void main() {
         expect(replay.asset.id, first.asset.id);
 
         final hits = await api.exists(<DedupCheck>[
-          DedupCheck(checksumSha256: checksum, sizeBytes: _pngBytes.length),
+          DedupCheck(checksumSha256: checksum),
         ]);
         expect(hits, hasLength(1));
         expect(hits.single.exists, isTrue);

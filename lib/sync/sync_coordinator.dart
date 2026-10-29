@@ -233,6 +233,11 @@ class SyncCoordinator {
           final outcome = await uploader.process(
             item,
             prechecked: hits[preparedItem.sha256],
+            // A background pass stops at the part cap so its OS window can end
+            // between parts. A foreground pass has no window to respect, so it
+            // finishes the asset in one attempt instead of restarting at every
+            // 64 MiB boundary.
+            maxParts: budget == null ? 0 : uploader.maxPartsPerPass,
           );
           _countOutcome(outcome, report);
         } on Object catch (error) {
@@ -375,8 +380,7 @@ class SyncCoordinator {
     for (final item in prepared) {
       checks.putIfAbsent(
         item.sha256,
-        () =>
-            DedupCheck(checksumSha256: item.sha256, sizeBytes: item.sizeBytes),
+        () => DedupCheck(checksumSha256: item.sha256),
       );
     }
     if (checks.isEmpty) return <String, DedupHit>{};

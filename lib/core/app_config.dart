@@ -7,7 +7,11 @@ abstract final class AppConfig {
   );
 
   /// Assets at or below this size use the single-request multipart upload path.
-  static const int singleUploadThresholdBytes = 64 * 1024 * 1024;
+  ///
+  /// Kept at one part: anything larger goes through the resumable session API,
+  /// so a proxy or tunnel in front of core (which caps request bodies well
+  /// below 64 MiB) cannot reject a whole file with a 413.
+  static const int singleUploadThresholdBytes = sessionChunkSizeBytes;
 
   /// Fixed part size of the resumable upload API (server contract: 8 MiB).
   static const int sessionChunkSizeBytes = 8 * 1024 * 1024;

@@ -147,7 +147,11 @@ class Uploader {
   /// Assets at or below this size use the single-request path.
   final int thresholdBytes;
 
-  /// Maximum part PUTs in one pass, so background work can stop and resume.
+  /// Maximum part PUTs per attempt, so a background window can stop and resume.
+  ///
+  /// Only the pass that owns a budget should use it: an unbounded foreground
+  /// pass sends every part in one attempt instead of restarting at every
+  /// boundary, which is where a large video used to stall.
   final int maxPartsPerPass;
 
   /// Live progress slot shared with the UI, when one is wired.
@@ -237,9 +241,12 @@ class Uploader {
   /// [UploadFailure] for retryable or terminal failures so the coordinator can
   /// decide the next state. Every state transition is persisted before the
   /// corresponding network call.
+  /// [maxParts] caps the part PUTs this attempt may send; `0` means "as many
+  /// as the file needs". Omitted, [maxPartsPerPass] applies.
   Future<UploadOutcome> process(
     QueuedAsset item, {
     DedupHit? prechecked,
+    int? maxParts,
   }) async {
     final prepared = await prepare(item);
 
@@ -273,7 +280,7 @@ class Uploader {
       if (prepared.sizeBytes <= thresholdBytes) {
         return await _processSingle(item, prepared);
       }
-      return await _processSession(item, prepared);
+      return await _processSession(item, prepared, maxParts ?? maxPartsPerPass);
     } finally {
       // A failure or duplicate must never leave the bar spinning forever.
       progress?.finish();
@@ -358,6 +365,7 @@ class Uploader {
   Future<UploadOutcome> _processSession(
     QueuedAsset item,
     PreparedUpload prepared,
+    int maxParts,
   ) async {
     var row = item;
     var mayRecreate = true;
@@ -429,6 +437,7 @@ class Uploader {
             prepared,
             missing: missing,
             partSize: status.chunkSizeBytes,
+            maxParts: maxParts,
           );
         }
 
@@ -476,6 +485,7 @@ class Uploader {
                 prepared,
                 missing: gaps,
                 partSize: fresh.chunkSizeBytes,
+                maxParts: maxParts,
               );
             }
             await queue.markState(
@@ -574,12 +584,13 @@ class Uploader {
     }
   }
 
-  /// Reads and PUTs the missing part indices, honouring [maxPartsPerPass].
+  /// Reads and PUTs the missing part indices, honouring [maxParts].
   Future<void> _putParts(
     String uploadId,
     PreparedUpload prepared, {
     required List<int> missing,
     required int partSize,
+    required int maxParts,
   }) async {
     if (partSize <= 0) {
       throw const UploadFailure(
@@ -593,7 +604,7 @@ class Uploader {
     try {
       var sent = 0;
       for (final index in missing) {
-        if (sent >= maxPartsPerPass) throw const _PartsRemain();
+        if (maxParts > 0 && sent >= maxParts) throw const _PartsRemain();
         final start = index * partSize;
         if (start >= prepared.sizeBytes) break;
         final length = min(partSize, prepared.sizeBytes - start);

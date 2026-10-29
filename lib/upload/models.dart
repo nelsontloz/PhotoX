@@ -36,18 +36,17 @@ class AssetSummary {
 }
 
 /// One checksum in a dedup pre-check request.
+///
+/// Core's `POST /api/v1/files/exists` DTO whitelists `checksumSha256` only and
+/// runs with `forbidNonWhitelisted`, so any extra field 400s the whole batch.
 class DedupCheck {
-  const DedupCheck({required this.checksumSha256, this.sizeBytes});
+  const DedupCheck({required this.checksumSha256});
 
   /// Lowercase SHA-256 hex of the exact bytes that would be uploaded.
   final String checksumSha256;
 
-  /// File size, when known.
-  final int? sizeBytes;
-
   Map<String, dynamic> toJson() => <String, dynamic>{
     'checksumSha256': checksumSha256,
-    if (sizeBytes != null) 'sizeBytes': sizeBytes,
   };
 }
 

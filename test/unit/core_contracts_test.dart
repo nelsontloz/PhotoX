@@ -67,7 +67,12 @@ void main() {
 
   group('AppConfig', () {
     test('uses the server contract values', () {
-      expect(AppConfig.singleUploadThresholdBytes, 64 * 1024 * 1024);
+      // Client policy, not a server limit: one part is the largest body a
+      // proxy/tunnel in front of core is known to accept.
+      expect(
+        AppConfig.singleUploadThresholdBytes,
+        AppConfig.sessionChunkSizeBytes,
+      );
       expect(AppConfig.sessionChunkSizeBytes, 8 * 1024 * 1024);
       expect(AppConfig.maxUploadSizeBytes, 4 * 1024 * 1024 * 1024);
       expect(AppConfig.maxActiveSessionsPerUser, 5);
@@ -255,14 +260,15 @@ void main() {
           'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 
       final hits = await api.exists(const <DedupCheck>[
-        DedupCheck(checksumSha256: checksumA, sizeBytes: 10),
+        DedupCheck(checksumSha256: checksumA),
         DedupCheck(checksumSha256: checksumB),
       ]);
 
       final body =
           jsonDecode(utf8.decode(requests.single.body)) as Map<String, dynamic>;
+      // `sizeBytes` here 400s the whole batch: core whitelists checksumSha256 only.
       expect(body['items'], <Map<String, dynamic>>[
-        <String, dynamic>{'checksumSha256': checksumA, 'sizeBytes': 10},
+        <String, dynamic>{'checksumSha256': checksumA},
         <String, dynamic>{'checksumSha256': checksumB},
       ]);
       expect(hits, hasLength(2));

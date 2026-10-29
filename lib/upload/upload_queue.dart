@@ -371,21 +371,21 @@ class UploadQueue {
   /// retry a rejected request; the session geometry is dropped so the next
   /// attempt opens a fresh session instead of resuming a dead one.
   Future<int> retryFailed() {
-    return (db.update(db.queuedAssets)
-          ..where((t) => t.state.isIn(_failedStates)))
-        .write(
-          QueuedAssetsCompanion(
-            state: Value(UploadState.pending.name),
-            attempts: const Value(0),
-            nextAttemptAt: const Value(null),
-            lastError: const Value(null),
-            errorCode: const Value(null),
-            uploadId: const Value(null),
-            partSize: const Value(null),
-            partCount: const Value(null),
-            protocol: const Value(null),
-          ),
-        );
+    return (db.update(
+      db.queuedAssets,
+    )..where((t) => t.state.isIn(_failedStates))).write(
+      QueuedAssetsCompanion(
+        state: Value(UploadState.pending.name),
+        attempts: const Value(0),
+        nextAttemptAt: const Value(null),
+        lastError: const Value(null),
+        errorCode: const Value(null),
+        uploadId: const Value(null),
+        partSize: const Value(null),
+        partCount: const Value(null),
+        protocol: const Value(null),
+      ),
+    );
   }
 
   /// Deletes every row that still has work left, returning how many went.

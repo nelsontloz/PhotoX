@@ -31,7 +31,8 @@ class TransferProgress extends ChangeNotifier {
   /// Samples older than this do not count towards the speed estimate.
   static const Duration _speedWindow = Duration(seconds: 3);
 
-  final List<({DateTime at, int sent})> _samples = <({DateTime at, int sent})>[];
+  final List<({DateTime at, int sent})> _samples =
+      <({DateTime at, int sent})>[];
   DateTime _lastNotify = DateTime.fromMillisecondsSinceEpoch(0);
 
   TransferPhase _phase = TransferPhase.idle;
@@ -98,7 +99,8 @@ class TransferProgress extends ChangeNotifier {
     _samples.add((at: at, sent: sent));
     // Keep the window short enough to react to a stalled link.
     _samples.removeWhere(
-      (sample) => at.difference(sample.at) > _speedWindow && sample.sent != sent,
+      (sample) =>
+          at.difference(sample.at) > _speedWindow && sample.sent != sent,
     );
     _speed = _measureSpeed(at);
     _notify();

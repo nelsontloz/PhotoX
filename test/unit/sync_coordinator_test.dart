@@ -484,6 +484,7 @@ class _ScriptedUploader extends Uploader {
   Future<UploadOutcome> process(
     QueuedAsset item, {
     DedupHit? prechecked,
+    int? maxParts,
   }) async {
     if (processCalls++ == 0) {
       throw const UploadFailure(

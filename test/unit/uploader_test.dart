@@ -184,24 +184,30 @@ void main() {
       );
     });
 
-    test('maps a 413 without the quota envelope to a visible failure', () async {
-      // A tunnel or proxy body cap answers 413 with no core envelope; that is
-      // not the account being full, so it must not be filed as quota.
-      final item = await enqueue('single-proxy-413', utf8.encode('too big'));
-      uploads.onUpload = (file, originalName) async {
-        throw const ApiException(statusCode: 413, message: 'Payload Too Large');
-      };
+    test(
+      'maps a 413 without the quota envelope to a visible failure',
+      () async {
+        // A tunnel or proxy body cap answers 413 with no core envelope; that is
+        // not the account being full, so it must not be filed as quota.
+        final item = await enqueue('single-proxy-413', utf8.encode('too big'));
+        uploads.onUpload = (file, originalName) async {
+          throw const ApiException(
+            statusCode: 413,
+            message: 'Payload Too Large',
+          );
+        };
 
-      final failure = await captureFailure(makeUploader().process(item));
+        final failure = await captureFailure(makeUploader().process(item));
 
-      expect(failure.retryable, isFalse);
-      expect(failure.code, 'HTTP_413');
-      expect(failure.terminalState, UploadState.failedPermanent);
-      expect(
-        (await queue.byLocalId('single-proxy-413'))!.state,
-        UploadState.failedPermanent.name,
-      );
-    });
+        expect(failure.retryable, isFalse);
+        expect(failure.code, 'HTTP_413');
+        expect(failure.terminalState, UploadState.failedPermanent);
+        expect(
+          (await queue.byLocalId('single-proxy-413'))!.state,
+          UploadState.failedPermanent.name,
+        );
+      },
+    );
 
     test('maps 500 to a retryable UploadFailure with Retry-After', () async {
       final item = await enqueue('single-500', utf8.encode('server error'));
@@ -473,6 +479,28 @@ void main() {
       expect(row.errorCode, 'UNSUPPORTED_TYPE');
       expect(sessions.aborted, contains('upload-1'));
       expect(await File(row.spoolPath!).exists(), isFalse);
+    });
+
+    test('maxParts 0 sends every part in one attempt', () async {
+      final bytes = List<int>.generate(10, (index) => index);
+      await enqueue('session-uncapped', bytes);
+      sessions
+        ..chunkSize = 4
+        ..totalParts = 3;
+      final uploader = makeUploader(threshold: 4, maxPartsPerPass: 1);
+
+      final outcome = await uploader.process(
+        (await queue.byLocalId('session-uncapped'))!,
+        maxParts: 0,
+      );
+
+      expect(outcome.state, UploadState.uploaded);
+      expect(sessions.putCalls, <String>[
+        'upload-1:0',
+        'upload-1:1',
+        'upload-1:2',
+      ]);
+      expect(sessions.completeCalls, 1);
     });
 
     test('stops after maxPartsPerPass and resumes next pass', () async {

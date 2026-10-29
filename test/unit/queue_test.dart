@@ -460,28 +460,34 @@ void main() {
       );
     });
 
-    test('drops stale session geometry so a retry opens a fresh session', () async {
-      await markInProgress('video', sizeBytes: 100);
-      await queue.markState(
-        localId: 'video',
-        state: UploadState.failedPermanent,
-      );
+    test(
+      'drops stale session geometry so a retry opens a fresh session',
+      () async {
+        await markInProgress('video', sizeBytes: 100);
+        await queue.markState(
+          localId: 'video',
+          state: UploadState.failedPermanent,
+        );
 
-      await queue.retryFailed();
+        await queue.retryFailed();
 
-      final row = await queue.byLocalId('video');
-      expect(row!.state, UploadState.pending.name);
-      expect(row.uploadId, isNull);
-      expect(row.partSize, isNull);
-      expect(row.partCount, isNull);
-      expect(row.protocol, isNull);
-      expect(row.nextAttemptAt, isNull);
-    });
+        final row = await queue.byLocalId('video');
+        expect(row!.state, UploadState.pending.name);
+        expect(row.uploadId, isNull);
+        expect(row.partSize, isNull);
+        expect(row.partCount, isNull);
+        expect(row.protocol, isNull);
+        expect(row.nextAttemptAt, isNull);
+      },
+    );
 
     test('is a no-op when nothing failed', () async {
       await queue.enqueue(_candidate('pending'));
       expect(await queue.retryFailed(), 0);
-      expect((await queue.byLocalId('pending'))!.state, UploadState.discovered.name);
+      expect(
+        (await queue.byLocalId('pending'))!.state,
+        UploadState.discovered.name,
+      );
     });
   });
 
