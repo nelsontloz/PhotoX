@@ -8,17 +8,42 @@ import 'count_format.dart';
 ///
 /// Laid out as a fixed three-column grid, so the wording stays short and each
 /// cell scales down instead of wrapping: the row keeps its shape at large text
-/// sizes.
-class QueueSummary extends StatelessWidget {
-  const QueueSummary({super.key, required this.stats});
+/// sizes. A retry for the failed rows sits under the grid, not inside the
+/// Skipped card, so the three numbers stay level at any text size.
+class QueueSummary extends StatefulWidget {
+  const QueueSummary({super.key, required this.stats, this.onRetryFailed});
 
   /// Aggregate queue counts.
   final QueueStats stats;
+
+  /// Queues the failed rows again and starts a pass; absent means the host
+  /// screen offers no retry, so the button is hidden rather than dead.
+  final Future<void> Function()? onRetryFailed;
+
+  @override
+  State<QueueSummary> createState() => _QueueSummaryState();
+}
+
+class _QueueSummaryState extends State<QueueSummary> {
+  /// True while the retry pass runs, so a double tap cannot start two.
+  bool _retrying = false;
+
+  Future<void> _retry() async {
+    final retry = widget.onRetryFailed;
+    if (_retrying || retry == null) return;
+    setState(() => _retrying = true);
+    try {
+      await retry();
+    } finally {
+      if (mounted) setState(() => _retrying = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final stats = widget.stats;
     final failed = stats.failed;
 
     return Column(
@@ -74,6 +99,17 @@ class QueueSummary extends StatelessWidget {
             ],
           ),
         ),
+        if (failed > 0 && widget.onRetryFailed != null) ...<Widget>[
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _RetryFailedButton(
+              failed: failed,
+              busy: _retrying,
+              onPressed: _retry,
+            ),
+          ),
+        ],
         if (stats.duplicate > 0) ...<Widget>[
           const SizedBox(height: 10),
           Row(
@@ -98,6 +134,95 @@ class QueueSummary extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Bordered pill under the grid: re-queues the failed rows.
+///
+/// Disabled while a retry runs; the spinner replaces the icon rather than the
+/// whole pill, so the row keeps its size.
+class _RetryFailedButton extends StatelessWidget {
+  const _RetryFailedButton({
+    required this.failed,
+    required this.busy,
+    required this.onPressed,
+  });
+
+  /// Failed rows the button would queue again.
+  final int failed;
+
+  final bool busy;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final label = 'Retry ${countLabel(failed, 'failed item')}';
+
+    return Semantics(
+      button: true,
+      enabled: !busy,
+      label: label,
+      child: Tooltip(
+        message: label,
+        child: Material(
+          color: scheme.surfaceContainerHigh,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(100),
+            side: BorderSide(color: scheme.primary.withValues(alpha: 0.35)),
+          ),
+          child: InkWell(
+            onTap: busy ? null : onPressed,
+            child: ConstrainedBox(
+              // 40dp minimum tap target, even at the smallest text size.
+              constraints: const BoxConstraints(minHeight: 40, minWidth: 40),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                child: ExcludeSemantics(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      if (busy)
+                        SizedBox.square(
+                          dimension: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: scheme.primary,
+                          ),
+                        )
+                      else
+                        Icon(
+                          Icons.refresh_rounded,
+                          size: 16,
+                          color: scheme.primary,
+                        ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          'RETRY FAILED',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: scheme.primary,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

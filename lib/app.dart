@@ -99,6 +99,7 @@ class _PhotoXAppState extends State<PhotoXApp> {
                 albumCount: controller.settings.uploadFolderIds.length,
                 uploadAllFolders: controller.settings.uploadAllFolders,
                 onSyncNow: controller.syncNow,
+                onRetryFailed: controller.retryFailed,
                 onPause: controller.pause,
                 onResume: controller.resume,
                 onOpenSettings: _openSettings,

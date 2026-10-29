@@ -32,6 +32,7 @@ class HomeScreen extends StatelessWidget {
     required this.lastReport,
     required this.error,
     required this.onSyncNow,
+    required this.onRetryFailed,
     required this.onPause,
     required this.onResume,
     required this.onOpenSettings,
@@ -67,6 +68,9 @@ class HomeScreen extends StatelessWidget {
 
   /// Starts a sync pass, including the permission prompt when needed.
   final Future<void> Function() onSyncNow;
+
+  /// Requeues failed and quota-skipped assets, then syncs.
+  final Future<void> Function() onRetryFailed;
 
   /// Stops backups after the asset currently in flight.
   final Future<void> Function() onPause;
@@ -248,7 +252,7 @@ class HomeScreen extends StatelessWidget {
                       banner,
                       const SizedBox(height: 10),
                     ],
-                    QueueSummary(stats: stats),
+                    QueueSummary(stats: stats, onRetryFailed: onRetryFailed),
                     const SizedBox(height: 12),
                     BackupProgressPanel(
                       stats: stats,

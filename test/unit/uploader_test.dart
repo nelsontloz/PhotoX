@@ -184,6 +184,25 @@ void main() {
       );
     });
 
+    test('maps a 413 without the quota envelope to a visible failure', () async {
+      // A tunnel or proxy body cap answers 413 with no core envelope; that is
+      // not the account being full, so it must not be filed as quota.
+      final item = await enqueue('single-proxy-413', utf8.encode('too big'));
+      uploads.onUpload = (file, originalName) async {
+        throw const ApiException(statusCode: 413, message: 'Payload Too Large');
+      };
+
+      final failure = await captureFailure(makeUploader().process(item));
+
+      expect(failure.retryable, isFalse);
+      expect(failure.code, 'HTTP_413');
+      expect(failure.terminalState, UploadState.failedPermanent);
+      expect(
+        (await queue.byLocalId('single-proxy-413'))!.state,
+        UploadState.failedPermanent.name,
+      );
+    });
+
     test('maps 500 to a retryable UploadFailure with Retry-After', () async {
       final item = await enqueue('single-500', utf8.encode('server error'));
       uploads.onUpload = (file, originalName) async {
@@ -634,7 +653,6 @@ class _FakeSessionTransport implements SessionTransport {
     required String sha256Hex,
     required int sizeBytes,
     required String filename,
-    String? mimeHint,
     DateTime? takenAt,
     String? title,
     String? description,

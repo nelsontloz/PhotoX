@@ -24,13 +24,13 @@ class SessionClient {
 
   /// Opens a session for a file whose bytes hash to [sha256Hex].
   ///
-  /// The server fixes the part size at 8 MiB; only whitelisted body fields are
-  /// sent (`forbidNonWhitelisted` rejects anything else).
+  /// The server fixes the part size at 8 MiB, and its DTO whitelists exactly
+  /// these body fields: `forbidNonWhitelisted` turns anything else into a 400.
+  /// The type is not one of them — the server sniffs the bytes itself.
   Future<CreateSessionResult> createSession({
     required String sha256Hex,
     required int sizeBytes,
     required String filename,
-    String? mimeHint,
     DateTime? takenAt,
     String? title,
     String? description,
@@ -53,7 +53,6 @@ class SessionClient {
       'sizeBytes': sizeBytes,
       'originalName': filename,
       if (sha256Hex.isNotEmpty) 'checksumSha256': sha256Hex.toLowerCase(),
-      'mimeHint': ?mimeHint,
       'title': ?title,
       'description': ?description,
       if (takenAt != null) 'takenAt': takenAt.toUtc().toIso8601String(),

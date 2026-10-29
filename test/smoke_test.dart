@@ -97,6 +97,9 @@ class FakeAppController extends AppController {
   Future<void> syncNow() async => calls.add('syncNow');
 
   @override
+  Future<void> retryFailed() async => calls.add('retryFailed');
+
+  @override
   Future<void> pause() async => calls.add('pause');
 
   @override

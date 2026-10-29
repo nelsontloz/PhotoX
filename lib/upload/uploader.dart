@@ -551,7 +551,6 @@ class Uploader {
       sha256Hex: prepared.sha256,
       sizeBytes: prepared.sizeBytes,
       filename: prepared.fileName,
-      mimeHint: prepared.mimeType,
       takenAt: row.takenAt,
     );
     await queue.markState(
@@ -695,12 +694,19 @@ class Uploader {
       );
     }
     if (status == 413) {
+      // Only the server's own envelope means the account is out of space. A
+      // 413 from anything in front of core (a tunnel or proxy body cap) is a
+      // transport limit: the same file can still go through another path, so
+      // it stays visible as an error instead of being written off as quota.
+      final quota = error.code == 'QUOTA_EXCEEDED';
       return UploadFailure(
         message: error.message,
         retryable: false,
-        code: error.code ?? 'QUOTA_EXCEEDED',
+        code: error.code ?? 'HTTP_413',
         statusCode: status,
-        terminalState: UploadState.skippedQuota,
+        terminalState: quota
+            ? UploadState.skippedQuota
+            : UploadState.failedPermanent,
       );
     }
     if (status == 400 || status == 404 || status == 422) {

@@ -346,6 +346,7 @@ void main() {
           lastReport: null,
           error: null,
           onSyncNow: () async {},
+          onRetryFailed: () async {},
           onPause: () async {},
           onResume: () async {},
           onOpenSettings: () {},

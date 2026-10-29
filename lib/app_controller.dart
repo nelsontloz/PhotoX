@@ -82,6 +82,9 @@ abstract class AppController extends ChangeNotifier {
   /// Starts a sync pass; joins one that is already running instead of queueing.
   Future<void> syncNow();
 
+  /// Puts every failed or quota-skipped asset back in the queue and syncs.
+  Future<void> retryFailed();
+
   /// Persists [settings] and re-registers background work with the new
   /// constraints.
   Future<void> updateSettings(AppSettings settings);
@@ -271,6 +274,21 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     final future = _runPass().whenComplete(() => _pass = null);
     _pass = future;
     return future;
+  }
+
+  @override
+  Future<void> retryFailed() async {
+    if (_busy) return;
+    try {
+      await queue.retryFailed();
+    } on Object {
+      _error = 'Could not requeue the failed items. Try again.';
+      _notify();
+      return;
+    }
+    _stats = await queue.stats();
+    _notify();
+    await syncNow();
   }
 
   @override

@@ -397,6 +397,94 @@ void main() {
     });
   });
 
+  group('retryFailed', () {
+    test('requeues failed and quota rows and keeps their digest', () async {
+      await queue.enqueueAll(<AssetCandidate>[
+        _candidate('permanent'),
+        _candidate('quota'),
+        _candidate('retryable'),
+        _candidate('uploaded'),
+        _candidate('duplicate'),
+      ]);
+      await queue.markState(
+        localId: 'permanent',
+        state: UploadState.failedPermanent,
+        sha256: 'a' * 64,
+        spoolPath: '/tmp/photox/spool/permanent',
+        lastError: 'property mimeHint should not exist',
+        errorCode: 'HTTP_400',
+      );
+      await queue.markState(
+        localId: 'quota',
+        state: UploadState.skippedQuota,
+        lastError: '413',
+        errorCode: 'QUOTA_EXCEEDED',
+      );
+      await queue.markState(
+        localId: 'retryable',
+        state: UploadState.failedRetryable,
+      );
+      await queue.markState(localId: 'uploaded', state: UploadState.uploaded);
+      await queue.markState(localId: 'duplicate', state: UploadState.duplicate);
+
+      expect(await queue.retryFailed(), 2);
+
+      final permanent = await queue.byLocalId('permanent');
+      expect(permanent!.state, UploadState.pending.name);
+      expect(permanent.lastError, isNull);
+      expect(permanent.errorCode, isNull);
+      expect(permanent.attempts, 0);
+      expect(
+        permanent.sha256,
+        'a' * 64,
+        reason: 'the bytes are unchanged, so the digest must survive',
+      );
+      expect(permanent.spoolPath, '/tmp/photox/spool/permanent');
+
+      final quota = await queue.byLocalId('quota');
+      expect(quota!.state, UploadState.pending.name);
+      expect(quota.errorCode, isNull);
+
+      // Rows that were never terminal are untouched, and the history stays.
+      expect(
+        (await queue.byLocalId('retryable'))!.state,
+        UploadState.failedRetryable.name,
+      );
+      expect(
+        (await queue.byLocalId('uploaded'))!.state,
+        UploadState.uploaded.name,
+      );
+      expect(
+        (await queue.byLocalId('duplicate'))!.state,
+        UploadState.duplicate.name,
+      );
+    });
+
+    test('drops stale session geometry so a retry opens a fresh session', () async {
+      await markInProgress('video', sizeBytes: 100);
+      await queue.markState(
+        localId: 'video',
+        state: UploadState.failedPermanent,
+      );
+
+      await queue.retryFailed();
+
+      final row = await queue.byLocalId('video');
+      expect(row!.state, UploadState.pending.name);
+      expect(row.uploadId, isNull);
+      expect(row.partSize, isNull);
+      expect(row.partCount, isNull);
+      expect(row.protocol, isNull);
+      expect(row.nextAttemptAt, isNull);
+    });
+
+    test('is a no-op when nothing failed', () async {
+      await queue.enqueue(_candidate('pending'));
+      expect(await queue.retryFailed(), 0);
+      expect((await queue.byLocalId('pending'))!.state, UploadState.discovered.name);
+    });
+  });
+
   group('clearNonTerminal', () {
     test('deletes pending work and keeps terminal rows', () async {
       await queue.enqueueAll(<AssetCandidate>[

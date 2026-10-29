@@ -631,7 +631,6 @@ class _NoopSessionTransport implements SessionTransport {
     required String sha256Hex,
     required int sizeBytes,
     required String filename,
-    String? mimeHint,
     DateTime? takenAt,
     String? title,
     String? description,

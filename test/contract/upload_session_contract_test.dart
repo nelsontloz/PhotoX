@@ -119,7 +119,6 @@ void main() {
         sha256Hex: checksum,
         sizeBytes: _pngBytes.length,
         filename: 'tiny.png',
-        mimeHint: 'image/png',
       );
       activeUploads.add(created.uploadId);
       return created;

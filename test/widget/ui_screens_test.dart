@@ -60,6 +60,7 @@ Widget _home({
   Future<void> Function()? onResume,
   VoidCallback? onOpenSettings,
   Future<void> Function()? onSignOut,
+  Future<void> Function()? onRetryFailed,
   int albumCount = 1,
   bool uploadAllFolders = false,
   double textScale = 1,
@@ -81,6 +82,7 @@ Widget _home({
       onResume: onResume ?? () async {},
       onOpenSettings: onOpenSettings ?? () {},
       onSignOut: onSignOut ?? () async {},
+      onRetryFailed: onRetryFailed ?? () async {},
     ),
     textScale: textScale,
   );
@@ -364,6 +366,78 @@ void main() {
       await tester.pumpWidget(_home(albumCount: 4, uploadAllFolders: true));
       await tester.pump();
       expect(find.text('All albums'), findsOneWidget);
+    });
+
+    testWidgets('a failed count offers one retry at a time', (tester) async {
+      final done = Completer<void>();
+      var retries = 0;
+
+      await tester.pumpWidget(
+        _home(
+          stats: const QueueStats(
+            pending: 1,
+            uploaded: 5,
+            duplicate: 2,
+            failed: 3,
+          ),
+          onRetryFailed: () {
+            retries++;
+            return done.future;
+          },
+        ),
+      );
+      await tester.pump();
+
+      final retry = find.text('RETRY FAILED');
+      expect(retry, findsOneWidget);
+      expect(find.byTooltip('Retry 3 failed items'), findsOneWidget);
+
+      // A real tap target, not a 10px label.
+      final target = tester.getSize(find.byTooltip('Retry 3 failed items'));
+      expect(target.height, greaterThanOrEqualTo(40));
+      expect(target.width, greaterThanOrEqualTo(40));
+
+      await tester.tap(retry);
+      await tester.pump();
+      // The button is disabled while the pass it started runs.
+      await tester.tap(retry, warnIfMissed: false);
+      await tester.pump();
+      expect(retries, 1);
+
+      done.complete();
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(retry);
+      await tester.pump();
+      expect(retries, 2);
+    });
+
+    testWidgets('duplicates alone offer no retry', (tester) async {
+      var retries = 0;
+
+      await tester.pumpWidget(
+        _home(
+          stats: const QueueStats(
+            pending: 0,
+            uploaded: 9,
+            duplicate: 4,
+            failed: 0,
+          ),
+          onRetryFailed: () async {
+            retries++;
+          },
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('RETRY FAILED'), findsNothing);
+      expect(find.byIcon(Icons.refresh_rounded), findsNothing);
+      expect(find.text('no errors'), findsOneWidget);
+      expect(
+        find.text('Skipped means the server already had the same file.'),
+        findsOneWidget,
+      );
+      expect(retries, 0);
     });
 
     testWidgets('the live dot animates only while bytes are moving', (

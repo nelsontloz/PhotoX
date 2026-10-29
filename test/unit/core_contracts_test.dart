@@ -192,7 +192,6 @@ void main() {
           sha256Hex: checksum,
           sizeBytes: 9,
           filename: 'IMG_0001.HEIC',
-          mimeHint: 'image/heic',
           title: 'Trip',
           takenAt: DateTime.utc(2026, 10, 18, 9),
         );
@@ -210,7 +209,6 @@ void main() {
           'sizeBytes',
           'originalName',
           'checksumSha256',
-          'mimeHint',
           'title',
           'takenAt',
         });
