@@ -120,6 +120,9 @@ export class UploadsService {
       body.sizeBytes < 1 ||
       body.sizeBytes > UPLOAD_MAX_SIZE_BYTES
     ) {
+      this.logger.warn(
+        `[UploadsService] upload rejected user=${userId} size=${body.sizeBytes} (SIZE_LIMIT)`,
+      )
       throw new PayloadTooLargeException(
         uploadErrorBody(
           413,
@@ -136,6 +139,9 @@ export class UploadsService {
     if (quota !== undefined) {
       const { usedBytes } = await this.userFiles.storageQuota(userId)
       if (usedBytes + body.sizeBytes > quota) {
+        this.logger.warn(
+          `[UploadsService] upload rejected user=${userId} size=${body.sizeBytes} (QUOTA_EXCEEDED)`,
+        )
         throw new PayloadTooLargeException(
           uploadErrorBody(413, 'Storage quota exceeded', 'QUOTA_EXCEEDED'),
         )
@@ -148,6 +154,7 @@ export class UploadsService {
       where: { userId, status: In(ACTIVE_STATUSES) },
     })
     if (active >= UPLOAD_MAX_ACTIVE_SESSIONS) {
+      this.logger.warn(`[UploadsService] upload rejected user=${userId} (SESSION_LIMIT)`)
       throw new ConflictException(
         uploadErrorBody(
           409,
@@ -173,6 +180,9 @@ export class UploadsService {
     session.completedFileId = null
     session.completedAssetId = null
     await this.sessionRepo.save(session)
+    this.logger.log(
+      `[UploadsService] upload started session=${session.id} user=${userId} parts=${session.totalParts} size=${body.sizeBytes}`,
+    )
 
     return {
       uploadId: session.id,
@@ -332,6 +342,9 @@ export class UploadsService {
       await runner.commitTransaction()
       if (plan.kind === 'replay') {
         await this.removeSessionDir(session)
+        this.logger.log(
+          `[UploadsService] upload finished session=${session.id} asset=${plan.asset.id} deduplicated=true`,
+        )
         return { asset: plan.asset, deduplicated: plan.deduplicated }
       }
       return this.runEnqueues(
@@ -353,6 +366,7 @@ export class UploadsService {
     if (!session) return
     await this.sessionRepo.delete({ id: session.id })
     await this.removeSessionDir(session)
+    this.logger.log(`[UploadsService] upload aborted session=${session.id} user=${userId}`)
   }
 
   /**
@@ -383,6 +397,9 @@ export class UploadsService {
       await this.removeSessionDir(session)
       await this.sessionRepo.update({ id: session.id }, { status: 'expired' })
     }
+    if (stale.length > 0) {
+      this.logger.warn(`[UploadsService] expired ${stale.length} abandoned upload session(s)`)
+    }
     return { expired: stale.length }
   }
 
@@ -410,6 +427,10 @@ export class UploadsService {
       return result
     } catch (err) {
       if (runner.isTransactionActive) await runner.rollbackTransaction().catch(() => undefined)
+      const message = err instanceof Error ? err.message : String(err)
+      this.logger.error(
+        `[UploadsService] upload failed session=${uploadId} user=${userId}: ${message}`,
+      )
       throw err
     } finally {
       await runner.release()
@@ -486,6 +507,9 @@ export class UploadsService {
         throw err
       }
       const { record, created } = persisted
+      this.logger.log(
+        `[UploadsService] file saved session=${session.id} file=${record.id} deduplicated=${!created}`,
+      )
       const assetKind = kindFromMime(record.mimeType)
       if (!assetKind) throw unsupportedTypeError()
 
@@ -561,6 +585,7 @@ export class UploadsService {
     }
     await this.sessionRepo.update({ id: session.id }, { status: 'completed' })
     await this.removeSessionDir(session)
+    this.logger.log(`[UploadsService] upload finished session=${session.id} asset=${assetId}`)
     return { asset: asset ?? (await this.assets.getOne(userId, assetId)), deduplicated }
   }
 
