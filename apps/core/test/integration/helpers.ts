@@ -304,6 +304,10 @@ export async function seedAsset(
     sizeBytes?: number
     transcodeStatus?: 'pending' | 'ready' | 'failed' | null
     transcodeFileId?: string
+    // default 'ready': the timeline hides rows still processing (see AssetsService visibility gate)
+    metadataStatus?: 'pending' | 'ready' | 'failed'
+    thumbnailStatus?: 'pending' | 'ready' | 'failed' | null
+    takenAt?: Date | null
   },
 ): Promise<Asset> {
   const asset = t.assetRepo.create({
@@ -316,6 +320,9 @@ export async function seedAsset(
     sizeBytes: opts?.sizeBytes ?? null,
     transcodeStatus: opts?.transcodeStatus ?? null,
     transcodeFileId: opts?.transcodeFileId ?? null,
+    metadataStatus: opts?.metadataStatus ?? 'ready',
+    thumbnailStatus: opts?.thumbnailStatus === undefined ? 'ready' : opts.thumbnailStatus,
+    takenAt: opts?.takenAt ?? null,
   })
   return t.assetRepo.save(asset)
 }

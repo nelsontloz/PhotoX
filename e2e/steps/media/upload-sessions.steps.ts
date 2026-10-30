@@ -14,6 +14,7 @@ import {
   expectSingleTimelineItem,
   registerUser,
   requireAuth,
+  waitForTimelineReady,
   type Ctx,
 } from '../support'
 
@@ -96,6 +97,8 @@ When('I complete the upload session', async ({ request, ctx }) => {
   state.completedAssetId = body.asset.id
   // the reused timeline steps read ctx.assetId
   ctx.assetId = body.asset.id
+  // a session-completed asset is pending like any other upload: wait out the timeline gate
+  await waitForTimelineReady(request, auth, body.asset.id)
 })
 
 Then('the session status reports completed with its asset id', async ({ request, ctx }) => {

@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { Then, When, openViewerAndCaptureAssetId } from '../support'
+import { Then, When, authHeaders, requireAuth } from '../support'
 
 /**
  * One of three terminal search states must appear: the 503 "index not ready" error (the alpine
@@ -27,14 +27,43 @@ Then(
 )
 
 When('I open the first photo in the viewer', async ({ page, ctx }) => {
-  await page.goto('/')
-  await openViewerAndCaptureAssetId(page, ctx)
+  // The signed-in admin's timeline also holds other scenarios' uploads, and "newest first" may not
+  // be this scenario's photo: deep-link the asset this scenario uploaded instead of clicking the
+  // first tile.
+  const target = ctx.semanticUploads?.[0]?.assetId ?? ctx.assetId
+  if (!target) throw new Error('upload a photo first')
+  await page.goto(`/?asset=${target}`)
+  await expect(page.locator('div.fixed.inset-0.z-50')).toBeVisible({ timeout: 30_000 })
+  ctx.assetId = target
 })
 
-Then('the related tray offers similar photos', async ({ page }) => {
-  // related assets are fetched after the viewer opens, slower than the default 15s expect timeout
+Then('the related tray offers similar photos', async ({ page, request, ctx }) => {
+  const auth = requireAuth(ctx)
+  const target = ctx.assetId
+  if (!target) throw new Error('open a photo first')
+
+  // The tray is empty whenever the index has no row for the open photo — including while a
+  // reprocess run elsewhere in the suite is rebuilding embeddings. Wait for the index, then
+  // reopen the viewer so the tray's one-shot fetch actually sees it.
+  await expect
+    .poll(
+      async () => {
+        const response = await request.get(`/api/v1/assets/${target}/similar`, {
+          headers: authHeaders(auth),
+        })
+        if (response.status() === 404) {
+          throw new Error(`the open asset ${target} was deleted mid-scenario`)
+        }
+        expect(response.status()).toBe(200)
+        return ((await response.json()) as { total?: number }).total ?? 0
+      },
+      { timeout: 120_000, message: 'no similar assets were ever indexed for the open photo' },
+    )
+    .toBeGreaterThan(0)
+
+  await page.reload()
   await expect(page.getByRole('button', { name: 'More like this' })).toBeVisible({
-    timeout: 60_000,
+    timeout: 30_000,
   })
 })
 

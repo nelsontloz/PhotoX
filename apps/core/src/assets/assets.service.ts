@@ -98,6 +98,8 @@ export class AssetsService {
 
     if (q.ids) {
       qb.andWhere('asset.id IN (:...ids)', { ids: q.ids })
+    } else if (!isTrashed) {
+      this.applyTimelineVisibility(qb)
     }
 
     if (q.dateFrom) {
@@ -168,6 +170,7 @@ export class AssetsService {
       .where('asset.userId = :userId', { userId })
       .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false })
 
+    this.applyTimelineVisibility(qb)
     this.applyAssetFilters(qb, { personId, favorite, albumId })
 
     const rows = await qb
@@ -181,6 +184,7 @@ export class AssetsService {
         w: Number(r.w),
         h: Number(r.h),
       })),
+      pending: await this.countTimelinePending(userId, { personId, favorite, albumId }),
     }
   }
 
@@ -393,6 +397,33 @@ export class AssetsService {
     )
     const row = await this.thumbRepo.findOneOrFail({ where: { assetId, size: dto.size } })
     return toThumbnailResponse(row)
+  }
+
+  /**
+   * Timeline visibility gate: an asset joins the timeline only once its date is settled
+   * (`process-metadata` wrote `takenAt`) and its tile has a thumbnail. Before that the row would
+   * sort at `uploadedAt` and then jump to its real day, reflowing the reserved month buckets.
+   * `failed` counts as settled — a file with no EXIF is still a photo, it just uses `uploadedAt`.
+   * Explicit id lookups (`?ids=`, asset detail) skip the gate, and so does trash.
+   */
+  private applyTimelineVisibility(qb: SelectQueryBuilder<Asset>): void {
+    qb.andWhere(`asset.metadataStatus <> 'pending'`)
+    qb.andWhere(`(asset.thumbnailStatus IS NULL OR asset.thumbnailStatus <> 'pending')`)
+  }
+
+  /** Exact complement of the visibility gate: how many rows the timeline is still hiding. */
+  private async countTimelinePending(
+    userId: string,
+    filters: { personId?: string; favorite?: boolean; albumId?: string },
+  ): Promise<number> {
+    const qb = this.repo
+      .createQueryBuilder('asset')
+      .where('asset.userId = :userId', { userId })
+      .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false })
+      .andWhere(`(asset.metadataStatus = 'pending' OR asset.thumbnailStatus = 'pending')`)
+
+    this.applyAssetFilters(qb, filters)
+    return qb.getCount()
   }
 
   private applyAssetFilters(

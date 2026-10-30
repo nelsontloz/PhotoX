@@ -58,6 +58,7 @@ describe('assets layout', () => {
 
     expect(res.status).toBe(200)
     expect(res.body).toEqual({
+      pending: 0,
       items: [
         { t: '2024-03-02T10:00:00.000Z', w: 4032, h: 3024 },
         { t: '2024-01-05T08:30:00.000Z', w: 1, h: 1 },
@@ -189,6 +190,7 @@ describe('assets layout', () => {
       .set(t.authHeader(token))
     expect(filtered.status).toBe(200)
     expect(filtered.body).toEqual({
+      pending: 0,
       items: [{ t: '2024-03-02T10:00:00.000Z', w: 4032, h: 3024 }],
     })
 
@@ -201,7 +203,7 @@ describe('assets layout', () => {
       .query({ personId: otherPerson.id })
       .set(t.authHeader(token))
     expect(foreign.status).toBe(200)
-    expect(foreign.body).toEqual({ items: [] })
+    expect(foreign.body).toEqual({ pending: 0, items: [] })
   })
 
   it('scopes layout to favorites and to an album', async () => {
@@ -245,14 +247,20 @@ describe('assets layout', () => {
       .query({ favorite: true })
       .set(t.authHeader(token))
     expect(favs.status).toBe(200)
-    expect(favs.body).toEqual({ items: [{ t: '2024-03-02T10:00:00.000Z', w: 4032, h: 3024 }] })
+    expect(favs.body).toEqual({
+      pending: 0,
+      items: [{ t: '2024-03-02T10:00:00.000Z', w: 4032, h: 3024 }],
+    })
 
     const inAlbum = await request(apiServer(t))
       .get('/api/v1/assets/layout')
       .query({ albumId: album.id })
       .set(t.authHeader(token))
     expect(inAlbum.status).toBe(200)
-    expect(inAlbum.body).toEqual({ items: [{ t: '2024-02-01T00:00:00.000Z', w: 1, h: 1 }] })
+    expect(inAlbum.body).toEqual({
+      pending: 0,
+      items: [{ t: '2024-02-01T00:00:00.000Z', w: 1, h: 1 }],
+    })
 
     const all = await request(apiServer(t)).get('/api/v1/assets/layout').set(t.authHeader(token))
     expect(all.status).toBe(200)
@@ -263,6 +271,6 @@ describe('assets layout', () => {
       .query({ albumId: otherAlbum.id })
       .set(t.authHeader(token))
     expect(foreign.status).toBe(200)
-    expect(foreign.body).toEqual({ items: [] })
+    expect(foreign.body).toEqual({ pending: 0, items: [] })
   })
 })

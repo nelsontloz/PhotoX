@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { getAssetLayout, type AssetFilters } from '../api/assets'
 import { buildBuckets } from '../lib/timelineLayout'
 import type { TimelineItem, TimelineLayout } from '../lib/timelineLayout'
@@ -7,10 +7,17 @@ import { useAsyncFetch } from './useAsyncFetch'
 
 const EMPTY: TimelineItem[] = []
 
+/** Re-fetch cadence while core reports timeline-hidden (still processing) assets. */
+const PENDING_POLL_MS = 2_000
+/** ~2 min: enough for a slow upload batch, bounded so a stuck job can't poll forever. */
+const PENDING_POLL_MAX = 60
+
 export interface UseTimelineLayoutResult {
   layout: TimelineLayout
   /** Raw layout-endpoint items in effective-date desc order — used for viewer navigation beyond the loaded months */
   layoutItems: TimelineItem[]
+  /** Non-trashed rows core is still hiding (processing) — the track grows once they settle */
+  pending: number
   containerRef: (el: HTMLDivElement | null) => void
   loading: boolean
   error: string | null
@@ -35,6 +42,25 @@ export function useTimelineLayout(filters: AssetFilters = {}): UseTimelineLayout
     errorMessage: 'Failed to load timeline layout',
   })
   const layoutItems = data?.items ?? EMPTY
+  const pending = data?.pending ?? 0
+
+  // Uploads are hidden until their date and thumbnail settle (core's visibility gate), so keep
+  // re-fetching while the server reports hidden rows — a fresh upload then lands without a reload.
+  // Capped so a stuck job can't poll forever; it stays hidden until the next real mutation/nav.
+  const pendingPollsRef = useRef(0)
+  useEffect(() => {
+    if (loading) return
+    if (pending === 0) {
+      pendingPollsRef.current = 0
+      return
+    }
+    if (pendingPollsRef.current >= PENDING_POLL_MAX) return
+    const timer = setTimeout(() => {
+      pendingPollsRef.current += 1
+      useAppStore.getState().bumpTimelineRefresh()
+    }, PENDING_POLL_MS)
+    return () => clearTimeout(timer)
+  }, [pending, loading, timelineRefreshKey])
 
   const [containerWidth, setContainerWidth] = useState(0)
   const [rowHeight, setRowHeight] = useState(0)
@@ -88,5 +114,5 @@ export function useTimelineLayout(filters: AssetFilters = {}): UseTimelineLayout
     [layoutItems, containerWidth, rowHeight],
   )
 
-  return { layout, layoutItems, containerRef, loading, error }
+  return { layout, layoutItems, pending, containerRef, loading, error }
 }

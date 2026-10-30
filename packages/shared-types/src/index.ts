@@ -147,6 +147,11 @@ export interface AssetLayoutItem {
 
 export interface AssetLayout {
   items: AssetLayoutItem[]
+  /**
+   * Non-trashed rows the timeline is still hiding (metadata or thumbnail pending). The client
+   * polls the layout while this is non-zero so a fresh upload shows up without a manual reload.
+   */
+  pending: number
 }
 
 export interface AssetThumbnail {

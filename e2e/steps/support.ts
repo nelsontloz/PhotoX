@@ -477,11 +477,33 @@ export async function uploadViaApi(
   expect(response.status()).toBe(201)
   const asset = (await response.json()) as { id?: string }
   if (!asset.id) throw new Error('upload response did not include an asset id')
+  await waitForTimelineReady(request, auth, asset.id)
   return asset.id
 }
 
 export async function expectSingleTimelineItem(page: Page): Promise<void> {
   await expect(page.locator('figure[role="button"]')).toHaveCount(1, { timeout: 60_000 })
+}
+
+/**
+ * Core keeps a fresh upload off the timeline until `process-metadata` and `process-thumbnail`
+ * settle (AssetsService.applyTimelineVisibility), so API-driven scenarios must wait for that gate
+ * before asserting list/layout/UI reads. The web client polls the same state (`lib/upload.ts`).
+ */
+export async function waitForTimelineReady(
+  request: APIRequestContext,
+  auth: AuthResponse,
+  assetId: string,
+): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const asset = await getAsset(request, auth, assetId)
+        return asset.metadataStatus !== 'pending' && asset.thumbnailStatus !== 'pending'
+      },
+      { timeout: 120_000 },
+    )
+    .toBe(true)
 }
 
 /** Thumbnails load behind IntersectionObserver + scroll-idle gating — scroll first, then wait. */
