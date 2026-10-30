@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
   PayloadTooLargeException,
   ServiceUnavailableException,
@@ -123,6 +124,8 @@ export function kindFromMime(mimetype: string): 'photo' | 'video' | null {
 
 @Injectable()
 export class UserFilesService {
+  private readonly logger = new Logger(UserFilesService.name)
+
   constructor(
     @InjectRepository(FileRecord)
     private readonly fileRepo: Repository<FileRecord>,
@@ -138,20 +141,35 @@ export class UserFilesService {
     file: UploadedDiskFile,
     meta: UploadFileBodyDto = {},
   ): Promise<AssetResponse> {
-    const { record } = await this.persistOriginal(userId, file)
-    // C2-narrowed: client `kind` is accepted-but-ignored (see UploadFileBodyDto) — derive
-    // solely from the sniffed mime so JPEG bytes + kind=video can't enter the video pipeline.
-    const kind = kindFromMime(record.mimeType)
-    if (!kind) {
-      throw new BadRequestException('Unsupported file type')
+    const name = file?.originalname
+    this.logger.log(
+      `[UserFilesService] upload started user=${userId} name=${name} size=${file?.size}`,
+    )
+    try {
+      const { record, created } = await this.persistOriginal(userId, file)
+      // C2-narrowed: client `kind` is accepted-but-ignored (see UploadFileBodyDto) — derive
+      // solely from the sniffed mime so JPEG bytes + kind=video can't enter the video pipeline.
+      const kind = kindFromMime(record.mimeType)
+      if (!kind) {
+        throw new BadRequestException('Unsupported file type')
+      }
+      this.logger.log(
+        `[UserFilesService] file saved user=${userId} file=${record.id} deduplicated=${!created}`,
+      )
+      const asset = await this.createAssetAndEnqueue(userId, record, kind, {
+        title: meta.title,
+        description: meta.description,
+        takenAt: meta.takenAt,
+        originalName: file.originalname,
+        sizeBytes: file.size,
+      })
+      this.logger.log(`[UserFilesService] upload finished user=${userId} asset=${asset.id}`)
+      return asset
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.logger.error(`[UserFilesService] upload failed user=${userId} name=${name}: ${message}`)
+      throw err
     }
-    return this.createAssetAndEnqueue(userId, record, kind, {
-      title: meta.title,
-      description: meta.description,
-      takenAt: meta.takenAt,
-      originalName: file.originalname,
-      sizeBytes: file.size,
-    })
   }
 
   // shared by legacy upload and upload-session complete: create the asset row, then enqueue its
@@ -354,7 +372,7 @@ export class UserFilesService {
       try {
         await this.storage.save(storageKey, file.path)
       } catch (err) {
-        console.error('[UserFilesService] Local storage file save failed', err)
+        this.logger.error(`[UserFilesService] local storage save failed: ${String(err)}`)
         throw new BadRequestException('Failed to upload file to storage')
       }
 
@@ -379,11 +397,13 @@ export class UserFilesService {
           .orIgnore()
           .execute()
       } catch (err) {
-        console.error('[UserFilesService] DB save failed, cleaning up file object', err)
+        this.logger.error(
+          `[UserFilesService] DB save failed, cleaning up file object: ${String(err)}`,
+        )
         try {
           await this.storage.delete(storageKey)
         } catch (cleanupErr) {
-          console.error('[UserFilesService] File cleanup failed', cleanupErr)
+          this.logger.error(`[UserFilesService] file cleanup failed: ${String(cleanupErr)}`)
         }
         throw err
       }
@@ -395,7 +415,7 @@ export class UserFilesService {
       try {
         await this.storage.delete(storageKey)
       } catch (cleanupErr) {
-        console.error('[UserFilesService] Loser file cleanup failed', cleanupErr)
+        this.logger.error(`[UserFilesService] loser file cleanup failed: ${String(cleanupErr)}`)
       }
       const winner = await this.fileRepo.findOne({
         where: { userId, checksumSha256: checksum, purpose: 'original' },

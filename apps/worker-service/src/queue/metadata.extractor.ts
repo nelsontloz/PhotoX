@@ -235,7 +235,7 @@ function parseIso6709(
   }
 }
 
-function parseFps(rate: string | undefined): number | null {
+export function parseFps(rate: string | undefined): number | null {
   if (!rate) return null
   const parts = rate.split('/')
   if (parts.length !== 2) return null
