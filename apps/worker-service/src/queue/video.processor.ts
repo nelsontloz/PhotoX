@@ -10,9 +10,13 @@ import { patchStatusFailed, runAssetFileJob } from './asset-file-job'
 import { CoreClient } from '../core/core-client.service'
 import { LocalStorageService } from '@photox/shared-config'
 import { runFfmpeg, runFfprobeJson } from './ffmpeg'
+import { parseFps } from './metadata.extractor'
 
 const MAX_DURATION_SEC = 4 * 60 * 60
 const MAX_DIMENSION = 7680
+// web playback cap: phone slow-motion clips run ~240 fps, which is both heavy to encode
+// and pointless in a browser; anything above this is resampled down (duration unchanged)
+const MAX_ENCODE_FPS = 60
 const TRANSCODE_TIMEOUT_MS = 60 * 60 * 1000
 
 @Injectable()
@@ -96,6 +100,10 @@ export class VideoProcessor implements OnModuleInit {
           const outPath = join(outDir, 'output.webm')
 
           const scaleFilter = height > 720 ? `scale=-2:min(720\\,ih)` : undefined
+          const sourceFps = parseFps(videoStream?.avg_frame_rate)
+          // capping keeps the clip's duration/playback, only the frame count is resampled
+          const fpsCapArgs =
+            sourceFps !== null && sourceFps > MAX_ENCODE_FPS ? ['-r', String(MAX_ENCODE_FPS)] : []
 
           const ffmpegArgs = [
             '-y',
@@ -109,6 +117,7 @@ export class VideoProcessor implements OnModuleInit {
             '32',
             '-pix_fmt',
             'yuv420p',
+            ...fpsCapArgs,
             ...(scaleFilter ? ['-vf', scaleFilter] : []),
             ...(audioStream ? ['-c:a', 'libopus', '-b:a', '96k'] : []),
             outPath,

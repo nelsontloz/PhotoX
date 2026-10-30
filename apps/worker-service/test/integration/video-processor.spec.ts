@@ -36,6 +36,15 @@ function hasAomAv1(): boolean {
   }
 }
 
+function hasSvtAv1(): boolean {
+  try {
+    execSync(`"${FFMPEG_PATH}" -encoders 2>/dev/null | grep libsvtav1`, { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
 describe('VideoProcessor (integration)', () => {
   let testApp: TestApp
   let h264AacBuffer: Buffer
@@ -142,6 +151,40 @@ describe('VideoProcessor (integration)', () => {
         })
 
         unlinkSync(transcodePath)
+      },
+      120_000,
+    )
+
+    it.skipIf(!hasSvtAv1())(
+      'caps a slow-motion source above 60 fps',
+      async () => {
+        // phone slow-motion clips probe at ~240 fps; the web derivative is capped to 60
+        const highFpsPath = join(TEST_VIDEO_DIR, 'high-fps.avi')
+        execSync(
+          `"${FFMPEG_PATH}" -f lavfi -i color=c=black:s=320x240:r=250 -t 1 -c:v mjpeg -pix_fmt yuvj420p -y "${highFpsPath}"`,
+          { timeout: 30_000, stdio: 'pipe' },
+        )
+
+        const userId = randomUUID()
+        const { record, asset } = await seedOriginal(testApp, {
+          userId,
+          bytes: readFileSync(highFpsPath),
+          mimeType: 'video/avi',
+          ext: 'avi',
+        })
+
+        const queue = testApp.getQueue('process-video')
+        const job = await queue.add(
+          'video',
+          signJob({ assetId: asset.id, fileId: record.id, userId }),
+        )
+
+        expect(await waitForJob(queue, job.id!)).toBe('completed')
+
+        const updated = testApp.fake.assets.get(asset.id)!
+        expect(updated.transcodeStatus).toBe('ready')
+        expect(updated.transcodeFileId).toBeTruthy()
+        unlinkSync(highFpsPath)
       },
       120_000,
     )
