@@ -1,14 +1,11 @@
 import { type ReactNode } from 'react'
 import { FaUser, FaUserShield } from 'react-icons/fa6'
-import { Dialog } from '../../components/Dialog'
+import { ConfirmShell } from '../../components/ConfirmProvider'
 import { Button } from './ui'
 
 // --- cross-tab pieces -------------------------------------------------------------------
 // Bits used by more than one admin tab (confirm dialogs, retry line, role pill). Chrome that
 // serves a single tab (matrix panels, model headers, queue polling) lives next to that tab.
-
-const DIALOG_PANEL_CLASS = 'bg-card-dark border border-border-dark rounded-xl p-5 max-w-md w-full'
-const DIALOG_TITLE_CLASS = 'text-base font-semibold text-slate-100'
 
 export function InlineError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
@@ -22,8 +19,9 @@ export function InlineError({ message, onRetry }: { message: string; onRetry: ()
 }
 
 /**
- * Shared confirm shell for the admin page's five one-way dialogs: same panel, same Cancel/Confirm
- * footer. Call sites render it inside their own `{state && ...}` guard and pass the body as children.
+ * Shared confirm shell for the admin page's five one-way dialogs: the app's confirm panel and
+ * Cancel/Confirm footer, with overlay/Escape close off. Call sites render it inside their own
+ * `{state && ...}` guard and pass the body as children.
  */
 export function ConfirmDialog({
   title,
@@ -39,34 +37,15 @@ export function ConfirmDialog({
   children: ReactNode
 }) {
   return (
-    <Dialog
+    <ConfirmShell
       title={title}
-      onClose={onClose}
-      panelClassName={DIALOG_PANEL_CLASS}
-      titleTag="h3"
-      titleClassName={DIALOG_TITLE_CLASS}
-      headerClassName=""
-      closeOnOverlay={false}
+      confirmLabel={confirmLabel}
+      onCancel={onClose}
+      onConfirm={onConfirm}
       escapeKey={false}
     >
       {children}
-      <div className="flex justify-end gap-2 mt-5">
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-sm font-medium text-slate-300 hover:text-slate-100 rounded-lg px-3 py-2 transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={onConfirm}
-          className="text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-3 py-2 transition-colors"
-        >
-          {confirmLabel}
-        </button>
-      </div>
-    </Dialog>
+    </ConfirmShell>
   )
 }
 

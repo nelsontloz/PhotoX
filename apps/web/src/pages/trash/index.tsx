@@ -5,12 +5,12 @@ import { AppShell } from '../../components/AppShell'
 import { useConfirm } from '../../components/ConfirmProvider'
 import { GalleryItem } from '../../components/GalleryItem'
 import { DayHeader } from '../../components/Timeline/TimelineGrid'
-import { ViewerHost } from '../../components/ViewerHost'
+import { TimelineError, TimelineViewer } from '../../components/Timeline/TimelinePage'
 import { groupAssetsByDay, type AssetGroup } from '../../hooks/useAssetGroups'
 import { useAssetNavigation } from '../../hooks/useAssetNavigation'
 import { useAsyncFetch } from '../../hooks/useAsyncFetch'
 import { emptyTrash, listAllAssets } from '../../api/assets'
-import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
+import { EmptyState, LoadingState } from '../../components/StateViews'
 import { useAppStore } from '../../store/app-store'
 
 const PAGE_SIZE = 50
@@ -72,7 +72,7 @@ function TrashContent() {
   }
 
   if (error) {
-    return <ErrorState message={error} onRetry={() => window.location.reload()} />
+    return <TimelineError message={error} />
   }
 
   if (groups.length === 0) {
@@ -113,13 +113,8 @@ function TrashContent() {
           </div>
         </section>
       ))}
-      <ViewerHost
-        asset={nav.selected}
-        onClose={nav.close}
-        onPrev={nav.goPrev}
-        onNext={nav.goNext}
-        hasPrev={nav.hasPrev}
-        hasNext={nav.hasNext}
+      <TimelineViewer
+        nav={nav}
         onRestore={() => {
           void nav.restore()
         }}

@@ -1,8 +1,8 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import {
   CopyObjectCommand,
   CreateBucketCommand,
-  DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
@@ -12,8 +12,9 @@ import {
   type GetObjectCommandOutput,
 } from '@aws-sdk/client-s3'
 import { Upload } from '@aws-sdk/lib-storage'
+import { randomUUID } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'fs'
-import { readFile, stat } from 'fs/promises'
+import { readFile, rename, rm, stat } from 'fs/promises'
 import { loadEnv } from '@photox/shared-config'
 import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
@@ -22,12 +23,9 @@ import { pipeline } from 'stream/promises'
 // (videos up to the 4GiB upload cap) stream via lib-storage MPU. Floci single-op
 // caps at 5GiB with disk-backed modes; memory mode caps ~2GiB heap.
 const MULTIPART_THRESHOLD_BYTES = 100 * 1024 * 1024
-// ponytail: bounded operation budget — the SDK client runs single-attempt
-// (maxAttempts: 1) so this 1/2/4s ladder owns the whole retry budget
-const RETRY_DELAYS_MS = [1000, 2000, 4000]
+// DeleteObjects caps a single request at 1000 keys
+const DELETE_BATCH_SIZE = 1000
 const DEFAULT_BUCKET = 'photox-dev-backups'
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** S3 missing-key/bucket probe shared with UserBackupService.backupStatus (A4). */
 export function isNotFound(err: unknown): boolean {
@@ -44,7 +42,7 @@ function errorName(err: unknown): string {
  * Single endpoint (S3_ENDPOINT, server-side ops) + path-style addressing.
  */
 @Injectable()
-export class S3BackupService implements OnModuleInit {
+export class S3BackupService {
   private readonly logger = new Logger(S3BackupService.name)
   private readonly client: S3Client
   private readonly bucket: string
@@ -88,44 +86,26 @@ export class S3BackupService implements OnModuleInit {
         accessKeyId: env.AWS_ACCESS_KEY_ID,
         secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
       },
-      maxAttempts: 1,
+      // SDK-owned retry budget for transient failures; missing keys/buckets are final (the
+      // standard retry mode does not retry 404s)
+      maxAttempts: 4,
     })
-  }
-
-  async onModuleInit(): Promise<void> {
-    // ponytail: boot probe must not take core down when Floci is absent — warn
-    // and let backup/restore calls re-ensure the bucket instead
-    try {
-      await this.ensureBucket()
-    } catch (err) {
-      this.logger.warn(
-        `S3 backup bucket ensure failed at boot (retried on use): ${err instanceof Error ? err.message : String(err)}`,
-      )
-    }
   }
 
   /** HeadBucket probe, creating the bucket when absent (race-tolerant). */
   async ensureBucket(): Promise<void> {
     try {
-      await this.withRetry(
-        () =>
-          this.client.send(new HeadBucketCommand({ Bucket: this.bucket }), {
-            abortSignal: AbortSignal.timeout(10_000),
-          }),
-        'HeadBucket',
-      )
+      await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }), {
+        abortSignal: AbortSignal.timeout(10_000),
+      })
       return
     } catch (err) {
       if (!isNotFound(err)) throw err
     }
     try {
-      await this.withRetry(
-        () =>
-          this.client.send(new CreateBucketCommand({ Bucket: this.bucket }), {
-            abortSignal: AbortSignal.timeout(10_000),
-          }),
-        'CreateBucket',
-      )
+      await this.client.send(new CreateBucketCommand({ Bucket: this.bucket }), {
+        abortSignal: AbortSignal.timeout(10_000),
+      })
     } catch (err) {
       // another replica (or an overlapping probe) created it first
       if (errorName(err) !== 'BucketAlreadyOwnedByYou' && errorName(err) !== 'BucketAlreadyExists')
@@ -138,25 +118,21 @@ export class S3BackupService implements OnModuleInit {
     body: Buffer,
     contentType = 'application/octet-stream',
   ): Promise<void> {
-    await this.withRetry(
-      () =>
-        this.client.send(
-          new PutObjectCommand({
-            Bucket: this.bucket,
-            Key: key,
-            Body: body,
-            ContentType: contentType,
-          }),
-          { abortSignal: AbortSignal.timeout(30_000) },
-        ),
-      `PutObject ${key}`,
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      }),
+      { abortSignal: AbortSignal.timeout(30_000) },
     )
   }
 
   /**
    * Uploads a local file: single PUT at or under 100MB, lib-storage MPU above.
-   * The whole call is retried (MPU restarts from scratch — Floci wipes in-progress
-   * MPUs on restart/reset, and lib-storage aborts parts on failure by default).
+   * The SDK retries individual parts, but a Floci restart wipes the in-progress MPU —
+   * the retried part then fails for good, so restart the whole upload once from scratch.
    */
   async putFile(
     key: string,
@@ -168,8 +144,8 @@ export class S3BackupService implements OnModuleInit {
       await this.putObject(key, await readFile(localPath), contentType)
       return
     }
-    await this.withRetry(async () => {
-      const upload = new Upload({
+    const upload = async (): Promise<void> => {
+      await new Upload({
         client: this.client,
         params: {
           Bucket: this.bucket,
@@ -177,47 +153,58 @@ export class S3BackupService implements OnModuleInit {
           Body: createReadStream(localPath),
           ContentType: contentType,
         },
-      })
-      await upload.done()
-    }, `MultipartUpload ${key}`)
+      }).done()
+    }
+    try {
+      await upload()
+    } catch {
+      await upload()
+    }
   }
 
   /** Small-object fetch (manifests) — whole body buffered. */
   async getBuffer(key: string): Promise<Buffer> {
-    const res = await this.withRetry(
-      () =>
-        this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }), {
-          abortSignal: AbortSignal.timeout(30_000),
-        }),
-      `GetObject ${key}`,
-    )
+    const res = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }), {
+      abortSignal: AbortSignal.timeout(30_000),
+    })
     const body = res.Body
     if (!body) throw new Error(`S3 GetObject ${key} returned no body`)
     return Buffer.from(await body.transformToByteArray())
   }
 
-  /** Existence probe for an unreadable object (HeadObject shares the retry ladder). */
+  /** Existence probe for an unreadable object. */
   async headObject(key: string): Promise<void> {
-    await this.withRetry(
-      () =>
-        this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }), {
-          abortSignal: AbortSignal.timeout(30_000),
-        }),
-      `HeadObject ${key}`,
-    )
+    await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }), {
+      abortSignal: AbortSignal.timeout(30_000),
+    })
   }
 
   /** Streams an object straight to disk (originals can be gigabytes — never buffer). */
   async downloadToFile(key: string, destPath: string): Promise<void> {
-    await this.withRetry(async () => {
+    const download = async (): Promise<void> => {
       const res: GetObjectCommandOutput = await this.client.send(
         new GetObjectCommand({ Bucket: this.bucket, Key: key }),
       )
       const body = res.Body
       if (!body) throw new Error(`S3 GetObject ${key} returned no body`)
       // ponytail: node handler yields a Readable; stream it — no whole-file buffering
-      await pipeline(Readable.fromWeb(body.transformToWebStream()), createWriteStream(destPath))
-    }, `Download ${key}`)
+      const tmp = `${destPath}.${randomUUID()}.part`
+      try {
+        await pipeline(Readable.fromWeb(body.transformToWebStream()), createWriteStream(tmp))
+        await rename(tmp, destPath)
+      } catch (err) {
+        // a failed attempt must leave neither a partial destination nor a temp file behind
+        await rm(tmp, { force: true }).catch(() => undefined)
+        throw err
+      }
+    }
+    try {
+      await download()
+    } catch (err) {
+      // the SDK retries requests, not a dropped response body — restart the whole GET once
+      if (isNotFound(err)) throw err
+      await download()
+    }
   }
 
   /** All keys under a prefix (paginated). */
@@ -225,17 +212,13 @@ export class S3BackupService implements OnModuleInit {
     const keys: string[] = []
     let token: string | undefined
     for (;;) {
-      const res = await this.withRetry(
-        () =>
-          this.client.send(
-            new ListObjectsV2Command({
-              Bucket: this.bucket,
-              Prefix: prefix,
-              ContinuationToken: token,
-            }),
-            { abortSignal: AbortSignal.timeout(30_000) },
-          ),
-        `ListObjects ${prefix}`,
+      const res = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: prefix,
+          ContinuationToken: token,
+        }),
+        { abortSignal: AbortSignal.timeout(30_000) },
       )
       for (const obj of res.Contents ?? []) {
         if (obj.Key) keys.push(obj.Key)
@@ -247,16 +230,20 @@ export class S3BackupService implements OnModuleInit {
     return keys
   }
 
-  /** Sequential prune of stale keys; logs the count. */
+  /** Batched prune of stale keys (≤1000 per DeleteObjects call); logs the count. */
   async deleteKeys(keys: string[]): Promise<void> {
-    for (const key of keys) {
-      await this.withRetry(
-        () =>
-          this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }), {
-            abortSignal: AbortSignal.timeout(30_000),
-          }),
-        `DeleteObject ${key}`,
+    for (let i = 0; i < keys.length; i += DELETE_BATCH_SIZE) {
+      const res = await this.client.send(
+        new DeleteObjectsCommand({
+          Bucket: this.bucket,
+          Delete: { Objects: keys.slice(i, i + DELETE_BATCH_SIZE).map((Key) => ({ Key })) },
+        }),
+        { abortSignal: AbortSignal.timeout(30_000) },
       )
+      // a per-key failure comes back as a 200 with an Errors list, not a thrown error
+      if (res.Errors && res.Errors.length > 0) {
+        throw new Error(`S3 DeleteObjects failed for key ${res.Errors[0]?.Key ?? 'unknown'}`)
+      }
     }
     if (keys.length > 0) this.logger.log(`Deleted ${keys.length} stale backup key(s)`)
   }
@@ -270,18 +257,14 @@ export class S3BackupService implements OnModuleInit {
       .split('/')
       .map((segment) => encodeURIComponent(segment))
       .join('/')
-    await this.withRetry(
-      () =>
-        this.client.send(
-          new CopyObjectCommand({
-            Bucket: this.bucket,
-            Key: dstKey,
-            CopySource: `${this.bucket}/${encoded}`,
-            MetadataDirective: 'COPY',
-          }),
-          { abortSignal: AbortSignal.timeout(30_000) },
-        ),
-      `CopyObject ${srcKey} -> ${dstKey}`,
+    await this.client.send(
+      new CopyObjectCommand({
+        Bucket: this.bucket,
+        Key: dstKey,
+        CopySource: `${this.bucket}/${encoded}`,
+        MetadataDirective: 'COPY',
+      }),
+      { abortSignal: AbortSignal.timeout(30_000) },
     )
   }
 
@@ -307,22 +290,5 @@ export class S3BackupService implements OnModuleInit {
         `Copied prefix ${srcPrefix} -> ${dstPrefix} (${copied} copied, ${skipped} skipped)`,
       )
     }
-  }
-
-  private async withRetry<T>(op: () => Promise<T>, label: string): Promise<T> {
-    let last: unknown
-    for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
-      try {
-        return await op()
-      } catch (err) {
-        last = err
-        // missing keys/buckets are final — no point burning the ladder
-        if (isNotFound(err)) throw err
-        if (attempt === RETRY_DELAYS_MS.length) break
-        this.logger.warn(`${label} attempt ${attempt + 1} failed (${errorName(err)}), retrying`)
-        await sleep(RETRY_DELAYS_MS[attempt]!)
-      }
-    }
-    throw last
   }
 }

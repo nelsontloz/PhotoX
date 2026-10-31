@@ -1,9 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { randomUUID } from 'crypto'
-import type { Job } from 'bullmq'
 import { FACE_EMBEDDING_DIM } from '@photox/shared-types'
 import { BullMqService } from './bullmq.service'
 import { parseJobData, bindingOf, clusterJobSchema, type ClusterJob } from './job-schemas'
+import type { ProcessorDeps, ProcessorSpec } from './processor-spec'
 import type {
   ApplyClusterAttach,
   ApplyClusterCreate,
@@ -128,31 +128,13 @@ function matchesPerson(best: NearestPerson | null, eps: number): best is Nearest
 }
 
 @Injectable()
-export class FaceClusterService implements OnModuleInit {
+export class FaceClusterService {
   private readonly logger = new Logger(FaceClusterService.name)
 
   constructor(
     private readonly bullMq: BullMqService,
     private readonly core: CoreClient,
   ) {}
-
-  onModuleInit() {
-    this.bullMq.createWorker<ClusterJob>('process-faces-cluster', (job) => this.processJob(job))
-    this.logger.log('Face cluster processor listening for jobs')
-  }
-
-  private async processJob(job: Job<ClusterJob>) {
-    const { userId, sig } = parseJobData(clusterJobSchema, job.data, 'process-faces-cluster')
-    // user-scoped job: the scope is the sub itself, so the guard resolves it from the header
-    const binding = bindingOf({ userId, sig })
-    this.logger.log(`Clustering faces: user=${userId}`)
-    await this.cluster(userId, binding)
-    // ponytail: runs even when cluster() skipped (no faces/unassigned faces) — the point is stale
-    // clusters whose last face left, not the plan
-    const { deleted } = await this.core.pruneEmptyPersons(userId, binding)
-    if (deleted > 0) this.logger.log(`Pruned ${deleted} empty persons for user=${userId}`)
-    this.logger.log(`Clustering complete: user=${userId}`)
-  }
 
   async cluster(userId: string, binding?: { sig?: string }): Promise<void> {
     // core's E1 endpoint excludes trashed assets (trashed faces stay stored, just don't vote);
@@ -356,5 +338,30 @@ export class FaceClusterService implements OnModuleInit {
         },
       )
     }
+  }
+}
+
+export function faceClusterProcessor({
+  core,
+  faceCluster,
+}: Pick<ProcessorDeps, 'core' | 'faceCluster'>): ProcessorSpec<ClusterJob> {
+  const logger = new Logger('FaceClusterService')
+
+  return {
+    queue: 'process-faces-cluster',
+    logger,
+    listening: 'Face cluster processor listening for jobs',
+    run: async (job) => {
+      const { userId, sig } = parseJobData(clusterJobSchema, job.data, 'process-faces-cluster')
+      // user-scoped job: the scope is the sub itself, so the guard resolves it from the header
+      const binding = bindingOf({ userId, sig })
+      logger.log(`Clustering faces: user=${userId}`)
+      await faceCluster.cluster(userId, binding)
+      // ponytail: runs even when cluster() skipped (no faces/unassigned faces) — the point is stale
+      // clusters whose last face left, not the plan
+      const { deleted } = await core.pruneEmptyPersons(userId, binding)
+      if (deleted > 0) logger.log(`Pruned ${deleted} empty persons for user=${userId}`)
+      logger.log(`Clustering complete: user=${userId}`)
+    },
   }
 }

@@ -3,7 +3,9 @@ import { DataSource } from 'typeorm'
 import { BullMqService } from '../queue/bullmq.service'
 
 // BullMQ's client queues commands while Redis is unreachable (maxRetriesPerRequest: null),
-// so the probe is capped — a dead Redis must degrade the payload, not hang the endpoint
+// so the probe is capped — a dead Redis must degrade the payload, not hang the endpoint.
+// Deliberately local: the health stub only provides `redis`, so it must not reach for
+// BullMqService's own timeout helper.
 const REDIS_PING_TIMEOUT_MS = 1000
 
 @Injectable()

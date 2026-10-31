@@ -53,6 +53,16 @@ function safeBackupPrefix(email: string, userId: string): string {
   }
 }
 
+/** Fallback sync result for a failed backup move; safeBackupPrefix keeps this non-throwing. */
+function backupSyncFailure(user: Pick<User, 'id' | 'email'>, err: unknown): AdminUserBackupSync {
+  return {
+    synced: false,
+    moved: false,
+    to: safeBackupPrefix(user.email, user.id),
+    error: err instanceof Error ? err.message : String(err),
+  }
+}
+
 @Injectable()
 export class AdminService {
   private readonly logger = new Logger(AdminService.name)
@@ -194,12 +204,7 @@ export class AdminService {
       // never fail the edit on backup storage — the UI can retry the move.
       // moveBackupPrefix itself never throws, but the fallback must not either:
       // backupPrefix can throw (loadEnv/empty email), so compute `to` defensively.
-      backup = {
-        synced: false,
-        moved: false,
-        to: safeBackupPrefix(fresh.email, fresh.id),
-        error: err instanceof Error ? err.message : String(err),
-      }
+      backup = backupSyncFailure(fresh, err)
     }
 
     // never log the password value or any hash — field names only
@@ -269,12 +274,7 @@ export class AdminService {
     try {
       return await this.backups.moveBackupPrefix(user)
     } catch (err) {
-      return {
-        synced: false,
-        moved: false,
-        to: safeBackupPrefix(user.email, user.id),
-        error: err instanceof Error ? err.message : String(err),
-      }
+      return backupSyncFailure(user, err)
     }
   }
 

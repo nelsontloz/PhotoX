@@ -18,6 +18,7 @@ import { DataSource } from 'typeorm'
 import { loadEnv, loadRootEnvFile } from '@photox/shared-config'
 import { Place } from '../database/entities/place.entity'
 import { parseCityLine, type PlaceRow } from './geonames'
+import { postgresConnectionOptions } from './postgres-options'
 
 const DUMP_URL = 'https://download.geonames.org/export/dump'
 const CITIES_ZIP = 'cities500.zip'
@@ -73,12 +74,7 @@ async function main(): Promise<void> {
   // mirrors DatabaseModule.forRoot(); non-prod synchronize creates `places` from the entity
   // if core never ran (prod schema comes from core migrations, same gate as DatabaseModule)
   const dataSource = new DataSource({
-    type: 'postgres',
-    host: env.POSTGRES_HOST,
-    port: env.POSTGRES_PORT,
-    username: env.POSTGRES_USER,
-    password: env.POSTGRES_PASSWORD,
-    database: 'photox',
+    ...postgresConnectionOptions(),
     entities: [Place],
     synchronize: process.env.NODE_ENV !== 'production',
   })

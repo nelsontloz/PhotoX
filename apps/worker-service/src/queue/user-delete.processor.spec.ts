@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { UnrecoverableError, type Job } from 'bullmq'
-import { UserDeleteProcessor } from './user-delete.processor'
+import { userDeleteProcessor } from './user-delete.processor'
 import type { UserDeleteJob } from './job-schemas'
 import type { CoreClient } from '../core/core-client.service'
 import { FakeCoreClient } from '../../test/fake-core-client'
@@ -13,21 +13,14 @@ const PREFIX = `backups/${EMAIL}__${USER_ID}/`
 describe('UserDeleteProcessor', () => {
   let fake: FakeCoreClient
   let drainUserJobs: ReturnType<typeof vi.fn>
-  let callbacks: ((job: Job<UserDeleteJob>) => Promise<void>)[]
 
   function setup() {
-    callbacks = []
     drainUserJobs = vi.fn().mockResolvedValue(2)
-    const bullMq = {
-      createWorker: vi.fn((_name: string, cb: (job: Job<UserDeleteJob>) => Promise<void>) => {
-        callbacks.push(cb)
-        return {}
-      }),
-      drainUserJobs,
-    }
-    const processor = new UserDeleteProcessor(bullMq as never, fake as unknown as CoreClient)
-    processor.onModuleInit()
-    return callbacks[0]!
+    const spec = userDeleteProcessor({
+      bullMq: { drainUserJobs } as never,
+      core: fake as unknown as CoreClient,
+    })
+    return spec.run
   }
 
   const job = (data: unknown) => ({ data }) as Job<UserDeleteJob>

@@ -287,8 +287,6 @@ export class AssetsService {
     })
   }
 
-  // WorkerMetadataDto extends UpdateMetadataDto, so the user DTO is assignable here; both
-  // callers share the transcodeFileId ownership rules below.
   async updateMetadata(id: string, userId: string, dto: WorkerMetadataDto): Promise<AssetResponse> {
     const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
     // phash is a plain column (spread maps it), but its format is semantic -> 422 like embeddings
@@ -419,12 +417,18 @@ export class AssetsService {
   }
 
   private async fetchThumbs(assetIds: string[]): Promise<Map<string, AssetThumbnail[]>> {
-    if (assetIds.length === 0) return new Map()
+    const byAsset = new Map<string, AssetThumbnail[]>()
+    if (assetIds.length === 0) return byAsset
     const rows = await this.thumbRepo.find({
       where: { assetId: In(assetIds) },
       order: { createdAt: 'ASC' },
     })
-    return groupThumbsByAsset(rows)
+    for (const row of rows) {
+      const list = byAsset.get(row.assetId) ?? []
+      list.push(row)
+      byAsset.set(row.assetId, list)
+    }
+    return byAsset
   }
 
   private toResponse(asset: Asset, thumbnails?: AssetThumbnail[]): AssetResponse {
@@ -480,16 +484,6 @@ export function isPostgresUniqueViolation(err: unknown): boolean {
   if (!(err instanceof QueryFailedError)) return false
   const driver = err.driverError as { code?: unknown } | null | undefined
   return driver?.code === '23505'
-}
-
-function groupThumbsByAsset(rows: AssetThumbnail[]): Map<string, AssetThumbnail[]> {
-  const byAsset = new Map<string, AssetThumbnail[]>()
-  for (const row of rows) {
-    const list = byAsset.get(row.assetId) ?? []
-    list.push(row)
-    byAsset.set(row.assetId, list)
-  }
-  return byAsset
 }
 
 function toThumbnailResponse(t: AssetThumbnail): AssetThumbnailResponse {

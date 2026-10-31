@@ -13,7 +13,11 @@ import { AlbumCover } from '../../components/AlbumCover'
 import { Dialog } from '../../components/Dialog'
 import { NewAlbumFields } from '../../components/NewAlbumFields'
 import { ErrorState, LoadingState } from '../../components/StateViews'
-import { useAlbums } from '../../hooks/useAlbums'
+import { useAsyncFetch } from '../../hooks/useAsyncFetch'
+import { listAlbums, createAlbum } from '../../api/albums'
+import type { AlbumDto } from '@photox/shared-types'
+
+const EMPTY_ALBUMS: AlbumDto[] = []
 
 interface NewAlbumDialogProps {
   onClose: () => void
@@ -96,7 +100,17 @@ function NewAlbumDialog({ onClose, onCreate }: NewAlbumDialogProps) {
 }
 
 function AlbumsListContent() {
-  const { albums, total, loading, error, refresh, create } = useAlbums()
+  const { data, loading, error, refresh } = useAsyncFetch(() => listAlbums({ limit: 1000 }), {
+    errorMessage: 'Failed to load albums',
+    loadingMode: 'always',
+  })
+  const albums = data?.items ?? EMPTY_ALBUMS
+  const total = data?.total ?? 0
+  const create = async (body: { name: string; description?: string }) => {
+    const album = await createAlbum(body)
+    await refresh()
+    return album
+  }
   const [search, setSearch] = useState('')
   const [showNewDialog, setShowNewDialog] = useState(false)
 

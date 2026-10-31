@@ -1,6 +1,7 @@
+import { execFileSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { Test } from '@nestjs/testing'
@@ -11,19 +12,15 @@ import type { Asset, FileRecord } from '@photox/shared-types'
 import { LocalStorageService } from '@photox/shared-config'
 import { BullMqService } from '../../src/queue/bullmq.service'
 import { CoreClient } from '../../src/core/core-client.service'
-import { ThumbnailProcessor } from '../../src/queue/thumbnail.processor'
-import { VideoProcessor } from '../../src/queue/video.processor'
-import { MetadataProcessor } from '../../src/queue/metadata.processor'
+import { FFMPEG_PATH } from '../../src/queue/ffmpeg'
+import { ProcessorsService } from '../../src/queue/processors.service'
 import { MetadataExtractor, VideoMetadataExtractor } from '../../src/queue/metadata.extractor'
 import { FaceDetectorService } from '../../src/queue/face.detector'
-import { FaceProcessor } from '../../src/queue/face.processor'
 import { FaceClusterService } from '../../src/queue/face.cluster'
 import { EmbeddingService } from '../../src/queue/embedding.service'
-import { EmbeddingProcessor } from '../../src/queue/embed.processor'
 import { DetectService } from '../../src/queue/detect.service'
-import { DetectProcessor } from '../../src/queue/detect.processor'
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../fake-core-client'
-import { setupRedis, teardownRedis } from './test-setup'
+import { setupRedis } from './test-setup'
 
 export { signJob } from '../sign-job'
 
@@ -37,65 +34,49 @@ export interface TestApp {
 
 export interface CreateTestAppOptions {
   detect?: FaceDetectorService['detect']
-  // 'media' wires only the four media processors (thumbnail/video/metadata/face); default all seven
-  processors?: 'all' | 'media'
 }
 
 // ponytail: Redis-only harness for the worker's processors — no Postgres anywhere in the worker.
-// Processors start via their own OnModuleInit hook when moduleRef.init() runs.
+// ProcessorsService's OnModuleInit loop starts every worker when moduleRef.init() runs.
 export async function createTestApp(opts: CreateTestAppOptions = {}): Promise<TestApp> {
-  // must run before the testing module compiles: BullMqService.onModuleInit reads loadEnv()
+  // must run before the testing module compiles: BullMqService.ready() reads loadEnv()
   // (REDIS_HOST/REDIS_PORT/REDIS_DB) when moduleRef.init() runs, so the slot this file claimed
   // has to be in process.env by then
-  await setupRedis()
+  setupRedis()
 
   const storageDir = mkdtempSync(join(tmpdir(), 'worker-int-storage-'))
   process.env.STORAGE_DIR = storageDir
 
-  try {
-    const storage = new LocalStorageService()
-    const fake = new FakeCoreClient(storage)
-    const moduleRef = await Test.createTestingModule({
-      providers: [
-        BullMqService,
-        { provide: LocalStorageService, useValue: storage },
-        { provide: CoreClient, useValue: fake },
-        ThumbnailProcessor,
-        VideoProcessor,
-        MetadataProcessor,
-        MetadataExtractor,
-        VideoMetadataExtractor,
-        {
-          provide: FaceDetectorService,
-          useValue: { detect: opts.detect ?? vi.fn().mockResolvedValue([]) },
-        },
-        FaceProcessor,
-        ...(opts.processors === 'media'
-          ? []
-          : [
-              FaceClusterService,
-              EmbeddingService,
-              EmbeddingProcessor,
-              DetectService,
-              DetectProcessor,
-            ]),
-      ],
-    }).compile()
+  const storage = new LocalStorageService()
+  const fake = new FakeCoreClient(storage)
+  const moduleRef = await Test.createTestingModule({
+    providers: [
+      BullMqService,
+      { provide: LocalStorageService, useValue: storage },
+      { provide: CoreClient, useValue: fake },
+      {
+        provide: FaceDetectorService,
+        useValue: { detect: opts.detect ?? vi.fn().mockResolvedValue([]) },
+      },
+      ProcessorsService,
+      MetadataExtractor,
+      VideoMetadataExtractor,
+      FaceClusterService,
+      EmbeddingService,
+      DetectService,
+    ],
+  }).compile()
 
-    await moduleRef.init()
-    const app = moduleRef as unknown as INestApplicationContext
-    const bullMq = app.get(BullMqService)
+  await moduleRef.init()
+  const app = moduleRef as unknown as INestApplicationContext
+  const bullMq = app.get(BullMqService)
 
-    return {
-      app,
-      storage,
-      storageDir,
-      fake,
-      getQueue: (name: string) => bullMq.getQueue(name),
-    }
-  } catch (err) {
-    await teardownRedis()
-    throw err
+  return {
+    app,
+    storage,
+    storageDir,
+    fake,
+    getQueue: (name: string) => bullMq.getQueue(name),
   }
 }
 
@@ -107,15 +88,14 @@ export async function resetTestApp(testApp: TestApp): Promise<void> {
 
 export async function closeTestApp(testApp: TestApp): Promise<void> {
   await testApp.app.close()
-  await teardownRedis()
   rmSync(testApp.storageDir, { recursive: true, force: true })
 }
 
-export async function waitUntil(
-  cond: () => boolean | Promise<boolean>,
-  timeoutMs = 30_000,
-): Promise<void> {
-  await vi.waitUntil(cond, { timeout: timeoutMs, interval: 100 })
+// one real ffmpeg fixture: callers pass the input/codec args, the output path and `-y` are appended
+export function makeVideoFixture(path: string, args: string[]): Buffer {
+  if (!FFMPEG_PATH) throw new Error('ffmpeg binary not available')
+  execFileSync(FFMPEG_PATH, [...args, '-y', path], { timeout: 30_000, stdio: 'pipe' })
+  return readFileSync(path)
 }
 
 export async function waitForJob(

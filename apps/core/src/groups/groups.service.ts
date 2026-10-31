@@ -1,14 +1,11 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, type Repository } from 'typeorm'
-import {
-  SEARCH_EMBEDDING_DIM,
-  SEARCH_EMBEDDING_MODEL,
-  type SearchResponse,
-} from '@photox/shared-types'
+import { SEARCH_EMBEDDING_MODEL, type SearchResponse } from '@photox/shared-types'
 import { Asset } from '../database/entities'
 import { AssetEmbedding } from '../database/entities/asset-embedding.entity'
 import { findOwnedOr404 } from '../common/asset-ownership'
+import { neighbourRows } from '../database/shared/neighbours'
 import { toVectorSql } from '../database/shared/pgvector'
 import { AssetsService } from '../assets/assets.service'
 import type { DuplicatesQueryDto, SimilarQueryDto } from './dto/groups-query.dto'
@@ -68,22 +65,13 @@ export class GroupsService {
     if (!source) return { items: [], total: 0 }
 
     const vector = toVectorSql(source.embedding)
-    const rows: { id: string }[] = await this.dataSource.transaction(async (em) => {
+    const options = { excludeAssetId: assetId }
+    const rows = await this.dataSource.transaction(async (em) => {
       // same ef_search plumbing as search: HNSW scans cap at ef_search rows
       await em.query(`SELECT set_config('hnsw.ef_search', $1, true)`, [
         String(Math.min(limit + 1, 200)),
       ])
-      return em.query(
-        `SELECT ae."assetId" AS id
-         FROM asset_embeddings ae
-         JOIN assets a ON a.id = ae."assetId"
-         WHERE a."userId" = $1 AND a."isTrashed" = false
-           AND ae.kind = 'image' AND ae.model = $2
-           AND ae."assetId" <> $3
-         ORDER BY ae.embedding::halfvec(${SEARCH_EMBEDDING_DIM}) <=> $4::halfvec(${SEARCH_EMBEDDING_DIM})
-         LIMIT $5`,
-        [userId, SEARCH_EMBEDDING_MODEL, assetId, vector, limit],
-      )
+      return neighbourRows(em, userId, vector, limit, options)
     })
     // The index spans every user and pgvector applies the owner filter after the scan, so other
     // users' near-identical photos can fill the ef_search window and short-change this owner (an
@@ -91,32 +79,14 @@ export class GroupsService {
     // missing rows, so the scan cannot be resumed for them — finish the page with an exact scan.
     const ids =
       rows.length < limit
-        ? await this.exactSimilar(userId, assetId, vector, limit)
+        ? (
+            await neighbourRows(this.dataSource, userId, vector, limit, {
+              ...options,
+              exact: true,
+            })
+          ).map((row) => row.id)
         : rows.map((row) => row.id)
     const items = await this.assets.listByIdsRanked(userId, ids)
     return { items, total: ids.length }
-  }
-
-  /** Exact (unindexed) neighbour page for one owner — the ANN page came back short. */
-  private async exactSimilar(
-    userId: string,
-    assetId: string,
-    vector: string,
-    limit: number,
-  ): Promise<string[]> {
-    const rows: { id: string }[] = await this.dataSource.query(
-      // `+ 0` keeps the planner off the HNSW index: its distance ordering is exactly what
-      // starved the ANN page, so this fallback has to sort the owner's rows itself
-      `SELECT ae."assetId" AS id
-       FROM asset_embeddings ae
-       JOIN assets a ON a.id = ae."assetId"
-       WHERE a."userId" = $1 AND a."isTrashed" = false
-         AND ae.kind = 'image' AND ae.model = $2
-         AND ae."assetId" <> $3
-       ORDER BY (ae.embedding::halfvec(${SEARCH_EMBEDDING_DIM}) <=> $4::halfvec(${SEARCH_EMBEDDING_DIM})) + 0
-       LIMIT $5`,
-      [userId, SEARCH_EMBEDDING_MODEL, assetId, vector, limit],
-    )
-    return rows.map((row) => row.id)
   }
 }

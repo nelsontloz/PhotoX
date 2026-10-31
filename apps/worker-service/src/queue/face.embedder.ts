@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { join } from 'path'
 import { loadEnv } from '@photox/shared-config'
 import { FACE_EMBEDDING_DIM, l2Normalize } from '@photox/shared-types'
-import { lazyOnce, requireModelFile } from './model-loader'
+import { lazyOnce, loadSession } from './model-loader'
 import { toNchw } from './nchw'
 import type * as ort from 'onnxruntime-node'
 
@@ -138,16 +138,12 @@ export class FaceEmbedderService {
   }
 
   private async createSession(): Promise<ort.InferenceSession> {
-    // ponytail: lazy import so unit tests on Alpine (musl, no onnx native binding) never dlopen it —
-    // nothing in this process loads onnxruntime at module import time
-    const { InferenceSession } = await import('onnxruntime-node')
     const modelPath = this.modelPath()
-    await requireModelFile(
+    const session = await loadSession(
       modelPath,
       `Face embedding model not found at ${modelPath} — run ` +
         `'pnpm --filter @photox/worker-service face-model' or set FACE_MODEL_PATH`,
     )
-    const session = await InferenceSession.create(modelPath, { executionProviders: ['cpu'] })
     this.inputName = session.inputNames[0]!
     this.outputName = session.outputNames[0]!
     this.logger.log(`Face embedder loaded: ${modelPath}`)

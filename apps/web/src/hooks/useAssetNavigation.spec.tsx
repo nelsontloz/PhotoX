@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ReactNode } from 'react'
-import { renderHook, act, fireEvent, screen, within } from '@testing-library/react'
+import { renderHook, act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useSearchParams } from 'react-router-dom'
 import type { Asset } from '@photox/shared-types'
 
@@ -8,15 +8,17 @@ vi.mock('../api/assets', () => ({
   trashAsset: vi.fn(),
   restoreAsset: vi.fn(),
   deleteAsset: vi.fn(),
+  getAsset: vi.fn(),
 }))
 
 import { useAssetNavigation } from './useAssetNavigation'
-import { deleteAsset, restoreAsset, trashAsset } from '../api/assets'
+import { deleteAsset, getAsset, restoreAsset, trashAsset } from '../api/assets'
 import { ConfirmProvider } from '../components/ConfirmProvider'
 
 const trashAssetMock = vi.mocked(trashAsset)
 const restoreAssetMock = vi.mocked(restoreAsset)
 const deleteAssetMock = vi.mocked(deleteAsset)
+const getAssetMock = vi.mocked(getAsset)
 
 function makeAsset(id: string): Asset {
   return { id, kind: 'photo' } as Asset
@@ -37,6 +39,8 @@ describe('useAssetNavigation', () => {
     trashAssetMock.mockReset()
     restoreAssetMock.mockReset()
     deleteAssetMock.mockReset()
+    // deep-link resolution runs unconditionally: these tests have no resolvable asset
+    getAssetMock.mockRejectedValue(new Error('not in the library'))
     vi.stubGlobal('alert', vi.fn())
   })
 
@@ -62,6 +66,17 @@ describe('useAssetNavigation', () => {
       wrapper: makeWrapper('/?asset=missing'),
     })
     expect(result.current.selected).toBeNull()
+  })
+
+  it('fetches a deep-linked asset whose month is not loaded when resolveMissing is on', async () => {
+    const stray = makeAsset('stray')
+    getAssetMock.mockResolvedValue(stray)
+    const { result } = renderHook(() => useAssetNavigation({ assets: [], resolveMissing: true }), {
+      wrapper: makeWrapper('/?asset=stray'),
+    })
+
+    await waitFor(() => expect(result.current.selected?.id).toBe('stray'))
+    expect(getAssetMock).toHaveBeenCalledWith('stray')
   })
 
   it('keeps the selected asset when its month falls out of the loaded list', () => {

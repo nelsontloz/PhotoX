@@ -24,8 +24,20 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
   private readonly workers: Worker[] = []
   private readonly queues = new Map<string, Queue>()
   private workerSecret: string | undefined
+  private connecting: Promise<void> | null = null
 
   async onModuleInit() {
+    await this.ready()
+  }
+
+  // idempotent: ProcessorsService awaits this before creating any worker, so the connection no
+  // longer depends on which provider's OnModuleInit hook Nest happens to run first
+  ready(): Promise<void> {
+    this.connecting ??= this.connect()
+    return this.connecting
+  }
+
+  private async connect(): Promise<void> {
     const env = loadEnv()
     await new Promise<void>((resolve, reject) => {
       this.connection = new Redis({

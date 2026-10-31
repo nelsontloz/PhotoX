@@ -87,6 +87,18 @@ describeIfFfmpeg('ffmpeg wrapper', () => {
   })
 
   it('runFfmpeg with invalid arg rejects with non-zero exit', async () => {
-    await expect(runFfmpeg(['-help_that_does_not_exist'])).rejects.toThrow()
+    await expect(runFfmpeg(['-help_that_does_not_exist'])).rejects.toThrow(
+      /^ffmpeg exited with code \d+:/,
+    )
+  })
+
+  it('runFfmpeg kills the process and reports the timeout budget', async () => {
+    // -re makes ffmpeg read the 30s source in real time, so it outlives the 200ms budget
+    await expect(
+      runFfmpeg(
+        ['-re', '-f', 'lavfi', '-i', 'testsrc=duration=30:size=320x240:rate=30', '-f', 'null', '-'],
+        { timeoutMs: 200 },
+      ),
+    ).rejects.toThrow('ffmpeg timed out after 200ms')
   })
 })

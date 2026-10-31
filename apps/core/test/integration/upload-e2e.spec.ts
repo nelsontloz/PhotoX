@@ -28,14 +28,14 @@ import { UsersModule } from '../../src/users/users.module'
 import { AuthModule } from '../../src/auth/auth.module'
 import { BullMqModule } from '../../src/queue/bullmq.module'
 import { BullMqService as WorkerBullMqService } from '../../../worker-service/src/queue/bullmq.service'
-import { ThumbnailProcessor } from '../../../worker-service/src/queue/thumbnail.processor'
-import { VideoProcessor } from '../../../worker-service/src/queue/video.processor'
-import { MetadataProcessor } from '../../../worker-service/src/queue/metadata.processor'
+import { ProcessorsService } from '../../../worker-service/src/queue/processors.service'
+import { DetectService } from '../../../worker-service/src/queue/detect.service'
+import { EmbeddingService } from '../../../worker-service/src/queue/embedding.service'
+import { FaceClusterService } from '../../../worker-service/src/queue/face.cluster'
 import {
   MetadataExtractor,
   VideoMetadataExtractor,
 } from '../../../worker-service/src/queue/metadata.extractor'
-import { FaceProcessor } from '../../../worker-service/src/queue/face.processor'
 import { FaceDetectorService } from '../../../worker-service/src/queue/face.detector'
 
 // ponytail: derived from the service shape (not imported) — face.detector.ts keeps
@@ -95,20 +95,12 @@ async function writeVideoFixture(
   path: string,
   opts: { videoCodec: 'libx264' | 'mpeg4'; withAudio: boolean },
 ): Promise<void> {
-  const frameBytes = 64 * 64 * 3
-  const input = Buffer.concat([Buffer.alloc(frameBytes, 0x20), Buffer.alloc(frameBytes, 0x80)])
   const args = [
     '-y',
     '-f',
-    'rawvideo',
-    '-pix_fmt',
-    'rgb24',
-    '-s',
-    '64x64',
-    '-r',
-    '10',
+    'lavfi',
     '-i',
-    'pipe:0',
+    'testsrc=size=64x64:rate=10',
     ...(opts.withAudio
       ? ['-f', 'lavfi', '-i', 'anullsrc=channel_layout=mono:sample_rate=8000']
       : []),
@@ -121,7 +113,7 @@ async function writeVideoFixture(
     ...(opts.withAudio ? ['-c:a', 'aac', '-t', '0.2'] : []),
     path,
   ]
-  await runFfmpeg(args, { input, timeoutMs: 30_000 })
+  await runFfmpeg(args, { timeoutMs: 30_000 })
 }
 
 // ponytail: same shape a real detection has (box in resized coords + real embedding), but the
@@ -265,14 +257,14 @@ describe('upload e2e pipeline', () => {
         providers: [
           WorkerBullMqService,
           CoreClient,
-          ThumbnailProcessor,
-          VideoProcessor,
-          MetadataProcessor,
           MetadataExtractor,
           VideoMetadataExtractor,
           FaceEmbedderService,
           { provide: FaceDetectorService, useValue: detectorMock },
-          FaceProcessor,
+          EmbeddingService,
+          DetectService,
+          FaceClusterService,
+          ProcessorsService,
         ],
       }).compile()
       app = moduleRef.createNestApplication()

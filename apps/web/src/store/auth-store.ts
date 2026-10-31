@@ -87,6 +87,27 @@ interface AuthState {
   clearError: () => void
 }
 
+/** Shared login/register flow: loading → authenticated, or the server's message / a fallback. */
+async function authenticate(
+  set: (partial: Partial<AuthState>) => void,
+  call: () => Promise<AuthResponse>,
+  fallbackMessage: string,
+): Promise<void> {
+  set({ status: 'loading', error: null })
+  try {
+    const res = await call()
+    set({
+      user: res.user,
+      accessToken: res.accessToken,
+      refreshToken: res.refreshToken,
+      status: 'authenticated',
+    })
+  } catch (err: unknown) {
+    const axiosErr = err as { response?: { data?: { message?: string } } }
+    set({ status: 'error', error: axiosErr.response?.data?.message ?? fallbackMessage })
+  }
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
@@ -96,39 +117,15 @@ export const useAuthStore = create<AuthState>()(
       status: 'idle',
       error: null,
 
-      login: async (email, password) => {
-        set({ status: 'loading', error: null })
-        try {
-          const res = await authApi.login({ email, password })
-          set({
-            user: res.user,
-            accessToken: res.accessToken,
-            refreshToken: res.refreshToken,
-            status: 'authenticated',
-          })
-        } catch (err: unknown) {
-          const axiosErr = err as { response?: { data?: { message?: string } } }
-          const message = axiosErr.response?.data?.message ?? 'Login failed'
-          set({ status: 'error', error: message })
-        }
-      },
+      login: (email, password) =>
+        authenticate(set, () => authApi.login({ email, password }), 'Login failed'),
 
-      register: async (email, password, displayName) => {
-        set({ status: 'loading', error: null })
-        try {
-          const res = await authApi.register({ email, password, displayName })
-          set({
-            user: res.user,
-            accessToken: res.accessToken,
-            refreshToken: res.refreshToken,
-            status: 'authenticated',
-          })
-        } catch (err: unknown) {
-          const axiosErr = err as { response?: { data?: { message?: string } } }
-          const message = axiosErr.response?.data?.message ?? 'Registration failed'
-          set({ status: 'error', error: message })
-        }
-      },
+      register: (email, password, displayName) =>
+        authenticate(
+          set,
+          () => authApi.register({ email, password, displayName }),
+          'Registration failed',
+        ),
 
       logout: () => {
         const token = get().refreshToken

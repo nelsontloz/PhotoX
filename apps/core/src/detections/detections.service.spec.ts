@@ -1,8 +1,10 @@
-import { NotFoundException, UnprocessableEntityException } from '@nestjs/common'
+import { NotFoundException } from '@nestjs/common'
+import { plainToInstance } from 'class-transformer'
+import { validate } from 'class-validator'
 import type { DataSource, Repository } from 'typeorm'
 import { Asset } from '../database/entities'
 import { AssetDetection } from '../database/entities/asset-detection.entity'
-import type { DetectedObjectDto, RegisterDetectionsDto } from './dto/register-detections.dto'
+import { RegisterDetectionsDto, type DetectedObjectDto } from './dto/register-detections.dto'
 import { DetectionsService } from './detections.service'
 
 function box(x = 1, y = 2, w = 10, h = 20) {
@@ -31,6 +33,12 @@ function validDto(): RegisterDetectionsDto {
       { label: 'car', confidence: 0.7, box: box(5, 6, 30, 40) },
     ],
   }
+}
+
+/** The global ValidationPipe's check, exercised directly (register() trusts the DTO). */
+async function validationErrorCount(payload: object): Promise<number> {
+  const dto = plainToInstance(RegisterDetectionsDto, payload)
+  return (await validate(dto)).length
 }
 
 describe('DetectionsService.register', () => {
@@ -63,6 +71,12 @@ describe('DetectionsService.register', () => {
     expect(deleteFn).toHaveBeenCalledWith(AssetDetection, { assetId: 'asset-1' })
     expect(insertFn).not.toHaveBeenCalled()
   })
+})
+
+describe('RegisterDetectionsDto', () => {
+  it('accepts a valid payload', async () => {
+    expect(await validationErrorCount(validDto())).toBe(0)
+  })
 
   const invalid: [string, RegisterDetectionsDto][] = [
     [
@@ -94,12 +108,8 @@ describe('DetectionsService.register', () => {
     ],
   ]
 
-  it.each(invalid)('422s %s without writing', async (_label, dto) => {
-    const { service, transaction } = makeService()
-    await expect(service.register('asset-1', 'u1', dto)).rejects.toBeInstanceOf(
-      UnprocessableEntityException,
-    )
-    expect(transaction).not.toHaveBeenCalled()
+  it.each(invalid)('rejects %s', async (_label, dto) => {
+    expect(await validationErrorCount(dto)).toBeGreaterThan(0)
   })
 })
 

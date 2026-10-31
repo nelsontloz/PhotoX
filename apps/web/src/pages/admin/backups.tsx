@@ -1015,6 +1015,28 @@ export function BackupSection() {
                       setConfirmRestore({ row, snapshot, legacy })
                     const openDelete = (snapshot: BackupSnapshot, legacy: boolean) =>
                       setConfirmDelete({ row, snapshot, legacy })
+                    // Live and deleted rows differ only in the backup slot; Delete is identical.
+                    const rowActions = (backup: ReactNode) => (
+                      <div className="flex flex-col items-end gap-2">
+                        {backup}
+                        <Button
+                          variant="danger"
+                          title={`Delete backup for ${row.email}`}
+                          ariaLabel={`Delete backup for ${row.email}`}
+                          disabled={anyBusy}
+                          onClick={() => openDelete(rowSnapshot(row), false)}
+                          icon={
+                            isDeleting ? (
+                              <FaSpinner className="animate-spin text-xs" aria-hidden="true" />
+                            ) : (
+                              <FaTrashCan className="text-xs" aria-hidden="true" />
+                            )
+                          }
+                        >
+                          {isDeleting ? 'Deleting…' : 'Delete'}
+                        </Button>
+                      </div>
+                    )
                     return (
                       <Fragment key={row.userId}>
                         <tr className="hover:bg-surface-container/50 transition-colors">
@@ -1060,82 +1082,48 @@ export function BackupSection() {
                             {stamp(row.backedUpAt)}
                           </td>
                           <td className="py-3 px-3 sm:px-4 text-right align-top">
-                            {row.deleted ? (
-                              <div className="flex flex-col items-end gap-2">
-                                <Button
-                                  variant="secondary"
-                                  tone="accent"
-                                  onClick={() => openRestore(rowSnapshot(row), false)}
-                                  disabled={anyBusy}
-                                  ariaLabel={`Restore ${row.email}`}
-                                  icon={
-                                    isRestoring ? <FaSpinner className="animate-spin" /> : undefined
-                                  }
-                                >
-                                  {isRestoring ? 'Restoring…' : 'Restore'}
-                                </Button>
-                                <span title="That account is deleted — restore it before backing up.">
+                            {row.deleted
+                              ? rowActions(
+                                  <>
+                                    <Button
+                                      variant="secondary"
+                                      tone="accent"
+                                      onClick={() => openRestore(rowSnapshot(row), false)}
+                                      disabled={anyBusy}
+                                      ariaLabel={`Restore ${row.email}`}
+                                      icon={
+                                        isRestoring ? (
+                                          <FaSpinner className="animate-spin" />
+                                        ) : undefined
+                                      }
+                                    >
+                                      {isRestoring ? 'Restoring…' : 'Restore'}
+                                    </Button>
+                                    <span title="That account is deleted — restore it before backing up.">
+                                      <Button
+                                        variant="secondary"
+                                        disabled
+                                        ariaLabel={`Back up ${row.email} (deleted — restore first)`}
+                                      >
+                                        Backup
+                                      </Button>
+                                    </span>
+                                  </>,
+                                )
+                              : rowActions(
                                   <Button
                                     variant="secondary"
-                                    disabled
-                                    ariaLabel={`Back up ${row.email} (deleted — restore first)`}
+                                    tone="accent"
+                                    onClick={() => setConfirmUser(row)}
+                                    disabled={anyBusy}
+                                    ariaLabel={`Back up ${row.email}`}
+                                    icon={
+                                      isBusy ? <FaSpinner className="animate-spin" /> : undefined
+                                    }
                                   >
-                                    Backup
-                                  </Button>
-                                </span>
-                                <Button
-                                  variant="danger"
-                                  title={`Delete backup for ${row.email}`}
-                                  ariaLabel={`Delete backup for ${row.email}`}
-                                  disabled={anyBusy}
-                                  onClick={() => openDelete(rowSnapshot(row), false)}
-                                  icon={
-                                    isDeleting ? (
-                                      <FaSpinner
-                                        className="animate-spin text-xs"
-                                        aria-hidden="true"
-                                      />
-                                    ) : (
-                                      <FaTrashCan className="text-xs" aria-hidden="true" />
-                                    )
-                                  }
-                                >
-                                  {isDeleting ? 'Deleting…' : 'Delete'}
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="flex flex-col items-end gap-2">
-                                <Button
-                                  variant="secondary"
-                                  tone="accent"
-                                  onClick={() => setConfirmUser(row)}
-                                  disabled={anyBusy}
-                                  ariaLabel={`Back up ${row.email}`}
-                                  icon={isBusy ? <FaSpinner className="animate-spin" /> : undefined}
-                                >
-                                  {isBusy ? 'Backing up…' : 'Backup'}
-                                </Button>
-                                <Button
-                                  variant="danger"
-                                  title={`Delete backup for ${row.email}`}
-                                  ariaLabel={`Delete backup for ${row.email}`}
-                                  disabled={anyBusy}
-                                  onClick={() => openDelete(rowSnapshot(row), false)}
-                                  icon={
-                                    isDeleting ? (
-                                      <FaSpinner
-                                        className="animate-spin text-xs"
-                                        aria-hidden="true"
-                                      />
-                                    ) : (
-                                      <FaTrashCan className="text-xs" aria-hidden="true" />
-                                    )
-                                  }
-                                >
-                                  {isDeleting ? 'Deleting…' : 'Delete'}
-                                </Button>
-                              </div>
-                            )}
+                                    {isBusy ? 'Backing up…' : 'Backup'}
+                                  </Button>,
+                                )}
                             {isBusy && (
                               <div
                                 className="mt-2 w-full max-w-[240px] ml-auto text-left sm:min-w-[190px]"

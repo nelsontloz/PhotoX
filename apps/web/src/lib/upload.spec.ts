@@ -94,15 +94,6 @@ describe('enqueueFiles', () => {
     ])
     expect(sentItems?.every((i) => Object.keys(i).join() === 'checksumSha256')).toBe(true)
     expect(uploadFileMock).not.toHaveBeenCalled()
-    const items = useUploadStore.getState().items
-    expect(items.map((i) => i.assetId).sort()).toEqual([
-      'asset-for-checksum-hit-a.jpg',
-      'asset-for-checksum-hit-b.jpg',
-    ])
-    expect(items.map((i) => i.fileId).sort()).toEqual([
-      'file-for-checksum-hit-a.jpg',
-      'file-for-checksum-hit-b.jpg',
-    ])
   })
 
   it('uploads misses reported by the existence check', async () => {
@@ -118,11 +109,7 @@ describe('enqueueFiles', () => {
 
     expect(checkFilesExistMock).toHaveBeenCalledTimes(1)
     expect(uploadFileMock).toHaveBeenCalledTimes(1)
-    expect(useUploadStore.getState().items[0]).toMatchObject({
-      status: 'done',
-      fileId: 'file-new',
-      assetId: 'asset-new',
-    })
+    expect(useUploadStore.getState().items[0]).toMatchObject({ status: 'done' })
   })
 
   it('uploads everything when the existence check fails', async () => {
@@ -155,11 +142,7 @@ describe('enqueueFiles', () => {
 
     expect(checkFilesExistMock).not.toHaveBeenCalled()
     expect(uploadFileMock).toHaveBeenCalledTimes(1)
-    expect(useUploadStore.getState().items[0]).toMatchObject({
-      status: 'done',
-      fileId: 'file-1',
-      assetId: 'asset-1',
-    })
+    expect(useUploadStore.getState().items[0]).toMatchObject({ status: 'done' })
   })
 
   it('pre-rejects files larger than 4GB without hashing or uploading', async () => {

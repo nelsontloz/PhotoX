@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { join } from 'path'
 import sharp from 'sharp'
 import { loadEnv } from '@photox/shared-config'
-import { lazyOnce, requireModelFile } from './model-loader'
+import { lazyOnce, loadSession } from './model-loader'
 import { toNchw } from './nchw'
 import type { DetectedObjectInput } from '@photox/shared-types'
 import type * as ort from 'onnxruntime-node'
@@ -222,20 +222,15 @@ export class DetectService {
   }
 
   private async createSession(): Promise<ort.InferenceSession> {
-    // ponytail: lazy import so unit tests (and hosts without the ORT native binding) never dlopen it
-    const { InferenceSession } = await import('onnxruntime-node')
     const modelPath = this.modelPath()
-    await requireModelFile(
+    const session = await loadSession(
       modelPath,
       `Detection model not found at ${modelPath} — run ` +
         `'pnpm --filter @photox/worker-service detect-model'`,
-    )
-    const session = await InferenceSession.create(modelPath, {
-      executionProviders: ['cpu'],
       // ponytail: 2 ORT threads instead of the all-cores default — SigLIP/SCRFD sessions
       // are co-hosted in this process; raise only if detection throughput starves the other queues
-      intraOpNumThreads: 2,
-    })
+      { intraOpNumThreads: 2 },
+    )
     this.inputName = session.inputNames[0]!
     this.outputName = session.outputNames[0]!
     this.logger.log(`Detection model loaded: ${modelPath}`)

@@ -129,20 +129,19 @@ describe('CoreClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('chunks asset id lookups at 100 ids per request', async () => {
+  it('sends one lookup for the caller-capped id list', async () => {
     fetchMock.mockImplementation(() =>
       Promise.resolve(jsonResponse(200, { items: [], total: 0, limit: 0, offset: 0 })),
     )
-    const ids = Array.from({ length: 205 }, () => randomUUID())
+    // contract: face.cluster caps at LEGACY_REEMBED_PER_RUN (100) before calling — no chunking here
+    const ids = Array.from({ length: 100 }, () => randomUUID())
 
     await makeClient().getAssetsByIds('user-1', ids)
 
-    const urls = fetchMock.mock.calls.map((call) => call[0] as string)
-    expect(urls).toHaveLength(3)
-    expect(urls.every((url) => url.startsWith('http://localhost:3000/worker/assets?ids='))).toBe(
-      true,
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0]![0]).toBe(
+      `http://localhost:3000/worker/assets?ids=${ids.join(',')}`,
     )
-    expect(urls.map((url) => url.split('ids=')[1]!.split(',').length)).toEqual([100, 100, 5])
   })
 
   it('applies a cluster plan with both arrays present and no null covers', async () => {

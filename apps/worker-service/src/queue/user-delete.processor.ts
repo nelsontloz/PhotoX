@@ -1,35 +1,30 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
-import type { Job } from 'bullmq'
+import { Logger } from '@nestjs/common'
 import { USER_DELETE_QUEUE } from '@photox/shared-types'
-import { BullMqService } from './bullmq.service'
 import { bindingOf, parseJobData, userDeleteJobSchema, type UserDeleteJob } from './job-schemas'
-import { CoreClient } from '../core/core-client.service'
+import type { ProcessorDeps, ProcessorSpec } from './processor-spec'
 
 /**
  * Consumer for the `user-delete` queue (core only produces it). The wipe itself runs in
  * core — this process has no DB or storage access — so the job drains the user's pending
  * media jobs and asks core to purge the account.
  */
-@Injectable()
-export class UserDeleteProcessor implements OnModuleInit {
-  private readonly logger = new Logger(UserDeleteProcessor.name)
+export function userDeleteProcessor({
+  bullMq,
+  core,
+}: Pick<ProcessorDeps, 'bullMq' | 'core'>): ProcessorSpec<UserDeleteJob> {
+  const logger = new Logger('UserDeleteProcessor')
 
-  constructor(
-    private readonly bullMq: BullMqService,
-    private readonly core: CoreClient,
-  ) {}
-
-  onModuleInit() {
-    this.bullMq.createWorker<UserDeleteJob>(USER_DELETE_QUEUE, (job) => this.processJob(job))
-    this.logger.log('User-delete processor listening for jobs')
-  }
-
-  private async processJob(job: Job<UserDeleteJob>) {
-    const data = parseJobData(userDeleteJobSchema, job.data, USER_DELETE_QUEUE)
-    // jobs enqueued between the admin request and now are caught here; core's rows are still
-    // present, so a job the drain misses simply fails closed (404 -> UnrecoverableError)
-    await this.bullMq.drainUserJobs(data.userId)
-    await this.core.purgeUser(data.userId, data.backupPrefix, bindingOf(data))
-    this.logger.log(`User-delete completed: user=${data.userId}`)
+  return {
+    queue: USER_DELETE_QUEUE,
+    logger,
+    listening: 'User-delete processor listening for jobs',
+    run: async (job) => {
+      const data = parseJobData(userDeleteJobSchema, job.data, USER_DELETE_QUEUE)
+      // jobs enqueued between the admin request and now are caught here; core's rows are still
+      // present, so a job the drain misses simply fails closed (404 -> UnrecoverableError)
+      await bullMq.drainUserJobs(data.userId)
+      await core.purgeUser(data.userId, data.backupPrefix, bindingOf(data))
+      logger.log(`User-delete completed: user=${data.userId}`)
+    },
   }
 }

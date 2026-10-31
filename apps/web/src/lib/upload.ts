@@ -90,11 +90,7 @@ async function runUploadFlow(ids: string[]): Promise<void> {
       for (const entry of hashed) {
         const match = byChecksum.get(entry.checksumSha256)
         if (match?.exists && match.existingFileId && match.existingAssetId) {
-          useUploadStore.getState().setStatus(entry.id, 'done', {
-            fileId: match.existingFileId,
-            assetId: match.existingAssetId,
-            progress: 100,
-          })
+          useUploadStore.getState().setStatus(entry.id, 'done', { progress: 100 })
           dropRefs(entry.id)
         }
       }
@@ -134,26 +130,12 @@ async function processQueue(ids: string[]): Promise<void> {
             .setStatus(id, 'uploading', { localThumbUrl: URL.createObjectURL(thumbBlob) })
         }
 
-        const asset = await uploadFile(
-          file,
-          (pct) => useUploadStore.getState().setProgress(id, pct),
-          item.kind,
-        )
-        useUploadStore.getState().setStatus(id, 'done', {
-          fileId: asset.fileId,
-          assetId: asset.id,
-        })
+        await uploadFile(file, (pct) => useUploadStore.getState().setProgress(id, pct), item.kind)
+        useUploadStore.getState().setStatus(id, 'done')
         dropRefs(id)
       } catch (err) {
         if (axios.isAxiosError(err) && err.response?.status === 409) {
-          const { existingAssetId, existingFileId } = err.response.data as {
-            existingAssetId: string
-            existingFileId: string
-          }
-          useUploadStore.getState().setStatus(id, 'done', {
-            fileId: existingFileId,
-            assetId: existingAssetId,
-          })
+          useUploadStore.getState().setStatus(id, 'done')
           dropRefs(id)
           continue
         }

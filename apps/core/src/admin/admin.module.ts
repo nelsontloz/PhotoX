@@ -5,7 +5,6 @@ import { StorageModule } from '../files/storage/storage.module'
 import { SettingsModule } from '../settings/settings.module'
 import { AdminAssetsController } from './admin-assets.controller'
 import { AdminAssetsService } from './admin-assets.service'
-import { AdminFacesController } from './admin-faces.controller'
 import { AdminJobsService } from './admin-jobs.service'
 import { AdminMaintenanceController } from './admin-maintenance.controller'
 import { AdminRegistrationController } from './admin-registration.controller'
@@ -18,12 +17,7 @@ import { PlacesModule } from '../places/places.module'
     SettingsModule,
     PlacesModule,
   ],
-  controllers: [
-    AdminAssetsController,
-    AdminMaintenanceController,
-    AdminFacesController,
-    AdminRegistrationController,
-  ],
+  controllers: [AdminAssetsController, AdminMaintenanceController, AdminRegistrationController],
   providers: [AdminAssetsService, AdminJobsService],
 })
 export class AdminModule {}

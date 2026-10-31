@@ -1,48 +1,35 @@
-import { useCallback, useEffect, useState } from 'react'
 import { isAxiosError } from 'axios'
 import type { PersonDto } from '@photox/shared-types'
 import { getPerson } from '../api/persons'
+import { useAsyncFetch } from './useAsyncFetch'
 
+/**
+ * Person header data. `null` data means the person is gone (404) — outages are errors, never
+ * "not found", because they are not deletions.
+ */
 export function usePersonDetail(id: string | undefined) {
-  const [person, setPerson] = useState<PersonDto | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [notFound, setNotFound] = useState(false)
-  const [retryKey, setRetryKey] = useState(0)
-
-  const retry = useCallback(() => {
-    setRetryKey((k) => k + 1)
-  }, [])
-
-  useEffect(() => {
-    if (!id) return
-    let cancelled = false
-    void (async () => {
-      setLoading(true)
-      setError(null)
-      setNotFound(false)
+  const { data, loading, error, refresh, setData } = useAsyncFetch<PersonDto | null>(
+    async () => {
+      if (!id) return null
       try {
-        const p = await getPerson(id)
-        if (cancelled) return
-        setPerson(p)
-      } catch (err: unknown) {
-        if (cancelled) return
-        setPerson(null)
-        if (isAxiosError(err) && err.response?.status === 404) {
-          setNotFound(true)
-        } else {
-          // 500s, network drops and 403s are outages, not deletions — never
-          // leak axios verbatim and never report them as "not found".
-          setError('Failed to load person')
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
+        return await getPerson(id)
+      } catch (err) {
+        if (isAxiosError(err) && err.response?.status === 404) return null
+        // 500s, network drops and 403s are outages, not deletions — never leak axios verbatim.
+        throw new Error('Failed to load person', { cause: err })
       }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [id, retryKey])
+    },
+    { errorMessage: 'Failed to load person', loadingMode: 'always' },
+  )
 
-  return { person, setPerson, loading, error, notFound, retry }
+  return {
+    person: data ?? null,
+    setPerson: setData,
+    loading,
+    error,
+    notFound: data === null,
+    retry: () => {
+      void refresh()
+    },
+  }
 }
