@@ -1,15 +1,12 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
+import { Logger } from '@nestjs/common'
 import sharp from 'sharp'
-import type { Job } from 'bullmq'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { randomUUID, createHash } from 'crypto'
 import { writeFile } from 'fs/promises'
-import { BullMqService } from './bullmq.service'
 import { thumbnailJobSchema, type ThumbnailJob } from './job-schemas'
 import { patchStatusFailed, runAssetFileJob } from './asset-file-job'
-import { CoreClient } from '../core/core-client.service'
-import { LocalStorageService } from '@photox/shared-config'
+import type { ProcessorDeps, ProcessorSpec } from './processor-spec'
 import type { Asset, FileRecord } from '@photox/shared-types'
 import { runFfmpeg } from './ffmpeg'
 
@@ -29,77 +26,14 @@ const RESIZE_OPTIONS: sharp.ResizeOptions = { fit: 'inside', withoutEnlargement:
 const METADATA_WAIT_DELAY_MS = 1000
 const MAX_METADATA_WAITS = 5
 
-@Injectable()
-export class ThumbnailProcessor implements OnModuleInit {
-  private readonly logger = new Logger(ThumbnailProcessor.name)
+export function thumbnailProcessor({
+  bullMq,
+  core,
+  storage,
+}: Pick<ProcessorDeps, 'bullMq' | 'core' | 'storage'>): ProcessorSpec<ThumbnailJob> {
+  const logger = new Logger('ThumbnailProcessor')
 
-  constructor(
-    private readonly bullMq: BullMqService,
-    private readonly core: CoreClient,
-    private readonly storage: LocalStorageService,
-  ) {}
-
-  onModuleInit() {
-    this.bullMq.createWorker<ThumbnailJob>('process-thumbnail', (job) => this.processJob(job))
-
-    this.logger.log('Thumbnail processor listening for jobs')
-  }
-
-  private async processJob(job: Job<ThumbnailJob>) {
-    await runAssetFileJob({ core: this.core, storage: this.storage, logger: this.logger }, job, {
-      queue: 'process-thumbnail',
-      schema: thumbnailJobSchema,
-      label: 'thumbnail',
-      failureLabel: 'Thumbnail',
-      detail: (data) => `size=${data.size}`,
-      missingModelMarkers: [],
-      // video thumbs wait for the metadata job's orientation/duration
-      beforeBody: async ({ data, record, asset }) => {
-        if (
-          !record.mimeType?.startsWith('video/') ||
-          asset.metadataStatus !== 'pending' ||
-          (data.metadataWaits ?? 0) >= MAX_METADATA_WAITS
-        ) {
-          return false
-        }
-        // ponytail: no jobId — the current job is active, BullMQ would dedupe the re-add away; the
-        // deferred copy re-fetches the asset itself, which is the ordering point. Ceiling: if this
-        // add fails the whole job throws so BullMQ retries it (bounded by attempts:3)
-        await this.bullMq.enqueue(
-          'process-thumbnail',
-          job.name,
-          { ...job.data, metadataWaits: (data.metadataWaits ?? 0) + 1 },
-          {
-            delay: METADATA_WAIT_DELAY_MS,
-            attempts: 3,
-            backoff: { type: 'exponential' },
-            removeOnComplete: true,
-            removeOnFail: true,
-          },
-        )
-        this.logger.log(
-          `Thumbnail deferred (metadata pending): asset=${data.assetId}, size=${data.size}, wait=${(data.metadataWaits ?? 0) + 1}`,
-        )
-        return true
-      },
-      onFailure: ({ userId, assetId, sig }) =>
-        patchStatusFailed(
-          this.core,
-          this.logger,
-          userId,
-          assetId,
-          { thumbnailStatus: 'failed' },
-          sig,
-        ),
-      body: async ({ data, record, asset, filePath }) => {
-        await this.generateThumbnail(record, asset, data.size, data.userId, filePath, data.sig)
-
-        this.logger.log(`Thumbnail complete: asset=${data.assetId}, size=${data.size}`)
-      },
-    })
-  }
-
-  private async generateThumbnail(
+  async function generateThumbnail(
     record: FileRecord,
     asset: Asset,
     size: ThumbnailJob['size'],
@@ -134,9 +68,9 @@ export class ThumbnailProcessor implements OnModuleInit {
         '-',
       ])
 
-      const { data: thumbBuffer, info } = await this.encodeWebp(frameBuffer, size, degrees)
+      const { data: thumbBuffer, info } = await encodeWebp(frameBuffer, size, degrees)
 
-      await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info, sig)
+      await storeThumbnail(userId, asset.id, size, thumbBuffer, info, sig)
 
       return
     }
@@ -154,21 +88,21 @@ export class ThumbnailProcessor implements OnModuleInit {
         'image2pipe',
         '-',
       ])
-      const { data: thumbBuffer, info } = await this.encodeWebp(frameBuffer, size)
-      await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info, sig)
+      const { data: thumbBuffer, info } = await encodeWebp(frameBuffer, size)
+      await storeThumbnail(userId, asset.id, size, thumbBuffer, info, sig)
       return
     }
 
     // photo sources are auto-oriented from their EXIF Orientation tag — phone JPEGs store
     // sideways pixels plus a rotation flag, so skipping this renders them sideways
-    const { data: thumbBuffer, info } = await this.encodeWebp(sourcePath, size, 'exif')
+    const { data: thumbBuffer, info } = await encodeWebp(sourcePath, size, 'exif')
 
-    await this.storeThumbnail(userId, asset.id, size, thumbBuffer, info, sig)
+    await storeThumbnail(userId, asset.id, size, thumbBuffer, info, sig)
   }
 
   // 'exif' = sharp auto-orient from the file's Orientation tag; explicit degrees = video rotation
   // (the frame is captured with -noautorotate, so the asset's orientation is the only source)
-  private async encodeWebp(
+  async function encodeWebp(
     source: Buffer | string,
     size: ThumbnailJob['size'],
     rotation: number | 'exif' = 0,
@@ -183,7 +117,7 @@ export class ThumbnailProcessor implements OnModuleInit {
       .toBuffer({ resolveWithObject: true })
   }
 
-  private async storeThumbnail(
+  async function storeThumbnail(
     userId: string,
     assetId: string,
     size: string,
@@ -193,12 +127,12 @@ export class ThumbnailProcessor implements OnModuleInit {
   ): Promise<void> {
     const checksum = createHash('sha256').update(thumbBuffer).digest('hex')
     const fileId = randomUUID()
-    const storageKey = this.storage.buildKey('thumbnail', userId, fileId, 'webp')
+    const storageKey = storage.buildKey('thumbnail', userId, fileId, 'webp')
     const staging = join(tmpdir(), `thumb-upload-${randomUUID()}.webp`)
     await writeFile(staging, thumbBuffer)
-    await this.storage.save(storageKey, staging)
+    await storage.save(storageKey, staging)
 
-    const saved = await this.core.registerFile(
+    const saved = await core.registerFile(
       userId,
       {
         id: fileId,
@@ -213,9 +147,9 @@ export class ThumbnailProcessor implements OnModuleInit {
       sig === undefined ? undefined : { sig, scope: assetId },
     )
     // ponytail: checksum dedupe returned another row's id — this uniquely-keyed copy is unreferenced
-    if (saved.id !== fileId) await this.storage.delete(storageKey).catch(() => undefined)
+    if (saved.id !== fileId) await storage.delete(storageKey).catch(() => undefined)
 
-    await this.core.registerThumbnail(
+    await core.registerThumbnail(
       userId,
       assetId,
       {
@@ -229,8 +163,8 @@ export class ThumbnailProcessor implements OnModuleInit {
     )
 
     await patchStatusFailed(
-      this.core,
-      this.logger,
+      core,
+      logger,
       userId,
       assetId,
       {
@@ -238,5 +172,57 @@ export class ThumbnailProcessor implements OnModuleInit {
       },
       sig,
     )
+  }
+
+  return {
+    queue: 'process-thumbnail',
+    logger,
+    listening: 'Thumbnail processor listening for jobs',
+    run: async (job) => {
+      await runAssetFileJob({ core, storage, logger }, job, {
+        queue: 'process-thumbnail',
+        schema: thumbnailJobSchema,
+        label: 'thumbnail',
+        failureLabel: 'Thumbnail',
+        detail: (data) => `size=${data.size}`,
+        missingModelMarkers: [],
+        // video thumbs wait for the metadata job's orientation/duration
+        beforeBody: async ({ data, record, asset }) => {
+          if (
+            !record.mimeType?.startsWith('video/') ||
+            asset.metadataStatus !== 'pending' ||
+            (data.metadataWaits ?? 0) >= MAX_METADATA_WAITS
+          ) {
+            return false
+          }
+          // ponytail: no jobId — the current job is active, BullMQ would dedupe the re-add away; the
+          // deferred copy re-fetches the asset itself, which is the ordering point. Ceiling: if this
+          // add fails the whole job throws so BullMQ retries it (bounded by attempts:3)
+          await bullMq.enqueue(
+            'process-thumbnail',
+            job.name,
+            { ...job.data, metadataWaits: (data.metadataWaits ?? 0) + 1 },
+            {
+              delay: METADATA_WAIT_DELAY_MS,
+              attempts: 3,
+              backoff: { type: 'exponential' },
+              removeOnComplete: true,
+              removeOnFail: true,
+            },
+          )
+          logger.log(
+            `Thumbnail deferred (metadata pending): asset=${data.assetId}, size=${data.size}, wait=${(data.metadataWaits ?? 0) + 1}`,
+          )
+          return true
+        },
+        onFailure: ({ userId, assetId, sig }) =>
+          patchStatusFailed(core, logger, userId, assetId, { thumbnailStatus: 'failed' }, sig),
+        body: async ({ data, record, asset, filePath }) => {
+          await generateThumbnail(record, asset, data.size, data.userId, filePath, data.sig)
+
+          logger.log(`Thumbnail complete: asset=${data.assetId}, size=${data.size}`)
+        },
+      })
+    },
   }
 }

@@ -19,10 +19,8 @@ export interface HttpErrorMessages {
   offline?: string
   /** No response / ECONNABORTED sentence (checked before `byStatus`). */
   timeout?: string
-  /** Prefer the core's own message (trimmed) before `fallback`. */
-  serverDetail?: boolean
-  /** Prefer the raw Error.message before `fallback` (otherwise the sentence stays plain). */
-  rawMessage?: boolean
+  /** Prefer the core's own message (trimmed), else the raw Error.message, before `fallback`. */
+  preferServerMessage?: boolean
 }
 
 function detailOf(err: unknown): ErrorDetail {
@@ -38,7 +36,7 @@ function detailOf(err: unknown): ErrorDetail {
  * per-case copy so no raw axios text ever reaches the UI.
  */
 export function httpErrorMessage(err: unknown, messages: HttpErrorMessages): string {
-  const { fallback, byStatus, offline, timeout, serverDetail, rawMessage } = messages
+  const { fallback, byStatus, offline, timeout, preferServerMessage } = messages
   const detail = detailOf(err)
   if (isAxiosError(err)) {
     const status = err.response?.status
@@ -48,11 +46,11 @@ export function httpErrorMessage(err: unknown, messages: HttpErrorMessages): str
       const mapped = byStatus[status]
       return typeof mapped === 'function' ? mapped(detail) : mapped
     }
-    if (serverDetail) {
+    if (preferServerMessage) {
       const text = detail.text.trim()
       if (text !== '') return text
     }
   }
-  if (rawMessage && err instanceof Error && err.message) return err.message
+  if (preferServerMessage && err instanceof Error && err.message) return err.message
   return fallback
 }

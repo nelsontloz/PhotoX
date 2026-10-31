@@ -38,9 +38,7 @@ export interface OriginalFileInput {
   size: number
 }
 
-export interface UploadedDiskFile extends OriginalFileInput {
-  mimetype: string
-}
+export type UploadedDiskFile = OriginalFileInput
 
 // meta accepted by createAssetAndEnqueue — title/description/takenAt plus the file-derived
 // originalName/sizeBytes the asset row records

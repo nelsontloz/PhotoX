@@ -77,13 +77,8 @@ export class TokenService {
   // maxAge both derive from it instead of re-reading AUTH_ACCESS_TTL; 0 when it has no exp
   // (our signer always sets one)
   expiresInSeconds(accessToken: string): number {
-    const exp = this.accessTokenExp(accessToken)
-    if (!exp) return 0
-    return Math.max(0, exp - Math.floor(Date.now() / 1000))
-  }
-
-  private accessTokenExp(accessToken: string): number | undefined {
-    return this.jwtService.decode<{ exp?: number } | null>(accessToken)?.exp
+    const exp = this.jwtService.decode<{ exp?: number } | null>(accessToken)?.exp
+    return exp ? Math.max(0, exp - Math.floor(Date.now() / 1000)) : 0
   }
 
   generate(): string {

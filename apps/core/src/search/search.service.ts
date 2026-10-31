@@ -1,11 +1,8 @@
 import { Injectable } from '@nestjs/common'
 import { DataSource } from 'typeorm'
-import {
-  SEARCH_EMBEDDING_DIM,
-  SEARCH_EMBEDDING_MODEL,
-  type SearchResponse,
-} from '@photox/shared-types'
+import type { SearchResponse } from '@photox/shared-types'
 import { AssetsService } from '../assets/assets.service'
+import { neighbourRows } from '../database/shared/neighbours'
 import { toVectorSql } from '../database/shared/pgvector'
 import { TextEncodeService } from './text-encode.service'
 import { fuseRrf } from './rrf'
@@ -64,21 +61,11 @@ export class SearchService {
   private async annIds(userId: string, vector: number[], limit: number): Promise<string[]> {
     // HNSW returns ~ef_search rows per scan (iterative scans off in pgvector 0.8.x), so LIMIT
     // under-delivers once 2N > 40 — raise it locally for this transaction, capped at 200.
-    const rows: { id: string; dist: number }[] = await this.dataSource.transaction(async (em) => {
+    const rows = await this.dataSource.transaction(async (em) => {
       await em.query(`SELECT set_config('hnsw.ef_search', $1, true)`, [
         String(Math.min(limit, 200)),
       ])
-      return em.query(
-        `SELECT ae."assetId" AS id,
-                ae.embedding::halfvec(${SEARCH_EMBEDDING_DIM}) <=> $3::halfvec(${SEARCH_EMBEDDING_DIM}) AS dist
-         FROM asset_embeddings ae
-         JOIN assets a ON a.id = ae."assetId"
-         WHERE a."userId" = $1 AND a."isTrashed" = false
-           AND ae.kind = 'image' AND ae.model = $2
-         ORDER BY dist
-         LIMIT $4`,
-        [userId, SEARCH_EMBEDDING_MODEL, toVectorSql(vector), limit],
-      )
+      return neighbourRows(em, userId, toVectorSql(vector), limit)
     })
     if (rows.length === 0) return []
     const best = Math.min(...rows.map((r) => r.dist))

@@ -14,9 +14,9 @@ import type { Request, Response } from 'express'
 import { loadEnv } from '@photox/shared-config'
 import type { RegistrationSettings } from '@photox/shared-types'
 import {
+  bearerToken,
   clearAccessCookie,
   clearRefreshCookie,
-  isSecureRequest,
   readAccessCookie,
   readRefreshCookie,
   setAccessCookie,
@@ -32,15 +32,6 @@ import { RefreshDto } from './dto/logout.dto'
 // ponytail: socket peer address via req.ip — main.ts sets 'trust proxy', so behind the
 // reverse proxy this is the X-Forwarded-For client, not the proxy itself
 const clientIp = (req: Request): string => req.ip ?? 'unknown'
-
-// the explicit credential wins over the cookie (same precedence as the auth guard): an API
-// client's stale cookie jar must not shadow the bearer token it presents
-const bearerToken = (req: Request): string | undefined => {
-  const header = req.headers.authorization
-  if (!header) return undefined
-  const [scheme, token] = header.split(' ')
-  return scheme?.toLowerCase() === 'bearer' && token ? token : undefined
-}
 
 @ApiTags('auth')
 @Controller('api/v1/auth')
@@ -60,10 +51,9 @@ export class AuthController {
     refreshToken: string,
     req: Request,
   ): void {
-    const secure = isSecureRequest(req)
     const maxAgeMs = this.tokenService.expiresInSeconds(accessToken) * 1000
-    setAccessCookie(res, accessToken, maxAgeMs, secure)
-    setRefreshCookie(res, refreshToken, loadEnv().AUTH_REFRESH_TTL, secure)
+    setAccessCookie(res, accessToken, maxAgeMs, req.secure)
+    setRefreshCookie(res, refreshToken, loadEnv().AUTH_REFRESH_TTL, req.secure)
   }
 
   @Get('registration')
@@ -144,8 +134,7 @@ export class AuthController {
     const accessToken = bearerToken(req) ?? readAccessCookie(req)
     const caller = accessToken ? this.tokenService.verifyAccessToken(accessToken) : null
     if (caller) await this.authService.revokeAllSessions(caller.sub)
-    const secure = isSecureRequest(req)
-    clearAccessCookie(res, secure)
-    clearRefreshCookie(res, secure)
+    clearAccessCookie(res, req.secure)
+    clearRefreshCookie(res, req.secure)
   }
 }

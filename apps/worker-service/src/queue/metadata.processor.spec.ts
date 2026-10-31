@@ -1,10 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { UnrecoverableError, type Job } from 'bullmq'
 import { randomUUID } from 'crypto'
 import { unlink, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { branchFor, MetadataProcessor } from './metadata.processor'
+import { branchFor, metadataProcessor } from './metadata.processor'
 import type { AssetRefsJob } from './job-schemas'
 import type { CoreClient } from '../core/core-client.service'
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../../test/fake-core-client'
@@ -43,22 +43,13 @@ describe('MetadataProcessor job guards', () => {
     } = {},
   ) {
     const fake = new FakeCoreClient()
-    const callbacks: ((job: Job<AssetRefsJob>) => Promise<void>)[] = []
-    const bullMq = {
-      createWorker: vi.fn((_name: string, cb: (job: Job<AssetRefsJob>) => Promise<void>) => {
-        callbacks.push(cb)
-        return {}
-      }),
-    }
-    const processor = new MetadataProcessor(
-      bullMq as never,
-      fake as unknown as CoreClient,
-      (opts.storage ?? {}) as never,
-      (opts.metadataExtractor ?? {}) as never,
-      (opts.videoMetadataExtractor ?? {}) as never,
-    )
-    processor.onModuleInit()
-    return { run: callbacks[0]!, fake }
+    const spec = metadataProcessor({
+      core: fake as unknown as CoreClient,
+      storage: (opts.storage ?? {}) as never,
+      metadataExtractor: (opts.metadataExtractor ?? {}) as never,
+      videoMetadataExtractor: (opts.videoMetadataExtractor ?? {}) as never,
+    })
+    return { run: spec.run, fake }
   }
 
   it('rejects an invalid payload before any core call', async () => {

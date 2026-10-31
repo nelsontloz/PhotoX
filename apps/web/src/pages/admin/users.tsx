@@ -62,8 +62,7 @@ const DELETE_ERROR_MESSAGES: HttpErrorMessages = {
     409: ({ text }) => text || LAST_ADMIN_GUARD,
     404: 'That user no longer exists. Close this and refresh the list.',
   },
-  serverDetail: true,
-  rawMessage: true,
+  preferServerMessage: true,
 }
 
 interface SortHeaderProps {
@@ -307,8 +306,7 @@ const REGISTRATION_ERROR_MESSAGES: HttpErrorMessages = {
   fallback: "Couldn't save the sign-up setting. Try again.",
   byStatus: { 403: 'Only an admin can change this.' },
   timeout: "Couldn't reach the server — the setting was not changed.",
-  serverDetail: true,
-  rawMessage: true,
+  preferServerMessage: true,
 }
 
 function RegistrationSettingsCard() {

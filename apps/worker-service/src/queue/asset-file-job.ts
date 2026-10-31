@@ -78,17 +78,9 @@ export async function runAssetFileJob<
   }
 }
 
-// EXIF-oriented downscale to a max long side — shared prep for face/embedding/detection bodies
-export async function orientedResize(filePath: string, maxPx: number): Promise<Buffer> {
-  return sharp(filePath)
-    .rotate()
-    .resize({ width: maxPx, height: maxPx, fit: 'inside', withoutEnlargement: true })
-    .toBuffer()
-}
-
 // EXIF-oriented prep + geometry for box scaling: EXIF orientations 5-8 transpose the stored
 // pixels, so the displayed (oriented) original swaps axes; boxes must be stored in that oriented
-// space to match the browser/thumbnails, and `.rotate()` above applies the same swap to the buffer
+// space to match the browser/thumbnails, and `.rotate()` applies the same swap to the buffer
 export async function orientedPrep(
   filePath: string,
   maxPx: number,

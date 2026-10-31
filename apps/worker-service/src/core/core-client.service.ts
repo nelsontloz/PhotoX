@@ -96,7 +96,6 @@ const REQUEST_TIMEOUT_MS = 30_000
 // a full account wipe plus the stray-byte sweep can outrun the default budget; the call is
 // idempotent (a retry finds no user row), but an abort mid-sweep costs a whole job attempt
 const PURGE_TIMEOUT_MS = 15 * 60_000
-const ASSET_IDS_CHUNK = 100
 // ponytail: keyset walk over GET /worker/faces (id ASC, cursor = last id); 500 matches core's default
 const FACES_PAGE_LIMIT = 500
 // ponytail: O(n²) DBSCAN ceiling — fail loudly above this, Phase 3 streams/pages the algorithm itself
@@ -221,8 +220,8 @@ export class CoreClient {
   }
 
   async getFacesForCluster(userId: string, binding?: JobBinding): Promise<ClusterFace[]> {
-    // ponytail: same accumulate-loop style as getAssetsByIds below — each page is one request()
-    // (30s timeout + 400/404/422→Unrecoverable mapping), cursor walks id ASC until nextCursor null
+    // ponytail: one request per page (30s timeout + 400/404/422→Unrecoverable mapping), cursor
+    // walks id ASC until nextCursor null
     const faces: ClusterFace[] = []
     let cursor: string | undefined
     let pageCount = 0
@@ -256,22 +255,19 @@ export class CoreClient {
     return faces
   }
 
-  // ponytail: E2 caps ids at 100 (header size); LEGACY_REEMBED_PER_RUN matches, chunk anyway for safety
+  // one request: the only caller (face.cluster's LEGACY_REEMBED_PER_RUN) caps ids at 100, which
+  // E2 accepts inside the header budget — a larger list must be split by the caller
   async getAssetsByIds(
     userId: string,
     ids: string[],
     binding?: JobBinding,
   ): Promise<Pick<Asset, 'id' | 'fileId'>[]> {
-    const assets: Pick<Asset, 'id' | 'fileId'>[] = []
-    for (let i = 0; i < ids.length; i += ASSET_IDS_CHUNK) {
-      const res = await this.request<AssetListResponse>(
-        'GET',
-        `/worker/assets?ids=${ids.slice(i, i + ASSET_IDS_CHUNK).join(',')}`,
-        { sub: userId, ...binding },
-      )
-      assets.push(...res.items)
-    }
-    return assets
+    const res = await this.request<AssetListResponse>(
+      'GET',
+      `/worker/assets?ids=${ids.join(',')}`,
+      { sub: userId, ...binding },
+    )
+    return res.items
   }
 
   async applyClusters(

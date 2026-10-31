@@ -1,8 +1,8 @@
 import { Global, Injectable, Logger, Module, type OnApplicationBootstrap } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { DataSource } from 'typeorm'
-import { loadEnv } from '@photox/shared-config'
 import { insertAdminUser } from '../scripts/admin-seed'
+import { postgresConnectionOptions } from '../scripts/postgres-options'
 
 // ponytail: 512 is the InsightFace buffalo_l w600k_r50 output dim.
 // Index rebuild fails while legacy 1024-dim rows remain (warn-caught) — the cluster re-embed backfill converts them.
@@ -99,17 +99,11 @@ export class AdminSeedService implements OnApplicationBootstrap {
 @Module({})
 export class DatabaseModule {
   static forRoot() {
-    const env = loadEnv()
     return {
       module: DatabaseModule,
       imports: [
         TypeOrmModule.forRoot({
-          type: 'postgres',
-          host: env.POSTGRES_HOST,
-          port: env.POSTGRES_PORT,
-          username: env.POSTGRES_USER,
-          password: env.POSTGRES_PASSWORD,
-          database: 'photox',
+          ...postgresConnectionOptions(),
           autoLoadEntities: true,
           // ponytail: synchronize is dev/test-only (same direct-process.env precedent as
           // ADMIN_EMAIL above) — prod boots via the baseline migration (migrationsRun).

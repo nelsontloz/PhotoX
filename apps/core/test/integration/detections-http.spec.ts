@@ -148,13 +148,14 @@ describe('asset detections HTTP', () => {
       'a negative-height box',
       { detections: [{ label: 'car', confidence: 0.5, box: { x: 1, y: 1, w: 10, h: -1 } }] },
     ],
-  ])('422s %s without writing', async (_label, body) => {
+  ])('400s %s without writing', async (_label, body) => {
     const { act, asset } = await seedOwnedAsset()
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/detections`)
       .set(t.authHeader(act))
       .send(body)
-    expect(res.status).toBe(422)
+    // class-validator rejects at the pipe: 400 Bad Request (was the service's 422)
+    expect(res.status).toBe(400)
     expect(await t.detectionRepo.count()).toBe(0)
   })
 

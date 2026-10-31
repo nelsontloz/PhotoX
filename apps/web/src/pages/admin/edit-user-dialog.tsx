@@ -48,8 +48,7 @@ export const UPDATE_ERROR_MESSAGES: HttpErrorMessages = {
     400: ({ text }) => text.trim() || BAD_REQUEST,
   },
   timeout: LOST_CONTACT,
-  serverDetail: true,
-  rawMessage: true,
+  preferServerMessage: true,
 }
 
 /** Retry-move failures land in the persistent warning box, so the 404 wording drops "close this". */
@@ -60,8 +59,7 @@ export const BACKUP_RETRY_ERROR_MESSAGES: HttpErrorMessages = {
     403: 'Only an admin can do that.',
   },
   timeout: "Couldn't reach the server — try the move again.",
-  serverDetail: true,
-  rawMessage: true,
+  preferServerMessage: true,
 }
 
 /** What the section needs after a successful save: the fresh row, the backup outcome, the diff. */

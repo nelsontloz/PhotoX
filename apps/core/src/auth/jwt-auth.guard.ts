@@ -13,12 +13,7 @@ import type { Request, Response } from 'express'
 import { DataSource } from 'typeorm'
 import { loadAuthEnv, loadEnv } from '@photox/shared-config'
 import type { JwtPayload, Role } from '@photox/shared-types'
-import {
-  clearAccessCookie,
-  isSecureRequest,
-  readAccessCookie,
-  setAccessCookie,
-} from './auth-cookie'
+import { bearerToken, clearAccessCookie, readAccessCookie, setAccessCookie } from './auth-cookie'
 import { isActListRoute, isAdminRoute, isOpenRoute, isWorkerRoute } from './open-routes'
 import { ABSOLUTE_SESSION_MS } from './session.constants'
 import { User } from '../users/entities/user.entity'
@@ -37,13 +32,6 @@ declare global {
 // token may carry — a validly signed token without a subject is a JWT with no identity
 interface VerifiedPayload extends Omit<JwtPayload, 'sub'> {
   sub?: unknown
-}
-
-function bearerToken(req: Request): string | undefined {
-  const header = req.headers.authorization
-  if (!header) return undefined
-  const [scheme, token] = header.split(' ')
-  return scheme?.toLowerCase() === 'bearer' && token ? token : undefined
 }
 
 /** 401s when the request carries no verified user; guarded routes only, never open routes. */
@@ -196,7 +184,7 @@ export class JwtAuthGuard implements CanActivate {
     if (typeof payload.sst === 'number' && Date.now() - payload.sst * 1000 >= ABSOLUTE_SESSION_MS) {
       // drop the dead cookie so the browser stops replaying it on every subresource
       if (cookieToken !== undefined) {
-        clearAccessCookie(context.switchToHttp().getResponse<Response>(), isSecureRequest(req))
+        clearAccessCookie(context.switchToHttp().getResponse<Response>(), req.secure)
       }
       throw new UnauthorizedException()
     }
@@ -246,7 +234,7 @@ export class JwtAuthGuard implements CanActivate {
           context.switchToHttp().getResponse<Response>(),
           renewed,
           ttl * 1000,
-          isSecureRequest(req),
+          req.secure,
         )
       }
     }

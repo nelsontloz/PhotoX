@@ -4,18 +4,23 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { PublicShareAsset, PublicShareResponse } from '@photox/shared-types'
 import PublicSharePage from './[token]'
 
-// video.js can't run in jsdom — assert the props the page hands it instead.
+// the player can't mount in jsdom — assert the props the page hands it instead.
 vi.mock('../../components/VideoPlayer', () => ({
   VideoPlayer: ({
     src,
-    type,
+    fallbackSrc,
     aspectRatio,
   }: {
     src: string
-    type?: string
+    fallbackSrc?: string
     aspectRatio?: number
   }) => (
-    <div data-testid="player" data-src={src} data-type={type ?? ''} data-ar={aspectRatio ?? ''} />
+    <div
+      data-testid="player"
+      data-src={src}
+      data-fallback-src={fallbackSrc ?? ''}
+      data-ar={aspectRatio ?? ''}
+    />
   ),
 }))
 
@@ -81,18 +86,17 @@ describe('public share page video playback', () => {
 
     const player = await screen.findByTestId('player')
     expect(player.getAttribute('data-src')).toBe('/api/share/tok/stream')
-    expect(player.getAttribute('data-type')).toBe('video/webm')
     // portrait videos get a portrait frame instead of a 16:9 letterbox
     expect(player.getAttribute('data-ar')).toBe(String(1920 / 1080))
   })
 
-  it('falls back to the original mime type for untranscoded videos', async () => {
+  it('streams an untranscoded video from its original file', async () => {
     mocks.get.mockResolvedValue({ data: assetShare(videoAsset()) })
 
     renderShare()
 
     const player = await screen.findByTestId('player')
-    expect(player.getAttribute('data-type')).toBe('video/quicktime')
+    expect(player.getAttribute('data-src')).toBe('/api/share/tok/stream')
   })
 
   it('plays an album video member as webm when a transcode exists', async () => {
@@ -109,6 +113,5 @@ describe('public share page video playback', () => {
     await waitFor(() => expect(screen.getByTestId('player')).toBeTruthy())
     const player = screen.getByTestId('player')
     expect(player.getAttribute('data-src')).toBe('/api/share/tok/assets/a1/stream')
-    expect(player.getAttribute('data-type')).toBe('video/webm')
   })
 })

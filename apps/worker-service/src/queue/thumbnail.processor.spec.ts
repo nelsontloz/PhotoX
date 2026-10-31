@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { UnrecoverableError, type Job } from 'bullmq'
 import { randomUUID } from 'crypto'
-import { ThumbnailProcessor } from './thumbnail.processor'
+import { thumbnailProcessor } from './thumbnail.processor'
 import type { ThumbnailJob } from './job-schemas'
 import type { CoreClient } from '../core/core-client.service'
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../../test/fake-core-client'
@@ -16,21 +16,13 @@ describe('ThumbnailProcessor job guards', () => {
 
   function setup() {
     const fake = new FakeCoreClient()
-    const callbacks: ((job: Job<ThumbnailJob>) => Promise<void>)[] = []
-    const bullMq = {
-      createWorker: vi.fn((_name: string, cb: (job: Job<ThumbnailJob>) => Promise<void>) => {
-        callbacks.push(cb)
-        return {}
-      }),
-      enqueue: vi.fn().mockResolvedValue(undefined),
-    }
-    const processor = new ThumbnailProcessor(
-      bullMq as never,
-      fake as unknown as CoreClient,
-      { pathFor: (key: string) => key } as never,
-    )
-    processor.onModuleInit()
-    return { run: callbacks[0]!, fake, bullMq }
+    const enqueue = vi.fn().mockResolvedValue(undefined)
+    const spec = thumbnailProcessor({
+      bullMq: { enqueue } as never,
+      core: fake as unknown as CoreClient,
+      storage: { pathFor: (key: string) => key } as never,
+    })
+    return { run: spec.run, fake, bullMq: { enqueue } }
   }
 
   it('rejects an invalid payload before any core call', async () => {

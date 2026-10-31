@@ -3,12 +3,16 @@ import type { Request, Response } from 'express'
 export const ACCESS_COOKIE = 'photox_access'
 export const REFRESH_COOKIE = 'photox_refresh'
 
-// ponytail: trust-proxy-1 is set in main.ts, so req.secure already follows
-// X-Forwarded-Proto — plain-HTTP host dev keeps working while https gets Secure cookies
-export function isSecureRequest(req: Request): boolean {
-  return req.secure
+/** The explicit credential: `Authorization: Bearer <token>`, else undefined. */
+export function bearerToken(req: Request): string | undefined {
+  const header = req.headers.authorization
+  if (!header) return undefined
+  const [scheme, token] = header.split(' ')
+  return scheme?.toLowerCase() === 'bearer' && token ? token : undefined
 }
 
+// ponytail: trust-proxy-1 is set in main.ts, so req.secure already follows
+// X-Forwarded-Proto — plain-HTTP host dev keeps working while https gets Secure cookies
 function attrs(secure: boolean, path: string, maxAge?: number) {
   return {
     httpOnly: true,

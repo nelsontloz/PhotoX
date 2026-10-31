@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 
 export type UploadStatus = 'queued' | 'hashing' | 'uploading' | 'done' | 'error'
 
@@ -10,8 +9,6 @@ export interface UploadItem {
   kind: 'photo' | 'video'
   progress: number
   status: UploadStatus
-  assetId?: string
-  fileId?: string
   error?: string
   localThumbUrl?: string
 }
@@ -35,64 +32,42 @@ function fileKind(file: File): 'photo' | 'video' {
   return file.type.startsWith('video/') ? 'video' : 'photo'
 }
 
-export const useUploadStore = create<UploadState>()(
-  persist(
-    (set) => ({
-      items: [],
+// The File objects live in an in-memory ref (lib/upload), so nothing here survives a reload:
+// a queued row without its File can never be retried, hence no persistence middleware.
+export const useUploadStore = create<UploadState>()((set) => ({
+  items: [],
+  dismissed: false,
+
+  enqueue: (files) =>
+    set((s) => ({
       dismissed: false,
-
-      enqueue: (files) =>
-        set((s) => ({
-          dismissed: false,
-          items: [
-            ...s.items,
-            ...files.map((file) => ({
-              id: makeId(),
-              fileName: file.name,
-              sizeBytes: file.size,
-              kind: fileKind(file),
-              progress: 0,
-              status: 'queued' as const,
-            })),
-          ],
+      items: [
+        ...s.items,
+        ...files.map((file) => ({
+          id: makeId(),
+          fileName: file.name,
+          sizeBytes: file.size,
+          kind: fileKind(file),
+          progress: 0,
+          status: 'queued' as const,
         })),
+      ],
+    })),
 
-      setProgress: (id, pct) =>
-        set((s) => ({
-          items: s.items.map((item) => (item.id === id ? { ...item, progress: pct } : item)),
-        })),
+  setProgress: (id, pct) =>
+    set((s) => ({
+      items: s.items.map((item) => (item.id === id ? { ...item, progress: pct } : item)),
+    })),
 
-      setStatus: (id, status, patch) =>
-        set((s) => ({
-          items: s.items.map((item) => (item.id === id ? { ...item, status, ...patch } : item)),
-        })),
+  setStatus: (id, status, patch) =>
+    set((s) => ({
+      items: s.items.map((item) => (item.id === id ? { ...item, status, ...patch } : item)),
+    })),
 
-      setDismissed: (b) => set({ dismissed: b }),
+  setDismissed: (b) => set({ dismissed: b }),
 
-      clearDone: () =>
-        set((s) => ({
-          items: s.items.filter((i) => i.status !== 'done' && i.status !== 'error'),
-        })),
-    }),
-    {
-      name: 'photox.upload-queue.v1',
-      version: 1,
-      // localThumbUrl is a live object URL: drop it (JSON.stringify skips undefined) so a reload
-      // never rehydrates a dead blob; in-flight items become retryable errors.
-      partialize: (state) => ({
-        items: state.items.map((item) =>
-          item.status === 'uploading' || item.status === 'queued' || item.status === 'hashing'
-            ? {
-                ...item,
-                progress: 0,
-                status: 'error' as const,
-                error: 'Interrupted by reload — please retry',
-                localThumbUrl: undefined,
-              }
-            : { ...item, localThumbUrl: undefined },
-        ),
-        dismissed: state.dismissed,
-      }),
-    },
-  ),
-)
+  clearDone: () =>
+    set((s) => ({
+      items: s.items.filter((i) => i.status !== 'done' && i.status !== 'error'),
+    })),
+}))

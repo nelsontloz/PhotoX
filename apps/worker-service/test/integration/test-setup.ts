@@ -16,12 +16,6 @@ const MAX_SLOTS = 200
 // vitest gives every spec file a fresh module registry, so this memo is naturally file-local
 let claimedSlot: number | null = null
 
-export interface RedisTestTarget {
-  redisHost: string
-  redisPort: number
-  redisDb: number
-}
-
 function claimSlot(): number {
   const dir = process.env.PHOTOX_TEST_SLOTS_DIR
   if (!dir) throw new Error('PHOTOX_TEST_SLOTS_DIR missing — globalSetup did not run')
@@ -37,7 +31,7 @@ function claimSlot(): number {
   throw new Error(`no free test slot (MAX_SLOTS=${MAX_SLOTS})`)
 }
 
-export function setupRedis(): Promise<RedisTestTarget> {
+export function setupRedis(): void {
   const redisHost = process.env.REDIS_HOST
   const redisPort = process.env.REDIS_PORT
   if (!redisHost || !redisPort) {
@@ -51,12 +45,4 @@ export function setupRedis(): Promise<RedisTestTarget> {
   delete process.env.REDIS_PASSWORD
   process.env.AUTH_TOKEN_SECRET = TEST_AUTH_SECRET
   process.env.WORKER_JWT_SECRET = TEST_WORKER_SECRET
-
-  return Promise.resolve({ redisHost, redisPort: Number(redisPort), redisDb: claimedSlot })
-}
-
-export async function teardownRedis(): Promise<void> {
-  // no-op on purpose: the container is stopped once, by globalSetup's teardown. Every spec file
-  // owns a unique Redis database index that is never reused, so there is nothing to flush here.
-  // Kept exported so existing callers keep compiling.
 }

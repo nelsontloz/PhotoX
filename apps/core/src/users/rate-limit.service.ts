@@ -76,10 +76,7 @@ export class RateLimitService {
       const redis: Redis | undefined = this.bullMq.redis
       if (!redis) return null // undefined until BullMqService.onModuleInit
       return await Promise.race([
-        (redis.eval(RATE_LIMIT_SCRIPT, 1, key, windowSec) as Promise<number>).then(
-          (v) => v,
-          () => null,
-        ),
+        redis.eval(RATE_LIMIT_SCRIPT, 1, key, windowSec) as Promise<number>,
         new Promise<null>((resolve) => {
           timer = setTimeout(() => resolve(null), RATE_LIMIT_TIMEOUT_MS)
         }),

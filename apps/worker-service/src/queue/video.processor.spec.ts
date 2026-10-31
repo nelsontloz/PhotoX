@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { writeFile, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -6,15 +6,11 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { UnrecoverableError, type Job } from 'bullmq'
 import { LocalStorageService } from '@photox/shared-config'
-import { VideoProcessor } from './video.processor'
+import { registerDerivative, videoProcessor } from './video.processor'
 import type { CoreClient, RegisterFileInput } from '../core/core-client.service'
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../../test/fake-core-client'
 import { signJob, useTestAuthEnv } from '../../test/sign-job'
 import type { AssetRefsJob } from './job-schemas'
-
-interface PrivateVideoProcessor {
-  registerDerivative(assetId: string, userId: string, outPath: string): Promise<string>
-}
 
 describe('VideoProcessor disk paths', () => {
   const userId = randomUUID()
@@ -22,7 +18,6 @@ describe('VideoProcessor disk paths', () => {
   let prevStorageDir: string | undefined
   let storage: LocalStorageService
   let fake: FakeCoreClient
-  let processor: VideoProcessor
 
   beforeEach(() => {
     useTestAuthEnv()
@@ -31,7 +26,6 @@ describe('VideoProcessor disk paths', () => {
     process.env.STORAGE_DIR = storageDir
     storage = new LocalStorageService()
     fake = new FakeCoreClient(storage)
-    processor = new VideoProcessor({} as never, fake as unknown as CoreClient, storage)
   })
 
   afterEach(() => {
@@ -40,17 +34,15 @@ describe('VideoProcessor disk paths', () => {
     rmSync(storageDir, { recursive: true, force: true })
   })
 
+  const deps = () => ({ core: fake as unknown as CoreClient, storage })
+
   it('registers a derivative as a transcode FileRecord with bytes on disk', async () => {
     const outPath = join(storageDir, 'output.webm')
     const webmBytes = Buffer.from([9, 8, 7, 6])
     await writeFile(outPath, webmBytes)
 
-    const registerDerivative = (
-      processor as unknown as PrivateVideoProcessor
-    ).registerDerivative.bind(processor)
-
     const assetId = randomUUID()
-    const derivativeId = await registerDerivative(assetId, userId, outPath)
+    const derivativeId = await registerDerivative(deps(), assetId, userId, outPath)
 
     const row = fake.files.get(derivativeId)!
     expect(row.purpose).toBe('transcode')
@@ -75,15 +67,11 @@ describe('VideoProcessor disk paths', () => {
     const outPath = join(storageDir, 'output.webm')
     await writeFile(outPath, Buffer.from([1, 2, 3]))
 
-    const registerDerivative = (
-      processor as unknown as PrivateVideoProcessor
-    ).registerDerivative.bind(processor)
-
     const assetId = randomUUID()
-    const firstId = await registerDerivative(assetId, userId, outPath)
+    const firstId = await registerDerivative(deps(), assetId, userId, outPath)
     // a retry re-runs ffmpeg and produces the same bytes at the same path (save moves the file)
     await writeFile(outPath, Buffer.from([1, 2, 3]))
-    const secondId = await registerDerivative(assetId, userId, outPath)
+    const secondId = await registerDerivative(deps(), assetId, userId, outPath)
 
     expect(secondId).toBe(firstId)
     const dto = fake.callsOf('registerFile')[1]!.args[0] as RegisterFileInput
@@ -93,15 +81,7 @@ describe('VideoProcessor disk paths', () => {
   })
 
   it('rejects a job whose asset belongs to another user before patching', async () => {
-    const callbacks: ((job: Job<AssetRefsJob>) => Promise<void>)[] = []
-    const bullMq = {
-      createWorker: vi.fn((_name: string, cb: (job: Job<AssetRefsJob>) => Promise<void>) => {
-        callbacks.push(cb)
-        return {}
-      }),
-    }
-    const guarded = new VideoProcessor(bullMq as never, fake as unknown as CoreClient, storage)
-    guarded.onModuleInit()
+    const run = videoProcessor(deps()).run
 
     const base = { assetId: randomUUID(), fileId: randomUUID(), userId: randomUUID() }
     fake.files.set(base.fileId, makeFileRecord({ id: base.fileId, userId: base.userId }))
@@ -111,7 +91,7 @@ describe('VideoProcessor disk paths', () => {
     )
 
     await expect(
-      callbacks[0]!({ data: signJob(base) } as unknown as Job<AssetRefsJob>),
+      run({ data: signJob(base) } as unknown as Job<AssetRefsJob>),
     ).rejects.toBeInstanceOf(UnrecoverableError)
 
     expect(fake.callsOf('patchMetadata')).toHaveLength(0)
@@ -122,20 +102,9 @@ describe('VideoProcessor disk paths', () => {
 // pass a concurrency opt instead of bullmq's default of 1
 describe('VideoProcessor concurrency', () => {
   it('requests concurrency >1 on the process-video worker', () => {
-    const createWorker = vi.fn(
-      (name: string, cb: (job: unknown) => Promise<void>, opts?: { concurrency?: number }) => {
-        void name
-        void cb
-        void opts
-        return {}
-      },
-    )
-    const processor = new VideoProcessor({ createWorker } as never, {} as never, {} as never)
-    processor.onModuleInit()
+    const spec = videoProcessor({ core: {} as never, storage: {} as never })
 
-    expect(createWorker).toHaveBeenCalledTimes(1)
-    expect(createWorker.mock.calls[0]?.[0]).toBe('process-video')
-    const opts = createWorker.mock.calls[0]?.[2]
-    expect(opts?.concurrency).toBeGreaterThan(1)
+    expect(spec.queue).toBe('process-video')
+    expect(spec.workerOptions?.concurrency).toBeGreaterThan(1)
   })
 })

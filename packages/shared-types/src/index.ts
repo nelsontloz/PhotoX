@@ -73,13 +73,13 @@ export interface FileRecord {
   createdAt: string
 }
 
-export type AssetKind = 'photo' | 'video'
+type AssetKind = 'photo' | 'video'
 
 export type MetadataStatus = 'pending' | 'ready' | 'failed'
 
-export type TranscodeStatus = 'pending' | 'ready' | 'failed' | null
+type TranscodeStatus = 'pending' | 'ready' | 'failed' | null
 
-export type ThumbnailStatus = 'pending' | 'ready' | 'failed' | null
+type ThumbnailStatus = 'pending' | 'ready' | 'failed' | null
 
 export interface Asset {
   id: string
@@ -139,7 +139,7 @@ export interface SearchResponse {
   total: number
 }
 
-export interface AssetLayoutItem {
+interface AssetLayoutItem {
   t: string
   w: number
   h: number
@@ -485,15 +485,6 @@ export interface AdminUserDeleteStatus {
   backupPrefix: string
 }
 
-// Worker consumer payload for the `user-delete` queue. email/backupPrefix are
-// informational (core re-reads the user row as source of truth); userId is the
-// deletion scope. The queue + job-id contract lives here because core produces and
-// the worker consumes.
-export interface UserDeleteJobData {
-  userId: string
-  email: string
-  backupPrefix: string
-}
-
+// The user-delete queue + job-id contract lives here because core produces and the worker consumes.
 export const USER_DELETE_QUEUE = 'user-delete'
 export const userDeleteJobId = (userId: string): string => `user-delete-${userId}`

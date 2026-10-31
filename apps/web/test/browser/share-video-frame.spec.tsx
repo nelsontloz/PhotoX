@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { PublicShareResponse } from '@photox/shared-types'
 import '../../src/app.css'
 
-// video.js can't run here — the layout contract under test is the page's size container.
+// the player can't mount here — the layout contract under test is the page's size container.
 vi.mock('../../src/components/VideoPlayer', () => ({
   VideoPlayer: () => <div data-testid="player" />,
 }))

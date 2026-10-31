@@ -73,7 +73,8 @@ Then('the video element becomes playable', async ({ page }) => {
 
 Then('playback advances past 0.2 seconds', async ({ page }) => {
   const video = page.locator('video[aria-label^="Video player"]')
-  await page.locator('.vjs-big-play-button').click()
+  // native controls: clicking the media toggles playback (the video.js big-play button is gone)
+  await video.click()
   await expect
     .poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentTime), { timeout: 15_000 })
     .toBeGreaterThan(0.2)

@@ -10,9 +10,8 @@ import { FileRecord } from '../database/entities'
 import { findOwnedOr404 } from '../common/asset-ownership'
 import { refreshPersonsAfterFaceDelete } from '../common/face-cleanup'
 import { LocalStorageService } from '@photox/shared-config'
-import { FaceResponseDto } from './dto/face.dto'
 import { refreshPersonFaceCount } from './face-count'
-import type { DetectedFaceInput } from '@photox/shared-types'
+import type { DetectedFaceInput, FaceDto } from '@photox/shared-types'
 
 const DEFAULT_SIZE = 240
 const MAX_SIZE = 600
@@ -78,7 +77,7 @@ export class FacesService {
     })
   }
 
-  async getForAsset(userId: string, assetId: string): Promise<FaceResponseDto[]> {
+  async getForAsset(userId: string, assetId: string): Promise<FaceDto[]> {
     await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset')
     const faces = await this.repo.find({ where: { assetId } })
     return faces.map((f) => toFaceDto(f))

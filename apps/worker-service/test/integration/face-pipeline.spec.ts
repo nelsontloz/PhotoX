@@ -1,9 +1,7 @@
-import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
 import { FACE_EMBEDDING_DIM } from '@photox/shared-types'
-import { makeAsset, makeFileRecord } from '../fake-core-client'
+import { makeAsset } from '../fake-core-client'
 import type { ClusterFace } from '../../src/core/core-client.service'
 import { BullMqService } from '../../src/queue/bullmq.service'
 import { CLUSTER_DEBOUNCE_MS } from '../../src/queue/face.processor'
@@ -11,6 +9,7 @@ import {
   createTestApp,
   closeTestApp,
   resetTestApp,
+  seedOriginal,
   signJob,
   waitForJob,
   type TestApp,
@@ -49,22 +48,7 @@ describe('Face pipeline (integration)', () => {
     })
       .jpeg()
       .toBuffer()
-    const fileId = randomUUID()
-    const storageKey = testApp.storage.buildKey('original', userId, fileId, 'jpg')
-    await mkdir(dirname(testApp.storage.pathFor(storageKey)), { recursive: true })
-    await writeFile(testApp.storage.pathFor(storageKey), bytes)
-    const record = makeFileRecord({
-      id: fileId,
-      userId,
-      storageKey,
-      mimeType: 'image/jpeg',
-      sizeBytes: bytes.length,
-      checksumSha256: createHash('sha256').update(bytes).digest('hex'),
-    })
-    testApp.fake.files.set(record.id, record)
-    const asset = makeAsset({ id: randomUUID(), userId, fileId: record.id, kind: 'photo' })
-    testApp.fake.assets.set(asset.id, asset)
-    return { record, asset }
+    return seedOriginal(testApp, { userId, bytes, mimeType: 'image/jpeg', ext: 'jpg' })
   }
 
   // cluster cases seed the E1 face list directly — core owns trashed filtering + persistence
