@@ -13,12 +13,7 @@ import type { Request, Response } from 'express'
 import { DataSource } from 'typeorm'
 import { loadAuthEnv, loadEnv } from '@photox/shared-config'
 import type { JwtPayload, Role } from '@photox/shared-types'
-import {
-  bearerToken,
-  clearAccessCookie,
-  readAccessCookie,
-  setAccessCookie,
-} from './auth-cookie'
+import { bearerToken, clearAccessCookie, readAccessCookie, setAccessCookie } from './auth-cookie'
 import { isActListRoute, isAdminRoute, isOpenRoute, isWorkerRoute } from './open-routes'
 import { ABSOLUTE_SESSION_MS } from './session.constants'
 import { User } from '../users/entities/user.entity'
