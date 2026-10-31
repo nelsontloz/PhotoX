@@ -20,7 +20,7 @@ async function tmpUpload(name = 'pic.jpg'): Promise<UploadedDiskFile> {
   const path = join(dir, name)
   await writeFile(path, Buffer.concat([JPEG, randomBytes(64)]))
   const { size } = await stat(path)
-  return { path, originalname: name, mimetype: 'image/jpeg', size }
+  return { path, originalname: name, size }
 }
 
 function fileRow(partial: Partial<FileRecord> & { id: string }): FileRecord {

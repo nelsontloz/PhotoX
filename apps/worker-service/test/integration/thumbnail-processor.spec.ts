@@ -17,7 +17,7 @@ describe('ThumbnailProcessor (integration)', () => {
   let testApp: TestApp
 
   beforeAll(async () => {
-    testApp = await createTestApp({ processors: 'media' })
+    testApp = await createTestApp()
   }, 120_000)
 
   afterAll(async () => {

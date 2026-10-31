@@ -1,6 +1,5 @@
 import { useCallback } from 'react'
 import type { Asset } from '@photox/shared-types'
-import { getAsset } from '../api/assets'
 import { effectiveAssetDate, monthKeyOf } from '../lib/dateFormat'
 import type { TimelineItem } from '../lib/timelineLayout'
 
@@ -19,7 +18,8 @@ export function useTimelineNav({
 }): {
   hasBeyond: (dir: 'prev' | 'next', fromT: string) => boolean
   resolveBeyond: (dir: 'prev' | 'next', fromT: string) => Promise<Asset | null>
-  resolveMissing: (id: string) => Promise<Asset | null>
+  /** Timeline pages resolve `?asset=` ids whose month isn't loaded; other viewers opt out. */
+  resolveMissing: true
 } {
   const newestT = layoutItems[0]?.t ?? null
   const oldestT = layoutItems[layoutItems.length - 1]?.t ?? null
@@ -48,15 +48,8 @@ export function useTimelineNav({
     [layoutItems, ensureMonth],
   )
 
-  // Deep link (?asset=<id>) to an asset whose month isn't fetched: fetch the asset itself so
-  // the viewer opens instead of waiting for a month that may never enter the mount window.
-  const resolveMissing = useCallback(async (id: string): Promise<Asset | null> => {
-    try {
-      return await getAsset(id)
-    } catch {
-      return null
-    }
-  }, [])
-
-  return { hasBeyond, resolveBeyond, resolveMissing }
+  // Deep link (?asset=<id>) to an asset whose month isn't fetched: useAssetNavigation fetches the
+  // asset itself so the viewer opens instead of waiting for a month that may never enter the mount
+  // window.
+  return { hasBeyond, resolveBeyond, resolveMissing: true }
 }

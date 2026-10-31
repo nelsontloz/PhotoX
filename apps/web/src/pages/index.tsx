@@ -4,11 +4,11 @@ import { FaFolderPlus, FaImage, FaMountain, FaTrash, FaWandMagicSparkles } from 
 import { RequireAuth } from '../components/RequireAuth'
 import { AppShell } from '../components/AppShell'
 import { useConfirm } from '../components/ConfirmProvider'
-import { ErrorState, LoadingState } from '../components/StateViews'
-import { ViewerHost } from '../components/ViewerHost'
+import { LoadingState } from '../components/StateViews'
 import { useAssetNavigation } from '../hooks/useAssetNavigation'
 import { useTimelineView } from '../hooks/useTimelineView'
 import { TimelineAssets } from '../components/Timeline/TimelineAssets'
+import { TimelineError, TimelineViewer } from '../components/Timeline/TimelinePage'
 import { DropZone } from '../components/DropZone'
 import { UploadButton } from '../components/UploadButton'
 import { trashAssets } from '../api/assets'
@@ -77,8 +77,7 @@ function TimelineContent() {
 
   // Gate: layout drives structure. ponytail: a layout failure (first load OR refresh) lands on
   // the error state — no partial-track fallback, since every height depends on it; Reload retries.
-  if (timeline.error)
-    return <ErrorState message={timeline.error} onRetry={() => window.location.reload()} />
+  if (timeline.error) return <TimelineError message={timeline.error} />
 
   if (timeline.loading) return <LoadingState />
 
@@ -122,13 +121,8 @@ function TimelineContent() {
           onLongPress={onLongPress}
         />
       </DropZone>
-      <ViewerHost
-        asset={nav.selected}
-        onClose={nav.close}
-        onPrev={nav.goPrev}
-        onNext={nav.goNext}
-        hasPrev={nav.hasPrev}
-        hasNext={nav.hasNext}
+      <TimelineViewer
+        nav={nav}
         onTrash={() => {
           void nav.trash()
         }}

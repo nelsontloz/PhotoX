@@ -10,12 +10,16 @@ import {
   IsDate,
   IsObject,
 } from 'class-validator'
-import { UpdateMetadataDto } from '../../assets/dto/update-metadata.dto'
+import { TitleDescriptionDto } from '../../common/title-description.dto'
 
-// Worker-only extraction payload (act-required `PATCH worker/assets/:id/metadata`). Extends the
-// user DTO so the shared fields (transcodeFileId ownership rules) stay identical; the service
-// accepts this type for both callers since every field is optional.
-export class WorkerMetadataDto extends UpdateMetadataDto {
+// Worker-only extraction payload (act-required `PATCH worker/assets/:id/metadata`). Every field
+// is optional; transcodeFileId keeps the same ownership rule as the in-app viewer flows.
+export class WorkerMetadataDto extends TitleDescriptionDto {
+  @ApiProperty({ required: false, nullable: true })
+  @IsOptional()
+  @IsString()
+  transcodeFileId?: string | null
+
   @ApiProperty({ enum: ['pending', 'ready', 'failed'] })
   @IsOptional()
   @IsIn(['pending', 'ready', 'failed'])

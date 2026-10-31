@@ -283,7 +283,7 @@ describe('unionBackupManifests', () => {
     const result = unionBackupManifests(live, adopted)
     const roundTripped = JSON.parse(JSON.stringify(result)) as UserBackupManifest
 
-    // union(null, …) runs the full zod schema, proving the round-trip is valid
+    // union(null, …) returns the adopted manifest unchanged, so the round-trip is lossless
     expect(unionBackupManifests(null, roundTripped)).toEqual(result)
   })
 })

@@ -120,6 +120,7 @@ function makeService(scenario: Scenario = {}) {
   const sessions = scenario.sessions ?? []
   const parts = scenario.parts ?? []
   const updates: Record<string, unknown>[] = []
+  const sessionFinds: { where?: unknown[] }[] = []
 
   const manager = {
     findOne: vi.fn((entity: unknown, opts?: { where?: Record<string, unknown> }) => {
@@ -181,7 +182,10 @@ function makeService(scenario: Scenario = {}) {
         ) ?? null,
       ),
     ),
-    find: vi.fn(() => Promise.resolve([] as UploadSession[])),
+    find: vi.fn((opts?: { where?: unknown[] }) => {
+      sessionFinds.push(opts ?? {})
+      return Promise.resolve([] as UploadSession[])
+    }),
     count: vi.fn(() => Promise.resolve(scenario.activeCount ?? 0)),
     save: vi.fn((row: UploadSession) => Promise.resolve(row)),
     update: vi.fn((where: { id: string }, values: Record<string, unknown>) => {
@@ -242,6 +246,7 @@ function makeService(scenario: Scenario = {}) {
   return {
     service,
     sessionRepo,
+    sessionFinds,
     partRepo,
     assetRepo,
     manager,
@@ -756,6 +761,23 @@ describe('UploadsService.purgeExpired', () => {
     const { service, sessionRepo } = makeService()
     await expect(service.purgeExpired()).resolves.toEqual({ expired: 0 })
     expect(sessionRepo.update).not.toHaveBeenCalled()
+  })
+
+  it('collects failed sessions only in the global sweep', async () => {
+    const { service, sessionFinds } = makeService()
+    await service.purgeExpired()
+    const where = sessionFinds[0]?.where as Record<string, unknown>[]
+    expect(where.some((condition) => condition.status === 'failed')).toBe(true)
+    expect(where.every((condition) => condition.userId === undefined)).toBe(true)
+  })
+
+  it('scopes the user sweep and leaves that user failed sessions alone', async () => {
+    const { service, sessionFinds } = makeService()
+    await service.purgeExpired(USER)
+    const where = sessionFinds[0]?.where as Record<string, unknown>[]
+    expect(where).toHaveLength(2)
+    expect(where.every((condition) => condition.userId === USER)).toBe(true)
+    expect(where.some((condition) => condition.status === 'failed')).toBe(false)
   })
 })
 

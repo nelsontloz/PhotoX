@@ -149,14 +149,7 @@ export class WorkerController {
   @Get('faces')
   @ApiOperation({ summary: 'Worker list of faces for clustering (job user scope)' })
   async listFaces(@Query() q: ListFacesQueryDto, @CurrentUserId() userId: string) {
-    const includeEmbeddings = q.includeEmbeddings ?? false
-    const excludeTrashed = q.excludeTrashed ?? false
-    return this.faces.listForUserPaginated(userId, {
-      limit: q.limit ?? 500,
-      cursor: q.cursor,
-      includeEmbeddings,
-      excludeTrashed,
-    })
+    return this.faces.listForUserPaginated(userId, q)
   }
 
   @Post('persons/apply-clusters')

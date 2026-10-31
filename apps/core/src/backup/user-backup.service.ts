@@ -163,23 +163,6 @@ type ManifestReadResult =
   | { manifest: UserBackupManifest }
   | { error: 'missing' | 'unreadable' | 'corrupt'; cause?: unknown }
 
-function toNumberOrNull(value: number | string | null | undefined): number | null {
-  if (value === null || value === undefined) return null
-  const n = typeof value === 'string' ? Number(value) : value
-  return Number.isFinite(n) ? n : null
-}
-
-function toIntOrNull(value: number | string | null | undefined): number | null {
-  const n = toNumberOrNull(value)
-  return n === null ? null : Math.trunc(n)
-}
-
-function toIsoOrNull(value: Date | string | null | undefined): string | null {
-  if (value === null || value === undefined) return null
-  const date = value instanceof Date ? value : new Date(value)
-  return Number.isNaN(date.getTime()) ? null : date.toISOString()
-}
-
 function extOf(storageKey: string): string {
   return extname(storageKey).slice(1)
 }
@@ -214,34 +197,34 @@ function assetToManifestEntry(a: Asset): UserBackupManifest['assets'][number] {
     kind: a.kind,
     fileId: a.fileId,
     isTrashed: a.isTrashed,
-    trashedAt: toIsoOrNull(a.trashedAt),
+    trashedAt: a.trashedAt?.toISOString() ?? null,
     title: a.title,
     description: a.description,
-    takenAt: toIsoOrNull(a.takenAt),
+    takenAt: a.takenAt?.toISOString() ?? null,
     favorite: a.favorite,
     mimeType: a.mimeType,
-    sizeBytes: toIntOrNull(a.sizeBytes),
+    sizeBytes: a.sizeBytes === null ? null : Math.trunc(Number(a.sizeBytes)),
     originalName: a.originalName,
     width: a.width,
     height: a.height,
-    durationSeconds: toNumberOrNull(a.durationSeconds),
+    durationSeconds: a.durationSeconds === null ? null : Number(a.durationSeconds),
     cameraMake: a.cameraMake,
     cameraModel: a.cameraModel,
     lensModel: a.lensModel,
     orientation: a.orientation,
     iso: a.iso,
-    fNumber: toNumberOrNull(a.fNumber),
-    exposureTime: toNumberOrNull(a.exposureTime),
-    focalLength: toNumberOrNull(a.focalLength),
-    latitude: toNumberOrNull(a.latitude),
-    longitude: toNumberOrNull(a.longitude),
-    altitude: toNumberOrNull(a.altitude),
+    fNumber: a.fNumber === null ? null : Number(a.fNumber),
+    exposureTime: a.exposureTime === null ? null : Number(a.exposureTime),
+    focalLength: a.focalLength === null ? null : Number(a.focalLength),
+    latitude: a.latitude === null ? null : Number(a.latitude),
+    longitude: a.longitude === null ? null : Number(a.longitude),
+    altitude: a.altitude === null ? null : Number(a.altitude),
     placeCity: a.placeCity,
     placeAdmin1: a.placeAdmin1,
     placeCountryCode: a.placeCountryCode,
     placeTimezone: a.placeTimezone,
-    placeDistanceKm: toNumberOrNull(a.placeDistanceKm),
-    fps: toNumberOrNull(a.fps),
+    placeDistanceKm: a.placeDistanceKm === null ? null : Number(a.placeDistanceKm),
+    fps: a.fps === null ? null : Number(a.fps),
     codec: a.codec,
     hasAudio: a.hasAudio,
     metadata: a.metadata,
@@ -271,7 +254,7 @@ function shareToManifestEntry(s: Share): UserBackupManifest['shares'][number] {
     assetId: s.assetId,
     albumId: s.albumId,
     token: s.token,
-    expiresAt: toIsoOrNull(s.expiresAt),
+    expiresAt: s.expiresAt?.toISOString() ?? null,
   }
 }
 
@@ -292,7 +275,7 @@ function userToManifest(u: User): UserBackupManifest['user'] {
     role: u.role,
     passwordHash: u.passwordHash,
     displayName: u.displayName,
-    tokensValidAfter: toIsoOrNull(u.tokensValidAfter),
+    tokensValidAfter: u.tokensValidAfter?.toISOString() ?? null,
   }
 }
 
@@ -501,13 +484,14 @@ function unionById<T extends { id: string }>(live: T[], adopted: T[]): T[] {
  * entries append in source order. Shares also dedupe by token so one capability
  * is never listed twice; album links dedupe by (albumId, assetId) pair.
  * Top-level identity comes from `adopted` (its user row is the live target) and
- * `backedUpAt` is the newer snapshot time. Result is schema-validated.
+ * `backedUpAt` is the newer snapshot time. Inputs are already schema-validated on
+ * the read path, so this only unions.
  */
 export function unionBackupManifests(
   live: UserBackupManifest | null,
   adopted: UserBackupManifest,
 ): UserBackupManifest {
-  if (live === null) return userBackupManifestSchema.parse(adopted)
+  if (live === null) return adopted
 
   const shareIds = new Set(live.shares.map((share) => share.id))
   const shareTokens = new Set(live.shares.map((share) => share.token))
@@ -530,7 +514,7 @@ export function unionBackupManifests(
 
   const backedUpAt =
     timeOf(adopted.backedUpAt) > timeOf(live.backedUpAt) ? adopted.backedUpAt : live.backedUpAt
-  return userBackupManifestSchema.parse({
+  return {
     manifestVersion: 1,
     userId: adopted.userId,
     emailAtBackup: adopted.emailAtBackup,
@@ -542,7 +526,7 @@ export function unionBackupManifests(
     albumAssets,
     shares,
     persons: unionById(live.persons, adopted.persons),
-  })
+  }
 }
 
 /** Newest snapshot by backedUpAt; unreadable/corrupt snapshots sort last. Stable on ties. */
@@ -663,10 +647,6 @@ export function buildOrphanBackupOverviewRow(
 export function buildFallbackEmail(origEmail: string, nowMs: number, attempt = 0): string {
   const normalized = normalizeEmail(origEmail)
   const at = normalized.lastIndexOf('@')
-  if (at < 0) {
-    const base = `restored-${nowMs}-${normalized}`
-    return normalizeEmail(attempt === 0 ? base : `${base}-${attempt}`)
-  }
   const local = normalized.slice(0, at)
   const domain = normalized.slice(at + 1)
   const baseLocal = `restored-${nowMs}-${local}`
@@ -799,8 +779,6 @@ export class UserBackupService {
       shares: shareRows.map(shareToManifestEntry),
       persons: personRows.map(personToManifestEntry),
     }
-    // zod runtime-validates the manifest we just built (fail fast, never upload garbage)
-    const parsed = userBackupManifestSchema.parse(manifest)
 
     // ponytail: one-backup-per-user — fixed keys per user, a rerun overwrites the
     // previous backup in place. Bytes land FIRST, manifest LAST (M3): a mid-run
@@ -869,13 +847,13 @@ export class UserBackupService {
         canPrune = false
       }
       const expectedKeys = new Set(
-        parsed.files.map((file) =>
+        manifest.files.map((file) =>
           originalKey(user.email, user.id, file.id, extOf(file.storageKey)),
         ),
       )
       let uploaded = 0
       let skipped = 0
-      for (const file of parsed.files) {
+      for (const file of manifest.files) {
         const key = originalKey(user.email, user.id, file.id, extOf(file.storageKey))
         if (shouldSkipUpload(prevFileMap, listedSet, file, key)) {
           skipped += 1
@@ -912,7 +890,7 @@ export class UserBackupService {
       }
       await this.s3.putObject(
         manifestObjectKey,
-        Buffer.from(JSON.stringify(parsed)),
+        Buffer.from(JSON.stringify(manifest)),
         'application/json',
       )
       await this.s3.headObject(manifestObjectKey)
@@ -1019,7 +997,7 @@ export class UserBackupService {
       }
       // bytes stay from the last backup; only the identity block must match the
       // live account so a later restore does not resurrect a stale email/hash
-      const patched = userBackupManifestSchema.parse({
+      const patched: UserBackupManifest = {
         ...manifest,
         emailAtBackup: user.email,
         user: {
@@ -1032,7 +1010,7 @@ export class UserBackupService {
             ? new Date(user.tokensValidAfter).toISOString()
             : null,
         },
-      })
+      }
       await this.s3.putObject(
         manifestObjectKey,
         Buffer.from(JSON.stringify(patched)),
@@ -1234,11 +1212,11 @@ export class UserBackupService {
       try {
         await this.renameBackupPrefix([located.prefix], targetPrefix)
         // same snapshot, same rows/backedUpAt — only the email fields move
-        const rehomed = userBackupManifestSchema.parse({
+        const rehomed: UserBackupManifest = {
           ...manifest,
           emailAtBackup: actualEmail,
           user: { ...manifest.user, email: actualEmail },
-        })
+        }
         await this.s3.putObject(
           targetManifestKey,
           Buffer.from(JSON.stringify(rehomed)),
@@ -1978,7 +1956,7 @@ export class UserBackupService {
             .getMany()
         : []
 
-    const adopted = userBackupManifestSchema.parse({
+    const adopted: UserBackupManifest = {
       manifestVersion: 1,
       userId: target.id,
       emailAtBackup: target.email,
@@ -1993,7 +1971,7 @@ export class UserBackupService {
       })),
       shares: adoptedShares.map(shareToManifestEntry),
       persons: adoptedPersons.map(personToManifestEntry),
-    })
+    }
 
     // Never overwrite a live manifest we could not read: a missing one is a
     // first adoption (null), any other read/parse failure aborts the adoption.
@@ -2081,19 +2059,13 @@ export class UserBackupService {
   /**
    * Allocates a unique fallback email for restore-after-email-reuse:
    * `restored-<ms>-<orig>` (normalized), retrying with `-<n>` local suffixes
-   * until free. The loop is bounded (100 tries) with a random-UUID escape hatch
-   * for pathological reuse storms — personal libraries never hit either bound.
+   * until free. A suffix always finds a free address eventually, so the loop is
+   * unbounded (the old 100-try + random-UUID escape hatch was unreachable).
    */
   private async allocateFallbackEmail(origEmail: string): Promise<string> {
     const nowMs = Date.now()
-    for (let attempt = 0; attempt < 100; attempt++) {
+    for (let attempt = 0; ; attempt++) {
       const candidate = buildFallbackEmail(origEmail, nowMs, attempt)
-      const existing = await this.users.findOne({ where: { email: candidate } })
-      if (!existing) return candidate
-    }
-    const domain = normalizeEmail(origEmail).split('@').pop() ?? 'restored.local'
-    for (;;) {
-      const candidate = normalizeEmail(`restored-${nowMs}-${randomUUID()}@${domain}`)
       const existing = await this.users.findOne({ where: { email: candidate } })
       if (!existing) return candidate
     }
@@ -2139,24 +2111,16 @@ export class UserBackupService {
    * Backup-time email for a located backup: the manifest's emailAtBackup when
    * readable, else the email parsed back out of the located prefix (identical
    * except for a pending email-change rename, where the manifest wins). Never
-   * throws — a missing/unreadable manifest still deletes bytes via the prefix
-   * fallback (located prefixes are always backupPrefix-built or dir-parsed, so
-   * the fallback is defined in practice).
+   * throws: readManifest tags every failure and the prefix fallback is defined
+   * in practice (located prefixes are always backupPrefix-built or dir-parsed).
    */
   private async readDeleteBackupEmail(located: {
     prefix: string
     manifestObjectKey: string
     userId: string
   }): Promise<string> {
-    try {
-      const raw = await this.s3.getBuffer(located.manifestObjectKey)
-      const parsed = JSON.parse(raw.toString('utf-8')) as { emailAtBackup?: unknown }
-      if (typeof parsed.emailAtBackup === 'string' && parsed.emailAtBackup.length > 0) {
-        return parsed.emailAtBackup
-      }
-    } catch {
-      // prefix fallback below — the delete proceeds regardless
-    }
+    const read = await this.readManifest(located.manifestObjectKey)
+    if ('manifest' in read) return read.manifest.emailAtBackup
     return this.prefixIdentity(located).emailAtBackup ?? located.userId
   }
 
@@ -2338,8 +2302,7 @@ export class UserBackupService {
     if (liveIds.size > 0) {
       const ledger = await this.backupMerges.find({ where: { targetUserId: In([...liveIds]) } })
       for (const entry of ledger) {
-        const mergedAt = toIsoOrNull(entry.mergedAt)
-        if (mergedAt === null) continue
+        const mergedAt = entry.mergedAt.toISOString()
         const bySource = mergedAtByTarget.get(entry.targetUserId) ?? new Map<string, string>()
         bySource.set(entry.backupUserId, mergedAt)
         mergedAtByTarget.set(entry.targetUserId, bySource)
@@ -2485,9 +2448,9 @@ export class UserBackupService {
     const identity: { userId: string; emailAtBackup?: string } = { userId: located.userId }
     try {
       const base = resolveBackupPrefix()
-      const stripped =
+      const dir =
         base && located.prefix.startsWith(base) ? located.prefix.slice(base.length) : located.prefix
-      const dir = stripped.replace(/\/+$/, '').split('/').pop() ?? stripped
+      // parseBackupDir strips the folder's trailing slash itself
       const parsed = parseBackupDir(dir)
       if (parsed.userId === located.userId) identity.emailAtBackup = parsed.email
     } catch {

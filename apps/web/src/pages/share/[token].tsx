@@ -10,7 +10,7 @@ import type {
   PublicShareResponse,
 } from '@photox/shared-types'
 
-// video.js loads only when a shared item is actually a video.
+// the player chunk loads only when a shared item is actually a video.
 const VideoPlayer = lazy(() =>
   import('../../components/VideoPlayer').then((m) => ({ default: m.VideoPlayer })),
 )
@@ -25,11 +25,7 @@ function getAlbumAssetUrl(token: string, assetId: string, size?: 'sm'): string {
 }
 
 // The share stream endpoints serve the AV1/webm derivative whenever the worker transcoded the
-// video; declaring the original mime there makes video.js reject the source outright.
-function videoType(asset: PublicShareAsset): string | undefined {
-  return asset.hasTranscode ? 'video/webm' : (asset.mimeType ?? undefined)
-}
-
+// video.
 function AlbumShare({
   token,
   album,
@@ -124,7 +120,6 @@ function AlbumShare({
               <Suspense fallback={null}>
                 <VideoPlayer
                   src={getAlbumAssetUrl(token, selected.id)}
-                  type={videoType(selected)}
                   autoPlay
                   title={selected.title ?? selected.originalName ?? undefined}
                   aspectRatio={
@@ -249,7 +244,6 @@ export default function PublicSharePage() {
         <Suspense fallback={null}>
           <VideoPlayer
             src={streamUrl}
-            type={videoType(asset)}
             autoPlay
             title={asset.originalName ?? asset.title ?? undefined}
             aspectRatio={

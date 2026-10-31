@@ -14,9 +14,9 @@ import {
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { useConfirm } from '../../components/ConfirmProvider'
-import { ErrorState, LoadingState } from '../../components/StateViews'
-import { ViewerHost } from '../../components/ViewerHost'
+import { LoadingState } from '../../components/StateViews'
 import { TimelineAssets } from '../../components/Timeline/TimelineAssets'
+import { TimelineError, TimelineViewer } from '../../components/Timeline/TimelinePage'
 import {
   addAssetsToAlbum,
   deleteAlbum,
@@ -190,8 +190,7 @@ function AlbumDetail({ id }: { id: string }) {
     return <LoadingState className="flex justify-center py-20" />
   }
 
-  if (timeline.error)
-    return <ErrorState message={timeline.error} onRetry={() => window.location.reload()} />
+  if (timeline.error) return <TimelineError message={timeline.error} />
 
   if (!album) return null
 
@@ -328,13 +327,8 @@ function AlbumDetail({ id }: { id: string }) {
         <TimelineAssets view={view} onSelect={nav.open} />
       )}
 
-      <ViewerHost
-        asset={nav.selected}
-        onClose={nav.close}
-        onPrev={nav.goPrev}
-        onNext={nav.goNext}
-        hasPrev={nav.hasPrev}
-        hasNext={nav.hasNext}
+      <TimelineViewer
+        nav={nav}
         onTrash={() => {
           void nav.trash()
         }}

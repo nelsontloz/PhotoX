@@ -18,6 +18,7 @@ import type {
   PublicShareInfo,
   PublicShareResponse,
   ShareDto,
+  ShareKind,
   ShareListItem,
   ShareListResponse,
 } from '@photox/shared-types'
@@ -66,8 +67,15 @@ export class SharesService {
     return this.shareRepo.findOne({ where: { token }, relations })
   }
 
-  private expiresAt(): Date {
-    return new Date(Date.now() + SHARE_TTL_MS)
+  /** Missing, wrong-kind and expired shares are indistinguishable: one uniform 404. */
+  private assertLiveShare(share: Share | null, kind?: ShareKind): Share {
+    if (
+      !share ||
+      (kind !== undefined && share.kind !== kind) ||
+      (share.expiresAt && new Date() > share.expiresAt)
+    )
+      throw new NotFoundException('Share not found')
+    return share
   }
 
   async create(userId: string, dto: CreateShareDto): Promise<ShareDto> {
@@ -105,7 +113,7 @@ export class SharesService {
         userId,
         ...target,
         token: this.hashToken(raw),
-        expiresAt: this.expiresAt(),
+        expiresAt: new Date(Date.now() + SHARE_TTL_MS),
       })
     const toDto = async (saved: Share): Promise<ShareDto> =>
       target.kind === 'asset'
@@ -153,10 +161,9 @@ export class SharesService {
   }
 
   async getByToken(token: string): Promise<PublicShareResponse> {
-    const share = await this.findShareByToken(token, { asset: { thumbnails: true }, album: true })
-    // expired and unknown share identically: never distinguish the two
-    if (!share || (share.expiresAt && new Date() > share.expiresAt))
-      throw new NotFoundException('Share not found')
+    const share = this.assertLiveShare(
+      await this.findShareByToken(token, { asset: { thumbnails: true }, album: true }),
+    )
 
     if (share.kind === 'album') {
       if (!share.album) throw new NotFoundException('Share not found')
@@ -256,13 +263,8 @@ export class SharesService {
   }
 
   private async getAlbumShare(token: string): Promise<Share> {
-    const share = await this.findShareByToken(token)
-    if (share?.kind !== 'album' || !share.albumId) {
-      throw new NotFoundException('Share not found')
-    }
-    if (share.expiresAt && new Date() > share.expiresAt) {
-      throw new NotFoundException('Share not found')
-    }
+    const share = this.assertLiveShare(await this.findShareByToken(token), 'album')
+    if (!share.albumId) throw new NotFoundException('Share not found')
     return share
   }
 
@@ -271,12 +273,11 @@ export class SharesService {
    * projection never has to expose file ids. Transcode-guarded playable logic unchanged.
    */
   async getAssetStreamTarget(token: string): Promise<{ fileId: string; userId: string }> {
-    const share = await this.findShareByToken(token, { asset: { thumbnails: true } })
-    // optional chains: a missing share must read the same as a wrong-kind/expired one
-    const expiresAt = share?.expiresAt ?? null
-    if (share?.kind !== 'asset' || (expiresAt && new Date() > expiresAt))
-      throw new NotFoundException('Share not found')
-    if (!share?.asset || share.asset.isTrashed) throw new NotFoundException('Share not found')
+    const share = this.assertLiveShare(
+      await this.findShareByToken(token, { asset: { thumbnails: true } }),
+      'asset',
+    )
+    if (!share.asset || share.asset.isTrashed) throw new NotFoundException('Share not found')
     const fileId = await this.playableFileId(
       share.userId,
       share.asset.transcodeFileId,

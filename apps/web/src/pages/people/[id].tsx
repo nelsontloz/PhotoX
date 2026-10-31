@@ -6,6 +6,7 @@ import { AppShell } from '../../components/AppShell'
 import { ErrorState, LoadingState } from '../../components/StateViews'
 import { ViewerHost } from '../../components/ViewerHost'
 import { TimelineAssets } from '../../components/Timeline/TimelineAssets'
+import { TimelineError } from '../../components/Timeline/TimelinePage'
 import { renamePerson } from '../../api/persons'
 import { usePersonDetail } from '../../hooks/usePersonDetail'
 import { useInlineRename } from '../../hooks/useInlineRename'
@@ -39,8 +40,7 @@ function PersonDetail({ id }: { id: string }) {
   if (personLoading || timeline.loading)
     return <LoadingState className="flex justify-center py-20" />
   if (personError) return <ErrorState message={personError} onRetry={retryPerson} />
-  if (timeline.error)
-    return <ErrorState message={timeline.error} onRetry={() => window.location.reload()} />
+  if (timeline.error) return <TimelineError message={timeline.error} />
   if (personNotFound || !person)
     return (
       <div className="flex flex-col items-center justify-center py-20">

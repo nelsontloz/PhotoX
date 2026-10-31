@@ -3,8 +3,8 @@ import { FaHeart } from 'react-icons/fa6'
 import { RequireAuth } from '../../components/RequireAuth'
 import { AppShell } from '../../components/AppShell'
 import { TimelineAssets } from '../../components/Timeline/TimelineAssets'
-import { ViewerHost } from '../../components/ViewerHost'
-import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
+import { TimelineError, TimelineViewer } from '../../components/Timeline/TimelinePage'
+import { EmptyState, LoadingState } from '../../components/StateViews'
 import { useAssetNavigation } from '../../hooks/useAssetNavigation'
 import { useTimelineView } from '../../hooks/useTimelineView'
 import { useAppStore } from '../../store/app-store'
@@ -27,7 +27,7 @@ function FavoritesContent() {
   }
 
   if (timeline.error) {
-    return <ErrorState message={timeline.error} onRetry={() => window.location.reload()} />
+    return <TimelineError message={timeline.error} />
   }
 
   if (timeline.layout.buckets.length === 0) {
@@ -44,13 +44,8 @@ function FavoritesContent() {
   return (
     <>
       <TimelineAssets view={view} onSelect={nav.open} />
-      <ViewerHost
-        asset={nav.selected}
-        onClose={nav.close}
-        onPrev={nav.goPrev}
-        onNext={nav.goNext}
-        hasPrev={nav.hasPrev}
-        hasNext={nav.hasNext}
+      <TimelineViewer
+        nav={nav}
         onToggleFavorite={(nextValue) => {
           const cur = nav.selected
           if (cur) void nav.toggleFavorite(cur.id, nextValue)

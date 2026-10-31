@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import sharp from 'sharp'
 import { resolveFaceDetectorModelPath } from '@photox/shared-config'
 import { SCRFD_INPUT_SIZE, decodeScrfdOutputs, scrfdPreprocess } from './scrfd.decode'
-import { lazyOnce, requireModelFile } from './model-loader'
+import { lazyOnce, loadSession } from './model-loader'
 import { FaceEmbedderService, alignFaceCrop, type RawImage } from './face.embedder'
 import type * as ort from 'onnxruntime-node'
 
@@ -55,15 +55,12 @@ export class FaceDetectorService implements OnModuleInit {
   }
 
   private async createSession(): Promise<ort.InferenceSession> {
-    // ponytail: lazy import so unit tests on Alpine (musl, no onnx native binding) never dlopen it
-    const { InferenceSession } = await import('onnxruntime-node')
     const modelPath = this.modelPath()
-    await requireModelFile(
+    const session = await loadSession(
       modelPath,
       `Face detector model not found at ${modelPath} — run ` +
         `'pnpm --filter @photox/worker-service face-model' or set FACE_DETECTOR_MODEL_PATH`,
     )
-    const session = await InferenceSession.create(modelPath, { executionProviders: ['cpu'] })
     this.logger.log(`SCRFD face detector loaded: ${modelPath}`)
     return session
   }

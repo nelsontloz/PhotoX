@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { Asset } from '@photox/shared-types'
-import { restoreAsset, trashAsset, updateAsset, deleteAsset } from '../api/assets'
+import { getAsset, restoreAsset, trashAsset, updateAsset, deleteAsset } from '../api/assets'
 import { useConfirm } from '../components/ConfirmProvider'
 import { prefetchViewerMedia } from '../lib/asset-media'
 import { effectiveAssetDate, monthKeyOf } from '../lib/dateFormat'
@@ -30,8 +30,8 @@ interface UseAssetNavigationOptions {
    * (null when the library really ends there or the fetch fails).
    */
   resolveBeyond?: (dir: NavDirection, fromT: string) => Promise<Asset | null>
-  /** Deep link (`?asset=` for an asset whose month isn't fetched) — resolve it directly. */
-  resolveMissing?: (id: string) => Promise<Asset | null>
+  /** Deep link (`?asset=` for an asset whose month isn't fetched) — fetch the asset directly. */
+  resolveMissing?: boolean
 }
 
 interface UseAssetNavigationResult {
@@ -78,9 +78,11 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
     if (allAssets.some((a) => a.id === id)) return
     if (attemptedMissingRef.current.has(id)) return
     attemptedMissingRef.current.add(id)
-    void opts.resolveMissing(id).then((asset) => {
-      if (asset) setFallback(asset)
-    })
+    void getAsset(id)
+      .catch(() => null)
+      .then((asset) => {
+        if (asset) setFallback(asset)
+      })
   }, [id, allAssets, fallback, opts.resolveMissing])
 
   // Neighbor prefetch: give the shared blob cache a head start on prev/next so arrow-key

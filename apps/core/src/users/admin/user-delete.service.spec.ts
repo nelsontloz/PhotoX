@@ -75,11 +75,11 @@ function makeService(opts?: {
   return { service, ops, manager, users, files, bullMq, storage, storageRoot }
 }
 
-describe('UserDeleteService.runUserDelete', () => {
+describe('UserDeleteService.purge', () => {
   it('deletes in dependency order: sessions, shares, faces/persons, albums, assets, files, user', async () => {
     const { service, ops, manager } = makeService({ assetIds: ['asset-1'] })
     manager.find.mockResolvedValue([{ id: 'album-1' }])
-    await service.runUserDelete(USER_ID, 'backups/old/')
+    await service.purge(USER_ID, 'backups/old/')
     const names = ops.map((op) => op.entity.name)
     const order = [
       'RefreshToken',
@@ -111,7 +111,7 @@ describe('UserDeleteService.runUserDelete', () => {
 
   it('returns a zero-count result without touching the DB when the row is missing', async () => {
     const { service, manager } = makeService({ user: null })
-    const res = await service.runUserDelete(USER_ID, 'backups/old/')
+    const res = await service.purge(USER_ID, 'backups/old/')
     expect(res).toEqual({
       userId: USER_ID,
       backupPrefix: 'backups/old/',
@@ -149,7 +149,7 @@ describe('UserDeleteService.runUserDelete', () => {
     const spies = s3methods.map((m) => vi.spyOn(s3Proto, m).mockResolvedValue([]))
     try {
       const { service, storage } = makeService({ storageRoot })
-      const res = await service.runUserDelete(USER_ID, 'backups/old/')
+      const res = await service.purge(USER_ID, 'backups/old/')
 
       expect(res.backupPrefix).toContain(USER_ID)
       const deletedKeys = storage.delete.mock.calls.map((c) => c[0])
@@ -173,7 +173,7 @@ describe('UserDeleteService.runUserDelete', () => {
       user: { id: USER_ID, email: EMAIL, role: 'admin' },
       adminCount: 1,
     })
-    await expect(service.runUserDelete(USER_ID, 'backups/old/')).rejects.toMatchObject({
+    await expect(service.purge(USER_ID, 'backups/old/')).rejects.toMatchObject({
       status: 409,
     })
     expect(manager.count).toHaveBeenCalled()
@@ -187,7 +187,7 @@ describe('UserDeleteService.runUserDelete', () => {
       adminCount: 2,
     })
     manager.find.mockResolvedValue([])
-    const res = await service.runUserDelete(USER_ID, 'backups/old/')
+    const res = await service.purge(USER_ID, 'backups/old/')
     expect(res.deletedFiles).toBe(2)
     expect(manager.delete.mock.calls.some((c) => c[0].name === 'User')).toBe(true)
   })
@@ -197,7 +197,7 @@ describe('UserDeleteService.runUserDelete', () => {
       user: { id: USER_ID, email: EMAIL, role: 'user' },
     })
     manager.find.mockResolvedValue([])
-    await service.runUserDelete(USER_ID, 'backups/old/')
+    await service.purge(USER_ID, 'backups/old/')
     expect(manager.count).not.toHaveBeenCalled()
   })
 })

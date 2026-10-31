@@ -36,20 +36,6 @@ const NEAREST_CITY_SQL = `
  * ponytail: wilderness (nearest city >50km, e.g. open ocean/Antarctica) leaves the whole place
  * group NULL — no country/timezone fallback. Derive those from a coarser dataset if it matters.
  */
-export function toPlaceFields(city: NearestCity, distanceKm: number | null): PlaceFields | null {
-  // null/NaN/Infinity all mean "no usable distance" (NULL GPS params make the KNN expression NULL,
-  // and a NULL distance slips a bare `> MAX` check) — reject before writing any place field
-  if (distanceKm === null || !Number.isFinite(distanceKm) || distanceKm > MAX_PLACE_DISTANCE_KM)
-    return null
-  return {
-    placeCity: city.name,
-    placeAdmin1: city.admin1Code,
-    placeCountryCode: city.countryCode,
-    placeTimezone: city.timezone,
-    placeDistanceKm: distanceKm,
-  }
-}
-
 @Injectable()
 export class PlacesResolveService {
   constructor(
@@ -61,6 +47,19 @@ export class PlacesResolveService {
   async resolve(latitude: number, longitude: number): Promise<PlaceFields | null> {
     const rows = await this.repo.query<NearestCityRow[]>(NEAREST_CITY_SQL, [latitude, longitude])
     const row = rows[0]
-    return row ? toPlaceFields(row, row.distanceKm) : null
+    if (row === undefined) return null
+    const { distanceKm } = row
+    // null/NaN/Infinity all mean "no usable distance" (NULL GPS params make the KNN expression
+    // NULL, and a NULL distance slips a bare `> MAX` check) — reject before writing any place field
+    if (distanceKm === null || !Number.isFinite(distanceKm) || distanceKm > MAX_PLACE_DISTANCE_KM) {
+      return null
+    }
+    return {
+      placeCity: row.name,
+      placeAdmin1: row.admin1Code,
+      placeCountryCode: row.countryCode,
+      placeTimezone: row.timezone,
+      placeDistanceKm: distanceKm,
+    }
   }
 }

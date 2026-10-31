@@ -1,14 +1,13 @@
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
 import { makeAsset, makeFileRecord } from '../fake-core-client'
-import { FFMPEG_PATH } from '../../src/queue/ffmpeg'
 import {
   closeTestApp,
   createTestApp,
+  makeVideoFixture,
   resetTestApp,
   seedOriginal,
   signJob,
@@ -20,30 +19,22 @@ const FIXTURE_DIR = mkdtempSync(join(tmpdir(), 'metadata-int-'))
 const VIDEO_PATH = join(FIXTURE_DIR, 'h264-aac.mp4')
 
 function makeH264AacMp4(): Buffer {
-  if (!FFMPEG_PATH) throw new Error('ffmpeg binary not available')
-  execFileSync(
-    FFMPEG_PATH,
-    [
-      '-f',
-      'lavfi',
-      '-i',
-      'color=c=black:s=320x240:d=1',
-      '-f',
-      'lavfi',
-      '-i',
-      'anullsrc=r=44100:cl=mono',
-      '-c:v',
-      'libx264',
-      '-c:a',
-      'aac',
-      '-t',
-      '1',
-      '-y',
-      VIDEO_PATH,
-    ],
-    { timeout: 30_000, stdio: 'pipe' },
-  )
-  return readFileSync(VIDEO_PATH)
+  return makeVideoFixture(VIDEO_PATH, [
+    '-f',
+    'lavfi',
+    '-i',
+    'color=c=black:s=320x240:d=1',
+    '-f',
+    'lavfi',
+    '-i',
+    'anullsrc=r=44100:cl=mono',
+    '-c:v',
+    'libx264',
+    '-c:a',
+    'aac',
+    '-t',
+    '1',
+  ])
 }
 
 describe('MetadataProcessor (integration)', () => {
@@ -52,7 +43,7 @@ describe('MetadataProcessor (integration)', () => {
 
   beforeAll(async () => {
     videoBuffer = makeH264AacMp4()
-    testApp = await createTestApp({ processors: 'media' })
+    testApp = await createTestApp()
   }, 180_000)
 
   afterAll(async () => {

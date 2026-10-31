@@ -1,15 +1,26 @@
-import { toPlaceFields } from './places-resolve.service'
+import type { Repository } from 'typeorm'
+import type { Place } from '../database/entities/place.entity'
+import { PlacesResolveService } from './places-resolve.service'
 
 const paris = {
   name: 'Paris',
-  admin1Code: '11',
+  admin1Code: '11' as string | null,
   countryCode: 'FR',
-  timezone: 'Europe/Paris',
+  timezone: 'Europe/Paris' as string | null,
 }
 
-describe('toPlaceFields', () => {
-  it('maps the nearest city to place fields', () => {
-    expect(toPlaceFields(paris, 0.4)).toEqual({
+function serviceFor(rows: unknown[]): PlacesResolveService {
+  const repo = { query: vi.fn(() => Promise.resolve(rows)) }
+  return new PlacesResolveService(repo as unknown as Repository<Place>)
+}
+
+function resolveWith(distanceKm: number | null, row = paris): Promise<unknown> {
+  return serviceFor([{ ...row, distanceKm }]).resolve(48.85, 2.35)
+}
+
+describe('PlacesResolveService.resolve', () => {
+  it('maps the nearest city to place fields', async () => {
+    await expect(resolveWith(0.4)).resolves.toEqual({
       placeCity: 'Paris',
       placeAdmin1: '11',
       placeCountryCode: 'FR',
@@ -18,8 +29,10 @@ describe('toPlaceFields', () => {
     })
   })
 
-  it('keeps null admin1/timezone', () => {
-    expect(toPlaceFields({ ...paris, admin1Code: null, timezone: null }, 12.5)).toEqual({
+  it('keeps null admin1/timezone', async () => {
+    await expect(
+      resolveWith(12.5, { ...paris, admin1Code: null, timezone: null }),
+    ).resolves.toEqual({
       placeCity: 'Paris',
       placeAdmin1: null,
       placeCountryCode: 'FR',
@@ -28,18 +41,22 @@ describe('toPlaceFields', () => {
     })
   })
 
-  it('accepts exactly 50km', () => {
-    expect(toPlaceFields(paris, 50)).not.toBeNull()
+  it('accepts exactly 50km', async () => {
+    await expect(resolveWith(50)).resolves.not.toBeNull()
   })
 
-  it('returns null beyond 50km', () => {
-    expect(toPlaceFields(paris, 50.1)).toBeNull()
-    expect(toPlaceFields(paris, 1427)).toBeNull()
+  it('returns null beyond 50km', async () => {
+    await expect(resolveWith(50.1)).resolves.toBeNull()
+    await expect(resolveWith(1427)).resolves.toBeNull()
   })
 
-  it('returns null for a null or non-finite distance', () => {
-    expect(toPlaceFields(paris, null)).toBeNull()
-    expect(toPlaceFields(paris, Number.NaN)).toBeNull()
-    expect(toPlaceFields(paris, Number.POSITIVE_INFINITY)).toBeNull()
+  it('returns null for a null or non-finite distance', async () => {
+    await expect(resolveWith(null)).resolves.toBeNull()
+    await expect(resolveWith(Number.NaN)).resolves.toBeNull()
+    await expect(resolveWith(Number.POSITIVE_INFINITY)).resolves.toBeNull()
+  })
+
+  it('returns null when no city is found', async () => {
+    await expect(serviceFor([]).resolve(48.85, 2.35)).resolves.toBeNull()
   })
 })

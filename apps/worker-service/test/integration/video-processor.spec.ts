@@ -9,6 +9,7 @@ import { FFMPEG_PATH } from '../../src/queue/ffmpeg'
 import {
   closeTestApp,
   createTestApp,
+  makeVideoFixture,
   resetTestApp,
   seedOriginal,
   signJob,
@@ -20,11 +21,22 @@ const TEST_VIDEO_DIR = mkdtempSync(join(tmpdir(), 'video-test-'))
 const H264_AAC_PATH = join(TEST_VIDEO_DIR, 'h264-aac.mp4')
 
 function createH264AacVideo() {
-  execSync(
-    `"${FFMPEG_PATH}" -f lavfi -i color=c=black:s=320x240:d=1 -f lavfi -i anullsrc=r=44100:cl=mono -c:v libx264 -c:a aac -t 1 -y "${H264_AAC_PATH}"`,
-    { timeout: 30_000, stdio: 'pipe' },
-  )
-  return readFileSync(H264_AAC_PATH)
+  return makeVideoFixture(H264_AAC_PATH, [
+    '-f',
+    'lavfi',
+    '-i',
+    'color=c=black:s=320x240:d=1',
+    '-f',
+    'lavfi',
+    '-i',
+    'anullsrc=r=44100:cl=mono',
+    '-c:v',
+    'libx264',
+    '-c:a',
+    'aac',
+    '-t',
+    '1',
+  ])
 }
 
 function hasAomAv1(): boolean {
@@ -51,7 +63,7 @@ describe('VideoProcessor (integration)', () => {
 
   beforeAll(async () => {
     h264AacBuffer = createH264AacVideo()
-    testApp = await createTestApp({ processors: 'media' })
+    testApp = await createTestApp()
   }, 180_000)
 
   afterAll(async () => {

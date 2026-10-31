@@ -4,12 +4,22 @@ import { SEARCH_EMBEDDING_MODEL, type AdminAssetReprocessRow } from '@photox/sha
 import { AdminAssetsService } from './admin-assets.service'
 import { BullMqService } from '../queue/bullmq.service'
 import { PlacesResolveService } from '../places/places-resolve.service'
-import type { LastRun } from '../settings/settings.service'
+import type { EnqueuedRun, LastRun } from '../settings/settings.service'
 import { SettingsService } from '../settings/settings.service'
-import { REPROCESS_PAGE_SIZE, reprocessPhotos, reprocessStatus } from './reprocess.util'
+import { REPROCESS_PAGE_SIZE } from './reprocess.util'
 
 const METADATA_QUEUE = 'process-metadata'
 const BACKFILL_PAGE_SIZE = 500
+
+/** Reprocess status kinds; each maps to one queue and one stored last-run record. */
+type ReprocessKind = 'detections' | 'embedding' | 'face' | 'metadata'
+
+const REPROCESS_QUEUES: Record<ReprocessKind, string> = {
+  detections: 'process-detect',
+  embedding: 'process-embeddings',
+  face: 'process-faces',
+  metadata: METADATA_QUEUE,
+}
 
 /** Job data shared by the detect/embed reprocess jobs. */
 function reprocessData(item: AdminAssetReprocessRow): Record<string, unknown> {
@@ -18,8 +28,8 @@ function reprocessData(item: AdminAssetReprocessRow): Record<string, unknown> {
 
 /**
  * ponytail: the `-reprocess` suffix keeps backfill jobs from deduping against upload-path jobs
- * (`detect-<assetId>` / `embed-<assetId>-<model>`); `removeOnComplete` (see
- * reprocessPhotos) lets a later run re-enqueue the same asset.
+ * (`detect-<assetId>` / `embed-<assetId>-<model>`); `removeOnComplete` (see reprocessPhotos)
+ * lets a later run re-enqueue the same asset.
  */
 @Injectable()
 export class AdminJobsService {
@@ -33,9 +43,32 @@ export class AdminJobsService {
     private readonly places: PlacesResolveService,
   ) {}
 
+  /**
+   * Shared paged reprocess: enqueue one job per non-trashed photo, then hand the run counts to
+   * `saveLastRun` (kind-specific fields like model are merged there).
+   * ponytail: `enqueued` counts requested jobs, not new Redis entries — `enqueue` swallows Redis
+   * failures and a custom jobId dedupes in any state (BullMQ); `removeOnComplete` in
+   * `enqueuePaged` drops completed jobs so a later run can re-enqueue the same asset.
+   */
+  private async reprocessPhotos(
+    queue: string,
+    jobName: string,
+    build: (item: AdminAssetReprocessRow) => { data: Record<string, unknown>; jobId: string },
+    saveLastRun: (run: EnqueuedRun) => Promise<void>,
+  ): Promise<{ enqueued: number; total: number }> {
+    const startedAt = new Date().toISOString()
+    const { enqueued, total } = await this.bullMq.enqueuePaged(
+      queue,
+      jobName,
+      (offset) => this.admin.listForReprocess('photo', REPROCESS_PAGE_SIZE, offset),
+      build,
+    )
+    await saveLastRun({ startedAt, total, enqueued })
+    return { enqueued, total }
+  }
+
   reprocessDetections(): Promise<{ enqueued: number; total: number }> {
-    return reprocessPhotos(
-      { admin: this.admin, bullMq: this.bullMq },
+    return this.reprocessPhotos(
       'process-detect',
       'detect',
       (item) => ({ data: reprocessData(item), jobId: `detect-reprocess-${item.id}` }),
@@ -43,18 +76,19 @@ export class AdminJobsService {
     )
   }
 
-  detectionsStatus(): Promise<{
-    lastRun: LastRun<'detections'> | null
-    queue: Record<string, number>
-  }> {
-    return reprocessStatus(this.bullMq, 'process-detect', () =>
-      this.settings.getLastRun('detections'),
-    )
+  /** Stored last-run record plus the queue's job counts. */
+  async status<K extends ReprocessKind>(
+    kind: K,
+  ): Promise<{ lastRun: LastRun<K> | null; queue: Record<string, number> }> {
+    const [lastRun, queue] = await Promise.all([
+      this.settings.getLastRun(kind),
+      this.bullMq.getQueue(REPROCESS_QUEUES[kind]).getJobCounts(),
+    ])
+    return { lastRun, queue }
   }
 
   reprocessEmbeddings(): Promise<{ enqueued: number; total: number }> {
-    return reprocessPhotos(
-      { admin: this.admin, bullMq: this.bullMq },
+    return this.reprocessPhotos(
       'process-embeddings',
       'embed',
       (item) => ({
@@ -65,18 +99,8 @@ export class AdminJobsService {
     )
   }
 
-  embeddingsStatus(): Promise<{
-    lastRun: LastRun<'embedding'> | null
-    queue: Record<string, number>
-  }> {
-    return reprocessStatus(this.bullMq, 'process-embeddings', () =>
-      this.settings.getLastRun('embedding'),
-    )
-  }
-
   async reprocessFaces(): Promise<{ enqueued: number; total: number }> {
-    return reprocessPhotos(
-      { admin: this.admin, bullMq: this.bullMq },
+    return this.reprocessPhotos(
       'process-faces',
       're-embed',
       (item) => ({
@@ -90,13 +114,6 @@ export class AdminJobsService {
       }),
       (run) => this.settings.setLastRun('face', run),
     )
-  }
-
-  faceStatus(): Promise<{
-    lastRun: LastRun<'face'> | null
-    queue: Record<string, number>
-  }> {
-    return reprocessStatus(this.bullMq, 'process-faces', () => this.settings.getLastRun('face'))
   }
 
   async reclusterFaces(): Promise<{ enqueued: number }> {
@@ -150,13 +167,6 @@ export class AdminJobsService {
     }
     await this.settings.setLastRun('metadata', { startedAt, total, enqueued })
     return { enqueued, total }
-  }
-
-  metadataStatus(): Promise<{
-    lastRun: LastRun<'metadata'> | null
-    queue: Record<string, number>
-  }> {
-    return reprocessStatus(this.bullMq, METADATA_QUEUE, () => this.settings.getLastRun('metadata'))
   }
 
   /**

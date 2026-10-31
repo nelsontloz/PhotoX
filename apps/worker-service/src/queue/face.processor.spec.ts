@@ -8,7 +8,7 @@ import sharp from 'sharp'
 import { UnrecoverableError, type Job } from 'bullmq'
 import { LocalStorageService } from '@photox/shared-config'
 import { FACE_EMBEDDING_DIM } from '@photox/shared-types'
-import { FaceProcessor, FACE_MAX_DIM } from './face.processor'
+import { faceProcessor, FACE_MAX_DIM } from './face.processor'
 import { FaceDetectorService } from './face.detector'
 import type { CoreClient } from '../core/core-client.service'
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../../test/fake-core-client'
@@ -27,23 +27,15 @@ describe('FaceProcessor', () => {
   let prevStorageDir: string | undefined
   let storage: LocalStorageService
   let fake: FakeCoreClient
-  let callbacks: ((job: Job<FaceJob>) => Promise<void>)[]
 
   function setup() {
-    callbacks = []
-    const bullMq = {
-      createWorker: vi.fn((_name: string, cb: (job: Job<FaceJob>) => Promise<void>) => {
-        callbacks.push(cb)
-        return {}
-      }),
-      getQueue: vi.fn(() => ({ add: vi.fn().mockResolvedValue({}) })),
-      enqueue: vi.fn().mockResolvedValue(true),
-    }
-    const processor = new FaceProcessor(bullMq as never, fake as unknown as CoreClient, storage, {
-      detect,
-    } as unknown as FaceDetectorService)
-    processor.onModuleInit()
-    return callbacks[0]!
+    const spec = faceProcessor({
+      bullMq: { enqueue: vi.fn().mockResolvedValue(true) } as never,
+      core: fake as unknown as CoreClient,
+      storage,
+      faceDetector: { detect } as unknown as FaceDetectorService,
+    })
+    return spec.run
   }
 
   beforeEach(() => {

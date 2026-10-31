@@ -361,3 +361,44 @@ describe('deleteBackup', () => {
     )
   })
 })
+
+describe('backupStatus invariants', () => {
+  it('reports exists:false for a missing manifest', async () => {
+    const ada = user()
+    const { svc } = makeDeleteService({ user: ada, keys: [] })
+    await expect(svc.backupStatus(ada.id)).resolves.toEqual({ exists: false })
+  })
+
+  it('maps an S3 outage to 503 instead of exists:false', async () => {
+    const ada = user()
+    const { svc, mocks } = makeDeleteService({ user: ada, keys: [] })
+    const err = new Error('s3 down')
+    err.name = 'InternalError'
+    mocks.s3.headObject.mockRejectedValue(err)
+    await expect(svc.backupStatus(ada.id)).rejects.toBeInstanceOf(ServiceUnavailableException)
+  })
+
+  it('reports a corrupt manifest as degraded (never 404) and still resolves the delete email', async () => {
+    const ada = user()
+    const prefix = backupPrefix(ada.email, ada.id)
+    const manifestObjectKey = manifestKey(ada.email, ada.id)
+    const { svc, mocks } = makeDeleteService({
+      user: ada,
+      keys: [`${prefix}originals/a.bin`, manifestObjectKey],
+      objects: new Map([[manifestObjectKey, Buffer.from('{"emailAtBackup":')]]),
+    })
+
+    await expect(svc.backupStatus(ada.id)).resolves.toMatchObject({
+      exists: true,
+      degraded: 'corrupt',
+      emailAtBackup: ada.email,
+    })
+    await expect(svc.deleteBackup(ada.id)).resolves.toEqual({
+      userId: ada.id,
+      email: ada.email,
+      prefix,
+      deletedObjects: 2,
+    })
+    expect(mocks.s3.deleteKeys).toHaveBeenCalledTimes(1)
+  })
+})

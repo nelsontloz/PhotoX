@@ -1,73 +1,39 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { VideoPlayer } from './VideoPlayer'
 
-// jsdom cannot run the real video.js (it needs a media stack) — the module is mocked below.
-const videojsMock = vi.hoisted(() => {
-  const handlers: { event: string; handler: () => void }[] = []
-  const player = {
-    on: vi.fn((event: string, handler: () => void) => {
-      handlers.push({ event, handler })
-    }),
-    isDisposed: vi.fn(() => false),
-    dispose: vi.fn(),
-    error: vi.fn(),
-    src: vi.fn(),
-  }
-  const initCalls: { element: Element; options: unknown }[] = []
-  const fn = vi.fn((element: Element, options: unknown) => {
-    initCalls.push({ element, options })
-    return player
-  })
-  return { fn, player, handlers, initCalls }
-})
+afterEach(cleanup)
 
-vi.mock('video.js', () => ({ default: videojsMock.fn }))
-
-afterEach(() => {
-  cleanup()
-  vi.clearAllMocks()
-  videojsMock.handlers.length = 0
-  videojsMock.initCalls.length = 0
-})
-
-function initCall(): { element: Element; options: Record<string, unknown> } {
-  const call = videojsMock.initCalls[0]
-  if (!call) throw new Error('videojs was not called')
-  return { element: call.element, options: call.options as Record<string, unknown> }
-}
-
-function errorHandler(): () => void {
-  const entry = videojsMock.handlers.find((h) => h.event === 'error')
-  if (!entry) throw new Error('no error handler was registered')
-  return entry.handler
+function videoEl(container: HTMLElement): HTMLVideoElement {
+  const el = container.querySelector('video')
+  if (!el) throw new Error('no <video> rendered')
+  return el
 }
 
 describe('VideoPlayer', () => {
-  it('initializes video.js on a created element with the right aria-label and options', () => {
-    render(<VideoPlayer src="/api/v1/files/abc/stream" poster="/poster.jpg" title="Trip" />)
+  it('renders a native video with native controls, inline playback and metadata preload', () => {
+    const { container } = render(
+      <VideoPlayer src="/api/v1/files/abc/stream" poster="/poster.jpg" title="Trip" />,
+    )
+    const video = videoEl(container)
 
-    expect(videojsMock.fn).toHaveBeenCalledTimes(1)
-    const { element, options } = initCall()
-    expect(element.tagName.toLowerCase()).toBe('video-js')
-    expect(element.getAttribute('aria-label')).toBe('Video player for Trip')
-    expect(options).toMatchObject({
-      controls: true,
-      autoplay: false,
-      playsinline: true,
-      preload: 'metadata',
-      fill: true,
-      poster: '/poster.jpg',
-      sources: [{ src: '/api/v1/files/abc/stream', type: 'video/mp4' }],
-    })
+    expect(video.getAttribute('src')).toBe('/api/v1/files/abc/stream')
+    expect(video.hasAttribute('controls')).toBe(true)
+    expect(video.hasAttribute('playsinline')).toBe(true)
+    expect(video.getAttribute('preload')).toBe('metadata')
+    expect(video.getAttribute('poster')).toBe('/poster.jpg')
+    expect(video.hasAttribute('autoplay')).toBe(false)
+    expect(video.getAttribute('aria-label')).toBe('Video player for Trip')
+    // the frame is the same box the previous player used
+    expect(video.parentElement!.classList.contains('video-frame')).toBe(true)
   })
 
   it('uses a generic aria-label and honours autoPlay', () => {
-    render(<VideoPlayer src="/api/v1/files/abc/stream" autoPlay />)
+    const { container } = render(<VideoPlayer src="/api/v1/files/abc/stream" autoPlay />)
+    const video = videoEl(container)
 
-    const { element, options } = initCall()
-    expect(element.getAttribute('aria-label')).toBe('Video player')
-    expect(options.autoplay).toBe(true)
+    expect(video.getAttribute('aria-label')).toBe('Video player')
+    expect(video.hasAttribute('autoplay')).toBe(true)
   })
 
   it('sizes the frame from the video aspect ratio instead of a full-width box', () => {
@@ -79,32 +45,32 @@ describe('VideoPlayer', () => {
     expect(frame.style.getPropertyValue('--video-ar')).toBe('2')
   })
 
-  it('swaps to fallbackSrc on the first player error', () => {
-    render(
+  it('renders one progressive source with no mime hint', () => {
+    const { container } = render(<VideoPlayer src="/api/v1/files/abc/stream" />)
+    const video = videoEl(container)
+
+    expect(video.getAttribute('src')).toBe('/api/v1/files/abc/stream')
+    expect(video.getAttribute('type')).toBeNull()
+  })
+
+  it('swaps to fallbackSrc on the first error', () => {
+    const { container } = render(
       <VideoPlayer
         src="/api/v1/files/primary/stream"
-        type="video/webm"
         fallbackSrc="/api/v1/files/orig/stream"
-        fallbackType="video/mp4"
         title="Trip"
       />,
     )
+    const video = videoEl(container)
 
-    const fireError = errorHandler()
-    act(() => {
-      fireError()
-    })
+    fireEvent.error(video)
 
-    expect(videojsMock.player.error).toHaveBeenCalledWith(null)
-    expect(videojsMock.player.src).toHaveBeenCalledWith({
-      src: '/api/v1/files/orig/stream',
-      type: 'video/mp4',
-    })
-    expect(videojsMock.player.dispose).not.toHaveBeenCalled()
+    expect(videoEl(container).getAttribute('src')).toBe('/api/v1/files/orig/stream')
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('shows the error card and disposes the player when the fallback also fails', () => {
-    render(
+  it('shows the error card when the fallback also fails', () => {
+    const { container } = render(
       <VideoPlayer
         src="/api/v1/files/primary/stream"
         fallbackSrc="/api/v1/files/orig/stream"
@@ -112,36 +78,19 @@ describe('VideoPlayer', () => {
       />,
     )
 
-    const fireError = errorHandler()
-    act(() => {
-      fireError()
-    })
-    act(() => {
-      fireError()
-    })
+    fireEvent.error(videoEl(container))
+    fireEvent.error(videoEl(container))
 
     const alert = screen.getByRole('alert')
     expect(alert.textContent).toContain(`Can't play "Birthday"`)
     expect(alert.textContent).toContain("isn't supported by your browser")
-    expect(videojsMock.player.dispose).toHaveBeenCalled()
   })
 
   it('shows the error card on the first error when no fallback is provided', () => {
-    render(<VideoPlayer src="/api/v1/files/abc/stream" />)
+    const { container } = render(<VideoPlayer src="/api/v1/files/abc/stream" />)
 
-    const fireError = errorHandler()
-    act(() => {
-      fireError()
-    })
+    fireEvent.error(videoEl(container))
 
     expect(screen.getByRole('alert').textContent).toContain("This video can't be played")
-  })
-
-  it('disposes the player on unmount', () => {
-    const { unmount } = render(<VideoPlayer src="/api/v1/files/abc/stream" />)
-
-    unmount()
-
-    expect(videojsMock.player.dispose).toHaveBeenCalled()
   })
 })

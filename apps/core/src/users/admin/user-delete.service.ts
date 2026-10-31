@@ -114,92 +114,88 @@ export class UserDeleteService {
   async purge(userId: string, fallbackPrefix: string, jobId?: string): Promise<UserDeleteResult> {
     this.setProgress(userId, 'active', jobId, fallbackPrefix)
     try {
-      return await this.runUserDelete(userId, fallbackPrefix)
+      const user = await this.users.findOne({ where: { id: userId } })
+      if (!user) {
+        // idempotent retry: a previous attempt already dropped the row. The row sweep still
+        // runs — a crash between the txn commit and the byte deletions must not orphan files
+        // with no later retry able to reach them.
+        const deletedStrays = await this.sweepUserPrefixes(userId)
+        this.setProgress(userId, 'completed')
+        return {
+          userId,
+          backupPrefix: fallbackPrefix,
+          deletedFiles: 0,
+          deletedStrays,
+        }
+      }
+      const prefix = backupPrefix(user.email, user.id)
+
+      const assetRows = await this.dataSource
+        .getRepository(Asset)
+        .find({ where: { userId }, select: { id: true } })
+      const assetIds = assetRows.map((a) => a.id)
+      // thumb bytes live in FileRecords under the same userId (registerFile is owner-scoped
+      // and thumb fileId carries no FK), so the files sweep below collects them explicitly
+      const fileRows = await this.files.find({ where: { userId }, select: { storageKey: true } })
+      const storageKeys = fileRows.map((f) => f.storageKey)
+
+      await this.dataSource.transaction(async (m) => {
+        // C3: last-admin re-check inside the txn — the request-time count in AdminService is
+        // only the fast path; two concurrent deletes both passing it must not wipe all admins.
+        const fresh = await m.findOne(User, { where: { id: userId } })
+        if (!fresh) return
+        if (fresh.role === 'admin') {
+          const adminCount = await m.count(User, { where: { role: 'admin' } })
+          if (adminCount <= 1) throw new ConflictException('Cannot delete the last admin')
+        }
+        // sessions first: refresh rows die and the floor kills in-flight access tokens
+        await m.delete(RefreshToken, { userId })
+        await m.update(User, userId, { tokensValidAfter: new Date() })
+        await m.delete(Share, { userId })
+        // merge ledger rows are metadata about the deleted target account; the S3
+        // legacy backup itself stays in place (backups are never deleted here)
+        await m.delete(BackupMerge, { targetUserId: userId })
+        await m.delete(Face, { userId })
+        await m.delete(Person, { userId })
+        const albumIds = (await m.find(Album, { where: { userId }, select: { id: true } })).map(
+          (a) => a.id,
+        )
+        if (albumIds.length > 0) await m.delete(AlbumAsset, { albumId: In(albumIds) })
+        // the user's assets may sit in foreign albums — clear those links too
+        if (assetIds.length > 0) await m.delete(AlbumAsset, { assetId: In(assetIds) })
+        await m.delete(Album, { userId })
+        // incl. trashed (no isTrashed filter — reuse hardDelete semantics); CASCADE drops
+        // asset_thumbnails/embeddings/detections, shares.assetId FK drops foreign shares
+        if (assetIds.length > 0) await m.delete(Asset, { id: In(assetIds) })
+        await m.delete(FileRecord, { userId })
+        // resumable sessions have no FK to users; leaving them behind both leaks up to 4 GiB
+        // per session and, because restore re-creates the same userId, eats the 5-session cap
+        await m.delete(UploadSession, { userId })
+        await m.delete(User, userId)
+      })
+
+      let deletedFiles = 0
+      for (const key of storageKeys) {
+        try {
+          await this.storage.delete(key)
+          deletedFiles++
+        } catch (err) {
+          this.logger.warn(
+            `User-delete storage delete failed for ${key}: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
+      }
+      const deletedStrays = await this.sweepUserPrefixes(userId)
+
+      this.setProgress(userId, 'completed')
+      this.logger.log(
+        `Deleted user ${userId} (${assetIds.length} assets, ${deletedFiles} files, ${deletedStrays} strays; backup ${prefix} kept)`,
+      )
+      return { userId, backupPrefix: prefix, deletedFiles, deletedStrays }
     } catch (err) {
       this.setProgress(userId, 'failed')
       throw err
     }
-  }
-
-  async runUserDelete(userId: string, fallbackPrefix: string): Promise<UserDeleteResult> {
-    const user = await this.users.findOne({ where: { id: userId } })
-    if (!user) {
-      // idempotent retry: a previous attempt already dropped the row. The row sweep still
-      // runs — a crash between the txn commit and the byte deletions must not orphan files
-      // with no later retry able to reach them.
-      const deletedStrays = await this.sweepUserPrefixes(userId)
-      this.setProgress(userId, 'completed')
-      return {
-        userId,
-        backupPrefix: fallbackPrefix,
-        deletedFiles: 0,
-        deletedStrays,
-      }
-    }
-    const prefix = backupPrefix(user.email, user.id)
-
-    const assetRows = await this.dataSource
-      .getRepository(Asset)
-      .find({ where: { userId }, select: { id: true } })
-    const assetIds = assetRows.map((a) => a.id)
-    // thumb bytes live in FileRecords under the same userId (registerFile is owner-scoped
-    // and thumb fileId carries no FK), so the files sweep below collects them explicitly
-    const fileRows = await this.files.find({ where: { userId }, select: { storageKey: true } })
-    const storageKeys = fileRows.map((f) => f.storageKey)
-
-    await this.dataSource.transaction(async (m) => {
-      // C3: last-admin re-check inside the txn — the request-time count in AdminService is
-      // only the fast path; two concurrent deletes both passing it must not wipe all admins.
-      const fresh = await m.findOne(User, { where: { id: userId } })
-      if (!fresh) return
-      if (fresh.role === 'admin') {
-        const adminCount = await m.count(User, { where: { role: 'admin' } })
-        if (adminCount <= 1) throw new ConflictException('Cannot delete the last admin')
-      }
-      // sessions first: refresh rows die and the floor kills in-flight access tokens
-      await m.delete(RefreshToken, { userId })
-      await m.update(User, userId, { tokensValidAfter: new Date() })
-      await m.delete(Share, { userId })
-      // merge ledger rows are metadata about the deleted target account; the S3
-      // legacy backup itself stays in place (backups are never deleted here)
-      await m.delete(BackupMerge, { targetUserId: userId })
-      await m.delete(Face, { userId })
-      await m.delete(Person, { userId })
-      const albumIds = (await m.find(Album, { where: { userId }, select: { id: true } })).map(
-        (a) => a.id,
-      )
-      if (albumIds.length > 0) await m.delete(AlbumAsset, { albumId: In(albumIds) })
-      // the user's assets may sit in foreign albums — clear those links too
-      if (assetIds.length > 0) await m.delete(AlbumAsset, { assetId: In(assetIds) })
-      await m.delete(Album, { userId })
-      // incl. trashed (no isTrashed filter — reuse hardDelete semantics); CASCADE drops
-      // asset_thumbnails/embeddings/detections, shares.assetId FK drops foreign shares
-      if (assetIds.length > 0) await m.delete(Asset, { id: In(assetIds) })
-      await m.delete(FileRecord, { userId })
-      // resumable sessions have no FK to users; leaving them behind both leaks up to 4 GiB
-      // per session and, because restore re-creates the same userId, eats the 5-session cap
-      await m.delete(UploadSession, { userId })
-      await m.delete(User, userId)
-    })
-
-    let deletedFiles = 0
-    for (const key of storageKeys) {
-      try {
-        await this.storage.delete(key)
-        deletedFiles++
-      } catch (err) {
-        this.logger.warn(
-          `User-delete storage delete failed for ${key}: ${err instanceof Error ? err.message : String(err)}`,
-        )
-      }
-    }
-    const deletedStrays = await this.sweepUserPrefixes(userId)
-
-    this.setProgress(userId, 'completed')
-    this.logger.log(
-      `Deleted user ${userId} (${assetIds.length} assets, ${deletedFiles} files, ${deletedStrays} strays; backup ${prefix} kept)`,
-    )
-    return { userId, backupPrefix: prefix, deletedFiles, deletedStrays }
   }
 
   /**

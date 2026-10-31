@@ -8,7 +8,7 @@ import { summarizeDetections } from './detectionView'
 import { ViewerThumbnailStrip } from './ViewerThumbnailStrip'
 import { ZoomableImage } from './ZoomableImage'
 
-// video.js is ~209 kB gzip: load the player (and its skin CSS) only when a video is opened.
+// the player chunk loads only when a video is opened.
 const VideoPlayer = lazy(() => import('../VideoPlayer').then((m) => ({ default: m.VideoPlayer })))
 
 // 1×1 transparent gif: an in-flow replaced element keeps the final image's box reserved even when
@@ -59,13 +59,6 @@ export function ViewerMedia({
   const videoSrc = isVideo ? getFileStreamUrl(asset.transcodeFileId ?? asset.fileId) : null
   const videoFallbackSrc =
     isVideo && asset.transcodeFileId ? getFileStreamUrl(asset.fileId) : undefined
-  // video.js picks a source via canPlayType(type); the transcode is always AV1-in-webm.
-  const videoType = isVideo
-    ? asset.transcodeFileId
-      ? 'video/webm'
-      : (asset.mimeType ?? undefined)
-    : undefined
-  const videoFallbackType = isVideo ? (asset.mimeType ?? undefined) : undefined
   const videoTitle = asset.title ?? asset.originalName ?? undefined
   const imageAlt = asset.originalName ?? asset.title ?? 'Photo'
   const dims =
@@ -90,8 +83,6 @@ export function ViewerMedia({
             key={asset.id}
             src={videoSrc}
             fallbackSrc={videoFallbackSrc}
-            type={videoType}
-            fallbackType={videoFallbackType}
             poster={videoPoster}
             title={videoTitle}
             aspectRatio={dims ? dims.w / dims.h : undefined}

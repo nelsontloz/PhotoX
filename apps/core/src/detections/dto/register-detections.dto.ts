@@ -1,9 +1,18 @@
 import { ApiProperty } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
-import { IsArray, IsNumber, IsString, ValidateNested } from 'class-validator'
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsNumber,
+  IsPositive,
+  IsString,
+  Length,
+  Matches,
+  Max,
+  Min,
+  ValidateNested,
+} from 'class-validator'
 
-// ponytail: shape-only validation here — cap/label/confidence/box rules reject with 422 in the
-// service so the worker's CoreClient treats them as unrecoverable without retrying
 export class DetectionBoxDto {
   @ApiProperty()
   @IsNumber()
@@ -15,20 +24,26 @@ export class DetectionBoxDto {
 
   @ApiProperty()
   @IsNumber()
+  @IsPositive()
   w!: number
 
   @ApiProperty()
   @IsNumber()
+  @IsPositive()
   h!: number
 }
 
 export class DetectedObjectDto {
-  @ApiProperty({ maxLength: 64 })
+  @ApiProperty({ minLength: 1, maxLength: 64 })
   @IsString()
+  @Length(1, 64)
+  @Matches(/\S/)
   label!: string
 
   @ApiProperty({ minimum: 0, maximum: 1 })
   @IsNumber()
+  @Min(0)
+  @Max(1)
   confidence!: number
 
   @ApiProperty({ type: DetectionBoxDto })
@@ -38,8 +53,9 @@ export class DetectedObjectDto {
 }
 
 export class RegisterDetectionsDto {
-  @ApiProperty({ type: [DetectedObjectDto] })
+  @ApiProperty({ type: [DetectedObjectDto], maxItems: 200 })
   @IsArray()
+  @ArrayMaxSize(200)
   @ValidateNested({ each: true })
   @Type(() => DetectedObjectDto)
   detections!: DetectedObjectDto[]

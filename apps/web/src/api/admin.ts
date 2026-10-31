@@ -17,18 +17,16 @@ import type {
   RegistrationSettings,
 } from '@photox/shared-types'
 
-export interface QueueCounts {
-  waiting: number
-  active: number
-  completed: number
-  failed: number
-  delayed: number
-}
-
 /** Status envelope shared by every reprocess pipeline: last run (if any) + live queue depth. */
 export interface ReprocessStatus<L> {
   lastRun: L | null
-  queue: QueueCounts
+  queue: {
+    waiting: number
+    active: number
+    completed: number
+    failed: number
+    delayed: number
+  }
 }
 
 /** A completed pipeline run: when it started, how many photos it covered, how many got queued. */
@@ -44,17 +42,15 @@ export interface PipelineResponse {
   total: number
 }
 
-export type PipelinePath = 'faces' | 'embeddings' | 'detections'
-
 export async function reprocessPipeline<R extends PipelineResponse>(
-  path: PipelinePath,
+  path: 'faces' | 'embeddings' | 'detections',
 ): Promise<R> {
   const { data } = await api.post<R>(`/v1/admin/${path}/reprocess`)
   return data
 }
 
 export async function getPipelineStatus<L extends PipelineRun>(
-  path: PipelinePath,
+  path: 'faces' | 'embeddings' | 'detections',
 ): Promise<ReprocessStatus<L>> {
   const { data } = await api.get<ReprocessStatus<L>>(`/v1/admin/${path}/reprocess`)
   return data
@@ -434,11 +430,8 @@ export async function syncAdminUserBackup(id: string): Promise<AdminUserBackupSy
 // gone); the backend { state, ... } shape is mapped to the { status, error? }
 // view-model so the dialog keeps polling on coarse lifecycles.
 
-/** DELETE /v1/admin/users/:id response: 202 carries the background job id. */
-export type AdminUserDeleteAccepted = AdminUserDeleteResponse
-
-export async function deleteAdminUser(id: string): Promise<AdminUserDeleteAccepted> {
-  const { data } = await api.delete<AdminUserDeleteAccepted>(
+export async function deleteAdminUser(id: string): Promise<AdminUserDeleteResponse> {
+  const { data } = await api.delete<AdminUserDeleteResponse>(
     `/v1/admin/users/${encodeURIComponent(id)}`,
   )
   return data

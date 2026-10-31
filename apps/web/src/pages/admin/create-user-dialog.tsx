@@ -22,8 +22,7 @@ export const CREATE_ERROR_MESSAGES: HttpErrorMessages = {
     400: ({ text }) => text.trim() || 'Check the fields and try again.',
     403: 'Only an admin can do that.',
   },
-  serverDetail: true,
-  rawMessage: true,
+  preferServerMessage: true,
 }
 
 export function CreateUserDialog({

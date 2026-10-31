@@ -10,7 +10,14 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, In, LessThanOrEqual, type QueryRunner, type Repository } from 'typeorm'
+import {
+  DataSource,
+  In,
+  LessThanOrEqual,
+  type FindOptionsWhere,
+  type QueryRunner,
+  type Repository,
+} from 'typeorm'
 import { isUUID } from 'class-validator'
 import { createHash, randomUUID } from 'node:crypto'
 import { once } from 'node:events'
@@ -149,7 +156,7 @@ export class UploadsService {
     }
 
     // lazy expiry first: an abandoned session must never hold a cap slot against a new one
-    await this.expireStaleForUser(userId)
+    await this.purgeExpired(userId)
     const active = await this.sessionRepo.count({
       where: { userId, status: In(ACTIVE_STATUSES) },
     })
@@ -370,28 +377,33 @@ export class UploadsService {
   }
 
   /**
-   * Sweeper entry point: parks sessions past their TTL as `expired` and drops their bytes.
-   * Called through pg_try_advisory_lock (see UploadSessionsSweeper) so one instance runs it.
-   * Rows are kept — a GET then answers 410 SESSION_EXPIRED instead of a bare 404, telling the
-   * client to start over. `assembled` uses updatedAt because there is no assembledAt column.
+   * Parks sessions past their TTL as `expired` and drops their bytes. Without `userId` this is the
+   * sweeper entry point, called through pg_try_advisory_lock (see UploadSessionsSweeper) so one
+   * instance runs it; with `userId` it is the lazy per-user expiry from create(). Rows are kept —
+   * a GET then answers 410 SESSION_EXPIRED instead of a bare 404, telling the client to start
+   * over. `assembled` uses updatedAt because there is no assembledAt column.
    */
-  async purgeExpired(): Promise<{ expired: number }> {
-    const now = new Date()
-    const stale = await this.sessionRepo.find({
-      where: [
-        { status: In(['pending', 'assembling']), expiresAt: LessThanOrEqual(now) },
-        {
-          status: 'assembled',
-          updatedAt: LessThanOrEqual(new Date(now.getTime() - UPLOAD_ASSEMBLED_TTL_MS)),
-        },
-        // a failed session's parts are only useful inside one pending TTL (a later DELETE) —
-        // past that they are garbage, so park the session alongside the expired ones
-        {
-          status: 'failed',
-          updatedAt: LessThanOrEqual(new Date(now.getTime() - UPLOAD_PENDING_TTL_MS)),
-        },
-      ],
-    })
+  async purgeExpired(userId?: string): Promise<{ expired: number }> {
+    const now = Date.now()
+    const where: FindOptionsWhere<UploadSession>[] = [
+      { status: In(['pending', 'assembling']), expiresAt: LessThanOrEqual(new Date(now)) },
+      {
+        status: 'assembled',
+        updatedAt: LessThanOrEqual(new Date(now - UPLOAD_ASSEMBLED_TTL_MS)),
+      },
+    ]
+    if (userId === undefined) {
+      // a failed session's parts are only useful inside one pending TTL (a later DELETE) —
+      // past that they are garbage, so park the session alongside the expired ones. A
+      // user-scoped call must leave that user's failed sessions alone.
+      where.push({
+        status: 'failed',
+        updatedAt: LessThanOrEqual(new Date(now - UPLOAD_PENDING_TTL_MS)),
+      })
+    } else {
+      for (const condition of where) condition.userId = userId
+    }
+    const stale = await this.sessionRepo.find({ where })
     for (const session of stale) {
       // bytes before row: a crash between the two makes the next sweep re-run the idempotent rm
       await this.removeSessionDir(session)
@@ -675,24 +687,6 @@ export class UploadsService {
       await runner.commitTransaction()
     }
     await this.removeSessionDir(session)
-  }
-
-  private async expireStaleForUser(userId: string): Promise<void> {
-    const stale = await this.sessionRepo.find({
-      where: [
-        { userId, status: In(['pending', 'assembling']), expiresAt: LessThanOrEqual(new Date()) },
-        {
-          userId,
-          status: 'assembled',
-          updatedAt: LessThanOrEqual(new Date(Date.now() - UPLOAD_ASSEMBLED_TTL_MS)),
-        },
-      ],
-    })
-    for (const session of stale) {
-      // bytes before row: a crash between the two makes the next create re-run the idempotent rm
-      await this.removeSessionDir(session)
-      await this.sessionRepo.update({ id: session.id }, { status: 'expired' })
-    }
   }
 
   private sessionDir(userId: string, sessionId: string): string {

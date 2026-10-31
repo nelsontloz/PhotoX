@@ -8,7 +8,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
-import { FaCheck, FaPlay, FaSpinner, FaTriangleExclamation, FaUser } from 'react-icons/fa6'
+import { FaCheck, FaPlay, FaUser } from 'react-icons/fa6'
 import type { Asset, AssetThumbnail } from '@photox/shared-types'
 import { AssetThumb } from './AssetThumb'
 import { formatDuration } from '../lib/format'
@@ -116,28 +116,6 @@ export const GalleryItem = memo(function GalleryItem({
         <div className="absolute inset-0 flex items-center justify-center transition-opacity duration-200 pointer-events-none opacity-100">
           <div className="bg-black/40 backdrop-blur-sm rounded-full w-10 h-10 flex items-center justify-center">
             <FaPlay className="text-white/80 text-base ml-0.5" />
-          </div>
-        </div>
-      )}
-      {isVideo && transcodeStatus === 'pending' && (
-        <div
-          className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-200 ${
-            selected ? 'opacity-0' : 'opacity-100'
-          }`}
-        >
-          <div className="bg-black/60 backdrop-blur-sm rounded-full w-10 h-10 flex items-center justify-center">
-            <FaSpinner className="text-white text-base animate-spin" />
-          </div>
-        </div>
-      )}
-      {isVideo && transcodeStatus === 'failed' && (
-        <div
-          className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-200 ${
-            selected ? 'opacity-0' : 'opacity-100'
-          }`}
-        >
-          <div className="bg-amber-500/90 backdrop-blur-sm rounded-full w-10 h-10 flex items-center justify-center">
-            <FaTriangleExclamation className="text-white text-base" />
           </div>
         </div>
       )}

@@ -1,8 +1,9 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { IsIn } from 'class-validator'
-import { SEARCH_EMBEDDING_MODEL } from '@photox/shared-types'
+import { SEARCH_EMBEDDING_MODEL, type FaceDetectionSettings } from '@photox/shared-types'
 import type { LastRun } from '../settings/settings.service'
+import { SettingsService } from '../settings/settings.service'
 import { AdminAssetsService } from './admin-assets.service'
 import { AdminJobsService } from './admin-jobs.service'
 import { REPROCESS_PAGE_SIZE } from './reprocess.util'
@@ -20,6 +21,7 @@ export class AdminMaintenanceController {
     private readonly admin: AdminAssetsService,
     private readonly bullMq: BullMqService,
     private readonly adminJobs: AdminJobsService,
+    private readonly settings: SettingsService,
   ) {}
 
   @Get('orphan-counts')
@@ -72,17 +74,24 @@ export class AdminMaintenanceController {
     return this.adminJobs.reprocessFaces()
   }
 
+  @Get('face-detection')
+  @ApiOperation({ summary: 'SCRFD face-detector model availability (admin-only)' })
+  @ApiResponse({ status: 200, description: 'Current face detection settings' })
+  async faceDetectionSettings(): Promise<FaceDetectionSettings> {
+    return this.settings.getSettings()
+  }
+
   @Get('faces/reprocess')
   @ApiOperation({ summary: 'Face reprocess last-run record and process-faces queue counts' })
   @ApiResponse({
     status: 200,
     description: 'Last run record (null when never run) and queue counts',
   })
-  async faceReprocessStatus(): Promise<{
+  faceReprocessStatus(): Promise<{
     lastRun: LastRun<'face'> | null
     queue: Record<string, number>
   }> {
-    return this.adminJobs.faceStatus()
+    return this.adminJobs.status('face')
   }
 
   @Post('faces/recluster')
@@ -113,11 +122,11 @@ export class AdminMaintenanceController {
     status: 200,
     description: 'Last run record (null when never run) and queue counts',
   })
-  async embeddingReprocessStatus(): Promise<{
+  embeddingReprocessStatus(): Promise<{
     lastRun: LastRun<'embedding'> | null
     queue: Record<string, number>
   }> {
-    return this.adminJobs.embeddingsStatus()
+    return this.adminJobs.status('embedding')
   }
 
   @Post('detections/reprocess')
@@ -136,11 +145,11 @@ export class AdminMaintenanceController {
     status: 200,
     description: 'Last run record (null when never run) and queue counts',
   })
-  async detectionsReprocessStatus(): Promise<{
+  detectionsReprocessStatus(): Promise<{
     lastRun: LastRun<'detections'> | null
     queue: Record<string, number>
   }> {
-    return this.adminJobs.detectionsStatus()
+    return this.adminJobs.status('detections')
   }
 
   @Post('places/backfill')
@@ -178,10 +187,10 @@ export class AdminMaintenanceController {
     status: 200,
     description: 'Last run record (null when never run) and queue counts',
   })
-  async metadataReprocessStatus(): Promise<{
+  metadataReprocessStatus(): Promise<{
     lastRun: LastRun<'metadata'> | null
     queue: Record<string, number>
   }> {
-    return this.adminJobs.metadataStatus()
+    return this.adminJobs.status('metadata')
   }
 }

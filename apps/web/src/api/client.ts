@@ -1,5 +1,5 @@
 import axios, { type AxiosError } from 'axios'
-import { useAuthStore, isExpiringSoon } from '../store/auth-store'
+import { useAuthStore } from '../store/auth-store'
 
 export const api = axios.create({
   baseURL: '/api',
@@ -8,23 +8,9 @@ export const api = axios.create({
   withCredentials: true,
 })
 
-api.interceptors.request.use(async (config) => {
-  // auth endpoints manage their own tokens; refreshing from here would recurse
-  if (config.url?.includes('/v1/auth/')) return config
-
-  const { accessToken, refreshToken } = useAuthStore.getState()
-  if (accessToken && refreshToken && isExpiringSoon(accessToken)) {
-    await useAuthStore
-      .getState()
-      .refresh()
-      .catch(() => {
-        /* transient failure — the cookies still authenticate this request */
-      })
-  }
-
-  // no Bearer header: the access cookie authenticates same-origin calls (media tags too)
-  return config
-})
+// No request interceptor: the access cookie authenticates every call (media tags too), and the
+// auth store already refreshes ahead of expiry + on wake signals. The 401 retry below is the
+// last-resort trigger.
 
 api.interceptors.response.use(
   (response) => response,

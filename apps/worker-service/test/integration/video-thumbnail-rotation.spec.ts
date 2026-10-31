@@ -1,20 +1,18 @@
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
 import type { RegisterFileInput } from '../../src/core/core-client.service'
-import { FFMPEG_PATH } from '../../src/queue/ffmpeg'
 import {
   closeTestApp,
   createTestApp,
+  makeVideoFixture,
   resetTestApp,
   seedOriginal,
   signJob,
   waitForJob,
-  waitUntil,
   type TestApp,
 } from './helpers'
 
@@ -22,26 +20,18 @@ const FIXTURE_DIR = mkdtempSync(join(tmpdir(), 'video-thumb-rot-'))
 const LANDSCAPE_PATH = join(FIXTURE_DIR, 'landscape.mp4')
 
 function makeLandscapeMp4(): Buffer {
-  if (!FFMPEG_PATH) throw new Error('ffmpeg binary not available')
-  execFileSync(
-    FFMPEG_PATH,
-    [
-      '-f',
-      'lavfi',
-      '-i',
-      'color=c=red:s=320x240:d=1',
-      '-c:v',
-      'libx264',
-      '-pix_fmt',
-      'yuv420p',
-      '-t',
-      '1',
-      '-y',
-      LANDSCAPE_PATH,
-    ],
-    { timeout: 30_000, stdio: 'pipe' },
-  )
-  return readFileSync(LANDSCAPE_PATH)
+  return makeVideoFixture(LANDSCAPE_PATH, [
+    '-f',
+    'lavfi',
+    '-i',
+    'color=c=red:s=320x240:d=1',
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv420p',
+    '-t',
+    '1',
+  ])
 }
 
 describe('VideoThumbnailRotation (integration)', () => {
@@ -50,7 +40,7 @@ describe('VideoThumbnailRotation (integration)', () => {
 
   beforeAll(async () => {
     landscapeBuffer = makeLandscapeMp4()
-    testApp = await createTestApp({ processors: 'media' })
+    testApp = await createTestApp()
   }, 120_000)
 
   afterAll(async () => {
@@ -133,7 +123,10 @@ describe('VideoThumbnailRotation (integration)', () => {
       orientation: 90,
       durationSeconds: 1,
     })
-    await waitUntil(() => testApp.fake.callsOf('registerThumbnail').length > 0)
+    await vi.waitUntil(() => testApp.fake.callsOf('registerThumbnail').length > 0, {
+      timeout: 30_000,
+      interval: 100,
+    })
 
     expect(testApp.fake.callsOf('getAsset').length).toBeGreaterThanOrEqual(2)
     expect(testApp.fake.assets.get(asset.id)!.thumbnailStatus).toBe('ready')
@@ -164,7 +157,10 @@ describe('VideoThumbnailRotation (integration)', () => {
 
     // the deferred job fetches the asset itself and the fake throws UnrecoverableError, so that
     // one fetch fails the job — no 4×1s poll and no retry
-    await waitUntil(() => testApp.fake.callsOf('getAsset').length >= 2)
+    await vi.waitUntil(() => testApp.fake.callsOf('getAsset').length >= 2, {
+      timeout: 30_000,
+      interval: 100,
+    })
     // settle window: a plain-error retry (exponential backoff ~1s) would fetch a third time
     await new Promise((r) => setTimeout(r, 1500))
     expect(testApp.fake.callsOf('getAsset')).toHaveLength(2)
