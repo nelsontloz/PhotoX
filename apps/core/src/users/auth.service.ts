@@ -9,6 +9,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, LessThan, Repository, type EntityManager } from 'typeorm';
 import { isUUID } from 'class-validator';
+import { randomUUID } from 'crypto';
 import * as argon2 from 'argon2';
 import { User } from './entities/user.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
@@ -119,20 +120,22 @@ export class AuthService {
       { revokedAt: () => 'now()' },
     );
     if (!result.affected) {
-      // reused (already rotated/revoked) token — assume theft: drop the whole family and
-      // floor access tokens in the same transaction so stolen cookies die with it
-      await this.userRepo.manager.transaction((m) => this.revokeAllSessions(row.userId, m));
-      this.logger.warn(`Refresh token reuse for user ${row.userId}; all refresh tokens revoked`);
+      // reused (already rotated/revoked) token — assume theft and drop that device session.
+      // Scoped to the session, never the user: a replayed token on one device used to sign
+      // every other device out (web login killing the phone) with no way to recover.
+      await this.revokeSession(row.sessionId);
+      this.logger.warn(`Refresh token reuse for user ${row.userId}; session revoked`);
       throw new UnauthorizedException('Refresh token revoked');
     }
 
     const user = await this.userRepo.findOne({ where: { id: row.userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    return this.issueTokens(user, row.absoluteExpiresAt);
+    return this.issueTokens(user, row.absoluteExpiresAt, row.sessionId);
   }
 
-  // ponytail: global logout kills every device session — per-jti denylist if selective logout matters
+  // ponytail: global logout (admin edit, account wipe) kills every device session — per-jti
+  // denylist if selective logout matters beyond one device
   async revokeAllSessions(userId: string, manager?: EntityManager): Promise<void> {
     // a subject that is not a user id (a crafted or foreign token) owns no rows — fail
     // closed instead of letting Postgres raise an invalid-uuid error (500)
@@ -140,6 +143,12 @@ export class AuthService {
     const store = manager ?? this.userRepo.manager;
     await store.delete(RefreshToken, { userId });
     await store.update(User, userId, { tokensValidAfter: new Date() });
+  }
+
+  /** Drops one device session. Its access tokens die with it: the guard 401s an `sid` whose
+   *  refresh rows are gone. */
+  async revokeSession(sessionId: string): Promise<void> {
+    await this.tokenRepo.delete({ sessionId });
   }
 
   async logout(refreshToken: string): Promise<void> {
@@ -150,14 +159,20 @@ export class AuthService {
     });
     // unknown token scopes to no user — idempotent no-op (still 204)
     if (!row) return;
-    await this.userRepo.manager.transaction((m) => this.revokeAllSessions(row.userId, m));
+    await this.revokeSession(row.sessionId);
   }
 
-  private async issueTokens(user: User, absoluteExpiresAt?: Date | null): Promise<AuthResponse> {
+  private async issueTokens(
+    user: User,
+    absoluteExpiresAt?: Date | null,
+    sessionId?: string,
+  ): Promise<AuthResponse> {
     // a refresh carries the original absolute expiry, so the session start is derived from it;
     // a fresh login starts now. Either way the access token is stamped with `sst`, which the
     // guard checks against the cap on every renewal.
     const absolute = absoluteExpiresAt ?? new Date(Date.now() + ABSOLUTE_SESSION_MS);
+    // one session per login/device, stable across rotations (a refresh passes its own back in)
+    const session = sessionId ?? randomUUID();
     const accessToken = await this.tokenService.signAccessToken(
       {
         id: user.id,
@@ -165,6 +180,7 @@ export class AuthService {
         role: user.role,
       },
       absoluteExpiresAt ? new Date(absolute.getTime() - ABSOLUTE_SESSION_MS) : new Date(),
+      session,
     );
 
     const refreshRaw = this.tokenService.generate();
@@ -175,6 +191,7 @@ export class AuthService {
     await this.tokenRepo.save(
       this.tokenRepo.create({
         userId: user.id,
+        sessionId: session,
         tokenHash: refreshHash,
         expiresAt: sliding < absolute ? sliding : absolute,
         absoluteExpiresAt: absolute,

@@ -81,6 +81,7 @@ async function seedFullUser(t: ApiTestApp) {
   await t.refreshRepo.save(
     t.refreshRepo.create({
       userId: user.id,
+      sessionId: randomUUID(),
       tokenHash: randomBytes(32).toString('hex'),
       expiresAt: new Date(Date.now() + 3600_000),
       absoluteExpiresAt: null,

@@ -47,6 +47,9 @@ export interface JwtPayload {
   // session start (epoch seconds): stamped by core on access tokens and carried through
   // sliding renewals so the guard can enforce the absolute session cap
   sst?: number;
+  // device session id (`refresh_tokens.sessionId`): one session per login/device, stable across
+  // rotation and carried through sliding renewals so logout revokes only that device
+  sid?: string;
   // RFC 8693 actor claim — present only on worker-minted tokens; core's guard locks
   // act-carrying tokens to the admin-route allowlist in auth/open-routes.ts
   act?: { sub: string };
