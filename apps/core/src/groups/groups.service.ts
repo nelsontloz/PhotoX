@@ -67,6 +67,7 @@ export class GroupsService {
     // no embedding yet (worker hasn't processed it): an empty page, not an error
     if (!source) return { items: [], total: 0 }
 
+    const vector = toVectorSql(source.embedding)
     const rows: { id: string }[] = await this.dataSource.transaction(async (em) => {
       // same ef_search plumbing as search: HNSW scans cap at ef_search rows
       await em.query(`SELECT set_config('hnsw.ef_search', $1, true)`, [
@@ -81,13 +82,41 @@ export class GroupsService {
            AND ae."assetId" <> $3
          ORDER BY ae.embedding::halfvec(${SEARCH_EMBEDDING_DIM}) <=> $4::halfvec(${SEARCH_EMBEDDING_DIM})
          LIMIT $5`,
-        [userId, SEARCH_EMBEDDING_MODEL, assetId, toVectorSql(source.embedding), limit],
+        [userId, SEARCH_EMBEDDING_MODEL, assetId, vector, limit],
       )
     })
-    const items = await this.assets.listByIdsRanked(
-      userId,
-      rows.map((r) => r.id),
+    // The index spans every user and pgvector applies the owner filter after the scan, so other
+    // users' near-identical photos can fill the ef_search window and short-change this owner (an
+    // empty "More like this" tray, e2e-searchable only by luck). The graph never reached the
+    // missing rows, so the scan cannot be resumed for them — finish the page with an exact scan.
+    const ids =
+      rows.length < limit
+        ? await this.exactSimilar(userId, assetId, vector, limit)
+        : rows.map((row) => row.id)
+    const items = await this.assets.listByIdsRanked(userId, ids)
+    return { items, total: ids.length }
+  }
+
+  /** Exact (unindexed) neighbour page for one owner — the ANN page came back short. */
+  private async exactSimilar(
+    userId: string,
+    assetId: string,
+    vector: string,
+    limit: number,
+  ): Promise<string[]> {
+    const rows: { id: string }[] = await this.dataSource.query(
+      // `+ 0` keeps the planner off the HNSW index: its distance ordering is exactly what
+      // starved the ANN page, so this fallback has to sort the owner's rows itself
+      `SELECT ae."assetId" AS id
+       FROM asset_embeddings ae
+       JOIN assets a ON a.id = ae."assetId"
+       WHERE a."userId" = $1 AND a."isTrashed" = false
+         AND ae.kind = 'image' AND ae.model = $2
+         AND ae."assetId" <> $3
+       ORDER BY (ae.embedding::halfvec(${SEARCH_EMBEDDING_DIM}) <=> $4::halfvec(${SEARCH_EMBEDDING_DIM})) + 0
+       LIMIT $5`,
+      [userId, SEARCH_EMBEDDING_MODEL, assetId, vector, limit],
     )
-    return { items, total: rows.length }
+    return rows.map((row) => row.id)
   }
 }
