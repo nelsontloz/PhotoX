@@ -12,6 +12,8 @@ interface TimelineAssetsProps {
   onLongPress?: (asset: Asset) => void;
   /** Surface classes of the sticky day-header bands (dialogs pass their panel surface) */
   dayHeaderSurfaceClassName?: string;
+  /** Remember the day under the sticky header across reloads — see TimelineGrid */
+  rememberScroll?: boolean;
 }
 
 /** TimelineGrid pre-wired from a useTimelineView() result — one grid call for every view. */
@@ -20,6 +22,7 @@ export function TimelineAssets({ view, ...gridProps }: TimelineAssetsProps) {
     <TimelineGrid
       layout={view.timeline.layout}
       containerRef={view.timeline.containerRef}
+      measured={view.timeline.measured}
       groups={view.months.groups}
       monthStatus={view.months.monthStatus}
       ensureMonth={view.months.ensureMonth}

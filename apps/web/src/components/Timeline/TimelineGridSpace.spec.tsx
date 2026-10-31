@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { cleanup, render, waitFor, act } from '@testing-library/react';
 import type { RefObject } from 'react';
 import type { AssetLayout } from '@photox/shared-types';
-import { buildBuckets, type TimelineItem } from '../../lib/timelineLayout';
+import { buildBuckets, dayContentY, type TimelineItem } from '../../lib/timelineLayout';
+import { resetDayMemory } from '../../lib/timelineDayMemory';
 import { ScrollContainerContext } from '../AppShell';
 
 // Pinned measurement inputs — jsdom has no ResizeObserver and resolves no stylesheet vars, so the
@@ -79,12 +80,14 @@ const onSelectStub = vi.fn();
 const onToggleSelectStub = vi.fn();
 
 // Cheapest seam that keeps the real data flow: layout endpoint → useTimelineLayout → TimelineGrid.
-function TimelineHarness() {
-  const { layout, containerRef } = useTimelineLayout();
+function TimelineHarness({ rememberScroll }: { rememberScroll?: boolean }) {
+  const { layout, containerRef, measured } = useTimelineLayout();
   return (
     <TimelineGrid
       layout={layout}
       containerRef={containerRef}
+      measured={measured}
+      rememberScroll={rememberScroll}
       groups={[]}
       monthStatus={new Map()}
       ensureMonth={noopEnsureMonth}
@@ -188,5 +191,112 @@ describe('TimelineGrid reserved space', () => {
     expect(dayEls[0]?.querySelector('.fixed-row-gallery')).not.toBeNull();
     expect(dayEls[1]?.style.height).toBe('265px');
     expect(dayEls[1]?.querySelector('.fixed-row-gallery')).toBeNull();
+  });
+});
+
+describe('TimelineGrid day memory', () => {
+  const STORAGE_KEY = 'photox.timeline.day';
+  const layout = buildBuckets(LAYOUT_ITEMS, {
+    containerWidth: CONTAINER_WIDTH,
+    rowHeight: ROW_HEIGHT,
+  });
+
+  /** Scroll container fake: scrollTop is writable, scrollTo moves it synchronously like a browser. */
+  function fakeScroller() {
+    const el = document.createElement('div');
+    let top = 0;
+    Object.defineProperty(el, 'scrollTop', {
+      get: () => top,
+      set: (value: number) => {
+        top = value;
+      },
+    });
+    Object.defineProperty(el, 'clientHeight', { value: 700 });
+    const scrollTo = vi.fn(({ top: next }: ScrollToOptions) => {
+      top = next ?? 0;
+    });
+    el.scrollTo = scrollTo as unknown as HTMLDivElement['scrollTo'];
+    return { ref: { current: el }, scrollTo };
+  }
+
+  function renderWithScroller(ref: RefObject<HTMLDivElement>, rememberScroll: boolean) {
+    return render(
+      <ScrollContainerContext.Provider value={ref}>
+        <TimelineHarness rememberScroll={rememberScroll} />
+      </ScrollContainerContext.Provider>,
+    );
+  }
+
+  beforeEach(() => {
+    getAssetLayoutMock.mockReset();
+    getAssetLayoutMock.mockResolvedValue({ items: LAYOUT_ITEMS } as AssetLayout);
+    stubMeasurement();
+    // the scroll handler schedules through rAF; run it inline so the test needs no frame timing
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    sessionStorage.clear();
+    resetDayMemory(); // each test is its own document load
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+  });
+
+  it('restores the remembered day on a reload, then starts a same-document visit at the top', async () => {
+    sessionStorage.setItem(STORAGE_KEY, '2025-12-15');
+    const first = fakeScroller();
+    const expected = dayContentY(layout, '2025-12-15');
+    expect(expected).not.toBeNull(); // guard: the fixture must contain the remembered day
+
+    renderWithScroller(first.ref, true);
+
+    await waitFor(() =>
+      expect(first.scrollTo).toHaveBeenCalledWith({ top: expected, behavior: 'instant' }),
+    );
+    expect(first.ref.current?.scrollTop).toBe(expected);
+
+    // away and back to the timeline: same document, so the day is not restored — latest first
+    cleanup();
+    const second = fakeScroller();
+    renderWithScroller(second.ref, true);
+    await waitFor(() =>
+      expect(second.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'instant' }),
+    );
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBe('2026-03-20'); // landing at the top re-remembers it
+  });
+
+  it('remembers the day under the sticky header while scrolling', async () => {
+    const { ref } = fakeScroller();
+    renderWithScroller(ref, true);
+    // wait for the measured layout: the restore path is a no-op, so only `measured` gates the save
+    await waitFor(() => expect(getAssetLayoutMock).toHaveBeenCalledTimes(1));
+
+    const target = dayContentY(layout, '2025-10-15');
+    expect(target).not.toBeNull();
+    ref.current.scrollTop = target! + 10;
+    act(() => {
+      ref.current.dispatchEvent(new Event('scroll'));
+    });
+
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBe('2025-10-15');
+  });
+
+  it('leaves sessionStorage alone when the grid does not opt in', async () => {
+    const { ref } = fakeScroller();
+    renderWithScroller(ref, false);
+    await waitFor(() => expect(getAssetLayoutMock).toHaveBeenCalledTimes(1));
+
+    ref.current.scrollTop = 1000;
+    act(() => {
+      ref.current.dispatchEvent(new Event('scroll'));
+    });
+
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 });

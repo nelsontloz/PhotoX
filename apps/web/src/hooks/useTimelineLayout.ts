@@ -12,6 +12,8 @@ export interface UseTimelineLayoutResult {
   /** Raw layout-endpoint items in effective-date desc order — used for viewer navigation beyond the loaded months */
   layoutItems: TimelineItem[];
   containerRef: (el: HTMLDivElement | null) => void;
+  /** Both measurement inputs are in: day heights are the real ones (before this, one row per day) */
+  measured: boolean;
   loading: boolean;
   error: string | null;
 }
@@ -88,5 +90,12 @@ export function useTimelineLayout(filters: AssetFilters = {}): UseTimelineLayout
     [layoutItems, containerWidth, rowHeight],
   );
 
-  return { layout, layoutItems, containerRef, loading, error };
+  return {
+    layout,
+    layoutItems,
+    containerRef,
+    measured: containerWidth > 0 && rowHeight > 0,
+    loading,
+    error,
+  };
 }

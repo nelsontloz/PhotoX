@@ -74,6 +74,26 @@ export function packRows(items: readonly Dims[], opts: TimelineLayoutOptions): n
   return rows;
 }
 
+/** Day whose section top is the last at or before `contentY` — the day under the sticky header. */
+export function dayAtContentY(layout: TimelineLayout, contentY: number): string | null {
+  let key: string | null = null;
+  for (const bucket of layout.buckets) {
+    if (bucket.top > contentY) break;
+    for (const day of bucket.days) {
+      if (bucket.top + day.top > contentY) return key;
+      key = day.sortKey;
+    }
+  }
+  return key;
+}
+
+/** Absolute content offset of a day's section top, or null if the layout no longer holds that day. */
+export function dayContentY(layout: TimelineLayout, sortKey: string): number | null {
+  const bucket = layout.buckets.find((b) => b.key === sortKey.slice(0, 7));
+  const day = bucket?.days.find((d) => d.sortKey === sortKey);
+  return bucket && day ? bucket.top + day.top : null;
+}
+
 export function buildBuckets(
   items: readonly TimelineItem[],
   opts: TimelineLayoutOptions,

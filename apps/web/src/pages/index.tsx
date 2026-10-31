@@ -115,6 +115,7 @@ function TimelineContent() {
         {/* fixed overlay — inside DropZone so file drops onto the strip still reach its handlers */}
         <TimelineAssets
           view={view}
+          rememberScroll
           onSelect={onClickAsset}
           selectedIds={selectedIds}
           onToggleSelect={toggle}

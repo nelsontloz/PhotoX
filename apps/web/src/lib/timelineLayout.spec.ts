@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildBuckets, packRows } from './timelineLayout';
+import { buildBuckets, dayAtContentY, dayContentY, packRows } from './timelineLayout';
 import type { TimelineItem, TimelineLayoutOptions } from './timelineLayout';
 
 const OPTS: TimelineLayoutOptions = { containerWidth: 1152, rowHeight: 200 };
@@ -155,5 +155,41 @@ describe('buildBuckets', () => {
 
   it('returns no buckets and zero height for empty input', () => {
     expect(buildBuckets([], OPTS)).toEqual({ buckets: [], totalHeight: 0 });
+  });
+});
+
+describe('dayAtContentY / dayContentY', () => {
+  // Two buckets: 2026-03 (top 0, height 474: days at 0/205) and 2026-02 (top 514: days at 0/205)
+  const layout = buildBuckets(
+    [
+      ...dayItems('2026-03-20', 4, 1000, 1000), // 1 row → 165
+      ...dayItems('2026-03-15', 5, 1000, 1000), // 2 rows → 269 (ends at 474)
+      ...dayItems('2026-02-28', 1, 1000, 1000), // 1 row → 165
+      ...dayItems('2026-02-10', 9, 1000, 1000), // 3 rows → 373
+    ],
+    { containerWidth: 500, rowHeight: 100 },
+  );
+
+  it('reads the day under the viewport top, crossing month buckets', () => {
+    expect(dayAtContentY(layout, 0)).toBe('2026-03-20');
+    expect(dayAtContentY(layout, 100)).toBe('2026-03-20');
+    expect(dayAtContentY(layout, 205)).toBe('2026-03-15');
+    expect(dayAtContentY(layout, 500)).toBe('2026-03-15'); // 40px gap between days → the earlier one
+    expect(dayAtContentY(layout, 514)).toBe('2026-02-28'); // next bucket's first day
+    expect(dayAtContentY(layout, 10_000)).toBe('2026-02-10'); // past the end → last day
+    expect(dayAtContentY(layout, -1)).toBeNull(); // above the timeline
+    expect(dayAtContentY({ buckets: [], totalHeight: 0 }, 0)).toBeNull();
+  });
+
+  it('round-trips a day key through its content offset', () => {
+    for (const bucket of layout.buckets) {
+      for (const day of bucket.days) {
+        const y = dayContentY(layout, day.sortKey);
+        expect(y).toBe(bucket.top + day.top);
+        expect(dayAtContentY(layout, y!)).toBe(day.sortKey);
+      }
+    }
+    expect(dayContentY(layout, '2024-01-01')).toBeNull(); // day no longer in the layout
+    expect(dayContentY(layout, '2026-03-11')).toBeNull(); // month exists, day doesn't
   });
 });

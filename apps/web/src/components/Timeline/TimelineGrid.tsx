@@ -3,6 +3,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -10,7 +11,13 @@ import {
 import type { Asset } from '@photox/shared-types';
 import type { AssetGroup } from '../../hooks/useAssetGroups';
 import type { MonthStatus, UseTimelineMonthsResult } from '../../hooks/useTimelineMonths';
-import { TIMELINE_PREFETCH_PX, type TimelineLayout } from '../../lib/timelineLayout';
+import {
+  dayAtContentY,
+  dayContentY,
+  TIMELINE_PREFETCH_PX,
+  type TimelineLayout,
+} from '../../lib/timelineLayout';
+import { saveDay, takeSavedDay } from '../../lib/timelineDayMemory';
 import { groupDateLabelFromSortKey } from '../../lib/dateFormat';
 import { GalleryItem } from '../GalleryItem';
 import { ScrollContainerContext } from '../AppShell';
@@ -38,10 +45,26 @@ interface TimelineGridProps {
    * as stripes; the day title inherits the band's color.
    */
   dayHeaderSurfaceClassName?: string;
+  /**
+   * Remember the day under the sticky header (sessionStorage) and return to it on a document
+   * load — the home timeline opts in so a reload lands where you were, while arriving from another
+   * page starts at the top. Other grids leave it off.
+   */
+  rememberScroll?: boolean;
+  /**
+   * Both measurement inputs are in (from `useTimelineLayout`). Gates the scroll restore: before
+   * this, every day reserves one row, so the restore would land at the wrong offset.
+   */
+  measured?: boolean;
 }
 
 /** Module-level so read-only grids keep a referentially stable default across renders (memoized children). */
 const EMPTY_SELECTED_IDS: ReadonlySet<string> = new Set();
+
+/** The scroll container's top padding: content starts this far below scroll offset 0. */
+function scrollPadTop(el: HTMLElement): number {
+  return parseFloat(getComputedStyle(el).paddingTop) || 0;
+}
 
 const DAY_HEADER_CLASS =
   'flex items-end gap-3 mb-4 sticky top-0 z-30 py-2 -mx-4 px-4 sm:-mx-8 sm:px-8 border-b border-transparent dark:border-transparent transition-all';
@@ -83,6 +106,8 @@ export function TimelineGrid({
   onToggleSelect,
   onLongPress,
   dayHeaderSurfaceClassName = DAY_HEADER_PAGE_SURFACE,
+  rememberScroll = false,
+  measured = true,
 }: TimelineGridProps) {
   const selectionMode = selectedIds.size > 0;
   // Refresh signal (bumped by uploads/trash): re-triggers ensureMonth for the mounted months.
@@ -90,6 +115,11 @@ export function TimelineGrid({
   const refreshKey = useAppStore((s) => s.timelineRefreshKey);
   const scrollContainer = useContext(ScrollContainerContext);
   const [scrollPos, setScrollPos] = useState({ top: 0, height: 0 });
+
+  // Day memory (home timeline only): read at first render so nothing can overwrite it before the
+  // restore, which is one-shot — after it runs, later layout changes must not yank the scroll.
+  const savedDayRef = useRef<string | null>(rememberScroll ? takeSavedDay() : null);
+  const memoryReadyRef = useRef(false);
 
   // Scroll source = AppShell's <main> — the same container the sticky headers depend on.
   // No container (outside AppShell) → keep {0,0} → every bucket mounts (safe fallback).
@@ -113,6 +143,36 @@ export function TimelineGrid({
       window.removeEventListener('resize', onScroll);
     };
   }, [scrollContainer]);
+
+  // Restore before paint (layout effect) so a reload lands on the remembered day, not on a flash of
+  // the top. 'instant' because <main> is scroll-smooth: an animated restore can be interrupted.
+  // No remembered day (arriving from another page) → the top, since <main> keeps the last page's
+  // offset. Both only once: a later layout change must not move the scroll.
+  useLayoutEffect(() => {
+    // layout.buckets is empty until the layout endpoint lands — restoring then would consume the
+    // saved day against an empty track
+    if (!rememberScroll || !measured || layout.buckets.length === 0) return;
+    if (memoryReadyRef.current) return;
+    memoryReadyRef.current = true;
+    const day = savedDayRef.current;
+    savedDayRef.current = null;
+    const el = scrollContainer?.current;
+    if (!el) return;
+    const y = day === null ? 0 : (dayContentY(layout, day) ?? 0);
+    el.scrollTo({ top: y + scrollPadTop(el), behavior: 'instant' });
+    setScrollPos({ top: el.scrollTop, height: el.clientHeight });
+  }, [rememberScroll, measured, layout, scrollContainer]);
+
+  // Save the day under the sticky header. el.scrollTop (not scrollPos) is the truth here: on the
+  // commit that flips `measured` this runs after the restore but before scrollPos catches up, and
+  // the stale {0, 0} would otherwise remember the newest day.
+  useEffect(() => {
+    if (!rememberScroll || !memoryReadyRef.current) return;
+    const el = scrollContainer?.current;
+    if (!el) return;
+    const day = dayAtContentY(layout, el.scrollTop - scrollPadTop(el));
+    if (day !== null) saveDay(day);
+  }, [scrollPos, layout, rememberScroll, scrollContainer]);
 
   const groupsByDay = useMemo(() => new Map(groups.map((g) => [g.sortKey, g])), [groups]);
 
