@@ -1,25 +1,25 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import ExifReader from 'exifreader'
-import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor'
-import { runFfprobeJson, type FfprobeResult } from './ffmpeg'
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import ExifReader from 'exifreader';
+import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor';
+import { runFfprobeJson, type FfprobeResult } from './ffmpeg';
 
 vi.mock('exifreader', () => ({
   default: {
     load: vi.fn(),
   },
-}))
+}));
 
 vi.mock('./ffmpeg', () => ({
   runFfprobeJson: vi.fn(),
-}))
+}));
 
 describe('MetadataExtractor', () => {
-  let extractor: MetadataExtractor
+  let extractor: MetadataExtractor;
 
   beforeEach(() => {
-    vi.resetAllMocks()
-    extractor = new MetadataExtractor()
-  })
+    vi.resetAllMocks();
+    extractor = new MetadataExtractor();
+  });
 
   function photoWith(exif: Record<string, unknown>): ReturnType<typeof ExifReader.load> {
     return {
@@ -31,7 +31,7 @@ describe('MetadataExtractor', () => {
       },
       gps: {},
       file: {},
-    } as unknown as ReturnType<typeof ExifReader.load>
+    } as unknown as ReturnType<typeof ExifReader.load>;
   }
 
   it('extracts full metadata from iPhone photo with GPS', () => {
@@ -65,46 +65,46 @@ describe('MetadataExtractor', () => {
         'Image Height': { value: 3024 },
         MIMEType: { value: ['image/jpeg'], description: 'image/jpeg' },
       },
-    } as unknown as ReturnType<typeof ExifReader.load>)
+    } as unknown as ReturnType<typeof ExifReader.load>);
 
-    const result = extractor.extract(Buffer.from('fake-jpeg'))
+    const result = extractor.extract(Buffer.from('fake-jpeg'));
 
-    expect(result.cameraMake).toBe('Apple')
-    expect(result.cameraModel).toBe('iPhone 15 Pro')
-    expect(result.lensModel).toBe('iPhone 15 Pro back triple camera 6.86mm f/1.78')
-    expect(result.takenAt).toEqual(new Date('2024-06-15T14:30:00.000Z'))
-    expect(result.fNumber).toBe(1.78)
-    expect(result.exposureTime).toBe(0.004)
-    expect(result.iso).toBe(64)
-    expect(result.focalLength).toBe(6.86)
-    expect(result.orientation).toBe(1)
-    expect(result.width).toBe(4032)
-    expect(result.height).toBe(3024)
-    expect(result.latitude).toBe(40.75)
-    expect(result.longitude).toBe(-73.99)
-    expect(result.altitude).toBe(10.5)
-  })
+    expect(result.cameraMake).toBe('Apple');
+    expect(result.cameraModel).toBe('iPhone 15 Pro');
+    expect(result.lensModel).toBe('iPhone 15 Pro back triple camera 6.86mm f/1.78');
+    expect(result.takenAt).toEqual(new Date('2024-06-15T14:30:00.000Z'));
+    expect(result.fNumber).toBe(1.78);
+    expect(result.exposureTime).toBe(0.004);
+    expect(result.iso).toBe(64);
+    expect(result.focalLength).toBe(6.86);
+    expect(result.orientation).toBe(1);
+    expect(result.width).toBe(4032);
+    expect(result.height).toBe(3024);
+    expect(result.latitude).toBe(40.75);
+    expect(result.longitude).toBe(-73.99);
+    expect(result.altitude).toBe(10.5);
+  });
 
   it('applies OffsetTimeOriginal: takenAt is the UTC instant of the local wall time', () => {
     vi.mocked(ExifReader.load).mockReturnValue(
       photoWith({ OffsetTimeOriginal: { value: ['+02:00'], description: '+02:00' } }),
-    )
+    );
 
-    const result = extractor.extract(Buffer.from('fake-jpeg'))
+    const result = extractor.extract(Buffer.from('fake-jpeg'));
 
-    expect(result.takenAt).toEqual(new Date('2024-06-15T12:30:00.000Z'))
-  })
+    expect(result.takenAt).toEqual(new Date('2024-06-15T12:30:00.000Z'));
+  });
 
   it.each(['-05:00', '-0500'])('subtracts a negative OffsetTimeOriginal (%s)', (offset) => {
     vi.mocked(ExifReader.load).mockReturnValue(
       photoWith({ OffsetTimeOriginal: { value: [offset], description: offset } }),
-    )
+    );
 
-    const result = extractor.extract(Buffer.from('fake-jpeg'))
+    const result = extractor.extract(Buffer.from('fake-jpeg'));
 
     // 14:30 local at UTC−5 is 19:30Z
-    expect(result.takenAt).toEqual(new Date('2024-06-15T19:30:00.000Z'))
-  })
+    expect(result.takenAt).toEqual(new Date('2024-06-15T19:30:00.000Z'));
+  });
 
   it.each([undefined, 'bogus', '+99:99'])(
     'keeps UTC wall time for an absent or unusable offset (%s)',
@@ -115,43 +115,43 @@ describe('MetadataExtractor', () => {
             ? {}
             : { OffsetTimeOriginal: { value: [offset], description: offset } },
         ),
-      )
+      );
 
-      const result = extractor.extract(Buffer.from('fake-jpeg'))
+      const result = extractor.extract(Buffer.from('fake-jpeg'));
 
-      expect(result.takenAt).toEqual(new Date('2024-06-15T14:30:00.000Z'))
+      expect(result.takenAt).toEqual(new Date('2024-06-15T14:30:00.000Z'));
     },
-  )
+  );
 
   it.each([5, 6, 7, 8])('swaps reported width/height for EXIF orientation %i', (orientation) => {
-    vi.mocked(ExifReader.load).mockReturnValue(photoWith({ Orientation: { value: orientation } }))
+    vi.mocked(ExifReader.load).mockReturnValue(photoWith({ Orientation: { value: orientation } }));
 
-    const result = extractor.extract(Buffer.from('fake-jpeg'))
+    const result = extractor.extract(Buffer.from('fake-jpeg'));
 
-    expect(result.orientation).toBe(orientation)
-    expect(result.width).toBe(3000)
-    expect(result.height).toBe(4000)
-  })
+    expect(result.orientation).toBe(orientation);
+    expect(result.width).toBe(3000);
+    expect(result.height).toBe(4000);
+  });
 
   it.each([1, 2, 3, 4])('keeps reported width/height for EXIF orientation %i', (orientation) => {
-    vi.mocked(ExifReader.load).mockReturnValue(photoWith({ Orientation: { value: orientation } }))
+    vi.mocked(ExifReader.load).mockReturnValue(photoWith({ Orientation: { value: orientation } }));
 
-    const result = extractor.extract(Buffer.from('fake-jpeg'))
+    const result = extractor.extract(Buffer.from('fake-jpeg'));
 
-    expect(result.orientation).toBe(orientation)
-    expect(result.width).toBe(4000)
-    expect(result.height).toBe(3000)
-  })
+    expect(result.orientation).toBe(orientation);
+    expect(result.width).toBe(4000);
+    expect(result.height).toBe(3000);
+  });
 
   it('keeps reported width/height when no orientation tag is present', () => {
-    vi.mocked(ExifReader.load).mockReturnValue(photoWith({}))
+    vi.mocked(ExifReader.load).mockReturnValue(photoWith({}));
 
-    const result = extractor.extract(Buffer.from('fake-jpeg'))
+    const result = extractor.extract(Buffer.from('fake-jpeg'));
 
-    expect(result.orientation).toBeNull()
-    expect(result.width).toBe(4000)
-    expect(result.height).toBe(3000)
-  })
+    expect(result.orientation).toBeNull();
+    expect(result.width).toBe(4000);
+    expect(result.height).toBe(3000);
+  });
 
   it('extracts EXIF fields but returns null GPS when none present', () => {
     vi.mocked(ExifReader.load).mockReturnValue({
@@ -176,71 +176,71 @@ describe('MetadataExtractor', () => {
         'Image Width': { value: 4000 },
         'Image Height': { value: 3000 },
       },
-    } as unknown as ReturnType<typeof ExifReader.load>)
+    } as unknown as ReturnType<typeof ExifReader.load>);
 
-    const result = extractor.extract(Buffer.from('fake-jpeg'))
+    const result = extractor.extract(Buffer.from('fake-jpeg'));
 
-    expect(result.cameraMake).toBe('Samsung')
-    expect(result.cameraModel).toBe('SM-S918B')
-    expect(result.lensModel).toBe('Samsung Galaxy S24 Ultra')
-    expect(result.takenAt).toEqual(new Date('2024-03-20T09:15:30.000Z'))
-    expect(result.latitude).toBeNull()
-    expect(result.longitude).toBeNull()
-    expect(result.altitude).toBeNull()
-    expect(result.iso).toBe(100)
+    expect(result.cameraMake).toBe('Samsung');
+    expect(result.cameraModel).toBe('SM-S918B');
+    expect(result.lensModel).toBe('Samsung Galaxy S24 Ultra');
+    expect(result.takenAt).toEqual(new Date('2024-03-20T09:15:30.000Z'));
+    expect(result.latitude).toBeNull();
+    expect(result.longitude).toBeNull();
+    expect(result.altitude).toBeNull();
+    expect(result.iso).toBe(100);
     // orientation 6 is a quarter turn — the display dims are the swapped raw dims
-    expect(result.width).toBe(3000)
-    expect(result.height).toBe(4000)
-    expect(result.orientation).toBe(6)
-  })
+    expect(result.width).toBe(3000);
+    expect(result.height).toBe(4000);
+    expect(result.orientation).toBe(6);
+  });
 
   it('returns all null fields for JPEG with no EXIF data', () => {
-    vi.mocked(ExifReader.load).mockReturnValue({} as unknown as ReturnType<typeof ExifReader.load>)
+    vi.mocked(ExifReader.load).mockReturnValue({} as unknown as ReturnType<typeof ExifReader.load>);
 
-    const result = extractor.extract(Buffer.from('empty-jpeg'))
+    const result = extractor.extract(Buffer.from('empty-jpeg'));
 
-    expect(result.takenAt).toBeNull()
-    expect(result.cameraMake).toBeNull()
-    expect(result.cameraModel).toBeNull()
-    expect(result.lensModel).toBeNull()
-    expect(result.orientation).toBeNull()
-    expect(result.width).toBeNull()
-    expect(result.height).toBeNull()
-    expect(result.latitude).toBeNull()
-    expect(result.longitude).toBeNull()
-    expect(result.altitude).toBeNull()
-    expect(result.iso).toBeNull()
-    expect(result.fNumber).toBeNull()
-    expect(result.exposureTime).toBeNull()
-    expect(result.focalLength).toBeNull()
-  })
+    expect(result.takenAt).toBeNull();
+    expect(result.cameraMake).toBeNull();
+    expect(result.cameraModel).toBeNull();
+    expect(result.lensModel).toBeNull();
+    expect(result.orientation).toBeNull();
+    expect(result.width).toBeNull();
+    expect(result.height).toBeNull();
+    expect(result.latitude).toBeNull();
+    expect(result.longitude).toBeNull();
+    expect(result.altitude).toBeNull();
+    expect(result.iso).toBeNull();
+    expect(result.fNumber).toBeNull();
+    expect(result.exposureTime).toBeNull();
+    expect(result.focalLength).toBeNull();
+  });
 
   it('returns empty metadata when ExifReader throws', () => {
     vi.mocked(ExifReader.load).mockImplementation(() => {
-      throw new Error('invalid EXIF')
-    })
+      throw new Error('invalid EXIF');
+    });
 
-    const result = extractor.extract(Buffer.from('corrupt'))
+    const result = extractor.extract(Buffer.from('corrupt'));
 
-    expect(result.takenAt).toBeNull()
-    expect(result.cameraMake).toBeNull()
-    expect(result.cameraModel).toBeNull()
-    expect(result.lensModel).toBeNull()
-    expect(result.orientation).toBeNull()
-    expect(result.width).toBeNull()
-    expect(result.height).toBeNull()
-    expect(result.latitude).toBeNull()
-    expect(result.longitude).toBeNull()
-    expect(result.altitude).toBeNull()
-    expect(result.iso).toBeNull()
-    expect(result.fNumber).toBeNull()
-    expect(result.exposureTime).toBeNull()
-    expect(result.focalLength).toBeNull()
-  })
-})
+    expect(result.takenAt).toBeNull();
+    expect(result.cameraMake).toBeNull();
+    expect(result.cameraModel).toBeNull();
+    expect(result.lensModel).toBeNull();
+    expect(result.orientation).toBeNull();
+    expect(result.width).toBeNull();
+    expect(result.height).toBeNull();
+    expect(result.latitude).toBeNull();
+    expect(result.longitude).toBeNull();
+    expect(result.altitude).toBeNull();
+    expect(result.iso).toBeNull();
+    expect(result.fNumber).toBeNull();
+    expect(result.exposureTime).toBeNull();
+    expect(result.focalLength).toBeNull();
+  });
+});
 
 describe('VideoMetadataExtractor', () => {
-  let extractor: VideoMetadataExtractor
+  let extractor: VideoMetadataExtractor;
 
   function probeWith(dims: { width?: number; height?: number }, rotation?: number): FfprobeResult {
     return {
@@ -254,51 +254,51 @@ describe('VideoMetadataExtractor', () => {
         },
       ],
       format: { filename: 'video.mp4' },
-    }
+    };
   }
 
   beforeEach(() => {
-    vi.resetAllMocks()
-    extractor = new VideoMetadataExtractor()
-  })
+    vi.resetAllMocks();
+    extractor = new VideoMetadataExtractor();
+  });
 
   it('swaps width/height for a 90°-rotated video and preserves orientation', async () => {
-    vi.mocked(runFfprobeJson).mockResolvedValue(probeWith({ width: 1920, height: 1080 }, 90))
+    vi.mocked(runFfprobeJson).mockResolvedValue(probeWith({ width: 1920, height: 1080 }, 90));
 
-    const result = await extractor.extract('/tmp/rotated.mp4')
+    const result = await extractor.extract('/tmp/rotated.mp4');
 
-    expect(result.width).toBe(1080)
-    expect(result.height).toBe(1920)
-    expect(result.orientation).toBe(90)
-  })
+    expect(result.width).toBe(1080);
+    expect(result.height).toBe(1920);
+    expect(result.orientation).toBe(90);
+  });
 
   it('swaps width/height for a 270°-rotated video and preserves orientation', async () => {
-    vi.mocked(runFfprobeJson).mockResolvedValue(probeWith({ width: 1920, height: 1080 }, 270))
+    vi.mocked(runFfprobeJson).mockResolvedValue(probeWith({ width: 1920, height: 1080 }, 270));
 
-    const result = await extractor.extract('/tmp/rotated.mp4')
+    const result = await extractor.extract('/tmp/rotated.mp4');
 
-    expect(result.width).toBe(1080)
-    expect(result.height).toBe(1920)
-    expect(result.orientation).toBe(270)
-  })
+    expect(result.width).toBe(1080);
+    expect(result.height).toBe(1920);
+    expect(result.orientation).toBe(270);
+  });
 
   it.each([0, 180])('keeps width/height for a rotation-%i video', async (rotation) => {
-    vi.mocked(runFfprobeJson).mockResolvedValue(probeWith({ width: 1920, height: 1080 }, rotation))
+    vi.mocked(runFfprobeJson).mockResolvedValue(probeWith({ width: 1920, height: 1080 }, rotation));
 
-    const result = await extractor.extract('/tmp/unrotated.mp4')
+    const result = await extractor.extract('/tmp/unrotated.mp4');
 
-    expect(result.width).toBe(1920)
-    expect(result.height).toBe(1080)
-    expect(result.orientation).toBe(rotation)
-  })
+    expect(result.width).toBe(1920);
+    expect(result.height).toBe(1080);
+    expect(result.orientation).toBe(rotation);
+  });
 
   it('keeps null dims for a rotated video missing stream dimensions', async () => {
-    vi.mocked(runFfprobeJson).mockResolvedValue(probeWith({}, 90))
+    vi.mocked(runFfprobeJson).mockResolvedValue(probeWith({}, 90));
 
-    const result = await extractor.extract('/tmp/rotated.mp4')
+    const result = await extractor.extract('/tmp/rotated.mp4');
 
-    expect(result.width).toBeNull()
-    expect(result.height).toBeNull()
-    expect(result.orientation).toBe(90)
-  })
-})
+    expect(result.width).toBeNull();
+    expect(result.height).toBeNull();
+    expect(result.orientation).toBe(90);
+  });
+});

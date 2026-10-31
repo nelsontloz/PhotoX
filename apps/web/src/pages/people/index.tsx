@@ -1,45 +1,45 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { FaArrowsRotate, FaCheck, FaSpinner, FaUsers, FaFaceSmile } from 'react-icons/fa6'
-import { RequireAuth } from '../../components/RequireAuth'
-import { AppShell } from '../../components/AppShell'
-import { LoadingState } from '../../components/StateViews'
-import { FaceThumb } from '../../components/FaceThumb'
-import { listAllPersons, triggerCluster } from '../../api/persons'
-import { useAsyncFetch } from '../../hooks/useAsyncFetch'
-import type { PersonDto } from '@photox/shared-types'
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { FaArrowsRotate, FaCheck, FaSpinner, FaUsers, FaFaceSmile } from 'react-icons/fa6';
+import { RequireAuth } from '../../components/RequireAuth';
+import { AppShell } from '../../components/AppShell';
+import { LoadingState } from '../../components/StateViews';
+import { FaceThumb } from '../../components/FaceThumb';
+import { listAllPersons, triggerCluster } from '../../api/persons';
+import { useAsyncFetch } from '../../hooks/useAsyncFetch';
+import type { PersonDto } from '@photox/shared-types';
 
-const EMPTY: PersonDto[] = []
+const EMPTY: PersonDto[] = [];
 
 export default function PeoplePage() {
   const { data, loading, refresh } = useAsyncFetch(() => listAllPersons(), {
     errorMessage: 'Failed to load people',
-  })
-  const persons = data ?? EMPTY
-  const [clustering, setClustering] = useState(false)
-  const [clusterQueued, setClusterQueued] = useState(false)
+  });
+  const persons = data ?? EMPTY;
+  const [clustering, setClustering] = useState(false);
+  const [clusterQueued, setClusterQueued] = useState(false);
 
   const handleCluster = async () => {
-    if (clustering) return
-    setClustering(true)
-    setClusterQueued(false)
+    if (clustering) return;
+    setClustering(true);
+    setClusterQueued(false);
     try {
-      await triggerCluster()
-      setClusterQueued(true)
-      window.setTimeout(() => setClusterQueued(false), 3000)
+      await triggerCluster();
+      setClusterQueued(true);
+      window.setTimeout(() => setClusterQueued(false), 3000);
       // ponytail: refetch after worker has time to process; poll briefly in case of slow runs
-      let elapsed = 0
+      let elapsed = 0;
       const interval = window.setInterval(() => {
-        elapsed += 3000
-        void refresh()
-        if (elapsed >= 30000) window.clearInterval(interval)
-      }, 3000)
+        elapsed += 3000;
+        void refresh();
+        if (elapsed >= 30000) window.clearInterval(interval);
+      }, 3000);
     } catch {
       /* ponytail: silent fail */
     } finally {
-      setClustering(false)
+      setClustering(false);
     }
-  }
+  };
 
   return (
     <RequireAuth>
@@ -56,7 +56,7 @@ export default function PeoplePage() {
               )}
               <button
                 onClick={() => {
-                  void handleCluster()
+                  void handleCluster();
                 }}
                 disabled={clustering}
                 className="flex items-center gap-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-2 rounded-lg transition-all shadow-lg shadow-primary/20"
@@ -111,5 +111,5 @@ export default function PeoplePage() {
         </div>
       </AppShell>
     </RequireAuth>
-  )
+  );
 }

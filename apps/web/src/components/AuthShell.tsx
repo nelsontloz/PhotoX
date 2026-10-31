@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
-import { FaCamera, FaCircleExclamation, FaEye, FaEyeSlash, FaSpinner } from 'react-icons/fa6'
+import type { ReactNode } from 'react';
+import { FaCamera, FaCircleExclamation, FaEye, FaEyeSlash, FaSpinner } from 'react-icons/fa6';
 
 /** Shared login/register page shell: outer background, logo block, card and version footer. */
 export function AuthShell({
@@ -7,10 +7,10 @@ export function AuthShell({
   footer,
   children,
 }: {
-  subtitle: string
+  subtitle: string;
   /** Omitted → no footer strip at all (the card ends with the children). */
-  footer?: ReactNode
-  children: ReactNode
+  footer?: ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div className="font-display bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 antialiased min-h-screen flex flex-col justify-center items-center overflow-x-hidden selection:bg-primary selection:text-white">
@@ -39,20 +39,20 @@ export function AuthShell({
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 interface AuthFieldProps {
-  id: string
-  label: string
-  icon: typeof FaCamera
-  value: string
-  onChange: (value: string) => void
-  placeholder: string
-  type?: 'text' | 'email' | 'password'
+  id: string;
+  label: string;
+  icon: typeof FaCamera;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  type?: 'text' | 'email' | 'password';
   /** Password fields: pass the toggle state/handler to get the eye button. */
-  showPassword?: boolean
-  onTogglePassword?: () => void
+  showPassword?: boolean;
+  onTogglePassword?: () => void;
 }
 
 /** Icon-prefixed auth input; a toggle handler turns it into a password field with the eye button. */
@@ -67,7 +67,7 @@ export function AuthField({
   showPassword,
   onTogglePassword,
 }: AuthFieldProps) {
-  const toggles = onTogglePassword !== undefined
+  const toggles = onTogglePassword !== undefined;
   return (
     <div className="flex flex-col gap-2">
       <label className="text-sm font-medium text-slate-700 dark:text-slate-300" htmlFor={id}>
@@ -102,7 +102,7 @@ export function AuthField({
         )}
       </div>
     </div>
-  )
+  );
 }
 
 /** Dismissible auth error alert; renders nothing when there is no message. */
@@ -110,10 +110,10 @@ export function AuthError({
   message,
   onClear,
 }: {
-  message: string | null | undefined
-  onClear: () => void
+  message: string | null | undefined;
+  onClear: () => void;
 }) {
-  if (!message) return null
+  if (!message) return null;
   return (
     <div
       role="alert"
@@ -123,7 +123,7 @@ export function AuthError({
       <FaCircleExclamation className="text-[14px] shrink-0" />
       <span>{message}</span>
     </div>
-  )
+  );
 }
 
 /** Full-width auth submit: spinner while loading, label otherwise. */
@@ -136,5 +136,5 @@ export function AuthSubmit({ loading, label }: { loading: boolean; label: string
     >
       {loading ? <FaSpinner className="text-[18px] animate-spin" /> : label}
     </button>
-  )
+  );
 }

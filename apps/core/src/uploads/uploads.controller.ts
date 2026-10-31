@@ -11,17 +11,17 @@ import {
   Post,
   Put,
   Req,
-} from '@nestjs/common'
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
-import type { Request } from 'express'
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import type {
   UploadCompleteResponse,
   UploadSessionCreated,
   UploadSessionStatusResponse,
-} from '@photox/shared-types'
-import { CurrentUserId } from '../auth/jwt-auth.guard'
-import { UPLOAD_CHUNK_SIZE_BYTES, UploadsService, uploadErrorBody } from './uploads.service'
-import { CreateUploadSessionBodyDto } from './dto/create-upload-session.body.dto'
+} from '@photox/shared-types';
+import { CurrentUserId } from '../auth/jwt-auth.guard';
+import { UPLOAD_CHUNK_SIZE_BYTES, UploadsService, uploadErrorBody } from './uploads.service';
+import { CreateUploadSessionBodyDto } from './dto/create-upload-session.body.dto';
 
 /**
  * Reads one raw part body with a hard memory bound (never more than one chunk plus a stream
@@ -31,52 +31,52 @@ import { CreateUploadSessionBodyDto } from './dto/create-upload-session.body.dto
  * normal 400 instead of a reset connection.
  */
 export async function readPartBody(req: Request, maxBytes: number): Promise<Buffer> {
-  const header = req.headers['content-length']
-  const declared = typeof header === 'string' && /^\d+$/.test(header) ? Number(header) : null
+  const header = req.headers['content-length'];
+  const declared = typeof header === 'string' && /^\d+$/.test(header) ? Number(header) : null;
   if (declared === null) {
     throw new BadRequestException(
       uploadErrorBody(400, 'Content-Length header is required for part uploads', 'MISSING_LENGTH'),
-    )
+    );
   }
   if (declared === 0 || declared > maxBytes) {
     throw new BadRequestException(
       uploadErrorBody(400, `Part must be 1..${maxBytes} bytes, got ${declared}`, 'PART_TOO_LARGE'),
-    )
+    );
   }
   if (req.readableEnded) {
     // the default json/urlencoded parsers already consumed this body (wrong content type)
-    throw new BadRequestException(uploadErrorBody(400, 'Part body is empty', 'PART_TOO_LARGE'))
+    throw new BadRequestException(uploadErrorBody(400, 'Part body is empty', 'PART_TOO_LARGE'));
   }
 
-  const chunks: Buffer[] = []
-  let size = 0
-  let overflow = false
+  const chunks: Buffer[] = [];
+  let size = 0;
+  let overflow = false;
   await new Promise<void>((resolve, reject) => {
     req.on('data', (chunk: Buffer) => {
-      if (overflow) return
-      size += chunk.length
+      if (overflow) return;
+      size += chunk.length;
       if (size > maxBytes) {
-        overflow = true
-        chunks.length = 0
-        return
+        overflow = true;
+        chunks.length = 0;
+        return;
       }
-      chunks.push(chunk)
-    })
-    req.on('end', () => resolve())
-    req.on('error', (err) => reject(err))
-    req.on('aborted', () => reject(new BadRequestException('Part upload aborted by the client')))
-  })
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve());
+    req.on('error', (err) => reject(err));
+    req.on('aborted', () => reject(new BadRequestException('Part upload aborted by the client')));
+  });
 
   if (overflow) {
     throw new BadRequestException(
       uploadErrorBody(400, `Part must be at most ${maxBytes} bytes`, 'PART_TOO_LARGE'),
-    )
+    );
   }
-  const body = Buffer.concat(chunks)
+  const body = Buffer.concat(chunks);
   if (body.length === 0) {
-    throw new BadRequestException(uploadErrorBody(400, 'Part body is empty', 'PART_TOO_LARGE'))
+    throw new BadRequestException(uploadErrorBody(400, 'Part body is empty', 'PART_TOO_LARGE'));
   }
-  return body
+  return body;
 }
 
 @ApiTags('uploads')
@@ -95,7 +95,7 @@ export class UploadsController {
     @CurrentUserId() userId: string,
     @Body() body: CreateUploadSessionBodyDto,
   ): Promise<UploadSessionCreated> {
-    return this.uploads.create(userId, body)
+    return this.uploads.create(userId, body);
   }
 
   @Get(':uploadId')
@@ -107,7 +107,7 @@ export class UploadsController {
     @CurrentUserId() userId: string,
     @Param('uploadId') uploadId: string,
   ): Promise<UploadSessionStatusResponse> {
-    return this.uploads.status(userId, uploadId)
+    return this.uploads.status(userId, uploadId);
   }
 
   @Put(':uploadId/parts/:index')
@@ -126,8 +126,8 @@ export class UploadsController {
     @Headers('x-part-sha256') declaredSha256?: string,
   ): Promise<void> {
     // transport cap first (rejects oversized parts before buffering), then the service's rules
-    const body = await readPartBody(req, UPLOAD_CHUNK_SIZE_BYTES)
-    await this.uploads.putPart(userId, uploadId, index, body, declaredSha256 ?? null)
+    const body = await readPartBody(req, UPLOAD_CHUNK_SIZE_BYTES);
+    await this.uploads.putPart(userId, uploadId, index, body, declaredSha256 ?? null);
   }
 
   @Post(':uploadId/complete')
@@ -148,7 +148,7 @@ export class UploadsController {
     @CurrentUserId() userId: string,
     @Param('uploadId') uploadId: string,
   ): Promise<UploadCompleteResponse> {
-    return this.uploads.complete(userId, uploadId)
+    return this.uploads.complete(userId, uploadId);
   }
 
   @Delete(':uploadId')
@@ -159,6 +159,6 @@ export class UploadsController {
     @CurrentUserId() userId: string,
     @Param('uploadId') uploadId: string,
   ): Promise<void> {
-    await this.uploads.remove(userId, uploadId)
+    await this.uploads.remove(userId, uploadId);
   }
 }

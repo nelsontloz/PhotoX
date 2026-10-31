@@ -1,21 +1,21 @@
-import { useRef } from 'react'
-import { FaXmark } from 'react-icons/fa6'
-import type { Asset } from '@photox/shared-types'
-import { ScrollContainerContext } from '../../components/AppShell'
-import { GalleryItem } from '../../components/GalleryItem'
+import { useRef } from 'react';
+import { FaXmark } from 'react-icons/fa6';
+import type { Asset } from '@photox/shared-types';
+import { ScrollContainerContext } from '../../components/AppShell';
+import { GalleryItem } from '../../components/GalleryItem';
 
 interface MapSidePanelProps {
   /** Already capped to what the grid renders; `totalCount` keeps the real bubble size. */
-  assets: Asset[]
-  totalCount: number
-  onClose: () => void
-  onSelect: (asset: Asset) => void
+  assets: Asset[];
+  totalCount: number;
+  onClose: () => void;
+  onSelect: (asset: Asset) => void;
 }
 
 /** Photo list for the clicked map bubble on the places page. */
 export function MapSidePanel({ assets, totalCount, onClose, onSelect }: MapSidePanelProps) {
-  const bodyRef = useRef<HTMLDivElement>(null)
-  const remaining = totalCount - assets.length
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const remaining = totalCount - assets.length;
 
   return (
     <aside
@@ -66,5 +66,5 @@ export function MapSidePanel({ assets, totalCount, onClose, onSelect }: MapSideP
         </ScrollContainerContext.Provider>
       </div>
     </aside>
-  )
+  );
 }

@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api } from './client';
 import type {
   Asset,
   AssetLayout,
@@ -8,38 +8,38 @@ import type {
   FileExistsCheckItem,
   FileExistsCheckResponse,
   SearchResponse,
-} from '@photox/shared-types'
+} from '@photox/shared-types';
 
 interface ListAssetsParams {
-  limit?: number
-  offset?: number
-  isTrashed?: boolean
-  favorite?: boolean
-  hasLocations?: boolean
+  limit?: number;
+  offset?: number;
+  isTrashed?: boolean;
+  favorite?: boolean;
+  hasLocations?: boolean;
   // half-open range on COALESCE(takenAt, uploadedAt) — the timeline's per-month window
-  dateFrom?: string
-  dateTo?: string
+  dateFrom?: string;
+  dateTo?: string;
   /** Restricts to one person's assets (person detail grid) */
-  personId?: string
+  personId?: string;
   /** Restricts to one album's assets (album detail grid) */
-  albumId?: string
+  albumId?: string;
 }
 
 /** Asset-list/layout filters shared by the timeline-backed views (home, favorites, person, album). */
 export interface AssetFilters {
-  personId?: string
-  favorite?: boolean
-  albumId?: string
+  personId?: string;
+  favorite?: boolean;
+  albumId?: string;
 }
 
 export async function listAssets(params: ListAssetsParams = {}): Promise<AssetListResponse> {
-  const { isTrashed, ...rest } = params
+  const { isTrashed, ...rest } = params;
   if (isTrashed) {
-    const { data } = await api.get<AssetListResponse>('/v1/assets/trashed', { params: rest })
-    return data
+    const { data } = await api.get<AssetListResponse>('/v1/assets/trashed', { params: rest });
+    return data;
   }
-  const { data } = await api.get<AssetListResponse>('/v1/assets', { params: rest })
-  return data
+  const { data } = await api.get<AssetListResponse>('/v1/assets', { params: rest });
+  return data;
 }
 
 /**
@@ -47,28 +47,28 @@ export async function listAssets(params: ListAssetsParams = {}): Promise<AssetLi
  * size, not a cap; an empty first page returns [].
  */
 export async function listAllAssets(params: ListAssetsParams = {}): Promise<Asset[]> {
-  const limit = params.limit ?? 100
-  const first = await listAssets({ ...params, limit, offset: 0 })
-  const all = [...first.items]
-  if (first.items.length === 0 || all.length >= first.total) return all
-  const pages: Promise<AssetListResponse>[] = []
+  const limit = params.limit ?? 100;
+  const first = await listAssets({ ...params, limit, offset: 0 });
+  const all = [...first.items];
+  if (first.items.length === 0 || all.length >= first.total) return all;
+  const pages: Promise<AssetListResponse>[] = [];
   // ponytail: all remaining pages fire at once; the browser/HTTP stack caps concurrency.
   // Cap + retry if a single month ever exceeds a few thousand rows.
   for (let offset = limit; offset < first.total; offset += limit) {
-    pages.push(listAssets({ ...params, limit, offset }))
+    pages.push(listAssets({ ...params, limit, offset }));
   }
-  for (const page of await Promise.all(pages)) all.push(...page.items)
-  return all
+  for (const page of await Promise.all(pages)) all.push(...page.items);
+  return all;
 }
 
 export async function getAsset(assetId: string): Promise<Asset> {
-  const { data } = await api.get<Asset>(`/v1/assets/${assetId}`)
-  return data
+  const { data } = await api.get<Asset>(`/v1/assets/${assetId}`);
+  return data;
 }
 
 export async function getAssetLayout(filters: AssetFilters = {}): Promise<AssetLayout> {
-  const { data } = await api.get<AssetLayout>('/v1/assets/layout', { params: filters })
-  return data
+  const { data } = await api.get<AssetLayout>('/v1/assets/layout', { params: filters });
+  return data;
 }
 
 /**
@@ -77,7 +77,7 @@ export async function getAssetLayout(filters: AssetFilters = {}): Promise<AssetL
  * navigating to a JSON error page mid-download.
  */
 export async function preflightFileDownload(fileId: string): Promise<void> {
-  await api.head(`/v1/files/${fileId}/download`)
+  await api.head(`/v1/files/${fileId}/download`);
 }
 
 /**
@@ -85,7 +85,7 @@ export async function preflightFileDownload(fileId: string): Promise<void> {
  * memory) and the server already sets the filename via Content-Disposition.
  */
 export function getFileDownloadUrl(fileId: string): string {
-  return `/api/v1/files/${fileId}/download`
+  return `/api/v1/files/${fileId}/download`;
 }
 
 /**
@@ -93,7 +93,7 @@ export function getFileDownloadUrl(fileId: string): string {
  * which axios can't do for those tags (it sends no headers there at all).
  */
 export function getFileStreamUrl(fileId: string): string {
-  return `/api/v1/files/${fileId}/stream`
+  return `/api/v1/files/${fileId}/stream`;
 }
 
 export async function uploadFile(
@@ -104,91 +104,91 @@ export async function uploadFile(
   description?: string,
   takenAt?: string,
 ): Promise<Asset> {
-  const formData = new FormData()
-  formData.append('file', file)
-  if (kind) formData.append('kind', kind)
-  if (title) formData.append('title', title)
-  if (description) formData.append('description', description)
-  if (takenAt) formData.append('takenAt', takenAt)
+  const formData = new FormData();
+  formData.append('file', file);
+  if (kind) formData.append('kind', kind);
+  if (title) formData.append('title', title);
+  if (description) formData.append('description', description);
+  if (takenAt) formData.append('takenAt', takenAt);
 
   const { data } = await api.post<Asset>('/v1/files', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 3_600_000,
     onUploadProgress: (e) => {
       if (onProgress && e.total) {
-        onProgress(Math.round((e.loaded / e.total) * 100))
+        onProgress(Math.round((e.loaded / e.total) * 100));
       }
     },
-  })
-  return data
+  });
+  return data;
 }
 
 export async function updateAsset(
   id: string,
   body: { favorite?: boolean; title?: string; description?: string; takenAt?: string },
 ): Promise<Asset> {
-  const { data } = await api.patch<Asset>(`/v1/assets/${id}`, body)
-  return data
+  const { data } = await api.patch<Asset>(`/v1/assets/${id}`, body);
+  return data;
 }
 
 export async function trashAsset(assetId: string): Promise<void> {
-  await api.post(`/v1/assets/${assetId}/trash`)
+  await api.post(`/v1/assets/${assetId}/trash`);
 }
 
 export async function restoreAsset(assetId: string): Promise<void> {
-  await api.post(`/v1/assets/trashed/${assetId}/restore`)
+  await api.post(`/v1/assets/trashed/${assetId}/restore`);
 }
 
 export async function deleteAsset(assetId: string): Promise<void> {
-  await api.delete(`/v1/assets/trashed/${assetId}`)
+  await api.delete(`/v1/assets/trashed/${assetId}`);
 }
 
 export async function emptyTrash(): Promise<void> {
-  await api.delete('/v1/assets/trashed')
+  await api.delete('/v1/assets/trashed');
 }
 
 export async function reprocessThumbnails(assetId: string): Promise<void> {
-  await api.post(`/v1/assets/${assetId}/reprocess-thumbnails`)
+  await api.post(`/v1/assets/${assetId}/reprocess-thumbnails`);
 }
 
 export async function reprocessVideo(assetId: string): Promise<void> {
-  await api.post(`/v1/assets/${assetId}/reprocess-video`)
+  await api.post(`/v1/assets/${assetId}/reprocess-video`);
 }
 
 export async function trashAssets(assetIds: string[]): Promise<void> {
-  await api.post('/v1/assets/bulk-trash', { assetIds })
+  await api.post('/v1/assets/bulk-trash', { assetIds });
 }
 
 interface SearchParams {
-  q: string
-  limit?: number
-  offset?: number
+  q: string;
+  limit?: number;
+  offset?: number;
 }
 
 export async function searchAssets(params: SearchParams): Promise<SearchResponse> {
-  const { data } = await api.get<SearchResponse>('/v1/search', { params })
-  return data
+  const { data } = await api.get<SearchResponse>('/v1/search', { params });
+  return data;
 }
 
 /** Visually similar assets (image-embedding ANN). Server default limit 12, max 100. */
 export async function getSimilarAssets(assetId: string): Promise<SearchResponse> {
-  const { data } = await api.get<SearchResponse>(`/v1/assets/${assetId}/similar`)
-  return data
+  const { data } = await api.get<SearchResponse>(`/v1/assets/${assetId}/similar`);
+  return data;
 }
 
 /** Perceptual duplicates within the Hamming threshold. Server default 10, max 64. */
 export async function getAssetDuplicates(assetId: string): Promise<SearchResponse> {
-  const { data } = await api.get<SearchResponse>(`/v1/assets/${assetId}/duplicates`)
-  return data
+  const { data } = await api.get<SearchResponse>(`/v1/assets/${assetId}/duplicates`);
+  return data;
 }
 
 export async function getAssetDetections(assetId: string): Promise<AssetDetectionsResponse> {
-  const { data } = await api.get<AssetDetectionsResponse>(`/v1/assets/${assetId}/detections`)
-  return data
+  const { data } = await api.get<AssetDetectionsResponse>(`/v1/assets/${assetId}/detections`);
+  return data;
 }
 
 /** Exists-check budget: a stalled check throws, and the caller fail-open uploads. */
-export const CHECK_FILES_EXIST_TIMEOUT_MS = 20_000
+export const CHECK_FILES_EXIST_TIMEOUT_MS = 20_000;
 
 export async function checkFilesExist(
   items: FileExistsCheckItem[],
@@ -200,6 +200,6 @@ export async function checkFilesExist(
       items,
     },
     { timeout: options.timeout ?? CHECK_FILES_EXIST_TIMEOUT_MS },
-  )
-  return data.items
+  );
+  return data.items;
 }

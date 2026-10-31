@@ -1,32 +1,32 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { randomUUID } from 'node:crypto'
-import sharp from 'sharp'
-import { UnrecoverableError, type Job } from 'bullmq'
-import { LocalStorageService } from '@photox/shared-config'
-import { FACE_EMBEDDING_DIM } from '@photox/shared-types'
-import { faceProcessor, FACE_MAX_DIM } from './face.processor'
-import { FaceDetectorService } from './face.detector'
-import type { CoreClient } from '../core/core-client.service'
-import { FakeCoreClient, makeAsset, makeFileRecord } from '../../test/fake-core-client'
-import { signJob, useTestAuthEnv } from '../../test/sign-job'
-import type { FaceJob } from './job-schemas'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import sharp from 'sharp';
+import { UnrecoverableError, type Job } from 'bullmq';
+import { LocalStorageService } from '@photox/shared-config';
+import { FACE_EMBEDDING_DIM } from '@photox/shared-types';
+import { faceProcessor, FACE_MAX_DIM } from './face.processor';
+import { FaceDetectorService } from './face.detector';
+import type { CoreClient } from '../core/core-client.service';
+import { FakeCoreClient, makeAsset, makeFileRecord } from '../../test/fake-core-client';
+import { signJob, useTestAuthEnv } from '../../test/sign-job';
+import type { FaceJob } from './job-schemas';
 
 function emb512(): number[] {
-  const v = new Array<number>(FACE_EMBEDDING_DIM).fill(0)
-  v[0] = 1
-  return v
+  const v = new Array<number>(FACE_EMBEDDING_DIM).fill(0);
+  v[0] = 1;
+  return v;
 }
 
 describe('FaceProcessor', () => {
-  const detect = vi.fn()
-  let storageDir: string
-  let prevStorageDir: string | undefined
-  let storage: LocalStorageService
-  let fake: FakeCoreClient
+  const detect = vi.fn();
+  let storageDir: string;
+  let prevStorageDir: string | undefined;
+  let storage: LocalStorageService;
+  let fake: FakeCoreClient;
 
   function setup() {
     const spec = faceProcessor({
@@ -34,86 +34,86 @@ describe('FaceProcessor', () => {
       core: fake as unknown as CoreClient,
       storage,
       faceDetector: { detect } as unknown as FaceDetectorService,
-    })
-    return spec.run
+    });
+    return spec.run;
   }
 
   beforeEach(() => {
-    useTestAuthEnv()
-    storageDir = mkdtempSync(join(tmpdir(), 'photox-fp-test-'))
-    prevStorageDir = process.env.STORAGE_DIR
-    process.env.STORAGE_DIR = storageDir
-    storage = new LocalStorageService()
-    fake = new FakeCoreClient(storage)
-    detect.mockReset()
-  })
+    useTestAuthEnv();
+    storageDir = mkdtempSync(join(tmpdir(), 'photox-fp-test-'));
+    prevStorageDir = process.env.STORAGE_DIR;
+    process.env.STORAGE_DIR = storageDir;
+    storage = new LocalStorageService();
+    fake = new FakeCoreClient(storage);
+    detect.mockReset();
+  });
 
   afterEach(() => {
-    if (prevStorageDir === undefined) delete process.env.STORAGE_DIR
-    else process.env.STORAGE_DIR = prevStorageDir
-    rmSync(storageDir, { recursive: true, force: true })
-  })
+    if (prevStorageDir === undefined) delete process.env.STORAGE_DIR;
+    else process.env.STORAGE_DIR = prevStorageDir;
+    rmSync(storageDir, { recursive: true, force: true });
+  });
 
   async function seedPhoto(override?: Buffer) {
-    const userId = randomUUID()
+    const userId = randomUUID();
     const bytes =
       override ??
       (await sharp({
         create: { width: 200, height: 150, channels: 3, background: 'red' },
       })
         .jpeg()
-        .toBuffer())
-    const fileId = randomUUID()
-    const storageKey = storage.buildKey('original', userId, fileId, 'jpg')
-    await mkdir(dirname(storage.pathFor(storageKey)), { recursive: true })
-    await writeFile(storage.pathFor(storageKey), bytes)
+        .toBuffer());
+    const fileId = randomUUID();
+    const storageKey = storage.buildKey('original', userId, fileId, 'jpg');
+    await mkdir(dirname(storage.pathFor(storageKey)), { recursive: true });
+    await writeFile(storage.pathFor(storageKey), bytes);
     fake.files.set(
       fileId,
       makeFileRecord({ id: fileId, userId, storageKey, mimeType: 'image/jpeg' }),
-    )
-    const asset = makeAsset({ id: randomUUID(), userId, fileId, kind: 'photo' })
-    fake.assets.set(asset.id, asset)
-    return { userId, fileId, asset }
+    );
+    const asset = makeAsset({ id: randomUUID(), userId, fileId, kind: 'photo' });
+    fake.assets.set(asset.id, asset);
+    return { userId, fileId, asset };
   }
 
   it('rejects an invalid payload before any core call', async () => {
-    const run = setup()
+    const run = setup();
     await expect(
       run({
         data: { assetId: randomUUID(), fileId: 'not-a-uuid', userId: randomUUID() },
       } as Job<FaceJob>),
-    ).rejects.toBeInstanceOf(UnrecoverableError)
-    expect(fake.calls).toHaveLength(0)
-  })
+    ).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(fake.calls).toHaveLength(0);
+  });
 
   it('rejects a job whose asset belongs to another user without mutating', async () => {
-    const run = setup()
-    const base = { assetId: randomUUID(), fileId: randomUUID(), userId: randomUUID() }
-    fake.files.set(base.fileId, makeFileRecord({ id: base.fileId, userId: base.userId }))
+    const run = setup();
+    const base = { assetId: randomUUID(), fileId: randomUUID(), userId: randomUUID() };
+    fake.files.set(base.fileId, makeFileRecord({ id: base.fileId, userId: base.userId }));
     fake.assets.set(
       base.assetId,
       makeAsset({ id: base.assetId, userId: randomUUID(), fileId: base.fileId }),
-    )
+    );
 
     await expect(run({ data: signJob(base) } as Job<FaceJob>)).rejects.toBeInstanceOf(
       UnrecoverableError,
-    )
+    );
 
-    expect(fake.callsOf('patchMetadata')).toHaveLength(0)
-    expect(fake.deleteFacesCalls).toHaveLength(0)
-  })
+    expect(fake.callsOf('patchMetadata')).toHaveLength(0);
+    expect(fake.deleteFacesCalls).toHaveLength(0);
+  });
 
   it('unconditionally replaces faces after a successful detect and reports ready', async () => {
-    const run = setup()
-    const { userId, fileId, asset } = await seedPhoto()
+    const run = setup();
+    const { userId, fileId, asset } = await seedPhoto();
     fake.faces.set(asset.id, [
       { box: { x: 0, y: 0, w: 5, h: 5 }, confidence: 0.9, embedding: emb512() },
-    ])
+    ]);
     detect.mockResolvedValue([
       { box: { x: 10, y: 20, w: 30, h: 40 }, confidence: 0.92, embedding: emb512() },
-    ])
+    ]);
 
-    await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>)
+    await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>);
 
     expect(fake.calls.map((c) => c.method)).toEqual([
       'getFile',
@@ -122,151 +122,151 @@ describe('FaceProcessor', () => {
       'deleteAssetFaces',
       'registerFaces',
       'patchMetadata',
-    ])
-    expect(fake.deleteFacesCalls).toEqual([asset.id])
-    const faces = fake.faces.get(asset.id)!
-    expect(faces).toHaveLength(1)
-    expect(faces[0]!.box).toEqual({ x: 10, y: 20, w: 30, h: 40 })
-    expect(faces[0]!.confidence).toBeCloseTo(0.92, 4)
-    expect(faces[0]!.embedding).toHaveLength(FACE_EMBEDDING_DIM)
+    ]);
+    expect(fake.deleteFacesCalls).toEqual([asset.id]);
+    const faces = fake.faces.get(asset.id)!;
+    expect(faces).toHaveLength(1);
+    expect(faces[0]!.box).toEqual({ x: 10, y: 20, w: 30, h: 40 });
+    expect(faces[0]!.confidence).toBeCloseTo(0.92, 4);
+    expect(faces[0]!.embedding).toHaveLength(FACE_EMBEDDING_DIM);
 
-    const assetState = fake.assets.get(asset.id)!
-    expect(assetState.faceStatus).toBe('ready')
-    expect(assetState.faceCount).toBe(1)
-  })
+    const assetState = fake.assets.get(asset.id)!;
+    expect(assetState.faceStatus).toBe('ready');
+    expect(assetState.faceCount).toBe(1);
+  });
 
   it('auto-orients EXIF-rotated photos and stores boxes in oriented space', async () => {
-    const run = setup()
+    const run = setup();
     const bytes = await sharp({
       create: { width: 200, height: 150, channels: 3, background: 'red' },
     })
       .jpeg()
       .withMetadata({ orientation: 6 })
-      .toBuffer()
-    const { userId, fileId, asset } = await seedPhoto(bytes)
+      .toBuffer();
+    const { userId, fileId, asset } = await seedPhoto(bytes);
 
-    let seen: Buffer | undefined
+    let seen: Buffer | undefined;
     detect.mockImplementation((buffer: Buffer) => {
-      seen = buffer
-      return [{ box: { x: 10, y: 20, w: 30, h: 40 }, confidence: 0.92, embedding: emb512() }]
-    })
+      seen = buffer;
+      return [{ box: { x: 10, y: 20, w: 30, h: 40 }, confidence: 0.92, embedding: emb512() }];
+    });
 
-    await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>)
+    await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>);
 
-    const meta = await sharp(seen).metadata()
-    expect(meta.width).toBe(150)
-    expect(meta.height).toBe(200)
-    expect(meta.orientation).toBeUndefined()
+    const meta = await sharp(seen).metadata();
+    expect(meta.width).toBe(150);
+    expect(meta.height).toBe(200);
+    expect(meta.orientation).toBeUndefined();
 
     // the oriented original displays as 150x200 and detection ran at that size, so scale is 1
-    const faces = fake.faces.get(asset.id)!
-    expect(faces).toHaveLength(1)
-    expect(faces[0]!.box).toEqual({ x: 10, y: 20, w: 30, h: 40 })
-    expect(fake.assets.get(asset.id)!.faceStatus).toBe('ready')
-  })
+    const faces = fake.faces.get(asset.id)!;
+    expect(faces).toHaveLength(1);
+    expect(faces[0]!.box).toEqual({ x: 10, y: 20, w: 30, h: 40 });
+    expect(fake.assets.get(asset.id)!.faceStatus).toBe('ready');
+  });
 
   it('caps the detector input at FACE_MAX_DIM and scales boxes from the actual resized dims', async () => {
-    const run = setup()
+    const run = setup();
     const bytes = await sharp({
       create: { width: 3000, height: 1000, channels: 3, background: 'blue' },
     })
       .jpeg()
-      .toBuffer()
-    const { userId, fileId, asset } = await seedPhoto(bytes)
+      .toBuffer();
+    const { userId, fileId, asset } = await seedPhoto(bytes);
 
-    let seen: Buffer | undefined
+    let seen: Buffer | undefined;
     detect.mockImplementation((buffer: Buffer) => {
-      seen = buffer
-      return [{ box: { x: 100, y: 50, w: 200, h: 120 }, confidence: 0.9, embedding: emb512() }]
-    })
+      seen = buffer;
+      return [{ box: { x: 100, y: 50, w: 200, h: 120 }, confidence: 0.9, embedding: emb512() }];
+    });
 
-    await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>)
+    await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>);
 
-    const meta = await sharp(seen).metadata()
-    expect(Math.max(meta.width, meta.height)).toBe(FACE_MAX_DIM)
-    expect(meta.width / meta.height).toBeCloseTo(3000 / 1000, 2)
+    const meta = await sharp(seen).metadata();
+    expect(Math.max(meta.width, meta.height)).toBe(FACE_MAX_DIM);
+    expect(meta.width / meta.height).toBeCloseTo(3000 / 1000, 2);
 
-    const scaleX = 3000 / meta.width
-    const scaleY = 1000 / meta.height
+    const scaleX = 3000 / meta.width;
+    const scaleY = 1000 / meta.height;
     expect(fake.faces.get(asset.id)![0]!.box).toEqual({
       x: Math.round(100 * scaleX),
       y: Math.round(50 * scaleY),
       w: Math.round(200 * scaleX),
       h: Math.round(120 * scaleY),
-    })
-  })
+    });
+  });
 
   it('clamps detector boxes to the image bounds and drops fully-outside ones', async () => {
-    const run = setup()
-    const { userId, fileId, asset } = await seedPhoto()
+    const run = setup();
+    const { userId, fileId, asset } = await seedPhoto();
     detect.mockResolvedValue([
       { box: { x: -20, y: -30, w: 60, h: 80 }, confidence: 0.9, embedding: emb512() },
       { box: { x: -100, y: -100, w: 50, h: 50 }, confidence: 0.9, embedding: emb512() },
       { box: { x: 190, y: 140, w: 50, h: 50 }, confidence: 0.9, embedding: emb512() },
-    ])
+    ]);
 
-    await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>)
+    await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>);
 
-    const faces = fake.faces.get(asset.id)!
-    expect(faces).toHaveLength(2)
-    expect(faces[0]!.box).toEqual({ x: 0, y: 0, w: 40, h: 50 })
-    expect(faces[1]!.box).toEqual({ x: 190, y: 140, w: 10, h: 10 })
-  })
+    const faces = fake.faces.get(asset.id)!;
+    expect(faces).toHaveLength(2);
+    expect(faces[0]!.box).toEqual({ x: 0, y: 0, w: 40, h: 50 });
+    expect(faces[1]!.box).toEqual({ x: 190, y: 140, w: 10, h: 10 });
+  });
 
   it('clears faces and reports zero when nothing is detected', async () => {
-    const run = setup()
-    const { userId, fileId, asset } = await seedPhoto()
-    detect.mockResolvedValue([])
+    const run = setup();
+    const { userId, fileId, asset } = await seedPhoto();
+    detect.mockResolvedValue([]);
 
-    await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>)
+    await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>);
 
-    expect(fake.deleteFacesCalls).toEqual([asset.id])
-    expect(fake.callsOf('registerFaces')).toHaveLength(0)
-    const assetState = fake.assets.get(asset.id)!
-    expect(assetState.faceStatus).toBe('ready')
-    expect(assetState.faceCount).toBe(0)
-  })
+    expect(fake.deleteFacesCalls).toEqual([asset.id]);
+    expect(fake.callsOf('registerFaces')).toHaveLength(0);
+    const assetState = fake.assets.get(asset.id)!;
+    expect(assetState.faceStatus).toBe('ready');
+    expect(assetState.faceCount).toBe(0);
+  });
 
   it('marks failed and swallows a missing-model error', async () => {
-    const run = setup()
-    const { userId, fileId, asset } = await seedPhoto()
-    detect.mockRejectedValue(new Error('Face embedding model not found: /models/x.onnx'))
+    const run = setup();
+    const { userId, fileId, asset } = await seedPhoto();
+    detect.mockRejectedValue(new Error('Face embedding model not found: /models/x.onnx'));
 
     await expect(
       run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>),
-    ).resolves.toBeUndefined()
+    ).resolves.toBeUndefined();
 
-    expect(fake.callsOf('registerFaces')).toHaveLength(0)
-    expect(fake.deleteFacesCalls).toHaveLength(0)
-    expect(fake.assets.get(asset.id)!.faceStatus).toBe('failed')
-  })
+    expect(fake.callsOf('registerFaces')).toHaveLength(0);
+    expect(fake.deleteFacesCalls).toHaveLength(0);
+    expect(fake.assets.get(asset.id)!.faceStatus).toBe('failed');
+  });
 
   it('detects with the shared detector and registers faces without a detector argument', async () => {
-    const run = setup()
-    const { userId, fileId, asset } = await seedPhoto()
+    const run = setup();
+    const { userId, fileId, asset } = await seedPhoto();
     detect.mockResolvedValue([
       { box: { x: 10, y: 20, w: 30, h: 40 }, confidence: 0.92, embedding: emb512() },
-    ])
+    ]);
 
-    await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>)
+    await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>);
 
-    expect(detect).toHaveBeenCalledTimes(1)
-    expect(detect.mock.calls[0]![0]).toBeInstanceOf(Buffer)
-    expect(detect.mock.calls[0]!).toHaveLength(1)
-    const registerArgs = fake.callsOf('registerFaces')[0]!.args
-    expect(registerArgs[0]).toBe(asset.id)
-    expect(registerArgs).toHaveLength(2)
-  })
+    expect(detect).toHaveBeenCalledTimes(1);
+    expect(detect.mock.calls[0]![0]).toBeInstanceOf(Buffer);
+    expect(detect.mock.calls[0]!).toHaveLength(1);
+    const registerArgs = fake.callsOf('registerFaces')[0]!.args;
+    expect(registerArgs[0]).toBe(asset.id);
+    expect(registerArgs).toHaveLength(2);
+  });
 
   it('marks failed and swallows a missing detector-model error', async () => {
-    const run = setup()
-    const { userId, fileId, asset } = await seedPhoto()
-    detect.mockRejectedValue(new Error('Face detector model not found at /models/det_10g.onnx'))
+    const run = setup();
+    const { userId, fileId, asset } = await seedPhoto();
+    detect.mockRejectedValue(new Error('Face detector model not found at /models/det_10g.onnx'));
 
     await expect(
       run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>),
-    ).resolves.toBeUndefined()
+    ).resolves.toBeUndefined();
 
-    expect(fake.assets.get(asset.id)!.faceStatus).toBe('failed')
-  })
-})
+    expect(fake.assets.get(asset.id)!.faceStatus).toBe('failed');
+  });
+});

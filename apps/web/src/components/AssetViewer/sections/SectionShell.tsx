@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ReactNode } from 'react';
 
 /**
  * Shared viewer info-section shell: icon header + body. Empty states render `compact` (mb-2),
@@ -12,13 +12,13 @@ export function SectionShell({
   compact = false,
   children,
 }: {
-  icon?: ReactNode
-  title: string
-  action?: ReactNode
-  compact?: boolean
-  children: ReactNode
+  icon?: ReactNode;
+  title: string;
+  action?: ReactNode;
+  compact?: boolean;
+  children: ReactNode;
 }) {
-  const spacing = compact ? 'mb-2' : 'mb-3'
+  const spacing = compact ? 'mb-2' : 'mb-3';
   return (
     <section>
       {icon ? (
@@ -34,5 +34,5 @@ export function SectionShell({
       )}
       {children}
     </section>
-  )
+  );
 }

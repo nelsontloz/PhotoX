@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test';
 import {
   Given,
   PASSWORD,
@@ -9,11 +9,11 @@ import {
   readSessionRole,
   registerUser,
   type AuthResponse,
-} from '../support'
+} from '../support';
 
 interface PersistedAuthState {
-  accessToken?: string | null
-  refreshToken?: string | null
+  accessToken?: string | null;
+  refreshToken?: string | null;
 }
 
 /**
@@ -21,128 +21,128 @@ interface PersistedAuthState {
  * logout rewrites the key with null tokens, so key existence alone proves nothing.
  */
 async function readPersistedAuthState(page: Page): Promise<PersistedAuthState | null> {
-  const raw = await page.evaluate(() => window.localStorage.getItem('photox.auth'))
-  if (!raw) return null
+  const raw = await page.evaluate(() => window.localStorage.getItem('photox.auth'));
+  if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as { state?: PersistedAuthState }
-    return parsed.state ?? null
+    const parsed = JSON.parse(raw) as { state?: PersistedAuthState };
+    return parsed.state ?? null;
   } catch {
-    return null
+    return null;
   }
 }
 
 Given('the instance was seeded with an administrator', () => {
   // enforced by docker-compose.e2e.yml (ADMIN_EMAIL/ADMIN_PASSWORD) + e2e/run.sh (`down -v`):
   // core seeds the admin on bootstrap before serving traffic — open registration only mints 'user'
-})
+});
 
 Given('I am signed in', async ({ request, page, baseURL, ctx }) => {
-  ctx.auth = await registerUser(request)
-  await injectSession(page, ctx.auth, baseURL)
+  ctx.auth = await registerUser(request);
+  await injectSession(page, ctx.auth, baseURL);
   // land on the timeline so subsequent UI steps have a page to interact with
-  await page.goto('/')
-})
+  await page.goto('/');
+});
 
 When('I sign in as {string} through the login page', async ({ page }, email: string) => {
-  await page.goto('/login')
-  await page.fill('#email', email)
-  await page.fill('#password', PASSWORD)
-  await page.getByRole('button', { name: 'Sign In' }).click()
-  await expect(page).toHaveURL('/')
-})
+  await page.goto('/login');
+  await page.fill('#email', email);
+  await page.fill('#password', PASSWORD);
+  await page.getByRole('button', { name: 'Sign In' }).click();
+  await expect(page).toHaveURL('/');
+});
 
 When('I register {string} through the register page', async ({ page }, email: string) => {
-  await page.goto('/register')
-  await page.fill('#fullName', 'E2E User')
-  await page.fill('#email', email)
-  await page.fill('#password', PASSWORD)
-  await page.fill('#confirmPassword', PASSWORD)
-  await page.getByRole('button', { name: 'Create Account' }).click()
-  await expect(page).toHaveURL('/')
-})
+  await page.goto('/register');
+  await page.fill('#fullName', 'E2E User');
+  await page.fill('#email', email);
+  await page.fill('#password', PASSWORD);
+  await page.fill('#confirmPassword', PASSWORD);
+  await page.getByRole('button', { name: 'Create Account' }).click();
+  await expect(page).toHaveURL('/');
+});
 
 Then('I am signed in on the timeline', async ({ page }) => {
-  await expect(page).toHaveURL('/')
-  expect(await readSessionRole(page)).toBeTruthy()
-})
+  await expect(page).toHaveURL('/');
+  expect(await readSessionRole(page)).toBeTruthy();
+});
 
 Then('my session role is {string}', async ({ page }, role: string) => {
-  expect(await readSessionRole(page)).toBe(role)
-})
+  expect(await readSessionRole(page)).toBe(role);
+});
 
 Then('the sidebar shows the admin link', async ({ page }) => {
-  await expect(page.locator('a[href="/admin"]')).toBeVisible()
-})
+  await expect(page.locator('a[href="/admin"]')).toBeVisible();
+});
 
 Then('the sidebar does not show the admin link', async ({ page }) => {
-  await expect(page.locator('a[href="/admin"]')).toHaveCount(0)
-})
+  await expect(page.locator('a[href="/admin"]')).toHaveCount(0);
+});
 
 Then('I can open the admin dashboard', async ({ page }) => {
   // the users table lives on the Users tab
-  await page.goto('/admin?tab=users')
+  await page.goto('/admin?tab=users');
   await expect(page.getByRole('heading', { level: 1, name: 'Admin Console' })).toBeVisible({
     timeout: 15_000,
-  })
-  await expect(page.getByRole('heading', { level: 2, name: 'Users Management' })).toBeVisible()
-})
+  });
+  await expect(page.getByRole('heading', { level: 2, name: 'Users Management' })).toBeVisible();
+});
 
 When('I sign out', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/');
   // fresh contexts (feature 01 scenario 2) start signed out — only click when a session exists
-  const state = await readPersistedAuthState(page)
+  const state = await readPersistedAuthState(page);
   if (state?.refreshToken) {
-    await page.locator('[title="Sign out"]').click()
+    await page.locator('[title="Sign out"]').click();
   }
-  await expect(page).toHaveURL('/login')
-})
+  await expect(page).toHaveURL('/login');
+});
 
 When('I open the timeline and sign out through the account menu', async ({ page }) => {
-  await page.goto('/')
-  const signOut = page.locator('[title="Sign out"]')
-  await expect(signOut).toBeVisible()
-  await signOut.click()
-})
+  await page.goto('/');
+  const signOut = page.locator('[title="Sign out"]');
+  await expect(signOut).toBeVisible();
+  await signOut.click();
+});
 
 Then('the stored session has no refresh token', async ({ page }) => {
-  const state = await readPersistedAuthState(page)
+  const state = await readPersistedAuthState(page);
   if (state?.refreshToken != null) {
-    throw new Error('the persisted session still holds a refresh token after sign-out')
+    throw new Error('the persisted session still holds a refresh token after sign-out');
   }
-})
+});
 
 Then('the admin API accepts my session', async ({ page, request, ctx }) => {
   if (ctx.auth) {
-    const response = await request.get('/api/v1/admin/users', { headers: authHeaders(ctx.auth) })
-    expect(response.status()).toBe(200)
-    return
+    const response = await request.get('/api/v1/admin/users', { headers: authHeaders(ctx.auth) });
+    expect(response.status()).toBe(200);
+    return;
   }
   // UI-registered scenarios never populate ctx.auth, and the phase-3 persist holds the profile
   // only — read the email from the profile and take the token from one API login response body
-  let email: string | undefined
+  let email: string | undefined;
   try {
-    const raw = await page.evaluate(() => window.localStorage.getItem('photox.auth'))
+    const raw = await page.evaluate(() => window.localStorage.getItem('photox.auth'));
     email = (JSON.parse(raw ?? '{}') as { state?: { user?: { email?: string } } }).state?.user
-      ?.email
+      ?.email;
   } catch {
-    email = undefined
+    email = undefined;
   }
-  if (!email) throw new Error('no UI session profile in localStorage — sign in first')
-  const login = await request.post('/api/v1/auth/login', { data: { email, password: PASSWORD } })
-  expect(login.status()).toBe(200)
-  const auth = (await login.json()) as AuthResponse
-  const response = await request.get('/api/v1/admin/users', { headers: authHeaders(auth) })
-  expect(response.status()).toBe(200)
-})
+  if (!email) throw new Error('no UI session profile in localStorage — sign in first');
+  const login = await request.post('/api/v1/auth/login', { data: { email, password: PASSWORD } });
+  expect(login.status()).toBe(200);
+  const auth = (await login.json()) as AuthResponse;
+  const response = await request.get('/api/v1/admin/users', { headers: authHeaders(auth) });
+  expect(response.status()).toBe(200);
+});
 
 Then('the users table lists {string}', async ({ page }, email: string) => {
   // the table is server-paged newest-first (limit 20), so search instead of trusting page 1: the
   // seeded admin is the oldest row and pages off once the parallel suite has registered enough users
-  await page.getByLabel('Search users').fill(email)
-  await expect(page.getByText(email)).toBeVisible({ timeout: 15_000 })
-})
+  await page.getByLabel('Search users').fill(email);
+  await expect(page.getByText(email)).toBeVisible({ timeout: 15_000 });
+});
 
 Then('opening {string} redirects me to the timeline', async ({ page }, path: string) => {
-  await page.goto(path)
-  await expect(page).toHaveURL('/')
-})
+  await page.goto(path);
+  await expect(page).toHaveURL('/');
+});

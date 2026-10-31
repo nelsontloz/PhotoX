@@ -1,8 +1,8 @@
-import { randomUUID } from 'node:crypto'
-import { readFile, stat } from 'node:fs/promises'
-import sharp from 'sharp'
-import type { RegisterFileInput } from '../../src/core/core-client.service'
-import { makeAsset, makeFileRecord } from '../fake-core-client'
+import { randomUUID } from 'node:crypto';
+import { readFile, stat } from 'node:fs/promises';
+import sharp from 'sharp';
+import type { RegisterFileInput } from '../../src/core/core-client.service';
+import { makeAsset, makeFileRecord } from '../fake-core-client';
 import {
   closeTestApp,
   createTestApp,
@@ -11,151 +11,156 @@ import {
   signJob,
   waitForJob,
   type TestApp,
-} from './helpers'
+} from './helpers';
 
 describe('ThumbnailProcessor (integration)', () => {
-  let testApp: TestApp
+  let testApp: TestApp;
 
   beforeAll(async () => {
-    testApp = await createTestApp()
-  }, 120_000)
+    testApp = await createTestApp();
+  }, 120_000);
 
   afterAll(async () => {
-    await closeTestApp(testApp)
-  })
+    await closeTestApp(testApp);
+  });
 
-  beforeEach(() => resetTestApp(testApp))
+  beforeEach(() => resetTestApp(testApp));
 
   describe('happy path (image)', () => {
     it('generates a thumbnail, registers its file and marks the asset ready', async () => {
-      const userId = randomUUID()
+      const userId = randomUUID();
       const imageBuffer = await sharp({
         create: { width: 100, height: 100, channels: 3, background: 'red' },
       })
         .png()
-        .toBuffer()
+        .toBuffer();
       const { record, asset } = await seedOriginal(testApp, {
         userId,
         bytes: imageBuffer,
         mimeType: 'image/png',
         ext: 'png',
-      })
+      });
 
-      const queue = testApp.getQueue('process-thumbnail')
+      const queue = testApp.getQueue('process-thumbnail');
       const payload = signJob({
         assetId: asset.id,
         fileId: record.id,
         size: 'sm',
         userId,
-      })
-      const job = await queue.add('thumbnail', payload)
+      });
+      const job = await queue.add('thumbnail', payload);
 
-      expect(await waitForJob(queue, job.id!)).toBe('completed')
+      expect(await waitForJob(queue, job.id!)).toBe('completed');
 
-      const thumb = testApp.fake.thumbnails[0]!
-      expect(thumb).toMatchObject({ assetId: asset.id, size: 'sm' })
+      const thumb = testApp.fake.thumbnails[0]!;
+      expect(thumb).toMatchObject({ assetId: asset.id, size: 'sm' });
 
-      const registerFileCall = testApp.fake.callsOf('registerFile')[0]!
-      const dto = registerFileCall.args[0] as RegisterFileInput
+      const registerFileCall = testApp.fake.callsOf('registerFile')[0]!;
+      const dto = registerFileCall.args[0] as RegisterFileInput;
       // the register-file route carries no asset id, so its binding rides the scope too
-      expect(registerFileCall.binding).toEqual({ sig: payload.sig, scope: asset.id })
+      expect(registerFileCall.binding).toEqual({ sig: payload.sig, scope: asset.id });
       expect(testApp.fake.callsOf('registerThumbnail').at(-1)!.binding).toEqual({
         sig: payload.sig,
-      })
+      });
       expect(dto).toMatchObject({
         kind: 'thumbnail',
         ext: 'webp',
         mimeType: 'image/webp',
         originalName: 'thumb-sm.webp',
-      })
-      const registered = testApp.fake.files.get(dto.id)!
-      expect(registered.mimeType).toBe('image/webp')
-      const thumbStat = await stat(testApp.storage.pathFor(registered.storageKey))
-      expect(thumbStat.size).toBe(thumb.bytes)
+      });
+      const registered = testApp.fake.files.get(dto.id)!;
+      expect(registered.mimeType).toBe('image/webp');
+      const thumbStat = await stat(testApp.storage.pathFor(registered.storageKey));
+      expect(thumbStat.size).toBe(thumb.bytes);
 
       expect(testApp.fake.callsOf('patchMetadata').at(-1)!.args[1]).toEqual({
         thumbnailStatus: 'ready',
-      })
-      expect(testApp.fake.assets.get(asset.id)!.thumbnailStatus).toBe('ready')
-    })
-  })
+      });
+      expect(testApp.fake.assets.get(asset.id)!.thumbnailStatus).toBe('ready');
+    });
+  });
 
   describe('photo EXIF orientation', () => {
     it('auto-orients the thumbnail from EXIF orientation 6', async () => {
-      const userId = randomUUID()
+      const userId = randomUUID();
       // 800×600 stored pixels tagged Orientation=6 — must render portrait, not sideways
       const imageBuffer = await sharp({
         create: { width: 800, height: 600, channels: 3, background: 'red' },
       })
         .jpeg()
         .withMetadata({ orientation: 6 })
-        .toBuffer()
+        .toBuffer();
       const { record, asset } = await seedOriginal(testApp, {
         userId,
         bytes: imageBuffer,
         mimeType: 'image/jpeg',
         ext: 'jpg',
-      })
+      });
 
-      const queue = testApp.getQueue('process-thumbnail')
+      const queue = testApp.getQueue('process-thumbnail');
       const job = await queue.add(
         'thumbnail',
         signJob({ assetId: asset.id, fileId: record.id, size: 'lg', userId }),
-      )
-      expect(await waitForJob(queue, job.id!)).toBe('completed')
+      );
+      expect(await waitForJob(queue, job.id!)).toBe('completed');
 
-      const thumb = testApp.fake.thumbnails.at(-1)!
-      expect(thumb.height).toBeGreaterThan(thumb.width)
+      const thumb = testApp.fake.thumbnails.at(-1)!;
+      expect(thumb.height).toBeGreaterThan(thumb.width);
 
-      const dto = testApp.fake.callsOf('registerFile').at(-1)!.args[0] as RegisterFileInput
-      const key = testApp.storage.buildKey('thumbnail', userId, dto.id, dto.ext)
-      const meta = await sharp(await readFile(testApp.storage.pathFor(key))).metadata()
-      expect(meta.height).toBeGreaterThan(meta.width)
+      const dto = testApp.fake.callsOf('registerFile').at(-1)!.args[0] as RegisterFileInput;
+      const key = testApp.storage.buildKey('thumbnail', userId, dto.id, dto.ext);
+      const meta = await sharp(await readFile(testApp.storage.pathFor(key))).metadata();
+      expect(meta.height).toBeGreaterThan(meta.width);
       // the orientation tag itself is resolved away, not just re-tagged
-      expect(meta.orientation).toBeUndefined()
-    })
-  })
+      expect(meta.orientation).toBeUndefined();
+    });
+  });
 
   describe('dedupe path', () => {
     it('reuses the first file id on a checksum hit and drops the duplicate copy', async () => {
-      testApp.fake.dedupeRegistrations = true
-      const userId = randomUUID()
+      testApp.fake.dedupeRegistrations = true;
+      const userId = randomUUID();
       const imageBuffer = await sharp({
         create: { width: 64, height: 64, channels: 3, background: 'blue' },
       })
         .png()
-        .toBuffer()
+        .toBuffer();
       const { record, asset } = await seedOriginal(testApp, {
         userId,
         bytes: imageBuffer,
         mimeType: 'image/png',
         ext: 'png',
-      })
+      });
 
-      const queue = testApp.getQueue('process-thumbnail')
-      const payload = signJob({ assetId: asset.id, fileId: record.id, size: 'sm' as const, userId })
-      const first = await queue.add('thumbnail', payload)
-      expect(await waitForJob(queue, first.id!)).toBe('completed')
-      const second = await queue.add('thumbnail', payload)
-      expect(await waitForJob(queue, second.id!)).toBe('completed')
+      const queue = testApp.getQueue('process-thumbnail');
+      const payload = signJob({
+        assetId: asset.id,
+        fileId: record.id,
+        size: 'sm' as const,
+        userId,
+      });
+      const first = await queue.add('thumbnail', payload);
+      expect(await waitForJob(queue, first.id!)).toBe('completed');
+      const second = await queue.add('thumbnail', payload);
+      expect(await waitForJob(queue, second.id!)).toBe('completed');
 
-      const dtos = testApp.fake.callsOf('registerFile').map((c) => c.args[0] as RegisterFileInput)
-      expect(dtos).toHaveLength(2)
-      expect(dtos[1]!.id).not.toBe(dtos[0]!.id)
-      expect(testApp.fake.thumbnails[1]!.fileId).toBe(dtos[0]!.id)
-      expect(testApp.fake.files.has(dtos[1]!.id)).toBe(false)
+      const dtos = testApp.fake.callsOf('registerFile').map((c) => c.args[0] as RegisterFileInput);
+      expect(dtos).toHaveLength(2);
+      expect(dtos[1]!.id).not.toBe(dtos[0]!.id);
+      expect(testApp.fake.thumbnails[1]!.fileId).toBe(dtos[0]!.id);
+      expect(testApp.fake.files.has(dtos[1]!.id)).toBe(false);
 
-      const dedupedKey = testApp.storage.buildKey('thumbnail', userId, dtos[1]!.id, 'webp')
-      const keptKey = testApp.storage.buildKey('thumbnail', userId, dtos[0]!.id, 'webp')
-      expect(await testApp.storage.exists(dedupedKey)).toBe(false)
-      expect(await testApp.storage.exists(keptKey)).toBe(true)
-    })
-  })
+      const dedupedKey = testApp.storage.buildKey('thumbnail', userId, dtos[1]!.id, 'webp');
+      const keptKey = testApp.storage.buildKey('thumbnail', userId, dtos[0]!.id, 'webp');
+      expect(await testApp.storage.exists(dedupedKey)).toBe(false);
+      expect(await testApp.storage.exists(keptKey)).toBe(true);
+    });
+  });
 
   describe('error path', () => {
     it('marks thumbnail as failed when the source file is missing', async () => {
-      const userId = randomUUID()
-      const fileId = randomUUID()
+      const userId = randomUUID();
+      const fileId = randomUUID();
       testApp.fake.files.set(
         fileId,
         makeFileRecord({
@@ -164,22 +169,22 @@ describe('ThumbnailProcessor (integration)', () => {
           storageKey: testApp.storage.buildKey('original', userId, fileId, 'png'),
           mimeType: 'image/png',
         }),
-      )
-      const asset = makeAsset({ id: randomUUID(), userId, fileId, kind: 'photo' })
-      testApp.fake.assets.set(asset.id, asset)
+      );
+      const asset = makeAsset({ id: randomUUID(), userId, fileId, kind: 'photo' });
+      testApp.fake.assets.set(asset.id, asset);
 
-      const queue = testApp.getQueue('process-thumbnail')
+      const queue = testApp.getQueue('process-thumbnail');
       const job = await queue.add(
         'thumbnail',
         signJob({ assetId: asset.id, fileId, size: 'sm', userId }),
-      )
+      );
 
-      expect(await waitForJob(queue, job.id!)).toBe('failed')
+      expect(await waitForJob(queue, job.id!)).toBe('failed');
 
       expect(testApp.fake.callsOf('patchMetadata').at(-1)!.args[1]).toEqual({
         thumbnailStatus: 'failed',
-      })
-      expect(testApp.fake.assets.get(asset.id)!.thumbnailStatus).toBe('failed')
-    })
-  })
-})
+      });
+      expect(testApp.fake.assets.get(asset.id)!.thumbnailStatus).toBe('failed');
+    });
+  });
+});

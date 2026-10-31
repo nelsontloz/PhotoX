@@ -1,24 +1,24 @@
-import { useState } from 'react'
-import { FaUsers, FaTrash, FaCopy, FaCheck, FaPhotoFilm, FaImage, FaVideo } from 'react-icons/fa6'
-import { RequireAuth } from '../../components/RequireAuth'
-import { AppShell } from '../../components/AppShell'
-import { useConfirm } from '../../components/ConfirmProvider'
-import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
-import { listShares, createShare, revokeShare, getShareUrl } from '../../api/shares'
-import { getFileStreamUrl } from '../../api/assets'
-import { useAsyncFetch } from '../../hooks/useAsyncFetch'
-import type { ShareListItem } from '@photox/shared-types'
+import { useState } from 'react';
+import { FaUsers, FaTrash, FaCopy, FaCheck, FaPhotoFilm, FaImage, FaVideo } from 'react-icons/fa6';
+import { RequireAuth } from '../../components/RequireAuth';
+import { AppShell } from '../../components/AppShell';
+import { useConfirm } from '../../components/ConfirmProvider';
+import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews';
+import { listShares, createShare, revokeShare, getShareUrl } from '../../api/shares';
+import { getFileStreamUrl } from '../../api/assets';
+import { useAsyncFetch } from '../../hooks/useAsyncFetch';
+import type { ShareListItem } from '@photox/shared-types';
 
 function SharedContent() {
-  const confirm = useConfirm()
+  const confirm = useConfirm();
   const { data, loading, error, refresh } = useAsyncFetch(() => listShares(), {
     errorMessage: 'Failed to load shares',
     loadingMode: 'always',
-  })
-  const [copiedId, setCopiedId] = useState<string | null>(null)
+  });
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   // revoke is optimistic: hide the row immediately, the next fetch is the source of truth
-  const [revokedIds, setRevokedIds] = useState<Set<string>>(new Set())
-  const shares = (data?.items ?? []).filter((s) => !revokedIds.has(s.id))
+  const [revokedIds, setRevokedIds] = useState<Set<string>>(new Set());
+  const shares = (data?.items ?? []).filter((s) => !revokedIds.has(s.id));
 
   // copy rotates: raw capabilities exist only in create responses, so copying mints a fresh
   // link (the old one dies with rotation) and refreshes the list to the new row
@@ -27,15 +27,15 @@ function SharedContent() {
       const fresh =
         share.kind === 'album'
           ? await createShare({ albumId: share.albumId })
-          : await createShare({ assetId: share.assetId })
-      await navigator.clipboard.writeText(getShareUrl(fresh.token))
-      setCopiedId(fresh.id)
-      setTimeout(() => setCopiedId(null), 2000)
-      await refresh()
+          : await createShare({ assetId: share.assetId });
+      await navigator.clipboard.writeText(getShareUrl(fresh.token));
+      setCopiedId(fresh.id);
+      setTimeout(() => setCopiedId(null), 2000);
+      await refresh();
     } catch {
       /* rotation failed (e.g. trashed asset) — leave the row as-is */
     }
-  }
+  };
 
   const handleRevoke = async (share: ShareListItem) => {
     if (
@@ -46,21 +46,21 @@ function SharedContent() {
         destructive: true,
       }))
     )
-      return
+      return;
     try {
-      await revokeShare(share.id)
-      setRevokedIds((prev) => new Set(prev).add(share.id))
+      await revokeShare(share.id);
+      setRevokedIds((prev) => new Set(prev).add(share.id));
     } catch {
       /* ignore */
     }
-  }
+  };
 
   if (loading) {
-    return <LoadingState />
+    return <LoadingState />;
   }
 
   if (error) {
-    return <ErrorState message={error} onRetry={() => void refresh()} />
+    return <ErrorState message={error} onRetry={() => void refresh()} />;
   }
 
   if (shares.length === 0) {
@@ -71,7 +71,7 @@ function SharedContent() {
         title="No shared links yet"
         body="Open a photo or an album and use Share to create a public link."
       />
-    )
+    );
   }
 
   return (
@@ -85,15 +85,15 @@ function SharedContent() {
 
       <div className="space-y-3">
         {shares.map((share) => {
-          const isAlbum = share.kind === 'album'
-          const isVideo = share.kind === 'asset' && share.assetKind === 'video'
-          const thumbFileId = isAlbum ? share.albumCoverThumbFileId : share.assetThumbFileId
-          const sharedDate = new Date(share.createdAt).toLocaleDateString()
+          const isAlbum = share.kind === 'album';
+          const isVideo = share.kind === 'asset' && share.assetKind === 'video';
+          const thumbFileId = isAlbum ? share.albumCoverThumbFileId : share.assetThumbFileId;
+          const sharedDate = new Date(share.createdAt).toLocaleDateString();
           const subtitle = isAlbum
             ? `${share.albumAssetCount} ${
                 share.albumAssetCount === 1 ? 'item' : 'items'
               } · Shared ${sharedDate}`
-            : `Shared ${sharedDate}`
+            : `Shared ${sharedDate}`;
           return (
             <div
               key={share.id}
@@ -152,11 +152,11 @@ function SharedContent() {
                 </button>
               </div>
             </div>
-          )
+          );
         })}
       </div>
     </div>
-  )
+  );
 }
 
 export default function SharedPage() {
@@ -166,5 +166,5 @@ export default function SharedPage() {
         <SharedContent />
       </AppShell>
     </RequireAuth>
-  )
+  );
 }

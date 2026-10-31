@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, type KeyboardEvent } from 'react'
-import { Navigate, useSearchParams } from 'react-router-dom'
+import { useCallback, useEffect, useRef, type KeyboardEvent } from 'react';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import {
   FaBrain,
   FaChartColumn,
@@ -7,16 +7,16 @@ import {
   FaDatabase,
   FaHardDrive,
   FaUserShield,
-} from 'react-icons/fa6'
-import { RequireAuth } from '../../components/RequireAuth'
-import { useAuthStore } from '../../store/auth-store'
-import { AppShell, useScrollContainer } from '../../components/AppShell'
-import { LibraryStatsSection } from './library-stats'
-import { AdminSection, cx } from './ui'
-import { DetectionsReprocessSection, EmbeddingsReprocessSection, FacialDetectionCard } from './ai'
-import { AssetHealthSection, OrphanCleanupSection } from './assets'
-import { UsersSection } from './users'
-import { BackupSection } from './backups'
+} from 'react-icons/fa6';
+import { RequireAuth } from '../../components/RequireAuth';
+import { useAuthStore } from '../../store/auth-store';
+import { AppShell, useScrollContainer } from '../../components/AppShell';
+import { LibraryStatsSection } from './library-stats';
+import { AdminSection, cx } from './ui';
+import { DetectionsReprocessSection, EmbeddingsReprocessSection, FacialDetectionCard } from './ai';
+import { AssetHealthSection, OrphanCleanupSection } from './assets';
+import { UsersSection } from './users';
+import { BackupSection } from './backups';
 
 // --- tabs -------------------------------------------------------------------------------
 // One route (/admin), five sections. The active section lives in ?tab= so a reload, a shared
@@ -28,47 +28,47 @@ const TABS = [
   { id: 'assets', label: 'Assets & Maintenance', icon: FaHardDrive },
   { id: 'users', label: 'Users', icon: FaUserShield },
   { id: 'backups', label: 'Backups', icon: FaDatabase },
-] as const
+] as const;
 
-type TabId = (typeof TABS)[number]['id']
+type TabId = (typeof TABS)[number]['id'];
 
-const DEFAULT_TAB: TabId = 'overview'
-const TAB_IDS: readonly string[] = TABS.map((tab) => tab.id)
-const PANEL_ID = 'admin-tabpanel'
+const DEFAULT_TAB: TabId = 'overview';
+const TAB_IDS: readonly string[] = TABS.map((tab) => tab.id);
+const PANEL_ID = 'admin-tabpanel';
 
-const isTabId = (value: string | null): value is TabId => value !== null && TAB_IDS.includes(value)
+const isTabId = (value: string | null): value is TabId => value !== null && TAB_IDS.includes(value);
 
-const tabButtonId = (id: TabId): string => `admin-tab-${id}`
+const tabButtonId = (id: TabId): string => `admin-tab-${id}`;
 
 function AdminTabBar({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => void }) {
-  const buttons = useRef<(HTMLButtonElement | null)[]>([])
+  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
 
   // Automatic activation: arrows move focus *and* selection, matching the APG tabs pattern.
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    const last = TABS.length - 1
-    let next: number
+    const last = TABS.length - 1;
+    let next: number;
     switch (event.key) {
       case 'ArrowRight':
-        next = index === last ? 0 : index + 1
-        break
+        next = index === last ? 0 : index + 1;
+        break;
       case 'ArrowLeft':
-        next = index === 0 ? last : index - 1
-        break
+        next = index === 0 ? last : index - 1;
+        break;
       case 'Home':
-        next = 0
-        break
+        next = 0;
+        break;
       case 'End':
-        next = last
-        break
+        next = last;
+        break;
       default:
-        return
+        return;
     }
-    event.preventDefault()
-    const tab = TABS[next]
-    if (!tab) return
-    buttons.current[next]?.focus()
-    onSelect(tab.id)
-  }
+    event.preventDefault();
+    const tab = TABS[next];
+    if (!tab) return;
+    buttons.current[next]?.focus();
+    onSelect(tab.id);
+  };
 
   return (
     <div className="sticky top-0 z-20 -mx-4 sm:-mx-8 px-4 sm:px-8 bg-background-dark/95 backdrop-blur border-b border-border-dark">
@@ -78,13 +78,13 @@ function AdminTabBar({ active, onSelect }: { active: TabId; onSelect: (id: TabId
         className="flex gap-1 py-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {TABS.map((tab, index) => {
-          const selected = tab.id === active
-          const Icon = tab.icon
+          const selected = tab.id === active;
+          const Icon = tab.icon;
           return (
             <button
               key={tab.id}
               ref={(el) => {
-                buttons.current[index] = el
+                buttons.current[index] = el;
               }}
               type="button"
               role="tab"
@@ -105,11 +105,11 @@ function AdminTabBar({ active, onSelect }: { active: TabId; onSelect: (id: TabId
               <Icon className="text-[13px]" aria-hidden="true" focusable="false" />
               {tab.label}
             </button>
-          )
+          );
         })}
       </div>
     </div>
-  )
+  );
 }
 
 function TabPanelContent({ tab }: { tab: TabId }) {
@@ -128,7 +128,7 @@ function TabPanelContent({ tab }: { tab: TabId }) {
             <DetectionsReprocessSection />
           </div>
         </AdminSection>
-      )
+      );
     case 'assets':
       return (
         <AdminSection
@@ -142,56 +142,56 @@ function TabPanelContent({ tab }: { tab: TabId }) {
             <OrphanCleanupSection />
           </div>
         </AdminSection>
-      )
+      );
     case 'users':
-      return <UsersSection />
+      return <UsersSection />;
     case 'backups':
-      return <BackupSection />
+      return <BackupSection />;
     case 'overview':
     default:
-      return <LibraryStatsSection />
+      return <LibraryStatsSection />;
   }
 }
 
 // --- page -------------------------------------------------------------------------------
 
 export function AdminPageContent() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const rawTab = searchParams.get('tab')
-  const active: TabId = isTabId(rawTab) ? rawTab : DEFAULT_TAB
-  const scrollContainer = useScrollContainer()
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get('tab');
+  const active: TabId = isTabId(rawTab) ? rawTab : DEFAULT_TAB;
+  const scrollContainer = useScrollContainer();
 
   // A hand-edited or stale ?tab= is corrected in place so the URL round-trips; a missing param
   // stays missing (no ?tab=overview noise, and no extra history entry on first load).
   useEffect(() => {
-    if (rawTab === null || isTabId(rawTab)) return
+    if (rawTab === null || isTabId(rawTab)) return;
     setSearchParams(
       (prev) => {
-        const next = new URLSearchParams(prev)
-        next.set('tab', DEFAULT_TAB)
-        return next
+        const next = new URLSearchParams(prev);
+        next.set('tab', DEFAULT_TAB);
+        return next;
       },
       { replace: true },
-    )
-  }, [rawTab, setSearchParams])
+    );
+  }, [rawTab, setSearchParams]);
 
   const selectTab = useCallback(
     (id: TabId) => {
-      setSearchParams({ tab: id })
+      setSearchParams({ tab: id });
     },
     [setSearchParams],
-  )
+  );
 
   // Switching tabs — click or back/forward — parks the freshly swapped panel at the top of the
   // scroll area; the sticky tab bar keeps the row in view. First paint is left where it is.
-  const firstRender = useRef(true)
+  const firstRender = useRef(true);
   useEffect(() => {
     if (firstRender.current) {
-      firstRender.current = false
-      return
+      firstRender.current = false;
+      return;
     }
-    scrollContainer?.current?.scrollTo({ top: 0 })
-  }, [active, scrollContainer])
+    scrollContainer?.current?.scrollTo({ top: 0 });
+  }, [active, scrollContainer]);
 
   return (
     <div className="space-y-6">
@@ -214,11 +214,11 @@ export function AdminPageContent() {
         <TabPanelContent tab={active} />
       </div>
     </div>
-  )
+  );
 }
 
 export default function AdminPage() {
-  const user = useAuthStore((s) => s.user)
+  const user = useAuthStore((s) => s.user);
   return (
     <RequireAuth>
       {user?.role !== 'admin' ? (
@@ -229,5 +229,5 @@ export default function AdminPage() {
         </AppShell>
       )}
     </RequireAuth>
-  )
+  );
 }

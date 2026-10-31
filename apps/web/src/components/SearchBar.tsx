@@ -1,73 +1,75 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { FaMagnifyingGlass, FaSpinner, FaXmark } from 'react-icons/fa6'
-import { useSearchStore } from '../store/search-store'
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { FaMagnifyingGlass, FaSpinner, FaXmark } from 'react-icons/fa6';
+import { useSearchStore } from '../store/search-store';
 
-const DEBOUNCE_MS = 300
+const DEBOUNCE_MS = 300;
 
 interface SearchInputProps {
   /** Focus the field on mount (mobile overlay). */
-  autoFocus?: boolean
+  autoFocus?: boolean;
   /** Escape on an already-empty field — the mobile overlay uses it to leave search mode. */
-  onEscape?: () => void
-  className?: string
+  onEscape?: () => void;
+  className?: string;
 }
 
 export function SearchInput({ autoFocus, onEscape, className = '' }: SearchInputProps) {
-  const navigate = useNavigate()
-  const location = useLocation()
-  const [searchParams] = useSearchParams()
-  const loading = useSearchStore((s) => s.loading || s.loadingMore)
-  const urlQ = searchParams.get('q') ?? ''
-  const [value, setValue] = useState(urlQ)
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const loading = useSearchStore((s) => s.loading || s.loadingMore);
+  const urlQ = searchParams.get('q') ?? '';
+  const [value, setValue] = useState(urlQ);
   // Last query this field put in the URL. Lets external changes (Back, links) flow back into
   // the field without our own navigation echoing in and fighting the typist.
-  const lastPushedRef = useRef(urlQ)
+  const lastPushedRef = useRef(urlQ);
 
   useEffect(() => {
-    if (urlQ === lastPushedRef.current) return
-    lastPushedRef.current = urlQ
-    setValue(urlQ)
-  }, [urlQ])
+    if (urlQ === lastPushedRef.current) return;
+    lastPushedRef.current = urlQ;
+    setValue(urlQ);
+  }, [urlQ]);
 
   const commit = useCallback(
     (q: string) => {
-      lastPushedRef.current = q
-      const onSearchPage = location.pathname === '/search'
+      lastPushedRef.current = q;
+      const onSearchPage = location.pathname === '/search';
       // clearing the field on another page is not a search: leave the URL alone
-      if (!q && !onSearchPage) return
+      if (!q && !onSearchPage) return;
       // first query pushes (Back returns to where you were); refinements on /search replace
-      void navigate(q ? `/search?q=${encodeURIComponent(q)}` : '/search', { replace: onSearchPage })
+      void navigate(q ? `/search?q=${encodeURIComponent(q)}` : '/search', {
+        replace: onSearchPage,
+      });
     },
     [location.pathname, navigate],
-  )
+  );
 
   useEffect(() => {
-    const q = value.trim()
+    const q = value.trim();
     const timer = setTimeout(() => {
-      if (q !== lastPushedRef.current) commit(q)
-    }, DEBOUNCE_MS)
-    return () => clearTimeout(timer)
-  }, [value, commit])
+      if (q !== lastPushedRef.current) commit(q);
+    }, DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [value, commit]);
 
   const clear = () => {
-    setValue('')
+    setValue('');
     // don't wait out the debounce for an explicit clear
-    if (location.pathname === '/search') commit('')
-    else lastPushedRef.current = ''
-  }
+    if (location.pathname === '/search') commit('');
+    else lastPushedRef.current = '';
+  };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
-      if (value) clear()
-      else onEscape?.()
-      return
+      if (value) clear();
+      else onEscape?.();
+      return;
     }
     if (e.key === 'Enter') {
-      const q = value.trim()
-      if (q !== lastPushedRef.current) commit(q)
+      const q = value.trim();
+      if (q !== lastPushedRef.current) commit(q);
     }
-  }
+  };
 
   return (
     <div className={`relative ${className}`}>
@@ -98,5 +100,5 @@ export function SearchInput({ autoFocus, onEscape, className = '' }: SearchInput
         )
       )}
     </div>
-  )
+  );
 }

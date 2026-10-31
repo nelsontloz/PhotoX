@@ -6,47 +6,47 @@ import {
   useState,
   type CSSProperties,
   type ReactNode,
-} from 'react'
-import type { Asset } from '@photox/shared-types'
-import type { AssetGroup } from '../../hooks/useAssetGroups'
-import type { MonthStatus, UseTimelineMonthsResult } from '../../hooks/useTimelineMonths'
-import { TIMELINE_PREFETCH_PX, type TimelineLayout } from '../../lib/timelineLayout'
-import { groupDateLabelFromSortKey } from '../../lib/dateFormat'
-import { GalleryItem } from '../GalleryItem'
-import { ScrollContainerContext } from '../AppShell'
-import { useAppStore } from '../../store/app-store'
-import { TimelineScrollbar } from './TimelineScrollbar'
+} from 'react';
+import type { Asset } from '@photox/shared-types';
+import type { AssetGroup } from '../../hooks/useAssetGroups';
+import type { MonthStatus, UseTimelineMonthsResult } from '../../hooks/useTimelineMonths';
+import { TIMELINE_PREFETCH_PX, type TimelineLayout } from '../../lib/timelineLayout';
+import { groupDateLabelFromSortKey } from '../../lib/dateFormat';
+import { GalleryItem } from '../GalleryItem';
+import { ScrollContainerContext } from '../AppShell';
+import { useAppStore } from '../../store/app-store';
+import { TimelineScrollbar } from './TimelineScrollbar';
 
 interface TimelineGridProps {
-  layout: TimelineLayout
-  containerRef: (el: HTMLDivElement | null) => void
-  groups: AssetGroup[]
-  monthStatus: ReadonlyMap<string, MonthStatus>
+  layout: TimelineLayout;
+  containerRef: (el: HTMLDivElement | null) => void;
+  groups: AssetGroup[];
+  monthStatus: ReadonlyMap<string, MonthStatus>;
   /** Fetches a month's assets when its bucket enters the mount window (deduped inside the hook) */
-  ensureMonth: UseTimelineMonthsResult['ensureMonth']
+  ensureMonth: UseTimelineMonthsResult['ensureMonth'];
   /** Marks the currently mounted months as in use so the bounded cache never evicts them */
-  retainMonths: UseTimelineMonthsResult['retainMonths']
-  onSelect: (asset: Asset) => void
+  retainMonths: UseTimelineMonthsResult['retainMonths'];
+  onSelect: (asset: Asset) => void;
   /** Selection is optional: a read-only grid omits both (no checkboxes, no Select-all) */
-  selectedIds?: ReadonlySet<string>
-  onToggleSelect?: (id: string) => void
-  onLongPress?: (asset: Asset) => void
+  selectedIds?: ReadonlySet<string>;
+  onToggleSelect?: (id: string) => void;
+  onLongPress?: (asset: Asset) => void;
   /**
    * Surface classes of the sticky day-header bands. The default blends with the app background
    * (the grid normally scrolls on the page, so the bands read as the page under the tiles).
    * Dialogs pass their panel surface — e.g. `bg-card-dark/95 text-white` — or the bands show up
    * as stripes; the day title inherits the band's color.
    */
-  dayHeaderSurfaceClassName?: string
+  dayHeaderSurfaceClassName?: string;
 }
 
 /** Module-level so read-only grids keep a referentially stable default across renders (memoized children). */
-const EMPTY_SELECTED_IDS: ReadonlySet<string> = new Set()
+const EMPTY_SELECTED_IDS: ReadonlySet<string> = new Set();
 
 const DAY_HEADER_CLASS =
-  'flex items-end gap-3 mb-4 sticky top-0 z-30 py-2 -mx-4 px-4 sm:-mx-8 sm:px-8 border-b border-transparent dark:border-transparent transition-all'
+  'flex items-end gap-3 mb-4 sticky top-0 z-30 py-2 -mx-4 px-4 sm:-mx-8 sm:px-8 border-b border-transparent dark:border-transparent transition-all';
 const DAY_HEADER_PAGE_SURFACE =
-  'bg-background-light/95 dark:bg-background-dark/95 text-slate-900 dark:text-white'
+  'bg-background-light/95 dark:bg-background-dark/95 text-slate-900 dark:text-white';
 
 /**
  * Sticky day-header band. The title inherits the band's text color, so page grids pass a surface
@@ -58,17 +58,17 @@ export function DayHeader({
   titleClassName = 'text-2xl font-bold tracking-tight',
   action,
 }: {
-  title: string
-  surfaceClassName?: string
-  titleClassName?: string
-  action?: ReactNode
+  title: string;
+  surfaceClassName?: string;
+  titleClassName?: string;
+  action?: ReactNode;
 }) {
   return (
     <div className={`${DAY_HEADER_CLASS} ${surfaceClassName}`}>
       <h2 className={titleClassName}>{title}</h2>
       {action}
     </div>
-  )
+  );
 }
 
 export function TimelineGrid({
@@ -84,69 +84,69 @@ export function TimelineGrid({
   onLongPress,
   dayHeaderSurfaceClassName = DAY_HEADER_PAGE_SURFACE,
 }: TimelineGridProps) {
-  const selectionMode = selectedIds.size > 0
+  const selectionMode = selectedIds.size > 0;
   // Refresh signal (bumped by uploads/trash): re-triggers ensureMonth for the mounted months.
   // Subscribed here so pages don't thread it down.
-  const refreshKey = useAppStore((s) => s.timelineRefreshKey)
-  const scrollContainer = useContext(ScrollContainerContext)
-  const [scrollPos, setScrollPos] = useState({ top: 0, height: 0 })
+  const refreshKey = useAppStore((s) => s.timelineRefreshKey);
+  const scrollContainer = useContext(ScrollContainerContext);
+  const [scrollPos, setScrollPos] = useState({ top: 0, height: 0 });
 
   // Scroll source = AppShell's <main> — the same container the sticky headers depend on.
   // No container (outside AppShell) → keep {0,0} → every bucket mounts (safe fallback).
   useLayoutEffect(() => {
-    const el = scrollContainer?.current
-    if (!el) return
-    let raf = 0
+    const el = scrollContainer?.current;
+    if (!el) return;
+    let raf = 0;
     const update = () => {
-      raf = 0
-      setScrollPos({ top: el.scrollTop, height: el.clientHeight })
-    }
+      raf = 0;
+      setScrollPos({ top: el.scrollTop, height: el.clientHeight });
+    };
     const onScroll = () => {
-      if (!raf) raf = requestAnimationFrame(update)
-    }
-    update()
-    el.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('resize', onScroll)
+      if (!raf) raf = requestAnimationFrame(update);
+    };
+    update();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
     return () => {
-      if (raf) cancelAnimationFrame(raf)
-      el.removeEventListener('scroll', onScroll)
-      window.removeEventListener('resize', onScroll)
-    }
-  }, [scrollContainer])
+      if (raf) cancelAnimationFrame(raf);
+      el.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [scrollContainer]);
 
-  const groupsByDay = useMemo(() => new Map(groups.map((g) => [g.sortKey, g])), [groups])
+  const groupsByDay = useMemo(() => new Map(groups.map((g) => [g.sortKey, g])), [groups]);
 
   // Mount window: visible range [top, top + h] expanded by one viewport of overscan above and
   // below, plus the shared prefetch distance (TIMELINE_PREFETCH_PX) that AssetThumb's observer
   // rootMargin uses — the two must cover the same span or the outer band mounts but never downloads.
   // Unmounted buckets keep their reserved space (container height + absolute tops).
-  const hasViewport = scrollPos.height > 0
+  const hasViewport = scrollPos.height > 0;
   const min = hasViewport
     ? scrollPos.top - scrollPos.height - TIMELINE_PREFETCH_PX
-    : Number.NEGATIVE_INFINITY
+    : Number.NEGATIVE_INFINITY;
   const max = hasViewport
     ? scrollPos.top + scrollPos.height * 2 + TIMELINE_PREFETCH_PX
-    : Number.POSITIVE_INFINITY
+    : Number.POSITIVE_INFINITY;
   const mountedBuckets = layout.buckets.filter(
     (bucket) => bucket.top < max && bucket.top + bucket.height > min,
-  )
+  );
   // ponytail: key the effect off the mounted SET, not the per-render array — ensureMonth
   // re-commits a failed month to 'loading', so a per-render effect would retry it forever.
-  const mountedKeys = useMemo(() => mountedBuckets.map((b) => b.key).join(','), [mountedBuckets])
+  const mountedKeys = useMemo(() => mountedBuckets.map((b) => b.key).join(','), [mountedBuckets]);
 
   // Fetch rule: every bucket in the mount window, on first measure and whenever refreshKey
   // bumps (so an upload re-fetches only what's on screen). No container → fetch everything,
   // matching the mount-everything DOM fallback above. ensureMonth dedupes per key.
   useEffect(() => {
     if (!scrollContainer) {
-      retainMonths(layout.buckets.map((bucket) => bucket.key))
-      for (const bucket of layout.buckets) void ensureMonth(bucket.key)
-      return
+      retainMonths(layout.buckets.map((bucket) => bucket.key));
+      for (const bucket of layout.buckets) void ensureMonth(bucket.key);
+      return;
     }
-    if (!hasViewport || !mountedKeys) return
-    const keys = mountedKeys.split(',')
-    retainMonths(keys)
-    for (const key of keys) void ensureMonth(key)
+    if (!hasViewport || !mountedKeys) return;
+    const keys = mountedKeys.split(',');
+    retainMonths(keys);
+    for (const key of keys) void ensureMonth(key);
   }, [
     mountedKeys,
     ensureMonth,
@@ -155,7 +155,7 @@ export function TimelineGrid({
     scrollContainer,
     hasViewport,
     layout.buckets,
-  ])
+  ]);
 
   return (
     <>
@@ -177,7 +177,7 @@ export function TimelineGrid({
               // ±Infinity with no viewport → everything renders (safe fallback).
               // ponytail: day-granular — a single day with thousands of tiles still mounts them
               // all; upgrade path = row-granular windowing from the day's packed rows.
-              const dayTop = bucket.top + day.top
+              const dayTop = bucket.top + day.top;
               if (dayTop >= max || dayTop + day.height <= min) {
                 return (
                   <section
@@ -185,13 +185,13 @@ export function TimelineGrid({
                     className="mb-10 last:mb-0"
                     style={{ height: day.height }}
                   />
-                )
+                );
               }
-              const group = groupsByDay.get(day.sortKey)
-              const monthReady = monthStatus.get(day.sortKey.slice(0, 7)) === 'ready'
-              const items = group?.items ?? []
+              const group = groupsByDay.get(day.sortKey);
+              const monthReady = monthStatus.get(day.sortKey.slice(0, 7)) === 'ready';
+              const items = group?.items ?? [];
               const allSelected =
-                items.length > 0 && items.every((item) => selectedIds.has(item.id))
+                items.length > 0 && items.every((item) => selectedIds.has(item.id));
               return (
                 // height comes from layout data (not content), so a day whose assets haven't
                 // landed yet still reserves its exact block under the sticky header
@@ -209,13 +209,13 @@ export function TimelineGrid({
                           <button
                             type="button"
                             onClick={() => {
-                              const target = !allSelected
+                              const target = !allSelected;
                               items.forEach((item) => {
                                 // flip only items whose state differs from the target
                                 if (selectedIds.has(item.id) !== target) {
-                                  onToggleSelect(item.id)
+                                  onToggleSelect(item.id);
                                 }
-                              })
+                              });
                             }}
                             className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 px-2 py-1 rounded hover:bg-white/5 transition-colors"
                           >
@@ -257,11 +257,11 @@ export function TimelineGrid({
                           ))}
                   </div>
                 </section>
-              )
+              );
             })}
           </section>
         ))}
       </div>
     </>
-  )
+  );
 }

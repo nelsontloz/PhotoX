@@ -1,24 +1,24 @@
-import { ApiProperty } from '@nestjs/swagger'
-import { IsNumber, Min } from 'class-validator'
+import { ApiProperty } from '@nestjs/swagger';
+import { IsNumber, Min } from 'class-validator';
 
 export class FaceBoxResponseDto {
   @ApiProperty()
   @IsNumber()
   @Min(0)
-  x!: number
+  x!: number;
 
   @ApiProperty()
   @IsNumber()
   @Min(0)
-  y!: number
+  y!: number;
 
   @ApiProperty()
   @IsNumber()
   @Min(0)
-  w!: number
+  w!: number;
 
   @ApiProperty()
   @IsNumber()
   @Min(0)
-  h!: number
+  h!: number;
 }

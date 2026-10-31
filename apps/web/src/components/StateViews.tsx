@@ -1,17 +1,17 @@
-import type { ReactNode } from 'react'
-import { FaSpinner } from 'react-icons/fa6'
+import type { ReactNode } from 'react';
+import { FaSpinner } from 'react-icons/fa6';
 
 /** Page-level spinner. `className` replaces the wrapper classes for pages that pad differently. */
 export function LoadingState({
   className = 'flex items-center justify-center py-32',
 }: {
-  className?: string
+  className?: string;
 }) {
   return (
     <div className={className}>
       <FaSpinner className="text-2xl text-primary animate-spin" />
     </div>
-  )
+  );
 }
 
 /** Page-level error + Retry, with the page's own message string. */
@@ -20,9 +20,9 @@ export function ErrorState({
   onRetry,
   className = 'flex flex-col items-center justify-center py-32 gap-4',
 }: {
-  message: string
-  onRetry: () => void
-  className?: string
+  message: string;
+  onRetry: () => void;
+  className?: string;
 }) {
   return (
     <div className={className}>
@@ -35,7 +35,7 @@ export function ErrorState({
         Retry
       </button>
     </div>
-  )
+  );
 }
 
 /** Centered "nothing here yet" hero: icon in a tinted circle, title, body copy. */
@@ -45,10 +45,10 @@ export function EmptyState({
   title,
   body,
 }: {
-  icon: ReactNode
-  circleClassName: string
-  title: string
-  body: string
+  icon: ReactNode;
+  circleClassName: string;
+  title: string;
+  body: string;
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-24 px-4 text-center max-w-lg mx-auto">
@@ -64,5 +64,5 @@ export function EmptyState({
         {body}
       </p>
     </div>
-  )
+  );
 }

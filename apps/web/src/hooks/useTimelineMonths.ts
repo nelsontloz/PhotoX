@@ -1,35 +1,35 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
-import type { Asset } from '@photox/shared-types'
-import { listAllAssets, type AssetFilters } from '../api/assets'
-import { groupAssetsByDay, type AssetGroup } from './useAssetGroups'
-import { effectiveAssetDate, monthRange } from '../lib/dateFormat'
-import { useAppStore } from '../store/app-store'
+import { useCallback, useMemo, useRef, useState } from 'react';
+import type { Asset } from '@photox/shared-types';
+import { listAllAssets, type AssetFilters } from '../api/assets';
+import { groupAssetsByDay, type AssetGroup } from './useAssetGroups';
+import { effectiveAssetDate, monthRange } from '../lib/dateFormat';
+import { useAppStore } from '../store/app-store';
 
-export type MonthStatus = 'loading' | 'ready' | 'error'
+export type MonthStatus = 'loading' | 'ready' | 'error';
 
 interface MonthEntry {
-  items: Asset[]
-  status: MonthStatus
+  items: Asset[];
+  status: MonthStatus;
   /** timelineRefreshKey the entry was fetched under — entries from an older key are refetched on the next ensureMonth */
-  stamp: number
+  stamp: number;
 }
 
-const PAGE_SIZE = 100
+const PAGE_SIZE = 100;
 
 /** Bounded cache cap — see the eviction comment in `commit` for the tradeoff. */
-export const MAX_CACHED_MONTHS = 12
+export const MAX_CACHED_MONTHS = 12;
 
 export interface UseTimelineMonthsResult {
   /** Day groups merged across every fetched month (stale months included, so refreshes don't unmount the viewer) */
-  groups: AssetGroup[]
-  monthStatus: ReadonlyMap<string, MonthStatus>
+  groups: AssetGroup[];
+  monthStatus: ReadonlyMap<string, MonthStatus>;
   /** Fetches one month's assets (deduped, idempotent); resolves with the month's items or null on error/stale */
-  ensureMonth: (monthKey: string) => Promise<Asset[] | null>
+  ensureMonth: (monthKey: string) => Promise<Asset[] | null>;
   /**
    * Marks months as in use: retained (never evicted) and touched for LRU. Ref-only — calling it
    * does not re-render.
    */
-  retainMonths: (keys: readonly string[]) => void
+  retainMonths: (keys: readonly string[]) => void;
 }
 
 /**
@@ -46,54 +46,56 @@ export function useTimelineMonths({
   favorite,
   albumId,
 }: AssetFilters = {}): UseTimelineMonthsResult {
-  const [entries, setEntries] = useState<Map<string, MonthEntry>>(() => new Map())
+  const [entries, setEntries] = useState<Map<string, MonthEntry>>(() => new Map());
   // sync mirror of `entries` so ensureMonth reads fresh data without waiting for a re-render
-  const entriesRef = useRef(entries)
-  const inFlightRef = useRef(new Map<string, { stamp: number; promise: Promise<Asset[] | null> }>())
+  const entriesRef = useRef(entries);
+  const inFlightRef = useRef(
+    new Map<string, { stamp: number; promise: Promise<Asset[] | null> }>(),
+  );
   // LRU bookkeeping: insertion-ordered Map, front = least recently used (touch = delete+set moves
   // the key to the back); retainedRef = mounted months protected from eviction
-  const lastUsedRef = useRef(new Map<string, true>())
-  const retainedRef = useRef<ReadonlySet<string>>(new Set())
+  const lastUsedRef = useRef(new Map<string, true>());
+  const retainedRef = useRef<ReadonlySet<string>>(new Set());
 
   const touch = useCallback((key: string) => {
-    const used = lastUsedRef.current
-    used.delete(key)
-    used.set(key, true)
-  }, [])
+    const used = lastUsedRef.current;
+    used.delete(key);
+    used.set(key, true);
+  }, []);
 
   const commit = useCallback((key: string, entry: MonthEntry) => {
     // staleness guard: a fetch that finishes after a refresh-key bump writes nothing
-    if (entry.stamp !== useAppStore.getState().timelineRefreshKey) return
-    const next = new Map(entriesRef.current)
-    next.set(key, entry)
+    if (entry.stamp !== useAppStore.getState().timelineRefreshKey) return;
+    const next = new Map(entriesRef.current);
+    next.set(key, entry);
     // Evict LRU-beyond-cap, once per commit, never the mounted (retained) months and never the
     // key just committed. ponytail: month-count cap, not a byte budget — 12 heavy months fit
     // comfortably; upgrade path = byte-budget LRU if single months ever get huge.
     if (next.size > MAX_CACHED_MONTHS) {
       for (const victim of lastUsedRef.current.keys()) {
-        if (next.size <= MAX_CACHED_MONTHS) break
-        if (victim === key || retainedRef.current.has(victim)) continue
-        next.delete(victim)
-        lastUsedRef.current.delete(victim)
+        if (next.size <= MAX_CACHED_MONTHS) break;
+        if (victim === key || retainedRef.current.has(victim)) continue;
+        next.delete(victim);
+        lastUsedRef.current.delete(victim);
       }
     }
-    entriesRef.current = next
-    setEntries(next)
-  }, [])
+    entriesRef.current = next;
+    setEntries(next);
+  }, []);
 
   const retainMonths = useCallback(
     (keys: readonly string[]) => {
-      retainedRef.current = new Set(keys)
-      for (const key of keys) touch(key)
+      retainedRef.current = new Set(keys);
+      for (const key of keys) touch(key);
     },
     [touch],
-  )
+  );
 
   const fetchMonth = useCallback(
     async (key: string): Promise<Asset[] | null> => {
-      const stamp = useAppStore.getState().timelineRefreshKey
+      const stamp = useAppStore.getState().timelineRefreshKey;
       try {
-        const { dateFrom, dateTo } = monthRange(key)
+        const { dateFrom, dateTo } = monthRange(key);
         const all = await listAllAssets({
           limit: PAGE_SIZE,
           dateFrom,
@@ -101,58 +103,58 @@ export function useTimelineMonths({
           personId,
           favorite,
           albumId,
-        })
-        if (stamp !== useAppStore.getState().timelineRefreshKey) return null
-        commit(key, { items: all, status: 'ready', stamp })
-        return all
+        });
+        if (stamp !== useAppStore.getState().timelineRefreshKey) return null;
+        commit(key, { items: all, status: 'ready', stamp });
+        return all;
       } catch {
         // ponytail: a failed month retries on the next ensureMonth trigger (scroll back into the
         // bucket / refresh-key bump) — no page-level error UI for one month; a refetch failure
         // keeps the previous items visible instead of dropping to skeletons
-        commit(key, { items: entriesRef.current.get(key)?.items ?? [], status: 'error', stamp })
-        return null
+        commit(key, { items: entriesRef.current.get(key)?.items ?? [], status: 'error', stamp });
+        return null;
       }
     },
     [commit, personId, favorite, albumId],
-  )
+  );
 
   const ensureMonth = useCallback(
     (key: string): Promise<Asset[] | null> => {
-      touch(key) // in use: cache hit, in-flight join, or a fresh fetch
-      const stamp = useAppStore.getState().timelineRefreshKey
-      const entry = entriesRef.current.get(key)
+      touch(key); // in use: cache hit, in-flight join, or a fresh fetch
+      const stamp = useAppStore.getState().timelineRefreshKey;
+      const entry = entriesRef.current.get(key);
       if (entry?.stamp === stamp && entry.status === 'ready') {
-        return Promise.resolve(entry.items)
+        return Promise.resolve(entry.items);
       }
-      const existing = inFlightRef.current.get(key)
+      const existing = inFlightRef.current.get(key);
       // an in-flight fetch under an older refresh key is stale: ignore it and start a fresh one
-      if (existing?.stamp === stamp) return existing.promise
+      if (existing?.stamp === stamp) return existing.promise;
 
       if (!(entry?.stamp === stamp && entry.status === 'loading')) {
         // previous items stay visible while a month refetches (the viewer must not unmount)
-        commit(key, { items: entry?.items ?? [], status: 'loading', stamp })
+        commit(key, { items: entry?.items ?? [], status: 'loading', stamp });
       }
       const promise = fetchMonth(key).finally(() => {
-        const current = inFlightRef.current.get(key)
-        if (current?.promise === promise) inFlightRef.current.delete(key)
-      })
-      inFlightRef.current.set(key, { stamp, promise })
-      return promise
+        const current = inFlightRef.current.get(key);
+        if (current?.promise === promise) inFlightRef.current.delete(key);
+      });
+      inFlightRef.current.set(key, { stamp, promise });
+      return promise;
     },
     [commit, fetchMonth, touch],
-  )
+  );
 
   const groups = useMemo(() => {
-    const all: Asset[] = []
-    for (const entry of entries.values()) all.push(...entry.items)
-    return groupAssetsByDay(all, effectiveAssetDate)
-  }, [entries])
+    const all: Asset[] = [];
+    for (const entry of entries.values()) all.push(...entry.items);
+    return groupAssetsByDay(all, effectiveAssetDate);
+  }, [entries]);
 
   const monthStatus = useMemo(() => {
-    const status = new Map<string, MonthStatus>()
-    for (const [key, entry] of entries) status.set(key, entry.status)
-    return status
-  }, [entries])
+    const status = new Map<string, MonthStatus>();
+    for (const [key, entry] of entries) status.set(key, entry.status);
+    return status;
+  }, [entries]);
 
-  return { groups, monthStatus, ensureMonth, retainMonths }
+  return { groups, monthStatus, ensureMonth, retainMonths };
 }

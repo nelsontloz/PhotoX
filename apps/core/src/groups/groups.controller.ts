@@ -1,9 +1,9 @@
-import { Controller, Get, Param, Query } from '@nestjs/common'
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
-import type { SearchResponse } from '@photox/shared-types'
-import { CurrentUserId } from '../auth/jwt-auth.guard'
-import { GroupsService } from './groups.service'
-import { DuplicatesQueryDto, SimilarQueryDto } from './dto/groups-query.dto'
+import { Controller, Get, Param, Query } from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import type { SearchResponse } from '@photox/shared-types';
+import { CurrentUserId } from '../auth/jwt-auth.guard';
+import { GroupsService } from './groups.service';
+import { DuplicatesQueryDto, SimilarQueryDto } from './dto/groups-query.dto';
 
 @ApiTags('groups')
 @Controller('api/v1')
@@ -19,7 +19,7 @@ export class GroupsController {
     @Query() dto: DuplicatesQueryDto,
     @CurrentUserId() userId: string,
   ): Promise<SearchResponse> {
-    return this.groups.duplicates(userId, id, dto)
+    return this.groups.duplicates(userId, id, dto);
   }
 
   @Get('assets/:id/similar')
@@ -34,6 +34,6 @@ export class GroupsController {
     @Query() dto: SimilarQueryDto,
     @CurrentUserId() userId: string,
   ): Promise<SearchResponse> {
-    return this.groups.similar(userId, id, dto)
+    return this.groups.similar(userId, id, dto);
   }
 }

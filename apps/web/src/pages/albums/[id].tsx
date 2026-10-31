@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   FaArrowLeft,
   FaCheck,
@@ -10,53 +10,53 @@ import {
   FaPlus,
   FaShare,
   FaTrash,
-} from 'react-icons/fa6'
-import { RequireAuth } from '../../components/RequireAuth'
-import { AppShell } from '../../components/AppShell'
-import { useConfirm } from '../../components/ConfirmProvider'
-import { LoadingState } from '../../components/StateViews'
-import { TimelineAssets } from '../../components/Timeline/TimelineAssets'
-import { TimelineError, TimelineViewer } from '../../components/Timeline/TimelinePage'
+} from 'react-icons/fa6';
+import { RequireAuth } from '../../components/RequireAuth';
+import { AppShell } from '../../components/AppShell';
+import { useConfirm } from '../../components/ConfirmProvider';
+import { LoadingState } from '../../components/StateViews';
+import { TimelineAssets } from '../../components/Timeline/TimelineAssets';
+import { TimelineError, TimelineViewer } from '../../components/Timeline/TimelinePage';
 import {
   addAssetsToAlbum,
   deleteAlbum,
   getAlbum,
   removeAssetFromAlbum,
   updateAlbum,
-} from '../../api/albums'
-import { createShare, getShareUrl } from '../../api/shares'
-import { useAssetNavigation } from '../../hooks/useAssetNavigation'
-import { useInlineRename } from '../../hooks/useInlineRename'
-import { useTimelineView } from '../../hooks/useTimelineView'
-import { useAppStore } from '../../store/app-store'
-import { AddPhotosDialog } from './AddPhotosDialog'
-import type { AlbumDto } from '@photox/shared-types'
+} from '../../api/albums';
+import { createShare, getShareUrl } from '../../api/shares';
+import { useAssetNavigation } from '../../hooks/useAssetNavigation';
+import { useInlineRename } from '../../hooks/useInlineRename';
+import { useTimelineView } from '../../hooks/useTimelineView';
+import { useAppStore } from '../../store/app-store';
+import { AddPhotosDialog } from './AddPhotosDialog';
+import type { AlbumDto } from '@photox/shared-types';
 
 export default function AlbumDetailPage() {
-  const { id } = useParams<{ id: string }>()
+  const { id } = useParams<{ id: string }>();
   return (
     <RequireAuth>
       <AppShell>{id ? <AlbumDetail key={id} id={id} /> : null}</AppShell>
     </RequireAuth>
-  )
+  );
 }
 
 function AlbumDetail({ id }: { id: string }) {
-  const navigate = useNavigate()
-  const confirm = useConfirm()
-  const [album, setAlbum] = useState<AlbumDto | null>(null)
-  const [loadingAlbum, setLoadingAlbum] = useState(true)
-  const [albumNotFound, setAlbumNotFound] = useState(false)
-  const [showMenu, setShowMenu] = useState(false)
-  const [showAddDialog, setShowAddDialog] = useState(false)
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const [shareStatus, setShareStatus] = useState<'copied' | 'error' | null>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
+  const navigate = useNavigate();
+  const confirm = useConfirm();
+  const [album, setAlbum] = useState<AlbumDto | null>(null);
+  const [loadingAlbum, setLoadingAlbum] = useState(true);
+  const [albumNotFound, setAlbumNotFound] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [shareStatus, setShareStatus] = useState<'copied' | 'error' | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // Same lazy pipeline as the home timeline, scoped to this album (layout + per-month fetches).
-  const view = useTimelineView({ albumId: id })
-  const { timeline, loadedAssets, navHelpers } = view
-  const bumpTimelineRefresh = useAppStore((s) => s.bumpTimelineRefresh)
+  const view = useTimelineView({ albumId: id });
+  const { timeline, loadedAssets, navHelpers } = view;
+  const bumpTimelineRefresh = useAppStore((s) => s.bumpTimelineRefresh);
 
   const {
     editing: editingName,
@@ -66,62 +66,62 @@ function AlbumDetail({ id }: { id: string }) {
     save,
     cancel,
   } = useInlineRename(album?.name ?? '', async (name) => {
-    const updated = await updateAlbum(id, { name })
-    setAlbum(updated)
-  })
+    const updated = await updateAlbum(id, { name });
+    setAlbum(updated);
+  });
 
   const refreshAlbum = async () => {
     try {
-      const fresh = await getAlbum(id)
-      setAlbum(fresh)
+      const fresh = await getAlbum(id);
+      setAlbum(fresh);
     } catch {
       /* ponytail: silent fail, page will surface via the initial load */
     }
-  }
+  };
 
   const addAssets = async (ids: string[]) => {
-    await addAssetsToAlbum(id, ids)
-    bumpTimelineRefresh()
-    await refreshAlbum()
-  }
+    await addAssetsToAlbum(id, ids);
+    bumpTimelineRefresh();
+    await refreshAlbum();
+  };
 
   const nav = useAssetNavigation({
     assets: loadedAssets,
     ...navHelpers,
     onAfterAction: async () => {
-      bumpTimelineRefresh()
-      await refreshAlbum()
+      bumpTimelineRefresh();
+      await refreshAlbum();
     },
-  })
+  });
 
   useEffect(() => {
-    setLoadingAlbum(true)
-    setAlbumNotFound(false)
+    setLoadingAlbum(true);
+    setAlbumNotFound(false);
     void (async () => {
       try {
-        const fresh = await getAlbum(id)
-        setAlbum(fresh)
+        const fresh = await getAlbum(id);
+        setAlbum(fresh);
       } catch {
-        setAlbumNotFound(true)
+        setAlbumNotFound(true);
       } finally {
-        setLoadingAlbum(false)
+        setLoadingAlbum(false);
       }
-    })()
-  }, [id])
+    })();
+  }, [id]);
 
   useEffect(() => {
-    if (!showMenu) return
+    if (!showMenu) return;
     const onMouseDown = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowMenu(false)
+        setShowMenu(false);
       }
-    }
-    document.addEventListener('mousedown', onMouseDown)
-    return () => document.removeEventListener('mousedown', onMouseDown)
-  }, [showMenu])
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [showMenu]);
 
   const handleDelete = async () => {
-    setShowMenu(false)
+    setShowMenu(false);
     if (
       !(await confirm({
         title: `Delete "${album?.name ?? 'this album'}"?`,
@@ -130,43 +130,43 @@ function AlbumDetail({ id }: { id: string }) {
         destructive: true,
       }))
     )
-      return
+      return;
     try {
-      await deleteAlbum(id)
-      void navigate('/albums')
+      await deleteAlbum(id);
+      void navigate('/albums');
     } catch {
       /* ponytail: silent fail */
     }
-  }
+  };
 
   const handleEditDescription = () => {
-    setShowMenu(false)
-    const current = album?.description ?? ''
-    const next = window.prompt('Album description', current)
-    if (next === null) return
+    setShowMenu(false);
+    const current = album?.description ?? '';
+    const next = window.prompt('Album description', current);
+    if (next === null) return;
     void (async () => {
       try {
-        const updated = await updateAlbum(id, { description: next })
-        setAlbum(updated)
+        const updated = await updateAlbum(id, { description: next });
+        setAlbum(updated);
       } catch {
         /* ponytail: silent fail */
       }
-    })()
-  }
+    })();
+  };
 
   const handleShare = () => {
-    setShowMenu(false)
+    setShowMenu(false);
     void (async () => {
       try {
-        const share = await createShare({ albumId: id })
-        await navigator.clipboard.writeText(getShareUrl(share.token))
-        setShareStatus('copied')
+        const share = await createShare({ albumId: id });
+        await navigator.clipboard.writeText(getShareUrl(share.token));
+        setShareStatus('copied');
       } catch {
-        setShareStatus('error')
+        setShareStatus('error');
       }
-      setTimeout(() => setShareStatus(null), 2000)
-    })()
-  }
+      setTimeout(() => setShareStatus(null), 2000);
+    })();
+  };
 
   if (albumNotFound) {
     return (
@@ -183,16 +183,16 @@ function AlbumDetail({ id }: { id: string }) {
           <p className="text-slate-400">Album not found</p>
         </div>
       </div>
-    )
+    );
   }
 
   if (loadingAlbum || timeline.loading) {
-    return <LoadingState className="flex justify-center py-20" />
+    return <LoadingState className="flex justify-center py-20" />;
   }
 
-  if (timeline.error) return <TimelineError message={timeline.error} />
+  if (timeline.error) return <TimelineError message={timeline.error} />;
 
-  if (!album) return null
+  if (!album) return null;
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -210,19 +210,19 @@ function AlbumDetail({ id }: { id: string }) {
             value={nameValue}
             onChange={(e) => setNameValue(e.target.value)}
             onBlur={() => {
-              void save()
+              void save();
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') void save()
-              if (e.key === 'Escape') cancel()
+              if (e.key === 'Enter') void save();
+              if (e.key === 'Escape') cancel();
             }}
             className="text-2xl font-bold text-white bg-transparent border-b border-primary outline-none flex-1 min-w-[12rem] py-1"
           />
         ) : (
           <h1
             onClick={() => {
-              start()
-              setShowMenu(false)
+              start();
+              setShowMenu(false);
             }}
             className="text-2xl font-bold text-white cursor-pointer hover:text-primary transition-colors"
             title="Click to rename"
@@ -264,8 +264,8 @@ function AlbumDetail({ id }: { id: string }) {
               <div className="absolute right-0 mt-1 w-48 bg-card-dark border border-border-dark rounded-lg shadow-lg py-1 z-20">
                 <button
                   onClick={() => {
-                    start()
-                    setShowMenu(false)
+                    start();
+                    setShowMenu(false);
                   }}
                   className="w-full text-left px-3 py-2 text-sm text-slate-200 hover:bg-white/5 inline-flex items-center gap-2"
                 >
@@ -289,7 +289,7 @@ function AlbumDetail({ id }: { id: string }) {
                 <div className="my-1 border-t border-border-dark" />
                 <button
                   onClick={() => {
-                    void handleDelete()
+                    void handleDelete();
                   }}
                   className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 inline-flex items-center gap-2"
                 >
@@ -330,24 +330,24 @@ function AlbumDetail({ id }: { id: string }) {
       <TimelineViewer
         nav={nav}
         onTrash={() => {
-          void nav.trash()
+          void nav.trash();
         }}
         onToggleFavorite={(nextValue) => {
-          const cur = nav.selected
-          if (cur) void nav.toggleFavorite(cur.id, nextValue)
+          const cur = nav.selected;
+          if (cur) void nav.toggleFavorite(cur.id, nextValue);
         }}
         onAddToAlbum={() => setPickerOpen(true)}
         onRemoveFromAlbum={() => {
           void (async () => {
-            const cur = nav.selected
-            if (!cur) return
-            const assetLabel = cur.originalName ?? cur.title ?? 'this asset'
-            if (!(await confirm({ title: `Remove "${assetLabel}" from "${album.name}"?` }))) return
-            await removeAssetFromAlbum(album.id, cur.id)
-            bumpTimelineRefresh()
-            await refreshAlbum()
-            nav.close()
-          })()
+            const cur = nav.selected;
+            if (!cur) return;
+            const assetLabel = cur.originalName ?? cur.title ?? 'this asset';
+            if (!(await confirm({ title: `Remove "${assetLabel}" from "${album.name}"?` }))) return;
+            await removeAssetFromAlbum(album.id, cur.id);
+            bumpTimelineRefresh();
+            await refreshAlbum();
+            nav.close();
+          })();
         }}
         siblingAssets={loadedAssets}
         onSelectSibling={(asset) => nav.open(asset)}
@@ -363,5 +363,5 @@ function AlbumDetail({ id }: { id: string }) {
         />
       )}
     </div>
-  )
+  );
 }

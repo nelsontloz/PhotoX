@@ -1,35 +1,35 @@
-import { create } from 'zustand'
+import { create } from 'zustand';
 
-export type UploadStatus = 'queued' | 'hashing' | 'uploading' | 'done' | 'error'
+export type UploadStatus = 'queued' | 'hashing' | 'uploading' | 'done' | 'error';
 
 export interface UploadItem {
-  id: string
-  fileName: string
-  sizeBytes: number
-  kind: 'photo' | 'video'
-  progress: number
-  status: UploadStatus
-  error?: string
-  localThumbUrl?: string
+  id: string;
+  fileName: string;
+  sizeBytes: number;
+  kind: 'photo' | 'video';
+  progress: number;
+  status: UploadStatus;
+  error?: string;
+  localThumbUrl?: string;
 }
 
 interface UploadState {
-  items: UploadItem[]
-  dismissed: boolean
-  enqueue: (files: File[]) => void
-  setProgress: (id: string, pct: number) => void
-  setStatus: (id: string, status: UploadStatus, patch?: Partial<UploadItem>) => void
-  setDismissed: (b: boolean) => void
-  clearDone: () => void
+  items: UploadItem[];
+  dismissed: boolean;
+  enqueue: (files: File[]) => void;
+  setProgress: (id: string, pct: number) => void;
+  setStatus: (id: string, status: UploadStatus, patch?: Partial<UploadItem>) => void;
+  setDismissed: (b: boolean) => void;
+  clearDone: () => void;
 }
 
-let nextId = 0
+let nextId = 0;
 function makeId(): string {
-  return `upload-${++nextId}-${Date.now()}`
+  return `upload-${++nextId}-${Date.now()}`;
 }
 
 function fileKind(file: File): 'photo' | 'video' {
-  return file.type.startsWith('video/') ? 'video' : 'photo'
+  return file.type.startsWith('video/') ? 'video' : 'photo';
 }
 
 // The File objects live in an in-memory ref (lib/upload), so nothing here survives a reload:
@@ -70,4 +70,4 @@ export const useUploadStore = create<UploadState>()((set) => ({
     set((s) => ({
       items: s.items.filter((i) => i.status !== 'done' && i.status !== 'error'),
     })),
-}))
+}));

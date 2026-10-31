@@ -1,36 +1,36 @@
-import { Injectable, Logger } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, LessThan, Repository } from 'typeorm'
-import { readdir } from 'fs/promises'
-import { join, relative } from 'path'
-import { loadEnv, LocalStorageService } from '@photox/shared-config'
-import { Asset, AssetThumbnail, FileRecord } from '../database/entities'
-import type { PlaceFields } from '../places/places-resolve.service'
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, LessThan, Repository } from 'typeorm';
+import { readdir } from 'fs/promises';
+import { join, relative } from 'path';
+import { loadEnv, LocalStorageService } from '@photox/shared-config';
+import { Asset, AssetThumbnail, FileRecord } from '../database/entities';
+import type { PlaceFields } from '../places/places-resolve.service';
 import type {
   AdminAssetCountsResponse,
   AdminAssetReprocessListResponse,
   AdminLibraryStatsResponse,
   AssetFailureCounts,
-} from '@photox/shared-types'
+} from '@photox/shared-types';
 
-const STUCK_PROCESSING_HOURS = 12
-const ORPHAN_GRACE_MS = 10 * 60 * 1000
+const STUCK_PROCESSING_HOURS = 12;
+const ORPHAN_GRACE_MS = 10 * 60 * 1000;
 const REFERENCED_FILE_IDS_SQL = `
   SELECT "fileId" AS "fileId" FROM assets
   UNION
   SELECT "transcodeFileId" AS "fileId" FROM assets WHERE "transcodeFileId" IS NOT NULL
   UNION
   SELECT "fileId" AS "fileId" FROM asset_thumbnails
-`
+`;
 // ponytail: fixed 26-week upload window matching the wire contract; make it a query param if a UI ever needs more
-const UPLOAD_WEEKS = 26
+const UPLOAD_WEEKS = 26;
 const LIBRARY_COUNTS_SQL = `
   SELECT
     COUNT(*) FILTER (WHERE "isTrashed" = false AND kind = 'photo') AS "photos",
     COUNT(*) FILTER (WHERE "isTrashed" = false AND kind = 'video') AS "videos",
     COUNT(*) FILTER (WHERE "isTrashed" = true) AS "trashed"
   FROM assets
-`
+`;
 const UPLOADS_BY_WEEK_SQL = `
   WITH weeks AS (
     SELECT generate_series(
@@ -50,7 +50,7 @@ const UPLOADS_BY_WEEK_SQL = `
     AND a."isTrashed" = false
   GROUP BY w.week
   ORDER BY w.week
-`
+`;
 const STORAGE_BY_MONTH_SQL = `
   WITH bounds AS (
     SELECT COALESCE(
@@ -90,28 +90,28 @@ const STORAGE_BY_MONTH_SQL = `
   LEFT JOIN file_sums f ON f.month = m.month
   LEFT JOIN thumb_sums t ON t.month = m.month
   ORDER BY m.month
-`
+`;
 
 interface LibraryCountsRow {
-  photos: string
-  videos: string
-  trashed: string
+  photos: string;
+  videos: string;
+  trashed: string;
 }
 interface WeeklyUploadsRow {
-  week: string
-  photos: string
-  videos: string
+  week: string;
+  photos: string;
+  videos: string;
 }
 interface MonthlyStorageRow {
-  month: string
-  originalsBytes: string | null
-  transcodesBytes: string | null
-  thumbnailsBytes: string | null
+  month: string;
+  originalsBytes: string | null;
+  transcodesBytes: string | null;
+  thumbnailsBytes: string | null;
 }
 
 @Injectable()
 export class AdminAssetsService {
-  private readonly logger = new Logger(AdminAssetsService.name)
+  private readonly logger = new Logger(AdminAssetsService.name);
 
   constructor(
     @InjectRepository(Asset) private readonly repo: Repository<Asset>,
@@ -122,92 +122,92 @@ export class AdminAssetsService {
   ) {}
 
   async getOrphanCounts(): Promise<{ orphanFiles: number; orphanThumbnails: number }> {
-    const { orphanFileIds, orphanThumbs } = await this.scanOrphans()
-    return { orphanFiles: orphanFileIds.length, orphanThumbnails: orphanThumbs.length }
+    const { orphanFileIds, orphanThumbs } = await this.scanOrphans();
+    return { orphanFiles: orphanFileIds.length, orphanThumbnails: orphanThumbs.length };
   }
 
   async cleanupOrphans(): Promise<{
-    deletedFiles: number
-    deletedThumbnails: number
-    deletedStrays: number
+    deletedFiles: number;
+    deletedThumbnails: number;
+    deletedStrays: number;
   }> {
-    const { orphanFileIds, orphanThumbs } = await this.scanOrphans()
+    const { orphanFileIds, orphanThumbs } = await this.scanOrphans();
 
     // re-query right before deleting: an in-flight job may have referenced a file after the first scan
-    const freshMediaFileIds = await this.getReferencedFileIds()
-    const toDelete = orphanFileIds.filter((id) => !freshMediaFileIds.has(id))
+    const freshMediaFileIds = await this.getReferencedFileIds();
+    const toDelete = orphanFileIds.filter((id) => !freshMediaFileIds.has(id));
 
-    let deletedFiles = 0
+    let deletedFiles = 0;
     for (const fileId of toDelete) {
       try {
-        const record = await this.files.findOne({ where: { id: fileId } })
-        if (!record) continue
-        await this.storage.delete(record.storageKey)
-        await this.files.remove(record)
-        deletedFiles++
+        const record = await this.files.findOne({ where: { id: fileId } });
+        if (!record) continue;
+        await this.storage.delete(record.storageKey);
+        await this.files.remove(record);
+        deletedFiles++;
       } catch (err) {
         this.logger.warn(
           `Failed to delete orphan file ${fileId}: ${err instanceof Error ? err.message : String(err)}`,
-        )
+        );
       }
     }
 
-    let deletedThumbnails = 0
+    let deletedThumbnails = 0;
     for (const thumb of orphanThumbs) {
       try {
-        await this.thumbs.delete({ assetId: thumb.assetId, size: thumb.size })
-        deletedThumbnails++
+        await this.thumbs.delete({ assetId: thumb.assetId, size: thumb.size });
+        deletedThumbnails++;
       } catch (err) {
         this.logger.warn(
           `Failed to delete orphan thumbnail ${thumb.assetId}/${thumb.size}: ${err instanceof Error ? err.message : String(err)}`,
-        )
+        );
       }
     }
 
     // ponytail: disk strays — files under STORAGE_DIR with no FileRecord row (crashed uploads, manual copies); *.tmp staging files are mid-write, leave them
     const knownKeys = new Set(
       (await this.files.find({ select: { storageKey: true } })).map((r) => r.storageKey),
-    )
-    let deletedStrays = 0
+    );
+    let deletedStrays = 0;
     for (const key of await this.listDiskKeys()) {
       if (!knownKeys.has(key)) {
         try {
-          await this.storage.delete(key)
-          deletedStrays++
+          await this.storage.delete(key);
+          deletedStrays++;
         } catch (err) {
           this.logger.warn(
             `Failed to delete stray disk file ${key}: ${err instanceof Error ? err.message : String(err)}`,
-          )
+          );
         }
       }
     }
 
-    return { deletedFiles, deletedThumbnails, deletedStrays }
+    return { deletedFiles, deletedThumbnails, deletedStrays };
   }
 
   /** Shared orphan scan: stale storage files with no live reference + their orphan thumbnail rows. */
   private async scanOrphans(): Promise<{
-    orphanFileIds: string[]
-    orphanThumbs: AssetThumbnail[]
+    orphanFileIds: string[];
+    orphanThumbs: AssetThumbnail[];
   }> {
-    const mediaFileIds = await this.getReferencedFileIds()
-    const storageFileIds = await this.getStaleFileIds()
-    const orphanFileIds = storageFileIds.filter((id) => !mediaFileIds.has(id))
-    return { orphanFileIds, orphanThumbs: await this.findOrphanThumbs() }
+    const mediaFileIds = await this.getReferencedFileIds();
+    const storageFileIds = await this.getStaleFileIds();
+    const orphanFileIds = storageFileIds.filter((id) => !mediaFileIds.has(id));
+    return { orphanFileIds, orphanThumbs: await this.findOrphanThumbs() };
   }
 
   private async getReferencedFileIds(): Promise<Set<string>> {
-    const rows: { fileId: string }[] = await this.dataSource.query(REFERENCED_FILE_IDS_SQL)
-    return new Set(rows.map((r) => r.fileId).filter(Boolean))
+    const rows: { fileId: string }[] = await this.dataSource.query(REFERENCED_FILE_IDS_SQL);
+    return new Set(rows.map((r) => r.fileId).filter(Boolean));
   }
 
   private async getStaleFileIds(): Promise<string[]> {
-    const cutoff = new Date(Date.now() - ORPHAN_GRACE_MS)
+    const cutoff = new Date(Date.now() - ORPHAN_GRACE_MS);
     const rows = await this.files.find({
       select: { id: true },
       where: { createdAt: LessThan(cutoff) },
-    })
-    return rows.map((r) => r.id)
+    });
+    return rows.map((r) => r.id);
   }
 
   /**
@@ -216,33 +216,33 @@ export class AdminAssetsService {
    * row and a freshly registered FileRecord, and the old shape deleted exactly those.
    */
   private async findOrphanThumbs(): Promise<AssetThumbnail[]> {
-    const cutoff = new Date(Date.now() - ORPHAN_GRACE_MS)
+    const cutoff = new Date(Date.now() - ORPHAN_GRACE_MS);
     return this.thumbs
       .createQueryBuilder('t')
       .where('t."fileId" NOT IN (SELECT id FROM files)')
       .andWhere('t."createdAt" < :cutoff', { cutoff })
-      .getMany()
+      .getMany();
   }
 
   private async listDiskKeys(): Promise<string[]> {
-    const root = loadEnv().STORAGE_DIR
+    const root = loadEnv().STORAGE_DIR;
     // ponytail: *.tmp staging files are mid-write, leave them
-    const entries = await readdir(root, { recursive: true, withFileTypes: true }).catch(() => [])
-    const keys: string[] = []
+    const entries = await readdir(root, { recursive: true, withFileTypes: true }).catch(() => []);
+    const keys: string[] = [];
     for (const entry of entries) {
-      if (!entry.isFile() || entry.name.endsWith('.tmp')) continue
-      const key = relative(root, join(entry.parentPath, entry.name))
-      if (key === 'models' || key.startsWith('models/')) continue
+      if (!entry.isFile() || entry.name.endsWith('.tmp')) continue;
+      const key = relative(root, join(entry.parentPath, entry.name));
+      if (key === 'models' || key.startsWith('models/')) continue;
       // in-flight resumable chunks have no FileRecord (only upload_session_parts rows), so
       // this sweep would delete live uploads; the session sweeper owns that prefix
-      if (key === 'upload-sessions' || key.startsWith('upload-sessions/')) continue
-      keys.push(key)
+      if (key === 'upload-sessions' || key.startsWith('upload-sessions/')) continue;
+      keys.push(key);
     }
-    return keys
+    return keys;
   }
 
   async getFailureCounts(): Promise<AdminAssetCountsResponse> {
-    const stuckPredicate = `("metadataStatus" = 'pending' OR "thumbnailStatus" = 'pending' OR "transcodeStatus" = 'pending') AND "uploadedAt" < NOW() - INTERVAL '${STUCK_PROCESSING_HOURS} hours'`
+    const stuckPredicate = `("metadataStatus" = 'pending' OR "thumbnailStatus" = 'pending' OR "transcodeStatus" = 'pending') AND "uploadedAt" < NOW() - INTERVAL '${STUCK_PROCESSING_HOURS} hours'`;
 
     const rows = await this.repo
       .createQueryBuilder('a')
@@ -254,28 +254,28 @@ export class AdminAssetsService {
       .where('a."isTrashed" = false')
       .groupBy('a.kind')
       .getRawMany<{
-        kind: 'photo' | 'video'
-        processing: string
-        metadata: string
-        thumbnails: string
-        encoding: string
-      }>()
+        kind: 'photo' | 'video';
+        processing: string;
+        metadata: string;
+        thumbnails: string;
+        encoding: string;
+      }>();
 
-    const empty: AssetFailureCounts = { processing: 0, metadata: 0, thumbnails: 0, encoding: 0 }
+    const empty: AssetFailureCounts = { processing: 0, metadata: 0, thumbnails: 0, encoding: 0 };
     const result: AdminAssetCountsResponse = {
       photos: { ...empty },
       videos: { ...empty },
-    }
+    };
 
     for (const row of rows) {
-      const target = row.kind === 'video' ? result.videos : result.photos
-      target.processing = Number(row.processing)
-      target.metadata = Number(row.metadata)
-      target.thumbnails = Number(row.thumbnails)
-      target.encoding = Number(row.encoding)
+      const target = row.kind === 'video' ? result.videos : result.photos;
+      target.processing = Number(row.processing);
+      target.metadata = Number(row.metadata);
+      target.thumbnails = Number(row.thumbnails);
+      target.encoding = Number(row.encoding);
     }
 
-    return result
+    return result;
   }
 
   async getLibraryStats(): Promise<AdminLibraryStatsResponse> {
@@ -283,9 +283,9 @@ export class AdminAssetsService {
       this.dataSource.query<LibraryCountsRow[]>(LIBRARY_COUNTS_SQL),
       this.dataSource.query<WeeklyUploadsRow[]>(UPLOADS_BY_WEEK_SQL),
       this.dataSource.query<MonthlyStorageRow[]>(STORAGE_BY_MONTH_SQL),
-    ])
+    ]);
 
-    const counts = countRows[0]
+    const counts = countRows[0];
     return {
       counts: {
         photos: Number(counts?.photos ?? 0),
@@ -303,7 +303,7 @@ export class AdminAssetsService {
         transcodesBytes: Number(row.transcodesBytes ?? 0),
         thumbnailsBytes: Number(row.thumbnailsBytes ?? 0),
       })),
-    }
+    };
   }
 
   async listForReprocess(
@@ -315,7 +315,7 @@ export class AdminAssetsService {
       .createQueryBuilder('a')
       .select(['a.id AS id', 'a."userId" AS "userId"', 'a."fileId" AS "fileId"'])
       .where('a.kind = :kind', { kind })
-      .andWhere('a."isTrashed" = false')
+      .andWhere('a."isTrashed" = false');
 
     const [rows, total] = await Promise.all([
       qb
@@ -324,9 +324,9 @@ export class AdminAssetsService {
         .offset(offset)
         .getRawMany<{ id: string; userId: string; fileId: string }>(),
       qb.getCount(),
-    ])
+    ]);
 
-    return { items: rows, total }
+    return { items: rows, total };
   }
 
   countUnresolvedPlaces(): Promise<number> {
@@ -335,7 +335,7 @@ export class AdminAssetsService {
       .where('a.latitude IS NOT NULL')
       .andWhere('a.longitude IS NOT NULL')
       .andWhere('a."placeCity" IS NULL')
-      .getCount()
+      .getCount();
   }
 
   /**
@@ -353,15 +353,15 @@ export class AdminAssetsService {
       .andWhere('a.longitude IS NOT NULL')
       .andWhere('a."placeCity" IS NULL')
       .orderBy('a.id', 'ASC')
-      .limit(limit)
+      .limit(limit);
 
-    if (afterId !== null) qb.andWhere('a.id > :afterId', { afterId })
+    if (afterId !== null) qb.andWhere('a.id > :afterId', { afterId });
 
-    return { items: await qb.getRawMany<{ id: string; latitude: string; longitude: string }>() }
+    return { items: await qb.getRawMany<{ id: string; latitude: string; longitude: string }>() };
   }
 
   async applyPlaceFields(id: string, fields: PlaceFields): Promise<void> {
-    await this.repo.update(id, fields)
+    await this.repo.update(id, fields);
   }
 
   countPhotosWithoutPhash(): Promise<number> {
@@ -370,7 +370,7 @@ export class AdminAssetsService {
       .where('a.kind = :kind', { kind: 'photo' })
       .andWhere('a."isTrashed" = false')
       .andWhere('a.phash IS NULL')
-      .getCount()
+      .getCount();
   }
 
   /**
@@ -388,10 +388,10 @@ export class AdminAssetsService {
       .andWhere('a."isTrashed" = false')
       .andWhere('a.phash IS NULL')
       .orderBy('a.id', 'ASC')
-      .limit(limit)
+      .limit(limit);
 
-    if (afterId !== null) qb.andWhere('a.id > :afterId', { afterId })
+    if (afterId !== null) qb.andWhere('a.id > :afterId', { afterId });
 
-    return { items: await qb.getRawMany<{ id: string; userId: string; fileId: string }>() }
+    return { items: await qb.getRawMany<{ id: string; userId: string; fileId: string }>() };
   }
 }

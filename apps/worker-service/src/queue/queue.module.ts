@@ -1,15 +1,15 @@
-import { Module } from '@nestjs/common'
-import { JwtModule } from '@nestjs/jwt'
-import { loadAuthEnv, LocalStorageService } from '@photox/shared-config'
-import { BullMqService } from './bullmq.service'
-import { ProcessorsService } from './processors.service'
-import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor'
-import { FaceDetectorService } from './face.detector'
-import { FaceEmbedderService } from './face.embedder'
-import { FaceClusterService } from './face.cluster'
-import { EmbeddingService } from './embedding.service'
-import { DetectService } from './detect.service'
-import { CoreClient } from '../core/core-client.service'
+import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { loadAuthEnv, LocalStorageService } from '@photox/shared-config';
+import { BullMqService } from './bullmq.service';
+import { ProcessorsService } from './processors.service';
+import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor';
+import { FaceDetectorService } from './face.detector';
+import { FaceEmbedderService } from './face.embedder';
+import { FaceClusterService } from './face.cluster';
+import { EmbeddingService } from './embedding.service';
+import { DetectService } from './detect.service';
+import { CoreClient } from '../core/core-client.service';
 
 @Module({
   imports: [

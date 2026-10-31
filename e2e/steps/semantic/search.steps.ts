@@ -1,5 +1,5 @@
-import { expect } from '@playwright/test'
-import { Then, When, openViewerAndCaptureAssetId } from '../support'
+import { expect } from '@playwright/test';
+import { Then, When, openViewerAndCaptureAssetId } from '../support';
 
 /**
  * One of three terminal search states must appear: the 503 "index not ready" error (the alpine
@@ -13,35 +13,35 @@ Then(
       page.getByText('Search is not ready yet'),
       page.getByRole('heading', { name: new RegExp(`No results for .${q}.`) }),
       page.getByRole('heading', { name: new RegExp(`Results for .${q}.`) }),
-    ]
+    ];
     await expect
       .poll(
         async () => {
-          const visible = await Promise.all(states.map((state) => state.isVisible()))
-          return visible.some(Boolean)
+          const visible = await Promise.all(states.map((state) => state.isVisible()));
+          return visible.some(Boolean);
         },
         { timeout: 20_000, message: `the search page never settled for "${q}"` },
       )
-      .toBe(true)
+      .toBe(true);
   },
-)
+);
 
 When('I open the first photo in the viewer', async ({ page, ctx }) => {
-  await page.goto('/')
-  await openViewerAndCaptureAssetId(page, ctx)
-})
+  await page.goto('/');
+  await openViewerAndCaptureAssetId(page, ctx);
+});
 
 Then('the related tray offers similar photos', async ({ page }) => {
   // related assets are fetched after the viewer opens, slower than the default 15s expect timeout
   await expect(page.getByRole('button', { name: 'More like this' })).toBeVisible({
     timeout: 60_000,
-  })
-})
+  });
+});
 
 When('I expand the similar photos', async ({ page }) => {
-  await page.getByRole('button', { name: 'More like this' }).click()
-})
+  await page.getByRole('button', { name: 'More like this' }).click();
+});
 
 Then('the tray lists the similar photo count', async ({ page }) => {
-  await expect(page.getByText(/similar photos?/)).toBeVisible()
-})
+  await expect(page.getByText(/similar photos?/)).toBeVisible();
+});

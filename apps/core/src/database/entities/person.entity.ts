@@ -5,32 +5,32 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
-} from 'typeorm'
+} from 'typeorm';
 
 @Entity('persons')
 @Index(['userId', 'clusterLabel'])
 export class Person {
   @PrimaryGeneratedColumn('uuid')
-  id!: string
+  id!: string;
 
   @Column('uuid')
-  userId!: string
+  userId!: string;
 
   @Column('text', { nullable: true })
-  name!: string | null
+  name!: string | null;
 
   @Column('uuid', { nullable: true })
-  coverFaceId!: string | null
+  coverFaceId!: string | null;
 
   @Column('text', { nullable: true })
-  clusterLabel!: string | null
+  clusterLabel!: string | null;
 
   @Column('int', { default: 0 })
-  faceCount!: number
+  faceCount!: number;
 
   @CreateDateColumn()
-  createdAt!: Date
+  createdAt!: Date;
 
   @UpdateDateColumn()
-  updatedAt!: Date
+  updatedAt!: Date;
 }

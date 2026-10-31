@@ -1,16 +1,16 @@
-import { loadEnv } from './env'
+import { loadEnv } from './env';
 
 export function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase()
+  return email.trim().toLowerCase();
 }
 
 export function encodeSegment(segment: string): string {
-  return encodeURIComponent(segment)
+  return encodeURIComponent(segment);
 }
 
 function requireNonEmpty(value: string, name: string): string {
-  if (value.trim().length === 0) throw new Error(`Invalid backup ${name}: must not be empty`)
-  return value
+  if (value.trim().length === 0) throw new Error(`Invalid backup ${name}: must not be empty`);
+  return value;
 }
 
 function normalizePrefixSegments(prefix: string): string {
@@ -18,25 +18,25 @@ function normalizePrefixSegments(prefix: string): string {
     .split('/')
     .filter((segment) => segment.length > 0)
     .map((segment) => encodeSegment(segment))
-    .join('/')
-  return encoded
+    .join('/');
+  return encoded;
 }
 
 export function resolveBackupPrefix(prefix?: string): string {
-  const raw = prefix ?? loadEnv().S3_BACKUP_PREFIX
-  const cleaned = normalizePrefixSegments(raw)
-  return cleaned.length > 0 ? `${cleaned}/` : ''
+  const raw = prefix ?? loadEnv().S3_BACKUP_PREFIX;
+  const cleaned = normalizePrefixSegments(raw);
+  return cleaned.length > 0 ? `${cleaned}/` : '';
 }
 
 export function backupPrefix(email: string, userId: string, prefix?: string): string {
-  const normalized = normalizeEmail(requireNonEmpty(email, 'email'))
-  requireNonEmpty(userId, 'userId')
-  const base = resolveBackupPrefix(prefix)
-  return `${base}${encodeSegment(normalized)}__${encodeSegment(userId)}/`
+  const normalized = normalizeEmail(requireNonEmpty(email, 'email'));
+  requireNonEmpty(userId, 'userId');
+  const base = resolveBackupPrefix(prefix);
+  return `${base}${encodeSegment(normalized)}__${encodeSegment(userId)}/`;
 }
 
 export function manifestKey(email: string, userId: string, prefix?: string): string {
-  return `${backupPrefix(email, userId, prefix)}manifest.json`
+  return `${backupPrefix(email, userId, prefix)}manifest.json`;
 }
 
 export function originalKey(
@@ -46,17 +46,17 @@ export function originalKey(
   ext: string,
   prefix?: string,
 ): string {
-  requireNonEmpty(fileId, 'fileId')
-  return joinOriginalKey(backupPrefix(email, userId, prefix), fileId, ext)
+  requireNonEmpty(fileId, 'fileId');
+  return joinOriginalKey(backupPrefix(email, userId, prefix), fileId, ext);
 }
 
 function joinOriginalKey(base: string, fileId: string, ext: string): string {
-  const cleanExt = ext.replace(/^\.+/, '')
+  const cleanExt = ext.replace(/^\.+/, '');
   const name =
     cleanExt.length > 0
       ? `${encodeSegment(fileId)}.${encodeSegment(cleanExt)}`
-      : encodeSegment(fileId)
-  return `${base}originals/${name}`
+      : encodeSegment(fileId);
+  return `${base}originals/${name}`;
 }
 
 /**
@@ -66,14 +66,14 @@ function joinOriginalKey(base: string, fileId: string, ext: string): string {
  * Throws on a missing separator or an empty side.
  */
 export function parseBackupDir(dir: string): { email: string; userId: string } {
-  const folder = dir.replace(/\/+$/, '')
-  const sep = folder.lastIndexOf('__')
-  if (sep < 0) throw new Error(`Invalid backup folder: missing __ separator: ${dir}`)
-  const email = decodeURIComponent(folder.slice(0, sep))
-  const userId = decodeURIComponent(folder.slice(sep + 2))
-  requireNonEmpty(email, 'email')
-  requireNonEmpty(userId, 'userId')
-  return { email, userId }
+  const folder = dir.replace(/\/+$/, '');
+  const sep = folder.lastIndexOf('__');
+  if (sep < 0) throw new Error(`Invalid backup folder: missing __ separator: ${dir}`);
+  const email = decodeURIComponent(folder.slice(0, sep));
+  const userId = decodeURIComponent(folder.slice(sep + 2));
+  requireNonEmpty(email, 'email');
+  requireNonEmpty(userId, 'userId');
+  return { email, userId };
 }
 
 /**
@@ -85,27 +85,27 @@ export function parseBackupDir(dir: string): { email: string; userId: string } {
  * and email-reuse dirs (same email, different userId) are excluded.
  */
 export function findPrefixesForUserId(keys: string[], base: string, userId: string): string[] {
-  const prefixes: string[] = []
-  const seen = new Set<string>()
-  if (userId.trim().length === 0) return prefixes
+  const prefixes: string[] = [];
+  const seen = new Set<string>();
+  if (userId.trim().length === 0) return prefixes;
   for (const key of keys) {
-    if (!key.startsWith(base)) continue
-    const rest = key.slice(base.length)
-    if (rest.length === 0) continue
-    const dir = rest.split('/')[0]!
-    if (!dir) continue
-    let parsed: { email: string; userId: string }
+    if (!key.startsWith(base)) continue;
+    const rest = key.slice(base.length);
+    if (rest.length === 0) continue;
+    const dir = rest.split('/')[0]!;
+    if (!dir) continue;
+    let parsed: { email: string; userId: string };
     try {
-      parsed = parseBackupDir(dir)
+      parsed = parseBackupDir(dir);
     } catch {
-      continue
+      continue;
     }
-    if (parsed.userId !== userId) continue
-    const prefix = `${base}${dir}/`
+    if (parsed.userId !== userId) continue;
+    const prefix = `${base}${dir}/`;
     if (!seen.has(prefix)) {
-      seen.add(prefix)
-      prefixes.push(prefix)
+      seen.add(prefix);
+      prefixes.push(prefix);
     }
   }
-  return prefixes
+  return prefixes;
 }

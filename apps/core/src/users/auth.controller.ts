@@ -8,11 +8,11 @@ import {
   HttpStatus,
   Req,
   Res,
-} from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import type { Request, Response } from 'express'
-import { loadEnv } from '@photox/shared-config'
-import type { RegistrationSettings } from '@photox/shared-types'
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import type { Request, Response } from 'express';
+import { loadEnv } from '@photox/shared-config';
+import type { RegistrationSettings } from '@photox/shared-types';
 import {
   bearerToken,
   clearAccessCookie,
@@ -21,17 +21,17 @@ import {
   readRefreshCookie,
   setAccessCookie,
   setRefreshCookie,
-} from '../auth/auth-cookie'
-import { AuthService } from './auth.service'
-import { TokenService } from './tokens/token.service'
-import { SettingsService } from '../settings/settings.service'
-import { RegisterDto } from './dto/register.dto'
-import { LoginDto } from './dto/login.dto'
-import { RefreshDto } from './dto/logout.dto'
+} from '../auth/auth-cookie';
+import { AuthService } from './auth.service';
+import { TokenService } from './tokens/token.service';
+import { SettingsService } from '../settings/settings.service';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
+import { RefreshDto } from './dto/logout.dto';
 
 // ponytail: socket peer address via req.ip — main.ts sets 'trust proxy', so behind the
 // reverse proxy this is the X-Forwarded-For client, not the proxy itself
-const clientIp = (req: Request): string => req.ip ?? 'unknown'
+const clientIp = (req: Request): string => req.ip ?? 'unknown';
 
 @ApiTags('auth')
 @Controller('api/v1/auth')
@@ -51,16 +51,16 @@ export class AuthController {
     refreshToken: string,
     req: Request,
   ): void {
-    const maxAgeMs = this.tokenService.expiresInSeconds(accessToken) * 1000
-    setAccessCookie(res, accessToken, maxAgeMs, req.secure)
-    setRefreshCookie(res, refreshToken, loadEnv().AUTH_REFRESH_TTL, req.secure)
+    const maxAgeMs = this.tokenService.expiresInSeconds(accessToken) * 1000;
+    setAccessCookie(res, accessToken, maxAgeMs, req.secure);
+    setRefreshCookie(res, refreshToken, loadEnv().AUTH_REFRESH_TTL, req.secure);
   }
 
   @Get('registration')
   @ApiOperation({ summary: 'Whether public sign-up is enabled' })
   @ApiResponse({ status: 200, description: 'Current registration setting' })
   async registration(): Promise<RegistrationSettings> {
-    return { enabled: await this.settings.isRegistrationEnabled() }
+    return { enabled: await this.settings.isRegistrationEnabled() };
   }
 
   @Post('register')
@@ -77,9 +77,9 @@ export class AuthController {
       dto.password,
       dto.displayName,
       clientIp(req),
-    )
-    this.setAuthCookies(res, result.accessToken, result.refreshToken, req)
-    return result
+    );
+    this.setAuthCookies(res, result.accessToken, result.refreshToken, req);
+    return result;
   }
 
   @Post('login')
@@ -92,9 +92,9 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.authService.login(dto.email, dto.password, clientIp(req))
-    this.setAuthCookies(res, result.accessToken, result.refreshToken, req)
-    return result
+    const result = await this.authService.login(dto.email, dto.password, clientIp(req));
+    this.setAuthCookies(res, result.accessToken, result.refreshToken, req);
+    return result;
   }
 
   @Post('refresh')
@@ -108,11 +108,11 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     // body first (explicit credential wins), HttpOnly refresh cookie as the fallback
-    const raw = dto.refreshToken ?? readRefreshCookie(req)
-    if (!raw) throw new BadRequestException('Refresh token required')
-    const result = await this.authService.refresh(raw, clientIp(req))
-    this.setAuthCookies(res, result.accessToken, result.refreshToken, req)
-    return result
+    const raw = dto.refreshToken ?? readRefreshCookie(req);
+    if (!raw) throw new BadRequestException('Refresh token required');
+    const result = await this.authService.refresh(raw, clientIp(req));
+    this.setAuthCookies(res, result.accessToken, result.refreshToken, req);
+    return result;
   }
 
   @Post('logout')
@@ -124,17 +124,17 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const raw = dto.refreshToken ?? readRefreshCookie(req)
-    if (raw) await this.authService.logout(raw)
+    const raw = dto.refreshToken ?? readRefreshCookie(req);
+    if (raw) await this.authService.logout(raw);
     // A bearer-only client — or an attacker holding nothing but an access token — must still
     // be able to end its own session: the access token identifies the caller, so the session
     // floor is raised for that user even when no refresh token is presented. The token is
     // verified with the USER secrets only, so a delegated service token fails closed and
     // revokes nothing (revoking another user's sessions would be a DoS).
-    const accessToken = bearerToken(req) ?? readAccessCookie(req)
-    const caller = accessToken ? this.tokenService.verifyAccessToken(accessToken) : null
-    if (caller) await this.authService.revokeAllSessions(caller.sub)
-    clearAccessCookie(res, req.secure)
-    clearRefreshCookie(res, req.secure)
+    const accessToken = bearerToken(req) ?? readAccessCookie(req);
+    const caller = accessToken ? this.tokenService.verifyAccessToken(accessToken) : null;
+    if (caller) await this.authService.revokeAllSessions(caller.sub);
+    clearAccessCookie(res, req.secure);
+    clearRefreshCookie(res, req.secure);
   }
 }

@@ -6,36 +6,36 @@ import {
   NotFoundException,
   ServiceUnavailableException,
   UnprocessableEntityException,
-} from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { Repository, DataSource, In, QueryFailedError } from 'typeorm'
-import type { SelectQueryBuilder } from 'typeorm'
-import { isUUID } from 'class-validator'
-import { Asset } from '../database/entities'
-import { AssetThumbnail } from '../database/entities'
-import { FileRecord } from '../database/entities'
-import { AlbumAsset } from '../albums/entities/album-asset.entity'
-import { Face } from '../database/entities'
-import { findOwnedOr404 } from '../common/asset-ownership'
-import { refreshPersonsAfterFaceDelete } from '../common/face-cleanup'
-import { CreateAssetDto } from './dto/create-asset.dto'
-import { UpdateAssetDto } from './dto/update-asset.dto'
-import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
-import { RegisterThumbnailDto } from './dto/register-thumbnail.dto'
-import { WorkerMetadataDto } from '../worker/dto/worker-metadata.dto'
-import { FacesService } from '../faces/faces.service'
-import { PlacesResolveService } from '../places/places-resolve.service'
-import { BullMqService } from '../queue/bullmq.service'
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, DataSource, In, QueryFailedError } from 'typeorm';
+import type { SelectQueryBuilder } from 'typeorm';
+import { isUUID } from 'class-validator';
+import { Asset } from '../database/entities';
+import { AssetThumbnail } from '../database/entities';
+import { FileRecord } from '../database/entities';
+import { AlbumAsset } from '../albums/entities/album-asset.entity';
+import { Face } from '../database/entities';
+import { findOwnedOr404 } from '../common/asset-ownership';
+import { refreshPersonsAfterFaceDelete } from '../common/face-cleanup';
+import { CreateAssetDto } from './dto/create-asset.dto';
+import { UpdateAssetDto } from './dto/update-asset.dto';
+import { ListAssetsQueryDto } from './dto/list-assets-query.dto';
+import { RegisterThumbnailDto } from './dto/register-thumbnail.dto';
+import { WorkerMetadataDto } from '../worker/dto/worker-metadata.dto';
+import { FacesService } from '../faces/faces.service';
+import { PlacesResolveService } from '../places/places-resolve.service';
+import { BullMqService } from '../queue/bullmq.service';
 import type {
   Asset as AssetResponse,
   AssetLayout,
   AssetListResponse,
   AssetThumbnail as AssetThumbnailResponse,
-} from '@photox/shared-types'
+} from '@photox/shared-types';
 
 @Injectable()
 export class AssetsService {
-  private readonly logger = new Logger(AssetsService.name)
+  private readonly logger = new Logger(AssetsService.name);
 
   constructor(
     @InjectRepository(Asset)
@@ -51,92 +51,92 @@ export class AssetsService {
   ) {}
 
   async create(userId: string, dto: CreateAssetDto): Promise<AssetResponse> {
-    const asset = new Asset()
-    asset.userId = userId
-    asset.fileId = dto.fileId
-    asset.kind = dto.kind
-    asset.title = dto.title ?? null
-    asset.description = dto.description ?? null
-    asset.takenAt = dto.takenAt ? new Date(dto.takenAt) : null
-    asset.mimeType = dto.mimeType ?? null
-    asset.sizeBytes = dto.sizeBytes ?? null
-    asset.originalName = dto.originalName ?? null
-    asset.transcodeStatus = dto.kind === 'video' ? 'pending' : null
-    asset.thumbnailStatus = 'pending'
+    const asset = new Asset();
+    asset.userId = userId;
+    asset.fileId = dto.fileId;
+    asset.kind = dto.kind;
+    asset.title = dto.title ?? null;
+    asset.description = dto.description ?? null;
+    asset.takenAt = dto.takenAt ? new Date(dto.takenAt) : null;
+    asset.mimeType = dto.mimeType ?? null;
+    asset.sizeBytes = dto.sizeBytes ?? null;
+    asset.originalName = dto.originalName ?? null;
+    asset.transcodeStatus = dto.kind === 'video' ? 'pending' : null;
+    asset.thumbnailStatus = 'pending';
     // P1-5: duplicate uploads converge on one file row, but two asset inserts for the same
     // fileId can still collide on UNIQUE(fileId) — map it to the same 409 shape the upload
     // dedup path returns instead of leaking a 500.
-    let saved: Asset
+    let saved: Asset;
     try {
-      saved = await this.repo.save(asset)
+      saved = await this.repo.save(asset);
     } catch (err) {
       if (isPostgresUniqueViolation(err)) {
-        const existing = await this.repo.findOne({ where: { fileId: dto.fileId } })
+        const existing = await this.repo.findOne({ where: { fileId: dto.fileId } });
         if (existing) {
           throw new ConflictException({
             statusCode: 409,
             message: 'File already uploaded',
             existingAssetId: existing.id,
             existingFileId: dto.fileId,
-          })
+          });
         }
       }
-      throw err
+      throw err;
     }
-    return this.toResponse(saved)
+    return this.toResponse(saved);
   }
 
   async list(userId: string, q: ListAssetsQueryDto): Promise<AssetListResponse> {
     // ponytail: ids requests need every match (legacy re-embed ≤100/run); 100 mirrors the DTO @Max
-    const limit = q.limit ?? (q.ids ? Math.min(q.ids.length, 100) : 20)
-    const offset = q.offset ?? 0
-    const isTrashed = q.isTrashed ?? false
+    const limit = q.limit ?? (q.ids ? Math.min(q.ids.length, 100) : 20);
+    const offset = q.offset ?? 0;
+    const isTrashed = q.isTrashed ?? false;
 
-    const qb = this.repo.createQueryBuilder('asset').where('asset.userId = :userId', { userId })
+    const qb = this.repo.createQueryBuilder('asset').where('asset.userId = :userId', { userId });
 
-    qb.andWhere('asset.isTrashed = :isTrashed', { isTrashed })
+    qb.andWhere('asset.isTrashed = :isTrashed', { isTrashed });
 
     if (q.ids) {
-      qb.andWhere('asset.id IN (:...ids)', { ids: q.ids })
+      qb.andWhere('asset.id IN (:...ids)', { ids: q.ids });
     }
 
     if (q.dateFrom) {
       qb.andWhere('COALESCE(asset.takenAt, asset.uploadedAt) >= :dateFrom', {
         dateFrom: q.dateFrom,
-      })
+      });
     }
 
     if (q.dateTo) {
-      qb.andWhere('COALESCE(asset.takenAt, asset.uploadedAt) < :dateTo', { dateTo: q.dateTo })
+      qb.andWhere('COALESCE(asset.takenAt, asset.uploadedAt) < :dateTo', { dateTo: q.dateTo });
     }
 
     if (q.favorite !== undefined) {
-      qb.andWhere('asset.favorite = :favorite', { favorite: q.favorite })
+      qb.andWhere('asset.favorite = :favorite', { favorite: q.favorite });
     }
 
     if (q.hasLocations === true) {
-      qb.andWhere('asset.latitude IS NOT NULL AND asset.longitude IS NOT NULL')
+      qb.andWhere('asset.latitude IS NOT NULL AND asset.longitude IS NOT NULL');
     } else if (q.hasLocations === false) {
-      qb.andWhere('(asset.latitude IS NULL OR asset.longitude IS NULL)')
+      qb.andWhere('(asset.latitude IS NULL OR asset.longitude IS NULL)');
     }
 
-    this.applyAssetFilters(qb, q)
+    this.applyAssetFilters(qb, q);
 
     const [items, total] = await qb
       .orderBy(`COALESCE(asset.takenAt, asset.uploadedAt)`, 'DESC')
       .addOrderBy('asset.uploadedAt', 'DESC')
       .skip(offset)
       .take(limit)
-      .getManyAndCount()
+      .getManyAndCount();
 
-    const thumbsByAsset = await this.fetchThumbs(items.map((a) => a.id))
+    const thumbsByAsset = await this.fetchThumbs(items.map((a) => a.id));
 
     return {
       items: items.map((a) => this.toResponse(a, thumbsByAsset.get(a.id) ?? [])),
       total,
       limit,
       offset,
-    }
+    };
   }
 
   /**
@@ -144,14 +144,14 @@ export class AssetsService {
    * ids that are gone/trashed/foreign. Same wire shape as `list` via `toResponse`.
    */
   async listByIdsRanked(userId: string, ids: string[]): Promise<AssetResponse[]> {
-    if (ids.length === 0) return []
-    const assets = await this.repo.find({ where: { id: In(ids), userId, isTrashed: false } })
-    const byId = new Map(assets.map((a) => [a.id, a]))
-    const thumbsByAsset = await this.fetchThumbs(ids)
+    if (ids.length === 0) return [];
+    const assets = await this.repo.find({ where: { id: In(ids), userId, isTrashed: false } });
+    const byId = new Map(assets.map((a) => [a.id, a]));
+    const thumbsByAsset = await this.fetchThumbs(ids);
     return ids.flatMap((id) => {
-      const asset = byId.get(id)
-      return asset ? [this.toResponse(asset, thumbsByAsset.get(id) ?? [])] : []
-    })
+      const asset = byId.get(id);
+      return asset ? [this.toResponse(asset, thumbsByAsset.get(id) ?? [])] : [];
+    });
   }
 
   async layout(
@@ -166,14 +166,14 @@ export class AssetsService {
       .addSelect('COALESCE(asset.width, 1)', 'w')
       .addSelect('COALESCE(asset.height, 1)', 'h')
       .where('asset.userId = :userId', { userId })
-      .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false })
+      .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false });
 
-    this.applyAssetFilters(qb, { personId, favorite, albumId })
+    this.applyAssetFilters(qb, { personId, favorite, albumId });
 
     const rows = await qb
       .orderBy('COALESCE(asset.takenAt, asset.uploadedAt)', 'DESC')
       .addOrderBy('asset.uploadedAt', 'DESC')
-      .getRawMany<{ t: Date | string; w: number; h: number }>()
+      .getRawMany<{ t: Date | string; w: number; h: number }>();
 
     return {
       items: rows.map((r) => ({
@@ -181,7 +181,7 @@ export class AssetsService {
         w: Number(r.w),
         h: Number(r.h),
       })),
-    }
+    };
   }
 
   /**
@@ -197,79 +197,79 @@ export class AssetsService {
       .addSelect('MAX(asset.updatedAt)', 'maxUpdatedAt')
       .where('asset.userId = :userId', { userId })
       .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false })
-      .getRawOne<{ count: string; maxUpdatedAt: Date | string | null }>()
+      .getRawOne<{ count: string; maxUpdatedAt: Date | string | null }>();
     return {
       count: Number(row?.count ?? 0),
       maxUpdatedAtMs: row?.maxUpdatedAt ? new Date(row.maxUpdatedAt).getTime() : 0,
-    }
+    };
   }
 
   async getOne(userId: string, id: string): Promise<AssetResponse> {
-    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
-    const faces = await this.facesService.getForAsset(asset.userId, id)
+    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset');
+    const faces = await this.facesService.getForAsset(asset.userId, id);
     const thumbRows = await this.thumbRepo.find({
       where: { assetId: id },
       order: { createdAt: 'ASC' },
-    })
-    return { ...this.toResponse(asset, thumbRows), faces }
+    });
+    return { ...this.toResponse(asset, thumbRows), faces };
   }
 
   async update(userId: string, id: string, dto: UpdateAssetDto): Promise<AssetResponse> {
-    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
+    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset');
 
-    const patch: Partial<Asset> = {}
-    if (dto.title !== undefined) patch.title = dto.title
-    if (dto.description !== undefined) patch.description = dto.description
-    if (dto.takenAt !== undefined) patch.takenAt = dto.takenAt ? new Date(dto.takenAt) : null
-    if (dto.favorite !== undefined) patch.favorite = dto.favorite
+    const patch: Partial<Asset> = {};
+    if (dto.title !== undefined) patch.title = dto.title;
+    if (dto.description !== undefined) patch.description = dto.description;
+    if (dto.takenAt !== undefined) patch.takenAt = dto.takenAt ? new Date(dto.takenAt) : null;
+    if (dto.favorite !== undefined) patch.favorite = dto.favorite;
 
     if (Object.keys(patch).length === 0) {
-      return this.toResponse(asset)
+      return this.toResponse(asset);
     }
 
-    await this.repo.update(id, patch as Record<string, unknown>)
-    const updated = await this.repo.findOne({ where: { id } })
-    return this.toResponse(updated!)
+    await this.repo.update(id, patch as Record<string, unknown>);
+    const updated = await this.repo.findOne({ where: { id } });
+    return this.toResponse(updated!);
   }
 
   async trash(userId: string, id: string): Promise<void> {
-    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
+    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset');
 
     if (!asset.isTrashed) {
-      await this.repo.update(id, { isTrashed: true, trashedAt: new Date() })
+      await this.repo.update(id, { isTrashed: true, trashedAt: new Date() });
     }
   }
 
   async bulkTrash(userId: string, assetIds: string[]): Promise<void> {
-    if (assetIds.length === 0) return
+    if (assetIds.length === 0) return;
     await this.repo
       .createQueryBuilder()
       .update(Asset)
       .set({ isTrashed: true, trashedAt: new Date() })
       .where('id IN (:...assetIds) AND userId = :userId', { assetIds, userId })
-      .execute()
+      .execute();
   }
 
   async restore(userId: string, id: string): Promise<void> {
-    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
+    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset');
 
     if (asset.isTrashed) {
-      await this.repo.update(id, { isTrashed: false, trashedAt: null })
+      await this.repo.update(id, { isTrashed: false, trashedAt: null });
     }
   }
 
   async emptyTrash(userId: string): Promise<void> {
-    const assets = await this.repo.find({ where: { userId, isTrashed: true } })
-    if (assets.length === 0) return
-    await this.hardDelete(assets.map((a) => a.id))
+    const assets = await this.repo.find({ where: { userId, isTrashed: true } });
+    if (assets.length === 0) return;
+    await this.hardDelete(assets.map((a) => a.id));
   }
 
   async delete(userId: string, id: string): Promise<void> {
-    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
+    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset');
     if (!asset.isTrashed)
-      throw new BadRequestException('Asset must be trashed before permanent deletion')
+      throw new BadRequestException('Asset must be trashed before permanent deletion');
 
-    await this.hardDelete([id])
+    await this.hardDelete([id]);
   }
 
   private async hardDelete(assetIds: string[]): Promise<void> {
@@ -278,41 +278,41 @@ export class AssetsService {
       // person covers, and refresh live counts inside the same txn so hard-deleted assets
       // can't leave dangling coverFaceUrl thumbs behind.
       const existingFaces =
-        assetIds.length > 0 ? await em.find(Face, { where: { assetId: In(assetIds) } }) : []
-      await em.delete(Face, { assetId: In(assetIds) })
-      await em.delete(AlbumAsset, { assetId: In(assetIds) })
+        assetIds.length > 0 ? await em.find(Face, { where: { assetId: In(assetIds) } }) : [];
+      await em.delete(Face, { assetId: In(assetIds) });
+      await em.delete(AlbumAsset, { assetId: In(assetIds) });
       // shares.assetId FK is ON DELETE CASCADE, so share rows fall with the asset
-      await em.delete(Asset, { id: In(assetIds) })
-      await refreshPersonsAfterFaceDelete(em, existingFaces)
-    })
+      await em.delete(Asset, { id: In(assetIds) });
+      await refreshPersonsAfterFaceDelete(em, existingFaces);
+    });
   }
 
   async updateMetadata(id: string, userId: string, dto: WorkerMetadataDto): Promise<AssetResponse> {
-    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
+    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset');
     // phash is a plain column (spread maps it), but its format is semantic -> 422 like embeddings
     if (dto.phash !== undefined && dto.phash !== null && !/^[0-9a-f]{16}$/.test(dto.phash)) {
-      throw new UnprocessableEntityException('phash must be 16 lowercase hex characters')
+      throw new UnprocessableEntityException('phash must be 16 lowercase hex characters');
     }
 
     // every DTO field except `status`/`transcodeFileId` maps 1:1 to an Asset column; TypeORM
     // skips undefined values, so absent fields stay untouched
-    const { status, transcodeFileId, ...fields } = dto
-    const patch: Partial<Asset> = { ...fields }
+    const { status, transcodeFileId, ...fields } = dto;
+    const patch: Partial<Asset> = { ...fields };
     if (status !== undefined) {
-      patch.metadataStatus = status
-      patch.metadataExtractedAt = new Date()
+      patch.metadataStatus = status;
+      patch.metadataExtractedAt = new Date();
     }
     if (transcodeFileId !== undefined) {
       if (transcodeFileId === null) {
-        patch.transcodeFileId = null
+        patch.transcodeFileId = null;
       } else {
         if (!isUUID(transcodeFileId)) {
-          throw new UnprocessableEntityException('transcodeFileId must be a UUID')
+          throw new UnprocessableEntityException('transcodeFileId must be a UUID');
         }
-        const file = await this.fileRepo.findOne({ where: { id: transcodeFileId } })
+        const file = await this.fileRepo.findOne({ where: { id: transcodeFileId } });
         // missing and foreign files are indistinguishable, like every other ownership check
-        if (file?.userId !== asset.userId) throw new NotFoundException('File not found')
-        patch.transcodeFileId = transcodeFileId
+        if (file?.userId !== asset.userId) throw new NotFoundException('File not found');
+        patch.transcodeFileId = transcodeFileId;
       }
     }
 
@@ -329,39 +329,39 @@ export class AssetsService {
       try {
         // ponytail: per-write nearest-city lookup (indexed KNN); precompute/materialize per
         // coordinate cell if it ever shows in slow-query logs
-        const place = await this.places.resolve(fields.latitude, fields.longitude)
-        if (place) Object.assign(patch, place)
+        const place = await this.places.resolve(fields.latitude, fields.longitude);
+        if (place) Object.assign(patch, place);
       } catch {
         // geocoding must never fail a metadata write
-        this.logger.warn(`place resolution failed for asset ${id}`)
+        this.logger.warn(`place resolution failed for asset ${id}`);
       }
     }
 
-    await this.repo.update(id, patch as Record<string, unknown>)
-    const updated = await this.repo.findOne({ where: { id } })
-    return this.toResponse(updated!)
+    await this.repo.update(id, patch as Record<string, unknown>);
+    const updated = await this.repo.findOne({ where: { id } });
+    return this.toResponse(updated!);
   }
 
   async reprocessThumbnails(userId: string, id: string): Promise<{ enqueued: number }> {
-    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
+    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset');
     const ok = await this.bullMq.enqueueThumbnails(
       asset.id,
       asset.fileId,
       asset.userId,
       'thumb-reprocess',
-    )
-    if (!ok) throw new ServiceUnavailableException('Failed to enqueue thumbnail reprocess jobs')
-    return { enqueued: 4 }
+    );
+    if (!ok) throw new ServiceUnavailableException('Failed to enqueue thumbnail reprocess jobs');
+    return { enqueued: 4 };
   }
 
   async reprocessVideo(userId: string, id: string): Promise<{ enqueued: number }> {
-    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset')
-    if (asset.kind !== 'video') throw new BadRequestException('Not a video asset')
+    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset');
+    if (asset.kind !== 'video') throw new BadRequestException('Not a video asset');
     const ok = await this.bullMq.enqueueVideo(asset.id, asset.fileId, asset.userId, {
       reprocess: true,
-    })
-    if (!ok) throw new ServiceUnavailableException('Failed to enqueue video reprocess job')
-    return { enqueued: 1 }
+    });
+    if (!ok) throw new ServiceUnavailableException('Failed to enqueue video reprocess job');
+    return { enqueued: 1 };
   }
 
   async registerThumbnail(
@@ -369,12 +369,12 @@ export class AssetsService {
     assetId: string,
     dto: RegisterThumbnailDto,
   ): Promise<AssetThumbnailResponse> {
-    const asset = await findOwnedOr404(this.repo, assetId, userId, 'Asset')
-    const file = await this.fileRepo.findOne({ where: { id: dto.fileId } })
-    if (!file) throw new NotFoundException('File not found')
+    const asset = await findOwnedOr404(this.repo, assetId, userId, 'Asset');
+    const file = await this.fileRepo.findOne({ where: { id: dto.fileId } });
+    if (!file) throw new NotFoundException('File not found');
     // a thumbnail row pointing at another user's bytes would leak it through share streams
     if (file.userId !== asset.userId) {
-      throw new UnprocessableEntityException('Thumbnail file must belong to the asset owner')
+      throw new UnprocessableEntityException('Thumbnail file must belong to the asset owner');
     }
     await this.thumbRepo.upsert(
       [
@@ -388,9 +388,9 @@ export class AssetsService {
         },
       ],
       ['assetId', 'size'],
-    )
-    const row = await this.thumbRepo.findOneOrFail({ where: { assetId, size: dto.size } })
-    return toThumbnailResponse(row)
+    );
+    const row = await this.thumbRepo.findOneOrFail({ where: { assetId, size: dto.size } });
+    return toThumbnailResponse(row);
   }
 
   private applyAssetFilters(
@@ -401,34 +401,34 @@ export class AssetsService {
       qb.andWhere(
         'EXISTS (SELECT 1 FROM faces f WHERE f."assetId" = asset.id AND f."personId" = :personId)',
         { personId: filters.personId },
-      )
+      );
     }
 
     if (filters.favorite !== undefined) {
-      qb.andWhere('asset.favorite = :favorite', { favorite: filters.favorite })
+      qb.andWhere('asset.favorite = :favorite', { favorite: filters.favorite });
     }
 
     if (filters.albumId) {
       qb.andWhere(
         'EXISTS (SELECT 1 FROM album_assets aa WHERE aa."assetId" = asset.id AND aa."albumId" = :albumId)',
         { albumId: filters.albumId },
-      )
+      );
     }
   }
 
   private async fetchThumbs(assetIds: string[]): Promise<Map<string, AssetThumbnail[]>> {
-    const byAsset = new Map<string, AssetThumbnail[]>()
-    if (assetIds.length === 0) return byAsset
+    const byAsset = new Map<string, AssetThumbnail[]>();
+    if (assetIds.length === 0) return byAsset;
     const rows = await this.thumbRepo.find({
       where: { assetId: In(assetIds) },
       order: { createdAt: 'ASC' },
-    })
+    });
     for (const row of rows) {
-      const list = byAsset.get(row.assetId) ?? []
-      list.push(row)
-      byAsset.set(row.assetId, list)
+      const list = byAsset.get(row.assetId) ?? [];
+      list.push(row);
+      byAsset.set(row.assetId, list);
     }
-    return byAsset
+    return byAsset;
   }
 
   private toResponse(asset: Asset, thumbnails?: AssetThumbnail[]): AssetResponse {
@@ -443,7 +443,7 @@ export class AssetsService {
       updatedAt,
       thumbnails: _thumbnails,
       ...wire
-    } = asset
+    } = asset;
     // non-wire columns are destructured out so the rest spread is exactly the wire projection
     void [
       placeCity,
@@ -455,7 +455,7 @@ export class AssetsService {
       embeddingStatus,
       updatedAt,
       _thumbnails,
-    ]
+    ];
     return {
       ...wire,
       uploadedAt:
@@ -474,16 +474,16 @@ export class AssetsService {
       metadataExtractedAt:
         asset.metadataExtractedAt instanceof Date ? asset.metadataExtractedAt.toISOString() : null,
       ...(thumbnails ? { thumbnails: thumbnails.map((t) => toThumbnailResponse(t)) } : {}),
-    }
+    };
   }
 }
 
 // pg unique-violation probe shared by the upload-race arbiters (user-files + assets create).
 // ponytail: pg code only — the only prod driver; sqlite/test callers never hit this branch.
 export function isPostgresUniqueViolation(err: unknown): boolean {
-  if (!(err instanceof QueryFailedError)) return false
-  const driver = err.driverError as { code?: unknown } | null | undefined
-  return driver?.code === '23505'
+  if (!(err instanceof QueryFailedError)) return false;
+  const driver = err.driverError as { code?: unknown } | null | undefined;
+  return driver?.code === '23505';
 }
 
 function toThumbnailResponse(t: AssetThumbnail): AssetThumbnailResponse {
@@ -494,5 +494,5 @@ function toThumbnailResponse(t: AssetThumbnail): AssetThumbnailResponse {
     height: t.height,
     bytes: Number(t.bytes),
     createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : t.createdAt,
-  }
+  };
 }

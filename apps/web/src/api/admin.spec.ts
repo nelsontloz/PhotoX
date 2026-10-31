@@ -1,16 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { FaceDetectionSettings } from '@photox/shared-types'
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { FaceDetectionSettings } from '@photox/shared-types';
 
 const { getMock, postMock, deleteMock, patchMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   postMock: vi.fn(),
   deleteMock: vi.fn(),
   patchMock: vi.fn(),
-}))
+}));
 
 vi.mock('./client', () => ({
   api: { get: getMock, post: postMock, delete: deleteMock, patch: patchMock },
-}))
+}));
 
 import {
   getFaceDetection,
@@ -30,46 +30,46 @@ import {
   type BackupResult,
   type FaceReprocessResponse,
   type FacePipelineRun,
-} from './admin'
+} from './admin';
 
 const settings: FaceDetectionSettings = {
   modelAvailable: false,
-}
+};
 
 describe('face detection admin API', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => vi.clearAllMocks());
 
   it('getFaceDetection reads the face-detection endpoint', async () => {
-    getMock.mockResolvedValue({ data: settings })
-    await expect(getFaceDetection()).resolves.toEqual(settings)
-    expect(getMock).toHaveBeenCalledWith('/v1/admin/face-detection')
-  })
+    getMock.mockResolvedValue({ data: settings });
+    await expect(getFaceDetection()).resolves.toEqual(settings);
+    expect(getMock).toHaveBeenCalledWith('/v1/admin/face-detection');
+  });
 
   it('reprocessPipeline posts without a body', async () => {
-    postMock.mockResolvedValue({ data: { enqueued: 5, total: 5 } })
-    await reprocessPipeline<FaceReprocessResponse>('faces')
-    expect(postMock).toHaveBeenCalledWith('/v1/admin/faces/reprocess')
-  })
+    postMock.mockResolvedValue({ data: { enqueued: 5, total: 5 } });
+    await reprocessPipeline<FaceReprocessResponse>('faces');
+    expect(postMock).toHaveBeenCalledWith('/v1/admin/faces/reprocess');
+  });
 
   it('getPipelineStatus reads last run and queue counts', async () => {
     const status = {
       lastRun: { startedAt: '2026-10-01T00:00:00.000Z', total: 5, enqueued: 5 },
       queue: { waiting: 1, active: 0, completed: 4, failed: 0, delayed: 0 },
-    }
-    getMock.mockResolvedValue({ data: status })
-    await expect(getPipelineStatus<FacePipelineRun>('faces')).resolves.toEqual(status)
-    expect(getMock).toHaveBeenCalledWith('/v1/admin/faces/reprocess')
-  })
+    };
+    getMock.mockResolvedValue({ data: status });
+    await expect(getPipelineStatus<FacePipelineRun>('faces')).resolves.toEqual(status);
+    expect(getMock).toHaveBeenCalledWith('/v1/admin/faces/reprocess');
+  });
 
   it('reclusterFaces posts to the recluster endpoint', async () => {
-    postMock.mockResolvedValue({ data: { enqueued: 2 } })
-    await expect(reclusterFaces()).resolves.toEqual({ enqueued: 2 })
-    expect(postMock).toHaveBeenCalledWith('/v1/admin/faces/recluster')
-  })
-})
+    postMock.mockResolvedValue({ data: { enqueued: 2 } });
+    await expect(reclusterFaces()).resolves.toEqual({ enqueued: 2 });
+    expect(postMock).toHaveBeenCalledWith('/v1/admin/faces/recluster');
+  });
+});
 
 describe('user backup admin API', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => vi.clearAllMocks());
 
   const result: BackupResult = {
     userId: 'u-1',
@@ -83,17 +83,17 @@ describe('user backup admin API', () => {
     albums: 1,
     shares: 0,
     persons: 1,
-  }
+  };
 
   it('backupUser posts the emailOrId with a timeout sized for inline S3 copies', async () => {
-    postMock.mockResolvedValue({ data: result })
-    await expect(backupUser('u-1')).resolves.toEqual(result)
+    postMock.mockResolvedValue({ data: result });
+    await expect(backupUser('u-1')).resolves.toEqual(result);
     expect(postMock).toHaveBeenCalledWith(
       '/v1/admin/backups',
       { emailOrId: 'u-1' },
       { timeout: 600_000 },
-    )
-  })
+    );
+  });
 
   it('restoreUser posts the emailOrId with the long inline timeout', async () => {
     const restored = {
@@ -116,15 +116,15 @@ describe('user backup admin API', () => {
       startedAt: '2026-10-04T00:00:00.000Z',
       completedAt: '2026-10-04T00:01:00.000Z',
       enqueued: { metadata: 40, thumbnails: 40, videos: 0, faces: 40, ai: 0 },
-    }
-    postMock.mockResolvedValue({ data: restored })
-    await expect(restoreUser('u-3')).resolves.toEqual(restored)
+    };
+    postMock.mockResolvedValue({ data: restored });
+    await expect(restoreUser('u-3')).resolves.toEqual(restored);
     expect(postMock).toHaveBeenCalledWith(
       '/v1/admin/restores',
       { emailOrId: 'u-3' },
       { timeout: 600_000 },
-    )
-  })
+    );
+  });
 
   it('deleteBackup issues DELETE with emailOrId as a query param', async () => {
     const deleted = {
@@ -132,13 +132,13 @@ describe('user backup admin API', () => {
       email: 'ada@example.com',
       prefix: 'backups/ada%40example.com__u-1/',
       deletedObjects: 125,
-    }
-    deleteMock.mockResolvedValue({ data: deleted })
-    await expect(deleteBackup('u-1')).resolves.toEqual(deleted)
+    };
+    deleteMock.mockResolvedValue({ data: deleted });
+    await expect(deleteBackup('u-1')).resolves.toEqual(deleted);
     expect(deleteMock).toHaveBeenCalledWith('/v1/admin/backups', {
       params: { emailOrId: 'u-1' },
-    })
-  })
+    });
+  });
 
   it('getBackupOverview passes orphan rows through untouched', async () => {
     const rows = [
@@ -166,15 +166,15 @@ describe('user backup admin API', () => {
         notBackedUp: 0,
         deleted: true,
       },
-    ]
-    getMock.mockResolvedValue({ data: rows })
-    await expect(getBackupOverview()).resolves.toEqual(rows)
-    expect(getMock).toHaveBeenCalledWith('/v1/admin/backups/overview', { timeout: 30_000 })
-  })
-})
+    ];
+    getMock.mockResolvedValue({ data: rows });
+    await expect(getBackupOverview()).resolves.toEqual(rows);
+    expect(getMock).toHaveBeenCalledWith('/v1/admin/backups/overview', { timeout: 30_000 });
+  });
+});
 
 describe('admin user deletion API', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => vi.clearAllMocks());
 
   it('deleteAdminUser passes the 202 body through untouched', async () => {
     const accepted = {
@@ -182,11 +182,11 @@ describe('admin user deletion API', () => {
       userId: 'u-1',
       backupKept: true as const,
       backupPrefix: 'backups/ada%40example.com__u-1/',
-    }
-    deleteMock.mockResolvedValue({ data: accepted })
-    await expect(deleteAdminUser('u-1')).resolves.toEqual(accepted)
-    expect(deleteMock).toHaveBeenCalledWith('/v1/admin/users/u-1')
-  })
+    };
+    deleteMock.mockResolvedValue({ data: accepted });
+    await expect(deleteAdminUser('u-1')).resolves.toEqual(accepted);
+    expect(deleteMock).toHaveBeenCalledWith('/v1/admin/users/u-1');
+  });
 
   it('getAdminUserDeleteStatus reads :id/delete-status and maps state to status', async () => {
     getMock.mockResolvedValue({
@@ -198,13 +198,13 @@ describe('admin user deletion API', () => {
         backupPrefix: 'backups/ada%40example.com__u-1/',
         queue: {},
       },
-    })
+    });
     await expect(getAdminUserDeleteStatus('u-1')).resolves.toEqual({
       status: 'active',
       error: null,
-    })
-    expect(getMock).toHaveBeenCalledWith('/v1/admin/users/u-1/delete-status')
-  })
+    });
+    expect(getMock).toHaveBeenCalledWith('/v1/admin/users/u-1/delete-status');
+  });
 
   it('pollAdminUserDelete returns once the job completes', async () => {
     getMock
@@ -227,10 +227,10 @@ describe('admin user deletion API', () => {
           backupPrefix: 'backups/ada%40example.com__u-1/',
           queue: {},
         },
-      })
-    await pollAdminUserDelete('u-1', { intervalMs: 1 })
-    expect(getMock).toHaveBeenCalledTimes(2)
-  })
+      });
+    await pollAdminUserDelete('u-1', { intervalMs: 1 });
+    expect(getMock).toHaveBeenCalledTimes(2);
+  });
 
   it('pollAdminUserDelete throws the server error when the job fails', async () => {
     getMock.mockResolvedValue({
@@ -243,9 +243,9 @@ describe('admin user deletion API', () => {
         queue: {},
         error: 'disk full',
       },
-    })
-    await expect(pollAdminUserDelete('u-1', { intervalMs: 1 })).rejects.toThrow('disk full')
-  })
+    });
+    await expect(pollAdminUserDelete('u-1', { intervalMs: 1 })).rejects.toThrow('disk full');
+  });
 
   it('pollAdminUserDelete times out on a stuck job', async () => {
     getMock.mockResolvedValue({
@@ -257,11 +257,11 @@ describe('admin user deletion API', () => {
         backupPrefix: 'backups/ada%40example.com__u-1/',
         queue: {},
       },
-    })
+    });
     await expect(pollAdminUserDelete('u-1', { intervalMs: 1, timeoutMs: 5 })).rejects.toThrow(
       /Timed out/,
-    )
-  })
+    );
+  });
 
   it('pollAdminUserDelete keeps polling on unknown states instead of misreading them', async () => {
     getMock
@@ -284,14 +284,14 @@ describe('admin user deletion API', () => {
           backupPrefix: 'backups/ada%40example.com__u-1/',
           queue: {},
         },
-      })
-    await pollAdminUserDelete('u-1', { intervalMs: 1 })
-    expect(getMock).toHaveBeenCalledTimes(2)
-  })
-})
+      });
+    await pollAdminUserDelete('u-1', { intervalMs: 1 });
+    expect(getMock).toHaveBeenCalledTimes(2);
+  });
+});
 
 describe('admin user account edit API', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => vi.clearAllMocks());
 
   const updated = {
     user: {
@@ -308,48 +308,48 @@ describe('admin user account edit API', () => {
       from: 'backups/ada%40example.com__u%201/',
       to: 'backups/ada.l%40example.com__u%201/',
     },
-  }
+  };
 
   it('updateAdminUser patches the encoded id with the changed fields only', async () => {
-    patchMock.mockResolvedValue({ data: updated })
-    await expect(updateAdminUser('u 1', { displayName: 'Ada L.' })).resolves.toEqual(updated)
-    expect(patchMock).toHaveBeenCalledWith('/v1/admin/users/u%201', { displayName: 'Ada L.' }, {})
-  })
+    patchMock.mockResolvedValue({ data: updated });
+    await expect(updateAdminUser('u 1', { displayName: 'Ada L.' })).resolves.toEqual(updated);
+    expect(patchMock).toHaveBeenCalledWith('/v1/admin/users/u%201', { displayName: 'Ada L.' }, {});
+  });
 
   it('updateAdminUser gives an email change the long backup-move timeout', async () => {
-    patchMock.mockResolvedValue({ data: updated })
-    await updateAdminUser('u-1', { email: 'ada.l@example.com', password: 'correcthorse' })
+    patchMock.mockResolvedValue({ data: updated });
+    await updateAdminUser('u-1', { email: 'ada.l@example.com', password: 'correcthorse' });
     expect(patchMock).toHaveBeenCalledWith(
       '/v1/admin/users/u-1',
       { email: 'ada.l@example.com', password: 'correcthorse' },
       { timeout: 600_000 },
-    )
-  })
+    );
+  });
 
   it('syncAdminUserBackup posts to :id/backup-sync with the long timeout and no body', async () => {
-    const outcome = { synced: false, moved: false, to: 'backups/x%40y__u-1/', error: 'S3 down' }
-    postMock.mockResolvedValue({ data: outcome })
-    await expect(syncAdminUserBackup('u-1')).resolves.toEqual(outcome)
+    const outcome = { synced: false, moved: false, to: 'backups/x%40y__u-1/', error: 'S3 down' };
+    postMock.mockResolvedValue({ data: outcome });
+    await expect(syncAdminUserBackup('u-1')).resolves.toEqual(outcome);
     expect(postMock).toHaveBeenCalledWith('/v1/admin/users/u-1/backup-sync', undefined, {
       timeout: 600_000,
-    })
-  })
-})
+    });
+  });
+});
 
 describe('backupPrefixPreview', () => {
   it('encodes @ and lowercases/trims the email like backupPrefix', () => {
-    expect(backupPrefixPreview('ada@example.com', 'u-1')).toBe('backups/ada%40example.com__u-1/')
-  })
+    expect(backupPrefixPreview('ada@example.com', 'u-1')).toBe('backups/ada%40example.com__u-1/');
+  });
 
   it('trims whitespace and lowercases uppercase emails before encoding', () => {
     expect(backupPrefixPreview('  Ada@Example.COM  ', 'u-1')).toBe(
       'backups/ada%40example.com__u-1/',
-    )
-  })
+    );
+  });
 
   it('encodes the userId segment', () => {
     expect(backupPrefixPreview('ada@example.com', 'u 1/x')).toBe(
       'backups/ada%40example.com__u%201%2Fx/',
-    )
-  })
-})
+    );
+  });
+});

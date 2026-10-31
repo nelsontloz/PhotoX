@@ -1,8 +1,8 @@
-import type { Request, Response } from 'express'
-import type { FileRecord } from '../database/entities'
-import type { UserFilesService } from './user/user-files.service'
+import type { Request, Response } from 'express';
+import type { FileRecord } from '../database/entities';
+import type { UserFilesService } from './user/user-files.service';
 
-const BYTES_CACHE_CONTROL = 'private, max-age=31536000, immutable'
+const BYTES_CACHE_CONTROL = 'private, max-age=31536000, immutable';
 
 // send re-evaluates conditional/If-Range headers itself (412/304/ignore-range); the previous
 // hand-rolled handler never did, so these are dropped before sendFile reads the request.
@@ -12,7 +12,7 @@ const CONDITIONAL_HEADERS = [
   'if-none-match',
   'if-modified-since',
   'if-range',
-]
+];
 
 /**
  * Builds an injection-safe `Content-Disposition: attachment` value. The quoted ASCII fallback
@@ -20,17 +20,17 @@ const CONDITIONAL_HEADERS = [
  * (percent-encoded) name for modern browsers.
  */
 export function attachmentDisposition(name: string): string {
-  const fallback = name.replace(/[^\x20-\x7e]|["\\;]/g, '_')
+  const fallback = name.replace(/[^\x20-\x7e]|["\\;]/g, '_');
   const encoded = encodeURIComponent(name).replace(
     /['()*]/g,
     (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
-  )
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`
+  );
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
 
 interface ServableFile {
-  path: string
-  record: Pick<FileRecord, 'mimeType' | 'checksumSha256'>
+  path: string;
+  record: Pick<FileRecord, 'mimeType' | 'checksumSha256'>;
 }
 
 /**
@@ -53,31 +53,31 @@ export function pipeFileResponse(
     ETag: `"${file.record.checksumSha256}"`,
     'Cache-Control': BYTES_CACHE_CONTROL,
     'X-Content-Type-Options': 'nosniff',
-  })
+  });
 
   if (!req.headers.range && req.fresh) {
-    res.status(304).end()
-    return
+    res.status(304).end();
+    return;
   }
 
-  for (const header of CONDITIONAL_HEADERS) delete req.headers[header]
+  for (const header of CONDITIONAL_HEADERS) delete req.headers[header];
 
   res.set({
     'Content-Type': file.record.mimeType,
     ...(disposition ? { 'Content-Disposition': disposition } : {}),
-  })
+  });
   // Callback form keeps send's errors (416 incl. `Content-Range: bytes */total`, missing bytes,
   // mid-stream reads) out of Nest's exception layer, which would map them to 500.
   res.sendFile(file.path, { etag: false, lastModified: false }, (err) => {
-    if (!err) return
-    const cause = err as Error & { code?: string; status?: number }
+    if (!err) return;
+    const cause = err as Error & { code?: string; status?: number };
     if (res.headersSent || cause.code === 'ECONNABORTED') {
       // mid-stream failure or client abort: same cleanup the previous stream.on('error') did
-      res.destroy()
-      return
+      res.destroy();
+      return;
     }
-    res.status(cause.status ?? 500).end()
-  })
+    res.status(cause.status ?? 500).end();
+  });
 }
 
 /**
@@ -94,11 +94,11 @@ export async function serveFileBytes(
   fileId: string,
   opts: { attachment?: boolean } = {},
 ): Promise<void> {
-  const { path, record } = await files.serve(userId, fileId)
+  const { path, record } = await files.serve(userId, fileId);
   pipeFileResponse(
     req,
     res,
     { path, record },
     opts.attachment ? attachmentDisposition(record.originalName) : undefined,
-  )
+  );
 }

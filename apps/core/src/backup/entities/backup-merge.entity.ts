@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, Unique } from 'typeorm'
+import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, Unique } from 'typeorm';
 
 // Durable ledger for legacy-snapshot merges: one row per (backup source account,
 // live target account). Written only after the source snapshot is adopted into
@@ -11,20 +11,20 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, Unique
 @Index(['targetUserId'])
 export class BackupMerge {
   @PrimaryGeneratedColumn('uuid')
-  id!: string
+  id!: string;
 
   @Column('uuid')
-  backupUserId!: string
+  backupUserId!: string;
 
   @Column('uuid')
-  targetUserId!: string
+  targetUserId!: string;
 
   @Column('text')
-  prefix!: string
+  prefix!: string;
 
   @Column({ type: 'jsonb', default: {} })
-  counts!: Record<string, number>
+  counts!: Record<string, number>;
 
   @CreateDateColumn({ type: 'timestamptz' })
-  mergedAt!: Date
+  mergedAt!: Date;
 }

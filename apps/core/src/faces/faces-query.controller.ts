@@ -8,13 +8,13 @@ import {
   HttpCode,
   HttpStatus,
   Res,
-} from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import type { Response } from 'express'
-import { CurrentUserId } from '../auth/jwt-auth.guard'
-import { FacesService } from './faces.service'
-import { AssignPersonDto } from './dto/assign-person.dto'
-import { FaceThumbQueryDto } from './dto/face-thumb-query.dto'
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import type { Response } from 'express';
+import { CurrentUserId } from '../auth/jwt-auth.guard';
+import { FacesService } from './faces.service';
+import { AssignPersonDto } from './dto/assign-person.dto';
+import { FaceThumbQueryDto } from './dto/face-thumb-query.dto';
 
 @ApiTags('faces-query')
 @Controller('api/v1/faces')
@@ -31,13 +31,13 @@ export class FacesQueryController {
     @Res() res: Response,
     @Query() q: FaceThumbQueryDto,
   ): Promise<void> {
-    const bytes = await this.faces.getThumb(id, userId, q.size ?? Number.NaN)
+    const bytes = await this.faces.getThumb(id, userId, q.size ?? Number.NaN);
     res.set({
       'Content-Type': 'image/jpeg',
       'Content-Length': String(bytes.byteLength),
       'Cache-Control': 'private, max-age=31536000, immutable',
-    })
-    res.status(200).end(bytes)
+    });
+    res.status(200).end(bytes);
   }
 
   @Patch(':id/person')
@@ -50,7 +50,7 @@ export class FacesQueryController {
     @Body() dto: AssignPersonDto,
     @CurrentUserId() userId: string,
   ) {
-    await this.faces.assignPerson(userId, id, dto.personId)
-    return { ok: true }
+    await this.faces.assignPerson(userId, id, dto.personId);
+    return { ok: true };
   }
 }

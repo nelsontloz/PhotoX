@@ -1,6 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger'
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator'
-import type { RefreshRequest } from '@photox/shared-types'
+import { ApiProperty } from '@nestjs/swagger';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import type { RefreshRequest } from '@photox/shared-types';
 
 export class RefreshDto implements RefreshRequest {
   @ApiProperty({
@@ -11,5 +11,5 @@ export class RefreshDto implements RefreshRequest {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
-  refreshToken?: string
+  refreshToken?: string;
 }

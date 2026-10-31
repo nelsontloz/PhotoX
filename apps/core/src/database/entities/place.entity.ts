@@ -1,27 +1,27 @@
-import { Entity, PrimaryColumn, Column } from 'typeorm'
+import { Entity, PrimaryColumn, Column } from 'typeorm';
 
 // GeoNames cities500 subset (CC-BY-4.0, https://www.geonames.org/) — offline reverse geocoding.
 // Populated by `pnpm --filter @photox/core places:import`; see scripts/import-geonames.ts.
 @Entity('places')
 export class Place {
   @PrimaryColumn('int')
-  geonameId!: number
+  geonameId!: number;
 
   @Column('text')
-  name!: string
+  name!: string;
 
   @Column({ type: 'numeric', precision: 9, scale: 6 })
-  latitude!: number
+  latitude!: number;
 
   @Column({ type: 'numeric', precision: 9, scale: 6 })
-  longitude!: number
+  longitude!: number;
 
   @Column('varchar', { length: 2 })
-  countryCode!: string
+  countryCode!: string;
 
   @Column('varchar', { length: 20, nullable: true })
-  admin1Code!: string | null
+  admin1Code!: string | null;
 
   @Column('varchar', { length: 64, nullable: true })
-  timezone!: string | null
+  timezone!: string | null;
 }

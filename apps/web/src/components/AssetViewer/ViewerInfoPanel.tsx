@@ -1,20 +1,20 @@
-import { lazy, Suspense } from 'react'
-import { FaNoteSticky, FaXmark } from 'react-icons/fa6'
-import type { Asset } from '@photox/shared-types'
-import { AssetMetadataPanel } from './sections/AssetMetadataPanel'
-import { CameraSection } from './sections/CameraSection'
-import { FacesSection } from './sections/FacesSection'
-import { SectionShell } from './sections/SectionShell'
+import { lazy, Suspense } from 'react';
+import { FaNoteSticky, FaXmark } from 'react-icons/fa6';
+import type { Asset } from '@photox/shared-types';
+import { AssetMetadataPanel } from './sections/AssetMetadataPanel';
+import { CameraSection } from './sections/CameraSection';
+import { FacesSection } from './sections/FacesSection';
+import { SectionShell } from './sections/SectionShell';
 
 // leaflet is ~44 kB gzip: load the map section only when the panel actually renders.
 const LocationSection = lazy(() =>
   import('./sections/LocationSection').then((m) => ({ default: m.LocationSection })),
-)
+);
 
 interface ViewerInfoPanelProps {
-  asset: Asset
-  onClose: () => void
-  onFaceHover?: (faceId: string | null) => void
+  asset: Asset;
+  onClose: () => void;
+  onFaceHover?: (faceId: string | null) => void;
 }
 
 export function ViewerInfoPanel({ asset, onClose, onFaceHover }: ViewerInfoPanelProps) {
@@ -48,5 +48,5 @@ export function ViewerInfoPanel({ asset, onClose, onFaceHover }: ViewerInfoPanel
         </Suspense>
       </div>
     </aside>
-  )
+  );
 }

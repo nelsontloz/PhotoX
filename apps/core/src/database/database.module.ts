@@ -1,8 +1,8 @@
-import { Global, Injectable, Logger, Module, type OnApplicationBootstrap } from '@nestjs/common'
-import { TypeOrmModule } from '@nestjs/typeorm'
-import { DataSource } from 'typeorm'
-import { insertAdminUser } from '../scripts/admin-seed'
-import { postgresConnectionOptions } from '../scripts/postgres-options'
+import { Global, Injectable, Logger, Module, type OnApplicationBootstrap } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
+import { insertAdminUser } from '../scripts/admin-seed';
+import { postgresConnectionOptions } from '../scripts/postgres-options';
 
 // ponytail: 512 is the InsightFace buffalo_l w600k_r50 output dim.
 // Index rebuild fails while legacy 1024-dim rows remain (warn-caught) — the cluster re-embed backfill converts them.
@@ -44,20 +44,20 @@ const BOOTSTRAP_SQL: { warn: string; statements: string[] }[] = [
       'CREATE INDEX IF NOT EXISTS places_earth_idx ON places USING gist (ll_to_earth(latitude, longitude))',
     ],
   },
-]
+];
 
 @Injectable()
 export class VectorInitService implements OnApplicationBootstrap {
-  private readonly logger = new Logger('DatabaseModule')
+  private readonly logger = new Logger('DatabaseModule');
 
   constructor(private readonly dataSource: DataSource) {}
 
   async onApplicationBootstrap(): Promise<void> {
     for (const step of BOOTSTRAP_SQL) {
       try {
-        for (const sql of step.statements) await this.dataSource.query(sql)
+        for (const sql of step.statements) await this.dataSource.query(sql);
       } catch {
-        this.logger.warn(step.warn)
+        this.logger.warn(step.warn);
       }
     }
   }
@@ -68,29 +68,29 @@ export class VectorInitService implements OnApplicationBootstrap {
 // registration) is the only way to mint an admin now that registration always yields 'user'.
 @Injectable()
 export class AdminSeedService implements OnApplicationBootstrap {
-  private readonly logger = new Logger('DatabaseModule')
+  private readonly logger = new Logger('DatabaseModule');
 
   constructor(private readonly dataSource: DataSource) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    const email = process.env.ADMIN_EMAIL
-    const password = process.env.ADMIN_PASSWORD
-    if (!email && !password) return
+    const email = process.env.ADMIN_EMAIL;
+    const password = process.env.ADMIN_PASSWORD;
+    if (!email && !password) return;
     if (!email || !password) {
-      this.logger.warn('ADMIN_EMAIL/ADMIN_PASSWORD partially set — skipping admin seed')
-      return
+      this.logger.warn('ADMIN_EMAIL/ADMIN_PASSWORD partially set — skipping admin seed');
+      return;
     }
     try {
       const existing: unknown[] = await this.dataSource.query(
         `SELECT 1 FROM users WHERE role = 'admin' LIMIT 1`,
-      )
-      if (existing.length > 0) return
-      await insertAdminUser(this.dataSource, email, password)
-      this.logger.log(`Seeded admin user ${email} from ADMIN_EMAIL`)
+      );
+      if (existing.length > 0) return;
+      await insertAdminUser(this.dataSource, email, password);
+      this.logger.log(`Seeded admin user ${email} from ADMIN_EMAIL`);
     } catch {
       this.logger.warn(
         'Admin seed failed — register a user and promote it, or retry with ADMIN_* set',
-      )
+      );
     }
   }
 }
@@ -117,6 +117,6 @@ export class DatabaseModule {
       ],
       providers: [VectorInitService, AdminSeedService],
       exports: [TypeOrmModule],
-    }
+    };
   }
 }

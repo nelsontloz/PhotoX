@@ -6,32 +6,32 @@ import {
   ManyToOne,
   JoinColumn,
   Index,
-} from 'typeorm'
-import { Asset } from './asset.entity'
+} from 'typeorm';
+import { Asset } from './asset.entity';
 
 @Entity('asset_detections')
 export class AssetDetection {
   @PrimaryGeneratedColumn('uuid')
-  id!: string
+  id!: string;
 
   @Column('uuid')
   @Index()
-  assetId!: string
+  assetId!: string;
 
   @ManyToOne(() => Asset, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'assetId' })
-  asset!: Asset
+  asset!: Asset;
 
   @Column('text')
-  label!: string
+  label!: string;
 
   @Column('real')
-  confidence!: number
+  confidence!: number;
 
   // original-image pixel coords, same shape as Face.box
   @Column('jsonb')
-  box!: { x: number; y: number; w: number; h: number }
+  box!: { x: number; y: number; w: number; h: number };
 
   @CreateDateColumn({ type: 'timestamptz' })
-  createdAt!: Date
+  createdAt!: Date;
 }

@@ -1,18 +1,18 @@
-import { useState } from 'react'
-import { FaCircleExclamation, FaSpinner, FaUserPlus } from 'react-icons/fa6'
-import type { AdminUserCreateRequest, AdminUserRow, Role } from '@photox/shared-types'
-import { Dialog, formInputClass } from '../../components/Dialog'
-import { createAdminUser } from '../../api/admin'
-import { cx } from './ui'
-import { emailLooksValid } from './shared'
-import { httpErrorMessage, type HttpErrorMessages } from './http-error'
+import { useState } from 'react';
+import { FaCircleExclamation, FaSpinner, FaUserPlus } from 'react-icons/fa6';
+import type { AdminUserCreateRequest, AdminUserRow, Role } from '@photox/shared-types';
+import { Dialog, formInputClass } from '../../components/Dialog';
+import { createAdminUser } from '../../api/admin';
+import { cx } from './ui';
+import { emailLooksValid } from './shared';
+import { httpErrorMessage, type HttpErrorMessages } from './http-error';
 
 // --- create account dialog ---------------------------------------------------------------
 // Admin-created accounts work whether or not public sign-ups are open. Same field language as
 // EditUserDialog; the submit button stays disabled until every field is usable.
 
-const PASSWORD_MIN = 8
-const NAME_MAX = 64
+const PASSWORD_MIN = 8;
+const NAME_MAX = 64;
 
 /** Never leak axios verbatim; the server statuses map to plain sentences. */
 export const CREATE_ERROR_MESSAGES: HttpErrorMessages = {
@@ -23,51 +23,51 @@ export const CREATE_ERROR_MESSAGES: HttpErrorMessages = {
     403: 'Only an admin can do that.',
   },
   preferServerMessage: true,
-}
+};
 
 export function CreateUserDialog({
   onClose,
   onCreated,
 }: {
-  onClose: () => void
-  onCreated: (user: AdminUserRow) => void
+  onClose: () => void;
+  onCreated: (user: AdminUserRow) => void;
 }) {
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [role, setRole] = useState<Role>('user')
-  const [working, setWorking] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState<Role>('user');
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const trimmedName = name.trim()
-  const trimmedEmail = email.trim()
-  const nameMissing = trimmedName.length === 0
-  const emailInvalid = trimmedEmail.length > 0 && !emailLooksValid(trimmedEmail)
-  const passwordShort = password.length > 0 && password.length < PASSWORD_MIN
+  const trimmedName = name.trim();
+  const trimmedEmail = email.trim();
+  const nameMissing = trimmedName.length === 0;
+  const emailInvalid = trimmedEmail.length > 0 && !emailLooksValid(trimmedEmail);
+  const passwordShort = password.length > 0 && password.length < PASSWORD_MIN;
   const canSubmit =
-    !nameMissing && emailLooksValid(trimmedEmail) && password.length >= PASSWORD_MIN && !working
+    !nameMissing && emailLooksValid(trimmedEmail) && password.length >= PASSWORD_MIN && !working;
 
   const close = () => {
-    if (!working) onClose()
-  }
+    if (!working) onClose();
+  };
 
   const onSubmit = async () => {
-    if (!canSubmit) return
+    if (!canSubmit) return;
     const payload: AdminUserCreateRequest = {
       displayName: trimmedName,
       email: trimmedEmail,
       password,
       role,
-    }
-    setWorking(true)
-    setError(null)
+    };
+    setWorking(true);
+    setError(null);
     try {
-      onCreated(await createAdminUser(payload))
+      onCreated(await createAdminUser(payload));
     } catch (err: unknown) {
-      setError(httpErrorMessage(err, CREATE_ERROR_MESSAGES))
-      setWorking(false)
+      setError(httpErrorMessage(err, CREATE_ERROR_MESSAGES));
+      setWorking(false);
     }
-  }
+  };
 
   return (
     <Dialog
@@ -216,5 +216,5 @@ export function CreateUserDialog({
         </button>
       </div>
     </Dialog>
-  )
+  );
 }

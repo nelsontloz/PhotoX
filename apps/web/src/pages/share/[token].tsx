@@ -1,27 +1,27 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { FaCircleExclamation, FaPhotoFilm, FaPlay, FaXmark } from 'react-icons/fa6'
-import { api } from '../../api/client'
-import { LoadingState } from '../../components/StateViews'
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import { FaCircleExclamation, FaPhotoFilm, FaPlay, FaXmark } from 'react-icons/fa6';
+import { api } from '../../api/client';
+import { LoadingState } from '../../components/StateViews';
 import type {
   PublicAlbumAssetsResponse,
   PublicAlbumShareResponse,
   PublicShareAsset,
   PublicShareResponse,
-} from '@photox/shared-types'
+} from '@photox/shared-types';
 
 // the player chunk loads only when a shared item is actually a video.
 const VideoPlayer = lazy(() =>
   import('../../components/VideoPlayer').then((m) => ({ default: m.VideoPlayer })),
-)
+);
 
 function getStreamUrl(token: string): string {
-  return `/api/share/${encodeURIComponent(token)}/stream`
+  return `/api/share/${encodeURIComponent(token)}/stream`;
 }
 
 function getAlbumAssetUrl(token: string, assetId: string, size?: 'sm'): string {
-  const query = size ? `?size=${size}` : ''
-  return `/api/share/${encodeURIComponent(token)}/assets/${encodeURIComponent(assetId)}/stream${query}`
+  const query = size ? `?size=${size}` : '';
+  return `/api/share/${encodeURIComponent(token)}/assets/${encodeURIComponent(assetId)}/stream${query}`;
 }
 
 // The share stream endpoints serve the AV1/webm derivative whenever the worker transcoded the
@@ -31,25 +31,25 @@ function AlbumShare({
   album,
   assets,
 }: {
-  token: string
-  album: PublicAlbumShareResponse['album']
-  assets: PublicShareAsset[]
+  token: string;
+  album: PublicAlbumShareResponse['album'];
+  assets: PublicShareAsset[];
 }) {
-  const [selected, setSelected] = useState<PublicShareAsset | null>(null)
+  const [selected, setSelected] = useState<PublicShareAsset | null>(null);
 
   useEffect(() => {
-    if (!selected) return
+    if (!selected) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSelected(null)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+      if (e.key === 'Escape') setSelected(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     return () => {
-      window.removeEventListener('keydown', onKeyDown)
-      document.body.style.overflow = prevOverflow
-    }
-  }, [selected])
+      window.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [selected]);
 
   return (
     <div className="min-h-screen bg-background-dark">
@@ -141,57 +141,57 @@ function AlbumShare({
         </div>
       )}
     </div>
-  )
+  );
 }
 
 export default function PublicSharePage() {
-  const { token } = useParams<{ token: string }>()
-  const [data, setData] = useState<PublicShareResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [albumAssets, setAlbumAssets] = useState<PublicShareAsset[] | null>(null)
-  const [albumError, setAlbumError] = useState(false)
-  const [albumReloadKey, setAlbumReloadKey] = useState(0)
-  const isAlbum = data?.kind === 'album'
+  const { token } = useParams<{ token: string }>();
+  const [data, setData] = useState<PublicShareResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [albumAssets, setAlbumAssets] = useState<PublicShareAsset[] | null>(null);
+  const [albumError, setAlbumError] = useState(false);
+  const [albumReloadKey, setAlbumReloadKey] = useState(0);
+  const isAlbum = data?.kind === 'album';
 
   useEffect(() => {
-    if (!token) return
-    let cancelled = false
+    if (!token) return;
+    let cancelled = false;
     void (async () => {
       try {
-        const { data: res } = await api.get<PublicShareResponse>(`/share/${token}`)
-        if (!cancelled) setData(res)
+        const { data: res } = await api.get<PublicShareResponse>(`/share/${token}`);
+        if (!cancelled) setData(res);
       } catch (err) {
-        if (!cancelled) setError((err as Error).message ?? 'Share not found')
+        if (!cancelled) setError((err as Error).message ?? 'Share not found');
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) setLoading(false);
       }
-    })()
+    })();
     return () => {
-      cancelled = true
-    }
-  }, [token])
+      cancelled = true;
+    };
+  }, [token]);
 
   useEffect(() => {
-    if (!token || !isAlbum) return
-    let cancelled = false
+    if (!token || !isAlbum) return;
+    let cancelled = false;
     void (async () => {
       try {
-        const { data: res } = await api.get<PublicAlbumAssetsResponse>(`/share/${token}/assets`)
-        if (!cancelled) setAlbumAssets(res.items)
+        const { data: res } = await api.get<PublicAlbumAssetsResponse>(`/share/${token}/assets`);
+        if (!cancelled) setAlbumAssets(res.items);
       } catch {
-        if (!cancelled) setAlbumError(true)
+        if (!cancelled) setAlbumError(true);
       }
-    })()
+    })();
     return () => {
-      cancelled = true
-    }
-  }, [token, isAlbum, albumReloadKey])
+      cancelled = true;
+    };
+  }, [token, isAlbum, albumReloadKey]);
 
   if (loading) {
     return (
       <LoadingState className="flex items-center justify-center min-h-screen bg-background-dark" />
-    )
+    );
   }
 
   if (error || !data) {
@@ -201,7 +201,7 @@ export default function PublicSharePage() {
         <p className="text-slate-300 text-lg font-medium">Share not found</p>
         <p className="text-slate-500 text-sm">This link may have been revoked or expired.</p>
       </div>
-    )
+    );
   }
 
   if (data.kind === 'album') {
@@ -213,28 +213,28 @@ export default function PublicSharePage() {
           <button
             type="button"
             onClick={() => {
-              setAlbumError(false)
-              setAlbumAssets(null)
-              setAlbumReloadKey((key) => key + 1)
+              setAlbumError(false);
+              setAlbumAssets(null);
+              setAlbumReloadKey((key) => key + 1);
             }}
             className="text-primary text-sm font-medium hover:underline"
           >
             Try again
           </button>
         </div>
-      )
+      );
     }
     if (albumAssets === null) {
       return (
         <LoadingState className="flex items-center justify-center min-h-screen bg-background-dark" />
-      )
+      );
     }
-    return <AlbumShare token={token ?? ''} album={data.album} assets={albumAssets} />
+    return <AlbumShare token={token ?? ''} album={data.album} assets={albumAssets} />;
   }
 
-  const { asset } = data
-  const isVideo = asset.kind === 'video'
-  const streamUrl = token ? getStreamUrl(token) : ''
+  const { asset } = data;
+  const isVideo = asset.kind === 'video';
+  const streamUrl = token ? getStreamUrl(token) : '';
 
   return (
     // h-screen (not min-h-screen): the container-type:size box needs a definite height or cqh
@@ -259,5 +259,5 @@ export default function PublicSharePage() {
         />
       )}
     </div>
-  )
+  );
 }

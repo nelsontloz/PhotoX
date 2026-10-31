@@ -1,7 +1,7 @@
-import { randomUUID } from 'node:crypto'
-import { rmSync } from 'node:fs'
-import request from 'supertest'
-import sharp from 'sharp'
+import { randomUUID } from 'node:crypto';
+import { rmSync } from 'node:fs';
+import request from 'supertest';
+import sharp from 'sharp';
 import {
   apiServer,
   closeTestApp,
@@ -10,36 +10,36 @@ import {
   seedAsset,
   seedFile,
   seedUser,
-} from './helpers'
-import type { ApiTestApp } from './helpers'
+} from './helpers';
+import type { ApiTestApp } from './helpers';
 
-const EMBEDDING_512 = Array.from({ length: 512 }, () => 0.1)
+const EMBEDDING_512 = Array.from({ length: 512 }, () => 0.1);
 
 describe('faces HTTP', () => {
-  let t: ApiTestApp
+  let t: ApiTestApp;
 
   beforeAll(async () => {
-    t = await createApiTestApp({ mockUser: null })
-  }, 120_000)
+    t = await createApiTestApp({ mockUser: null });
+  }, 120_000);
 
   afterAll(async () => {
-    await closeTestApp(t)
-  })
+    await closeTestApp(t);
+  });
 
   beforeEach(async () => {
-    await resetDb(t)
-  })
+    await resetDb(t);
+  });
 
   async function seedFace(
     userId: string,
     opts?: {
-      box?: { x: number; y: number; w: number; h: number }
-      embedding?: number[]
-      personId?: string | null
+      box?: { x: number; y: number; w: number; h: number };
+      embedding?: number[];
+      personId?: string | null;
     },
   ) {
-    const file = await seedFile(t, userId)
-    const asset = await seedAsset(t, userId, file.id)
+    const file = await seedFile(t, userId);
+    const asset = await seedAsset(t, userId, file.id);
     const face = await t.faceRepo.save(
       t.faceRepo.create({
         assetId: asset.id,
@@ -49,8 +49,8 @@ describe('faces HTTP', () => {
         embedding: opts?.embedding ?? [0.1, 0.2, 0.3],
         personId: opts?.personId ?? null,
       }),
-    )
-    return { asset, file, face }
+    );
+    return { asset, file, face };
   }
 
   async function seedRealImageFace(userId: string) {
@@ -58,13 +58,13 @@ describe('faces HTTP', () => {
       create: { width: 64, height: 64, channels: 3, background: '#804020' },
     })
       .jpeg()
-      .toBuffer()
+      .toBuffer();
     const file = await seedFile(t, userId, {
       bytes,
       mimeType: 'image/jpeg',
       originalName: 'photo.jpg',
-    })
-    const asset = await seedAsset(t, userId, file.id)
+    });
+    const asset = await seedAsset(t, userId, file.id);
     const face = await t.faceRepo.save(
       t.faceRepo.create({
         assetId: asset.id,
@@ -73,170 +73,182 @@ describe('faces HTTP', () => {
         confidence: 0.9,
         embedding: [0.1, 0.2, 0.3],
       }),
-    )
-    return { asset, face }
+    );
+    return { asset, face };
   }
 
   it('registers faces for the owner and persists the JWT userId', async () => {
-    const owner = await seedUser(t)
-    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
-    const file = await seedFile(t, owner.id)
-    const asset = await seedAsset(t, owner.id, file.id)
+    const owner = await seedUser(t);
+    const token = t.signToken(
+      { id: owner.id, email: owner.email, role: owner.role },
+      { act: true },
+    );
+    const file = await seedFile(t, owner.id);
+    const asset = await seedAsset(t, owner.id, file.id);
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
       .send({
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }],
-      })
-    expect(res.status).toBe(201)
-    expect((res.body as { count: number }).count).toBe(1)
-    const rows = await t.faceRepo.find({ where: { assetId: asset.id } })
-    expect(rows).toHaveLength(1)
-    expect(rows[0]?.userId).toBe(owner.id)
-    expect(rows[0]?.embedding).toHaveLength(512)
-  })
+      });
+    expect(res.status).toBe(201);
+    expect((res.body as { count: number }).count).toBe(1);
+    const rows = await t.faceRepo.find({ where: { assetId: asset.id } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.userId).toBe(owner.id);
+    expect(rows[0]?.embedding).toHaveLength(512);
+  });
 
   it('rejects the retired detector field on register with 400', async () => {
-    const owner = await seedUser(t)
-    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
-    const file = await seedFile(t, owner.id)
-    const asset = await seedAsset(t, owner.id, file.id)
+    const owner = await seedUser(t);
+    const token = t.signToken(
+      { id: owner.id, email: owner.email, role: owner.role },
+      { act: true },
+    );
+    const file = await seedFile(t, owner.id);
+    const asset = await seedAsset(t, owner.id, file.id);
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
       .send({
         detector: 'scrfd',
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }],
-      })
-    expect(res.status).toBe(400)
-    expect(await t.faceRepo.count()).toBe(0)
-  })
+      });
+    expect(res.status).toBe(400);
+    expect(await t.faceRepo.count()).toBe(0);
+  });
 
   it('accepts an empty faces array', async () => {
-    const owner = await seedUser(t)
-    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
-    const file = await seedFile(t, owner.id)
-    const asset = await seedAsset(t, owner.id, file.id)
+    const owner = await seedUser(t);
+    const token = t.signToken(
+      { id: owner.id, email: owner.email, role: owner.role },
+      { act: true },
+    );
+    const file = await seedFile(t, owner.id);
+    const asset = await seedAsset(t, owner.id, file.id);
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
-      .send({ faces: [] })
-    expect(res.status).toBe(201)
-    expect((res.body as { count: number }).count).toBe(0)
-    expect(await t.faceRepo.count()).toBe(0)
-  })
+      .send({ faces: [] });
+    expect(res.status).toBe(201);
+    expect((res.body as { count: number }).count).toBe(0);
+    expect(await t.faceRepo.count()).toBe(0);
+  });
 
   it('rejects an embedding with the wrong length', async () => {
-    const owner = await seedUser(t)
-    const token = t.signToken({ id: owner.id, email: owner.email, role: owner.role }, { act: true })
-    const file = await seedFile(t, owner.id)
-    const asset = await seedAsset(t, owner.id, file.id)
+    const owner = await seedUser(t);
+    const token = t.signToken(
+      { id: owner.id, email: owner.email, role: owner.role },
+      { act: true },
+    );
+    const file = await seedFile(t, owner.id);
+    const asset = await seedAsset(t, owner.id, file.id);
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
       .send({
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: [0.1, 0.2] }],
-      })
-    expect(res.status).toBe(400)
-    expect(await t.faceRepo.count()).toBe(0)
-  })
+      });
+    expect(res.status).toBe(400);
+    expect(await t.faceRepo.count()).toBe(0);
+  });
 
   it('404s registering faces on a cross-user asset without creating rows', async () => {
-    const a = await seedUser(t)
-    const b = await seedUser(t)
-    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role }, { act: true })
-    const file = await seedFile(t, a.id)
-    const asset = await seedAsset(t, a.id, file.id)
+    const a = await seedUser(t);
+    const b = await seedUser(t);
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role }, { act: true });
+    const file = await seedFile(t, a.id);
+    const asset = await seedAsset(t, a.id, file.id);
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(tokenB))
       .send({
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }],
-      })
-    expect(res.status).toBe(404)
-    expect(await t.faceRepo.count()).toBe(0)
-  })
+      });
+    expect(res.status).toBe(404);
+    expect(await t.faceRepo.count()).toBe(0);
+  });
 
   it('assigns a face to a person and refreshes faceCount', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const { face } = await seedFace(user.id)
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const { face } = await seedFace(user.id);
     const person = await t.personRepo.save(
       t.personRepo.create({ userId: user.id, name: null, clusterLabel: 'c-1', faceCount: 0 }),
-    )
+    );
     const res = await request(apiServer(t))
       .patch(`/api/v1/faces/${face.id}/person`)
       .set(t.authHeader(token))
-      .send({ personId: person.id })
-    expect(res.status).toBe(200)
-    expect((res.body as { ok: boolean }).ok).toBe(true)
-    expect((await t.faceRepo.findOneByOrFail({ id: face.id })).personId).toBe(person.id)
-    expect((await t.personRepo.findOneByOrFail({ id: person.id })).faceCount).toBe(1)
-  })
+      .send({ personId: person.id });
+    expect(res.status).toBe(200);
+    expect((res.body as { ok: boolean }).ok).toBe(true);
+    expect((await t.faceRepo.findOneByOrFail({ id: face.id })).personId).toBe(person.id);
+    expect((await t.personRepo.findOneByOrFail({ id: person.id })).faceCount).toBe(1);
+  });
 
   it('unassigns a face and refreshes faceCount', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
     const person = await t.personRepo.save(
       t.personRepo.create({ userId: user.id, name: null, clusterLabel: 'c-1', faceCount: 1 }),
-    )
-    const { face } = await seedFace(user.id, { personId: person.id })
+    );
+    const { face } = await seedFace(user.id, { personId: person.id });
     const res = await request(apiServer(t))
       .patch(`/api/v1/faces/${face.id}/person`)
       .set(t.authHeader(token))
-      .send({ personId: null })
-    expect(res.status).toBe(200)
-    expect((await t.faceRepo.findOneByOrFail({ id: face.id })).personId).toBeNull()
-    expect((await t.personRepo.findOneByOrFail({ id: person.id })).faceCount).toBe(0)
-  })
+      .send({ personId: null });
+    expect(res.status).toBe(200);
+    expect((await t.faceRepo.findOneByOrFail({ id: face.id })).personId).toBeNull();
+    expect((await t.personRepo.findOneByOrFail({ id: person.id })).faceCount).toBe(0);
+  });
 
   it('404s assigning a cross-user face', async () => {
-    const a = await seedUser(t)
-    const b = await seedUser(t)
-    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
-    const { face } = await seedFace(a.id)
+    const a = await seedUser(t);
+    const b = await seedUser(t);
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role });
+    const { face } = await seedFace(a.id);
     const personB = await t.personRepo.save(
       t.personRepo.create({ userId: b.id, name: null, clusterLabel: 'c-b', faceCount: 0 }),
-    )
+    );
     const res = await request(apiServer(t))
       .patch(`/api/v1/faces/${face.id}/person`)
       .set(t.authHeader(tokenB))
-      .send({ personId: personB.id })
-    expect(res.status).toBe(404)
-    expect((await t.faceRepo.findOneByOrFail({ id: face.id })).personId).toBeNull()
-  })
+      .send({ personId: personB.id });
+    expect(res.status).toBe(404);
+    expect((await t.faceRepo.findOneByOrFail({ id: face.id })).personId).toBeNull();
+  });
 
   it('returns a private jpeg face thumbnail', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const { face } = await seedRealImageFace(user.id)
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const { face } = await seedRealImageFace(user.id);
     const res = await request(apiServer(t))
       .get(`/api/v1/faces/${face.id}/thumb`)
-      .set(t.authHeader(token))
-    expect(res.status).toBe(200)
-    expect(res.headers['content-type']).toBe('image/jpeg')
-    expect(res.headers['cache-control']).toBe('private, max-age=31536000, immutable')
-    expect(Number(res.headers['content-length'])).toBeGreaterThan(0)
-    const meta = await sharp(res.body as Buffer).metadata()
-    expect(meta.width).toBe(240)
-    expect(meta.height).toBe(240)
-  })
+      .set(t.authHeader(token));
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toBe('image/jpeg');
+    expect(res.headers['cache-control']).toBe('private, max-age=31536000, immutable');
+    expect(Number(res.headers['content-length'])).toBeGreaterThan(0);
+    const meta = await sharp(res.body as Buffer).metadata();
+    expect(meta.width).toBe(240);
+    expect(meta.height).toBe(240);
+  });
 
   it('crops from the xl derivative when the original bytes are gone', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
 
     const originalBytes = await sharp({
       create: { width: 64, height: 64, channels: 3, background: '#804020' },
     })
       .jpeg()
-      .toBuffer()
+      .toBuffer();
     const original = await seedFile(t, user.id, {
       bytes: originalBytes,
       mimeType: 'image/jpeg',
       originalName: 'photo.jpg',
-    })
-    const asset = await seedAsset(t, user.id, original.id, { width: 64, height: 64 })
+    });
+    const asset = await seedAsset(t, user.id, original.id, { width: 64, height: 64 });
     const face = await t.faceRepo.save(
       t.faceRepo.create({
         assetId: asset.id,
@@ -245,18 +257,18 @@ describe('faces HTTP', () => {
         confidence: 0.9,
         embedding: [0.1, 0.2, 0.3],
       }),
-    )
+    );
 
     const xlBytes = await sharp({
       create: { width: 320, height: 320, channels: 3, background: '#20a040' },
     })
       .jpeg()
-      .toBuffer()
+      .toBuffer();
     const xlFile = await seedFile(t, user.id, {
       bytes: xlBytes,
       mimeType: 'image/jpeg',
       originalName: 'photo-xl.jpg',
-    })
+    });
     await t.thumbRepo.save(
       t.thumbRepo.create({
         assetId: asset.id,
@@ -266,79 +278,79 @@ describe('faces HTTP', () => {
         height: 320,
         bytes: xlBytes.length,
       }),
-    )
+    );
 
     // a fallback to the original would now fail — the xl derivative is the only usable source
-    rmSync(t.storage.pathFor(original.storageKey))
+    rmSync(t.storage.pathFor(original.storageKey));
 
     const res = await request(apiServer(t))
       .get(`/api/v1/faces/${face.id}/thumb`)
-      .set(t.authHeader(token))
-    expect(res.status).toBe(200)
-    const meta = await sharp(res.body as Buffer).metadata()
-    expect(meta.width).toBe(240)
-    expect(meta.height).toBe(240)
-  })
+      .set(t.authHeader(token));
+    expect(res.status).toBe(200);
+    const meta = await sharp(res.body as Buffer).metadata();
+    expect(meta.width).toBe(240);
+    expect(meta.height).toBe(240);
+  });
 
   it('serves identical concurrent thumb requests', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const { face } = await seedRealImageFace(user.id)
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const { face } = await seedRealImageFace(user.id);
     const responses = await Promise.all(
       Array.from({ length: 5 }, () =>
         request(apiServer(t)).get(`/api/v1/faces/${face.id}/thumb`).set(t.authHeader(token)),
       ),
-    )
-    for (const res of responses) expect(res.status).toBe(200)
-  })
+    );
+    for (const res of responses) expect(res.status).toBe(200);
+  });
 
   it('clamps the thumb size to 32..600', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const { face } = await seedRealImageFace(user.id)
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const { face } = await seedRealImageFace(user.id);
     const small = await request(apiServer(t))
       .get(`/api/v1/faces/${face.id}/thumb`)
       .query({ size: 10 })
-      .set(t.authHeader(token))
-    expect(small.status).toBe(200)
-    expect((await sharp(small.body as Buffer).metadata()).width).toBe(32)
+      .set(t.authHeader(token));
+    expect(small.status).toBe(200);
+    expect((await sharp(small.body as Buffer).metadata()).width).toBe(32);
     const large = await request(apiServer(t))
       .get(`/api/v1/faces/${face.id}/thumb`)
       .query({ size: 9999 })
-      .set(t.authHeader(token))
-    expect(large.status).toBe(200)
-    expect((await sharp(large.body as Buffer).metadata()).width).toBe(600)
-  })
+      .set(t.authHeader(token));
+    expect(large.status).toBe(200);
+    expect((await sharp(large.body as Buffer).metadata()).width).toBe(600);
+  });
 
   it('returns 401 for a thumb request without a token', async () => {
-    const user = await seedUser(t)
-    const { face } = await seedRealImageFace(user.id)
-    const res = await request(apiServer(t)).get(`/api/v1/faces/${face.id}/thumb`)
-    expect(res.status).toBe(401)
-  })
+    const user = await seedUser(t);
+    const { face } = await seedRealImageFace(user.id);
+    const res = await request(apiServer(t)).get(`/api/v1/faces/${face.id}/thumb`);
+    expect(res.status).toBe(401);
+  });
 
   it('404s thumbnails for unknown or cross-user faces', async () => {
-    const a = await seedUser(t)
-    const b = await seedUser(t)
-    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
-    const { face } = await seedRealImageFace(a.id)
+    const a = await seedUser(t);
+    const b = await seedUser(t);
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role });
+    const { face } = await seedRealImageFace(a.id);
     const cross = await request(apiServer(t))
       .get(`/api/v1/faces/${face.id}/thumb`)
-      .set(t.authHeader(tokenB))
-    expect(cross.status).toBe(404)
+      .set(t.authHeader(tokenB));
+    expect(cross.status).toBe(404);
     const unknown = await request(apiServer(t))
       .get(`/api/v1/faces/${randomUUID()}/thumb`)
-      .set(t.authHeader(tokenB))
-    expect(unknown.status).toBe(404)
-  })
+      .set(t.authHeader(tokenB));
+    expect(unknown.status).toBe(404);
+  });
 
   it('deletes all faces for an asset, nulls dangling cover and refreshes faceCount', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true });
     const person = await t.personRepo.save(
       t.personRepo.create({ userId: user.id, name: null, clusterLabel: 'c-del', faceCount: 2 }),
-    )
-    const { asset, face: cover } = await seedFace(user.id, { personId: person.id })
+    );
+    const { asset, face: cover } = await seedFace(user.id, { personId: person.id });
     await t.faceRepo.save(
       t.faceRepo.create({
         assetId: asset.id,
@@ -348,39 +360,39 @@ describe('faces HTTP', () => {
         embedding: [0.4, 0.5, 0.6],
         personId: person.id,
       }),
-    )
-    await t.personRepo.update(person.id, { coverFaceId: cover.id })
+    );
+    await t.personRepo.update(person.id, { coverFaceId: cover.id });
 
     const res = await request(apiServer(t))
       .delete(`/worker/assets/${asset.id}/faces`)
-      .set(t.authHeader(token))
-    expect(res.status).toBe(200)
-    expect((res.body as { deleted: number }).deleted).toBe(2)
-    expect(await t.faceRepo.count()).toBe(0)
-    const updated = await t.personRepo.findOneByOrFail({ id: person.id })
-    expect(updated.coverFaceId).toBeNull()
-    expect(updated.faceCount).toBe(0)
+      .set(t.authHeader(token));
+    expect(res.status).toBe(200);
+    expect((res.body as { deleted: number }).deleted).toBe(2);
+    expect(await t.faceRepo.count()).toBe(0);
+    const updated = await t.personRepo.findOneByOrFail({ id: person.id });
+    expect(updated.coverFaceId).toBeNull();
+    expect(updated.faceCount).toBe(0);
 
     const again = await request(apiServer(t))
       .delete(`/worker/assets/${asset.id}/faces`)
-      .set(t.authHeader(token))
-    expect(again.status).toBe(200)
-    expect((again.body as { deleted: number }).deleted).toBe(0)
-  })
+      .set(t.authHeader(token));
+    expect(again.status).toBe(200);
+    expect((again.body as { deleted: number }).deleted).toBe(0);
+  });
 
   it('404s face deletion on cross-user or unknown assets without deleting rows', async () => {
-    const a = await seedUser(t)
-    const b = await seedUser(t)
-    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role }, { act: true })
-    const { asset, face } = await seedFace(a.id)
+    const a = await seedUser(t);
+    const b = await seedUser(t);
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role }, { act: true });
+    const { asset, face } = await seedFace(a.id);
     const cross = await request(apiServer(t))
       .delete(`/worker/assets/${asset.id}/faces`)
-      .set(t.authHeader(tokenB))
-    expect(cross.status).toBe(404)
+      .set(t.authHeader(tokenB));
+    expect(cross.status).toBe(404);
     const unknown = await request(apiServer(t))
       .delete(`/worker/assets/${randomUUID()}/faces`)
-      .set(t.authHeader(tokenB))
-    expect(unknown.status).toBe(404)
-    expect(await t.faceRepo.count({ where: { id: face.id } })).toBe(1)
-  })
-})
+      .set(t.authHeader(tokenB));
+    expect(unknown.status).toBe(404);
+    expect(await t.faceRepo.count({ where: { id: face.id } })).toBe(1);
+  });
+});

@@ -1,4 +1,4 @@
-import request from 'supertest'
+import request from 'supertest';
 import {
   closeTestApp,
   createApiTestApp,
@@ -7,217 +7,219 @@ import {
   seedFile,
   seedUser,
   apiServer,
-} from './helpers'
-import type { ApiTestApp } from './helpers'
+} from './helpers';
+import type { ApiTestApp } from './helpers';
 
 describe('shares JWT identity', () => {
-  let t: ApiTestApp
+  let t: ApiTestApp;
 
   beforeAll(async () => {
-    t = await createApiTestApp({ mockUser: null })
-  }, 120_000)
+    t = await createApiTestApp({ mockUser: null });
+  }, 120_000);
 
   afterAll(async () => {
-    await closeTestApp(t)
-  })
+    await closeTestApp(t);
+  });
 
   beforeEach(async () => {
-    await resetDb(t)
-  })
+    await resetDb(t);
+  });
 
   it('creates a share for the JWT user', async () => {
-    const a = await seedUser(t)
-    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
-    const file = await seedFile(t, a.id)
-    const asset = await seedAsset(t, a.id, file.id)
+    const a = await seedUser(t);
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role });
+    const file = await seedFile(t, a.id);
+    const asset = await seedAsset(t, a.id, file.id);
     const res = await request(apiServer(t))
       .post('/api/v1/shares')
       .set(t.authHeader(tokenA))
-      .send({ assetId: asset.id })
-    expect(res.status).toBe(201)
+      .send({ assetId: asset.id });
+    expect(res.status).toBe(201);
     const body = res.body as unknown as {
-      kind: string
-      userId: string
-      assetId: string
-      token: string
-    }
-    expect(body.kind).toBe('asset')
-    expect(body.userId).toBe(a.id)
-    expect(body.assetId).toBe(asset.id)
-    expect(typeof body.token).toBe('string')
-  })
+      kind: string;
+      userId: string;
+      assetId: string;
+      token: string;
+    };
+    expect(body.kind).toBe('asset');
+    expect(body.userId).toBe(a.id);
+    expect(body.assetId).toBe(asset.id);
+    expect(typeof body.token).toBe('string');
+  });
 
   it('lists without userId and ignores query userId', async () => {
-    const a = await seedUser(t)
-    const b = await seedUser(t)
-    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
-    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
-    const fileA = await seedFile(t, a.id)
-    const assetA = await seedAsset(t, a.id, fileA.id)
+    const a = await seedUser(t);
+    const b = await seedUser(t);
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role });
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role });
+    const fileA = await seedFile(t, a.id);
+    const assetA = await seedAsset(t, a.id, fileA.id);
     await request(apiServer(t))
       .post('/api/v1/shares')
       .set(t.authHeader(tokenA))
-      .send({ assetId: assetA.id })
-    const fileB = await seedFile(t, b.id)
-    const assetB = await seedAsset(t, b.id, fileB.id)
+      .send({ assetId: assetA.id });
+    const fileB = await seedFile(t, b.id);
+    const assetB = await seedAsset(t, b.id, fileB.id);
     await request(apiServer(t))
       .post('/api/v1/shares')
       .set(t.authHeader(tokenB))
-      .send({ assetId: assetB.id })
+      .send({ assetId: assetB.id });
     const res = await request(apiServer(t))
       .get('/api/v1/shares')
       .query({ userId: b.id })
-      .set(t.authHeader(tokenA))
-    expect(res.status).toBe(200)
-    const body = res.body as unknown as { items: { kind: string; userId: string }[] }
-    expect(body.items).toHaveLength(1)
-    expect(body.items[0]?.kind).toBe('asset')
-    expect(body.items[0]?.userId).toBe(a.id)
-  })
+      .set(t.authHeader(tokenA));
+    expect(res.status).toBe(200);
+    const body = res.body as unknown as { items: { kind: string; userId: string }[] };
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]?.kind).toBe('asset');
+    expect(body.items[0]?.userId).toBe(a.id);
+  });
 
   it('keeps share lists isolated per user', async () => {
-    const a = await seedUser(t)
-    const b = await seedUser(t)
-    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
-    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
-    const fileA = await seedFile(t, a.id)
-    const assetA = await seedAsset(t, a.id, fileA.id)
-    const fileB = await seedFile(t, b.id)
-    const assetB = await seedAsset(t, b.id, fileB.id)
+    const a = await seedUser(t);
+    const b = await seedUser(t);
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role });
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role });
+    const fileA = await seedFile(t, a.id);
+    const assetA = await seedAsset(t, a.id, fileA.id);
+    const fileB = await seedFile(t, b.id);
+    const assetB = await seedAsset(t, b.id, fileB.id);
     await request(apiServer(t))
       .post('/api/v1/shares')
       .set(t.authHeader(tokenA))
-      .send({ assetId: assetA.id })
+      .send({ assetId: assetA.id });
     await request(apiServer(t))
       .post('/api/v1/shares')
       .set(t.authHeader(tokenB))
-      .send({ assetId: assetB.id })
+      .send({ assetId: assetB.id });
 
-    const listA = await request(apiServer(t)).get('/api/v1/shares').set(t.authHeader(tokenA))
-    const listB = await request(apiServer(t)).get('/api/v1/shares').set(t.authHeader(tokenB))
-    expect(listA.status).toBe(200)
-    expect(listB.status).toBe(200)
-    const itemsA = (listA.body as unknown as { items: { userId: string; assetId: string }[] }).items
-    const itemsB = (listB.body as unknown as { items: { userId: string; assetId: string }[] }).items
-    expect(itemsA).toHaveLength(1)
-    expect(itemsA[0]?.userId).toBe(a.id)
-    expect(itemsA[0]?.assetId).toBe(assetA.id)
-    expect(itemsB).toHaveLength(1)
-    expect(itemsB[0]?.userId).toBe(b.id)
-    expect(itemsB[0]?.assetId).toBe(assetB.id)
-  })
+    const listA = await request(apiServer(t)).get('/api/v1/shares').set(t.authHeader(tokenA));
+    const listB = await request(apiServer(t)).get('/api/v1/shares').set(t.authHeader(tokenB));
+    expect(listA.status).toBe(200);
+    expect(listB.status).toBe(200);
+    const itemsA = (listA.body as unknown as { items: { userId: string; assetId: string }[] })
+      .items;
+    const itemsB = (listB.body as unknown as { items: { userId: string; assetId: string }[] })
+      .items;
+    expect(itemsA).toHaveLength(1);
+    expect(itemsA[0]?.userId).toBe(a.id);
+    expect(itemsA[0]?.assetId).toBe(assetA.id);
+    expect(itemsB).toHaveLength(1);
+    expect(itemsB[0]?.userId).toBe(b.id);
+    expect(itemsB[0]?.assetId).toBe(assetB.id);
+  });
 
   it('rejects cross-user revoke', async () => {
-    const a = await seedUser(t)
-    const b = await seedUser(t)
-    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role })
-    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
-    const file = await seedFile(t, a.id)
-    const asset = await seedAsset(t, a.id, file.id)
+    const a = await seedUser(t);
+    const b = await seedUser(t);
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role });
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role });
+    const file = await seedFile(t, a.id);
+    const asset = await seedAsset(t, a.id, file.id);
     const created = await request(apiServer(t))
       .post('/api/v1/shares')
       .set(t.authHeader(tokenA))
-      .send({ assetId: asset.id })
-    const share = created.body as unknown as { id: string }
+      .send({ assetId: asset.id });
+    const share = created.body as unknown as { id: string };
     const cross = await request(apiServer(t))
       .delete(`/api/v1/shares/${share.id}`)
-      .set(t.authHeader(tokenB))
-    expect(cross.status).toBe(404)
+      .set(t.authHeader(tokenB));
+    expect(cross.status).toBe(404);
     const own = await request(apiServer(t))
       .delete(`/api/v1/shares/${share.id}`)
-      .set(t.authHeader(tokenA))
-    expect(own.status).toBe(204)
-  })
+      .set(t.authHeader(tokenA));
+    expect(own.status).toBe(204);
+  });
 
   it('serves public share by token without auth', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const file = await seedFile(t, user.id)
-    const asset = await seedAsset(t, user.id, file.id)
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const file = await seedFile(t, user.id);
+    const asset = await seedAsset(t, user.id, file.id);
     const created = await request(apiServer(t))
       .post('/api/v1/shares')
       .set(t.authHeader(token))
-      .send({ assetId: asset.id })
-    const share = created.body as unknown as { token: string }
-    const res = await request(apiServer(t)).get(`/api/share/${share.token}`)
-    expect(res.status).toBe(200)
-    expect((res.body as { kind: string }).kind).toBe('asset')
-  })
+      .send({ assetId: asset.id });
+    const share = created.body as unknown as { token: string };
+    const res = await request(apiServer(t)).get(`/api/share/${share.token}`);
+    expect(res.status).toBe(200);
+    expect((res.body as { kind: string }).kind).toBe('asset');
+  });
 
   it('rotates the token when sharing the same asset twice', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const file = await seedFile(t, user.id)
-    const asset = await seedAsset(t, user.id, file.id)
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const file = await seedFile(t, user.id);
+    const asset = await seedAsset(t, user.id, file.id);
 
     const first = await request(apiServer(t))
       .post('/api/v1/shares')
       .set(t.authHeader(token))
-      .send({ assetId: asset.id })
+      .send({ assetId: asset.id });
     const second = await request(apiServer(t))
       .post('/api/v1/shares')
       .set(t.authHeader(token))
-      .send({ assetId: asset.id })
-    expect(first.status).toBe(201)
-    expect(second.status).toBe(201)
-    const firstBody = first.body as unknown as { id: string; token: string }
-    const secondBody = second.body as unknown as { id: string; token: string }
+      .send({ assetId: asset.id });
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    const firstBody = first.body as unknown as { id: string; token: string };
+    const secondBody = second.body as unknown as { id: string; token: string };
     // rotation mints a new capability and kills the old URL (compat break by design)
-    expect(secondBody.id).not.toBe(firstBody.id)
-    expect(secondBody.token).not.toBe(firstBody.token)
-    expect(await t.shareRepo.count({ where: { assetId: asset.id } })).toBe(1)
-    expect((await request(apiServer(t)).get(`/api/share/${firstBody.token}`)).status).toBe(404)
-    expect((await request(apiServer(t)).get(`/api/share/${secondBody.token}`)).status).toBe(200)
-  })
+    expect(secondBody.id).not.toBe(firstBody.id);
+    expect(secondBody.token).not.toBe(firstBody.token);
+    expect(await t.shareRepo.count({ where: { assetId: asset.id } })).toBe(1);
+    expect((await request(apiServer(t)).get(`/api/share/${firstBody.token}`)).status).toBe(404);
+    expect((await request(apiServer(t)).get(`/api/share/${secondBody.token}`)).status).toBe(200);
+  });
 
   it('404s the public route after revoke', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const file = await seedFile(t, user.id)
-    const asset = await seedAsset(t, user.id, file.id)
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const file = await seedFile(t, user.id);
+    const asset = await seedAsset(t, user.id, file.id);
     const created = await request(apiServer(t))
       .post('/api/v1/shares')
       .set(t.authHeader(token))
-      .send({ assetId: asset.id })
-    const share = created.body as unknown as { id: string; token: string }
+      .send({ assetId: asset.id });
+    const share = created.body as unknown as { id: string; token: string };
 
     const revoked = await request(apiServer(t))
       .delete(`/api/v1/shares/${share.id}`)
-      .set(t.authHeader(token))
-    expect(revoked.status).toBe(204)
-    const res = await request(apiServer(t)).get(`/api/share/${share.token}`)
-    expect(res.status).toBe(404)
-  })
+      .set(t.authHeader(token));
+    expect(revoked.status).toBe(204);
+    const res = await request(apiServer(t)).get(`/api/share/${share.token}`);
+    expect(res.status).toBe(404);
+  });
 
   it('excludes trashed assets from the share list and the public route', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const file = await seedFile(t, user.id)
-    const asset = await seedAsset(t, user.id, file.id)
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const file = await seedFile(t, user.id);
+    const asset = await seedAsset(t, user.id, file.id);
     const created = await request(apiServer(t))
       .post('/api/v1/shares')
       .set(t.authHeader(token))
-      .send({ assetId: asset.id })
-    const share = created.body as unknown as { token: string }
+      .send({ assetId: asset.id });
+    const share = created.body as unknown as { token: string };
 
     const trashed = await request(apiServer(t))
       .post(`/api/v1/assets/${asset.id}/trash`)
-      .set(t.authHeader(token))
-    expect(trashed.status).toBe(204)
+      .set(t.authHeader(token));
+    expect(trashed.status).toBe(204);
 
-    const list = await request(apiServer(t)).get('/api/v1/shares').set(t.authHeader(token))
-    expect(list.status).toBe(200)
-    expect((list.body as unknown as { items: unknown[] }).items).toHaveLength(0)
+    const list = await request(apiServer(t)).get('/api/v1/shares').set(t.authHeader(token));
+    expect(list.status).toBe(200);
+    expect((list.body as unknown as { items: unknown[] }).items).toHaveLength(0);
 
-    const pub = await request(apiServer(t)).get(`/api/share/${share.token}`)
-    expect(pub.status).toBe(404)
-  })
+    const pub = await request(apiServer(t)).get(`/api/share/${share.token}`);
+    expect(pub.status).toBe(404);
+  });
 
   it('does not leak exif, gps or faces through the public projection', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const file = await seedFile(t, user.id)
-    const asset = await seedAsset(t, user.id, file.id)
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const file = await seedFile(t, user.id);
+    const asset = await seedAsset(t, user.id, file.id);
     await t.assetRepo.update(asset.id, {
       latitude: 48.8584,
       longitude: 2.2945,
@@ -231,19 +233,19 @@ describe('shares JWT identity', () => {
       focalLength: 35,
       metadata: { gps: { lat: 48.8584, lon: 2.2945 }, exif: { Make: 'Leica' } },
       faceCount: 2,
-    })
+    });
     const created = await request(apiServer(t))
       .post('/api/v1/shares')
       .set(t.authHeader(token))
-      .send({ assetId: asset.id })
-    const share = created.body as unknown as { token: string }
+      .send({ assetId: asset.id });
+    const share = created.body as unknown as { token: string };
 
-    const res = await request(apiServer(t)).get(`/api/share/${share.token}`)
-    expect(res.status).toBe(200)
+    const res = await request(apiServer(t)).get(`/api/share/${share.token}`);
+    expect(res.status).toBe(200);
     const body = res.body as unknown as {
-      share: Record<string, unknown>
-      asset: Record<string, unknown>
-    }
+      share: Record<string, unknown>;
+      asset: Record<string, unknown>;
+    };
     const forbidden = [
       'latitude',
       'longitude',
@@ -260,12 +262,12 @@ describe('shares JWT identity', () => {
       'faces',
       'gps',
       'exif',
-    ]
+    ];
     for (const key of forbidden) {
-      expect(body.asset).not.toHaveProperty(key)
-      expect(body.share).not.toHaveProperty(key)
+      expect(body.asset).not.toHaveProperty(key);
+      expect(body.share).not.toHaveProperty(key);
     }
-    expect(JSON.stringify(body)).not.toContain('48.8584')
-    expect(JSON.stringify(body)).not.toContain('Summicron')
-  })
-})
+    expect(JSON.stringify(body)).not.toContain('48.8584');
+    expect(JSON.stringify(body)).not.toContain('Summicron');
+  });
+});

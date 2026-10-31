@@ -1,36 +1,36 @@
-import { useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
-import { FaRegEnvelope, FaLock, FaArrowRight } from 'react-icons/fa6'
-import { useAuthStore } from '../../store/auth-store'
-import { AuthError, AuthField, AuthShell, AuthSubmit } from '../../components/AuthShell'
-import { getRegistrationSettings } from '../../api/auth'
-import { useAsyncFetch } from '../../hooks/useAsyncFetch'
+import { useState } from 'react';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { FaRegEnvelope, FaLock, FaArrowRight } from 'react-icons/fa6';
+import { useAuthStore } from '../../store/auth-store';
+import { AuthError, AuthField, AuthShell, AuthSubmit } from '../../components/AuthShell';
+import { getRegistrationSettings } from '../../api/auth';
+import { useAsyncFetch } from '../../hooks/useAsyncFetch';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const navigate = useNavigate()
-  const { login, status, error, clearError } = useAuthStore()
-  const authenticated = status === 'authenticated'
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const navigate = useNavigate();
+  const { login, status, error, clearError } = useAuthStore();
+  const authenticated = status === 'authenticated';
 
   // The link stays while the check is in flight and when it fails — the register page covers
   // direct navigation either way. Only a confirmed `false` hides it.
   const { data: registration } = useAsyncFetch(getRegistrationSettings, {
     errorMessage: 'Failed to check whether sign-ups are open',
-  })
-  const signupsClosed = registration?.enabled === false
+  });
+  const signupsClosed = registration?.enabled === false;
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    await login(email, password)
+    e.preventDefault();
+    await login(email, password);
     if (useAuthStore.getState().status === 'authenticated') {
-      void navigate('/')
+      void navigate('/');
     }
-  }
+  };
 
   if (authenticated) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/" replace />;
   }
 
   return (
@@ -78,5 +78,5 @@ export default function LoginPage() {
         <AuthSubmit loading={status === 'loading'} label="Sign In" />
       </form>
     </AuthShell>
-  )
+  );
 }

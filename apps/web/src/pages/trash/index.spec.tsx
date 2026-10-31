@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ReactNode } from 'react'
-import { cleanup, fireEvent, render, screen, waitFor, within, act } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
-import type { Asset } from '@photox/shared-types'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ReactNode } from 'react';
+import { cleanup, fireEvent, render, screen, waitFor, within, act } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import type { Asset } from '@photox/shared-types';
 
 const api = vi.hoisted(() => ({
   listAllAssets: vi.fn(),
@@ -11,19 +11,19 @@ const api = vi.hoisted(() => ({
   trashAsset: vi.fn(),
   deleteAsset: vi.fn(),
   updateAsset: vi.fn(),
-}))
+}));
 
-vi.mock('../../api/assets', () => api)
+vi.mock('../../api/assets', () => api);
 
 // The auth gate, shell chrome and the real viewer are not this spec's subject: stand them in so the
 // page content runs against the mocked api module only (same stub-the-boundary style as FacesSection).
 vi.mock('../../components/RequireAuth', () => ({
   RequireAuth: ({ children }: { children: ReactNode }) => children,
-}))
+}));
 vi.mock('../../components/AppShell', () => ({
   AppShell: ({ children }: { children: ReactNode }) => children,
   useScrollContainer: () => null,
-}))
+}));
 vi.mock('../../components/ViewerHost', () => ({
   ViewerHost: ({ asset, onRestore }: { asset: Asset | null; onRestore?: () => void }) =>
     asset ? (
@@ -34,13 +34,13 @@ vi.mock('../../components/ViewerHost', () => ({
         </button>
       </div>
     ) : null,
-}))
+}));
 
-import TrashPage from './index'
-import { ConfirmProvider } from '../../components/ConfirmProvider'
-import { formatDate } from '../../lib/dateFormat'
+import TrashPage from './index';
+import { ConfirmProvider } from '../../components/ConfirmProvider';
+import { formatDate } from '../../lib/dateFormat';
 
-const trashedAt = '2020-01-15T12:00:00.000Z'
+const trashedAt = '2020-01-15T12:00:00.000Z';
 
 const makeAsset = (over: Partial<Asset> = {}): Asset =>
   ({
@@ -50,7 +50,7 @@ const makeAsset = (over: Partial<Asset> = {}): Asset =>
     isTrashed: true,
     trashedAt,
     ...over,
-  }) as Asset
+  }) as Asset;
 
 // jsdom has no IntersectionObserver; GalleryItem's AssetThumb registers one on mount (it never
 // becomes visible here, so the thumb download path is never reached).
@@ -66,7 +66,7 @@ class IOStub {
   }
 }
 
-const alertMock = vi.fn()
+const alertMock = vi.fn();
 
 function renderTrash() {
   return render(
@@ -75,119 +75,119 @@ function renderTrash() {
         <TrashPage />
       </ConfirmProvider>
     </MemoryRouter>,
-  )
+  );
 }
 
 beforeEach(() => {
-  api.listAllAssets.mockResolvedValue([])
-  vi.stubGlobal('IntersectionObserver', IOStub)
-  vi.stubGlobal('alert', alertMock)
-})
+  api.listAllAssets.mockResolvedValue([]);
+  vi.stubGlobal('IntersectionObserver', IOStub);
+  vi.stubGlobal('alert', alertMock);
+});
 
 afterEach(() => {
-  cleanup()
-  vi.resetAllMocks()
-  vi.unstubAllGlobals()
-})
+  cleanup();
+  vi.resetAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe('TrashPage', () => {
   it('shows the empty state when no trashed assets come back', async () => {
-    renderTrash()
+    renderTrash();
 
-    expect(await screen.findByText('Trash is empty')).toBeTruthy()
-    expect(screen.getByText('Photos you delete from your timeline will appear here.')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Empty trash' })).toBeNull()
-  })
+    expect(await screen.findByText('Trash is empty')).toBeTruthy();
+    expect(screen.getByText('Photos you delete from your timeline will appear here.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Empty trash' })).toBeNull();
+  });
 
   it('renders the trashed items grouped by trashedAt with the empty-trash action', async () => {
-    api.listAllAssets.mockResolvedValue([makeAsset()])
-    renderTrash()
+    api.listAllAssets.mockResolvedValue([makeAsset()]);
+    renderTrash();
 
-    expect(await screen.findByText(formatDate(trashedAt))).toBeTruthy()
+    expect(await screen.findByText(formatDate(trashedAt))).toBeTruthy();
     expect(api.listAllAssets).toHaveBeenCalledWith(
       expect.objectContaining({ isTrashed: true, limit: 50 }),
-    )
-    expect(screen.getByRole('button', { name: 'Empty trash' })).toBeTruthy()
+    );
+    expect(screen.getByRole('button', { name: 'Empty trash' })).toBeTruthy();
     // the toolbar action plus one GalleryItem (figure with role="button")
-    expect(screen.getAllByRole('button')).toHaveLength(2)
-    expect(screen.queryByText('Trash is empty')).toBeNull()
-  })
+    expect(screen.getAllByRole('button')).toHaveLength(2);
+    expect(screen.queryByText('Trash is empty')).toBeNull();
+  });
 
   it('empties the trash after confirmation and refetches', async () => {
-    api.listAllAssets.mockResolvedValue([makeAsset()])
-    api.emptyTrash.mockResolvedValue(undefined)
-    renderTrash()
-    await screen.findByText(formatDate(trashedAt))
+    api.listAllAssets.mockResolvedValue([makeAsset()]);
+    api.emptyTrash.mockResolvedValue(undefined);
+    renderTrash();
+    await screen.findByText(formatDate(trashedAt));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Empty trash' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Empty trash?' })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Empty trash' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Empty trash' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Empty trash?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Empty trash' }));
 
-    await waitFor(() => expect(api.emptyTrash).toHaveBeenCalledOnce())
-    await waitFor(() => expect(api.listAllAssets).toHaveBeenCalledTimes(2))
-  })
+    await waitFor(() => expect(api.emptyTrash).toHaveBeenCalledOnce());
+    await waitFor(() => expect(api.listAllAssets).toHaveBeenCalledTimes(2));
+  });
 
   it('alerts and keeps the items when emptying fails', async () => {
-    api.listAllAssets.mockResolvedValue([makeAsset()])
-    api.emptyTrash.mockRejectedValue(new Error('boom'))
-    renderTrash()
-    await screen.findByText(formatDate(trashedAt))
+    api.listAllAssets.mockResolvedValue([makeAsset()]);
+    api.emptyTrash.mockRejectedValue(new Error('boom'));
+    renderTrash();
+    await screen.findByText(formatDate(trashedAt));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Empty trash' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Empty trash?' })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Empty trash' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Empty trash' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Empty trash?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Empty trash' }));
 
     await waitFor(() =>
       expect(alertMock).toHaveBeenCalledWith('Failed to empty trash. Please try again.'),
-    )
-    expect(api.listAllAssets).toHaveBeenCalledTimes(1)
-  })
+    );
+    expect(api.listAllAssets).toHaveBeenCalledTimes(1);
+  });
 
   it('keeps the page rendered (viewer mounted) while a refresh is in flight', async () => {
-    api.listAllAssets.mockResolvedValueOnce([makeAsset()])
-    api.emptyTrash.mockResolvedValue(undefined)
-    renderTrash()
-    await screen.findByText(formatDate(trashedAt))
+    api.listAllAssets.mockResolvedValueOnce([makeAsset()]);
+    api.emptyTrash.mockResolvedValue(undefined);
+    renderTrash();
+    await screen.findByText(formatDate(trashedAt));
 
     let resolveRefresh: (value: Asset[]) => void = () => {
       /* replaced by the pending-refresh mock below before any call */
-    }
+    };
     api.listAllAssets.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
-          resolveRefresh = resolve
+          resolveRefresh = resolve;
         }),
-    )
+    );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Empty trash' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Empty trash?' })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Empty trash' }))
-    await waitFor(() => expect(api.listAllAssets).toHaveBeenCalledTimes(2))
+    fireEvent.click(screen.getByRole('button', { name: 'Empty trash' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Empty trash?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Empty trash' }));
+    await waitFor(() => expect(api.listAllAssets).toHaveBeenCalledTimes(2));
 
     // ponytail: refresh must not flip loading — a loading state would unmount the viewer mid-action
-    expect(screen.queryByText('Trash is empty')).toBeNull()
-    expect(screen.getByText(formatDate(trashedAt))).toBeTruthy()
+    expect(screen.queryByText('Trash is empty')).toBeNull();
+    expect(screen.getByText(formatDate(trashedAt))).toBeTruthy();
 
     act(() => {
-      resolveRefresh([])
-    })
-  })
+      resolveRefresh([]);
+    });
+  });
 
   it('opens the viewer on item click and restores through it', async () => {
-    api.listAllAssets.mockResolvedValue([makeAsset()])
-    api.restoreAsset.mockResolvedValue(undefined)
-    renderTrash()
-    await screen.findByText(formatDate(trashedAt))
+    api.listAllAssets.mockResolvedValue([makeAsset()]);
+    api.restoreAsset.mockResolvedValue(undefined);
+    renderTrash();
+    await screen.findByText(formatDate(trashedAt));
 
-    const item = screen.getAllByRole('button').find((el) => el.tagName === 'FIGURE')
-    expect(item).toBeTruthy()
-    fireEvent.click(item!)
+    const item = screen.getAllByRole('button').find((el) => el.tagName === 'FIGURE');
+    expect(item).toBeTruthy();
+    fireEvent.click(item!);
 
     // the viewer stand-in renders the selected asset; the page wires Restore to nav.restore
-    expect(await screen.findByText('Beach trip')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Restore from trash' }))
+    expect(await screen.findByText('Beach trip')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Restore from trash' }));
 
-    await waitFor(() => expect(api.restoreAsset).toHaveBeenCalledWith('a1'))
-    await waitFor(() => expect(api.listAllAssets).toHaveBeenCalledTimes(2))
-  })
-})
+    await waitFor(() => expect(api.restoreAsset).toHaveBeenCalledWith('a1'));
+    await waitFor(() => expect(api.listAllAssets).toHaveBeenCalledTimes(2));
+  });
+});

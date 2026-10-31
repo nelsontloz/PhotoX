@@ -1,13 +1,13 @@
-import { Entity, PrimaryColumn, Column, UpdateDateColumn } from 'typeorm'
+import { Entity, PrimaryColumn, Column, UpdateDateColumn } from 'typeorm';
 
 @Entity('app_settings')
 export class AppSetting {
   @PrimaryColumn('text')
-  key!: string
+  key!: string;
 
   @Column('jsonb')
-  value!: unknown
+  value!: unknown;
 
   @UpdateDateColumn()
-  updatedAt!: Date
+  updatedAt!: Date;
 }

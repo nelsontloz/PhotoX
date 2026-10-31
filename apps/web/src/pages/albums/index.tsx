@@ -1,53 +1,53 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   FaCircleExclamation,
   FaMagnifyingGlass,
   FaPhotoFilm,
   FaPlus,
   FaSpinner,
-} from 'react-icons/fa6'
-import { RequireAuth } from '../../components/RequireAuth'
-import { AppShell } from '../../components/AppShell'
-import { AlbumCover } from '../../components/AlbumCover'
-import { Dialog } from '../../components/Dialog'
-import { NewAlbumFields } from '../../components/NewAlbumFields'
-import { ErrorState, LoadingState } from '../../components/StateViews'
-import { useAsyncFetch } from '../../hooks/useAsyncFetch'
-import { listAlbums, createAlbum } from '../../api/albums'
-import type { AlbumDto } from '@photox/shared-types'
+} from 'react-icons/fa6';
+import { RequireAuth } from '../../components/RequireAuth';
+import { AppShell } from '../../components/AppShell';
+import { AlbumCover } from '../../components/AlbumCover';
+import { Dialog } from '../../components/Dialog';
+import { NewAlbumFields } from '../../components/NewAlbumFields';
+import { ErrorState, LoadingState } from '../../components/StateViews';
+import { useAsyncFetch } from '../../hooks/useAsyncFetch';
+import { listAlbums, createAlbum } from '../../api/albums';
+import type { AlbumDto } from '@photox/shared-types';
 
-const EMPTY_ALBUMS: AlbumDto[] = []
+const EMPTY_ALBUMS: AlbumDto[] = [];
 
 interface NewAlbumDialogProps {
-  onClose: () => void
-  onCreate: (body: { name: string; description?: string }) => Promise<unknown>
+  onClose: () => void;
+  onCreate: (body: { name: string; description?: string }) => Promise<unknown>;
 }
 
 function NewAlbumDialog({ onClose, onCreate }: NewAlbumDialogProps) {
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const trimmed = name.trim()
-  const canSubmit = trimmed.length > 0
+  const trimmed = name.trim();
+  const canSubmit = trimmed.length > 0;
 
   const submit = async () => {
-    if (!canSubmit || submitting) return
-    setSubmitting(true)
-    setError(null)
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
+    setError(null);
     try {
       await onCreate({
         name: trimmed,
         ...(description.trim() ? { description: description.trim() } : {}),
-      })
-      onClose()
+      });
+      onClose();
     } catch (err) {
-      setError((err as Error).message ?? 'Failed to create album')
-      setSubmitting(false)
+      setError((err as Error).message ?? 'Failed to create album');
+      setSubmitting(false);
     }
-  }
+  };
 
   return (
     <Dialog
@@ -86,7 +86,7 @@ function NewAlbumDialog({ onClose, onCreate }: NewAlbumDialogProps) {
         <button
           type="button"
           onClick={() => {
-            void submit()
+            void submit();
           }}
           disabled={!canSubmit || submitting}
           className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 disabled:bg-primary/40 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-lg shadow-primary/20"
@@ -96,30 +96,30 @@ function NewAlbumDialog({ onClose, onCreate }: NewAlbumDialogProps) {
         </button>
       </div>
     </Dialog>
-  )
+  );
 }
 
 function AlbumsListContent() {
   const { data, loading, error, refresh } = useAsyncFetch(() => listAlbums({ limit: 1000 }), {
     errorMessage: 'Failed to load albums',
     loadingMode: 'always',
-  })
-  const albums = data?.items ?? EMPTY_ALBUMS
-  const total = data?.total ?? 0
+  });
+  const albums = data?.items ?? EMPTY_ALBUMS;
+  const total = data?.total ?? 0;
   const create = async (body: { name: string; description?: string }) => {
-    const album = await createAlbum(body)
-    await refresh()
-    return album
-  }
-  const [search, setSearch] = useState('')
-  const [showNewDialog, setShowNewDialog] = useState(false)
+    const album = await createAlbum(body);
+    await refresh();
+    return album;
+  };
+  const [search, setSearch] = useState('');
+  const [showNewDialog, setShowNewDialog] = useState(false);
 
   const filtered = search.trim()
     ? albums.filter((a) => a.name.toLowerCase().includes(search.trim().toLowerCase()))
-    : albums
+    : albums;
 
   if (loading) {
-    return <LoadingState />
+    return <LoadingState />;
   }
 
   if (error) {
@@ -127,10 +127,10 @@ function AlbumsListContent() {
       <ErrorState
         message={error}
         onRetry={() => {
-          void refresh()
+          void refresh();
         }}
       />
-    )
+    );
   }
 
   return (
@@ -218,7 +218,7 @@ function AlbumsListContent() {
         <NewAlbumDialog onClose={() => setShowNewDialog(false)} onCreate={create} />
       )}
     </div>
-  )
+  );
 }
 
 export default function AlbumsPage() {
@@ -228,5 +228,5 @@ export default function AlbumsPage() {
         <AlbumsListContent />
       </AppShell>
     </RequireAuth>
-  )
+  );
 }

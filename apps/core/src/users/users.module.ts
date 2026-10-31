@@ -1,18 +1,18 @@
-import { Module } from '@nestjs/common'
-import { TypeOrmModule } from '@nestjs/typeorm'
-import { FileRecord } from '../database/entities'
-import { User } from './entities/user.entity'
-import { RefreshToken } from './entities/refresh-token.entity'
-import { StorageModule } from '../files/storage/storage.module'
-import { BackupModule } from '../backup/backup.module'
-import { SettingsModule } from '../settings/settings.module'
-import { AuthController } from './auth.controller'
-import { AuthService } from './auth.service'
-import { RateLimitService } from './rate-limit.service'
-import { TokenService } from './tokens/token.service'
-import { AdminController } from './admin/admin.controller'
-import { AdminService } from './admin/admin.service'
-import { UserDeleteService } from './admin/user-delete.service'
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { FileRecord } from '../database/entities';
+import { User } from './entities/user.entity';
+import { RefreshToken } from './entities/refresh-token.entity';
+import { StorageModule } from '../files/storage/storage.module';
+import { BackupModule } from '../backup/backup.module';
+import { SettingsModule } from '../settings/settings.module';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { RateLimitService } from './rate-limit.service';
+import { TokenService } from './tokens/token.service';
+import { AdminController } from './admin/admin.controller';
+import { AdminService } from './admin/admin.service';
+import { UserDeleteService } from './admin/user-delete.service';
 
 @Module({
   // BullMqService is @Global; StorageModule provides LocalStorageService for the wipe.

@@ -1,31 +1,31 @@
-import { FaCamera } from 'react-icons/fa6'
-import type { Asset } from '@photox/shared-types'
-import { SectionShell } from './SectionShell'
+import { FaCamera } from 'react-icons/fa6';
+import type { Asset } from '@photox/shared-types';
+import { SectionShell } from './SectionShell';
 
 interface CameraSectionProps {
-  asset: Asset
+  asset: Asset;
 }
 
 function emptyToNull(value: string | null | undefined): string | null {
-  const trimmed = value?.trim()
-  if (!trimmed) return null
-  return trimmed
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  return trimmed;
 }
 
 function trimNum(value: number, decimals: number): string {
-  return String(parseFloat(value.toFixed(decimals)))
+  return String(parseFloat(value.toFixed(decimals)));
 }
 
 function formatShutter(seconds: number): string {
-  const reciprocal = Math.round(1 / seconds)
-  if (seconds < 1 && reciprocal >= 10) return `1/${reciprocal} s`
-  return `${trimNum(seconds, 3)} s`
+  const reciprocal = Math.round(1 / seconds);
+  if (seconds < 1 && reciprocal >= 10) return `1/${reciprocal} s`;
+  return `${trimNum(seconds, 3)} s`;
 }
 
 function formatCamera(make: string | null, model: string | null): string | null {
-  if (!model) return make
-  if (!make || model.toLowerCase().startsWith(make.toLowerCase())) return model
-  return `${make} ${model}`
+  if (!model) return make;
+  if (!make || model.toLowerCase().startsWith(make.toLowerCase())) return model;
+  return `${make} ${model}`;
 }
 
 export function CameraSection({ asset }: CameraSectionProps) {
@@ -55,14 +55,14 @@ export function CameraSection({ asset }: CameraSectionProps) {
           : null,
     },
     { label: 'ISO', value: asset.iso != null && asset.iso > 0 ? String(asset.iso) : null },
-  ].filter((row) => row.value != null)
+  ].filter((row) => row.value != null);
 
   if (rows.length === 0) {
     return (
       <SectionShell compact icon={<FaCamera className="text-[18px]" />} title="Camera">
         <p className="text-sm text-slate-600 italic">No camera details</p>
       </SectionShell>
-    )
+    );
   }
 
   return (
@@ -76,5 +76,5 @@ export function CameraSection({ asset }: CameraSectionProps) {
         ))}
       </dl>
     </SectionShell>
-  )
+  );
 }

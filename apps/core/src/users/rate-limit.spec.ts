@@ -1,142 +1,142 @@
-import { HttpException, Logger } from '@nestjs/common'
-import type { BullMqService } from '../queue/bullmq.service'
-import { RATE_LIMITS, RATE_LIMIT_TIMEOUT_MS, RateLimitService } from './rate-limit.service'
+import { HttpException, Logger } from '@nestjs/common';
+import type { BullMqService } from '../queue/bullmq.service';
+import { RATE_LIMITS, RATE_LIMIT_TIMEOUT_MS, RateLimitService } from './rate-limit.service';
 
 class FakeRedis {
-  readonly counts = new Map<string, number>()
-  readonly expirations: [string, number][] = []
+  readonly counts = new Map<string, number>();
+  readonly expirations: [string, number][] = [];
 
   eval(_script: string, _numKeys: number, key: string, windowSec: number): Promise<number> {
-    const next = (this.counts.get(key) ?? 0) + 1
-    this.counts.set(key, next)
-    if (next === 1) this.expirations.push([key, Number(windowSec)])
-    return Promise.resolve(next)
+    const next = (this.counts.get(key) ?? 0) + 1;
+    this.counts.set(key, next);
+    if (next === 1) this.expirations.push([key, Number(windowSec)]);
+    return Promise.resolve(next);
   }
 }
 
 function makeService(redis: unknown) {
-  const service = new RateLimitService({ redis } as unknown as BullMqService)
-  return { service, redis: redis as FakeRedis }
+  const service = new RateLimitService({ redis } as unknown as BullMqService);
+  return { service, redis: redis as FakeRedis };
 }
 
 describe('RateLimitService', () => {
   afterEach(() => {
-    vi.restoreAllMocks()
-  })
+    vi.restoreAllMocks();
+  });
 
   it('allows hits up to the limit, then throws 429', async () => {
-    const { service } = makeService(new FakeRedis())
+    const { service } = makeService(new FakeRedis());
 
     for (let i = 0; i < RATE_LIMITS.login.limit; i++) {
-      await service.consume('login', '1.2.3.4', 'user@example.com')
+      await service.consume('login', '1.2.3.4', 'user@example.com');
     }
 
     const err = await service
       .consume('login', '1.2.3.4', 'user@example.com')
-      .catch((e: unknown) => e)
-    expect(err).toBeInstanceOf(HttpException)
-    expect((err as HttpException).getStatus()).toBe(429)
-  })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(HttpException);
+    expect((err as HttpException).getStatus()).toBe(429);
+  });
 
   it('reads RATE_LIMIT_REGISTER at call time', async () => {
-    const prev = process.env.RATE_LIMIT_REGISTER
-    const { service } = makeService(new FakeRedis())
+    const prev = process.env.RATE_LIMIT_REGISTER;
+    const { service } = makeService(new FakeRedis());
     try {
-      await service.consume('register', '1.2.3.4')
-      process.env.RATE_LIMIT_REGISTER = '1'
-      const err = await service.consume('register', '1.2.3.4').catch((e: unknown) => e)
-      expect(err).toBeInstanceOf(HttpException)
-      expect((err as HttpException).getStatus()).toBe(429)
+      await service.consume('register', '1.2.3.4');
+      process.env.RATE_LIMIT_REGISTER = '1';
+      const err = await service.consume('register', '1.2.3.4').catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(HttpException);
+      expect((err as HttpException).getStatus()).toBe(429);
     } finally {
-      if (prev === undefined) delete process.env.RATE_LIMIT_REGISTER
-      else process.env.RATE_LIMIT_REGISTER = prev
+      if (prev === undefined) delete process.env.RATE_LIMIT_REGISTER;
+      else process.env.RATE_LIMIT_REGISTER = prev;
     }
-  })
+  });
 
   it('sets the window TTL only on the first hit', async () => {
-    const { service, redis } = makeService(new FakeRedis())
+    const { service, redis } = makeService(new FakeRedis());
 
-    await service.consume('refresh', '1.2.3.4')
-    await service.consume('refresh', '1.2.3.4')
+    await service.consume('refresh', '1.2.3.4');
+    await service.consume('refresh', '1.2.3.4');
 
-    expect(redis.expirations).toEqual([['rl:refresh:1.2.3.4:-', RATE_LIMITS.refresh.windowSec]])
-  })
+    expect(redis.expirations).toEqual([['rl:refresh:1.2.3.4:-', RATE_LIMITS.refresh.windowSec]]);
+  });
 
   it('encodes key segments so colons cannot alias buckets', async () => {
-    const { service, redis } = makeService(new FakeRedis())
+    const { service, redis } = makeService(new FakeRedis());
 
-    await service.consume('login', '::ffff:1.2.3.4', 'Mixed@Example.com')
-    await service.consume('login', '1.2.3.4', 'mixed@example.com')
-    await service.consume('register', '1.2.3.4')
+    await service.consume('login', '::ffff:1.2.3.4', 'Mixed@Example.com');
+    await service.consume('login', '1.2.3.4', 'mixed@example.com');
+    await service.consume('register', '1.2.3.4');
 
     expect([...redis.counts.entries()]).toEqual([
       ['rl:login:%3A%3Affff%3A1.2.3.4:mixed%40example.com', 1],
       ['rl:login:1.2.3.4:mixed%40example.com', 1],
       ['rl:register:1.2.3.4:-', 1],
-    ])
-  })
+    ]);
+  });
 
   it('fails closed with 503 and warns when Redis rejects', async () => {
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
-    const { service } = makeService({ eval: () => Promise.reject(new Error('redis down')) })
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { service } = makeService({ eval: () => Promise.reject(new Error('redis down')) });
 
     const err = await service
       .consume('login', '1.2.3.4', 'user@example.com')
-      .catch((e: unknown) => e)
-    expect(err).toBeInstanceOf(HttpException)
-    expect((err as HttpException).getStatus()).toBe(503)
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Rate limit unavailable'))
-  })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(HttpException);
+    expect((err as HttpException).getStatus()).toBe(503);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Rate limit unavailable'));
+  });
 
   it('fails closed with 503 after the timeout when Redis never answers', async () => {
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
-    const { service } = makeService({ eval: () => new Promise<never>(() => undefined) })
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { service } = makeService({ eval: () => new Promise<never>(() => undefined) });
 
-    const start = Date.now()
+    const start = Date.now();
     const err = await service
       .consume('login', '1.2.3.4', 'user@example.com')
-      .catch((e: unknown) => e)
-    expect(err).toBeInstanceOf(HttpException)
-    expect((err as HttpException).getStatus()).toBe(503)
-    expect(Date.now() - start).toBeGreaterThanOrEqual(RATE_LIMIT_TIMEOUT_MS - 50)
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Rate limit unavailable'))
-  })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(HttpException);
+    expect((err as HttpException).getStatus()).toBe(503);
+    expect(Date.now() - start).toBeGreaterThanOrEqual(RATE_LIMIT_TIMEOUT_MS - 50);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Rate limit unavailable'));
+  });
 
   it('fails closed with 503 when the Redis connection is not ready', async () => {
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
-    const { service } = makeService(undefined)
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { service } = makeService(undefined);
 
-    const err = await service.consume('register', '1.2.3.4').catch((e: unknown) => e)
-    expect(err).toBeInstanceOf(HttpException)
-    expect((err as HttpException).getStatus()).toBe(503)
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Rate limit unavailable'))
-  })
+    const err = await service.consume('register', '1.2.3.4').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(HttpException);
+    expect((err as HttpException).getStatus()).toBe(503);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Rate limit unavailable'));
+  });
 
   it('swallows a late eval rejection after the timeout wins (no unhandledRejection)', async () => {
-    const unhandled: unknown[] = []
+    const unhandled: unknown[] = [];
     const onUnhandled = (reason: unknown) => {
-      unhandled.push(reason)
-    }
-    process.on('unhandledRejection', onUnhandled)
+      unhandled.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandled);
     try {
-      const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+      const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
       const { service } = makeService({
         eval: () =>
           new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('late redis fail')), RATE_LIMIT_TIMEOUT_MS + 100)
+            setTimeout(() => reject(new Error('late redis fail')), RATE_LIMIT_TIMEOUT_MS + 100);
           }),
-      })
+      });
       const err = await service
         .consume('login', '1.2.3.4', 'user@example.com')
-        .catch((e: unknown) => e)
-      expect(err).toBeInstanceOf(HttpException)
-      expect((err as HttpException).getStatus()).toBe(503)
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(HttpException);
+      expect((err as HttpException).getStatus()).toBe(503);
       // let the late rejection settle past the timeout window
-      await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_TIMEOUT_MS + 300))
-      expect(unhandled).toEqual([])
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Rate limit unavailable'))
+      await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_TIMEOUT_MS + 300));
+      expect(unhandled).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Rate limit unavailable'));
     } finally {
-      process.off('unhandledRejection', onUnhandled)
+      process.off('unhandledRejection', onUnhandled);
     }
-  })
-})
+  });
+});

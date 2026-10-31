@@ -1,5 +1,5 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common'
-import { BullMqService } from '../queue/bullmq.service'
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { BullMqService } from '../queue/bullmq.service';
 
 @Injectable()
 export class HealthService {
@@ -12,7 +12,7 @@ export class HealthService {
         status: 'unhealthy',
         service: 'worker-service',
         checks: { queue: 'down' },
-      })
+      });
     }
 
     return {
@@ -21,6 +21,6 @@ export class HealthService {
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
       checks: { queue: 'ok' },
-    }
+    };
   }
 }

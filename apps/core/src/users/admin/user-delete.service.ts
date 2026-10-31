@@ -1,31 +1,35 @@
-import { ConflictException, Injectable, Logger } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { backupPrefix, loadEnv, LocalStorageService } from '@photox/shared-config'
-import { USER_DELETE_QUEUE, userDeleteJobId, type AdminUserDeleteState } from '@photox/shared-types'
-import { readdir, rm } from 'fs/promises'
-import type { Dirent } from 'fs'
-import { join, relative, resolve } from 'path'
-import { DataSource, In, Repository } from 'typeorm'
-import { Album } from '../../albums/entities/album.entity'
-import { AlbumAsset } from '../../albums/entities/album-asset.entity'
-import { Asset, Face, FileRecord, Person, UploadSession } from '../../database/entities'
-import { Share } from '../../shares/entities/share.entity'
-import { BackupMerge } from '../../backup/entities/backup-merge.entity'
-import { BullMqService } from '../../queue/bullmq.service'
-import { User } from '../entities/user.entity'
-import { RefreshToken } from '../entities/refresh-token.entity'
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { backupPrefix, loadEnv, LocalStorageService } from '@photox/shared-config';
+import {
+  USER_DELETE_QUEUE,
+  userDeleteJobId,
+  type AdminUserDeleteState,
+} from '@photox/shared-types';
+import { readdir, rm } from 'fs/promises';
+import type { Dirent } from 'fs';
+import { join, relative, resolve } from 'path';
+import { DataSource, In, Repository } from 'typeorm';
+import { Album } from '../../albums/entities/album.entity';
+import { AlbumAsset } from '../../albums/entities/album-asset.entity';
+import { Asset, Face, FileRecord, Person, UploadSession } from '../../database/entities';
+import { Share } from '../../shares/entities/share.entity';
+import { BackupMerge } from '../../backup/entities/backup-merge.entity';
+import { BullMqService } from '../../queue/bullmq.service';
+import { User } from '../entities/user.entity';
+import { RefreshToken } from '../entities/refresh-token.entity';
 
 export interface UserDeleteProgress {
-  jobId: string
-  state: AdminUserDeleteState
-  backupPrefix: string
+  jobId: string;
+  state: AdminUserDeleteState;
+  backupPrefix: string;
 }
 
 export interface UserDeleteResult {
-  userId: string
-  backupPrefix: string
-  deletedFiles: number
-  deletedStrays: number
+  userId: string;
+  backupPrefix: string;
+  deletedFiles: number;
+  deletedStrays: number;
 }
 
 /**
@@ -53,11 +57,11 @@ export interface UserDeleteResult {
  */
 @Injectable()
 export class UserDeleteService {
-  private readonly logger = new Logger(UserDeleteService.name)
+  private readonly logger = new Logger(UserDeleteService.name);
   // ponytail: in-memory progress only (same pattern as UserBackupService.backupProgress)
   // — a restart wipes it and the BullMQ job record remains the durable source; never
   // treat it as history (upgrade path: persist to a job row)
-  private readonly progress = new Map<string, UserDeleteProgress>()
+  private readonly progress = new Map<string, UserDeleteProgress>();
 
   constructor(
     private readonly dataSource: DataSource,
@@ -70,17 +74,17 @@ export class UserDeleteService {
   // one setter for every lifecycle write; jobId/prefix default to the recorded run (a
   // finished step has no ids of its own) or to the deterministic job id / unknown prefix
   setProgress(userId: string, state: AdminUserDeleteState, jobId?: string, prefix?: string): void {
-    const current = this.progress.get(userId)
+    const current = this.progress.get(userId);
     this.progress.set(userId, {
       jobId: jobId ?? current?.jobId ?? userDeleteJobId(userId),
       state,
       backupPrefix: prefix ?? current?.backupPrefix ?? '',
-    })
+    });
   }
 
   getProgress(userId: string): UserDeleteProgress | undefined {
-    const current = this.progress.get(userId)
-    return current ? { ...current } : undefined
+    const current = this.progress.get(userId);
+    return current ? { ...current } : undefined;
   }
 
   /**
@@ -90,19 +94,19 @@ export class UserDeleteService {
    * stale `completed` while the row never dies. In-flight jobs are left alone.
    */
   async clearFinishedJob(userId: string): Promise<boolean> {
-    const jobId = userDeleteJobId(userId)
+    const jobId = userDeleteJobId(userId);
     try {
-      const job = await this.bullMq.getQueue(USER_DELETE_QUEUE).getJob(jobId)
-      if (!job) return false
-      const state = await job.getState()
-      if (state !== 'completed' && state !== 'failed') return false
-      await job.remove()
-      return true
+      const job = await this.bullMq.getQueue(USER_DELETE_QUEUE).getJob(jobId);
+      if (!job) return false;
+      const state = await job.getState();
+      if (state !== 'completed' && state !== 'failed') return false;
+      await job.remove();
+      return true;
     } catch (err) {
       this.logger.warn(
         `User-delete stale job clear failed for ${userId}: ${err instanceof Error ? err.message : String(err)}`,
-      )
-      return false
+      );
+      return false;
     }
   }
 
@@ -112,89 +116,89 @@ export class UserDeleteService {
    * gone case) is unchanged. Idempotent: a retried job finds no user row and returns cleanly.
    */
   async purge(userId: string, fallbackPrefix: string, jobId?: string): Promise<UserDeleteResult> {
-    this.setProgress(userId, 'active', jobId, fallbackPrefix)
+    this.setProgress(userId, 'active', jobId, fallbackPrefix);
     try {
-      const user = await this.users.findOne({ where: { id: userId } })
+      const user = await this.users.findOne({ where: { id: userId } });
       if (!user) {
         // idempotent retry: a previous attempt already dropped the row. The row sweep still
         // runs — a crash between the txn commit and the byte deletions must not orphan files
         // with no later retry able to reach them.
-        const deletedStrays = await this.sweepUserPrefixes(userId)
-        this.setProgress(userId, 'completed')
+        const deletedStrays = await this.sweepUserPrefixes(userId);
+        this.setProgress(userId, 'completed');
         return {
           userId,
           backupPrefix: fallbackPrefix,
           deletedFiles: 0,
           deletedStrays,
-        }
+        };
       }
-      const prefix = backupPrefix(user.email, user.id)
+      const prefix = backupPrefix(user.email, user.id);
 
       const assetRows = await this.dataSource
         .getRepository(Asset)
-        .find({ where: { userId }, select: { id: true } })
-      const assetIds = assetRows.map((a) => a.id)
+        .find({ where: { userId }, select: { id: true } });
+      const assetIds = assetRows.map((a) => a.id);
       // thumb bytes live in FileRecords under the same userId (registerFile is owner-scoped
       // and thumb fileId carries no FK), so the files sweep below collects them explicitly
-      const fileRows = await this.files.find({ where: { userId }, select: { storageKey: true } })
-      const storageKeys = fileRows.map((f) => f.storageKey)
+      const fileRows = await this.files.find({ where: { userId }, select: { storageKey: true } });
+      const storageKeys = fileRows.map((f) => f.storageKey);
 
       await this.dataSource.transaction(async (m) => {
         // C3: last-admin re-check inside the txn — the request-time count in AdminService is
         // only the fast path; two concurrent deletes both passing it must not wipe all admins.
-        const fresh = await m.findOne(User, { where: { id: userId } })
-        if (!fresh) return
+        const fresh = await m.findOne(User, { where: { id: userId } });
+        if (!fresh) return;
         if (fresh.role === 'admin') {
-          const adminCount = await m.count(User, { where: { role: 'admin' } })
-          if (adminCount <= 1) throw new ConflictException('Cannot delete the last admin')
+          const adminCount = await m.count(User, { where: { role: 'admin' } });
+          if (adminCount <= 1) throw new ConflictException('Cannot delete the last admin');
         }
         // sessions first: refresh rows die and the floor kills in-flight access tokens
-        await m.delete(RefreshToken, { userId })
-        await m.update(User, userId, { tokensValidAfter: new Date() })
-        await m.delete(Share, { userId })
+        await m.delete(RefreshToken, { userId });
+        await m.update(User, userId, { tokensValidAfter: new Date() });
+        await m.delete(Share, { userId });
         // merge ledger rows are metadata about the deleted target account; the S3
         // legacy backup itself stays in place (backups are never deleted here)
-        await m.delete(BackupMerge, { targetUserId: userId })
-        await m.delete(Face, { userId })
-        await m.delete(Person, { userId })
+        await m.delete(BackupMerge, { targetUserId: userId });
+        await m.delete(Face, { userId });
+        await m.delete(Person, { userId });
         const albumIds = (await m.find(Album, { where: { userId }, select: { id: true } })).map(
           (a) => a.id,
-        )
-        if (albumIds.length > 0) await m.delete(AlbumAsset, { albumId: In(albumIds) })
+        );
+        if (albumIds.length > 0) await m.delete(AlbumAsset, { albumId: In(albumIds) });
         // the user's assets may sit in foreign albums — clear those links too
-        if (assetIds.length > 0) await m.delete(AlbumAsset, { assetId: In(assetIds) })
-        await m.delete(Album, { userId })
+        if (assetIds.length > 0) await m.delete(AlbumAsset, { assetId: In(assetIds) });
+        await m.delete(Album, { userId });
         // incl. trashed (no isTrashed filter — reuse hardDelete semantics); CASCADE drops
         // asset_thumbnails/embeddings/detections, shares.assetId FK drops foreign shares
-        if (assetIds.length > 0) await m.delete(Asset, { id: In(assetIds) })
-        await m.delete(FileRecord, { userId })
+        if (assetIds.length > 0) await m.delete(Asset, { id: In(assetIds) });
+        await m.delete(FileRecord, { userId });
         // resumable sessions have no FK to users; leaving them behind both leaks up to 4 GiB
         // per session and, because restore re-creates the same userId, eats the 5-session cap
-        await m.delete(UploadSession, { userId })
-        await m.delete(User, userId)
-      })
+        await m.delete(UploadSession, { userId });
+        await m.delete(User, userId);
+      });
 
-      let deletedFiles = 0
+      let deletedFiles = 0;
       for (const key of storageKeys) {
         try {
-          await this.storage.delete(key)
-          deletedFiles++
+          await this.storage.delete(key);
+          deletedFiles++;
         } catch (err) {
           this.logger.warn(
             `User-delete storage delete failed for ${key}: ${err instanceof Error ? err.message : String(err)}`,
-          )
+          );
         }
       }
-      const deletedStrays = await this.sweepUserPrefixes(userId)
+      const deletedStrays = await this.sweepUserPrefixes(userId);
 
-      this.setProgress(userId, 'completed')
+      this.setProgress(userId, 'completed');
       this.logger.log(
         `Deleted user ${userId} (${assetIds.length} assets, ${deletedFiles} files, ${deletedStrays} strays; backup ${prefix} kept)`,
-      )
-      return { userId, backupPrefix: prefix, deletedFiles, deletedStrays }
+      );
+      return { userId, backupPrefix: prefix, deletedFiles, deletedStrays };
     } catch (err) {
-      this.setProgress(userId, 'failed')
-      throw err
+      this.setProgress(userId, 'failed');
+      throw err;
     }
   }
 
@@ -204,42 +208,42 @@ export class UserDeleteService {
    * listed — the prefixes are user-scoped literals by construction.
    */
   private async sweepUserPrefixes(userId: string): Promise<number> {
-    const root = resolve(loadEnv().STORAGE_DIR)
+    const root = resolve(loadEnv().STORAGE_DIR);
     const prefixes = [
       `originals/${userId}/`,
       `derivatives/thumbnails/${userId}/`,
       `derivatives/transcodes/${userId}/`,
       `upload-sessions/${userId}/`,
-    ]
-    let strays = 0
+    ];
+    let strays = 0;
     for (const prefix of prefixes) {
-      let dir: string
+      let dir: string;
       try {
-        dir = this.storage.pathFor(prefix)
+        dir = this.storage.pathFor(prefix);
       } catch {
-        continue
+        continue;
       }
-      let entries: Dirent<string>[]
+      let entries: Dirent<string>[];
       try {
-        entries = await readdir(dir, { recursive: true, withFileTypes: true })
+        entries = await readdir(dir, { recursive: true, withFileTypes: true });
       } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue
-        throw err
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue;
+        throw err;
       }
       for (const entry of entries) {
-        if (!entry.isFile()) continue
-        const key = relative(root, join(entry.parentPath, entry.name))
+        if (!entry.isFile()) continue;
+        const key = relative(root, join(entry.parentPath, entry.name));
         try {
-          await this.storage.delete(key)
-          strays++
+          await this.storage.delete(key);
+          strays++;
         } catch (err) {
           this.logger.warn(
             `User-delete stray delete failed for ${key}: ${err instanceof Error ? err.message : String(err)}`,
-          )
+          );
         }
       }
-      await rm(dir, { recursive: true, force: true }).catch(() => undefined)
+      await rm(dir, { recursive: true, force: true }).catch(() => undefined);
     }
-    return strays
+    return strays;
   }
 }

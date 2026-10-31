@@ -7,10 +7,10 @@ import {
   ManyToOne,
   JoinColumn,
   Check,
-} from 'typeorm'
-import type { ShareKind } from '@photox/shared-types'
-import { Asset } from '../../database/entities'
-import { Album } from '../../albums/entities/album.entity'
+} from 'typeorm';
+import type { ShareKind } from '@photox/shared-types';
+import { Asset } from '../../database/entities';
+import { Album } from '../../albums/entities/album.entity';
 
 @Entity('shares')
 @Check('CHK_shares_exactly_one_target', '("assetId" IS NULL) <> ("albumId" IS NULL)')
@@ -20,36 +20,36 @@ import { Album } from '../../albums/entities/album.entity'
 @Index(['albumId', 'userId'], { unique: true, where: '"albumId" IS NOT NULL' })
 export class Share {
   @PrimaryGeneratedColumn('uuid')
-  id!: string
+  id!: string;
 
   @Column()
-  userId!: string
+  userId!: string;
 
   @Column({ type: 'varchar', length: 16 })
-  kind!: ShareKind
+  kind!: ShareKind;
 
   @Column({ type: 'uuid', nullable: true })
-  assetId!: string | null
+  assetId!: string | null;
 
   @ManyToOne(() => Asset, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'assetId' })
-  asset!: Asset | null
+  asset!: Asset | null;
 
   @Column({ type: 'uuid', nullable: true })
-  albumId!: string | null
+  albumId!: string | null;
 
   @ManyToOne(() => Album, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'albumId' })
-  album!: Album | null
+  album!: Album | null;
 
   // stores sha256 hex of the capability (64 chars); plaintext appears only in the create response
   @Column({ type: 'varchar', length: 64 })
-  token!: string
+  token!: string;
 
   // null = legacy share with no expiry; new shares default to 30d
   @Column({ type: 'timestamptz', nullable: true })
-  expiresAt!: Date | null
+  expiresAt!: Date | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
-  createdAt!: Date
+  createdAt!: Date;
 }

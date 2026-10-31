@@ -1,49 +1,49 @@
-import { FaCircleCheck, FaCircleInfo, FaCircleXmark, FaSpinner } from 'react-icons/fa6'
-import type { Asset } from '@photox/shared-types'
-import { formatBytes, formatDuration } from '../../../lib/format'
-import { SectionShell } from './SectionShell'
+import { FaCircleCheck, FaCircleInfo, FaCircleXmark, FaSpinner } from 'react-icons/fa6';
+import type { Asset } from '@photox/shared-types';
+import { formatBytes, formatDuration } from '../../../lib/format';
+import { SectionShell } from './SectionShell';
 
 interface AssetMetadataPanelProps {
-  asset: Asset
+  asset: Asset;
 }
 
 function formatFps(fps: number | null): string | null {
-  if (fps == null || !Number.isFinite(fps) || fps <= 0) return null
-  return `${Number.isInteger(fps) ? fps : fps.toFixed(2)} fps`
+  if (fps == null || !Number.isFinite(fps) || fps <= 0) return null;
+  return `${Number.isInteger(fps) ? fps : fps.toFixed(2)} fps`;
 }
 
 function transcodeLabel(
   status: Asset['transcodeStatus'],
 ): { text: string; tone: 'ok' | 'pending' | 'failed' } | null {
   if (status === 'ready') {
-    return { text: 'Ready', tone: 'ok' }
+    return { text: 'Ready', tone: 'ok' };
   }
   if (status === 'pending') {
-    return { text: 'Transcoding', tone: 'pending' }
+    return { text: 'Transcoding', tone: 'pending' };
   }
   if (status === 'failed') {
-    return { text: 'Failed', tone: 'failed' }
+    return { text: 'Failed', tone: 'failed' };
   }
-  return null
+  return null;
 }
 
 export function AssetMetadataPanel({ asset }: AssetMetadataPanelProps) {
-  const isVideo = asset.kind === 'video'
+  const isVideo = asset.kind === 'video';
 
-  const duration = formatDuration(asset.durationSeconds)
-  const size = formatBytes(asset.sizeBytes)
-  const fps = formatFps(asset.fps)
+  const duration = formatDuration(asset.durationSeconds);
+  const size = formatBytes(asset.sizeBytes);
+  const fps = formatFps(asset.fps);
   const resolution =
-    asset.width != null && asset.height != null ? `${asset.width} × ${asset.height}` : null
-  const codec = asset.codec ?? null
-  const hasAudio = asset.hasAudio === null ? null : asset.hasAudio ? 'Yes' : 'No'
-  const streaming = isVideo ? transcodeLabel(asset.transcodeStatus) : null
+    asset.width != null && asset.height != null ? `${asset.width} × ${asset.height}` : null;
+  const codec = asset.codec ?? null;
+  const hasAudio = asset.hasAudio === null ? null : asset.hasAudio ? 'Yes' : 'No';
+  const streaming = isVideo ? transcodeLabel(asset.transcodeStatus) : null;
 
   const photoRows = [
     { label: 'Resolution', value: resolution },
     { label: 'File size', value: size },
     { label: 'Type', value: asset.mimeType },
-  ].filter((r) => r.value != null)
+  ].filter((r) => r.value != null);
 
   const videoRows = [
     { label: 'Duration', value: duration },
@@ -54,16 +54,16 @@ export function AssetMetadataPanel({ asset }: AssetMetadataPanelProps) {
     { label: 'Audio', value: hasAudio },
     { label: 'File size', value: size },
     { label: 'MIME type', value: asset.mimeType },
-  ].filter((r) => r.value != null)
+  ].filter((r) => r.value != null);
 
-  const rows = isVideo ? videoRows : photoRows
+  const rows = isVideo ? videoRows : photoRows;
 
   if (rows.length === 0) {
     return (
       <SectionShell compact icon={<FaCircleInfo className="text-[18px]" />} title="Details">
         <p className="text-sm text-slate-600 italic">No technical details available</p>
       </SectionShell>
-    )
+    );
   }
 
   return (
@@ -96,5 +96,5 @@ export function AssetMetadataPanel({ asset }: AssetMetadataPanelProps) {
         ))}
       </dl>
     </SectionShell>
-  )
+  );
 }

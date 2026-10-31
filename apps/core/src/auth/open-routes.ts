@@ -17,10 +17,10 @@
 // router's own matcher keeps the invariant checkable instead of argued.
 
 /** `/api/v1/admin` itself or anything under it. */
-const ADMIN_ROUTE = /^\/api\/v1\/admin(?:\/|$)/i
+const ADMIN_ROUTE = /^\/api\/v1\/admin(?:\/|$)/i;
 
 /** The worker job surface: `/worker` itself or anything under it. */
-const WORKER_ROUTE = /^\/worker(?:\/|$)/i
+const WORKER_ROUTE = /^\/worker(?:\/|$)/i;
 
 /**
  * The ONE non-worker route a delegated service token (`act`) may read: the asset collection
@@ -35,32 +35,32 @@ const WORKER_ROUTE = /^\/worker(?:\/|$)/i
  * policy. The trailing slash is optional because the router matches it too (Express strict
  * routing is off), so the policy and the router agree on the path by construction.
  */
-const ACT_LIST_ROUTE = /^\/api\/v1\/assets\/?$/i
+const ACT_LIST_ROUTE = /^\/api\/v1\/assets\/?$/i;
 
-const AUTH_ROUTE = /^\/api\/v1\/auth(?:\/|$)/i
-const SHARE_ROUTE = /^\/api\/share(?:\/|$)/i
+const AUTH_ROUTE = /^\/api\/v1\/auth(?:\/|$)/i;
+const SHARE_ROUTE = /^\/api\/share(?:\/|$)/i;
 /** Swagger UI and its JSON asset. */
-const DOCS_ROUTE = /^\/docs/i
-const HEALTH_ROUTE = /^\/health$/i
+const DOCS_ROUTE = /^\/docs/i;
+const HEALTH_ROUTE = /^\/health$/i;
 
 export function isOpenRoute(path: string): boolean {
-  if (DOCS_ROUTE.test(path)) return true
-  if (HEALTH_ROUTE.test(path)) return true
-  if (AUTH_ROUTE.test(path)) return true
-  if (SHARE_ROUTE.test(path)) return true
+  if (DOCS_ROUTE.test(path)) return true;
+  if (HEALTH_ROUTE.test(path)) return true;
+  if (AUTH_ROUTE.test(path)) return true;
+  if (SHARE_ROUTE.test(path)) return true;
   // file streams are not capability URLs — same-origin browser subresources authenticate
   // via the HttpOnly access cookie (or Bearer for API clients)
-  return false
+  return false;
 }
 
 export function isAdminRoute(path: string): boolean {
-  return ADMIN_ROUTE.test(path)
+  return ADMIN_ROUTE.test(path);
 }
 
 // Worker job surface: act-required, owner-scoped by the job's sub through the reused services.
 // Single-resource user GET /assets/:id, user PATCH :id/metadata and stream/download stay out.
 export function isWorkerRoute(path: string): boolean {
-  return WORKER_ROUTE.test(path)
+  return WORKER_ROUTE.test(path);
 }
 
 /**
@@ -70,5 +70,5 @@ export function isWorkerRoute(path: string): boolean {
  * API security audit, finding #3.
  */
 export function isActListRoute(path: string): boolean {
-  return ACT_LIST_ROUTE.test(path)
+  return ACT_LIST_ROUTE.test(path);
 }

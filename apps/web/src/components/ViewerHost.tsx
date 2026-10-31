@@ -1,34 +1,34 @@
-import { lazy, Suspense } from 'react'
-import type { Asset } from '@photox/shared-types'
-import { AssetViewer } from './AssetViewer/AssetViewer'
+import { lazy, Suspense } from 'react';
+import type { Asset } from '@photox/shared-types';
+import { AssetViewer } from './AssetViewer/AssetViewer';
 
 // Only needed when the picker opens — keep it out of the shared gallery chunk.
 const AlbumPickerDialog = lazy(() =>
   import('./AlbumPickerDialog').then((m) => ({ default: m.AlbumPickerDialog })),
-)
+);
 
 interface ViewerHostProps {
   /** Mounts the viewer while non-null; the picker's open state is independent. */
-  asset: Asset | null
-  onClose: () => void
-  onPrev?: () => void
-  onNext?: () => void
-  hasPrev: boolean
-  hasNext: boolean
-  onTrash?: () => void
-  onRestore?: () => void
-  onDelete?: () => void
-  onToggleFavorite?: (nextValue: boolean) => void
-  onAddToAlbum?: () => void
-  onRemoveFromAlbum?: () => void
-  siblingAssets?: Asset[]
-  onSelectSibling?: (asset: Asset) => void
+  asset: Asset | null;
+  onClose: () => void;
+  onPrev?: () => void;
+  onNext?: () => void;
+  hasPrev: boolean;
+  hasNext: boolean;
+  onTrash?: () => void;
+  onRestore?: () => void;
+  onDelete?: () => void;
+  onToggleFavorite?: (nextValue: boolean) => void;
+  onAddToAlbum?: () => void;
+  onRemoveFromAlbum?: () => void;
+  siblingAssets?: Asset[];
+  onSelectSibling?: (asset: Asset) => void;
   /** Optional: pages without an add-to-album flow (trash) omit both. */
-  pickerOpen?: boolean
-  onPickerClose?: () => void
+  pickerOpen?: boolean;
+  onPickerClose?: () => void;
   /** Defaults to the open asset; pages that select several pass their own list. */
-  pickerAssetIds?: string[]
-  onPickerDone?: () => void
+  pickerAssetIds?: string[];
+  onPickerDone?: () => void;
 }
 
 /** One mount point for the asset viewer plus its add-to-albums dialog, shared by gallery pages. */
@@ -56,5 +56,5 @@ export function ViewerHost({
         </Suspense>
       )}
     </>
-  )
+  );
 }

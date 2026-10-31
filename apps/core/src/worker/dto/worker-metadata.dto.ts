@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger'
-import { Type } from 'class-transformer'
+import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsIn,
   IsOptional,
@@ -9,8 +9,8 @@ import {
   IsBoolean,
   IsDate,
   IsObject,
-} from 'class-validator'
-import { TitleDescriptionDto } from '../../common/title-description.dto'
+} from 'class-validator';
+import { TitleDescriptionDto } from '../../common/title-description.dto';
 
 // Worker-only extraction payload (act-required `PATCH worker/assets/:id/metadata`). Every field
 // is optional; transcodeFileId keeps the same ownership rule as the in-app viewer flows.
@@ -18,144 +18,144 @@ export class WorkerMetadataDto extends TitleDescriptionDto {
   @ApiProperty({ required: false, nullable: true })
   @IsOptional()
   @IsString()
-  transcodeFileId?: string | null
+  transcodeFileId?: string | null;
 
   @ApiProperty({ enum: ['pending', 'ready', 'failed'] })
   @IsOptional()
   @IsIn(['pending', 'ready', 'failed'])
-  status?: 'pending' | 'ready' | 'failed'
+  status?: 'pending' | 'ready' | 'failed';
 
   @ApiProperty({ required: false })
   @IsOptional()
   @Type(() => Date)
   @IsDate()
-  takenAt?: Date
+  takenAt?: Date;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  mimeType?: string
+  mimeType?: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsNumber()
-  sizeBytes?: number
+  sizeBytes?: number;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  originalName?: string
+  originalName?: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsNumber()
-  width?: number
+  width?: number;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsNumber()
-  height?: number
+  height?: number;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsNumber()
-  durationSeconds?: number
+  durationSeconds?: number;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsNumber()
-  fps?: number
+  fps?: number;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  codec?: string
+  codec?: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsBoolean()
-  hasAudio?: boolean
+  hasAudio?: boolean;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  cameraMake?: string
+  cameraMake?: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  cameraModel?: string
+  cameraModel?: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  lensModel?: string
+  lensModel?: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsNumber()
-  orientation?: number
+  orientation?: number;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsInt()
-  iso?: number
+  iso?: number;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsNumber()
-  fNumber?: number
+  fNumber?: number;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsNumber()
-  exposureTime?: number
+  exposureTime?: number;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsNumber()
-  focalLength?: number
+  focalLength?: number;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsNumber()
-  latitude?: number
+  latitude?: number;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsNumber()
-  longitude?: number
+  longitude?: number;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsNumber()
   // no @Min(0): GPS altitude is legitimately negative (below sea level)
-  altitude?: number
+  altitude?: number;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsObject()
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>;
 
   @ApiProperty({ required: false, enum: ['pending', 'ready', 'failed'] })
   @IsOptional()
   @IsIn(['pending', 'ready', 'failed'])
-  transcodeStatus?: 'pending' | 'ready' | 'failed'
+  transcodeStatus?: 'pending' | 'ready' | 'failed';
 
   @ApiProperty({ required: false, enum: ['pending', 'ready', 'failed'] })
   @IsOptional()
   @IsIn(['pending', 'ready', 'failed'])
-  thumbnailStatus?: 'pending' | 'ready' | 'failed' | null
+  thumbnailStatus?: 'pending' | 'ready' | 'failed' | null;
 
   @ApiProperty({ required: false, enum: ['pending', 'ready', 'failed'] })
   @IsOptional()
   @IsIn(['pending', 'ready', 'failed'])
-  faceStatus?: 'pending' | 'ready' | 'failed' | null
+  faceStatus?: 'pending' | 'ready' | 'failed' | null;
 
   @ApiProperty({ required: false, enum: ['pending', 'ready', 'failed'] })
   @IsOptional()
   @IsIn(['pending', 'ready', 'failed'])
-  embeddingStatus?: 'pending' | 'ready' | 'failed' | null
+  embeddingStatus?: 'pending' | 'ready' | 'failed' | null;
 
   @ApiProperty({
     required: false,
@@ -164,11 +164,11 @@ export class WorkerMetadataDto extends TitleDescriptionDto {
   })
   @IsOptional()
   @IsString()
-  phash?: string | null
+  phash?: string | null;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  faceCount?: number | null
+  faceCount?: number | null;
 }

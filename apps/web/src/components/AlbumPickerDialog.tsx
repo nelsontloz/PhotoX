@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from 'react'
+import { useEffect, useCallback, useState } from 'react';
 import {
   FaCheck,
   FaCircleExclamation,
@@ -6,98 +6,98 @@ import {
   FaPhotoFilm,
   FaPlus,
   FaSpinner,
-} from 'react-icons/fa6'
-import type { AlbumDto } from '@photox/shared-types'
-import { addAssetsToAlbum, createAlbum, listAlbums } from '../api/albums'
-import { toggleId } from '../lib/set'
-import { AlbumCover } from './AlbumCover'
-import { Dialog } from './Dialog'
-import { NewAlbumFields } from './NewAlbumFields'
+} from 'react-icons/fa6';
+import type { AlbumDto } from '@photox/shared-types';
+import { addAssetsToAlbum, createAlbum, listAlbums } from '../api/albums';
+import { toggleId } from '../lib/set';
+import { AlbumCover } from './AlbumCover';
+import { Dialog } from './Dialog';
+import { NewAlbumFields } from './NewAlbumFields';
 
 interface AlbumPickerDialogProps {
-  open: boolean
-  onClose: () => void
-  assetIds: string[]
-  onDone?: () => void
+  open: boolean;
+  onClose: () => void;
+  assetIds: string[];
+  onDone?: () => void;
 }
 
 export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPickerDialogProps) {
-  const [albums, setAlbums] = useState<AlbumDto[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [busy, setBusy] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [newName, setNewName] = useState('')
-  const [newDesc, setNewDesc] = useState('')
+  const [albums, setAlbums] = useState<AlbumDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newDesc, setNewDesc] = useState('');
 
   useEffect(() => {
-    if (!open) return
-    setAlbums([])
+    if (!open) return;
+    setAlbums([]);
     // matches the old reducer reset: no spinner when the dialog is reopened
-    setLoading(false)
-    setError(null)
-    setSelected(new Set())
-    setBusy(false)
-    setCreating(false)
-    setNewName('')
-    setNewDesc('')
-    const ac = new AbortController()
+    setLoading(false);
+    setError(null);
+    setSelected(new Set());
+    setBusy(false);
+    setCreating(false);
+    setNewName('');
+    setNewDesc('');
+    const ac = new AbortController();
     void (async () => {
       try {
-        const res = await listAlbums({ limit: 1000 })
-        if (ac.signal.aborted) return
-        setAlbums(res.items)
+        const res = await listAlbums({ limit: 1000 });
+        if (ac.signal.aborted) return;
+        setAlbums(res.items);
       } catch (err) {
-        if (ac.signal.aborted) return
-        setError((err as Error).message ?? 'Failed to load albums')
+        if (ac.signal.aborted) return;
+        setError((err as Error).message ?? 'Failed to load albums');
       }
-    })()
-    return () => ac.abort()
-  }, [open])
+    })();
+    return () => ac.abort();
+  }, [open]);
 
   const toggle = (id: string) => {
-    setSelected((prev) => toggleId(prev, id))
-  }
+    setSelected((prev) => toggleId(prev, id));
+  };
 
   const handleAdd = useCallback(async () => {
-    if (selected.size === 0) return
-    setBusy(true)
-    setError(null)
+    if (selected.size === 0) return;
+    setBusy(true);
+    setError(null);
     try {
-      await Promise.all(Array.from(selected).map((id) => addAssetsToAlbum(id, assetIds)))
-      onDone?.()
-      onClose()
+      await Promise.all(Array.from(selected).map((id) => addAssetsToAlbum(id, assetIds)));
+      onDone?.();
+      onClose();
     } catch (err) {
-      setError((err as Error).message ?? 'Failed to add to one or more albums')
-      setBusy(false)
+      setError((err as Error).message ?? 'Failed to add to one or more albums');
+      setBusy(false);
     }
-  }, [selected, assetIds, onDone, onClose])
+  }, [selected, assetIds, onDone, onClose]);
 
   const handleCreateAndAdd = useCallback(async () => {
-    const trimmed = newName.trim()
-    if (!trimmed) return
-    setBusy(true)
-    setError(null)
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    setBusy(true);
+    setError(null);
     try {
       const album = await createAlbum({
         name: trimmed,
         ...(newDesc.trim() ? { description: newDesc.trim() } : {}),
-      })
-      await addAssetsToAlbum(album.id, assetIds)
-      onDone?.()
-      onClose()
+      });
+      await addAssetsToAlbum(album.id, assetIds);
+      onDone?.();
+      onClose();
     } catch (err) {
-      setError((err as Error).message ?? 'Failed to create album')
-      setBusy(false)
+      setError((err as Error).message ?? 'Failed to create album');
+      setBusy(false);
     }
-  }, [newName, newDesc, assetIds, onDone, onClose])
+  }, [newName, newDesc, assetIds, onDone, onClose]);
 
-  if (!open) return null
+  if (!open) return null;
 
-  const count = assetIds.length
-  const hasAlbums = albums.length > 0
-  const trimmedName = newName.trim()
+  const count = assetIds.length;
+  const hasAlbums = albums.length > 0;
+  const trimmedName = newName.trim();
 
   return (
     <Dialog
@@ -143,8 +143,8 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
             <button
               type="button"
               onClick={() => {
-                setCreating(true)
-                setError(null)
+                setCreating(true);
+                setError(null);
               }}
               className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-lg shadow-primary/20"
             >
@@ -157,8 +157,8 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
             <button
               type="button"
               onClick={() => {
-                setCreating(true)
-                setError(null)
+                setCreating(true);
+                setError(null);
               }}
               className="flex items-center gap-3 p-2 rounded-lg text-left ring-1 ring-border-dark bg-white/5 hover:bg-white/10 transition-colors"
             >
@@ -171,7 +171,7 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
               </div>
             </button>
             {albums.map((album) => {
-              const isSelected = selected.has(album.id)
+              const isSelected = selected.has(album.id);
               return (
                 <button
                   key={album.id}
@@ -209,7 +209,7 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
                     {isSelected && <FaCheck className="text-[10px]" />}
                   </div>
                 </button>
-              )
+              );
             })}
           </div>
         )}
@@ -220,10 +220,10 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
           <button
             type="button"
             onClick={() => {
-              setCreating(false)
-              setError(null)
-              setNewName('')
-              setNewDesc('')
+              setCreating(false);
+              setError(null);
+              setNewName('');
+              setNewDesc('');
             }}
             disabled={busy}
             className="text-slate-300 hover:text-white text-sm font-semibold px-3 py-1.5 rounded-md transition-colors disabled:opacity-50"
@@ -283,5 +283,5 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
         </div>
       )}
     </Dialog>
-  )
+  );
 }

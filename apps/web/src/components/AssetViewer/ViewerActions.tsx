@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState } from 'react';
 import {
   FaHeart,
   FaRegHeart,
@@ -12,21 +12,21 @@ import {
   FaFolderMinus,
   FaArrowsRotate,
   FaFilm,
-} from 'react-icons/fa6'
-import { getFileDownloadUrl, preflightFileDownload } from '../../api/assets'
-import { createShare, getShareUrl } from '../../api/shares'
-import type { Asset } from '@photox/shared-types'
+} from 'react-icons/fa6';
+import { getFileDownloadUrl, preflightFileDownload } from '../../api/assets';
+import { createShare, getShareUrl } from '../../api/shares';
+import type { Asset } from '@photox/shared-types';
 
 interface ViewerActionsProps {
-  asset: Asset
-  onTrash?: () => void
-  onRestore?: () => void
-  onDelete?: () => void
-  onToggleFavorite?: () => void
-  onAddToAlbum?: () => void
-  onRemoveFromAlbum?: () => void
-  onReprocessThumbnails?: () => void
-  onReprocessVideo?: () => void
+  asset: Asset;
+  onTrash?: () => void;
+  onRestore?: () => void;
+  onDelete?: () => void;
+  onToggleFavorite?: () => void;
+  onAddToAlbum?: () => void;
+  onRemoveFromAlbum?: () => void;
+  onReprocessThumbnails?: () => void;
+  onReprocessVideo?: () => void;
 }
 
 export function ViewerActions({
@@ -44,33 +44,33 @@ export function ViewerActions({
     try {
       // preflight: a failed HEAD is shown nowhere, but it keeps a dead session or a deleted file
       // from turning the click into a browser navigation to the JSON error body
-      await preflightFileDownload(asset.fileId)
-      const a = document.createElement('a')
-      a.href = getFileDownloadUrl(asset.fileId)
-      a.download = asset.originalName ?? 'download'
-      a.click()
+      await preflightFileDownload(asset.fileId);
+      const a = document.createElement('a');
+      a.href = getFileDownloadUrl(asset.fileId);
+      a.download = asset.originalName ?? 'download';
+      a.click();
     } catch {
       /* ignore */
     }
-  }
+  };
 
-  const [shareLoading, setShareLoading] = useState(false)
-  const [shareCopied, setShareCopied] = useState(false)
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   const handleShare = async () => {
-    setShareLoading(true)
+    setShareLoading(true);
     try {
-      const share = await createShare({ assetId: asset.id })
-      const url = getShareUrl(share.token)
-      await navigator.clipboard.writeText(url)
-      setShareCopied(true)
-      setTimeout(() => setShareCopied(false), 2000)
+      const share = await createShare({ assetId: asset.id });
+      const url = getShareUrl(share.token);
+      await navigator.clipboard.writeText(url);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
     } catch {
       /* ignore */
     } finally {
-      setShareLoading(false)
+      setShareLoading(false);
     }
-  }
+  };
 
   return (
     <>
@@ -179,5 +179,5 @@ export function ViewerActions({
         </button>
       )}
     </>
-  )
+  );
 }

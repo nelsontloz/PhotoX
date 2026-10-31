@@ -1,226 +1,226 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
-import type { Asset } from '@photox/shared-types'
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import type { Asset } from '@photox/shared-types';
 
 vi.mock('../api/assets', () => ({
   listAllAssets: vi.fn(),
-}))
+}));
 
-import { useTimelineMonths, MAX_CACHED_MONTHS } from './useTimelineMonths'
-import { listAllAssets } from '../api/assets'
-import { monthKeyOf, monthRange } from '../lib/dateFormat'
-import { useAppStore } from '../store/app-store'
+import { useTimelineMonths, MAX_CACHED_MONTHS } from './useTimelineMonths';
+import { listAllAssets } from '../api/assets';
+import { monthKeyOf, monthRange } from '../lib/dateFormat';
+import { useAppStore } from '../store/app-store';
 
-const listAllAssetsMock = vi.mocked(listAllAssets)
+const listAllAssetsMock = vi.mocked(listAllAssets);
 
 function makeAsset(id: string, date: string): Asset {
-  return { id, kind: 'photo', takenAt: date, uploadedAt: date, width: null, height: null } as Asset
+  return { id, kind: 'photo', takenAt: date, uploadedAt: date, width: null, height: null } as Asset;
 }
 
 describe('monthKeyOf / monthRange', () => {
   it('maps a month key to local-midnight half-open [from, to) instants', () => {
-    const { dateFrom, dateTo } = monthRange('2024-03')
-    expect(dateFrom).toBe(new Date(2024, 2, 1).toISOString())
-    expect(dateTo).toBe(new Date(2024, 3, 1).toISOString())
-    expect(new Date(dateFrom).getTime()).toBeLessThan(new Date(dateTo).getTime())
+    const { dateFrom, dateTo } = monthRange('2024-03');
+    expect(dateFrom).toBe(new Date(2024, 2, 1).toISOString());
+    expect(dateTo).toBe(new Date(2024, 3, 1).toISOString());
+    expect(new Date(dateFrom).getTime()).toBeLessThan(new Date(dateTo).getTime());
     // local midnight: an implementation using 'YYYY-MM-01T00:00:00Z' lands at the wrong local
     // hour in every non-UTC timezone and shifts the boundary across DST transitions
-    expect(new Date(dateFrom).getHours()).toBe(0)
-    expect(new Date(dateFrom).getDate()).toBe(1)
-  })
+    expect(new Date(dateFrom).getHours()).toBe(0);
+    expect(new Date(dateFrom).getDate()).toBe(1);
+  });
 
   it('is half-open and contiguous across year edges', () => {
-    expect(monthRange('2023-12').dateTo).toBe(monthRange('2024-01').dateFrom)
-    expect(monthRange('2023-12').dateFrom).toBe(new Date(2023, 11, 1).toISOString())
-    expect(monthRange('2024-12').dateTo).toBe(new Date(2025, 0, 1).toISOString())
-  })
+    expect(monthRange('2023-12').dateTo).toBe(monthRange('2024-01').dateFrom);
+    expect(monthRange('2023-12').dateFrom).toBe(new Date(2023, 11, 1).toISOString());
+    expect(monthRange('2024-12').dateTo).toBe(new Date(2025, 0, 1).toISOString());
+  });
 
   it('monthKeyOf follows the local calendar month of an instant', () => {
-    expect(monthKeyOf('2024-03-31T12:00:00')).toBe('2024-03')
-    expect(monthKeyOf('2024-01-01T00:15:00')).toBe('2024-01')
+    expect(monthKeyOf('2024-03-31T12:00:00')).toBe('2024-03');
+    expect(monthKeyOf('2024-01-01T00:15:00')).toBe('2024-01');
     // near a UTC-day boundary: the key must come from the LOCAL date, not the UTC one
-    const instant = '2024-03-31T19:00:00.000Z'
-    const local = new Date(instant)
+    const instant = '2024-03-31T19:00:00.000Z';
+    const local = new Date(instant);
     expect(monthKeyOf(instant)).toBe(
       `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}`,
-    )
-  })
+    );
+  });
 
   it('rejects malformed month keys', () => {
-    expect(() => monthRange('nope')).toThrow()
-    expect(() => monthRange('2024-13')).toThrow()
-  })
-})
+    expect(() => monthRange('nope')).toThrow();
+    expect(() => monthRange('2024-13')).toThrow();
+  });
+});
 
 describe('useTimelineMonths', () => {
   beforeEach(() => {
-    listAllAssetsMock.mockReset()
-    useAppStore.setState({ timelineRefreshKey: 0 })
-  })
+    listAllAssetsMock.mockReset();
+    useAppStore.setState({ timelineRefreshKey: 0 });
+  });
 
   it('fetches a month once for concurrent ensureMonth calls and day-groups the result', async () => {
-    listAllAssetsMock.mockResolvedValue([makeAsset('a', '2024-05-10T10:00:00Z')])
-    const { result } = renderHook(() => useTimelineMonths())
+    listAllAssetsMock.mockResolvedValue([makeAsset('a', '2024-05-10T10:00:00Z')]);
+    const { result } = renderHook(() => useTimelineMonths());
 
-    let first: Promise<Asset[] | null> | undefined
-    let second: Promise<Asset[] | null> | undefined
+    let first: Promise<Asset[] | null> | undefined;
+    let second: Promise<Asset[] | null> | undefined;
     act(() => {
-      first = result.current.ensureMonth('2024-05')
-      second = result.current.ensureMonth('2024-05')
-    })
+      first = result.current.ensureMonth('2024-05');
+      second = result.current.ensureMonth('2024-05');
+    });
     await act(async () => {
-      await Promise.all([first, second])
-    })
+      await Promise.all([first, second]);
+    });
 
     // in-flight dedupe: one request, scoped to the month's half-open range
-    expect(listAllAssetsMock).toHaveBeenCalledTimes(1)
+    expect(listAllAssetsMock).toHaveBeenCalledTimes(1);
     expect(listAllAssetsMock).toHaveBeenCalledWith({
       limit: 100,
       dateFrom: new Date(2024, 4, 1).toISOString(),
       dateTo: new Date(2024, 5, 1).toISOString(),
-    })
-    expect(result.current.monthStatus.get('2024-05')).toBe('ready')
-    expect(result.current.groups.map((g) => g.sortKey)).toEqual(['2024-05-10'])
+    });
+    expect(result.current.monthStatus.get('2024-05')).toBe('ready');
+    expect(result.current.groups.map((g) => g.sortKey)).toEqual(['2024-05-10']);
 
     // cached month: no refetch
     await act(async () => {
-      await result.current.ensureMonth('2024-05')
-    })
-    expect(listAllAssetsMock).toHaveBeenCalledTimes(1)
-  })
+      await result.current.ensureMonth('2024-05');
+    });
+    expect(listAllAssetsMock).toHaveBeenCalledTimes(1);
+  });
 
   it('keeps serving cached items across a refresh-key bump, then refetches the month', async () => {
-    listAllAssetsMock.mockResolvedValue([makeAsset('a', '2024-05-10T10:00:00Z')])
-    const { result } = renderHook(() => useTimelineMonths())
+    listAllAssetsMock.mockResolvedValue([makeAsset('a', '2024-05-10T10:00:00Z')]);
+    const { result } = renderHook(() => useTimelineMonths());
     await act(async () => {
-      await result.current.ensureMonth('2024-05')
-    })
-    expect(listAllAssetsMock).toHaveBeenCalledTimes(1)
+      await result.current.ensureMonth('2024-05');
+    });
+    expect(listAllAssetsMock).toHaveBeenCalledTimes(1);
 
-    listAllAssetsMock.mockClear()
+    listAllAssetsMock.mockClear();
     // bump: the entry goes stale, but its items stay visible so the viewer doesn't unmount
     act(() => {
-      useAppStore.setState({ timelineRefreshKey: 1 })
-    })
-    expect(result.current.groups).toHaveLength(1)
+      useAppStore.setState({ timelineRefreshKey: 1 });
+    });
+    expect(result.current.groups).toHaveLength(1);
 
-    listAllAssetsMock.mockResolvedValue([makeAsset('b', '2024-05-20T10:00:00Z')])
+    listAllAssetsMock.mockResolvedValue([makeAsset('b', '2024-05-20T10:00:00Z')]);
     await act(async () => {
-      await result.current.ensureMonth('2024-05')
-    })
-    expect(listAllAssetsMock).toHaveBeenCalledTimes(1)
-    expect(result.current.groups.flatMap((g) => g.items).map((a) => a.id)).toEqual(['b'])
-  })
+      await result.current.ensureMonth('2024-05');
+    });
+    expect(listAllAssetsMock).toHaveBeenCalledTimes(1);
+    expect(result.current.groups.flatMap((g) => g.items).map((a) => a.id)).toEqual(['b']);
+  });
 
   it('drops a fetch that resolves after the refresh key bumped (per-key staleness guard)', async () => {
-    let resolveStale!: (value: unknown) => void
+    let resolveStale!: (value: unknown) => void;
     listAllAssetsMock.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
-          resolveStale = resolve
+          resolveStale = resolve;
         }) as never,
-    )
-    const { result } = renderHook(() => useTimelineMonths())
-    let stalePromise!: Promise<Asset[] | null>
+    );
+    const { result } = renderHook(() => useTimelineMonths());
+    let stalePromise!: Promise<Asset[] | null>;
     act(() => {
-      stalePromise = result.current.ensureMonth('2024-05')
-    })
+      stalePromise = result.current.ensureMonth('2024-05');
+    });
 
     act(() => {
-      useAppStore.setState({ timelineRefreshKey: 1 })
-    })
+      useAppStore.setState({ timelineRefreshKey: 1 });
+    });
 
     // the bump mid-flight: the next ensureMonth starts a fresh fetch instead of joining the stale one
-    listAllAssetsMock.mockResolvedValueOnce([makeAsset('fresh', '2024-05-10T10:00:00Z')])
+    listAllAssetsMock.mockResolvedValueOnce([makeAsset('fresh', '2024-05-10T10:00:00Z')]);
     await act(async () => {
-      await result.current.ensureMonth('2024-05')
-    })
-    expect(listAllAssetsMock).toHaveBeenCalledTimes(2)
+      await result.current.ensureMonth('2024-05');
+    });
+    expect(listAllAssetsMock).toHaveBeenCalledTimes(2);
 
     // stale fetch finishes with old data → dropped entirely
     await act(async () => {
-      resolveStale([makeAsset('stale', '2024-05-11T10:00:00Z')])
-      await stalePromise
-    })
-    expect(result.current.groups.flatMap((g) => g.items).map((a) => a.id)).toEqual(['fresh'])
-  })
+      resolveStale([makeAsset('stale', '2024-05-11T10:00:00Z')]);
+      await stalePromise;
+    });
+    expect(result.current.groups.flatMap((g) => g.items).map((a) => a.id)).toEqual(['fresh']);
+  });
 
   it('evicts LRU months past the cap and re-fetches them on demand', async () => {
     // one asset per call, id derived from the month the request is scoped to
     listAllAssetsMock.mockImplementation(({ dateFrom } = {}) => {
-      const key = monthKeyOf(dateFrom!)
-      return Promise.resolve([makeAsset(`asset-${key}`, dateFrom!)])
-    })
-    const { result } = renderHook(() => useTimelineMonths())
+      const key = monthKeyOf(dateFrom!);
+      return Promise.resolve([makeAsset(`asset-${key}`, dateFrom!)]);
+    });
+    const { result } = renderHook(() => useTimelineMonths());
 
     // 14 distinct months: two more than the cap
     const months = Array.from({ length: MAX_CACHED_MONTHS + 2 }, (_, i) =>
       monthKeyOf(new Date(2020, i, 1).toISOString()),
-    )
+    );
     for (const key of months) {
       await act(async () => {
-        await result.current.ensureMonth(key)
-      })
+        await result.current.ensureMonth(key);
+      });
     }
-    expect(listAllAssetsMock).toHaveBeenCalledTimes(months.length)
+    expect(listAllAssetsMock).toHaveBeenCalledTimes(months.length);
     // monthStatus is the public view of the cache: the two oldest fell out, the newest stayed
-    expect(result.current.monthStatus.has(months[0]!)).toBe(false)
-    expect(result.current.monthStatus.has(months[1]!)).toBe(false)
-    expect(result.current.monthStatus.has(months.at(-1)!)).toBe(true)
+    expect(result.current.monthStatus.has(months[0]!)).toBe(false);
+    expect(result.current.monthStatus.has(months[1]!)).toBe(false);
+    expect(result.current.monthStatus.has(months.at(-1)!)).toBe(true);
 
-    listAllAssetsMock.mockClear()
+    listAllAssetsMock.mockClear();
     await act(async () => {
-      await result.current.ensureMonth(months[0]!)
-    })
-    expect(listAllAssetsMock).toHaveBeenCalledTimes(1) // evicted → fresh fetch
+      await result.current.ensureMonth(months[0]!);
+    });
+    expect(listAllAssetsMock).toHaveBeenCalledTimes(1); // evicted → fresh fetch
 
     await act(async () => {
-      await result.current.ensureMonth(months.at(-1)!)
-    })
-    expect(listAllAssetsMock).toHaveBeenCalledTimes(1) // still cached → no fetch
-  })
+      await result.current.ensureMonth(months.at(-1)!);
+    });
+    expect(listAllAssetsMock).toHaveBeenCalledTimes(1); // still cached → no fetch
+  });
 
   it('never evicts retained months, even when they are the least recently used', async () => {
     listAllAssetsMock.mockImplementation(({ dateFrom } = {}) => {
-      const key = monthKeyOf(dateFrom!)
-      return Promise.resolve([makeAsset(`asset-${key}`, dateFrom!)])
-    })
-    const { result } = renderHook(() => useTimelineMonths())
+      const key = monthKeyOf(dateFrom!);
+      return Promise.resolve([makeAsset(`asset-${key}`, dateFrom!)]);
+    });
+    const { result } = renderHook(() => useTimelineMonths());
 
-    const oldest = '2020-01'
+    const oldest = '2020-01';
     await act(async () => {
-      await result.current.ensureMonth(oldest)
-    })
-    result.current.retainMonths([oldest])
+      await result.current.ensureMonth(oldest);
+    });
+    result.current.retainMonths([oldest]);
 
     // one more month than the cap can hold alongside the retained one
     const others = Array.from({ length: MAX_CACHED_MONTHS + 1 }, (_, i) =>
       monthKeyOf(new Date(2020, 1 + i, 1).toISOString()),
-    )
+    );
     for (const key of others) {
       await act(async () => {
-        await result.current.ensureMonth(key)
-      })
+        await result.current.ensureMonth(key);
+      });
     }
 
-    listAllAssetsMock.mockClear()
+    listAllAssetsMock.mockClear();
     await act(async () => {
-      await result.current.ensureMonth(oldest)
-    })
-    expect(listAllAssetsMock).not.toHaveBeenCalled()
+      await result.current.ensureMonth(oldest);
+    });
+    expect(listAllAssetsMock).not.toHaveBeenCalled();
     expect(result.current.groups.flatMap((g) => g.items).map((a) => a.id)).toContain(
       'asset-2020-01',
-    )
-  })
+    );
+  });
 
   it('resolves null instead of rejecting when the month fetch fails', async () => {
-    listAllAssetsMock.mockRejectedValue(new Error('boom'))
-    const { result } = renderHook(() => useTimelineMonths())
-    let out: Asset[] | null = undefined as never
+    listAllAssetsMock.mockRejectedValue(new Error('boom'));
+    const { result } = renderHook(() => useTimelineMonths());
+    let out: Asset[] | null = undefined as never;
     await act(async () => {
-      out = await result.current.ensureMonth('2024-05')
-    })
-    expect(out).toBeNull()
-    expect(result.current.monthStatus.get('2024-05')).toBe('error')
-  })
-})
+      out = await result.current.ensureMonth('2024-05');
+    });
+    expect(out).toBeNull();
+    expect(result.current.monthStatus.get('2024-05')).toBe('error');
+  });
+});

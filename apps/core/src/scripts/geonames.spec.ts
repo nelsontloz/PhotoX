@@ -1,4 +1,4 @@
-import { parseCityLine } from './geonames'
+import { parseCityLine } from './geonames';
 
 const ROW = [
   '2988507',
@@ -20,7 +20,7 @@ const ROW = [
   '35',
   'Europe/Paris',
   '2024-01-01',
-].join('\t')
+].join('\t');
 
 describe('parseCityLine', () => {
   it('parses a cities500 row', () => {
@@ -32,12 +32,12 @@ describe('parseCityLine', () => {
       countryCode: 'FR',
       admin1Code: '11',
       timezone: 'Europe/Paris',
-    })
-  })
+    });
+  });
 
   it('rejects malformed rows', () => {
-    expect(parseCityLine('')).toBeNull()
-    expect(parseCityLine(ROW.replace('48.85341', 'abc'))).toBeNull()
-    expect(parseCityLine(ROW.replace('\tFR\t', '\t\t'))).toBeNull()
-  })
-})
+    expect(parseCityLine('')).toBeNull();
+    expect(parseCityLine(ROW.replace('48.85341', 'abc'))).toBeNull();
+    expect(parseCityLine(ROW.replace('\tFR\t', '\t\t'))).toBeNull();
+  });
+});

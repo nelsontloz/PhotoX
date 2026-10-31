@@ -1,38 +1,38 @@
-import { lazy, Suspense } from 'react'
-import { FaChevronLeft, FaChevronRight, FaImage, FaSpinner } from 'react-icons/fa6'
-import type { Asset, AssetDetectionDto, FaceDto } from '@photox/shared-types'
-import { getFileStreamUrl } from '../../api/assets'
-import { FaceOverlay } from './FaceOverlay'
-import { DetectionOverlay } from './DetectionOverlay'
-import { summarizeDetections } from './detectionView'
-import { ViewerThumbnailStrip } from './ViewerThumbnailStrip'
-import { ZoomableImage } from './ZoomableImage'
+import { lazy, Suspense } from 'react';
+import { FaChevronLeft, FaChevronRight, FaImage, FaSpinner } from 'react-icons/fa6';
+import type { Asset, AssetDetectionDto, FaceDto } from '@photox/shared-types';
+import { getFileStreamUrl } from '../../api/assets';
+import { FaceOverlay } from './FaceOverlay';
+import { DetectionOverlay } from './DetectionOverlay';
+import { summarizeDetections } from './detectionView';
+import { ViewerThumbnailStrip } from './ViewerThumbnailStrip';
+import { ZoomableImage } from './ZoomableImage';
 
 // the player chunk loads only when a video is opened.
-const VideoPlayer = lazy(() => import('../VideoPlayer').then((m) => ({ default: m.VideoPlayer })))
+const VideoPlayer = lazy(() => import('../VideoPlayer').then((m) => ({ default: m.VideoPlayer })));
 
 // 1×1 transparent gif: an in-flow replaced element keeps the final image's box reserved even when
 // the md thumb is not cached yet, without painting anything.
 const TRANSPARENT_PIXEL =
-  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
 interface ViewerMediaProps {
-  videoPoster: string | undefined
-  imageUrl: string | null
-  loading: boolean
-  placeholderUrl?: string | null
-  hasPrev: boolean
-  hasNext: boolean
-  infoOpen: boolean
-  asset: Asset
-  highlightedFaceId?: string | null
-  detectionsOn?: boolean
-  detectionStatus?: 'idle' | 'loading' | 'ready'
-  detections?: AssetDetectionDto[]
-  onPrev?: () => void
-  onNext?: () => void
-  siblingAssets?: Asset[]
-  onSelectSibling?: (asset: Asset) => void
+  videoPoster: string | undefined;
+  imageUrl: string | null;
+  loading: boolean;
+  placeholderUrl?: string | null;
+  hasPrev: boolean;
+  hasNext: boolean;
+  infoOpen: boolean;
+  asset: Asset;
+  highlightedFaceId?: string | null;
+  detectionsOn?: boolean;
+  detectionStatus?: 'idle' | 'loading' | 'ready';
+  detections?: AssetDetectionDto[];
+  onPrev?: () => void;
+  onNext?: () => void;
+  siblingAssets?: Asset[];
+  onSelectSibling?: (asset: Asset) => void;
 }
 
 export function ViewerMedia({
@@ -53,18 +53,18 @@ export function ViewerMedia({
   siblingAssets,
   onSelectSibling,
 }: ViewerMediaProps) {
-  const faces: FaceDto[] = asset.faces ?? []
+  const faces: FaceDto[] = asset.faces ?? [];
   // Every media field is a function of the asset; only the resolved URLs/progress are runtime state.
-  const isVideo = asset.kind === 'video'
-  const videoSrc = isVideo ? getFileStreamUrl(asset.transcodeFileId ?? asset.fileId) : null
+  const isVideo = asset.kind === 'video';
+  const videoSrc = isVideo ? getFileStreamUrl(asset.transcodeFileId ?? asset.fileId) : null;
   const videoFallbackSrc =
-    isVideo && asset.transcodeFileId ? getFileStreamUrl(asset.fileId) : undefined
-  const videoTitle = asset.title ?? asset.originalName ?? undefined
-  const imageAlt = asset.originalName ?? asset.title ?? 'Photo'
+    isVideo && asset.transcodeFileId ? getFileStreamUrl(asset.fileId) : undefined;
+  const videoTitle = asset.title ?? asset.originalName ?? undefined;
+  const imageAlt = asset.originalName ?? asset.title ?? 'Photo';
   const dims =
-    asset.width != null && asset.height != null ? { w: asset.width, h: asset.height } : null
-  const showOverlay = infoOpen && !isVideo && imageUrl != null && dims != null && faces.length > 0
-  const showDetections = detectionsOn && !isVideo && imageUrl != null && dims != null
+    asset.width != null && asset.height != null ? { w: asset.width, h: asset.height } : null;
+  const showOverlay = infoOpen && !isVideo && imageUrl != null && dims != null && faces.length > 0;
+  const showDetections = detectionsOn && !isVideo && imageUrl != null && dims != null;
 
   return (
     <div className="flex-1 flex items-center justify-center p-8 pt-28 pb-28 sm:pt-20 sm:pb-24 relative min-h-0 [container-type:size]">
@@ -174,5 +174,5 @@ export function ViewerMedia({
         />
       )}
     </div>
-  )
+  );
 }

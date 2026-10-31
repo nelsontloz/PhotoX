@@ -1,27 +1,27 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { ReactNode } from 'react'
-import { renderHook, act, fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter, useSearchParams } from 'react-router-dom'
-import type { Asset } from '@photox/shared-types'
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { ReactNode } from 'react';
+import { renderHook, act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, useSearchParams } from 'react-router-dom';
+import type { Asset } from '@photox/shared-types';
 
 vi.mock('../api/assets', () => ({
   trashAsset: vi.fn(),
   restoreAsset: vi.fn(),
   deleteAsset: vi.fn(),
   getAsset: vi.fn(),
-}))
+}));
 
-import { useAssetNavigation } from './useAssetNavigation'
-import { deleteAsset, getAsset, restoreAsset, trashAsset } from '../api/assets'
-import { ConfirmProvider } from '../components/ConfirmProvider'
+import { useAssetNavigation } from './useAssetNavigation';
+import { deleteAsset, getAsset, restoreAsset, trashAsset } from '../api/assets';
+import { ConfirmProvider } from '../components/ConfirmProvider';
 
-const trashAssetMock = vi.mocked(trashAsset)
-const restoreAssetMock = vi.mocked(restoreAsset)
-const deleteAssetMock = vi.mocked(deleteAsset)
-const getAssetMock = vi.mocked(getAsset)
+const trashAssetMock = vi.mocked(trashAsset);
+const restoreAssetMock = vi.mocked(restoreAsset);
+const deleteAssetMock = vi.mocked(deleteAsset);
+const getAssetMock = vi.mocked(getAsset);
 
 function makeAsset(id: string): Asset {
-  return { id, kind: 'photo' } as Asset
+  return { id, kind: 'photo' } as Asset;
 }
 
 function makeWrapper(initialUrl: string) {
@@ -30,306 +30,306 @@ function makeWrapper(initialUrl: string) {
       <MemoryRouter initialEntries={[initialUrl]}>
         <ConfirmProvider>{children}</ConfirmProvider>
       </MemoryRouter>
-    )
-  }
+    );
+  };
 }
 
 describe('useAssetNavigation', () => {
   beforeEach(() => {
-    trashAssetMock.mockReset()
-    restoreAssetMock.mockReset()
-    deleteAssetMock.mockReset()
+    trashAssetMock.mockReset();
+    restoreAssetMock.mockReset();
+    deleteAssetMock.mockReset();
     // deep-link resolution runs unconditionally: these tests have no resolvable asset
-    getAssetMock.mockRejectedValue(new Error('not in the library'))
-    vi.stubGlobal('alert', vi.fn())
-  })
+    getAssetMock.mockRejectedValue(new Error('not in the library'));
+    vi.stubGlobal('alert', vi.fn());
+  });
 
   it('returns null selected when no asset param', () => {
     const { result } = renderHook(() => useAssetNavigation({ assets: [makeAsset('a')] }), {
       wrapper: makeWrapper('/'),
-    })
-    expect(result.current.selected).toBeNull()
-    expect(result.current.hasPrev).toBe(false)
-    expect(result.current.hasNext).toBe(false)
-  })
+    });
+    expect(result.current.selected).toBeNull();
+    expect(result.current.hasPrev).toBe(false);
+    expect(result.current.hasNext).toBe(false);
+  });
 
   it('selects the asset whose id is in the URL', () => {
-    const a = makeAsset('a')
+    const a = makeAsset('a');
     const { result } = renderHook(() => useAssetNavigation({ assets: [a] }), {
       wrapper: makeWrapper('/?asset=a'),
-    })
-    expect(result.current.selected).toEqual(a)
-  })
+    });
+    expect(result.current.selected).toEqual(a);
+  });
 
   it('ignores a stale id that is not in the list', () => {
     const { result } = renderHook(() => useAssetNavigation({ assets: [makeAsset('a')] }), {
       wrapper: makeWrapper('/?asset=missing'),
-    })
-    expect(result.current.selected).toBeNull()
-  })
+    });
+    expect(result.current.selected).toBeNull();
+  });
 
   it('fetches a deep-linked asset whose month is not loaded when resolveMissing is on', async () => {
-    const stray = makeAsset('stray')
-    getAssetMock.mockResolvedValue(stray)
+    const stray = makeAsset('stray');
+    getAssetMock.mockResolvedValue(stray);
     const { result } = renderHook(() => useAssetNavigation({ assets: [], resolveMissing: true }), {
       wrapper: makeWrapper('/?asset=stray'),
-    })
+    });
 
-    await waitFor(() => expect(result.current.selected?.id).toBe('stray'))
-    expect(getAssetMock).toHaveBeenCalledWith('stray')
-  })
+    await waitFor(() => expect(result.current.selected?.id).toBe('stray'));
+    expect(getAssetMock).toHaveBeenCalledWith('stray');
+  });
 
   it('keeps the selected asset when its month falls out of the loaded list', () => {
-    const a = makeAsset('a')
-    const b = makeAsset('b')
+    const a = makeAsset('a');
+    const b = makeAsset('b');
     const { result, rerender } = renderHook(
       (props: { assets: Asset[] }) => useAssetNavigation(props),
       { initialProps: { assets: [a, b] }, wrapper: makeWrapper('/?asset=a') },
-    )
-    expect(result.current.selected).toEqual(a)
+    );
+    expect(result.current.selected).toEqual(a);
 
-    rerender({ assets: [] }) // simulated month-cache eviction
-    expect(result.current.selected).toEqual(a)
-  })
+    rerender({ assets: [] }); // simulated month-cache eviction
+    expect(result.current.selected).toEqual(a);
+  });
 
   it('open sets the asset param', () => {
-    const a = makeAsset('a')
+    const a = makeAsset('a');
     const { result, rerender } = renderHook(
       () => {
-        const nav = useAssetNavigation({ assets: [a] })
-        const [params] = useSearchParams()
-        return { nav, params }
+        const nav = useAssetNavigation({ assets: [a] });
+        const [params] = useSearchParams();
+        return { nav, params };
       },
       { wrapper: makeWrapper('/') },
-    )
-    act(() => result.current.nav.open(a))
-    rerender()
-    expect(result.current.params.get('asset')).toBe('a')
-  })
+    );
+    act(() => result.current.nav.open(a));
+    rerender();
+    expect(result.current.params.get('asset')).toBe('a');
+  });
 
   it('opens an asset that is not in the loaded list (related strips)', () => {
-    const a = makeAsset('a')
-    const stray = makeAsset('stray')
+    const a = makeAsset('a');
+    const stray = makeAsset('stray');
     const { result, rerender } = renderHook(
       () => {
-        const nav = useAssetNavigation({ assets: [a] })
-        const [params] = useSearchParams()
-        return { nav, params }
+        const nav = useAssetNavigation({ assets: [a] });
+        const [params] = useSearchParams();
+        return { nav, params };
       },
       { wrapper: makeWrapper('/') },
-    )
-    act(() => result.current.nav.open(stray))
-    rerender()
-    expect(result.current.params.get('asset')).toBe('stray')
-    expect(result.current.nav.selected?.id).toBe('stray')
-  })
+    );
+    act(() => result.current.nav.open(stray));
+    rerender();
+    expect(result.current.params.get('asset')).toBe('stray');
+    expect(result.current.nav.selected?.id).toBe('stray');
+  });
 
   it('keeps open and close identity stable across rerenders', () => {
-    const a = makeAsset('a')
+    const a = makeAsset('a');
     const { result, rerender } = renderHook(() => useAssetNavigation({ assets: [a] }), {
       wrapper: makeWrapper('/'),
-    })
-    const { open, close } = result.current
-    rerender()
-    expect(result.current.open).toBe(open)
-    expect(result.current.close).toBe(close)
-  })
+    });
+    const { open, close } = result.current;
+    rerender();
+    expect(result.current.open).toBe(open);
+    expect(result.current.close).toBe(close);
+  });
 
   it('open and close preserve unrelated params (search ?q=)', () => {
-    const a = makeAsset('a')
+    const a = makeAsset('a');
     const { result, rerender } = renderHook(
       () => {
-        const nav = useAssetNavigation({ assets: [a] })
-        const [params] = useSearchParams()
-        return { nav, params }
+        const nav = useAssetNavigation({ assets: [a] });
+        const [params] = useSearchParams();
+        return { nav, params };
       },
       { wrapper: makeWrapper('/search?q=beach') },
-    )
-    act(() => result.current.nav.open(a))
-    rerender()
-    expect(result.current.params.get('q')).toBe('beach')
-    expect(result.current.params.get('asset')).toBe('a')
+    );
+    act(() => result.current.nav.open(a));
+    rerender();
+    expect(result.current.params.get('q')).toBe('beach');
+    expect(result.current.params.get('asset')).toBe('a');
 
-    act(() => result.current.nav.close())
-    rerender()
-    expect(result.current.params.get('q')).toBe('beach')
-    expect(result.current.params.get('asset')).toBeNull()
-  })
+    act(() => result.current.nav.close());
+    rerender();
+    expect(result.current.params.get('q')).toBe('beach');
+    expect(result.current.params.get('asset')).toBeNull();
+  });
 
   it('close clears the asset param', () => {
-    const a = makeAsset('a')
+    const a = makeAsset('a');
     const { result, rerender } = renderHook(
       () => {
-        const nav = useAssetNavigation({ assets: [a] })
-        const [params] = useSearchParams()
-        return { nav, params }
+        const nav = useAssetNavigation({ assets: [a] });
+        const [params] = useSearchParams();
+        return { nav, params };
       },
       { wrapper: makeWrapper('/?asset=a') },
-    )
-    act(() => result.current.nav.close())
-    rerender()
-    expect(result.current.params.get('asset')).toBeNull()
-  })
+    );
+    act(() => result.current.nav.close());
+    rerender();
+    expect(result.current.params.get('asset')).toBeNull();
+  });
 
   it('goPrev and goNext swap the asset param', () => {
-    const a = makeAsset('a')
-    const b = makeAsset('b')
-    const c = makeAsset('c')
+    const a = makeAsset('a');
+    const b = makeAsset('b');
+    const c = makeAsset('c');
     const { result, rerender } = renderHook(
       () => {
-        const nav = useAssetNavigation({ assets: [a, b, c] })
-        const [params] = useSearchParams()
-        return { nav, params }
+        const nav = useAssetNavigation({ assets: [a, b, c] });
+        const [params] = useSearchParams();
+        return { nav, params };
       },
       { wrapper: makeWrapper('/?asset=b') },
-    )
-    expect(result.current.nav.hasPrev).toBe(true)
-    expect(result.current.nav.hasNext).toBe(true)
+    );
+    expect(result.current.nav.hasPrev).toBe(true);
+    expect(result.current.nav.hasNext).toBe(true);
 
-    act(() => result.current.nav.goNext())
-    rerender()
-    expect(result.current.params.get('asset')).toBe('c')
-    expect(result.current.nav.hasNext).toBe(false)
+    act(() => result.current.nav.goNext());
+    rerender();
+    expect(result.current.params.get('asset')).toBe('c');
+    expect(result.current.nav.hasNext).toBe(false);
 
-    act(() => result.current.nav.goPrev())
-    rerender()
-    expect(result.current.params.get('asset')).toBe('b')
-  })
+    act(() => result.current.nav.goPrev());
+    rerender();
+    expect(result.current.params.get('asset')).toBe('b');
+  });
 
   it('restore calls the API, clears the asset param, and invokes onAfterAction', async () => {
-    restoreAssetMock.mockResolvedValue(undefined)
-    const onAfterAction = vi.fn()
-    const a = makeAsset('a')
+    restoreAssetMock.mockResolvedValue(undefined);
+    const onAfterAction = vi.fn();
+    const a = makeAsset('a');
     const { result, rerender } = renderHook(
       () => {
-        const nav = useAssetNavigation({ assets: [a], onAfterAction })
-        const [params] = useSearchParams()
-        return { nav, params }
+        const nav = useAssetNavigation({ assets: [a], onAfterAction });
+        const [params] = useSearchParams();
+        return { nav, params };
       },
       { wrapper: makeWrapper('/?asset=a') },
-    )
+    );
     await act(async () => {
-      await result.current.nav.restore()
-    })
-    rerender()
-    expect(restoreAssetMock).toHaveBeenCalledWith('a')
-    expect(result.current.params.get('asset')).toBeNull()
-    expect(onAfterAction).toHaveBeenCalledOnce()
-  })
+      await result.current.nav.restore();
+    });
+    rerender();
+    expect(restoreAssetMock).toHaveBeenCalledWith('a');
+    expect(result.current.params.get('asset')).toBeNull();
+    expect(onAfterAction).toHaveBeenCalledOnce();
+  });
 
   it('trash confirms, calls the API with the selected id, closes, and refreshes', async () => {
-    trashAssetMock.mockResolvedValue(undefined)
-    const onAfterAction = vi.fn()
-    const a = makeAsset('a')
+    trashAssetMock.mockResolvedValue(undefined);
+    const onAfterAction = vi.fn();
+    const a = makeAsset('a');
     const { result, rerender } = renderHook(
       () => {
-        const nav = useAssetNavigation({ assets: [a], onAfterAction })
-        const [params] = useSearchParams()
-        return { nav, params }
+        const nav = useAssetNavigation({ assets: [a], onAfterAction });
+        const [params] = useSearchParams();
+        return { nav, params };
       },
       { wrapper: makeWrapper('/?asset=a') },
-    )
+    );
 
-    let pending!: Promise<void>
+    let pending!: Promise<void>;
     act(() => {
-      pending = result.current.nav.trash()
-    })
-    const dialog = await screen.findByRole('dialog', { name: 'Move "this photo" to trash?' })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }))
+      pending = result.current.nav.trash();
+    });
+    const dialog = await screen.findByRole('dialog', { name: 'Move "this photo" to trash?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }));
 
     await act(async () => {
-      await pending
-    })
-    rerender()
-    expect(trashAssetMock).toHaveBeenCalledWith('a')
-    expect(onAfterAction).toHaveBeenCalledOnce()
-    expect(result.current.params.get('asset')).toBeNull()
-  })
+      await pending;
+    });
+    rerender();
+    expect(trashAssetMock).toHaveBeenCalledWith('a');
+    expect(onAfterAction).toHaveBeenCalledOnce();
+    expect(result.current.params.get('asset')).toBeNull();
+  });
 
   it('trash does not call the API when the confirm is declined', async () => {
-    const onAfterAction = vi.fn()
-    const a = makeAsset('a')
+    const onAfterAction = vi.fn();
+    const a = makeAsset('a');
     const { result, rerender } = renderHook(
       () => {
-        const nav = useAssetNavigation({ assets: [a], onAfterAction })
-        const [params] = useSearchParams()
-        return { nav, params }
+        const nav = useAssetNavigation({ assets: [a], onAfterAction });
+        const [params] = useSearchParams();
+        return { nav, params };
       },
       { wrapper: makeWrapper('/?asset=a') },
-    )
+    );
 
-    let pending!: Promise<void>
+    let pending!: Promise<void>;
     act(() => {
-      pending = result.current.nav.trash()
-    })
-    const dialog = await screen.findByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+      pending = result.current.nav.trash();
+    });
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
 
     await act(async () => {
-      await pending
-    })
-    rerender()
-    expect(trashAssetMock).not.toHaveBeenCalled()
-    expect(onAfterAction).not.toHaveBeenCalled()
-    expect(result.current.params.get('asset')).toBe('a')
-  })
+      await pending;
+    });
+    rerender();
+    expect(trashAssetMock).not.toHaveBeenCalled();
+    expect(onAfterAction).not.toHaveBeenCalled();
+    expect(result.current.params.get('asset')).toBe('a');
+  });
 
   it('permanentlyDelete confirms, calls the API with the selected id, closes, and refreshes', async () => {
-    deleteAssetMock.mockResolvedValue(undefined)
-    const onAfterAction = vi.fn()
-    const a = makeAsset('a')
+    deleteAssetMock.mockResolvedValue(undefined);
+    const onAfterAction = vi.fn();
+    const a = makeAsset('a');
     const { result, rerender } = renderHook(
       () => {
-        const nav = useAssetNavigation({ assets: [a], onAfterAction })
-        const [params] = useSearchParams()
-        return { nav, params }
+        const nav = useAssetNavigation({ assets: [a], onAfterAction });
+        const [params] = useSearchParams();
+        return { nav, params };
       },
       { wrapper: makeWrapper('/?asset=a') },
-    )
+    );
 
-    let pending!: Promise<void>
+    let pending!: Promise<void>;
     act(() => {
-      pending = result.current.nav.permanentlyDelete()
-    })
+      pending = result.current.nav.permanentlyDelete();
+    });
     const dialog = await screen.findByRole('dialog', {
       name: 'Permanently delete "this photo"?',
-    })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
     await act(async () => {
-      await pending
-    })
-    rerender()
-    expect(deleteAssetMock).toHaveBeenCalledWith('a')
-    expect(onAfterAction).toHaveBeenCalledOnce()
-    expect(result.current.params.get('asset')).toBeNull()
-  })
+      await pending;
+    });
+    rerender();
+    expect(deleteAssetMock).toHaveBeenCalledWith('a');
+    expect(onAfterAction).toHaveBeenCalledOnce();
+    expect(result.current.params.get('asset')).toBeNull();
+  });
 
   it('permanentlyDelete does not call the API when the confirm is declined', async () => {
-    const onAfterAction = vi.fn()
-    const a = makeAsset('a')
+    const onAfterAction = vi.fn();
+    const a = makeAsset('a');
     const { result, rerender } = renderHook(
       () => {
-        const nav = useAssetNavigation({ assets: [a], onAfterAction })
-        const [params] = useSearchParams()
-        return { nav, params }
+        const nav = useAssetNavigation({ assets: [a], onAfterAction });
+        const [params] = useSearchParams();
+        return { nav, params };
       },
       { wrapper: makeWrapper('/?asset=a') },
-    )
+    );
 
-    let pending!: Promise<void>
+    let pending!: Promise<void>;
     act(() => {
-      pending = result.current.nav.permanentlyDelete()
-    })
-    const dialog = await screen.findByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+      pending = result.current.nav.permanentlyDelete();
+    });
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
 
     await act(async () => {
-      await pending
-    })
-    rerender()
-    expect(deleteAssetMock).not.toHaveBeenCalled()
-    expect(onAfterAction).not.toHaveBeenCalled()
-    expect(result.current.params.get('asset')).toBe('a')
-  })
-})
+      await pending;
+    });
+    rerender();
+    expect(deleteAssetMock).not.toHaveBeenCalled();
+    expect(onAfterAction).not.toHaveBeenCalled();
+    expect(result.current.params.get('asset')).toBe('a');
+  });
+});

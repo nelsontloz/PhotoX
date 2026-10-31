@@ -1,7 +1,7 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Unique } from 'typeorm'
-import { SEARCH_EMBEDDING_DIM } from '@photox/shared-types'
-import { vectorTransformer } from '../shared/pgvector'
-import { Asset } from './asset.entity'
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Unique } from 'typeorm';
+import { SEARCH_EMBEDDING_DIM } from '@photox/shared-types';
+import { vectorTransformer } from '../shared/pgvector';
+import { Asset } from './asset.entity';
 
 // Vision search embeddings (SigLIP2-B/16 → 768-d; SEARCH_EMBEDDING_DIM).
 // Stored as text like faces.embedding; the HNSW index casts to halfvec(768).
@@ -9,22 +9,22 @@ import { Asset } from './asset.entity'
 @Unique(['assetId', 'kind', 'model'])
 export class AssetEmbedding {
   @PrimaryGeneratedColumn('uuid')
-  id!: string
+  id!: string;
 
   @Column('uuid')
-  assetId!: string
+  assetId!: string;
 
   @ManyToOne(() => Asset, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'assetId' })
-  asset!: Asset
+  asset!: Asset;
 
   // 'image' only for now — video_frame can be added when video search lands
   @Column({ type: 'text', default: 'image' })
-  kind!: string
+  kind!: string;
 
   @Column('text')
-  model!: string
+  model!: string;
 
   @Column({ type: 'text', transformer: vectorTransformer(SEARCH_EMBEDDING_DIM, 'asset embedding') })
-  embedding!: number[]
+  embedding!: number[];
 }

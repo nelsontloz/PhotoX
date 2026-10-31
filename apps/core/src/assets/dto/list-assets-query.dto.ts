@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger'
+import { ApiProperty } from '@nestjs/swagger';
 import {
   IsOptional,
   Min,
@@ -9,9 +9,9 @@ import {
   IsArray,
   ArrayMinSize,
   ArrayMaxSize,
-} from 'class-validator'
-import { Transform, Type } from 'class-transformer'
-import { isQueryTrue } from '../../common/query-params'
+} from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { isQueryTrue } from '../../common/query-params';
 
 export class ListAssetsQueryDto {
   @IsOptional()
@@ -28,26 +28,26 @@ export class ListAssetsQueryDto {
     example: 'uuid1,uuid2',
     description: 'Comma-separated asset IDs. Maximum 100.',
   })
-  ids?: string[]
+  ids?: string[];
 
   @IsOptional()
   @Type(() => Number)
   @Min(1)
   @Max(100)
   @ApiProperty({ default: 20, required: false })
-  limit?: number
+  limit?: number;
 
   @IsOptional()
   @Type(() => Number)
   @Min(0)
   @ApiProperty({ default: 0, required: false })
-  offset?: number
+  offset?: number;
 
   @IsOptional()
   @Transform(({ value }) => isQueryTrue(value))
   @IsBoolean()
   @ApiProperty({ default: false, required: false })
-  isTrashed?: boolean
+  isTrashed?: boolean;
 
   @IsOptional()
   @IsISO8601()
@@ -56,7 +56,7 @@ export class ListAssetsQueryDto {
     example: '2026-06-01T00:00:00.000Z',
     description: 'Half-open range start (inclusive) on COALESCE(takenAt, uploadedAt)',
   })
-  dateFrom?: string
+  dateFrom?: string;
 
   @IsOptional()
   @IsISO8601()
@@ -65,19 +65,19 @@ export class ListAssetsQueryDto {
     example: '2026-07-01T00:00:00.000Z',
     description: 'Half-open range end (exclusive) on COALESCE(takenAt, uploadedAt)',
   })
-  dateTo?: string
+  dateTo?: string;
 
   @IsOptional()
   @Transform(({ value }) => isQueryTrue(value))
   @IsBoolean()
   @ApiProperty({ required: false })
-  favorite?: boolean
+  favorite?: boolean;
 
   @IsOptional()
   @Transform(({ value }) => isQueryTrue(value))
   @IsBoolean()
   @ApiProperty({ required: false, description: 'Filter to only assets with GPS coordinates' })
-  hasLocations?: boolean
+  hasLocations?: boolean;
 
   @IsOptional()
   @IsUUID('4')
@@ -85,10 +85,10 @@ export class ListAssetsQueryDto {
     required: false,
     description: 'Filter to assets containing a face assigned to this person',
   })
-  personId?: string
+  personId?: string;
 
   @IsOptional()
   @IsUUID('4')
   @ApiProperty({ required: false, description: 'Filter to assets in this album' })
-  albumId?: string
+  albumId?: string;
 }

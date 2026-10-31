@@ -1,23 +1,23 @@
-import { Injectable } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
-import { Place } from '../database/entities/place.entity'
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Place } from '../database/entities/place.entity';
 
 /** place* columns written on an asset from the nearest GeoNames city. */
 export interface PlaceFields {
-  placeCity: string
-  placeAdmin1: string | null
-  placeCountryCode: string
-  placeTimezone: string | null
-  placeDistanceKm: number
+  placeCity: string;
+  placeAdmin1: string | null;
+  placeCountryCode: string;
+  placeTimezone: string | null;
+  placeDistanceKm: number;
 }
 
-const MAX_PLACE_DISTANCE_KM = 50
+const MAX_PLACE_DISTANCE_KM = 50;
 
-type NearestCity = Pick<Place, 'name' | 'admin1Code' | 'countryCode' | 'timezone'>
+type NearestCity = Pick<Place, 'name' | 'admin1Code' | 'countryCode' | 'timezone'>;
 
 interface NearestCityRow extends NearestCity {
-  distanceKm: number | null
+  distanceKm: number | null;
 }
 
 // earthdistance 1.2 dropped the <@> operator, so nearest is the KNN <-> operator (chord length in
@@ -29,7 +29,7 @@ const NEAREST_CITY_SQL = `
   FROM places
   ORDER BY ll_to_earth(latitude, longitude) <-> ll_to_earth($1, $2)
   LIMIT 1
-`
+`;
 
 /**
  * Nearest GeoNames city -> asset place columns; null beyond MAX_PLACE_DISTANCE_KM.
@@ -45,14 +45,14 @@ export class PlacesResolveService {
 
   /** ponytail: one indexed KNN lookup per call; materialize per coordinate cell if it ever shows in slow-query logs. */
   async resolve(latitude: number, longitude: number): Promise<PlaceFields | null> {
-    const rows = await this.repo.query<NearestCityRow[]>(NEAREST_CITY_SQL, [latitude, longitude])
-    const row = rows[0]
-    if (row === undefined) return null
-    const { distanceKm } = row
+    const rows = await this.repo.query<NearestCityRow[]>(NEAREST_CITY_SQL, [latitude, longitude]);
+    const row = rows[0];
+    if (row === undefined) return null;
+    const { distanceKm } = row;
     // null/NaN/Infinity all mean "no usable distance" (NULL GPS params make the KNN expression
     // NULL, and a NULL distance slips a bare `> MAX` check) — reject before writing any place field
     if (distanceKm === null || !Number.isFinite(distanceKm) || distanceKm > MAX_PLACE_DISTANCE_KM) {
-      return null
+      return null;
     }
     return {
       placeCity: row.name,
@@ -60,6 +60,6 @@ export class PlacesResolveService {
       placeCountryCode: row.countryCode,
       placeTimezone: row.timezone,
       placeDistanceKm: distanceKm,
-    }
+    };
   }
 }

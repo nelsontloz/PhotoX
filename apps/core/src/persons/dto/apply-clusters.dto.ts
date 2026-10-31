@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger'
-import { Type } from 'class-transformer'
+import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
@@ -8,32 +8,32 @@ import {
   IsUUID,
   MaxLength,
   ValidateNested,
-} from 'class-validator'
+} from 'class-validator';
 
 class ApplyClusterFacesDto {
   @ApiProperty({ type: [String] })
   @IsArray()
   @ArrayMinSize(1)
   @IsUUID('4', { each: true })
-  faceIds!: string[]
+  faceIds!: string[];
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsUUID('4')
-  coverFaceId?: string
+  coverFaceId?: string;
 }
 
 export class ApplyClusterCreateDto extends ApplyClusterFacesDto {
   @ApiProperty()
   @IsString()
   @MaxLength(200)
-  clusterLabel!: string
+  clusterLabel!: string;
 }
 
 export class ApplyClusterAttachDto extends ApplyClusterFacesDto {
   @ApiProperty()
   @IsUUID('4')
-  personId!: string
+  personId!: string;
 }
 
 export class ApplyClustersDto {
@@ -41,11 +41,11 @@ export class ApplyClustersDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ApplyClusterCreateDto)
-  creates!: ApplyClusterCreateDto[]
+  creates!: ApplyClusterCreateDto[];
 
   @ApiProperty({ type: [ApplyClusterAttachDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ApplyClusterAttachDto)
-  attaches!: ApplyClusterAttachDto[]
+  attaches!: ApplyClusterAttachDto[];
 }

@@ -1,13 +1,13 @@
-import type { Place } from '../database/entities/place.entity'
+import type { Place } from '../database/entities/place.entity';
 
 /** Parsed cities500 row, shaped for the `places` table. */
 export type PlaceRow = Pick<
   Place,
   'geonameId' | 'name' | 'latitude' | 'longitude' | 'countryCode' | 'admin1Code' | 'timezone'
->
+>;
 
 const blankToNull = (value: string | undefined): string | null =>
-  value === undefined || value === '' ? null : value
+  value === undefined || value === '' ? null : value;
 
 /**
  * Parse one line of GeoNames cities500.txt (tab-separated, no header):
@@ -16,16 +16,16 @@ const blankToNull = (value: string | undefined): string | null =>
  * Returns null for malformed or nameless-country rows.
  */
 export function parseCityLine(line: string): PlaceRow | null {
-  const f = line.split('\t')
-  if (f.length < 19) return null
+  const f = line.split('\t');
+  if (f.length < 19) return null;
 
-  const geonameId = Number.parseInt(f[0]!, 10)
-  const latitude = Number.parseFloat(f[4]!)
-  const longitude = Number.parseFloat(f[5]!)
-  const countryCode = f[8]!
+  const geonameId = Number.parseInt(f[0]!, 10);
+  const latitude = Number.parseFloat(f[4]!);
+  const longitude = Number.parseFloat(f[5]!);
+  const countryCode = f[8]!;
   if (!Number.isFinite(geonameId) || !Number.isFinite(latitude) || !Number.isFinite(longitude))
-    return null
-  if (countryCode === '') return null
+    return null;
+  if (countryCode === '') return null;
 
   return {
     geonameId,
@@ -35,5 +35,5 @@ export function parseCityLine(line: string): PlaceRow | null {
     countryCode,
     admin1Code: blankToNull(f[10]),
     timezone: blankToNull(f[17]),
-  }
+  };
 }

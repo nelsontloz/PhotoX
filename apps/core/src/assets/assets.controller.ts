@@ -13,14 +13,14 @@ import {
   HttpStatus,
   ParseBoolPipe,
   ParseUUIDPipe,
-} from '@nestjs/common'
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import type { Request, Response } from 'express'
-import { CurrentUserId } from '../auth/jwt-auth.guard'
-import { AssetsService } from './assets.service'
-import { UpdateAssetDto } from './dto/update-asset.dto'
-import { ListAssetsQueryDto } from './dto/list-assets-query.dto'
-import { TrashAssetsDto } from './dto/trash-assets.dto'
+} from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import type { Request, Response } from 'express';
+import { CurrentUserId } from '../auth/jwt-auth.guard';
+import { AssetsService } from './assets.service';
+import { UpdateAssetDto } from './dto/update-asset.dto';
+import { ListAssetsQueryDto } from './dto/list-assets-query.dto';
+import { TrashAssetsDto } from './dto/trash-assets.dto';
 
 @ApiTags('assets')
 @ApiBearerAuth()
@@ -32,7 +32,7 @@ export class AssetsController {
   @ApiOperation({ summary: 'List assets with filters' })
   @ApiResponse({ status: 200, description: 'Paginated asset list' })
   async list(@Query() q: ListAssetsQueryDto, @CurrentUserId() userId: string) {
-    return this.assets.list(userId, q)
+    return this.assets.list(userId, q);
   }
 
   @Get('layout')
@@ -52,34 +52,34 @@ export class AssetsController {
     // behind a matching ETag. Filtered requests skip revalidation and always get the body (cheap,
     // scoped payloads).
     if (!personId && !favorite && !albumId) {
-      const fingerprint = await this.assets.layoutFingerprint(userId)
+      const fingerprint = await this.assets.layoutFingerprint(userId);
       // ETag must be on the response before `req.fresh` compares it against If-None-Match.
-      res.setHeader('ETag', `"layout-${fingerprint.count}-${fingerprint.maxUpdatedAtMs}"`)
+      res.setHeader('ETag', `"layout-${fingerprint.count}-${fingerprint.maxUpdatedAtMs}"`);
       if (req.fresh) {
-        res.status(HttpStatus.NOT_MODIFIED).end()
-        return
+        res.status(HttpStatus.NOT_MODIFIED).end();
+        return;
       }
     }
-    const body = await this.assets.layout(userId, personId, favorite, albumId)
+    const body = await this.assets.layout(userId, personId, favorite, albumId);
     // private, no-cache: browser stores the body but must revalidate (conditional GET → 304)
     // every load; Vary: Authorization keeps per-user bodies out of each other's cache slots.
-    res.setHeader('Cache-Control', 'private, no-cache')
-    res.setHeader('Vary', 'Authorization')
-    res.json(body)
+    res.setHeader('Cache-Control', 'private, no-cache');
+    res.setHeader('Vary', 'Authorization');
+    res.json(body);
   }
 
   @Get('trashed')
   @ApiOperation({ summary: 'List trashed assets' })
   @ApiResponse({ status: 200, description: 'Paginated trashed asset list' })
   async listTrashed(@Query() q: ListAssetsQueryDto, @CurrentUserId() userId: string) {
-    return this.assets.list(userId, { ...q, isTrashed: true })
+    return this.assets.list(userId, { ...q, isTrashed: true });
   }
 
   @Delete('trashed')
   @ApiOperation({ summary: 'Permanently delete all trashed assets' })
   @ApiResponse({ status: 200, description: 'Trash emptied' })
   async emptyTrash(@CurrentUserId() userId: string) {
-    await this.assets.emptyTrash(userId)
+    await this.assets.emptyTrash(userId);
   }
 
   @Delete('trashed/:id')
@@ -88,7 +88,7 @@ export class AssetsController {
   @ApiResponse({ status: 400, description: 'Asset is not trashed' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async deleteTrashed(@Param('id') id: string, @CurrentUserId() userId: string) {
-    await this.assets.delete(userId, id)
+    await this.assets.delete(userId, id);
   }
 
   @Post('trashed/:id/restore')
@@ -97,7 +97,7 @@ export class AssetsController {
   @ApiResponse({ status: 204, description: 'Asset restored' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async restore(@Param('id') id: string, @CurrentUserId() userId: string) {
-    await this.assets.restore(userId, id)
+    await this.assets.restore(userId, id);
   }
 
   @Get(':id')
@@ -105,7 +105,7 @@ export class AssetsController {
   @ApiResponse({ status: 200, description: 'Asset found' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async getOne(@Param('id') id: string, @CurrentUserId() userId: string) {
-    return this.assets.getOne(userId, id)
+    return this.assets.getOne(userId, id);
   }
 
   @Patch(':id')
@@ -117,7 +117,7 @@ export class AssetsController {
     @Body() dto: UpdateAssetDto,
     @CurrentUserId() userId: string,
   ) {
-    return this.assets.update(userId, id, dto)
+    return this.assets.update(userId, id, dto);
   }
 
   @Post(':id/trash')
@@ -126,7 +126,7 @@ export class AssetsController {
   @ApiResponse({ status: 204, description: 'Asset trashed' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async trash(@Param('id') id: string, @CurrentUserId() userId: string) {
-    await this.assets.trash(userId, id)
+    await this.assets.trash(userId, id);
   }
 
   @Post('bulk-trash')
@@ -134,7 +134,7 @@ export class AssetsController {
   @ApiOperation({ summary: 'Bulk soft-delete (trash) assets. Idempotent.' })
   @ApiResponse({ status: 204, description: 'Assets trashed' })
   async bulkTrash(@Body() dto: TrashAssetsDto, @CurrentUserId() userId: string) {
-    await this.assets.bulkTrash(userId, dto.assetIds)
+    await this.assets.bulkTrash(userId, dto.assetIds);
   }
 
   @Post(':id/reprocess-thumbnails')
@@ -143,7 +143,7 @@ export class AssetsController {
   @ApiResponse({ status: 202, description: 'Thumbnail jobs enqueued' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async reprocessThumbnails(@Param('id') id: string, @CurrentUserId() userId: string) {
-    return this.assets.reprocessThumbnails(userId, id)
+    return this.assets.reprocessThumbnails(userId, id);
   }
 
   @Post(':id/reprocess-video')
@@ -153,6 +153,6 @@ export class AssetsController {
   @ApiResponse({ status: 400, description: 'Not a video asset' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async reprocessVideo(@Param('id') id: string, @CurrentUserId() userId: string) {
-    return this.assets.reprocessVideo(userId, id)
+    return this.assets.reprocessVideo(userId, id);
   }
 }

@@ -5,26 +5,26 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
-} from 'typeorm'
+} from 'typeorm';
 
 @Entity('albums')
 export class Album {
   @PrimaryGeneratedColumn('uuid')
-  id!: string
+  id!: string;
 
   @Column()
   @Index()
-  userId!: string
+  userId!: string;
 
   @Column({ type: 'varchar', length: 255 })
-  name!: string
+  name!: string;
 
   @Column({ type: 'varchar', length: 2000, nullable: true })
-  description!: string | null
+  description!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
-  createdAt!: Date
+  createdAt!: Date;
 
   @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt!: Date
+  updatedAt!: Date;
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react';
 import {
   FaWindowMinimize,
   FaXmark,
@@ -7,9 +7,9 @@ import {
   FaCloudArrowUp,
   FaImage,
   FaVideo,
-} from 'react-icons/fa6'
-import { useUploadStore, type UploadItem, type UploadStatus } from '../store/upload-store'
-import { formatBytes } from '../lib/format'
+} from 'react-icons/fa6';
+import { useUploadStore, type UploadItem, type UploadStatus } from '../store/upload-store';
+import { formatBytes } from '../lib/format';
 
 const STATUS_ORDER: Record<UploadStatus, number> = {
   uploading: 0,
@@ -17,14 +17,14 @@ const STATUS_ORDER: Record<UploadStatus, number> = {
   queued: 2,
   error: 3,
   done: 4,
-}
+};
 
 function UploadListItem({ item }: { item: UploadItem }) {
-  const thumbUrl = item.localThumbUrl
-  const isError = item.status === 'error'
-  const isDone = item.status === 'done'
-  const isUploading = item.status === 'uploading'
-  const isHashing = item.status === 'hashing'
+  const thumbUrl = item.localThumbUrl;
+  const isError = item.status === 'error';
+  const isDone = item.status === 'done';
+  const isUploading = item.status === 'uploading';
+  const isHashing = item.status === 'hashing';
 
   return (
     <li className="flex items-center gap-3 px-3 py-2">
@@ -65,73 +65,73 @@ function UploadListItem({ item }: { item: UploadItem }) {
         </div>
       </div>
     </li>
-  )
+  );
 }
 
 export function UploadNotification() {
-  const items = useUploadStore((s) => s.items)
-  const dismissed = useUploadStore((s) => s.dismissed)
-  const setDismissed = useUploadStore((s) => s.setDismissed)
+  const items = useUploadStore((s) => s.items);
+  const dismissed = useUploadStore((s) => s.dismissed);
+  const setDismissed = useUploadStore((s) => s.setDismissed);
 
-  const [collapsed, setCollapsed] = useState(false)
-  const [mounted, setMounted] = useState(false)
+  const [collapsed, setCollapsed] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const raf = requestAnimationFrame(() => setMounted(true))
-    return () => cancelAnimationFrame(raf)
-  }, [])
+    const raf = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
-  if (items.length === 0 || dismissed) return null
+  if (items.length === 0 || dismissed) return null;
 
-  const inFlight = items.filter((i) => i.status !== 'done' && i.status !== 'error')
-  const errorCount = items.filter((i) => i.status === 'error').length
+  const inFlight = items.filter((i) => i.status !== 'done' && i.status !== 'error');
+  const errorCount = items.filter((i) => i.status === 'error').length;
   const allDone =
-    items.length > 0 && items.every((i) => i.status === 'done' || i.status === 'error')
-  const uploadingCount = items.filter((i) => i.status === 'uploading').length
-  const hashingCount = items.filter((i) => i.status === 'hashing').length
+    items.length > 0 && items.every((i) => i.status === 'done' || i.status === 'error');
+  const uploadingCount = items.filter((i) => i.status === 'uploading').length;
+  const hashingCount = items.filter((i) => i.status === 'hashing').length;
   // bytesUploaded counts uploads only: hashing progress reuses the same bar but must not
   // inflate the byte counter.
   const bytesUploaded = items
     .filter((i) => i.status === 'uploading' || i.status === 'done')
-    .reduce((sum, i) => sum + (i.sizeBytes * i.progress) / 100, 0)
-  const totalBytes = items.reduce((sum, i) => sum + i.sizeBytes, 0)
+    .reduce((sum, i) => sum + (i.sizeBytes * i.progress) / 100, 0);
+  const totalBytes = items.reduce((sum, i) => sum + i.sizeBytes, 0);
 
-  let title: string
-  let icon: React.ReactNode
+  let title: string;
+  let icon: React.ReactNode;
 
   if (allDone && errorCount === 0) {
-    title = `All ${items.length} items uploaded`
-    icon = <FaCircleCheck className="text-green-500" />
+    title = `All ${items.length} items uploaded`;
+    icon = <FaCircleCheck className="text-green-500" />;
   } else if (allDone) {
-    title = `${errorCount} uploads failed`
-    icon = <FaCircleExclamation className="text-amber-500" />
+    title = `${errorCount} uploads failed`;
+    icon = <FaCircleExclamation className="text-amber-500" />;
   } else if (uploadingCount > 0) {
-    title = `Uploading ${inFlight.length} items`
+    title = `Uploading ${inFlight.length} items`;
     icon = (
       <span className="relative flex size-2">
         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
         <span className="relative inline-flex rounded-full size-2 bg-primary" />
       </span>
-    )
+    );
   } else if (hashingCount > 0) {
-    title = `Hashing ${inFlight.length} items`
+    title = `Hashing ${inFlight.length} items`;
     icon = (
       <span className="relative flex size-2">
         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
         <span className="relative inline-flex rounded-full size-2 bg-primary" />
       </span>
-    )
+    );
   } else {
-    title = `${items.length} items queued`
-    icon = <FaCloudArrowUp className="text-primary" />
+    title = `${items.length} items queued`;
+    icon = <FaCloudArrowUp className="text-primary" />;
   }
 
   const handleClose = () => {
     if (allDone) {
-      useUploadStore.getState().clearDone()
+      useUploadStore.getState().clearDone();
     }
-    setDismissed(true)
-  }
+    setDismissed(true);
+  };
 
   return (
     <section
@@ -204,5 +204,5 @@ export function UploadNotification() {
         </>
       )}
     </section>
-  )
+  );
 }
