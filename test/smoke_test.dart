@@ -15,6 +15,7 @@ class FakeAppController extends AppController {
     this.signedIn = true,
     this.busyValue = false,
     this.syncingValue = false,
+    this.discoveringValue = false,
     this.pausedValue = false,
     this.authRequiredValue = false,
     this.permissionValue = PhotoPermission.authorized,
@@ -32,6 +33,7 @@ class FakeAppController extends AppController {
   final bool signedIn;
   final bool busyValue;
   final bool syncingValue;
+  final bool discoveringValue;
   final bool pausedValue;
   final bool authRequiredValue;
   final PhotoPermission permissionValue;
@@ -52,6 +54,9 @@ class FakeAppController extends AppController {
 
   @override
   bool get syncing => syncingValue;
+
+  @override
+  bool get discovering => discoveringValue;
 
   @override
   bool get paused => pausedValue;

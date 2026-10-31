@@ -92,6 +92,7 @@ class _PhotoXAppState extends State<PhotoXApp> {
                 progress: controller.progress,
                 permission: controller.permission,
                 syncing: controller.syncing,
+                discovering: controller.discovering,
                 paused: controller.paused,
                 authRequired: controller.authRequired,
                 lastReport: controller.lastReport,

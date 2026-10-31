@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photox_mobile/media/photo_manager_observer.dart';
+import 'package:photox_mobile/media/photo_observer.dart';
 
 const String _channelName = 'com.fluttercandies/photo_manager';
 
@@ -70,6 +71,8 @@ void main() {
               };
             case 'getFullFile':
               return assetFile.path;
+            case 'requestPermissionExtend':
+              return 3; // PermissionState.authorized
             case 'fetchEntityProperties':
               return _asset(arguments['id'] as String, createDt: 1000);
             case 'getThumb':
@@ -87,6 +90,23 @@ void main() {
         .setMockMethodCallHandler(const MethodChannel(_channelName), null);
     if (await temp.exists()) await temp.delete(recursive: true);
   });
+
+  test(
+    'asks Android for ACCESS_MEDIA_LOCATION so EXIF GPS is not redacted',
+    () async {
+      final observer = PhotoManagerObserver();
+      addTearDown(observer.dispose);
+
+      expect(await observer.ensurePermission(), PhotoPermission.authorized);
+
+      final call = calls.firstWhere(
+        (call) => call.method == 'requestPermissionExtend',
+      );
+      final androidPermission =
+          (call.arguments as Map)['androidPermission'] as Map;
+      expect(androidPermission['mediaLocation'], isTrue);
+    },
+  );
 
   test('filters by update time and leaves creation time unfiltered', () async {
     final observer = PhotoManagerObserver();

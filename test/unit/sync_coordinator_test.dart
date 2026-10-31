@@ -110,6 +110,29 @@ void main() {
     expect(await db.select(db.queuedAssets).get(), isEmpty);
   });
 
+  test('flags the discovery phase around the scan, then clears it', () async {
+    await seed('asset-a');
+    final seen = <bool>[];
+    final coordinator = makeCoordinator()..onDiscovery = seen.add;
+
+    await coordinator.run();
+
+    expect(seen, <bool>[true, false]);
+    expect(await db.select(db.queuedAssets).get(), isNotEmpty);
+  });
+
+  test('clears the discovery flag when the scan throws', () async {
+    await seed('asset-a');
+    observer.scanError = StateError('library unavailable');
+    final seen = <bool>[];
+    final coordinator = makeCoordinator()..onDiscovery = seen.add;
+
+    final report = await coordinator.run();
+
+    expect(report.error, contains('library unavailable'));
+    expect(seen, <bool>[true, false]);
+  });
+
   test('does nothing at all while paused', () async {
     await settings.save(const AppSettings(paused: true));
     await seed('asset-a');
@@ -515,6 +538,7 @@ class _FakeObserver implements PhotoObserver {
   final Map<String, Uint8List> thumbnails = <String, Uint8List>{};
   List<MediaFolder> foldersValue = const <MediaFolder>[];
   Object? foldersError;
+  Object? scanError;
   DateTime? lastSince;
   List<String>? lastFolderIds;
   int scanCalls = 0;
@@ -539,6 +563,8 @@ class _FakeObserver implements PhotoObserver {
     scanCalls++;
     lastSince = since;
     lastFolderIds = folderIds;
+    final error = scanError;
+    if (error != null) throw error;
     if (since == null) return List<AssetCandidate>.of(candidates);
     return candidates
         .where(

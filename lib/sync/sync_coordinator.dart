@@ -110,6 +110,12 @@ class SyncCoordinator {
   /// Link check for the `wifiOnly` preference during a foreground pass.
   final NetworkStatus network;
 
+  /// Called with `true` when the library scan starts and `false` once its rows
+  /// are queued, so the dashboard can show the scan instead of counts that
+  /// still describe the previous scope. Set by the UI controller; null in the
+  /// background isolate.
+  void Function(bool discovering)? onDiscovery;
+
   /// Queue metadata key holding the ISO-8601 watermark.
   static const String scanWatermarkKey = 'scanWatermark';
 
@@ -149,42 +155,52 @@ class SyncCoordinator {
     }
 
     final folderIds = await _scanScope(settings);
-    final List<AssetCandidate> scanned;
+    // The flag is cleared in `finally`: a failed scan must not leave the
+    // dashboard waiting on a spinner forever.
+    onDiscovery?.call(true);
     try {
-      scanned = await observer.scanNew(since: watermark, folderIds: folderIds);
-    } on Object catch (error) {
-      report.error = error.toString();
-      return report;
-    }
-    report.scanned = scanned.length;
+      final List<AssetCandidate> scanned;
+      try {
+        scanned = await observer.scanNew(
+          since: watermark,
+          folderIds: folderIds,
+        );
+      } on Object catch (error) {
+        report.error = error.toString();
+        return report;
+      }
+      report.scanned = scanned.length;
 
-    final supported = scanned
-        .where(
-          (candidate) => filter.isSupported(
-            candidate,
-            includeVideos: settings.includeVideos,
-          ),
-        )
-        .toList(growable: false);
+      final supported = scanned
+          .where(
+            (candidate) => filter.isSupported(
+              candidate,
+              includeVideos: settings.includeVideos,
+            ),
+          )
+          .toList(growable: false);
 
-    final existing = await _existingIds(
-      supported.map((candidate) => candidate.localId).toList(growable: false),
-    );
-    await queue.enqueueAll(supported);
-    report.enqueued = supported
-        .where((candidate) => !existing.contains(candidate.localId))
-        .length;
-
-    // Only eligible assets move the watermark, and only forward. An empty (or
-    // fully filtered) scan must not skip assets added while it was running,
-    // and an edited low-timestamp asset must not rewind the window.
-    final newest = _newestTimestamp(supported);
-    if (newest != null && (watermark == null || newest.isAfter(watermark))) {
-      watermark = newest;
-      await queue.setMeta(
-        scanWatermarkKey,
-        watermark.toUtc().toIso8601String(),
+      final existing = await _existingIds(
+        supported.map((candidate) => candidate.localId).toList(growable: false),
       );
+      await queue.enqueueAll(supported);
+      report.enqueued = supported
+          .where((candidate) => !existing.contains(candidate.localId))
+          .length;
+
+      // Only eligible assets move the watermark, and only forward. An empty
+      // (or fully filtered) scan must not skip assets added while it was
+      // running, and an edited low-timestamp asset must not rewind the window.
+      final newest = _newestTimestamp(supported);
+      if (newest != null && (watermark == null || newest.isAfter(watermark))) {
+        watermark = newest;
+        await queue.setMeta(
+          scanWatermarkKey,
+          watermark.toUtc().toIso8601String(),
+        );
+      }
+    } finally {
+      onDiscovery?.call(false);
     }
 
     final uploadBudgetStart = startedAt;

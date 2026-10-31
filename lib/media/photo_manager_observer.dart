@@ -43,7 +43,17 @@ class PhotoManagerObserver implements PhotoObserver {
 
   @override
   Future<PhotoPermission> ensurePermission() async {
-    final state = await PhotoManager.requestPermissionExtend();
+    // mediaLocation: Android 10+ redacts EXIF GPS from media (FUSE and
+    // ContentResolver alike) unless ACCESS_MEDIA_LOCATION is held; photo_manager
+    // only requests it when asked here *and* it is declared in the manifest.
+    final state = await PhotoManager.requestPermissionExtend(
+      requestOption: const PermissionRequestOption(
+        androidPermission: AndroidPermission(
+          type: RequestType.common,
+          mediaLocation: true,
+        ),
+      ),
+    );
     return switch (state) {
       PermissionState.authorized => PhotoPermission.authorized,
       PermissionState.limited => PhotoPermission.limited,

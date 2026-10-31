@@ -10,6 +10,7 @@ import 'widgets/app_background.dart';
 import 'widgets/backup_progress.dart';
 import 'widgets/count_format.dart';
 import 'widgets/last_sync_panel.dart';
+import 'widgets/panel.dart';
 import 'widgets/queue_summary.dart';
 import 'widgets/sign_out_dialog.dart';
 import 'widgets/status_banner.dart';
@@ -27,6 +28,7 @@ class HomeScreen extends StatelessWidget {
     required this.progress,
     required this.permission,
     required this.syncing,
+    this.discovering = false,
     required this.paused,
     required this.authRequired,
     required this.lastReport,
@@ -53,6 +55,10 @@ class HomeScreen extends StatelessWidget {
 
   /// True while a sync pass is running.
   final bool syncing;
+
+  /// True while that pass is scanning the library; the queue counts still
+  /// describe the previous scope until the scan ends.
+  final bool discovering;
 
   /// True when the user has stopped backups; the primary action resumes them.
   final bool paused;
@@ -252,20 +258,24 @@ class HomeScreen extends StatelessWidget {
                       banner,
                       const SizedBox(height: 10),
                     ],
-                    QueueSummary(stats: stats, onRetryFailed: onRetryFailed),
-                    const SizedBox(height: 12),
-                    BackupProgressPanel(
-                      stats: stats,
-                      paused: paused,
-                      animate: progress.active && !paused,
-                    ),
-                    const SizedBox(height: 12),
-                    UploadingFileRow(
-                      progress: progress,
-                      waiting: stats.pending,
-                      paused: paused,
-                      thumbnail: thumbnail,
-                    ),
+                    if (discovering)
+                      const _DiscoveryPanel()
+                    else ...[
+                      QueueSummary(stats: stats, onRetryFailed: onRetryFailed),
+                      const SizedBox(height: 12),
+                      BackupProgressPanel(
+                        stats: stats,
+                        paused: paused,
+                        animate: progress.active && !paused,
+                      ),
+                      const SizedBox(height: 12),
+                      UploadingFileRow(
+                        progress: progress,
+                        waiting: stats.pending,
+                        paused: paused,
+                        thumbnail: thumbnail,
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     LastSyncPanel(report: lastReport),
                   ],
@@ -314,6 +324,7 @@ class HomeScreen extends StatelessWidget {
                   _StatusPill(
                     status: _statusFor(
                       syncing: syncing,
+                      discovering: discovering,
                       paused: paused,
                       waitingForWifi: lastReport?.waitingForWifi == true,
                       authRequired: authRequired,
@@ -395,6 +406,58 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
+/// Stands in for the counts while discovery runs: the queue still describes
+/// the previous folder scope until the scan has queued the new one.
+class _DiscoveryPanel extends StatelessWidget {
+  const _DiscoveryPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Panel(
+      key: const Key('discovery-progress'),
+      child: Row(
+        children: <Widget>[
+          SizedBox.square(
+            dimension: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: scheme.primary,
+              semanticsLabel: 'Reading your library',
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Reading your library…',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: scheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Counting the photos in your backup folders. The numbers '
+                  'appear when it finishes.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 enum _StatusTone { neutral, active, warning, danger }
 
 class _StatusInfo {
@@ -407,6 +470,7 @@ class _StatusInfo {
 
 _StatusInfo _statusFor({
   required bool syncing,
+  required bool discovering,
   required bool paused,
   required bool waitingForWifi,
   required bool authRequired,
@@ -421,6 +485,13 @@ _StatusInfo _statusFor({
       syncing ? 'Pausing' : 'Paused',
       Icons.pause_rounded,
       _StatusTone.neutral,
+    );
+  }
+  if (discovering) {
+    return const _StatusInfo(
+      'Scanning',
+      Icons.search_rounded,
+      _StatusTone.active,
     );
   }
   if (syncing) {

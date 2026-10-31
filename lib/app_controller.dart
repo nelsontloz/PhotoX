@@ -30,6 +30,9 @@ abstract class AppController extends ChangeNotifier {
   /// True while a sync pass is running.
   bool get syncing;
 
+  /// True while a pass is scanning the library, before its first upload.
+  bool get discovering;
+
   /// True when the last pass found the stored session unusable.
   bool get authRequired;
 
@@ -108,6 +111,7 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   }) {
     _completedTransfers = progress.completedTransfers;
     progress.addListener(_onProgress);
+    coordinator.onDiscovery = _onDiscovery;
   }
 
   /// Token owner; also the source of [isSignedIn].
@@ -144,6 +148,7 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
 
   bool _busy = false;
   bool _syncing = false;
+  bool _discovering = false;
   bool _authRequired = false;
   PhotoPermission _permission = PhotoPermission.notDetermined;
   QueueStats _stats = _emptyStats;
@@ -175,6 +180,9 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
 
   @override
   bool get syncing => _syncing;
+
+  @override
+  bool get discovering => _discovering;
 
   @override
   bool get authRequired => _authRequired;
@@ -384,9 +392,12 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     }
   }
 
-  /// True when [next] changes which albums get scanned.
+  /// True when [next] changes what discovery looks for: the album scope or
+  /// whether videos count. Both need the watermark cleared, because assets the
+  /// old settings skipped sit behind it.
   bool _scopeChanged(AppSettings next) =>
       next.uploadAllFolders != _settings.uploadAllFolders ||
+      next.includeVideos != _settings.includeVideos ||
       !listEquals(next.uploadFolderIds, _settings.uploadFolderIds);
 
   /// Forgets queued work discovered under the previous folder scope.
@@ -409,6 +420,7 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   @override
   void dispose() {
     _disposed = true;
+    coordinator.onDiscovery = null;
     progress.removeListener(_onProgress);
     auth.removeListener(_onAuthChanged);
     if (_observing) {
@@ -457,6 +469,31 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   }
 
   void _onAuthChanged() => _notify();
+
+  /// Mirrors the coordinator's scan phase, so the dashboard shows "reading"
+  /// instead of counts that still describe the previous folder scope.
+  ///
+  /// Discovery is what queues the new scope's rows, so the counts are re-read
+  /// before the spinner goes away: they are correct the moment it ends.
+  void _onDiscovery(bool discovering) {
+    if (discovering == _discovering) return;
+    if (discovering) {
+      _discovering = true;
+      _notify();
+      return;
+    }
+    unawaited(_finishDiscovery());
+  }
+
+  Future<void> _finishDiscovery() async {
+    try {
+      _stats = await queue.stats();
+    } on Object {
+      // A queue read must never leave the dashboard stuck on a spinner.
+    }
+    _discovering = false;
+    _notify();
+  }
 
   /// Forwards progress ticks to the shell and refreshes counters when an
   /// asset finishes so the dashboard moves while a pass runs.

@@ -51,6 +51,7 @@ Widget _home({
   TransferProgress? progress,
   PhotoPermission permission = PhotoPermission.authorized,
   bool syncing = false,
+  bool discovering = false,
   bool paused = false,
   bool authRequired = false,
   SyncReport? lastReport,
@@ -71,6 +72,7 @@ Widget _home({
       progress: progress ?? TransferProgress(),
       permission: permission,
       syncing: syncing,
+      discovering: discovering,
       paused: paused,
       authRequired: authRequired,
       lastReport: lastReport,
@@ -341,6 +343,41 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('4 items still waiting.'), findsOneWidget);
+    });
+
+    testWidgets('shows the scan instead of counts while discovering', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _home(
+          discovering: true,
+          syncing: true,
+          stats: const QueueStats(
+            pending: 4,
+            uploaded: 12,
+            duplicate: 3,
+            failed: 0,
+          ),
+        ),
+      );
+      // The spinner never settles, so pump a single frame.
+      await tester.pump();
+
+      expect(find.byKey(const Key('discovery-progress')), findsOneWidget);
+      expect(find.text('Reading your library…'), findsOneWidget);
+      expect(find.text('Scanning'), findsOneWidget);
+      expect(find.text('UPLOADED'), findsNothing);
+      expect(find.text('REMAINING'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
+
+    testWidgets('counts come back once the scan ends', (tester) async {
+      await tester.pumpWidget(_home());
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('discovery-progress')), findsNothing);
+      expect(find.text('UPLOADED'), findsOneWidget);
+      expect(find.text('Up to date'), findsOneWidget);
     });
 
     testWidgets('the scope pill names the album count, not the queue', (

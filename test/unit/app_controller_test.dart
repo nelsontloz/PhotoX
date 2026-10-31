@@ -634,6 +634,21 @@ void main() {
     expect(await queue.byLocalId('pending'), isNull);
   });
 
+  test(
+    'turning includeVideos on purges queued work and the watermark',
+    () async {
+      await queue.enqueue(_assetCandidate('pending'));
+      await queue.markState(localId: 'pending', state: UploadState.pending);
+      const watermark = '2026-10-19T12:00:00.000Z';
+      await queue.setMeta(SyncCoordinator.scanWatermarkKey, watermark);
+
+      await controller.updateSettings(const AppSettings(includeVideos: true));
+
+      expect(await queue.byLocalId('pending'), isNull);
+      expect(await queue.getMeta(SyncCoordinator.scanWatermarkKey), '');
+    },
+  );
+
   test('an unrelated settings change keeps the queue and watermark', () async {
     await queue.enqueue(_assetCandidate('pending'));
     await queue.markState(localId: 'pending', state: UploadState.pending);
