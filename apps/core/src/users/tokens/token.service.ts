@@ -19,6 +19,7 @@ export class TokenService {
   signAccessToken(
     user: { id: string; email: string; role: Role },
     sessionStartedAt?: Date,
+    sessionId?: string,
   ): Promise<string> {
     return this.jwtService.signAsync(
       {
@@ -28,6 +29,8 @@ export class TokenService {
         jti: randomUUID(),
         // the guard rejects once sst is a full ABSOLUTE_SESSION_MS old, even when renewing
         ...(sessionStartedAt ? { sst: Math.floor(sessionStartedAt.getTime() / 1000) } : {}),
+        // the guard 401s once this device session's refresh rows are gone (logout / reuse)
+        ...(sessionId ? { sid: sessionId } : {}),
       },
       // kid names the signing secret ('cur' = AUTH_TOKEN_SECRET); rotation verifiers try
       // current, then AUTH_TOKEN_SECRET_PREVIOUS — no extra JwtModule needed
@@ -46,7 +49,7 @@ export class TokenService {
    * foreign secret, or carries a delegated `act` claim — the caller must then treat the
    * request as unauthenticated and raise no session floor.
    */
-  verifyAccessToken(token: string): { sub: string } | null {
+  verifyAccessToken(token: string): { sub: string; sid?: string } | null {
     const secrets = this.resolveAuthSecrets();
     if (!secrets) return null;
 
@@ -68,7 +71,9 @@ export class TokenService {
       // only the two known roles are session credentials; anything else is forged
       if (payload.role !== 'user' && payload.role !== 'admin') continue;
       if (typeof payload.sub !== 'string' || payload.sub.length === 0) continue;
-      return { sub: payload.sub };
+      return typeof payload.sid === 'string'
+        ? { sub: payload.sub, sid: payload.sid }
+        : { sub: payload.sub };
     }
     return null;
   }

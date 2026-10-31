@@ -160,6 +160,7 @@ function makeRefreshService(opts: {
 describe('AuthService.refresh opportunistic purge (C5)', () => {
   const row = {
     userId: 'u1',
+    sessionId: 's1',
     tokenHash: 'hash',
     expiresAt: new Date(Date.now() + 60_000),
     absoluteExpiresAt: null,

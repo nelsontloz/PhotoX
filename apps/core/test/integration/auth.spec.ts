@@ -193,7 +193,7 @@ describe('auth HTTP surface', () => {
       expect(secondRefresh.status).toBe(401);
     });
 
-    it('revokes the whole token family when a rotated token is reused', async () => {
+    it('revokes only the replayed token’s device session when a rotated token is reused', async () => {
       const registered = await registerUser('family@example.com');
       const original = (registered.body as unknown as AuthBody).refreshToken;
       const loggedIn = await loginUser('family@example.com');
@@ -208,9 +208,10 @@ describe('auth HTTP surface', () => {
 
       expect((await rotate(original)).status).toBe(401);
 
-      // reuse detection revoked every refresh token for the user, not just the replayed one
+      // reuse detection killed that device's rotation chain...
       expect((await rotate(fresh)).status).toBe(401);
-      expect((await rotate(sibling)).status).toBe(401);
+      // ...and nothing else: the second login is a different device session
+      expect((await rotate(sibling)).status).toBe(200);
     });
 
     it('returns 401 for an unknown refresh token and 400 for an empty one', async () => {
@@ -248,6 +249,43 @@ describe('auth HTTP surface', () => {
         .post('/api/v1/auth/logout')
         .send({ refreshToken: 'not-a-real-token' });
       expect(res.status).toBe(204);
+    });
+
+    it('leaves the user’s other devices signed in', async () => {
+      const webPair = (await registerUser('multi-device@example.com')).body as unknown as AuthBody;
+      // a second login is the second device (the phone), with its own session
+      const phone = (await loginUser('multi-device@example.com')).body as unknown as AuthBody;
+
+      const logout = await request(apiServer(t))
+        .post('/api/v1/auth/logout')
+        .send({ refreshToken: webPair.refreshToken });
+      expect(logout.status).toBe(204);
+
+      // the logged-out device dies immediately (sid), refresh included
+      const dead = await request(apiServer(t))
+        .get('/api/v1/assets')
+        .set(t.authHeader(webPair.accessToken));
+      expect(dead.status).toBe(401);
+      expect(
+        (
+          await request(apiServer(t))
+            .post('/api/v1/auth/refresh')
+            .send({ refreshToken: webPair.refreshToken })
+        ).status,
+      ).toBe(401);
+
+      // the other device keeps both its access token and its refresh token
+      const alive = await request(apiServer(t))
+        .get('/api/v1/assets')
+        .set(t.authHeader(phone.accessToken));
+      expect(alive.status).toBe(200);
+      expect(
+        (
+          await request(apiServer(t))
+            .post('/api/v1/auth/refresh')
+            .send({ refreshToken: phone.refreshToken })
+        ).status,
+      ).toBe(200);
     });
   });
 

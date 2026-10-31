@@ -17,6 +17,7 @@ import { bearerToken, clearAccessCookie, readAccessCookie, setAccessCookie } fro
 import { isActListRoute, isAdminRoute, isOpenRoute, isWorkerRoute } from './open-routes';
 import { ABSOLUTE_SESSION_MS } from './session.constants';
 import { User } from '../users/entities/user.entity';
+import { RefreshToken } from '../users/entities/refresh-token.entity';
 
 declare global {
   // ponytail: replaces the passport Request.user augmentation removed with passport
@@ -155,8 +156,9 @@ export class JwtAuthGuard implements CanActivate {
     // only the two known roles are accepted; anything else is a forged/foreign token
     if (payload.role !== 'user' && payload.role !== 'admin') throw new UnauthorizedException();
 
-    // session floor: logout/reuse bumps users.tokensValidAfter, killing access tokens minted
-    // before it. Runs for Bearer and cookie alike, before the sliding re-mint below.
+    // session floor: admin edits, reuse kills and account wipes bump users.tokensValidAfter,
+    // killing every access token minted before it. Runs for Bearer and cookie alike, before
+    // the sliding re-mint below.
     // ponytail: per-request O(1) PK lookup — Redis-cache the floor if this shows up hot
     if (this.dataSource) {
       if (typeof payload.iat !== 'number') throw new UnauthorizedException();
@@ -176,6 +178,19 @@ export class JwtAuthGuard implements CanActivate {
       // second granularity: iat is seconds while the floor carries ms
       if (row?.tokensValidAfter && Math.floor(row.tokensValidAfter.getTime() / 1000) > payload.iat)
         throw new UnauthorizedException();
+
+      // per-device session: logout (and a reuse kill) deletes this session's refresh rows, so
+      // the access tokens minted for it die at once without flooring the user's other devices.
+      // Tokens minted before per-device sessions carry no sid and keep the floor above.
+      // ponytail: per-request indexed existence check — fold into the users lookup or cache in
+      // Redis if this shows up hot
+      if (typeof payload.sid === 'string') {
+        const alive = await this.dataSource
+          .getRepository(RefreshToken)
+          .exists({ where: { sessionId: payload.sid } })
+          .catch(() => false);
+        if (!alive) throw new UnauthorizedException();
+      }
     }
 
     const user = { id: sub, email: payload.email, role: payload.role };
@@ -227,6 +242,8 @@ export class JwtAuthGuard implements CanActivate {
             ...(payload.act ? { act: payload.act } : {}),
             // the session start must survive every renewal or the cap resets each time
             ...(typeof payload.sst === 'number' ? { sst: payload.sst } : {}),
+            // the device session must survive too, or a renewed cookie would outlive logout
+            ...(typeof payload.sid === 'string' ? { sid: payload.sid } : {}),
           },
           { keyid: 'cur' },
         );

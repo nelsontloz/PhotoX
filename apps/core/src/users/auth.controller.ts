@@ -127,13 +127,18 @@ export class AuthController {
     const raw = dto.refreshToken ?? readRefreshCookie(req);
     if (raw) await this.authService.logout(raw);
     // A bearer-only client — or an attacker holding nothing but an access token — must still
-    // be able to end its own session: the access token identifies the caller, so the session
-    // floor is raised for that user even when no refresh token is presented. The token is
-    // verified with the USER secrets only, so a delegated service token fails closed and
-    // revokes nothing (revoking another user's sessions would be a DoS).
+    // be able to end its own session: the access token identifies the caller, so its session
+    // is revoked even when no refresh token is presented. The token is verified with the USER
+    // secrets only, so a delegated service token fails closed and revokes nothing (revoking
+    // another user's sessions would be a DoS).
     const accessToken = bearerToken(req) ?? readAccessCookie(req);
     const caller = accessToken ? this.tokenService.verifyAccessToken(accessToken) : null;
-    if (caller) await this.authService.revokeAllSessions(caller.sub);
+    // end only the caller's own device session (sid). A token minted before per-device
+    // sessions carries none — fall back to the user-wide revoke for it.
+    if (caller) {
+      if (caller.sid) await this.authService.revokeSession(caller.sid);
+      else await this.authService.revokeAllSessions(caller.sub);
+    }
     clearAccessCookie(res, req.secure);
     clearRefreshCookie(res, req.secure);
   }
