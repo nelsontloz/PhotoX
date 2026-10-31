@@ -1,61 +1,62 @@
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { LocalStorageService } from '@photox/shared-config'
-import { S3BackupService } from '../../backup/s3-backup.service'
-import { UserDeleteService } from './user-delete.service'
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { LocalStorageService } from '@photox/shared-config';
+import { S3BackupService } from '../../backup/s3-backup.service';
+import { UserDeleteService } from './user-delete.service';
 
-const USER_ID = '33333333-3333-4333-8333-333333333333'
-const EMAIL = 'doomed@example.com'
+const USER_ID = '33333333-3333-4333-8333-333333333333';
+const EMAIL = 'doomed@example.com';
 
 interface DeleteCall {
-  entity: { name: string }
-  criteria: unknown
+  entity: { name: string };
+  criteria: unknown;
 }
 
 function makeService(opts?: {
-  storageRoot?: string
-  user?: { id: string; email: string; role?: 'user' | 'admin' } | null
-  assetIds?: string[]
-  adminCount?: number
+  storageRoot?: string;
+  user?: { id: string; email: string; role?: 'user' | 'admin' } | null;
+  assetIds?: string[];
+  adminCount?: number;
 }) {
-  const ops: DeleteCall[] = []
-  const txnUser = opts?.user === undefined ? { id: USER_ID, email: EMAIL, role: 'user' } : opts.user
+  const ops: DeleteCall[] = [];
+  const txnUser =
+    opts?.user === undefined ? { id: USER_ID, email: EMAIL, role: 'user' } : opts.user;
   const manager = {
     delete: vi.fn((entity: { name: string }, criteria: unknown) => {
-      ops.push({ entity, criteria })
-      return { affected: 1 }
+      ops.push({ entity, criteria });
+      return { affected: 1 };
     }),
     update: vi.fn().mockResolvedValue({ affected: 1 }),
     find: vi.fn().mockResolvedValue([]),
     findOne: vi.fn().mockResolvedValue(txnUser),
     count: vi.fn().mockResolvedValue(opts?.adminCount ?? 2),
-  }
-  const repos = new Map<string, unknown>()
+  };
+  const repos = new Map<string, unknown>();
   const dataSource = {
     getRepository: vi.fn((cls: { name: string }) => {
       if (!repos.has(cls.name)) {
-        const rows = cls.name === 'Asset' ? (opts?.assetIds ?? []).map((id) => ({ id })) : []
-        repos.set(cls.name, { find: vi.fn().mockResolvedValue(rows) })
+        const rows = cls.name === 'Asset' ? (opts?.assetIds ?? []).map((id) => ({ id })) : [];
+        repos.set(cls.name, { find: vi.fn().mockResolvedValue(rows) });
       }
-      return repos.get(cls.name)
+      return repos.get(cls.name);
     }),
     transaction: vi.fn(async (fn: (m: unknown) => Promise<void>) => fn(manager)),
-  }
-  const storageRoot = opts?.storageRoot ?? mkdtempSync(join(tmpdir(), 'user-delete-unit-'))
+  };
+  const storageRoot = opts?.storageRoot ?? mkdtempSync(join(tmpdir(), 'user-delete-unit-'));
   const storage = {
     delete: vi.fn(async (key: string) => {
-      await new LocalStorageService().delete(key)
+      await new LocalStorageService().delete(key);
     }),
     pathFor: (key: string) => new LocalStorageService().pathFor(key),
-  }
+  };
   // point STORAGE_DIR at the scratch root for pathFor containment
-  process.env.STORAGE_DIR = storageRoot
+  process.env.STORAGE_DIR = storageRoot;
   const users = {
     findOne: vi
       .fn()
       .mockResolvedValue(opts?.user === undefined ? { id: USER_ID, email: EMAIL } : opts.user),
-  }
+  };
   const files = {
     find: vi
       .fn()
@@ -63,24 +64,24 @@ function makeService(opts?: {
         { storageKey: `originals/${USER_ID}/a.bin` },
         { storageKey: `derivatives/thumbnails/${USER_ID}/b.webp` },
       ]),
-  }
-  const bullMq = { getQueue: vi.fn() }
+  };
+  const bullMq = { getQueue: vi.fn() };
   const service = new UserDeleteService(
     dataSource as never,
     bullMq as never,
     storage as never,
     users as never,
     files as never,
-  )
-  return { service, ops, manager, users, files, bullMq, storage, storageRoot }
+  );
+  return { service, ops, manager, users, files, bullMq, storage, storageRoot };
 }
 
 describe('UserDeleteService.purge', () => {
   it('deletes in dependency order: sessions, shares, faces/persons, albums, assets, files, user', async () => {
-    const { service, ops, manager } = makeService({ assetIds: ['asset-1'] })
-    manager.find.mockResolvedValue([{ id: 'album-1' }])
-    await service.purge(USER_ID, 'backups/old/')
-    const names = ops.map((op) => op.entity.name)
+    const { service, ops, manager } = makeService({ assetIds: ['asset-1'] });
+    manager.find.mockResolvedValue([{ id: 'album-1' }]);
+    await service.purge(USER_ID, 'backups/old/');
+    const names = ops.map((op) => op.entity.name);
     const order = [
       'RefreshToken',
       'Share',
@@ -91,44 +92,44 @@ describe('UserDeleteService.purge', () => {
       'Asset',
       'FileRecord',
       'User',
-    ]
-    let cursor = -1
+    ];
+    let cursor = -1;
     for (const name of order) {
-      const idx = names.indexOf(name, cursor + 1)
-      expect(idx).toBeGreaterThan(cursor)
-      cursor = idx
+      const idx = names.indexOf(name, cursor + 1);
+      expect(idx).toBeGreaterThan(cursor);
+      cursor = idx;
     }
     // sessions also bump the access-token floor before the row dies
     const updateCall = manager.update.mock.calls[0] as unknown as [
       { name: string },
       string,
       { tokensValidAfter: unknown },
-    ]
-    expect(updateCall[0].name).toBe('User')
-    expect(updateCall[1]).toBe(USER_ID)
-    expect(updateCall[2].tokensValidAfter).toBeInstanceOf(Date)
-  })
+    ];
+    expect(updateCall[0].name).toBe('User');
+    expect(updateCall[1]).toBe(USER_ID);
+    expect(updateCall[2].tokensValidAfter).toBeInstanceOf(Date);
+  });
 
   it('returns a zero-count result without touching the DB when the row is missing', async () => {
-    const { service, manager } = makeService({ user: null })
-    const res = await service.purge(USER_ID, 'backups/old/')
+    const { service, manager } = makeService({ user: null });
+    const res = await service.purge(USER_ID, 'backups/old/');
     expect(res).toEqual({
       userId: USER_ID,
       backupPrefix: 'backups/old/',
       deletedFiles: 0,
       deletedStrays: 0,
-    })
-    expect(manager.delete).not.toHaveBeenCalled()
-  })
+    });
+    expect(manager.delete).not.toHaveBeenCalled();
+  });
 
   it('deletes collected bytes plus strays, never models/, never S3', async () => {
-    const storageRoot = mkdtempSync(join(tmpdir(), 'user-delete-unit-'))
-    const stray = join(storageRoot, 'derivatives', 'thumbnails', USER_ID, 'stray.webp')
-    mkdirSync(join(storageRoot, 'derivatives', 'thumbnails', USER_ID), { recursive: true })
-    writeFileSync(stray, Buffer.from('stray'))
-    const model = join(storageRoot, 'models', 'keep.onnx')
-    mkdirSync(join(storageRoot, 'models'), { recursive: true })
-    writeFileSync(model, Buffer.from('model'))
+    const storageRoot = mkdtempSync(join(tmpdir(), 'user-delete-unit-'));
+    const stray = join(storageRoot, 'derivatives', 'thumbnails', USER_ID, 'stray.webp');
+    mkdirSync(join(storageRoot, 'derivatives', 'thumbnails', USER_ID), { recursive: true });
+    writeFileSync(stray, Buffer.from('stray'));
+    const model = join(storageRoot, 'models', 'keep.onnx');
+    mkdirSync(join(storageRoot, 'models'), { recursive: true });
+    writeFileSync(model, Buffer.from('model'));
 
     const s3methods = [
       'listKeys',
@@ -141,94 +142,94 @@ describe('UserDeleteService.purge', () => {
       'headObject',
       'downloadToFile',
       'ensureBucket',
-    ] as const
+    ] as const;
     const s3Proto = S3BackupService.prototype as unknown as Record<
       string,
       (...args: never[]) => Promise<unknown>
-    >
-    const spies = s3methods.map((m) => vi.spyOn(s3Proto, m).mockResolvedValue([]))
+    >;
+    const spies = s3methods.map((m) => vi.spyOn(s3Proto, m).mockResolvedValue([]));
     try {
-      const { service, storage } = makeService({ storageRoot })
-      const res = await service.purge(USER_ID, 'backups/old/')
+      const { service, storage } = makeService({ storageRoot });
+      const res = await service.purge(USER_ID, 'backups/old/');
 
-      expect(res.backupPrefix).toContain(USER_ID)
-      const deletedKeys = storage.delete.mock.calls.map((c) => c[0])
-      expect(deletedKeys).toContain(`originals/${USER_ID}/a.bin`)
-      expect(deletedKeys).toContain(`derivatives/thumbnails/${USER_ID}/b.webp`)
-      expect(deletedKeys).toContain(`derivatives/thumbnails/${USER_ID}/stray.webp`)
+      expect(res.backupPrefix).toContain(USER_ID);
+      const deletedKeys = storage.delete.mock.calls.map((c) => c[0]);
+      expect(deletedKeys).toContain(`originals/${USER_ID}/a.bin`);
+      expect(deletedKeys).toContain(`derivatives/thumbnails/${USER_ID}/b.webp`);
+      expect(deletedKeys).toContain(`derivatives/thumbnails/${USER_ID}/stray.webp`);
       expect(deletedKeys.some((k) => k === 'models/keep.onnx' || k.startsWith('models/'))).toBe(
         false,
-      )
-      expect(existsSync(stray)).toBe(false)
-      expect(existsSync(model)).toBe(true)
-      expect(res.deletedStrays).toBe(1)
-      for (const spy of spies) expect(spy).not.toHaveBeenCalled()
+      );
+      expect(existsSync(stray)).toBe(false);
+      expect(existsSync(model)).toBe(true);
+      expect(res.deletedStrays).toBe(1);
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
     } finally {
-      for (const spy of spies) spy.mockRestore()
+      for (const spy of spies) spy.mockRestore();
     }
-  })
+  });
 
   it('re-checks last-admin inside the txn and 409s when only one admin remains', async () => {
     const { service, manager } = makeService({
       user: { id: USER_ID, email: EMAIL, role: 'admin' },
       adminCount: 1,
-    })
+    });
     await expect(service.purge(USER_ID, 'backups/old/')).rejects.toMatchObject({
       status: 409,
-    })
-    expect(manager.count).toHaveBeenCalled()
+    });
+    expect(manager.count).toHaveBeenCalled();
     // user row must not be deleted when the txn guard trips
-    expect(manager.delete.mock.calls.some((c) => c[0].name === 'User')).toBe(false)
-  })
+    expect(manager.delete.mock.calls.some((c) => c[0].name === 'User')).toBe(false);
+  });
 
   it('allows deleting an admin when another admin remains', async () => {
     const { service, manager } = makeService({
       user: { id: USER_ID, email: EMAIL, role: 'admin' },
       adminCount: 2,
-    })
-    manager.find.mockResolvedValue([])
-    const res = await service.purge(USER_ID, 'backups/old/')
-    expect(res.deletedFiles).toBe(2)
-    expect(manager.delete.mock.calls.some((c) => c[0].name === 'User')).toBe(true)
-  })
+    });
+    manager.find.mockResolvedValue([]);
+    const res = await service.purge(USER_ID, 'backups/old/');
+    expect(res.deletedFiles).toBe(2);
+    expect(manager.delete.mock.calls.some((c) => c[0].name === 'User')).toBe(true);
+  });
 
   it('skips the admin count for regular users', async () => {
     const { service, manager } = makeService({
       user: { id: USER_ID, email: EMAIL, role: 'user' },
-    })
-    manager.find.mockResolvedValue([])
-    await service.purge(USER_ID, 'backups/old/')
-    expect(manager.count).not.toHaveBeenCalled()
-  })
-})
+    });
+    manager.find.mockResolvedValue([]);
+    await service.purge(USER_ID, 'backups/old/');
+    expect(manager.count).not.toHaveBeenCalled();
+  });
+});
 
 describe('UserDeleteService.clearFinishedJob', () => {
   it('removes a retained completed job so the next enqueue is not swallowed', async () => {
-    const { service, bullMq } = makeService()
+    const { service, bullMq } = makeService();
     const job = {
       getState: vi.fn().mockResolvedValue('completed'),
       remove: vi.fn().mockResolvedValue(undefined),
-    }
-    bullMq.getQueue.mockReturnValue({ getJob: vi.fn().mockResolvedValue(job) })
-    await expect(service.clearFinishedJob(USER_ID)).resolves.toBe(true)
-    expect(job.remove).toHaveBeenCalled()
-  })
+    };
+    bullMq.getQueue.mockReturnValue({ getJob: vi.fn().mockResolvedValue(job) });
+    await expect(service.clearFinishedJob(USER_ID)).resolves.toBe(true);
+    expect(job.remove).toHaveBeenCalled();
+  });
 
   it('leaves an in-flight job alone so a double-click stays idempotent', async () => {
-    const { service, bullMq } = makeService()
-    const job = { getState: vi.fn().mockResolvedValue('active'), remove: vi.fn() }
-    bullMq.getQueue.mockReturnValue({ getJob: vi.fn().mockResolvedValue(job) })
-    await expect(service.clearFinishedJob(USER_ID)).resolves.toBe(false)
-    expect(job.remove).not.toHaveBeenCalled()
-  })
+    const { service, bullMq } = makeService();
+    const job = { getState: vi.fn().mockResolvedValue('active'), remove: vi.fn() };
+    bullMq.getQueue.mockReturnValue({ getJob: vi.fn().mockResolvedValue(job) });
+    await expect(service.clearFinishedJob(USER_ID)).resolves.toBe(false);
+    expect(job.remove).not.toHaveBeenCalled();
+  });
 
   it('returns false when no job exists and tolerates queue failures', async () => {
-    const { service, bullMq } = makeService()
-    bullMq.getQueue.mockReturnValue({ getJob: vi.fn().mockResolvedValue(null) })
-    await expect(service.clearFinishedJob(USER_ID)).resolves.toBe(false)
+    const { service, bullMq } = makeService();
+    bullMq.getQueue.mockReturnValue({ getJob: vi.fn().mockResolvedValue(null) });
+    await expect(service.clearFinishedJob(USER_ID)).resolves.toBe(false);
     bullMq.getQueue.mockReturnValue({
       getJob: vi.fn().mockRejectedValue(new Error('redis down')),
-    })
-    await expect(service.clearFinishedJob(USER_ID)).resolves.toBe(false)
-  })
-})
+    });
+    await expect(service.clearFinishedJob(USER_ID)).resolves.toBe(false);
+  });
+});

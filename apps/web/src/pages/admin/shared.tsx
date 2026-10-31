@@ -1,7 +1,7 @@
-import { type ReactNode } from 'react'
-import { FaUser, FaUserShield } from 'react-icons/fa6'
-import { ConfirmShell } from '../../components/ConfirmProvider'
-import { Button } from './ui'
+import { type ReactNode } from 'react';
+import { FaUser, FaUserShield } from 'react-icons/fa6';
+import { ConfirmShell } from '../../components/ConfirmProvider';
+import { Button } from './ui';
 
 // --- cross-tab pieces -------------------------------------------------------------------
 // Bits used by more than one admin tab (confirm dialogs, retry line, role pill). Chrome that
@@ -15,7 +15,7 @@ export function InlineError({ message, onRetry }: { message: string; onRetry: ()
         Retry
       </Button>
     </div>
-  )
+  );
 }
 
 /**
@@ -30,11 +30,11 @@ export function ConfirmDialog({
   onClose,
   children,
 }: {
-  title: string
-  confirmLabel?: string
-  onConfirm: () => void
-  onClose: () => void
-  children: ReactNode
+  title: string;
+  confirmLabel?: string;
+  onConfirm: () => void;
+  onClose: () => void;
+  children: ReactNode;
 }) {
   return (
     <ConfirmShell
@@ -46,12 +46,12 @@ export function ConfirmDialog({
     >
       {children}
     </ConfirmShell>
-  )
+  );
 }
 
 /** Shape check shared by the account dialogs; the core validates for real. */
 export function emailLooksValid(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
 export function RoleBadge({ role }: { role: 'user' | 'admin' }) {
@@ -61,12 +61,12 @@ export function RoleBadge({ role }: { role: 'user' | 'admin' }) {
         <FaUserShield className="text-[10px]" />
         admin
       </span>
-    )
+    );
   }
   return (
     <span className="inline-flex items-center gap-1 text-xs font-medium text-on-surface-variant bg-surface-container-highest rounded-full px-2 py-0.5">
       <FaUser className="text-[10px]" />
       user
     </span>
-  )
+  );
 }

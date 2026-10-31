@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   FaArrowsRotate,
   FaBrain,
@@ -6,7 +6,7 @@ import {
   FaObjectGroup,
   FaSpinner,
   FaWandMagicSparkles,
-} from 'react-icons/fa6'
+} from 'react-icons/fa6';
 import {
   getFaceDetection,
   reclusterFaces,
@@ -19,7 +19,7 @@ import {
   type EmbeddingReprocessResponse,
   type PipelineRun,
   type PipelineResponse,
-} from '../../api/admin'
+} from '../../api/admin';
 import {
   AdminCard,
   AdminToast,
@@ -29,18 +29,18 @@ import {
   StatusPill,
   cx,
   type StatRow,
-} from './ui'
-import { ConfirmDialog, InlineError } from './shared'
-import { useAsyncFetch } from '../../hooks/useAsyncFetch'
+} from './ui';
+import { ConfirmDialog, InlineError } from './shared';
+import { useAsyncFetch } from '../../hooks/useAsyncFetch';
 
 // --- model card chrome + queue polling --------------------------------------------------
 
 interface ModelCardHeaderProps {
-  icon: typeof FaBrain
-  title: string
-  chip?: string
-  tone: 'ok' | 'warn' | 'muted'
-  statusLabel: string
+  icon: typeof FaBrain;
+  title: string;
+  chip?: string;
+  tone: 'ok' | 'warn' | 'muted';
+  statusLabel: string;
 }
 
 function ModelCardHeader({ icon: Icon, title, chip, tone, statusLabel }: ModelCardHeaderProps) {
@@ -57,7 +57,7 @@ function ModelCardHeader({ icon: Icon, title, chip, tone, statusLabel }: ModelCa
         </span>
       ) : null}
     </div>
-  )
+  );
 }
 
 /**
@@ -68,45 +68,45 @@ function useQueuePoll<T extends ReprocessStatus<unknown>>(
   getStatus: () => Promise<T>,
   runToken: number,
 ): T | null {
-  const [status, setStatus] = useState<T | null>(null)
+  const [status, setStatus] = useState<T | null>(null);
   useEffect(() => {
-    let cancelled = false
-    let timer = 0
-    let failures = 0
+    let cancelled = false;
+    let timer = 0;
+    let failures = 0;
     const tick = () => {
       getStatus()
         .then((res) => {
-          if (cancelled) return
-          failures = 0
-          setStatus(res)
+          if (cancelled) return;
+          failures = 0;
+          setStatus(res);
           if (res.queue.waiting + res.queue.active > 0) {
-            timer = window.setTimeout(tick, 3000)
+            timer = window.setTimeout(tick, 3000);
           }
         })
         .catch(() => {
-          if (cancelled) return
-          failures += 1
-          if (failures < 5) timer = window.setTimeout(tick, 3000)
-        })
-    }
-    tick()
+          if (cancelled) return;
+          failures += 1;
+          if (failures < 5) timer = window.setTimeout(tick, 3000);
+        });
+    };
+    tick();
     return () => {
-      cancelled = true
-      window.clearTimeout(timer)
-    }
-  }, [getStatus, runToken])
-  return status
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [getStatus, runToken]);
+  return status;
 }
 
 /** The reprocess counters both card shapes render from a queue status. */
 function useRunProgress<L extends PipelineRun>(status: ReprocessStatus<L> | null) {
-  const lastRun = status?.lastRun ?? null
-  const runQueue = status ? status.queue.waiting + status.queue.active : 0
-  const running = runQueue > 0
-  const requested = lastRun?.enqueued ?? 0
-  const done = Math.max(0, Math.min(requested, requested - runQueue))
-  const percent = requested > 0 ? Math.round((done / requested) * 100) : 0
-  return { lastRun, runQueue, running, requested, done, percent }
+  const lastRun = status?.lastRun ?? null;
+  const runQueue = status ? status.queue.waiting + status.queue.active : 0;
+  const running = runQueue > 0;
+  const requested = lastRun?.enqueued ?? 0;
+  const done = Math.max(0, Math.min(requested, requested - runQueue));
+  const percent = requested > 0 ? Math.round((done / requested) * 100) : 0;
+  return { lastRun, runQueue, running, requested, done, percent };
 }
 
 function RunProgress({
@@ -117,12 +117,12 @@ function RunProgress({
   done,
   percent,
 }: {
-  runningLabel: string
-  progressLabel: string
-  runQueue: number
-  requested: number
-  done: number
-  percent: number
+  runningLabel: string;
+  progressLabel: string;
+  runQueue: number;
+  requested: number;
+  done: number;
+  percent: number;
 }) {
   return (
     <div className="mt-4">
@@ -137,7 +137,7 @@ function RunProgress({
       </div>
       <ProgressBar value={done} max={requested} label={progressLabel} />
     </div>
-  )
+  );
 }
 
 // --- facial detection & clustering ------------------------------------------------------
@@ -146,10 +146,10 @@ function RunProgress({
  * SCRFD-10G is the only face detector the worker ships, so there is nothing to choose: the card
  * states it as a fixed fact and reports only whether its model file is provisioned on disk.
  */
-const FACE_DETECTOR_LABEL = 'SCRFD 10G'
+const FACE_DETECTOR_LABEL = 'SCRFD 10G';
 
-const SCRFD_PROVISION_CMD = 'pnpm --filter @photox/worker-service face-model'
-const VISION_PROVISION_CMD = 'pnpm --filter @photox/worker-service vision-model'
+const SCRFD_PROVISION_CMD = 'pnpm --filter @photox/worker-service face-model';
+const VISION_PROVISION_CMD = 'pnpm --filter @photox/worker-service vision-model';
 
 /** Amber provisioning note shared by the card banner and its confirm dialog. */
 function ModelMissingNote({ message }: { message: string }) {
@@ -160,59 +160,59 @@ function ModelMissingNote({ message }: { message: string }) {
         {SCRFD_PROVISION_CMD}
       </code>
     </div>
-  )
+  );
 }
 
 /** The detector + reprocess card: the generic pipeline card with the detector fact + clustering. */
 export function FacialDetectionCard() {
-  const [version, setVersion] = useState(0)
+  const [version, setVersion] = useState(0);
   const { data, loading, error } = useAsyncFetch(() => getFaceDetection(), {
     refreshKey: version,
     errorMessage: 'Failed to load face detection settings',
     loadingMode: 'always',
-  })
+  });
 
-  const [clustering, setClustering] = useState(false)
-  const [clusterResult, setClusterResult] = useState<string | null>(null)
-  const [clusterError, setClusterError] = useState<string | null>(null)
+  const [clustering, setClustering] = useState(false);
+  const [clusterResult, setClusterResult] = useState<string | null>(null);
+  const [clusterError, setClusterError] = useState<string | null>(null);
 
-  const getFaceStatus = useCallback(() => getPipelineStatus<FacePipelineRun>('faces'), [])
-  const reprocessFaces = useCallback(() => reprocessPipeline<FaceReprocessResponse>('faces'), [])
+  const getFaceStatus = useCallback(() => getPipelineStatus<FacePipelineRun>('faces'), []);
+  const reprocessFaces = useCallback(() => reprocessPipeline<FaceReprocessResponse>('faces'), []);
 
   const onRecluster = async () => {
-    if (clustering) return
-    setClustering(true)
-    setClusterError(null)
-    setClusterResult(null)
+    if (clustering) return;
+    setClustering(true);
+    setClusterError(null);
+    setClusterResult(null);
     try {
-      const res = await reclusterFaces()
+      const res = await reclusterFaces();
       setClusterResult(
         res.enqueued > 0
           ? `Clustering queued for ${res.enqueued.toLocaleString()} ${res.enqueued === 1 ? 'user' : 'users'}.`
           : 'Nothing to cluster — no faces yet.',
-      )
+      );
     } catch (err) {
-      setClusterError(err instanceof Error ? err.message : 'Recluster failed')
+      setClusterError(err instanceof Error ? err.message : 'Recluster failed');
     } finally {
-      setClustering(false)
+      setClustering(false);
     }
-  }
+  };
 
-  const modelMissing = data !== undefined && !data.modelAvailable
+  const modelMissing = data !== undefined && !data.modelAvailable;
   const pillTone: 'ok' | 'warn' | 'muted' = error
     ? 'muted'
     : loading
       ? 'muted'
       : modelMissing
         ? 'warn'
-        : 'ok'
+        : 'ok';
   const pillLabel = error
     ? 'Unavailable'
     : loading || !data
       ? 'Checking…'
       : modelMissing
         ? 'Model missing'
-        : 'Online'
+        : 'Online';
 
   const pipeline: ReprocessPipeline<FacePipelineRun> = {
     icon: FaFaceSmile,
@@ -270,85 +270,85 @@ export function FacialDetectionCard() {
     dialogExtra: modelMissing && (
       <ModelMissingNote message="The SCRFD 10G model isn't installed — these jobs will fail until it is provisioned." />
     ),
-  }
+  };
 
-  return <ReprocessPipelineCard pipeline={pipeline} />
+  return <ReprocessPipelineCard pipeline={pipeline} />;
 }
 
 // --- single-pipeline model cards (embeddings / detections) ------------------------------
 
 interface ReprocessPipeline<L extends PipelineRun> {
-  icon: typeof FaBrain
-  title: string
-  chip?: string
-  prose: string
-  note?: ReactNode
-  emptyLabel: string
-  runningLabel: string
-  progressLabel: string
-  buttonLabel: string
-  dialogTitle: string
-  dialogBody: string
-  getStatus: () => Promise<ReprocessStatus<L>>
-  reprocess: () => Promise<{ enqueued: number; total: number }>
-  resultText: (res: { enqueued: number; total: number }) => string
-  statRows: (status: ReprocessStatus<L> | null) => StatRow[]
+  icon: typeof FaBrain;
+  title: string;
+  chip?: string;
+  prose: string;
+  note?: ReactNode;
+  emptyLabel: string;
+  runningLabel: string;
+  progressLabel: string;
+  buttonLabel: string;
+  dialogTitle: string;
+  dialogBody: string;
+  getStatus: () => Promise<ReprocessStatus<L>>;
+  reprocess: () => Promise<{ enqueued: number; total: number }>;
+  resultText: (res: { enqueued: number; total: number }) => string;
+  statRows: (status: ReprocessStatus<L> | null) => StatRow[];
   /** Header pill; defaults to Online once queue status loads. */
-  statusTone?: 'ok' | 'warn' | 'muted'
-  statusLabel?: string
+  statusTone?: 'ok' | 'warn' | 'muted';
+  statusLabel?: string;
   /** Extra content between the prose and the empty/last-run lines (error line, model banner). */
-  beforeStatus?: ReactNode
+  beforeStatus?: ReactNode;
   /** Extra toasts after the result/error pair. */
-  extraToasts?: ReactNode
+  extraToasts?: ReactNode;
   /** Replaces the default right-aligned footer row. */
-  footerClassName?: string
-  footerStart?: ReactNode
-  extraActions?: ReactNode
+  footerClassName?: string;
+  footerStart?: ReactNode;
+  extraActions?: ReactNode;
   /** Extra dialog body under the standard paragraph. */
-  dialogExtra?: ReactNode
+  dialogExtra?: ReactNode;
 }
 
 function queueValue(status: ReprocessStatus<unknown> | null): string {
-  if (!status) return '—'
-  const depth = status.queue.waiting + status.queue.active
-  return depth > 0 ? depth.toLocaleString() : 'Idle'
+  if (!status) return '—';
+  const depth = status.queue.waiting + status.queue.active;
+  return depth > 0 ? depth.toLocaleString() : 'Idle';
 }
 
 function lastRunValue(lastRun: PipelineRun | null): string {
-  return lastRun ? new Date(lastRun.startedAt).toLocaleString() : '—'
+  return lastRun ? new Date(lastRun.startedAt).toLocaleString() : '—';
 }
 
 function ReprocessPipelineCard<L extends PipelineRun>({
   pipeline,
 }: {
-  pipeline: ReprocessPipeline<L>
+  pipeline: ReprocessPipeline<L>;
 }) {
-  const { getStatus, reprocess, resultText } = pipeline
-  const [confirming, setConfirming] = useState(false)
-  const [inFlight, setInFlight] = useState(false)
-  const [result, setResult] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [runToken, setRunToken] = useState(0)
+  const { getStatus, reprocess, resultText } = pipeline;
+  const [confirming, setConfirming] = useState(false);
+  const [inFlight, setInFlight] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [runToken, setRunToken] = useState(0);
 
-  const status = useQueuePoll(getStatus, runToken)
+  const status = useQueuePoll(getStatus, runToken);
 
   const onConfirm = async () => {
-    setConfirming(false)
-    setInFlight(true)
-    setError(null)
-    setResult(null)
+    setConfirming(false);
+    setInFlight(true);
+    setError(null);
+    setResult(null);
     try {
-      const res = await reprocess()
-      setResult(resultText(res))
-      setRunToken((v) => v + 1)
+      const res = await reprocess();
+      setResult(resultText(res));
+      setRunToken((v) => v + 1);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Reprocess failed')
+      setError(err instanceof Error ? err.message : 'Reprocess failed');
     } finally {
-      setInFlight(false)
+      setInFlight(false);
     }
-  }
+  };
 
-  const { lastRun, runQueue, running, requested, done, percent } = useRunProgress(status)
+  const { lastRun, runQueue, running, requested, done, percent } = useRunProgress(status);
 
   const confirmButton = (
     <Button
@@ -358,7 +358,7 @@ function ReprocessPipelineCard<L extends PipelineRun>({
     >
       {inFlight ? 'Enqueuing…' : pipeline.buttonLabel}
     </Button>
-  )
+  );
 
   return (
     <AdminCard className="flex flex-col">
@@ -431,7 +431,7 @@ function ReprocessPipelineCard<L extends PipelineRun>({
         </ConfirmDialog>
       )}
     </AdminCard>
-  )
+  );
 }
 
 // Brief said chip/label = "Embedding dim 512" via FACE_EMBEDDING_DIM; 512 is the *face* embedding
@@ -440,7 +440,7 @@ function ReprocessPipelineCard<L extends PipelineRun>({
 // ponytail: the dim is mirrored, not imported — vite's commonjs pass only covers node_modules, so
 // a value import from the (CJS) workspace package fails the build. Upgrade path: add the workspace
 // package to build.commonjsOptions.include.
-const SEARCH_EMBEDDING_DIM = 768
+const SEARCH_EMBEDDING_DIM = 768;
 
 const EMBEDDINGS_PIPELINE: ReprocessPipeline<EmbeddingPipelineRun> = {
   icon: FaWandMagicSparkles,
@@ -469,7 +469,7 @@ const EMBEDDINGS_PIPELINE: ReprocessPipeline<EmbeddingPipelineRun> = {
     { label: 'Embedding dim', value: SEARCH_EMBEDDING_DIM },
     { label: 'Last run', value: lastRunValue(status?.lastRun ?? null) },
   ],
-}
+};
 
 const DETECTIONS_PIPELINE: ReprocessPipeline<PipelineRun> = {
   icon: FaObjectGroup,
@@ -491,12 +491,12 @@ const DETECTIONS_PIPELINE: ReprocessPipeline<PipelineRun> = {
     { label: 'Last run', value: lastRunValue(status?.lastRun ?? null) },
     { label: 'Queue', value: queueValue(status) },
   ],
-}
+};
 
 export function EmbeddingsReprocessSection() {
-  return <ReprocessPipelineCard pipeline={EMBEDDINGS_PIPELINE} />
+  return <ReprocessPipelineCard pipeline={EMBEDDINGS_PIPELINE} />;
 }
 
 export function DetectionsReprocessSection() {
-  return <ReprocessPipelineCard pipeline={DETECTIONS_PIPELINE} />
+  return <ReprocessPipelineCard pipeline={DETECTIONS_PIPELINE} />;
 }

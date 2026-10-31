@@ -2,29 +2,29 @@
 // entry timers fired staggered in scroll order. Capture-phase window listener catches every scroll
 // container. 200ms is the knob: below the time it takes to paint a cold screen off local disk, so
 // the gate is not the dominant term; per-element timers if this ever shows in profiles.
-const SETTLE_MS = 200
+const SETTLE_MS = 200;
 
-let settleTimer: ReturnType<typeof setTimeout> | undefined
-let idle = true
-const waiters = new Set<() => void>()
+let settleTimer: ReturnType<typeof setTimeout> | undefined;
+let idle = true;
+const waiters = new Set<() => void>();
 
 window.addEventListener(
   'scroll',
   () => {
-    idle = false
-    clearTimeout(settleTimer)
+    idle = false;
+    clearTimeout(settleTimer);
     settleTimer = setTimeout(() => {
-      idle = true
-      for (const w of waiters) w()
-      waiters.clear()
-    }, SETTLE_MS)
+      idle = true;
+      for (const w of waiters) w();
+      waiters.clear();
+    }, SETTLE_MS);
   },
   { capture: true, passive: true },
-)
+);
 
 /** Run `cb` now if scrolling is settled, else once it settles. Returns a cancel function. */
 export function whenScrollIdle(cb: () => void): () => void {
-  if (idle) cb()
-  else waiters.add(cb)
-  return () => waiters.delete(cb)
+  if (idle) cb();
+  else waiters.add(cb);
+  return () => waiters.delete(cb);
 }

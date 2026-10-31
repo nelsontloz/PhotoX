@@ -1,22 +1,22 @@
-import { lazy, Suspense } from 'react'
-import { Navigate, Outlet, useRoutes, type RouteObject } from 'react-router-dom'
-import { LoadingState } from './components/StateViews'
-import { RequireAuth } from './components/RequireAuth'
+import { lazy, Suspense } from 'react';
+import { Navigate, Outlet, useRoutes, type RouteObject } from 'react-router-dom';
+import { LoadingState } from './components/StateViews';
+import { RequireAuth } from './components/RequireAuth';
 
-const HomePage = lazy(() => import('./pages/index'))
-const AdminPage = lazy(() => import('./pages/admin'))
-const AlbumsPage = lazy(() => import('./pages/albums'))
-const AlbumDetailPage = lazy(() => import('./pages/albums/[id]'))
-const FavoritesPage = lazy(() => import('./pages/favorites'))
-const LoginPage = lazy(() => import('./pages/login'))
-const PeoplePage = lazy(() => import('./pages/people'))
-const PersonDetailPage = lazy(() => import('./pages/people/[id]'))
-const PlacesPage = lazy(() => import('./pages/places'))
-const RegisterPage = lazy(() => import('./pages/register'))
-const SearchPage = lazy(() => import('./pages/search'))
-const SharePage = lazy(() => import('./pages/share/[token]'))
-const SharedPage = lazy(() => import('./pages/shared'))
-const TrashPage = lazy(() => import('./pages/trash'))
+const HomePage = lazy(() => import('./pages/index'));
+const AdminPage = lazy(() => import('./pages/admin'));
+const AlbumsPage = lazy(() => import('./pages/albums'));
+const AlbumDetailPage = lazy(() => import('./pages/albums/[id]'));
+const FavoritesPage = lazy(() => import('./pages/favorites'));
+const LoginPage = lazy(() => import('./pages/login'));
+const PeoplePage = lazy(() => import('./pages/people'));
+const PersonDetailPage = lazy(() => import('./pages/people/[id]'));
+const PlacesPage = lazy(() => import('./pages/places'));
+const RegisterPage = lazy(() => import('./pages/register'));
+const SearchPage = lazy(() => import('./pages/search'));
+const SharePage = lazy(() => import('./pages/share/[token]'));
+const SharedPage = lazy(() => import('./pages/shared'));
+const TrashPage = lazy(() => import('./pages/trash'));
 
 const routes: RouteObject[] = [
   { path: '/login', element: <LoginPage /> },
@@ -43,13 +43,13 @@ const routes: RouteObject[] = [
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },
-]
+];
 
 export function App() {
-  const element = useRoutes(routes)
+  const element = useRoutes(routes);
   return (
     <Suspense fallback={<LoadingState className="flex items-center justify-center h-screen" />}>
       {element}
     </Suspense>
-  )
+  );
 }

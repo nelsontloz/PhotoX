@@ -1,14 +1,14 @@
-import { useState } from 'react'
-import type { Asset } from '@photox/shared-types'
-import { AssetThumb } from '../AssetThumb'
-import type { RelatedAssets } from './useRelatedAssets'
+import { useState } from 'react';
+import type { Asset } from '@photox/shared-types';
+import { AssetThumb } from '../AssetThumb';
+import type { RelatedAssets } from './useRelatedAssets';
 
-type RelatedTab = 'similar' | 'duplicates'
+type RelatedTab = 'similar' | 'duplicates';
 
 interface ViewerRelatedTrayProps {
-  similar: RelatedAssets
-  duplicates: RelatedAssets
-  onOpenAsset?: (asset: Asset) => void
+  similar: RelatedAssets;
+  duplicates: RelatedAssets;
+  onOpenAsset?: (asset: Asset) => void;
 }
 
 /**
@@ -16,15 +16,15 @@ interface ViewerRelatedTrayProps {
  * thumb row. Renders nothing until a section has content — no empty blocks, no error noise.
  */
 export function ViewerRelatedTray({ similar, duplicates, onOpenAsset }: ViewerRelatedTrayProps) {
-  const [active, setActive] = useState<RelatedTab | null>(null)
+  const [active, setActive] = useState<RelatedTab | null>(null);
 
-  if (!onOpenAsset) return null
+  if (!onOpenAsset) return null;
   // Items, not status: while the next asset's fetch is in flight the hook serves the previous
   // asset's results with status 'loading' (stale-while-revalidate). Gating on 'ready' here made
   // the tray unmount on every next/prev click and flash the media stage.
-  const similarVisible = similar.items.length > 0
-  const duplicatesVisible = duplicates.total > 0
-  if (!similarVisible && !duplicatesVisible) return null
+  const similarVisible = similar.items.length > 0;
+  const duplicatesVisible = duplicates.total > 0;
+  if (!similarVisible && !duplicatesVisible) return null;
 
   // the active tab can vanish when the viewer moves to another asset
   const shown: RelatedTab | null =
@@ -32,19 +32,20 @@ export function ViewerRelatedTray({ similar, duplicates, onOpenAsset }: ViewerRe
       ? 'similar'
       : active === 'duplicates' && duplicatesVisible
         ? 'duplicates'
-        : null
-  const items = shown === 'similar' ? similar.items : shown === 'duplicates' ? duplicates.items : []
+        : null;
+  const items =
+    shown === 'similar' ? similar.items : shown === 'duplicates' ? duplicates.items : [];
   const countLabel =
     shown === 'similar'
       ? `${similar.total} similar ${similar.total === 1 ? 'photo' : 'photos'}`
       : shown === 'duplicates'
         ? `${duplicates.total} possible ${duplicates.total === 1 ? 'duplicate' : 'duplicates'}`
-        : ''
+        : '';
 
   const tabClass = (tab: RelatedTab) =>
     `text-xs font-medium transition-colors ${
       shown === tab ? 'text-primary' : 'text-white/60 hover:text-white'
-    }`
+    }`;
 
   return (
     <section className="shrink-0 bg-black/70 backdrop-blur border-t border-white/10 px-4 sm:px-6 py-2">
@@ -89,5 +90,5 @@ export function ViewerRelatedTray({ similar, duplicates, onOpenAsset }: ViewerRe
         </div>
       )}
     </section>
-  )
+  );
 }

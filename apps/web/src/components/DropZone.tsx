@@ -1,44 +1,44 @@
-import { useState, useRef, type ReactNode } from 'react'
-import { FaCloudArrowUp } from 'react-icons/fa6'
-import { enqueueFiles } from '../lib/upload'
+import { useState, useRef, type ReactNode } from 'react';
+import { FaCloudArrowUp } from 'react-icons/fa6';
+import { enqueueFiles } from '../lib/upload';
 
 interface DropZoneProps {
-  children: ReactNode
-  className?: string
+  children: ReactNode;
+  className?: string;
 }
 
 export function DropZone({ children, className }: DropZoneProps) {
-  const [isDragging, setIsDragging] = useState(false)
-  const dragCounter = useRef(0)
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
 
   const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault()
-    dragCounter.current += 1
-    if (dragCounter.current === 1) setIsDragging(true)
-  }
+    e.preventDefault();
+    dragCounter.current += 1;
+    if (dragCounter.current === 1) setIsDragging(true);
+  };
 
   const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-  }
+    e.preventDefault();
+  };
 
   const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault()
-    dragCounter.current -= 1
+    e.preventDefault();
+    dragCounter.current -= 1;
     if (dragCounter.current <= 0) {
-      dragCounter.current = 0
-      setIsDragging(false)
+      dragCounter.current = 0;
+      setIsDragging(false);
     }
-  }
+  };
 
   const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    dragCounter.current = 0
-    setIsDragging(false)
+    e.preventDefault();
+    dragCounter.current = 0;
+    setIsDragging(false);
     const files = Array.from(e.dataTransfer.files).filter(
       (f) => f.type.startsWith('image/') || f.type.startsWith('video/'),
-    )
-    enqueueFiles(files)
-  }
+    );
+    enqueueFiles(files);
+  };
 
   return (
     <div
@@ -65,5 +65,5 @@ export function DropZone({ children, className }: DropZoneProps) {
         </div>
       )}
     </div>
-  )
+  );
 }

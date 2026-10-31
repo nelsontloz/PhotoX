@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { FaCircleCheck, FaCircleExclamation } from 'react-icons/fa6'
+import { useEffect, useState, type ReactNode } from 'react';
+import { FaCircleCheck, FaCircleExclamation } from 'react-icons/fa6';
 
 /**
  * Shared admin-console primitives. Every admin section used to copy-paste the same header/card
@@ -8,7 +8,7 @@ import { FaCircleCheck, FaCircleExclamation } from 'react-icons/fa6'
 
 /** Join conditional class fragments (the repo deliberately has no clsx dependency). */
 export function cx(...parts: (string | false | null | undefined)[]): string {
-  return parts.filter((part): part is string => Boolean(part)).join(' ')
+  return parts.filter((part): part is string => Boolean(part)).join(' ');
 }
 
 /**
@@ -26,15 +26,15 @@ export function AdminSection({
   card = true,
   headingTag: Heading = 'h2',
 }: {
-  title: string
-  subtitle?: string
-  icon: ReactNode
-  badge?: ReactNode
-  actions?: ReactNode
-  children: ReactNode
-  className?: string
-  card?: boolean
-  headingTag?: 'h2' | 'h3'
+  title: string;
+  subtitle?: string;
+  icon: ReactNode;
+  badge?: ReactNode;
+  actions?: ReactNode;
+  children: ReactNode;
+  className?: string;
+  card?: boolean;
+  headingTag?: 'h2' | 'h3';
 }) {
   const body = (
     <>
@@ -60,12 +60,12 @@ export function AdminSection({
       </div>
       {children}
     </>
-  )
+  );
   return card ? (
     <AdminCard className={className}>{body}</AdminCard>
   ) : (
     <section className={className}>{body}</section>
-  )
+  );
 }
 
 export function AdminCard({ children, className }: { children: ReactNode; className?: string }) {
@@ -78,12 +78,12 @@ export function AdminCard({ children, className }: { children: ReactNode; classN
     >
       {children}
     </div>
-  )
+  );
 }
 
 /** Grid-column class for a tile count: 2 → 2, 3 → 3, anything else → 4. */
 export function colsFor(n: number): string {
-  return n === 2 ? 'grid-cols-2' : n === 3 ? 'grid-cols-3' : 'grid-cols-4'
+  return n === 2 ? 'grid-cols-2' : n === 3 ? 'grid-cols-3' : 'grid-cols-4';
 }
 
 /**
@@ -95,9 +95,9 @@ export function CountTile({
   label,
   boxed = false,
 }: {
-  count: number
-  label: string
-  boxed?: boolean
+  count: number;
+  label: string;
+  boxed?: boolean;
 }) {
   return (
     <div className={boxed ? 'bg-surface-container rounded-lg p-4 text-center' : 'text-center'}>
@@ -111,7 +111,7 @@ export function CountTile({
       </span>
       <p className="text-label-xs uppercase font-mono text-outline mt-1">{label}</p>
     </div>
-  )
+  );
 }
 
 export function MetricTile({
@@ -122,16 +122,16 @@ export function MetricTile({
   barPercent,
   bar,
 }: {
-  label: string
-  value: ReactNode
-  icon: ReactNode
-  meta?: ReactNode
-  barPercent?: number
+  label: string;
+  value: ReactNode;
+  icon: ReactNode;
+  meta?: ReactNode;
+  barPercent?: number;
   /** Advanced slot: renders instead of the default percent track (e.g. a stacked allocation bar). */
-  bar?: ReactNode
+  bar?: ReactNode;
 }) {
   const percent =
-    barPercent == null || !Number.isFinite(barPercent) ? 0 : Math.min(100, Math.max(0, barPercent))
+    barPercent == null || !Number.isFinite(barPercent) ? 0 : Math.min(100, Math.max(0, barPercent));
   const track =
     barPercent != null ? (
       <div
@@ -144,7 +144,7 @@ export function MetricTile({
       >
         <div className="h-full rounded-full bg-primary" style={{ width: `${percent}%` }} />
       </div>
-    ) : null
+    ) : null;
 
   return (
     <AdminCard>
@@ -160,40 +160,40 @@ export function MetricTile({
       </div>
       {bar ?? track}
     </AdminCard>
-  )
+  );
 }
 
 const BUTTON_BASE =
-  'inline-flex items-center gap-2 text-xs font-semibold rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low'
+  'inline-flex items-center gap-2 text-xs font-semibold rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low';
 
 const OUTLINE_BASE =
-  'inline-flex items-center justify-center gap-1.5 rounded-lg border font-semibold transition-colors'
+  'inline-flex items-center justify-center gap-1.5 rounded-lg border font-semibold transition-colors';
 
 const FOCUS_PRIMARY =
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low'
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low';
 const FOCUS_DANGER =
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-status-error focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low'
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-status-error focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low';
 
 const ICON_BUTTON_CLASS =
-  'p-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low'
+  'p-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low';
 
 type ButtonVariant =
-  'primary' | 'ghost' | 'secondary' | 'danger' | 'dangerFlat' | 'outlinePrimary' | 'icon'
+  'primary' | 'ghost' | 'secondary' | 'danger' | 'dangerFlat' | 'outlinePrimary' | 'icon';
 
 interface ButtonProps {
   /** Visual treatment. Primary/ghost are the filled compact buttons; the outline variants back tables. */
-  variant?: ButtonVariant
-  size?: 'sm' | 'md' | 'lg'
+  variant?: ButtonVariant;
+  size?: 'sm' | 'md' | 'lg';
   /** Outline variants only: `accent` tints the border primary for the one safe/main action in a row. */
-  tone?: 'neutral' | 'accent'
-  onClick?: () => void
-  disabled?: boolean
-  icon?: ReactNode
-  title?: string
-  ariaLabel?: string
+  tone?: 'neutral' | 'accent';
+  onClick?: () => void;
+  disabled?: boolean;
+  icon?: ReactNode;
+  title?: string;
+  ariaLabel?: string;
   /** Icon variant only: replaces the default icon-button classes entirely. */
-  className?: string
-  children?: ReactNode
+  className?: string;
+  children?: ReactNode;
 }
 
 /**
@@ -217,15 +217,15 @@ export function Button({
       ? 'px-2.5 py-1.5 text-[11px]'
       : size === 'lg'
         ? 'px-3 py-2 text-sm'
-        : 'px-3 py-1.5 text-xs'
-  let classes: string
+        : 'px-3 py-1.5 text-xs';
+  let classes: string;
   switch (variant) {
     case 'ghost':
       classes = cx(
         BUTTON_BASE,
         'bg-surface-container text-on-surface hover:bg-surface-container-high',
-      )
-      break
+      );
+      break;
     case 'secondary':
       classes = cx(
         OUTLINE_BASE,
@@ -235,8 +235,8 @@ export function Button({
         tone === 'accent'
           ? 'border-primary/50 bg-surface-container-highest text-on-surface enabled:hover:border-primary'
           : 'border-outline-variant bg-surface-container-highest text-on-surface enabled:hover:border-primary/60',
-      )
-      break
+      );
+      break;
     case 'danger':
       classes = cx(
         OUTLINE_BASE,
@@ -244,8 +244,8 @@ export function Button({
         'disabled:opacity-50 disabled:cursor-not-allowed disabled:border-outline/30',
         sizeClass,
         'border-status-error/40 text-status-error enabled:hover:border-status-error/60 enabled:hover:bg-status-error/10',
-      )
-      break
+      );
+      break;
     case 'dangerFlat':
       classes = cx(
         'inline-flex items-center gap-1.5 rounded-lg border font-semibold transition-colors',
@@ -254,20 +254,20 @@ export function Button({
         disabled
           ? 'border-outline/30 text-outline/60 cursor-not-allowed'
           : 'border-status-error/40 text-status-error hover:bg-status-error/10',
-      )
-      break
+      );
+      break;
     case 'outlinePrimary':
       classes =
-        'inline-flex items-center gap-2 text-xs font-semibold rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-primary/50 text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low'
-      break
+        'inline-flex items-center gap-2 text-xs font-semibold rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-primary/50 text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low';
+      break;
     case 'icon':
-      classes = className ?? ICON_BUTTON_CLASS
-      break
+      classes = className ?? ICON_BUTTON_CLASS;
+      break;
     default:
       classes = cx(
         BUTTON_BASE,
         'bg-primary-container text-on-primary-container hover:bg-primary-container/90 shadow-sm',
-      )
+      );
   }
   return (
     <button
@@ -281,13 +281,13 @@ export function Button({
       {icon}
       {children}
     </button>
-  )
+  );
 }
 
 export interface StatRow {
-  label: string
-  value: ReactNode
-  tone?: 'default' | 'muted'
+  label: string;
+  value: ReactNode;
+  tone?: 'default' | 'muted';
 }
 
 export function StatStrip({ rows }: { rows: StatRow[] }) {
@@ -302,15 +302,15 @@ export function StatStrip({ rows }: { rows: StatRow[] }) {
         </div>
       ))}
     </div>
-  )
+  );
 }
 
 export function StatusPill({
   tone,
   children,
 }: {
-  tone: 'ok' | 'warn' | 'muted'
-  children: ReactNode
+  tone: 'ok' | 'warn' | 'muted';
+  children: ReactNode;
 }) {
   return (
     <span
@@ -325,11 +325,11 @@ export function StatusPill({
     >
       {children}
     </span>
-  )
+  );
 }
 
 export function ProgressBar({ value, max, label }: { value: number; max: number; label: string }) {
-  const percent = max > 0 && value > 0 ? Math.min(100, (value / max) * 100) : 0
+  const percent = max > 0 && value > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
     <div
       role="progressbar"
@@ -344,29 +344,29 @@ export function ProgressBar({ value, max, label }: { value: number; max: number;
         style={{ width: `${percent}%` }}
       />
     </div>
-  )
+  );
 }
 
 export function AdminToast({
   message,
   tone = 'default',
 }: {
-  message: ReactNode
-  tone?: 'default' | 'error'
+  message: ReactNode;
+  tone?: 'default' | 'error';
 }) {
-  const [fading, setFading] = useState(false)
-  const [open, setOpen] = useState(true)
+  const [fading, setFading] = useState(false);
+  const [open, setOpen] = useState(true);
 
   useEffect(() => {
-    const fade = setTimeout(() => setFading(true), 2900)
-    const close = setTimeout(() => setOpen(false), 3200)
+    const fade = setTimeout(() => setFading(true), 2900);
+    const close = setTimeout(() => setOpen(false), 3200);
     return () => {
-      clearTimeout(fade)
-      clearTimeout(close)
-    }
-  }, [message])
+      clearTimeout(fade);
+      clearTimeout(close);
+    };
+  }, [message]);
 
-  if (!open) return null
+  if (!open) return null;
   return (
     <div aria-live="polite" className="fixed bottom-4 right-4 z-50">
       <div
@@ -384,5 +384,5 @@ export function AdminToast({
         <span>{message}</span>
       </div>
     </div>
-  )
+  );
 }

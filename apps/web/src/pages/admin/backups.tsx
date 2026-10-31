@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   FaArrowsRotate,
   FaCodeMerge,
@@ -7,9 +7,9 @@ import {
   FaSpinner,
   FaTrashCan,
   FaTriangleExclamation,
-} from 'react-icons/fa6'
-import { isAxiosError } from 'axios'
-import { AdminSection, AdminToast, Button, ProgressBar, StatusPill, cx } from './ui'
+} from 'react-icons/fa6';
+import { isAxiosError } from 'axios';
+import { AdminSection, AdminToast, Button, ProgressBar, StatusPill, cx } from './ui';
 import {
   getBackupOverview,
   getBackupProgress,
@@ -23,11 +23,11 @@ import {
   type BackupProgress,
   type RestoreResult,
   type BackupSnapshot,
-} from '../../api/admin'
-import { ConfirmDialog, RoleBadge } from './shared'
-import { Dialog, formInputClass } from '../../components/Dialog'
-import { useAsyncFetch } from '../../hooks/useAsyncFetch'
-import { httpErrorMessage, type HttpErrorMessages } from './http-error'
+} from '../../api/admin';
+import { ConfirmDialog, RoleBadge } from './shared';
+import { Dialog, formInputClass } from '../../components/Dialog';
+import { useAsyncFetch } from '../../hooks/useAsyncFetch';
+import { httpErrorMessage, type HttpErrorMessages } from './http-error';
 
 // --- admin backups table -------------------------------------------------------------------
 // One row per user: manifest status, backed-up counts, pending count and last run. Per-row
@@ -38,53 +38,55 @@ import { httpErrorMessage, type HttpErrorMessages } from './http-error'
 // previous-account snapshots never take over the live row: each one (`legacyBackups`) gets
 // its own sub-row underneath with Merge / Restore / Delete.
 
-const PAGE_SIZE = 15
+const PAGE_SIZE = 15;
 
-type BackupFilter = 'all' | 'active' | 'deleted'
+type BackupFilter = 'all' | 'active' | 'deleted';
 
-const S3_DOWN_HEADLINE = "Can't reach backup storage"
+const S3_DOWN_HEADLINE = "Can't reach backup storage";
 const S3_DOWN_BODY =
-  "The S3 endpoint isn't responding — check that Floci is running (docker compose up -d floci), then retry."
+  "The S3 endpoint isn't responding — check that Floci is running (docker compose up -d floci), then retry.";
 const BACKUP_TIMEOUT_MESSAGE =
-  'Timed out talking to the API — the backup store may be slow or down. Retry in a moment.'
-const STATUS_LOAD_FALLBACK = "Couldn't load backup status."
-const RUN_FALLBACK = 'Backup failed'
-const RESTORE_FALLBACK = 'Restore failed'
-const ALREADY_RESTORED_MESSAGE = 'That account is already back — the list was refreshed to show it.'
+  'Timed out talking to the API — the backup store may be slow or down. Retry in a moment.';
+const STATUS_LOAD_FALLBACK = "Couldn't load backup status.";
+const RUN_FALLBACK = 'Backup failed';
+const RESTORE_FALLBACK = 'Restore failed';
+const ALREADY_RESTORED_MESSAGE =
+  'That account is already back — the list was refreshed to show it.';
 const RESTORE_MISSING_MESSAGE =
-  'No backup found for that user — it may have been removed from storage.'
-const RESTORE_CORRUPT_MESSAGE = 'That backup file is damaged and cannot be restored.'
-const RESTORE_EMAIL_TAKEN_MESSAGE = 'That email is already in use — choose another address.'
-const RESTORE_INVALID_EMAIL_MESSAGE = "That email address isn't valid."
-const DELETE_FALLBACK = 'Delete failed'
-const DELETE_MISSING_MESSAGE = 'No backup found — the list was refreshed.'
-const MERGE_FALLBACK = 'Merge failed'
+  'No backup found for that user — it may have been removed from storage.';
+const RESTORE_CORRUPT_MESSAGE = 'That backup file is damaged and cannot be restored.';
+const RESTORE_EMAIL_TAKEN_MESSAGE = 'That email is already in use — choose another address.';
+const RESTORE_INVALID_EMAIL_MESSAGE = "That email address isn't valid.";
+const DELETE_FALLBACK = 'Delete failed';
+const DELETE_MISSING_MESSAGE = 'No backup found — the list was refreshed.';
+const MERGE_FALLBACK = 'Merge failed';
 const MERGE_MISSING_MESSAGE =
-  'No backup found for that previous account — it may have been removed from storage.'
-const MERGE_ALREADY_MESSAGE = 'That backup was already merged into this account.'
+  'No backup found for that previous account — it may have been removed from storage.';
+const MERGE_ALREADY_MESSAGE = 'That backup was already merged into this account.';
 const MERGE_EMAIL_MESSAGE =
-  "The backup's email no longer matches this account — refresh the list and check the row."
+  "The backup's email no longer matches this account — refresh the list and check the row.";
 const MERGE_IN_PROGRESS_MESSAGE =
-  'A merge for this account is already running — wait for it to finish.'
-const MERGE_QUOTA_MESSAGE = 'That backup is too large for the storage quota — free space and retry.'
-const MERGE_CORRUPT_MESSAGE = 'That backup file is damaged and cannot be merged.'
+  'A merge for this account is already running — wait for it to finish.';
+const MERGE_QUOTA_MESSAGE =
+  'That backup is too large for the storage quota — free space and retry.';
+const MERGE_CORRUPT_MESSAGE = 'That backup file is damaged and cannot be merged.';
 
 const DEGRADED_HINT: Record<string, string> = {
   unreadable: 'Listed but unreadable — rerun the backup to replace it.',
   corrupt: 'Manifest is corrupt — rerun the backup to replace it.',
-}
+};
 
 /** 503 means S3/Floci is down; a timeout or no response means the store is slow. Never leak axios verbatim. */
-const STORE_ERRORS = { offline: S3_DOWN_BODY, timeout: BACKUP_TIMEOUT_MESSAGE } as const
+const STORE_ERRORS = { offline: S3_DOWN_BODY, timeout: BACKUP_TIMEOUT_MESSAGE } as const;
 
-const STATUS_ERRORS: HttpErrorMessages = { fallback: STATUS_LOAD_FALLBACK, ...STORE_ERRORS }
-const RUN_ERRORS: HttpErrorMessages = { fallback: RUN_FALLBACK, ...STORE_ERRORS }
+const STATUS_ERRORS: HttpErrorMessages = { fallback: STATUS_LOAD_FALLBACK, ...STORE_ERRORS };
+const RUN_ERRORS: HttpErrorMessages = { fallback: RUN_FALLBACK, ...STORE_ERRORS };
 /** Delete failures use plain wording; a 404 means the manifest is already gone. */
 const DELETE_ERRORS: HttpErrorMessages = {
   fallback: DELETE_FALLBACK,
   byStatus: { 404: DELETE_MISSING_MESSAGE },
   ...STORE_ERRORS,
-}
+};
 /**
  * Restore failures use plain wording: a 409 means the account is already back (list is stale)
  * unless its detail says the requested address is taken; a 400 means the typed address is
@@ -100,10 +102,10 @@ const RESTORE_ERRORS: HttpErrorMessages = {
     422: RESTORE_CORRUPT_MESSAGE,
   },
   ...STORE_ERRORS,
-}
+};
 
 const MERGE_CONFLICT_MESSAGE =
-  'That backup cannot be merged into this account right now — refresh and retry.'
+  'That backup cannot be merged into this account right now — refresh and retry.';
 
 /** Merge failures use plain wording; 409 covers already-merged, email-mismatch and in-progress. */
 const MERGE_ERRORS: HttpErrorMessages = {
@@ -111,33 +113,33 @@ const MERGE_ERRORS: HttpErrorMessages = {
   byStatus: {
     404: MERGE_MISSING_MESSAGE,
     409: ({ lower }) => {
-      if (lower.includes('already-merged')) return MERGE_ALREADY_MESSAGE
-      if (lower.includes('email-mismatch')) return MERGE_EMAIL_MESSAGE
-      if (lower.includes('merge-in-progress')) return MERGE_IN_PROGRESS_MESSAGE
-      return MERGE_CONFLICT_MESSAGE
+      if (lower.includes('already-merged')) return MERGE_ALREADY_MESSAGE;
+      if (lower.includes('email-mismatch')) return MERGE_EMAIL_MESSAGE;
+      if (lower.includes('merge-in-progress')) return MERGE_IN_PROGRESS_MESSAGE;
+      return MERGE_CONFLICT_MESSAGE;
     },
     413: MERGE_QUOTA_MESSAGE,
     422: MERGE_CORRUPT_MESSAGE,
   },
   ...STORE_ERRORS,
-}
+};
 
 function isStoreDown(message: string | null): boolean {
-  return message === S3_DOWN_BODY || message === BACKUP_TIMEOUT_MESSAGE
+  return message === S3_DOWN_BODY || message === BACKUP_TIMEOUT_MESSAGE;
 }
 
 /** Formats an ISO timestamp the way the rest of the admin console does, tolerating absence. */
 function stamp(value: string | null | undefined): string {
-  if (!value) return '—'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString()
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
 }
 
 /** Deleted rows have no live library, so nothing is pending however big the manifest is. */
 function pendingOf(row: BackupOverviewRow): number {
-  if (row.deleted) return 0
-  if (typeof row.notBackedUp === 'number') return Math.max(0, row.notBackedUp)
-  return Math.max(0, (row.totalAssets ?? 0) - (row.backedUpAssets ?? 0))
+  if (row.deleted) return 0;
+  if (typeof row.notBackedUp === 'number') return Math.max(0, row.notBackedUp);
+  return Math.max(0, (row.totalAssets ?? 0) - (row.backedUpAssets ?? 0));
 }
 
 /** Backup snapshot view of the row's own primary backup (plain live row or orphan). */
@@ -152,13 +154,13 @@ function rowSnapshot(row: BackupOverviewRow): BackupSnapshot {
     albums: row.backedUpAlbums ?? 0,
     shares: row.backedUpShares ?? 0,
     persons: row.backedUpPersons ?? 0,
-  }
+  };
 }
 
 interface SnapshotLabels {
-  merge: string
-  restore: string
-  delete: string
+  merge: string;
+  restore: string;
+  delete: string;
 }
 
 /**
@@ -167,14 +169,14 @@ interface SnapshotLabels {
  * userId (a snapshot action targets its own backupUserId but reports under the live row).
  */
 interface RowState {
-  busy?: boolean
-  restoring?: boolean
-  deleting?: boolean
-  merging?: boolean
-  progress?: BackupProgress | null
-  progressUnsupported?: boolean
-  error?: string | null
-  lastResult?: BackupResult
+  busy?: boolean;
+  restoring?: boolean;
+  deleting?: boolean;
+  merging?: boolean;
+  progress?: BackupProgress | null;
+  progressUnsupported?: boolean;
+  error?: string | null;
+  lastResult?: BackupResult;
 }
 
 /**
@@ -188,29 +190,29 @@ function snapshotLabels(
   legacy: boolean,
 ): SnapshotLabels {
   if (legacy) {
-    const when = stamp(snapshot.backedUpAt)
+    const when = stamp(snapshot.backedUpAt);
     return {
       merge: `Merge to current live account ${row.email} (${when})`,
       restore: `Restore to a new account ${row.email} (${when})`,
       delete: `Delete previous backup for ${row.email} from ${when}`,
-    }
+    };
   }
   return {
     merge: `Merge to current live account ${row.email}`,
     restore: `Restore to a new account ${row.email}`,
     delete: `Delete previous backup for ${row.email}`,
-  }
+  };
 }
 
 function pillFor(
   row: BackupOverviewRow,
   error: string | null,
 ): { tone: 'ok' | 'warn' | 'muted'; label: string } {
-  if (error ?? row.unavailable) return { tone: 'warn', label: 'Unavailable' }
-  if (row.degraded === 'unreadable') return { tone: 'warn', label: 'Unreadable' }
-  if (row.degraded === 'corrupt') return { tone: 'warn', label: 'Corrupt' }
-  if (row.exists) return { tone: 'ok', label: 'Backed up' }
-  return { tone: 'muted', label: 'None' }
+  if (error ?? row.unavailable) return { tone: 'warn', label: 'Unavailable' };
+  if (row.degraded === 'unreadable') return { tone: 'warn', label: 'Unreadable' };
+  if (row.degraded === 'corrupt') return { tone: 'warn', label: 'Corrupt' };
+  if (row.exists) return { tone: 'ok', label: 'Backed up' };
+  return { tone: 'muted', label: 'None' };
 }
 
 // --- snapshot sub-rows ------------------------------------------------------------------
@@ -228,17 +230,17 @@ function SnapshotSubRow({
   onRestore,
   onDelete,
 }: {
-  row: BackupOverviewRow
-  snapshot: BackupSnapshot
-  legacy: boolean
-  anyBusy: boolean
-  deleting: boolean
-  onMerge: () => void
-  onRestore: () => void
-  onDelete: () => void
+  row: BackupOverviewRow;
+  snapshot: BackupSnapshot;
+  legacy: boolean;
+  anyBusy: boolean;
+  deleting: boolean;
+  onMerge: () => void;
+  onRestore: () => void;
+  onDelete: () => void;
 }) {
-  const labels = snapshotLabels(row, snapshot, legacy)
-  const merged = Boolean(snapshot.mergedAt)
+  const labels = snapshotLabels(row, snapshot, legacy);
+  const merged = Boolean(snapshot.mergedAt);
 
   return (
     <tr className="bg-surface-container/40">
@@ -321,7 +323,7 @@ function SnapshotSubRow({
         </div>
       </td>
     </tr>
-  )
+  );
 }
 
 // --- merge dialog -----------------------------------------------------------------------
@@ -332,10 +334,10 @@ function MergeBackupDialog({
   onClose,
   onConfirm,
 }: {
-  row: BackupOverviewRow
-  snapshot: BackupSnapshot
-  onClose: () => void
-  onConfirm: () => void
+  row: BackupOverviewRow;
+  snapshot: BackupSnapshot;
+  onClose: () => void;
+  onConfirm: () => void;
 }) {
   return (
     <ConfirmDialog
@@ -367,7 +369,7 @@ function MergeBackupDialog({
         on conflict. Keep cleanup-orphans paused until the merge finishes.
       </p>
     </ConfirmDialog>
-  )
+  );
 }
 
 // --- restore dialog ---------------------------------------------------------------------
@@ -379,16 +381,16 @@ function RestoreSnapshotDialog({
   onClose,
   onConfirm,
 }: {
-  row: BackupOverviewRow
-  snapshot: BackupSnapshot
-  legacy: boolean
-  onClose: () => void
-  onConfirm: (restoreEmail?: string) => void
+  row: BackupOverviewRow;
+  snapshot: BackupSnapshot;
+  legacy: boolean;
+  onClose: () => void;
+  onConfirm: (restoreEmail?: string) => void;
 }) {
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState('');
   const title = legacy
     ? `Restore ${row.email} from ${stamp(snapshot.backedUpAt)}?`
-    : `Restore ${row.email}?`
+    : `Restore ${row.email}?`;
 
   return (
     <ConfirmDialog
@@ -446,7 +448,7 @@ function RestoreSnapshotDialog({
         </p>
       </div>
     </ConfirmDialog>
-  )
+  );
 }
 
 // --- delete dialog ----------------------------------------------------------------------
@@ -461,18 +463,18 @@ function DeleteBackupDialog({
   onClose,
   onConfirm,
 }: {
-  row: BackupOverviewRow
-  snapshot: BackupSnapshot
-  legacy?: boolean
-  onClose: () => void
-  onConfirm: () => void
+  row: BackupOverviewRow;
+  snapshot: BackupSnapshot;
+  legacy?: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
 }) {
-  const [confirmText, setConfirmText] = useState('')
-  const confirmed = confirmText === 'DELETE'
-  const previousSnapshot = !row.deleted && snapshot.userId !== row.userId
+  const [confirmText, setConfirmText] = useState('');
+  const confirmed = confirmText === 'DELETE';
+  const previousSnapshot = !row.deleted && snapshot.userId !== row.userId;
   const title = legacy
     ? `Delete previous backup for ${row.email}?`
-    : `Delete backup for ${row.email}?`
+    : `Delete backup for ${row.email}?`;
 
   return (
     <Dialog
@@ -542,54 +544,54 @@ function DeleteBackupDialog({
         </button>
       </div>
     </Dialog>
-  )
+  );
 }
 
 export function BackupSection() {
-  const [version, setVersion] = useState(0)
+  const [version, setVersion] = useState(0);
 
-  const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState<BackupFilter>('all')
-  const [page, setPage] = useState(0)
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<BackupFilter>('all');
+  const [page, setPage] = useState(0);
 
   // One per-row view-model: in-flight lanes, backup progress, the last failed sentence and the
   // last successful run all describe the same row, so they share one map keyed by the LIVE row's
   // userId (a snapshot action targets its own backupUserId but reports under the live row).
-  const [rowState, setRowState] = useState<Record<string, RowState>>({})
+  const [rowState, setRowState] = useState<Record<string, RowState>>({});
   const patchRow = useCallback(
     (id: string, patch: Partial<RowState>) =>
       setRowState((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } })),
     [],
-  )
+  );
 
-  const [confirmUser, setConfirmUser] = useState<BackupOverviewRow | null>(null)
+  const [confirmUser, setConfirmUser] = useState<BackupOverviewRow | null>(null);
   const [confirmRestore, setConfirmRestore] = useState<{
-    row: BackupOverviewRow
-    snapshot: BackupSnapshot
-    legacy: boolean
-  } | null>(null)
+    row: BackupOverviewRow;
+    snapshot: BackupSnapshot;
+    legacy: boolean;
+  } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{
-    row: BackupOverviewRow
-    snapshot: BackupSnapshot
-    legacy: boolean
-  } | null>(null)
+    row: BackupOverviewRow;
+    snapshot: BackupSnapshot;
+    legacy: boolean;
+  } | null>(null);
   const [confirmMerge, setConfirmMerge] = useState<{
-    row: BackupOverviewRow
-    snapshot: BackupSnapshot
-  } | null>(null)
-  const [confirmAll, setConfirmAll] = useState(false)
-  const [backupAllRunning, setBackupAllRunning] = useState(false)
+    row: BackupOverviewRow;
+    snapshot: BackupSnapshot;
+  } | null>(null);
+  const [confirmAll, setConfirmAll] = useState(false);
+  const [backupAllRunning, setBackupAllRunning] = useState(false);
   const [backupAllCursor, setBackupAllCursor] = useState<{ done: number; total: number } | null>(
     null,
-  )
+  );
 
   const [toast, setToast] = useState<{
-    key: number
-    message: ReactNode
-    tone: 'default' | 'error'
-  } | null>(null)
+    key: number;
+    message: ReactNode;
+    tone: 'default' | 'error';
+  } | null>(null);
   const notify = (message: ReactNode, tone: 'default' | 'error' = 'default') =>
-    setToast((prev) => ({ key: (prev?.key ?? 0) + 1, message, tone }))
+    setToast((prev) => ({ key: (prev?.key ?? 0) + 1, message, tone }));
 
   const {
     data,
@@ -599,103 +601,103 @@ export function BackupSection() {
   } = useAsyncFetch(
     async () => {
       try {
-        const next = await getBackupOverview()
+        const next = await getBackupOverview();
         // A 409 restore bumps version to refetch: the same-userId row comes back live, so drop
         // its "already back" row error once the reload lands. Rows still deleted keep their
         // errors; missing rows have nothing to show under.
         setRowState((prev) => {
-          if (Object.keys(prev).length === 0) return prev
-          const freshById = new Map(next.map((r) => [r.userId, r] as const))
-          let changed = false
-          const out = { ...prev }
+          if (Object.keys(prev).length === 0) return prev;
+          const freshById = new Map(next.map((r) => [r.userId, r] as const));
+          let changed = false;
+          const out = { ...prev };
           for (const id of Object.keys(prev)) {
-            if (!prev[id]?.error) continue
+            if (!prev[id]?.error) continue;
             if (!freshById.get(id)?.deleted) {
-              out[id] = { ...out[id], error: null }
-              changed = true
+              out[id] = { ...out[id], error: null };
+              changed = true;
             }
           }
-          return changed ? out : prev
-        })
-        return next
+          return changed ? out : prev;
+        });
+        return next;
       } catch (err) {
-        throw new Error(httpErrorMessage(err, STATUS_ERRORS), { cause: err })
+        throw new Error(httpErrorMessage(err, STATUS_ERRORS), { cause: err });
       }
     },
     { refreshKey: version, errorMessage: STATUS_LOAD_FALLBACK, loadingMode: 'always' },
-  )
-  const rows = data ?? null
-  const loadErrorIsStore = isStoreDown(loadError)
+  );
+  const rows = data ?? null;
+  const loadErrorIsStore = isStoreDown(loadError);
 
   const filtered = useMemo(() => {
-    const list = rows ?? []
-    const q = query.trim().toLowerCase()
+    const list = rows ?? [];
+    const q = query.trim().toLowerCase();
     return list.filter((r) => {
-      if (filter === 'active' && r.deleted) return false
-      if (filter === 'deleted' && !r.deleted) return false
-      if (q && !r.email.toLowerCase().includes(q)) return false
-      return true
-    })
-  }, [rows, query, filter])
+      if (filter === 'active' && r.deleted) return false;
+      if (filter === 'deleted' && !r.deleted) return false;
+      if (q && !r.email.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [rows, query, filter]);
 
   useEffect(() => {
-    setPage(0)
-  }, [query, filter])
+    setPage(0);
+  }, [query, filter]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const safePage = Math.min(page, totalPages - 1)
-  const paged = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const paged = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 
   const anyBusy =
     backupAllRunning ||
     Object.values(rowState).some(
       (s) => Boolean(s.busy) || Boolean(s.restoring) || Boolean(s.deleting) || Boolean(s.merging),
-    )
+    );
   // Backup-all covers live accounts only — orphan backups are restored, not re-backed-up.
-  const liveTargets = useMemo(() => filtered.filter((r) => !r.deleted), [filtered])
+  const liveTargets = useMemo(() => filtered.filter((r) => !r.deleted), [filtered]);
 
   // Per-row progress: poll the progress endpoint once a second for every in-flight row.
   // A 404 means the core predates the endpoint — fall back to the indeterminate bar.
   const pollIds = Object.entries(rowState)
     .filter(([, state]) => state.busy && !state.progressUnsupported)
     .map(([id]) => id)
-    .sort()
+    .sort();
   // A stable string key keeps the interval alive across progress updates (only the set of
   // in-flight ids restarts it).
-  const pollKey = pollIds.join('|')
+  const pollKey = pollIds.join('|');
   useEffect(() => {
-    const ids = pollKey === '' ? [] : pollKey.split('|')
-    if (ids.length === 0) return
-    let cancelled = false
+    const ids = pollKey === '' ? [] : pollKey.split('|');
+    if (ids.length === 0) return;
+    let cancelled = false;
     const poll = async (id: string) => {
       try {
-        const snapshot = await getBackupProgress(id)
-        if (!cancelled) patchRow(id, { progress: snapshot })
+        const snapshot = await getBackupProgress(id);
+        if (!cancelled) patchRow(id, { progress: snapshot });
       } catch (err: unknown) {
-        if (cancelled) return
+        if (cancelled) return;
         if (isAxiosError(err) && err.response?.status === 404) {
-          patchRow(id, { progressUnsupported: true })
+          patchRow(id, { progressUnsupported: true });
         }
       }
-    }
-    ids.forEach((id) => void poll(id))
+    };
+    ids.forEach((id) => void poll(id));
     const timer = setInterval(() => {
-      ids.forEach((id) => void poll(id))
-    }, 1000)
+      ids.forEach((id) => void poll(id));
+    }, 1000);
     return () => {
-      cancelled = true
-      clearInterval(timer)
-    }
-  }, [pollKey, patchRow])
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [pollKey, patchRow]);
 
   const runOne = async (row: BackupOverviewRow): Promise<boolean> => {
-    patchRow(row.userId, { busy: true, error: null, progress: null, progressUnsupported: false })
+    patchRow(row.userId, { busy: true, error: null, progress: null, progressUnsupported: false });
     try {
-      const res = await backupUser(row.userId)
+      const res = await backupUser(row.userId);
       // A rerun can re-derive a row carrying previous-account snapshots, so re-read the
       // overview instead of optimistically patching it.
       if ((row.legacyBackups?.length ?? 0) > 0) {
-        setVersion((v) => v + 1)
+        setVersion((v) => v + 1);
       } else {
         setRows((prev) =>
           (prev ?? []).map((r) =>
@@ -711,95 +713,95 @@ export function BackupSection() {
                 }
               : r,
           ),
-        )
+        );
       }
-      patchRow(row.userId, { lastResult: res })
-      const allSkipped = res.files > 0 && (res.skipped ?? 0) === res.files
+      patchRow(row.userId, { lastResult: res });
+      const allSkipped = res.files > 0 && (res.skipped ?? 0) === res.files;
       notify(
         `Backed up ${row.email} — ${res.files.toLocaleString()} files (${(res.uploaded ?? 0).toLocaleString()} new, ${(res.skipped ?? 0).toLocaleString()} unchanged)${allSkipped ? ' — nothing new.' : ''}`,
-      )
-      return true
+      );
+      return true;
     } catch (err: unknown) {
-      const message = httpErrorMessage(err, RUN_ERRORS)
-      patchRow(row.userId, { error: message })
-      notify(`Backup of ${row.email} failed — ${message}`, 'error')
-      return false
+      const message = httpErrorMessage(err, RUN_ERRORS);
+      patchRow(row.userId, { error: message });
+      notify(`Backup of ${row.email} failed — ${message}`, 'error');
+      return false;
     } finally {
-      patchRow(row.userId, { busy: false, progress: null })
+      patchRow(row.userId, { busy: false, progress: null });
     }
-  }
+  };
 
   const runRestore = async (
     row: BackupOverviewRow,
     snapshot: BackupSnapshot,
     restoreEmail?: string,
   ): Promise<boolean> => {
-    patchRow(row.userId, { restoring: true, error: null })
+    patchRow(row.userId, { restoring: true, error: null });
     try {
-      const res: RestoreResult = await restoreUser(snapshot.userId, restoreEmail)
+      const res: RestoreResult = await restoreUser(snapshot.userId, restoreEmail);
       // A different restored address re-homes the S3 backup inline; a failed move does not fail
       // the restore — the next backup retries it through the email-change rename.
       const moveNote = res.reassignmentError
         ? ` The S3 backup could not be moved to ${res.email} — the next backup will finish the move.`
-        : ''
+        : '';
       notify(
         `Restored ${res.email} — ${res.assets.toLocaleString()} assets, ${res.files.toLocaleString()} files. Sign in as ${res.email}; the old password still works.` +
           moveNote,
-      )
-      setVersion((v) => v + 1)
-      return true
+      );
+      setVersion((v) => v + 1);
+      return true;
     } catch (err: unknown) {
-      const message = httpErrorMessage(err, RESTORE_ERRORS)
-      patchRow(row.userId, { error: message })
-      notify(`Restore of ${row.email} failed — ${message}`, 'error')
-      if (isAxiosError(err) && err.response?.status === 409) setVersion((v) => v + 1)
-      return false
+      const message = httpErrorMessage(err, RESTORE_ERRORS);
+      patchRow(row.userId, { error: message });
+      notify(`Restore of ${row.email} failed — ${message}`, 'error');
+      if (isAxiosError(err) && err.response?.status === 409) setVersion((v) => v + 1);
+      return false;
     } finally {
-      patchRow(row.userId, { restoring: false })
+      patchRow(row.userId, { restoring: false });
     }
-  }
+  };
 
   const runDelete = async (row: BackupOverviewRow, snapshot: BackupSnapshot): Promise<boolean> => {
-    patchRow(row.userId, { deleting: true, error: null })
+    patchRow(row.userId, { deleting: true, error: null });
     try {
-      const res = await deleteBackup(snapshot.userId)
+      const res = await deleteBackup(snapshot.userId);
       notify(
         `Deleted backup for ${res.email} — ${res.deletedObjects.toLocaleString()} objects removed.`,
-      )
-      setVersion((v) => v + 1)
-      return true
+      );
+      setVersion((v) => v + 1);
+      return true;
     } catch (err: unknown) {
-      const message = httpErrorMessage(err, DELETE_ERRORS)
-      patchRow(row.userId, { error: message })
+      const message = httpErrorMessage(err, DELETE_ERRORS);
+      patchRow(row.userId, { error: message });
       // A 404 means the manifest is already gone — the refreshed list is the recovery,
       // so the row error carries it without an extra failure toast.
       if (!isAxiosError(err) || err.response?.status !== 404) {
-        notify(`Delete of ${row.email} failed — ${message}`, 'error')
+        notify(`Delete of ${row.email} failed — ${message}`, 'error');
       } else {
-        setVersion((v) => v + 1)
+        setVersion((v) => v + 1);
       }
-      return false
+      return false;
     } finally {
-      patchRow(row.userId, { deleting: false })
+      patchRow(row.userId, { deleting: false });
     }
-  }
+  };
 
   const runMerge = async (row: BackupOverviewRow, snapshot: BackupSnapshot): Promise<boolean> => {
-    patchRow(row.userId, { merging: true, error: null })
+    patchRow(row.userId, { merging: true, error: null });
     try {
       const res = await mergeBackup({
         targetEmailOrId: row.userId,
         backupUserId: snapshot.userId,
         prefix: snapshot.prefix,
-      })
-      const shareSkips = res.skipped.shareTokenConflicts + res.skipped.shareTargetConflicts
+      });
+      const shareSkips = res.skipped.shareTokenConflicts + res.skipped.shareTargetConflicts;
       // The rows are already merged; the S3 adoption is the follow-up step. Call out where the
       // backup ended up (or why it still needs a retry) instead of claiming a clean merge.
       const moveNote = res.assigned
         ? res.assigned.sourceDeleted
           ? ` The backup now belongs to ${row.email}.`
           : ` The backup now belongs to ${row.email}, but the old snapshot copy could not be removed.`
-        : ' The library merged, but the backup could not be moved — retry the merge.'
+        : ' The library merged, but the backup could not be moved — retry the merge.';
       notify(
         `Merged ${res.merged.assets.toLocaleString()} assets (${res.deduped.assets.toLocaleString()} already present) into ${row.email}.` +
           (shareSkips > 0
@@ -807,49 +809,49 @@ export function BackupSection() {
             : '') +
           moveNote,
         res.assigned ? 'default' : 'error',
-      )
-      setVersion((v) => v + 1)
-      return true
+      );
+      setVersion((v) => v + 1);
+      return true;
     } catch (err: unknown) {
-      const message = httpErrorMessage(err, MERGE_ERRORS)
-      patchRow(row.userId, { error: message })
-      notify(`Merge of ${row.email} failed — ${message}`, 'error')
+      const message = httpErrorMessage(err, MERGE_ERRORS);
+      patchRow(row.userId, { error: message });
+      notify(`Merge of ${row.email} failed — ${message}`, 'error');
       // A stale row (already merged elsewhere) is fixed by the refreshed overview;
       // an in-progress/email-mismatch 409 simply keeps the row as-is.
-      if (isAxiosError(err) && err.response?.status === 409) setVersion((v) => v + 1)
-      return false
+      if (isAxiosError(err) && err.response?.status === 409) setVersion((v) => v + 1);
+      return false;
     } finally {
-      patchRow(row.userId, { merging: false })
+      patchRow(row.userId, { merging: false });
     }
-  }
+  };
 
   const runAll = async () => {
-    const targets = [...liveTargets]
-    setConfirmAll(false)
-    if (targets.length === 0) return
-    setBackupAllRunning(true)
-    setBackupAllCursor({ done: 0, total: targets.length })
-    let ok = 0
-    let failed = 0
+    const targets = [...liveTargets];
+    setConfirmAll(false);
+    if (targets.length === 0) return;
+    setBackupAllRunning(true);
+    setBackupAllCursor({ done: 0, total: targets.length });
+    let ok = 0;
+    let failed = 0;
     for (const target of targets) {
-      const success = await runOne(target)
-      if (success) ok += 1
-      else failed += 1
-      setBackupAllCursor({ done: ok + failed, total: targets.length })
+      const success = await runOne(target);
+      if (success) ok += 1;
+      else failed += 1;
+      setBackupAllCursor({ done: ok + failed, total: targets.length });
     }
     notify(
       failed === 0
         ? `Backup-all finished — ${ok} user${ok === 1 ? '' : 's'} backed up.`
         : `Backup-all finished — ${ok} ok, ${failed} failed.`,
       failed === 0 ? 'default' : 'error',
-    )
-    setBackupAllRunning(false)
-    setBackupAllCursor(null)
-  }
+    );
+    setBackupAllRunning(false);
+    setBackupAllCursor(null);
+  };
 
-  const backedUpCount = filtered.filter((r) => r.exists && !r.degraded && !r.unavailable).length
-  const pendingAssets = filtered.reduce((sum, r) => sum + pendingOf(r), 0)
-  const deletedCount = filtered.filter((r) => r.deleted).length
+  const backedUpCount = filtered.filter((r) => r.exists && !r.degraded && !r.unavailable).length;
+  const pendingAssets = filtered.reduce((sum, r) => sum + pendingOf(r), 0);
+  const deletedCount = filtered.filter((r) => r.deleted).length;
 
   return (
     <AdminSection
@@ -993,28 +995,28 @@ export function BackupSection() {
                 </thead>
                 <tbody className="divide-y divide-border-dark/60">
                   {paged.map((row) => {
-                    const state = rowState[row.userId]
-                    const isBusy = Boolean(state?.busy)
-                    const isRestoring = Boolean(state?.restoring)
-                    const isDeleting = Boolean(state?.deleting)
+                    const state = rowState[row.userId];
+                    const isBusy = Boolean(state?.busy);
+                    const isRestoring = Boolean(state?.restoring);
+                    const isDeleting = Boolean(state?.deleting);
                     // Previous-account snapshots render as sub-rows under this one. Orphan
                     // rows never carry them and keep their action shape exactly as before.
-                    const legacySnapshots = row.deleted ? [] : (row.legacyBackups ?? [])
-                    const progress = state?.progress ?? null
+                    const legacySnapshots = row.deleted ? [] : (row.legacyBackups ?? []);
+                    const progress = state?.progress ?? null;
                     const showDeterminate =
-                      progress && !state?.progressUnsupported && progress.total > 0
-                    const pill = pillFor(row, state?.error ?? null)
-                    const last = state?.lastResult
-                    const allSkipped = last && last.files > 0 && (last.skipped ?? 0) === last.files
+                      progress && !state?.progressUnsupported && progress.total > 0;
+                    const pill = pillFor(row, state?.error ?? null);
+                    const last = state?.lastResult;
+                    const allSkipped = last && last.files > 0 && (last.skipped ?? 0) === last.files;
                     const emailHint =
                       row.emailAtBackup &&
                       row.emailAtBackup.toLowerCase() !== row.email.toLowerCase()
                         ? row.emailAtBackup
-                        : null
+                        : null;
                     const openRestore = (snapshot: BackupSnapshot, legacy: boolean) =>
-                      setConfirmRestore({ row, snapshot, legacy })
+                      setConfirmRestore({ row, snapshot, legacy });
                     const openDelete = (snapshot: BackupSnapshot, legacy: boolean) =>
-                      setConfirmDelete({ row, snapshot, legacy })
+                      setConfirmDelete({ row, snapshot, legacy });
                     // Live and deleted rows differ only in the backup slot; Delete is identical.
                     const rowActions = (backup: ReactNode) => (
                       <div className="flex flex-col items-end gap-2">
@@ -1036,7 +1038,7 @@ export function BackupSection() {
                           {isDeleting ? 'Deleting…' : 'Delete'}
                         </Button>
                       </div>
-                    )
+                    );
                     return (
                       <Fragment key={row.userId}>
                         <tr className="hover:bg-surface-container/50 transition-colors">
@@ -1194,7 +1196,7 @@ export function BackupSection() {
                           />
                         ))}
                       </Fragment>
-                    )
+                    );
                   })}
                 </tbody>
               </table>
@@ -1241,9 +1243,9 @@ export function BackupSection() {
           title={`Back up ${confirmUser.email}?`}
           onClose={() => setConfirmUser(null)}
           onConfirm={() => {
-            const target = confirmUser
-            setConfirmUser(null)
-            void runOne(target)
+            const target = confirmUser;
+            setConfirmUser(null);
+            void runOne(target);
           }}
         >
           <p className="text-sm text-slate-400 mt-2">
@@ -1279,9 +1281,9 @@ export function BackupSection() {
           snapshot={confirmMerge.snapshot}
           onClose={() => setConfirmMerge(null)}
           onConfirm={() => {
-            const target = confirmMerge
-            setConfirmMerge(null)
-            void runMerge(target.row, target.snapshot)
+            const target = confirmMerge;
+            setConfirmMerge(null);
+            void runMerge(target.row, target.snapshot);
           }}
         />
       )}
@@ -1292,9 +1294,9 @@ export function BackupSection() {
           legacy={confirmRestore.legacy}
           onClose={() => setConfirmRestore(null)}
           onConfirm={(restoreEmail) => {
-            const target = confirmRestore
-            setConfirmRestore(null)
-            void runRestore(target.row, target.snapshot, restoreEmail)
+            const target = confirmRestore;
+            setConfirmRestore(null);
+            void runRestore(target.row, target.snapshot, restoreEmail);
           }}
         />
       )}
@@ -1305,12 +1307,12 @@ export function BackupSection() {
           legacy={confirmDelete.legacy}
           onClose={() => setConfirmDelete(null)}
           onConfirm={() => {
-            const target = confirmDelete
-            setConfirmDelete(null)
-            void runDelete(target.row, target.snapshot)
+            const target = confirmDelete;
+            setConfirmDelete(null);
+            void runDelete(target.row, target.snapshot);
           }}
         />
       )}
     </AdminSection>
-  )
+  );
 }

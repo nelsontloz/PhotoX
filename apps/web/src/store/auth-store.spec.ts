@@ -1,13 +1,13 @@
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest'
-import { useAuthStore, subscribeAuthFailure, isExpiringSoon } from './auth-store'
-import * as authApi from '../api/auth'
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
+import { useAuthStore, subscribeAuthFailure, isExpiringSoon } from './auth-store';
+import * as authApi from '../api/auth';
 
-vi.mock('../api/auth')
+vi.mock('../api/auth');
 
-const mockLogin = vi.mocked(authApi.login)
-const mockRegister = vi.mocked(authApi.register)
-const mockLogout = vi.mocked(authApi.logout)
-const mockRefresh = vi.mocked(authApi.refresh)
+const mockLogin = vi.mocked(authApi.login);
+const mockRegister = vi.mocked(authApi.register);
+const mockLogout = vi.mocked(authApi.logout);
+const mockRefresh = vi.mocked(authApi.refresh);
 
 const mockUser = {
   id: 'u1',
@@ -16,26 +16,26 @@ const mockUser = {
   displayName: 'A',
   createdAt: '2025-01-01T00:00:00Z',
   updatedAt: '2025-01-01T00:00:00Z',
-}
+};
 
 // minimal JWT: only the payload segment matters to decodeJwtPayload
 function makeToken(exp: number): string {
-  const payload = { sub: 'u1', email: 'a@b.com', role: 'user', iat: 0, exp }
-  return `header.${btoa(JSON.stringify(payload))}.sig`
+  const payload = { sub: 'u1', email: 'a@b.com', role: 'user', iat: 0, exp };
+  return `header.${btoa(JSON.stringify(payload))}.sig`;
 }
 
 describe('authStore', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-    localStorage.clear()
+    vi.clearAllMocks();
+    localStorage.clear();
     useAuthStore.setState({
       user: null,
       accessToken: null,
       refreshToken: null,
       status: 'idle',
       error: null,
-    })
-  })
+    });
+  });
 
   it('login success sets user and tokens', async () => {
     mockLogin.mockResolvedValueOnce({
@@ -43,47 +43,47 @@ describe('authStore', () => {
       accessTokenExpiresIn: 1800,
       refreshToken: 'rt1',
       user: mockUser,
-    })
+    });
 
-    await useAuthStore.getState().login('a@b.com', 'password')
+    await useAuthStore.getState().login('a@b.com', 'password');
 
-    const s = useAuthStore.getState()
-    expect(s.status).toBe('authenticated')
-    expect(s.user).toEqual(mockUser)
-    expect(s.accessToken).toBe('at1')
-    expect(s.refreshToken).toBe('rt1')
+    const s = useAuthStore.getState();
+    expect(s.status).toBe('authenticated');
+    expect(s.user).toEqual(mockUser);
+    expect(s.accessToken).toBe('at1');
+    expect(s.refreshToken).toBe('rt1');
 
     const stored = JSON.parse(localStorage.getItem('photox.auth') ?? '{}') as {
-      state: { user?: unknown; accessToken?: string; refreshToken?: string }
-    }
+      state: { user?: unknown; accessToken?: string; refreshToken?: string };
+    };
     // cookie session: only the profile persists, never tokens
-    expect(stored.state.user).toEqual(mockUser)
-    expect(stored.state.accessToken).toBeUndefined()
-    expect(stored.state.refreshToken).toBeUndefined()
-  })
+    expect(stored.state.user).toEqual(mockUser);
+    expect(stored.state.accessToken).toBeUndefined();
+    expect(stored.state.refreshToken).toBeUndefined();
+  });
 
   it('login error sets error status and message', async () => {
     mockLogin.mockRejectedValueOnce({
       response: { data: { message: 'Invalid credentials' } },
-    })
+    });
 
-    await useAuthStore.getState().login('a@b.com', 'wrong')
+    await useAuthStore.getState().login('a@b.com', 'wrong');
 
-    const s = useAuthStore.getState()
-    expect(s.status).toBe('error')
-    expect(s.error).toBe('Invalid credentials')
-    expect(s.accessToken).toBeNull()
-  })
+    const s = useAuthStore.getState();
+    expect(s.status).toBe('error');
+    expect(s.error).toBe('Invalid credentials');
+    expect(s.accessToken).toBeNull();
+  });
 
   it('login network error falls back to generic message', async () => {
-    mockLogin.mockRejectedValueOnce(new Error('network'))
+    mockLogin.mockRejectedValueOnce(new Error('network'));
 
-    await useAuthStore.getState().login('a@b.com', 'x')
+    await useAuthStore.getState().login('a@b.com', 'x');
 
-    const s = useAuthStore.getState()
-    expect(s.status).toBe('error')
-    expect(s.error).toBe('Login failed')
-  })
+    const s = useAuthStore.getState();
+    expect(s.status).toBe('error');
+    expect(s.error).toBe('Login failed');
+  });
 
   it('logout clears state and calls API', async () => {
     mockLogin.mockResolvedValueOnce({
@@ -91,20 +91,20 @@ describe('authStore', () => {
       accessTokenExpiresIn: 1800,
       refreshToken: 'rt1',
       user: mockUser,
-    })
+    });
 
-    await useAuthStore.getState().login('a@b.com', 'password')
-    expect(useAuthStore.getState().status).toBe('authenticated')
+    await useAuthStore.getState().login('a@b.com', 'password');
+    expect(useAuthStore.getState().status).toBe('authenticated');
 
-    mockLogout.mockResolvedValueOnce(undefined)
-    await useAuthStore.getState().logout()
+    mockLogout.mockResolvedValueOnce(undefined);
+    await useAuthStore.getState().logout();
 
-    const s = useAuthStore.getState()
-    expect(s.status).toBe('idle')
-    expect(s.user).toBeNull()
-    expect(s.accessToken).toBeNull()
-    expect(mockLogout).toHaveBeenCalledWith('rt1')
-  })
+    const s = useAuthStore.getState();
+    expect(s.status).toBe('idle');
+    expect(s.user).toBeNull();
+    expect(s.accessToken).toBeNull();
+    expect(mockLogout).toHaveBeenCalledWith('rt1');
+  });
 
   it('register success sets user and tokens', async () => {
     mockRegister.mockResolvedValueOnce({
@@ -112,55 +112,55 @@ describe('authStore', () => {
       accessTokenExpiresIn: 1800,
       refreshToken: 'rt2',
       user: mockUser,
-    })
+    });
 
-    await useAuthStore.getState().register('a@b.com', 'password', 'A')
+    await useAuthStore.getState().register('a@b.com', 'password', 'A');
 
-    const s = useAuthStore.getState()
-    expect(s.status).toBe('authenticated')
-    expect(s.user).toEqual(mockUser)
-    expect(s.accessToken).toBe('at2')
-  })
+    const s = useAuthStore.getState();
+    expect(s.status).toBe('authenticated');
+    expect(s.user).toEqual(mockUser);
+    expect(s.accessToken).toBe('at2');
+  });
 
   it('clearError resets error to null', async () => {
     mockLogin.mockRejectedValueOnce({
       response: { data: { message: 'fail' } },
-    })
+    });
 
-    await useAuthStore.getState().login('a@b.com', 'x')
-    expect(useAuthStore.getState().error).toBe('fail')
+    await useAuthStore.getState().login('a@b.com', 'x');
+    expect(useAuthStore.getState().error).toBe('fail');
 
-    useAuthStore.getState().clearError()
-    expect(useAuthStore.getState().error).toBeNull()
-  })
+    useAuthStore.getState().clearError();
+    expect(useAuthStore.getState().error).toBeNull();
+  });
 
   describe('isExpiringSoon', () => {
-    const nowSec = Math.floor(Date.now() / 1000)
+    const nowSec = Math.floor(Date.now() / 1000);
 
     it('is true for missing, malformed, past and near-expiry tokens', () => {
-      expect(isExpiringSoon(null)).toBe(true)
-      expect(isExpiringSoon('not-a-jwt')).toBe(true)
-      expect(isExpiringSoon(makeToken(nowSec - 60))).toBe(true)
-      expect(isExpiringSoon(makeToken(nowSec + 60))).toBe(true)
-    })
+      expect(isExpiringSoon(null)).toBe(true);
+      expect(isExpiringSoon('not-a-jwt')).toBe(true);
+      expect(isExpiringSoon(makeToken(nowSec - 60))).toBe(true);
+      expect(isExpiringSoon(makeToken(nowSec + 60))).toBe(true);
+    });
 
     it('is false for a far-future exp', () => {
-      expect(isExpiringSoon(makeToken(nowSec + 3600))).toBe(false)
-    })
-  })
+      expect(isExpiringSoon(makeToken(nowSec + 3600))).toBe(false);
+    });
+  });
 
   describe('refresh', () => {
-    let failureCb: Mock<() => void>
-    let unsub: () => void
+    let failureCb: Mock<() => void>;
+    let unsub: () => void;
 
     beforeEach(() => {
-      failureCb = vi.fn()
-      unsub = subscribeAuthFailure(failureCb)
-    })
+      failureCb = vi.fn();
+      unsub = subscribeAuthFailure(failureCb);
+    });
 
     afterEach(() => {
-      unsub()
-    })
+      unsub();
+    });
 
     it('swaps both tokens on success', async () => {
       useAuthStore.setState({
@@ -168,23 +168,23 @@ describe('authStore', () => {
         accessToken: 'old-at',
         refreshToken: 'old-rt',
         status: 'authenticated',
-      })
+      });
 
       mockRefresh.mockResolvedValueOnce({
         accessToken: 'new-at',
         accessTokenExpiresIn: 1800,
         refreshToken: 'new-rt',
         user: mockUser,
-      })
+      });
 
-      await useAuthStore.getState().refresh()
+      await useAuthStore.getState().refresh();
 
-      const s = useAuthStore.getState()
-      expect(s.status).toBe('authenticated')
-      expect(s.accessToken).toBe('new-at')
-      expect(s.refreshToken).toBe('new-rt')
-      expect(s.user).toEqual(mockUser)
-    })
+      const s = useAuthStore.getState();
+      expect(s.status).toBe('authenticated');
+      expect(s.accessToken).toBe('new-at');
+      expect(s.refreshToken).toBe('new-rt');
+      expect(s.user).toEqual(mockUser);
+    });
 
     it('calls logout and fires failure listener on definitive error', async () => {
       useAuthStore.setState({
@@ -192,83 +192,83 @@ describe('authStore', () => {
         accessToken: 'old-at',
         refreshToken: 'old-rt',
         status: 'authenticated',
-      })
+      });
 
-      mockRefresh.mockRejectedValueOnce({ response: { status: 401 } })
-      mockLogout.mockResolvedValueOnce(undefined)
+      mockRefresh.mockRejectedValueOnce({ response: { status: 401 } });
+      mockLogout.mockResolvedValueOnce(undefined);
 
       await expect(useAuthStore.getState().refresh()).rejects.toEqual({
         response: { status: 401 },
-      })
+      });
 
-      expect(useAuthStore.getState().status).toBe('idle')
-      expect(useAuthStore.getState().accessToken).toBeNull()
-      expect(mockLogout).toHaveBeenCalledWith('old-rt')
-      expect(failureCb).toHaveBeenCalledOnce()
-    })
+      expect(useAuthStore.getState().status).toBe('idle');
+      expect(useAuthStore.getState().accessToken).toBeNull();
+      expect(mockLogout).toHaveBeenCalledWith('old-rt');
+      expect(failureCb).toHaveBeenCalledOnce();
+    });
 
     it('keeps the session on a persistent transient failure after one retry', async () => {
-      vi.useFakeTimers()
+      vi.useFakeTimers();
       try {
         useAuthStore.setState({
           user: mockUser,
           accessToken: 'old-at',
           refreshToken: 'old-rt',
           status: 'authenticated',
-        })
+        });
 
-        mockRefresh.mockRejectedValueOnce(new Error('network'))
-        mockRefresh.mockRejectedValueOnce(new Error('network'))
+        mockRefresh.mockRejectedValueOnce(new Error('network'));
+        mockRefresh.mockRejectedValueOnce(new Error('network'));
 
-        const p = useAuthStore.getState().refresh()
-        const rejection = expect(p).rejects.toThrow('network')
-        await vi.advanceTimersByTimeAsync(1000)
+        const p = useAuthStore.getState().refresh();
+        const rejection = expect(p).rejects.toThrow('network');
+        await vi.advanceTimersByTimeAsync(1000);
 
-        await rejection
-        expect(mockRefresh).toHaveBeenCalledTimes(2)
-        expect(mockLogout).not.toHaveBeenCalled()
-        expect(failureCb).not.toHaveBeenCalled()
+        await rejection;
+        expect(mockRefresh).toHaveBeenCalledTimes(2);
+        expect(mockLogout).not.toHaveBeenCalled();
+        expect(failureCb).not.toHaveBeenCalled();
 
-        const s = useAuthStore.getState()
-        expect(s.status).toBe('authenticated')
-        expect(s.accessToken).toBe('old-at')
-        expect(s.refreshToken).toBe('old-rt')
+        const s = useAuthStore.getState();
+        expect(s.status).toBe('authenticated');
+        expect(s.accessToken).toBe('old-at');
+        expect(s.refreshToken).toBe('old-rt');
       } finally {
-        vi.useRealTimers()
+        vi.useRealTimers();
       }
-    })
+    });
 
     it('retries once after a transient failure and succeeds', async () => {
-      vi.useFakeTimers()
+      vi.useFakeTimers();
       try {
         useAuthStore.setState({
           user: mockUser,
           accessToken: 'old-at',
           refreshToken: 'old-rt',
           status: 'authenticated',
-        })
+        });
 
-        mockRefresh.mockRejectedValueOnce(new Error('network'))
+        mockRefresh.mockRejectedValueOnce(new Error('network'));
         mockRefresh.mockResolvedValueOnce({
           accessToken: 'retry-at',
           accessTokenExpiresIn: 1800,
           refreshToken: 'retry-rt',
           user: mockUser,
-        })
+        });
 
-        const p = useAuthStore.getState().refresh()
-        await vi.advanceTimersByTimeAsync(1000)
-        await p
+        const p = useAuthStore.getState().refresh();
+        await vi.advanceTimersByTimeAsync(1000);
+        await p;
 
-        expect(mockRefresh).toHaveBeenCalledTimes(2)
-        const s = useAuthStore.getState()
-        expect(s.status).toBe('authenticated')
-        expect(s.accessToken).toBe('retry-at')
-        expect(s.refreshToken).toBe('retry-rt')
+        expect(mockRefresh).toHaveBeenCalledTimes(2);
+        const s = useAuthStore.getState();
+        expect(s.status).toBe('authenticated');
+        expect(s.accessToken).toBe('retry-at');
+        expect(s.refreshToken).toBe('retry-rt');
       } finally {
-        vi.useRealTimers()
+        vi.useRealTimers();
       }
-    })
+    });
 
     it('ignores tokens in stale disk payloads and refreshes via the API', async () => {
       useAuthStore.setState({
@@ -276,31 +276,31 @@ describe('authStore', () => {
         accessToken: 'stale-at',
         refreshToken: 'stale-rt',
         status: 'authenticated',
-      })
+      });
       localStorage.setItem(
         'photox.auth',
         JSON.stringify({
           state: { user: mockUser, accessToken: 'disk-at', refreshToken: 'disk-rt' },
           version: 0,
         }),
-      )
+      );
 
       mockRefresh.mockResolvedValueOnce({
         accessToken: 'new-at',
         accessTokenExpiresIn: 1800,
         refreshToken: 'new-rt',
         user: mockUser,
-      })
+      });
 
-      await useAuthStore.getState().refresh()
+      await useAuthStore.getState().refresh();
 
       // jar-first: the memory pair never drives the rotation, so stale disk pairs stay dead
-      expect(mockRefresh).toHaveBeenCalledWith(undefined)
-      const s = useAuthStore.getState()
-      expect(s.status).toBe('authenticated')
-      expect(s.accessToken).toBe('new-at')
-      expect(s.refreshToken).toBe('new-rt')
-    })
+      expect(mockRefresh).toHaveBeenCalledWith(undefined);
+      const s = useAuthStore.getState();
+      expect(s.status).toBe('authenticated');
+      expect(s.accessToken).toBe('new-at');
+      expect(s.refreshToken).toBe('new-rt');
+    });
 
     it('two-tab newest-wins: a lock-delayed tab rotates the shared cookie, not its stale pair', async () => {
       // both tabs hold the same superseded memory pair; the jar already moved on
@@ -309,23 +309,23 @@ describe('authStore', () => {
         accessToken: 'stale-at',
         refreshToken: 'stale-rt',
         status: 'authenticated',
-      })
+      });
 
       mockRefresh.mockResolvedValueOnce({
         accessToken: 'new-at',
         accessTokenExpiresIn: 1800,
         refreshToken: 'new-rt',
         user: mockUser,
-      })
+      });
 
-      await useAuthStore.getState().refresh()
+      await useAuthStore.getState().refresh();
 
       // no body key → the server rotates the jar's newest instead of reuse-killing the family
-      expect(mockRefresh).toHaveBeenCalledWith(undefined)
-      const s = useAuthStore.getState()
-      expect(s.accessToken).toBe('new-at')
-      expect(s.refreshToken).toBe('new-rt')
-    })
+      expect(mockRefresh).toHaveBeenCalledWith(undefined);
+      const s = useAuthStore.getState();
+      expect(s.accessToken).toBe('new-at');
+      expect(s.refreshToken).toBe('new-rt');
+    });
 
     it('single-flight: two concurrent calls share one request', async () => {
       useAuthStore.setState({
@@ -333,42 +333,42 @@ describe('authStore', () => {
         accessToken: 'old-at',
         refreshToken: 'old-rt',
         status: 'authenticated',
-      })
+      });
 
       let resolveFirst!: (v: {
-        accessToken: string
-        accessTokenExpiresIn: number
-        refreshToken: string
-        user: typeof mockUser
-      }) => void
+        accessToken: string;
+        accessTokenExpiresIn: number;
+        refreshToken: string;
+        user: typeof mockUser;
+      }) => void;
       const firstPromise = new Promise<{
-        accessToken: string
-        accessTokenExpiresIn: number
-        refreshToken: string
-        user: typeof mockUser
+        accessToken: string;
+        accessTokenExpiresIn: number;
+        refreshToken: string;
+        user: typeof mockUser;
       }>((resolve) => {
-        resolveFirst = resolve
-      })
+        resolveFirst = resolve;
+      });
 
-      mockRefresh.mockReturnValueOnce(firstPromise)
+      mockRefresh.mockReturnValueOnce(firstPromise);
 
-      const p1 = useAuthStore.getState().refresh()
-      const p2 = useAuthStore.getState().refresh()
+      const p1 = useAuthStore.getState().refresh();
+      const p2 = useAuthStore.getState().refresh();
 
-      expect(mockRefresh).toHaveBeenCalledOnce()
+      expect(mockRefresh).toHaveBeenCalledOnce();
 
       resolveFirst({
         accessToken: 'fresh-at',
         accessTokenExpiresIn: 1800,
         refreshToken: 'fresh-rt',
         user: mockUser,
-      })
+      });
 
-      await Promise.all([p1, p2])
+      await Promise.all([p1, p2]);
 
-      expect(mockRefresh).toHaveBeenCalledOnce()
-      expect(useAuthStore.getState().accessToken).toBe('fresh-at')
-    })
+      expect(mockRefresh).toHaveBeenCalledOnce();
+      expect(useAuthStore.getState().accessToken).toBe('fresh-at');
+    });
 
     it('refreshes via the cookie when the memory token is absent', async () => {
       useAuthStore.setState({
@@ -376,50 +376,50 @@ describe('authStore', () => {
         accessToken: null,
         refreshToken: null,
         status: 'authenticated',
-      })
+      });
 
       mockRefresh.mockResolvedValueOnce({
         accessToken: 'cookie-at',
         accessTokenExpiresIn: 1800,
         refreshToken: 'cookie-rt',
         user: mockUser,
-      })
+      });
 
-      await useAuthStore.getState().refresh()
+      await useAuthStore.getState().refresh();
 
       // undefined omits the body key: the HttpOnly refresh cookie carries the credential
-      expect(mockRefresh).toHaveBeenCalledWith(undefined)
-      const s = useAuthStore.getState()
-      expect(s.accessToken).toBe('cookie-at')
-      expect(s.refreshToken).toBe('cookie-rt')
-    })
-  })
+      expect(mockRefresh).toHaveBeenCalledWith(undefined);
+      const s = useAuthStore.getState();
+      expect(s.accessToken).toBe('cookie-at');
+      expect(s.refreshToken).toBe('cookie-rt');
+    });
+  });
 
   describe('wake triggers', () => {
     it('refreshes on an online event when the access token is expiring', async () => {
       // a JWT with no exp counts as expiring (same as an expired one) while not arming the
       // boot scheduler on setState, so the refresh below can only come from the event
-      const expiringToken = `header.${btoa(JSON.stringify({ sub: 'u1' }))}.sig`
+      const expiringToken = `header.${btoa(JSON.stringify({ sub: 'u1' }))}.sig`;
       useAuthStore.setState({
         user: mockUser,
         accessToken: expiringToken,
         refreshToken: 'wake-rt',
         status: 'authenticated',
-      })
+      });
 
       mockRefresh.mockResolvedValueOnce({
         accessToken: 'wake-at',
         accessTokenExpiresIn: 1800,
         refreshToken: 'wake-rt2',
         user: mockUser,
-      })
+      });
 
-      window.dispatchEvent(new Event('online'))
+      window.dispatchEvent(new Event('online'));
 
       await vi.waitFor(() => {
-        expect(useAuthStore.getState().accessToken).toBe('wake-at')
-      })
-      expect(mockRefresh).toHaveBeenCalledOnce()
-    })
-  })
-})
+        expect(useAuthStore.getState().accessToken).toBe('wake-at');
+      });
+      expect(mockRefresh).toHaveBeenCalledOnce();
+    });
+  });
+});

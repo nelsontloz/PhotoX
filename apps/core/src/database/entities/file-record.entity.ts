@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm'
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm';
 
 @Entity('files')
 @Index(['userId', 'checksumSha256'])
@@ -13,33 +13,33 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 
 })
 export class FileRecord {
   @PrimaryGeneratedColumn('uuid')
-  id!: string
+  id!: string;
 
   @Column()
-  userId!: string
+  userId!: string;
 
   @Column()
-  storageKey!: string
+  storageKey!: string;
 
   @Column()
-  originalName!: string
+  originalName!: string;
 
   @Column()
-  mimeType!: string
+  mimeType!: string;
 
   @Column({ type: 'bigint' })
-  sizeBytes!: number
+  sizeBytes!: number;
 
   @Column()
-  checksumSha256!: string
+  checksumSha256!: string;
 
   @Column({ type: 'varchar', length: 16, default: 'original' })
-  purpose!: 'original' | 'transcode'
+  purpose!: 'original' | 'transcode';
 
   @Column({ type: 'uuid', nullable: true })
   @Index()
-  assetId!: string | null
+  assetId!: string | null;
 
   @CreateDateColumn()
-  createdAt!: Date
+  createdAt!: Date;
 }

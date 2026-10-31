@@ -1,5 +1,5 @@
-export { loadEnv, loadAuthEnv, loadRootEnvFile, resolveFaceDetectorModelPath } from './env'
-export { LocalStorageService } from './storage'
+export { loadEnv, loadAuthEnv, loadRootEnvFile, resolveFaceDetectorModelPath } from './env';
+export { LocalStorageService } from './storage';
 export {
   backupPrefix,
   findPrefixesForUserId,
@@ -8,4 +8,4 @@ export {
   originalKey,
   parseBackupDir,
   resolveBackupPrefix,
-} from './backup-path'
+} from './backup-path';

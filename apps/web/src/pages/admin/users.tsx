@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react';
 import {
   FaArrowDown,
   FaArrowUp,
@@ -13,12 +13,12 @@ import {
   FaTriangleExclamation,
   FaUserPlus,
   FaUserShield,
-} from 'react-icons/fa6'
-import { type AdminUserRow, type AdminUserSortField } from '@photox/shared-types'
-import { LoadingState } from '../../components/StateViews'
-import { Dialog, formInputClass } from '../../components/Dialog'
-import { useAuthStore } from '../../store/auth-store'
-import { AdminCard, AdminSection, AdminToast, Button, StatusPill, cx } from './ui'
+} from 'react-icons/fa6';
+import { type AdminUserRow, type AdminUserSortField } from '@photox/shared-types';
+import { LoadingState } from '../../components/StateViews';
+import { Dialog, formInputClass } from '../../components/Dialog';
+import { useAuthStore } from '../../store/auth-store';
+import { AdminCard, AdminSection, AdminToast, Button, StatusPill, cx } from './ui';
 import {
   deleteAdminUser,
   getRegistrationSettings,
@@ -27,32 +27,32 @@ import {
   setRegistrationSettings,
   syncAdminUserBackup,
   type ListAdminUsersParams,
-} from '../../api/admin'
-import { RoleBadge } from './shared'
+} from '../../api/admin';
+import { RoleBadge } from './shared';
 import {
   EditUserDialog,
   BACKUP_RETRY_ERROR_MESSAGES,
   type UserEditOutcome,
-} from './edit-user-dialog'
-import { useAsyncFetch } from '../../hooks/useAsyncFetch'
-import { httpErrorMessage, type HttpErrorMessages } from './http-error'
-import { CreateUserDialog } from './create-user-dialog'
+} from './edit-user-dialog';
+import { useAsyncFetch } from '../../hooks/useAsyncFetch';
+import { httpErrorMessage, type HttpErrorMessages } from './http-error';
+import { CreateUserDialog } from './create-user-dialog';
 
 // --- users ------------------------------------------------------------------------------
 
-type SortDir = 'asc' | 'desc'
+type SortDir = 'asc' | 'desc';
 
 interface SortState {
-  field: AdminUserSortField
-  dir: SortDir
+  field: AdminUserSortField;
+  dir: SortDir;
 }
 
-const DEFAULT_SORT: SortState = { field: 'createdAt', dir: 'desc' }
-const DEFAULT_LIMIT = 20
+const DEFAULT_SORT: SortState = { field: 'createdAt', dir: 'desc' };
+const DEFAULT_LIMIT = 20;
 
-const SELF_DELETE_GUARD = "You can't delete your own account."
-const LAST_ADMIN_GUARD = "The last admin can't be deleted."
-const GENERIC_COUNTS = 'Their photos, videos, albums and shares will be permanently removed.'
+const SELF_DELETE_GUARD = "You can't delete your own account.";
+const LAST_ADMIN_GUARD = "The last admin can't be deleted.";
+const GENERIC_COUNTS = 'Their photos, videos, albums and shares will be permanently removed.';
 
 /** Never leak axios verbatim; the server guards map to plain sentences. */
 const DELETE_ERROR_MESSAGES: HttpErrorMessages = {
@@ -63,18 +63,18 @@ const DELETE_ERROR_MESSAGES: HttpErrorMessages = {
     404: 'That user no longer exists. Close this and refresh the list.',
   },
   preferServerMessage: true,
-}
+};
 
 interface SortHeaderProps {
-  field: AdminUserSortField
-  label: string
-  sort: SortState
-  onSort: (field: AdminUserSortField) => void
+  field: AdminUserSortField;
+  label: string;
+  sort: SortState;
+  onSort: (field: AdminUserSortField) => void;
 }
 
 function SortHeader({ field, label, sort, onSort }: SortHeaderProps) {
-  const active = sort.field === field
-  const Icon = !active ? FaArrowsUpDown : sort.dir === 'asc' ? FaArrowUp : FaArrowDown
+  const active = sort.field === field;
+  const Icon = !active ? FaArrowsUpDown : sort.dir === 'asc' ? FaArrowUp : FaArrowDown;
   return (
     <th className="text-left font-semibold px-4 py-3">
       <button
@@ -86,7 +86,7 @@ function SortHeader({ field, label, sort, onSort }: SortHeaderProps) {
         <Icon className={cx('text-[10px]', active ? 'text-primary' : 'text-outline')} />
       </button>
     </th>
-  )
+  );
 }
 
 // --- delete dialog ----------------------------------------------------------------------
@@ -98,32 +98,32 @@ function DeleteUserDialog({
   onClose,
   onDeleted,
 }: {
-  user: AdminUserRow
-  onClose: () => void
-  onDeleted: (displayName: string) => void
+  user: AdminUserRow;
+  onClose: () => void;
+  onDeleted: (displayName: string) => void;
 }) {
-  const [confirmText, setConfirmText] = useState('')
-  const [working, setWorking] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [confirmText, setConfirmText] = useState('');
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const confirmed = confirmText === 'DELETE'
+  const confirmed = confirmText === 'DELETE';
   const close = () => {
-    if (!working) onClose()
-  }
+    if (!working) onClose();
+  };
 
   const onConfirm = async () => {
-    if (!confirmed || working) return
-    setWorking(true)
-    setError(null)
+    if (!confirmed || working) return;
+    setWorking(true);
+    setError(null);
     try {
-      await deleteAdminUser(user.id)
-      await pollAdminUserDelete(user.id)
-      onDeleted(user.displayName)
+      await deleteAdminUser(user.id);
+      await pollAdminUserDelete(user.id);
+      onDeleted(user.displayName);
     } catch (err: unknown) {
-      setError(httpErrorMessage(err, DELETE_ERROR_MESSAGES))
-      setWorking(false)
+      setError(httpErrorMessage(err, DELETE_ERROR_MESSAGES));
+      setWorking(false);
     }
-  }
+  };
 
   return (
     <Dialog
@@ -213,7 +213,7 @@ function DeleteUserDialog({
         </button>
       </div>
     </Dialog>
-  )
+  );
 }
 
 // --- post-edit backup warning ------------------------------------------------------------
@@ -223,13 +223,13 @@ function DeleteUserDialog({
 // verbatim — it is the one detail the admin can act on.
 
 interface BackupMoveWarning {
-  userId: string
-  displayName: string
-  email: string
-  to: string
-  error: string
+  userId: string;
+  displayName: string;
+  email: string;
+  to: string;
+  error: string;
   /** An email change wants the whole prefix relocated; any other edit only syncs the manifest. */
-  emailChanged: boolean
+  emailChanged: boolean;
 }
 
 function BackupMoveWarningBox({
@@ -238,10 +238,10 @@ function BackupMoveWarningBox({
   onRetry,
   onDismiss,
 }: {
-  warning: BackupMoveWarning
-  retrying: boolean
-  onRetry: () => void
-  onDismiss: () => void
+  warning: BackupMoveWarning;
+  retrying: boolean;
+  onRetry: () => void;
+  onDismiss: () => void;
 }) {
   return (
     <div
@@ -295,7 +295,7 @@ function BackupMoveWarningBox({
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 // --- registration settings ---------------------------------------------------------------
@@ -307,32 +307,32 @@ const REGISTRATION_ERROR_MESSAGES: HttpErrorMessages = {
   byStatus: { 403: 'Only an admin can change this.' },
   timeout: "Couldn't reach the server — the setting was not changed.",
   preferServerMessage: true,
-}
+};
 
 function RegistrationSettingsCard() {
   const { data, loading, error, setData, refresh } = useAsyncFetch(getRegistrationSettings, {
     errorMessage: "Couldn't load the sign-up setting.",
-  })
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
+  });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  const enabled = data?.enabled ?? false
+  const enabled = data?.enabled ?? false;
 
   const toggle = async () => {
-    if (saving || !data) return
-    const next = !data.enabled
-    setSaving(true)
-    setSaveError(null)
-    setData({ enabled: next })
+    if (saving || !data) return;
+    const next = !data.enabled;
+    setSaving(true);
+    setSaveError(null);
+    setData({ enabled: next });
     try {
-      setData(await setRegistrationSettings(next))
+      setData(await setRegistrationSettings(next));
     } catch (err: unknown) {
-      setData({ enabled: !next })
-      setSaveError(httpErrorMessage(err, REGISTRATION_ERROR_MESSAGES))
+      setData({ enabled: !next });
+      setSaveError(httpErrorMessage(err, REGISTRATION_ERROR_MESSAGES));
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   return (
     <AdminCard className="mb-4">
@@ -397,31 +397,31 @@ function RegistrationSettingsCard() {
         </div>
       </div>
     </AdminCard>
-  )
+  );
 }
 
 export function UsersSection() {
-  const [searchInput, setSearchInput] = useState('')
-  const [debouncedQ, setDebouncedQ] = useState('')
-  const [sort, setSort] = useState<SortState>(DEFAULT_SORT)
-  const [offset, setOffset] = useState(0)
-  const [version, setVersion] = useState(0)
-  const [target, setTarget] = useState<AdminUserRow | null>(null)
-  const [editing, setEditing] = useState<AdminUserRow | null>(null)
-  const [creating, setCreating] = useState(false)
-  const [backupWarning, setBackupWarning] = useState<BackupMoveWarning | null>(null)
-  const [retryingId, setRetryingId] = useState<string | null>(null)
-  const [notice, setNotice] = useState<{ id: number; text: string } | null>(null)
-  const currentUserId = useAuthStore((s) => s.user?.id)
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedQ, setDebouncedQ] = useState('');
+  const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
+  const [offset, setOffset] = useState(0);
+  const [version, setVersion] = useState(0);
+  const [target, setTarget] = useState<AdminUserRow | null>(null);
+  const [editing, setEditing] = useState<AdminUserRow | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [backupWarning, setBackupWarning] = useState<BackupMoveWarning | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ id: number; text: string } | null>(null);
+  const currentUserId = useAuthStore((s) => s.user?.id);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(searchInput.trim()), 250)
-    return () => clearTimeout(t)
-  }, [searchInput])
+    const t = setTimeout(() => setDebouncedQ(searchInput.trim()), 250);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   useEffect(() => {
-    setOffset(0)
-  }, [debouncedQ, sort])
+    setOffset(0);
+  }, [debouncedQ, sort]);
 
   const { data, loading, error } = useAsyncFetch(
     () => {
@@ -430,9 +430,9 @@ export function UsersSection() {
         offset,
         sortField: sort.field,
         sortDir: sort.dir,
-      }
-      if (debouncedQ) params.q = debouncedQ
-      return listAdminUsers(params)
+      };
+      if (debouncedQ) params.q = debouncedQ;
+      return listAdminUsers(params);
     },
     {
       // Any filter/page change (or an explicit refresh bump) is a new request key.
@@ -440,33 +440,33 @@ export function UsersSection() {
       errorMessage: 'Failed to load users',
       loadingMode: 'always',
     },
-  )
+  );
 
-  const total = data?.total ?? 0
-  const currentPage = Math.floor(offset / DEFAULT_LIMIT) + 1
-  const totalPages = Math.max(1, Math.ceil(total / DEFAULT_LIMIT))
-  const items = data?.items ?? []
-  const adminCount = items.filter((u) => u.role === 'admin').length
+  const total = data?.total ?? 0;
+  const currentPage = Math.floor(offset / DEFAULT_LIMIT) + 1;
+  const totalPages = Math.max(1, Math.ceil(total / DEFAULT_LIMIT));
+  const items = data?.items ?? [];
+  const adminCount = items.filter((u) => u.role === 'admin').length;
   // The last-admin guard only applies when the whole directory fits on this page;
   // anything paged out stays the server's call (409 surfaces in the dialog).
-  const fullyLoaded = items.length > 0 && total <= items.length
+  const fullyLoaded = items.length > 0 && total <= items.length;
 
   const guardFor = (u: AdminUserRow): string | null => {
-    if (currentUserId != null && u.id === currentUserId) return SELF_DELETE_GUARD
-    if (u.role === 'admin' && adminCount === 1 && fullyLoaded) return LAST_ADMIN_GUARD
-    return null
-  }
+    if (currentUserId != null && u.id === currentUserId) return SELF_DELETE_GUARD;
+    if (u.role === 'admin' && adminCount === 1 && fullyLoaded) return LAST_ADMIN_GUARD;
+    return null;
+  };
 
   // Editing is never blocked by the delete guards (self and last-admin are delete-only), but a
   // backup move already in flight for a row would put a stale identity in the dialog.
   const editGuardFor = (u: AdminUserRow): string | null =>
-    retryingId === u.id ? "Moving this user's S3 backup — wait for it to finish." : null
+    retryingId === u.id ? "Moving this user's S3 backup — wait for it to finish." : null;
 
   /** A save is done: the row is live, so refresh the list and report the backup outcome. */
   const onEdited = (outcome: UserEditOutcome) => {
-    const { user: updated, backup, emailChanged, signedOut } = outcome
-    setEditing(null)
-    setVersion((v) => v + 1)
+    const { user: updated, backup, emailChanged, signedOut } = outcome;
+    setEditing(null);
+    setVersion((v) => v + 1);
 
     // Applied, but storage refused the sync: the failure lives outside the dialog so it
     // survives until the admin actually retries it.
@@ -478,15 +478,15 @@ export function UsersSection() {
         to: backup.to,
         error: backup.error ?? 'The backup store did not respond.',
         emailChanged,
-      })
-      return
+      });
+      return;
     }
 
     if (signedOut) {
       // Every session for this user was revoked — including this one. The next API call
       // fails its refresh and the app returns to the sign-in screen.
-      setNotice({ id: Date.now(), text: 'Your account was updated — sign in again.' })
-      return
+      setNotice({ id: Date.now(), text: 'Your account was updated — sign in again.' });
+      return;
     }
 
     const backupNote = !emailChanged
@@ -495,55 +495,55 @@ export function UsersSection() {
         ? ' No S3 backup found, so nothing was moved.'
         : backup.moved
           ? ' S3 backup moved to the new address.'
-          : ' S3 backup was already at the new address.'
-    setNotice({ id: Date.now(), text: `Updated ${updated.displayName}.${backupNote}` })
-  }
+          : ' S3 backup was already at the new address.';
+    setNotice({ id: Date.now(), text: `Updated ${updated.displayName}.${backupNote}` });
+  };
 
   const retryBackupMove = async () => {
-    const warning = backupWarning
-    if (!warning || retryingId != null) return
-    setRetryingId(warning.userId)
+    const warning = backupWarning;
+    if (!warning || retryingId != null) return;
+    setRetryingId(warning.userId);
     try {
-      const res = await syncAdminUserBackup(warning.userId)
+      const res = await syncAdminUserBackup(warning.userId);
       if (res.synced) {
-        setBackupWarning(null)
+        setBackupWarning(null);
         setNotice({
           id: Date.now(),
           text: res.moved
             ? `S3 backup moved for ${warning.email}.`
             : `Backup for ${warning.email} is up to date.`,
-        })
-        return
+        });
+        return;
       }
       if (res.reason === 'no-backup') {
-        setBackupWarning(null)
+        setBackupWarning(null);
         setNotice({
           id: Date.now(),
           text: `No S3 backup found for ${warning.email} — nothing to move.`,
-        })
-        return
+        });
+        return;
       }
       // Still no storage: keep the box up with the freshest detail.
       setBackupWarning((prev) =>
         prev ? { ...prev, to: res.to, error: res.error ?? prev.error } : prev,
-      )
+      );
     } catch (err: unknown) {
       setBackupWarning((prev) =>
         prev ? { ...prev, error: httpErrorMessage(err, BACKUP_RETRY_ERROR_MESSAGES) } : prev,
-      )
+      );
     } finally {
-      setRetryingId(null)
+      setRetryingId(null);
     }
-  }
+  };
 
   const onSort = (field: AdminUserSortField) => {
     setSort((prev) => {
       if (prev.field === field) {
-        return { field, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        return { field, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
       }
-      return { field, dir: field === 'createdAt' || field === 'email' ? 'desc' : 'asc' }
-    })
-  }
+      return { field, dir: field === 'createdAt' || field === 'email' ? 'desc' : 'asc' };
+    });
+  };
 
   return (
     <AdminSection
@@ -616,8 +616,8 @@ export function UsersSection() {
             </thead>
             <tbody className="divide-y divide-border-dark">
               {items.map((u) => {
-                const guard = guardFor(u)
-                const editGuard = editGuardFor(u)
+                const guard = guardFor(u);
+                const editGuard = editGuardFor(u);
                 return (
                   <tr key={u.id} className="hover:bg-surface-container/50 transition-colors">
                     <td className="py-3.5 px-4">
@@ -666,7 +666,7 @@ export function UsersSection() {
                       </div>
                     </td>
                   </tr>
-                )
+                );
               })}
             </tbody>
           </table>
@@ -710,9 +710,9 @@ export function UsersSection() {
         <CreateUserDialog
           onClose={() => setCreating(false)}
           onCreated={(user) => {
-            setCreating(false)
-            setNotice({ id: Date.now(), text: `Created ${user.displayName}.` })
-            setVersion((v) => v + 1)
+            setCreating(false);
+            setNotice({ id: Date.now(), text: `Created ${user.displayName}.` });
+            setVersion((v) => v + 1);
           }}
         />
       )}
@@ -722,12 +722,12 @@ export function UsersSection() {
           user={target}
           onClose={() => setTarget(null)}
           onDeleted={(displayName) => {
-            setTarget(null)
-            setNotice({ id: Date.now(), text: `Deleted ${displayName}.` })
-            setVersion((v) => v + 1)
+            setTarget(null);
+            setNotice({ id: Date.now(), text: `Deleted ${displayName}.` });
+            setVersion((v) => v + 1);
           }}
         />
       )}
     </AdminSection>
-  )
+  );
 }

@@ -1,8 +1,8 @@
-export { FileRecord } from './file-record.entity'
-export { Asset } from './asset.entity'
-export { AssetThumbnail } from './asset-thumbnail.entity'
-export { Face } from './face.entity'
-export { Person } from './person.entity'
-export { AppSetting } from './app-setting.entity'
-export { UploadSession } from './upload-session.entity'
-export { UploadSessionPart } from './upload-session-part.entity'
+export { FileRecord } from './file-record.entity';
+export { Asset } from './asset.entity';
+export { AssetThumbnail } from './asset-thumbnail.entity';
+export { Face } from './face.entity';
+export { Person } from './person.entity';
+export { AppSetting } from './app-setting.entity';
+export { UploadSession } from './upload-session.entity';
+export { UploadSessionPart } from './upload-session-part.entity';

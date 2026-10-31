@@ -9,14 +9,14 @@ import {
   Body,
   HttpCode,
   HttpStatus,
-} from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import { CurrentUserId } from '../auth/jwt-auth.guard'
-import { AlbumsService } from './albums.service'
-import { CreateAlbumDto } from './dto/create-album.dto'
-import { UpdateAlbumDto } from './dto/update-album.dto'
-import { PaginationQueryDto } from '../common/pagination-query.dto'
-import { AddAssetsBodyDto } from './dto/add-assets.dto'
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { CurrentUserId } from '../auth/jwt-auth.guard';
+import { AlbumsService } from './albums.service';
+import { CreateAlbumDto } from './dto/create-album.dto';
+import { UpdateAlbumDto } from './dto/update-album.dto';
+import { PaginationQueryDto } from '../common/pagination-query.dto';
+import { AddAssetsBodyDto } from './dto/add-assets.dto';
 
 @ApiTags('albums')
 @Controller('api/v1/albums')
@@ -28,14 +28,14 @@ export class AlbumsController {
   @ApiResponse({ status: 201, description: 'Album created' })
   @ApiResponse({ status: 400, description: 'Invalid request body' })
   async create(@Body() dto: CreateAlbumDto, @CurrentUserId() userId: string) {
-    return this.albums.create(userId, dto)
+    return this.albums.create(userId, dto);
   }
 
   @Get()
   @ApiOperation({ summary: 'List albums' })
   @ApiResponse({ status: 200, description: 'Paginated album list' })
   async list(@Query() q: PaginationQueryDto, @CurrentUserId() userId: string) {
-    return this.albums.list(userId, q)
+    return this.albums.list(userId, q);
   }
 
   @Get(':id')
@@ -43,7 +43,7 @@ export class AlbumsController {
   @ApiResponse({ status: 200, description: 'Album found' })
   @ApiResponse({ status: 404, description: 'Album not found' })
   async getOne(@Param('id') id: string, @CurrentUserId() userId: string) {
-    return this.albums.getOne(userId, id)
+    return this.albums.getOne(userId, id);
   }
 
   @Patch(':id')
@@ -55,7 +55,7 @@ export class AlbumsController {
     @Body() dto: UpdateAlbumDto,
     @CurrentUserId() userId: string,
   ) {
-    return this.albums.update(userId, id, dto)
+    return this.albums.update(userId, id, dto);
   }
 
   @Delete(':id')
@@ -64,7 +64,7 @@ export class AlbumsController {
   @ApiResponse({ status: 204, description: 'Album deleted' })
   @ApiResponse({ status: 404, description: 'Album not found' })
   async delete(@Param('id') id: string, @CurrentUserId() userId: string) {
-    await this.albums.delete(userId, id)
+    await this.albums.delete(userId, id);
   }
 
   @Post(':id/assets')
@@ -76,8 +76,8 @@ export class AlbumsController {
     @Body() dto: AddAssetsBodyDto,
     @CurrentUserId() userId: string,
   ) {
-    await this.albums.addAssets(userId, id, dto.assetIds)
-    return { added: dto.assetIds.length }
+    await this.albums.addAssets(userId, id, dto.assetIds);
+    return { added: dto.assetIds.length };
   }
 
   @Delete(':id/assets/:assetId')
@@ -90,7 +90,7 @@ export class AlbumsController {
     @Param('assetId') assetId: string,
     @CurrentUserId() userId: string,
   ) {
-    await this.albums.removeAsset(userId, id, assetId)
+    await this.albums.removeAsset(userId, id, assetId);
   }
 
   @Get(':id/assets')
@@ -102,6 +102,6 @@ export class AlbumsController {
     @CurrentUserId() userId: string,
     @Query() q: PaginationQueryDto,
   ) {
-    return this.albums.listAssets(userId, id, q)
+    return this.albums.listAssets(userId, id, q);
   }
 }

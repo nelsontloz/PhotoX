@@ -1,31 +1,31 @@
-import { useEffect, useState } from 'react'
-import type { Asset } from '@photox/shared-types'
-import { getAsset, reprocessThumbnails, reprocessVideo } from '../../api/assets'
-import { ViewerTopBar } from './ViewerTopBar'
-import { ViewerActions } from './ViewerActions'
-import { useAssetMedia } from './useAssetMedia'
-import { useDetections } from './useDetections'
-import { useAssetDuplicates, useSimilarAssets } from './useRelatedAssets'
-import { useViewerKeyboard } from './useViewerKeyboard'
-import { ViewerMedia } from './ViewerMedia'
-import { ViewerInfoPanel } from './ViewerInfoPanel'
-import { ViewerRelatedTray } from './ViewerRelatedTray'
+import { useEffect, useState } from 'react';
+import type { Asset } from '@photox/shared-types';
+import { getAsset, reprocessThumbnails, reprocessVideo } from '../../api/assets';
+import { ViewerTopBar } from './ViewerTopBar';
+import { ViewerActions } from './ViewerActions';
+import { useAssetMedia } from './useAssetMedia';
+import { useDetections } from './useDetections';
+import { useAssetDuplicates, useSimilarAssets } from './useRelatedAssets';
+import { useViewerKeyboard } from './useViewerKeyboard';
+import { ViewerMedia } from './ViewerMedia';
+import { ViewerInfoPanel } from './ViewerInfoPanel';
+import { ViewerRelatedTray } from './ViewerRelatedTray';
 
 interface AssetViewerProps {
-  asset: Asset
-  onClose: () => void
-  onPrev?: () => void
-  onNext?: () => void
-  hasPrev: boolean
-  hasNext: boolean
-  onTrash?: () => void
-  onRestore?: () => void
-  onDelete?: () => void
-  onToggleFavorite?: (nextValue: boolean) => void
-  onAddToAlbum?: () => void
-  onRemoveFromAlbum?: () => void
-  siblingAssets?: Asset[]
-  onSelectSibling?: (asset: Asset) => void
+  asset: Asset;
+  onClose: () => void;
+  onPrev?: () => void;
+  onNext?: () => void;
+  hasPrev: boolean;
+  hasNext: boolean;
+  onTrash?: () => void;
+  onRestore?: () => void;
+  onDelete?: () => void;
+  onToggleFavorite?: (nextValue: boolean) => void;
+  onAddToAlbum?: () => void;
+  onRemoveFromAlbum?: () => void;
+  siblingAssets?: Asset[];
+  onSelectSibling?: (asset: Asset) => void;
 }
 
 export function AssetViewer({
@@ -44,82 +44,82 @@ export function AssetViewer({
   siblingAssets,
   onSelectSibling,
 }: AssetViewerProps) {
-  const [currentAsset, setCurrentAsset] = useState<Asset>(asset)
-  const [infoOpen, setInfoOpen] = useState(false)
-  const [hoveredFaceId, setHoveredFaceId] = useState<string | null>(null)
-  const [favOverride, setFavOverride] = useState<boolean | null>(null)
-  const [reprocessLoading, setReprocessLoading] = useState(false)
-  const [detectionsOn, setDetectionsOn] = useState(false)
+  const [currentAsset, setCurrentAsset] = useState<Asset>(asset);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [hoveredFaceId, setHoveredFaceId] = useState<string | null>(null);
+  const [favOverride, setFavOverride] = useState<boolean | null>(null);
+  const [reprocessLoading, setReprocessLoading] = useState(false);
+  const [detectionsOn, setDetectionsOn] = useState(false);
 
   useEffect(() => {
-    setCurrentAsset(asset)
-    setFavOverride(null)
-    setHoveredFaceId(null)
-    let cancelled = false
+    setCurrentAsset(asset);
+    setFavOverride(null);
+    setHoveredFaceId(null);
+    let cancelled = false;
     void getAsset(asset.id)
       .then((fresh) => {
-        if (!cancelled) setCurrentAsset(fresh)
+        if (!cancelled) setCurrentAsset(fresh);
       })
       .catch(() => {
         // ponytail: list entry is good enough on refetch failure (faces missing is the only diff)
-      })
+      });
     return () => {
-      cancelled = true
-    }
-  }, [asset])
-  const { imageUrl, videoPosterUrl, placeholderUrl, loading } = useAssetMedia(currentAsset)
-  useViewerKeyboard({ onClose, onPrev, onNext, hasPrev, hasNext })
+      cancelled = true;
+    };
+  }, [asset]);
+  const { imageUrl, videoPosterUrl, placeholderUrl, loading } = useAssetMedia(currentAsset);
+  useViewerKeyboard({ onClose, onPrev, onNext, hasPrev, hasNext });
 
   useEffect(() => {
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = prev
-    }
-  }, [])
+      document.body.style.overflow = prev;
+    };
+  }, []);
 
-  const isVideo = currentAsset.kind === 'video'
-  const canShowDetections = !isVideo && currentAsset.width != null && currentAsset.height != null
+  const isVideo = currentAsset.kind === 'video';
+  const canShowDetections = !isVideo && currentAsset.width != null && currentAsset.height != null;
   const { status: detectionStatus, detections } = useDetections(
     currentAsset.id,
     detectionsOn && canShowDetections,
-  )
+  );
   // related sections skip trashed assets: suggestions for something already in the trash lead
   // into viewer actions (restore/delete) that don't apply to live results
-  const relatedEnabled = !currentAsset.isTrashed
-  const similar = useSimilarAssets(currentAsset.id, relatedEnabled)
-  const duplicates = useAssetDuplicates(currentAsset.id, relatedEnabled)
+  const relatedEnabled = !currentAsset.isTrashed;
+  const similar = useSimilarAssets(currentAsset.id, relatedEnabled);
+  const duplicates = useAssetDuplicates(currentAsset.id, relatedEnabled);
   const displayAsset =
-    favOverride !== null ? { ...currentAsset, favorite: favOverride } : currentAsset
+    favOverride !== null ? { ...currentAsset, favorite: favOverride } : currentAsset;
 
   const handleToggleFavorite = () => {
-    const next = !(favOverride ?? currentAsset.favorite)
-    setFavOverride(next)
-    onToggleFavorite?.(next)
-  }
+    const next = !(favOverride ?? currentAsset.favorite);
+    setFavOverride(next);
+    onToggleFavorite?.(next);
+  };
 
   const runReprocess = async (fn: (id: string) => Promise<void>) => {
-    setReprocessLoading(true)
+    setReprocessLoading(true);
     try {
-      await fn(currentAsset.id)
+      await fn(currentAsset.id);
     } catch {
       // ignore
     } finally {
-      setReprocessLoading(false)
+      setReprocessLoading(false);
     }
-  }
+  };
 
   const reprocessThumbnailsAction = !reprocessLoading
     ? () => {
-        void runReprocess(reprocessThumbnails)
+        void runReprocess(reprocessThumbnails);
       }
-    : undefined
+    : undefined;
   const reprocessVideoAction =
     currentAsset.kind === 'video' && !reprocessLoading
       ? () => {
-          void runReprocess(reprocessVideo)
+          void runReprocess(reprocessVideo);
         }
-      : undefined
+      : undefined;
 
   return (
     <div className="fixed inset-0 z-50 flex overflow-hidden bg-black">
@@ -139,8 +139,8 @@ export function AssetViewer({
           asset={displayAsset}
           infoOpen={infoOpen}
           onToggleInfo={() => {
-            setInfoOpen((v) => !v)
-            setHoveredFaceId(null)
+            setInfoOpen((v) => !v);
+            setHoveredFaceId(null);
           }}
           onClose={onClose}
           detectionsOn={detectionsOn}
@@ -203,11 +203,11 @@ export function AssetViewer({
           asset={currentAsset}
           onFaceHover={setHoveredFaceId}
           onClose={() => {
-            setInfoOpen(false)
-            setHoveredFaceId(null)
+            setInfoOpen(false);
+            setHoveredFaceId(null);
           }}
         />
       )}
     </div>
-  )
+  );
 }

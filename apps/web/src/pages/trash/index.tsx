@@ -1,27 +1,27 @@
-import { useCallback, useState } from 'react'
-import { FaSpinner, FaTrash, FaTrashCan } from 'react-icons/fa6'
-import { RequireAuth } from '../../components/RequireAuth'
-import { AppShell } from '../../components/AppShell'
-import { useConfirm } from '../../components/ConfirmProvider'
-import { GalleryItem } from '../../components/GalleryItem'
-import { DayHeader } from '../../components/Timeline/TimelineGrid'
-import { TimelineError, TimelineViewer } from '../../components/Timeline/TimelinePage'
-import { groupAssetsByDay, type AssetGroup } from '../../hooks/useAssetGroups'
-import { useAssetNavigation } from '../../hooks/useAssetNavigation'
-import { useAsyncFetch } from '../../hooks/useAsyncFetch'
-import { emptyTrash, listAllAssets } from '../../api/assets'
-import { EmptyState, LoadingState } from '../../components/StateViews'
-import { useAppStore } from '../../store/app-store'
+import { useCallback, useState } from 'react';
+import { FaSpinner, FaTrash, FaTrashCan } from 'react-icons/fa6';
+import { RequireAuth } from '../../components/RequireAuth';
+import { AppShell } from '../../components/AppShell';
+import { useConfirm } from '../../components/ConfirmProvider';
+import { GalleryItem } from '../../components/GalleryItem';
+import { DayHeader } from '../../components/Timeline/TimelineGrid';
+import { TimelineError, TimelineViewer } from '../../components/Timeline/TimelinePage';
+import { groupAssetsByDay, type AssetGroup } from '../../hooks/useAssetGroups';
+import { useAssetNavigation } from '../../hooks/useAssetNavigation';
+import { useAsyncFetch } from '../../hooks/useAsyncFetch';
+import { emptyTrash, listAllAssets } from '../../api/assets';
+import { EmptyState, LoadingState } from '../../components/StateViews';
+import { useAppStore } from '../../store/app-store';
 
-const PAGE_SIZE = 50
-const EMPTY: AssetGroup[] = []
+const PAGE_SIZE = 50;
+const EMPTY: AssetGroup[] = [];
 
 /**
  * Fetch-all day grouping for trash (timeline views use the per-month cache instead) — folded in
  * here since trash is the hook's only consumer.
  */
 function useTrashGroups() {
-  const timelineRefreshKey = useAppStore((s) => s.timelineRefreshKey)
+  const timelineRefreshKey = useAppStore((s) => s.timelineRefreshKey);
   const fetchGroups = useCallback(
     async () =>
       groupAssetsByDay(
@@ -29,22 +29,22 @@ function useTrashGroups() {
         (a) => a.trashedAt,
       ),
     [],
-  )
+  );
   const { data, loading, error, refresh } = useAsyncFetch(fetchGroups, {
     refreshKey: timelineRefreshKey,
     errorMessage: 'Failed to load assets',
-  })
-  return { groups: data ?? EMPTY, loading, error, refresh }
+  });
+  return { groups: data ?? EMPTY, loading, error, refresh };
 }
 
 function TrashContent() {
-  const confirm = useConfirm()
-  const { groups, loading, error, refresh } = useTrashGroups()
+  const confirm = useConfirm();
+  const { groups, loading, error, refresh } = useTrashGroups();
   const nav = useAssetNavigation({
     assets: groups.flatMap((g) => g.items),
     onAfterAction: refresh,
-  })
-  const [emptying, setEmptying] = useState(false)
+  });
+  const [emptying, setEmptying] = useState(false);
 
   const handleEmptyTrash = async () => {
     if (
@@ -55,24 +55,24 @@ function TrashContent() {
         destructive: true,
       }))
     )
-      return
-    setEmptying(true)
+      return;
+    setEmptying(true);
     try {
-      await emptyTrash()
-      await refresh()
+      await emptyTrash();
+      await refresh();
     } catch {
-      window.alert('Failed to empty trash. Please try again.')
+      window.alert('Failed to empty trash. Please try again.');
     } finally {
-      setEmptying(false)
+      setEmptying(false);
     }
-  }
+  };
 
   if (loading) {
-    return <LoadingState />
+    return <LoadingState />;
   }
 
   if (error) {
-    return <TimelineError message={error} />
+    return <TimelineError message={error} />;
   }
 
   if (groups.length === 0) {
@@ -83,7 +83,7 @@ function TrashContent() {
         title="Trash is empty"
         body="Photos you delete from your timeline will appear here."
       />
-    )
+    );
   }
 
   return (
@@ -116,16 +116,16 @@ function TrashContent() {
       <TimelineViewer
         nav={nav}
         onRestore={() => {
-          void nav.restore()
+          void nav.restore();
         }}
         onDelete={() => {
-          void nav.permanentlyDelete()
+          void nav.permanentlyDelete();
         }}
         siblingAssets={groups.flatMap((g) => g.items)}
         onSelectSibling={(asset) => nav.open(asset)}
       />
     </div>
-  )
+  );
 }
 
 export default function TrashPage() {
@@ -135,5 +135,5 @@ export default function TrashPage() {
         <TrashContent />
       </AppShell>
     </RequireAuth>
-  )
+  );
 }

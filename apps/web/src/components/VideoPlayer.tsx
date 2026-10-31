@@ -1,16 +1,16 @@
-import { useState } from 'react'
-import type { CSSProperties } from 'react'
-import { FaCircleExclamation } from 'react-icons/fa6'
+import { useState } from 'react';
+import type { CSSProperties } from 'react';
+import { FaCircleExclamation } from 'react-icons/fa6';
 
 interface VideoPlayerProps {
-  src: string
-  fallbackSrc?: string
-  poster?: string
-  title?: string
-  className?: string
-  autoPlay?: boolean
+  src: string;
+  fallbackSrc?: string;
+  poster?: string;
+  title?: string;
+  className?: string;
+  autoPlay?: boolean;
   /** width / height of the video; sizes the frame so portrait videos stay tall (defaults to 16:9). */
-  aspectRatio?: number
+  aspectRatio?: number;
 }
 
 export function VideoPlayer({
@@ -22,13 +22,13 @@ export function VideoPlayer({
   autoPlay = false,
   aspectRatio = 16 / 9,
 }: VideoPlayerProps) {
-  const [failed, setFailed] = useState(false)
-  const [swapped, setSwapped] = useState(false)
+  const [failed, setFailed] = useState(false);
+  const [swapped, setSwapped] = useState(false);
 
   // One retry on the fallback (the transcode or the original), then surface the failure.
   function handleError() {
-    if (!swapped && fallbackSrc) setSwapped(true)
-    else setFailed(true)
+    if (!swapped && fallbackSrc) setSwapped(true);
+    else setFailed(true);
   }
 
   if (failed) {
@@ -53,7 +53,7 @@ export function VideoPlayer({
           This video format isn't supported by your browser.
         </p>
       </div>
-    )
+    );
   }
 
   // Frame sizing lives in app.css (.video-frame): it fits the media container's content box via
@@ -79,5 +79,5 @@ export function VideoPlayer({
         className="h-full w-full object-contain"
       />
     </div>
-  )
+  );
 }

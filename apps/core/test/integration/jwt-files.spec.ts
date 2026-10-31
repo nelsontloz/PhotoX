@@ -1,8 +1,8 @@
-import { createHash, createHmac, randomUUID } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
-import request from 'supertest'
-import { ACCESS_COOKIE } from '../../src/auth/auth-cookie'
+import { createHash, createHmac, randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import request from 'supertest';
+import { ACCESS_COOKIE } from '../../src/auth/auth-cookie';
 import {
   closeTestApp,
   createApiTestApp,
@@ -11,88 +11,88 @@ import {
   seedFile,
   seedUser,
   apiServer,
-} from './helpers'
-import type { ApiTestApp } from './helpers'
-import { TEST_WORKER_SECRET } from './test-setup'
+} from './helpers';
+import type { ApiTestApp } from './helpers';
+import { TEST_WORKER_SECRET } from './test-setup';
 
 describe('files JWT identity', () => {
-  let t: ApiTestApp
+  let t: ApiTestApp;
 
   beforeAll(async () => {
-    t = await createApiTestApp({ mockUser: null })
-  }, 120_000)
+    t = await createApiTestApp({ mockUser: null });
+  }, 120_000);
 
   afterAll(async () => {
-    await closeTestApp(t)
-  })
+    await closeTestApp(t);
+  });
 
   beforeEach(async () => {
-    await resetDb(t)
-  })
+    await resetDb(t);
+  });
 
   it('downloads own file without userId', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const record = await seedFile(t, user.id, { bytes: Buffer.from('hello-bytes') })
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const record = await seedFile(t, user.id, { bytes: Buffer.from('hello-bytes') });
     const download = await request(apiServer(t))
       .get(`/api/v1/files/${record.id}/download`)
-      .set(t.authHeader(token))
-    expect(download.status).toBe(200)
-    expect(download.headers.etag).toBe(`"${record.checksumSha256}"`)
-    expect(download.headers['cache-control']).toBe('private, max-age=31536000, immutable')
-  })
+      .set(t.authHeader(token));
+    expect(download.status).toBe(200);
+    expect(download.headers.etag).toBe(`"${record.checksumSha256}"`);
+    expect(download.headers['cache-control']).toBe('private, max-age=31536000, immutable');
+  });
 
   it('returns 304 for an authenticated download whose If-None-Match matches', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const record = await seedFile(t, user.id, { bytes: Buffer.from('download-304-bytes') })
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const record = await seedFile(t, user.id, { bytes: Buffer.from('download-304-bytes') });
     const res = await request(apiServer(t))
       .get(`/api/v1/files/${record.id}/download`)
       .set(t.authHeader(token))
-      .set('If-None-Match', `"${record.checksumSha256}"`)
-    expect(res.status).toBe(304)
-    expect(res.headers.etag).toBe(`"${record.checksumSha256}"`)
-  })
+      .set('If-None-Match', `"${record.checksumSha256}"`);
+    expect(res.status).toBe(304);
+    expect(res.headers.etag).toBe(`"${record.checksumSha256}"`);
+  });
 
   it('rejects cross-user file access even with userId query', async () => {
-    const a = await seedUser(t)
-    const b = await seedUser(t)
-    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role })
-    const record = await seedFile(t, a.id)
+    const a = await seedUser(t);
+    const b = await seedUser(t);
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role });
+    const record = await seedFile(t, a.id);
     const res = await request(apiServer(t))
       .get(`/api/v1/files/${record.id}/download`)
       .query({ userId: a.id })
-      .set(t.authHeader(tokenB))
-    expect(res.status).toBe(404)
-  })
+      .set(t.authHeader(tokenB));
+    expect(res.status).toBe(404);
+  });
 
   it('rejects anonymous stream calls but serves with a bearer token or cookie', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
-    const record = await seedFile(t, user.id, { bytes: Buffer.from('stream-bytes') })
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const record = await seedFile(t, user.id, { bytes: Buffer.from('stream-bytes') });
 
-    const anonymous = await request(apiServer(t)).get(`/api/v1/files/${record.id}/stream`)
-    expect(anonymous.status).toBe(401)
+    const anonymous = await request(apiServer(t)).get(`/api/v1/files/${record.id}/stream`);
+    expect(anonymous.status).toBe(401);
 
     const viaBearer = await request(apiServer(t))
       .get(`/api/v1/files/${record.id}/stream`)
-      .set(t.authHeader(token))
-    expect(viaBearer.status).toBe(200)
+      .set(t.authHeader(token));
+    expect(viaBearer.status).toBe(200);
 
     const viaCookie = await request(apiServer(t))
       .get(`/api/v1/files/${record.id}/stream`)
-      .set('Cookie', `${ACCESS_COOKIE}=${encodeURIComponent(token)}`)
-    expect(viaCookie.status).toBe(200)
-  })
+      .set('Cookie', `${ACCESS_COOKIE}=${encodeURIComponent(token)}`);
+    expect(viaCookie.status).toBe(200);
+  });
 
   it('returns 404 for an unknown file id', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role })
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
     const res = await request(apiServer(t))
       .get(`/api/v1/files/${randomUUID()}/download`)
-      .set(t.authHeader(token))
-    expect(res.status).toBe(404)
-  })
+      .set(t.authHeader(token));
+    expect(res.status).toBe(404);
+  });
 
   async function writeBytes(
     kind: 'original' | 'thumbnail' | 'transcode',
@@ -101,10 +101,10 @@ describe('files JWT identity', () => {
     ext: string,
     bytes: Buffer,
   ): Promise<string> {
-    const storageKey = t.storage.buildKey(kind, userId, id, ext)
-    await mkdir(dirname(t.storage.pathFor(storageKey)), { recursive: true })
-    await writeFile(t.storage.pathFor(storageKey), bytes)
-    return storageKey
+    const storageKey = t.storage.buildKey(kind, userId, id, ext);
+    await mkdir(dirname(t.storage.pathFor(storageKey)), { recursive: true });
+    await writeFile(t.storage.pathFor(storageKey), bytes);
+    return storageKey;
   }
 
   function registerBody(bytes: Buffer, overrides: Record<string, unknown> = {}) {
@@ -117,15 +117,15 @@ describe('files JWT identity', () => {
       mimeType: 'image/jpeg',
       sizeBytes: bytes.length,
       ...overrides,
-    }
+    };
   }
 
   it('registers a file with a core-computed storage key', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
-    const bytes = Buffer.from('register-thumb-bytes')
-    const id = randomUUID()
-    const storageKey = await writeBytes('thumbnail', user.id, id, 'webp', bytes)
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true });
+    const bytes = Buffer.from('register-thumb-bytes');
+    const id = randomUUID();
+    const storageKey = await writeBytes('thumbnail', user.id, id, 'webp', bytes);
 
     const res = await request(apiServer(t))
       .post('/worker/files/register')
@@ -138,97 +138,100 @@ describe('files JWT identity', () => {
           originalName: 'thumb.webp',
           mimeType: 'image/webp',
         }),
-      )
-    expect(res.status).toBe(201)
-    const row = await t.fileRepo.findOne({ where: { id } })
-    expect(row?.storageKey).toBe(storageKey)
-    expect(row?.purpose).toBe('original')
-    expect(row?.userId).toBe(user.id)
-    expect(row?.assetId).toBeNull()
-    expect(res.body).toMatchObject({ id, storageKey, purpose: 'original', userId: user.id })
-  })
+      );
+    expect(res.status).toBe(201);
+    const row = await t.fileRepo.findOne({ where: { id } });
+    expect(row?.storageKey).toBe(storageKey);
+    expect(row?.purpose).toBe('original');
+    expect(row?.userId).toBe(user.id);
+    expect(row?.assetId).toBeNull();
+    expect(res.body).toMatchObject({ id, storageKey, purpose: 'original', userId: user.id });
+  });
 
   it('registers a transcode against an owned asset', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
-    const source = await seedFile(t, user.id)
-    const asset = await seedAsset(t, user.id, source.id, { kind: 'video' })
-    const bytes = Buffer.from('register-transcode-bytes')
-    const id = randomUUID()
-    const storageKey = await writeBytes('transcode', user.id, id, 'webm', bytes)
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true });
+    const source = await seedFile(t, user.id);
+    const asset = await seedAsset(t, user.id, source.id, { kind: 'video' });
+    const bytes = Buffer.from('register-transcode-bytes');
+    const id = randomUUID();
+    const storageKey = await writeBytes('transcode', user.id, id, 'webm', bytes);
 
     const res = await request(apiServer(t))
       .post('/worker/files/register')
       .set(t.authHeader(token))
-      .send(registerBody(bytes, { id, kind: 'transcode', ext: 'webm', assetId: asset.id }))
-    expect(res.status).toBe(201)
-    const row = await t.fileRepo.findOne({ where: { id } })
-    expect(row?.storageKey).toBe(storageKey)
-    expect(row?.purpose).toBe('transcode')
-    expect(row?.assetId).toBe(asset.id)
-  })
+      .send(registerBody(bytes, { id, kind: 'transcode', ext: 'webm', assetId: asset.id }));
+    expect(res.status).toBe(201);
+    const row = await t.fileRepo.findOne({ where: { id } });
+    expect(row?.storageKey).toBe(storageKey);
+    expect(row?.purpose).toBe('transcode');
+    expect(row?.assetId).toBe(asset.id);
+  });
 
   it('returns the existing file for a duplicate checksum', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
-    const bytes = Buffer.from('register-dedupe-bytes')
-    const firstId = randomUUID()
-    await writeBytes('original', user.id, firstId, 'jpg', bytes)
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true });
+    const bytes = Buffer.from('register-dedupe-bytes');
+    const firstId = randomUUID();
+    await writeBytes('original', user.id, firstId, 'jpg', bytes);
 
     const first = await request(apiServer(t))
       .post('/worker/files/register')
       .set(t.authHeader(token))
-      .send(registerBody(bytes, { id: firstId }))
-    expect(first.status).toBe(201)
+      .send(registerBody(bytes, { id: firstId }));
+    expect(first.status).toBe(201);
 
     const second = await request(apiServer(t))
       .post('/worker/files/register')
       .set(t.authHeader(token))
-      .send(registerBody(bytes))
-    expect(second.status).toBe(200)
-    const body = second.body as unknown as { id: string }
-    expect(body.id).toBe(firstId)
-    expect(await t.fileRepo.count()).toBe(1)
-  })
+      .send(registerBody(bytes));
+    expect(second.status).toBe(200);
+    const body = second.body as unknown as { id: string };
+    expect(body.id).toBe(firstId);
+    expect(await t.fileRepo.count()).toBe(1);
+  });
 
   it('rejects a re-used file id with 409', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
-    const id = randomUUID()
-    const bytes = Buffer.from('register-collision-bytes')
-    await writeBytes('original', user.id, id, 'jpg', bytes)
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true });
+    const id = randomUUID();
+    const bytes = Buffer.from('register-collision-bytes');
+    await writeBytes('original', user.id, id, 'jpg', bytes);
 
     const first = await request(apiServer(t))
       .post('/worker/files/register')
       .set(t.authHeader(token))
-      .send(registerBody(bytes, { id }))
-    expect(first.status).toBe(201)
+      .send(registerBody(bytes, { id }));
+    expect(first.status).toBe(201);
 
     const second = await request(apiServer(t))
       .post('/worker/files/register')
       .set(t.authHeader(token))
-      .send(registerBody(Buffer.from('different-bytes'), { id }))
-    expect(second.status).toBe(409)
-  })
+      .send(registerBody(Buffer.from('different-bytes'), { id }));
+    expect(second.status).toBe(409);
+  });
 
   it('rejects a foreign asset with 404', async () => {
-    const owner = await seedUser(t)
-    const other = await seedUser(t)
-    const token = t.signToken({ id: other.id, email: other.email, role: other.role }, { act: true })
-    const source = await seedFile(t, owner.id)
-    const asset = await seedAsset(t, owner.id, source.id)
+    const owner = await seedUser(t);
+    const other = await seedUser(t);
+    const token = t.signToken(
+      { id: other.id, email: other.email, role: other.role },
+      { act: true },
+    );
+    const source = await seedFile(t, owner.id);
+    const asset = await seedAsset(t, owner.id, source.id);
 
     const res = await request(apiServer(t))
       .post('/worker/files/register')
       .set(t.authHeader(token))
-      .send(registerBody(Buffer.from('foreign-asset-bytes'), { assetId: asset.id }))
-    expect(res.status).toBe(404)
-  })
+      .send(registerBody(Buffer.from('foreign-asset-bytes'), { assetId: asset.id }));
+    expect(res.status).toBe(404);
+  });
 
   it('rejects invalid registration payloads with 400', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
-    const valid = registerBody(Buffer.from('register-validation-bytes'))
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true });
+    const valid = registerBody(Buffer.from('register-validation-bytes'));
     const payloads = [
       { ...valid, checksumSha256: 'z'.repeat(64) },
       { ...valid, checksumSha256: 'a'.repeat(63) },
@@ -237,89 +240,89 @@ describe('files JWT identity', () => {
       { ...valid, kind: 'sidecar' },
       { ...valid, sizeBytes: -1 },
       { ...valid, unknownField: 'nope' },
-    ]
+    ];
     for (const payload of payloads) {
       const res = await request(apiServer(t))
         .post('/worker/files/register')
         .set(t.authHeader(token))
-        .send(payload)
-      expect(res.status).toBe(400)
+        .send(payload);
+      expect(res.status).toBe(400);
     }
-  })
+  });
 
   it('returns 422 when registered bytes are missing from storage', async () => {
-    const user = await seedUser(t)
-    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true })
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true });
     const res = await request(apiServer(t))
       .post('/worker/files/register')
       .set(t.authHeader(token))
-      .send(registerBody(Buffer.from('register-missing-bytes')))
-    expect(res.status).toBe(422)
-  })
+      .send(registerBody(Buffer.from('register-missing-bytes')));
+    expect(res.status).toBe(422);
+  });
 
   function jobSig(sub: string, scope: string): string {
-    return createHmac('sha256', TEST_WORKER_SECRET).update(`${sub}:${scope}`).digest('hex')
+    return createHmac('sha256', TEST_WORKER_SECRET).update(`${sub}:${scope}`).digest('hex');
   }
 
   // the tests above use auth-secret act tokens, which the guard's job-binding gate skips;
   // these exercise the real trust domain: worker-minted token + X-Job-Signature
   it('registers a file for a worker-secret token with its job signature', async () => {
-    const user = await seedUser(t)
+    const user = await seedUser(t);
     const token = t.signWorkerToken(
       { id: user.id, email: 'worker@internal', role: 'user' },
       { act: true },
-    )
-    const bytes = Buffer.from('worker-register-bytes')
-    const id = randomUUID()
-    const storageKey = await writeBytes('original', user.id, id, 'jpg', bytes)
+    );
+    const bytes = Buffer.from('worker-register-bytes');
+    const id = randomUUID();
+    const storageKey = await writeBytes('original', user.id, id, 'jpg', bytes);
 
     const res = await request(apiServer(t))
       .post('/worker/files/register')
       // register has no path/body asset id, so the enqueue stamps the user scope (sub:sub)
       .set({ ...t.authHeader(token), 'X-Job-Signature': jobSig(user.id, user.id) })
-      .send(registerBody(bytes, { id }))
-    expect(res.status).toBe(201)
-    const row = await t.fileRepo.findOne({ where: { id } })
-    expect(row?.storageKey).toBe(storageKey)
-    expect(row?.userId).toBe(user.id)
-  })
+      .send(registerBody(bytes, { id }));
+    expect(res.status).toBe(201);
+    const row = await t.fileRepo.findOne({ where: { id } });
+    expect(row?.storageKey).toBe(storageKey);
+    expect(row?.userId).toBe(user.id);
+  });
 
   it('rejects a worker-secret register signature minted for another user', async () => {
-    const user = await seedUser(t)
-    const other = await seedUser(t)
+    const user = await seedUser(t);
+    const other = await seedUser(t);
     const token = t.signWorkerToken(
       { id: user.id, email: 'worker@internal', role: 'user' },
       { act: true },
-    )
-    const bytes = Buffer.from('cross-user-register-bytes')
-    const id = randomUUID()
-    await writeBytes('original', user.id, id, 'jpg', bytes)
+    );
+    const bytes = Buffer.from('cross-user-register-bytes');
+    const id = randomUUID();
+    await writeBytes('original', user.id, id, 'jpg', bytes);
 
     // sub is always an accepted scope, so a "wrong route scope" sig would pass for the wrong
     // reason: the negative must be another user's scope
     const res = await request(apiServer(t))
       .post('/worker/files/register')
       .set({ ...t.authHeader(token), 'X-Job-Signature': jobSig(other.id, other.id) })
-      .send(registerBody(bytes, { id }))
-    expect(res.status).toBe(403)
-    expect(await t.fileRepo.findOne({ where: { id } })).toBeNull()
-  })
+      .send(registerBody(bytes, { id }));
+    expect(res.status).toBe(403);
+    expect(await t.fileRepo.findOne({ where: { id } })).toBeNull();
+  });
 
   it('rejects a worker-secret register call without a job signature', async () => {
-    const user = await seedUser(t)
+    const user = await seedUser(t);
     const token = t.signWorkerToken(
       { id: user.id, email: 'worker@internal', role: 'user' },
       { act: true },
-    )
-    const bytes = Buffer.from('unsigned-register-bytes')
-    const id = randomUUID()
-    await writeBytes('original', user.id, id, 'jpg', bytes)
+    );
+    const bytes = Buffer.from('unsigned-register-bytes');
+    const id = randomUUID();
+    await writeBytes('original', user.id, id, 'jpg', bytes);
 
     const res = await request(apiServer(t))
       .post('/worker/files/register')
       .set(t.authHeader(token))
-      .send(registerBody(bytes, { id }))
-    expect(res.status).toBe(403)
-    expect(await t.fileRepo.findOne({ where: { id } })).toBeNull()
-  })
-})
+      .send(registerBody(bytes, { id }));
+    expect(res.status).toBe(403);
+    expect(await t.fileRepo.findOne({ where: { id } })).toBeNull();
+  });
+});

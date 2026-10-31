@@ -1,85 +1,85 @@
-import { useCallback, useState } from 'react'
-import type { Asset } from '@photox/shared-types'
-import { FaFolderPlus, FaImage, FaMountain, FaTrash, FaWandMagicSparkles } from 'react-icons/fa6'
-import { RequireAuth } from '../components/RequireAuth'
-import { AppShell } from '../components/AppShell'
-import { useConfirm } from '../components/ConfirmProvider'
-import { LoadingState } from '../components/StateViews'
-import { useAssetNavigation } from '../hooks/useAssetNavigation'
-import { useTimelineView } from '../hooks/useTimelineView'
-import { TimelineAssets } from '../components/Timeline/TimelineAssets'
-import { TimelineError, TimelineViewer } from '../components/Timeline/TimelinePage'
-import { DropZone } from '../components/DropZone'
-import { UploadButton } from '../components/UploadButton'
-import { trashAssets } from '../api/assets'
-import { toggleId } from '../lib/set'
-import { useAppStore } from '../store/app-store'
+import { useCallback, useState } from 'react';
+import type { Asset } from '@photox/shared-types';
+import { FaFolderPlus, FaImage, FaMountain, FaTrash, FaWandMagicSparkles } from 'react-icons/fa6';
+import { RequireAuth } from '../components/RequireAuth';
+import { AppShell } from '../components/AppShell';
+import { useConfirm } from '../components/ConfirmProvider';
+import { LoadingState } from '../components/StateViews';
+import { useAssetNavigation } from '../hooks/useAssetNavigation';
+import { useTimelineView } from '../hooks/useTimelineView';
+import { TimelineAssets } from '../components/Timeline/TimelineAssets';
+import { TimelineError, TimelineViewer } from '../components/Timeline/TimelinePage';
+import { DropZone } from '../components/DropZone';
+import { UploadButton } from '../components/UploadButton';
+import { trashAssets } from '../api/assets';
+import { toggleId } from '../lib/set';
+import { useAppStore } from '../store/app-store';
 
 function TimelineContent() {
-  const confirm = useConfirm()
+  const confirm = useConfirm();
   // Structure (buckets, heights, order) comes from the layout endpoint; months fill it in.
-  const view = useTimelineView()
-  const { timeline, loadedAssets, navHelpers } = view
-  const bumpTimelineRefresh = useAppStore((s) => s.bumpTimelineRefresh)
+  const view = useTimelineView();
+  const { timeline, loadedAssets, navHelpers } = view;
+  const bumpTimelineRefresh = useAppStore((s) => s.bumpTimelineRefresh);
 
   // One refresh signal: layout refetches itself, months re-check their stamps and the grid
   // re-triggers ensureMonth for whatever is on screen (uploads bump this too, via lib/upload).
-  const refresh = bumpTimelineRefresh
+  const refresh = bumpTimelineRefresh;
 
   const nav = useAssetNavigation({
     assets: loadedAssets,
     ...navHelpers,
     onAfterAction: refresh,
-  })
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  });
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const toggle = useCallback((id: string) => {
-    setSelectedIds((prev) => toggleId(prev, id))
-  }, [])
+    setSelectedIds((prev) => toggleId(prev, id));
+  }, []);
 
-  const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
   const handleBulkTrash = async () => {
-    const ids = Array.from(selectedIds)
-    if (ids.length === 0) return
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
     if (
       !(await confirm({
         title: `Move ${ids.length} item${ids.length > 1 ? 's' : ''} to trash?`,
         destructive: true,
       }))
     )
-      return
+      return;
     try {
-      await trashAssets(ids)
-      clearSelection()
-      refresh()
+      await trashAssets(ids);
+      clearSelection();
+      refresh();
     } catch {
-      window.alert('Failed to move items to trash. Please try again.')
+      window.alert('Failed to move items to trash. Please try again.');
     }
-  }
+  };
 
   // stable handler identities: memoized GalleryItems must bail out on unrelated re-renders
-  const selectionMode = selectedIds.size > 0
-  const selectionBarVisible = selectedIds.size > 0 && !pickerOpen
+  const selectionMode = selectedIds.size > 0;
+  const selectionBarVisible = selectedIds.size > 0 && !pickerOpen;
   const onClickAsset = useCallback(
     (asset: Asset) => {
-      if (selectionMode) toggle(asset.id)
-      else nav.open(asset)
+      if (selectionMode) toggle(asset.id);
+      else nav.open(asset);
     },
     [selectionMode, toggle, nav.open],
-  )
+  );
 
   const onLongPress = useCallback((asset: Asset) => {
-    setSelectedIds((prev) => new Set(prev).add(asset.id))
-    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(10)
-  }, [])
+    setSelectedIds((prev) => new Set(prev).add(asset.id));
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(10);
+  }, []);
 
   // Gate: layout drives structure. ponytail: a layout failure (first load OR refresh) lands on
   // the error state — no partial-track fallback, since every height depends on it; Reload retries.
-  if (timeline.error) return <TimelineError message={timeline.error} />
+  if (timeline.error) return <TimelineError message={timeline.error} />;
 
-  if (timeline.loading) return <LoadingState />
+  if (timeline.loading) return <LoadingState />;
 
   if (timeline.layout.buckets.length === 0)
     return (
@@ -107,7 +107,7 @@ function TimelineContent() {
         </p>
         <UploadButton />
       </div>
-    )
+    );
 
   return (
     <>
@@ -115,6 +115,7 @@ function TimelineContent() {
         {/* fixed overlay — inside DropZone so file drops onto the strip still reach its handlers */}
         <TimelineAssets
           view={view}
+          rememberScroll
           onSelect={onClickAsset}
           selectedIds={selectedIds}
           onToggleSelect={toggle}
@@ -124,25 +125,25 @@ function TimelineContent() {
       <TimelineViewer
         nav={nav}
         onTrash={() => {
-          void nav.trash()
+          void nav.trash();
         }}
         onToggleFavorite={(nextValue) => {
-          const cur = nav.selected
-          if (cur) void nav.toggleFavorite(cur.id, nextValue)
+          const cur = nav.selected;
+          if (cur) void nav.toggleFavorite(cur.id, nextValue);
         }}
         onAddToAlbum={() => {
-          const cur = nav.selected
+          const cur = nav.selected;
           if (cur) {
-            setSelectedIds((prev) => new Set(prev).add(cur.id))
-            setPickerOpen(true)
+            setSelectedIds((prev) => new Set(prev).add(cur.id));
+            setPickerOpen(true);
           }
         }}
         siblingAssets={loadedAssets}
         onSelectSibling={(asset) => nav.open(asset)}
         pickerOpen={selectedIds.size > 0 && pickerOpen}
         onPickerClose={() => {
-          setPickerOpen(false)
-          clearSelection()
+          setPickerOpen(false);
+          clearSelection();
         }}
         pickerAssetIds={Array.from(selectedIds)}
         onPickerDone={clearSelection}
@@ -172,7 +173,7 @@ function TimelineContent() {
         <button
           type="button"
           onClick={() => {
-            void handleBulkTrash()
+            void handleBulkTrash();
           }}
           className="text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 font-medium px-3 py-1.5 rounded-md inline-flex items-center gap-1.5 transition-colors shrink-0"
         >
@@ -189,7 +190,7 @@ function TimelineContent() {
         </button>
       </div>
     </>
-  )
+  );
 }
 
 export default function TimelineRoute() {
@@ -199,5 +200,5 @@ export default function TimelineRoute() {
         <TimelineContent />
       </AppShell>
     </RequireAuth>
-  )
+  );
 }

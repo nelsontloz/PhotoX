@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common'
-import { JwtService, type JwtSignOptions } from '@nestjs/jwt'
-import { UnrecoverableError } from 'bullmq'
-import { loadEnv } from '@photox/shared-config'
+import { Injectable, Logger } from '@nestjs/common';
+import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
+import { UnrecoverableError } from 'bullmq';
+import { loadEnv } from '@photox/shared-config';
 import type {
   Asset,
   AssetListResponse,
@@ -12,7 +12,7 @@ import type {
   MetadataStatus,
   RegisterDetectionsRequestDto,
   RegisterEmbeddingRequestDto,
-} from '@photox/shared-types'
+} from '@photox/shared-types';
 
 export type MetadataPatch = Partial<
   Pick<
@@ -46,71 +46,71 @@ export type MetadataPatch = Partial<
   >
 > & {
   // Date is not an Asset field: metadata jobs pass Date, JSON.stringify sends the same ISO wire string
-  takenAt?: Date | null
-  status?: MetadataStatus
+  takenAt?: Date | null;
+  status?: MetadataStatus;
   // set by process-embeddings on failure; core's UpdateMetadataDto must whitelist it (sibling lane)
-  embeddingStatus?: MetadataStatus
+  embeddingStatus?: MetadataStatus;
   // 16-char lowercase dHash hex set by process-metadata; core's UpdateMetadataDto must whitelist it
-  phash?: string
-}
+  phash?: string;
+};
 
 export type RegisterFileInput = Pick<
   FileRecord,
   'id' | 'originalName' | 'mimeType' | 'sizeBytes' | 'checksumSha256'
 > & {
-  kind: 'original' | 'thumbnail' | 'transcode'
-  ext: string
-  assetId?: string
-}
+  kind: 'original' | 'thumbnail' | 'transcode';
+  ext: string;
+  assetId?: string;
+};
 
-export type RegisterThumbnailInput = Omit<AssetThumbnail, 'createdAt'>
+export type RegisterThumbnailInput = Omit<AssetThumbnail, 'createdAt'>;
 
 export interface ClusterFace extends Omit<FaceDto, 'personId'> {
-  personId: string | null
-  embedding: number[]
+  personId: string | null;
+  embedding: number[];
 }
 
 export interface ApplyClusterCreate {
-  clusterLabel: string
-  faceIds: string[]
-  coverFaceId?: string
+  clusterLabel: string;
+  faceIds: string[];
+  coverFaceId?: string;
 }
 
 export interface ApplyClusterAttach {
-  personId: string
-  faceIds: string[]
-  coverFaceId?: string
+  personId: string;
+  faceIds: string[];
+  coverFaceId?: string;
 }
 
 export interface ApplyClustersPayload {
-  creates: ApplyClusterCreate[]
-  attaches: ApplyClusterAttach[]
+  creates: ApplyClusterCreate[];
+  attaches: ApplyClusterAttach[];
 }
 
 export interface ApplyClustersResult {
-  created: number
-  assigned: number
+  created: number;
+  assigned: number;
 }
 
-const REQUEST_TIMEOUT_MS = 30_000
+const REQUEST_TIMEOUT_MS = 30_000;
 // a full account wipe plus the stray-byte sweep can outrun the default budget; the call is
 // idempotent (a retry finds no user row), but an abort mid-sweep costs a whole job attempt
-const PURGE_TIMEOUT_MS = 15 * 60_000
+const PURGE_TIMEOUT_MS = 15 * 60_000;
 // ponytail: keyset walk over GET /worker/faces (id ASC, cursor = last id); 500 matches core's default
-const FACES_PAGE_LIMIT = 500
+const FACES_PAGE_LIMIT = 500;
 // ponytail: O(n²) DBSCAN ceiling — fail loudly above this, Phase 3 streams/pages the algorithm itself
-const MAX_FACES_PER_USER = 10_000
+const MAX_FACES_PER_USER = 10_000;
 
 /** Job-binding proof threaded from the BullMQ payload: the guard recomputes the HMAC per route. */
 export interface JobBinding {
-  sig?: string
+  sig?: string;
   /** route target the guard cannot derive itself (thumbnail registerFile); else omit */
-  scope?: string
+  scope?: string;
 }
 
 @Injectable()
 export class CoreClient {
-  private readonly logger = new Logger(CoreClient.name)
+  private readonly logger = new Logger(CoreClient.name);
 
   constructor(private readonly jwt: JwtService) {}
 
@@ -125,15 +125,15 @@ export class CoreClient {
         algorithm: 'HS256',
         expiresIn: loadEnv().AUTH_ACCESS_TTL as JwtSignOptions['expiresIn'],
       },
-    )
+    );
   }
 
   async getFile(userId: string, fileId: string, binding?: JobBinding): Promise<FileRecord> {
-    return this.request('GET', `/worker/files/${fileId}`, { sub: userId, ...binding })
+    return this.request('GET', `/worker/files/${fileId}`, { sub: userId, ...binding });
   }
 
   async getAsset(userId: string, assetId: string, binding?: JobBinding): Promise<Asset> {
-    return this.request('GET', `/worker/assets/${assetId}`, { sub: userId, ...binding })
+    return this.request('GET', `/worker/assets/${assetId}`, { sub: userId, ...binding });
   }
 
   async patchMetadata(
@@ -146,7 +146,7 @@ export class CoreClient {
       sub: userId,
       body: dto,
       ...binding,
-    })
+    });
   }
 
   async registerFile(
@@ -154,7 +154,7 @@ export class CoreClient {
     dto: RegisterFileInput,
     binding?: JobBinding,
   ): Promise<FileRecord> {
-    return this.request('POST', '/worker/files/register', { sub: userId, body: dto, ...binding })
+    return this.request('POST', '/worker/files/register', { sub: userId, body: dto, ...binding });
   }
 
   async registerThumbnail(
@@ -167,7 +167,7 @@ export class CoreClient {
       sub: userId,
       body: dto,
       ...binding,
-    })
+    });
   }
 
   async registerFaces(
@@ -182,7 +182,7 @@ export class CoreClient {
       sub: userId,
       body: { faces },
       ...binding,
-    })
+    });
   }
 
   async registerEmbedding(
@@ -195,7 +195,7 @@ export class CoreClient {
       sub: userId,
       body: dto,
       ...binding,
-    })
+    });
   }
 
   async registerDetections(
@@ -208,7 +208,7 @@ export class CoreClient {
       sub: userId,
       body: dto,
       ...binding,
-    })
+    });
   }
 
   async deleteAssetFaces(
@@ -216,43 +216,43 @@ export class CoreClient {
     assetId: string,
     binding?: JobBinding,
   ): Promise<{ deleted: number }> {
-    return this.request('DELETE', `/worker/assets/${assetId}/faces`, { sub: userId, ...binding })
+    return this.request('DELETE', `/worker/assets/${assetId}/faces`, { sub: userId, ...binding });
   }
 
   async getFacesForCluster(userId: string, binding?: JobBinding): Promise<ClusterFace[]> {
     // ponytail: one request per page (30s timeout + 400/404/422→Unrecoverable mapping), cursor
     // walks id ASC until nextCursor null
-    const faces: ClusterFace[] = []
-    let cursor: string | undefined
-    let pageCount = 0
+    const faces: ClusterFace[] = [];
+    let cursor: string | undefined;
+    let pageCount = 0;
     for (;;) {
       const query =
         `includeEmbeddings=true&excludeTrashed=true&limit=${FACES_PAGE_LIMIT}` +
-        (cursor !== undefined ? `&cursor=${cursor}` : '')
+        (cursor !== undefined ? `&cursor=${cursor}` : '');
       const res = await this.request<{ items: ClusterFace[]; nextCursor?: string | null }>(
         'GET',
         `/worker/faces?${query}`,
         { sub: userId, ...binding },
-      )
-      faces.push(...res.items)
-      pageCount += 1
+      );
+      faces.push(...res.items);
+      pageCount += 1;
       if (faces.length > MAX_FACES_PER_USER) {
         this.logger.error(
           `Face cap exceeded: user=${userId} faceCount=${faces.length} pageCount=${pageCount}`,
-        )
+        );
         // deterministic overshoot — retries re-fetch the same pages, so fail without retry
         throw new UnrecoverableError(
           `Too many faces for user=${userId}: ${faces.length} > ${MAX_FACES_PER_USER}`,
-        )
+        );
       }
       // deprecated fallback: old core serves { items } with no nextCursor — single page, done
-      if (res.nextCursor === undefined || res.nextCursor === null) break
-      cursor = res.nextCursor
+      if (res.nextCursor === undefined || res.nextCursor === null) break;
+      cursor = res.nextCursor;
     }
     this.logger.log(
       `Cluster faces fetched: user=${userId} faceCount=${faces.length} pageCount=${pageCount}`,
-    )
-    return faces
+    );
+    return faces;
   }
 
   // one request: the only caller (face.cluster's LEGACY_REEMBED_PER_RUN) caps ids at 100, which
@@ -266,8 +266,8 @@ export class CoreClient {
       'GET',
       `/worker/assets?ids=${ids.join(',')}`,
       { sub: userId, ...binding },
-    )
-    return res.items
+    );
+    return res.items;
   }
 
   async applyClusters(
@@ -279,13 +279,13 @@ export class CoreClient {
       sub: userId,
       body: payload,
       ...binding,
-    })
+    });
   }
 
   // ponytail: called after every cluster run (even when the plan was empty) — deletes persons whose
   // last live face left and unassigns any faces left behind in trash
   async pruneEmptyPersons(userId: string, binding?: JobBinding): Promise<{ deleted: number }> {
-    return this.request('POST', '/worker/persons/prune-empty', { sub: userId, ...binding })
+    return this.request('POST', '/worker/persons/prune-empty', { sub: userId, ...binding });
   }
 
   /** Runs the full account wipe in core (the worker has no DB/storage access). Idempotent. */
@@ -295,7 +295,7 @@ export class CoreClient {
       `/worker/users/${userId}/purge`,
       { sub: userId, body: { backupPrefix }, ...binding },
       PURGE_TIMEOUT_MS,
-    )
+    );
   }
 
   private async request<T>(
@@ -304,10 +304,10 @@ export class CoreClient {
     opts: { sub: string; body?: unknown; sig?: string; scope?: string },
     timeoutMs = REQUEST_TIMEOUT_MS,
   ): Promise<T> {
-    const token = this.signToken(opts.sub)
-    const hasBody = opts.body !== undefined
+    const token = this.signToken(opts.sub);
+    const hasBody = opts.body !== undefined;
 
-    let res: Response
+    let res: Response;
     try {
       res = await fetch(`${loadEnv().CORE_URL}${path}`, {
         method,
@@ -320,25 +320,25 @@ export class CoreClient {
         },
         body: hasBody ? JSON.stringify(opts.body) : undefined,
         signal: AbortSignal.timeout(timeoutMs),
-      })
+      });
     } catch (err) {
       // network failure: plain Error so BullMQ's attempts:3 + backoff owns the retry
-      throw err instanceof Error ? err : new Error(String(err))
+      throw err instanceof Error ? err : new Error(String(err));
     }
 
     if (res.ok) {
-      if (res.status === 204) return undefined as T
-      return (await res.json()) as T
+      if (res.status === 204) return undefined as T;
+      return (await res.json()) as T;
     }
 
-    const detail = await res.text().catch(() => '')
-    const message = `Core ${method} ${path} failed: ${res.status}${detail ? ` — ${detail.slice(0, 300)}` : ''}`
+    const detail = await res.text().catch(() => '');
+    const message = `Core ${method} ${path} failed: ${res.status}${detail ? ` — ${detail.slice(0, 300)}` : ''}`;
 
     // bad payload / unknown or foreign resource: retrying cannot help
     if (res.status === 400 || res.status === 404 || res.status === 422) {
-      throw new UnrecoverableError(message)
+      throw new UnrecoverableError(message);
     }
     // 401/403/429/5xx are plain errors — BullMQ retries the job (attempts:3 + exponential backoff)
-    throw new Error(message)
+    throw new Error(message);
   }
 }

@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Post, Query } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator'
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Post, Query } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 import {
   UserBackupService,
   type BackupOverviewRow,
@@ -10,39 +10,39 @@ import {
   type DeleteBackupResult,
   type MergeBackupResult,
   type RestoreResult,
-} from './user-backup.service'
+} from './user-backup.service';
 
 class EmailOrIdQueryDto {
   @IsString()
   @IsNotEmpty()
-  emailOrId!: string
+  emailOrId!: string;
 }
 
 class RestoreRequestDto {
   @IsString()
   @IsNotEmpty()
-  emailOrId!: string
+  emailOrId!: string;
 
   @IsOptional()
   @IsEmail()
-  restoreEmail?: string
+  restoreEmail?: string;
 }
 
 class MergeRestoreRequestDto {
   @IsString()
   @IsNotEmpty()
-  targetEmailOrId!: string
+  targetEmailOrId!: string;
 
   @IsUUID()
-  backupUserId!: string
+  backupUserId!: string;
 
   @IsOptional()
   @IsString()
-  prefix?: string
+  prefix?: string;
 
   @IsOptional()
   @IsBoolean()
-  force?: boolean
+  force?: boolean;
 }
 
 // ponytail: admin-only is enforced centrally by JwtAuthGuard (every /api/v1/admin*
@@ -65,7 +65,7 @@ export class BackupController {
   })
   @ApiResponse({ status: 200, description: 'Backup counts and S3 prefix' })
   async backup(@Body() dto: EmailOrIdQueryDto): Promise<BackupResult> {
-    return this.backups.backupUser(dto.emailOrId)
+    return this.backups.backupUser(dto.emailOrId);
   }
 
   @Post('restores')
@@ -86,7 +86,7 @@ export class BackupController {
   })
   @ApiResponse({ status: 200, description: 'Restore counts and re-enqueue totals' })
   async restore(@Body() dto: RestoreRequestDto): Promise<RestoreResult> {
-    return this.backups.restoreUser(dto.emailOrId, dto.restoreEmail)
+    return this.backups.restoreUser(dto.emailOrId, dto.restoreEmail);
   }
 
   @Post('restores/merge')
@@ -115,7 +115,7 @@ export class BackupController {
   @ApiResponse({ status: 422, description: 'Backup manifest corrupt' })
   @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
   async merge(@Body() dto: MergeRestoreRequestDto): Promise<MergeBackupResult> {
-    return this.backups.mergeUserBackup(dto)
+    return this.backups.mergeUserBackup(dto);
   }
 
   @Get('backups/overview')
@@ -123,7 +123,7 @@ export class BackupController {
   @ApiResponse({ status: 200, description: 'Live asset counts joined with manifest status' })
   @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
   async overview(): Promise<BackupOverviewRow[]> {
-    return this.backups.backupOverview()
+    return this.backups.backupOverview();
   }
 
   @Get('backups/status')
@@ -131,7 +131,7 @@ export class BackupController {
   @ApiResponse({ status: 200, description: 'Manifest presence and row counts' })
   @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
   async status(@Query() query: EmailOrIdQueryDto): Promise<BackupStatus> {
-    return this.backups.backupStatus(query.emailOrId)
+    return this.backups.backupStatus(query.emailOrId);
   }
 
   @Get('backups/progress')
@@ -139,7 +139,7 @@ export class BackupController {
   @ApiResponse({ status: 200, description: 'In-progress flag plus per-file counters' })
   @ApiResponse({ status: 404, description: 'No user for emailOrId' })
   async progress(@Query() query: EmailOrIdQueryDto): Promise<BackupProgress> {
-    return this.backups.getBackupProgress(query.emailOrId)
+    return this.backups.getBackupProgress(query.emailOrId);
   }
 
   @Delete('backups')
@@ -148,6 +148,6 @@ export class BackupController {
   @ApiResponse({ status: 404, description: 'No backup for emailOrId' })
   @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
   async deleteBackup(@Query() query: EmailOrIdQueryDto): Promise<DeleteBackupResult> {
-    return this.backups.deleteBackup(query.emailOrId)
+    return this.backups.deleteBackup(query.emailOrId);
   }
 }

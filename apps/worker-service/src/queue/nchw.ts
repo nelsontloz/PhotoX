@@ -7,15 +7,15 @@ export function toNchw(
   mean: number,
   scale: number,
 ): Float32Array {
-  const pixels = width * height
+  const pixels = width * height;
   if (data.length !== pixels * 3) {
-    throw new Error(`Expected ${pixels * 3} RGB bytes for ${width}x${height}, got ${data.length}`)
+    throw new Error(`Expected ${pixels * 3} RGB bytes for ${width}x${height}, got ${data.length}`);
   }
-  const chw = new Float32Array(pixels * 3)
+  const chw = new Float32Array(pixels * 3);
   for (let i = 0; i < pixels; i++) {
-    chw[i] = (data[i * 3]! - mean) / scale
-    chw[pixels + i] = (data[i * 3 + 1]! - mean) / scale
-    chw[2 * pixels + i] = (data[i * 3 + 2]! - mean) / scale
+    chw[i] = (data[i * 3]! - mean) / scale;
+    chw[pixels + i] = (data[i * 3 + 1]! - mean) / scale;
+    chw[2 * pixels + i] = (data[i * 3 + 2]! - mean) / scale;
   }
-  return chw
+  return chw;
 }

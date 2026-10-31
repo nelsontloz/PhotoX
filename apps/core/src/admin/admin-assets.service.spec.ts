@@ -1,29 +1,29 @@
-import type { DataSource, Repository } from 'typeorm'
-import { Asset, AssetThumbnail, FileRecord } from '../database/entities'
-import { AdminAssetsService } from './admin-assets.service'
+import type { DataSource, Repository } from 'typeorm';
+import { Asset, AssetThumbnail, FileRecord } from '../database/entities';
+import { AdminAssetsService } from './admin-assets.service';
 
-type Row = Record<string, unknown>
+type Row = Record<string, unknown>;
 
 interface StatsQueryResults {
-  counts?: Row[]
-  weeks?: Row[]
-  months?: Row[]
+  counts?: Row[];
+  weeks?: Row[];
+  months?: Row[];
 }
 
 function makeService(responses: StatsQueryResults) {
   const query = vi.fn((sql: string) => {
-    if (sql.includes('WITH weeks')) return Promise.resolve(responses.weeks ?? [])
-    if (sql.includes('WITH bounds')) return Promise.resolve(responses.months ?? [])
-    return Promise.resolve(responses.counts ?? [])
-  })
+    if (sql.includes('WITH weeks')) return Promise.resolve(responses.weeks ?? []);
+    if (sql.includes('WITH bounds')) return Promise.resolve(responses.months ?? []);
+    return Promise.resolve(responses.counts ?? []);
+  });
   const service = new AdminAssetsService(
     {} as unknown as Repository<Asset>,
     { query } as unknown as DataSource,
     {} as unknown as Repository<FileRecord>,
     {} as unknown as Repository<AssetThumbnail>,
     {} as never,
-  )
-  return { service, query }
+  );
+  return { service, query };
 }
 
 describe('AdminAssetsService.getLibraryStats', () => {
@@ -39,7 +39,7 @@ describe('AdminAssetsService.getLibraryStats', () => {
           thumbnailsBytes: '100',
         },
       ],
-    })
+    });
 
     await expect(service.getLibraryStats()).resolves.toEqual({
       counts: { photos: 12, videos: 3, trashed: 2 },
@@ -52,9 +52,9 @@ describe('AdminAssetsService.getLibraryStats', () => {
           thumbnailsBytes: 100,
         },
       ],
-    })
-    expect(query).toHaveBeenCalledTimes(3)
-  })
+    });
+    expect(query).toHaveBeenCalledTimes(3);
+  });
 
   it('maps null sums and missing rows to zero defaults', async () => {
     const { service } = makeService({
@@ -68,7 +68,7 @@ describe('AdminAssetsService.getLibraryStats', () => {
           thumbnailsBytes: null,
         },
       ],
-    })
+    });
 
     await expect(service.getLibraryStats()).resolves.toEqual({
       counts: { photos: 0, videos: 0, trashed: 0 },
@@ -81,16 +81,16 @@ describe('AdminAssetsService.getLibraryStats', () => {
           thumbnailsBytes: 0,
         },
       ],
-    })
-  })
+    });
+  });
 
   it('returns empty series when the database has no qualifying rows', async () => {
-    const { service } = makeService({})
+    const { service } = makeService({});
 
     await expect(service.getLibraryStats()).resolves.toEqual({
       counts: { photos: 0, videos: 0, trashed: 0 },
       uploadsByWeek: [],
       storageByMonth: [],
-    })
-  })
-})
+    });
+  });
+});

@@ -1,5 +1,5 @@
-import { api } from './client'
-import { sleep } from '../lib/sleep'
+import { api } from './client';
+import { sleep } from '../lib/sleep';
 import type {
   AdminUserBackupSync,
   AdminUserCreateRequest,
@@ -15,70 +15,70 @@ import type {
   AdminReprocessThumbnailsResponse,
   FaceDetectionSettings,
   RegistrationSettings,
-} from '@photox/shared-types'
+} from '@photox/shared-types';
 
 /** Status envelope shared by every reprocess pipeline: last run (if any) + live queue depth. */
 export interface ReprocessStatus<L> {
-  lastRun: L | null
+  lastRun: L | null;
   queue: {
-    waiting: number
-    active: number
-    completed: number
-    failed: number
-    delayed: number
-  }
+    waiting: number;
+    active: number;
+    completed: number;
+    failed: number;
+    delayed: number;
+  };
 }
 
 /** A completed pipeline run: when it started, how many photos it covered, how many got queued. */
 export interface PipelineRun {
-  startedAt: string
-  total: number
-  enqueued: number
+  startedAt: string;
+  total: number;
+  enqueued: number;
 }
 
 /** POST response of a pipeline reprocess: how many jobs were queued out of how many photos. */
 export interface PipelineResponse {
-  enqueued: number
-  total: number
+  enqueued: number;
+  total: number;
 }
 
 export async function reprocessPipeline<R extends PipelineResponse>(
   path: 'faces' | 'embeddings' | 'detections',
 ): Promise<R> {
-  const { data } = await api.post<R>(`/v1/admin/${path}/reprocess`)
-  return data
+  const { data } = await api.post<R>(`/v1/admin/${path}/reprocess`);
+  return data;
 }
 
 export async function getPipelineStatus<L extends PipelineRun>(
   path: 'faces' | 'embeddings' | 'detections',
 ): Promise<ReprocessStatus<L>> {
-  const { data } = await api.get<ReprocessStatus<L>>(`/v1/admin/${path}/reprocess`)
-  return data
+  const { data } = await api.get<ReprocessStatus<L>>(`/v1/admin/${path}/reprocess`);
+  return data;
 }
 
 // SCRFD-10G is the only face detector, so face runs carry no detector provenance: the record is
 // the shared pipeline shape.
-export type FacePipelineRun = PipelineRun
-export type FaceReprocessResponse = PipelineResponse
+export type FacePipelineRun = PipelineRun;
+export type FaceReprocessResponse = PipelineResponse;
 
-export type EmbeddingPipelineRun = PipelineRun & { model: string }
+export type EmbeddingPipelineRun = PipelineRun & { model: string };
 export interface EmbeddingReprocessResponse extends PipelineResponse {
-  model: string
+  model: string;
 }
 
 export interface ListAdminUsersParams {
-  limit?: number
-  offset?: number
-  q?: string
-  sortField?: AdminUserSortField
-  sortDir?: 'asc' | 'desc'
-  role?: 'user' | 'admin'
+  limit?: number;
+  offset?: number;
+  q?: string;
+  sortField?: AdminUserSortField;
+  sortDir?: 'asc' | 'desc';
+  role?: 'user' | 'admin';
 }
 
 export async function listAdminUsers(
   params: ListAdminUsersParams = {},
 ): Promise<AdminUserListResponse> {
-  const sort = params.sortField ? `${params.sortField}:${params.sortDir ?? 'desc'}` : undefined
+  const sort = params.sortField ? `${params.sortField}:${params.sortDir ?? 'desc'}` : undefined;
   const { data } = await api.get<AdminUserListResponse>('/v1/admin/users', {
     params: {
       limit: params.limit,
@@ -87,13 +87,13 @@ export async function listAdminUsers(
       sort,
       role: params.role,
     },
-  })
-  return data
+  });
+  return data;
 }
 
 export async function createAdminUser(payload: AdminUserCreateRequest): Promise<AdminUserRow> {
-  const { data } = await api.post<AdminUserRow>('/v1/admin/users', payload)
-  return data
+  const { data } = await api.post<AdminUserRow>('/v1/admin/users', payload);
+  return data;
 }
 
 // --- registration settings --------------------------------------------------------------
@@ -101,23 +101,23 @@ export async function createAdminUser(payload: AdminUserCreateRequest): Promise<
 // keep working either way.
 
 export async function getRegistrationSettings(): Promise<RegistrationSettings> {
-  const { data } = await api.get<RegistrationSettings>('/v1/admin/registration')
-  return data
+  const { data } = await api.get<RegistrationSettings>('/v1/admin/registration');
+  return data;
 }
 
 export async function setRegistrationSettings(enabled: boolean): Promise<RegistrationSettings> {
-  const { data } = await api.patch<RegistrationSettings>('/v1/admin/registration', { enabled })
-  return data
+  const { data } = await api.patch<RegistrationSettings>('/v1/admin/registration', { enabled });
+  return data;
 }
 
 export async function getAdminAssetCounts(): Promise<AdminAssetCountsResponse> {
-  const { data } = await api.get<AdminAssetCountsResponse>('/v1/admin/assets/counts')
-  return data
+  const { data } = await api.get<AdminAssetCountsResponse>('/v1/admin/assets/counts');
+  return data;
 }
 
 export async function getAdminLibraryStats(): Promise<AdminLibraryStatsResponse> {
-  const { data } = await api.get<AdminLibraryStatsResponse>('/v1/admin/assets/stats')
-  return data
+  const { data } = await api.get<AdminLibraryStatsResponse>('/v1/admin/assets/stats');
+  return data;
 }
 
 export async function reprocessThumbnails(
@@ -126,43 +126,43 @@ export async function reprocessThumbnails(
   const { data } = await api.post<AdminReprocessThumbnailsResponse>(
     '/v1/admin/thumbnails/reprocess',
     { kind },
-  )
-  return data
+  );
+  return data;
 }
 
 export async function getOrphanCounts(): Promise<{
-  orphanFiles: number
-  orphanThumbnails: number
+  orphanFiles: number;
+  orphanThumbnails: number;
 }> {
   const { data } = await api.get<{ orphanFiles: number; orphanThumbnails: number }>(
     '/v1/admin/orphan-counts',
-  )
-  return data
+  );
+  return data;
 }
 
 export async function getFaceDetection(): Promise<FaceDetectionSettings> {
-  const { data } = await api.get<FaceDetectionSettings>('/v1/admin/face-detection')
-  return data
+  const { data } = await api.get<FaceDetectionSettings>('/v1/admin/face-detection');
+  return data;
 }
 
 export async function reclusterFaces(): Promise<{ enqueued: number }> {
-  const { data } = await api.post<{ enqueued: number }>('/v1/admin/faces/recluster')
-  return data
+  const { data } = await api.post<{ enqueued: number }>('/v1/admin/faces/recluster');
+  return data;
 }
 
 /** POST /v1/admin/backups response: what got copied, under which S3 prefix. Mirrors the core backup contract (uploaded + skipped split of files for incremental runs). */
 export interface BackupResult {
-  userId: string
-  email: string
-  prefix: string
-  backedUpAt: string
-  files: number
-  uploaded: number
-  skipped: number
-  assets: number
-  albums: number
-  shares: number
-  persons: number
+  userId: string;
+  email: string;
+  prefix: string;
+  backedUpAt: string;
+  files: number;
+  uploaded: number;
+  skipped: number;
+  assets: number;
+  albums: number;
+  shares: number;
+  persons: number;
 }
 
 /**
@@ -170,15 +170,15 @@ export interface BackupResult {
  * total/completed cover original files; uploaded/skipped split the completed ones.
  */
 export interface BackupProgress {
-  userId: string
-  inProgress: boolean
-  total: number
-  completed: number
-  uploaded: number
-  skipped: number
-  currentFile?: string
-  startedAt?: string
-  updatedAt?: string
+  userId: string;
+  inProgress: boolean;
+  total: number;
+  completed: number;
+  uploaded: number;
+  skipped: number;
+  currentFile?: string;
+  startedAt?: string;
+  updatedAt?: string;
 }
 
 /**
@@ -187,33 +187,33 @@ export interface BackupProgress {
  * encodeURIComponent) without taking a workspace dep.
  */
 export function backupPrefixPreview(email: string, userId: string): string {
-  const normalized = email.trim().toLowerCase()
-  return `backups/${encodeURIComponent(normalized)}__${encodeURIComponent(userId)}/`
+  const normalized = email.trim().toLowerCase();
+  return `backups/${encodeURIComponent(normalized)}__${encodeURIComponent(userId)}/`;
 }
 
 // Backups run inline in core (originals first, manifest last) and routinely outlive the client's
 // 10s default on multi-GB libraries — raise the cap instead of failing a healthy backup.
-const BACKUP_TIMEOUT_MS = 600_000
+const BACKUP_TIMEOUT_MS = 600_000;
 
 // Progress reads the manifest back from S3 and can stall when the store is slow — give it
 // headroom over the generic 10s client default without touching the shared timeout.
-const BACKUP_STATUS_TIMEOUT_MS = 30_000
+const BACKUP_STATUS_TIMEOUT_MS = 30_000;
 
 export async function backupUser(emailOrId: string): Promise<BackupResult> {
   const { data } = await api.post<BackupResult>(
     '/v1/admin/backups',
     { emailOrId },
     { timeout: BACKUP_TIMEOUT_MS },
-  )
-  return data
+  );
+  return data;
 }
 
 export async function getBackupProgress(emailOrId: string): Promise<BackupProgress> {
   const { data } = await api.get<BackupProgress>('/v1/admin/backups/progress', {
     params: { emailOrId },
     timeout: BACKUP_STATUS_TIMEOUT_MS,
-  })
-  return data
+  });
+  return data;
 }
 
 /**
@@ -227,11 +227,11 @@ export async function getBackupProgress(emailOrId: string): Promise<BackupProgre
  * backup finishes the move. Mirrors RestoreResult in core.
  */
 export interface RestoreResult extends BackupResult {
-  restoredFrom: { emailAtBackup: string; prefix: string; manifestObjectKey: string }
-  startedAt: string
-  completedAt: string
-  enqueued: { metadata: number; thumbnails: number; videos: number; faces: number; ai: number }
-  reassignmentError?: string
+  restoredFrom: { emailAtBackup: string; prefix: string; manifestObjectKey: string };
+  startedAt: string;
+  completedAt: string;
+  enqueued: { metadata: number; thumbnails: number; videos: number; faces: number; ai: number };
+  reassignmentError?: string;
 }
 
 // Restores rebuild rows + copy bytes back from S3 inline, so they outlive the 10s client
@@ -245,69 +245,69 @@ export async function restoreUser(
     '/v1/admin/restores',
     { emailOrId, ...(restoreEmail ? { restoreEmail } : {}) },
     { timeout: BACKUP_TIMEOUT_MS },
-  )
-  return data
+  );
+  return data;
 }
 
 /** POST /v1/admin/restores/merge response: what moved from a previous-account backup into the live account. */
 export interface MergeResult {
-  targetUserId: string
-  targetEmail: string
-  backupUserId: string
-  emailAtBackup: string
-  prefix: string
-  backedUpAt: string
-  startedAt: string
-  completedAt: string
+  targetUserId: string;
+  targetEmail: string;
+  backupUserId: string;
+  emailAtBackup: string;
+  prefix: string;
+  backedUpAt: string;
+  startedAt: string;
+  completedAt: string;
   merged: {
-    files: number
-    assets: number
-    albums: number
-    albumAssets: number
-    shares: number
-    persons: number
-  }
-  deduped: { files: number; assets: number }
+    files: number;
+    assets: number;
+    albums: number;
+    albumAssets: number;
+    shares: number;
+    persons: number;
+  };
+  deduped: { files: number; assets: number };
   skipped: {
-    files: number
-    assets: number
-    albums: number
-    albumAssets: number
-    shares: number
-    persons: number
-    shareTokenConflicts: number
-    shareTargetConflicts: number
-  }
-  enqueued: { metadata: number; thumbnails: number; videos: number; faces: number; ai: number }
+    files: number;
+    assets: number;
+    albums: number;
+    albumAssets: number;
+    shares: number;
+    persons: number;
+    shareTokenConflicts: number;
+    shareTargetConflicts: number;
+  };
+  enqueued: { metadata: number; thumbnails: number; videos: number; faces: number; ai: number };
   /**
    * Set when the merge moved the previous-account snapshot into the live account's own S3
    * backup. `null` means the rows merged but the adoption failed, so the source snapshot was
    * kept and the merge can be retried.
    */
   assigned: {
-    prefix: string
-    copiedObjects: number
-    reusedObjects: number
-    unionedWithExisting: boolean
-    sourceDeleted: boolean
-  } | null
+    prefix: string;
+    copiedObjects: number;
+    reusedObjects: number;
+    unionedWithExisting: boolean;
+    sourceDeleted: boolean;
+  } | null;
   /** Why the S3 adoption failed when `assigned` is null. */
-  adoptionError?: string
+  adoptionError?: string;
 }
 
 export interface MergeBackupInput {
-  targetEmailOrId: string
-  backupUserId: string
-  prefix?: string
-  force?: boolean
+  targetEmailOrId: string;
+  backupUserId: string;
+  prefix?: string;
+  force?: boolean;
 }
 
 // Merges rows inline like a restore (asset copies / album links), so reuse the long cap.
 export async function mergeBackup(input: MergeBackupInput): Promise<MergeResult> {
   const { data } = await api.post<MergeResult>('/v1/admin/restores/merge', input, {
     timeout: BACKUP_TIMEOUT_MS,
-  })
-  return data
+  });
+  return data;
 }
 
 /**
@@ -316,17 +316,17 @@ export async function mergeBackup(input: MergeBackupInput): Promise<MergeResult>
  * Mirrors DeleteBackupResult in core.
  */
 export interface DeleteBackupResult {
-  userId: string
-  email: string
-  prefix: string
-  deletedObjects: number
+  userId: string;
+  email: string;
+  prefix: string;
+  deletedObjects: number;
 }
 
 export async function deleteBackup(emailOrId: string): Promise<DeleteBackupResult> {
   const { data } = await api.delete<DeleteBackupResult>('/v1/admin/backups', {
     params: { emailOrId },
-  })
-  return data
+  });
+  return data;
 }
 
 /**
@@ -335,16 +335,16 @@ export async function deleteBackup(emailOrId: string): Promise<DeleteBackupResul
  * once this snapshot's library was merged into the live account.
  */
 export interface BackupSnapshot {
-  userId: string
-  emailAtBackup: string
-  prefix: string
-  backedUpAt?: string | null
-  assets: number
-  files: number
-  albums: number
-  shares: number
-  persons: number
-  mergedAt?: string
+  userId: string;
+  emailAtBackup: string;
+  prefix: string;
+  backedUpAt?: string | null;
+  assets: number;
+  files: number;
+  albums: number;
+  shares: number;
+  persons: number;
+  mergedAt?: string;
 }
 
 /**
@@ -360,33 +360,33 @@ export interface BackupSnapshot {
  * itself (with its own userId) is listed in `legacyBackups`.
  */
 export interface BackupOverviewRow {
-  userId: string
-  email: string
-  role: 'user' | 'admin'
-  totalAssets: number
-  backedUpAssets: number
-  backedUpFiles: number
-  backedUpAt?: string | null
-  exists: boolean
-  degraded?: 'unreadable' | 'corrupt'
-  unavailable?: boolean
-  notBackedUp?: number
-  deleted: boolean
-  emailAtBackup?: string
+  userId: string;
+  email: string;
+  role: 'user' | 'admin';
+  totalAssets: number;
+  backedUpAssets: number;
+  backedUpFiles: number;
+  backedUpAt?: string | null;
+  exists: boolean;
+  degraded?: 'unreadable' | 'corrupt';
+  unavailable?: boolean;
+  notBackedUp?: number;
+  deleted: boolean;
+  emailAtBackup?: string;
   /** Primary backup prefix (attached previous-account snapshot or the row's own backup). */
-  prefix?: string
+  prefix?: string;
   /** Additional previous-account snapshots matched to this live email. */
-  legacyBackups?: BackupSnapshot[]
-  backedUpAlbums?: number
-  backedUpShares?: number
-  backedUpPersons?: number
+  legacyBackups?: BackupSnapshot[];
+  backedUpAlbums?: number;
+  backedUpShares?: number;
+  backedUpPersons?: number;
 }
 
 export async function getBackupOverview(): Promise<BackupOverviewRow[]> {
   const { data } = await api.get<BackupOverviewRow[]>('/v1/admin/backups/overview', {
     timeout: BACKUP_STATUS_TIMEOUT_MS,
-  })
-  return data
+  });
+  return data;
 }
 
 // --- admin user account edits ----------------------------------------------------------
@@ -405,8 +405,8 @@ export async function updateAdminUser(
     `/v1/admin/users/${encodeURIComponent(id)}`,
     payload,
     payload.email === undefined ? {} : { timeout: BACKUP_TIMEOUT_MS },
-  )
-  return data
+  );
+  return data;
 }
 
 /**
@@ -419,8 +419,8 @@ export async function syncAdminUserBackup(id: string): Promise<AdminUserBackupSy
     `/v1/admin/users/${encodeURIComponent(id)}/backup-sync`,
     undefined,
     { timeout: BACKUP_TIMEOUT_MS },
-  )
-  return data
+  );
+  return data;
 }
 
 // --- admin user deletion --------------------------------------------------------------
@@ -433,26 +433,26 @@ export async function syncAdminUserBackup(id: string): Promise<AdminUserBackupSy
 export async function deleteAdminUser(id: string): Promise<AdminUserDeleteResponse> {
   const { data } = await api.delete<AdminUserDeleteResponse>(
     `/v1/admin/users/${encodeURIComponent(id)}`,
-  )
-  return data
+  );
+  return data;
 }
 
 /** GET :id/delete-status view-model: coarse lifecycle of the background removal. */
 export interface AdminUserDeleteStatus {
-  status: string
-  error?: string | null
+  status: string;
+  error?: string | null;
 }
 
 export async function getAdminUserDeleteStatus(userId: string): Promise<AdminUserDeleteStatus> {
   const { data } = await api.get<AdminUserDeleteBackendStatus & { error?: unknown }>(
     `/v1/admin/users/${encodeURIComponent(userId)}/delete-status`,
-  )
-  const error = typeof data.error === 'string' ? data.error : null
-  return { status: data.state, error }
+  );
+  const error = typeof data.error === 'string' ? data.error : null;
+  return { status: data.state, error };
 }
 
-const DELETE_DONE = new Set(['completed'])
-const DELETE_FAILED = new Set(['failed'])
+const DELETE_DONE = new Set(['completed']);
+const DELETE_FAILED = new Set(['failed']);
 
 /**
  * Poll the :id/delete-status endpoint until the removal lands or the budget runs out.
@@ -462,20 +462,20 @@ export async function pollAdminUserDelete(
   userId: string,
   opts: { intervalMs?: number; timeoutMs?: number } = {},
 ): Promise<void> {
-  const intervalMs = opts.intervalMs ?? 1000
-  const timeoutMs = opts.timeoutMs ?? 60000
-  const started = Date.now()
+  const intervalMs = opts.intervalMs ?? 1000;
+  const timeoutMs = opts.timeoutMs ?? 60000;
+  const started = Date.now();
   for (;;) {
-    const state = await getAdminUserDeleteStatus(userId)
-    const status = state.status?.toLowerCase() ?? ''
-    if (DELETE_DONE.has(status)) return
+    const state = await getAdminUserDeleteStatus(userId);
+    const status = state.status?.toLowerCase() ?? '';
+    if (DELETE_DONE.has(status)) return;
     if (DELETE_FAILED.has(status)) {
-      const message = state.error ?? 'User deletion failed'
-      throw new Error(message === '' ? 'User deletion failed' : message)
+      const message = state.error ?? 'User deletion failed';
+      throw new Error(message === '' ? 'User deletion failed' : message);
     }
     if (Date.now() - started >= timeoutMs) {
-      throw new Error('Timed out waiting for the deletion — refresh the list to check.')
+      throw new Error('Timed out waiting for the deletion — refresh the list to check.');
     }
-    await sleep(intervalMs)
+    await sleep(intervalMs);
   }
 }

@@ -1,23 +1,23 @@
 export interface AlbumDto {
-  id: string
-  userId: string
-  name: string
-  description: string | null
-  assetCount: number
-  createdAt: string
-  updatedAt: string
+  id: string;
+  userId: string;
+  name: string;
+  description: string | null;
+  assetCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CreateAlbumDto {
-  name: string
-  description?: string
+  name: string;
+  description?: string;
 }
 
 export interface UpdateAlbumDto {
-  name?: string
-  description?: string
+  name?: string;
+  description?: string;
 }
 
 export interface AddAssetsToAlbumDto {
-  assetIds: string[]
+  assetIds: string[];
 }

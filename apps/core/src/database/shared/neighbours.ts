@@ -1,12 +1,12 @@
-import { SEARCH_EMBEDDING_DIM, SEARCH_EMBEDDING_MODEL } from '@photox/shared-types'
+import { SEARCH_EMBEDDING_DIM, SEARCH_EMBEDDING_MODEL } from '@photox/shared-types';
 
 export interface NeighbourRow {
-  id: string
-  dist: number
+  id: string;
+  dist: number;
 }
 
 interface Queryable {
-  query(sql: string, params?: unknown[]): Promise<unknown>
+  query(sql: string, params?: unknown[]): Promise<unknown>;
 }
 
 /**
@@ -21,12 +21,12 @@ export async function neighbourRows(
   limit: number,
   opts: { excludeAssetId?: string; exact?: boolean } = {},
 ): Promise<NeighbourRow[]> {
-  const distance = `ae.embedding::halfvec(${SEARCH_EMBEDDING_DIM}) <=> $3::halfvec(${SEARCH_EMBEDDING_DIM})`
-  const params: unknown[] = [userId, SEARCH_EMBEDDING_MODEL, vector, limit]
-  let exclude = ''
+  const distance = `ae.embedding::halfvec(${SEARCH_EMBEDDING_DIM}) <=> $3::halfvec(${SEARCH_EMBEDDING_DIM})`;
+  const params: unknown[] = [userId, SEARCH_EMBEDDING_MODEL, vector, limit];
+  let exclude = '';
   if (opts.excludeAssetId !== undefined) {
-    params.push(opts.excludeAssetId)
-    exclude = 'AND ae."assetId" <> $5'
+    params.push(opts.excludeAssetId);
+    exclude = 'AND ae."assetId" <> $5';
   }
   return (await q.query(
     `SELECT ae."assetId" AS id, ${distance} AS dist
@@ -38,5 +38,5 @@ export async function neighbourRows(
      ORDER BY ${opts.exact ? `(${distance}) + 0` : 'dist'}
      LIMIT $4`,
     params,
-  )) as NeighbourRow[]
+  )) as NeighbourRow[];
 }

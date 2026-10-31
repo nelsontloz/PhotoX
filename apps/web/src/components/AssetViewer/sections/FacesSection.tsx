@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
-import { FaSpinner, FaTriangleExclamation, FaUser } from 'react-icons/fa6'
-import type { Asset, FaceDto, PersonDto } from '@photox/shared-types'
-import { listPersons } from '../../../api/persons'
-import { assignFace } from '../../../api/faces'
-import { FaceThumb } from '../../FaceThumb'
-import { SectionShell } from './SectionShell'
+import { useEffect, useMemo, useState } from 'react';
+import { FaSpinner, FaTriangleExclamation, FaUser } from 'react-icons/fa6';
+import type { Asset, FaceDto, PersonDto } from '@photox/shared-types';
+import { listPersons } from '../../../api/persons';
+import { assignFace } from '../../../api/faces';
+import { FaceThumb } from '../../FaceThumb';
+import { SectionShell } from './SectionShell';
 
 interface FacesSectionProps {
-  asset: Asset
-  onFaceHover?: (faceId: string | null) => void
+  asset: Asset;
+  onFaceHover?: (faceId: string | null) => void;
 }
 
 function FaceRow({
@@ -19,17 +19,17 @@ function FaceRow({
   onReassign,
   onFaceHover,
 }: {
-  face: FaceDto
-  index: number
-  persons: PersonDto[]
-  personMap: Map<string, PersonDto>
-  onReassign: (faceId: string, toPersonId: string | null) => void
-  onFaceHover?: (faceId: string | null) => void
+  face: FaceDto;
+  index: number;
+  persons: PersonDto[];
+  personMap: Map<string, PersonDto>;
+  onReassign: (faceId: string, toPersonId: string | null) => void;
+  onFaceHover?: (faceId: string | null) => void;
 }) {
-  const pct = Math.max(0, Math.min(100, Math.round(face.confidence * 100)))
-  const person = face.personId ? personMap.get(face.personId) : undefined
-  const personName = person?.name ?? null
-  const coverFaceId = person?.coverFaceId ?? null
+  const pct = Math.max(0, Math.min(100, Math.round(face.confidence * 100)));
+  const person = face.personId ? personMap.get(face.personId) : undefined;
+  const personName = person?.name ?? null;
+  const coverFaceId = person?.coverFaceId ?? null;
 
   return (
     <li className="flex items-center gap-3 text-sm">
@@ -78,39 +78,39 @@ function FaceRow({
         </div>
       </div>
     </li>
-  )
+  );
 }
 
 export function FacesSection({ asset, onFaceHover }: FacesSectionProps) {
-  const status = asset.faceStatus
-  const [faces, setFaces] = useState<FaceDto[]>(asset.faces ?? [])
-  const [persons, setPersons] = useState<PersonDto[]>([])
-  const personMap = useMemo(() => new Map(persons.map((p) => [p.id, p])), [persons])
+  const status = asset.faceStatus;
+  const [faces, setFaces] = useState<FaceDto[]>(asset.faces ?? []);
+  const [persons, setPersons] = useState<PersonDto[]>([]);
+  const personMap = useMemo(() => new Map(persons.map((p) => [p.id, p])), [persons]);
 
   useEffect(() => {
-    setFaces(asset.faces ?? [])
-  }, [asset])
+    setFaces(asset.faces ?? []);
+  }, [asset]);
 
   useEffect(() => {
-    if (faces.length === 0) return
+    if (faces.length === 0) return;
     listPersons({ limit: 200 })
       .then((res) => setPersons(res.items))
       .catch(() => {
         /* ponytail: silent fail */
-      })
-  }, [faces.length])
+      });
+  }, [faces.length]);
 
   const handleReassign = async (faceId: string, toPersonId: string | null) => {
-    const face = faces.find((f) => f.id === faceId)
-    if (!face) return
+    const face = faces.find((f) => f.id === faceId);
+    if (!face) return;
 
     try {
-      await assignFace(faceId, toPersonId)
-      setFaces((prev) => prev.map((f) => (f.id === faceId ? { ...f, personId: toPersonId } : f)))
+      await assignFace(faceId, toPersonId);
+      setFaces((prev) => prev.map((f) => (f.id === faceId ? { ...f, personId: toPersonId } : f)));
     } catch {
-      window.alert('Failed to reassign face. Please try again.')
+      window.alert('Failed to reassign face. Please try again.');
     }
-  }
+  };
 
   if (status === 'pending') {
     return (
@@ -120,7 +120,7 @@ export function FacesSection({ asset, onFaceHover }: FacesSectionProps) {
           <span>Detecting faces…</span>
         </div>
       </SectionShell>
-    )
+    );
   }
 
   if (status === 'failed') {
@@ -131,7 +131,7 @@ export function FacesSection({ asset, onFaceHover }: FacesSectionProps) {
           Face detection failed
         </p>
       </SectionShell>
-    )
+    );
   }
 
   if (faces.length === 0) {
@@ -139,7 +139,7 @@ export function FacesSection({ asset, onFaceHover }: FacesSectionProps) {
       <SectionShell compact icon={<FaUser className="text-[18px]" />} title="Faces">
         <p className="text-sm text-slate-600 italic">No faces detected</p>
       </SectionShell>
-    )
+    );
   }
 
   return (
@@ -160,11 +160,11 @@ export function FacesSection({ asset, onFaceHover }: FacesSectionProps) {
             personMap={personMap}
             onFaceHover={onFaceHover}
             onReassign={(faceId, toPersonId) => {
-              void handleReassign(faceId, toPersonId)
+              void handleReassign(faceId, toPersonId);
             }}
           />
         ))}
       </ul>
     </SectionShell>
-  )
+  );
 }

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState } from 'react';
 
 /**
  * Inline click-to-rename state machine shared by the album/person headers.
@@ -13,45 +13,45 @@ export function useInlineRename(
   commit: (name: string) => Promise<void>,
   opts?: { allowEmpty?: boolean },
 ): {
-  editing: boolean
-  nameValue: string
-  setNameValue: (v: string) => void
-  start: () => void
-  save: () => Promise<void>
-  cancel: () => void
+  editing: boolean;
+  nameValue: string;
+  setNameValue: (v: string) => void;
+  start: () => void;
+  save: () => Promise<void>;
+  cancel: () => void;
 } {
-  const [editing, setEditing] = useState(false)
-  const [nameValue, setNameValue] = useState(currentName)
+  const [editing, setEditing] = useState(false);
+  const [nameValue, setNameValue] = useState(currentName);
   // ponytail: re-entry guard only (Enter unmounts the input mid-save and blur can re-fire save)
-  const busy = useRef(false)
+  const busy = useRef(false);
 
   const start = () => {
-    setNameValue(currentName)
-    setEditing(true)
-  }
+    setNameValue(currentName);
+    setEditing(true);
+  };
 
   const cancel = () => {
-    setNameValue(currentName)
-    setEditing(false)
-  }
+    setNameValue(currentName);
+    setEditing(false);
+  };
 
   const save = async () => {
-    if (busy.current) return
-    const trimmed = nameValue.trim()
+    if (busy.current) return;
+    const trimmed = nameValue.trim();
     if (trimmed === currentName || (trimmed === '' && !opts?.allowEmpty)) {
-      cancel()
-      return
+      cancel();
+      return;
     }
-    busy.current = true
+    busy.current = true;
     try {
-      await commit(trimmed)
+      await commit(trimmed);
     } catch {
-      setNameValue(currentName)
+      setNameValue(currentName);
     } finally {
-      busy.current = false
-      setEditing(false)
+      busy.current = false;
+      setEditing(false);
     }
-  }
+  };
 
-  return { editing, nameValue, setNameValue, start, save, cancel }
+  return { editing, nameValue, setNameValue, start, save, cancel };
 }

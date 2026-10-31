@@ -1,8 +1,8 @@
-import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common'
-import type { Redis } from 'ioredis'
-import { BullMqService } from '../queue/bullmq.service'
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
+import type { Redis } from 'ioredis';
+import { BullMqService } from '../queue/bullmq.service';
 
-type RateLimitRoute = 'login' | 'loginIp' | 'register' | 'refresh'
+type RateLimitRoute = 'login' | 'loginIp' | 'register' | 'refresh';
 
 // ponytail: fixed windows as a module constant — tune here; per-user/admin config if ever needed
 export const RATE_LIMITS: Record<RateLimitRoute, { limit: number; windowSec: number }> = {
@@ -11,15 +11,15 @@ export const RATE_LIMITS: Record<RateLimitRoute, { limit: number; windowSec: num
   loginIp: { limit: 20, windowSec: 900 },
   register: { limit: 10, windowSec: 3600 },
   refresh: { limit: 30, windowSec: 900 },
-}
+};
 
 // ponytail: register is env-overridable (direct process.env like WORKER_SERVICE_PORT, not zod)
 // so the e2e suite can batched-register from one IP. Parsed per call so
 // loadRootEnvFile() ordering can't bite; invalid/absent values fall back to the constant.
 function routeLimit(route: RateLimitRoute): number {
-  if (route !== 'register') return RATE_LIMITS[route].limit
-  const parsed = Number.parseInt(process.env.RATE_LIMIT_REGISTER ?? '', 10)
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : RATE_LIMITS.register.limit
+  if (route !== 'register') return RATE_LIMITS[route].limit;
+  const parsed = Number.parseInt(process.env.RATE_LIMIT_REGISTER ?? '', 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : RATE_LIMITS.register.limit;
 }
 
 // atomic fixed window: INCR plus EXPIRE only when the window is created, so a crash can never
@@ -28,14 +28,14 @@ const RATE_LIMIT_SCRIPT = `
 local count = redis.call('INCR', KEYS[1])
 if count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
 return count
-`
+`;
 
 // ponytail: 300ms budget — Redis down/slow rejects auth with 503 instead of hanging it
-export const RATE_LIMIT_TIMEOUT_MS = 300
+export const RATE_LIMIT_TIMEOUT_MS = 300;
 
 @Injectable()
 export class RateLimitService {
-  private readonly logger = new Logger(RateLimitService.name)
+  private readonly logger = new Logger(RateLimitService.name);
 
   constructor(private readonly bullMq: BullMqService) {}
 
@@ -45,46 +45,46 @@ export class RateLimitService {
    * attacker must never get unlimited auth attempts from a Redis blip.
    */
   async consume(route: RateLimitRoute, ip: string, email?: string): Promise<void> {
-    const { windowSec } = RATE_LIMITS[route]
-    const limit = routeLimit(route)
+    const { windowSec } = RATE_LIMITS[route];
+    const limit = routeLimit(route);
     // encode segments so ':' in IPv6 addresses/emails can't alias another bucket;
     // lowercase only the key — the email lookup elsewhere stays case-sensitive
-    const key = `rl:${route}:${encodeURIComponent(ip)}:${encodeURIComponent(email?.toLowerCase() ?? '-')}`
+    const key = `rl:${route}:${encodeURIComponent(ip)}:${encodeURIComponent(email?.toLowerCase() ?? '-')}`;
 
-    const count = await this.countHit(key, windowSec)
+    const count = await this.countHit(key, windowSec);
     if (count === null) {
-      this.logger.warn(`Rate limit unavailable for ${route} (${key}); rejecting request`)
+      this.logger.warn(`Rate limit unavailable for ${route} (${key}); rejecting request`);
       throw new HttpException(
         { statusCode: HttpStatus.SERVICE_UNAVAILABLE, message: 'Rate limiter unavailable' },
         HttpStatus.SERVICE_UNAVAILABLE,
-      )
+      );
     }
 
     if (count > limit) {
-      this.logger.warn(`Rate limit exceeded: ${route} ${ip} ${email?.toLowerCase() ?? '-'}`)
+      this.logger.warn(`Rate limit exceeded: ${route} ${ip} ${email?.toLowerCase() ?? '-'}`);
       throw new HttpException(
         { statusCode: HttpStatus.TOO_MANY_REQUESTS, message: 'Too many requests' },
         HttpStatus.TOO_MANY_REQUESTS,
-      )
+      );
     }
   }
 
   /** null = Redis unavailable/timed out (caller fails closed with 503). */
   private async countHit(key: string, windowSec: number): Promise<number | null> {
-    let timer: NodeJS.Timeout | undefined
+    let timer: NodeJS.Timeout | undefined;
     try {
-      const redis: Redis | undefined = this.bullMq.redis
-      if (!redis) return null // undefined until BullMqService.onModuleInit
+      const redis: Redis | undefined = this.bullMq.redis;
+      if (!redis) return null; // undefined until BullMqService.onModuleInit
       return await Promise.race([
         redis.eval(RATE_LIMIT_SCRIPT, 1, key, windowSec) as Promise<number>,
         new Promise<null>((resolve) => {
-          timer = setTimeout(() => resolve(null), RATE_LIMIT_TIMEOUT_MS)
+          timer = setTimeout(() => resolve(null), RATE_LIMIT_TIMEOUT_MS);
         }),
-      ])
+      ]);
     } catch {
-      return null
+      return null;
     } finally {
-      clearTimeout(timer)
+      clearTimeout(timer);
     }
   }
 }

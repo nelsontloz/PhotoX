@@ -1,10 +1,10 @@
-import { mkdtempSync, rmSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
-import { randomUUID } from 'node:crypto'
-import sharp from 'sharp'
-import type { RegisterFileInput } from '../../src/core/core-client.service'
+import { mkdtempSync, rmSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
+import sharp from 'sharp';
+import type { RegisterFileInput } from '../../src/core/core-client.service';
 import {
   closeTestApp,
   createTestApp,
@@ -14,10 +14,10 @@ import {
   signJob,
   waitForJob,
   type TestApp,
-} from './helpers'
+} from './helpers';
 
-const FIXTURE_DIR = mkdtempSync(join(tmpdir(), 'video-thumb-rot-'))
-const LANDSCAPE_PATH = join(FIXTURE_DIR, 'landscape.mp4')
+const FIXTURE_DIR = mkdtempSync(join(tmpdir(), 'video-thumb-rot-'));
+const LANDSCAPE_PATH = join(FIXTURE_DIR, 'landscape.mp4');
 
 function makeLandscapeMp4(): Buffer {
   return makeVideoFixture(LANDSCAPE_PATH, [
@@ -31,24 +31,24 @@ function makeLandscapeMp4(): Buffer {
     'yuv420p',
     '-t',
     '1',
-  ])
+  ]);
 }
 
 describe('VideoThumbnailRotation (integration)', () => {
-  let testApp: TestApp
-  let landscapeBuffer: Buffer
+  let testApp: TestApp;
+  let landscapeBuffer: Buffer;
 
   beforeAll(async () => {
-    landscapeBuffer = makeLandscapeMp4()
-    testApp = await createTestApp()
-  }, 120_000)
+    landscapeBuffer = makeLandscapeMp4();
+    testApp = await createTestApp();
+  }, 120_000);
 
   afterAll(async () => {
-    await closeTestApp(testApp)
-    rmSync(FIXTURE_DIR, { recursive: true, force: true })
-  })
+    await closeTestApp(testApp);
+    rmSync(FIXTURE_DIR, { recursive: true, force: true });
+  });
 
-  beforeEach(() => resetTestApp(testApp))
+  beforeEach(() => resetTestApp(testApp));
 
   function seedVideo(
     userId: string,
@@ -62,48 +62,48 @@ describe('VideoThumbnailRotation (integration)', () => {
       mimeType: 'video/mp4',
       ext: 'mp4',
       asset: { kind: 'video', orientation, metadataStatus, durationSeconds },
-    })
+    });
   }
 
   async function runLgThumbnail(assetId: string, fileId: string, userId: string) {
-    const queue = testApp.getQueue('process-thumbnail')
-    const job = await queue.add('thumbnail', signJob({ assetId, fileId, size: 'lg', userId }))
-    const state = await waitForJob(queue, job.id!)
-    expect(state).toBe('completed')
-    const updated = testApp.fake.assets.get(assetId)!
-    expect(updated.thumbnailStatus).toBe('ready')
-    const dto = testApp.fake.callsOf('registerFile').at(-1)!.args[0] as RegisterFileInput
-    const key = testApp.storage.buildKey('thumbnail', userId, dto.id, dto.ext)
-    const bytes = await readFile(testApp.storage.pathFor(key))
-    return sharp(bytes).metadata()
+    const queue = testApp.getQueue('process-thumbnail');
+    const job = await queue.add('thumbnail', signJob({ assetId, fileId, size: 'lg', userId }));
+    const state = await waitForJob(queue, job.id!);
+    expect(state).toBe('completed');
+    const updated = testApp.fake.assets.get(assetId)!;
+    expect(updated.thumbnailStatus).toBe('ready');
+    const dto = testApp.fake.callsOf('registerFile').at(-1)!.args[0] as RegisterFileInput;
+    const key = testApp.storage.buildKey('thumbnail', userId, dto.id, dto.ext);
+    const bytes = await readFile(testApp.storage.pathFor(key));
+    return sharp(bytes).metadata();
   }
 
   it('rotates portrait for orientation 90', async () => {
-    const userId = randomUUID()
-    const { record, asset } = await seedVideo(userId, 90, 'ready', 1)
-    const meta = await runLgThumbnail(asset.id, record.id, userId)
-    expect(meta.height).toBeGreaterThan(meta.width)
-  })
+    const userId = randomUUID();
+    const { record, asset } = await seedVideo(userId, 90, 'ready', 1);
+    const meta = await runLgThumbnail(asset.id, record.id, userId);
+    expect(meta.height).toBeGreaterThan(meta.width);
+  });
 
   it('rotates portrait for orientation -90', async () => {
-    const userId = randomUUID()
-    const { record, asset } = await seedVideo(userId, -90, 'ready', 1)
-    const meta = await runLgThumbnail(asset.id, record.id, userId)
-    expect(meta.height).toBeGreaterThan(meta.width)
-  })
+    const userId = randomUUID();
+    const { record, asset } = await seedVideo(userId, -90, 'ready', 1);
+    const meta = await runLgThumbnail(asset.id, record.id, userId);
+    expect(meta.height).toBeGreaterThan(meta.width);
+  });
 
   it('passes landscape through for orientation null', async () => {
-    const userId = randomUUID()
-    const { record, asset } = await seedVideo(userId, null, 'ready', 1)
-    const meta = await runLgThumbnail(asset.id, record.id, userId)
-    expect(meta.width).toBeGreaterThan(meta.height)
-  })
+    const userId = randomUUID();
+    const { record, asset } = await seedVideo(userId, null, 'ready', 1);
+    const meta = await runLgThumbnail(asset.id, record.id, userId);
+    expect(meta.width).toBeGreaterThan(meta.height);
+  });
 
   it('defers while metadata is pending, then picks up the orientation it writes', async () => {
-    const userId = randomUUID()
-    const { record, asset } = await seedVideo(userId, null, 'pending', null)
+    const userId = randomUUID();
+    const { record, asset } = await seedVideo(userId, null, 'pending', null);
 
-    const queue = testApp.getQueue('process-thumbnail')
+    const queue = testApp.getQueue('process-thumbnail');
     const first = await queue.add(
       'thumbnail',
       signJob({
@@ -112,36 +112,36 @@ describe('VideoThumbnailRotation (integration)', () => {
         size: 'lg',
         userId,
       }),
-    )
+    );
     // the first attempt only defers — no thumbnail work yet
-    expect(await waitForJob(queue, first.id!)).toBe('completed')
-    expect(testApp.fake.callsOf('registerThumbnail')).toHaveLength(0)
+    expect(await waitForJob(queue, first.id!)).toBe('completed');
+    expect(testApp.fake.callsOf('registerThumbnail')).toHaveLength(0);
 
     // metadata lands while the delayed re-enqueue waits; the deferred job's own fetch sees it
     Object.assign(testApp.fake.assets.get(asset.id)!, {
       metadataStatus: 'ready',
       orientation: 90,
       durationSeconds: 1,
-    })
+    });
     await vi.waitUntil(() => testApp.fake.callsOf('registerThumbnail').length > 0, {
       timeout: 30_000,
       interval: 100,
-    })
+    });
 
-    expect(testApp.fake.callsOf('getAsset').length).toBeGreaterThanOrEqual(2)
-    expect(testApp.fake.assets.get(asset.id)!.thumbnailStatus).toBe('ready')
+    expect(testApp.fake.callsOf('getAsset').length).toBeGreaterThanOrEqual(2);
+    expect(testApp.fake.assets.get(asset.id)!.thumbnailStatus).toBe('ready');
 
-    const dto = testApp.fake.callsOf('registerFile').at(-1)!.args[0] as RegisterFileInput
-    const key = testApp.storage.buildKey('thumbnail', userId, dto.id, dto.ext)
-    const meta = await sharp(await readFile(testApp.storage.pathFor(key))).metadata()
-    expect(meta.height).toBeGreaterThan(meta.width)
-  }, 30_000)
+    const dto = testApp.fake.callsOf('registerFile').at(-1)!.args[0] as RegisterFileInput;
+    const key = testApp.storage.buildKey('thumbnail', userId, dto.id, dto.ext);
+    const meta = await sharp(await readFile(testApp.storage.pathFor(key))).metadata();
+    expect(meta.height).toBeGreaterThan(meta.width);
+  }, 30_000);
 
   it('fails the deferred job fast when the asset disappears', async () => {
-    const userId = randomUUID()
-    const { record, asset } = await seedVideo(userId, null, 'pending', null)
+    const userId = randomUUID();
+    const { record, asset } = await seedVideo(userId, null, 'pending', null);
 
-    const queue = testApp.getQueue('process-thumbnail')
+    const queue = testApp.getQueue('process-thumbnail');
     const first = await queue.add(
       'thumbnail',
       signJob({
@@ -150,20 +150,20 @@ describe('VideoThumbnailRotation (integration)', () => {
         size: 'lg',
         userId,
       }),
-    )
-    expect(await waitForJob(queue, first.id!)).toBe('completed')
+    );
+    expect(await waitForJob(queue, first.id!)).toBe('completed');
 
-    testApp.fake.assets.delete(asset.id)
+    testApp.fake.assets.delete(asset.id);
 
     // the deferred job fetches the asset itself and the fake throws UnrecoverableError, so that
     // one fetch fails the job — no 4×1s poll and no retry
     await vi.waitUntil(() => testApp.fake.callsOf('getAsset').length >= 2, {
       timeout: 30_000,
       interval: 100,
-    })
+    });
     // settle window: a plain-error retry (exponential backoff ~1s) would fetch a third time
-    await new Promise((r) => setTimeout(r, 1500))
-    expect(testApp.fake.callsOf('getAsset')).toHaveLength(2)
-    expect(testApp.fake.callsOf('registerThumbnail')).toHaveLength(0)
-  }, 30_000)
-})
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(testApp.fake.callsOf('getAsset')).toHaveLength(2);
+    expect(testApp.fake.callsOf('registerThumbnail')).toHaveLength(0);
+  }, 30_000);
+});

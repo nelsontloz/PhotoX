@@ -1,29 +1,29 @@
-import { Injectable } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { access } from 'fs/promises'
-import { Repository } from 'typeorm'
-import { resolveFaceDetectorModelPath } from '@photox/shared-config'
-import type { FaceDetectionSettings } from '@photox/shared-types'
-import { AppSetting } from '../database/entities'
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { access } from 'fs/promises';
+import { Repository } from 'typeorm';
+import { resolveFaceDetectorModelPath } from '@photox/shared-config';
+import type { FaceDetectionSettings } from '@photox/shared-types';
+import { AppSetting } from '../database/entities';
 
-const REGISTRATION_ENABLED_KEY = 'registration.enabled'
+const REGISTRATION_ENABLED_KEY = 'registration.enabled';
 
 export interface EnqueuedRun {
-  startedAt: string
-  total: number
-  enqueued: number
+  startedAt: string;
+  total: number;
+  enqueued: number;
 }
 
 interface LastRuns {
-  face: EnqueuedRun
-  embedding: EnqueuedRun & { model: string }
-  detections: EnqueuedRun
-  metadata: EnqueuedRun
-  places: { startedAt: string; total: number; updated: number }
+  face: EnqueuedRun;
+  embedding: EnqueuedRun & { model: string };
+  detections: EnqueuedRun;
+  metadata: EnqueuedRun;
+  places: { startedAt: string; total: number; updated: number };
 }
 
-export type LastRunKind = keyof LastRuns
-export type LastRun<K extends LastRunKind> = LastRuns[K]
+export type LastRunKind = keyof LastRuns;
+export type LastRun<K extends LastRunKind> = LastRuns[K];
 
 /** app_settings key per last-run kind; records are only written by setLastRun below. */
 const LAST_RUN_KEYS: Record<LastRunKind, string> = {
@@ -32,7 +32,7 @@ const LAST_RUN_KEYS: Record<LastRunKind, string> = {
   detections: 'detections.reprocess.lastRun',
   metadata: 'metadata.reprocess.lastRun',
   places: 'places.backfill.lastRun',
-}
+};
 
 @Injectable()
 export class SettingsService {
@@ -42,44 +42,44 @@ export class SettingsService {
   ) {}
 
   async getSettings(): Promise<FaceDetectionSettings> {
-    return { modelAvailable: await this.scrfdModelAvailable() }
+    return { modelAvailable: await this.scrfdModelAvailable() };
   }
 
   /** Missing row or a non-boolean value means the default: registration is on. */
   async isRegistrationEnabled(): Promise<boolean> {
-    const row = await this.repo.findOne({ where: { key: REGISTRATION_ENABLED_KEY } })
-    return typeof row?.value === 'boolean' ? row.value : true
+    const row = await this.repo.findOne({ where: { key: REGISTRATION_ENABLED_KEY } });
+    return typeof row?.value === 'boolean' ? row.value : true;
   }
 
   async setRegistrationEnabled(enabled: boolean): Promise<void> {
-    await this.repo.upsert({ key: REGISTRATION_ENABLED_KEY, value: enabled }, ['key'])
+    await this.repo.upsert({ key: REGISTRATION_ENABLED_KEY, value: enabled }, ['key']);
   }
 
   async getLastRun<K extends LastRunKind>(kind: K): Promise<LastRun<K> | null> {
-    const row = await this.repo.findOne({ where: { key: LAST_RUN_KEYS[kind] } })
+    const row = await this.repo.findOne({ where: { key: LAST_RUN_KEYS[kind] } });
     // ponytail: shallow guard only — the stored JSON comes from setLastRun's typed values, so a
     // wrong envelope reading back as null is enough; add per-field checks back only if rows can
     // originate outside this service.
-    const value: unknown = row?.value
-    if (typeof value !== 'object' || value === null) return null
-    const run = value as Partial<EnqueuedRun & { updated: number }>
+    const value: unknown = row?.value;
+    if (typeof value !== 'object' || value === null) return null;
+    const run = value as Partial<EnqueuedRun & { updated: number }>;
     const hasEnvelope =
       typeof run.startedAt === 'string' &&
       typeof run.total === 'number' &&
-      (typeof run.enqueued === 'number' || typeof run.updated === 'number')
-    return hasEnvelope ? (value as LastRun<K>) : null
+      (typeof run.enqueued === 'number' || typeof run.updated === 'number');
+    return hasEnvelope ? (value as LastRun<K>) : null;
   }
 
   async setLastRun<K extends LastRunKind>(kind: K, run: LastRun<K>): Promise<void> {
-    await this.repo.upsert({ key: LAST_RUN_KEYS[kind], value: run }, ['key'])
+    await this.repo.upsert({ key: LAST_RUN_KEYS[kind], value: run }, ['key']);
   }
 
   private async scrfdModelAvailable(): Promise<boolean> {
     try {
-      await access(resolveFaceDetectorModelPath())
-      return true
+      await access(resolveFaceDetectorModelPath());
+      return true;
     } catch {
-      return false
+      return false;
     }
   }
 }

@@ -1,9 +1,9 @@
-import { Controller, Get, Query } from '@nestjs/common'
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
-import type { SearchResponse } from '@photox/shared-types'
-import { CurrentUserId } from '../auth/jwt-auth.guard'
-import { SearchService } from './search.service'
-import { SearchQueryDto } from './dto/search-query.dto'
+import { Controller, Get, Query } from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import type { SearchResponse } from '@photox/shared-types';
+import { CurrentUserId } from '../auth/jwt-auth.guard';
+import { SearchService } from './search.service';
+import { SearchQueryDto } from './dto/search-query.dto';
 
 @ApiTags('search')
 @Controller('api/v1/search')
@@ -22,6 +22,6 @@ export class SearchController {
     @Query() dto: SearchQueryDto,
     @CurrentUserId() userId: string,
   ): Promise<SearchResponse> {
-    return this.search.search(userId, dto)
+    return this.search.search(userId, dto);
   }
 }

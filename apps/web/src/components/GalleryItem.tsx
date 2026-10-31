@@ -7,20 +7,20 @@ import {
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
-} from 'react'
-import { FaCheck, FaPlay, FaUser } from 'react-icons/fa6'
-import type { Asset, AssetThumbnail } from '@photox/shared-types'
-import { AssetThumb } from './AssetThumb'
-import { formatDuration } from '../lib/format'
+} from 'react';
+import { FaCheck, FaPlay, FaUser } from 'react-icons/fa6';
+import type { Asset, AssetThumbnail } from '@photox/shared-types';
+import { AssetThumb } from './AssetThumb';
+import { formatDuration } from '../lib/format';
 
 interface GalleryItemProps {
-  asset: Asset
-  onSelect?: (asset: Asset) => void
-  dark?: boolean
-  onLongPress?: (asset: Asset) => void
-  onToggleSelect?: (id: string) => void
-  selected?: boolean
-  selectionMode?: boolean
+  asset: Asset;
+  onSelect?: (asset: Asset) => void;
+  dark?: boolean;
+  onLongPress?: (asset: Asset) => void;
+  onToggleSelect?: (id: string) => void;
+  selected?: boolean;
+  selectionMode?: boolean;
 }
 
 export const GalleryItem = memo(function GalleryItem({
@@ -32,39 +32,39 @@ export const GalleryItem = memo(function GalleryItem({
   selected = false,
   selectionMode = false,
 }: GalleryItemProps) {
-  const [dims, setDims] = useState<{ width: number; height: number } | null>(null)
+  const [dims, setDims] = useState<{ width: number; height: number } | null>(null);
   // touch-only long-press, folded from hooks/useLongPress (single caller)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const armedRef = useRef(false)
-  const justLongPressedRef = useRef(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const armedRef = useRef(false);
+  const justLongPressedRef = useRef(false);
   const clearLongPress = useCallback(() => {
     if (timerRef.current !== null) {
-      clearTimeout(timerRef.current)
-      timerRef.current = null
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
     }
-    armedRef.current = false
-  }, [])
-  useEffect(() => clearLongPress, [clearLongPress])
+    armedRef.current = false;
+  }, []);
+  useEffect(() => clearLongPress, [clearLongPress]);
   const lp = {
     justLongPressedRef,
     onPointerDown: (e: ReactPointerEvent) => {
-      if (e.pointerType !== 'touch') return
-      justLongPressedRef.current = false
-      armedRef.current = true
+      if (e.pointerType !== 'touch') return;
+      justLongPressedRef.current = false;
+      armedRef.current = true;
       timerRef.current = setTimeout(() => {
-        timerRef.current = null
-        onLongPress?.(asset)
-        justLongPressedRef.current = true
-        armedRef.current = false
-      }, 500)
+        timerRef.current = null;
+        onLongPress?.(asset);
+        justLongPressedRef.current = true;
+        armedRef.current = false;
+      }, 500);
     },
     onPointerUp: clearLongPress,
     onPointerLeave: clearLongPress,
     onPointerCancel: clearLongPress,
     onContextMenu: (e: ReactMouseEvent) => {
-      if (armedRef.current) e.preventDefault()
+      if (armedRef.current) e.preventDefault();
     },
-  }
+  };
   const longPressHandlers = onLongPress
     ? {
         onPointerDown: lp.onPointerDown,
@@ -73,32 +73,32 @@ export const GalleryItem = memo(function GalleryItem({
         onPointerCancel: lp.onPointerCancel,
         onContextMenu: lp.onContextMenu,
       }
-    : {}
+    : {};
 
-  const w = dims?.width ?? asset.width ?? 1
-  const h = dims?.height ?? asset.height ?? 1
+  const w = dims?.width ?? asset.width ?? 1;
+  const h = dims?.height ?? asset.height ?? 1;
   const figureStyle = {
     '--width': w,
     '--height': h,
-  } as CSSProperties
+  } as CSSProperties;
 
-  const isVideo = asset.kind === 'video'
-  const transcodeStatus = isVideo ? asset.transcodeStatus : null
-  const duration = isVideo ? formatDuration(asset.durationSeconds) : null
+  const isVideo = asset.kind === 'video';
+  const transcodeStatus = isVideo ? asset.transcodeStatus : null;
+  const duration = isVideo ? formatDuration(asset.durationSeconds) : null;
 
   return (
     <figure
       role="button"
       tabIndex={0}
       onClick={() => {
-        if (lp.justLongPressedRef.current) return
-        onSelect?.(asset)
+        if (lp.justLongPressedRef.current) return;
+        onSelect?.(asset);
       }}
       onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return
+        if (e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          onSelect?.(asset)
+          e.preventDefault();
+          onSelect?.(asset);
         }
       }}
       style={figureStyle}
@@ -142,8 +142,8 @@ export const GalleryItem = memo(function GalleryItem({
           aria-checked={selected}
           aria-label={selected ? 'Deselect photo' : 'Select photo'}
           onClick={(e) => {
-            e.stopPropagation()
-            onToggleSelect(asset.id)
+            e.stopPropagation();
+            onToggleSelect(asset.id);
           }}
           className={`absolute top-2 left-2 size-6 rounded-full z-10 flex items-center justify-center transition-opacity transition-colors ${
             selectionMode || selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
@@ -157,5 +157,5 @@ export const GalleryItem = memo(function GalleryItem({
         </button>
       )}
     </figure>
-  )
-})
+  );
+});

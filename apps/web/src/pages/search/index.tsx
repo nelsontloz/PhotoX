@@ -1,36 +1,36 @@
-import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { FaMagnifyingGlass } from 'react-icons/fa6'
-import { RequireAuth } from '../../components/RequireAuth'
-import { AppShell } from '../../components/AppShell'
-import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews'
-import { GalleryItem } from '../../components/GalleryItem'
-import { ViewerHost } from '../../components/ViewerHost'
-import { useAssetNavigation } from '../../hooks/useAssetNavigation'
-import { useSearchStore } from '../../store/search-store'
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { FaMagnifyingGlass } from 'react-icons/fa6';
+import { RequireAuth } from '../../components/RequireAuth';
+import { AppShell } from '../../components/AppShell';
+import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews';
+import { GalleryItem } from '../../components/GalleryItem';
+import { ViewerHost } from '../../components/ViewerHost';
+import { useAssetNavigation } from '../../hooks/useAssetNavigation';
+import { useSearchStore } from '../../store/search-store';
 
 function SearchContent() {
-  const [searchParams] = useSearchParams()
-  const q = (searchParams.get('q') ?? '').trim()
-  const items = useSearchStore((s) => s.items)
-  const total = useSearchStore((s) => s.total)
-  const loading = useSearchStore((s) => s.loading)
-  const loadingMore = useSearchStore((s) => s.loadingMore)
-  const error = useSearchStore((s) => s.error)
-  const run = useSearchStore((s) => s.run)
-  const loadMore = useSearchStore((s) => s.loadMore)
-  const reset = useSearchStore((s) => s.reset)
-  const [pickerOpen, setPickerOpen] = useState(false)
+  const [searchParams] = useSearchParams();
+  const q = (searchParams.get('q') ?? '').trim();
+  const items = useSearchStore((s) => s.items);
+  const total = useSearchStore((s) => s.total);
+  const loading = useSearchStore((s) => s.loading);
+  const loadingMore = useSearchStore((s) => s.loadingMore);
+  const error = useSearchStore((s) => s.error);
+  const run = useSearchStore((s) => s.run);
+  const loadMore = useSearchStore((s) => s.loadMore);
+  const reset = useSearchStore((s) => s.reset);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
-    if (q) void run(q)
-    else reset()
-  }, [q, run, reset])
+    if (q) void run(q);
+    else reset();
+  }, [q, run, reset]);
 
   const nav = useAssetNavigation({
     assets: items,
     onAfterAction: () => run(q, true),
-  })
+  });
 
   if (!q) {
     return (
@@ -40,7 +40,7 @@ function SearchContent() {
         title="Search your library"
         body="Type in the search bar to find photos and videos."
       />
-    )
+    );
   }
 
   return (
@@ -105,11 +105,11 @@ function SearchContent() {
         hasPrev={nav.hasPrev}
         hasNext={nav.hasNext}
         onTrash={() => {
-          void nav.trash()
+          void nav.trash();
         }}
         onToggleFavorite={(nextValue) => {
-          const cur = nav.selected
-          if (cur) void nav.toggleFavorite(cur.id, nextValue)
+          const cur = nav.selected;
+          if (cur) void nav.toggleFavorite(cur.id, nextValue);
         }}
         onAddToAlbum={() => setPickerOpen(true)}
         siblingAssets={items}
@@ -118,7 +118,7 @@ function SearchContent() {
         onPickerClose={() => setPickerOpen(false)}
       />
     </div>
-  )
+  );
 }
 
 export default function SearchPage() {
@@ -128,5 +128,5 @@ export default function SearchPage() {
         <SearchContent />
       </AppShell>
     </RequireAuth>
-  )
+  );
 }

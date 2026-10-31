@@ -7,16 +7,16 @@ import {
   AppSetting,
   UploadSession,
   UploadSessionPart,
-} from '../../src/database/entities'
-import { AssetEmbedding } from '../../src/database/entities/asset-embedding.entity'
-import { AssetDetection } from '../../src/database/entities/asset-detection.entity'
-import { Place } from '../../src/database/entities/place.entity'
-import { User } from '../../src/users/entities/user.entity'
-import { RefreshToken } from '../../src/users/entities/refresh-token.entity'
-import { Album } from '../../src/albums/entities/album.entity'
-import { AlbumAsset } from '../../src/albums/entities/album-asset.entity'
-import { Share } from '../../src/shares/entities/share.entity'
-import { BackupMerge } from '../../src/backup/entities/backup-merge.entity'
+} from '../../src/database/entities';
+import { AssetEmbedding } from '../../src/database/entities/asset-embedding.entity';
+import { AssetDetection } from '../../src/database/entities/asset-detection.entity';
+import { Place } from '../../src/database/entities/place.entity';
+import { User } from '../../src/users/entities/user.entity';
+import { RefreshToken } from '../../src/users/entities/refresh-token.entity';
+import { Album } from '../../src/albums/entities/album.entity';
+import { AlbumAsset } from '../../src/albums/entities/album-asset.entity';
+import { Share } from '../../src/shares/entities/share.entity';
+import { BackupMerge } from '../../src/backup/entities/backup-merge.entity';
 
 /**
  * Every entity the test apps register, and the single source of truth for the schema baked
@@ -42,4 +42,4 @@ export const ENTITIES = [
   UploadSession,
   UploadSessionPart,
   BackupMerge,
-]
+];

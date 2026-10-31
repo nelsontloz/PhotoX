@@ -1,5 +1,5 @@
-import { defineConfig } from 'vitest/config'
-import swc from 'unplugin-swc'
+import { defineConfig } from 'vitest/config';
+import swc from 'unplugin-swc';
 
 export default defineConfig({
   plugins: [swc.vite({ jsc: { parser: { syntax: 'typescript', decorators: true } } })],
@@ -36,4 +36,4 @@ export default defineConfig({
       },
     ],
   },
-})
+});

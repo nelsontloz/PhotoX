@@ -1,4 +1,4 @@
-import { expect, type APIRequestContext } from '@playwright/test'
+import { expect, type APIRequestContext } from '@playwright/test';
 import {
   Then,
   When,
@@ -8,7 +8,7 @@ import {
   expectThumbnailLoaded,
   getAsset,
   waitForThumbnails,
-} from '../support'
+} from '../support';
 
 /** Polls until transcode reaches a terminal state, so a 'failed' result fails fast. */
 async function waitForTranscodeStatus(
@@ -18,100 +18,100 @@ async function waitForTranscodeStatus(
   status: string,
 ): Promise<void> {
   const terminal = async () => {
-    const current = (await getAsset(request, auth, id)).transcodeStatus
-    return current === 'ready' || current === 'failed' ? current : 'pending'
-  }
-  await expect.poll(terminal, { timeout: 180_000 }).not.toBe('pending')
-  expect(await terminal()).toBe(status)
+    const current = (await getAsset(request, auth, id)).transcodeStatus;
+    return current === 'ready' || current === 'failed' ? current : 'pending';
+  };
+  await expect.poll(terminal, { timeout: 180_000 }).not.toBe('pending');
+  expect(await terminal()).toBe(status);
 }
 
 Then(
   'the video asset reaches transcode status {string} with a transcode file',
   async ({ page, request, ctx }, status: string) => {
-    const id = await discoverAssetId(page, ctx)
-    if (!ctx.auth) throw new Error('ctx.auth is missing — sign in first')
-    const auth = ctx.auth
-    await waitForTranscodeStatus(request, auth, id, status)
-    expect((await getAsset(request, auth, id)).transcodeFileId).toBeTruthy()
+    const id = await discoverAssetId(page, ctx);
+    if (!ctx.auth) throw new Error('ctx.auth is missing — sign in first');
+    const auth = ctx.auth;
+    await waitForTranscodeStatus(request, auth, id, status);
+    expect((await getAsset(request, auth, id)).transcodeFileId).toBeTruthy();
   },
-)
+);
 
 Then(
   'the video asset reaches transcode status {string} without a transcode file',
   async ({ page, request, ctx }, status: string) => {
-    const id = await discoverAssetId(page, ctx)
-    if (!ctx.auth) throw new Error('ctx.auth is missing — sign in first')
-    const auth = ctx.auth
-    await waitForTranscodeStatus(request, auth, id, status)
-    expect((await getAsset(request, auth, id)).transcodeFileId).toBeFalsy()
+    const id = await discoverAssetId(page, ctx);
+    if (!ctx.auth) throw new Error('ctx.auth is missing — sign in first');
+    const auth = ctx.auth;
+    await waitForTranscodeStatus(request, auth, id, status);
+    expect((await getAsset(request, auth, id)).transcodeFileId).toBeFalsy();
   },
-)
+);
 
 Then('the timeline shows its loaded thumbnail', async ({ page, request, ctx }) => {
-  if (!ctx.assetId || !ctx.auth) throw new Error('upload an asset first')
-  await waitForThumbnails(request, ctx.auth, ctx.assetId, ['md'])
-  await page.goto('/')
-  await expectSingleTimelineItem(page)
-  await expectThumbnailLoaded(page)
-})
+  if (!ctx.assetId || !ctx.auth) throw new Error('upload an asset first');
+  await waitForThumbnails(request, ctx.auth, ctx.assetId, ['md']);
+  await page.goto('/');
+  await expectSingleTimelineItem(page);
+  await expectThumbnailLoaded(page);
+});
 
 When('I open the video viewer for that asset', async ({ page, ctx }) => {
-  if (!ctx.assetId) throw new Error('ctx.assetId is missing — read the transcode status first')
-  await page.goto(`/?asset=${ctx.assetId}`)
-  await expect(page.locator('video[aria-label^="Video player"]')).toBeVisible()
-})
+  if (!ctx.assetId) throw new Error('ctx.assetId is missing — read the transcode status first');
+  await page.goto(`/?asset=${ctx.assetId}`);
+  await expect(page.locator('video[aria-label^="Video player"]')).toBeVisible();
+});
 
 Then('the video element becomes playable', async ({ page }) => {
-  const video = page.locator('video[aria-label^="Video player"]')
+  const video = page.locator('video[aria-label^="Video player"]');
   // preload="metadata" can stop at readyState 1 until playback starts — metadata + a decodable
   // video track (videoWidth > 0) is the strongest signal short of pressing play
   await expect
     .poll(() => video.evaluate((el) => (el as HTMLVideoElement).readyState), { timeout: 30_000 })
-    .toBeGreaterThanOrEqual(1)
-  expect(await video.evaluate((el) => (el as HTMLVideoElement).videoWidth)).toBeGreaterThan(0)
-})
+    .toBeGreaterThanOrEqual(1);
+  expect(await video.evaluate((el) => (el as HTMLVideoElement).videoWidth)).toBeGreaterThan(0);
+});
 
 Then('playback advances past 0.2 seconds', async ({ page }) => {
-  const video = page.locator('video[aria-label^="Video player"]')
+  const video = page.locator('video[aria-label^="Video player"]');
   // native controls: clicking the media toggles playback (the video.js big-play button is gone)
-  await video.click()
+  await video.click();
   await expect
     .poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentTime), { timeout: 15_000 })
-    .toBeGreaterThan(0.2)
-  expect(await video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(false)
-})
+    .toBeGreaterThan(0.2);
+  expect(await video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(false);
+});
 
 Then('the playing video source is the transcode file', async ({ page, request, ctx }) => {
-  if (!ctx.assetId || !ctx.auth) throw new Error('upload an asset first')
-  const asset = await getAsset(request, ctx.auth, ctx.assetId)
-  const transcodeFileId = asset.transcodeFileId
-  if (!transcodeFileId) throw new Error('asset has no transcode file')
-  const video = page.locator('video[aria-label^="Video player"]')
+  if (!ctx.assetId || !ctx.auth) throw new Error('upload an asset first');
+  const asset = await getAsset(request, ctx.auth, ctx.assetId);
+  const transcodeFileId = asset.transcodeFileId;
+  if (!transcodeFileId) throw new Error('asset has no transcode file');
+  const video = page.locator('video[aria-label^="Video player"]');
   // the player falls back to the original on error — playback advancing only proves a source
   // played, not which one: pin it to the transcode URL the viewer picked first
   await expect
     .poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentSrc), { timeout: 30_000 })
-    .toContain(transcodeFileId)
-})
+    .toContain(transcodeFileId);
+});
 
 Then('the playing video source is the original file', async ({ page, request, ctx }) => {
-  if (!ctx.assetId || !ctx.auth) throw new Error('upload an asset first')
-  const asset = await getAsset(request, ctx.auth, ctx.assetId)
-  const fileId = asset.fileId
-  if (!fileId) throw new Error('asset has no fileId')
-  const transcodeFileId = asset.transcodeFileId ?? null
-  const video = page.locator('video[aria-label^="Video player"]')
+  if (!ctx.assetId || !ctx.auth) throw new Error('upload an asset first');
+  const asset = await getAsset(request, ctx.auth, ctx.assetId);
+  const fileId = asset.fileId;
+  if (!fileId) throw new Error('asset has no fileId');
+  const transcodeFileId = asset.transcodeFileId ?? null;
+  const video = page.locator('video[aria-label^="Video player"]');
   await expect
     .poll(
       async () => {
         // evaluate only returns the URL — Node variables are not available in the browser closure
-        const currentSrc = await video.evaluate((el) => (el as HTMLVideoElement).currentSrc)
+        const currentSrc = await video.evaluate((el) => (el as HTMLVideoElement).currentSrc);
         return (
           currentSrc.includes(fileId) &&
           (transcodeFileId === null || !currentSrc.includes(transcodeFileId))
-        )
+        );
       },
       { timeout: 30_000 },
     )
-    .toBe(true)
-})
+    .toBe(true);
+});

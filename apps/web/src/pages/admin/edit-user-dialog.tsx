@@ -1,22 +1,22 @@
-import { useState } from 'react'
+import { useState } from 'react';
 import {
   FaCircleExclamation,
   FaDatabase,
   FaPenToSquare,
   FaSpinner,
   FaTriangleExclamation,
-} from 'react-icons/fa6'
+} from 'react-icons/fa6';
 import type {
   AdminUserBackupSync,
   AdminUserRow,
   AdminUserUpdateRequest,
   AdminUserUpdateResponse,
-} from '@photox/shared-types'
-import { Dialog, formInputClass } from '../../components/Dialog'
-import { updateAdminUser } from '../../api/admin'
-import { RoleBadge, emailLooksValid } from './shared'
-import { StatusPill, cx } from './ui'
-import { httpErrorMessage, type HttpErrorMessages } from './http-error'
+} from '@photox/shared-types';
+import { Dialog, formInputClass } from '../../components/Dialog';
+import { updateAdminUser } from '../../api/admin';
+import { RoleBadge, emailLooksValid } from './shared';
+import { StatusPill, cx } from './ui';
+import { httpErrorMessage, type HttpErrorMessages } from './http-error';
 
 // --- account edit dialog -----------------------------------------------------------------
 // Three fields (name, email, new password) over the same identity card + impact-note language
@@ -27,16 +27,16 @@ import { httpErrorMessage, type HttpErrorMessages } from './http-error'
 
 /** The core normalizes emails before saving, so casing/whitespace alone is not a change. */
 function sameEmail(a: string, b: string): boolean {
-  return a.trim().toLowerCase() === b.trim().toLowerCase()
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
-const PASSWORD_MIN = 8
-const NAME_MAX = 64
+const PASSWORD_MIN = 8;
+const NAME_MAX = 64;
 
-const UPDATE_FAILED = 'Update failed. Try again.'
+const UPDATE_FAILED = 'Update failed. Try again.';
 const LOST_CONTACT =
-  'Lost contact with the server — the account may already be updated. Refresh the list and check before retrying.'
-const BAD_REQUEST = "That change can't be saved — check the fields and try again."
+  'Lost contact with the server — the account may already be updated. Refresh the list and check before retrying.';
+const BAD_REQUEST = "That change can't be saved — check the fields and try again.";
 
 /** Never leak axios verbatim; the server statuses map to plain sentences. */
 export const UPDATE_ERROR_MESSAGES: HttpErrorMessages = {
@@ -49,7 +49,7 @@ export const UPDATE_ERROR_MESSAGES: HttpErrorMessages = {
   },
   timeout: LOST_CONTACT,
   preferServerMessage: true,
-}
+};
 
 /** Retry-move failures land in the persistent warning box, so the 404 wording drops "close this". */
 export const BACKUP_RETRY_ERROR_MESSAGES: HttpErrorMessages = {
@@ -60,15 +60,15 @@ export const BACKUP_RETRY_ERROR_MESSAGES: HttpErrorMessages = {
   },
   timeout: "Couldn't reach the server — try the move again.",
   preferServerMessage: true,
-}
+};
 
 /** What the section needs after a successful save: the fresh row, the backup outcome, the diff. */
 export interface UserEditOutcome {
-  user: AdminUserUpdateResponse['user']
-  backup: AdminUserBackupSync
-  emailChanged: boolean
+  user: AdminUserUpdateResponse['user'];
+  backup: AdminUserBackupSync;
+  emailChanged: boolean;
   /** True when this save revoked the signed-in admin's own session (self email/password). */
-  signedOut: boolean
+  signedOut: boolean;
 }
 
 export function EditUserDialog({
@@ -77,58 +77,58 @@ export function EditUserDialog({
   onClose,
   onDone,
 }: {
-  user: AdminUserRow
-  isSelf: boolean
-  onClose: () => void
-  onDone: (outcome: UserEditOutcome) => void
+  user: AdminUserRow;
+  isSelf: boolean;
+  onClose: () => void;
+  onDone: (outcome: UserEditOutcome) => void;
 }) {
-  const [name, setName] = useState(user.displayName)
-  const [email, setEmail] = useState(user.email)
-  const [password, setPassword] = useState('')
-  const [working, setWorking] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [name, setName] = useState(user.displayName);
+  const [email, setEmail] = useState(user.email);
+  const [password, setPassword] = useState('');
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const trimmedName = name.trim()
-  const trimmedEmail = email.trim()
-  const nameChanged = trimmedName !== user.displayName
-  const emailChanged = !sameEmail(email, user.email)
+  const trimmedName = name.trim();
+  const trimmedEmail = email.trim();
+  const nameChanged = trimmedName !== user.displayName;
+  const emailChanged = !sameEmail(email, user.email);
   // Passwords are hashed, so there is no value to compare: typing anything means "set this".
   // Blank is the unchanged signal the core expects.
-  const passwordChanged = password.length > 0
+  const passwordChanged = password.length > 0;
 
-  const nameInvalid = nameChanged && trimmedName.length === 0
-  const emailInvalid = emailChanged && !emailLooksValid(trimmedEmail)
-  const passwordInvalid = passwordChanged && password.length < PASSWORD_MIN
-  const dirty = nameChanged || emailChanged || passwordChanged
-  const canSubmit = dirty && !nameInvalid && !emailInvalid && !passwordInvalid && !working
+  const nameInvalid = nameChanged && trimmedName.length === 0;
+  const emailInvalid = emailChanged && !emailLooksValid(trimmedEmail);
+  const passwordInvalid = passwordChanged && password.length < PASSWORD_MIN;
+  const dirty = nameChanged || emailChanged || passwordChanged;
+  const canSubmit = dirty && !nameInvalid && !emailInvalid && !passwordInvalid && !working;
 
-  const movesBackup = emailChanged
-  const signedOut = isSelf && (emailChanged || passwordChanged)
+  const movesBackup = emailChanged;
+  const signedOut = isSelf && (emailChanged || passwordChanged);
 
   const close = () => {
-    if (!working) onClose()
-  }
+    if (!working) onClose();
+  };
 
   const onSubmit = async () => {
-    if (!canSubmit) return
-    const payload: AdminUserUpdateRequest = {}
-    if (nameChanged) payload.displayName = trimmedName
-    if (emailChanged) payload.email = trimmedEmail
-    if (passwordChanged) payload.password = password
+    if (!canSubmit) return;
+    const payload: AdminUserUpdateRequest = {};
+    if (nameChanged) payload.displayName = trimmedName;
+    if (emailChanged) payload.email = trimmedEmail;
+    if (passwordChanged) payload.password = password;
 
-    setWorking(true)
-    setError(null)
+    setWorking(true);
+    setError(null);
     try {
-      const res = await updateAdminUser(user.id, payload)
-      onDone({ user: res.user, backup: res.backup, emailChanged, signedOut })
+      const res = await updateAdminUser(user.id, payload);
+      onDone({ user: res.user, backup: res.backup, emailChanged, signedOut });
     } catch (err: unknown) {
-      setError(httpErrorMessage(err, UPDATE_ERROR_MESSAGES))
-      setWorking(false)
+      setError(httpErrorMessage(err, UPDATE_ERROR_MESSAGES));
+      setWorking(false);
     }
-  }
+  };
 
-  const previewName = trimmedName || user.displayName
-  const previewEmail = trimmedEmail || user.email
+  const previewName = trimmedName || user.displayName;
+  const previewEmail = trimmedEmail || user.email;
 
   return (
     <Dialog
@@ -319,5 +319,5 @@ export function EditUserDialog({
         </button>
       </div>
     </Dialog>
-  )
+  );
 }

@@ -1,15 +1,15 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { In, Repository, type FindOptionsRelations } from 'typeorm'
-import * as crypto from 'crypto'
-import { Share } from './entities/share.entity'
-import { isPostgresUniqueViolation } from '../assets/assets.service'
-import { Asset } from '../database/entities'
-import { FileRecord } from '../database/entities'
-import { Album } from '../albums/entities/album.entity'
-import { AlbumAsset } from '../albums/entities/album-asset.entity'
-import { findOwnedOr404 } from '../common/asset-ownership'
-import { CreateShareDto } from './dto/create-share.dto'
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { In, Repository, type FindOptionsRelations } from 'typeorm';
+import * as crypto from 'crypto';
+import { Share } from './entities/share.entity';
+import { isPostgresUniqueViolation } from '../assets/assets.service';
+import { Asset } from '../database/entities';
+import { FileRecord } from '../database/entities';
+import { Album } from '../albums/entities/album.entity';
+import { AlbumAsset } from '../albums/entities/album-asset.entity';
+import { findOwnedOr404 } from '../common/asset-ownership';
+import { CreateShareDto } from './dto/create-share.dto';
 import type {
   AlbumShareDto,
   AssetShareDto,
@@ -21,14 +21,14 @@ import type {
   ShareKind,
   ShareListItem,
   ShareListResponse,
-} from '@photox/shared-types'
+} from '@photox/shared-types';
 
 // ponytail: hardcoded 30d share lifetime — per-share expiresIn on the create DTO if owners need control
-const SHARE_TTL_MS = 30 * 24 * 60 * 60 * 1000
+const SHARE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 type ShareTarget =
   | { kind: 'asset'; assetId: string; albumId: null }
-  | { kind: 'album'; assetId: null; albumId: string }
+  | { kind: 'album'; assetId: null; albumId: string };
 
 @Injectable()
 export class SharesService {
@@ -47,7 +47,7 @@ export class SharesService {
 
   /** sha256 of a presented capability for lookups — writes store hashes, see create(). */
   private hashToken(token: string): string {
-    return crypto.createHash('sha256').update(token).digest('hex')
+    return crypto.createHash('sha256').update(token).digest('hex');
   }
 
   /**
@@ -62,9 +62,9 @@ export class SharesService {
     const hashed = await this.shareRepo.findOne({
       where: { token: this.hashToken(token) },
       relations,
-    })
-    if (hashed) return hashed
-    return this.shareRepo.findOne({ where: { token }, relations })
+    });
+    if (hashed) return hashed;
+    return this.shareRepo.findOne({ where: { token }, relations });
   }
 
   /** Missing, wrong-kind and expired shares are indistinguishable: one uniform 404. */
@@ -74,62 +74,62 @@ export class SharesService {
       (kind !== undefined && share.kind !== kind) ||
       (share.expiresAt && new Date() > share.expiresAt)
     )
-      throw new NotFoundException('Share not found')
-    return share
+      throw new NotFoundException('Share not found');
+    return share;
   }
 
   async create(userId: string, dto: CreateShareDto): Promise<ShareDto> {
-    const { assetId, albumId } = dto
+    const { assetId, albumId } = dto;
     if ((assetId === undefined) === (albumId === undefined)) {
-      throw new BadRequestException('Provide exactly one of assetId or albumId')
+      throw new BadRequestException('Provide exactly one of assetId or albumId');
     }
 
     const target: ShareTarget =
       assetId !== undefined
         ? { kind: 'asset', assetId, albumId: null }
-        : { kind: 'album', assetId: null, albumId: albumId! }
+        : { kind: 'album', assetId: null, albumId: albumId! };
 
-    let album: Album | null = null
+    let album: Album | null = null;
     if (target.kind === 'asset') {
       const asset = await this.assetRepo.findOne({
         where: { id: target.assetId, userId, isTrashed: false },
-      })
-      if (!asset) throw new NotFoundException('Asset not found')
+      });
+      if (!asset) throw new NotFoundException('Asset not found');
     } else {
-      album = await findOwnedOr404(this.albumRepo, target.albumId, userId, 'Album')
+      album = await findOwnedOr404(this.albumRepo, target.albumId, userId, 'Album');
     }
 
     const ownerFilter =
       target.kind === 'asset'
         ? { assetId: target.assetId, userId }
-        : { albumId: target.albumId, userId }
-    const existing = await this.shareRepo.findOne({ where: ownerFilter })
+        : { albumId: target.albumId, userId };
+    const existing = await this.shareRepo.findOne({ where: ownerFilter });
     // rotation: re-sharing mints a new token and kills the old URL (compat break by design)
-    if (existing) await this.shareRepo.delete(existing.id)
+    if (existing) await this.shareRepo.delete(existing.id);
 
-    const raw = crypto.randomBytes(16).toString('base64url')
+    const raw = crypto.randomBytes(16).toString('base64url');
     const build = () =>
       this.shareRepo.create({
         userId,
         ...target,
         token: this.hashToken(raw),
         expiresAt: new Date(Date.now() + SHARE_TTL_MS),
-      })
+      });
     const toDto = async (saved: Share): Promise<ShareDto> =>
       target.kind === 'asset'
         ? { ...this.toAssetDto(saved), token: raw }
-        : { ...(await this.toAlbumDto(saved, album)), token: raw }
+        : { ...(await this.toAlbumDto(saved, album)), token: raw };
 
     try {
-      return await toDto(await this.shareRepo.save(build()))
+      return await toDto(await this.shareRepo.save(build()));
     } catch (err) {
-      if (!isPostgresUniqueViolation(err)) throw err
+      if (!isPostgresUniqueViolation(err)) throw err;
       // C10: concurrent rotation raced past the find-existing/delete above — inline retry
       // (last-writer-wins) so double-submit returns a working capability instead of a 500.
       // The winner's raw is unrecoverable (only its hash is stored), so returning the
       // winner row would hand back a hash, not a working token.
-      await this.shareRepo.delete(ownerFilter)
-      return await toDto(await this.shareRepo.save(build()))
+      await this.shareRepo.delete(ownerFilter);
+      return await toDto(await this.shareRepo.save(build()));
     }
   }
 
@@ -142,32 +142,32 @@ export class SharesService {
       .where('share.userId = :userId', { userId })
       .andWhere('(share.kind = :albumKind OR asset.isTrashed = false)', { albumKind: 'album' })
       .orderBy('share.createdAt', 'DESC')
-      .getMany()
+      .getMany();
 
     // ponytail: N+1 count/cover query per album share — fine for a personal scale library;
     // replace with a grouped join if share lists ever get large
-    const items: ShareListItem[] = []
+    const items: ShareListItem[] = [];
     for (const row of rows) {
       items.push(
         row.kind === 'album' ? await this.toAlbumDto(row, row.album) : this.toAssetDto(row),
-      )
+      );
     }
-    return { items }
+    return { items };
   }
 
   async revoke(userId: string, shareId: string): Promise<void> {
-    await findOwnedOr404(this.shareRepo, shareId, userId, 'Share')
-    await this.shareRepo.delete(shareId)
+    await findOwnedOr404(this.shareRepo, shareId, userId, 'Share');
+    await this.shareRepo.delete(shareId);
   }
 
   async getByToken(token: string): Promise<PublicShareResponse> {
     const share = this.assertLiveShare(
       await this.findShareByToken(token, { asset: { thumbnails: true }, album: true }),
-    )
+    );
 
     if (share.kind === 'album') {
-      if (!share.album) throw new NotFoundException('Share not found')
-      const shareDto = await this.toAlbumDto(share, share.album)
+      if (!share.album) throw new NotFoundException('Share not found');
+      const shareDto = await this.toAlbumDto(share, share.album);
       return {
         kind: 'album',
         share: this.toPublicShare(share),
@@ -177,19 +177,19 @@ export class SharesService {
           description: share.album.description,
           assetCount: shareDto.albumAssetCount,
         },
-      }
+      };
     }
 
-    if (!share.asset || share.asset.isTrashed) throw new NotFoundException('Share not found')
+    if (!share.asset || share.asset.isTrashed) throw new NotFoundException('Share not found');
     return {
       kind: 'asset',
       share: this.toPublicShare(share),
       asset: this.toPublicAsset(share.asset),
-    }
+    };
   }
 
   async listAlbumAssetsByToken(token: string): Promise<PublicAlbumAssetsResponse> {
-    const share = await this.getAlbumShare(token)
+    const share = await this.getAlbumShare(token);
     const rows = await this.albumAssetRepo
       .createQueryBuilder('aa')
       .select('aa."assetId"', 'assetId')
@@ -197,18 +197,18 @@ export class SharesService {
       .where('aa."albumId" = :albumId', { albumId: share.albumId })
       .andWhere('asset.isTrashed = false')
       .orderBy('aa."addedAt"', 'DESC')
-      .getRawMany<{ assetId: string }>()
+      .getRawMany<{ assetId: string }>();
 
-    if (rows.length === 0) return { items: [] }
+    if (rows.length === 0) return { items: [] };
 
-    const assets = await this.assetRepo.findBy({ id: In(rows.map((row) => row.assetId)) })
-    const byId = new Map(assets.map((asset) => [asset.id, asset]))
-    const items: PublicShareAsset[] = []
+    const assets = await this.assetRepo.findBy({ id: In(rows.map((row) => row.assetId)) });
+    const byId = new Map(assets.map((asset) => [asset.id, asset]));
+    const items: PublicShareAsset[] = [];
     for (const row of rows) {
-      const asset = byId.get(row.assetId)
-      if (asset) items.push(this.toPublicAsset(asset))
+      const asset = byId.get(row.assetId);
+      if (asset) items.push(this.toPublicAsset(asset));
     }
-    return { items }
+    return { items };
   }
 
   async getAlbumAssetFileId(
@@ -216,7 +216,7 @@ export class SharesService {
     assetId: string,
     size?: string,
   ): Promise<{ fileId: string; userId: string }> {
-    const share = await this.getAlbumShare(token)
+    const share = await this.getAlbumShare(token);
 
     const member = await this.albumAssetRepo
       .createQueryBuilder('aa')
@@ -225,26 +225,26 @@ export class SharesService {
       .where('aa."albumId" = :albumId', { albumId: share.albumId })
       .andWhere('aa."assetId" = :assetId', { assetId })
       .andWhere('asset.isTrashed = false')
-      .getRawOne<{ assetId: string }>()
-    if (!member) throw new NotFoundException('Asset not found')
+      .getRawOne<{ assetId: string }>();
+    if (!member) throw new NotFoundException('Asset not found');
 
     const asset = await this.assetRepo.findOne({
       where: { id: assetId },
       relations: { thumbnails: true },
-    })
-    if (!asset) throw new NotFoundException('Asset not found')
+    });
+    if (!asset) throw new NotFoundException('Asset not found');
 
     if (size === 'sm') {
       // sm-only: a missing sm thumbnail 404s — never fall back to the (possibly huge) original
-      const thumbFileId = asset.thumbnails?.find((thumb) => thumb.size === 'sm')?.fileId
-      if (!thumbFileId) throw new NotFoundException('Asset not found')
-      return { fileId: thumbFileId, userId: share.userId }
+      const thumbFileId = asset.thumbnails?.find((thumb) => thumb.size === 'sm')?.fileId;
+      if (!thumbFileId) throw new NotFoundException('Asset not found');
+      return { fileId: thumbFileId, userId: share.userId };
     }
-    if (size !== undefined) throw new BadRequestException(`Unsupported size '${size}'`)
+    if (size !== undefined) throw new BadRequestException(`Unsupported size '${size}'`);
     // Same pick as the in-app viewer: when the worker transcoded the video (non-h264 original),
     // browsers cannot decode the original — serve the AV1/webm derivative.
-    const fileId = await this.playableFileId(share.userId, asset.transcodeFileId, asset.fileId)
-    return { fileId, userId: share.userId }
+    const fileId = await this.playableFileId(share.userId, asset.transcodeFileId, asset.fileId);
+    return { fileId, userId: share.userId };
   }
 
   /**
@@ -257,15 +257,15 @@ export class SharesService {
     transcodeFileId: string | null,
     fallbackFileId: string,
   ): Promise<string> {
-    if (!transcodeFileId) return fallbackFileId
-    const file = await this.fileRepo.findOne({ where: { id: transcodeFileId } })
-    return file?.userId === userId ? transcodeFileId : fallbackFileId
+    if (!transcodeFileId) return fallbackFileId;
+    const file = await this.fileRepo.findOne({ where: { id: transcodeFileId } });
+    return file?.userId === userId ? transcodeFileId : fallbackFileId;
   }
 
   private async getAlbumShare(token: string): Promise<Share> {
-    const share = this.assertLiveShare(await this.findShareByToken(token), 'album')
-    if (!share.albumId) throw new NotFoundException('Share not found')
-    return share
+    const share = this.assertLiveShare(await this.findShareByToken(token), 'album');
+    if (!share.albumId) throw new NotFoundException('Share not found');
+    return share;
   }
 
   /**
@@ -276,14 +276,14 @@ export class SharesService {
     const share = this.assertLiveShare(
       await this.findShareByToken(token, { asset: { thumbnails: true } }),
       'asset',
-    )
-    if (!share.asset || share.asset.isTrashed) throw new NotFoundException('Share not found')
+    );
+    if (!share.asset || share.asset.isTrashed) throw new NotFoundException('Share not found');
     const fileId = await this.playableFileId(
       share.userId,
       share.asset.transcodeFileId,
       share.asset.fileId,
-    )
-    return { fileId, userId: share.userId }
+    );
+    return { fileId, userId: share.userId };
   }
 
   private toPublicAsset(asset: Asset): PublicShareAsset {
@@ -298,7 +298,7 @@ export class SharesService {
       height: asset.height,
       durationSeconds: asset.durationSeconds,
       takenAt: asset.takenAt instanceof Date ? asset.takenAt.toISOString() : asset.takenAt,
-    }
+    };
   }
 
   private toAssetDto(share: Share): Omit<AssetShareDto, 'token'> {
@@ -311,7 +311,7 @@ export class SharesService {
       assetThumbFileId: share.asset?.thumbnails?.find((t) => t.size === 'sm')?.fileId ?? null,
       assetKind: share.asset?.kind ?? null,
       createdAt: share.createdAt instanceof Date ? share.createdAt.toISOString() : share.createdAt,
-    }
+    };
   }
 
   private toPublicShare(share: Share): PublicShareInfo {
@@ -319,19 +319,19 @@ export class SharesService {
       kind: share.kind,
       createdAt: share.createdAt instanceof Date ? share.createdAt.toISOString() : share.createdAt,
       expiresAt: share.expiresAt instanceof Date ? share.expiresAt.toISOString() : share.expiresAt,
-    }
+    };
   }
 
   private async toAlbumDto(
     share: Share,
     album?: Album | null,
   ): Promise<Omit<AlbumShareDto, 'token'>> {
-    const albumId = share.albumId!
-    const albumRow = album ?? (await this.albumRepo.findOne({ where: { id: albumId } }))
+    const albumId = share.albumId!;
+    const albumRow = album ?? (await this.albumRepo.findOne({ where: { id: albumId } }));
     const [assetCount, coverThumbFileId] = await Promise.all([
       this.countAlbumAssets(albumId),
       this.coverThumbFileId(albumId),
-    ])
+    ]);
     return {
       id: share.id,
       kind: 'album',
@@ -341,7 +341,7 @@ export class SharesService {
       albumAssetCount: assetCount,
       albumCoverThumbFileId: coverThumbFileId,
       createdAt: share.createdAt instanceof Date ? share.createdAt.toISOString() : share.createdAt,
-    }
+    };
   }
 
   private async countAlbumAssets(albumId: string): Promise<number> {
@@ -350,7 +350,7 @@ export class SharesService {
       .innerJoin('assets', 'asset', 'asset.id = aa."assetId"')
       .where('aa."albumId" = :albumId', { albumId })
       .andWhere('asset.isTrashed = false')
-      .getCount()
+      .getCount();
   }
 
   private async coverThumbFileId(albumId: string): Promise<string | null> {
@@ -365,7 +365,7 @@ export class SharesService {
       .andWhere('asset.isTrashed = false')
       .orderBy('aa."addedAt"', 'DESC')
       .limit(1)
-      .getRawOne<{ fileId: string }>()
-    return row?.fileId ?? null
+      .getRawOne<{ fileId: string }>();
+    return row?.fileId ?? null;
   }
 }

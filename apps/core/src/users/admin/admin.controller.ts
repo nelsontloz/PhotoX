@@ -8,8 +8,8 @@ import {
   Param,
   Patch,
   Post,
-} from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import type {
   AdminUserBackupSync,
   AdminUserDeleteResponse,
@@ -18,14 +18,14 @@ import type {
   AdminUserRow,
   AdminUserSortField,
   AdminUserUpdateResponse,
-} from '@photox/shared-types'
-import { Query } from '@nestjs/common'
-import { CurrentUserId } from '../../auth/jwt-auth.guard'
-import { AdminService } from './admin.service'
-import { AdminUserIdParamsDto } from './dto/admin-user-id.params.dto'
-import { CreateAdminUserDto } from './dto/create-admin-user.body.dto'
-import { ListAdminUsersQueryDto } from './dto/list-admin-users.query.dto'
-import { UpdateAdminUserDto } from './dto/update-admin-user.body.dto'
+} from '@photox/shared-types';
+import { Query } from '@nestjs/common';
+import { CurrentUserId } from '../../auth/jwt-auth.guard';
+import { AdminService } from './admin.service';
+import { AdminUserIdParamsDto } from './dto/admin-user-id.params.dto';
+import { CreateAdminUserDto } from './dto/create-admin-user.body.dto';
+import { ListAdminUsersQueryDto } from './dto/list-admin-users.query.dto';
+import { UpdateAdminUserDto } from './dto/update-admin-user.body.dto';
 
 // ponytail: admin-only is enforced centrally by JwtAuthGuard (every /api/v1/admin*
 // route requires the admin role) — no per-handler role checks here. Worker `act`
@@ -39,9 +39,9 @@ export class AdminController {
   @ApiOperation({ summary: 'List all users (admin-only, trusts the network)' })
   @ApiResponse({ status: 200, description: 'Paginated user list' })
   async list(@Query() q: ListAdminUsersQueryDto): Promise<AdminUserListResponse> {
-    const [rawField = 'createdAt', rawDir] = q.sort?.split(':') ?? []
-    const field = rawField as AdminUserSortField
-    const dir = rawDir === 'asc' ? 'asc' : 'desc'
+    const [rawField = 'createdAt', rawDir] = q.sort?.split(':') ?? [];
+    const field = rawField as AdminUserSortField;
+    const dir = rawDir === 'asc' ? 'asc' : 'desc';
     return this.admin.listUsers({
       limit: q.limit,
       offset: q.offset,
@@ -49,7 +49,7 @@ export class AdminController {
       sortField: field,
       sortDir: dir,
       role: q.role,
-    })
+    });
   }
 
   @Post()
@@ -62,7 +62,7 @@ export class AdminController {
   @ApiResponse({ status: 201, description: 'Created user row' })
   @ApiResponse({ status: 409, description: 'Email already registered' })
   async create(@Body() body: CreateAdminUserDto): Promise<AdminUserRow> {
-    return this.admin.createUser(body)
+    return this.admin.createUser(body);
   }
 
   @Patch(':id')
@@ -83,7 +83,7 @@ export class AdminController {
     @Body() body: UpdateAdminUserDto,
     @CurrentUserId() requesterId: string,
   ): Promise<AdminUserUpdateResponse> {
-    return this.admin.updateUser(params.id, body, requesterId)
+    return this.admin.updateUser(params.id, body, requesterId);
   }
 
   @Post(':id/backup-sync')
@@ -98,7 +98,7 @@ export class AdminController {
   @ApiResponse({ status: 200, description: 'Backup-sync outcome' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async backupSync(@Param() params: AdminUserIdParamsDto): Promise<AdminUserBackupSync> {
-    return this.admin.syncUserBackup(params.id)
+    return this.admin.syncUserBackup(params.id);
   }
 
   @Delete(':id')
@@ -120,7 +120,7 @@ export class AdminController {
     @Param() params: AdminUserIdParamsDto,
     @CurrentUserId() requesterId: string,
   ): Promise<AdminUserDeleteResponse> {
-    return this.admin.requestUserDelete(params.id, requesterId)
+    return this.admin.requestUserDelete(params.id, requesterId);
   }
 
   @Get(':id/delete-status')
@@ -128,6 +128,6 @@ export class AdminController {
   @ApiResponse({ status: 200, description: 'Job state plus the kept backup prefix' })
   @ApiResponse({ status: 404, description: 'User not found and no finished run recorded' })
   async deleteStatus(@Param() params: AdminUserIdParamsDto): Promise<AdminUserDeleteStatus> {
-    return this.admin.getUserDeleteStatus(params.id)
+    return this.admin.getUserDeleteStatus(params.id);
   }
 }

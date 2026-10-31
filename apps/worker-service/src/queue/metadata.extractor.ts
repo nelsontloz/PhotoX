@@ -1,22 +1,22 @@
-import { Injectable, Logger } from '@nestjs/common'
-import ExifReader from 'exifreader'
-import { runFfprobeJson, type FfprobeResult } from './ffmpeg'
+import { Injectable, Logger } from '@nestjs/common';
+import ExifReader from 'exifreader';
+import { runFfprobeJson, type FfprobeResult } from './ffmpeg';
 
 interface ExtractedMetadata {
-  takenAt: Date | null
-  cameraMake: string | null
-  cameraModel: string | null
-  lensModel: string | null
-  orientation: number | null
-  width: number | null
-  height: number | null
-  latitude: number | null
-  longitude: number | null
-  altitude: number | null
-  iso: number | null
-  fNumber: number | null
-  exposureTime: number | null
-  focalLength: number | null
+  takenAt: Date | null;
+  cameraMake: string | null;
+  cameraModel: string | null;
+  lensModel: string | null;
+  orientation: number | null;
+  width: number | null;
+  height: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  altitude: number | null;
+  iso: number | null;
+  fNumber: number | null;
+  exposureTime: number | null;
+  focalLength: number | null;
 }
 
 const EMPTY: ExtractedMetadata = {
@@ -34,83 +34,83 @@ const EMPTY: ExtractedMetadata = {
   fNumber: null,
   exposureTime: null,
   focalLength: null,
-}
+};
 
-const DATE_RE = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/
+const DATE_RE = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
 // EXIF OffsetTimeOriginal is a signed local UTC offset — either +02:00 or +0200 across vendors
-const OFFSET_RE = /^([+-])(\d{2}):?(\d{2})$/
+const OFFSET_RE = /^([+-])(\d{2}):?(\d{2})$/;
 
 // first=true takes the first array element (Orientation/ISO lists) instead of dividing a
 // [num, den] rational — the two shapes are indistinguishable, so the tag decides, not sniffing
 function readNumber(tag: Record<string, unknown> | undefined, first = false): number | null {
-  if (!tag) return null
-  if (!first && typeof tag.computed === 'number') return tag.computed
-  if (typeof tag.value === 'number') return tag.value
+  if (!tag) return null;
+  if (!first && typeof tag.computed === 'number') return tag.computed;
+  if (typeof tag.value === 'number') return tag.value;
   if (Array.isArray(tag.value) && typeof tag.value[0] === 'number') {
-    if (first) return tag.value[0]
+    if (first) return tag.value[0];
     if (tag.value.length === 2 && typeof tag.value[1] === 'number' && tag.value[1] !== 0) {
-      return tag.value[0] / tag.value[1]
+      return tag.value[0] / tag.value[1];
     }
   }
-  return null
+  return null;
 }
 
 function readString(tag: Record<string, unknown> | undefined): string | null {
-  if (!tag) return null
+  if (!tag) return null;
   if (Array.isArray(tag.value) && tag.value.length > 0) {
-    const first: unknown = tag.value[0]
-    if (typeof first === 'string') return first
+    const first: unknown = tag.value[0];
+    if (typeof first === 'string') return first;
   }
-  if (typeof tag.value === 'string') return tag.value
-  if (typeof tag.description === 'string') return tag.description
-  return null
+  if (typeof tag.value === 'string') return tag.value;
+  if (typeof tag.description === 'string') return tag.description;
+  return null;
 }
 
 // East-of-UTC offsets are positive, so UTC = local wall time − offset
 function readUtcOffsetMinutes(tag: Record<string, unknown> | undefined): number | null {
-  const value = readString(tag)
-  if (!value) return null
-  const m = OFFSET_RE.exec(value.trim())
-  if (!m) return null
-  const hours = Number(m[2])
-  const minutes = Number(m[3])
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
+  const value = readString(tag);
+  if (!value) return null;
+  const m = OFFSET_RE.exec(value.trim());
+  if (!m) return null;
+  const hours = Number(m[2]);
+  const minutes = Number(m[3]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
   // impossible zones (+99:99) would shift takenAt by days — treat them as absent
-  if (hours > 23 || minutes > 59) return null
-  const total = hours * 60 + minutes
-  return m[1] === '-' ? -total : total
+  if (hours > 23 || minutes > 59) return null;
+  const total = hours * 60 + minutes;
+  return m[1] === '-' ? -total : total;
 }
 
 @Injectable()
 export class MetadataExtractor {
-  private readonly logger = new Logger(MetadataExtractor.name)
+  private readonly logger = new Logger(MetadataExtractor.name);
 
   extract(buffer: Buffer): ExtractedMetadata {
-    let raw: Record<string, unknown>
+    let raw: Record<string, unknown>;
     try {
       raw = ExifReader.load(buffer, {
         expanded: true,
         computed: true,
         excludeTags: { mpf: true },
-      }) as unknown as Record<string, unknown>
+      }) as unknown as Record<string, unknown>;
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      this.logger.warn(`EXIF extraction failed: ${message}`)
-      return { ...EMPTY }
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`EXIF extraction failed: ${message}`);
+      return { ...EMPTY };
     }
 
-    const exif = (raw.exif as Record<string, unknown>) ?? {}
-    const gps = (raw.gps as Record<string, unknown>) ?? {}
-    const file = (raw.file as Record<string, unknown>) ?? {}
+    const exif = (raw.exif as Record<string, unknown>) ?? {};
+    const gps = (raw.gps as Record<string, unknown>) ?? {};
+    const file = (raw.file as Record<string, unknown>) ?? {};
 
-    let takenAt: Date | null = null
+    let takenAt: Date | null = null;
     const dateTimeOriginal = readString(
       exif.DateTimeOriginal as Record<string, unknown> | undefined,
-    )
+    );
     if (dateTimeOriginal) {
-      const m = DATE_RE.exec(dateTimeOriginal)
+      const m = DATE_RE.exec(dateTimeOriginal);
       if (m) {
-        const [, year, month, day, hour, min, sec] = m
+        const [, year, month, day, hour, min, sec] = m;
         const wallTimeUtc = Date.UTC(
           Number(year),
           Number(month) - 1,
@@ -118,33 +118,33 @@ export class MetadataExtractor {
           Number(hour),
           Number(min),
           Number(sec),
-        )
+        );
         // OffsetTimeOriginal is optional (and sometimes junk) — without a usable value the
         // wall-time components are taken as UTC, as before
         const offsetMinutes = readUtcOffsetMinutes(
           exif.OffsetTimeOriginal as Record<string, unknown> | undefined,
-        )
+        );
         takenAt = new Date(
           offsetMinutes === null ? wallTimeUtc : wallTimeUtc - offsetMinutes * 60_000,
-        )
+        );
       }
     }
 
     const width =
       readNumber(exif.PixelXDimension as Record<string, unknown> | undefined) ??
       readNumber(exif.ExifImageWidth as Record<string, unknown> | undefined) ??
-      readNumber(file['Image Width'] as Record<string, unknown> | undefined)
+      readNumber(file['Image Width'] as Record<string, unknown> | undefined);
 
     const height =
       readNumber(exif.PixelYDimension as Record<string, unknown> | undefined) ??
       readNumber(exif.ExifImageHeight as Record<string, unknown> | undefined) ??
-      readNumber(file['Image Height'] as Record<string, unknown> | undefined)
+      readNumber(file['Image Height'] as Record<string, unknown> | undefined);
 
-    const orientation = readNumber(exif.Orientation as Record<string, unknown> | undefined, true)
+    const orientation = readNumber(exif.Orientation as Record<string, unknown> | undefined, true);
     // ponytail: orientations 5-8 are quarter turns, so the coded pixels are sideways — report the
     // display aspect these dims feed (asset.width/height drive layout); the thumbnail/metadata
     // side rotates the pixels itself via sharp().rotate()
-    const swapDisplayDims = orientation !== null && orientation >= 5 && orientation <= 8
+    const swapDisplayDims = orientation !== null && orientation >= 5 && orientation <= 8;
 
     return {
       takenAt,
@@ -161,25 +161,25 @@ export class MetadataExtractor {
       fNumber: readNumber(exif.FNumber as Record<string, unknown> | undefined),
       exposureTime: readNumber(exif.ExposureTime as Record<string, unknown> | undefined),
       focalLength: readNumber(exif.FocalLength as Record<string, unknown> | undefined),
-    }
+    };
   }
 }
 
 interface VideoMetadataPatch {
-  durationSeconds: number | null
-  width: number | null
-  height: number | null
-  codec: string | null
-  fps: number | null
-  hasAudio: boolean | null
-  orientation: number | null
-  takenAt: Date | null
-  cameraMake: string | null
-  cameraModel: string | null
-  lensModel: string | null
-  latitude: number | null
-  longitude: number | null
-  altitude: number | null
+  durationSeconds: number | null;
+  width: number | null;
+  height: number | null;
+  codec: string | null;
+  fps: number | null;
+  hasAudio: boolean | null;
+  orientation: number | null;
+  takenAt: Date | null;
+  cameraMake: string | null;
+  cameraModel: string | null;
+  lensModel: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  altitude: number | null;
 }
 
 // all-null patch returned when ffprobe cannot read the file
@@ -198,79 +198,79 @@ const NULL_VIDEO_METADATA: VideoMetadataPatch = {
   latitude: null,
   longitude: null,
   altitude: null,
-}
+};
 
 function readOrientation(result: FfprobeResult): number | null {
   for (const stream of result.streams) {
-    if (stream.codec_type !== 'video') continue
+    if (stream.codec_type !== 'video') continue;
     if (stream.tags?.rotate) {
-      const rot = Number(stream.tags.rotate)
-      if (Number.isFinite(rot)) return rot
+      const rot = Number(stream.tags.rotate);
+      if (Number.isFinite(rot)) return rot;
     }
     if (stream.side_data_list) {
       for (const sd of stream.side_data_list) {
         if (sd.rotation !== undefined) {
-          const rot = Number(sd.rotation)
-          if (Number.isFinite(rot)) return rot
+          const rot = Number(sd.rotation);
+          if (Number.isFinite(rot)) return rot;
         }
       }
     }
   }
-  return null
+  return null;
 }
 
 function parseIso6709(
   s: string,
 ): { latitude: number; longitude: number; altitude: number | null } | null {
-  const m = /^([+-][\d.]+)([+-][\d.]+)(?:([+-][\d.]+))?\//.exec(s)
-  if (!m) return null
-  const lat = Number.parseFloat(m[1]!)
-  const lon = Number.parseFloat(m[2]!)
-  const alt = m[3] ? Number.parseFloat(m[3]) : null
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
+  const m = /^([+-][\d.]+)([+-][\d.]+)(?:([+-][\d.]+))?\//.exec(s);
+  if (!m) return null;
+  const lat = Number.parseFloat(m[1]!);
+  const lon = Number.parseFloat(m[2]!);
+  const alt = m[3] ? Number.parseFloat(m[3]) : null;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   return {
     latitude: lat,
     longitude: lon,
     altitude: alt !== null && Number.isFinite(alt) ? alt : null,
-  }
+  };
 }
 
 export function parseFps(rate: string | undefined): number | null {
-  if (!rate) return null
-  const parts = rate.split('/')
-  if (parts.length !== 2) return null
-  const num = Number(parts[0])
-  const den = Number(parts[1])
-  if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) return null
-  const fps = num / den
-  return Number.isFinite(fps) && fps > 0 ? Math.round(fps * 100) / 100 : null
+  if (!rate) return null;
+  const parts = rate.split('/');
+  if (parts.length !== 2) return null;
+  const num = Number(parts[0]);
+  const den = Number(parts[1]);
+  if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) return null;
+  const fps = num / den;
+  return Number.isFinite(fps) && fps > 0 ? Math.round(fps * 100) / 100 : null;
 }
 
 @Injectable()
 export class VideoMetadataExtractor {
-  private readonly logger = new Logger(VideoMetadataExtractor.name)
+  private readonly logger = new Logger(VideoMetadataExtractor.name);
 
   async extract(inputPath: string): Promise<VideoMetadataPatch> {
-    let result: FfprobeResult
+    let result: FfprobeResult;
     try {
-      result = await runFfprobeJson(inputPath)
+      result = await runFfprobeJson(inputPath);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      this.logger.warn(`ffprobe failed for ${inputPath}: ${message}`)
-      return NULL_VIDEO_METADATA
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`ffprobe failed for ${inputPath}: ${message}`);
+      return NULL_VIDEO_METADATA;
     }
 
-    const videoStream = result.streams.find((s) => s.codec_type === 'video')
-    const hasAudio = result.streams.some((s) => s.codec_type === 'audio')
+    const videoStream = result.streams.find((s) => s.codec_type === 'video');
+    const hasAudio = result.streams.some((s) => s.codec_type === 'audio');
 
-    const duration = result.format.duration ? Number.parseFloat(result.format.duration) : null
+    const duration = result.format.duration ? Number.parseFloat(result.format.duration) : null;
 
-    let takenAt: Date | null = null
-    const creationTime = result.format.tags?.creation_time
+    let takenAt: Date | null = null;
+    const creationTime = result.format.tags?.creation_time;
     if (creationTime) {
-      const d = new Date(creationTime)
+      const d = new Date(creationTime);
       if (Number.isFinite(d.getTime()) && d.getFullYear() >= 1990) {
-        takenAt = d
+        takenAt = d;
       }
     }
 
@@ -278,29 +278,29 @@ export class VideoMetadataExtractor {
       result.format.tags?.make?.trim() ??
       videoStream?.tags?.['com.apple.quicktime.make']?.trim() ??
       videoStream?.tags?.make?.trim() ??
-      null
+      null;
     const cameraModel =
       result.format.tags?.model?.trim() ??
       videoStream?.tags?.['com.apple.quicktime.model']?.trim() ??
       videoStream?.tags?.model?.trim() ??
-      null
+      null;
     const lensModel =
       videoStream?.tags?.['com.apple.quicktime.lensmodel']?.trim() ??
       videoStream?.tags?.lensmodel?.trim() ??
-      null
+      null;
 
-    const locationTag = result.format.tags?.location
-    const location = locationTag ? parseIso6709(locationTag) : null
+    const locationTag = result.format.tags?.location;
+    const location = locationTag ? parseIso6709(locationTag) : null;
 
-    const orientation = readOrientation(result)
-    const rotation = orientation === null ? null : ((orientation % 360) + 360) % 360
-    const rawWidth = videoStream?.width
-    const rawHeight = videoStream?.height
+    const orientation = readOrientation(result);
+    const rotation = orientation === null ? null : ((orientation % 360) + 360) % 360;
+    const rawWidth = videoStream?.width;
+    const rawHeight = videoStream?.height;
     // ponytail: swap raw stream dims for rotated videos — display aspect, not coded aspect
     const swapDims =
       (rotation === 90 || rotation === 270) &&
       typeof rawWidth === 'number' &&
-      typeof rawHeight === 'number'
+      typeof rawHeight === 'number';
 
     return {
       durationSeconds:
@@ -318,6 +318,6 @@ export class VideoMetadataExtractor {
       latitude: location?.latitude ?? null,
       longitude: location?.longitude ?? null,
       altitude: location?.altitude ?? null,
-    }
+    };
   }
 }

@@ -1,6 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger'
-import { Type } from 'class-transformer'
-import { IsInt, IsOptional, Max, Min } from 'class-validator'
+import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
 export class DuplicatesQueryDto {
   @ApiProperty({ required: false, default: 10, maximum: 64, description: 'Max Hamming distance' })
@@ -9,7 +9,7 @@ export class DuplicatesQueryDto {
   @IsInt()
   @Min(0)
   @Max(64)
-  threshold?: number
+  threshold?: number;
 }
 
 export class SimilarQueryDto {
@@ -19,5 +19,5 @@ export class SimilarQueryDto {
   @IsInt()
   @Min(1)
   @Max(100)
-  limit?: number
+  limit?: number;
 }

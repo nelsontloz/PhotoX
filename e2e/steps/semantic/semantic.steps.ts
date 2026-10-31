@@ -1,4 +1,4 @@
-import { expect, type APIRequestContext, type Page, type Response } from '@playwright/test'
+import { expect, type APIRequestContext, type Page, type Response } from '@playwright/test';
 import {
   Given,
   Then,
@@ -11,52 +11,52 @@ import {
   type Ctx,
   type ReprocessKind,
   type SemanticUpload,
-} from '../support'
+} from '../support';
 
-const TEXT_FIXTURE = 'photo-text.jpg'
-const SEEDED_DETECTION_LABEL = 'e2e-seeded-object'
+const TEXT_FIXTURE = 'photo-text.jpg';
+const SEEDED_DETECTION_LABEL = 'e2e-seeded-object';
 
 /** Wire shape of GET /api/v1/admin/{embeddings,detections}/reprocess. */
 interface QueueStatus {
-  lastRun: { enqueued: number; total: number } | null
-  queue: { waiting: number; active: number; completed: number; failed: number; delayed: number }
+  lastRun: { enqueued: number; total: number } | null;
+  queue: { waiting: number; active: number; completed: number; failed: number; delayed: number };
 }
 
 /** Code-matched subset of GET /api/v1/assets/:id. */
 interface FaceAsset {
-  id: string
-  faceStatus?: 'pending' | 'ready' | 'failed' | null
-  faceCount?: number | null
-  faces?: { id: string }[]
+  id: string;
+  faceStatus?: 'pending' | 'ready' | 'failed' | null;
+  faceCount?: number | null;
+  faces?: { id: string }[];
 }
 
 interface RelatedAssets {
-  items: { id: string }[]
-  total: number
+  items: { id: string }[];
+  total: number;
 }
 
 interface DetectionsResponse {
-  detections: { label: string }[]
+  detections: { label: string }[];
 }
 
 function uploadsOf(ctx: Ctx): SemanticUpload[] {
-  const uploads = ctx.semanticUploads
+  const uploads = ctx.semanticUploads;
   if (!uploads || uploads.length === 0) {
-    throw new Error('upload a photo for semantic processing first')
+    throw new Error('upload a photo for semantic processing first');
   }
-  return uploads
+  return uploads;
 }
 
 function uploadByName(ctx: Ctx, name: string): SemanticUpload {
-  const upload = uploadsOf(ctx).find((u) => u.name === name)
-  if (!upload) throw new Error(`"${name}" was not uploaded for semantic processing`)
-  return upload
+  const upload = uploadsOf(ctx).find((u) => u.name === name);
+  if (!upload) throw new Error(`"${name}" was not uploaded for semantic processing`);
+  return upload;
 }
 
 const STATUS_SEGMENT: Record<ReprocessKind, string> = {
   embedding: 'embeddings',
   detection: 'detections',
-}
+};
 
 const REPROCESS: Record<
   ReprocessKind,
@@ -74,19 +74,19 @@ const REPROCESS: Record<
     result: (enqueued, total) =>
       `Queued ${enqueued.toLocaleString()} detection jobs for ${total.toLocaleString()} photos.`,
   },
-}
+};
 
 const statusPath = (kind: ReprocessKind): string =>
-  `/api/v1/admin/${STATUS_SEGMENT[kind]}/reprocess`
+  `/api/v1/admin/${STATUS_SEGMENT[kind]}/reprocess`;
 
 async function fetchReprocessStatus(
   request: APIRequestContext,
   auth: AuthResponse,
   kind: ReprocessKind,
 ): Promise<QueueStatus> {
-  const response = await request.get(statusPath(kind), { headers: authHeaders(auth) })
-  expect(response.status()).toBe(200)
-  return (await response.json()) as QueueStatus
+  const response = await request.get(statusPath(kind), { headers: authHeaders(auth) });
+  expect(response.status()).toBe(200);
+  return (await response.json()) as QueueStatus;
 }
 
 async function fetchSimilar(
@@ -100,9 +100,9 @@ async function fetchSimilar(
   // candidate window so residual test data in the shared DB cannot flip this assertion.
   const response = await request.get(`/api/v1/assets/${assetId}/similar?limit=100`, {
     headers: authHeaders(auth),
-  })
-  expect(response.status()).toBe(200)
-  return (await response.json()) as RelatedAssets
+  });
+  expect(response.status()).toBe(200);
+  return (await response.json()) as RelatedAssets;
 }
 
 async function fetchDetections(
@@ -112,9 +112,9 @@ async function fetchDetections(
 ): Promise<DetectionsResponse> {
   const response = await request.get(`/api/v1/assets/${assetId}/detections`, {
     headers: authHeaders(auth),
-  })
-  expect(response.status()).toBe(200)
-  return (await response.json()) as DetectionsResponse
+  });
+  expect(response.status()).toBe(200);
+  return (await response.json()) as DetectionsResponse;
 }
 
 /** `similar` is empty exactly when the source asset has no embedding — B proving A embedded. */
@@ -129,26 +129,26 @@ async function expectVisuallySimilar(
       timeout: 120_000,
       message: 'the uploaded photos never became visually similar — embedding missing or failed',
     })
-    .toBe(true)
+    .toBe(true);
 }
 
 async function startReprocess(page: Page, ctx: Ctx, kind: ReprocessKind): Promise<void> {
-  const { button, dialog, result } = REPROCESS[kind]
-  await page.getByRole('button', { name: button }).click()
-  await expect(page.getByRole('heading', { level: 3, name: dialog })).toBeVisible()
+  const { button, dialog, result } = REPROCESS[kind];
+  await page.getByRole('button', { name: button }).click();
+  await expect(page.getByRole('heading', { level: 3, name: dialog })).toBeVisible();
   const isReprocessPost = (response: Response): boolean =>
-    response.request().method() === 'POST' && new URL(response.url()).pathname === statusPath(kind)
+    response.request().method() === 'POST' && new URL(response.url()).pathname === statusPath(kind);
   const [response] = await Promise.all([
     page.waitForResponse(isReprocessPost),
     page.getByRole('button', { name: 'Confirm' }).click(),
-  ])
-  expect(response.status()).toBe(200)
-  const run = (await response.json()) as { enqueued: number; total: number }
+  ]);
+  expect(response.status()).toBe(200);
+  const run = (await response.json()) as { enqueued: number; total: number };
   // every non-trashed photo gets exactly one job — a partial enqueue is a bug
-  expect(run.total).toBeGreaterThanOrEqual(1)
-  expect(run.enqueued).toBe(run.total)
-  ctx.reprocessRuns = { ...ctx.reprocessRuns, [kind]: run }
-  await expect(page.getByText(result(run.enqueued, run.total), { exact: true })).toBeVisible()
+  expect(run.total).toBeGreaterThanOrEqual(1);
+  expect(run.enqueued).toBe(run.total);
+  ctx.reprocessRuns = { ...ctx.reprocessRuns, [kind]: run };
+  await expect(page.getByText(result(run.enqueued, run.total), { exact: true })).toBeVisible();
 }
 
 async function drainReprocess(
@@ -156,110 +156,110 @@ async function drainReprocess(
   ctx: Ctx,
   kind: ReprocessKind,
 ): Promise<void> {
-  const run = ctx.reprocessRuns?.[kind]
-  if (!run) throw new Error(`start an ${kind} reprocess run first`)
-  const auth = requireAuth(ctx)
+  const run = ctx.reprocessRuns?.[kind];
+  if (!run) throw new Error(`start an ${kind} reprocess run first`);
+  const auth = requireAuth(ctx);
   await expect
     .poll(
       async () => {
-        const status = await fetchReprocessStatus(request, auth, kind)
-        return status.queue.waiting + status.queue.active
+        const status = await fetchReprocessStatus(request, auth, kind);
+        return status.queue.waiting + status.queue.active;
       },
       { timeout: 120_000, message: `the ${kind} reprocess queue never drained` },
     )
-    .toBe(0)
-  const lastRun = (await fetchReprocessStatus(request, auth, kind)).lastRun
-  if (!lastRun) throw new Error(`the ${kind} reprocess run was not recorded`)
-  expect(lastRun.enqueued).toBe(run.enqueued)
-  expect(lastRun.total).toBe(run.total)
+    .toBe(0);
+  const lastRun = (await fetchReprocessStatus(request, auth, kind)).lastRun;
+  if (!lastRun) throw new Error(`the ${kind} reprocess run was not recorded`);
+  expect(lastRun.enqueued).toBe(run.enqueued);
+  expect(lastRun.total).toBe(run.total);
 }
 
 When(
   'I upload {string} for semantic processing',
   async ({ page, ctx, $testInfo }, name: string) => {
     // scenario 4 runs two global reprocess queues; give it room beyond the 120s default
-    $testInfo.setTimeout(240_000)
+    $testInfo.setTimeout(240_000);
     // 06 uploads photo.jpg as the admin first, so scenario 4 legitimately gets a 409 pointing at
     // the already-processed asset — the duplicate is fine, only the asset id matters here
-    const assetId = await uploadFixture(page, name, { allowDuplicate: true })
-    const uploads = (ctx.semanticUploads ??= [])
-    uploads.push({ name, assetId })
-    ctx.assetId = assetId
+    const assetId = await uploadFixture(page, name, { allowDuplicate: true });
+    const uploads = (ctx.semanticUploads ??= []);
+    uploads.push({ name, assetId });
+    ctx.assetId = assetId;
   },
-)
+);
 
 Then('the uploaded photos are visually similar to each other', async ({ request, ctx }) => {
-  const auth = requireAuth(ctx)
-  const uploads = uploadsOf(ctx)
-  const [a, b] = uploads
-  if (!a || !b) throw new Error('upload two photos for semantic processing first')
-  await expectVisuallySimilar(request, auth, a.assetId, b.assetId)
-})
+  const auth = requireAuth(ctx);
+  const uploads = uploadsOf(ctx);
+  const [a, b] = uploads;
+  if (!a || !b) throw new Error('upload two photos for semantic processing first');
+  await expectVisuallySimilar(request, auth, a.assetId, b.assetId);
+});
 
 Then(
   'face detection on the uploaded photo settles with a detected face',
   async ({ request, ctx }) => {
-    const auth = requireAuth(ctx)
-    const assetId = ctx.assetId
-    if (!assetId) throw new Error('upload a photo first')
+    const auth = requireAuth(ctx);
+    const assetId = ctx.assetId;
+    if (!assetId) throw new Error('upload a photo first');
     await expect
       .poll(
         async () => {
           const response = await request.get(`/api/v1/assets/${assetId}`, {
             headers: authHeaders(auth),
-          })
-          expect(response.status()).toBe(200)
-          const asset = (await response.json()) as FaceAsset
+          });
+          expect(response.status()).toBe(200);
+          const asset = (await response.json()) as FaceAsset;
           if (asset.faceStatus === 'failed') {
-            throw new Error(`face detection failed on asset ${assetId}`)
+            throw new Error(`face detection failed on asset ${assetId}`);
           }
-          return asset.faceStatus === 'ready' && (asset.faces ?? []).length >= 1
+          return asset.faceStatus === 'ready' && (asset.faces ?? []).length >= 1;
         },
         {
           timeout: 120_000,
           message: 'face detection never reported a face on the portrait fixture',
         },
       )
-      .toBe(true)
+      .toBe(true);
   },
-)
+);
 
 Then('the uploaded photo records its detected face count', async ({ request, ctx }) => {
-  const auth = requireAuth(ctx)
-  const assetId = ctx.assetId
-  if (!assetId) throw new Error('upload a photo first')
-  const response = await request.get(`/api/v1/assets/${assetId}`, { headers: authHeaders(auth) })
-  expect(response.status()).toBe(200)
-  const asset = (await response.json()) as FaceAsset
+  const auth = requireAuth(ctx);
+  const assetId = ctx.assetId;
+  if (!assetId) throw new Error('upload a photo first');
+  const response = await request.get(`/api/v1/assets/${assetId}`, { headers: authHeaders(auth) });
+  expect(response.status()).toBe(200);
+  const asset = (await response.json()) as FaceAsset;
   // the worker patches faceCount alongside faceStatus=ready — the aggregate the UI renders
-  expect(asset.faceCount).toBeGreaterThanOrEqual(1)
-  expect(asset.faceCount).toBe((asset.faces ?? []).length)
-})
+  expect(asset.faceCount).toBeGreaterThanOrEqual(1);
+  expect(asset.faceCount).toBe((asset.faces ?? []).length);
+});
 
 Given('the initial semantic processing has settled', async ({ request, ctx }) => {
-  const auth = requireAuth(ctx)
-  const uploads = uploadsOf(ctx)
-  const [a, b] = uploads
-  if (!a || !b) throw new Error('upload two photos for semantic processing first')
+  const auth = requireAuth(ctx);
+  const uploads = uploadsOf(ctx);
+  const [a, b] = uploads;
+  if (!a || !b) throw new Error('upload two photos for semantic processing first');
   // queue drain proves the upload-path jobs finished; the similarity probe proves the embeddings
   // landed (detection rows have no read path in e2e — see feature notes in the summary)
   for (const kind of ['embedding', 'detection'] as const) {
     await expect
       .poll(
         async () => {
-          const status = await fetchReprocessStatus(request, auth, kind)
-          return status.queue.waiting + status.queue.active
+          const status = await fetchReprocessStatus(request, auth, kind);
+          return status.queue.waiting + status.queue.active;
         },
         { timeout: 120_000, message: `the ${kind} queue never drained after upload` },
       )
-      .toBe(0)
+      .toBe(0);
   }
-  await expectVisuallySimilar(request, auth, a.assetId, b.assetId)
-})
+  await expectVisuallySimilar(request, auth, a.assetId, b.assetId);
+});
 
 Given('I seed a detection on the uploaded text photo', async ({ request, ctx }) => {
-  const auth = requireAuth(ctx)
-  const { assetId } = uploadByName(ctx, TEXT_FIXTURE)
+  const auth = requireAuth(ctx);
+  const { assetId } = uploadByName(ctx, TEXT_FIXTURE);
   const response = await request.post(`/worker/assets/${assetId}/detections`, {
     headers: workerHeaders(auth.user.id),
     data: {
@@ -271,52 +271,52 @@ Given('I seed a detection on the uploaded text photo', async ({ request, ctx }) 
         },
       ],
     },
-  })
-  expect(response.status()).toBe(201)
-  const list = await fetchDetections(request, auth, assetId)
-  expect(list.detections.map((detection) => detection.label)).toContain(SEEDED_DETECTION_LABEL)
-})
+  });
+  expect(response.status()).toBe(201);
+  const list = await fetchDetections(request, auth, assetId);
+  expect(list.detections.map((detection) => detection.label)).toContain(SEEDED_DETECTION_LABEL);
+});
 
 When('I start an embedding reprocess run', async ({ page, ctx }) => {
-  await startReprocess(page, ctx, 'embedding')
-})
+  await startReprocess(page, ctx, 'embedding');
+});
 
 When('I start a detection reprocess run', async ({ page, ctx }) => {
-  await startReprocess(page, ctx, 'detection')
-})
+  await startReprocess(page, ctx, 'detection');
+});
 
 Then('the embedding reprocess queue drains', async ({ request, ctx }) => {
-  await drainReprocess(request, ctx, 'embedding')
-})
+  await drainReprocess(request, ctx, 'embedding');
+});
 
 Then('the detection reprocess queue drains', async ({ request, ctx }) => {
-  await drainReprocess(request, ctx, 'detection')
-})
+  await drainReprocess(request, ctx, 'detection');
+});
 
 Then('the seeded detection is replaced without duplicates', async ({ request, ctx }) => {
-  const auth = requireAuth(ctx)
-  const { assetId } = uploadByName(ctx, TEXT_FIXTURE)
+  const auth = requireAuth(ctx);
+  const { assetId } = uploadByName(ctx, TEXT_FIXTURE);
   await expect
     .poll(
       async () => {
-        const list = await fetchDetections(request, auth, assetId)
-        return list.detections.some((detection) => detection.label === SEEDED_DETECTION_LABEL)
+        const list = await fetchDetections(request, auth, assetId);
+        return list.detections.some((detection) => detection.label === SEEDED_DETECTION_LABEL);
       },
       { timeout: 30_000, message: 'the seeded detection survived the detection reprocess' },
     )
-    .toBe(false)
-  const labels = (await fetchDetections(request, auth, assetId)).detections.map((d) => d.label)
-  expect(new Set(labels).size).toBe(labels.length)
-})
+    .toBe(false);
+  const labels = (await fetchDetections(request, auth, assetId)).detections.map((d) => d.label);
+  expect(new Set(labels).size).toBe(labels.length);
+});
 
 Then('the admin page shows the last embedding reprocess run', async ({ page }) => {
-  await page.goto('/admin?tab=ai')
+  await page.goto('/admin?tab=ai');
   // three pipeline cards share the "Last run … photos queued." line — scope to the one whose
   // heading is "Semantic Search" (innermost div containing both heading and the last-run text)
   const card = page
     .locator('div')
     .filter({ has: page.getByRole('heading', { name: 'Semantic Search', exact: true }) })
     .filter({ hasText: /photos queued\./ })
-    .last()
-  await expect(card.getByText(/Last run .+ photos queued\./)).toBeVisible({ timeout: 20_000 })
-})
+    .last();
+  await expect(card.getByText(/Last run .+ photos queued\./)).toBeVisible({ timeout: 20_000 });
+});

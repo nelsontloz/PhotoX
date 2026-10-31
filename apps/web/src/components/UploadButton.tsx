@@ -1,23 +1,23 @@
-import { useRef, useCallback } from 'react'
-import { FaCamera } from 'react-icons/fa6'
-import { enqueueFiles } from '../lib/upload'
+import { useRef, useCallback } from 'react';
+import { FaCamera } from 'react-icons/fa6';
+import { enqueueFiles } from '../lib/upload';
 
 function useUploadPicker() {
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const open = useCallback(() => inputRef.current?.click(), [])
+  const open = useCallback(() => inputRef.current?.click(), []);
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? [])
-    enqueueFiles(files)
-    if (inputRef.current) inputRef.current.value = ''
-  }, [])
+    const files = Array.from(e.target.files ?? []);
+    enqueueFiles(files);
+    if (inputRef.current) inputRef.current.value = '';
+  }, []);
 
-  return { inputRef, open, handleChange }
+  return { inputRef, open, handleChange };
 }
 
 export function UploadButton() {
-  const { inputRef, open, handleChange } = useUploadPicker()
+  const { inputRef, open, handleChange } = useUploadPicker();
 
   return (
     <>
@@ -37,11 +37,11 @@ export function UploadButton() {
         <span>Upload Photos</span>
       </button>
     </>
-  )
+  );
 }
 
 export function UploadButtonCompact() {
-  const { inputRef, open, handleChange } = useUploadPicker()
+  const { inputRef, open, handleChange } = useUploadPicker();
 
   return (
     <>
@@ -62,5 +62,5 @@ export function UploadButtonCompact() {
         onChange={handleChange}
       />
     </>
-  )
+  );
 }

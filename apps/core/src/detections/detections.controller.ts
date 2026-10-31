@@ -1,8 +1,8 @@
-import { Controller, Get, Param } from '@nestjs/common'
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
-import type { AssetDetectionsResponse } from '@photox/shared-types'
-import { CurrentUserId } from '../auth/jwt-auth.guard'
-import { DetectionsService } from './detections.service'
+import { Controller, Get, Param } from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import type { AssetDetectionsResponse } from '@photox/shared-types';
+import { CurrentUserId } from '../auth/jwt-auth.guard';
+import { DetectionsService } from './detections.service';
 
 @ApiTags('detections')
 @Controller('api/v1/assets')
@@ -17,6 +17,6 @@ export class DetectionsController {
     @Param('id') id: string,
     @CurrentUserId() userId: string,
   ): Promise<AssetDetectionsResponse> {
-    return this.detections.list(userId, id)
+    return this.detections.list(userId, id);
   }
 }

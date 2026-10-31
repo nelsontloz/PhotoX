@@ -1,27 +1,27 @@
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
-import { Dialog } from './Dialog'
+import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
+import { Dialog } from './Dialog';
 
 interface ConfirmOptions {
-  title: string
-  body?: string
-  confirmLabel?: string
+  title: string;
+  body?: string;
+  confirmLabel?: string;
   /** Red confirm button for destructive actions. */
-  destructive?: boolean
+  destructive?: boolean;
 }
 
-type ConfirmFn = (options: ConfirmOptions) => Promise<boolean>
+type ConfirmFn = (options: ConfirmOptions) => Promise<boolean>;
 
-const ConfirmContext = createContext<ConfirmFn | null>(null)
+const ConfirmContext = createContext<ConfirmFn | null>(null);
 
 export function useConfirm(): ConfirmFn {
-  const confirm = useContext(ConfirmContext)
-  if (!confirm) throw new Error('useConfirm must be used inside ConfirmProvider')
-  return confirm
+  const confirm = useContext(ConfirmContext);
+  if (!confirm) throw new Error('useConfirm must be used inside ConfirmProvider');
+  return confirm;
 }
 
 interface PendingConfirm {
-  options: ConfirmOptions
-  resolve: (value: boolean) => void
+  options: ConfirmOptions;
+  resolve: (value: boolean) => void;
 }
 
 /**
@@ -38,14 +38,14 @@ export function ConfirmShell({
   onCancel,
   children,
 }: {
-  title: string
-  confirmLabel?: string
-  destructive?: boolean
-  ariaLabel?: string
-  escapeKey?: boolean
-  onConfirm: () => void
-  onCancel: () => void
-  children: ReactNode
+  title: string;
+  confirmLabel?: string;
+  destructive?: boolean;
+  ariaLabel?: string;
+  escapeKey?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+  children: ReactNode;
 }) {
   return (
     <Dialog
@@ -81,29 +81,29 @@ export function ConfirmShell({
         </button>
       </div>
     </Dialog>
-  )
+  );
 }
 
 export function ConfirmProvider({ children }: { children: ReactNode }) {
-  const [pending, setPending] = useState<PendingConfirm | null>(null)
+  const [pending, setPending] = useState<PendingConfirm | null>(null);
 
   const confirm = useCallback<ConfirmFn>(
     (options) =>
       new Promise<boolean>((resolve) => {
         setPending((prev) => {
-          prev?.resolve(false)
-          return { options, resolve }
-        })
+          prev?.resolve(false);
+          return { options, resolve };
+        });
       }),
     [],
-  )
+  );
 
   const settle = (value: boolean) => {
     setPending((prev) => {
-      prev?.resolve(value)
-      return null
-    })
-  }
+      prev?.resolve(value);
+      return null;
+    });
+  };
 
   return (
     <ConfirmContext.Provider value={confirm}>
@@ -123,5 +123,5 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         </ConfirmShell>
       )}
     </ConfirmContext.Provider>
-  )
+  );
 }

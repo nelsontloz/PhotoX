@@ -1,9 +1,9 @@
-import { Controller, Get, Param, Query, Req, Res } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import type { Request, Response } from 'express'
-import { SharesService } from './shares.service'
-import { UserFilesService } from '../files/user/user-files.service'
-import { serveFileBytes } from '../files/streaming.util'
+import { Controller, Get, Param, Query, Req, Res } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import type { Request, Response } from 'express';
+import { SharesService } from './shares.service';
+import { UserFilesService } from '../files/user/user-files.service';
+import { serveFileBytes } from '../files/streaming.util';
 
 @ApiTags('shares')
 @Controller('api/share')
@@ -18,7 +18,7 @@ export class PublicSharesController {
   @ApiResponse({ status: 200, description: 'Shared asset or album info' })
   @ApiResponse({ status: 404, description: 'Share not found' })
   async getByToken(@Param('token') token: string) {
-    return this.shares.getByToken(token)
+    return this.shares.getByToken(token);
   }
 
   @Get(':token/stream')
@@ -30,8 +30,8 @@ export class PublicSharesController {
   async streamByToken(@Param('token') token: string, @Req() req: Request, @Res() res: Response) {
     // file ids never leave the server: resolve the playable target from the token
     // (getAssetStreamTarget 404s unknown/expired/non-asset shares alike)
-    const { fileId, userId } = await this.shares.getAssetStreamTarget(token)
-    await serveFileBytes(req, res, this.files, userId, fileId)
+    const { fileId, userId } = await this.shares.getAssetStreamTarget(token);
+    await serveFileBytes(req, res, this.files, userId, fileId);
   }
 
   @Get(':token/assets')
@@ -39,7 +39,7 @@ export class PublicSharesController {
   @ApiResponse({ status: 200, description: 'Album asset list' })
   @ApiResponse({ status: 404, description: 'Share not found or not an album share' })
   async listAlbumAssets(@Param('token') token: string) {
-    return this.shares.listAlbumAssetsByToken(token)
+    return this.shares.listAlbumAssetsByToken(token);
   }
 
   @Get(':token/assets/:assetId/stream')
@@ -55,7 +55,7 @@ export class PublicSharesController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const { fileId, userId } = await this.shares.getAlbumAssetFileId(token, assetId, size)
-    await serveFileBytes(req, res, this.files, userId, fileId)
+    const { fileId, userId } = await this.shares.getAlbumAssetFileId(token, assetId, size);
+    await serveFileBytes(req, res, this.files, userId, fileId);
   }
 }

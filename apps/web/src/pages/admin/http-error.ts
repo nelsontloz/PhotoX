@@ -1,34 +1,34 @@
-import { isAxiosError } from 'axios'
+import { isAxiosError } from 'axios';
 
 /** The core's own message (validation arrays joined), split for matching vs display. */
 export interface ErrorDetail {
   /** As sent, joined when the core answers with an array. */
-  text: string
+  text: string;
   /** Lowercased copy, for stable substring matching. */
-  lower: string
+  lower: string;
 }
 
-export type StatusMessage = string | ((detail: ErrorDetail) => string)
+export type StatusMessage = string | ((detail: ErrorDetail) => string);
 
 export interface HttpErrorMessages {
   /** Sentence used when no case matches. */
-  fallback: string
+  fallback: string;
   /** Per-status sentence, optionally built from the core's message. */
-  byStatus?: Partial<Record<number, StatusMessage>>
+  byStatus?: Partial<Record<number, StatusMessage>>;
   /** 503 / unreachable backup store sentence (checked before `byStatus`). */
-  offline?: string
+  offline?: string;
   /** No response / ECONNABORTED sentence (checked before `byStatus`). */
-  timeout?: string
+  timeout?: string;
   /** Prefer the core's own message (trimmed), else the raw Error.message, before `fallback`. */
-  preferServerMessage?: boolean
+  preferServerMessage?: boolean;
 }
 
 function detailOf(err: unknown): ErrorDetail {
-  if (!isAxiosError(err)) return { text: '', lower: '' }
-  const body = err.response?.data as { message?: unknown } | undefined
-  const message = Array.isArray(body?.message) ? body.message.join(' ') : body?.message
-  const text = typeof message === 'string' ? message : ''
-  return { text, lower: text.toLowerCase() }
+  if (!isAxiosError(err)) return { text: '', lower: '' };
+  const body = err.response?.data as { message?: unknown } | undefined;
+  const message = Array.isArray(body?.message) ? body.message.join(' ') : body?.message;
+  const text = typeof message === 'string' ? message : '';
+  return { text, lower: text.toLowerCase() };
 }
 
 /**
@@ -36,21 +36,21 @@ function detailOf(err: unknown): ErrorDetail {
  * per-case copy so no raw axios text ever reaches the UI.
  */
 export function httpErrorMessage(err: unknown, messages: HttpErrorMessages): string {
-  const { fallback, byStatus, offline, timeout, preferServerMessage } = messages
-  const detail = detailOf(err)
+  const { fallback, byStatus, offline, timeout, preferServerMessage } = messages;
+  const detail = detailOf(err);
   if (isAxiosError(err)) {
-    const status = err.response?.status
-    if (status === 503 && offline) return offline
-    if ((!err.response || err.code === 'ECONNABORTED') && timeout) return timeout
+    const status = err.response?.status;
+    if (status === 503 && offline) return offline;
+    if ((!err.response || err.code === 'ECONNABORTED') && timeout) return timeout;
     if (status !== undefined && byStatus?.[status] !== undefined) {
-      const mapped = byStatus[status]
-      return typeof mapped === 'function' ? mapped(detail) : mapped
+      const mapped = byStatus[status];
+      return typeof mapped === 'function' ? mapped(detail) : mapped;
     }
     if (preferServerMessage) {
-      const text = detail.text.trim()
-      if (text !== '') return text
+      const text = detail.text.trim();
+      if (text !== '') return text;
     }
   }
-  if (preferServerMessage && err instanceof Error && err.message) return err.message
-  return fallback
+  if (preferServerMessage && err instanceof Error && err.message) return err.message;
+  return fallback;
 }

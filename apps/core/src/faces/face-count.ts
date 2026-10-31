@@ -1,6 +1,6 @@
-import type { Repository } from 'typeorm'
-import { Face } from '../database/entities'
-import { Person } from '../database/entities'
+import type { Repository } from 'typeorm';
+import { Face } from '../database/entities';
+import { Person } from '../database/entities';
 
 // ponytail: one shared non-trashed count (faces on non-trashed assets only)
 export async function countLiveFaces(
@@ -15,8 +15,8 @@ export async function countLiveFaces(
     .where('f."personId" = :personId', { personId })
     .andWhere('f."userId" = :userId', { userId })
     .andWhere('a."isTrashed" = :isTrashed', { isTrashed: false })
-    .getRawOne<{ count: string }>()
-  return Number(result?.count ?? 0)
+    .getRawOne<{ count: string }>();
+  return Number(result?.count ?? 0);
 }
 
 // ponytail: pass `em.getRepository(...)` from transactional callers so the refresh stays inside
@@ -27,6 +27,6 @@ export async function refreshPersonFaceCount(
   personId: string,
   userId: string,
 ): Promise<void> {
-  const faceCount = await countLiveFaces(faceRepo, personId, userId)
-  await personRepo.update({ id: personId, userId }, { faceCount })
+  const faceCount = await countLiveFaces(faceRepo, personId, userId);
+  await personRepo.update({ id: personId, userId }, { faceCount });
 }

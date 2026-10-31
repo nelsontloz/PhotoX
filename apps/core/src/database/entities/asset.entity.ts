@@ -6,156 +6,156 @@ import {
   UpdateDateColumn,
   Index,
   OneToMany,
-} from 'typeorm'
-import { AssetThumbnail } from './asset-thumbnail.entity'
+} from 'typeorm';
+import { AssetThumbnail } from './asset-thumbnail.entity';
 
 @Entity('assets')
 @Index(['userId', 'uploadedAt'])
 export class Asset {
   @PrimaryGeneratedColumn('uuid')
-  id!: string
+  id!: string;
 
   @Column()
-  userId!: string
+  userId!: string;
 
   @Column({ type: 'enum', enum: ['photo', 'video'] })
-  kind!: 'photo' | 'video'
+  kind!: 'photo' | 'video';
 
   @Column({ type: 'uuid', unique: true })
-  fileId!: string
+  fileId!: string;
 
   @CreateDateColumn({ type: 'timestamptz' })
-  uploadedAt!: Date
+  uploadedAt!: Date;
 
   // layout fingerprint source: any save()/update() on the row bumps this (default covers
   // legacy rows when synchronize ALTERs a non-empty table)
   @UpdateDateColumn({ type: 'timestamptz', default: () => 'now()' })
-  updatedAt!: Date
+  updatedAt!: Date;
 
   @Column({ default: false })
-  isTrashed!: boolean
+  isTrashed!: boolean;
 
   @Column({ type: 'timestamptz', nullable: true })
-  trashedAt!: Date | null
+  trashedAt!: Date | null;
 
   @Column({ type: 'varchar', nullable: true })
-  title!: string | null
+  title!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
-  description!: string | null
+  description!: string | null;
 
   @Column({ type: 'timestamptz', nullable: true })
-  takenAt!: Date | null
+  takenAt!: Date | null;
 
   @Column({ default: false })
-  favorite!: boolean
+  favorite!: boolean;
 
   @Column({ type: 'varchar', nullable: true })
-  mimeType!: string | null
+  mimeType!: string | null;
 
   @Column({ type: 'bigint', nullable: true })
-  sizeBytes!: number | null
+  sizeBytes!: number | null;
 
   @Column({ type: 'varchar', nullable: true })
-  originalName!: string | null
+  originalName!: string | null;
 
   @Column({ type: 'int', nullable: true })
-  width!: number | null
+  width!: number | null;
 
   @Column({ type: 'int', nullable: true })
-  height!: number | null
+  height!: number | null;
 
   @Column({ type: 'numeric', nullable: true })
-  durationSeconds!: number | null
+  durationSeconds!: number | null;
 
   @Column({ type: 'varchar', nullable: true })
-  cameraMake!: string | null
+  cameraMake!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
-  cameraModel!: string | null
+  cameraModel!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
-  lensModel!: string | null
+  lensModel!: string | null;
 
   @Column({ type: 'int', nullable: true })
-  orientation!: number | null
+  orientation!: number | null;
 
   @Column({ type: 'int', nullable: true })
-  iso!: number | null
+  iso!: number | null;
 
   @Column({ type: 'numeric', precision: 3, scale: 1, nullable: true })
-  fNumber!: number | null
+  fNumber!: number | null;
 
   @Column({ type: 'numeric', precision: 10, scale: 7, nullable: true })
-  exposureTime!: number | null
+  exposureTime!: number | null;
 
   @Column({ type: 'numeric', precision: 5, scale: 1, nullable: true })
-  focalLength!: number | null
+  focalLength!: number | null;
 
   @Column({ type: 'numeric', precision: 9, scale: 6, nullable: true })
-  latitude!: number | null
+  latitude!: number | null;
 
   @Column({ type: 'numeric', precision: 9, scale: 6, nullable: true })
-  longitude!: number | null
+  longitude!: number | null;
 
   @Column({ type: 'numeric', precision: 9, scale: 3, nullable: true })
-  altitude!: number | null
+  altitude!: number | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
-  placeCity!: string | null
+  placeCity!: string | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
-  placeAdmin1!: string | null
+  placeAdmin1!: string | null;
 
   @Column({ type: 'varchar', length: 2, nullable: true })
-  placeCountryCode!: string | null
+  placeCountryCode!: string | null;
 
   @Column({ type: 'varchar', length: 64, nullable: true })
-  placeTimezone!: string | null
+  placeTimezone!: string | null;
 
   @Column({ type: 'real', nullable: true })
-  placeDistanceKm!: number | null
+  placeDistanceKm!: number | null;
 
   // 64-bit dHash as hex string; queries cast (phash::bit(64))
   @Column({ type: 'text', nullable: true })
-  phash!: string | null
+  phash!: string | null;
 
   @Column({ type: 'numeric', nullable: true })
-  fps!: number | null
+  fps!: number | null;
 
   @Column({ type: 'varchar', nullable: true })
-  codec!: string | null
+  codec!: string | null;
 
   @Column({ type: 'boolean', nullable: true })
-  hasAudio!: boolean | null
+  hasAudio!: boolean | null;
 
   @Column({ type: 'jsonb', nullable: true })
-  metadata!: Record<string, unknown> | null
+  metadata!: Record<string, unknown> | null;
 
   @Column({ type: 'enum', enum: ['pending', 'ready', 'failed'], default: 'pending' })
-  metadataStatus!: 'pending' | 'ready' | 'failed'
+  metadataStatus!: 'pending' | 'ready' | 'failed';
 
   @Column({ type: 'timestamptz', nullable: true })
-  metadataExtractedAt!: Date | null
+  metadataExtractedAt!: Date | null;
 
   @Column({ type: 'varchar', length: 16, nullable: true })
-  transcodeStatus!: 'pending' | 'ready' | 'failed' | null
+  transcodeStatus!: 'pending' | 'ready' | 'failed' | null;
 
   @Column({ type: 'varchar', length: 16, nullable: true })
-  thumbnailStatus!: 'pending' | 'ready' | 'failed' | null
+  thumbnailStatus!: 'pending' | 'ready' | 'failed' | null;
 
   @Column({ type: 'varchar', length: 16, nullable: true })
-  faceStatus!: 'pending' | 'ready' | 'failed' | null
+  faceStatus!: 'pending' | 'ready' | 'failed' | null;
 
   @Column({ type: 'varchar', length: 16, nullable: true })
-  embeddingStatus!: 'pending' | 'ready' | 'failed' | null
+  embeddingStatus!: 'pending' | 'ready' | 'failed' | null;
 
   @Column({ type: 'int', nullable: true, default: 0 })
-  faceCount!: number | null
+  faceCount!: number | null;
 
   @Column({ type: 'uuid', nullable: true })
-  transcodeFileId!: string | null
+  transcodeFileId!: string | null;
 
   @OneToMany(() => AssetThumbnail, (t) => t.asset)
-  thumbnails?: AssetThumbnail[]
+  thumbnails?: AssetThumbnail[];
 }

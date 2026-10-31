@@ -6,37 +6,37 @@ import {
   ManyToOne,
   JoinColumn,
   Unique,
-} from 'typeorm'
-import { Asset } from './asset.entity'
+} from 'typeorm';
+import { Asset } from './asset.entity';
 
 @Entity('asset_thumbnails')
 @Unique(['assetId', 'size'])
 export class AssetThumbnail {
   @PrimaryGeneratedColumn('uuid')
-  id!: string
+  id!: string;
 
   @Column()
-  assetId!: string
+  assetId!: string;
 
   @ManyToOne(() => Asset, (a) => a.thumbnails, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'assetId' })
-  asset!: Asset
+  asset!: Asset;
 
   @Column({ type: 'text' })
-  size!: string
+  size!: string;
 
   @Column({ type: 'uuid' })
-  fileId!: string
+  fileId!: string;
 
   @Column({ type: 'int' })
-  width!: number
+  width!: number;
 
   @Column({ type: 'int' })
-  height!: number
+  height!: number;
 
   @Column({ type: 'bigint' })
-  bytes!: number
+  bytes!: number;
 
   @CreateDateColumn({ type: 'timestamptz' })
-  createdAt!: Date
+  createdAt!: Date;
 }

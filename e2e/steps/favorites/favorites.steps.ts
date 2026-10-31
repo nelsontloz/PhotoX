@@ -1,4 +1,4 @@
-import { expect, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import {
   Given,
   Then,
@@ -12,36 +12,36 @@ import {
   type AuthResponse,
   type Ctx,
   type FavoriteList,
-} from '../support'
+} from '../support';
 
 function lastFavoritesList(ctx: Ctx): FavoriteList {
-  const last = ctx.listResponses?.at(-1)
-  if (!last) throw new Error('list favorites first')
-  return last
+  const last = ctx.listResponses?.at(-1);
+  if (!last) throw new Error('list favorites first');
+  return last;
 }
 
 /** The favorite control lives in the desktop top bar AND the mobile action row (hidden `sm:hidden`). */
 const favoriteButton = (page: Page) =>
-  page.locator('div.fixed.inset-0.z-50 button[title="Favorite"]:visible')
+  page.locator('div.fixed.inset-0.z-50 button[title="Favorite"]:visible');
 
 // An ancient fixed instant keeps the day-group label in the calendar-format branch ("Jan 2, 2020"),
 // stable in any timezone — today/yesterday would flake when a test straddles midnight.
-const PINNED_FAVORITES_DATE = '2020-01-02T12:00:00.000Z'
+const PINNED_FAVORITES_DATE = '2020-01-02T12:00:00.000Z';
 
 Given('another user registers for favorites isolation', async ({ request, ctx }) => {
-  ctx.otherAuth = await registerUser(request)
-})
+  ctx.otherAuth = await registerUser(request);
+});
 
 When('I upload {string} via the favorites API', async ({ request, ctx }, name: string) => {
-  ctx.assetId = await uploadViaApi(request, requireAuth(ctx), name)
-})
+  ctx.assetId = await uploadViaApi(request, requireAuth(ctx), name);
+});
 
 When(
   'the other user uploads {string} via the favorites API',
   async ({ request, ctx }, name: string) => {
-    ctx.otherAssetId = await uploadViaApi(request, requireOtherAuth(ctx), name)
+    ctx.otherAssetId = await uploadViaApi(request, requireOtherAuth(ctx), name);
   },
-)
+);
 
 function patchFavorite(
   request: APIRequestContext,
@@ -51,48 +51,48 @@ function patchFavorite(
 ): Promise<number> {
   return request
     .patch(`/api/v1/assets/${assetId}`, { headers: authHeaders(auth), data: { favorite } })
-    .then((response) => response.status())
+    .then((response) => response.status());
 }
 
 When('I favorite the uploaded asset through the favorites API', async ({ request, ctx }) => {
-  if (!ctx.assetId) throw new Error('upload an asset first')
-  const status = await patchFavorite(request, requireAuth(ctx), ctx.assetId, true)
-  expect(status).toBe(200)
-  ctx.favoriteIds = [...(ctx.favoriteIds ?? []), ctx.assetId]
-})
+  if (!ctx.assetId) throw new Error('upload an asset first');
+  const status = await patchFavorite(request, requireAuth(ctx), ctx.assetId, true);
+  expect(status).toBe(200);
+  ctx.favoriteIds = [...(ctx.favoriteIds ?? []), ctx.assetId];
+});
 
 When('I unfavorite the uploaded asset through the favorites API', async ({ request, ctx }) => {
-  if (!ctx.assetId) throw new Error('upload an asset first')
-  const status = await patchFavorite(request, requireAuth(ctx), ctx.assetId, false)
-  expect(status).toBe(200)
-  ctx.favoriteIds = (ctx.favoriteIds ?? []).filter((id) => id !== ctx.assetId)
-})
+  if (!ctx.assetId) throw new Error('upload an asset first');
+  const status = await patchFavorite(request, requireAuth(ctx), ctx.assetId, false);
+  expect(status).toBe(200);
+  ctx.favoriteIds = (ctx.favoriteIds ?? []).filter((id) => id !== ctx.assetId);
+});
 
 When(
   'the other user favorites their uploaded asset through the favorites API',
   async ({ request, ctx }) => {
-    const assetId = ctx.otherAssetId
-    if (!assetId) throw new Error('the other user must upload an asset first')
-    const status = await patchFavorite(request, requireOtherAuth(ctx), assetId, true)
-    expect(status).toBe(200)
+    const assetId = ctx.otherAssetId;
+    if (!assetId) throw new Error('the other user must upload an asset first');
+    const status = await patchFavorite(request, requireOtherAuth(ctx), assetId, true);
+    expect(status).toBe(200);
   },
-)
+);
 
 When(
   'the other user tries to favorite my uploaded asset through the favorites API',
   async ({ request, ctx }) => {
-    if (!ctx.assetId) throw new Error('upload an asset first')
-    ctx.lastStatus = await patchFavorite(request, requireOtherAuth(ctx), ctx.assetId, true)
+    if (!ctx.assetId) throw new Error('upload an asset first');
+    ctx.lastStatus = await patchFavorite(request, requireOtherAuth(ctx), ctx.assetId, true);
   },
-)
+);
 
 When('I trash my uploaded asset through the favorites API', async ({ request, ctx }) => {
-  if (!ctx.assetId) throw new Error('upload an asset first')
+  if (!ctx.assetId) throw new Error('upload an asset first');
   const response = await request.post(`/api/v1/assets/${ctx.assetId}/trash`, {
     headers: authHeaders(requireAuth(ctx)),
-  })
-  ctx.lastStatus = response.status()
-})
+  });
+  ctx.lastStatus = response.status();
+});
 
 When(
   'I list my favorites with limit {int} and offset {int}',
@@ -100,61 +100,61 @@ When(
     const response = await request.get(
       `/api/v1/assets?favorite=true&limit=${limit}&offset=${offset}`,
       { headers: authHeaders(requireAuth(ctx)) },
-    )
-    expect(response.status()).toBe(200)
-    ctx.listResponses = [...(ctx.listResponses ?? []), (await response.json()) as FavoriteList]
+    );
+    expect(response.status()).toBe(200);
+    ctx.listResponses = [...(ctx.listResponses ?? []), (await response.json()) as FavoriteList];
   },
-)
+);
 
 When('the other user lists their favorites through the favorites API', async ({ request, ctx }) => {
   const response = await request.get('/api/v1/assets?favorite=true&limit=100&offset=0', {
     headers: authHeaders(requireOtherAuth(ctx)),
-  })
-  expect(response.status()).toBe(200)
-  ctx.otherListResponse = (await response.json()) as FavoriteList
-})
+  });
+  expect(response.status()).toBe(200);
+  ctx.otherListResponse = (await response.json()) as FavoriteList;
+});
 
 Then(
   'the last favorites list holds {int} of {int} items',
   ({ ctx }, items: number, total: number) => {
-    const list = lastFavoritesList(ctx)
-    expect(list.items).toHaveLength(items)
-    expect(list.total).toBe(total)
+    const list = lastFavoritesList(ctx);
+    expect(list.items).toHaveLength(items);
+    expect(list.total).toBe(total);
   },
-)
+);
 
 Then('the favorites list pages hold my two distinct favorited assets', ({ ctx }) => {
-  const [first, second] = ctx.listResponses ?? []
-  if (!first || !second) throw new Error('list two favorite pages first')
-  const [firstItem] = first.items
-  const [secondItem] = second.items
-  if (!firstItem || !secondItem) throw new Error('expected one item per favorites page')
-  expect(firstItem.id).not.toBe(secondItem.id)
-  const favorited = new Set(ctx.favoriteIds ?? [])
-  expect(favorited.has(firstItem.id)).toBe(true)
-  expect(favorited.has(secondItem.id)).toBe(true)
-})
+  const [first, second] = ctx.listResponses ?? [];
+  if (!first || !second) throw new Error('list two favorite pages first');
+  const [firstItem] = first.items;
+  const [secondItem] = second.items;
+  if (!firstItem || !secondItem) throw new Error('expected one item per favorites page');
+  expect(firstItem.id).not.toBe(secondItem.id);
+  const favorited = new Set(ctx.favoriteIds ?? []);
+  expect(favorited.has(firstItem.id)).toBe(true);
+  expect(favorited.has(secondItem.id)).toBe(true);
+});
 
 Then("the other user's favorites list is empty", ({ ctx }) => {
-  const list = ctx.otherListResponse
-  if (!list) throw new Error('the other user must list favorites first')
-  expect(list.items).toHaveLength(0)
-  expect(list.total).toBe(0)
-})
+  const list = ctx.otherListResponse;
+  if (!list) throw new Error('the other user must list favorites first');
+  expect(list.items).toHaveLength(0);
+  expect(list.total).toBe(0);
+});
 
 Then("the other user's favorites list holds only their own asset", ({ ctx }) => {
-  const list = ctx.otherListResponse
-  if (!list) throw new Error('the other user must list favorites first')
-  const { otherAssetId } = ctx
-  expect(list.total).toBe(1)
-  expect(list.items).toHaveLength(1)
-  expect(list.items[0]?.id).toBe(otherAssetId)
-  expect(otherAssetId).not.toBe(ctx.assetId)
-})
+  const list = ctx.otherListResponse;
+  if (!list) throw new Error('the other user must list favorites first');
+  const { otherAssetId } = ctx;
+  expect(list.total).toBe(1);
+  expect(list.items).toHaveLength(1);
+  expect(list.items[0]?.id).toBe(otherAssetId);
+  expect(otherAssetId).not.toBe(ctx.assetId);
+});
 
 When('I set the uploaded asset date for favorites grouping', async ({ request, ctx }) => {
-  if (!ctx.assetId) throw new Error('upload an asset first')
-  const auth = requireAuth(ctx)
+  if (!ctx.assetId) throw new Error('upload an asset first');
+  const auth = requireAuth(ctx);
   // the metadata worker PATCHes the asset asynchronously — wait for its status to leave
   // 'pending' so the pinned date settles first (it no longer nulls takenAt for EXIF-less
   // files; other metadata fields still land late)
@@ -163,24 +163,24 @@ When('I set the uploaded asset date for favorites grouping', async ({ request, c
       async () => {
         const response = await request.get(`/api/v1/assets/${ctx.assetId}`, {
           headers: authHeaders(auth),
-        })
-        expect(response.status()).toBe(200)
-        return ((await response.json()) as { metadataStatus?: string }).metadataStatus
+        });
+        expect(response.status()).toBe(200);
+        return ((await response.json()) as { metadataStatus?: string }).metadataStatus;
       },
       { timeout: 60_000 },
     )
-    .not.toBe('pending')
+    .not.toBe('pending');
 
   const response = await request.patch(`/api/v1/assets/${ctx.assetId}`, {
     headers: authHeaders(auth),
     data: { takenAt: PINNED_FAVORITES_DATE },
-  })
-  expect(response.status()).toBe(200)
-})
+  });
+  expect(response.status()).toBe(200);
+});
 
 When('I click the favorite control in the viewer', async ({ page, ctx }) => {
-  const button = favoriteButton(page)
-  await expect(button).toBeVisible()
+  const button = favoriteButton(page);
+  await expect(button).toBeVisible();
   const [response] = await Promise.all([
     page.waitForResponse(
       (r) =>
@@ -188,37 +188,37 @@ When('I click the favorite control in the viewer', async ({ page, ctx }) => {
         /^\/api\/v1\/assets\/[^/]+$/.test(new URL(r.url()).pathname),
     ),
     button.click(),
-  ])
-  ctx.lastStatus = response.status()
-  expect(response.status()).toBe(200)
-})
+  ]);
+  ctx.lastStatus = response.status();
+  expect(response.status()).toBe(200);
+});
 
 Then('the viewer marks the asset as a favorite', async ({ page }) => {
-  await expect(favoriteButton(page).locator('svg.fill-red-500')).toHaveCount(1)
-})
+  await expect(favoriteButton(page).locator('svg.fill-red-500')).toHaveCount(1);
+});
 
 Then('the viewer marks the asset as not a favorite', async ({ page }) => {
-  await expect(favoriteButton(page)).toBeVisible()
-  await expect(favoriteButton(page).locator('svg.fill-red-500')).toHaveCount(0)
-})
+  await expect(favoriteButton(page)).toBeVisible();
+  await expect(favoriteButton(page).locator('svg.fill-red-500')).toHaveCount(0);
+});
 
 Then('the favorites page shows the empty state', async ({ page }) => {
-  await expect(page.getByText('No favorites yet')).toBeVisible()
-})
+  await expect(page.getByText('No favorites yet')).toBeVisible();
+});
 
 Then('the favorites grid shows exactly one item', async ({ page }) => {
-  await expect(page.locator('figure[role="button"]')).toHaveCount(1, { timeout: 60_000 })
-})
+  await expect(page.locator('figure[role="button"]')).toHaveCount(1, { timeout: 60_000 });
+});
 
 Then('the favorites thumbnail image finishes loading', async ({ page }) => {
-  await expectThumbnailLoaded(page)
-})
+  await expectThumbnailLoaded(page);
+});
 
 Then('the favorites grid groups the asset under the pinned date', async ({ page }) => {
   const label = new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  }).format(new Date(PINNED_FAVORITES_DATE))
-  await expect(page.getByRole('heading', { level: 2, name: label })).toBeVisible()
-})
+  }).format(new Date(PINNED_FAVORITES_DATE));
+  await expect(page.getByRole('heading', { level: 2, name: label })).toBeVisible();
+});

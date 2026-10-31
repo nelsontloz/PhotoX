@@ -1,12 +1,12 @@
-import { UnrecoverableError } from 'bullmq'
-import type { LocalStorageService } from '@photox/shared-config'
+import { UnrecoverableError } from 'bullmq';
+import type { LocalStorageService } from '@photox/shared-config';
 import type {
   Asset,
   DetectedFaceInput,
   FileRecord,
   RegisterDetectionsRequestDto,
   RegisterEmbeddingRequestDto,
-} from '@photox/shared-types'
+} from '@photox/shared-types';
 import type {
   ApplyClustersPayload,
   ApplyClustersResult,
@@ -15,12 +15,12 @@ import type {
   MetadataPatch,
   RegisterFileInput,
   RegisterThumbnailInput,
-} from '../src/core/core-client.service'
+} from '../src/core/core-client.service';
 
 export interface CallRecord {
-  method: string
-  args: unknown[]
-  binding?: JobBinding
+  method: string;
+  args: unknown[];
+  binding?: JobBinding;
 }
 
 export function makeFileRecord(
@@ -36,7 +36,7 @@ export function makeFileRecord(
     assetId: null,
     createdAt: new Date().toISOString(),
     ...overrides,
-  }
+  };
 }
 
 export function makeAsset(
@@ -80,65 +80,65 @@ export function makeAsset(
     faceStatus: null,
     faceCount: 0,
     ...overrides,
-  }
+  };
 }
 
 // ponytail: stateful in-memory CoreClient stand-in — patchMetadata mutates the fixture so the
 // thumbnail video defer re-fetch observes metadataStatus flips; registerFile can exercise the 200
 // dedupe path
 export class FakeCoreClient {
-  readonly files = new Map<string, FileRecord>()
-  readonly assets = new Map<string, Asset>()
-  readonly calls: CallRecord[] = []
-  readonly thumbnails: (RegisterThumbnailInput & { assetId: string })[] = []
-  readonly faces = new Map<string, DetectedFaceInput[]>()
-  readonly deleteFacesCalls: string[] = []
-  readonly clusterFaces: ClusterFace[] = []
-  readonly applyClustersCalls: ApplyClustersPayload[] = []
-  dedupeRegistrations = false
+  readonly files = new Map<string, FileRecord>();
+  readonly assets = new Map<string, Asset>();
+  readonly calls: CallRecord[] = [];
+  readonly thumbnails: (RegisterThumbnailInput & { assetId: string })[] = [];
+  readonly faces = new Map<string, DetectedFaceInput[]>();
+  readonly deleteFacesCalls: string[] = [];
+  readonly clusterFaces: ClusterFace[] = [];
+  readonly applyClustersCalls: ApplyClustersPayload[] = [];
+  dedupeRegistrations = false;
 
-  private readonly registeredByChecksum = new Map<string, string>()
-  private readonly storage: LocalStorageService | undefined
-  private personSeq = 0
+  private readonly registeredByChecksum = new Map<string, string>();
+  private readonly storage: LocalStorageService | undefined;
+  private personSeq = 0;
 
   constructor(storage?: LocalStorageService) {
-    this.storage = storage
+    this.storage = storage;
   }
 
   reset(): void {
-    this.files.clear()
-    this.assets.clear()
-    this.calls.length = 0
-    this.thumbnails.length = 0
-    this.faces.clear()
-    this.deleteFacesCalls.length = 0
-    this.clusterFaces.length = 0
-    this.applyClustersCalls.length = 0
-    this.registeredByChecksum.clear()
-    this.dedupeRegistrations = false
-    this.personSeq = 0
+    this.files.clear();
+    this.assets.clear();
+    this.calls.length = 0;
+    this.thumbnails.length = 0;
+    this.faces.clear();
+    this.deleteFacesCalls.length = 0;
+    this.clusterFaces.length = 0;
+    this.applyClustersCalls.length = 0;
+    this.registeredByChecksum.clear();
+    this.dedupeRegistrations = false;
+    this.personSeq = 0;
   }
 
   callsOf(method: string): CallRecord[] {
-    return this.calls.filter((c) => c.method === method)
+    return this.calls.filter((c) => c.method === method);
   }
 
   getFile(userId: string, fileId: string, binding?: JobBinding): Promise<FileRecord> {
-    this.calls.push({ method: 'getFile', args: [userId, fileId], binding })
-    const file = this.files.get(fileId)
+    this.calls.push({ method: 'getFile', args: [userId, fileId], binding });
+    const file = this.files.get(fileId);
     if (file?.userId !== userId) {
-      return Promise.reject(new UnrecoverableError(`File not found: ${fileId}`))
+      return Promise.reject(new UnrecoverableError(`File not found: ${fileId}`));
     }
-    return Promise.resolve({ ...file })
+    return Promise.resolve({ ...file });
   }
 
   getAsset(userId: string, assetId: string, binding?: JobBinding): Promise<Asset> {
-    this.calls.push({ method: 'getAsset', args: [userId, assetId], binding })
-    const asset = this.assets.get(assetId)
+    this.calls.push({ method: 'getAsset', args: [userId, assetId], binding });
+    const asset = this.assets.get(assetId);
     if (asset?.userId !== userId) {
-      return Promise.reject(new UnrecoverableError(`Asset not found: ${assetId}`))
+      return Promise.reject(new UnrecoverableError(`Asset not found: ${assetId}`));
     }
-    return Promise.resolve({ ...asset })
+    return Promise.resolve({ ...asset });
   }
 
   patchMetadata(
@@ -147,34 +147,34 @@ export class FakeCoreClient {
     dto: MetadataPatch,
     binding?: JobBinding,
   ): Promise<void> {
-    this.calls.push({ method: 'patchMetadata', args: [assetId, dto], binding })
-    const asset = this.assets.get(assetId)
+    this.calls.push({ method: 'patchMetadata', args: [assetId, dto], binding });
+    const asset = this.assets.get(assetId);
     if (asset?.userId !== userId) {
-      return Promise.reject(new UnrecoverableError(`Asset not found: ${assetId}`))
+      return Promise.reject(new UnrecoverableError(`Asset not found: ${assetId}`));
     }
     if (dto.status !== undefined) {
-      asset.metadataStatus = dto.status
-      asset.metadataExtractedAt = new Date().toISOString()
+      asset.metadataStatus = dto.status;
+      asset.metadataExtractedAt = new Date().toISOString();
     }
-    const target = asset as unknown as Record<string, unknown>
+    const target = asset as unknown as Record<string, unknown>;
     for (const [key, value] of Object.entries(dto)) {
-      if (key === 'status') continue
+      if (key === 'status') continue;
       // mirror the JSON wire: Dates land as ISO strings
-      target[key] = value instanceof Date ? value.toISOString() : value
+      target[key] = value instanceof Date ? value.toISOString() : value;
     }
-    return Promise.resolve()
+    return Promise.resolve();
   }
 
   registerFile(userId: string, dto: RegisterFileInput, binding?: JobBinding): Promise<FileRecord> {
-    this.calls.push({ method: 'registerFile', args: [dto], binding })
-    const purpose = dto.kind === 'transcode' ? 'transcode' : 'original'
-    const dedupeKey = `${dto.checksumSha256}:${purpose}:${dto.assetId ?? ''}`
+    this.calls.push({ method: 'registerFile', args: [dto], binding });
+    const purpose = dto.kind === 'transcode' ? 'transcode' : 'original';
+    const dedupeKey = `${dto.checksumSha256}:${purpose}:${dto.assetId ?? ''}`;
     const existingId = this.dedupeRegistrations
       ? this.registeredByChecksum.get(dedupeKey)
-      : undefined
-    if (!existingId) this.registeredByChecksum.set(dedupeKey, dto.id)
+      : undefined;
+    if (!existingId) this.registeredByChecksum.set(dedupeKey, dto.id);
 
-    const id = existingId ?? dto.id
+    const id = existingId ?? dto.id;
     const record: FileRecord = {
       id,
       userId,
@@ -188,9 +188,9 @@ export class FakeCoreClient {
       purpose,
       assetId: dto.assetId ?? null,
       createdAt: new Date().toISOString(),
-    }
-    this.files.set(id, record)
-    return Promise.resolve({ ...record })
+    };
+    this.files.set(id, record);
+    return Promise.resolve({ ...record });
   }
 
   registerThumbnail(
@@ -199,11 +199,11 @@ export class FakeCoreClient {
     dto: RegisterThumbnailInput,
     binding?: JobBinding,
   ): Promise<void> {
-    this.calls.push({ method: 'registerThumbnail', args: [assetId, dto], binding })
-    const err = this.assetError(userId, assetId)
-    if (err) return Promise.reject(err)
-    this.thumbnails.push({ assetId, ...dto })
-    return Promise.resolve()
+    this.calls.push({ method: 'registerThumbnail', args: [assetId, dto], binding });
+    const err = this.assetError(userId, assetId);
+    if (err) return Promise.reject(err);
+    this.thumbnails.push({ assetId, ...dto });
+    return Promise.resolve();
   }
 
   registerFaces(
@@ -212,11 +212,11 @@ export class FakeCoreClient {
     faces: DetectedFaceInput[],
     binding?: JobBinding,
   ): Promise<{ count: number }> {
-    this.calls.push({ method: 'registerFaces', args: [assetId, faces], binding })
-    const err = this.assetError(userId, assetId)
-    if (err) return Promise.reject(err)
-    this.faces.set(assetId, [...(this.faces.get(assetId) ?? []), ...faces])
-    return Promise.resolve({ count: faces.length })
+    this.calls.push({ method: 'registerFaces', args: [assetId, faces], binding });
+    const err = this.assetError(userId, assetId);
+    if (err) return Promise.reject(err);
+    this.faces.set(assetId, [...(this.faces.get(assetId) ?? []), ...faces]);
+    return Promise.resolve({ count: faces.length });
   }
 
   registerEmbedding(
@@ -225,10 +225,10 @@ export class FakeCoreClient {
     dto: RegisterEmbeddingRequestDto,
     binding?: JobBinding,
   ): Promise<void> {
-    this.calls.push({ method: 'registerEmbedding', args: [assetId, dto], binding })
-    const err = this.assetError(userId, assetId)
-    if (err) return Promise.reject(err)
-    return Promise.resolve()
+    this.calls.push({ method: 'registerEmbedding', args: [assetId, dto], binding });
+    const err = this.assetError(userId, assetId);
+    if (err) return Promise.reject(err);
+    return Promise.resolve();
   }
 
   registerDetections(
@@ -237,10 +237,10 @@ export class FakeCoreClient {
     dto: RegisterDetectionsRequestDto,
     binding?: JobBinding,
   ): Promise<void> {
-    this.calls.push({ method: 'registerDetections', args: [assetId, dto], binding })
-    const err = this.assetError(userId, assetId)
-    if (err) return Promise.reject(err)
-    return Promise.resolve()
+    this.calls.push({ method: 'registerDetections', args: [assetId, dto], binding });
+    const err = this.assetError(userId, assetId);
+    if (err) return Promise.reject(err);
+    return Promise.resolve();
   }
 
   deleteAssetFaces(
@@ -248,18 +248,18 @@ export class FakeCoreClient {
     assetId: string,
     binding?: JobBinding,
   ): Promise<{ deleted: number }> {
-    this.calls.push({ method: 'deleteAssetFaces', args: [assetId], binding })
-    const err = this.assetError(userId, assetId)
-    if (err) return Promise.reject(err)
-    const deleted = this.faces.get(assetId)?.length ?? 0
-    this.faces.delete(assetId)
-    this.deleteFacesCalls.push(assetId)
-    return Promise.resolve({ deleted })
+    this.calls.push({ method: 'deleteAssetFaces', args: [assetId], binding });
+    const err = this.assetError(userId, assetId);
+    if (err) return Promise.reject(err);
+    const deleted = this.faces.get(assetId)?.length ?? 0;
+    this.faces.delete(assetId);
+    this.deleteFacesCalls.push(assetId);
+    return Promise.resolve({ deleted });
   }
 
   getFacesForCluster(userId: string, binding?: JobBinding): Promise<ClusterFace[]> {
-    this.calls.push({ method: 'getFacesForCluster', args: [userId], binding })
-    return Promise.resolve(this.clusterFaces.map((f) => ({ ...f })))
+    this.calls.push({ method: 'getFacesForCluster', args: [userId], binding });
+    return Promise.resolve(this.clusterFaces.map((f) => ({ ...f })));
   }
 
   getAssetsByIds(
@@ -267,13 +267,13 @@ export class FakeCoreClient {
     ids: string[],
     binding?: JobBinding,
   ): Promise<Pick<Asset, 'id' | 'fileId'>[]> {
-    this.calls.push({ method: 'getAssetsByIds', args: [userId, ids], binding })
+    this.calls.push({ method: 'getAssetsByIds', args: [userId, ids], binding });
     return Promise.resolve(
       ids
         .map((id) => this.assets.get(id))
         .filter((a): a is Asset => a?.userId === userId)
         .map((a) => ({ id: a.id, fileId: a.fileId })),
-    )
+    );
   }
 
   applyClusters(
@@ -281,39 +281,39 @@ export class FakeCoreClient {
     payload: ApplyClustersPayload,
     binding?: JobBinding,
   ): Promise<ApplyClustersResult> {
-    this.calls.push({ method: 'applyClusters', args: [userId, payload], binding })
-    this.applyClustersCalls.push(payload)
+    this.calls.push({ method: 'applyClusters', args: [userId, payload], binding });
+    this.applyClustersCalls.push(payload);
     // mirror core's writes so a re-run sees the faces as assigned
     for (const create of payload.creates) {
-      this.personSeq++
-      const personId = `fake-person-${this.personSeq}`
-      for (const faceId of create.faceIds) this.assignClusterFace(faceId, personId)
+      this.personSeq++;
+      const personId = `fake-person-${this.personSeq}`;
+      for (const faceId of create.faceIds) this.assignClusterFace(faceId, personId);
     }
     for (const attach of payload.attaches) {
-      for (const faceId of attach.faceIds) this.assignClusterFace(faceId, attach.personId)
+      for (const faceId of attach.faceIds) this.assignClusterFace(faceId, attach.personId);
     }
-    const faceIds = [...payload.creates, ...payload.attaches].flatMap((i) => i.faceIds)
-    return Promise.resolve({ created: payload.creates.length, assigned: new Set(faceIds).size })
+    const faceIds = [...payload.creates, ...payload.attaches].flatMap((i) => i.faceIds);
+    return Promise.resolve({ created: payload.creates.length, assigned: new Set(faceIds).size });
   }
 
   pruneEmptyPersons(userId: string, binding?: JobBinding): Promise<{ deleted: number }> {
-    this.calls.push({ method: 'pruneEmptyPersons', args: [userId], binding })
-    return Promise.resolve({ deleted: 0 })
+    this.calls.push({ method: 'pruneEmptyPersons', args: [userId], binding });
+    return Promise.resolve({ deleted: 0 });
   }
 
   purgeUser(userId: string, backupPrefix: string, binding?: JobBinding): Promise<void> {
-    this.calls.push({ method: 'purgeUser', args: [userId, backupPrefix], binding })
-    return Promise.resolve()
+    this.calls.push({ method: 'purgeUser', args: [userId, backupPrefix], binding });
+    return Promise.resolve();
   }
 
   private assignClusterFace(faceId: string, personId: string): void {
-    const face = this.clusterFaces.find((f) => f.id === faceId)
-    if (face) face.personId = personId
+    const face = this.clusterFaces.find((f) => f.id === faceId);
+    if (face) face.personId = personId;
   }
 
   private assetError(userId: string, assetId: string): UnrecoverableError | null {
-    const asset = this.assets.get(assetId)
-    if (asset?.userId === userId) return null
-    return new UnrecoverableError(`Asset not found: ${assetId}`)
+    const asset = this.assets.get(assetId);
+    if (asset?.userId === userId) return null;
+    return new UnrecoverableError(`Asset not found: ${assetId}`);
   }
 }

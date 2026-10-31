@@ -1,26 +1,26 @@
-import { createContext, useContext, useRef } from 'react'
-import type { ReactNode, RefObject } from 'react'
-import { AppHeader } from './AppHeader'
-import { Sidebar } from './Sidebar'
-import { UploadNotification } from './UploadNotification'
+import { createContext, useContext, useRef } from 'react';
+import type { ReactNode, RefObject } from 'react';
+import { AppHeader } from './AppHeader';
+import { Sidebar } from './Sidebar';
+import { UploadNotification } from './UploadNotification';
 
 // The scroll container of AppShell's <main>: sticky day headers and timeline virtualization both
 // key off it. Consumers get the ref (stable object) and read/listen themselves.
-export const ScrollContainerContext = createContext<RefObject<HTMLDivElement | null> | null>(null)
+export const ScrollContainerContext = createContext<RefObject<HTMLDivElement | null> | null>(null);
 
 export function useScrollContainer(): RefObject<HTMLDivElement | null> | null {
-  return useContext(ScrollContainerContext)
+  return useContext(ScrollContainerContext);
 }
 
 export function AppShell({
   children,
   mainClassName = 'flex-1 overflow-y-auto relative scroll-smooth px-4 sm:px-8 pb-6 pt-6',
 }: {
-  children: ReactNode
+  children: ReactNode;
   /** Full class list for <main> when a page needs its own scroll container (e.g. the map). */
-  mainClassName?: string
+  mainClassName?: string;
 }) {
-  const mainRef = useRef<HTMLDivElement>(null)
+  const mainRef = useRef<HTMLDivElement>(null);
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       <AppHeader />
@@ -34,5 +34,5 @@ export function AppShell({
       </div>
       <UploadNotification />
     </div>
-  )
+  );
 }

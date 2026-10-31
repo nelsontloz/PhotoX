@@ -1,17 +1,17 @@
-import { useEffect, useState } from 'react'
-import { useLocation } from 'react-router-dom'
-import { FaCamera, FaMagnifyingGlass } from 'react-icons/fa6'
-import { UploadButtonCompact } from './UploadButton'
-import { SearchInput } from './SearchBar'
+import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import { FaCamera, FaMagnifyingGlass } from 'react-icons/fa6';
+import { UploadButtonCompact } from './UploadButton';
+import { SearchInput } from './SearchBar';
 
 export function AppHeader() {
-  const location = useLocation()
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
+  const location = useLocation();
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
   // Leaving the search page exits mobile search mode; the debounced navigation TO /search must not.
   useEffect(() => {
-    if (location.pathname !== '/search') setMobileSearchOpen(false)
-  }, [location.pathname])
+    if (location.pathname !== '/search') setMobileSearchOpen(false);
+  }, [location.pathname]);
 
   return (
     <header className="relative flex items-center justify-between border-b border-gray-200 dark:border-border-dark bg-white/95 dark:bg-background-dark/95 px-6 py-3 z-40 shrink-0 h-16 w-full">
@@ -55,5 +55,5 @@ export function AppHeader() {
         </div>
       )}
     </header>
-  )
+  );
 }

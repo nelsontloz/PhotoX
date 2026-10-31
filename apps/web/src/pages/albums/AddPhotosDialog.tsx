@@ -1,52 +1,52 @@
-import { useCallback, useRef, useState } from 'react'
-import { FaCircleExclamation, FaPhotoFilm, FaPlus, FaSpinner } from 'react-icons/fa6'
-import type { Asset } from '@photox/shared-types'
-import { ScrollContainerContext } from '../../components/AppShell'
-import { Dialog } from '../../components/Dialog'
-import { TimelineAssets } from '../../components/Timeline/TimelineAssets'
-import { useTimelineView } from '../../hooks/useTimelineView'
-import { toggleId } from '../../lib/set'
+import { useCallback, useRef, useState } from 'react';
+import { FaCircleExclamation, FaPhotoFilm, FaPlus, FaSpinner } from 'react-icons/fa6';
+import type { Asset } from '@photox/shared-types';
+import { ScrollContainerContext } from '../../components/AppShell';
+import { Dialog } from '../../components/Dialog';
+import { TimelineAssets } from '../../components/Timeline/TimelineAssets';
+import { useTimelineView } from '../../hooks/useTimelineView';
+import { toggleId } from '../../lib/set';
 
 interface AddPhotosDialogProps {
-  albumName: string
-  onClose: () => void
-  onAdd: (ids: string[]) => Promise<void>
+  albumName: string;
+  onClose: () => void;
+  onAdd: (ids: string[]) => Promise<void>;
 }
 
 export function AddPhotosDialog({ albumName, onClose, onAdd }: AddPhotosDialogProps) {
   // Same pipeline as the home timeline: the full-library layout reserves every bucket/day height
   // up front, then months fill in lazily behind it — skeletons sit in the exact slots, no shift.
-  const view = useTimelineView()
-  const { timeline } = view
+  const view = useTimelineView();
+  const { timeline } = view;
   // The dialog's own scroller — inside a position:fixed panel everything must scroll against
   // this, not AppShell's <main>: the grid's windowing, AssetThumb's observers AND the
   // TimelineScrollbar rail (which anchors to this box) all key off the ScrollContainerContext
   // override below.
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const toggle = useCallback((id: string) => {
-    setSelected((prev) => toggleId(prev, id))
-  }, [])
+    setSelected((prev) => toggleId(prev, id));
+  }, []);
 
   // Click always toggles: the modal has no viewer, so there is no open-vs-select mode.
-  const onSelect = useCallback((asset: Asset) => toggle(asset.id), [toggle])
+  const onSelect = useCallback((asset: Asset) => toggle(asset.id), [toggle]);
 
   const handleAdd = async () => {
-    if (selected.size === 0) return
-    setSubmitting(true)
-    setSubmitError(null)
+    if (selected.size === 0) return;
+    setSubmitting(true);
+    setSubmitError(null);
     try {
-      await onAdd(Array.from(selected))
-      onClose()
+      await onAdd(Array.from(selected));
+      onClose();
     } catch (err) {
-      setSubmitError((err as Error).message ?? 'Failed to add photos')
+      setSubmitError((err as Error).message ?? 'Failed to add photos');
     } finally {
-      setSubmitting(false)
+      setSubmitting(false);
     }
-  }
+  };
 
   return (
     <Dialog
@@ -120,7 +120,7 @@ export function AddPhotosDialog({ albumName, onClose, onAdd }: AddPhotosDialogPr
           </button>
           <button
             onClick={() => {
-              void handleAdd()
+              void handleAdd();
             }}
             disabled={selected.size === 0 || submitting}
             className="bg-primary hover:bg-primary/90 text-white text-sm font-semibold px-3 py-1.5 rounded-md inline-flex items-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -135,5 +135,5 @@ export function AddPhotosDialog({ albumName, onClose, onAdd }: AddPhotosDialogPr
         </div>
       </div>
     </Dialog>
-  )
+  );
 }

@@ -1,1 +1,1 @@
-export const REPROCESS_PAGE_SIZE = 500
+export const REPROCESS_PAGE_SIZE = 500;

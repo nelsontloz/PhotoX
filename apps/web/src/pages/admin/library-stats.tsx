@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react';
 import {
   FaArrowsRotate,
   FaCamera,
@@ -8,11 +8,11 @@ import {
   FaFilm,
   FaHardDrive,
   FaTrashCan,
-} from 'react-icons/fa6'
-import { getAdminAssetCounts, getAdminLibraryStats } from '../../api/admin'
-import { formatBytes } from '../../lib/format'
-import { formatIsoDate } from '../../lib/dateFormat'
-import { AdminCard, AdminSection, Button, MetricTile, cx } from './ui'
+} from 'react-icons/fa6';
+import { getAdminAssetCounts, getAdminLibraryStats } from '../../api/admin';
+import { formatBytes } from '../../lib/format';
+import { formatIsoDate } from '../../lib/dateFormat';
+import { AdminCard, AdminSection, Button, MetricTile, cx } from './ui';
 import type {
   AdminAssetCountsResponse,
   AdminLibraryCounts,
@@ -20,44 +20,44 @@ import type {
   AdminLibraryStorageMonth,
   AdminLibraryUploadsWeek,
   AssetFailureCounts,
-} from '@photox/shared-types'
+} from '@photox/shared-types';
 
 // --- pure transforms (spec'd in library-stats.spec.ts) ---
 
 /** Human-readable storage; formatBytes returns null for 0/negative, charts want a real string. */
 export function formatStorage(bytes: number): string {
-  return formatBytes(bytes) ?? '0 B'
+  return formatBytes(bytes) ?? '0 B';
 }
 
 export interface CumulativeStorageMonth {
-  month: string
-  originalsBytes: number
-  transcodesBytes: number
-  thumbnailsBytes: number
+  month: string;
+  originalsBytes: number;
+  transcodesBytes: number;
+  thumbnailsBytes: number;
 }
 
 /** Running totals per month: storageByMonth holds per-month additions, charts need growth. */
 export function toCumulative(rows: AdminLibraryStorageMonth[]): CumulativeStorageMonth[] {
-  let originals = 0
-  let transcodes = 0
-  let thumbnails = 0
+  let originals = 0;
+  let transcodes = 0;
+  let thumbnails = 0;
   return rows.map((row) => {
-    originals += row.originalsBytes
-    transcodes += row.transcodesBytes
-    thumbnails += row.thumbnailsBytes
+    originals += row.originalsBytes;
+    transcodes += row.transcodesBytes;
+    thumbnails += row.thumbnailsBytes;
     return {
       month: row.month,
       originalsBytes: originals,
       transcodesBytes: transcodes,
       thumbnailsBytes: thumbnails,
-    }
-  })
+    };
+  });
 }
 
 /** value -> pixel height against a max; a max of 0 must yield 0, never NaN. */
 export function scaleToHeight(value: number, max: number, maxHeight: number): number {
-  if (!(max > 0) || !(value > 0)) return 0
-  return Math.min(maxHeight, (value / max) * maxHeight)
+  if (!(max > 0) || !(value > 0)) return 0;
+  return Math.min(maxHeight, (value / max) * maxHeight);
 }
 
 /**
@@ -66,27 +66,27 @@ export function scaleToHeight(value: number, max: number, maxHeight: number): nu
  * an empty library from dividing by zero.
  */
 export function indexedPercent(counts: AdminLibraryCounts, failures: AssetFailureCounts): number {
-  const incomplete = failures.processing + failures.metadata + failures.thumbnails
-  const percent = 100 - Math.round((incomplete / Math.max(1, counts.photos)) * 100)
-  return Math.min(100, Math.max(0, percent))
+  const incomplete = failures.processing + failures.metadata + failures.thumbnails;
+  const percent = 100 - Math.round((incomplete / Math.max(1, counts.photos)) * 100);
+  return Math.min(100, Math.max(0, percent));
 }
 
 // --- chart geometry (fixed viewBox; SVG scales to the card width) ---
 
-const VIEW_W = 360
-const VIEW_H = 200
-const PAD_LEFT = 44
-const PAD_RIGHT = 8
-const PAD_TOP = 12
-const PAD_BOTTOM = 26
-const PLOT_X = PAD_LEFT
-const PLOT_W = VIEW_W - PAD_LEFT - PAD_RIGHT
-const PLOT_BOTTOM = VIEW_H - PAD_BOTTOM
-const PLOT_H = VIEW_H - PAD_TOP - PAD_BOTTOM
-const PLOT_MID_Y = PAD_TOP + PLOT_H / 2
+const VIEW_W = 360;
+const VIEW_H = 200;
+const PAD_LEFT = 44;
+const PAD_RIGHT = 8;
+const PAD_TOP = 12;
+const PAD_BOTTOM = 26;
+const PLOT_X = PAD_LEFT;
+const PLOT_W = VIEW_W - PAD_LEFT - PAD_RIGHT;
+const PLOT_BOTTOM = VIEW_H - PAD_BOTTOM;
+const PLOT_H = VIEW_H - PAD_TOP - PAD_BOTTOM;
+const PLOT_MID_Y = PAD_TOP + PLOT_H / 2;
 
 // Stable (not per-render) so two mounted charts could never fight over the same defs id.
-const STORAGE_AREA_GRADIENT_ID = 'library-stats-storage-area'
+const STORAGE_AREA_GRADIENT_ID = 'library-stats-storage-area';
 
 function AxisText({
   x,
@@ -94,16 +94,16 @@ function AxisText({
   anchor,
   children,
 }: {
-  x: number
-  y: number
-  anchor?: 'start' | 'middle' | 'end'
-  children: string
+  x: number;
+  y: number;
+  anchor?: 'start' | 'middle' | 'end';
+  children: string;
 }) {
   return (
     <text x={x} y={y} textAnchor={anchor} fontSize={10} className="fill-outline">
       {children}
     </text>
-  )
+  );
 }
 
 function EmptyChartNote({ text }: { text: string }) {
@@ -127,7 +127,7 @@ function EmptyChartNote({ text }: { text: string }) {
         {text}
       </text>
     </svg>
-  )
+  );
 }
 
 function ChartLegend({ items }: { items: { label: string; dot: string }[] }) {
@@ -140,30 +140,30 @@ function ChartLegend({ items }: { items: { label: string; dot: string }[] }) {
         </span>
       ))}
     </div>
-  )
+  );
 }
 
 const UPLOAD_LEGEND = [
   { label: 'Photos', dot: 'bg-primary' },
   { label: 'Videos', dot: 'bg-tertiary-fixed-dim' },
-]
+];
 
 const STORAGE_LEGEND = [
   { label: 'Originals', dot: 'bg-primary' },
   { label: 'Transcodes', dot: 'bg-secondary-fixed' },
   { label: 'Thumbnails', dot: 'bg-tertiary-fixed-dim' },
-]
+];
 
 function UploadsChart({ weeks }: { weeks: AdminLibraryUploadsWeek[] }) {
-  const max = weeks.reduce((m, w) => Math.max(m, w.photos + w.videos), 0)
+  const max = weeks.reduce((m, w) => Math.max(m, w.photos + w.videos), 0);
   if (weeks.length === 0 || max === 0) {
-    return <EmptyChartNote text="No uploads in the last 26 weeks." />
+    return <EmptyChartNote text="No uploads in the last 26 weeks." />;
   }
 
-  const slot = PLOT_W / weeks.length
-  const barW = Math.max(3, Math.min(slot * 0.7, 14))
-  const ticks = [...new Set([0, Math.round(max / 2), max])]
-  const labelIdx = [...new Set([0, Math.floor((weeks.length - 1) / 2), weeks.length - 1])]
+  const slot = PLOT_W / weeks.length;
+  const barW = Math.max(3, Math.min(slot * 0.7, 14));
+  const ticks = [...new Set([0, Math.round(max / 2), max])];
+  const labelIdx = [...new Set([0, Math.floor((weeks.length - 1) / 2), weeks.length - 1])];
 
   return (
     <svg
@@ -173,7 +173,7 @@ function UploadsChart({ weeks }: { weeks: AdminLibraryUploadsWeek[] }) {
       aria-label="Uploads per week, photos and videos"
     >
       {ticks.map((t) => {
-        const y = PLOT_BOTTOM - scaleToHeight(t, max, PLOT_H)
+        const y = PLOT_BOTTOM - scaleToHeight(t, max, PLOT_H);
         return (
           <g key={t}>
             <line
@@ -188,14 +188,14 @@ function UploadsChart({ weeks }: { weeks: AdminLibraryUploadsWeek[] }) {
               {t.toLocaleString()}
             </AxisText>
           </g>
-        )
+        );
       })}
       {weeks.map((w, i) => {
-        const hP = scaleToHeight(w.photos, max, PLOT_H)
-        const hV = scaleToHeight(w.videos, max, PLOT_H)
-        const x = PLOT_X + i * slot + (slot - barW) / 2
-        const yP = PLOT_BOTTOM - hP
-        const yV = yP - hV
+        const hP = scaleToHeight(w.photos, max, PLOT_H);
+        const hV = scaleToHeight(w.videos, max, PLOT_H);
+        const x = PLOT_X + i * slot + (slot - barW) / 2;
+        const yP = PLOT_BOTTOM - hP;
+        const yV = yP - hV;
         return (
           <g key={w.week}>
             <title>{`${formatIsoDate(w.week, { month: 'short', day: 'numeric' })}: ${w.photos} photos, ${w.videos} videos`}</title>
@@ -213,14 +213,14 @@ function UploadsChart({ weeks }: { weeks: AdminLibraryUploadsWeek[] }) {
               />
             )}
           </g>
-        )
+        );
       })}
       {labelIdx.map((i) => {
-        const w = weeks[i]
-        if (!w) return null
-        const first = i === 0
-        const last = i === weeks.length - 1
-        const x = first ? PLOT_X : last ? PLOT_X + (i + 1) * slot : PLOT_X + (i + 0.5) * slot
+        const w = weeks[i];
+        if (!w) return null;
+        const first = i === 0;
+        const last = i === weeks.length - 1;
+        const x = first ? PLOT_X : last ? PLOT_X + (i + 1) * slot : PLOT_X + (i + 0.5) * slot;
         return (
           <AxisText
             key={w.week}
@@ -230,25 +230,25 @@ function UploadsChart({ weeks }: { weeks: AdminLibraryUploadsWeek[] }) {
           >
             {formatIsoDate(w.week, { month: 'short', day: 'numeric' })}
           </AxisText>
-        )
+        );
       })}
     </svg>
-  )
+  );
 }
 
 function StorageChart({ months }: { months: AdminLibraryStorageMonth[] }) {
-  const rows = toCumulative(months)
+  const rows = toCumulative(months);
   const totalOf = (row: CumulativeStorageMonth) =>
-    row.originalsBytes + row.transcodesBytes + row.thumbnailsBytes
-  const max = rows.reduce((m, row) => Math.max(m, totalOf(row)), 0)
-  if (max === 0) return <EmptyChartNote text="No stored files yet." />
-  if (rows.length < 2) return <EmptyChartNote text="Not enough history to chart growth yet." />
+    row.originalsBytes + row.transcodesBytes + row.thumbnailsBytes;
+  const max = rows.reduce((m, row) => Math.max(m, totalOf(row)), 0);
+  if (max === 0) return <EmptyChartNote text="No stored files yet." />;
+  if (rows.length < 2) return <EmptyChartNote text="Not enough history to chart growth yet." />;
 
-  const xAt = (i: number) => PLOT_X + (i / (rows.length - 1)) * PLOT_W
-  const yAt = (value: number) => PLOT_BOTTOM - scaleToHeight(value, max, PLOT_H)
-  const ticks = [...new Set([0, Math.round(max / 2), max])]
-  const lastIndex = rows.length - 1
-  const labelIdx = [...new Set([0, Math.floor(lastIndex / 2), lastIndex])]
+  const xAt = (i: number) => PLOT_X + (i / (rows.length - 1)) * PLOT_W;
+  const yAt = (value: number) => PLOT_BOTTOM - scaleToHeight(value, max, PLOT_H);
+  const ticks = [...new Set([0, Math.round(max / 2), max])];
+  const lastIndex = rows.length - 1;
+  const labelIdx = [...new Set([0, Math.floor(lastIndex / 2), lastIndex])];
 
   const band = (
     top: (row: CumulativeStorageMonth) => number,
@@ -256,15 +256,15 @@ function StorageChart({ months }: { months: AdminLibraryStorageMonth[] }) {
   ): string => {
     const up = rows.map(
       (row, i) => `${i === 0 ? 'M' : 'L'}${xAt(i).toFixed(2)},${yAt(top(row)).toFixed(2)}`,
-    )
+    );
     const down = rows
       .map((row, i) => ({ row, i }))
       .reverse()
-      .map(({ row, i }) => `L${xAt(i).toFixed(2)},${yAt(bottom(row)).toFixed(2)}`)
-    return `${up.join(' ')} ${down.join(' ')} Z`
-  }
+      .map(({ row, i }) => `L${xAt(i).toFixed(2)},${yAt(bottom(row)).toFixed(2)}`);
+    return `${up.join(' ')} ${down.join(' ')} Z`;
+  };
 
-  const sumTop = (row: CumulativeStorageMonth) => row.originalsBytes + row.transcodesBytes
+  const sumTop = (row: CumulativeStorageMonth) => row.originalsBytes + row.transcodesBytes;
   const bands = [
     {
       key: 'Originals',
@@ -287,11 +287,11 @@ function StorageChart({ months }: { months: AdminLibraryStorageMonth[] }) {
       cls: 'fill-tertiary-fixed-dim',
       bytes: (row: CumulativeStorageMonth) => row.thumbnailsBytes,
     },
-  ]
+  ];
   const linePath = rows
     .map((row, i) => `${i === 0 ? 'M' : 'L'}${xAt(i).toFixed(2)},${yAt(totalOf(row)).toFixed(2)}`)
-    .join(' ')
-  const lastRow = rows[lastIndex]
+    .join(' ');
+  const lastRow = rows[lastIndex];
 
   return (
     <svg
@@ -343,10 +343,10 @@ function StorageChart({ months }: { months: AdminLibraryStorageMonth[] }) {
         <circle cx={xAt(lastIndex)} cy={yAt(totalOf(lastRow))} r={3.5} className="fill-primary" />
       )}
       {labelIdx.map((i) => {
-        const row = rows[i]
-        if (!row) return null
-        const first = i === 0
-        const isLast = i === lastIndex
+        const row = rows[i];
+        if (!row) return null;
+        const first = i === 0;
+        const isLast = i === lastIndex;
         return (
           <AxisText
             key={row.month}
@@ -356,24 +356,24 @@ function StorageChart({ months }: { months: AdminLibraryStorageMonth[] }) {
           >
             {formatIsoDate(row.month, { month: 'short', year: '2-digit' })}
           </AxisText>
-        )
+        );
       })}
     </svg>
-  )
+  );
 }
 
 /** Segmented storage bar: flexGrow proportional to bytes, tiny non-zero slices stay visible. */
 function AllocationBar({
   segments,
 }: {
-  segments: { key: string; bytes: number; className: string }[]
+  segments: { key: string; bytes: number; className: string }[];
 }) {
-  const total = segments.reduce((sum, segment) => sum + segment.bytes, 0)
+  const total = segments.reduce((sum, segment) => sum + segment.bytes, 0);
   return (
     <div className="h-1.5 w-full rounded-full overflow-hidden bg-surface-container-highest flex gap-0.5">
       {segments.map((segment) => {
-        const share = scaleToHeight(segment.bytes, total, 100)
-        const visible = segment.bytes > 0
+        const share = scaleToHeight(segment.bytes, total, 100);
+        const visible = segment.bytes > 0;
         return (
           <div
             key={segment.key}
@@ -385,10 +385,10 @@ function AllocationBar({
               minWidth: visible ? 2 : 0,
             }}
           />
-        )
+        );
       })}
     </div>
-  )
+  );
 }
 
 function TileSkeleton() {
@@ -398,7 +398,7 @@ function TileSkeleton() {
       <div className="animate-pulse bg-slate-700/50 rounded mt-4 h-9 w-28" />
       <div className="animate-pulse bg-slate-700/50 rounded mt-4 h-1 w-full" />
     </AdminCard>
-  )
+  );
 }
 
 function ChartSkeleton() {
@@ -413,7 +413,7 @@ function ChartSkeleton() {
       </div>
       <div className="animate-pulse bg-slate-700/50 rounded mt-4 h-52 w-full" />
     </AdminCard>
-  )
+  );
 }
 
 function StatsSkeleton() {
@@ -434,47 +434,47 @@ function StatsSkeleton() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 export function LibraryStatsSection() {
-  const [data, setData] = useState<AdminLibraryStatsResponse | null>(null)
-  const [assetCounts, setAssetCounts] = useState<AdminAssetCountsResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [version, setVersion] = useState(0)
+  const [data, setData] = useState<AdminLibraryStatsResponse | null>(null);
+  const [assetCounts, setAssetCounts] = useState<AdminAssetCountsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    setAssetCounts(null)
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setAssetCounts(null);
     getAdminLibraryStats()
       .then((res) => {
-        if (cancelled) return
-        setData(res)
+        if (cancelled) return;
+        setData(res);
       })
       .catch((err: Error) => {
-        if (cancelled) return
-        setError(err.message ?? 'Failed to load library stats')
+        if (cancelled) return;
+        setError(err.message ?? 'Failed to load library stats');
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
+        if (!cancelled) setLoading(false);
+      });
     // Optional enrichment (photos tile meta + bar); a failure here must never affect the stats.
     getAdminAssetCounts()
       .then((res) => {
-        if (!cancelled) setAssetCounts(res)
+        if (!cancelled) setAssetCounts(res);
       })
       .catch(() => {
         // leave assetCounts null: the photos tile falls back to no meta and a 0 bar
-      })
+      });
     return () => {
-      cancelled = true
-    }
-  }, [version])
+      cancelled = true;
+    };
+  }, [version]);
 
-  const retry = () => setVersion((v) => v + 1)
+  const retry = () => setVersion((v) => v + 1);
 
   const split = data
     ? data.storageByMonth.reduce(
@@ -485,19 +485,20 @@ export function LibraryStatsSection() {
         }),
         { originals: 0, transcodes: 0, thumbnails: 0 },
       )
-    : { originals: 0, transcodes: 0, thumbnails: 0 }
-  const totalBytes = split.originals + split.transcodes + split.thumbnails
-  const photosIndexed = data && assetCounts ? indexedPercent(data.counts, assetCounts.photos) : null
+    : { originals: 0, transcodes: 0, thumbnails: 0 };
+  const totalBytes = split.originals + split.transcodes + split.thumbnails;
+  const photosIndexed =
+    data && assetCounts ? indexedPercent(data.counts, assetCounts.photos) : null;
   const splitItems = [
     { label: 'Originals', bytes: split.originals, dot: 'bg-primary' },
     { label: 'Transcodes', bytes: split.transcodes, dot: 'bg-secondary-fixed' },
     { label: 'Thumbnails', bytes: split.thumbnails, dot: 'bg-tertiary-fixed-dim' },
-  ]
+  ];
   const emptyLibrary =
     data !== null &&
     data.counts.photos === 0 &&
     data.counts.videos === 0 &&
-    data.counts.trashed === 0
+    data.counts.trashed === 0;
 
   return (
     <AdminSection
@@ -620,5 +621,5 @@ export function LibraryStatsSection() {
         </div>
       ) : null}
     </AdminSection>
-  )
+  );
 }

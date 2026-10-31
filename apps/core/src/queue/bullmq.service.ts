@@ -1,9 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
-import { loadAuthEnv, loadEnv } from '@photox/shared-config'
-import { SEARCH_EMBEDDING_MODEL } from '@photox/shared-types'
-import { Queue, type JobsOptions } from 'bullmq'
-import Redis from 'ioredis'
-import { createHmac } from 'node:crypto'
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { loadAuthEnv, loadEnv } from '@photox/shared-config';
+import { SEARCH_EMBEDDING_MODEL } from '@photox/shared-types';
+import { Queue, type JobsOptions } from 'bullmq';
+import Redis from 'ioredis';
+import { createHmac } from 'node:crypto';
 
 // ponytail: one table for the identical asset job wrappers; jobId prefixes are the dedup
 // contract — `embed-` also pins the model so a switch never collides with the old model's job
@@ -13,45 +13,45 @@ const ASSET_JOBS = {
     jobId: (assetId: string) => `embed-${assetId}-${SEARCH_EMBEDDING_MODEL}`,
   },
   detect: { queue: 'process-detect', jobId: (assetId: string) => `detect-${assetId}` },
-} as const
+} as const;
 
-type AssetJobKind = keyof typeof ASSET_JOBS
+type AssetJobKind = keyof typeof ASSET_JOBS;
 
 @Injectable()
 export class BullMqService implements OnModuleInit, OnModuleDestroy {
   // maxRetriesPerRequest: null makes ioredis queue commands instead of rejecting while Redis is
   // down, so a bare await would hang the HTTP request — every queue round-trip is bounded by this
-  private static readonly QUEUE_OP_TIMEOUT_MS = 1000
+  private static readonly QUEUE_OP_TIMEOUT_MS = 1000;
 
-  private readonly logger = new Logger(BullMqService.name)
-  private connection!: Redis
-  private readonly queues = new Map<string, Queue>()
-  private workerSecret: string | undefined
+  private readonly logger = new Logger(BullMqService.name);
+  private connection!: Redis;
+  private readonly queues = new Map<string, Queue>();
+  private workerSecret: string | undefined;
 
   onModuleInit(): void {
-    const env = loadEnv()
+    const env = loadEnv();
     this.connection = new Redis({
       host: env.REDIS_HOST,
       port: env.REDIS_PORT,
       password: env.REDIS_PASSWORD,
       db: env.REDIS_DB,
       maxRetriesPerRequest: null,
-    })
-    this.workerSecret = loadAuthEnv().WORKER_JWT_SECRET
+    });
+    this.workerSecret = loadAuthEnv().WORKER_JWT_SECRET;
   }
 
   /** Shared ioredis client (BullMQ's connection) for other Redis-backed features, e.g. rate limits. */
   get redis(): Redis {
-    return this.connection
+    return this.connection;
   }
 
   getQueue(name: string): Queue {
-    let queue = this.queues.get(name)
+    let queue = this.queues.get(name);
     if (!queue) {
-      queue = new Queue(name, { connection: this.connection })
-      this.queues.set(name, queue)
+      queue = new Queue(name, { connection: this.connection });
+      this.queues.set(name, queue);
     }
-    return queue
+    return queue;
   }
 
   async enqueue(
@@ -72,12 +72,12 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
           removeOnFail: true,
           ...opts,
         }),
-      )
-      return true
+      );
+      return true;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      this.logger.error(`Failed to enqueue ${queueName} job: ${msg}`)
-      return false
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Failed to enqueue ${queueName} job: ${msg}`);
+      return false;
     }
   }
 
@@ -90,28 +90,28 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     jobId: string,
   ): Promise<{ state: string; data: unknown } | null> {
     try {
-      const job = await this.withTimeout(this.getQueue(queueName).getJob(jobId))
-      if (!job) return null
-      return { state: await this.withTimeout(job.getState()), data: job.data }
+      const job = await this.withTimeout(this.getQueue(queueName).getJob(jobId));
+      if (!job) return null;
+      return { state: await this.withTimeout(job.getState()), data: job.data };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      this.logger.warn(`Failed to read ${queueName} job ${jobId}: ${msg}`)
-      return null
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Failed to read ${queueName} job ${jobId}: ${msg}`);
+      return null;
     }
   }
 
   // rejects on timeout; the source promise's late settlement is swallowed so a failing Redis
   // after the timeout won, never surfaces as an unhandledRejection
   private withTimeout<T>(promise: Promise<T>): Promise<T> {
-    promise.catch(() => undefined)
-    let timer: ReturnType<typeof setTimeout> | undefined
+    promise.catch(() => undefined);
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(
         () => reject(new Error('Redis did not answer in time')),
         BullMqService.QUEUE_OP_TIMEOUT_MS,
-      )
-    })
-    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+      );
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
   }
 
   // ponytail: HMAC job binding — stamps proof that core enqueued this (sub, scope) pair; the
@@ -121,17 +121,17 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
   // Unsigned when the secret is unavailable (unit specs that never boot the module); the guard
   // requires the secret at boot, so a serving core always stamps.
   private withJobSig(data: Record<string, unknown>): Record<string, unknown> {
-    if (!this.workerSecret) return data
-    const sub = data.userId
-    if (typeof sub !== 'string' || sub.length === 0) return data
+    if (!this.workerSecret) return data;
+    const sub = data.userId;
+    if (typeof sub !== 'string' || sub.length === 0) return data;
     const scope = [data.assetId, data.fileId, data.userId].find(
       (v): v is string => typeof v === 'string' && v.length > 0,
-    )
-    if (!scope) return data
+    );
+    if (!scope) return data;
     return {
       ...data,
       sig: createHmac('sha256', this.workerSecret).update(`${sub}:${scope}`).digest('hex'),
-    }
+    };
   }
 
   /**
@@ -146,22 +146,22 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     fetchPage: (offset: number) => Promise<{ items: T[]; total: number }>,
     build: (item: T) => { data: Record<string, unknown>; jobId: string },
   ): Promise<{ enqueued: number; total: number }> {
-    let offset = 0
-    let enqueued = 0
-    let total: number
+    let offset = 0;
+    let enqueued = 0;
+    let total: number;
     for (;;) {
-      const page = await fetchPage(offset)
-      total = page.total
-      if (page.items.length === 0) break
+      const page = await fetchPage(offset);
+      total = page.total;
+      if (page.items.length === 0) break;
       for (const item of page.items) {
-        const { data, jobId } = build(item)
-        await this.enqueue(queueName, jobName, data, { jobId, removeOnComplete: true })
-        enqueued++
+        const { data, jobId } = build(item);
+        await this.enqueue(queueName, jobName, data, { jobId, removeOnComplete: true });
+        enqueued++;
       }
-      offset += page.items.length
-      if (offset >= total) break
+      offset += page.items.length;
+      if (offset >= total) break;
     }
-    return { enqueued, total }
+    return { enqueued, total };
   }
 
   async enqueueThumbnails(
@@ -181,8 +181,8 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
           },
         ),
       ),
-    )
-    return results.every(Boolean)
+    );
+    return results.every(Boolean);
   }
 
   async enqueueVideo(
@@ -202,7 +202,7 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
         // transient flakes; the second retry is the most expensive one, cut it
         attempts: 2,
       },
-    )
+    );
   }
 
   async enqueueAssetJob(
@@ -211,19 +211,19 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
     fileId: string,
     userId: string,
   ): Promise<boolean> {
-    const job = ASSET_JOBS[kind]
+    const job = ASSET_JOBS[kind];
     return this.enqueue(
       job.queue,
       job.queue,
       { assetId, fileId, userId },
       { jobId: job.jobId(assetId) },
-    )
+    );
   }
 
   async onModuleDestroy(): Promise<void> {
     for (const queue of this.queues.values()) {
-      await queue.close()
+      await queue.close();
     }
-    await this.connection.quit()
+    await this.connection.quit();
   }
 }

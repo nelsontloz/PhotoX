@@ -1,20 +1,20 @@
-import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { FaArrowLeft, FaFaceSmile } from 'react-icons/fa6'
-import { RequireAuth } from '../../components/RequireAuth'
-import { AppShell } from '../../components/AppShell'
-import { ErrorState, LoadingState } from '../../components/StateViews'
-import { ViewerHost } from '../../components/ViewerHost'
-import { TimelineAssets } from '../../components/Timeline/TimelineAssets'
-import { TimelineError } from '../../components/Timeline/TimelinePage'
-import { renamePerson } from '../../api/persons'
-import { usePersonDetail } from '../../hooks/usePersonDetail'
-import { useInlineRename } from '../../hooks/useInlineRename'
-import { useTimelineView } from '../../hooks/useTimelineView'
-import type { Asset } from '@photox/shared-types'
+import { useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { FaArrowLeft, FaFaceSmile } from 'react-icons/fa6';
+import { RequireAuth } from '../../components/RequireAuth';
+import { AppShell } from '../../components/AppShell';
+import { ErrorState, LoadingState } from '../../components/StateViews';
+import { ViewerHost } from '../../components/ViewerHost';
+import { TimelineAssets } from '../../components/Timeline/TimelineAssets';
+import { TimelineError } from '../../components/Timeline/TimelinePage';
+import { renamePerson } from '../../api/persons';
+import { usePersonDetail } from '../../hooks/usePersonDetail';
+import { useInlineRename } from '../../hooks/useInlineRename';
+import { useTimelineView } from '../../hooks/useTimelineView';
+import type { Asset } from '@photox/shared-types';
 
 function PersonDetail({ id }: { id: string }) {
-  const navigate = useNavigate()
+  const navigate = useNavigate();
   const {
     person,
     setPerson,
@@ -22,32 +22,32 @@ function PersonDetail({ id }: { id: string }) {
     error: personError,
     notFound: personNotFound,
     retry: retryPerson,
-  } = usePersonDetail(id)
+  } = usePersonDetail(id);
   // Same lazy pipeline as the home timeline, scoped to this person (layout + per-month fetches).
-  const view = useTimelineView({ personId: id })
-  const { timeline, loadedAssets } = view
+  const view = useTimelineView({ personId: id });
+  const { timeline, loadedAssets } = view;
   const { editing, nameValue, setNameValue, start, save } = useInlineRename(
     person?.name ?? '',
     async (name) => {
-      const updated = await renamePerson(id, name || null)
-      setPerson(updated)
+      const updated = await renamePerson(id, name || null);
+      setPerson(updated);
     },
     { allowEmpty: true },
-  )
-  const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
-  const [pickerOpen, setPickerOpen] = useState(false)
+  );
+  const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   if (personLoading || timeline.loading)
-    return <LoadingState className="flex justify-center py-20" />
-  if (personError) return <ErrorState message={personError} onRetry={retryPerson} />
-  if (timeline.error) return <TimelineError message={timeline.error} />
+    return <LoadingState className="flex justify-center py-20" />;
+  if (personError) return <ErrorState message={personError} onRetry={retryPerson} />;
+  if (timeline.error) return <TimelineError message={timeline.error} />;
   if (personNotFound || !person)
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <FaFaceSmile className="text-4xl text-slate-500 mb-4" />
         <p className="text-slate-400">Person not found</p>
       </div>
-    )
+    );
 
   return (
     <>
@@ -55,7 +55,7 @@ function PersonDetail({ id }: { id: string }) {
         <div className="flex items-center gap-4 mb-6">
           <button
             onClick={() => {
-              void navigate('/people')
+              void navigate('/people');
             }}
             className="text-slate-400 hover:text-white transition-colors"
           >
@@ -67,10 +67,10 @@ function PersonDetail({ id }: { id: string }) {
               value={nameValue}
               onChange={(e) => setNameValue(e.target.value)}
               onBlur={() => {
-                void save()
+                void save();
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') void save()
+                if (e.key === 'Enter') void save();
               }}
               className="text-2xl font-bold text-white bg-transparent border-b border-primary outline-none"
             />
@@ -110,14 +110,14 @@ function PersonDetail({ id }: { id: string }) {
         onPickerClose={() => setPickerOpen(false)}
       />
     </>
-  )
+  );
 }
 
 export default function PersonDetailPage() {
-  const { id } = useParams<{ id: string }>()
+  const { id } = useParams<{ id: string }>();
   return (
     <RequireAuth>
       <AppShell>{id ? <PersonDetail key={id} id={id} /> : null}</AppShell>
     </RequireAuth>
-  )
+  );
 }

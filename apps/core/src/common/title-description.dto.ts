@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger'
-import { IsOptional, IsString, MaxLength } from 'class-validator'
+import { ApiProperty } from '@nestjs/swagger';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 
 // ponytail: the asset/album/upload bodies share these exact caps (title 255, description 2000)
 // — one base so a future cap change can't drift between endpoints
@@ -8,7 +8,7 @@ export class DescriptionDto {
   @IsOptional()
   @IsString()
   @MaxLength(2000)
-  description?: string
+  description?: string;
 }
 
 export class TitleDescriptionDto extends DescriptionDto {
@@ -16,5 +16,5 @@ export class TitleDescriptionDto extends DescriptionDto {
   @IsOptional()
   @IsString()
   @MaxLength(255)
-  title?: string
+  title?: string;
 }

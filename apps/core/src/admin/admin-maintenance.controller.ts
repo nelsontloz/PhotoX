@@ -1,17 +1,17 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import { IsIn } from 'class-validator'
-import { SEARCH_EMBEDDING_MODEL, type FaceDetectionSettings } from '@photox/shared-types'
-import type { LastRun } from '../settings/settings.service'
-import { SettingsService } from '../settings/settings.service'
-import { AdminAssetsService } from './admin-assets.service'
-import { AdminJobsService } from './admin-jobs.service'
-import { REPROCESS_PAGE_SIZE } from './reprocess.util'
-import { BullMqService } from '../queue/bullmq.service'
+import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { IsIn } from 'class-validator';
+import { SEARCH_EMBEDDING_MODEL, type FaceDetectionSettings } from '@photox/shared-types';
+import type { LastRun } from '../settings/settings.service';
+import { SettingsService } from '../settings/settings.service';
+import { AdminAssetsService } from './admin-assets.service';
+import { AdminJobsService } from './admin-jobs.service';
+import { REPROCESS_PAGE_SIZE } from './reprocess.util';
+import { BullMqService } from '../queue/bullmq.service';
 
 class ReprocessThumbnailsDto {
   @IsIn(['photo', 'video'])
-  kind!: 'photo' | 'video'
+  kind!: 'photo' | 'video';
 }
 
 @ApiTags('admin')
@@ -27,7 +27,7 @@ export class AdminMaintenanceController {
   @Get('orphan-counts')
   @ApiOperation({ summary: 'Count orphan files and thumbnail rows (admin-only)' })
   async orphanCounts(): Promise<{ orphanFiles: number; orphanThumbnails: number }> {
-    return this.admin.getOrphanCounts()
+    return this.admin.getOrphanCounts();
   }
 
   @Post('cleanup-orphans/run')
@@ -35,11 +35,11 @@ export class AdminMaintenanceController {
   @ApiOperation({ summary: 'Run orphan cleanup inline (admin-only)' })
   @ApiResponse({ status: 200, description: 'Deleted orphan file, thumbnail and stray counts' })
   async runCleanupOrphans(): Promise<{
-    deletedFiles: number
-    deletedThumbnails: number
-    deletedStrays: number
+    deletedFiles: number;
+    deletedThumbnails: number;
+    deletedStrays: number;
   }> {
-    return this.admin.cleanupOrphans()
+    return this.admin.cleanupOrphans();
   }
 
   @Post('thumbnails/reprocess')
@@ -48,8 +48,8 @@ export class AdminMaintenanceController {
   async reprocess(
     @Body() dto: ReprocessThumbnailsDto,
   ): Promise<{ enqueued: number; totalAssets: number }> {
-    let enqueued = 0
-    let totalAssets = 0
+    let enqueued = 0;
+    let totalAssets = 0;
     for (const size of ['sm', 'md', 'lg', 'xl'] as const) {
       const page = await this.bullMq.enqueuePaged(
         'process-thumbnail',
@@ -59,11 +59,11 @@ export class AdminMaintenanceController {
           data: { assetId: item.id, fileId: item.fileId, userId: item.userId, size },
           jobId: `thumb-reprocess-${item.id}-${size}`,
         }),
-      )
-      enqueued += page.enqueued
-      totalAssets = page.total
+      );
+      enqueued += page.enqueued;
+      totalAssets = page.total;
     }
-    return { enqueued, totalAssets }
+    return { enqueued, totalAssets };
   }
 
   @Post('faces/reprocess')
@@ -71,14 +71,14 @@ export class AdminMaintenanceController {
   @ApiOperation({ summary: 'Enqueue face re-embed jobs for all non-trashed photos (admin-only)' })
   @ApiResponse({ status: 200, description: 'Re-embed jobs enqueued and the run recorded' })
   async reprocessFaces(): Promise<{ enqueued: number; total: number }> {
-    return this.adminJobs.reprocessFaces()
+    return this.adminJobs.reprocessFaces();
   }
 
   @Get('face-detection')
   @ApiOperation({ summary: 'SCRFD face-detector model availability (admin-only)' })
   @ApiResponse({ status: 200, description: 'Current face detection settings' })
   async faceDetectionSettings(): Promise<FaceDetectionSettings> {
-    return this.settings.getSettings()
+    return this.settings.getSettings();
   }
 
   @Get('faces/reprocess')
@@ -88,10 +88,10 @@ export class AdminMaintenanceController {
     description: 'Last run record (null when never run) and queue counts',
   })
   faceReprocessStatus(): Promise<{
-    lastRun: LastRun<'face'> | null
-    queue: Record<string, number>
+    lastRun: LastRun<'face'> | null;
+    queue: Record<string, number>;
   }> {
-    return this.adminJobs.status('face')
+    return this.adminJobs.status('face');
   }
 
   @Post('faces/recluster')
@@ -102,7 +102,7 @@ export class AdminMaintenanceController {
     description: 'One cluster job enqueued per distinct user with faces',
   })
   async reclusterFaces(): Promise<{ enqueued: number }> {
-    return this.adminJobs.reclusterFaces()
+    return this.adminJobs.reclusterFaces();
   }
 
   @Post('embeddings/reprocess')
@@ -110,8 +110,8 @@ export class AdminMaintenanceController {
   @ApiOperation({ summary: 'Enqueue embed jobs for all non-trashed photos (admin-only)' })
   @ApiResponse({ status: 200, description: 'Embed jobs enqueued and the run recorded' })
   async reprocessEmbeddings(): Promise<{ enqueued: number; total: number; model: string }> {
-    const { enqueued, total } = await this.adminJobs.reprocessEmbeddings()
-    return { enqueued, total, model: SEARCH_EMBEDDING_MODEL }
+    const { enqueued, total } = await this.adminJobs.reprocessEmbeddings();
+    return { enqueued, total, model: SEARCH_EMBEDDING_MODEL };
   }
 
   @Get('embeddings/reprocess')
@@ -123,10 +123,10 @@ export class AdminMaintenanceController {
     description: 'Last run record (null when never run) and queue counts',
   })
   embeddingReprocessStatus(): Promise<{
-    lastRun: LastRun<'embedding'> | null
-    queue: Record<string, number>
+    lastRun: LastRun<'embedding'> | null;
+    queue: Record<string, number>;
   }> {
-    return this.adminJobs.status('embedding')
+    return this.adminJobs.status('embedding');
   }
 
   @Post('detections/reprocess')
@@ -136,7 +136,7 @@ export class AdminMaintenanceController {
   })
   @ApiResponse({ status: 200, description: 'Detection jobs enqueued and the run recorded' })
   async reprocessDetections(): Promise<{ enqueued: number; total: number }> {
-    return this.adminJobs.reprocessDetections()
+    return this.adminJobs.reprocessDetections();
   }
 
   @Get('detections/reprocess')
@@ -146,10 +146,10 @@ export class AdminMaintenanceController {
     description: 'Last run record (null when never run) and queue counts',
   })
   detectionsReprocessStatus(): Promise<{
-    lastRun: LastRun<'detections'> | null
-    queue: Record<string, number>
+    lastRun: LastRun<'detections'> | null;
+    queue: Record<string, number>;
   }> {
-    return this.adminJobs.status('detections')
+    return this.adminJobs.status('detections');
   }
 
   @Post('places/backfill')
@@ -159,14 +159,14 @@ export class AdminMaintenanceController {
   })
   @ApiResponse({ status: 200, description: 'Place resolution counts and the run recorded' })
   async backfillPlaces(): Promise<{ updated: number; total: number }> {
-    return this.adminJobs.backfillPlaces()
+    return this.adminJobs.backfillPlaces();
   }
 
   @Get('places/backfill')
   @ApiOperation({ summary: 'Places backfill last-run record' })
   @ApiResponse({ status: 200, description: 'Last run record (null when never run)' })
   async placesBackfillStatus(): Promise<{ lastRun: LastRun<'places'> | null }> {
-    return this.adminJobs.placesStatus()
+    return this.adminJobs.placesStatus();
   }
 
   @Post('metadata/reprocess')
@@ -176,7 +176,7 @@ export class AdminMaintenanceController {
   })
   @ApiResponse({ status: 200, description: 'Metadata jobs enqueued and the run recorded' })
   async reprocessMetadata(): Promise<{ enqueued: number; total: number }> {
-    return this.adminJobs.reprocessMetadata()
+    return this.adminJobs.reprocessMetadata();
   }
 
   @Get('metadata/reprocess')
@@ -188,9 +188,9 @@ export class AdminMaintenanceController {
     description: 'Last run record (null when never run) and queue counts',
   })
   metadataReprocessStatus(): Promise<{
-    lastRun: LastRun<'metadata'> | null
-    queue: Record<string, number>
+    lastRun: LastRun<'metadata'> | null;
+    queue: Record<string, number>;
   }> {
-    return this.adminJobs.status('metadata')
+    return this.adminJobs.status('metadata');
   }
 }

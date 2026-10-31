@@ -1,24 +1,24 @@
-import { FaArrowLeft, FaCircleInfo, FaObjectGroup } from 'react-icons/fa6'
-import type { Asset } from '@photox/shared-types'
-import { formatBytes } from '../../lib/format'
-import { formatDate } from '../../lib/dateFormat'
-import { ViewerActions } from './ViewerActions'
+import { FaArrowLeft, FaCircleInfo, FaObjectGroup } from 'react-icons/fa6';
+import type { Asset } from '@photox/shared-types';
+import { formatBytes } from '../../lib/format';
+import { formatDate } from '../../lib/dateFormat';
+import { ViewerActions } from './ViewerActions';
 
 interface ViewerTopBarProps {
-  asset: Asset
-  infoOpen: boolean
-  onToggleInfo: () => void
-  onClose: () => void
-  detectionsOn?: boolean
-  onToggleDetections?: () => void
-  onTrash?: () => void
-  onRestore?: () => void
-  onDelete?: () => void
-  onToggleFavorite?: () => void
-  onAddToAlbum?: () => void
-  onRemoveFromAlbum?: () => void
-  onReprocessThumbnails?: () => void
-  onReprocessVideo?: () => void
+  asset: Asset;
+  infoOpen: boolean;
+  onToggleInfo: () => void;
+  onClose: () => void;
+  detectionsOn?: boolean;
+  onToggleDetections?: () => void;
+  onTrash?: () => void;
+  onRestore?: () => void;
+  onDelete?: () => void;
+  onToggleFavorite?: () => void;
+  onAddToAlbum?: () => void;
+  onRemoveFromAlbum?: () => void;
+  onReprocessThumbnails?: () => void;
+  onReprocessVideo?: () => void;
 }
 
 export function ViewerTopBar({
@@ -37,9 +37,9 @@ export function ViewerTopBar({
   onReprocessThumbnails,
   onReprocessVideo,
 }: ViewerTopBarProps) {
-  const title = asset.originalName ?? asset.title ?? 'Untitled'
-  const dateStr = asset.takenAt ?? asset.uploadedAt
-  const sizeStr = asset.sizeBytes ? ` · ${formatBytes(asset.sizeBytes)}` : ''
+  const title = asset.originalName ?? asset.title ?? 'Untitled';
+  const dateStr = asset.takenAt ?? asset.uploadedAt;
+  const sizeStr = asset.sizeBytes ? ` · ${formatBytes(asset.sizeBytes)}` : '';
 
   return (
     <div className="absolute top-0 left-0 right-0 h-16 flex items-center justify-between gap-2 px-4 sm:px-6 z-20 bg-gradient-to-b from-black/40 to-transparent">
@@ -92,5 +92,5 @@ export function ViewerTopBar({
         </button>
       </div>
     </div>
-  )
+  );
 }

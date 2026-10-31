@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState } from 'react';
 import {
   FaArrowsRotate,
   FaCamera,
@@ -6,18 +6,18 @@ import {
   FaSpinner,
   FaTriangleExclamation,
   FaTrashCan,
-} from 'react-icons/fa6'
-import { getAdminAssetCounts, reprocessThumbnails, getOrphanCounts } from '../../api/admin'
-import { AdminSection, AdminToast, Button, CountTile, StatStrip, colsFor } from './ui'
-import { ConfirmDialog, InlineError } from './shared'
-import { useAsyncFetch } from '../../hooks/useAsyncFetch'
+} from 'react-icons/fa6';
+import { getAdminAssetCounts, reprocessThumbnails, getOrphanCounts } from '../../api/admin';
+import { AdminSection, AdminToast, Button, CountTile, StatStrip, colsFor } from './ui';
+import { ConfirmDialog, InlineError } from './shared';
+import { useAsyncFetch } from '../../hooks/useAsyncFetch';
 
 // --- small shared panels ----------------------------------------------------------------
 
 interface MatrixPanelProps {
-  title: string
-  icon: typeof FaCamera
-  tiles: { count: number; label: string }[]
+  title: string;
+  icon: typeof FaCamera;
+  tiles: { count: number; label: string }[];
 }
 
 function MatrixPanel({ title, icon: Icon, tiles }: MatrixPanelProps) {
@@ -33,7 +33,7 @@ function MatrixPanel({ title, icon: Icon, tiles }: MatrixPanelProps) {
         ))}
       </div>
     </div>
-  )
+  );
 }
 
 function SkeletonPanel({ tileCount = 4 }: { tileCount?: number }) {
@@ -49,40 +49,40 @@ function SkeletonPanel({ tileCount = 4 }: { tileCount?: number }) {
         ))}
       </div>
     </div>
-  )
+  );
 }
 
 // --- asset health & queues (merges the counts matrix + thumbnail reprocess) -------------
 
 export function AssetHealthSection() {
-  const [version, setVersion] = useState(0)
+  const [version, setVersion] = useState(0);
   const { data, loading, error } = useAsyncFetch(() => getAdminAssetCounts(), {
     refreshKey: version,
     errorMessage: 'Failed to load asset counts',
     loadingMode: 'always',
-  })
+  });
 
-  const [confirming, setConfirming] = useState(false)
-  const [inFlight, setInFlight] = useState(false)
-  const [result, setResult] = useState<string | null>(null)
-  const [reprocessError, setReprocessError] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState(false);
+  const [inFlight, setInFlight] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [reprocessError, setReprocessError] = useState<string | null>(null);
 
   const onConfirm = async () => {
-    setConfirming(false)
-    setInFlight(true)
-    setReprocessError(null)
-    setResult(null)
+    setConfirming(false);
+    setInFlight(true);
+    setReprocessError(null);
+    setResult(null);
     try {
-      const res = await reprocessThumbnails('photo')
+      const res = await reprocessThumbnails('photo');
       setResult(
         `Enqueued ${res.enqueued.toLocaleString()} jobs for ${res.totalAssets.toLocaleString()} pictures.`,
-      )
+      );
     } catch (err) {
-      setReprocessError(err instanceof Error ? err.message : 'Reprocess failed')
+      setReprocessError(err instanceof Error ? err.message : 'Reprocess failed');
     } finally {
-      setInFlight(false)
+      setInFlight(false);
     }
-  }
+  };
 
   return (
     <AdminSection
@@ -159,18 +159,18 @@ export function AssetHealthSection() {
         </ConfirmDialog>
       )}
     </AdminSection>
-  )
+  );
 }
 
 // --- orphan cleanup ---------------------------------------------------------------------
 
 export function OrphanCleanupSection() {
-  const [version, setVersion] = useState(0)
+  const [version, setVersion] = useState(0);
   const { data, loading, error } = useAsyncFetch(() => getOrphanCounts(), {
     refreshKey: version,
     errorMessage: 'Failed to load orphan counts',
     loadingMode: 'always',
-  })
+  });
 
   return (
     <AdminSection
@@ -208,5 +208,5 @@ export function OrphanCleanupSection() {
         </>
       ) : null}
     </AdminSection>
-  )
+  );
 }

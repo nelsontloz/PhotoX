@@ -1,11 +1,11 @@
-import { defineConfig, mergeConfig } from 'vitest/config'
-import { playwright } from '@vitest/browser-playwright'
-import type { UserConfig } from 'vite'
-import viteConfig from './vite.config'
+import { defineConfig, mergeConfig } from 'vitest/config';
+import { playwright } from '@vitest/browser-playwright';
+import type { UserConfig } from 'vite';
+import viteConfig from './vite.config';
 
 // The base config's jsdom `test.exclude` hides this lane, and mergeConfig only ever *adds*
 // array entries — so drop the base test block and declare this lane's own.
-const { test: _jsdomTest, ...viteOnly } = viteConfig as UserConfig & { test?: unknown }
+const { test: _jsdomTest, ...viteOnly } = viteConfig as UserConfig & { test?: unknown };
 
 // Opt-in real-browser lane — not part of `pnpm verify` (Jenkins has no Chromium).
 // Run with: pnpm --filter @photox/web test:browser
@@ -23,4 +23,4 @@ export default mergeConfig(
       },
     },
   }),
-)
+);

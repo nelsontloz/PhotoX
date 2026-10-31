@@ -1,7 +1,7 @@
-import { defineConfig } from 'vite'
-import { configDefaults } from 'vitest/config'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
+import { defineConfig } from 'vite';
+import { configDefaults } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -21,7 +21,7 @@ export default defineConfig({
             id.includes('node_modules/scheduler') ||
             id.includes('node_modules/react-router')
           ) {
-            return 'vendor-react'
+            return 'vendor-react';
           }
         },
       },
@@ -54,4 +54,4 @@ export default defineConfig({
     // real-browser lane is opt-in: `pnpm --filter @photox/web test:browser` (needs Chromium)
     exclude: [...configDefaults.exclude, 'test/browser/**'],
   },
-})
+});

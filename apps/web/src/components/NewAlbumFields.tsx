@@ -1,6 +1,6 @@
-import { formInputClass } from './Dialog'
+import { formInputClass } from './Dialog';
 
-const NEW_ALBUM_NAME_MAX = 255
+const NEW_ALBUM_NAME_MAX = 255;
 
 /**
  * Name + description fields shared by the listing's New Album dialog and the album picker's
@@ -12,10 +12,10 @@ export function NewAlbumFields({
   description,
   onDescriptionChange,
 }: {
-  name: string
-  onNameChange: (value: string) => void
-  description: string
-  onDescriptionChange: (value: string) => void
+  name: string;
+  onNameChange: (value: string) => void;
+  description: string;
+  onDescriptionChange: (value: string) => void;
 }) {
   return (
     <>
@@ -49,5 +49,5 @@ export function NewAlbumFields({
         className={`${formInputClass} resize-none`}
       />
     </>
-  )
+  );
 }

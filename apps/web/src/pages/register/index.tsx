@@ -1,47 +1,47 @@
-import { useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
-import { FaRegUser, FaRegEnvelope, FaLock, FaArrowRight } from 'react-icons/fa6'
-import { useAuthStore } from '../../store/auth-store'
-import { AuthError, AuthField, AuthShell, AuthSubmit } from '../../components/AuthShell'
-import { getRegistrationSettings } from '../../api/auth'
-import { useAsyncFetch } from '../../hooks/useAsyncFetch'
+import { useState } from 'react';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { FaRegUser, FaRegEnvelope, FaLock, FaArrowRight } from 'react-icons/fa6';
+import { useAuthStore } from '../../store/auth-store';
+import { AuthError, AuthField, AuthShell, AuthSubmit } from '../../components/AuthShell';
+import { getRegistrationSettings } from '../../api/auth';
+import { useAsyncFetch } from '../../hooks/useAsyncFetch';
 
-const SIGNUPS_DISABLED = 'Public sign-ups are disabled. Ask an administrator for an account.'
+const SIGNUPS_DISABLED = 'Public sign-ups are disabled. Ask an administrator for an account.';
 
 export default function RegisterPage() {
-  const [fullName, setFullName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [passwordError, setPasswordError] = useState<string | null>(null)
-  const navigate = useNavigate()
-  const { register, status, error, clearError } = useAuthStore()
-  const authenticated = status === 'authenticated'
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { register, status, error, clearError } = useAuthStore();
+  const authenticated = status === 'authenticated';
 
   // The form renders while the check is in flight; only a confirmed `false` replaces it. A
   // failed check also falls back to the form: the register call still refuses with a 403.
   const { data: registration } = useAsyncFetch(getRegistrationSettings, {
     errorMessage: 'Failed to check whether sign-ups are open',
-  })
-  const signupsClosed = registration?.enabled === false
+  });
+  const signupsClosed = registration?.enabled === false;
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setPasswordError(null)
+    e.preventDefault();
+    setPasswordError(null);
     if (password !== confirmPassword) {
-      setPasswordError('Passwords do not match')
-      return
+      setPasswordError('Passwords do not match');
+      return;
     }
-    await register(email, password, fullName)
+    await register(email, password, fullName);
     if (useAuthStore.getState().status === 'authenticated') {
-      void navigate('/')
+      void navigate('/');
     }
-  }
+  };
 
   if (authenticated) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/" replace />;
   }
 
   return (
@@ -131,5 +131,5 @@ export default function RegisterPage() {
         </form>
       )}
     </AuthShell>
-  )
+  );
 }

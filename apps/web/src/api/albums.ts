@@ -1,36 +1,36 @@
-import { api, type PageParams } from './client'
+import { api, type PageParams } from './client';
 import type {
   AlbumDto,
   CreateAlbumDto,
   UpdateAlbumDto,
   AddAssetsToAlbumDto,
-} from '@photox/shared-types'
-import type { Asset } from '@photox/shared-types'
+} from '@photox/shared-types';
+import type { Asset } from '@photox/shared-types';
 
 export async function listAlbums(
   params: PageParams = {},
 ): Promise<{ items: AlbumDto[]; total: number }> {
-  const { data } = await api.get<{ items: AlbumDto[]; total: number }>('/v1/albums', { params })
-  return data
+  const { data } = await api.get<{ items: AlbumDto[]; total: number }>('/v1/albums', { params });
+  return data;
 }
 
 export async function getAlbum(id: string): Promise<AlbumDto> {
-  const { data } = await api.get<AlbumDto>(`/v1/albums/${id}`)
-  return data
+  const { data } = await api.get<AlbumDto>(`/v1/albums/${id}`);
+  return data;
 }
 
 export async function createAlbum(body: CreateAlbumDto): Promise<AlbumDto> {
-  const { data } = await api.post<AlbumDto>('/v1/albums', body)
-  return data
+  const { data } = await api.post<AlbumDto>('/v1/albums', body);
+  return data;
 }
 
 export async function updateAlbum(id: string, body: UpdateAlbumDto): Promise<AlbumDto> {
-  const { data } = await api.patch<AlbumDto>(`/v1/albums/${id}`, body)
-  return data
+  const { data } = await api.patch<AlbumDto>(`/v1/albums/${id}`, body);
+  return data;
 }
 
 export async function deleteAlbum(id: string): Promise<void> {
-  await api.delete(`/v1/albums/${id}`)
+  await api.delete(`/v1/albums/${id}`);
 }
 
 export async function listAlbumAssets(
@@ -39,16 +39,16 @@ export async function listAlbumAssets(
 ): Promise<{ items: Asset[]; total: number }> {
   const { data } = await api.get<{ items: Asset[]; total: number }>(`/v1/albums/${id}/assets`, {
     params,
-  })
-  return data
+  });
+  return data;
 }
 
 export async function addAssetsToAlbum(id: string, assetIds: string[]): Promise<{ added: number }> {
-  const body: AddAssetsToAlbumDto = { assetIds }
-  const { data } = await api.post<{ added: number }>(`/v1/albums/${id}/assets`, body)
-  return data
+  const body: AddAssetsToAlbumDto = { assetIds };
+  const { data } = await api.post<{ added: number }>(`/v1/albums/${id}/assets`, body);
+  return data;
 }
 
 export async function removeAssetFromAlbum(id: string, assetId: string): Promise<void> {
-  await api.delete(`/v1/albums/${id}/assets/${assetId}`)
+  await api.delete(`/v1/albums/${id}/assets/${assetId}`);
 }

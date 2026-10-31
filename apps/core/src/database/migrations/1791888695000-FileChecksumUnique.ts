@@ -1,4 +1,4 @@
-import type { MigrationInterface, QueryRunner } from 'typeorm'
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 // P1-5 upload double-create race: concurrent uploads of identical bytes both passed the
 // findOne-then-save check and inserted duplicate `files` rows (loser bytes leaked). The
@@ -9,10 +9,10 @@ export class FileChecksumUnique1791888695000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
       `CREATE UNIQUE INDEX "files_user_checksum_original" ON "files" ("userId", "checksumSha256") WHERE "purpose" = 'original'`,
-    )
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP INDEX "public"."files_user_checksum_original"`)
+    await queryRunner.query(`DROP INDEX "public"."files_user_checksum_original"`);
   }
 }

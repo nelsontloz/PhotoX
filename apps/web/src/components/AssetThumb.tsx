@@ -1,23 +1,23 @@
-import { useEffect, useRef, useState } from 'react'
-import { FaSpinner, FaTriangleExclamation } from 'react-icons/fa6'
-import type { Asset, AssetThumbnail } from '@photox/shared-types'
-import { getFileStreamUrl } from '../api/assets'
-import { whenScrollIdle } from '../lib/scrollIdle'
-import { observeIntersecting } from '../lib/shared-intersection'
-import { TIMELINE_PREFETCH_PX } from '../lib/timelineLayout'
-import { useScrollContainer } from './AppShell'
+import { useEffect, useRef, useState } from 'react';
+import { FaSpinner, FaTriangleExclamation } from 'react-icons/fa6';
+import type { Asset, AssetThumbnail } from '@photox/shared-types';
+import { getFileStreamUrl } from '../api/assets';
+import { whenScrollIdle } from '../lib/scrollIdle';
+import { observeIntersecting } from '../lib/shared-intersection';
+import { TIMELINE_PREFETCH_PX } from '../lib/timelineLayout';
+import { useScrollContainer } from './AppShell';
 
 interface AssetThumbProps {
-  asset: Asset
-  className?: string
-  onThumbPicked?: (thumb: AssetThumbnail) => void
+  asset: Asset;
+  className?: string;
+  onThumbPicked?: (thumb: AssetThumbnail) => void;
   /**
    * Skip the intersection gate entirely. The observer's root is the timeline's <main>, and a
    * position:fixed element (viewer strip/related tray, dialogs) never intersects a non-viewport
    * root — its rect reports empty forever, so gated thumbs would stay Skeleton. Use for contexts
    * that are always on-screen once mounted.
    */
-  eager?: boolean
+  eager?: boolean;
 }
 
 export function AssetThumb({
@@ -26,18 +26,18 @@ export function AssetThumb({
   onThumbPicked,
   eager = false,
 }: AssetThumbProps) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [visible, setVisible] = useState(eager)
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(eager);
   // Keyed by fileId so a different asset on the same component instance is not stuck on the fallback.
-  const [failedFileId, setFailedFileId] = useState<string | null>(null)
-  const scrollContainer = useScrollContainer()
-  const thumb = asset.thumbnails?.find((t) => t.size === 'md') ?? asset.thumbnails?.[0]
+  const [failedFileId, setFailedFileId] = useState<string | null>(null);
+  const scrollContainer = useScrollContainer();
+  const thumb = asset.thumbnails?.find((t) => t.size === 'md') ?? asset.thumbnails?.[0];
 
   useEffect(() => {
-    if (eager) return
-    const el = ref.current
-    if (!el) return
-    let cancelIdle: (() => void) | undefined
+    if (eager) return;
+    const el = ref.current;
+    if (!el) return;
+    let cancelIdle: (() => void) | undefined;
     const cleanup = observeIntersecting(
       el,
       // root = the timeline's own scroller, not the viewport. An ancestor scroll container clips the
@@ -49,31 +49,31 @@ export function AssetThumb({
       scrollContainer?.current ?? null,
       `${TIMELINE_PREFETCH_PX}px 0px`,
       (entry) => {
-        if (!entry.isIntersecting) return
-        cleanup?.()
+        if (!entry.isIntersecting) return;
+        cleanup?.();
         // Arm on scroll settle (shared) rather than per-tile entry: every visible tile starts
         // its download at the same moment, so thumbs pop in together instead of in scroll order.
-        cancelIdle = whenScrollIdle(() => setVisible(true))
+        cancelIdle = whenScrollIdle(() => setVisible(true));
       },
-    )
+    );
     return () => {
-      cancelIdle?.()
-      cleanup?.()
-    }
-  }, [scrollContainer, eager])
+      cancelIdle?.();
+      cleanup?.();
+    };
+  }, [scrollContainer, eager]);
 
   useEffect(() => {
-    if (!visible) return
-    if (asset.kind !== 'photo' && asset.kind !== 'video') return
-    if (!thumb) return
-    onThumbPicked?.(thumb)
-  }, [asset.id, asset.kind, visible])
+    if (!visible) return;
+    if (asset.kind !== 'photo' && asset.kind !== 'video') return;
+    if (!thumb) return;
+    onThumbPicked?.(thumb);
+  }, [asset.id, asset.kind, visible]);
 
-  const thumbFileId = thumb?.fileId ?? null
-  const src = visible && thumbFileId ? getFileStreamUrl(thumbFileId) : null
-  const error = failedFileId !== null && failedFileId === thumbFileId
-  const isVideo = asset.kind === 'video'
-  const transcodeStatus = isVideo ? asset.transcodeStatus : null
+  const thumbFileId = thumb?.fileId ?? null;
+  const src = visible && thumbFileId ? getFileStreamUrl(thumbFileId) : null;
+  const error = failedFileId !== null && failedFileId === thumbFileId;
+  const isVideo = asset.kind === 'video';
+  const transcodeStatus = isVideo ? asset.transcodeStatus : null;
 
   return (
     <div ref={ref} className={`relative w-full h-full ${className}`}>
@@ -119,5 +119,5 @@ export function AssetThumb({
         </>
       )}
     </div>
-  )
+  );
 }

@@ -1,12 +1,12 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, In, Repository } from 'typeorm'
-import { Person } from '../database/entities'
-import { Face } from '../database/entities'
-import { refreshPersonFaceCount, countLiveFaces } from '../faces/face-count'
-import { findOwnedOr404 } from '../common/asset-ownership'
-import type { ApplyClustersDto } from './dto/apply-clusters.dto'
-import type { PersonDto, PersonListResponse } from '@photox/shared-types'
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, In, Repository } from 'typeorm';
+import { Person } from '../database/entities';
+import { Face } from '../database/entities';
+import { refreshPersonFaceCount, countLiveFaces } from '../faces/face-count';
+import { findOwnedOr404 } from '../common/asset-ownership';
+import type { ApplyClustersDto } from './dto/apply-clusters.dto';
+import type { PersonDto, PersonListResponse } from '@photox/shared-types';
 
 @Injectable()
 export class PersonsService {
@@ -22,17 +22,17 @@ export class PersonsService {
     const total = await this.personRepo
       .createQueryBuilder('p')
       .where('p.userId = :userId', { userId })
-      .getCount()
+      .getCount();
 
     interface PersonRow {
-      id: string
-      userId: string
-      name: string | null
-      coverFaceId: string | null
-      clusterLabel: string | null
-      createdAt: Date
-      updatedAt: Date
-      liveFaceCount: string
+      id: string;
+      userId: string;
+      name: string | null;
+      coverFaceId: string | null;
+      clusterLabel: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+      liveFaceCount: string;
     }
 
     const rows: PersonRow[] = await this.personRepo.query(
@@ -51,7 +51,7 @@ export class PersonsService {
        ORDER BY "liveFaceCount" DESC, p."updatedAt" DESC
        LIMIT $2 OFFSET $3`,
       [userId, limit, offset],
-    )
+    );
 
     const persons = rows.map((r) =>
       this.toListItem({
@@ -64,30 +64,30 @@ export class PersonsService {
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
       }),
-    )
+    );
 
     return {
       items: persons,
       total,
       limit,
       offset,
-    }
+    };
   }
 
   async getOne(userId: string, id: string): Promise<PersonDto> {
-    const person = await findOwnedOr404(this.personRepo, id, userId, 'Person')
-    person.faceCount = await countLiveFaces(this.faceRepo, id, userId)
-    return this.toListItem(person)
+    const person = await findOwnedOr404(this.personRepo, id, userId, 'Person');
+    person.faceCount = await countLiveFaces(this.faceRepo, id, userId);
+    return this.toListItem(person);
   }
 
   async update(userId: string, id: string, name: string | null): Promise<PersonDto> {
-    await findOwnedOr404(this.personRepo, id, userId, 'Person')
-    await this.personRepo.update(id, { name })
-    const updated = await this.personRepo.findOne({ where: { id } })
+    await findOwnedOr404(this.personRepo, id, userId, 'Person');
+    await this.personRepo.update(id, { name });
+    const updated = await this.personRepo.findOne({ where: { id } });
     // C4: count live (non-trashed) faces like getOne/list — the stored faceCount goes stale
     // as soon as an asset is trashed/deleted, so PATCH must not echo it.
-    updated!.faceCount = await countLiveFaces(this.faceRepo, id, userId)
-    return this.toListItem(updated!)
+    updated!.faceCount = await countLiveFaces(this.faceRepo, id, userId);
+    return this.toListItem(updated!);
   }
 
   // ponytail: worker cluster job applies its whole plan atomically; re-running after a success is a
@@ -96,29 +96,29 @@ export class PersonsService {
     userId: string,
     dto: ApplyClustersDto,
   ): Promise<{ created: number; assigned: number }> {
-    const items = [...dto.creates, ...dto.attaches]
-    const totalFaces = items.reduce((sum, item) => sum + item.faceIds.length, 0)
-    if (totalFaces > 5000) throw new BadRequestException('Too many faces (max 5000)')
+    const items = [...dto.creates, ...dto.attaches];
+    const totalFaces = items.reduce((sum, item) => sum + item.faceIds.length, 0);
+    if (totalFaces > 5000) throw new BadRequestException('Too many faces (max 5000)');
     for (const item of items) {
       if (item.coverFaceId && !item.faceIds.includes(item.coverFaceId)) {
-        throw new BadRequestException('coverFaceId must be one of the item faceIds')
+        throw new BadRequestException('coverFaceId must be one of the item faceIds');
       }
     }
 
-    const allFaceIds = [...new Set(items.flatMap((item) => item.faceIds))]
-    const attachPersonIds = [...new Set(dto.attaches.map((a) => a.personId))]
+    const allFaceIds = [...new Set(items.flatMap((item) => item.faceIds))];
+    const attachPersonIds = [...new Set(dto.attaches.map((a) => a.personId))];
 
     return this.dataSource.transaction(async (em) => {
       const faces = allFaceIds.length
         ? await em.find(Face, { where: { id: In(allFaceIds), userId } })
-        : []
-      if (faces.length !== allFaceIds.length) throw new NotFoundException('Face not found')
+        : [];
+      if (faces.length !== allFaceIds.length) throw new NotFoundException('Face not found');
 
       const attachPersons = attachPersonIds.length
         ? await em.find(Person, { where: { id: In(attachPersonIds), userId } })
-        : []
+        : [];
       if (attachPersons.length !== attachPersonIds.length) {
-        throw new NotFoundException('Person not found')
+        throw new NotFoundException('Person not found');
       }
 
       const createdPersons = dto.creates.length
@@ -127,21 +127,21 @@ export class PersonsService {
               em.create(Person, { userId, name: null, clusterLabel: c.clusterLabel, faceCount: 0 }),
             ),
           )
-        : []
+        : [];
 
-      const faceById = new Map(faces.map((f) => [f.id, f]))
-      const touchedPersonIds = new Set<string>()
+      const faceById = new Map(faces.map((f) => [f.id, f]));
+      const touchedPersonIds = new Set<string>();
       const assignFace = (faceId: string, personId: string) => {
-        const face = faceById.get(faceId)!
-        if (face.personId && face.personId !== personId) touchedPersonIds.add(face.personId)
-        face.personId = personId
-        touchedPersonIds.add(personId)
-      }
+        const face = faceById.get(faceId)!;
+        if (face.personId && face.personId !== personId) touchedPersonIds.add(face.personId);
+        face.personId = personId;
+        touchedPersonIds.add(personId);
+      };
       dto.creates.forEach((c, i) =>
         c.faceIds.forEach((fid) => assignFace(fid, createdPersons[i]!.id)),
-      )
-      dto.attaches.forEach((a) => a.faceIds.forEach((fid) => assignFace(fid, a.personId)))
-      if (faces.length) await em.save(faces)
+      );
+      dto.attaches.forEach((a) => a.faceIds.forEach((fid) => assignFace(fid, a.personId)));
+      if (faces.length) await em.save(faces);
 
       for (const [i, c] of dto.creates.entries()) {
         if (c.coverFaceId) {
@@ -149,21 +149,21 @@ export class PersonsService {
             Person,
             { id: createdPersons[i]!.id, userId },
             { coverFaceId: c.coverFaceId },
-          )
+          );
         }
       }
       for (const a of dto.attaches) {
         if (a.coverFaceId) {
-          await em.update(Person, { id: a.personId, userId }, { coverFaceId: a.coverFaceId })
+          await em.update(Person, { id: a.personId, userId }, { coverFaceId: a.coverFaceId });
         }
       }
 
       for (const pid of touchedPersonIds) {
-        await refreshPersonFaceCount(em.getRepository(Face), em.getRepository(Person), pid, userId)
+        await refreshPersonFaceCount(em.getRepository(Face), em.getRepository(Person), pid, userId);
       }
 
-      return { created: createdPersons.length, assigned: allFaceIds.length }
-    })
+      return { created: createdPersons.length, assigned: allFaceIds.length };
+    });
   }
 
   // ponytail: a cluster run prunes unnamed persons whose last live face left (manual unassign,
@@ -184,25 +184,25 @@ export class PersonsService {
              WHERE f."personId" = p.id AND f."userId" = p."userId" AND a."isTrashed" = false
            )`,
         [userId],
-      )
-      if (rows.length === 0) return { deleted: 0 }
+      );
+      if (rows.length === 0) return { deleted: 0 };
 
-      const ids = rows.map((r) => r.id)
-      await em.update(Face, { personId: In(ids) }, { personId: null })
-      await em.delete(Person, { id: In(ids), userId })
-      return { deleted: ids.length }
-    })
+      const ids = rows.map((r) => r.id);
+      await em.update(Face, { personId: In(ids) }, { personId: null });
+      await em.delete(Person, { id: In(ids), userId });
+      return { deleted: ids.length };
+    });
   }
 
   private toListItem(person: {
-    id: string
-    userId: string
-    name: string | null
-    coverFaceId: string | null
-    clusterLabel: string | null
-    faceCount: number
-    createdAt: Date | string
-    updatedAt: Date | string
+    id: string;
+    userId: string;
+    name: string | null;
+    coverFaceId: string | null;
+    clusterLabel: string | null;
+    faceCount: number;
+    createdAt: Date | string;
+    updatedAt: Date | string;
   }): PersonDto {
     return {
       id: person.id,
@@ -222,6 +222,6 @@ export class PersonsService {
         person.updatedAt instanceof Date
           ? person.updatedAt.toISOString()
           : String(person.updatedAt),
-    }
+    };
   }
 }

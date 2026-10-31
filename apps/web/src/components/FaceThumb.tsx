@@ -1,25 +1,25 @@
-import { useState } from 'react'
-import { FaFaceSmile } from 'react-icons/fa6'
+import { useState } from 'react';
+import { FaFaceSmile } from 'react-icons/fa6';
 
 interface FaceThumbProps {
-  faceId: string | null
-  alt: string
-  className?: string
+  faceId: string | null;
+  alt: string;
+  className?: string;
 }
 
 export function FaceThumb({ faceId, alt, className = '' }: FaceThumbProps) {
-  const [loadedFaceId, setLoadedFaceId] = useState<string | null>(null)
-  const [failedFaceId, setFailedFaceId] = useState<string | null>(null)
+  const [loadedFaceId, setLoadedFaceId] = useState<string | null>(null);
+  const [failedFaceId, setFailedFaceId] = useState<string | null>(null);
 
   if (!faceId || failedFaceId === faceId) {
     return (
       <div className="flex flex-col items-center gap-1">
         <FaFaceSmile className="text-3xl text-slate-500" />
       </div>
-    )
+    );
   }
 
-  const src = `/api/v1/faces/${encodeURIComponent(faceId)}/thumb`
+  const src = `/api/v1/faces/${encodeURIComponent(faceId)}/thumb`;
 
   if (loadedFaceId !== faceId) {
     return (
@@ -37,7 +37,7 @@ export function FaceThumb({ faceId, alt, className = '' }: FaceThumbProps) {
         />
         <div className={`animate-pulse bg-slate-700/50 rounded w-full h-full ${className}`} />
       </>
-    )
+    );
   }
 
   return (
@@ -49,5 +49,5 @@ export function FaceThumb({ faceId, alt, className = '' }: FaceThumbProps) {
       decoding="async"
       draggable={false}
     />
-  )
+  );
 }

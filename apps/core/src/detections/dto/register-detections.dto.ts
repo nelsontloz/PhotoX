@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger'
-import { Type } from 'class-transformer'
+import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
@@ -11,26 +11,26 @@ import {
   Max,
   Min,
   ValidateNested,
-} from 'class-validator'
+} from 'class-validator';
 
 export class DetectionBoxDto {
   @ApiProperty()
   @IsNumber()
-  x!: number
+  x!: number;
 
   @ApiProperty()
   @IsNumber()
-  y!: number
-
-  @ApiProperty()
-  @IsNumber()
-  @IsPositive()
-  w!: number
+  y!: number;
 
   @ApiProperty()
   @IsNumber()
   @IsPositive()
-  h!: number
+  w!: number;
+
+  @ApiProperty()
+  @IsNumber()
+  @IsPositive()
+  h!: number;
 }
 
 export class DetectedObjectDto {
@@ -38,18 +38,18 @@ export class DetectedObjectDto {
   @IsString()
   @Length(1, 64)
   @Matches(/\S/)
-  label!: string
+  label!: string;
 
   @ApiProperty({ minimum: 0, maximum: 1 })
   @IsNumber()
   @Min(0)
   @Max(1)
-  confidence!: number
+  confidence!: number;
 
   @ApiProperty({ type: DetectionBoxDto })
   @ValidateNested()
   @Type(() => DetectionBoxDto)
-  box!: DetectionBoxDto
+  box!: DetectionBoxDto;
 }
 
 export class RegisterDetectionsDto {
@@ -58,5 +58,5 @@ export class RegisterDetectionsDto {
   @ArrayMaxSize(200)
   @ValidateNested({ each: true })
   @Type(() => DetectedObjectDto)
-  detections!: DetectedObjectDto[]
+  detections!: DetectedObjectDto[];
 }

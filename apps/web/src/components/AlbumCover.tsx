@@ -1,36 +1,36 @@
-import { useEffect, useRef, useState } from 'react'
-import { FaPhotoFilm } from 'react-icons/fa6'
-import type { Asset } from '@photox/shared-types'
-import { listAlbumAssets } from '../api/albums'
-import { observeIntersecting } from '../lib/shared-intersection'
-import { AssetThumb } from './AssetThumb'
+import { useEffect, useRef, useState } from 'react';
+import { FaPhotoFilm } from 'react-icons/fa6';
+import type { Asset } from '@photox/shared-types';
+import { listAlbumAssets } from '../api/albums';
+import { observeIntersecting } from '../lib/shared-intersection';
+import { AssetThumb } from './AssetThumb';
 
 export function AlbumCover({
   albumId,
   className = '',
   emptyIconClassName = 'text-2xl text-slate-700',
 }: {
-  albumId: string
-  className?: string
-  emptyIconClassName?: string
+  albumId: string;
+  className?: string;
+  emptyIconClassName?: string;
 }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [cover, setCover] = useState<Asset | null>(null)
+  const ref = useRef<HTMLDivElement>(null);
+  const [cover, setCover] = useState<Asset | null>(null);
 
   useEffect(() => {
-    const el = ref.current
-    if (!el) return
+    const el = ref.current;
+    if (!el) return;
     const cleanup = observeIntersecting(el, null, '200px', (entry) => {
-      if (!entry.isIntersecting) return
-      cleanup?.()
+      if (!entry.isIntersecting) return;
+      cleanup?.();
       listAlbumAssets(albumId, { limit: 1 })
         .then((res) => setCover(res.items[0] ?? null))
-        .catch(() => setCover(null))
-    })
+        .catch(() => setCover(null));
+    });
     return () => {
-      cleanup?.()
-    }
-  }, [albumId])
+      cleanup?.();
+    };
+  }, [albumId]);
 
   if (cover) {
     return (
@@ -39,11 +39,11 @@ export function AlbumCover({
             AssetThumb scroll-root gate is redundant — and broken inside fixed dialogs. */}
         <AssetThumb asset={cover} eager />
       </div>
-    )
+    );
   }
   return (
     <div ref={ref} className="absolute inset-0 flex items-center justify-center">
       <FaPhotoFilm className={emptyIconClassName} />
     </div>
-  )
+  );
 }

@@ -1,9 +1,9 @@
-import { ApiProperty } from '@nestjs/swagger'
-import { Type } from 'class-transformer'
-import { IsEnum, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator'
-import { PaginationQueryDto } from '../../../common/pagination-query.dto'
+import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { IsEnum, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import { PaginationQueryDto } from '../../../common/pagination-query.dto';
 
-const SORT_PATTERN = /^(createdAt|displayName|email|role):(asc|desc)$/
+const SORT_PATTERN = /^(createdAt|displayName|email|role):(asc|desc)$/;
 
 export class ListAdminUsersQueryDto extends PaginationQueryDto {
   // cap stays 50 (base allows 1000) — base validators merge with these, stricter wins.
@@ -13,7 +13,7 @@ export class ListAdminUsersQueryDto extends PaginationQueryDto {
   @IsInt()
   @Min(1)
   @Max(50)
-  override limit = 20
+  override limit = 20;
 
   @ApiProperty({
     required: false,
@@ -23,7 +23,7 @@ export class ListAdminUsersQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
   @MaxLength(100)
-  q?: string
+  q?: string;
 
   @ApiProperty({
     required: false,
@@ -33,10 +33,10 @@ export class ListAdminUsersQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
   @Matches(SORT_PATTERN)
-  sort?: string
+  sort?: string;
 
   @ApiProperty({ required: false, enum: ['user', 'admin'] })
   @IsOptional()
   @IsEnum(['user', 'admin'] as const)
-  role?: 'user' | 'admin'
+  role?: 'user' | 'admin';
 }

@@ -12,27 +12,27 @@ import {
   Post,
   Query,
   Res,
-} from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import type { Response } from 'express'
-import { CurrentUserId } from '../auth/jwt-auth.guard'
-import { AssetsService } from '../assets/assets.service'
-import { ListAssetsQueryDto } from '../assets/dto/list-assets-query.dto'
-import { RegisterThumbnailDto } from '../assets/dto/register-thumbnail.dto'
-import { UserFilesService } from '../files/user/user-files.service'
-import { RegisterFileBodyDto } from '../files/user/dto/register-file.body.dto'
-import { FacesService } from '../faces/faces.service'
-import { RegisterFacesDto } from '../faces/dto/register-faces.dto'
-import { PersonsService } from '../persons/persons.service'
-import { ApplyClustersDto } from '../persons/dto/apply-clusters.dto'
-import { EmbeddingsService } from '../embeddings/embeddings.service'
-import { RegisterEmbeddingDto } from '../embeddings/dto/register-embedding.dto'
-import { DetectionsService } from '../detections/detections.service'
-import { RegisterDetectionsDto } from '../detections/dto/register-detections.dto'
-import { WorkerMetadataDto } from './dto/worker-metadata.dto'
-import { ListFacesQueryDto } from './dto/list-faces-query.dto'
-import { PurgeUserDto } from './dto/purge-user.dto'
-import { UserDeleteService } from '../users/admin/user-delete.service'
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import type { Response } from 'express';
+import { CurrentUserId } from '../auth/jwt-auth.guard';
+import { AssetsService } from '../assets/assets.service';
+import { ListAssetsQueryDto } from '../assets/dto/list-assets-query.dto';
+import { RegisterThumbnailDto } from '../assets/dto/register-thumbnail.dto';
+import { UserFilesService } from '../files/user/user-files.service';
+import { RegisterFileBodyDto } from '../files/user/dto/register-file.body.dto';
+import { FacesService } from '../faces/faces.service';
+import { RegisterFacesDto } from '../faces/dto/register-faces.dto';
+import { PersonsService } from '../persons/persons.service';
+import { ApplyClustersDto } from '../persons/dto/apply-clusters.dto';
+import { EmbeddingsService } from '../embeddings/embeddings.service';
+import { RegisterEmbeddingDto } from '../embeddings/dto/register-embedding.dto';
+import { DetectionsService } from '../detections/detections.service';
+import { RegisterDetectionsDto } from '../detections/dto/register-detections.dto';
+import { WorkerMetadataDto } from './dto/worker-metadata.dto';
+import { ListFacesQueryDto } from './dto/list-faces-query.dto';
+import { PurgeUserDto } from './dto/purge-user.dto';
+import { UserDeleteService } from '../users/admin/user-delete.service';
 
 // Worker job surface (agreed interface with the worker lane — do not rename paths). Every route
 // is act-required via JwtAuthGuard; ownership is scoped by the job's sub through the reused
@@ -56,19 +56,19 @@ export class WorkerController {
   async listAssets(@Query() q: ListAssetsQueryDto, @CurrentUserId() userId: string) {
     // same scoped list service as the user route: sub-scoped, 200 + [] when no rows match,
     // preserving the enumeration-guard semantics (never leaks foreign rows)
-    return this.assets.list(userId, q)
+    return this.assets.list(userId, q);
   }
 
   @Get('assets/:id')
   @ApiOperation({ summary: 'Worker read of a single asset (job user scope)' })
   async getAsset(@Param('id') id: string, @CurrentUserId() userId: string) {
-    return this.assets.getOne(userId, id)
+    return this.assets.getOne(userId, id);
   }
 
   @Get('files/:id')
   @ApiOperation({ summary: 'Worker read of a file record (job user scope)' })
   async getFile(@Param('id') id: string, @CurrentUserId() userId: string) {
-    return this.files.getOne(userId, id)
+    return this.files.getOne(userId, id);
   }
 
   @Patch('assets/:id/metadata')
@@ -78,7 +78,7 @@ export class WorkerController {
     @Body() dto: WorkerMetadataDto,
     @CurrentUserId() userId: string,
   ) {
-    return this.assets.updateMetadata(id, userId, dto)
+    return this.assets.updateMetadata(id, userId, dto);
   }
 
   @Post('assets/:id/faces')
@@ -89,13 +89,13 @@ export class WorkerController {
     @Body() dto: RegisterFacesDto,
     @CurrentUserId() userId: string,
   ) {
-    return this.faces.registerFaces(id, userId, dto.faces)
+    return this.faces.registerFaces(id, userId, dto.faces);
   }
 
   @Delete('assets/:id/faces')
   @ApiOperation({ summary: 'Worker delete of all detected faces for an asset (idempotent)' })
   async deleteFaces(@Param('id') id: string, @CurrentUserId() userId: string) {
-    return this.faces.deleteForAsset(userId, id)
+    return this.faces.deleteForAsset(userId, id);
   }
 
   @Post('assets/:id/embedding')
@@ -106,7 +106,7 @@ export class WorkerController {
     @Body() dto: RegisterEmbeddingDto,
     @CurrentUserId() userId: string,
   ): Promise<{ ok: true }> {
-    return this.embeddings.register(id, userId, dto)
+    return this.embeddings.register(id, userId, dto);
   }
 
   @Post('assets/:id/detections')
@@ -117,7 +117,7 @@ export class WorkerController {
     @Body() dto: RegisterDetectionsDto,
     @CurrentUserId() userId: string,
   ): Promise<{ ok: true }> {
-    return this.detections.register(id, userId, dto)
+    return this.detections.register(id, userId, dto);
   }
 
   @Post('assets/:id/thumbnails')
@@ -129,7 +129,7 @@ export class WorkerController {
     @Body() dto: RegisterThumbnailDto,
     @CurrentUserId() userId: string,
   ) {
-    return this.assets.registerThumbnail(userId, id, dto)
+    return this.assets.registerThumbnail(userId, id, dto);
   }
 
   @Post('files/register')
@@ -141,29 +141,29 @@ export class WorkerController {
     @Body() body: RegisterFileBodyDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { file, created } = await this.files.register(userId, body)
-    res.status(created ? HttpStatus.CREATED : HttpStatus.OK)
-    return file
+    const { file, created } = await this.files.register(userId, body);
+    res.status(created ? HttpStatus.CREATED : HttpStatus.OK);
+    return file;
   }
 
   @Get('faces')
   @ApiOperation({ summary: 'Worker list of faces for clustering (job user scope)' })
   async listFaces(@Query() q: ListFacesQueryDto, @CurrentUserId() userId: string) {
-    return this.faces.listForUserPaginated(userId, q)
+    return this.faces.listForUserPaginated(userId, q);
   }
 
   @Post('persons/apply-clusters')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Worker apply of a face clustering plan' })
   async applyClusters(@CurrentUserId() userId: string, @Body() dto: ApplyClustersDto) {
-    return this.persons.applyClusters(userId, dto)
+    return this.persons.applyClusters(userId, dto);
   }
 
   @Post('persons/prune-empty')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Worker delete of persons with no live faces' })
   async pruneEmpty(@CurrentUserId() userId: string): Promise<{ deleted: number }> {
-    return this.persons.pruneEmpty(userId)
+    return this.persons.pruneEmpty(userId);
   }
 
   // The `user-delete` queue consumer lives in the worker-service (no DB access), so the wipe
@@ -177,7 +177,7 @@ export class WorkerController {
     @Body() dto: PurgeUserDto,
     @CurrentUserId() userId: string,
   ) {
-    if (id !== userId) throw new ForbiddenException('Purge target must be the job user')
-    return this.deletes.purge(id, dto.backupPrefix)
+    if (id !== userId) throw new ForbiddenException('Purge target must be the job user');
+    return this.deletes.purge(id, dto.backupPrefix);
   }
 }

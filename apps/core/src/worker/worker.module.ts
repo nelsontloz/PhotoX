@@ -1,12 +1,12 @@
-import { Module } from '@nestjs/common'
-import { AssetsModule } from '../assets/assets.module'
-import { FacesModule } from '../faces/faces.module'
-import { PersonsModule } from '../persons/persons.module'
-import { EmbeddingsModule } from '../embeddings/embeddings.module'
-import { DetectionsModule } from '../detections/detections.module'
-import { UserFilesModule } from '../files/user/user-files.module'
-import { UsersModule } from '../users/users.module'
-import { WorkerController } from './worker.controller'
+import { Module } from '@nestjs/common';
+import { AssetsModule } from '../assets/assets.module';
+import { FacesModule } from '../faces/faces.module';
+import { PersonsModule } from '../persons/persons.module';
+import { EmbeddingsModule } from '../embeddings/embeddings.module';
+import { DetectionsModule } from '../detections/detections.module';
+import { UserFilesModule } from '../files/user/user-files.module';
+import { UsersModule } from '../users/users.module';
+import { WorkerController } from './worker.controller';
 
 @Module({
   imports: [
