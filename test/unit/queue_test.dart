@@ -217,6 +217,32 @@ void main() {
       expect(limited.single.localId, 'a');
     });
 
+    test('serves the oldest capture date first, undated rows last', () async {
+      final base = DateTime(2026, 10, 19, 12);
+      await queue.enqueueAll(<AssetCandidate>[
+        _candidate('mid', takenAt: DateTime.utc(2022, 5, 1)),
+        _candidate('new', takenAt: DateTime.utc(2025, 5, 1)),
+        AssetCandidate(
+          localId: 'undated',
+          platform: 'ios',
+          kind: MediaKind.photo,
+          fileName: 'undated.jpg',
+          mimeType: 'image/jpeg',
+          sizeBytes: 100,
+          modifiedAt: DateTime.utc(2026, 10, 18),
+        ),
+        _candidate('old', takenAt: DateTime.utc(2019, 3, 4)),
+      ]);
+
+      final batch = await queue.nextBatch(10, now: base);
+      expect(batch.map((row) => row.localId), <String>[
+        'old',
+        'mid',
+        'new',
+        'undated',
+      ]);
+    });
+
     test('treats a null nextAttemptAt as immediately due', () async {
       final base = DateTime(2026, 10, 19, 12);
       await queue.enqueueAll(<AssetCandidate>[

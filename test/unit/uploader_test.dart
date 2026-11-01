@@ -109,6 +109,27 @@ void main() {
       expect(second.sha256, first.sha256);
       expect(await File(first.spoolPath).lastModified(), modified);
     });
+
+    test(
+      're-copies the source when the reused spool no longer matches',
+      () async {
+        final bytes = utf8.encode('reusable spool');
+        final item = await enqueue('prepare-3', bytes);
+        final uploader = makeUploader();
+
+        final first = await uploader.prepare(item);
+        // Same length, different content: what a crash mid-write can leave behind.
+        await File(first.spoolPath)
+            .writeAsBytes(List<int>.filled(bytes.length, 120));
+
+        final second = await uploader.prepare(
+          (await queue.byLocalId('prepare-3'))!,
+        );
+
+        expect(second.sha256, Hasher.sha256OfBytes(bytes));
+        expect(await File(second.spoolPath).readAsBytes(), bytes);
+      },
+    );
   });
 
   group('single upload path', () {

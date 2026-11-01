@@ -13,6 +13,23 @@ import 'models.dart';
 import 'transports.dart';
 import 'upload_queue.dart';
 
+/// Directory holding prepared asset bytes; wiped when the account signs out.
+String get defaultSpoolDirectory =>
+    '${Directory.systemTemp.path}/photox-upload-spool';
+
+/// Deletes every spooled copy of a photo or video.
+///
+/// Best effort: a locked file must never fail a sign-out, and the next prepare
+/// re-copies whatever it needs anyway.
+Future<void> clearUploadSpool([String? directory]) async {
+  final spool = Directory(directory ?? defaultSpoolDirectory);
+  try {
+    if (await spool.exists()) await spool.delete(recursive: true);
+  } on FileSystemException {
+    // Retried on the next sign-out.
+  }
+}
+
 /// Bytes prepared for upload: a stable spool file plus its exact digest.
 class PreparedUpload {
   const PreparedUpload({
@@ -122,8 +139,7 @@ class Uploader {
     int? thresholdBytes,
     this.maxPartsPerPass = 8,
     this.progress,
-  }) : spoolDirectory =
-           spoolDirectory ?? '${Directory.systemTemp.path}/photox-upload-spool',
+  }) : spoolDirectory = spoolDirectory ?? defaultSpoolDirectory,
        thresholdBytes = thresholdBytes ?? AppConfig.singleUploadThresholdBytes;
 
   /// Queue writes for every asset.
@@ -159,10 +175,11 @@ class Uploader {
 
   /// Copies [item]'s exact bytes into a stable spool and hashes them.
   ///
-  /// A previously prepared spool is reused only when its file still exists and
-  /// its length matches the recorded size. Otherwise the source is streamed to
-  /// a temporary file, hashed, and the queue is updated to `pending` with the
-  /// digest and spool path before any network attempt.
+  /// A previously prepared spool is reused only when its file still exists,
+  /// its length matches the recorded size and its bytes still hash to the
+  /// recorded digest. Otherwise the source is streamed to a temporary file,
+  /// flushed, hashed, and the queue is updated to `pending` with the digest and
+  /// spool path before any network attempt.
   Future<PreparedUpload> prepare(QueuedAsset item) async {
     final reused = await _reusablePrepared(item);
     if (reused != null) return reused;
@@ -195,6 +212,14 @@ class Uploader {
     try {
       if (await temporary.exists()) await temporary.delete();
       await source.openRead().pipe(temporary.openWrite());
+      // Closing is not durability: a crash can rename an unflushed temp and
+      // leave a full-length spool of garbage, which reuse would then upload.
+      final handle = await temporary.open(mode: FileMode.append);
+      try {
+        await handle.flush();
+      } finally {
+        await handle.close();
+      }
       final length = await temporary.length();
       if (await spool.exists()) await spool.delete();
       await temporary.rename(spool.path);
@@ -296,6 +321,10 @@ class Uploader {
       if (!await spool.exists()) return null;
       final length = await spool.length();
       if (length != item.sizeBytes) return null;
+      // Length proves nothing about the content: an unclean shutdown can leave
+      // a full-length file whose pages never reached disk. Re-hash so a damaged
+      // spool is re-copied from the library instead of uploaded as-is.
+      if (await hasher.sha256OfFile(spoolPath) != sha256) return null;
       return PreparedUpload(
         localId: item.localId,
         sha256: sha256,

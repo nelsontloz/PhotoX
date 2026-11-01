@@ -117,6 +117,19 @@ class TransferProgress extends ChangeNotifier {
     _notify(force: true);
   }
 
+  /// Forgets the transfer in flight and the completed counter (new account).
+  void reset() {
+    _phase = TransferPhase.idle;
+    _localId = null;
+    _fileName = null;
+    _totalBytes = 0;
+    _sentBytes = 0;
+    _speed = 0;
+    _samples.clear();
+    completedTransfers = 0;
+    _notify(force: true);
+  }
+
   double _measureSpeed(DateTime now) {
     if (_samples.length < 2) return 0;
     final first = _samples.first;

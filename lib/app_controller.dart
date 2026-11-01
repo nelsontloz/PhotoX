@@ -14,6 +14,7 @@ import 'settings/settings_store.dart';
 import 'sync/sync_coordinator.dart';
 import 'sync/transfer_progress.dart';
 import 'upload/upload_queue.dart';
+import 'upload/uploader.dart';
 
 /// State and actions the app shell needs from the sync stack.
 ///
@@ -108,7 +109,8 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     required this.scheduler,
     required this.observer,
     required this.progress,
-  }) {
+    Future<void> Function()? clearSpool,
+  }) : clearSpool = clearSpool ?? clearUploadSpool {
     _completedTransfers = progress.completedTransfers;
     progress.addListener(_onProgress);
     coordinator.onDiscovery = _onDiscovery;
@@ -138,6 +140,10 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   /// Live progress of the asset currently in flight.
   @override
   final TransferProgress progress;
+
+  /// Deletes spooled asset bytes; swappable so tests never touch the real
+  /// temp directory.
+  final Future<void> Function() clearSpool;
 
   static const QueueStats _emptyStats = QueueStats(
     pending: 0,
@@ -310,6 +316,9 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     String? scheduleError;
     try {
       await _applyServerUrl(serverUrl);
+      // A new session never inherits the previous account's work: rows left by
+      // a sign-out that died halfway must not upload to this account.
+      await _wipeAccountData();
       await auth.signIn(email: email, password: password);
       _authRequired = false;
       signedIn = true;
@@ -353,7 +362,9 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
       await auth.signOut();
       // Nothing should keep waking the device for a signed-out account.
       await scheduler.cancelAll();
-      // Queue rows intentionally stay on device and reload on next initialize.
+      // The account is gone, so its queue, receipts, watermark and spooled
+      // photo bytes go too; the next login starts from an empty library scan.
+      await _wipeAccountData();
       _authRequired = false;
       _error = null;
       _lastReport = null;
@@ -364,6 +375,27 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     } finally {
       _busy = false;
       _notify();
+    }
+  }
+
+  /// Forgets every trace of the account that just ended.
+  ///
+  /// Queue rows, part receipts, the scan watermark, the refresh lock and every
+  /// spooled copy of a photo go. Preferences survive so the login screen still
+  /// prefills the server address, except the pause flag: a stale pause would
+  /// silently stop the next account's first pass.
+  Future<void> _wipeAccountData() async {
+    await queue.wipeAccountData();
+    await clearSpool();
+    progress.reset();
+    _completedTransfers = 0;
+    _lastReport = null;
+    _permission = PhotoPermission.notDetermined;
+    _stats = _emptyStats;
+    if (_settings.paused) {
+      final next = _settings.copyWith(paused: false);
+      await settingsStore.save(next);
+      _settings = next;
     }
   }
 

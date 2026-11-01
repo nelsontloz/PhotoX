@@ -270,8 +270,12 @@ void main() {
 
   var rejectLogin = false;
 
+  /// Times the controller asked to delete spooled bytes.
+  var spoolClears = 0;
+
   setUp(() {
     rejectLogin = false;
+    spoolClears = 0;
     db = AppDatabase(NativeDatabase.memory());
     tokenStore = MemoryTokenStore();
     authDio = Dio()
@@ -326,6 +330,7 @@ void main() {
       scheduler: scheduler,
       observer: observer,
       progress: progress,
+      clearSpool: () async => spoolClears++,
     );
   });
 
@@ -538,7 +543,13 @@ void main() {
       );
       await controller.initialize();
       await controller.syncNow();
+      await controller.updateSettings(
+        const AppSettings(apiBaseUrl: 'http://192.168.1.9:3000', paused: true),
+      );
+      await queue.setMeta(SyncCoordinator.scanWatermarkKey, '2026-01-01T00:00Z');
+      await queue.recordPartAck(uploadId: 'up-1', partIndex: 0, bytes: 3);
       expect(controller.stats.pending, 1);
+      expect(controller.paused, isTrue);
 
       await controller.signOut();
 
@@ -555,8 +566,34 @@ void main() {
       );
       expect(controller.lastReport, isNull);
       expect(controller.authRequired, isFalse);
+      // Nothing about the account survives: queue, receipts, watermark, spool.
+      expect(await db.select(db.queuedAssets).get(), isEmpty);
+      expect(await db.select(db.uploadParts).get(), isEmpty);
+      expect(await queue.getMeta(SyncCoordinator.scanWatermarkKey), isNull);
+      expect(spoolClears, 1);
+      expect(progress.phase, TransferPhase.idle);
+      expect(progress.completedTransfers, 0);
+      // Preferences stay (the next login screen prefills the address), but a
+      // stale pause must not silently stop the next account's first pass.
+      final persisted = await settingsStore.load();
+      expect(persisted.apiBaseUrl, 'http://192.168.1.9:3000');
+      expect(persisted.paused, isFalse);
+      expect(controller.paused, isFalse);
     },
   );
+
+  test('signIn wipes a queue left behind while signed out', () async {
+    await queue.enqueue(_assetCandidate('asset-b'));
+    await queue.setMeta(SyncCoordinator.scanWatermarkKey, '2026-01-01T00:00Z');
+
+    await controller.signIn('ada@example.com', 'correct horse', '');
+    await controller.syncNow();
+
+    expect(controller.isSignedIn, isTrue);
+    expect(await db.select(db.queuedAssets).get(), isEmpty);
+    expect(await queue.getMeta(SyncCoordinator.scanWatermarkKey), isNull);
+    expect(spoolClears, 1);
+  });
 
   test('updateSettings persists and re-registers the constraints', () async {
     await controller.updateSettings(

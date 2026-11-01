@@ -3,6 +3,7 @@ import 'dart:math' show min;
 import 'package:drift/drift.dart';
 
 import '../media/photo_observer.dart';
+import '../settings/settings_store.dart';
 import 'database.dart';
 import 'models.dart';
 
@@ -222,7 +223,9 @@ class UploadQueue {
   ///
   /// [now] defaults to the wall clock; tests inject it. Ordering is oldest due
   /// first (rows without a `nextAttemptAt` are immediately due), then by
-  /// discovery order so a batch is deterministic.
+  /// capture date so the oldest photos reach the server first. Rows without a
+  /// `takenAt` come after dated ones; `discoveredAt` and `localId` keep a
+  /// batch deterministic.
   Future<List<QueuedAsset>> nextBatch(int limit, {DateTime? now}) {
     if (limit <= 0) return Future<List<QueuedAsset>>.value(const []);
     final at = now ?? DateTime.now();
@@ -236,6 +239,7 @@ class UploadQueue {
       ..orderBy([
         (t) =>
             OrderingTerm(expression: t.nextAttemptAt, nulls: NullsOrder.first),
+        (t) => OrderingTerm(expression: t.takenAt, nulls: NullsOrder.last),
         (t) => OrderingTerm(expression: t.discoveredAt),
         (t) => OrderingTerm(expression: t.localId),
       ])
@@ -397,6 +401,23 @@ class UploadQueue {
       return (db.delete(
         db.queuedAssets,
       )..where((t) => t.state.isNotIn(terminalStates))).go();
+    });
+  }
+
+  /// Deletes everything that belongs to the signed-in account.
+  ///
+  /// Queue rows, part receipts and every non-settings key (scan watermark,
+  /// refresh lock) go. Preferences stay so the login screen still prefills the
+  /// server address; spooled bytes are the caller's job.
+  Future<void> wipeAccountData() {
+    return db.transaction(() async {
+      await (db.delete(db.uploadParts)).go();
+      await (db.delete(db.queuedAssets)).go();
+      await (db.delete(db.keyValues)
+            ..where(
+              (t) => t.namespace.isNotIn(<String>[SettingsStore.namespace]),
+            ))
+          .go();
     });
   }
 
