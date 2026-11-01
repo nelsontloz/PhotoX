@@ -8,7 +8,7 @@ const SORT_PATTERN = /^(createdAt|displayName|email|role):(asc|desc)$/;
 export class ListAdminUsersQueryDto extends PaginationQueryDto {
   // cap stays 50 (base allows 1000) — base validators merge with these, stricter wins.
   // offset inherited as-is (identical IsInt/Min(0)/default(0)).
-  @ApiProperty({ required: false, default: 20, minimum: 1, maximum: 50 })
+  @ApiProperty({ type: Number, required: false, default: 20, minimum: 1, maximum: 50 })
   @Type(() => Number)
   @IsInt()
   @Min(1)

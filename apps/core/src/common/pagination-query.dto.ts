@@ -9,7 +9,9 @@ export class PaginationQueryDto {
   @Type(() => Number)
   @Min(1)
   @Max(1000)
-  @ApiProperty({ default: 20, required: false, maximum: 1000 })
+  // type: Number is load-bearing — an initializer-only field emits design:type Object, which
+  // swagger renders as an `object` query param that swagger-ui then refuses to send
+  @ApiProperty({ type: Number, default: 20, required: false, maximum: 1000 })
   limit = 20;
 
   // @IsInt: inherited by search/admin-users (both had it); tightens albums/persons
@@ -18,6 +20,6 @@ export class PaginationQueryDto {
   @Type(() => Number)
   @IsInt()
   @Min(0)
-  @ApiProperty({ default: 0, required: false })
+  @ApiProperty({ type: Number, default: 0, required: false })
   offset = 0;
 }
