@@ -10,7 +10,7 @@ export class SearchQueryDto extends PaginationQueryDto {
   q!: string;
 
   // cap stays 100 (base allows 1000) — base validators merge with these, stricter wins
-  @ApiProperty({ required: false, default: 20, maximum: 100 })
+  @ApiProperty({ type: Number, required: false, default: 20, maximum: 100 })
   @Type(() => Number)
   @IsInt()
   @Min(1)
