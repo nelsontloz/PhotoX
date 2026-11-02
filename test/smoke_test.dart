@@ -7,6 +7,7 @@ import 'package:photox_mobile/media/photo_observer.dart';
 import 'package:photox_mobile/settings/settings_store.dart';
 import 'package:photox_mobile/sync/sync_coordinator.dart';
 import 'package:photox_mobile/sync/transfer_progress.dart';
+import 'package:photox_mobile/upload/models.dart';
 import 'package:photox_mobile/upload/upload_queue.dart';
 
 /// Inert controller so the shell can be pumped without a real stack.
@@ -68,6 +69,30 @@ class FakeAppController extends AppController {
   PhotoPermission get permission => permissionValue;
 
   @override
+  Future<void> refreshPermission() async => calls.add('refreshPermission');
+
+  @override
+  Future<List<AssetCandidate>> libraryPage({
+    required int offset,
+    int limit = 200,
+    String? folderId,
+  }) async => const <AssetCandidate>[];
+
+  @override
+  Future<int> libraryCount({String? folderId}) async => 0;
+
+  @override
+  Future<Map<String, UploadState>> backupStates(List<String> localIds) async =>
+      const <String, UploadState>{};
+
+  @override
+  int get queueRevision => 0;
+
+  @override
+  Future<void> backUpNow(List<AssetCandidate> assets) async =>
+      calls.add('backUpNow');
+
+  @override
   Future<List<MediaFolder>> folders() async => const <MediaFolder>[];
 
   @override
@@ -116,14 +141,15 @@ class FakeAppController extends AppController {
 }
 
 void main() {
-  testWidgets('PhotoXApp shows the backup dashboard when signed in', (
+  testWidgets('PhotoXApp lands on the photo library when signed in', (
     tester,
   ) async {
     await tester.pumpWidget(PhotoXApp(controller: FakeAppController()));
     await tester.pump();
 
-    expect(find.text('PhotoX'), findsOneWidget);
-    expect(find.text('Sync now'), findsOneWidget);
+    // Library is the landing tab; its title and the nav label both say it.
+    expect(find.text('Library'), findsWidgets);
+    expect(find.byTooltip('Sync now'), findsOneWidget);
   });
 
   testWidgets('PhotoXApp shows the login screen when signed out', (

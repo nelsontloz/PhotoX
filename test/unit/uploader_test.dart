@@ -642,6 +642,16 @@ class _FakeObserver implements PhotoObserver {
   Future<List<MediaFolder>> folders() async => const <MediaFolder>[];
 
   @override
+  Future<List<AssetCandidate>> page({
+    required int offset,
+    required int limit,
+    String? folderId,
+  }) async => const <AssetCandidate>[];
+
+  @override
+  Future<int> libraryCount({String? folderId}) async => 0;
+
+  @override
   Future<File?> fileFor(String localId) async => files[localId];
 
   @override

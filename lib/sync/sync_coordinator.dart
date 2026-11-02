@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+
 import '../core/api_client.dart';
 import '../core/auth_models.dart';
 import '../core/network_status.dart';
@@ -187,6 +189,15 @@ class SyncCoordinator {
       report.enqueued = supported
           .where((candidate) => !existing.contains(candidate.localId))
           .length;
+      if (kDebugMode) {
+        // A pass that queues nothing looks identical to one that scanned
+        // nothing; the window and the scope are the only way to tell.
+        debugPrint(
+          'photox scan: watermark=$watermark folders=$folderIds '
+          'scanned=${report.scanned} supported=${supported.length} '
+          'enqueued=${report.enqueued}',
+        );
+      }
 
       // Only eligible assets move the watermark, and only forward. An empty
       // (or fully filtered) scan must not skip assets added while it was

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:photo_manager/photo_manager.dart';
 import 'package:photox_mobile/media/photo_manager_observer.dart';
 import 'package:photox_mobile/media/photo_observer.dart';
 
@@ -69,10 +70,31 @@ void main() {
                     _asset(ids[index], createDt: 1000 + index),
                 ],
               };
+            case 'getAssetListRange':
+              // Newest first, as the observer's ordering option asks the
+              // platform for; the mock library is asset-1..asset-3.
+              final start = arguments['start'] as int;
+              final end = arguments['end'] as int;
+              final ids = <String>['asset-1', 'asset-2', 'asset-3'];
+              final stop = end > ids.length ? ids.length : end;
+              return <String, dynamic>{
+                'data': <Map<String, dynamic>>[
+                  for (var index = start; index < stop; index++)
+                    _asset(
+                      ids[index],
+                      createDt: 3000 - index,
+                      width: 4000 + index,
+                      height: 3000 + index,
+                      duration: 10 + index,
+                    ),
+                ],
+              };
             case 'getFullFile':
               return assetFile.path;
             case 'requestPermissionExtend':
               return 3; // PermissionState.authorized
+            case 'notifyChange':
+              return true;
             case 'fetchEntityProperties':
               return _asset(arguments['id'] as String, createDt: 1000);
             case 'getThumb':
@@ -249,6 +271,150 @@ void main() {
     );
     expect(listCall.arguments['onlyAll'], isTrue);
   });
+
+  test('pages an album newest first with the requested range', () async {
+    final observer = PhotoManagerObserver();
+    addTearDown(observer.dispose);
+
+    final candidates = await observer.page(
+      offset: 1,
+      limit: 2,
+      folderId: 'screens',
+    );
+
+    expect(candidates.map((candidate) => candidate.localId), <String>[
+      'asset-2',
+      'asset-3',
+    ]);
+
+    final rangeCall = calls.lastWhere(
+      (call) => call.method == 'getAssetListRange',
+    );
+    expect(rangeCall.arguments['start'], 1);
+    expect(rangeCall.arguments['end'], 3);
+    expect(rangeCall.arguments['id'], 'screens');
+
+    final option = rangeCall.arguments['option'] as Map<dynamic, dynamic>;
+    final child = option['child'] as Map<dynamic, dynamic>;
+    final order = (child['orders'] as List<dynamic>).single as Map;
+    expect(order['type'], 0, reason: 'OrderOptionType.createDate');
+    expect(order['asc'], isFalse);
+  });
+
+  test('maps display fields a grid needs and nothing it must export', () async {
+    final observer = PhotoManagerObserver();
+    addTearDown(observer.dispose);
+
+    final candidates = await observer.page(offset: 0, limit: 2);
+
+    expect(candidates, hasLength(2));
+    final first = candidates.first;
+    expect(first.localId, 'asset-1');
+    expect(first.fileName, 'asset-1.jpg');
+    expect(first.mimeType, 'image/jpeg');
+    expect(first.width, 4000);
+    expect(first.height, 3000);
+    expect(first.durationSeconds, 10);
+    expect(first.takenAt, isNotNull);
+    // Pages never export bytes, so the grid sees no size and no export call.
+    expect(first.sizeBytes, 0);
+    expect(calls.where((call) => call.method == 'getFullFile'), isEmpty);
+  });
+
+  test('an empty page beyond the end is not an error', () async {
+    final observer = PhotoManagerObserver();
+    addTearDown(observer.dispose);
+
+    expect(await observer.page(offset: 100, limit: 10), isEmpty);
+  });
+
+  test('counts the root library and a single album', () async {
+    final observer = PhotoManagerObserver();
+    addTearDown(observer.dispose);
+
+    expect(await observer.libraryCount(), 2);
+    expect(await observer.libraryCount(folderId: 'screens'), 9);
+  });
+
+  test(
+    'an unknown album pages empty and counts zero instead of throwing',
+    () async {
+      final observer = PhotoManagerObserver();
+      addTearDown(observer.dispose);
+
+      expect(
+        await observer.page(offset: 0, limit: 5, folderId: 'gone'),
+        isEmpty,
+      );
+      expect(await observer.libraryCount(folderId: 'gone'), 0);
+    },
+  );
+
+  test('a library change drops the cached paths', () async {
+    await PhotoManager.startChangeNotify();
+    final observer = PhotoManagerObserver();
+    addTearDown(observer.dispose);
+
+    Future<int> rootResolves() async {
+      final before = calls
+          .where(
+            (call) =>
+                call.method == 'getAssetPathList' &&
+                call.arguments['onlyAll'] == true,
+          )
+          .length;
+      await observer.page(offset: 0, limit: 2);
+      final after = calls
+          .where(
+            (call) =>
+                call.method == 'getAssetPathList' &&
+                call.arguments['onlyAll'] == true,
+          )
+          .length;
+      return after - before;
+    }
+
+    expect(await rootResolves(), 1);
+    expect(await rootResolves(), 0, reason: 'cached between pages');
+
+    await _emitChange();
+
+    expect(await rootResolves(), 1, reason: 'invalidated by the change event');
+
+    // The album listing shares the invalidation.
+    await observer.folders();
+    await _emitChange();
+    final folderResolves = calls
+        .where(
+          (call) =>
+              call.method == 'getAssetPathList' &&
+              call.arguments['onlyAll'] == false,
+        )
+        .length;
+    await observer.folders();
+    expect(
+      calls
+          .where(
+            (call) =>
+                call.method == 'getAssetPathList' &&
+                call.arguments['onlyAll'] == false,
+          )
+          .length,
+      folderResolves + 1,
+    );
+  });
+}
+
+/// Pushes the `change` notification the platforms send on library edits.
+Future<void> _emitChange() {
+  return TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .handlePlatformMessage(
+        'com.fluttercandies/photo_manager/notify',
+        const StandardMethodCodec().encodeMethodCall(
+          const MethodCall('change'),
+        ),
+        (_) {},
+      );
 }
 
 Map<String, dynamic> _path(
@@ -274,13 +440,19 @@ final Map<String, Map<String, dynamic>> _paths = <String, Map<String, dynamic>>{
   'screens': _path('screens', 'Screenshots', 9),
 };
 
-Map<String, dynamic> _asset(String id, {required int createDt}) {
+Map<String, dynamic> _asset(
+  String id, {
+  required int createDt,
+  int width = 1,
+  int height = 1,
+  int duration = 0,
+}) {
   return <String, dynamic>{
     'id': id,
     'type': 1,
-    'width': 1,
-    'height': 1,
-    'duration': 0,
+    'width': width,
+    'height': height,
+    'duration': duration,
     'title': '$id.jpg',
     'createDt': createDt,
     'modifiedDt': createDt + 1000,

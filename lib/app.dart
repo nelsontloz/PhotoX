@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app_controller.dart';
 import 'ui/home_screen.dart';
+import 'ui/library_screen.dart';
 import 'ui/login_screen.dart';
 import 'ui/settings_screen.dart';
 
@@ -87,25 +88,9 @@ class _PhotoXAppState extends State<PhotoXApp> {
         themeMode: ThemeMode.dark,
         darkTheme: photoXTheme(),
         home: controller.isSignedIn
-            ? HomeScreen(
-                stats: controller.stats,
-                progress: controller.progress,
-                permission: controller.permission,
-                syncing: controller.syncing,
-                discovering: controller.discovering,
-                paused: controller.paused,
-                authRequired: controller.authRequired,
-                lastReport: controller.lastReport,
-                error: controller.error,
-                albumCount: controller.settings.uploadFolderIds.length,
-                uploadAllFolders: controller.settings.uploadAllFolders,
-                onSyncNow: controller.syncNow,
-                onRetryFailed: controller.retryFailed,
-                onPause: controller.pause,
-                onResume: controller.resume,
+            ? _SignedInShell(
+                controller: controller,
                 onOpenSettings: _openSettings,
-                onSignOut: controller.signOut,
-                thumbnail: controller.thumbnail,
               )
             : LoginScreen(
                 onSignIn: controller.signIn,
@@ -139,5 +124,105 @@ class _PhotoXAppState extends State<PhotoXApp> {
   Future<void> _signOutFromSettings() async {
     _navigatorKey.currentState?.popUntil((route) => route.isFirst);
     await widget.controller.signOut();
+  }
+}
+
+/// Signed-in shell: the device library first, the backup dashboard second.
+///
+/// An [IndexedStack] keeps both tabs mounted, so scroll position and a live
+/// selection survive a trip to the other tab; settings stays a pushed route
+/// reachable from either.
+class _SignedInShell extends StatefulWidget {
+  const _SignedInShell({
+    required this.controller,
+    required this.onOpenSettings,
+  });
+
+  final AppController controller;
+  final VoidCallback onOpenSettings;
+
+  @override
+  State<_SignedInShell> createState() => _SignedInShellState();
+}
+
+class _SignedInShellState extends State<_SignedInShell> {
+  int _index = 0;
+
+  /// The album the backup actually reads, so every tile in the grid is either
+  /// backed up or waiting — never "not backed up" for something the backup was
+  /// never asked to take.
+  ///
+  /// Null (whole library) while "All folders" is on or no album was chosen yet;
+  /// browsing the rest of the device is a Settings change, not a second grid.
+  String? get _scopeFolderId {
+    final settings = widget.controller.settings;
+    if (settings.uploadAllFolders) return null;
+    return settings.uploadFolderIds.length == 1
+        ? settings.uploadFolderIds.single
+        : null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+
+    return Scaffold(
+      body: IndexedStack(
+        index: _index,
+        children: <Widget>[
+          LibraryScreen(
+            permission: controller.permission,
+            settings: controller.settings,
+            syncing: controller.syncing,
+            queueRevision: controller.queueRevision,
+            progress: controller.progress,
+            folderId: _scopeFolderId,
+            loadPage: controller.libraryPage,
+            loadStates: controller.backupStates,
+            thumbnail: controller.thumbnail,
+            onBackUpNow: controller.backUpNow,
+            onOpenSettings: widget.onOpenSettings,
+            onSyncNow: controller.syncNow,
+            onRequestAccess: controller.refreshPermission,
+          ),
+          HomeScreen(
+            stats: controller.stats,
+            progress: controller.progress,
+            permission: controller.permission,
+            syncing: controller.syncing,
+            discovering: controller.discovering,
+            paused: controller.paused,
+            authRequired: controller.authRequired,
+            lastReport: controller.lastReport,
+            error: controller.error,
+            albumCount: controller.settings.uploadFolderIds.length,
+            uploadAllFolders: controller.settings.uploadAllFolders,
+            onSyncNow: controller.syncNow,
+            onRetryFailed: controller.retryFailed,
+            onPause: controller.pause,
+            onResume: controller.resume,
+            onOpenSettings: widget.onOpenSettings,
+            onSignOut: controller.signOut,
+            thumbnail: controller.thumbnail,
+          ),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _index,
+        onDestinationSelected: (index) => setState(() => _index = index),
+        destinations: const <NavigationDestination>[
+          NavigationDestination(
+            icon: Icon(Icons.photo_library_outlined),
+            selectedIcon: Icon(Icons.photo_library_rounded),
+            label: 'Library',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.cloud_upload_outlined),
+            selectedIcon: Icon(Icons.cloud_upload_rounded),
+            label: 'Backup',
+          ),
+        ],
+      ),
+    );
   }
 }

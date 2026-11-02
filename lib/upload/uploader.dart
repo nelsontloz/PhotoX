@@ -232,6 +232,9 @@ class Uploader {
         sha256: sha256,
         spoolPath: spool.path,
         protocol: protocol,
+        // The row may come from a library page, where the size is unknown (0);
+        // record the real length so a resume can trust the spool afterwards.
+        sizeBytes: length,
       );
       return PreparedUpload(
         localId: item.localId,

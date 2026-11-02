@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photox_mobile/media/photo_observer.dart';
@@ -177,6 +177,38 @@ void main() {
       expect(row.uploadId, isNull);
       expect(row.attempts, 0);
       expect(row.nextAttemptAt, isNull);
+    });
+
+    test(
+      'an unknown (0) size neither resets nor erases a measured size',
+      () async {
+        await markInProgress('asset-1', sizeBytes: 10);
+
+        // Library pages report no size; re-enqueueing from the grid must not
+        // throw away the digest and spool the uploader already paid for.
+        await queue.enqueueAll(<AssetCandidate>[
+          _candidate('asset-1', sizeBytes: 0),
+        ]);
+
+        final row = (await queue.byLocalId('asset-1'))!;
+        expect(row.sizeBytes, 10);
+        expect(row.state, UploadState.failedRetryable.name);
+        expect(row.sha256, isNotNull);
+      },
+    );
+
+    test('an unknown (0) size is replaced by a measured one', () async {
+      await queue.enqueueAll(<AssetCandidate>[
+        _candidate('asset-1', sizeBytes: 0),
+      ]);
+      await markInProgress('asset-1', sizeBytes: 0);
+
+      await queue.enqueueAll(<AssetCandidate>[
+        _candidate('asset-1', sizeBytes: 42),
+      ]);
+
+      final row = (await queue.byLocalId('asset-1'))!;
+      expect(row.sizeBytes, 42);
     });
   });
 
@@ -623,6 +655,62 @@ void main() {
       expect(stats.total, 0);
       expect(stats.completed, 0);
       expect(stats.fraction, 0);
+    });
+  });
+
+  group('statesFor', () {
+    test('reads listed rows, dedupes ids and omits absent ones', () async {
+      await queue.enqueueAll(<AssetCandidate>[
+        _candidate('uploaded'),
+        _candidate('pending'),
+        _candidate('excluded'),
+      ]);
+      await queue.markState(localId: 'uploaded', state: UploadState.uploaded);
+      await queue.markState(localId: 'pending', state: UploadState.pending);
+      await queue.markState(localId: 'excluded', state: UploadState.excluded);
+
+      final states = await queue.statesFor(<String>[
+        'uploaded',
+        'pending',
+        'excluded',
+        'absent',
+        'pending',
+      ]);
+
+      expect(states, <String, UploadState>{
+        'uploaded': UploadState.uploaded,
+        'pending': UploadState.pending,
+        'excluded': UploadState.excluded,
+      });
+      expect(await queue.statesFor(const <String>[]), isEmpty);
+    });
+
+    test('chunks more ids than a visible page', () async {
+      final ids = List<String>.generate(1200, (index) => 'asset-$index');
+      await queue.enqueueAll(<AssetCandidate>[
+        for (final id in ids) _candidate(id),
+      ]);
+      await queue.markState(localId: 'asset-700', state: UploadState.uploaded);
+
+      final states = await queue.statesFor(ids);
+
+      expect(states, hasLength(1200));
+      expect(states['asset-700'], UploadState.uploaded);
+      expect(states['asset-1199'], UploadState.discovered);
+    });
+
+    test('skips a state string this build does not know', () async {
+      await queue.enqueueAll(<AssetCandidate>[
+        _candidate('future'),
+        _candidate('known'),
+      ]);
+      await (db.update(db.queuedAssets)
+            ..where((t) => t.localId.equals('future')))
+          .write(const QueuedAssetsCompanion(state: Value('timeTraveled')));
+
+      final states = await queue.statesFor(<String>['future', 'known']);
+
+      expect(states, <String, UploadState>{'known': UploadState.discovered});
     });
   });
 

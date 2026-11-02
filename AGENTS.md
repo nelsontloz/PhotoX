@@ -4,6 +4,8 @@ Flutter (iOS + Android) client that backs up the device photo library to the sib
 
 **Status: the pipeline is implemented** — discovery, hashing, drift queue, dedup, upload/resume, auth refresh — with unit and widget suites under `test/`. What is *not* verified is anything the OS owns: real background execution, PhotoKit/MediaStore edge cases, per-device behaviour. Those need a phone; an emulator proves nothing. `TODO(spec §x)` comments map to an architecture spec that lives outside this repo — keep the numbering when adding TODOs.
 
+**UI status:** one signed-in shell with two tabs — **Library** (on-device library grid, per-tile backup badges, selection → "Back up now") and **Backup** (the sync dashboard). The Library tab is the landing screen; Settings is a pushed route from either. The grid reads the *device*, never the server: a badge means "this phone uploaded those bytes", so an asset uploaded from another device reads "not backed up" until this phone hashes it and dedup answers (see the badge note below).
+
 ## Commands
 
 ```bash
@@ -110,10 +112,11 @@ Behaviours an agent would otherwise get wrong:
 - Resume-on-app-open is the guaranteed sync path; background execution is opportunistic on both platforms (force-quit kills it until manual reopen). No location-services wake hacks, no always-on services, no push dependency.
 - Auth: refresh once, single-flight; a replayed refresh token revokes the whole token family, so a lost-but-applied refresh must not log every device out and refreshes must never run in parallel.
 - Errors: retryable = network/408/429/5xx; permanent = 400/404/413/422 (413 → `skippedQuota`, 422 → fail once). Exponential backoff + jitter, cap 15 min, honour `Retry-After`.
+- Library badges are per-device truth, not server truth: `resolveBackupStatus` (`lib/library/backup_status.dart`) maps a `QueuedAssets` row to a badge, and no row means "this phone never queued it". The server has no device-asset identity (only `checksumSha256`), so cross-device ownership can only be proven by hashing. `PhotoObserver.page()` candidates carry `sizeBytes: 0` on purpose — the platform reports no size without exporting bytes — so the queue treats `0` as unknown (`_knownSize`/`_sizeChanged`) and the uploader records the real length after spooling. Anything that reads `QueuedAssets.sizeBytes` must tolerate `0`.
 
 ## Layout
 
-`lib/core/` config + auth + dio client · `lib/media/` photo discovery (PhotoKit/MediaStore) + streaming SHA-256 · `lib/upload/` drift queue (`QueuedAssets`, `UploadParts`, schema v1), wire models, session client, uploader · `lib/background/` scheduler + worker entrypoint · `lib/settings/`, `lib/ui/`.
+`lib/core/` config + auth + dio client · `lib/media/` photo discovery (PhotoKit/MediaStore) + streaming SHA-256 · `lib/library/` backup-badge resolver · `lib/upload/` drift queue (`QueuedAssets`, `UploadParts`, schema v1), wire models, session client, uploader · `lib/background/` scheduler + worker entrypoint · `lib/settings/`, `lib/ui/` (`library_screen.dart` = device grid, `home_screen.dart` = backup dashboard).
 
 Flow: observe → enqueue (drift) → hash → dedup pre-check → upload → complete → mark uploaded. The drift database is the source of truth for resume decisions.
 

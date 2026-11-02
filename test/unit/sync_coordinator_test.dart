@@ -556,6 +556,16 @@ class _FakeObserver implements PhotoObserver {
   }
 
   @override
+  Future<List<AssetCandidate>> page({
+    required int offset,
+    required int limit,
+    String? folderId,
+  }) async => const <AssetCandidate>[];
+
+  @override
+  Future<int> libraryCount({String? folderId}) async => 0;
+
+  @override
   Future<List<AssetCandidate>> scanNew({
     DateTime? since,
     List<String>? folderIds,

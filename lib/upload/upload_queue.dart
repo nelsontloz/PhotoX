@@ -169,7 +169,7 @@ class UploadQueue {
           }
 
           final contentChanged =
-              previous.sizeBytes != candidate.sizeBytes ||
+              _sizeChanged(previous.sizeBytes, candidate.sizeBytes) ||
               !_sameStoredInstant(previous.modifiedAt, candidate.modifiedAt);
           batch.update(
             db.queuedAssets,
@@ -177,7 +177,9 @@ class UploadQueue {
                 ? QueuedAssetsCompanion(
                     platform: Value(candidate.platform),
                     kind: Value(candidate.kind.name),
-                    sizeBytes: Value(candidate.sizeBytes),
+                    sizeBytes: Value(
+                      _knownSize(candidate.sizeBytes, previous.sizeBytes),
+                    ),
                     takenAt: Value(candidate.takenAt),
                     modifiedAt: Value(candidate.modifiedAt),
                     fileName: Value(candidate.fileName),
@@ -199,7 +201,9 @@ class UploadQueue {
                 : QueuedAssetsCompanion(
                     platform: Value(candidate.platform),
                     kind: Value(candidate.kind.name),
-                    sizeBytes: Value(candidate.sizeBytes),
+                    sizeBytes: Value(
+                      _knownSize(candidate.sizeBytes, previous.sizeBytes),
+                    ),
                     takenAt: Value(candidate.takenAt),
                     modifiedAt: Value(candidate.modifiedAt),
                     fileName: Value(candidate.fileName),
@@ -218,6 +222,16 @@ class UploadQueue {
     return left.millisecondsSinceEpoch ~/ 1000 ==
         right.millisecondsSinceEpoch ~/ 1000;
   }
+
+  /// A size of `0` means "the platform did not report one": library pages show
+  /// tiles without exporting bytes. Such a value never counts as a content
+  /// change and never erases a size the uploader already measured.
+  static bool _sizeChanged(int stored, int candidate) =>
+      candidate > 0 && stored > 0 && stored != candidate;
+
+  /// Keeps whichever size is real, preferring the freshly scanned one.
+  static int _knownSize(int candidate, int stored) =>
+      candidate > 0 ? candidate : stored;
 
   /// Returns up to [limit] assets that are due for a network attempt.
   ///
@@ -254,6 +268,32 @@ class UploadQueue {
     )..where((t) => t.localId.equals(localId))).getSingleOrNull();
   }
 
+  /// Reads the queue state of every listed asset; ids with no row are absent.
+  ///
+  /// Chunked because a whole visible grid page can exceed SQLite's variable
+  /// limit, and one query per page keeps the grid from holding the queue in
+  /// memory.
+  Future<Map<String, UploadState>> statesFor(Iterable<String> localIds) async {
+    final ids = localIds.toSet().toList(growable: false);
+    final byName = UploadState.values.asNameMap();
+    final states = <String, UploadState>{};
+    for (var start = 0; start < ids.length; start += 500) {
+      final chunk = ids.sublist(start, min(start + 500, ids.length));
+      final query = db.selectOnly(db.queuedAssets)
+        ..addColumns([db.queuedAssets.localId, db.queuedAssets.state])
+        ..where(db.queuedAssets.localId.isIn(chunk));
+      for (final row in await query.get()) {
+        // A state from a newer build is skipped, not thrown: a downgrade must
+        // not blank the grid.
+        final state = byName[row.read(db.queuedAssets.state)];
+        if (state != null) {
+          states[row.read(db.queuedAssets.localId)!] = state;
+        }
+      }
+    }
+    return states;
+  }
+
   /// Reads every asset currently in one of [states].
   Future<List<QueuedAsset>> byStates(Iterable<UploadState> states) {
     final names = states.map((state) => state.name).toList();
@@ -279,6 +319,7 @@ class UploadQueue {
     int? partCount,
     String? serverAssetId,
     String? serverFileId,
+    int? sizeBytes,
     int? attempts,
     DateTime? nextAttemptAt,
     String? lastError,
@@ -298,6 +339,7 @@ class UploadQueue {
         partCount: Value.absentIfNull(partCount),
         serverAssetId: Value.absentIfNull(serverAssetId),
         serverFileId: Value.absentIfNull(serverFileId),
+        sizeBytes: Value.absentIfNull(sizeBytes),
         attempts: Value.absentIfNull(attempts),
         nextAttemptAt: Value.absentIfNull(nextAttemptAt),
         lastError: Value.absentIfNull(lastError),
@@ -413,10 +455,9 @@ class UploadQueue {
     return db.transaction(() async {
       await (db.delete(db.uploadParts)).go();
       await (db.delete(db.queuedAssets)).go();
-      await (db.delete(db.keyValues)
-            ..where(
-              (t) => t.namespace.isNotIn(<String>[SettingsStore.namespace]),
-            ))
+      await (db.delete(db.keyValues)..where(
+            (t) => t.namespace.isNotIn(<String>[SettingsStore.namespace]),
+          ))
           .go();
     });
   }

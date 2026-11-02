@@ -15,6 +15,9 @@ class PhotoManagerObserver implements PhotoObserver {
     this.filter = const MediaFilter(),
   }) {
     PhotoManager.addChangeCallback(_onChange);
+    // Without this the platform never calls back, so the folder/path caches
+    // would outlive an album created or deleted by another app.
+    unawaited(PhotoManager.startChangeNotify());
   }
 
   /// Assets fetched per page; a short page ends the scan.
@@ -34,10 +37,18 @@ class PhotoManagerObserver implements PhotoObserver {
 
   /// Folder listing memoised for the process.
   ///
-  /// shortcut: the listing never refreshes, so an album created after the
-  /// first call stays invisible until restart; refresh it from [changes] when
-  /// album management becomes a workflow.
+  /// Dropped by [_onChange], so an album created or deleted by another app
+  /// shows up on the next library change. [changes] only emits while the
+  /// platform notify listener runs (`PhotoManager.startChangeNotify`), which
+  /// the app does not start yet, so today this lives until restart.
   List<MediaFolder>? _folders;
+
+  /// Library paths resolved for [page]/[libraryCount], keyed by album id
+  /// (`null` = whole library).
+  ///
+  /// Those two run per scroll page, and resolving a path is a platform
+  /// round-trip. Dropped with [_folders] by [_onChange].
+  final Map<String?, AssetPathEntity> _paths = <String?, AssetPathEntity>{};
 
   bool _disposed = false;
 
@@ -92,6 +103,73 @@ class PhotoManagerObserver implements PhotoObserver {
     _folders = List<MediaFolder>.unmodifiable(folders);
     return _folders!;
   }
+
+  @override
+  Future<List<AssetCandidate>> page({
+    required int offset,
+    required int limit,
+    String? folderId,
+  }) async {
+    if (offset < 0 || limit <= 0) return const <AssetCandidate>[];
+    final path = await _path(folderId);
+    if (path == null) return const <AssetCandidate>[];
+    // Range beats pages here: the plugin clamps the end to the asset count, so
+    // a short or past-the-end page is an empty list, never a RangeError.
+    final assets = await path.getAssetListRange(
+      start: offset,
+      end: offset + limit,
+    );
+    final candidates = <AssetCandidate>[];
+    for (final asset in assets) {
+      final candidate = _displayCandidate(asset);
+      if (candidate != null) candidates.add(candidate);
+    }
+    return candidates;
+  }
+
+  @override
+  Future<int> libraryCount({String? folderId}) async {
+    final path = await _path(folderId);
+    if (path == null) return 0;
+    return path.assetCountAsync;
+  }
+
+  /// Resolves [folderId] once per library change; null when the album is gone.
+  Future<AssetPathEntity?> _path(String? folderId) async {
+    final cached = _paths[folderId];
+    if (cached != null) return cached;
+
+    final AssetPathEntity path;
+    if (folderId == null) {
+      final all = await PhotoManager.getAssetPathList(
+        onlyAll: true,
+        type: RequestType.common,
+        filterOption: _displayFilter,
+      );
+      if (all.isEmpty) return null;
+      path = all.first;
+    } else {
+      try {
+        path = await AssetPathEntity.fromId(
+          folderId,
+          filterOption: _displayFilter,
+        );
+      } on Object {
+        // Deleted album: an empty page, not an app error.
+        return null;
+      }
+    }
+    return _paths[folderId] = path;
+  }
+
+  /// Newest capture first, titles kept for display names.
+  FilterOptionGroup get _displayFilter => FilterOptionGroup(
+    imageOption: const FilterOption(needTitle: true),
+    videoOption: const FilterOption(needTitle: true),
+    orders: const <OrderOption>[
+      OrderOption(type: OrderOptionType.createDate, asc: false),
+    ],
+  );
 
   @override
   Future<List<AssetCandidate>> scanNew({
@@ -227,13 +305,54 @@ class PhotoManagerObserver implements PhotoObserver {
     _disposed = true;
     _scanFiles.clear();
     _folders = null;
+    _paths.clear();
     PhotoManager.removeChangeCallback(_onChange);
+    await PhotoManager.stopChangeNotify();
     await _changes.close();
   }
 
   void _onChange(MethodCall call) {
     if (_disposed || _changes.isClosed) return;
+    // An album can be created or deleted without the app knowing; any cached
+    // id may now resolve elsewhere, so both listings reload on next use.
+    _folders = null;
+    _paths.clear();
     _changes.add(null);
+  }
+
+  /// Cheap [AssetCandidate] for the grid: no byte export, so the candidate's
+  /// `sizeBytes` is 0 and only the uploader may decide upload strategy.
+  AssetCandidate? _displayCandidate(AssetEntity asset) {
+    final kind = switch (asset.type) {
+      AssetType.image => MediaKind.photo,
+      AssetType.video => MediaKind.video,
+      _ => null,
+    };
+    if (kind == null) return null;
+
+    final title = asset.title?.trim();
+    final fileName = title != null && title.isNotEmpty
+        ? title
+        : _basename(asset.relativePath ?? '');
+
+    return AssetCandidate(
+      localId: asset.id,
+      platform: _platform,
+      kind: kind,
+      fileName: fileName,
+      mimeType: filter.inferMimeType(fileName) ?? asset.mimeType ?? '',
+      // shortcut: entity.sizeBytes is not exposed by photo_manager and a real
+      // size needs an originFile export; the grid does not need it.
+      sizeBytes: 0,
+      takenAt: asset.createDateSecond == null ? null : asset.createDateTime,
+      modifiedAt: asset.modifiedDateSecond == null
+          ? null
+          : asset.modifiedDateTime,
+      relativePath: asset.relativePath,
+      width: asset.width,
+      height: asset.height,
+      durationSeconds: asset.duration,
+    );
   }
 
   Future<AssetCandidate?> _toCandidate(AssetEntity asset) async {

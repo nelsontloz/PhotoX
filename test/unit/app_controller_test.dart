@@ -70,6 +70,16 @@ class _DeniedObserver implements PhotoObserver {
   Future<List<MediaFolder>> folders() async => foldersValue;
 
   @override
+  Future<List<AssetCandidate>> page({
+    required int offset,
+    required int limit,
+    String? folderId,
+  }) async => const <AssetCandidate>[];
+
+  @override
+  Future<int> libraryCount({String? folderId}) async => 0;
+
+  @override
   Future<List<AssetCandidate>> scanNew({
     DateTime? since,
     List<String>? folderIds,
@@ -546,7 +556,10 @@ void main() {
       await controller.updateSettings(
         const AppSettings(apiBaseUrl: 'http://192.168.1.9:3000', paused: true),
       );
-      await queue.setMeta(SyncCoordinator.scanWatermarkKey, '2026-01-01T00:00Z');
+      await queue.setMeta(
+        SyncCoordinator.scanWatermarkKey,
+        '2026-01-01T00:00Z',
+      );
       await queue.recordPartAck(uploadId: 'up-1', partIndex: 0, bytes: 3);
       expect(controller.stats.pending, 1);
       expect(controller.paused, isTrue);
@@ -765,7 +778,7 @@ void main() {
     expect(controller.syncing, isFalse);
   });
 
-  test('resume triggers a foreground pass', () async {
+  test('resume re-reads access and triggers a foreground pass', () async {
     await tokenStore.write(_tokens());
     await controller.initialize();
     await controller.syncNow();
@@ -774,6 +787,8 @@ void main() {
     controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
     await controller.syncNow();
 
-    expect(observer.permissionCalls, drained + 1);
+    // One read so the library grid leaves its permission gate immediately, one
+    // from the pass itself; only the pass reports back on its own.
+    expect(observer.permissionCalls, drained + 2);
   });
 }

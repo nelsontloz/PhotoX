@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/foundation.dart'
+    show debugPrint, kDebugMode, listEquals;
 import 'package:flutter/widgets.dart';
 
 import 'background/scheduler.dart';
@@ -9,10 +10,12 @@ import 'core/api_client.dart';
 import 'core/app_config.dart';
 import 'core/auth_manager.dart';
 import 'core/auth_models.dart';
+import 'media/media_filter.dart';
 import 'media/photo_observer.dart';
 import 'settings/settings_store.dart';
 import 'sync/sync_coordinator.dart';
 import 'sync/transfer_progress.dart';
+import 'upload/models.dart';
 import 'upload/upload_queue.dart';
 import 'upload/uploader.dart';
 
@@ -40,11 +43,44 @@ abstract class AppController extends ChangeNotifier {
   /// Photo-library permission observed by the most recent pass.
   PhotoPermission get permission;
 
+  /// Reads the photo-library permission without running a backup pass.
+  ///
+  /// The library grid needs the current answer even while backups are paused or
+  /// a long pass is still uploading, which is before any pass report exists.
+  Future<void> refreshPermission();
+
   /// Albums the device exposes, so the user can choose the backup scope.
   Future<List<MediaFolder>> folders();
 
   /// Small encoded preview of [localId], or null when none is available.
   Future<Uint8List?> thumbnail(String localId);
+
+  /// Newest-first page of the device library, for the on-device browser.
+  ///
+  /// [folderId] limits the page to that album; null pages the whole library.
+  Future<List<AssetCandidate>> libraryPage({
+    required int offset,
+    int limit = 200,
+    String? folderId,
+  });
+
+  /// Assets the platform counts in [folderId], or the whole library when null.
+  Future<int> libraryCount({String? folderId});
+
+  /// Queue state of the listed device assets, keyed by platform id.
+  ///
+  /// Ids with no row are absent: this phone never queued those assets.
+  Future<Map<String, UploadState>> backupStates(List<String> localIds);
+
+  /// Bumped whenever queued assets changed state, so the grid re-reads its page
+  /// instead of holding the whole queue in memory.
+  int get queueRevision;
+
+  /// Queues [assets] ahead of the scan scope and starts a pass.
+  ///
+  /// Assets the server would reject (unsupported containers, videos while
+  /// videos are off) are dropped rather than queued to fail.
+  Future<void> backUpNow(List<AssetCandidate> assets);
 
   /// Aggregate queue counts.
   QueueStats get stats;
@@ -162,6 +198,13 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   String? _error;
   AppSettings _settings = const AppSettings();
 
+  /// Bumped whenever a queued asset's state may have changed; the library grid
+  /// watches it to re-read the states of the page it shows.
+  int _revision = 0;
+
+  /// Shared by [backUpNow] and discovery so both accept the same containers.
+  static const MediaFilter _filter = MediaFilter();
+
   /// Last [TransferProgress.completedTransfers] value already handled.
   int _completedTransfers = 0;
 
@@ -197,11 +240,44 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   PhotoPermission get permission => _permission;
 
   @override
+  Future<void> refreshPermission() async {
+    if (!auth.isSignedIn) return;
+    final PhotoPermission permission;
+    try {
+      permission = await observer.ensurePermission();
+    } on Object {
+      // A platform refusal is not a crash; the gate keeps the last answer.
+      return;
+    }
+    if (_disposed || permission == _permission) return;
+    _permission = permission;
+    _notify();
+  }
+
+  @override
   Future<List<MediaFolder>> folders() => observer.folders();
 
   @override
   Future<Uint8List?> thumbnail(String localId) =>
       observer.thumbnailFor(localId);
+
+  @override
+  Future<List<AssetCandidate>> libraryPage({
+    required int offset,
+    int limit = 200,
+    String? folderId,
+  }) => observer.page(offset: offset, limit: limit, folderId: folderId);
+
+  @override
+  Future<int> libraryCount({String? folderId}) =>
+      observer.libraryCount(folderId: folderId);
+
+  @override
+  Future<Map<String, UploadState>> backupStates(List<String> localIds) =>
+      queue.statesFor(localIds);
+
+  @override
+  int get queueRevision => _revision;
 
   @override
   QueueStats get stats => _stats;
@@ -265,6 +341,11 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     _settings = await settingsStore.load();
     _stats = await queue.stats();
     _notify();
+    if (auth.isSignedIn) {
+      // Before the pass: the library grid hides itself behind the permission
+      // gate, and a pass over a large backlog takes minutes to report one.
+      unawaited(refreshPermission());
+    }
     if (auth.isSignedIn && !_settings.paused) {
       // Not awaited: the first frame must not wait for a full pass.
       unawaited(syncNow());
@@ -273,11 +354,10 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed &&
-        auth.isSignedIn &&
-        !_settings.paused) {
-      unawaited(syncNow());
-    }
+    if (state != AppLifecycleState.resumed || !auth.isSignedIn) return;
+    // Access can be granted or revoked in OS settings while the app sleeps.
+    unawaited(refreshPermission());
+    if (!_settings.paused) unawaited(syncNow());
   }
 
   @override
@@ -301,8 +381,35 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
       return;
     }
     _stats = await queue.stats();
+    _revision++;
     _notify();
     await syncNow();
+  }
+
+  @override
+  Future<void> backUpNow(List<AssetCandidate> assets) async {
+    final eligible = assets
+        .where(
+          (asset) => _filter.isSupported(
+            asset,
+            includeVideos: _settings.includeVideos,
+          ),
+        )
+        .toList(growable: false);
+    if (eligible.isEmpty) return;
+
+    try {
+      await queue.enqueueAll(eligible);
+    } on Object {
+      _error = 'Could not queue those items. Try again.';
+      _notify();
+      return;
+    }
+    _stats = await queue.stats();
+    _revision++;
+    _notify();
+    // A pass may already be past its upload loop; run one after it.
+    await _syncAfterCurrent();
   }
 
   @override
@@ -392,6 +499,7 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     _lastReport = null;
     _permission = PhotoPermission.notDetermined;
     _stats = _emptyStats;
+    _revision++;
     if (_settings.paused) {
       final next = _settings.copyWith(paused: false);
       await settingsStore.save(next);
@@ -420,7 +528,7 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     }
     if (scopeChanged) {
       // Rows queued under the old scope would otherwise keep uploading.
-      unawaited(_syncNewScope());
+      unawaited(_syncAfterCurrent());
     }
   }
 
@@ -438,12 +546,13 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     await queue.setMeta(SyncCoordinator.scanWatermarkKey, '');
     await queue.clearNonTerminal();
     _stats = await queue.stats();
+    _revision++;
     _notify();
   }
 
-  /// Runs a pass for the new scope after any in-flight pass, because [syncNow]
-  /// joins one instead of starting another.
-  Future<void> _syncNewScope() async {
+  /// Runs a pass after any in-flight pass, because [syncNow] joins one instead
+  /// of starting another.
+  Future<void> _syncAfterCurrent() async {
     final inFlight = _pass;
     if (inFlight != null) await inFlight;
     await syncNow();
@@ -473,6 +582,9 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
       // A sign-out happened while the pass was running: its results describe
       // an account that is gone, so never write them back.
       if (generation != _generation) return;
+      // Without this, a pass that scans nothing looks identical to one that
+      // found nothing worth queueing.
+      if (kDebugMode) debugPrint('photox pass: $report');
       _lastReport = report;
       _permission = report.permission;
       _authRequired = report.authRequired;
@@ -496,6 +608,8 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
       _error = 'Sync could not finish. Check your connection and try again.';
     } finally {
       _syncing = false;
+      // Discovery and uploads both move rows, so the grid re-reads its page.
+      _revision++;
       _notify();
     }
   }
@@ -524,6 +638,7 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
       // A queue read must never leave the dashboard stuck on a spinner.
     }
     _discovering = false;
+    _revision++;
     _notify();
   }
 
@@ -542,6 +657,7 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     _reloadingStats = true;
     try {
       _stats = await queue.stats();
+      _revision++;
       _notify();
     } on Object {
       // A queue read must never escape into the progress listener.

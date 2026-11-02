@@ -20,6 +20,9 @@ class AssetCandidate {
     this.takenAt,
     this.modifiedAt,
     this.relativePath,
+    this.width,
+    this.height,
+    this.durationSeconds,
   });
 
   /// Platform asset id (PhotoKit localIdentifier / MediaStore id).
@@ -48,6 +51,15 @@ class AssetCandidate {
 
   /// Path relative to the platform library root, when available.
   final String? relativePath;
+
+  /// Pixel width reported by the platform. Display-only, the queue ignores it.
+  final int? width;
+
+  /// Pixel height reported by the platform. Display-only, the queue ignores it.
+  final int? height;
+
+  /// Video length in seconds. Display-only, the queue ignores it.
+  final int? durationSeconds;
 }
 
 /// A library album the user can scope backups to.
@@ -82,6 +94,21 @@ abstract class PhotoObserver {
 
   /// Lists the albums the platform exposes, camera album flagged.
   Future<List<MediaFolder>> folders();
+
+  /// One page of the device library, newest capture first.
+  ///
+  /// [folderId] limits the page to that album; null pages the whole library.
+  /// An unknown [folderId] returns an empty list rather than throwing, because
+  /// a deleted album is not an app error.
+  Future<List<AssetCandidate>> page({
+    required int offset,
+    required int limit,
+    String? folderId,
+  });
+
+  /// Assets the platform currently counts in [folderId], or the whole library
+  /// when it is null. `0` for an unknown album.
+  Future<int> libraryCount({String? folderId});
 
   /// Returns assets added since [since], or since the last successful scan
   /// when [since] is null, oldest first.
