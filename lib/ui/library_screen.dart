@@ -6,6 +6,7 @@ import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/scheduler.dart';
 
+import '../library/album_scope.dart';
 import '../library/backup_status.dart';
 import '../media/photo_observer.dart';
 import '../media/video_playback.dart';
@@ -46,6 +47,9 @@ class LibraryScreen extends StatefulWidget {
     required this.onRequestAccess,
     this.folderId,
     this.title,
+    this.album,
+    this.onOpenAlbums,
+    this.appBarActions = const <Widget>[],
   });
 
   /// Current photo-library permission; the grid only reads when it allows it.
@@ -109,6 +113,18 @@ class LibraryScreen extends StatefulWidget {
 
   /// Screen title, defaulting to `Library`.
   final String? title;
+
+  /// The album this grid was opened for, when it came from the Albums tab.
+  ///
+  /// Only used to say whether what is on screen is inside the backup scope;
+  /// [folderId] still decides what is read.
+  final MediaFolder? album;
+
+  /// Opens the Albums tab; null leaves the scope banner out entirely.
+  final VoidCallback? onOpenAlbums;
+
+  /// Extra app-bar actions, drawn before the sync and settings shortcuts.
+  final List<Widget> appBarActions;
 
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
@@ -882,6 +898,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
       );
     }
 
+    // Additive: absent unless the caller wires the Albums tab in, so the grid
+    // behaves exactly as before for anyone that does not.
+    final notice = !_selecting && _canRead ? _scopeBanner() : null;
+
     return AppBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -894,10 +914,65 @@ class _LibraryScreenState extends State<LibraryScreen> {
             children: <Widget>[
               if (!_selecting && _canRead) _infoRow(context),
               if (!_selecting && _canRead && _assets.isNotEmpty) _filterRow(),
+              if (notice != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                  child: notice,
+                ),
               Expanded(child: _body(context)),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// Says so when what is on screen is not what the backup reads.
+  ///
+  /// Two cases: the whole library is shown while the scope is a few albums, or
+  /// an album was opened that the backup does not include. Both point at the
+  /// Albums tab, which is where the scope is changed.
+  Widget? _scopeBanner() {
+    final open = widget.onOpenAlbums;
+    if (open == null) return null;
+
+    final scope = AlbumScope.of(widget.settings);
+    final album = widget.album;
+
+    if (album != null) {
+      if (scope.includes(album)) return null;
+      return StatusBanner(
+        key: const Key('library-scope-banner'),
+        tone: StatusTone.info,
+        icon: Icons.filter_alt_outlined,
+        title: 'This album is not backed up',
+        message:
+            'Backup covers ${albumScopeLabel(widget.settings)}, so photos in '
+            '${album.name} stay on this phone until you add it.',
+        action: TextButton(
+          key: const Key('library-open-albums'),
+          onPressed: open,
+          child: const Text('Change scope'),
+        ),
+      );
+    }
+
+    // A grid read from a single album id it cannot name, or everything: either
+    // way there is nothing the banner could honestly claim.
+    if (widget.folderId != null || scope.all) return null;
+
+    return StatusBanner(
+      key: const Key('library-scope-banner'),
+      tone: StatusTone.info,
+      icon: Icons.filter_alt_outlined,
+      title: 'Not everything here is backed up',
+      message:
+          'Backup only scans ${albumScopeLabel(widget.settings)}, so photos '
+          'from other albums are not uploaded.',
+      action: TextButton(
+        key: const Key('library-open-albums'),
+        onPressed: open,
+        child: const Text('Choose albums'),
       ),
     );
   }
@@ -950,6 +1025,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ),
       ),
       actions: <Widget>[
+        ...widget.appBarActions,
         if (!widget.syncing)
           IconButton(
             key: const Key('library-sync'),

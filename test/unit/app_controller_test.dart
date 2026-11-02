@@ -54,6 +54,9 @@ class _DeniedObserver implements PhotoObserver {
   /// Album listing returned by [folders].
   List<MediaFolder> foldersValue = const <MediaFolder>[];
 
+  /// When set, [folders] throws it, standing in for a broken platform read.
+  Object? foldersError;
+
   /// When set, [ensurePermission] blocks until it completes so a test can
   /// interleave account actions with an in-flight pass.
   Completer<void>? gate;
@@ -67,7 +70,11 @@ class _DeniedObserver implements PhotoObserver {
   }
 
   @override
-  Future<List<MediaFolder>> folders() async => foldersValue;
+  Future<List<MediaFolder>> folders() async {
+    final error = foldersError;
+    if (error != null) throw error;
+    return foldersValue;
+  }
 
   @override
   Future<List<AssetCandidate>> page({
@@ -379,6 +386,51 @@ void main() {
     ];
 
     expect(await controller.folders(), observer.foldersValue);
+  });
+
+  test('initialize drops a backup album the device no longer has', () async {
+    await tokenStore.write(_tokens());
+    await settingsStore.save(
+      const AppSettings(uploadFolderIds: <String>['gone', 'shots']),
+    );
+    observer.foldersValue = const <MediaFolder>[
+      MediaFolder(id: 'shots', name: 'Screenshots', assetCount: 2),
+    ];
+
+    await controller.initialize();
+    await controller.syncNow();
+
+    expect(controller.settings.uploadFolderIds, <String>['shots']);
+    expect((await settingsStore.load()).uploadFolderIds, <String>['shots']);
+  });
+
+  test('initialize keeps the scope when the album listing fails', () async {
+    await tokenStore.write(_tokens());
+    await settingsStore.save(
+      const AppSettings(uploadFolderIds: <String>['gone']),
+    );
+    observer.foldersError = StateError('library unavailable');
+
+    await controller.initialize();
+    await controller.syncNow();
+
+    expect(controller.settings.uploadFolderIds, <String>['gone']);
+    expect((await settingsStore.load()).uploadFolderIds, <String>['gone']);
+  });
+
+  test('initialize keeps a live album selection', () async {
+    await tokenStore.write(_tokens());
+    await settingsStore.save(
+      const AppSettings(uploadFolderIds: <String>['shots']),
+    );
+    observer.foldersValue = const <MediaFolder>[
+      MediaFolder(id: 'shots', name: 'Screenshots', assetCount: 2),
+    ];
+
+    await controller.initialize();
+    await controller.syncNow();
+
+    expect(controller.settings.uploadFolderIds, <String>['shots']);
   });
 
   test(

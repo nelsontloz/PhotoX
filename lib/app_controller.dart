@@ -11,6 +11,8 @@ import 'core/api_client.dart';
 import 'core/app_config.dart';
 import 'core/auth_manager.dart';
 import 'core/auth_models.dart';
+import 'library/album_progress.dart';
+import 'library/album_scope.dart';
 import 'library/backup_status.dart';
 import 'media/media_filter.dart';
 import 'media/photo_observer.dart';
@@ -87,6 +89,12 @@ abstract class AppController extends ChangeNotifier {
 
   /// Assets the platform counts in [folderId], or the whole library when null.
   Future<int> libraryCount({String? folderId});
+
+  /// Backed-up tally for one device album, read from the device and the queue.
+  ///
+  /// Side-effect free: it never queues, notifies or bumps the revision. A
+  /// platform read that throws propagates to the caller.
+  Future<AlbumProgress> albumProgress(String folderId);
 
   /// Queue state of the listed device assets, keyed by platform id.
   ///
@@ -324,6 +332,15 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
       observer.libraryCount(folderId: folderId);
 
   @override
+  Future<AlbumProgress> albumProgress(String folderId) => tallyAlbumProgress(
+    count: () => observer.libraryCount(folderId: folderId),
+    page: (offset, limit) =>
+        observer.page(offset: offset, limit: limit, folderId: folderId),
+    states: queue.statesFor,
+    settings: _settings,
+  );
+
+  @override
   Future<Map<String, UploadState>> backupStates(List<String> localIds) =>
       queue.statesFor(localIds);
 
@@ -393,6 +410,8 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     _stats = await queue.stats();
     _notify();
     if (auth.isSignedIn) {
+      // Before the pass: a deleted album would otherwise scan nothing for it.
+      await _pruneScope();
       // Before the pass: the library grid hides itself behind the permission
       // gate, and a pass over a large backlog takes minutes to report one.
       unawaited(refreshPermission());
@@ -585,6 +604,28 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     if (scopeChanged) {
       // Rows queued under the old scope would otherwise keep uploading.
       unawaited(_syncAfterCurrent());
+    }
+  }
+
+  /// Drops stored album ids the device no longer has.
+  ///
+  /// Best-effort: a failing album listing leaves the stored scope alone,
+  /// because guessing would shrink the backup set. [updateSettings] is the
+  /// only write path so the watermark reset and rescan stay in one place.
+  Future<void> _pruneScope() async {
+    if (_settings.uploadAllFolders || _settings.uploadFolderIds.isEmpty) return;
+    final List<MediaFolder> live;
+    try {
+      live = await observer.folders();
+    } on Object {
+      return;
+    }
+    final kept = pruneMissingFolders(_settings.uploadFolderIds, live);
+    if (listEquals(kept, _settings.uploadFolderIds)) return;
+    try {
+      await updateSettings(_settings.copyWith(uploadFolderIds: kept));
+    } on Object {
+      // A cleanup that cannot be persisted must not stop a launch.
     }
   }
 

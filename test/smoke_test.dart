@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photox_mobile/app.dart';
 import 'package:photox_mobile/app_controller.dart';
+import 'package:photox_mobile/library/album_progress.dart';
 import 'package:photox_mobile/library/backup_status.dart';
 import 'package:photox_mobile/media/photo_observer.dart';
 import 'package:photox_mobile/settings/settings_store.dart';
@@ -84,6 +85,10 @@ class FakeAppController extends AppController {
   Future<int> libraryCount({String? folderId}) async => 0;
 
   @override
+  Future<AlbumProgress> albumProgress(String folderId) async =>
+      const AlbumProgress(backedUp: 0, total: 0);
+
+  @override
   Future<Map<String, UploadState>> backupStates(List<String> localIds) async =>
       const <String, UploadState>{};
 
@@ -98,8 +103,7 @@ class FakeAppController extends AppController {
   Future<List<MediaFolder>> folders() async => const <MediaFolder>[];
 
   @override
-  Future<Uint8List?> thumbnail(String localId, {int size = 128}) async =>
-      null;
+  Future<Uint8List?> thumbnail(String localId, {int size = 128}) async => null;
 
   @override
   Future<Uint8List?> preview(String localId) async => null;

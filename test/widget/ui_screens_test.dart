@@ -62,8 +62,7 @@ Widget _home({
   VoidCallback? onOpenSettings,
   Future<void> Function()? onSignOut,
   Future<void> Function()? onRetryFailed,
-  int albumCount = 1,
-  bool uploadAllFolders = false,
+  String scopeLabel = 'Camera album',
   double textScale = 1,
 }) {
   return _app(
@@ -77,8 +76,7 @@ Widget _home({
       authRequired: authRequired,
       lastReport: lastReport,
       error: error,
-      albumCount: albumCount,
-      uploadAllFolders: uploadAllFolders,
+      scopeLabel: scopeLabel,
       onSyncNow: onSyncNow ?? () async {},
       onPause: onPause ?? () async {},
       onResume: onResume ?? () async {},
@@ -383,24 +381,16 @@ void main() {
     testWidgets('the scope pill names the album count, not the queue', (
       tester,
     ) async {
-      await tester.pumpWidget(_home(albumCount: 1));
+      await tester.pumpWidget(_home());
       await tester.pump();
-      expect(find.text('1 album'), findsOneWidget);
+      expect(find.text('Camera album'), findsOneWidget);
 
-      await tester.pumpWidget(_home(albumCount: 3));
+      await tester.pumpWidget(_home(scopeLabel: '3 albums'));
       await tester.pump();
       expect(find.text('3 albums'), findsOneWidget);
-      expect(find.text('1 album'), findsNothing);
+      expect(find.text('Camera album'), findsNothing);
 
-      await tester.pumpWidget(_home(albumCount: 0));
-      await tester.pump();
-      expect(
-        find.text('1 album'),
-        findsOneWidget,
-        reason: 'an empty selection still means the camera album',
-      );
-
-      await tester.pumpWidget(_home(albumCount: 4, uploadAllFolders: true));
+      await tester.pumpWidget(_home(scopeLabel: 'All albums'));
       await tester.pump();
       expect(find.text('All albums'), findsOneWidget);
     });

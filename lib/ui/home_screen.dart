@@ -8,7 +8,6 @@ import '../sync/transfer_progress.dart';
 import '../upload/upload_queue.dart';
 import 'widgets/app_background.dart';
 import 'widgets/backup_progress.dart';
-import 'widgets/count_format.dart';
 import 'widgets/last_sync_panel.dart';
 import 'widgets/panel.dart';
 import 'widgets/queue_summary.dart';
@@ -40,8 +39,7 @@ class HomeScreen extends StatelessWidget {
     required this.onOpenSettings,
     required this.onSignOut,
     this.thumbnail,
-    this.albumCount = 1,
-    this.uploadAllFolders = false,
+    required this.scopeLabel,
   });
 
   /// Aggregate queue counts.
@@ -94,17 +92,11 @@ class HomeScreen extends StatelessWidget {
   /// is absent or returns null the row keeps a neutral icon.
   final Future<Uint8List?> Function(String localId)? thumbnail;
 
-  /// Albums in the saved backup scope; `0` means the default camera album.
-  final int albumCount;
-
-  /// True when every album is backed up, whatever [albumCount] says.
-  final bool uploadAllFolders;
-
   /// One line naming how much of the library is in scope.
-  String get _scopeLabel {
-    if (uploadAllFolders) return 'All albums';
-    return albumCount > 1 ? '${formatCount(albumCount)} albums' : '1 album';
-  }
+  ///
+  /// Comes from `albumScopeLabel`, so this screen and the Albums tab cannot
+  /// describe the same setting differently.
+  final String scopeLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -341,7 +333,7 @@ class HomeScreen extends StatelessWidget {
                       error: error?.trim(),
                     ),
                   ),
-                  _ScopePill(label: _scopeLabel),
+                  _ScopePill(label: scopeLabel),
                 ],
               ),
             ],

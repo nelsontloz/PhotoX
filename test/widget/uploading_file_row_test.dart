@@ -352,6 +352,7 @@ void main() {
           onOpenSettings: () {},
           onSignOut: () async {},
           thumbnail: (id) async => _red,
+          scopeLabel: 'Camera album',
         ),
       ),
     );
