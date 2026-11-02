@@ -1,0 +1,10 @@
+# Host-side override for the mobile contract/device harness.
+#
+# The e2e stack intentionally keeps core unpublished (only web is reachable from
+# the host). The mobile app and the contract test talk to core over HTTP, so this
+# file publishes it on loopback only. E2E_CORE_PORT is chosen by the helper
+# scripts and defaults to 3917 when compose is invoked directly.
+services:
+  core:
+    ports:
+      - '127.0.0.1:${E2E_CORE_PORT:-3917}:3000'

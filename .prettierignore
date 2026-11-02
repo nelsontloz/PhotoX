@@ -1,1 +1,3 @@
 pnpm-lock.yaml
+# Dart/Flutter app: prettier would reformat its markdown and pubspec with TS rules
+apps/mobile/
