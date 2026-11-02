@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -15,12 +16,15 @@ void main() {
   late File assetFile;
   late List<MethodCall> calls;
   late Uint8List thumbBytes;
+  // Non-null while a test wants every getThumb to wait for its own completer.
+  List<({String id, Completer<void> gate})>? thumbHoldings;
 
   setUp(() async {
     temp = await Directory.systemTemp.createTemp('photox-observer-test-');
     assetFile = File('${temp.path}/asset.jpg');
     await assetFile.writeAsBytes(<int>[1, 2, 3]);
     calls = <MethodCall>[];
+    thumbHoldings = null;
     thumbBytes = Uint8List.fromList(<int>[9, 8, 7]);
 
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -100,6 +104,11 @@ void main() {
             case 'getThumb':
               if (arguments['id'] != 'asset-1') {
                 throw PlatformException(code: 'not_found');
+              }
+              if (thumbHoldings != null) {
+                final gate = Completer<void>();
+                thumbHoldings!.add((id: arguments['id'] as String, gate: gate));
+                await gate.future;
               }
               return thumbBytes;
           }
@@ -208,6 +217,57 @@ void main() {
       expect(await observer.thumbnailFor('gone'), isNull);
     },
   );
+
+  test('thumbnailFor serves a repeated request from its cache', () async {
+    final observer = PhotoManagerObserver();
+    addTearDown(observer.dispose);
+
+    final first = await observer.thumbnailFor('asset-1', size: 200);
+    final second = await observer.thumbnailFor('asset-1', size: 200);
+
+    expect(second, same(first));
+    // One platform encode: a tile that mounts again reuses the bytes.
+    expect(calls.where((call) => call.method == 'getThumb'), hasLength(1));
+
+    // A different size is a different preview, so it asks again.
+    await observer.thumbnailFor('asset-1', size: 128);
+    expect(calls.where((call) => call.method == 'getThumb'), hasLength(2));
+  });
+
+  test('thumbnail slots go to the newest request first', () async {
+    final observer = PhotoManagerObserver();
+    addTearDown(observer.dispose);
+
+    final holdings = <({String id, Completer<void> gate})>[];
+    thumbHoldings = holdings;
+
+    // Six fit in the gate; the rest wait in line. The harness only answers for
+    // `asset-1`, so every request asks for the same asset at a different size
+    // to keep them distinct cache keys.
+    for (var index = 0; index < 8; index++) {
+      unawaited(observer.thumbnailFor('asset-1', size: 100 + index));
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(holdings, hasLength(6));
+
+    // Freeing a slot must wake the newest waiter, not the oldest: the newest is
+    // the tile that just mounted on screen.
+    holdings[0].gate.complete();
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+    expect(holdings, hasLength(7));
+    holdings[1].gate.complete();
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+    expect(holdings, hasLength(8));
+
+    // Drain, so no request is left waiting on a slot.
+    for (final holding in holdings.skip(2)) {
+      if (!holding.gate.isCompleted) holding.gate.complete();
+    }
+    await Future<void>.delayed(Duration.zero);
+    thumbHoldings = null;
+  });
 
   test('enumerates albums once, camera first, and caches them', () async {
     final observer = PhotoManagerObserver();

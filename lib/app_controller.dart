@@ -54,8 +54,10 @@ abstract class AppController extends ChangeNotifier {
   /// Albums the device exposes, so the user can choose the backup scope.
   Future<List<MediaFolder>> folders();
 
-  /// Small encoded preview of [localId], or null when none is available.
-  Future<Uint8List?> thumbnail(String localId);
+  /// Encoded preview of [localId] at roughly [size] pixels, or null when none
+  /// is available. The grid asks for its own tile size; callers that draw
+  /// something small keep the default.
+  Future<Uint8List?> thumbnail(String localId, {int size = 128});
 
   /// Display-resolution preview for the full-screen viewer.
   ///
@@ -228,6 +230,11 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   /// Last [TransferProgress.completedTransfers] value already handled.
   int _completedTransfers = 0;
 
+  /// Asset and phase the shell was last told about, so byte ticks stay silent.
+  String? _progressAsset;
+
+  TransferPhase _progressPhase = TransferPhase.idle;
+
   /// True while a progress-triggered stats reload is running.
   bool _reloadingStats = false;
 
@@ -278,8 +285,8 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   Future<List<MediaFolder>> folders() => observer.folders();
 
   @override
-  Future<Uint8List?> thumbnail(String localId) =>
-      observer.thumbnailFor(localId);
+  Future<Uint8List?> thumbnail(String localId, {int size = 128}) =>
+      observer.thumbnailFor(localId, size: size);
 
   @override
   Future<Uint8List?> preview(String localId) =>
@@ -543,6 +550,8 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     await clearSpool();
     progress.reset();
     _completedTransfers = 0;
+    _progressAsset = null;
+    _progressPhase = TransferPhase.idle;
     _lastReport = null;
     _permission = PhotoPermission.notDetermined;
     _stats = _emptyStats;
@@ -689,13 +698,25 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     _notify();
   }
 
-  /// Forwards progress ticks to the shell and refreshes counters when an
-  /// asset finishes so the dashboard moves while a pass runs.
+  /// Forwards the start and end of a transfer to the shell and refreshes the
+  /// counters when an asset finishes.
+  ///
+  /// Byte ticks are not forwarded: the widgets that draw them listen to
+  /// [progress] directly, so a tick repaints a bar or a tile instead of the
+  /// whole shell (and, before this, the entire library grid).
   void _onProgress() {
-    if (progress.completedTransfers != _completedTransfers) {
+    final finished = progress.completedTransfers != _completedTransfers;
+    if (finished) {
       _completedTransfers = progress.completedTransfers;
       unawaited(_reloadStats());
     }
+    if (!finished &&
+        progress.localId == _progressAsset &&
+        progress.phase == _progressPhase) {
+      return;
+    }
+    _progressAsset = progress.localId;
+    _progressPhase = progress.phase;
     _notify();
   }
 

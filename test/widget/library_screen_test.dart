@@ -7,6 +7,7 @@ import 'package:photox_mobile/settings/settings_store.dart';
 import 'package:photox_mobile/sync/transfer_progress.dart';
 import 'package:photox_mobile/ui/library_screen.dart';
 import 'package:photox_mobile/ui/widgets/asset_tile.dart';
+import 'package:photox_mobile/ui/widgets/month_rail.dart';
 import 'package:photox_mobile/ui/widgets/status_badge.dart';
 import 'package:photox_mobile/upload/models.dart';
 
@@ -81,7 +82,7 @@ Widget _screen({
           ({required int offset, int limit = 200, String? folderId}) async =>
               offset == 0 ? assets : const <AssetCandidate>[],
       loadStates: loadStates ?? (ids) async => states,
-      thumbnail: (id) async => null,
+      thumbnail: (id, {int size = 128}) async => null,
       loadPreview: (id) async => null,
       loadDetail: (asset) async =>
           const BackupDetail(status: BackupStatus.unknown),
@@ -295,7 +296,9 @@ void main() {
     expect(find.text('No photos yet'), findsOneWidget);
   });
 
-  testWidgets('the next page loads when the first one ends', (tester) async {
+  testWidgets('the rest of the library is indexed without scrolling', (
+    tester,
+  ) async {
     final offsets = <int>[];
     await tester.pumpWidget(
       _screen(
@@ -316,20 +319,61 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(offsets, <int>[0]);
 
-    for (var attempt = 0; attempt < 12 && offsets.length < 2; attempt++) {
-      await tester.drag(find.byType(CustomScrollView), const Offset(0, -1200));
+    // The first page paints, then the sweep finishes the library: the rail can
+    // describe the whole height because the grid knows all of it.
+    expect(offsets, <int>[0, 200]);
+    expect(find.text('202 items'), findsOneWidget);
+
+    // Everything is loaded, so scrolling asks for nothing more.
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -2000));
+    await tester.pumpAndSettle();
+    expect(offsets, <int>[0, 200]);
+  });
+
+  testWidgets('the rail spans the whole indexed library', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _screen(
+        assets: <AssetCandidate>[
+          for (var index = 0; index < 400; index++)
+            _asset(
+              'a$index',
+              takenAt: DateTime(
+                2025,
+                5,
+                12,
+              ).subtract(Duration(days: index ~/ 40)),
+            ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The sweep finished, so the grid knows the whole library, not a prefix.
+    expect(find.text('400 items'), findsOneWidget);
+
+    final scroll = tester
+        .widget<CustomScrollView>(find.byType(CustomScrollView))
+        .controller!;
+    final box = tester.getRect(find.byType(MonthRail));
+
+    final gesture = await tester.startGesture(
+      Offset(box.right - 10, box.top + 40),
+    );
+    for (var step = 0; step < 8; step++) {
+      await gesture.moveBy(const Offset(0, 120));
       await tester.pump();
     }
+    await gesture.up();
     await tester.pumpAndSettle();
 
-    expect(offsets, <int>[0, 200]);
-
-    // The appended page sits just past the old bottom of the list.
-    await tester.drag(find.byType(CustomScrollView), const Offset(0, -800));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey<String>('page2-0')), findsOneWidget);
+    // The rail's far end is the library's far end, not the last loaded page.
+    expect(scroll.offset, closeTo(scroll.position.maxScrollExtent, 40));
   });
 
   testWidgets('changing the backup scope reloads the grid for that album', (
@@ -450,5 +494,55 @@ void main() {
     expect(find.byType(AssetTile), findsNWidgets(2));
     // No row was read, so no tile may claim "not backed up" (or anything else).
     expect(find.byType(StatusBadge), findsNothing);
+  });
+
+  testWidgets('the month rail scrubs the grid and names where it lands', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_screen(assets: _fourDays()));
+    await tester.pumpAndSettle();
+
+    final rail = find.byType(MonthRail);
+    expect(rail, findsOneWidget);
+    final box = tester.getRect(rail);
+    expect(box.width, MonthRail.width);
+    expect(find.bySemanticsLabel('Library position'), findsOneWidget);
+
+    final scroll = tester
+        .widget<CustomScrollView>(find.byType(CustomScrollView))
+        .controller!;
+    expect(scroll.offset, 0);
+
+    // Drag the rail a third of the way down: the grid follows the finger and
+    // the popup names the month it landed on.
+    final gesture = await tester.startGesture(
+      Offset(box.right - 10, box.top + 120),
+    );
+    // One move only crosses the slop; the updates start after that.
+    for (var step = 0; step < 3; step++) {
+      await gesture.moveBy(const Offset(0, 70));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(scroll.offset, greaterThan(0));
+    expect(find.textContaining('May 2025'), findsWidgets);
+  });
+
+  testWidgets('a short library has no rail', (tester) async {
+    await tester.pumpWidget(
+      _screen(assets: <AssetCandidate>[_asset('one'), _asset('two')]),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(MonthRail), findsOneWidget);
+    // Nothing to scroll, so the rail draws nothing at all.
+    expect(find.bySemanticsLabel('Library position'), findsNothing);
   });
 }

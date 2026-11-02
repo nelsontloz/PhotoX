@@ -263,17 +263,25 @@ class HomeScreen extends StatelessWidget {
                     else ...[
                       QueueSummary(stats: stats, onRetryFailed: onRetryFailed),
                       const SizedBox(height: 12),
-                      BackupProgressPanel(
-                        stats: stats,
-                        paused: paused,
-                        animate: progress.active && !paused,
+                      // Byte ticks reach these two only, so the shell is not
+                      // rebuilt five times a second while a pass runs.
+                      ListenableBuilder(
+                        listenable: progress,
+                        builder: (context, _) => BackupProgressPanel(
+                          stats: stats,
+                          paused: paused,
+                          animate: progress.active && !paused,
+                        ),
                       ),
                       const SizedBox(height: 12),
-                      UploadingFileRow(
-                        progress: progress,
-                        waiting: stats.pending,
-                        paused: paused,
-                        thumbnail: thumbnail,
+                      ListenableBuilder(
+                        listenable: progress,
+                        builder: (context, _) => UploadingFileRow(
+                          progress: progress,
+                          waiting: stats.pending,
+                          paused: paused,
+                          thumbnail: thumbnail,
+                        ),
                       ),
                     ],
                     const SizedBox(height: 12),

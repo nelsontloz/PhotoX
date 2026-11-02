@@ -50,6 +50,26 @@ class PhotoManagerObserver implements PhotoObserver {
   /// round-trip. Dropped with [_folders] by [_onChange].
   final Map<String?, AssetPathEntity> _paths = <String?, AssetPathEntity>{};
 
+  /// Encoded previews by asset and requested size, oldest use first.
+  ///
+  /// A grid tile asks again every time it is mounted, so without this each
+  /// scroll-back costs an `AssetEntity.fromId` round trip plus a platform
+  /// re-encode. Budgeted in bytes: an entry count says nothing about size.
+  final Map<_ThumbKey, Uint8List> _thumbs = <_ThumbKey, Uint8List>{};
+
+  /// Bytes currently held by [_thumbs].
+  int _thumbBytes = 0;
+
+  /// Encoded previews kept before the coldest is dropped.
+  static const int _thumbBudgetBytes = 24 << 20;
+
+  /// Platform encodes allowed at once; a fling mounts tiles faster than the
+  /// platform can encode them, and the backlog is what stutters the scroll.
+  static const int _thumbConcurrency = 6;
+
+  int _thumbsInFlight = 0;
+  final List<Completer<void>> _thumbWaiters = <Completer<void>>[];
+
   bool _disposed = false;
 
   @override
@@ -310,8 +330,17 @@ class PhotoManagerObserver implements PhotoObserver {
   @override
   Future<Uint8List?> thumbnailFor(String localId, {int size = 128}) async {
     // A bad caller must not turn a preview into a full-size decode. The ceiling
-    // is what the full-screen viewer asks for; the grid keeps the 128 default.
+    // is what the full-screen viewer asks for; the grid asks for its own tile.
     final pixels = size.clamp(64, 2048).toInt();
+    final key = _ThumbKey(localId, pixels);
+    final cached = _thumbs.remove(key);
+    if (cached != null) {
+      // Re-inserted so the eviction order follows use, not creation.
+      _thumbs[key] = cached;
+      return cached;
+    }
+
+    await _acquireThumbSlot();
     try {
       final entity = await AssetEntity.fromId(localId);
       if (entity == null) return null;
@@ -320,13 +349,81 @@ class PhotoManagerObserver implements PhotoObserver {
         quality: 80,
       );
       if (bytes == null || bytes.isEmpty) return null;
+      _rememberThumb(key, bytes);
       return bytes;
     } on Object {
       // PlatformException (asset deleted, iCloud fetch failed) or
       // UnsupportedError (format without a renderable thumbnail). The
       // dashboard asks on every library change, so this must never throw.
       return null;
+    } finally {
+      _releaseThumbSlot();
     }
+  }
+
+  /// Keeps [bytes] as the newest entry, dropping the coldest past the budget.
+  void _rememberThumb(_ThumbKey key, Uint8List bytes) {
+    final previous = _thumbs.remove(key);
+    if (previous != null) _thumbBytes -= previous.length;
+    _thumbs[key] = bytes;
+    _thumbBytes += bytes.length;
+    while (_thumbBytes > _thumbBudgetBytes && _thumbs.isNotEmpty) {
+      final dropped = _thumbs.remove(_thumbs.keys.first);
+      if (dropped == null) break;
+      _thumbBytes -= dropped.length;
+    }
+  }
+
+  /// Blocks until fewer than [_thumbConcurrency] encodes are running.
+  Future<void> _acquireThumbSlot() {
+    if (_thumbsInFlight < _thumbConcurrency) {
+      _thumbsInFlight++;
+      return Future<void>.value();
+    }
+    final waiter = Completer<void>();
+    _thumbWaiters.add(waiter);
+    return waiter.future;
+  }
+
+  /// Frees a slot, handing it to the *newest* waiter.
+  ///
+  /// LIFO on purpose: requests come from tiles mounting as the grid scrolls, so
+  /// the latest one is the one now on screen. FIFO would spend the freed slot
+  /// on a tile the finger has already left, which starves the visible window
+  /// behind slow iCloud fetches.
+  void _releaseThumbSlot() {
+    if (_thumbWaiters.isEmpty) {
+      if (_thumbsInFlight > 0) _thumbsInFlight--;
+      return;
+    }
+    _thumbWaiters.removeLast().complete();
+  }
+
+  /// Drops previews whose bytes may have changed, keeping the rest.
+  void _forgetThumbs(Set<String>? ids) {
+    if (ids == null) {
+      _thumbs.clear();
+      _thumbBytes = 0;
+      return;
+    }
+    for (final entry in _thumbs.entries.toList(growable: false)) {
+      if (!ids.contains(entry.key.localId)) continue;
+      _thumbs.remove(entry.key);
+      _thumbBytes -= entry.value.length;
+    }
+  }
+
+  /// Asset ids carried by a platform change callback, or null when it carries
+  /// none and every preview must then be treated as suspect.
+  static Set<String>? _changedIds(MethodCall call) {
+    final args = call.arguments;
+    final raw = args is Map ? args['ids'] : args;
+    if (raw is! List) return null;
+    final ids = <String>{
+      for (final id in raw)
+        if (id is String && id.isNotEmpty) id,
+    };
+    return ids.isEmpty ? null : ids;
   }
 
   @override
@@ -339,6 +436,12 @@ class PhotoManagerObserver implements PhotoObserver {
     _scanFiles.clear();
     _folders = null;
     _paths.clear();
+    _forgetThumbs(null);
+    // Nothing may wait on a slot that will never be handed over.
+    for (final waiter in _thumbWaiters) {
+      if (!waiter.isCompleted) waiter.complete();
+    }
+    _thumbWaiters.clear();
     PhotoManager.removeChangeCallback(_onChange);
     await PhotoManager.stopChangeNotify();
     await _changes.close();
@@ -350,6 +453,10 @@ class PhotoManagerObserver implements PhotoObserver {
     // id may now resolve elsewhere, so both listings reload on next use.
     _folders = null;
     _paths.clear();
+    // An edited asset keeps its id but changes its bytes, so the previews held
+    // for it are stale. The callback names the assets when the platform says
+    // so; otherwise everything is suspect and the cache starts over.
+    _forgetThumbs(_changedIds(call));
     _changes.add(null);
   }
 
@@ -468,4 +575,19 @@ class PhotoManagerObserver implements PhotoObserver {
         ? path.substring(index + 1)
         : path;
   }
+}
+
+/// Identity of one cached preview: the asset and the square size asked for.
+class _ThumbKey {
+  const _ThumbKey(this.localId, this.pixels);
+
+  final String localId;
+  final int pixels;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ThumbKey && other.localId == localId && other.pixels == pixels;
+
+  @override
+  int get hashCode => Object.hash(localId, pixels);
 }

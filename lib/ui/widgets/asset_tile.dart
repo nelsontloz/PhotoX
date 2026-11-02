@@ -1,22 +1,27 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../library/backup_status.dart';
 import '../../media/photo_observer.dart';
+import '../../sync/transfer_progress.dart';
 import 'status_badge.dart';
 
 /// One square asset in the library grid: the preview, its backup mark, and the
 /// selection affordances.
 ///
 /// Plain props only: the screen owns loading, selection and status resolution.
+/// The badge is the exception — it follows [progress] on its own so a byte tick
+/// repaints one tile instead of the whole grid.
 class AssetTile extends StatelessWidget {
   const AssetTile({
     super.key,
     required this.asset,
     required this.thumbnail,
+    required this.progress,
+    required this.deferring,
     this.status,
-    this.fraction,
     this.selecting = false,
     this.selected = false,
     this.onTap,
@@ -27,13 +32,16 @@ class AssetTile extends StatelessWidget {
   final AssetCandidate asset;
 
   /// Encoded preview for [AssetCandidate.localId]; null keeps the placeholder.
-  final Future<Uint8List?> Function(String localId) thumbnail;
+  final Future<Uint8List?> Function(String localId, {int size}) thumbnail;
+
+  /// Live transfer state, so this tile shows its own percentage as it moves.
+  final TransferProgress progress;
+
+  /// True while the grid is flinging; the preview waits rather than queueing.
+  final ValueListenable<bool> deferring;
 
   /// Badge state, or null while the queue has not answered for this asset yet.
   final BackupStatus? status;
-
-  /// Live uploaded fraction, only for the asset a transfer is working on.
-  final double? fraction;
 
   /// True while the grid is in selection mode.
   final bool selecting;
@@ -69,17 +77,20 @@ class AssetTile extends StatelessWidget {
             fit: StackFit.expand,
             children: <Widget>[
               ColoredBox(color: scheme.surfaceContainerHigh),
-              _Thumbnail(asset: asset, load: thumbnail),
+              _Thumbnail(asset: asset, load: thumbnail, deferring: deferring),
               // Dimming sits under the marks so they stay readable.
               if (selecting && !selected)
                 const ColoredBox(color: Color(0x73000000)),
               if (asset.kind == MediaKind.video) const _VideoMark(),
-              if (status != null)
-                Positioned(
-                  right: 5,
-                  bottom: 5,
-                  child: StatusBadge(status: status!, fraction: fraction),
+              Positioned(
+                right: 5,
+                bottom: 5,
+                child: _LiveBadge(
+                  asset: asset,
+                  status: status,
+                  progress: progress,
                 ),
+              ),
               if (selecting)
                 Positioned(
                   top: 5,
@@ -105,16 +116,56 @@ class AssetTile extends StatelessWidget {
   }
 }
 
+/// The badge, plus the live percentage while this exact asset is in flight.
+class _LiveBadge extends StatelessWidget {
+  const _LiveBadge({
+    required this.asset,
+    required this.status,
+    required this.progress,
+  });
+
+  final AssetCandidate asset;
+  final BackupStatus? status;
+  final TransferProgress progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: progress,
+      builder: (context, _) {
+        final active = progress.active && progress.localId == asset.localId;
+        final resolved = active ? BackupStatus.uploading : status;
+        if (resolved == null) return const SizedBox.shrink();
+        // No byte count while the bytes are still being prepared.
+        final fraction = active && progress.phase == TransferPhase.uploading
+            ? progress.fraction
+            : null;
+        return StatusBadge(status: resolved, fraction: fraction);
+      },
+    );
+  }
+}
+
 /// Preview bytes decoded at roughly the tile's own size.
 ///
 /// The future is kept per tile so a rebuild (selection, scroll, status change)
-/// never re-asks the platform; Flutter's image cache is size-bounded, and
-/// [cacheWidth] keeps 50k decoded previews from being full-resolution bitmaps.
+/// never re-asks the platform; the provider below keeps the decode cached.
 class _Thumbnail extends StatefulWidget {
-  const _Thumbnail({required this.asset, required this.load});
+  const _Thumbnail({
+    required this.asset,
+    required this.load,
+    required this.deferring,
+  });
 
   final AssetCandidate asset;
-  final Future<Uint8List?> Function(String localId) load;
+  final Future<Uint8List?> Function(String localId, {int size}) load;
+
+  /// True while the grid is flinging: no request until it settles.
+  final ValueListenable<bool> deferring;
+
+  /// Big enough for the widest tile on a 3x screen; encoding once and caching
+  /// beats asking 128 px and upscaling it.
+  static const int requestPixels = 320;
 
   @override
   State<_Thumbnail> createState() => _ThumbnailState();
@@ -126,16 +177,40 @@ class _ThumbnailState extends State<_Thumbnail> {
   @override
   void initState() {
     super.initState();
-    _bytes = widget.load(widget.asset.localId);
+    widget.deferring.addListener(_onDeferringChanged);
+    if (!widget.deferring.value) _bytes = _load();
   }
 
   @override
   void didUpdateWidget(_Thumbnail oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.deferring != widget.deferring) {
+      oldWidget.deferring.removeListener(_onDeferringChanged);
+      widget.deferring.addListener(_onDeferringChanged);
+      if (!widget.deferring.value && _bytes == null) _bytes = _load();
+    }
     if (oldWidget.asset.localId != widget.asset.localId) {
-      _bytes = widget.load(widget.asset.localId);
+      // A recycled tile starts over, and still waits out a fling.
+      _bytes = widget.deferring.value ? null : _load();
     }
   }
+
+  @override
+  void dispose() {
+    widget.deferring.removeListener(_onDeferringChanged);
+    super.dispose();
+  }
+
+  /// The fling settled: ask for the preview that was held back.
+  void _onDeferringChanged() {
+    if (widget.deferring.value || _bytes != null) return;
+    setState(() {
+      _bytes = _load();
+    });
+  }
+
+  Future<Uint8List?> _load() =>
+      widget.load(widget.asset.localId, size: _Thumbnail.requestPixels);
 
   @override
   Widget build(BuildContext context) {
@@ -148,10 +223,17 @@ class _ThumbnailState extends State<_Thumbnail> {
           builder: (context, constraints) {
             final ratio = MediaQuery.devicePixelRatioOf(context);
             final width = (constraints.maxWidth * ratio).round().clamp(48, 512);
-            return Image.memory(
-              bytes,
+            return Image(
+              image: ResizeImage.resizeIfNeeded(
+                width,
+                null,
+                _PreviewImage(
+                  widget.asset.localId,
+                  _Thumbnail.requestPixels,
+                  bytes,
+                ),
+              ),
               fit: BoxFit.cover,
-              cacheWidth: width,
               gaplessPlayback: true,
               filterQuality: FilterQuality.low,
               errorBuilder: (context, error, stack) => const _Blank(),
@@ -161,6 +243,32 @@ class _ThumbnailState extends State<_Thumbnail> {
       },
     );
   }
+}
+
+/// Encoded preview bytes as an image-cache key that survives a remount.
+///
+/// [MemoryImage] has no equality, so every remount was a fresh cache entry and
+/// the same JPEG was decoded again on every scroll-back. Equality here is the
+/// asset, the requested size and the exact byte instance — an edited asset
+/// answers with new bytes, so it cannot hit a stale decode.
+class _PreviewImage extends MemoryImage {
+  // MemoryImage cannot be constructed const, and this subclass adds no mutable
+  // state; the lint's const suggestion does not apply.
+  // ignore: prefer_const_constructors_in_immutables
+  _PreviewImage(this.localId, this.pixels, Uint8List bytes) : super(bytes);
+
+  final String localId;
+  final int pixels;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _PreviewImage &&
+      other.localId == localId &&
+      other.pixels == pixels &&
+      identical(other.bytes, bytes);
+
+  @override
+  int get hashCode => Object.hash(localId, pixels);
 }
 
 /// Neutral stand-in while a preview loads, and when the platform has none.

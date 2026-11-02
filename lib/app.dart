@@ -76,28 +76,55 @@ class PhotoXApp extends StatefulWidget {
 class _PhotoXAppState extends State<PhotoXApp> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
+  /// Signed-in state alone, so a stats or progress notification never rebuilds
+  /// the whole app: each tab listens for what it actually draws.
+  late final ValueNotifier<bool> _signedIn = ValueNotifier<bool>(
+    widget.controller.isSignedIn,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_syncSignedIn);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_syncSignedIn);
+    _signedIn.dispose();
+    super.dispose();
+  }
+
+  void _syncSignedIn() {
+    final signedIn = widget.controller.isSignedIn;
+    if (signedIn != _signedIn.value) _signedIn.value = signedIn;
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
 
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) => MaterialApp(
+    return ValueListenableBuilder<bool>(
+      valueListenable: _signedIn,
+      builder: (context, signedIn, _) => MaterialApp(
         title: 'PhotoX',
         debugShowCheckedModeBanner: false,
         navigatorKey: _navigatorKey,
         themeMode: ThemeMode.dark,
         darkTheme: photoXTheme(),
-        home: controller.isSignedIn
+        home: signedIn
             ? _SignedInShell(
                 controller: controller,
                 onOpenSettings: _openSettings,
               )
-            : LoginScreen(
-                onSignIn: controller.signIn,
-                serverUrl: controller.settings.apiBaseUrl,
-                busy: controller.busy,
-                error: controller.error,
+            : ListenableBuilder(
+                listenable: controller,
+                builder: (context, _) => LoginScreen(
+                  onSignIn: controller.signIn,
+                  serverUrl: controller.settings.apiBaseUrl,
+                  busy: controller.busy,
+                  error: controller.error,
+                ),
               ),
       ),
     );
@@ -163,6 +190,55 @@ class _SignedInShellState extends State<_SignedInShell> {
         : null;
   }
 
+  /// The device grid, rebuilt when the state it draws changes.
+  Widget _library(AppController controller) {
+    return LibraryScreen(
+      permission: controller.permission,
+      settings: controller.settings,
+      syncing: controller.syncing,
+      queueRevision: controller.queueRevision,
+      progress: controller.progress,
+      folderId: _scopeFolderId,
+      loadPage: controller.libraryPage,
+      loadStates: controller.backupStates,
+      thumbnail: controller.thumbnail,
+      loadPreview: controller.preview,
+      loadDetail: controller.backupDetail,
+      video: VideoSupport(
+        loadFile: controller.playableVideo,
+        createPlayback: VideoPlayerPlayback.new,
+      ),
+      onBackUpNow: controller.backUpNow,
+      onOpenSettings: widget.onOpenSettings,
+      onSyncNow: controller.syncNow,
+      onRequestAccess: controller.refreshPermission,
+    );
+  }
+
+  /// The sync dashboard.
+  Widget _backup(AppController controller) {
+    return HomeScreen(
+      stats: controller.stats,
+      progress: controller.progress,
+      permission: controller.permission,
+      syncing: controller.syncing,
+      discovering: controller.discovering,
+      paused: controller.paused,
+      authRequired: controller.authRequired,
+      lastReport: controller.lastReport,
+      error: controller.error,
+      albumCount: controller.settings.uploadFolderIds.length,
+      uploadAllFolders: controller.settings.uploadAllFolders,
+      onSyncNow: controller.syncNow,
+      onRetryFailed: controller.retryFailed,
+      onPause: controller.pause,
+      onResume: controller.resume,
+      onOpenSettings: widget.onOpenSettings,
+      onSignOut: controller.signOut,
+      thumbnail: controller.thumbnail,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
@@ -171,46 +247,15 @@ class _SignedInShellState extends State<_SignedInShell> {
       body: IndexedStack(
         index: _index,
         children: <Widget>[
-          LibraryScreen(
-            permission: controller.permission,
-            settings: controller.settings,
-            syncing: controller.syncing,
-            queueRevision: controller.queueRevision,
-            progress: controller.progress,
-            folderId: _scopeFolderId,
-            loadPage: controller.libraryPage,
-            loadStates: controller.backupStates,
-            thumbnail: controller.thumbnail,
-            loadPreview: controller.preview,
-            loadDetail: controller.backupDetail,
-            video: VideoSupport(
-              loadFile: controller.playableVideo,
-              createPlayback: VideoPlayerPlayback.new,
-            ),
-            onBackUpNow: controller.backUpNow,
-            onOpenSettings: widget.onOpenSettings,
-            onSyncNow: controller.syncNow,
-            onRequestAccess: controller.refreshPermission,
+          // Each tab listens on its own: this shell only rebuilds when the app
+          // signs in or out, so one tab's counters never rebuild the other.
+          ListenableBuilder(
+            listenable: controller,
+            builder: (context, _) => _library(controller),
           ),
-          HomeScreen(
-            stats: controller.stats,
-            progress: controller.progress,
-            permission: controller.permission,
-            syncing: controller.syncing,
-            discovering: controller.discovering,
-            paused: controller.paused,
-            authRequired: controller.authRequired,
-            lastReport: controller.lastReport,
-            error: controller.error,
-            albumCount: controller.settings.uploadFolderIds.length,
-            uploadAllFolders: controller.settings.uploadAllFolders,
-            onSyncNow: controller.syncNow,
-            onRetryFailed: controller.retryFailed,
-            onPause: controller.pause,
-            onResume: controller.resume,
-            onOpenSettings: widget.onOpenSettings,
-            onSignOut: controller.signOut,
-            thumbnail: controller.thumbnail,
+          ListenableBuilder(
+            listenable: controller,
+            builder: (context, _) => _backup(controller),
           ),
         ],
       ),

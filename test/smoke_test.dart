@@ -98,7 +98,8 @@ class FakeAppController extends AppController {
   Future<List<MediaFolder>> folders() async => const <MediaFolder>[];
 
   @override
-  Future<Uint8List?> thumbnail(String localId) async => null;
+  Future<Uint8List?> thumbnail(String localId, {int size = 128}) async =>
+      null;
 
   @override
   Future<Uint8List?> preview(String localId) async => null;

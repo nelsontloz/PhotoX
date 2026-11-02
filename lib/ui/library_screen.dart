@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+import 'package:flutter/scheduler.dart';
 
 import '../library/backup_status.dart';
 import '../media/photo_observer.dart';
@@ -13,6 +16,8 @@ import 'viewer_screen.dart';
 import 'widgets/app_background.dart';
 import 'widgets/asset_tile.dart';
 import 'widgets/count_format.dart';
+import 'widgets/month_rail.dart';
+import 'widgets/rows_sliver.dart';
 import 'widgets/panel.dart';
 import 'widgets/status_banner.dart';
 
@@ -73,7 +78,7 @@ class LibraryScreen extends StatefulWidget {
   loadStates;
 
   /// Encoded preview for a library id, or null when the platform has none.
-  final Future<Uint8List?> Function(String localId) thumbnail;
+  final Future<Uint8List?> Function(String localId, {int size}) thumbnail;
 
   /// Display-resolution preview for the full-screen viewer.
   final Future<Uint8List?> Function(String localId) loadPreview;
@@ -116,10 +121,27 @@ class _LibraryScreenState extends State<LibraryScreen> {
   /// Page size asked of the controller; a shorter page ends the list.
   static const int _pageSize = 200;
 
+  /// Page size for the background index sweep: metadata only, so a bigger page
+  /// costs nothing but round trips.
+  static const int _hydratePageSize = 500;
+
+  /// Height the footer adds below the last row, kept in the model's own units.
+  static const double _footerExtent = 24;
+
   /// How close to the end of the list the next page is requested.
   static const double _loadAhead = 600;
 
-  static const List<String> _months = <String>[
+  /// Horizontal inset of the grid and the gap between two tiles.
+  ///
+  /// The rows are sized from these, so a row's recorded height is exactly what
+  /// the list draws and a row offset never has to be measured.
+  static const double _gutter = 12;
+  static const double _gap = 4;
+
+  /// Quiet period before the loaded page's queue states are re-read.
+  static const Duration _statesQuiet = Duration(milliseconds: 400);
+
+  static const List<String> _monthNames = <String>[
     'Jan',
     'Feb',
     'Mar',
@@ -148,6 +170,81 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   final ScrollController _scroll = ScrollController();
 
+  /// The grid as lines: a day header, or one row of tiles.
+  ///
+  /// One list rather than one sliver per day, so a frame costs what is on
+  /// screen instead of what is loaded. Rebuilt only when the data changes —
+  /// never for a selection tap or a transfer tick.
+  List<_GridRow> _rows = const <_GridRow>[];
+
+  /// Absolute top offset of each row, plus the total as the last entry.
+  List<double> _rowTops = const <double>[0];
+
+  /// Chip counts over the loaded pages, computed with [_rows].
+  Map<_LibraryFilter, int> _counts = const <_LibraryFilter, int>{};
+
+  /// True when [_rows] no longer describes [_assets], [_states] or the filter.
+  bool _rowsDirty = true;
+
+  /// Geometry [_rows] was built for; a rotation or text-scale change rebuilds.
+  int _modelColumns = 0;
+  double _modelTileSide = 0;
+  double _modelHeaderHeight = 0;
+
+  /// Day bar following the top edge; null while a real header sits there.
+  final ValueNotifier<_StickyBar?> _stickyDay = ValueNotifier<_StickyBar?>(
+    null,
+  );
+
+  /// Months of the loaded rows, in content coordinates.
+  List<MonthSpan> _months = const <MonthSpan>[];
+
+  /// What the month rail draws; null while there is nothing to scroll.
+  final ValueNotifier<MonthRailState?> _rail = ValueNotifier<MonthRailState?>(
+    null,
+  );
+
+  /// Keeps the rail popup up for a moment after the last scroll step.
+  Timer? _railPopupTimer;
+
+  /// Rail geometry frozen for the drag in progress, so loading more pages does
+  /// not rescale the rail under the finger.
+  MonthRailState? _railFrozen;
+
+  /// Scroll offset a drag asked for; consumed by [_runSeek].
+  double? _seekTarget;
+
+  /// True while [_runSeek] is loading pages towards [_seekTarget].
+  bool _seeking = false;
+
+  /// Bumped when a drag starts, so an older seek stops loading pages.
+  int _scrubGeneration = 0;
+
+  /// Month last buzzed during a drag, so one month is one tick.
+  String? _scrubMonth;
+
+  /// Months a scrub must have before snapping is worth it.
+  static const int _snapMonths = 12;
+
+  /// The page request in flight, so callers join instead of stacking two.
+  Future<void>? _pageInFlight;
+
+  /// True while the rest of the library is being indexed in the background.
+  bool _hydrating = false;
+
+  /// True while the grid is flinging: tiles wait before asking for a preview,
+  /// because a fling mounts far more of them than the platform can encode.
+  final ValueNotifier<bool> _deferring = ValueNotifier<bool>(false);
+
+  /// Pending end of the deferral, re-armed by every movement.
+  Timer? _deferTimer;
+
+  /// Quiet period after a fling before previews are requested again.
+  static const Duration _deferSettle = Duration(milliseconds: 120);
+
+  /// Pending state re-read, so a pass that finishes ten assets is one query.
+  Timer? _statesTimer;
+
   _LibraryFilter _filter = _LibraryFilter.all;
   bool _selecting = false;
   bool _loading = false;
@@ -165,7 +262,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   void initState() {
     super.initState();
     _scroll.addListener(_onScroll);
-    if (_canRead) unawaited(_loadMore());
+    if (_canRead) unawaited(_loadFirstPage());
   }
 
   @override
@@ -179,7 +276,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
       return;
     }
     // The backup scope changed under us; the old pages belong to another set.
-    if (oldWidget.folderId != widget.folderId) unawaited(_refresh());
+    if (oldWidget.folderId != widget.folderId) {
+      unawaited(_refresh());
+      return;
+    }
+    // The container and video rules decide the badge, so the rows are stale.
+    if (oldWidget.settings != widget.settings) _rowsDirty = true;
   }
 
   static bool _isReadable(PhotoPermission permission) =>
@@ -190,6 +292,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
   void dispose() {
     // Anything still in flight checks this before touching state.
     _disposed = true;
+    _statesTimer?.cancel();
+    _railPopupTimer?.cancel();
+    _deferTimer?.cancel();
+    _deferring.dispose();
+    _stickyDay.dispose();
+    _rail.dispose();
     _scroll.removeListener(_onScroll);
     _scroll.dispose();
     super.dispose();
@@ -197,9 +305,253 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   void _onScroll() {
     if (!_scroll.hasClients) return;
+    _updateDeferring();
+    _updateSticky();
+    _updateRail();
     if (_error != null) return; // the footer offers an explicit retry instead
     if (_scroll.position.extentAfter > _loadAhead) return;
     unawaited(_loadMore());
+  }
+
+  /// Points the floating day bar at the day under the top edge.
+  ///
+  /// A header row already draws its own label there, so the bar steps aside
+  /// instead of printing it twice. As the next day's header reaches the edge it
+  /// pushes the bar up and out, which is what a pinned header does — without a
+  /// pinned header per day, and without a second label on screen.
+  void _updateSticky() {
+    if (!_scroll.hasClients || _rows.isEmpty) {
+      if (_stickyDay.value != null) _stickyDay.value = null;
+      return;
+    }
+
+    final pixels = _scroll.position.pixels;
+    var index = _rowIndexAt(pixels);
+    if (_rows[index].assets == null) {
+      if (_stickyDay.value != null) _stickyDay.value = null;
+      return;
+    }
+    while (index > 0 && _rows[index].assets != null) {
+      index--;
+    }
+    final header = _rows[index];
+
+    var next = _rowIndexAt(pixels) + 1;
+    while (next < _rows.length && _rows[next].assets != null) {
+      next++;
+    }
+    final nextTop = next < _rows.length
+        ? _rowTops[next] - pixels
+        : double.infinity;
+    // The next day's header is taking over, and it draws the same bar in the
+    // same place: stand down rather than print two days at once.
+    if (nextTop < header.height) {
+      if (_stickyDay.value != null) _stickyDay.value = null;
+      return;
+    }
+
+    final current = _stickyDay.value;
+    if (current != null &&
+        current.row.label == header.label &&
+        current.row.count == header.count) {
+      return;
+    }
+    _stickyDay.value = _StickyBar(row: header, top: 0);
+  }
+
+  /// Holds tile previews back while the grid is flung.
+  ///
+  /// A fling mounts far more tiles than the platform can encode, and most of
+  /// them are already gone by the time a preview would arrive; the tiles ask
+  /// again once the scroll settles.
+  void _updateDeferring() {
+    if (!_scroll.hasClients) return;
+    final deferred = _scroll.position.recommendDeferredLoading(context);
+    if (deferred && !_deferring.value) _deferring.value = true;
+    // Every scroll step re-arms the settle timer, so the flag clears after the
+    // *last* movement — including a fling that stops without telling anyone.
+    _deferTimer?.cancel();
+    _deferTimer = Timer(_deferSettle, () {
+      _deferTimer = null;
+      if (!_disposed) _deferring.value = false;
+    });
+  }
+
+  /// Publishes what the rail draws, or hides it when nothing scrolls.
+  ///
+  /// While a drag is in progress the content height is the frozen one, so
+  /// loading pages cannot rescale the rail under the finger.
+  void _updateRail() {
+    if (!_scroll.hasClients || _months.isEmpty) {
+      if (_rail.value != null) _rail.value = null;
+      return;
+    }
+    final position = _scroll.position;
+    if (!position.hasContentDimensions) return;
+
+    final frozen = _railFrozen;
+    // From the row model, not `maxScrollExtent`: a lazy sliver only estimates
+    // its extent until it has laid the rows out, and an estimate rescales the
+    // rail while it is being looked at.
+    final contentHeight =
+        frozen?.contentHeight ?? (_rowTops.last + _footerExtent);
+    final months = frozen?.months ?? _months;
+    if (frozen == null && contentHeight <= position.viewportDimension) {
+      if (_rail.value != null) _rail.value = null;
+      return;
+    }
+
+    final current = _rail.value;
+    // The popup belongs to scrolling, not to the model being rebuilt: an
+    // upload finishing must not flash a month over the grid.
+    final moved =
+        current != null && (current.pixels - position.pixels).abs() >= 0.5;
+    if (moved) _armRailPopup();
+
+    final next = MonthRailState(
+      contentHeight: contentHeight,
+      viewport: position.viewportDimension,
+      pixels: position.pixels,
+      months: months,
+      month: monthAtContentY(
+        months,
+        position.pixels + position.viewportDimension / 2,
+      ),
+      showPopup: _railFrozen != null || _railPopupTimer != null,
+    );
+    if (current != null && current.sameAs(next)) return;
+    _rail.value = next;
+  }
+
+  /// Holds the month popup open for a moment after the grid stopped moving.
+  void _armRailPopup() {
+    _railPopupTimer?.cancel();
+    _railPopupTimer = Timer(const Duration(seconds: 1), () {
+      _railPopupTimer = null;
+      if (!_disposed) _updateRail();
+    });
+  }
+
+  void _onRailScrubStart() {
+    _railFrozen = _rail.value;
+    _scrubMonth = null;
+    _scrubGeneration++;
+  }
+
+  /// Drags map through the geometry frozen at the start of the gesture.
+  void _onRailScrub(double fraction) {
+    final frozen = _railFrozen;
+    if (frozen == null) return;
+    final target = contentYForRailFraction(
+      fraction,
+      contentHeight: frozen.contentHeight,
+      viewport: frozen.viewport,
+    );
+    // A tick per month crossed, the way a physical scrubber feels.
+    final month = monthAtContentY(frozen.months, target);
+    if (month != _scrubMonth) {
+      _scrubMonth = month;
+      unawaited(HapticFeedback.selectionClick());
+    }
+    _seekTarget = target;
+    if (!_seeking) unawaited(_runSeek());
+  }
+
+  void _onRailScrubEnd() {
+    final target = _seekTarget;
+    if (target != null && _months.length >= _snapMonths) {
+      final snapped = snapToMonthTop(
+        target,
+        _months,
+        tolerance: (_modelTileSide + _gap) * 1.5,
+      );
+      if (snapped != target) _seekTo(snapped);
+    }
+    _railFrozen = null;
+    _scrubMonth = null;
+    _updateRail();
+  }
+
+  void _onRailJump(double fraction) {
+    final current = _rail.value;
+    if (current == null) return;
+    _seekTo(
+      contentYForRailFraction(
+        fraction,
+        contentHeight: current.contentHeight,
+        viewport: current.viewport,
+      ),
+    );
+  }
+
+  /// Accessibility stepping: `delta` months older (+) or newer (−).
+  void _onRailStep(int delta) {
+    if (_months.isEmpty || !_scroll.hasClients) return;
+    final position = _scroll.position;
+    final current = monthAtContentY(
+      _months,
+      position.pixels + position.viewportDimension / 2,
+    );
+    final index = _months.indexWhere((month) => month.label == current);
+    final target = (index < 0 ? 0 : index + delta).clamp(0, _months.length - 1);
+    _seekTo(_months[target].top);
+  }
+
+  void _seekTo(double contentY) {
+    _seekTarget = contentY;
+    if (!_seeking) unawaited(_runSeek());
+  }
+
+  /// Scrolls towards [_seekTarget], loading pages while the content is too
+  /// short to reach it.
+  ///
+  /// One seek runs at a time: a moving finger just replaces the target, so the
+  /// grid never loads the same page twice or jumps backwards to a stale one.
+  Future<void> _runSeek() async {
+    _seeking = true;
+    final generation = _scrubGeneration;
+    var budget = _seekPages;
+    try {
+      while (_seekTarget != null && generation == _scrubGeneration) {
+        if (_disposed || !_scroll.hasClients) return;
+        final target = _seekTarget!;
+        if (target <= _scroll.position.maxScrollExtent) {
+          // The sliver reports the real extent, so one jump is enough.
+          _scroll.jumpTo(target);
+          _seekTarget = null;
+          continue;
+        }
+        if (!_hasMore || _error != null || budget-- <= 0) {
+          _seekTarget = null;
+          continue;
+        }
+        final before = _assets.length;
+        await _loadMore();
+        if (_disposed || generation != _scrubGeneration) return;
+        // A page that added nothing (in flight, failed, or the end) would spin.
+        if (_assets.length == before) _seekTarget = null;
+      }
+    } finally {
+      _seeking = false;
+    }
+  }
+
+  /// Pages one seek may load before giving up; a new drag resets the target.
+  static const int _seekPages = 25;
+
+  /// Row covering [offset]; rows tile the list, so a binary search is exact.
+  int _rowIndexAt(double offset) {
+    var low = 0;
+    var high = _rows.length - 1;
+    while (low < high) {
+      final mid = (low + high + 1) >> 1;
+      if (_rowTops[mid] <= offset) {
+        low = mid;
+      } else {
+        high = mid - 1;
+      }
+    }
+    return low;
   }
 
   /// Clears the grid and reads the first page again; also pull-to-refresh.
@@ -216,12 +568,81 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _hasMore = true;
       _error = null;
       _loading = false;
+      _rows = const <_GridRow>[];
+      _rowTops = const <double>[0];
+      _counts = const <_LibraryFilter, int>{};
+      _months = const <MonthSpan>[];
+      _rowsDirty = true;
     });
+    // A bar and a rail describing rows that no longer exist must not survive
+    // the reset, and a drag in progress has nothing left to point at.
+    _stickyDay.value = null;
+    _rail.value = null;
+    _railFrozen = null;
+    _seekTarget = null;
+    _scrubGeneration++;
+    _pageInFlight = null;
     await _loadMore();
+    if (_disposed) return;
+    unawaited(_hydrate(generation: _generation));
   }
 
-  Future<void> _loadMore() async {
-    if (_disposed || _loading || !_hasMore || !_canRead) return;
+  Future<void> _loadFirstPage() async {
+    await _loadMore();
+    if (_disposed) return;
+    unawaited(_hydrate(generation: _generation));
+  }
+
+  /// Indexes the rest of the library's metadata in the background.
+  ///
+  /// The web knows the whole timeline's height up front because the server
+  /// returns a layout; the device does not, so the grid reads every page's
+  /// metadata — dates and sizes, no thumbnails and no bytes — and the rail then
+  /// describes the whole library instead of growing as the user scrolls.
+  ///
+  /// ponytail: the whole library lives in memory as candidates (~200 bytes
+  /// each, so 50k photos ≈ 10 MB) and the row model is rebuilt per page. A
+  /// byte-budgeted window would mean reworking the model; revisit if a very
+  /// large library is ever measured to suffer.
+  Future<void> _hydrate({required int generation}) async {
+    if (_hydrating) return;
+    _hydrating = true;
+    try {
+      while (!_disposed && generation == _generation && _hasMore && _canRead) {
+        final before = _assets.length;
+        await _loadMore(limit: _hydratePageSize, withStates: false);
+        if (_disposed || generation != _generation) return;
+        if (_assets.length == before) break;
+        // One page per frame at most, so a fling or a tap never queues behind
+        // the index.
+        await SchedulerBinding.instance.endOfFrame;
+      }
+    } finally {
+      _hydrating = false;
+    }
+    if (_disposed || generation != _generation) return;
+    // One pass for the badges the sweep skipped: they are only read once the
+    // ids exist, and this is the cheapest moment to ask.
+    _readStates();
+  }
+
+  /// Loads one more page, joining a request that is already in flight.
+  Future<void> _loadMore({int? limit, bool withStates = true}) {
+    final inFlight = _pageInFlight;
+    if (inFlight != null) return inFlight;
+    final future = _fetchPage(
+      limit: limit ?? _pageSize,
+      withStates: withStates,
+    ).whenComplete(() => _pageInFlight = null);
+    _pageInFlight = future;
+    return future;
+  }
+
+  Future<void> _fetchPage({
+    required int limit,
+    required bool withStates,
+  }) async {
+    if (_disposed || !_hasMore || !_canRead) return;
     final generation = _generation;
     setState(() {
       _loading = true;
@@ -231,7 +652,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     try {
       final page = await widget.loadPage(
         offset: _offset,
-        limit: _pageSize,
+        limit: limit,
         folderId: widget.folderId,
       );
       if (_disposed || generation != _generation) return;
@@ -247,11 +668,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
       // Asked before the page is shown, so no tile falsely reads "not backed
       // up" for a frame. A failed read leaves the marks off this page: the ids
       // stay unresolved, and unresolved never means "not backed up".
-      var resolved = true;
+      var resolved = false;
       Map<String, UploadState> states = const <String, UploadState>{};
-      if (ids.isNotEmpty) {
+      if (withStates && ids.isNotEmpty) {
         try {
           states = await widget.loadStates(ids);
+          resolved = true;
         } on Object {
           resolved = false;
         }
@@ -263,8 +685,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
         _states.addAll(states);
         if (resolved) _resolved.addAll(ids);
         _offset += page.length;
-        _hasMore = page.length >= _pageSize;
+        _hasMore = page.length >= limit;
         _loading = false;
+        _rowsDirty = true;
       });
       _fillViewport();
     } on Object {
@@ -287,8 +710,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
     });
   }
 
-  /// Re-reads the states that can still move; finished uploads never change.
+  /// Re-reads the states that can still move, once the pass goes quiet.
+  ///
+  /// A pass finishes assets one at a time and bumps the revision each time; a
+  /// trailing debounce turns a burst into a single query.
   void _refreshStates() {
+    _statesTimer?.cancel();
+    _statesTimer = Timer(_statesQuiet, _readStates);
+  }
+
+  void _readStates() {
     final ids = <String>[
       for (final asset in _assets)
         if (_statusOf(asset) != BackupStatus.backedUp) asset.localId,
@@ -312,30 +743,21 @@ class _LibraryScreenState extends State<LibraryScreen> {
       }
       _states.addAll(states);
       _resolved.addAll(ids);
+      _rowsDirty = true;
     });
   }
 
   /// Badge for [asset]; null while its queue state is still unknown.
+  ///
+  /// The live transfer is not consulted here: the tile follows [widget.progress]
+  /// itself, so a byte tick never rebuilds the grid.
   BackupStatus? _statusOf(AssetCandidate asset) {
-    final progress = widget.progress;
-    // The row lags the bytes, so the live transfer wins for its own tile.
-    if (progress.active && progress.localId == asset.localId) {
-      return BackupStatus.uploading;
-    }
     if (!_resolved.contains(asset.localId)) return null;
     return resolveBackupStatus(
       state: _states[asset.localId],
       asset: asset,
       settings: widget.settings,
     );
-  }
-
-  /// Live fraction, only on the tile the transfer is working on.
-  double? _fractionFor(AssetCandidate asset) {
-    final progress = widget.progress;
-    if (!progress.active || progress.localId != asset.localId) return null;
-    // No byte count while the bytes are still being prepared.
-    return progress.phase == TransferPhase.uploading ? progress.fraction : null;
   }
 
   bool _matchesFilter(AssetCandidate asset) {
@@ -446,6 +868,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final columns = _columnsFor(context);
+    final tileSide = _tileSideFor(context, columns);
+    final headerHeight = _DayHeader.heightFor(context);
+    if (_rowsDirty ||
+        columns != _modelColumns ||
+        tileSide != _modelTileSide ||
+        headerHeight != _modelHeaderHeight) {
+      _ensureRows(
+        columns: columns,
+        tileSide: tileSide,
+        headerHeight: headerHeight,
+      );
+    }
+
     return AppBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -585,7 +1021,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   /// All / Not backed up / Failed, counted over what is loaded.
   Widget _filterRow() {
-    final counts = _filterCounts();
+    final counts = _counts;
     return SizedBox(
       height: 48,
       child: SingleChildScrollView(
@@ -616,7 +1052,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
       label: Text('$label ${formatCount(counts[filter] ?? 0)}$suffix'),
       selected: _filter == filter,
       materialTapTargetSize: MaterialTapTargetSize.padded,
-      onSelected: (_) => setState(() => _filter = filter),
+      onSelected: (_) => setState(() {
+        _filter = filter;
+        _rowsDirty = true;
+      }),
     );
   }
 
@@ -760,78 +1199,239 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Widget _grid(BuildContext context) {
-    final visible = _filtered();
-    final groups = _groupByDay(visible);
-    final columns = _columnsFor(context);
-    final headerHeight = _DayHeaderDelegate.heightFor(context);
+    final columns = _modelColumns;
 
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: CustomScrollView(
-        controller: _scroll,
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: <Widget>[
-          if (widget.permission == PhotoPermission.limited)
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(16, 4, 16, 12),
-                child: _LimitedNote(),
-              ),
+    return Stack(
+      children: <Widget>[
+        RefreshIndicator(
+          onRefresh: _refresh,
+          child: CustomScrollView(
+            controller: _scroll,
+            physics: const AlwaysScrollableScrollPhysics(),
+            // Two screens of slack: fewer blank tiles when a fling reverses.
+            scrollCacheExtent: ScrollCacheExtent.pixels(
+              MediaQuery.sizeOf(context).height * 2,
             ),
-          if (groups.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: _noMatches(context),
-            )
-          else ...<Widget>[
-            // One group per day: a pinned header only gets pushed out by the
-            // next pinned header when both sit in the same group. As plain
-            // siblings every header pins at the same offset and they stack.
-            for (final group in groups)
-              SliverMainAxisGroup(
-                slivers: <Widget>[
-                  SliverPersistentHeader(
-                    pinned: true,
-                    delegate: _DayHeaderDelegate(
-                      label: group.label,
-                      count: group.assets.length,
-                      height: headerHeight,
-                    ),
+            slivers: <Widget>[
+              if (widget.permission == PhotoPermission.limited)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(16, 4, 16, 12),
+                    child: _LimitedNote(),
                   ),
-                  SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    sliver: SliverGrid(
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: columns,
-                        crossAxisSpacing: 4,
-                        mainAxisSpacing: 4,
-                      ),
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        final asset = group.assets[index];
-                        return AssetTile(
-                          key: ValueKey<String>(asset.localId),
-                          asset: asset,
-                          thumbnail: widget.thumbnail,
-                          status: _statusOf(asset),
-                          fraction: _fractionFor(asset),
-                          selecting: _selecting,
-                          selected: _selected.containsKey(asset.localId),
-                          onTap: _selecting
-                              ? () => _toggleSelection(asset)
-                              : () => _openViewer(asset),
-                          onLongPress: () => _toggleSelection(asset),
-                        );
-                      }, childCount: group.assets.length),
-                    ),
+                ),
+              if (_rows.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _noMatches(context),
+                )
+              else ...<Widget>[
+                SliverRows(
+                  layout: RowsLayout(_rowTops),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) => _buildRow(context, index, columns),
+                    childCount: _rows.length,
                   ),
-                ],
+                ),
+                SliverToBoxAdapter(child: _footer(context)),
+              ],
+            ],
+          ),
+        ),
+        // The chronological rail: proportional to the loaded rows and extended
+        // on demand, because the device cannot tell the app how tall the
+        // unread part of the library is.
+        Positioned(
+          top: 0,
+          bottom: 0,
+          right: 0,
+          width: MonthRail.width,
+          child: MonthRail(
+            state: _rail,
+            onScrubStart: _onRailScrubStart,
+            onScrub: _onRailScrub,
+            onScrubEnd: _onRailScrubEnd,
+            onJump: _onRailJump,
+            onStep: _onRailStep,
+          ),
+        ),
+        // The day bar floats over the list instead of being one pinned header
+        // per day: its extent never changes, so nothing shifts under the
+        // finger and only this bar rebuilds as the days go by.
+        ValueListenableBuilder<_StickyBar?>(
+          valueListenable: _stickyDay,
+          builder: (context, bar, _) {
+            if (bar == null) return const SizedBox.shrink();
+            return Positioned(
+              top: bar.top,
+              left: 0,
+              right: 0,
+              child: _DayHeader(
+                label: bar.row.label!,
+                count: bar.row.count,
+                height: bar.row.height,
+                sticky: true,
               ),
-            SliverToBoxAdapter(child: _footer(context)),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  /// One line of the list: a day header, or the tiles of one row.
+  Widget _buildRow(BuildContext context, int index, int columns) {
+    final row = _rows[index];
+    final assets = row.assets;
+    if (assets == null) {
+      return _DayHeader(
+        label: row.label!,
+        count: row.count,
+        height: row.height,
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(
+        bottom: _gap,
+        left: _gutter,
+        right: _gutter,
+      ),
+      child: SizedBox(
+        // Exactly [_gap] less than the height the model recorded, so the rows
+        // keep tiling the offsets the day bar and "jump to day" rely on.
+        height: row.height - _gap,
+        child: Row(
+          children: <Widget>[
+            for (var column = 0; column < columns; column++) ...<Widget>[
+              if (column > 0) const SizedBox(width: _gap),
+              Expanded(
+                child: column < assets.length
+                    ? AssetTile(
+                        key: ValueKey<String>(assets[column].localId),
+                        asset: assets[column],
+                        thumbnail: widget.thumbnail,
+                        progress: widget.progress,
+                        deferring: _deferring,
+                        status: _statusOf(assets[column]),
+                        selecting: _selecting,
+                        selected: _selected.containsKey(assets[column].localId),
+                        onTap: _selecting
+                            ? () => _toggleSelection(assets[column])
+                            : () => _openViewer(assets[column]),
+                        onLongPress: () => _toggleSelection(assets[column]),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
+
+  /// Rebuilds [_rows] for the current data, filter and geometry.
+  void _ensureRows({
+    required int columns,
+    required double tileSide,
+    required double headerHeight,
+  }) {
+    final rows = <_GridRow>[];
+    final tops = <double>[0];
+    final months = <MonthSpan>[];
+    var top = 0.0;
+
+    void add(_GridRow row) {
+      rows.add(row);
+      top += row.height;
+      tops.add(top);
+    }
+
+    void addDay(String label, List<AssetCandidate> items) {
+      final date = items.first.takenAt ?? items.first.modifiedAt;
+      final monthKey = date == null ? null : _monthKey(date);
+      final headerTop = top;
+      add(
+        _GridRow.header(
+          label: label,
+          count: items.length,
+          height: headerHeight,
+        ),
+      );
+      for (var start = 0; start < items.length; start += columns) {
+        final end = start + columns < items.length
+            ? start + columns
+            : items.length;
+        add(
+          _GridRow.tiles(
+            assets: items.sublist(start, end),
+            height: tileSide + _gap,
+          ),
+        );
+      }
+      if (monthKey == null || date == null) return;
+      // Days arrive newest first, so a month either extends the last span or
+      // starts a new one. Undated assets belong to no month.
+      if (months.isNotEmpty && months.last.key == monthKey) {
+        final last = months.removeLast();
+        months.add(
+          MonthSpan(key: monthKey, label: last.label, top: last.top, end: top),
+        );
+      } else {
+        months.add(
+          MonthSpan(
+            key: monthKey,
+            label: _monthLabel(date),
+            top: headerTop,
+            end: top,
+          ),
+        );
+      }
+    }
+
+    String? label;
+    var day = <AssetCandidate>[];
+    final undated = <AssetCandidate>[];
+
+    for (final asset in _filtered()) {
+      final date = asset.takenAt ?? asset.modifiedAt;
+      if (date == null) {
+        undated.add(asset);
+        continue;
+      }
+      final dayLabel = _dayLabel(date);
+      if (dayLabel != label) {
+        if (day.isNotEmpty) addDay(label!, day);
+        label = dayLabel;
+        day = <AssetCandidate>[];
+      }
+      day.add(asset);
+    }
+    if (day.isNotEmpty) addDay(label!, day);
+    if (undated.isNotEmpty) addDay('Undated', undated);
+
+    _rows = rows;
+    _rowTops = tops;
+    _counts = _filterCounts();
+    _months = months;
+    _rowsDirty = false;
+    _modelColumns = columns;
+    _modelTileSide = tileSide;
+    _modelHeaderHeight = headerHeight;
+    // The bar and the rail must follow the new rows without touching state
+    // during a build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_disposed) return;
+      _updateSticky();
+      _updateRail();
+    });
+  }
+
+  static String _monthKey(DateTime date) =>
+      '${date.year}-${date.month.toString().padLeft(2, '0')}';
+
+  String _monthLabel(DateTime date) =>
+      '${_monthNames[date.month - 1]} ${date.year}';
 
   Widget _footer(BuildContext context) {
     final theme = Theme.of(context);
@@ -924,36 +1524,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
     return (width / 130).floor().clamp(4, 10);
   }
 
-  /// Groups [assets] into day sections, newest first, undated last.
-  List<_DayGroup> _groupByDay(List<AssetCandidate> assets) {
-    final groups = <_DayGroup>[];
-    final undated = <AssetCandidate>[];
-    String? label;
-    var bucket = <AssetCandidate>[];
-
-    void flush() {
-      if (bucket.isEmpty || label == null) return;
-      groups.add(_DayGroup(label, bucket));
-      bucket = <AssetCandidate>[];
-    }
-
-    for (final asset in assets) {
-      final date = asset.takenAt ?? asset.modifiedAt;
-      if (date == null) {
-        undated.add(asset);
-        continue;
-      }
-      final dayLabel = _dayLabel(date);
-      if (dayLabel != label) {
-        flush();
-        label = dayLabel;
-      }
-      bucket.add(asset);
-    }
-    flush();
-
-    if (undated.isNotEmpty) groups.add(_DayGroup('Undated', undated));
-    return groups;
+  /// Side of one square tile, so a row height matches what is drawn exactly.
+  double _tileSideFor(BuildContext context, int columns) {
+    final width = MediaQuery.sizeOf(context).width;
+    return (width - 2 * _gutter - (columns - 1) * _gap) / columns;
   }
 
   String _dayLabel(DateTime date) {
@@ -963,37 +1537,35 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final days = today.difference(day).inDays;
     if (days == 0) return 'Today';
     if (days == 1) return 'Yesterday';
-    final month = _months[date.month - 1];
+    final month = _monthNames[date.month - 1];
     return date.year == now.year
         ? '${date.day} $month'
         : '${date.day} $month ${date.year}';
   }
 }
 
-/// One day of the grid, already ordered.
-class _DayGroup {
-  const _DayGroup(this.label, this.assets);
-
-  final String label;
-  final List<AssetCandidate> assets;
-}
-
-/// Sticky section header: the day, with how many photos it holds.
-class _DayHeaderDelegate extends SliverPersistentHeaderDelegate {
-  const _DayHeaderDelegate({
+/// Day separator: the day, how many photos it holds, and its exact height.
+///
+/// As a plain row it costs one widget; the bar that follows the top edge is the
+/// same widget with [sticky] set.
+class _DayHeader extends StatelessWidget {
+  const _DayHeader({
     required this.label,
     required this.count,
     required this.height,
+    this.sticky = false,
   });
 
   final String label;
   final int count;
 
-  /// Fixed extent for this header, grown for large accessibility text.
+  /// Fixed height, grown for large accessibility text so the label still fits.
   final double height;
 
-  /// A persistent header must fill exactly the extent it claims, and the text
-  /// must still fit when the user scales it up.
+  /// True for the bar floating over the top edge while a day scrolls by.
+  final bool sticky;
+
+  /// Height of one header row; the grid model counts on this exactly.
   static double heightFor(BuildContext context) {
     final theme = Theme.of(context);
     final fontSize = theme.textTheme.labelLarge?.fontSize ?? 14;
@@ -1002,27 +1574,24 @@ class _DayHeaderDelegate extends SliverPersistentHeaderDelegate {
   }
 
   @override
-  double get minExtent => height;
-
-  @override
-  double get maxExtent => height;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
     return SizedBox(
-      // The delegate is laid out with loose constraints: without an explicit
-      // height the header would measure only its text and break the sliver.
       height: height,
-      child: ColoredBox(
+      child: DecoratedBox(
         // Nearly opaque: the grid slides underneath and stays readable.
-        color: scheme.surface.withValues(alpha: 0.94),
+        decoration: BoxDecoration(
+          color: scheme.surface.withValues(alpha: sticky ? 0.97 : 0.94),
+          border: sticky
+              ? Border(
+                  bottom: BorderSide(
+                    color: scheme.outlineVariant.withValues(alpha: 0.35),
+                  ),
+                )
+              : null,
+        ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
@@ -1052,12 +1621,6 @@ class _DayHeaderDelegate extends SliverPersistentHeaderDelegate {
       ),
     );
   }
-
-  @override
-  bool shouldRebuild(covariant _DayHeaderDelegate oldDelegate) =>
-      oldDelegate.label != label ||
-      oldDelegate.count != count ||
-      oldDelegate.height != height;
 }
 
 /// Scope pill: which albums the backup reads.
@@ -1129,4 +1692,40 @@ class _LimitedNote extends StatelessWidget {
           'photos can be backed up. Add more in your device settings.',
     );
   }
+}
+
+/// One line of the grid: a day header, or up to `columns` tiles.
+///
+/// The grid is a list of these instead of one sliver per day, so a frame costs
+/// what is on screen rather than how many days are loaded. [height] is exact,
+/// which is what makes a row offset a prefix sum rather than a measurement.
+class _GridRow {
+  const _GridRow.header({
+    required this.label,
+    required this.count,
+    required this.height,
+  }) : assets = null;
+
+  const _GridRow.tiles({required this.assets, required this.height})
+    : label = null,
+      count = 0;
+
+  /// Day the row belongs to; set on header rows only.
+  final String? label;
+
+  /// Assets in that day; set on header rows only.
+  final int count;
+
+  /// Tiles of this row; set on tile rows only.
+  final List<AssetCandidate>? assets;
+
+  final double height;
+}
+
+/// The floating day bar: which day, and how far the next day pushed it up.
+class _StickyBar {
+  const _StickyBar({required this.row, required this.top});
+
+  final _GridRow row;
+  final double top;
 }
