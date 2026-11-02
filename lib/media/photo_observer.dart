@@ -123,6 +123,16 @@ abstract class PhotoObserver {
   /// Resolves the original bytes for [localId], or null when it disappeared.
   Future<File?> fileFor(String localId);
 
+  /// Materialises playable bytes for a video, or null when there are none.
+  ///
+  /// iOS may have to fetch a video that lives only in iCloud before the player
+  /// can open it; [onProgress] reports `0`..`1` while that download runs and is
+  /// never called on Android, where the bytes are always local.
+  Future<File?> playableVideo(
+    String localId, {
+    void Function(double progress)? onProgress,
+  });
+
   /// Returns a small encoded thumbnail (JPEG/PNG) for [localId], or null when
   /// the asset is gone or the platform cannot produce one.
   Future<Uint8List?> thumbnailFor(String localId, {int size = 128});

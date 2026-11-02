@@ -60,3 +60,17 @@ BackupStatus resolveBackupStatus({
     UploadState.excluded => BackupStatus.excluded,
   };
 }
+
+/// What the queue knows about one asset beyond its badge.
+///
+/// The grid only needs [BackupStatus]; the viewer also shows why a permanent
+/// failure gave up, which is the one thing a badge cannot say.
+class BackupDetail {
+  const BackupDetail({required this.status, this.error});
+
+  /// Badge state for the asset.
+  final BackupStatus status;
+
+  /// Last failure message recorded on the row, as the server phrased it.
+  final String? error;
+}

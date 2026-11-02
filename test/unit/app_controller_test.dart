@@ -91,6 +91,12 @@ class _DeniedObserver implements PhotoObserver {
   Future<File?> fileFor(String localId) async => null;
 
   @override
+  Future<File?> playableVideo(
+    String localId, {
+    void Function(double progress)? onProgress,
+  }) async => null;
+
+  @override
   Future<Uint8List?> thumbnailFor(String localId, {int size = 128}) async =>
       null;
 

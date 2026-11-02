@@ -33,6 +33,13 @@ OS-discretionary; see [Background behaviour](#background-behaviour).
   guaranteed sync path.
 - Queue stats, last-sync summary, permission/banner states, and backup settings
   (Wi-Fi only, charging only, include videos, backfill, notifications toggle).
+- On-device library grid with a per-tile backup badge, multi-select → "Back up
+  now", and a full-screen viewer. Videos play in the viewer through the
+  platform's own player (`video_player`): tap to play/pause, scrub the timeline,
+  keep the screen awake while playing, pause when the app goes to the
+  background. The playhead is remembered per asset for the session, so a clip
+  left half-watched resumes where it stopped. An iCloud-only video reports its
+  download progress first (`photo_manager` progress handler).
 
 ## Default scope
 

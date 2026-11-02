@@ -434,6 +434,38 @@ class UploadQueue {
     );
   }
 
+  /// Makes [localIds] upload on the next pass, returning how many moved.
+  ///
+  /// A user asking for these photos now overrides both a terminal failure and a
+  /// retry backoff, so "Back up now" cannot silently do nothing on a row that
+  /// is already in the table. Uploaded, duplicated and excluded rows are left
+  /// alone: the first two are done, the last was never eligible.
+  Future<int> requeueNow(Iterable<String> localIds) {
+    final ids = localIds.toSet().toList(growable: false);
+    if (ids.isEmpty) return Future<int>.value(0);
+    return (db.update(db.queuedAssets)..where(
+          (t) =>
+              t.localId.isIn(ids) &
+              t.state.isIn(<String>[
+                ..._failedStates,
+                UploadState.failedRetryable.name,
+              ]),
+        ))
+        .write(
+          QueuedAssetsCompanion(
+            state: Value(UploadState.pending.name),
+            attempts: const Value(0),
+            nextAttemptAt: const Value(null),
+            lastError: const Value(null),
+            errorCode: const Value(null),
+            uploadId: const Value(null),
+            partSize: const Value(null),
+            partCount: const Value(null),
+            protocol: const Value(null),
+          ),
+        );
+  }
+
   /// Deletes every row that still has work left, returning how many went.
   ///
   /// Only un-uploaded work is dropped: uploaded, duplicate and skipped rows

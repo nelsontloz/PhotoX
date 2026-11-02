@@ -167,6 +167,20 @@ void main() {
   );
 
   test(
+    'playableVideo hands back the platform file, asking for the original',
+    () async {
+      final observer = PhotoManagerObserver();
+      addTearDown(observer.dispose);
+
+      final file = await observer.playableVideo('asset-1');
+
+      expect(file?.path, assetFile.path);
+      final call = calls.lastWhere((call) => call.method == 'getFullFile');
+      expect((call.arguments as Map<dynamic, dynamic>)['isOrigin'], isTrue);
+    },
+  );
+
+  test(
     'thumbnailFor clamps the request and never propagates failures',
     () async {
       final observer = PhotoManagerObserver();
@@ -179,8 +193,8 @@ void main() {
                   .lastWhere((call) => call.method == 'getThumb')
                   .arguments['option']
               as Map<dynamic, dynamic>;
-      expect(option['width'], 512);
-      expect(option['height'], 512);
+      expect(option['width'], 2048);
+      expect(option['height'], 2048);
 
       await observer.thumbnailFor('asset-1', size: 1);
       option =

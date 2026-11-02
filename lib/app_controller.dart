@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart'
@@ -10,6 +11,7 @@ import 'core/api_client.dart';
 import 'core/app_config.dart';
 import 'core/auth_manager.dart';
 import 'core/auth_models.dart';
+import 'library/backup_status.dart';
 import 'media/media_filter.dart';
 import 'media/photo_observer.dart';
 import 'settings/settings_store.dart';
@@ -55,6 +57,23 @@ abstract class AppController extends ChangeNotifier {
   /// Small encoded preview of [localId], or null when none is available.
   Future<Uint8List?> thumbnail(String localId);
 
+  /// Display-resolution preview for the full-screen viewer.
+  ///
+  /// Larger than [thumbnail] because it fills the screen, still a platform
+  /// thumbnail: the original bytes are never exported just to look at a photo.
+  Future<Uint8List?> preview(String localId);
+
+  /// Badge and last failure for one asset, read fresh from the queue.
+  Future<BackupDetail> backupDetail(AssetCandidate asset);
+
+  /// Playable bytes for a video, or null when the platform cannot produce them.
+  ///
+  /// [onProgress] reports `0`..`1` while an iCloud-only video downloads.
+  Future<File?> playableVideo(
+    String localId, {
+    void Function(double progress)? onProgress,
+  });
+
   /// Newest-first page of the device library, for the on-device browser.
   ///
   /// [folderId] limits the page to that album; null pages the whole library.
@@ -79,7 +98,8 @@ abstract class AppController extends ChangeNotifier {
   /// Queues [assets] ahead of the scan scope and starts a pass.
   ///
   /// Assets the server would reject (unsupported containers, videos while
-  /// videos are off) are dropped rather than queued to fail.
+  /// videos are off) are dropped rather than queued to fail. Assets that
+  /// already gave up, or are waiting out a backoff, are retried right away.
   Future<void> backUpNow(List<AssetCandidate> assets);
 
   /// Aggregate queue counts.
@@ -262,6 +282,30 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
       observer.thumbnailFor(localId);
 
   @override
+  Future<Uint8List?> preview(String localId) =>
+      observer.thumbnailFor(localId, size: 1024);
+
+  @override
+  Future<BackupDetail> backupDetail(AssetCandidate asset) async {
+    final row = await queue.byLocalId(asset.localId);
+    return BackupDetail(
+      // An unknown state string reads as "no row": a downgrade must not throw.
+      status: resolveBackupStatus(
+        state: row == null ? null : UploadState.values.asNameMap()[row.state],
+        asset: asset,
+        settings: _settings,
+      ),
+      error: row?.lastError,
+    );
+  }
+
+  @override
+  Future<File?> playableVideo(
+    String localId, {
+    void Function(double progress)? onProgress,
+  }) => observer.playableVideo(localId, onProgress: onProgress);
+
+  @override
   Future<List<AssetCandidate>> libraryPage({
     required int offset,
     int limit = 200,
@@ -400,6 +444,9 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
 
     try {
       await queue.enqueueAll(eligible);
+      // A failed row keeps its state through enqueueAll, and a retrying row
+      // keeps its backoff, so without this the tap would upload nothing.
+      await queue.requeueNow(eligible.map((asset) => asset.localId));
     } on Object {
       _error = 'Could not queue those items. Try again.';
       _notify();

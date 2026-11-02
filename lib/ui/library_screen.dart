@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 
 import '../library/backup_status.dart';
 import '../media/photo_observer.dart';
+import '../media/video_playback.dart';
 import '../settings/settings_store.dart';
 import '../sync/transfer_progress.dart';
 import '../upload/models.dart';
+import 'viewer_screen.dart';
 import 'widgets/app_background.dart';
 import 'widgets/asset_tile.dart';
 import 'widgets/count_format.dart';
@@ -30,6 +32,9 @@ class LibraryScreen extends StatefulWidget {
     required this.loadPage,
     required this.loadStates,
     required this.thumbnail,
+    required this.loadPreview,
+    required this.loadDetail,
+    required this.video,
     required this.onBackUpNow,
     required this.onOpenSettings,
     required this.onSyncNow,
@@ -69,6 +74,15 @@ class LibraryScreen extends StatefulWidget {
 
   /// Encoded preview for a library id, or null when the platform has none.
   final Future<Uint8List?> Function(String localId) thumbnail;
+
+  /// Display-resolution preview for the full-screen viewer.
+  final Future<Uint8List?> Function(String localId) loadPreview;
+
+  /// Badge and last failure for the asset the viewer is showing.
+  final Future<BackupDetail> Function(AssetCandidate asset) loadDetail;
+
+  /// Bytes and player for video pages.
+  final VideoSupport video;
 
   /// Queues the selected assets ahead of the scan scope.
   final Future<void> Function(List<AssetCandidate> assets) onBackUpNow;
@@ -387,6 +401,32 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _selecting = false;
       _selected.clear();
     });
+  }
+
+  /// Opens the tapped photo full screen, paging through what is on screen.
+  ///
+  /// The filtered order is the snapshot the viewer pages through, so a
+  /// "Not backed up" filter stays a review of exactly those photos.
+  void _openViewer(AssetCandidate asset) {
+    final visible = _filtered();
+    final index = visible.indexWhere(
+      (candidate) => candidate.localId == asset.localId,
+    );
+    if (index < 0) return;
+    unawaited(
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (context) => ViewerScreen(
+            assets: visible,
+            initialIndex: index,
+            loadPreview: widget.loadPreview,
+            loadDetail: widget.loadDetail,
+            video: widget.video,
+            onBackUpNow: widget.onBackUpNow,
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _backUpSelected() async {
@@ -778,7 +818,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           selected: _selected.containsKey(asset.localId),
                           onTap: _selecting
                               ? () => _toggleSelection(asset)
-                              : null,
+                              : () => _openViewer(asset),
                           onLongPress: () => _toggleSelection(asset),
                         );
                       }, childCount: group.assets.length),

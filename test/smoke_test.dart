@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photox_mobile/app.dart';
 import 'package:photox_mobile/app_controller.dart';
+import 'package:photox_mobile/library/backup_status.dart';
 import 'package:photox_mobile/media/photo_observer.dart';
 import 'package:photox_mobile/settings/settings_store.dart';
 import 'package:photox_mobile/sync/sync_coordinator.dart';
@@ -97,6 +99,19 @@ class FakeAppController extends AppController {
 
   @override
   Future<Uint8List?> thumbnail(String localId) async => null;
+
+  @override
+  Future<Uint8List?> preview(String localId) async => null;
+
+  @override
+  Future<BackupDetail> backupDetail(AssetCandidate asset) async =>
+      const BackupDetail(status: BackupStatus.unknown);
+
+  @override
+  Future<File?> playableVideo(
+    String localId, {
+    void Function(double progress)? onProgress,
+  }) async => null;
 
   @override
   QueueStats get stats => statsValue;

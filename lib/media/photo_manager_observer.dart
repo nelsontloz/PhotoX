@@ -254,6 +254,38 @@ class PhotoManagerObserver implements PhotoObserver {
   }
 
   @override
+  Future<File?> playableVideo(
+    String localId, {
+    void Function(double progress)? onProgress,
+  }) async {
+    // The iCloud progress channel is Darwin-only; constructing its handler on
+    // Android trips a platform assertion, and Android bytes are always local.
+    final handler = onProgress != null && (Platform.isIOS || Platform.isMacOS)
+        ? PMProgressHandler()
+        : null;
+    final subscription = handler?.stream.listen(
+      (state) => onProgress?.call(state.progress),
+    );
+    try {
+      final entity = await AssetEntity.fromId(localId);
+      if (entity == null) return null;
+      final file = await entity.loadFile(
+        isOrigin: true,
+        progressHandler: handler,
+      );
+      if (file == null) return null;
+      if (!await file.exists()) return null;
+      return file;
+    } on Object {
+      // Deleted asset, refused iCloud fetch, unreadable container: the viewer
+      // shows its own retry, so this must not throw.
+      return null;
+    } finally {
+      await subscription?.cancel();
+    }
+  }
+
+  @override
   Future<File?> fileFor(String localId) async {
     final cached = _scanFiles[localId];
     if (cached != null) {
@@ -277,8 +309,9 @@ class PhotoManagerObserver implements PhotoObserver {
 
   @override
   Future<Uint8List?> thumbnailFor(String localId, {int size = 128}) async {
-    // A bad caller must not turn a preview into a full-size decode.
-    final pixels = size.clamp(64, 512).toInt();
+    // A bad caller must not turn a preview into a full-size decode. The ceiling
+    // is what the full-screen viewer asks for; the grid keeps the 128 default.
+    final pixels = size.clamp(64, 2048).toInt();
     try {
       final entity = await AssetEntity.fromId(localId);
       if (entity == null) return null;

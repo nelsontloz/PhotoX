@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photox_mobile/app.dart';
+import 'package:photox_mobile/library/backup_status.dart';
 import 'package:photox_mobile/media/photo_observer.dart';
 import 'package:photox_mobile/settings/settings_store.dart';
 import 'package:photox_mobile/sync/transfer_progress.dart';
@@ -8,6 +9,8 @@ import 'package:photox_mobile/ui/library_screen.dart';
 import 'package:photox_mobile/ui/widgets/asset_tile.dart';
 import 'package:photox_mobile/ui/widgets/status_badge.dart';
 import 'package:photox_mobile/upload/models.dart';
+
+import 'support/fake_video.dart';
 
 AssetCandidate _asset(
   String id, {
@@ -79,6 +82,10 @@ Widget _screen({
               offset == 0 ? assets : const <AssetCandidate>[],
       loadStates: loadStates ?? (ids) async => states,
       thumbnail: (id) async => null,
+      loadPreview: (id) async => null,
+      loadDetail: (asset) async =>
+          const BackupDetail(status: BackupStatus.unknown),
+      video: FakeVideoSupport().support,
       onBackUpNow: onBackUpNow ?? (assets) async {},
       onOpenSettings: onOpenSettings ?? () {},
       onSyncNow: () async {},

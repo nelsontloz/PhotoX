@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_controller.dart';
+import 'media/video_playback.dart';
 import 'ui/home_screen.dart';
 import 'ui/library_screen.dart';
 import 'ui/login_screen.dart';
@@ -180,6 +181,12 @@ class _SignedInShellState extends State<_SignedInShell> {
             loadPage: controller.libraryPage,
             loadStates: controller.backupStates,
             thumbnail: controller.thumbnail,
+            loadPreview: controller.preview,
+            loadDetail: controller.backupDetail,
+            video: VideoSupport(
+              loadFile: controller.playableVideo,
+              createPlayback: VideoPlayerPlayback.new,
+            ),
             onBackUpNow: controller.backUpNow,
             onOpenSettings: widget.onOpenSettings,
             onSyncNow: controller.syncNow,

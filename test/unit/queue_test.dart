@@ -549,6 +549,78 @@ void main() {
     });
   });
 
+  group('requeueNow', () {
+    test('revives the named failures and clears their backoff', () async {
+      await markInProgress('backing-off', sizeBytes: 100);
+      await queue.markState(
+        localId: 'backing-off',
+        state: UploadState.failedRetryable,
+        nextAttemptAt: DateTime.utc(2026, 10, 20, 12),
+        attempts: 3,
+        lastError: 'network',
+      );
+      await queue.enqueueAll(<AssetCandidate>[
+        _candidate('permanent'),
+        _candidate('uploaded'),
+        _candidate('other-failure'),
+      ]);
+      await queue.markState(
+        localId: 'permanent',
+        state: UploadState.failedPermanent,
+        sha256: 'b' * 64,
+        spoolPath: '/tmp/photox/spool/permanent',
+        lastError: 'Unsupported file type',
+        errorCode: 'HTTP_400',
+      );
+      await queue.markState(localId: 'uploaded', state: UploadState.uploaded);
+      await queue.markState(
+        localId: 'other-failure',
+        state: UploadState.failedPermanent,
+      );
+
+      expect(
+        await queue.requeueNow(<String>[
+          'backing-off',
+          'permanent',
+          'uploaded',
+        ]),
+        2,
+        reason: 'an uploaded row has nothing left to retry',
+      );
+
+      final revived = await queue.byLocalId('backing-off');
+      expect(revived!.state, UploadState.pending.name);
+      expect(revived.nextAttemptAt, isNull, reason: 'the user asked for now');
+      expect(revived.attempts, 0);
+      expect(revived.lastError, isNull);
+
+      final permanent = await queue.byLocalId('permanent');
+      expect(permanent!.state, UploadState.pending.name);
+      expect(permanent.sha256, 'b' * 64);
+      expect(permanent.spoolPath, '/tmp/photox/spool/permanent');
+
+      expect(
+        (await queue.byLocalId('uploaded'))!.state,
+        UploadState.uploaded.name,
+      );
+      expect(
+        (await queue.byLocalId('other-failure'))!.state,
+        UploadState.failedPermanent.name,
+        reason: 'only the named ids move',
+      );
+    });
+
+    test('is a no-op for an empty or untouched set', () async {
+      await queue.enqueue(_candidate('discovered'));
+      expect(await queue.requeueNow(const <String>[]), 0);
+      expect(await queue.requeueNow(<String>['discovered']), 0);
+      expect(
+        (await queue.byLocalId('discovered'))!.state,
+        UploadState.discovered.name,
+      );
+    });
+  });
+
   group('clearNonTerminal', () {
     test('deletes pending work and keeps terminal rows', () async {
       await queue.enqueueAll(<AssetCandidate>[
