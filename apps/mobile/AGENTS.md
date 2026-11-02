@@ -14,7 +14,29 @@ dart run build_runner build            # ONLY needed after editing lib/upload/da
 dart run build_runner build --only-check   # presubmit: fails if database.g.dart is stale
 flutter analyze && flutter test        # the entire gate — there is no CI and no pre-commit
 flutter run --dart-define=PHOTOX_API_URL=http://localhost:3000
+cd ../.. && pnpm mobile:e2e            # on-device e2e: real containers + Android AVD (opt-in)
 ```
+
+### On-device e2e (`pnpm mobile:e2e`)
+
+`e2e/mobile/run.sh` boots the compose stack (`docker-compose.yml` + `docker-compose.e2e.yml`
++ `docker-compose.mobile-e2e.yml`), registers a throwaway user, boots the `photox` AVD on the
+host (a container cannot run an emulator on macOS), points the app at the run's published core
+port through the emulator's `10.0.2.2` host alias, pre-grants the media permissions (a system
+dialog would block the test), `pm clear`s the app, and runs `integration_test/`: 
+`auth_flow_test.dart` (setup → bad password → sign in → sign out → sign in again, then a fresh
+app graph over the same storage to prove the session was persisted) and `auth_protocol_test.dart`
+(refresh rotation, reuse detection, sign-out against real core). Env: `MOBILE_E2E_HEADLESS=1` boots without a window, `MOBILE_E2E_KEEP=1` leaves the stack
+running, `MOBILE_E2E_BUILD=1` rebuilds images, `MOBILE_E2E_AVD=<id>` picks another AVD,
+`MOBILE_E2E_STOP_EMULATOR=1` kills the emulator on exit (it is otherwise left running and
+reused, since its boot is the slow part of a cold run), `ADB=<path>` overrides adb detection.
+Each run gets its own compose project and host port; `flutter test` reinstalls the APK and the
+app's state is gone between test files, so each file has to build its own starting state.
+
+The suite covers the **foreground** auth/setup path only. Media seeding, the backup pipeline,
+and anything the OS owns (WorkManager/BGTaskScheduler, MediaStore edge cases) are not covered —
+an emulator proves nothing about those, as above. It is opt-in and never part of `pnpm verify`
+or Jenkins: both need an AVD.
 
 - Toolchain verified: Flutter 3.47.7 stable (`/opt/homebrew/bin/flutter`), Dart 3.13.5, build_runner 2.16.2, drift 2.35.2.
 - `--delete-conflicting-outputs` is accepted but ignored on build_runner 2.16 — harmless, never needed.

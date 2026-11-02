@@ -24,6 +24,9 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # Drives the on-device e2e suite (`pnpm mobile:e2e`); ships with the SDK.
+  integration_test:
+    sdk: flutter
   flutter_lints: ^6.0.0
   drift_dev: ^2.35.1
   build_runner: ^2.16.2

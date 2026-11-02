@@ -71,7 +71,15 @@ dart run build_runner build --only-check   # presubmit: fails if database.g.dart
 flutter analyze
 flutter test                           # unit + widget + smoke; live contract group skips
 flutter run --dart-define=PHOTOX_API_URL=http://localhost:3000
+cd ../.. && pnpm mobile:e2e            # on-device e2e: real containers + Android AVD
 ```
+
+`pnpm mobile:e2e` needs Docker and the `photox` AVD (override with
+`MOBILE_E2E_AVD`), boots the real stack and drives `integration_test/` on the
+emulator, which reaches the run's published core port as `10.0.2.2:<port>`.
+The emulator is left running and reused by the next run. It is opt-in, never
+part of `pnpm verify`, and covers the foreground setup/auth flow only — see
+`AGENTS.md` for the details and the `MOBILE_E2E_*` knobs.
 
 Toolchain: Flutter 3.47 stable / Dart 3.13, drift, Dio, Workmanager,
 photo_manager, flutter_secure_storage, connectivity_plus. (`background_downloader`
