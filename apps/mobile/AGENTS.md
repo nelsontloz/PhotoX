@@ -90,7 +90,6 @@ flutter run -d <ip>:<port> --dart-define=PHOTOX_API_URL=http://localhost:3000
 ### Gotchas that cost real time
 
 - `--dart-define` only pre-fills the first-launch setup screen: the address in use is `KeyValues.apiBaseUrl` in the drift DB, so an update install keeps the old server. The sign-in screen prefills the same address and is editable — a different value typed there is persisted and retargets both Dio clients, so no reinstall is needed to move servers.
-- The e2e override publishes core on **loopback only** (`tool/e2e/docker-compose.mobile.yml`), so the Mac's LAN IP is refused from a phone. Use `adb reverse`, or widen the bind on purpose.
 - `adb shell input` fails with `INJECT_EVENTS` until *Developer options → USB debugging (Security settings)* is enabled; without it the UI cannot be driven or scripted from the shell.
 - Reading the app's queue DB (debug builds only) — pull the `-wal` too, or recent rows are missing:
   ```bash
@@ -117,7 +116,7 @@ Verified in `../../apps/core/src`. Controllers declare `api/v1/...` with no glob
 - `GET /api/v1/files/:id` (+ `/stream`, `/download`).
 - `POST /api/v1/auth/{register,login,refresh,logout}` — token pair is returned in the JSON body; logout is 204 and idempotent. Refresh rotates the token with reuse detection.
 
-**The resumable `/api/v1/uploads` session API is live** in core (`../../apps/core/src/uploads/uploads.controller.ts`): `POST /api/v1/uploads` (create), `GET /api/v1/uploads/:uploadId` (status), `POST /api/v1/uploads/:uploadId/parts/:partIndex` (part), `POST /api/v1/uploads/:uploadId/complete` (409 `missingParts` when incomplete). `SessionClient` matches it and `tool/e2e/run_contract.sh` exercises it against a live stack. The routes were documented before they existed, so still read the controller rather than trusting a remembered shape.
+**The resumable `/api/v1/uploads` session API is live** in core (`../../apps/core/src/uploads/uploads.controller.ts`): `POST /api/v1/uploads` (create), `GET /api/v1/uploads/:uploadId` (status), `POST /api/v1/uploads/:uploadId/parts/:partIndex` (part), `POST /api/v1/uploads/:uploadId/complete` (409 `missingParts` when incomplete). `SessionClient` matches it and `test/unit/core_contracts_test.dart` pins the wire shapes; there is no live contract suite. The routes were documented before they existed, so still read the controller rather than trusting a remembered shape.
 
 Behaviours an agent would otherwise get wrong:
 

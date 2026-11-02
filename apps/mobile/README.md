@@ -69,7 +69,7 @@ flutter pub get
 dart run build_runner build            # after editing lib/upload/database.dart
 dart run build_runner build --only-check   # presubmit: fails if database.g.dart is stale
 flutter analyze
-flutter test                           # unit + widget + smoke; live contract group skips
+flutter test                           # unit + widget + smoke
 flutter run --dart-define=PHOTOX_API_URL=http://localhost:3000
 cd ../.. && pnpm mobile:e2e            # on-device e2e: real containers + Android AVD
 ```
@@ -142,9 +142,8 @@ drift-backed lock.
   No location or always-on-service tricks are used.
 - Large uploads converge across multiple windows because the queue persists
   part receipts; the app resumes instead of restarting from byte zero.
-- Background execution can only be validated on physical devices. Commands and
-  a B1–B12 checklist live in
-  [tool/e2e/device_background.md](tool/e2e/device_background.md).
+- Background execution can only be validated on physical devices; there is no
+  harness for it — verify by hand against a running core.
 
 ## Tests
 
@@ -153,35 +152,10 @@ drift-backed lock.
 | Unit | `flutter test test/unit` | Auth/refresh, queue, hashing, filters, retry, scheduler, coordinator, uploader, settings |
 | Widget | `flutter test test/widget` | Login/home/settings shell rendering and interactions |
 | Smoke | `flutter test test/smoke_test.dart` | App starts and renders its app bar |
-| Contract | `tool/e2e/run_contract.sh` | Live core: register/login, session lifecycle, dedup, 409 duplicate, refresh |
 | Device | manual | Real OS background scheduling, permissions, Doze/Low Power, force-quit |
 
-`flutter test` is green without a server: the contract group skips when
-`PHOTOX_E2E_BASE_URL` is unset. Green unit/widget tests do not exercise real
-uploads — use the contract suite and a device for that.
-
-Live contract suite directly against an already-running core:
-
-```bash
-PHOTOX_E2E_BASE_URL=http://127.0.0.1:3917 flutter test test/contract
-```
-
-## e2e stack
-
-The app drives the PhotoX Compose e2e stack from the repo root:
-
-```bash
-tool/e2e/stack_up.sh        # start core + infra, publish core on 127.0.0.1
-tool/e2e/stack_down.sh      # stop and remove volumes (idempotent)
-tool/e2e/run_contract.sh    # up → wait for /health → contract tests → down -v
-```
-
-See [tool/e2e/README.md](tool/e2e/README.md) for prerequisites, ports, env
-vars, seeding, artifacts, and limitations. `E2E_BUILD=1` rebuilds the images;
-`E2E_KEEP=1` leaves the stack running after the contract run.
-
-Requires Docker and Flutter; the e2e stack builds from this repo's root compose
-files.
+`flutter test` is green without a server. Green unit/widget tests do not
+exercise real uploads — only a device does.
 
 ## Known limitations
 
@@ -200,4 +174,4 @@ files.
   `/api/v1/uploads` session API is live in core; check `apps/core` before
   assuming future surface changes.
 - No CI or pre-commit hook: `pnpm mobile:verify` (analyze + test + codegen
-  check) plus the contract stack is the whole gate.
+  check) is the whole gate.

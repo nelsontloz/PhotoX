@@ -23,7 +23,6 @@ pnpm verify                                 # lint && test --force && typecheck 
 curl localhost:3000/health                  # core (host dev); compose publishes no core port; worker health on :3004
 pnpm mobile:verify                          # flutter analyze && flutter test && build_runner --only-check (apps/mobile)
 pnpm mobile:build                           # flutter build apk --release (apps/mobile; iOS needs Xcode)
-pnpm mobile:contract                        # e2e compose stack + live upload-session contract suite (needs Docker)
 ```
 
 Node 24 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install` (root `postinstall` downloads all 3 worker models unless `FACE_MODEL_SKIP=1`), diff `.env` against `.env.example` for new required keys, start compose, then `pnpm dev`.
