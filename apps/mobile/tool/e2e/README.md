@@ -1,9 +1,9 @@
 # Mobile e2e harness
 
 Helpers for running the Flutter app and its live HTTP contract suite against
-the PhotoX core from the sibling `../PhotoX` checkout.
+the PhotoX core in `apps/core`, using this repo's root compose files.
 
-The mobile repo has no server of its own: every check here starts the PhotoX
+The mobile app has no server of its own: every check here starts the PhotoX
 Compose e2e stack and points the app/test at its `core` service.
 
 ## Prerequisites
@@ -13,7 +13,6 @@ Compose e2e stack and points the app/test at its `core` service.
 - `python3` or `node` — used once to pick a free loopback port when
   `E2E_CORE_PORT` is unset.
 - Flutter 3.47+ (`flutter` on `PATH`) for the app and contract suite.
-- A sibling PhotoX checkout at `../PhotoX`, or set `PHOTOX_DIR` to its root.
 - For device work: an Android device/emulator with `adb`, or a booted iOS
   Simulator / physical iPhone with Xcode.
 
@@ -23,8 +22,8 @@ Compose e2e stack and points the app/test at its `core` service.
 
 | File | Purpose |
 | --- | --- |
-| `../PhotoX/docker-compose.yml` | infra base: postgres, redis, floci S3 |
-| `../PhotoX/docker-compose.e2e.yml` | e2e stack: core, worker-service, web; infra ports unpublished |
+| `docker-compose.yml` (repo root) | infra base: postgres, redis, floci S3 |
+| `docker-compose.e2e.yml` (repo root) | e2e stack: core, worker-service, web; infra ports unpublished |
 | `tool/e2e/docker-compose.mobile.yml` | mobile override: publishes core on loopback |
 
 Services: `core` (NestJS API), `worker-service` (BullMQ workers),
@@ -80,7 +79,6 @@ tool/e2e/seed_ios.sh [image ...]
 | `E2E_WEB_PORT` | `5273` | Host loopback port for the e2e web UI |
 | `E2E_BUILD` | unset | `1` adds `--build` to `docker compose up` |
 | `E2E_KEEP` | unset | `1` leaves the stack running after `run_contract.sh` |
-| `PHOTOX_DIR` | `../PhotoX` | PhotoX repository root |
 | `PHOTOX_E2E_BASE_URL` | unset | Base URL read by the contract test; without it the suite skips |
 | `PHOTOX_API_URL` | `http://localhost:3000` | App build-time core URL (`--dart-define`) |
 | `ANDROID_SERIAL` | adb default | Target one of several connected Android devices |

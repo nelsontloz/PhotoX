@@ -1,6 +1,6 @@
 # PhotoX Mobile — Agent Notes
 
-Flutter (iOS + Android) client that backs up the device photo library to the sibling repo `../PhotoX` (NestJS `core`, the only HTTP API — no other backend). Talks to it directly with Bearer JWTs.
+Flutter (iOS + Android) client that backs up the device photo library to `apps/core` in this same repo (NestJS, the only HTTP API — no other backend). Talks to it directly with Bearer JWTs.
 
 **Status: the pipeline is implemented** — discovery, hashing, drift queue, dedup, upload/resume, auth refresh — with unit and widget suites under `test/`. What is *not* verified is anything the OS owns: real background execution, PhotoKit/MediaStore edge cases, per-device behaviour. Those need a phone; an emulator proves nothing. `TODO(spec §x)` comments map to an architecture spec that lives outside this repo — keep the numbering when adding TODOs.
 
@@ -88,14 +88,14 @@ flutter run -d <ip>:<port> --dart-define=PHOTOX_API_URL=http://localhost:3000
 
 ## Core API — what actually exists
 
-Verified in `../PhotoX/apps/core/src`. Controllers declare `api/v1/...` with no global prefix. Present today:
+Verified in `../../apps/core/src`. Controllers declare `api/v1/...` with no global prefix. Present today:
 
 - `POST /api/v1/files` — multipart field `file` (multer cap 4 GiB). Body may carry `title`, `description`, `takenAt`; `kind` is accepted-but-ignored. `ValidationPipe` is `forbidNonWhitelisted`, so extra body fields 400.
 - `POST /api/v1/files/exists` — `{items:[{checksumSha256, sizeBytes?}]}`, max 100 items, checksum must match `^[0-9a-f]{64}$`.
 - `GET /api/v1/files/:id` (+ `/stream`, `/download`).
 - `POST /api/v1/auth/{register,login,refresh,logout}` — token pair is returned in the JSON body; logout is 204 and idempotent. Refresh rotates the token with reuse detection.
 
-**The resumable `/api/v1/uploads` session API is live** in core (`../PhotoX/apps/core/src/uploads/uploads.controller.ts`): `POST /api/v1/uploads` (create), `GET /api/v1/uploads/:uploadId` (status), `POST /api/v1/uploads/:uploadId/parts/:partIndex` (part), `POST /api/v1/uploads/:uploadId/complete` (409 `missingParts` when incomplete). `SessionClient` matches it and `tool/e2e/run_contract.sh` exercises it against a live stack. The routes were documented before they existed, so still read the controller rather than trusting a remembered shape.
+**The resumable `/api/v1/uploads` session API is live** in core (`../../apps/core/src/uploads/uploads.controller.ts`): `POST /api/v1/uploads` (create), `GET /api/v1/uploads/:uploadId` (status), `POST /api/v1/uploads/:uploadId/parts/:partIndex` (part), `POST /api/v1/uploads/:uploadId/complete` (409 `missingParts` when incomplete). `SessionClient` matches it and `tool/e2e/run_contract.sh` exercises it against a live stack. The routes were documented before they existed, so still read the controller rather than trusting a remembered shape.
 
 Behaviours an agent would otherwise get wrong:
 

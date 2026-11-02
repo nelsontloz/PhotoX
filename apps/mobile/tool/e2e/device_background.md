@@ -19,10 +19,10 @@ tool/e2e/stack_up.sh
 Watch what the server receives while testing:
 
 ```bash
-# from the PhotoX repo
+# from the repo root
 docker compose -p photox-mobile-e2e \
   -f docker-compose.yml -f docker-compose.e2e.yml \
-  -f ../PhotoX-mobile/tool/e2e/docker-compose.mobile.yml \
+  -f apps/mobile/tool/e2e/docker-compose.mobile.yml \
   logs -f core
 ```
 

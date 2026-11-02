@@ -1,12 +1,13 @@
 # PhotoX — Agent Notes
 
-Personal photo/video hosting: one NestJS `core` API (the only public/business API; external exposure goes through a reverse proxy that is not in this repo) + one BullMQ `worker-service` (a second, internal Nest HTTP app: `:3004`, `GET /health` only) + Vite `web`, sharing Redis, local-disk media (`STORAGE_DIR`), and an S3-compatible object store used only for per-user backups (Floci in dev). Single Postgres DB (`photox`) owned exclusively by `core` — old docs claiming MinIO or multiple DBs are stale.
+Personal photo/video hosting: one NestJS `core` API (the only public/business API; external exposure goes through a reverse proxy that is not in this repo) + one BullMQ `worker-service` (a second, internal Nest HTTP app: `:3004`, `GET /health` only) + Vite `web`, plus a Flutter `apps/mobile` backup client kept outside the pnpm workspace, sharing Redis, local-disk media (`STORAGE_DIR`), and an S3-compatible object store used only for per-user backups (Floci in dev). Single Postgres DB (`photox`) owned exclusively by `core` — old docs claiming MinIO or multiple DBs are stale.
 
 ## Layout
 
 - `apps/core/` (`@photox/core`, :3000, no published port in compose) — the sole public API app: auth, assets, files, upload sessions, albums, shares, faces/persons, search, backups, trash, admin. There is no places route group: `apps/core/src/places/` holds only `PlacesResolveService`, and place data lives on asset columns filled during metadata writes and via admin `POST api/v1/admin/places/backfill`.
 - `apps/worker-service/` (`@photox/worker-service`, internal: Nest HTTP on `WORKER_SERVICE_PORT`/3004 exposing just `GET /health`, 503 when Redis is down) — 8 BullMQ consumers; no DB access: reads/writes go through core HTTP via `CoreClient`, media bytes go directly to `STORAGE_DIR`
 - `apps/web/` (`@photox/web`, :5173) — Vite + React, talks to core same-origin via `/api` (a `/worker` proxy exists for e2e; browsers never call it)
+- `apps/mobile/` — Flutter (iOS + Android) backup client for the device camera roll, talking to core's HTTP API directly with Bearer JWTs. **Not** a pnpm workspace package (it has no `package.json`): Turbo, `pnpm build`/`verify` and Jenkins deliberately never see it, because it needs Flutter 3.47 + the Android SDK and `flutter build ios` only runs on macOS. Build and gate it with `pnpm mobile:*`.
 - `apps/core/src/database/` — TypeORM entities + core-only `DatabaseModule` + migrations
 - `apps/core/src/uploads/` — resumable chunked sessions (`api/v1/uploads`) + the advisory-locked 15-min sweeper
 - `packages/shared-config/` — zod `loadEnv()`/`loadAuthEnv()`/`loadRootEnvFile()`, `LocalStorageService`, backup-path helpers; `packages/shared-types/` — wire interfaces, `JwtPayload`, embedding constants (`FACE_EMBEDDING_DIM` 512, `SEARCH_EMBEDDING_DIM` 768, `SEARCH_EMBEDDING_MODEL` `siglip2-b16-224`)
@@ -20,6 +21,9 @@ pnpm dev                                    # turbo persistent: core + worker + 
 pnpm --filter @photox/core dev              # single package (@photox/core | @photox/worker-service | @photox/web)
 pnpm verify                                 # lint && test --force && typecheck && build && E2E_BUILD=1 test:e2e
 curl localhost:3000/health                  # core (host dev); compose publishes no core port; worker health on :3004
+pnpm mobile:verify                          # flutter analyze && flutter test && build_runner --only-check (apps/mobile)
+pnpm mobile:build                           # flutter build apk --release (apps/mobile; iOS needs Xcode)
+pnpm mobile:contract                        # e2e compose stack + live upload-session contract suite (needs Docker)
 ```
 
 Node 24 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install` (root `postinstall` downloads all 3 worker models unless `FACE_MODEL_SKIP=1`), diff `.env` against `.env.example` for new required keys, start compose, then `pnpm dev`.

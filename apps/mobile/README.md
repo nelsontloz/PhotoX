@@ -1,7 +1,7 @@
 # PhotoX Mobile
 
 iOS + Android app that backs up the device camera roll to a self-hosted
-[PhotoX](../PhotoX) server. Flutter, Material 3, dark theme by default.
+[PhotoX](../..) server. Flutter, Material 3, dark theme by default.
 
 **Status: implemented.** Auth, media discovery, the persistent upload queue,
 hashing/dedup, single-request and resumable uploads, background scheduling, and
@@ -160,7 +160,7 @@ PHOTOX_E2E_BASE_URL=http://127.0.0.1:3917 flutter test test/contract
 
 ## e2e stack
 
-The mobile repo drives the PhotoX Compose e2e stack from the sibling checkout:
+The app drives the PhotoX Compose e2e stack from the repo root:
 
 ```bash
 tool/e2e/stack_up.sh        # start core + infra, publish core on 127.0.0.1
@@ -172,7 +172,8 @@ See [tool/e2e/README.md](tool/e2e/README.md) for prerequisites, ports, env
 vars, seeding, artifacts, and limitations. `E2E_BUILD=1` rebuilds the images;
 `E2E_KEEP=1` leaves the stack running after the contract run.
 
-Requires Docker, Flutter, and the sibling `../PhotoX` repo (or `PHOTOX_DIR`).
+Requires Docker and Flutter; the e2e stack builds from this repo's root compose
+files.
 
 ## Known limitations
 
@@ -188,7 +189,7 @@ Requires Docker, Flutter, and the sibling `../PhotoX` repo (or `PHOTOX_DIR`).
 - **Background execution is device-only**; simulators/emulators cannot validate
   it.
 - Single/part uploads are tied to the core's current API. The resumable
-  `/api/v1/uploads` session API is live in core; check the sibling repo before
+  `/api/v1/uploads` session API is live in core; check `apps/core` before
   assuming future surface changes.
-- No CI or pre-commit hook: `flutter analyze && flutter test` plus the contract
-  stack is the whole gate.
+- No CI or pre-commit hook: `pnpm mobile:verify` (analyze + test + codegen
+  check) plus the contract stack is the whole gate.
