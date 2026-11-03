@@ -47,14 +47,18 @@ export class AssetsController {
     @Query('favorite', new ParseBoolPipe({ optional: true })) favorite?: boolean,
     @Query('albumId', new ParseUUIDPipe({ optional: true })) albumId?: string,
   ) {
-    // ponytail: the ETag fingerprint covers asset mutations only — clustering moves faces between
-    // persons and album membership changes without touching assets, so filtered layouts can change
-    // behind a matching ETag. Filtered requests skip revalidation and always get the body (cheap,
-    // scoped payloads).
+    // ponytail: the ETag fingerprint covers asset mutations and hidden-album membership only —
+    // clustering moves faces between persons and filtered album views change without touching
+    // assets, so filtered layouts can change behind a matching ETag. Filtered requests skip
+    // revalidation and always get the body (cheap, scoped payloads).
     if (!personId && !favorite && !albumId) {
       const fingerprint = await this.assets.layoutFingerprint(userId);
       // ETag must be on the response before `req.fresh` compares it against If-None-Match.
-      res.setHeader('ETag', `"layout-${fingerprint.count}-${fingerprint.maxUpdatedAtMs}"`);
+      // It also covers hidden-album membership: album changes never bump assets.updatedAt.
+      res.setHeader(
+        'ETag',
+        `"layout-${fingerprint.count}-${fingerprint.maxUpdatedAtMs}-${fingerprint.hiddenCount}-${fingerprint.hiddenMaxTouchedMs}"`,
+      );
       if (req.fresh) {
         res.status(HttpStatus.NOT_MODIFIED).end();
         return;

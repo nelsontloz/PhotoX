@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   FaCircleExclamation,
+  FaEllipsisVertical,
+  FaEye,
+  FaEyeSlash,
   FaMagnifyingGlass,
   FaPhotoFilm,
   FaPlus,
@@ -14,7 +17,8 @@ import { Dialog } from '../../components/Dialog';
 import { NewAlbumFields } from '../../components/NewAlbumFields';
 import { ErrorState, LoadingState } from '../../components/StateViews';
 import { useAsyncFetch } from '../../hooks/useAsyncFetch';
-import { listAlbums, createAlbum } from '../../api/albums';
+import { listAlbums, createAlbum, updateAlbum } from '../../api/albums';
+import { useAppStore } from '../../store/app-store';
 import type { AlbumDto } from '@photox/shared-types';
 
 const EMPTY_ALBUMS: AlbumDto[] = [];
@@ -99,6 +103,107 @@ function NewAlbumDialog({ onClose, onCreate }: NewAlbumDialogProps) {
   );
 }
 
+interface AlbumCardProps {
+  album: AlbumDto;
+  menuOpen: boolean;
+  onMenuOpenChange: (open: boolean) => void;
+  onRefresh: () => Promise<void>;
+}
+
+function AlbumCard({ album, menuOpen, onMenuOpenChange, onRefresh }: AlbumCardProps) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const bumpTimelineRefresh = useAppStore((s) => s.bumpTimelineRefresh);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onMenuOpenChange(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onMenuOpenChange(false);
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [menuOpen, onMenuOpenChange]);
+
+  const toggleTimelineVisibility = () => {
+    onMenuOpenChange(false);
+    void (async () => {
+      try {
+        await updateAlbum(album.id, { hiddenFromTimeline: !album.hiddenFromTimeline });
+        await onRefresh();
+        bumpTimelineRefresh();
+      } catch {
+        /* ponytail: silent fail, the card keeps its old state */
+      }
+    })();
+  };
+
+  return (
+    <div data-album-card={album.id} className="relative group/card">
+      <Link
+        to={`/albums/${album.id}`}
+        className="group/cover block focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 rounded"
+      >
+        <div className="aspect-square w-full rounded overflow-hidden bg-card-dark relative shadow-sm transition-shadow group-hover/cover:shadow-xl">
+          <AlbumCover
+            albumId={album.id}
+            className="[&_img]:transition-transform [&_img]:duration-500 [&_img]:ease-out [&_img]:group-hover/cover:scale-110"
+            emptyIconClassName="text-5xl text-slate-700"
+          />
+          <div className="absolute inset-0 bg-black/5 opacity-0 group-hover/cover:opacity-100 transition-opacity pointer-events-none" />
+          {album.hiddenFromTimeline && (
+            <div
+              aria-label="Hidden from timeline"
+              title="Hidden from timeline"
+              className="absolute bottom-2 left-2 rounded-md bg-black/50 backdrop-blur-sm p-1.5 text-slate-300 pointer-events-none"
+            >
+              <FaEyeSlash className="text-xs" />
+            </div>
+          )}
+        </div>
+        <h3 className="font-bold text-slate-100 truncate mt-3">{album.name}</h3>
+        <p className="text-sm text-slate-500 mt-0.5">
+          {album.assetCount} {album.assetCount === 1 ? 'item' : 'items'}
+        </p>
+      </Link>
+
+      <div className="absolute right-2 top-2" ref={menuRef}>
+        <button
+          type="button"
+          onClick={() => onMenuOpenChange(!menuOpen)}
+          aria-label={`Options for ${album.name}`}
+          aria-expanded={menuOpen}
+          className="p-1.5 rounded-md bg-black/50 backdrop-blur-sm text-slate-300 hover:text-white transition opacity-0 group-hover/card:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+        >
+          <FaEllipsisVertical />
+        </button>
+        {/* z-50 clears the sticky page chrome; dialogs share z-50 and render later in the tree */}
+        {menuOpen && (
+          <div className="absolute right-0 mt-1 w-48 bg-card-dark border border-border-dark rounded-lg shadow-lg py-1 z-50">
+            <button
+              type="button"
+              onClick={toggleTimelineVisibility}
+              className="w-full text-left px-3 py-2 text-sm text-slate-200 hover:bg-white/5 inline-flex items-center gap-2"
+            >
+              {album.hiddenFromTimeline ? (
+                <FaEye className="text-xs" />
+              ) : (
+                <FaEyeSlash className="text-xs" />
+              )}
+              {album.hiddenFromTimeline ? 'Show on timeline' : 'Hide from timeline'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AlbumsListContent() {
   const { data, loading, error, refresh } = useAsyncFetch(() => listAlbums({ limit: 1000 }), {
     errorMessage: 'Failed to load albums',
@@ -113,6 +218,7 @@ function AlbumsListContent() {
   };
   const [search, setSearch] = useState('');
   const [showNewDialog, setShowNewDialog] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   const filtered = search.trim()
     ? albums.filter((a) => a.name.toLowerCase().includes(search.trim().toLowerCase()))
@@ -192,24 +298,13 @@ function AlbumsListContent() {
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-8">
           {filtered.map((album) => (
-            <Link
+            <AlbumCard
               key={album.id}
-              to={`/albums/${album.id}`}
-              className="group/cover block focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 rounded"
-            >
-              <div className="aspect-square w-full rounded overflow-hidden bg-card-dark relative shadow-sm transition-shadow group-hover/cover:shadow-xl">
-                <AlbumCover
-                  albumId={album.id}
-                  className="[&_img]:transition-transform [&_img]:duration-500 [&_img]:ease-out [&_img]:group-hover/cover:scale-110"
-                  emptyIconClassName="text-5xl text-slate-700"
-                />
-                <div className="absolute inset-0 bg-black/5 opacity-0 group-hover/cover:opacity-100 transition-opacity pointer-events-none" />
-              </div>
-              <h3 className="font-bold text-slate-100 truncate mt-3">{album.name}</h3>
-              <p className="text-sm text-slate-500 mt-0.5">
-                {album.assetCount} {album.assetCount === 1 ? 'item' : 'items'}
-              </p>
-            </Link>
+              album={album}
+              menuOpen={openMenuId === album.id}
+              onMenuOpenChange={(open) => setOpenMenuId(open ? album.id : null)}
+              onRefresh={refresh}
+            />
           ))}
         </div>
       )}

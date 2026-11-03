@@ -96,6 +96,10 @@ export class AssetsService {
 
     qb.andWhere('asset.isTrashed = :isTrashed', { isTrashed });
 
+    // the trash view must keep listing hidden-album assets so they can be restored or purged, and
+    // id-batch reads (worker re-embed) are not timelines — only the browser timeline is filtered
+    if (!isTrashed && !q.ids) this.applyHiddenAlbumFilter(qb, q.albumId);
+
     if (q.ids) {
       qb.andWhere('asset.id IN (:...ids)', { ids: q.ids });
     }
@@ -168,6 +172,8 @@ export class AssetsService {
       .where('asset.userId = :userId', { userId })
       .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false });
 
+    this.applyHiddenAlbumFilter(qb, albumId);
+
     this.applyAssetFilters(qb, { personId, favorite, albumId });
 
     const rows = await qb
@@ -188,9 +194,15 @@ export class AssetsService {
    * Cheap per-user fingerprint of layout-relevant state (count + latest mutation).
    * Every add/delete/trash/restore/patch of an asset goes through TypeORM save()/update(),
    * which bumps `updatedAt`, so the fingerprint changes on any layout-visible mutation.
+   * Album membership never bumps `assets.updatedAt`, so hidden albums are folded in separately.
    * ponytail: not a hot-path cache — this only powers ETag revalidation for /layout.
    */
-  async layoutFingerprint(userId: string): Promise<{ count: number; maxUpdatedAtMs: number }> {
+  async layoutFingerprint(userId: string): Promise<{
+    count: number;
+    maxUpdatedAtMs: number;
+    hiddenCount: number;
+    hiddenMaxTouchedMs: number;
+  }> {
     const row = await this.repo
       .createQueryBuilder('asset')
       .select('COUNT(*)', 'count')
@@ -198,9 +210,20 @@ export class AssetsService {
       .where('asset.userId = :userId', { userId })
       .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false })
       .getRawOne<{ count: string; maxUpdatedAt: Date | string | null }>();
+    const hidden = await this.repo
+      .createQueryBuilder('asset')
+      .select('COUNT(*)', 'count')
+      .addSelect('MAX(GREATEST(al."updatedAt", aa."addedAt"))', 'maxTouched')
+      .innerJoin('album_assets', 'aa', 'aa."assetId" = asset.id')
+      .innerJoin('albums', 'al', 'al.id = aa."albumId"')
+      .where('asset.userId = :userId', { userId })
+      .andWhere('al."hiddenFromTimeline"')
+      .getRawOne<{ count: string; maxTouched: Date | string | null }>();
     return {
       count: Number(row?.count ?? 0),
       maxUpdatedAtMs: row?.maxUpdatedAt ? new Date(row.maxUpdatedAt).getTime() : 0,
+      hiddenCount: Number(hidden?.count ?? 0),
+      hiddenMaxTouchedMs: hidden?.maxTouched ? new Date(hidden.maxTouched).getTime() : 0,
     };
   }
 
@@ -414,6 +437,17 @@ export class AssetsService {
         { albumId: filters.albumId },
       );
     }
+  }
+
+  /**
+   * Timeline rule: an asset is on the timeline only when none of its albums is hidden. Skipped for
+   * explicit album views, which must keep listing a hidden album's assets.
+   */
+  private applyHiddenAlbumFilter(qb: SelectQueryBuilder<Asset>, albumId?: string): void {
+    if (albumId) return;
+    qb.andWhere(
+      `NOT EXISTS (SELECT 1 FROM album_assets aa JOIN albums al ON al.id = aa."albumId" WHERE aa."assetId" = asset.id AND al."userId" = :userId AND al."hiddenFromTimeline")`,
+    );
   }
 
   private async fetchThumbs(assetIds: string[]): Promise<Map<string, AssetThumbnail[]>> {

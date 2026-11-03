@@ -79,7 +79,7 @@ describe('assets layout', () => {
 
     const first = await request(apiServer(t)).get('/api/v1/assets/layout').set(t.authHeader(token));
     expect(first.status).toBe(200);
-    expect(first.headers.etag).toMatch(/^"layout-\d+-\d+"$/);
+    expect(first.headers.etag).toMatch(/^"layout-\d+-\d+-\d+-\d+"$/);
     expect(first.headers['cache-control']).toBe('private, no-cache');
     const firstEtag = first.headers.etag!;
 

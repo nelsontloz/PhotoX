@@ -12,7 +12,7 @@ Personal photo and video hosting. `core` (NestJS, :3000) is the only public/busi
 
 ## Features
 
-- **Library** — timeline browsing, albums, favorites, trash, share links, places. Places are asset columns filled by offline GeoNames reverse geocoding during metadata processing; there is no places API (`pnpm --filter @photox/core places:import` seeds the table).
+- **Library** — timeline browsing, albums (an album can be hidden from the timeline), favorites, trash, share links, places. Places are asset columns filled by offline GeoNames reverse geocoding during metadata processing; there is no places API (`pnpm --filter @photox/core places:import` seeds the table).
 - **Uploads** — per-user SHA-256 dedupe fast-path, optional `STORAGE_QUOTA_BYTES`, and two front doors: multipart `POST /api/v1/files` (used by `web`, and by mobile for files that fit one part) and resumable `api/v1/uploads` sessions (8 MiB chunks, 4 GiB max, ≤5 active, 24h pending TTL). Over-quota originals are rejected with 413 before the original is stored.
 - **Processing** — thumbnails (`sm/md/lg/xl`, 150/300/600/1920px, WebP), EXIF/video metadata + 9×8 dHash, AV1/Opus WebM transcode (h264 with AAC or no audio skips it; downscaled only above 720p, encode capped at 60 fps; 4h/7680px inputs, 1h ffmpeg timeout), SCRFD-10G face detection + 512-dim ArcFace embeddings + DBSCAN clustering into People, YOLO26n detections, SigLIP2 768-dim vision embeddings.
 - **Search** — pgvector ANN over the 768-dim embeddings plus Postgres full-text over title/description/detection labels, fused with RRF; person/place routing, duplicates and similar-photo lookups.

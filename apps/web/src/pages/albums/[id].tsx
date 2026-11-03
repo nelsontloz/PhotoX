@@ -5,6 +5,8 @@ import {
   FaCheck,
   FaCircleExclamation,
   FaEllipsisVertical,
+  FaEye,
+  FaEyeSlash,
   FaPenToSquare,
   FaPhotoFilm,
   FaPlus,
@@ -154,6 +156,21 @@ function AlbumDetail({ id }: { id: string }) {
     })();
   };
 
+  const handleToggleTimelineVisibility = () => {
+    setShowMenu(false);
+    void (async () => {
+      try {
+        const updated = await updateAlbum(id, {
+          hiddenFromTimeline: !album?.hiddenFromTimeline,
+        });
+        setAlbum(updated);
+        bumpTimelineRefresh();
+      } catch {
+        /* ponytail: silent fail */
+      }
+    })();
+  };
+
   const handleShare = () => {
     setShowMenu(false);
     void (async () => {
@@ -233,6 +250,12 @@ function AlbumDetail({ id }: { id: string }) {
         <span className="text-slate-400 text-sm whitespace-nowrap">
           {album.assetCount} {album.assetCount === 1 ? 'item' : 'items'}
         </span>
+        {album.hiddenFromTimeline && (
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-slate-400 bg-card-dark border border-border-dark rounded-full px-2 py-0.5">
+            <FaEyeSlash className="text-[10px]" />
+            Hidden from timeline
+          </span>
+        )}
         <div className="flex items-center gap-2 ml-auto">
           {shareStatus && (
             <span
@@ -260,8 +283,10 @@ function AlbumDetail({ id }: { id: string }) {
             >
               <FaEllipsisVertical />
             </button>
+            {/* z-50 clears the timeline's sticky day bands (z-30) and the scrollbar (z-40);
+                dialogs share z-50 and render later in the tree, so they still win */}
             {showMenu && (
-              <div className="absolute right-0 mt-1 w-48 bg-card-dark border border-border-dark rounded-lg shadow-lg py-1 z-20">
+              <div className="absolute right-0 mt-1 w-48 bg-card-dark border border-border-dark rounded-lg shadow-lg py-1 z-50">
                 <button
                   onClick={() => {
                     start();
@@ -285,6 +310,17 @@ function AlbumDetail({ id }: { id: string }) {
                 >
                   <FaShare className="text-xs" />
                   Share album
+                </button>
+                <button
+                  onClick={handleToggleTimelineVisibility}
+                  className="w-full text-left px-3 py-2 text-sm text-slate-200 hover:bg-white/5 inline-flex items-center gap-2"
+                >
+                  {album.hiddenFromTimeline ? (
+                    <FaEye className="text-xs" />
+                  ) : (
+                    <FaEyeSlash className="text-xs" />
+                  )}
+                  {album.hiddenFromTimeline ? 'Show on timeline' : 'Hide from timeline'}
                 </button>
                 <div className="my-1 border-t border-border-dark" />
                 <button

@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 import type { UpdateAlbumDto as IUpdateAlbumDto } from '@photox/shared-types';
 import { DescriptionDto } from '../../common/title-description.dto';
 
@@ -9,4 +9,9 @@ export class UpdateAlbumDto extends DescriptionDto implements IUpdateAlbumDto {
   @IsString()
   @MaxLength(255)
   name?: string;
+
+  @ApiProperty({ required: false, description: 'Hide this album from the timeline' })
+  @IsOptional()
+  @IsBoolean()
+  hiddenFromTimeline?: boolean;
 }

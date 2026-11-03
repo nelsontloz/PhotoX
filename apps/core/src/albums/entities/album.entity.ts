@@ -22,6 +22,9 @@ export class Album {
   @Column({ type: 'varchar', length: 2000, nullable: true })
   description!: string | null;
 
+  @Column({ type: 'boolean', default: false })
+  hiddenFromTimeline!: boolean;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 

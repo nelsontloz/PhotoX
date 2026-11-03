@@ -1,5 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { expect, type APIRequestContext, type Response } from '@playwright/test';
+import {
+  expect,
+  type APIRequestContext,
+  type APIResponse,
+  type Page,
+  type Response,
+} from '@playwright/test';
 import {
   Given,
   Then,
@@ -232,6 +238,119 @@ Then('my timeline still contains the album photo', async ({ request, ctx }) => {
   expect(body.items.map((item) => item.id)).toContain(albumAssetAt(ctx, 0));
 });
 
+// --- hidden from timeline ---------------------------------------------------
+
+interface TimelinePayload {
+  items: { id: string }[];
+  total: number;
+}
+
+/** GET /api/v1/assets as the signed-in user, optionally narrowed (e.g. `&albumId=…`). */
+async function fetchTimeline(
+  request: APIRequestContext,
+  auth: AuthResponse,
+  query = '',
+): Promise<TimelinePayload> {
+  const response = await request.get(`/api/v1/assets?limit=100${query}`, {
+    headers: authHeaders(auth),
+  });
+  expect(response.status()).toBe(200);
+  return (await response.json()) as TimelinePayload;
+}
+
+async function fetchLayout(
+  request: APIRequestContext,
+  auth: AuthResponse,
+  headers: Record<string, string> = {},
+): Promise<APIResponse> {
+  const response = await request.get('/api/v1/assets/layout', {
+    headers: { ...authHeaders(auth), ...headers },
+  });
+  expect(response.status()).toBe(200);
+  return response;
+}
+
+async function setAlbumHidden(
+  request: APIRequestContext,
+  ctx: Ctx,
+  hidden: boolean,
+): Promise<void> {
+  const response = await request.patch(`/api/v1/albums/${currentAlbum(ctx).id}`, {
+    headers: authHeaders(requireAuth(ctx)),
+    data: { hiddenFromTimeline: hidden },
+  });
+  ctx.lastStatus = response.status();
+  expect(response.status()).toBe(200);
+}
+
+When('I hide the album from the timeline', async ({ request, ctx }) => {
+  await setAlbumHidden(request, ctx, true);
+});
+
+When('I show the album on the timeline', async ({ request, ctx }) => {
+  await setAlbumHidden(request, ctx, false);
+});
+
+When('I delete the album via the API', async ({ request, ctx }) => {
+  const response = await request.delete(`/api/v1/albums/${currentAlbum(ctx).id}`, {
+    headers: authHeaders(requireAuth(ctx)),
+  });
+  ctx.lastStatus = response.status();
+  expect(response.status()).toBe(204);
+});
+
+Then('the album reports hidden from the timeline', async ({ request, ctx }) => {
+  const response = await request.get(`/api/v1/albums/${currentAlbum(ctx).id}`, {
+    headers: authHeaders(requireAuth(ctx)),
+  });
+  expect(response.status()).toBe(200);
+  const album = (await response.json()) as { hiddenFromTimeline?: boolean };
+  expect(album.hiddenFromTimeline).toBe(true);
+});
+
+Then('my timeline does not contain the album photo', async ({ request, ctx }) => {
+  const timeline = await fetchTimeline(request, requireAuth(ctx));
+  expect(timeline.items.map((item) => item.id)).not.toContain(albumAssetAt(ctx, 0));
+});
+
+Then('my timeline is empty', async ({ request, ctx }) => {
+  expect((await fetchTimeline(request, requireAuth(ctx))).total).toBe(0);
+});
+
+Then('the album timeline contains the album photo', async ({ request, ctx }) => {
+  const albumId = currentAlbum(ctx).id;
+  const timeline = await fetchTimeline(request, requireAuth(ctx), `&albumId=${albumId}`);
+  expect(timeline.items.map((item) => item.id)).toContain(albumAssetAt(ctx, 0));
+});
+
+Then('the timeline layout is empty', async ({ request, ctx }) => {
+  const response = await fetchLayout(request, requireAuth(ctx));
+  const layout = (await response.json()) as { items: unknown[] };
+  expect(layout.items).toHaveLength(0);
+});
+
+Then('the timeline layout only omits the hidden photo', async ({ request, ctx }) => {
+  const auth = requireAuth(ctx);
+  const response = await fetchLayout(request, auth);
+  const layout = (await response.json()) as { items: unknown[] };
+  expect(layout.items).toHaveLength(1);
+  // the scenario holds exactly two photos, so a total of 1 plus the sibling "does not contain"
+  // step pins the remaining layout item to the visible album's photo
+  expect((await fetchTimeline(request, auth)).total).toBe(1);
+});
+
+Then('the timeline layout ETag changes after hiding', async ({ request, ctx }) => {
+  const auth = requireAuth(ctx);
+  const before = await fetchLayout(request, auth);
+  const etag = before.headers().etag;
+  if (!etag) throw new Error('the timeline layout response carried no ETag');
+  // the ETag has to be captured before the flag flips, so this step performs the hide itself
+  await setAlbumHidden(request, ctx, true);
+  const after = await fetchLayout(request, auth, { 'If-None-Match': etag });
+  expect(after.headers().etag).toBeDefined();
+  expect(after.headers().etag).not.toBe(etag);
+});
+
 // --- albums page UI ---------------------------------------------------------
 
 When('I create an album through the UI named {string}', async ({ page, ctx }, name: string) => {
@@ -268,6 +387,46 @@ Then('only the album card {string} is visible', async ({ page }, name: string) =
   const cards = page.locator('a[href^="/albums/"]');
   await expect(cards).toHaveCount(1);
   await expect(cards.first()).toContainText(name);
+});
+
+// --- albums page UI: hidden from timeline via the card menu -----------------
+
+async function toggleAlbumTimelineFromCard(page: Page, ctx: Ctx, label: string): Promise<void> {
+  const album = currentAlbum(ctx);
+  await page.getByRole('button', { name: `Options for ${album.name}` }).click();
+  const entry = page.getByRole('button', { name: label });
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (r) =>
+        r.request().method() === 'PATCH' &&
+        new URL(r.url()).pathname === `/api/v1/albums/${album.id}`,
+    ),
+    entry.click(),
+  ]);
+  expect(response.status()).toBe(200);
+  await expect(entry).toHaveCount(0);
+}
+
+When('I hide the album from its card menu', async ({ page, ctx }) => {
+  await toggleAlbumTimelineFromCard(page, ctx, 'Hide from timeline');
+});
+
+When('I show the album from its card menu', async ({ page, ctx }) => {
+  await toggleAlbumTimelineFromCard(page, ctx, 'Show on timeline');
+});
+
+Then('the album card shows the hidden indicator', async ({ page, ctx }) => {
+  const album = currentAlbum(ctx);
+  await expect(
+    page.locator(`[data-album-card="${album.id}"] [aria-label="Hidden from timeline"]`),
+  ).toBeVisible();
+});
+
+Then('the album card hides the hidden indicator', async ({ page, ctx }) => {
+  const album = currentAlbum(ctx);
+  await expect(
+    page.locator(`[data-album-card="${album.id}"] [aria-label="Hidden from timeline"]`),
+  ).toHaveCount(0);
 });
 
 // --- album detail UI --------------------------------------------------------
@@ -431,6 +590,34 @@ When('I open a missing album page', async ({ page }) => {
 
 Then('the album page shows the not-found state', async ({ page }) => {
   await expect(page.getByText('Album not found')).toBeVisible();
+});
+
+// --- album detail UI: hidden from timeline ----------------------------------
+
+async function toggleAlbumTimelineFromMenu(page: Page, ctx: Ctx, label: string): Promise<void> {
+  const album = currentAlbum(ctx);
+  await page.locator('button[aria-label="Album options"]').click();
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (r) =>
+        r.request().method() === 'PATCH' &&
+        new URL(r.url()).pathname === `/api/v1/albums/${album.id}`,
+    ),
+    page.getByRole('button', { name: label }).click(),
+  ]);
+  expect(response.status()).toBe(200);
+}
+
+When('I hide the album from its options menu', async ({ page, ctx }) => {
+  await toggleAlbumTimelineFromMenu(page, ctx, 'Hide from timeline');
+});
+
+When('I show the album from its options menu', async ({ page, ctx }) => {
+  await toggleAlbumTimelineFromMenu(page, ctx, 'Show on timeline');
+});
+
+Then('the album page shows the hidden badge', async ({ page }) => {
+  await expect(page.getByText('Hidden from timeline', { exact: true })).toBeVisible();
 });
 
 // --- timeline viewer picker -------------------------------------------------

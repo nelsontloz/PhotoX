@@ -28,6 +28,7 @@ export class AlbumsService {
     album.userId = userId;
     album.name = dto.name;
     album.description = dto.description ?? null;
+    album.hiddenFromTimeline = dto.hiddenFromTimeline ?? false;
     const saved = await this.repo.save(album);
     return this.toDto(saved, 0);
   }
@@ -80,6 +81,7 @@ export class AlbumsService {
     const patch: Partial<Album> = {};
     if (dto.name !== undefined) patch.name = dto.name;
     if (dto.description !== undefined) patch.description = dto.description;
+    if (dto.hiddenFromTimeline !== undefined) patch.hiddenFromTimeline = dto.hiddenFromTimeline;
 
     if (Object.keys(patch).length === 0) {
       const count = await this.countAssets(id);
@@ -173,6 +175,7 @@ export class AlbumsService {
       userId: a.userId,
       name: a.name,
       description: a.description,
+      hiddenFromTimeline: a.hiddenFromTimeline,
       assetCount,
       createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : a.createdAt,
       updatedAt: a.updatedAt instanceof Date ? a.updatedAt.toISOString() : a.updatedAt,

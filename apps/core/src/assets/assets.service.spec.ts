@@ -239,3 +239,208 @@ describe('AssetsService.hardDelete cover mirror (C4)', () => {
     expect(coverNull).toBe(false);
   });
 });
+
+interface TimelineRow {
+  id: string;
+  albums?: { id: string; hidden: boolean }[];
+  takenAt?: Date;
+  isTrashed?: boolean;
+}
+
+interface FakeQb {
+  select: () => FakeQb;
+  addSelect: () => FakeQb;
+  where: (sql: string, params?: Record<string, unknown>) => FakeQb;
+  andWhere: (sql: string, params?: Record<string, unknown>) => FakeQb;
+  innerJoin: () => FakeQb;
+  orderBy: () => FakeQb;
+  addOrderBy: () => FakeQb;
+  skip: () => FakeQb;
+  take: () => FakeQb;
+  offset: () => FakeQb;
+  limit: () => FakeQb;
+  getManyAndCount: () => Promise<[Asset[], number]>;
+  getRawMany: () => Promise<{ t: Date; w: number; h: number }[]>;
+}
+
+// Timeline query-builder stand-in: it evaluates only the predicates list()/layout() emit today
+// (userId, isTrashed, albumId EXISTS, hidden-album NOT EXISTS) and throws on anything new, so a
+// filter the harness does not know about can never pass silently.
+function makeTimelineService(rows: TimelineRow[]) {
+  const conditions: { sql: string; params: Record<string, unknown> }[] = [];
+  const matches = (row: TimelineRow, sql: string, params: Record<string, unknown>): boolean => {
+    if (sql === 'asset.userId = :userId') return true; // fixtures are already owner-scoped
+    if (sql === 'asset.isTrashed = :isTrashed')
+      return (row.isTrashed ?? false) === params.isTrashed;
+    if (sql.includes(':albumId')) return (row.albums ?? []).some((a) => a.id === params.albumId);
+    if (sql.includes('hiddenFromTimeline')) return !(row.albums ?? []).some((a) => a.hidden);
+    throw new Error(`unhandled timeline predicate: ${sql}`);
+  };
+  const matching = () => rows.filter((r) => conditions.every((c) => matches(r, c.sql, c.params)));
+  const qb: FakeQb = {
+    select: () => qb,
+    addSelect: () => qb,
+    where: (sql, params = {}) => {
+      conditions.length = 0;
+      conditions.push({ sql, params });
+      return qb;
+    },
+    andWhere: (sql, params = {}) => {
+      conditions.push({ sql, params });
+      return qb;
+    },
+    innerJoin: () => qb,
+    orderBy: () => qb,
+    addOrderBy: () => qb,
+    skip: () => qb,
+    take: () => qb,
+    offset: () => qb,
+    limit: () => qb,
+    getManyAndCount: () => {
+      const hits = matching();
+      return Promise.resolve([
+        hits.map((r) => ({ id: r.id, userId: 'u1' }) as unknown as Asset),
+        hits.length,
+      ]);
+    },
+    getRawMany: () =>
+      Promise.resolve(
+        matching().map((r) => ({
+          t: r.takenAt ?? new Date('2024-01-01T00:00:00.000Z'),
+          w: 1,
+          h: 1,
+        })),
+      ),
+  };
+  const repo = { createQueryBuilder: vi.fn(() => qb) } as unknown as Repository<Asset>;
+  const thumbRepo = {
+    find: vi.fn(() => Promise.resolve([])),
+  } as unknown as Repository<AssetThumbnail>;
+  const service = new AssetsService(
+    repo,
+    thumbRepo,
+    {} as unknown as Repository<FileRecord>,
+    {} as unknown as DataSource,
+    {} as unknown as FacesService,
+    {} as unknown as BullMqService,
+    {} as unknown as PlacesResolveService,
+  );
+  return { service };
+}
+
+describe('AssetsService timeline hidden albums', () => {
+  it('omits a hidden album asset from list and layout', async () => {
+    const { service } = makeTimelineService([
+      { id: 'asset-hidden', albums: [{ id: 'album-1', hidden: true }] },
+    ]);
+    await expect(service.list('u1', {})).resolves.toMatchObject({ items: [], total: 0 });
+    await expect(service.layout('u1')).resolves.toEqual({ items: [] });
+  });
+
+  it('still lists a hidden album asset when the albumId filter is explicit', async () => {
+    const { service } = makeTimelineService([
+      { id: 'asset-hidden', albums: [{ id: 'album-1', hidden: true }] },
+    ]);
+    const list = await service.list('u1', { albumId: 'album-1' });
+    expect(list.items.map((a) => a.id)).toEqual(['asset-hidden']);
+    const layout = await service.layout('u1', undefined, undefined, 'album-1');
+    expect(layout.items).toHaveLength(1);
+  });
+
+  it('leaves an asset in a normal album on the timeline', async () => {
+    const { service } = makeTimelineService([
+      { id: 'asset-shown', albums: [{ id: 'album-1', hidden: false }] },
+    ]);
+    const list = await service.list('u1', {});
+    expect(list.items.map((a) => a.id)).toEqual(['asset-shown']);
+    await expect(service.layout('u1')).resolves.toEqual({
+      items: [{ t: '2024-01-01T00:00:00.000Z', w: 1, h: 1 }],
+    });
+  });
+
+  it('keeps a hidden album asset in the trash view', async () => {
+    const { service } = makeTimelineService([
+      { id: 'asset-hidden', isTrashed: true, albums: [{ id: 'album-1', hidden: true }] },
+    ]);
+    const trashed = await service.list('u1', { isTrashed: true });
+    expect(trashed.items.map((a) => a.id)).toEqual(['asset-hidden']);
+  });
+
+  it('returns the asset once the hidden flag is cleared', async () => {
+    const album = { id: 'album-1', hidden: true };
+    const { service } = makeTimelineService([{ id: 'asset-1', albums: [album] }]);
+    expect((await service.list('u1', {})).items).toEqual([]);
+    album.hidden = false;
+    expect((await service.list('u1', {})).items.map((a) => a.id)).toEqual(['asset-1']);
+  });
+});
+
+// Fingerprint reads two aggregates in order: the asset one, then the hidden-album one.
+function makeFingerprintService(hidden: { count: string; maxTouched: Date | string | null }) {
+  const chain = (row: unknown) => ({
+    select: vi.fn().mockReturnThis(),
+    addSelect: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    andWhere: vi.fn().mockReturnThis(),
+    innerJoin: vi.fn().mockReturnThis(),
+    getRawOne: vi.fn(() => Promise.resolve(row)),
+  });
+  const repo = {
+    createQueryBuilder: vi
+      .fn()
+      .mockReturnValueOnce(
+        chain({ count: '3', maxUpdatedAt: new Date('2024-01-01T00:00:00.000Z') }),
+      )
+      .mockReturnValueOnce(chain(hidden)),
+  } as unknown as Repository<Asset>;
+  return new AssetsService(
+    repo,
+    {} as unknown as Repository<AssetThumbnail>,
+    {} as unknown as Repository<FileRecord>,
+    {} as unknown as DataSource,
+    {} as unknown as FacesService,
+    {} as unknown as BullMqService,
+    {} as unknown as PlacesResolveService,
+  );
+}
+
+function fingerprintEtag(f: Awaited<ReturnType<AssetsService['layoutFingerprint']>>): string {
+  return `${f.count}-${f.maxUpdatedAtMs}-${f.hiddenCount}-${f.hiddenMaxTouchedMs}`;
+}
+
+describe('AssetsService layoutFingerprint hidden albums', () => {
+  it('moves when an album is hidden even though asset rows did not change', async () => {
+    const visible = await makeFingerprintService({
+      count: '0',
+      maxTouched: null,
+    }).layoutFingerprint('u1');
+    const hidden = await makeFingerprintService({
+      count: '1',
+      maxTouched: '2024-01-02T00:00:00.000Z',
+    }).layoutFingerprint('u1');
+
+    expect(visible).toEqual({
+      count: 3,
+      maxUpdatedAtMs: 1704067200000,
+      hiddenCount: 0,
+      hiddenMaxTouchedMs: 0,
+    });
+    expect(hidden.count).toBe(visible.count);
+    expect(hidden.hiddenCount).toBe(1);
+    expect(hidden.hiddenMaxTouchedMs).toBe(new Date('2024-01-02T00:00:00.000Z').getTime());
+    expect(fingerprintEtag(hidden)).not.toBe(fingerprintEtag(visible));
+  });
+
+  it('moves when a member is added to a hidden album', async () => {
+    const oneMember = await makeFingerprintService({
+      count: '1',
+      maxTouched: '2024-01-02T00:00:00.000Z',
+    }).layoutFingerprint('u1');
+    const twoMembers = await makeFingerprintService({
+      count: '2',
+      maxTouched: new Date('2024-01-03T00:00:00.000Z'),
+    }).layoutFingerprint('u1');
+
+    expect(fingerprintEtag(twoMembers)).not.toBe(fingerprintEtag(oneMember));
+  });
+});
