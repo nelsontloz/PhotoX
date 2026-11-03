@@ -283,8 +283,10 @@ function AlbumDetail({ id }: { id: string }) {
             >
               <FaEllipsisVertical />
             </button>
+            {/* z-50 clears the timeline's sticky day bands (z-30) and the scrollbar (z-40);
+                dialogs share z-50 and render later in the tree, so they still win */}
             {showMenu && (
-              <div className="absolute right-0 mt-1 w-48 bg-card-dark border border-border-dark rounded-lg shadow-lg py-1 z-20">
+              <div className="absolute right-0 mt-1 w-48 bg-card-dark border border-border-dark rounded-lg shadow-lg py-1 z-50">
                 <button
                   onClick={() => {
                     start();
