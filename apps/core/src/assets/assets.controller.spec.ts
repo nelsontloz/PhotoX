@@ -32,7 +32,14 @@ function fakeReq(fresh: boolean): Request {
   return { fresh } as unknown as Request;
 }
 
-function makeController(fingerprint: { count: number; maxUpdatedAtMs: number }, body: unknown) {
+interface LayoutFingerprint {
+  count: number;
+  maxUpdatedAtMs: number;
+  hiddenCount: number;
+  hiddenMaxTouchedMs: number;
+}
+
+function makeController(fingerprint: LayoutFingerprint, body: unknown) {
   const layoutFingerprint = vi.fn().mockResolvedValue(fingerprint);
   const layout = vi.fn().mockResolvedValue(body);
   return {
@@ -46,7 +53,12 @@ describe('AssetsController layout ETag', () => {
   it('cold GET fetches layout once and sends body with revalidation headers', async () => {
     const body = { items: [{ t: '2024-01-01T00:00:00.000Z', w: 4, h: 3 }] };
     const { controller, layoutFingerprint, layout } = makeController(
-      { count: 2, maxUpdatedAtMs: 1700000000000 },
+      {
+        count: 2,
+        maxUpdatedAtMs: 1700000000000,
+        hiddenCount: 1,
+        hiddenMaxTouchedMs: 1700000000001,
+      },
       body,
     );
     const res = fakeRes();
@@ -58,14 +70,14 @@ describe('AssetsController layout ETag', () => {
     expect(layout).toHaveBeenCalledTimes(1);
     expect(layout).toHaveBeenCalledWith('u1', undefined, undefined, undefined);
     expect(res.jsonBody).toEqual(body);
-    expect(res.headers.get('ETag')).toBe('"layout-2-1700000000000"');
+    expect(res.headers.get('ETag')).toBe('"layout-2-1700000000000-1-1700000000001"');
     expect(res.headers.get('Cache-Control')).toBe('private, no-cache');
     expect(res.headers.get('Vary')).toBe('Authorization');
   });
 
   it('returns 304 and skips layout when the request is fresh', async () => {
     const { controller, layout } = makeController(
-      { count: 2, maxUpdatedAtMs: 1700000000000 },
+      { count: 2, maxUpdatedAtMs: 1700000000000, hiddenCount: 0, hiddenMaxTouchedMs: 0 },
       { items: [] },
     );
     const res = fakeRes();
@@ -80,7 +92,10 @@ describe('AssetsController layout ETag', () => {
 
   it('refetches and returns 200 when the request is not fresh', async () => {
     const body = { items: [] };
-    const { controller, layout } = makeController({ count: 1, maxUpdatedAtMs: 5 }, body);
+    const { controller, layout } = makeController(
+      { count: 1, maxUpdatedAtMs: 5, hiddenCount: 0, hiddenMaxTouchedMs: 0 },
+      body,
+    );
     const res = fakeRes();
 
     await controller.layout(fakeReq(false), res as unknown as Response, 'u1');
@@ -88,13 +103,13 @@ describe('AssetsController layout ETag', () => {
     expect(res.statusCode).toBe(200);
     expect(res.jsonBody).toEqual(body);
     expect(layout).toHaveBeenCalledTimes(1);
-    expect(res.headers.get('ETag')).toBe('"layout-1-5"');
+    expect(res.headers.get('ETag')).toBe('"layout-1-5-0-0"');
   });
 
   it('skips ETag revalidation for person-scoped layouts', async () => {
     const body = { items: [{ t: '2024-01-01T00:00:00.000Z', w: 4, h: 3 }] };
     const { controller, layoutFingerprint, layout } = makeController(
-      { count: 2, maxUpdatedAtMs: 1700000000000 },
+      { count: 2, maxUpdatedAtMs: 1700000000000, hiddenCount: 0, hiddenMaxTouchedMs: 0 },
       body,
     );
     const res = fakeRes();
@@ -112,7 +127,7 @@ describe('AssetsController layout ETag', () => {
   it('skips ETag revalidation for favorite-scoped layouts', async () => {
     const body = { items: [{ t: '2024-01-01T00:00:00.000Z', w: 4, h: 3 }] };
     const { controller, layoutFingerprint, layout } = makeController(
-      { count: 2, maxUpdatedAtMs: 1700000000000 },
+      { count: 2, maxUpdatedAtMs: 1700000000000, hiddenCount: 0, hiddenMaxTouchedMs: 0 },
       body,
     );
     const res = fakeRes();

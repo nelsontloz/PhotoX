@@ -127,3 +127,26 @@ Feature: Albums UI flows
     And I select the album "Populated album" in the picker
     And I add the selected photos to the selected albums
     Then the album "Populated album" contains exactly my album photos
+
+  Scenario: Hiding an album from its options menu removes its photo from the timeline
+    Given I am signed in
+    And I created an album via the API named "Menu-hidden album"
+    And I uploaded an album photo
+    When I add my album photo to the album
+    And I open the album
+    And I hide the album from its options menu
+    Then the album page shows the hidden badge
+    And the album page shows 1 album photos
+    When I open "/"
+    Then my timeline does not contain the album photo
+
+  Scenario: Showing a hidden album from its options menu restores it on the timeline
+    Given I am signed in
+    And I created an album via the API named "Menu-shown album"
+    And I uploaded an album photo
+    When I add my album photo to the album
+    And I hide the album from the timeline
+    And I open the album
+    And I show the album from its options menu
+    Then the album page shows 1 album photos
+    And my timeline still contains the album photo
