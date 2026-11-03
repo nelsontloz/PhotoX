@@ -14,7 +14,29 @@ dart run build_runner build            # ONLY needed after editing lib/upload/da
 dart run build_runner build --only-check   # presubmit: fails if database.g.dart is stale
 flutter analyze && flutter test        # the entire gate — there is no CI and no pre-commit
 flutter run --dart-define=PHOTOX_API_URL=http://localhost:3000
+cd ../.. && pnpm mobile:e2e            # on-device e2e: real containers + Android AVD (opt-in)
 ```
+
+### On-device e2e (`pnpm mobile:e2e`)
+
+`e2e/mobile/run.sh` boots the compose stack (`docker-compose.yml` + `docker-compose.e2e.yml`
++ `docker-compose.mobile-e2e.yml`), registers a throwaway user, boots the `photox` AVD on the
+host (a container cannot run an emulator on macOS), points the app at the run's published core
+port through the emulator's `10.0.2.2` host alias, pre-grants the media permissions (a system
+dialog would block the test), `pm clear`s the app, and runs `integration_test/`: 
+`auth_flow_test.dart` (setup → bad password → sign in → sign out → sign in again, then a fresh
+app graph over the same storage to prove the session was persisted) and `auth_protocol_test.dart`
+(refresh rotation, reuse detection, sign-out against real core). Env: `MOBILE_E2E_HEADLESS=1` boots without a window, `MOBILE_E2E_KEEP=1` leaves the stack
+running, `MOBILE_E2E_BUILD=1` rebuilds images, `MOBILE_E2E_AVD=<id>` picks another AVD,
+`MOBILE_E2E_STOP_EMULATOR=1` kills the emulator on exit (it is otherwise left running and
+reused, since its boot is the slow part of a cold run), `ADB=<path>` overrides adb detection.
+Each run gets its own compose project and host port; `flutter test` reinstalls the APK and the
+app's state is gone between test files, so each file has to build its own starting state.
+
+The suite covers the **foreground** auth/setup path only. Media seeding, the backup pipeline,
+and anything the OS owns (WorkManager/BGTaskScheduler, MediaStore edge cases) are not covered —
+an emulator proves nothing about those, as above. It is opt-in and never part of `pnpm verify`
+or Jenkins: both need an AVD.
 
 - Toolchain verified: Flutter 3.47.7 stable (`/opt/homebrew/bin/flutter`), Dart 3.13.5, build_runner 2.16.2, drift 2.35.2.
 - `--delete-conflicting-outputs` is accepted but ignored on build_runner 2.16 — harmless, never needed.
@@ -68,7 +90,6 @@ flutter run -d <ip>:<port> --dart-define=PHOTOX_API_URL=http://localhost:3000
 ### Gotchas that cost real time
 
 - `--dart-define` only pre-fills the first-launch setup screen: the address in use is `KeyValues.apiBaseUrl` in the drift DB, so an update install keeps the old server. The sign-in screen prefills the same address and is editable — a different value typed there is persisted and retargets both Dio clients, so no reinstall is needed to move servers.
-- The e2e override publishes core on **loopback only** (`tool/e2e/docker-compose.mobile.yml`), so the Mac's LAN IP is refused from a phone. Use `adb reverse`, or widen the bind on purpose.
 - `adb shell input` fails with `INJECT_EVENTS` until *Developer options → USB debugging (Security settings)* is enabled; without it the UI cannot be driven or scripted from the shell.
 - Reading the app's queue DB (debug builds only) — pull the `-wal` too, or recent rows are missing:
   ```bash
@@ -95,7 +116,7 @@ Verified in `../../apps/core/src`. Controllers declare `api/v1/...` with no glob
 - `GET /api/v1/files/:id` (+ `/stream`, `/download`).
 - `POST /api/v1/auth/{register,login,refresh,logout}` — token pair is returned in the JSON body; logout is 204 and idempotent. Refresh rotates the token with reuse detection.
 
-**The resumable `/api/v1/uploads` session API is live** in core (`../../apps/core/src/uploads/uploads.controller.ts`): `POST /api/v1/uploads` (create), `GET /api/v1/uploads/:uploadId` (status), `POST /api/v1/uploads/:uploadId/parts/:partIndex` (part), `POST /api/v1/uploads/:uploadId/complete` (409 `missingParts` when incomplete). `SessionClient` matches it and `tool/e2e/run_contract.sh` exercises it against a live stack. The routes were documented before they existed, so still read the controller rather than trusting a remembered shape.
+**The resumable `/api/v1/uploads` session API is live** in core (`../../apps/core/src/uploads/uploads.controller.ts`): `POST /api/v1/uploads` (create), `GET /api/v1/uploads/:uploadId` (status), `POST /api/v1/uploads/:uploadId/parts/:partIndex` (part), `POST /api/v1/uploads/:uploadId/complete` (409 `missingParts` when incomplete). `SessionClient` matches it and `test/unit/core_contracts_test.dart` pins the wire shapes; there is no live contract suite. The routes were documented before they existed, so still read the controller rather than trusting a remembered shape.
 
 Behaviours an agent would otherwise get wrong:
 

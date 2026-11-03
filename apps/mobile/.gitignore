@@ -51,10 +51,6 @@ app.*.map.json
 # deepwork state
 .slim/deepwork/
 
-# e2e harness generated files
-tool/e2e/.tmp/
-tool/e2e/artifacts/
-
 # Device drift DB pulled with `adb exec-out run-as` (see "Deploy to a device")
 *.sqlite
 *.sqlite-wal

@@ -1,0 +1,15 @@
+# Mobile (Flutter) e2e overlay, merged last by e2e/mobile/run.sh:
+#   -f docker-compose.yml -f docker-compose.e2e.yml -f docker-compose.mobile-e2e.yml
+#
+# The Android emulator runs on the host, so it cannot resolve compose DNS: core
+# must be reachable on the host loopback. The app then talks to
+# http://localhost:3000 through `adb reverse`, so no mobile-specific URL leaks
+# into the app — the same address dev and the physical device use.
+services:
+  core:
+    ports:
+      - '127.0.0.1:${MOBILE_E2E_CORE_PORT:-3000}:3000'
+
+  # The mobile suite never loads the web app; keep its port for the web e2e only.
+  web:
+    ports: !override []
