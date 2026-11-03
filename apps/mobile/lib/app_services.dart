@@ -7,6 +7,7 @@ import 'core/token_store.dart';
 import 'media/hasher.dart';
 import 'media/photo_manager_observer.dart';
 import 'media/photo_observer.dart';
+import 'server/server_assets_client.dart';
 import 'settings/settings_store.dart';
 import 'sync/sync_coordinator.dart';
 import 'sync/transfer_progress.dart';
@@ -34,6 +35,7 @@ class AppServices {
     required this.auth,
     required this.api,
     required this.sessions,
+    required this.serverAssets,
     required this.observer,
     required this.coordinator,
     required this.scheduler,
@@ -55,6 +57,9 @@ class AppServices {
 
   /// Resumable session client layered on [api].
   final SessionClient sessions;
+
+  /// The server's own asset library, for the merged grid.
+  final ServerAssetsClient serverAssets;
 
   /// Platform media discovery.
   final PhotoObserver observer;
@@ -157,6 +162,7 @@ class AppServices {
       progress: progress,
     );
     final sessions = SessionClient(api);
+    final serverAssets = ServerAssetsClient(api);
     final mediaObserver = observer ?? PhotoManagerObserver();
     final queue = UploadQueue(db);
     final settingsStore = SettingsStore(db);
@@ -186,6 +192,7 @@ class AppServices {
       auth: authManager,
       api: api,
       sessions: sessions,
+      serverAssets: serverAssets,
       observer: mediaObserver,
       coordinator: coordinator,
       scheduler: backgroundScheduler,
@@ -199,6 +206,7 @@ class AppServices {
               scheduler: backgroundScheduler,
               observer: mediaObserver,
               progress: progress,
+              serverAssets: serverAssets,
             )
           : null,
     );

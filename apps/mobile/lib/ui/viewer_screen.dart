@@ -5,22 +5,25 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../library/backup_status.dart';
+import '../library/library_item.dart';
 import '../media/photo_observer.dart';
 import '../media/video_playback.dart';
 import 'widgets/month_names.dart';
+import 'widgets/provenance_badge.dart';
 import 'widgets/status_badge.dart';
 
-/// Full-screen view of one on-device asset, swiped through [assets] in order.
+/// Full-screen view of one library row, swiped through [items] in order.
 ///
-/// The device is the source: the bytes are a platform thumbnail at display
-/// resolution, never an export of the original, so opening a photo costs no
-/// disk I/O beyond what the library already caches. The bar underneath says
-/// what the backup knows about those bytes and offers the one action that can
-/// change it.
+/// The device is the source for a row it holds: the bytes are a platform
+/// thumbnail at display resolution, never an export of the original, so opening
+/// a photo costs no disk I/O beyond what the library already caches. A row only
+/// the server has shows the server's thumbnail and says so; there is nothing to
+/// back up from this phone for it. The bar underneath says what is known about
+/// those bytes and offers the one action that can change it.
 class ViewerScreen extends StatefulWidget {
   const ViewerScreen({
     super.key,
-    required this.assets,
+    required this.items,
     required this.initialIndex,
     required this.loadPreview,
     required this.loadDetail,
@@ -30,15 +33,16 @@ class ViewerScreen extends StatefulWidget {
 
   /// The grid's order as it was when the tile was tapped: paging stops at the
   /// ends of this snapshot instead of reading the library again.
-  final List<AssetCandidate> assets;
+  final List<LibraryItem> items;
 
-  /// Asset to show first.
+  /// Row to show first.
   final int initialIndex;
 
-  /// Display-resolution preview for a library id, or null when there is none.
-  final Future<Uint8List?> Function(String localId) loadPreview;
+  /// Display-resolution preview for one row, or null when there is none.
+  final Future<Uint8List?> Function(LibraryItem item) loadPreview;
 
-  /// Badge and last failure for one asset, read when a page settles.
+  /// Badge and last failure for one device asset, read when a device-only page
+  /// settles (a server-only row has no queue row to ask).
   final Future<BackupDetail> Function(AssetCandidate asset) loadDetail;
 
   /// Bytes and player for video pages.
@@ -72,13 +76,13 @@ class _ViewerScreenState extends State<ViewerScreen> {
   /// Latched by the first two-finger gesture; see [_touchPoints].
   bool _pinching = false;
 
-  /// Playhead of every video already watched, keyed by library id. Session
-  /// only: a clip the user left mid-way resumes where they left it.
+  /// Playhead of every video already watched, keyed by [LibraryItem.key].
+  /// Session only: a clip the user left mid-way resumes where they left it.
   final Map<String, Duration> _resumePoints = <String, Duration>{};
 
   bool _busy = false;
 
-  AssetCandidate get _asset => widget.assets[_index];
+  LibraryItem get _item => widget.items[_index];
 
   @override
   void initState() {
@@ -112,18 +116,24 @@ class _ViewerScreenState extends State<ViewerScreen> {
     setState(() => _zoomed = zoomed);
   }
 
+  /// Reads the queue's answer for the row on screen.
+  ///
+  /// Only a device-only row needs it: a `both` row's badge comes from its
+  /// provenance, and a server-only row has no queue row to ask.
   Future<void> _loadDetail() async {
-    final asset = _asset;
+    final item = _item;
+    final device = item.device;
+    if (device == null || item.provenance != Provenance.deviceOnly) return;
     final BackupDetail detail;
     try {
-      detail = await widget.loadDetail(asset);
+      detail = await widget.loadDetail(device);
     } on Object {
       // A failed read keeps the bar as it was: it must not claim anything.
       return;
     }
     // The user may have swiped on while the query ran; a stale answer would
     // label the wrong photo.
-    if (!mounted || _asset.localId != asset.localId) return;
+    if (!mounted || _item.key != item.key) return;
     setState(() => _detail = detail);
   }
 
@@ -138,9 +148,11 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   Future<void> _backUpNow() async {
     if (_busy) return;
+    final device = _item.device;
+    if (device == null) return;
     setState(() => _busy = true);
     try {
-      await widget.onBackUpNow(<AssetCandidate>[_asset]);
+      await widget.onBackUpNow(<AssetCandidate>[device]);
     } on Object {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -158,7 +170,14 @@ class _ViewerScreenState extends State<ViewerScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final asset = _asset;
+    final item = _item;
+    final device = item.device;
+    // A device row keeps the date the grid grouped it by; a server-only row
+    // shows its capture date when metadata filled one in, and no date at all
+    // when it did not (the upload time is not the photo's date).
+    final stamp = device != null
+        ? _stamp(device.takenAt ?? device.modifiedAt) ?? 'Undated'
+        : _stamp(item.server?.takenAt?.toLocal());
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -171,7 +190,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Text(
-              _stamp(asset),
+              stamp ?? item.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.titleMedium?.copyWith(
@@ -179,14 +198,15 @@ class _ViewerScreenState extends State<ViewerScreen> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            Text(
-              asset.fileName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: Colors.white70,
+            if (stamp != null)
+              Text(
+                item.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: Colors.white70,
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -202,31 +222,34 @@ class _ViewerScreenState extends State<ViewerScreen> {
               ? const NeverScrollableScrollPhysics()
               : null,
           onPageChanged: _onPageChanged,
-          itemCount: widget.assets.length,
+          itemCount: widget.items.length,
           itemBuilder: (context, index) {
-            final asset = widget.assets[index];
-            if (asset.kind == MediaKind.video) {
+            final page = widget.items[index];
+            final pageDevice = page.device;
+            // Only a row this phone holds has bytes to play. A server-only
+            // video shows its poster and its date, nothing more.
+            if (pageDevice != null && page.isVideo) {
               return _VideoPage(
-                // Keyed by id: a page that survives a rebuild keeps its player
-                // only for the asset it was opened on.
-                key: ValueKey<String>(asset.localId),
-                asset: asset,
+                // Keyed by row: a page that survives a rebuild keeps its player
+                // only for the item it was opened on.
+                key: ValueKey<String>(page.key),
+                localId: pageDevice.localId,
                 video: widget.video,
-                poster: widget.loadPreview,
-                resumeAt: _resumePoints[asset.localId] ?? Duration.zero,
-                onPosition: (position) =>
-                    _resumePoints[asset.localId] = position,
+                poster: () => widget.loadPreview(page),
+                resumeAt: _resumePoints[page.key] ?? Duration.zero,
+                onPosition: (position) => _resumePoints[page.key] = position,
               );
             }
             return _PhotoPage(
-              asset: asset,
-              load: widget.loadPreview,
+              key: ValueKey<String>(page.key),
+              load: () => widget.loadPreview(page),
               onZoomChanged: _onZoomChanged,
             );
           },
         ),
       ),
       bottomNavigationBar: _StatusBar(
+        item: item,
         detail: _detail,
         busy: _busy,
         onBackUpNow: _canBackUp ? _backUpNow : null,
@@ -237,15 +260,17 @@ class _ViewerScreenState extends State<ViewerScreen> {
   /// Only a photo the backup never took, or one that gave up, needs the action.
   bool get _canBackUp {
     final detail = _detail;
-    return detail != null &&
+    return _item.device != null &&
+        detail != null &&
         (detail.status == BackupStatus.unknown ||
             detail.status == BackupStatus.failed);
   }
 
   /// `12 May 2025 · 14:32`; the time is what tells same-day photos apart.
-  String _stamp(AssetCandidate asset) {
-    final at = asset.takenAt ?? asset.modifiedAt;
-    if (at == null) return 'Undated';
+  ///
+  /// Null when there is no date to show, which only a server row can be.
+  String? _stamp(DateTime? at) {
+    if (at == null) return null;
     final hour = at.hour.toString().padLeft(2, '0');
     final minute = at.minute.toString().padLeft(2, '0');
     return '${at.day} ${monthAbbreviations[at.month - 1]} ${at.year} · $hour:$minute';
@@ -255,13 +280,13 @@ class _ViewerScreenState extends State<ViewerScreen> {
 /// One photo: the preview, pinch-zoomed and pannable, double-tap to toggle.
 class _PhotoPage extends StatefulWidget {
   const _PhotoPage({
-    required this.asset,
+    super.key,
     required this.load,
     required this.onZoomChanged,
   });
 
-  final AssetCandidate asset;
-  final Future<Uint8List?> Function(String localId) load;
+  /// Preview bytes for this one row: the device's or the server's.
+  final Future<Uint8List?> Function() load;
 
   /// Told when this page leaves or returns to fit, so the viewer can stop
   /// paging while the image is magnified.
@@ -276,8 +301,8 @@ class _PhotoPageState extends State<_PhotoPage> {
   /// the photo's framing.
   static const double _doubleTapScale = 2.5;
 
-  /// The list is a snapshot, so one page keeps one asset for its lifetime.
-  late final Future<Uint8List?> _bytes = widget.load(widget.asset.localId);
+  /// The list is a snapshot, so one page keeps one row for its lifetime.
+  late final Future<Uint8List?> _bytes = widget.load();
 
   final TransformationController _zoom = TransformationController();
 
@@ -399,20 +424,21 @@ class _Missing extends StatelessWidget {
 class _VideoPage extends StatefulWidget {
   const _VideoPage({
     super.key,
-    required this.asset,
+    required this.localId,
     required this.video,
     required this.poster,
     required this.resumeAt,
     required this.onPosition,
   });
 
-  final AssetCandidate asset;
+  /// Platform id of the device asset whose bytes are played.
+  final String localId;
 
   /// Bytes and player factory supplied by the shell.
   final VideoSupport video;
 
   /// Encoded poster for the asset, shown before the first frame.
-  final Future<Uint8List?> Function(String localId) poster;
+  final Future<Uint8List?> Function() poster;
 
   /// Playhead to restore when this page opens again.
   final Duration resumeAt;
@@ -425,7 +451,7 @@ class _VideoPage extends StatefulWidget {
 }
 
 class _VideoPageState extends State<_VideoPage> with WidgetsBindingObserver {
-  late final Future<Uint8List?> _poster = widget.poster(widget.asset.localId);
+  late final Future<Uint8List?> _poster = widget.poster();
 
   VideoPlayback? _playback;
   VideoPlaybackState _state = const VideoPlaybackState();
@@ -475,7 +501,7 @@ class _VideoPageState extends State<_VideoPage> with WidgetsBindingObserver {
     File? file;
     try {
       file = await widget.video.loadFile(
-        widget.asset.localId,
+        widget.localId,
         onProgress: (progress) {
           if (!_disposed) setState(() => _download = progress);
         },
@@ -822,15 +848,19 @@ class _VideoTimeline extends StatelessWidget {
   }
 }
 
-/// What the backup knows about the photo on screen, and the one action left.
+/// What the library knows about the row on screen, and the one action left.
 class _StatusBar extends StatelessWidget {
   const _StatusBar({
+    required this.item,
     required this.detail,
     required this.busy,
     required this.onBackUpNow,
   });
 
-  /// Null while the queue is still being asked.
+  /// The row on screen: its provenance decides the mark, the queue adds detail.
+  final LibraryItem item;
+
+  /// Null while the queue is still being asked, and on rows it never saw.
   final BackupDetail? detail;
 
   /// True while the tap's pass is being started.
@@ -844,6 +874,31 @@ class _StatusBar extends StatelessWidget {
     final theme = Theme.of(context);
     final value = detail;
 
+    final (
+      Widget? mark,
+      String label,
+      String? hint,
+    ) = switch (item.provenance) {
+      // Nothing on this phone to upload, so the bar never offers it.
+      Provenance.onlineOnly => (
+        const ProvenanceBadge(provenance: Provenance.onlineOnly),
+        'Online only',
+        'Not on this phone.',
+      ),
+      // Not "from this phone": the server copy may have come from another
+      // device.
+      Provenance.both => (
+        const StatusBadge(status: BackupStatus.backedUp),
+        'Backed up',
+        null,
+      ),
+      Provenance.deviceOnly => (
+        value == null ? null : StatusBadge(status: value.status),
+        value == null ? '' : _sentence(value.status),
+        _hintFor(value),
+      ),
+    };
+
     return ColoredBox(
       color: Colors.black,
       child: SafeArea(
@@ -852,7 +907,7 @@ class _StatusBar extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
           child: Row(
             children: <Widget>[
-              if (value != null) StatusBadge(status: value.status),
+              ?mark,
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -860,7 +915,7 @@ class _StatusBar extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
                     Text(
-                      value == null ? '' : _sentence(value.status),
+                      label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.labelLarge?.copyWith(
@@ -868,7 +923,17 @@ class _StatusBar extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    ..._hintLines(theme, value),
+                    if (hint != null)
+                      Text(
+                        hint,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: value?.status == BackupStatus.failed
+                              ? theme.colorScheme.error
+                              : Colors.white60,
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -897,9 +962,9 @@ class _StatusBar extends StatelessWidget {
   }
 
   /// One quiet line under the label, only when there is something to explain.
-  static List<Widget> _hintLines(ThemeData theme, BackupDetail? value) {
-    if (value == null) return const <Widget>[];
-    final hint = switch (value.status) {
+  static String? _hintFor(BackupDetail? value) {
+    if (value == null) return null;
+    return switch (value.status) {
       BackupStatus.failed => value.error ?? 'The server rejected this file.',
       BackupStatus.excluded =>
         'PhotoX cannot back up this kind of file, or videos are off in '
@@ -907,18 +972,5 @@ class _StatusBar extends StatelessWidget {
       BackupStatus.unknown => 'This phone has not uploaded these bytes.',
       _ => null,
     };
-    if (hint == null) return const <Widget>[];
-    return <Widget>[
-      Text(
-        hint,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: value.status == BackupStatus.failed
-              ? theme.colorScheme.error
-              : Colors.white60,
-        ),
-      ),
-    ];
   }
 }

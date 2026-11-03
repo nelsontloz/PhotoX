@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photox_mobile/app.dart';
 import 'package:photox_mobile/library/backup_status.dart';
+import 'package:photox_mobile/library/library_item.dart';
 import 'package:photox_mobile/media/photo_observer.dart';
 import 'package:photox_mobile/media/video_playback.dart';
+import 'package:photox_mobile/server/server_asset.dart';
 import 'package:photox_mobile/ui/viewer_screen.dart';
 
 import 'support/fake_video.dart';
@@ -33,6 +35,22 @@ AssetCandidate _asset(
   );
 }
 
+ServerAsset _server(
+  String id, {
+  String kind = 'photo',
+  DateTime? takenAt,
+  String? title,
+}) {
+  return ServerAsset(
+    id: id,
+    kind: kind,
+    uploadedAt: DateTime(2025, 5, 12, 14, 32),
+    takenAt: takenAt,
+    title: title ?? '$id.jpg',
+  );
+}
+
+/// Viewer over plain device rows: the device half as the grid builds it.
 Widget _viewer(
   List<AssetCandidate> assets, {
   int initialIndex = 0,
@@ -41,15 +59,38 @@ Widget _viewer(
   Uint8List? preview,
   VideoSupport? video,
 }) {
+  return _mergedViewer(
+    <LibraryItem>[for (final asset in assets) LibraryItem.deviceOnly(asset)],
+    initialIndex: initialIndex,
+    details: details,
+    queued: queued,
+    preview: preview,
+    video: video,
+  );
+}
+
+/// Viewer over merged rows, so a page can be server-only or on both sides.
+Widget _mergedViewer(
+  List<LibraryItem> items, {
+  int initialIndex = 0,
+  Map<String, BackupDetail> details = const <String, BackupDetail>{},
+  List<List<AssetCandidate>>? queued,
+  Uint8List? preview,
+  VideoSupport? video,
+  Future<BackupDetail> Function(AssetCandidate asset)? loadDetail,
+  Future<Uint8List?> Function(LibraryItem item)? loadPreview,
+}) {
   return MaterialApp(
     theme: photoXTheme(),
     home: ViewerScreen(
-      assets: assets,
+      items: items,
       initialIndex: initialIndex,
-      loadPreview: (localId) async => preview,
-      loadDetail: (asset) async =>
-          details[asset.localId] ??
-          const BackupDetail(status: BackupStatus.unknown),
+      loadPreview: loadPreview ?? (item) async => preview,
+      loadDetail:
+          loadDetail ??
+          (asset) async =>
+              details[asset.localId] ??
+              const BackupDetail(status: BackupStatus.unknown),
       video: video ?? FakeVideoSupport().support,
       onBackUpNow: (picked) async => queued?.add(picked),
     ),
@@ -111,6 +152,87 @@ void main() {
 
     expect(find.text('Backed up from this phone'), findsOneWidget);
     expect(find.byKey(const Key('viewer-back-up-now')), findsNothing);
+  });
+
+  testWidgets('a page only the server holds says so and offers nothing', (
+    tester,
+  ) async {
+    final support = FakeVideoSupport();
+    var detailReads = 0;
+    final previews = <String>[];
+
+    await tester.pumpWidget(
+      _mergedViewer(
+        <LibraryItem>[
+          // A server video: no bytes on this phone, so no player either.
+          LibraryItem.onlineOnly(
+            _server(
+              's1',
+              kind: 'video',
+              takenAt: DateTime(2025, 5, 12, 14, 32),
+            ),
+          ),
+        ],
+        preview: _preview,
+        video: support.support,
+        loadPreview: (item) async {
+          previews.add(item.key);
+          return _preview;
+        },
+        loadDetail: (asset) async {
+          detailReads++;
+          return const BackupDetail(status: BackupStatus.unknown);
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Online only'), findsOneWidget);
+    expect(find.text('Not on this phone.'), findsOneWidget);
+    expect(find.byKey(const Key('viewer-back-up-now')), findsNothing);
+    // There is no queue row to ask and no player for bytes that are not here.
+    expect(detailReads, 0);
+    expect(support.created, isEmpty);
+    expect(support.progress, isEmpty);
+    expect(find.byKey(const Key('viewer-video-scrubber')), findsNothing);
+    expect(find.byKey(const Key('viewer-video-play-button')), findsNothing);
+    // The poster comes from the server; the date is the capture date.
+    expect(previews, <String>['server:s1']);
+    expect(find.text('12 May 2025 · 14:32'), findsOneWidget);
+  });
+
+  testWidgets('a page on both sides reads Backed up and keeps its timeline', (
+    tester,
+  ) async {
+    final support = FakeVideoSupport();
+    var detailReads = 0;
+
+    await tester.pumpWidget(
+      _mergedViewer(
+        <LibraryItem>[
+          LibraryItem.backedUp(
+            _asset('v', kind: MediaKind.video),
+            server: _server('s1', kind: 'video'),
+          ),
+        ],
+        preview: _preview,
+        video: support.support,
+        loadDetail: (asset) async {
+          detailReads++;
+          return const BackupDetail(status: BackupStatus.unknown);
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The badge comes from provenance, not from a queue read.
+    expect(find.text('Backed up'), findsOneWidget);
+    expect(detailReads, 0);
+    expect(find.byKey(const Key('viewer-back-up-now')), findsNothing);
+    // The bytes are on this phone, so the player and its scrubber still exist.
+    expect(support.created, hasLength(1));
+    expect(find.byKey(const Key('viewer-video-scrubber')), findsOneWidget);
+    expect(find.text('12 May 2025 · 14:32'), findsOneWidget);
   });
 
   testWidgets('a failure shows why, and retries', (tester) async {

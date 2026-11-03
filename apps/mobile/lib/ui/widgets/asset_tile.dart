@@ -4,21 +4,22 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../library/backup_status.dart';
-import '../../media/photo_observer.dart';
+import '../../library/library_item.dart';
 import '../../sync/transfer_progress.dart';
+import 'provenance_badge.dart';
 import 'status_badge.dart';
 
-/// One square asset in the library grid: the preview, its backup mark, and the
-/// selection affordances.
+/// One square asset in the library grid: the preview, its one corner mark, and
+/// the selection affordances.
 ///
 /// Plain props only: the screen owns loading, selection and status resolution.
-/// The badge is the exception — it follows [progress] on its own so a byte tick
-/// repaints one tile instead of the whole grid.
+/// The mark is the exception — the transfer badge follows [progress] on its own
+/// so a byte tick repaints one tile instead of the whole grid.
 class AssetTile extends StatelessWidget {
   const AssetTile({
     super.key,
-    required this.asset,
-    required this.thumbnail,
+    required this.item,
+    required this.preview,
     required this.progress,
     required this.deferring,
     this.status,
@@ -28,11 +29,14 @@ class AssetTile extends StatelessWidget {
     this.onLongPress,
   });
 
-  /// Device asset this tile stands for.
-  final AssetCandidate asset;
+  /// The merged-library row this tile stands for: the device's copy, the
+  /// server's, or both.
+  final LibraryItem item;
 
-  /// Encoded preview for [AssetCandidate.localId]; null keeps the placeholder.
-  final Future<Uint8List?> Function(String localId, {int size}) thumbnail;
+  /// Encoded preview for [item] at roughly the tile's own size; null keeps the
+  /// placeholder. The screen decides where the bytes come from — the device for
+  /// a row it holds, the server for one it does not.
+  final Future<Uint8List?> Function(LibraryItem item, {int size}) preview;
 
   /// Live transfer state, so this tile shows its own percentage as it moves.
   final TransferProgress progress;
@@ -57,11 +61,12 @@ class AssetTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final mark = _mark();
 
     return Semantics(
       container: true,
       button: true,
-      label: asset.fileName,
+      label: mark.label == null ? item.title : '${item.title}, ${mark.label}',
       hint: selecting ? null : 'Long press to select',
       selected: selecting ? selected : null,
       onTap: onTap,
@@ -77,19 +82,18 @@ class AssetTile extends StatelessWidget {
             fit: StackFit.expand,
             children: <Widget>[
               ColoredBox(color: scheme.surfaceContainerHigh),
-              _Thumbnail(asset: asset, load: thumbnail, deferring: deferring),
+              _Thumbnail(item: item, load: preview, deferring: deferring),
               // Dimming sits under the marks so they stay readable.
               if (selecting && !selected)
                 const ColoredBox(color: Color(0x73000000)),
-              if (asset.kind == MediaKind.video) const _VideoMark(),
+              // A play glyph promises bytes on this phone; a server-only row
+              // has none here to open.
+              if (item.device != null && item.isVideo) const _VideoMark(),
               Positioned(
                 right: 5,
                 bottom: 5,
-                child: _LiveBadge(
-                  asset: asset,
-                  status: status,
-                  progress: progress,
-                ),
+                // The tile's label already carries the mark's words.
+                child: ExcludeSemantics(child: mark.child),
               ),
               if (selecting)
                 Positioned(
@@ -114,18 +118,74 @@ class AssetTile extends StatelessWidget {
       ),
     );
   }
+
+  /// True while this exact asset's bytes are moving right now.
+  bool get _live {
+    final localId = item.device?.localId;
+    return localId != null && progress.active && progress.localId == localId;
+  }
+
+  /// Completed fraction of a live upload; nothing while it is still preparing.
+  ///
+  /// A build-time snapshot: the ring keeps ticking on its own, the label does
+  /// not need to.
+  double? get _liveFraction =>
+      _live && progress.phase == TransferPhase.uploading
+      ? progress.fraction
+      : null;
+
+  /// The one mark in the bottom-right slot, plus the words it stands for.
+  ///
+  /// Priority (spec §2): the live transfer or the queue's own state first, then
+  /// provenance — and nothing at all while the queue has not answered.
+  ({String? label, Widget child}) _mark() {
+    // An online-only row has no queue row at all, so the "no claim before the
+    // queue answers" rule below must not swallow the one mark that says where
+    // its bytes are.
+    if (item.provenance == Provenance.onlineOnly) {
+      return (
+        label: ProvenanceBadge.labelFor(item.provenance),
+        child: ProvenanceBadge(provenance: item.provenance),
+      );
+    }
+    final status = _live ? BackupStatus.uploading : this.status;
+    if (status == null) {
+      return (label: null, child: const SizedBox.shrink());
+    }
+    return switch (status) {
+      BackupStatus.uploading ||
+      BackupStatus.failed ||
+      BackupStatus.queued ||
+      BackupStatus.excluded => (
+        label: StatusBadge.labelFor(status, fraction: _liveFraction),
+        child: _LiveBadge(
+          localId: item.device?.localId,
+          status: status,
+          progress: progress,
+        ),
+      ),
+      BackupStatus.backedUp || BackupStatus.unknown => (
+        label: ProvenanceBadge.labelFor(item.provenance),
+        child: ProvenanceBadge(provenance: item.provenance),
+      ),
+    };
+  }
 }
 
-/// The badge, plus the live percentage while this exact asset is in flight.
+/// The transfer or queue badge, live while its own asset is in flight.
 class _LiveBadge extends StatelessWidget {
   const _LiveBadge({
-    required this.asset,
+    required this.localId,
     required this.status,
     required this.progress,
   });
 
-  final AssetCandidate asset;
-  final BackupStatus? status;
+  /// Platform id of the device asset, or null on a server-only row.
+  final String? localId;
+
+  /// The queue's answer, or [BackupStatus.uploading] for the live transfer.
+  final BackupStatus status;
+
   final TransferProgress progress;
 
   @override
@@ -133,14 +193,16 @@ class _LiveBadge extends StatelessWidget {
     return ListenableBuilder(
       listenable: progress,
       builder: (context, _) {
-        final active = progress.active && progress.localId == asset.localId;
-        final resolved = active ? BackupStatus.uploading : status;
-        if (resolved == null) return const SizedBox.shrink();
+        final id = localId;
+        final active = id != null && progress.active && progress.localId == id;
         // No byte count while the bytes are still being prepared.
         final fraction = active && progress.phase == TransferPhase.uploading
             ? progress.fraction
             : null;
-        return StatusBadge(status: resolved, fraction: fraction);
+        return StatusBadge(
+          status: active ? BackupStatus.uploading : status,
+          fraction: fraction,
+        );
       },
     );
   }
@@ -152,13 +214,13 @@ class _LiveBadge extends StatelessWidget {
 /// never re-asks the platform; the provider below keeps the decode cached.
 class _Thumbnail extends StatefulWidget {
   const _Thumbnail({
-    required this.asset,
+    required this.item,
     required this.load,
     required this.deferring,
   });
 
-  final AssetCandidate asset;
-  final Future<Uint8List?> Function(String localId, {int size}) load;
+  final LibraryItem item;
+  final Future<Uint8List?> Function(LibraryItem item, {int size}) load;
 
   /// True while the grid is flinging: no request until it settles.
   final ValueListenable<bool> deferring;
@@ -189,7 +251,7 @@ class _ThumbnailState extends State<_Thumbnail> {
       widget.deferring.addListener(_onDeferringChanged);
       if (!widget.deferring.value && _bytes == null) _bytes = _load();
     }
-    if (oldWidget.asset.localId != widget.asset.localId) {
+    if (oldWidget.item.key != widget.item.key) {
       // A recycled tile starts over, and still waits out a fling.
       _bytes = widget.deferring.value ? null : _load();
     }
@@ -210,7 +272,7 @@ class _ThumbnailState extends State<_Thumbnail> {
   }
 
   Future<Uint8List?> _load() =>
-      widget.load(widget.asset.localId, size: _Thumbnail.requestPixels);
+      widget.load(widget.item, size: _Thumbnail.requestPixels);
 
   @override
   Widget build(BuildContext context) {

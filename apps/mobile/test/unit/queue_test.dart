@@ -776,6 +776,58 @@ void main() {
     });
   });
 
+  group('serverIdsFor', () {
+    test('reads uploaded rows, dedupes ids and omits the rest', () async {
+      await queue.enqueueAll(<AssetCandidate>[
+        _candidate('uploaded'),
+        _candidate('deduped'),
+        _candidate('pending'),
+        _candidate('absent'),
+      ]);
+      await queue.markState(
+        localId: 'uploaded',
+        state: UploadState.uploaded,
+        serverAssetId: 'asset-1',
+      );
+      await queue.markState(
+        localId: 'deduped',
+        state: UploadState.duplicate,
+        serverAssetId: 'asset-2',
+      );
+      await queue.markState(localId: 'pending', state: UploadState.pending);
+
+      final serverIds = await queue.serverIdsFor(<String>[
+        'uploaded',
+        'deduped',
+        'pending',
+        'absent',
+        'uploaded',
+      ]);
+
+      expect(serverIds, <String, String>{
+        'uploaded': 'asset-1',
+        'deduped': 'asset-2',
+      });
+      expect(await queue.serverIdsFor(const <String>[]), isEmpty);
+    });
+
+    test('chunks more ids than a visible page', () async {
+      final ids = List<String>.generate(1200, (index) => 'asset-$index');
+      await queue.enqueueAll(<AssetCandidate>[
+        for (final id in ids) _candidate(id),
+      ]);
+      await queue.markState(
+        localId: 'asset-1199',
+        state: UploadState.uploaded,
+        serverAssetId: 'server-1199',
+      );
+
+      final serverIds = await queue.serverIdsFor(ids);
+
+      expect(serverIds, <String, String>{'asset-1199': 'server-1199'});
+    });
+  });
+
   group('metadata', () {
     test('set and get only touch the meta namespace', () async {
       expect(await queue.getMeta('lastScan'), isNull);

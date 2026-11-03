@@ -235,6 +235,9 @@ run_test upload_paths_test.dart
 run_test upload_dedup_test.dart
 run_test upload_resume_test.dart
 run_test upload_token_test.dart
+# The merged Library tab: the server's rows draw next to the phone's, and the
+# mark on a tile follows where its bytes live.
+run_test library_merged_test.dart
 
 echo
 echo "Mobile e2e passed."

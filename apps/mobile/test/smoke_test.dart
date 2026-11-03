@@ -7,6 +7,7 @@ import 'package:photox_mobile/app_controller.dart';
 import 'package:photox_mobile/library/album_progress.dart';
 import 'package:photox_mobile/library/backup_status.dart';
 import 'package:photox_mobile/media/photo_observer.dart';
+import 'package:photox_mobile/server/server_asset.dart';
 import 'package:photox_mobile/settings/settings_store.dart';
 import 'package:photox_mobile/sync/sync_coordinator.dart';
 import 'package:photox_mobile/sync/transfer_progress.dart';
@@ -91,6 +92,20 @@ class FakeAppController extends AppController {
   @override
   Future<Map<String, UploadState>> backupStates(List<String> localIds) async =>
       const <String, UploadState>{};
+
+  @override
+  Future<ServerAssetPage> serverPage({
+    DateTime? dateTo,
+    int offset = 0,
+    int limit = 100,
+  }) async => const ServerAssetPage(items: <ServerAsset>[], total: 0);
+
+  @override
+  Future<Map<String, String>> serverIds(List<String> localIds) async =>
+      const <String, String>{};
+
+  @override
+  Future<Uint8List?> serverThumb(String fileId) async => null;
 
   @override
   int get queueRevision => 0;

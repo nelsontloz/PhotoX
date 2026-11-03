@@ -299,6 +299,32 @@ class UploadQueue {
     return states;
   }
 
+  /// Server asset id of every listed asset the server already holds.
+  ///
+  /// Rows that never uploaded (or deduped) have no id and are absent. Chunked
+  /// for the same reason as [statesFor]: one visible grid page can exceed
+  /// SQLite's variable limit.
+  Future<Map<String, String>> serverIdsFor(List<String> localIds) async {
+    final ids = localIds.toSet().toList(growable: false);
+    final serverIds = <String, String>{};
+    for (var start = 0; start < ids.length; start += 500) {
+      final chunk = ids.sublist(start, min(start + 500, ids.length));
+      final query = db.selectOnly(db.queuedAssets)
+        ..addColumns([db.queuedAssets.localId, db.queuedAssets.serverAssetId])
+        ..where(
+          db.queuedAssets.localId.isIn(chunk) &
+              db.queuedAssets.serverAssetId.isNotNull(),
+        );
+      for (final row in await query.get()) {
+        final serverId = row.read(db.queuedAssets.serverAssetId);
+        if (serverId != null) {
+          serverIds[row.read(db.queuedAssets.localId)!] = serverId;
+        }
+      }
+    }
+    return serverIds;
+  }
+
   /// Persists the new [state] for one asset before the next attempt.
   ///
   /// A null optional field leaves the stored value untouched. Network-owned
