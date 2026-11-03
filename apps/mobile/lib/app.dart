@@ -263,6 +263,10 @@ class _SignedInShellState extends State<_SignedInShell> {
       ],
       loadPage: controller.libraryPage,
       loadStates: controller.backupStates,
+      // The album grid stays device-only, so it gets no server half at all.
+      serverPage: album == null ? controller.serverPage : null,
+      serverIds: album == null ? controller.serverIds : null,
+      serverThumb: album == null ? controller.serverThumb : null,
       thumbnail: controller.thumbnail,
       loadPreview: controller.preview,
       loadDetail: controller.backupDetail,

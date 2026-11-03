@@ -16,6 +16,8 @@ import 'library/album_scope.dart';
 import 'library/backup_status.dart';
 import 'media/media_filter.dart';
 import 'media/photo_observer.dart';
+import 'server/server_asset.dart';
+import 'server/server_assets_client.dart';
 import 'settings/settings_store.dart';
 import 'sync/sync_coordinator.dart';
 import 'sync/transfer_progress.dart';
@@ -101,6 +103,28 @@ abstract class AppController extends ChangeNotifier {
   /// Ids with no row are absent: this phone never queued those assets.
   Future<Map<String, UploadState>> backupStates(List<String> localIds);
 
+  /// Newest-first page of the server's library, for the merged grid.
+  ///
+  /// [dateTo] is an exclusive upper bound on the date a tile sorts by, which is
+  /// how the caller walks further back without a date window.
+  Future<ServerAssetPage> serverPage({
+    DateTime? dateTo,
+    int offset = 0,
+    int limit = ServerAssetsClient.maxLimit,
+  });
+
+  /// Server asset id of every listed device asset the server already holds.
+  ///
+  /// Ids with no server copy are absent: the row uploaded nowhere yet, or its
+  /// bytes failed to reach the server.
+  Future<Map<String, String>> serverIds(List<String> localIds);
+
+  /// Encoded thumbnail of one server file, or null when that file is gone.
+  ///
+  /// Memoised for the session: flipping through the grid asks for the same
+  /// tiles again, and the bytes never change once written.
+  Future<Uint8List?> serverThumb(String fileId);
+
   /// Bumped whenever queued assets changed state, so the grid re-reads its page
   /// instead of holding the whole queue in memory.
   int get queueRevision;
@@ -175,8 +199,10 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     required this.scheduler,
     required this.observer,
     required this.progress,
+    ServerAssetsClient? serverAssets,
     Future<void> Function()? clearSpool,
-  }) : clearSpool = clearSpool ?? clearUploadSpool {
+  }) : serverAssets = serverAssets ?? ServerAssetsClient(api),
+       clearSpool = clearSpool ?? clearUploadSpool {
     _completedTransfers = progress.completedTransfers;
     progress.addListener(_onProgress);
     coordinator.onDiscovery = _onDiscovery;
@@ -187,6 +213,10 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
 
   /// Signed transport; retargeted when the server address changes.
   final ApiClient api;
+
+  /// Reads the server's asset library; shares [api], so it uses the same auth,
+  /// retries and base address.
+  final ServerAssetsClient serverAssets;
 
   /// Queue persistence used for the home-screen counters.
   final UploadQueue queue;
@@ -245,6 +275,12 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
 
   /// True while a progress-triggered stats reload is running.
   bool _reloadingStats = false;
+
+  /// Most server thumbnails kept for the session; a couple of screenfuls.
+  static const int _serverThumbCacheSize = 40;
+
+  /// Session memo of server thumbnails, oldest insertion first.
+  final Map<String, Uint8List?> _serverThumbs = <String, Uint8List?>{};
 
   /// The in-flight pass, so callers join instead of stacking passes.
   Future<void>? _pass;
@@ -343,6 +379,28 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   @override
   Future<Map<String, UploadState>> backupStates(List<String> localIds) =>
       queue.statesFor(localIds);
+
+  @override
+  Future<ServerAssetPage> serverPage({
+    DateTime? dateTo,
+    int offset = 0,
+    int limit = ServerAssetsClient.maxLimit,
+  }) => serverAssets.list(dateTo: dateTo, offset: offset, limit: limit);
+
+  @override
+  Future<Map<String, String>> serverIds(List<String> localIds) =>
+      queue.serverIdsFor(localIds);
+
+  @override
+  Future<Uint8List?> serverThumb(String fileId) async {
+    if (_serverThumbs.containsKey(fileId)) return _serverThumbs[fileId];
+    final bytes = await serverAssets.thumbnail(fileId);
+    _serverThumbs[fileId] = bytes;
+    if (_serverThumbs.length > _serverThumbCacheSize) {
+      _serverThumbs.remove(_serverThumbs.keys.first);
+    }
+    return bytes;
+  }
 
   @override
   int get queueRevision => _revision;
@@ -570,6 +628,8 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     await queue.wipeAccountData();
     await clearSpool();
     progress.reset();
+    // Another account's library will not share a single thumbnail.
+    _serverThumbs.clear();
     _completedTransfers = 0;
     _progressAsset = null;
     _progressPhase = TransferPhase.idle;

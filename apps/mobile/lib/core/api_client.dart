@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
@@ -332,6 +333,25 @@ class ApiClient {
         queryParameters: queryParameters,
         context: 'GET $path response',
       );
+
+  /// Fetches raw bytes (media streams) with the same auth and 401 retry.
+  Future<Uint8List> getBytes(String path) async {
+    late final Response<dynamic> response;
+    try {
+      response = await dio.get<dynamic>(
+        path,
+        options: Options(responseType: ResponseType.bytes),
+      );
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+    final data = response.data;
+    if (data is List<int>) return Uint8List.fromList(data);
+    throw ApiException(
+      statusCode: response.statusCode,
+      message: 'Unexpected response shape: ${data.runtimeType}',
+    );
+  }
 
   /// POST helper converting every transport failure to [ApiException].
   Future<T> post<T>(String path, {Object? data}) =>

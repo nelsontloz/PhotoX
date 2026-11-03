@@ -8,8 +8,10 @@ import 'package:flutter/scheduler.dart';
 
 import '../library/album_scope.dart';
 import '../library/backup_status.dart';
+import '../library/library_item.dart';
 import '../media/photo_observer.dart';
 import '../media/video_playback.dart';
+import '../server/server_asset.dart';
 import '../settings/settings_store.dart';
 import '../sync/transfer_progress.dart';
 import '../upload/models.dart';
@@ -24,11 +26,15 @@ import 'widgets/panel.dart';
 import 'widgets/scope_pill.dart';
 import 'widgets/status_banner.dart';
 
-/// The device library, newest first, one column-page at a time.
+/// The library, newest first, one column-page at a time.
 ///
 /// Every value and action is supplied by the caller, so this screen never
 /// touches services, the queue or the platform: it asks for a page, asks what
 /// the backup knows about that page, and draws both.
+///
+/// With [serverPage] wired the grid is the merged timeline: device rows and the
+/// server's own rows, deduplicated where the server already holds a photo this
+/// phone shows. Without it (the album screen) it stays device-only.
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({
     super.key,
@@ -52,6 +58,9 @@ class LibraryScreen extends StatefulWidget {
     this.album,
     this.onOpenAlbums,
     this.appBarActions = const <Widget>[],
+    this.serverPage,
+    this.serverIds,
+    this.serverThumb,
   });
 
   /// Current photo-library permission; the grid only reads when it allows it.
@@ -128,16 +137,44 @@ class LibraryScreen extends StatefulWidget {
   /// Extra app-bar actions, drawn before the sync and settings shortcuts.
   final List<Widget> appBarActions;
 
+  /// One newest-first page of the server's library, or null for a device-only
+  /// grid (the album screen).
+  ///
+  /// [dateTo] is an exclusive upper bound on the date a row sorts by; the grid
+  /// passes none and walks further back by [offset].
+  final Future<ServerAssetPage> Function({
+    DateTime? dateTo,
+    int offset,
+    int limit,
+  })?
+  serverPage;
+
+  /// Server asset id of every listed device asset the server already holds.
+  ///
+  /// This is what stops a photo rendering twice: a server row whose id is
+  /// claimed here is already represented by its device row.
+  final Future<Map<String, String>> Function(List<String> localIds)? serverIds;
+
+  /// Encoded thumbnail for one server file id, or null when the file is gone.
+  final Future<Uint8List?> Function(String fileId)? serverThumb;
+
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
 }
 
 /// What the grid is filtered to; filtering never reaches the platform.
-enum _LibraryFilter { all, notBackedUp, failed }
+enum _LibraryFilter { all, notBackedUp, onlineOnly, failed }
 
 class _LibraryScreenState extends State<LibraryScreen> {
   /// Page size asked of the controller; a shorter page ends the list.
   static const int _pageSize = 200;
+
+  /// Page size for the server half; the largest page the core API accepts.
+  static const int _serverPageSize = 100;
+
+  /// Server pages one device page may pull, so a dense server cannot starve
+  /// the grid the user is already looking at.
+  static const int _serverPagesPerDevicePage = 5;
 
   /// Page size for the background index sweep: metadata only, so a bigger page
   /// costs nothing but round trips.
@@ -168,8 +205,41 @@ class _LibraryScreenState extends State<LibraryScreen> {
   /// "not backed up" is a claim the screen has no right to make before asking.
   final Set<String> _resolved = <String>{};
 
-  /// Selected assets by id, so the action bar can pass the candidates along.
-  final Map<String, AssetCandidate> _selected = <String, AssetCandidate>{};
+  /// Selected rows by tile key, so the action bar can pass the candidates along.
+  final Map<String, LibraryItem> _selected = <String, LibraryItem>{};
+
+  /// The server half, newest first, exactly as its pages arrived.
+  ///
+  /// ponytail: the whole server half lives in memory next to the device half.
+  /// The upgrade path is the web's: window the merge by month and re-ask as the
+  /// user scrolls. Revisit if a very large server library is ever measured to
+  /// suffer.
+  final List<ServerAsset> _serverItems = <ServerAsset>[];
+
+  /// Offset of the next server page.
+  int _serverOffset = 0;
+
+  /// Rows the server says it holds, so [hasMore] has a total to compare.
+  int _serverTotal = 0;
+
+  /// False once the server list is exhausted.
+  bool _serverHasMore = true;
+
+  /// True while a server page is on its way.
+  bool _serverLoading = false;
+
+  /// True once the first server page answered, so "0 online only" is a fact.
+  bool _serverAnswered = false;
+
+  /// Set when the server half could not be read. Never [_error], which means
+  /// the device library itself could not be read; the grid survives this one.
+  String? _serverError;
+
+  /// Server asset id of every device asset the merge already shows.
+  final Map<String, String> _serverIdsByLocalId = <String, String>{};
+
+  /// The server page request in flight, so callers join instead of stacking.
+  Future<void>? _serverInFlight;
 
   final ScrollController _scroll = ScrollController();
 
@@ -265,7 +335,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
   void initState() {
     super.initState();
     _scroll.addListener(_onScroll);
-    if (_canRead) unawaited(_loadFirstPage());
+    if (_canRead) {
+      unawaited(_loadFirstPage());
+    } else if (widget.serverPage != null) {
+      // The server half does not need photo access: render it on its own.
+      unawaited(_catchUpServer());
+    }
   }
 
   @override
@@ -282,6 +357,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (oldWidget.folderId != widget.folderId) {
       unawaited(_refresh());
       return;
+    }
+    // Losing read access hides the chips that were chosen; start from All.
+    if (_isReadable(oldWidget.permission) && !_canRead) {
+      _filter = _LibraryFilter.all;
+      _rowsDirty = true;
     }
     // The container and video rules decide the badge, so the rows are stale.
     if (oldWidget.settings != widget.settings) _rowsDirty = true;
@@ -312,6 +392,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
     _updateSticky();
     _updateRail();
     if (_error != null) return; // the footer offers an explicit retry instead
+    // The banner offers the server retry; scrolling must not hammer it.
+    if (!_hasMore && _serverError != null) return;
     if (_scroll.position.extentAfter > _loadAhead) return;
     unawaited(_loadMore());
   }
@@ -330,17 +412,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     final pixels = _scroll.position.pixels;
     var index = _rowIndexAt(pixels);
-    if (_rows[index].assets == null) {
+    if (_rows[index].items == null) {
       if (_stickyDay.value != null) _stickyDay.value = null;
       return;
     }
-    while (index > 0 && _rows[index].assets != null) {
+    while (index > 0 && _rows[index].items != null) {
       index--;
     }
     final header = _rows[index];
 
     var next = _rowIndexAt(pixels) + 1;
-    while (next < _rows.length && _rows[next].assets != null) {
+    while (next < _rows.length && _rows[next].items != null) {
       next++;
     }
     final nextTop = next < _rows.length
@@ -524,15 +606,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
           _seekTarget = null;
           continue;
         }
-        if (!_hasMore || _error != null || budget-- <= 0) {
+        if ((!_hasMore && !_serverHasMore) ||
+            _error != null ||
+            (!_hasMore && _serverError != null) ||
+            budget-- <= 0) {
           _seekTarget = null;
           continue;
         }
-        final before = _assets.length;
+        final before = _assets.length + _serverItems.length;
         await _loadMore();
         if (_disposed || generation != _scrubGeneration) return;
         // A page that added nothing (in flight, failed, or the end) would spin.
-        if (_assets.length == before) _seekTarget = null;
+        if (_assets.length + _serverItems.length == before) {
+          _seekTarget = null;
+        }
       }
     } finally {
       _seeking = false;
@@ -576,6 +663,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _counts = const <_LibraryFilter, int>{};
       _months = const <MonthSpan>[];
       _rowsDirty = true;
+      _serverItems.clear();
+      _serverOffset = 0;
+      _serverTotal = 0;
+      _serverHasMore = true;
+      _serverLoading = false;
+      _serverAnswered = false;
+      _serverError = null;
+      _serverIdsByLocalId.clear();
     });
     // A bar and a rail describing rows that no longer exist must not survive
     // the reset, and a drag in progress has nothing left to point at.
@@ -585,6 +680,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
     _seekTarget = null;
     _scrubGeneration++;
     _pageInFlight = null;
+    _serverInFlight = null;
+    // Reads the device half, or the server half when the device is unreadable.
     await _loadMore();
     if (_disposed) return;
     unawaited(_hydrate(generation: _generation));
@@ -620,6 +717,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
         // the index.
         await SchedulerBinding.instance.endOfFrame;
       }
+      // The device half is exhausted (or unreadable): index the server half
+      // too, so the rail and the counts describe the whole merged timeline.
+      while (!_disposed &&
+          generation == _generation &&
+          widget.serverPage != null &&
+          _serverHasMore &&
+          _serverError == null) {
+        final before = _serverItems.length;
+        await _catchUpServer();
+        if (_disposed || generation != _generation) return;
+        if (_serverItems.length == before) break;
+        await SchedulerBinding.instance.endOfFrame;
+      }
     } finally {
       _hydrating = false;
     }
@@ -630,15 +740,30 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   /// Loads one more page, joining a request that is already in flight.
+  ///
+  /// Once the device half is exhausted the server half takes over, so every
+  /// caller (scroll, seek, footer) extends the merged list without knowing
+  /// which half still has rows.
   Future<void> _loadMore({int? limit, bool withStates = true}) {
     final inFlight = _pageInFlight;
     if (inFlight != null) return inFlight;
-    final future = _fetchPage(
+    final future = _loadNextPage(
       limit: limit ?? _pageSize,
       withStates: withStates,
     ).whenComplete(() => _pageInFlight = null);
     _pageInFlight = future;
     return future;
+  }
+
+  Future<void> _loadNextPage({
+    required int limit,
+    required bool withStates,
+  }) async {
+    if (_canRead && _hasMore) {
+      await _fetchPage(limit: limit, withStates: withStates);
+      return;
+    }
+    await _catchUpServer();
   }
 
   Future<void> _fetchPage({
@@ -683,6 +808,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
         if (_disposed || generation != _generation) return;
       }
 
+      // Which of these the server already holds, so it does not draw a second
+      // row for a photo this phone shows.
+      await _refreshServerIds(ids);
+      if (_disposed || generation != _generation) return;
+
       setState(() {
         _assets.addAll(fresh);
         _states.addAll(states);
@@ -692,6 +822,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
         _loading = false;
         _rowsDirty = true;
       });
+      await _catchUpServer();
+      if (_disposed || generation != _generation) return;
       _fillViewport();
     } on Object {
       if (_disposed || generation != _generation) return;
@@ -700,6 +832,113 @@ class _LibraryScreenState extends State<LibraryScreen> {
         _error = 'Could not read your library.';
       });
     }
+  }
+
+  /// Loads one more server page, joining a request that is already in flight.
+  Future<void> _loadServerMore() {
+    final inFlight = _serverInFlight;
+    if (inFlight != null) return inFlight;
+    final future = _fetchServerPage().whenComplete(
+      () => _serverInFlight = null,
+    );
+    _serverInFlight = future;
+    return future;
+  }
+
+  Future<void> _fetchServerPage() async {
+    final page = widget.serverPage;
+    if (page == null || _disposed || !_serverHasMore) return;
+    final generation = _generation;
+    setState(() {
+      _serverLoading = true;
+      _serverError = null;
+    });
+    try {
+      final result = await page(offset: _serverOffset, limit: _serverPageSize);
+      if (_disposed || generation != _generation) return;
+      // The server list can shift while pages load; keep each row once.
+      final known = <String>{for (final asset in _serverItems) asset.id};
+      final fresh = <ServerAsset>[
+        for (final asset in result.items)
+          if (known.add(asset.id)) asset,
+      ];
+      setState(() {
+        _serverItems.addAll(fresh);
+        _serverOffset += result.items.length;
+        _serverTotal = result.total;
+        _serverHasMore =
+            result.items.isNotEmpty && _serverOffset < _serverTotal;
+        _serverLoading = false;
+        _serverAnswered = true;
+        _rowsDirty = true;
+      });
+    } on Object {
+      if (_disposed || generation != _generation) return;
+      setState(() {
+        _serverLoading = false;
+        _serverError = 'Could not load photos from the server.';
+      });
+    }
+  }
+
+  /// The oldest date in the loaded server half, or null when it is empty.
+  DateTime? get _oldestServerDate =>
+      _serverItems.isEmpty ? null : _serverItems.last.date;
+
+  /// The oldest date in the loaded device half, skipping undated rows.
+  DateTime? get _oldestDeviceDate {
+    for (final asset in _assets.reversed) {
+      final date = asset.takenAt ?? asset.modifiedAt;
+      if (date != null) return date;
+    }
+    return null;
+  }
+
+  /// Pulls server pages until the two halves overlap in time, so the merged
+  /// timeline has no gap above the device half.
+  ///
+  /// Once the device half is exhausted the server half is drained instead: the
+  /// merged list is then complete from both sides.
+  Future<void> _catchUpServer() async {
+    if (widget.serverPage == null || _serverError != null) return;
+    final drained = !_hasMore;
+    var budget = drained ? null : _serverPagesPerDevicePage;
+    while (!_disposed && _serverHasMore && (budget == null || budget > 0)) {
+      if (budget != null) budget--;
+      final before = _serverItems.length;
+      await _loadServerMore();
+      if (_disposed || _serverError != null) return;
+      // A page that added nothing would spin forever: the server moved under
+      // the offsets and a retry will not help this pass.
+      if (_serverItems.length == before) return;
+      if (drained) continue;
+      final oldestServer = _oldestServerDate;
+      final oldestDevice = _oldestDeviceDate;
+      if (oldestServer == null || oldestDevice == null) return;
+      if (!oldestServer.isAfter(oldestDevice)) return;
+    }
+  }
+
+  /// Asks which of [localIds] the server already holds.
+  Future<void> _refreshServerIds(List<String> localIds) async {
+    final lookup = widget.serverIds;
+    if (lookup == null || localIds.isEmpty) return;
+    final generation = _generation;
+    try {
+      final linked = await lookup(localIds);
+      if (_disposed || generation != _generation) return;
+      _serverIdsByLocalId.addAll(linked);
+    } on Object {
+      // A failed lookup can only duplicate a server row; the next page asks
+      // again for its own ids.
+    }
+  }
+
+  /// The banner's action: forget the failure and ask the server half again.
+  void _retryServer() {
+    if (_serverError == null) return;
+    setState(() => _serverError = null);
+    unawaited(_catchUpServer());
   }
 
   /// Keeps paging while a page does not fill the window, so a wide screen is
@@ -763,43 +1002,88 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-  bool _matchesFilter(AssetCandidate asset) {
-    final status = _statusOf(asset);
-    if (status == null) return false;
+  /// Badge for one merged row; a server-only row has no queue state at all.
+  BackupStatus? _statusOfItem(LibraryItem item) {
+    final device = item.device;
+    return device == null ? null : _statusOf(device);
+  }
+
+  /// The two halves as one newest-first list.
+  ///
+  /// Server rows whose id a device row already claims are dropped: that photo
+  /// is on the phone and on the server, and one row says so with its own mark.
+  List<LibraryItem> _displayItems() {
+    final claimed = _serverIdsByLocalId.values.toSet();
+    return mergeLibraryItems(<LibraryItem>[
+      // Without read access the device half is not what is on screen, whatever
+      // the last page held.
+      if (_canRead)
+        for (final asset in _assets)
+          if (_statusOf(asset) == BackupStatus.backedUp)
+            LibraryItem.backedUp(asset)
+          else
+            LibraryItem.deviceOnly(asset),
+      // A server half that cannot be reached draws no rows: a row it cannot
+      // show must not claim a place in the timeline.
+      if (_serverError == null)
+        for (final asset in _serverItems)
+          if (!claimed.contains(asset.id)) LibraryItem.onlineOnly(asset),
+    ]);
+  }
+
+  bool _matchesFilter(LibraryItem item) {
+    final status = _statusOfItem(item);
     return switch (_filter) {
       _LibraryFilter.all => true,
-      _LibraryFilter.notBackedUp => status != BackupStatus.backedUp,
-      _LibraryFilter.failed => status == BackupStatus.failed,
+      // An unresolved device row makes no claim; "not backed up" waits for the
+      // queue's answer.
+      _LibraryFilter.notBackedUp =>
+        item.provenance == Provenance.deviceOnly && status != null,
+      _LibraryFilter.onlineOnly => item.provenance == Provenance.onlineOnly,
+      _LibraryFilter.failed =>
+        item.provenance == Provenance.deviceOnly &&
+            status == BackupStatus.failed,
     };
   }
 
-  List<AssetCandidate> _filtered() {
-    if (_filter == _LibraryFilter.all) return _assets;
-    return <AssetCandidate>[
-      for (final asset in _assets)
-        if (_matchesFilter(asset)) asset,
+  List<LibraryItem> _filtered(List<LibraryItem> items) {
+    if (_filter == _LibraryFilter.all) return items;
+    return <LibraryItem>[
+      for (final item in items)
+        if (_matchesFilter(item)) item,
     ];
   }
 
-  Map<_LibraryFilter, int> _filterCounts() {
+  Map<_LibraryFilter, int> _filterCounts(List<LibraryItem> items) {
     var notBackedUp = 0;
+    var onlineOnly = 0;
     var failed = 0;
-    for (final asset in _assets) {
-      final status = _statusOf(asset);
+    for (final item in items) {
+      if (item.provenance == Provenance.onlineOnly) {
+        onlineOnly++;
+        continue;
+      }
+      if (item.provenance == Provenance.both) continue;
+      // Device-only: an unresolved row makes no claim either way.
+      final status = _statusOfItem(item);
       if (status == null) continue;
       if (status == BackupStatus.failed) failed++;
-      if (status != BackupStatus.backedUp) notBackedUp++;
+      notBackedUp++;
     }
     return <_LibraryFilter, int>{
-      _LibraryFilter.all: _assets.length,
+      _LibraryFilter.all: items.length,
       _LibraryFilter.notBackedUp: notBackedUp,
+      _LibraryFilter.onlineOnly: onlineOnly,
       _LibraryFilter.failed: failed,
     };
   }
 
   bool get _selectionCanBackUp {
-    for (final asset in _selected.values) {
-      if (_statusOf(asset) != BackupStatus.excluded) return true;
+    for (final item in _selected.values) {
+      final device = item.device;
+      if (device != null && _statusOf(device) != BackupStatus.excluded) {
+        return true;
+      }
     }
     return false;
   }
@@ -811,11 +1095,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
     return count > 1 ? '${formatCount(count)} albums' : 'Camera album';
   }
 
-  void _toggleSelection(AssetCandidate asset) {
+  void _toggleSelection(LibraryItem item) {
+    // Nothing can be queued for a row that only the server holds.
+    if (item.provenance == Provenance.onlineOnly) return;
     setState(() {
       _selecting = true;
-      if (_selected.remove(asset.localId) == null) {
-        _selected[asset.localId] = asset;
+      if (_selected.remove(item.key) == null) {
+        _selected[item.key] = item;
       }
     });
   }
@@ -832,19 +1118,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
   ///
   /// The filtered order is the snapshot the viewer pages through, so a
   /// "Not backed up" filter stays a review of exactly those photos.
-  void _openViewer(AssetCandidate asset) {
-    final visible = _filtered();
-    final index = visible.indexWhere(
-      (candidate) => candidate.localId == asset.localId,
-    );
+  void _openViewer(LibraryItem item) {
+    final visible = _filtered(_displayItems());
+    final index = visible.indexWhere((entry) => entry.key == item.key);
     if (index < 0) return;
     unawaited(
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (context) => ViewerScreen(
-            assets: visible,
+            items: visible,
             initialIndex: index,
-            loadPreview: widget.loadPreview,
+            loadPreview: (entry) => _preview(entry, size: 0),
             loadDetail: widget.loadDetail,
             video: widget.video,
             onBackUpNow: widget.onBackUpNow,
@@ -854,8 +1138,27 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
+  /// Encoded preview for one row: the device's own thumbnail, or the server's.
+  ///
+  /// [size] is the grid's tile size; 0 is the viewer asking for the
+  /// display-resolution preview, which only a device row can supply at a
+  /// bigger size than the tile.
+  Future<Uint8List?> _preview(LibraryItem item, {int size = 320}) {
+    final device = item.device;
+    if (device != null) {
+      if (size <= 0) return widget.loadPreview(device.localId);
+      return widget.thumbnail(device.localId, size: size);
+    }
+    final fileId = item.server?.thumbnailFileId;
+    final load = widget.serverThumb;
+    if (fileId == null || load == null) return Future<Uint8List?>.value();
+    return load(fileId);
+  }
+
   Future<void> _backUpSelected() async {
-    final assets = <AssetCandidate>[..._selected.values];
+    final assets = <AssetCandidate>[
+      for (final item in _selected.values) ?item.device,
+    ];
     _exitSelection();
     try {
       await widget.onBackUpNow(assets);
@@ -885,9 +1188,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
       );
     }
 
-    // Additive: absent unless the caller wires the Albums tab in, so the grid
-    // behaves exactly as before for anyone that does not.
-    final notice = !_selecting && _canRead ? _scopeBanner() : null;
+    // At most one banner above the grid; [_notice] picks it.
+    final notice = _notice();
 
     return AppBackground(
       child: Scaffold(
@@ -899,8 +1201,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              if (!_selecting && _canRead) _infoRow(context),
-              if (!_selecting && _canRead && _assets.isNotEmpty) _filterRow(),
+              if (!_selecting && _showChrome) _infoRow(context),
+              if (!_selecting && _hasAnyRows) _filterRow(),
               if (notice != null)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
@@ -910,6 +1212,73 @@ class _LibraryScreenState extends State<LibraryScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// True when the header line has something to describe: the device half is
+  /// readable, or the server half already has rows to show.
+  bool get _showChrome => _canRead || _visibleServerItems.isNotEmpty;
+
+  /// True when at least one row of either half is loaded.
+  bool get _hasAnyRows => _assets.isNotEmpty || _visibleServerItems.isNotEmpty;
+
+  /// True while a half still has pages that will actually be fetched.
+  bool get _moreRows =>
+      _hasMore ||
+      (widget.serverPage != null && _serverError == null && _serverHasMore);
+
+  /// Server rows the grid may draw.
+  ///
+  /// None while the server half is unreachable: a row that cannot be shown must
+  /// not claim a place in the timeline or in the chips.
+  List<ServerAsset> get _visibleServerItems =>
+      _serverError == null ? _serverItems : const <ServerAsset>[];
+
+  /// The one banner above the grid: server trouble outranks permission trouble,
+  /// which outranks the backup-scope note.
+  Widget? _notice() {
+    if (_selecting) return null;
+    if (_serverError != null) {
+      return StatusBanner(
+        key: const Key('library-server-banner'),
+        tone: StatusTone.warning,
+        icon: Icons.cloud_off_rounded,
+        title: 'Server unavailable',
+        message:
+            'Showing photos on this phone. Server photos reappear when the '
+            'connection is back.',
+        action: TextButton(
+          key: const Key('library-retry-server'),
+          onPressed: _retryServer,
+          child: const Text('Try again'),
+        ),
+      );
+    }
+    if (!_canRead) {
+      // Only worth saying when a grid is actually under it; with no server rows
+      // the body keeps the full-screen permission state instead.
+      return _serverItems.isEmpty ? null : _permissionBanner();
+    }
+    return _scopeBanner();
+  }
+
+  /// The grant that would bring the device half back, said above the grid.
+  Widget _permissionBanner() {
+    final (String title, _, String action, IconData icon) = _permissionCopy;
+    return StatusBanner(
+      key: const Key('library-permission-banner'),
+      tone: widget.permission == PhotoPermission.notDetermined
+          ? StatusTone.warning
+          : StatusTone.danger,
+      icon: icon,
+      title: title,
+      message:
+          'Server photos are shown. Allow photo access to see and back up '
+          'this phone\'s photos.',
+      action: TextButton(
+        onPressed: () => unawaited(widget.onRequestAccess()),
+        child: Text(action),
       ),
     );
   }
@@ -1033,11 +1402,65 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-  /// Scope, how much is loaded, and the pass state: one quiet line.
+  /// How much is loaded, what is not backed up, and what only the server has.
   Widget _infoRow(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final loaded = _assets.length;
+    final counts = _counts;
+    final loaded = counts[_LibraryFilter.all] ?? 0;
+    final textStyle = theme.textTheme.labelMedium?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
+
+    final children = <Widget>[];
+    if (widget.serverPage == null) {
+      // Device-only (album) grid: exactly the line it always had.
+      children.add(ScopePill(label: _scopeLabel));
+      if (loaded > 0) {
+        children.add(
+          Text(
+            _hasMore
+                ? '${formatCount(loaded)}+ items'
+                : countLabel(loaded, 'item'),
+            style: textStyle,
+          ),
+        );
+      }
+    } else {
+      final parts = <String>[
+        _moreRows
+            ? '${formatCount(loaded)}+ items'
+            : countLabel(loaded, 'item'),
+        if (_canRead)
+          '${formatCount(counts[_LibraryFilter.notBackedUp] ?? 0)} '
+              'not backed up',
+        if (_serverError == null)
+          _serverAnswered
+              ? '${formatCount(counts[_LibraryFilter.onlineOnly] ?? 0)} '
+                    'online only'
+              : 'Checking the server…',
+      ];
+      children.add(Text(parts.join(' · '), style: textStyle));
+    }
+    if (widget.syncing) {
+      children.add(
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            SizedBox.square(
+              dimension: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.8,
+                color: scheme.primary,
+                semanticsLabel: 'Backing up',
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text('Backing up', style: textStyle),
+          ],
+        ),
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
@@ -1045,44 +1468,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
         spacing: 10,
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
-        children: <Widget>[
-          ScopePill(label: _scopeLabel),
-          if (loaded > 0)
-            Text(
-              _hasMore
-                  ? '${formatCount(loaded)}+ items'
-                  : countLabel(loaded, 'item'),
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
-            ),
-          if (widget.syncing)
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                SizedBox.square(
-                  dimension: 12,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 1.8,
-                    color: scheme.primary,
-                    semanticsLabel: 'Backing up',
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Backing up',
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-        ],
+        children: children,
       ),
     );
   }
 
-  /// All / Not backed up / Failed, counted over what is loaded.
+  /// All / Not backed up / Online only / Failed, counted over what is loaded.
   Widget _filterRow() {
     final counts = _counts;
     return SizedBox(
@@ -1093,10 +1484,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
         child: Row(
           children: <Widget>[
             _filterChip(_LibraryFilter.all, 'All', counts),
-            const SizedBox(width: 8),
-            _filterChip(_LibraryFilter.notBackedUp, 'Not backed up', counts),
-            const SizedBox(width: 8),
-            _filterChip(_LibraryFilter.failed, 'Failed', counts),
+            if (_canRead) ...<Widget>[
+              const SizedBox(width: 8),
+              _filterChip(_LibraryFilter.notBackedUp, 'Not backed up', counts),
+            ],
+            if (widget.serverPage != null && _serverError == null) ...<Widget>[
+              const SizedBox(width: 8),
+              _filterChip(_LibraryFilter.onlineOnly, 'Online only', counts),
+            ],
+            if (_canRead) ...<Widget>[
+              const SizedBox(width: 8),
+              _filterChip(_LibraryFilter.failed, 'Failed', counts),
+            ],
           ],
         ),
       ),
@@ -1109,7 +1508,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     Map<_LibraryFilter, int> counts,
   ) {
     // A '+' says the count describes the loaded pages, not the whole library.
-    final suffix = _hasMore ? '+' : '';
+    final suffix = _moreRows ? '+' : '';
     return FilterChip(
       key: Key('filter-${filter.name}'),
       label: Text('$label ${formatCount(counts[filter] ?? 0)}$suffix'),
@@ -1123,8 +1522,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Widget _body(BuildContext context) {
-    final permissionState = _permissionState(context);
-    if (permissionState != null) return permissionState;
+    final serverRows = _visibleServerItems;
+    // A device-only screen with no server rows keeps the full-screen permission
+    // state; with server rows the grid renders and the banner says the rest.
+    if (!_canRead && serverRows.isEmpty) {
+      final permissionState = _permissionState(context);
+      if (permissionState != null) return permissionState;
+    }
 
     if (_error != null && _assets.isEmpty) {
       return ListView(
@@ -1144,8 +1548,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
       );
     }
 
-    if (_assets.isEmpty) {
-      if (_loading) {
+    if (_assets.isEmpty && serverRows.isEmpty) {
+      if (_loading || _serverLoading) {
         return const Center(
           child: CircularProgressIndicator(
             semanticsLabel: 'Reading your library',
@@ -1158,37 +1562,37 @@ class _LibraryScreenState extends State<LibraryScreen> {
     return _grid(context);
   }
 
+  /// Headline, default message, action label and icon for the current grant.
+  (String, String, String, IconData) get _permissionCopy =>
+      switch (widget.permission) {
+        PhotoPermission.notDetermined => (
+          'Photo access not set up',
+          'PhotoX needs to read this device\'s photo library to back it up. '
+              'Nothing is uploaded until you allow access.',
+          'Allow photo access',
+          Icons.photo_library_outlined,
+        ),
+        PhotoPermission.denied => (
+          'Photo access is off',
+          'Allow photo access in your device settings, then try again.',
+          'Try again',
+          Icons.block_rounded,
+        ),
+        PhotoPermission.restricted => (
+          'Photo access is restricted',
+          'Device restrictions are blocking access to your photos. Change '
+              'that in your device settings, then try again.',
+          'Try again',
+          Icons.block_rounded,
+        ),
+        PhotoPermission.authorized ||
+        PhotoPermission.limited => ('', '', '', Icons.photo_library_outlined),
+      };
+
   /// Everything the grid needs to know about a blocked library, or null.
   Widget? _permissionState(BuildContext context) {
-    final (
-      String title,
-      String message,
-      String action,
-      IconData icon,
-    ) = switch (widget.permission) {
-      PhotoPermission.notDetermined => (
-        'Photo access not set up',
-        'PhotoX needs to read this device\'s photo library to back it up. '
-            'Nothing is uploaded until you allow access.',
-        'Allow photo access',
-        Icons.photo_library_outlined,
-      ),
-      PhotoPermission.denied => (
-        'Photo access is off',
-        'Allow photo access in your device settings, then try again.',
-        'Try again',
-        Icons.block_rounded,
-      ),
-      PhotoPermission.restricted => (
-        'Photo access is restricted',
-        'Device restrictions are blocking access to your photos. Change '
-            'that in your device settings, then try again.',
-        'Try again',
-        Icons.block_rounded,
-      ),
-      PhotoPermission.authorized ||
-      PhotoPermission.limited => ('', '', '', Icons.photo_library_outlined),
-    };
+    final (String title, String message, String action, IconData icon) =
+        _permissionCopy;
     if (title.isEmpty) return null;
 
     return ListView(
@@ -1216,6 +1620,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final limited = widget.permission == PhotoPermission.limited;
+    // Reachable only when the grid has no rows. An unreachable server half is
+    // not an empty one, so only a clean read lets the merged copy claim both.
+    final nothingAnywhere = _serverError == null && _serverItems.isEmpty;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 32, 20, 24),
@@ -1239,7 +1646,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                limited
+                nothingAnywhere
+                    ? 'Nothing on this phone or on the server yet. Photos '
+                          'appear here from either side.'
+                    : limited
                     ? 'Only the photos you shared with PhotoX appear here.'
                     : 'Photos and videos on this device appear here, marked '
                           'once they are backed up.',
@@ -1345,8 +1755,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
   /// One line of the list: a day header, or the tiles of one row.
   Widget _buildRow(BuildContext context, int index, int columns) {
     final row = _rows[index];
-    final assets = row.assets;
-    if (assets == null) {
+    final items = row.items;
+    if (items == null) {
       return _DayHeader(
         label: row.label!,
         count: row.count,
@@ -1369,27 +1779,33 @@ class _LibraryScreenState extends State<LibraryScreen> {
             for (var column = 0; column < columns; column++) ...<Widget>[
               if (column > 0) const SizedBox(width: _gap),
               Expanded(
-                child: column < assets.length
-                    ? AssetTile(
-                        key: ValueKey<String>(assets[column].localId),
-                        asset: assets[column],
-                        thumbnail: widget.thumbnail,
-                        progress: widget.progress,
-                        deferring: _deferring,
-                        status: _statusOf(assets[column]),
-                        selecting: _selecting,
-                        selected: _selected.containsKey(assets[column].localId),
-                        onTap: _selecting
-                            ? () => _toggleSelection(assets[column])
-                            : () => _openViewer(assets[column]),
-                        onLongPress: () => _toggleSelection(assets[column]),
-                      )
+                child: column < items.length
+                    ? _tile(items[column])
                     : const SizedBox.shrink(),
               ),
             ],
           ],
         ),
       ),
+    );
+  }
+
+  Widget _tile(LibraryItem item) {
+    final selectable = item.provenance != Provenance.onlineOnly;
+    return AssetTile(
+      key: ValueKey<String>(item.key),
+      item: item,
+      preview: _preview,
+      progress: widget.progress,
+      deferring: _deferring,
+      status: _statusOfItem(item),
+      selecting: _selecting,
+      selected: _selected.containsKey(item.key),
+      onTap: _selecting && selectable
+          ? () => _toggleSelection(item)
+          : () => _openViewer(item),
+      // A row only the server holds has nothing this phone can queue.
+      onLongPress: selectable ? () => _toggleSelection(item) : null,
     );
   }
 
@@ -1410,8 +1826,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
       tops.add(top);
     }
 
-    void addDay(String label, List<AssetCandidate> items) {
-      final date = items.first.takenAt ?? items.first.modifiedAt;
+    void addDay(String label, List<LibraryItem> items) {
+      final date = items.first.date;
       final monthKey = date == null ? null : _monthKey(date);
       final headerTop = top;
       add(
@@ -1427,7 +1843,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             : items.length;
         add(
           _GridRow.tiles(
-            assets: items.sublist(start, end),
+            items: items.sublist(start, end),
             height: tileSide + _gap,
           ),
         );
@@ -1453,29 +1869,30 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
 
     String? label;
-    var day = <AssetCandidate>[];
-    final undated = <AssetCandidate>[];
+    var day = <LibraryItem>[];
+    final undated = <LibraryItem>[];
+    final items = _displayItems();
 
-    for (final asset in _filtered()) {
-      final date = asset.takenAt ?? asset.modifiedAt;
+    for (final item in _filtered(items)) {
+      final date = item.date;
       if (date == null) {
-        undated.add(asset);
+        undated.add(item);
         continue;
       }
       final dayLabel = _dayLabel(date);
       if (dayLabel != label) {
         if (day.isNotEmpty) addDay(label!, day);
         label = dayLabel;
-        day = <AssetCandidate>[];
+        day = <LibraryItem>[];
       }
-      day.add(asset);
+      day.add(item);
     }
     if (day.isNotEmpty) addDay(label!, day);
     if (undated.isNotEmpty) addDay('Undated', undated);
 
     _rows = rows;
     _rowTops = tops;
-    _counts = _filterCounts();
+    _counts = _filterCounts(items);
     _months = months;
     _rowsDirty = false;
     _modelColumns = columns;
@@ -1518,8 +1935,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
 
     // Only while a page is actually on its way: a list that merely has more
-    // pages must not spin forever (it would also never settle in tests).
-    if (_loading) {
+    // pages must not spin forever (it would also never settle in tests). The
+    // server half uses the same spinner; it draws no placeholders of its own.
+    if (_loading || _serverLoading) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 20),
         child: Center(
@@ -1713,20 +2131,20 @@ class _GridRow {
     required this.label,
     required this.count,
     required this.height,
-  }) : assets = null;
+  }) : items = null;
 
-  const _GridRow.tiles({required this.assets, required this.height})
+  const _GridRow.tiles({required this.items, required this.height})
     : label = null,
       count = 0;
 
   /// Day the row belongs to; set on header rows only.
   final String? label;
 
-  /// Assets in that day; set on header rows only.
+  /// Items in that day; set on header rows only.
   final int count;
 
   /// Tiles of this row; set on tile rows only.
-  final List<AssetCandidate>? assets;
+  final List<LibraryItem>? items;
 
   final double height;
 }

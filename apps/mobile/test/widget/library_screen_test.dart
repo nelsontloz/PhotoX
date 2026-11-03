@@ -164,12 +164,25 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.bySemanticsLabel('Backed up'), findsOneWidget);
-    expect(find.bySemanticsLabel('Uploading 40%'), findsOneWidget);
-    expect(find.bySemanticsLabel('Waiting to back up'), findsOneWidget);
-    expect(find.bySemanticsLabel('Backup failed'), findsOneWidget);
-    expect(find.bySemanticsLabel('Not in backup scope'), findsOneWidget);
-    expect(find.bySemanticsLabel('Not backed up'), findsOneWidget);
+    // The tile folds the mark into its own label; the badge is excluded from
+    // semantics so nothing is read twice.
+    expect(find.bySemanticsLabel('done.jpg, Backed up'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('uploading.jpg, Uploading 40%'),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel('waiting.jpg, Waiting to back up'),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel('broken.jpg, Backup failed'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('clip.jpg, Not in backup scope'),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel('fresh.jpg, Not backed up'), findsOneWidget);
+    // No standalone mark label survives beside the tile's.
+    expect(find.bySemanticsLabel('Backed up'), findsNothing);
 
     handle.dispose();
   });

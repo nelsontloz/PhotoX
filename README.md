@@ -1,6 +1,6 @@
 # PhotoX
 
-Personal photo and video hosting. `core` (NestJS, :3000) is the only public/business HTTP API and the sole owner of Postgres. `worker-service` (NestJS, :3004, unpublished) runs 8 BullMQ consumers, exposes `GET /health` only, and has no DB driver — every read/write is a `core` HTTP call. `web` is a Vite/React SPA (:5173) that talks to core same-origin through `/api`. `apps/mobile` is a Flutter (iOS + Android) backup client for the device camera roll that calls core directly with Bearer JWTs; it sits outside the pnpm workspace and is gated by `pnpm mobile:*`. Core and worker-service share Redis (queues, rate limits, health pings) and `STORAGE_DIR` on local disk (originals, derivatives, upload-session chunks, model weights, GeoNames cache). Media bytes stay on local disk; per-user backups are the only thing that leaves it, written to S3-compatible object storage (Floci in dev).
+Personal photo and video hosting. `core` (NestJS, :3000) is the only public/business HTTP API and the sole owner of Postgres. `worker-service` (NestJS, :3004, unpublished) runs 8 BullMQ consumers, exposes `GET /health` only, and has no DB driver — every read/write is a `core` HTTP call. `web` is a Vite/React SPA (:5173) that talks to core same-origin through `/api`. `apps/mobile` is a Flutter (iOS + Android) client that backs up the device camera roll and browses the merged device+server library, calling core directly with Bearer JWTs; it sits outside the pnpm workspace and is gated by `pnpm mobile:*`. Core and worker-service share Redis (queues, rate limits, health pings) and `STORAGE_DIR` on local disk (originals, derivatives, upload-session chunks, model weights, GeoNames cache). Media bytes stay on local disk; per-user backups are the only thing that leaves it, written to S3-compatible object storage (Floci in dev).
 
 ## Architecture
 
@@ -176,7 +176,7 @@ Sign-ups are governed by the `registration.enabled` setting: `GET`/`PATCH /api/v
 - `apps/core/src/uploads` — resumable upload sessions + 15-min sweeper
 - `apps/worker-service` — BullMQ consumers (`@photox/worker-service`), no DB access — talks to core over HTTP; `GET /health` on :3004
 - `apps/web` — Vite + React (`@photox/web`)
-- `apps/mobile` — Flutter iOS/Android backup client (`pnpm mobile:*`; not a pnpm workspace package)
+- `apps/mobile` — Flutter iOS/Android backup client with a merged device+server library (`pnpm mobile:*`; not a pnpm workspace package)
 - `apps/core/src/database` — TypeORM entities + migrations + boot SQL (core only)
 - `packages/shared-config` / `shared-types` — zod env + local storage, JWT payload/wire types
 - `docs/diagrams` — the two README diagrams (self-contained HTML + SVG)

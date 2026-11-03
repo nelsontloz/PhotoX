@@ -21,6 +21,21 @@ class StatusBadge extends StatelessWidget {
   /// Diameter of the mark; the grid picks the placement.
   static const double size = 22;
 
+  /// Screen-reader words for [status]; the tile folds them into its own label,
+  /// so this is the one place the wording lives.
+  static String labelFor(BackupStatus status, {double? fraction}) =>
+      switch (status) {
+        BackupStatus.backedUp => 'Backed up',
+        BackupStatus.uploading =>
+          fraction == null
+              ? 'Uploading'
+              : 'Uploading ${(fraction * 100).clamp(0, 100).round()}%',
+        BackupStatus.queued => 'Waiting to back up',
+        BackupStatus.failed => 'Backup failed',
+        BackupStatus.excluded => 'Not in backup scope',
+        BackupStatus.unknown => 'Not backed up',
+      };
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -68,55 +83,48 @@ class StatusBadge extends StatelessWidget {
     switch (status) {
       case BackupStatus.backedUp:
         return _BadgeStyle(
-          label: 'Backed up',
+          label: labelFor(status, fraction: fraction),
           background: scrim,
           foreground: scheme.primary,
           icon: Icons.check_rounded,
         );
       case BackupStatus.uploading:
         return _BadgeStyle(
-          label: _uploadingLabel,
+          label: labelFor(status, fraction: fraction),
           background: scrim,
           foreground: scheme.primary,
           icon: Icons.arrow_upward_rounded,
         );
       case BackupStatus.queued:
         return _BadgeStyle(
-          label: 'Waiting to back up',
+          label: labelFor(status, fraction: fraction),
           background: scrim,
           foreground: scheme.tertiary,
           icon: Icons.schedule_rounded,
         );
       case BackupStatus.failed:
         return _BadgeStyle(
-          label: 'Backup failed',
+          label: labelFor(status, fraction: fraction),
           background: scheme.error,
           foreground: scheme.onError,
           icon: Icons.priority_high_rounded,
         );
       case BackupStatus.excluded:
         return _BadgeStyle(
-          label: 'Not in backup scope',
+          label: labelFor(status, fraction: fraction),
           background: const Color(0x59000000),
           foreground: scheme.onSurfaceVariant.withValues(alpha: 0.75),
           icon: Icons.do_not_disturb_alt_rounded,
         );
       case BackupStatus.unknown:
         return _BadgeStyle(
-          label: 'Not backed up',
+          label: labelFor(status, fraction: fraction),
           background: scrim,
           foreground: scheme.onSurface.withValues(alpha: 0.6),
           icon: Icons.circle_outlined,
           iconSize: 9,
         );
     }
-  }
-
-  String get _uploadingLabel {
-    final value = fraction;
-    if (value == null) return 'Uploading';
-    final percent = (value * 100).clamp(0, 100).round();
-    return 'Uploading $percent%';
   }
 }
 
