@@ -11,7 +11,7 @@ Personal photo/video hosting: one NestJS `core` API (the only public/business AP
 - `apps/core/src/database/` — TypeORM entities + core-only `DatabaseModule` + migrations
 - `apps/core/src/uploads/` — resumable chunked sessions (`api/v1/uploads`) + the advisory-locked 15-min sweeper
 - `packages/shared-config/` — zod `loadEnv()`/`loadAuthEnv()`/`loadRootEnvFile()`, `LocalStorageService`, backup-path helpers; `packages/shared-types/` — wire interfaces, `JwtPayload`, embedding constants (`FACE_EMBEDDING_DIM` 512, `SEARCH_EMBEDDING_DIM` 768, `SEARCH_EMBEDDING_MODEL` `siglip2-b16-224`)
-- `docker-compose.yml` is infra-only: `postgres` (pgvector image, single `photox` DB) + `redis` + `floci` (S3-compatible backup store, `:4566`, no healthcheck); `pnpm dev` runs the apps on the host. `docker-compose.e2e.yml` merges over it via `e2e/run.sh`: adds `core`/`worker-service`/`web` containers, only `web` publishes a port (`E2E_WEB_PORT`, random per run), worker mounts host `./data/storage/models` read-only (models must be on the host).
+- `docker-compose.yml` is infra-only: `postgres` (pgvector image, single `photox` DB) + `redis` + `floci` (S3-compatible backup store, `:4566`, no healthcheck); `pnpm dev` runs the apps on the host. `docker-compose.e2e.yml` merges over it via `e2e/run.sh`: adds `core`/`worker-service`/`web` containers, only `web` publishes a port (`E2E_WEB_PORT`, random per run), worker mounts host `./data/storage/models` read-only (models must be on the host). `docker-compose.mobile-e2e.yml` merges over both for `pnpm mobile:e2e`: it publishes core on host loopback (`MOBILE_E2E_CORE_PORT`, default 3000) and drops the web port, since the Android AVD reaches core through `adb reverse`.
 
 ## Commands
 
@@ -23,6 +23,7 @@ pnpm verify                                 # lint && test --force && typecheck 
 curl localhost:3000/health                  # core (host dev); compose publishes no core port; worker health on :3004
 pnpm mobile:verify                          # flutter analyze && flutter test && build_runner --only-check (apps/mobile)
 pnpm mobile:build                           # flutter build apk --release (apps/mobile; iOS needs Xcode)
+pnpm mobile:e2e                             # opt-in on-device e2e: compose stack + Android AVD (e2e/mobile/run.sh)
 ```
 
 Node 24 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install` (root `postinstall` downloads all 3 worker models unless `FACE_MODEL_SKIP=1`), diff `.env` against `.env.example` for new required keys, start compose, then `pnpm dev`.
@@ -60,7 +61,7 @@ Node 24 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 - Payloads zod-validated (`job-schemas.ts`); invalid payloads → `UnrecoverableError`. Processors assert fetched DTOs match the job's ids; core re-enforces ownership via the token.
 - Missing models don't fail jobs: the worker warns, patches a `failed` status where a column exists, and completes (a retry would not help); detect has no status column (logs only).
 - Redis trust model: the worker mints a JWT for whatever `userId` a payload implies, so a compromised Redis lets an attacker act as any user over core's HTTP API — now including a full account wipe via the `user-delete` consumer and `POST /worker/users/:id/purge` (never as admin; the purge route's job binding pins the target to the job's own `sub`, but a Redis writer can enqueue that job for anyone) — same blast radius as the old direct-Postgres access, where it could already delete rows.
-- Video: h264+aac → skip & mark `ready`. Else one SVT-AV1 pass (`libsvtav1 -preset 8 -crf 32`, `libopus 96k` only with an audio track, downscale only >720p) → webm registered through core as a separate `FileRecord` (`purpose: 'transcode'`); originals immutable. Caps: 4h / 7680px / 1h ffmpeg; `transcodeStatus` stays `pending` if the worker dies mid-job.
+- Video: h264+aac → skip & mark `ready`. Else one SVT-AV1 pass (`libsvtav1 -preset 8 -crf 32`, `libopus 96k` only with an audio track, downscale only >720p, encode capped at 60 fps) → webm registered through core as a separate `FileRecord` (`purpose: 'transcode'`); originals immutable. Caps: 4h / 7680px / 1h ffmpeg; `transcodeStatus` stays `pending` if the worker dies mid-job.
 - Faces: SCRFD-10G is the only detector (`det_10g.onnx`, top-left black-pad 640 letterbox); detection on an EXIF-oriented ≤2048px copy, faces `<40px` skipped; ArcFace `w600k_r50.onnx` **512-dim** embeddings. Detection/embedding/DBSCAN (`eps=0.35`, `minPts=2`, noise reassign `0.30`, centroid `0.30` + `0.05` runner-up margin, O(n²)) stay in the worker; results go through core. No detector provenance anywhere (no job field, setting, or column); `GET api/v1/admin/face-detection` is read-only `{modelAvailable}`. Admin: `POST api/v1/admin/faces/reprocess` (re-detect + re-embed), `POST api/v1/admin/faces/recluster`.
 - Other pipelines: detect (YOLO26n 640, conf 0.4, top-200, replace-set), embed (SigLIP2 int8, ≤2048px, 768-dim). All models live under `STORAGE_DIR/models`, provisioned by `pnpm --filter @photox/worker-service <face|vision|detect>-model` (skip-if-present; root postinstall runs all three), never committed; inference loads only from disk (`allowRemoteModels=false`).
 
@@ -91,6 +92,7 @@ Node 24 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 - No coverage script. Web→core contract = `shared-types` (compile time) + e2e (runtime); deleted pact specs stay deleted.
 - e2e (`pnpm test:e2e` = `e2e/run.sh`) runs a compose stack + playwright-bdd: the `setup` project (`04-faces/**` + `05-semantic/semantic-upload.feature`) runs first, serial; `suite` is parallel and takes `--workers=N`. Flags: `E2E_BUILD=1` (rebuild images), `E2E_KEEP=1`, `E2E_PROJECT`, `E2E_WEB_PORT`. Fixed creds `admin@photox.test`/`password123`. Concurrent runs get their own stack/port but share `e2e/.features-gen`, `test-results`, `playwright-report`.
 - Jenkins (k8s pod): install `--frozen-lockfile` → Validate in parallel (typecheck / lint / `pnpm test`, dind pre-pulls `pgvector/pgvector:0.8.7-pg16` + `redis:7-alpine`) → `pnpm build`. No e2e stage.
+- Mobile is its own gate (`pnpm mobile:verify`), never in turbo, `pnpm verify` or Jenkins. `pnpm mobile:e2e` (`e2e/mobile/run.sh`) is opt-in and also outside every gate: it boots the compose stack plus an Android AVD on the host and is the only mobile coverage of the foreground pipeline (auth, dedup, multipart and session upload, resume across a restart, revoked tokens); real background execution stays unverified without a phone.
 
 ## Security / audit
 

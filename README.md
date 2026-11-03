@@ -1,6 +1,6 @@
 # PhotoX
 
-Personal photo and video hosting. `core` (NestJS, :3000) is the only public/business HTTP API and the sole owner of Postgres. `worker-service` (NestJS, :3004, unpublished) runs 8 BullMQ consumers, exposes `GET /health` only, and has no DB driver — every read/write is a `core` HTTP call. `web` is a Vite/React SPA (:5173) that talks to core same-origin through `/api`. Core and worker-service share Redis (queues, rate limits, health pings) and `STORAGE_DIR` on local disk (originals, derivatives, upload-session chunks, model weights, GeoNames cache). Media bytes stay on local disk; per-user backups are the only thing that leaves it, written to S3-compatible object storage (Floci in dev).
+Personal photo and video hosting. `core` (NestJS, :3000) is the only public/business HTTP API and the sole owner of Postgres. `worker-service` (NestJS, :3004, unpublished) runs 8 BullMQ consumers, exposes `GET /health` only, and has no DB driver — every read/write is a `core` HTTP call. `web` is a Vite/React SPA (:5173) that talks to core same-origin through `/api`. `apps/mobile` is a Flutter (iOS + Android) backup client for the device camera roll that calls core directly with Bearer JWTs; it sits outside the pnpm workspace and is gated by `pnpm mobile:*`. Core and worker-service share Redis (queues, rate limits, health pings) and `STORAGE_DIR` on local disk (originals, derivatives, upload-session chunks, model weights, GeoNames cache). Media bytes stay on local disk; per-user backups are the only thing that leaves it, written to S3-compatible object storage (Floci in dev).
 
 ## Architecture
 
@@ -13,17 +13,18 @@ Personal photo and video hosting. `core` (NestJS, :3000) is the only public/busi
 ## Features
 
 - **Library** — timeline browsing, albums, favorites, trash, share links, places. Places are asset columns filled by offline GeoNames reverse geocoding during metadata processing; there is no places API (`pnpm --filter @photox/core places:import` seeds the table).
-- **Uploads** — per-user SHA-256 dedupe fast-path, optional `STORAGE_QUOTA_BYTES`, and two front doors: legacy multipart `POST /api/v1/files` (used by `web`) and resumable `api/v1/uploads` sessions (8 MiB chunks, 4 GiB max, ≤5 active, 24h pending TTL). Over-quota originals are rejected with 413 before the original is stored.
-- **Processing** — thumbnails (`sm/md/lg/xl`, 150/300/600/1920px, WebP), EXIF/video metadata + 9×8 dHash, AV1/Opus WebM transcode (h264 with AAC or no audio skips it; downscaled only above 720p; 4h/7680px inputs, 1h ffmpeg timeout), SCRFD-10G face detection + 512-dim ArcFace embeddings + DBSCAN clustering into People, YOLO26n detections, SigLIP2 768-dim vision embeddings.
+- **Uploads** — per-user SHA-256 dedupe fast-path, optional `STORAGE_QUOTA_BYTES`, and two front doors: multipart `POST /api/v1/files` (used by `web`, and by mobile for files that fit one part) and resumable `api/v1/uploads` sessions (8 MiB chunks, 4 GiB max, ≤5 active, 24h pending TTL). Over-quota originals are rejected with 413 before the original is stored.
+- **Processing** — thumbnails (`sm/md/lg/xl`, 150/300/600/1920px, WebP), EXIF/video metadata + 9×8 dHash, AV1/Opus WebM transcode (h264 with AAC or no audio skips it; downscaled only above 720p, encode capped at 60 fps; 4h/7680px inputs, 1h ffmpeg timeout), SCRFD-10G face detection + 512-dim ArcFace embeddings + DBSCAN clustering into People, YOLO26n detections, SigLIP2 768-dim vision embeddings.
 - **Search** — pgvector ANN over the 768-dim embeddings plus Postgres full-text over title/description/detection labels, fused with RRF; person/place routing, duplicates and similar-photo lookups.
 - **Backups** — admin per-user backup/restore to S3-compatible storage, incremental via a `manifest.json` written last; delete, merge previous-account snapshots, prefix sync on email change, overview/progress.
-- **Admin console** — five tabs: Overview, AI Pipelines (faces reprocess/recluster, embeddings, detections), Assets & Maintenance (thumbnail reprocess, orphan sweep), Users (edit, backup-prefix sync, async delete), Backups (overview, progress, backup/restore/merge/delete). Metadata reprocess and places backfill are API-only.
+- **Admin console** — five tabs: Overview, AI Pipelines (faces reprocess/recluster, embeddings, detections), Assets & Maintenance (thumbnail reprocess, orphan sweep), Users (edit, public sign-up switch, backup-prefix sync, async delete), Backups (overview, progress, backup/restore/merge/delete). Metadata reprocess and places backfill are API-only.
 
 ## Prerequisites
 
 - Node.js 24 (`.nvmrc`)
 - pnpm 9.15 (see `packageManager`)
 - Docker & Docker Compose
+- Flutter 3.47 + the Android SDK only for `apps/mobile` (not needed for `pnpm dev` or `pnpm verify`)
 
 ## Quick Start
 
@@ -56,11 +57,14 @@ Infrastructure only: `docker-compose.yml` runs `postgres` + `redis` + `floci` (S
 | -------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `pnpm dev`                 | core + worker-service + web with hot reload                                                            |
 | `pnpm build`               | build all packages                                                                                     |
-| `pnpm test` / `test:watch` | unit + integration tests (integration shares two reused Testcontainers — Docker must be running)       |
+| `pnpm test` / `test:watch` | unit + integration tests (session-owned Testcontainers — Docker must be running)                       |
 | `pnpm lint` / `typecheck`  | ESLint (type-aware) / `tsc --noEmit` across all packages                                               |
 | `pnpm format`              | Prettier write                                                                                         |
 | `pnpm test:e2e`            | boot the self-contained e2e stack, then run the Playwright/BDD suite (report: `e2e/playwright-report`) |
 | `pnpm verify`              | CI order: lint → `test --force` → typecheck → build → `E2E_BUILD=1 test:e2e`                           |
+| `pnpm mobile:verify`       | `flutter analyze` + `flutter test` + build_runner codegen check (`apps/mobile`)                        |
+| `pnpm mobile:build`        | release APK (`apps/mobile`; iOS builds need Xcode/macOS)                                               |
+| `pnpm mobile:e2e`          | opt-in on-device e2e: compose stack + Android AVD + `integration_test/`                                |
 
 Single app: `pnpm --filter @photox/core dev` (also `@photox/worker-service`, `@photox/web`); any package script accepts the same `--filter`.
 
@@ -85,8 +89,9 @@ Core health check (host dev): `curl localhost:3000/health` (200 even when degrad
 | core           | 3000            | The only public/business HTTP API (auth, assets, files, uploads, albums, shares, faces/persons, search, backups, admin); sole Postgres owner; S3 client |
 | worker-service | 3004 (internal) | `GET /health` only; 8 BullMQ consumers: thumbnail, video, metadata, faces, faces-cluster, embeddings, detect, user-delete; no DB driver                 |
 | web            | 5173            | React frontend (proxies `/api`, `/worker` and `/health` to core)                                                                                        |
-| postgres       | 5432            | PostgreSQL with pgvector/cube/earthdistance (single `photox` DB, 18 tables)                                                                             |
-| redis          | 6379            | BullMQ (7 worker queues + 1 core queue), auth rate limits, health pings; no volume, so all of it is transient                                           |
+| mobile         | —               | Flutter iOS/Android backup client (`apps/mobile`); talks to core directly with Bearer JWTs, outside the pnpm workspace                                  |
+| postgres       | 5432            | PostgreSQL with pgvector/cube/earthdistance (single `photox` DB, 17 tables)                                                                             |
+| redis          | 6379            | BullMQ (8 worker queues), auth rate limits, health pings; no volume, so all of it is transient                                                          |
 | floci          | 4566            | S3-compatible object store backing per-user backups only (dev/local)                                                                                    |
 
 `core` runs no BullMQ consumer: it produces jobs and the admin delete-status poll reads their state, while the account wipe itself still executes in core on the worker's request (`POST /worker/users/:id/purge`). It also runs the inline orphan sweep (`POST /api/v1/admin/cleanup-orphans/run`). `STORAGE_DIR` (default `./data/storage`) is shared by core and worker: `originals/`, `derivatives/thumbnails/`, `derivatives/transcodes/`, `upload-sessions/<userId>/<sessionId>/part-<n>`, `models/` (face/vision/detect weights) and `geo/` (GeoNames cache for the places import). Core writes originals and session chunks; the worker reads originals/models and writes derivatives.
@@ -95,14 +100,15 @@ Core health check (host dev): `curl localhost:3000/health` (200 even when degrad
 
 Two front doors, one ingest path (`persistOriginal` → `createAsset` → enqueue jobs).
 
-| Path                               | Client                  | Behavior                                                                               |
-| ---------------------------------- | ----------------------- | -------------------------------------------------------------------------------------- |
-| `POST /api/v1/files` (multipart)   | `web`                   | One request; bytes go to OS temp, then `STORAGE_DIR/originals/<userId>/<fileId>.<ext>` |
-| `POST /api/v1/uploads` (resumable) | API clients (not `web`) | Session + 8 MiB parts, assembled on `complete`                                         |
+| Path                               | Client                                  | Behavior                                                                               |
+| ---------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------- |
+| `POST /api/v1/files` (multipart)   | `web`; mobile files ≤ 8 MiB             | One request; bytes go to OS temp, then `STORAGE_DIR/originals/<userId>/<fileId>.<ext>` |
+| `POST /api/v1/uploads` (resumable) | mobile files > 8 MiB; other API clients | Session + 8 MiB parts, assembled on `complete`                                         |
 
 - `POST /api/v1/uploads` creates a session: 8 MiB parts, 4 GiB max, ≤5 active sessions per user, 24h pending TTL. `GET /:id` reports status and received parts. `PUT /:id/parts/:index` stores a raw chunk idempotently (replay returns 204, conflicting bytes 409). `POST /:id/complete` assembles, verifies the SHA-256, dedups, creates the asset and enqueues jobs — an enqueue failure returns 503 `ENQUEUE_FAILED` and the session stays retryable. `DELETE /:id` aborts and removes bytes.
 - Session parts live under `STORAGE_DIR/upload-sessions/<userId>/<sessionId>/part-<n>`. A 15-minute sweeper (serialized by a Postgres advisory lock across core instances) expires pending (24h), assembled (6h) and failed sessions and deletes their bytes.
 - Both paths dedup per user by SHA-256 before the quota check (`POST /api/v1/files/exists` lets the web client skip a known file). The quota check happens before the original is written to `STORAGE_DIR`; request bytes may already exist (multipart in OS temp, session parts under `STORAGE_DIR`), so a 413 is not "zero disk touched".
+- The mobile client snaps to the same split: a file that fits one part goes multipart, anything larger uses a session (persisted before each attempt, so a killed app resumes without re-hashing or re-sending acknowledged parts).
 
 ## HTTP API
 
@@ -111,7 +117,7 @@ No global prefix; controllers declare `api/v1/...`. Health and docs are unversio
 | Group           | Routes                                                                                                                                                                                                |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Health          | `GET /health`                                                                                                                                                                                         |
-| Auth            | `/api/v1/auth/{register,login,refresh,logout}`                                                                                                                                                        |
+| Auth            | `/api/v1/auth/{register,login,refresh,logout}`; `GET /api/v1/auth/registration`                                                                                                                       |
 | Assets          | `/api/v1/assets` (+ `/layout`, `/trashed`); `GET/PATCH /:id`; `POST /:id/{trash,reprocess-thumbnails,reprocess-video}`; `POST /bulk-trash`, `/trashed/:id/restore`; `DELETE /trashed`, `/trashed/:id` |
 | Files           | `POST /api/v1/files`, `/files/exists`; `GET /:fileId/{stream,download}`                                                                                                                               |
 | Upload sessions | `POST /api/v1/uploads`; `GET/DELETE /:uploadId`; `PUT /:uploadId/parts/:index`; `POST /:uploadId/complete`                                                                                            |
@@ -128,7 +134,7 @@ Open routes are exactly `/docs*`, `/health`, `/api/v1/auth*` and `/api/share*`; 
 ## Security
 
 - Worker → core calls carry a per-job delegated JWT (minted with `WORKER_JWT_SECRET`, always `role: 'user'`, `act` set) plus the `X-Job-Signature` HMAC stamped at enqueue. The signature is computed over `sub:scope`, where scope is the first present of `assetId`, `fileId`, `userId`; replay is therefore confined to that asset (media jobs) or that user (cluster/account-wide jobs), not to the job itself. Fail-closed. A compromised Redis can act as any user over core's HTTP API, never as admin.
-- Sessions use two HttpOnly cookies: `photox_access` (HS256 JWT, `Path=/api`, 30m TTL) and `photox_refresh` (opaque token, rotated per use, sha256-hashed at rest, `Path=/api/v1/auth`, 1d idle window with a 7d absolute cap). Reuse revokes the family. Passwords are argon2.
+- Sessions are per device and use two HttpOnly cookies: `photox_access` (HS256 JWT, `Path=/api`, 30m TTL, carries the device `sid`) and `photox_refresh` (opaque token, rotated per use, sha256-hashed at rest, `Path=/api/v1/auth`, 1d idle window with a 7d absolute cap). Reuse of a rotated token revokes **its own device session**, not the user's other devices; logout behaves the same. Admin edits and account wipes bump the user-wide `tokensValidAfter` floor, which the guard enforces on every token. Mobile takes the same pair as Bearer headers (refresh token in secure storage) instead of cookies. Passwords are argon2.
 - Rate limits are Redis fixed windows and fail closed (503) when Redis is down: login 5/15m per IP+email, 20/15m per IP, register 10/h (`RATE_LIMIT_REGISTER`), refresh 30/15m.
 - Original uploads are checked against per-user `STORAGE_QUOTA_BYTES` after the dedupe fast-path — over quota returns 413 before the original is stored. Video transcodes retry once (`attempts: 2`, each retry can cost ~1h of AV1).
 - Worker-minted tokens carry no admin reach: `/worker/*` requires `act`, and `/api/v1/admin*` is admin-role checked centrally.
@@ -162,15 +168,19 @@ Open registration only mints role `user`, so a fresh instance needs an admin one
 
 The `/admin` route has five tabs stored in `?tab=`: Overview, AI Pipelines, Assets & Maintenance, Users, Backups. API-only operations (no UI): `POST /api/v1/admin/metadata/reprocess`, `POST /api/v1/admin/places/backfill`, and `POST /api/v1/admin/thumbnails/reprocess` with `kind: 'video'` (the UI only asks for `photo`). `GET /api/v1/admin/face-detection` is read-only (`{modelAvailable}`).
 
+Sign-ups are governed by the `registration.enabled` setting: `GET`/`PATCH /api/v1/admin/registration` reads and toggles it (admin-only), `GET /api/v1/auth/registration` reports it openly for the login screen, and a disabled switch makes `register` return 403. Admin `POST /api/v1/admin/users` still creates accounts either way.
+
 ## Layout
 
 - `apps/core` — NestJS API (`@photox/core`)
 - `apps/core/src/uploads` — resumable upload sessions + 15-min sweeper
 - `apps/worker-service` — BullMQ consumers (`@photox/worker-service`), no DB access — talks to core over HTTP; `GET /health` on :3004
 - `apps/web` — Vite + React (`@photox/web`)
+- `apps/mobile` — Flutter iOS/Android backup client (`pnpm mobile:*`; not a pnpm workspace package)
 - `apps/core/src/database` — TypeORM entities + migrations + boot SQL (core only)
 - `packages/shared-config` / `shared-types` — zod env + local storage, JWT payload/wire types
 - `docs/diagrams` — the two README diagrams (self-contained HTML + SVG)
 - `e2e` — Playwright + playwright-bdd suite (self-contained container stack, `pnpm test:e2e`)
+- `e2e/mobile` — on-device Flutter e2e stack (`pnpm mobile:e2e`, needs an Android AVD)
 
 See `AGENTS.md` for architecture details.
