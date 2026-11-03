@@ -10,6 +10,7 @@ import 'package:photox_mobile/core/network_status.dart';
 import 'package:photox_mobile/core/refresh_lock.dart';
 import 'package:photox_mobile/media/hasher.dart';
 import 'package:photox_mobile/media/photo_observer.dart';
+import 'package:photox_mobile/server/album_client.dart';
 import 'package:photox_mobile/settings/settings_store.dart';
 import 'package:photox_mobile/sync/sync_coordinator.dart';
 import 'package:photox_mobile/upload/database.dart';
@@ -49,7 +50,11 @@ void main() {
     if (await temp.exists()) await temp.delete(recursive: true);
   });
 
-  SyncCoordinator makeCoordinator({Uploader? uploader, RefreshLock? passLock}) {
+  SyncCoordinator makeCoordinator({
+    Uploader? uploader,
+    RefreshLock? passLock,
+    AlbumClient? albumClient,
+  }) {
     final pipeline =
         uploader ??
         Uploader(
@@ -70,6 +75,7 @@ void main() {
       retryPolicy: RetryPolicy(jitter: 0),
       clock: () => now,
       network: network,
+      albumClient: albumClient,
       passLock: passLock,
     );
   }
@@ -79,6 +85,7 @@ void main() {
     DateTime? takenAt,
     DateTime? modifiedAt,
     String fileName = 'asset.jpg',
+    String? folderId,
   }) async {
     final bytes = utf8.encode('bytes-$localId');
     final source = File('${temp.path}/$localId.source');
@@ -94,6 +101,7 @@ void main() {
         sizeBytes: bytes.length,
         takenAt: takenAt,
         modifiedAt: modifiedAt,
+        folderId: folderId,
       ),
     );
     return bytes;
@@ -479,6 +487,185 @@ void main() {
     expect(report.uploaded, 1);
     expect(report.remaining, 0);
   });
+
+  group('album linking', () {
+    test('links a fresh upload to its folder album', () async {
+      final albums = _FakeAlbumClient();
+      await settings.save(
+        const AppSettings(folderAlbums: <String, String>{'camera': 'album-1'}),
+      );
+      await seed('asset-a', folderId: 'camera');
+
+      final report = await makeCoordinator(albumClient: albums).run();
+
+      expect(report.uploaded, 1);
+      expect(report.linked, 1);
+      expect(albums.addedAssets['album-1'], <String>['server-asset.jpg']);
+      expect((await queue.byLocalId('asset-a'))!.albumLinkedAt, isNotNull);
+    });
+
+    test('links a dedup hit exactly like a fresh upload', () async {
+      final albums = _FakeAlbumClient();
+      await settings.save(
+        const AppSettings(folderAlbums: <String, String>{'camera': 'album-1'}),
+      );
+      final bytes = await seed('asset-dedup', folderId: 'camera');
+      transport.hits[Hasher.sha256OfBytes(bytes)] = const DedupHit(
+        checksumSha256: '',
+        exists: true,
+        existingAssetId: 'existing-asset',
+        existingFileId: 'existing-file',
+      );
+
+      await makeCoordinator(albumClient: albums).run();
+
+      expect(transport.uploadCalls, 0);
+      expect(albums.addedAssets['album-1'], <String>['existing-asset']);
+      expect((await queue.byLocalId('asset-dedup'))!.albumLinkedAt, isNotNull);
+    });
+
+    test('an unmapped folder never reaches the album client', () async {
+      final albums = _FakeAlbumClient();
+      await seed('asset-a', folderId: 'screens');
+
+      await makeCoordinator(albumClient: albums).run();
+
+      expect(albums.addedAssets, isEmpty);
+      expect((await queue.byLocalId('asset-a'))!.albumLinkedAt, isNull);
+    });
+
+    test('sweeps rows uploaded before the mapping existed', () async {
+      final albums = _FakeAlbumClient();
+      await seed('asset-old', folderId: 'camera');
+      await makeCoordinator(albumClient: albums).run();
+      expect(albums.addedAssets, isEmpty);
+
+      await settings.save(
+        const AppSettings(folderAlbums: <String, String>{'camera': 'album-1'}),
+      );
+      final report = await makeCoordinator(albumClient: albums).run();
+
+      expect(report.uploaded, 0, reason: 'nothing is left to upload');
+      expect(albums.addedAssets['album-1'], <String>['server-asset.jpg']);
+      expect((await queue.byLocalId('asset-old'))!.albumLinkedAt, isNotNull);
+    });
+
+    test(
+      'a deleted album drops the mapping and keeps the pass quiet',
+      () async {
+        final albums = _FakeAlbumClient()
+          ..error = const ApiException(
+            statusCode: 404,
+            message: 'Album not found',
+          )
+          ..albumExists = false;
+        await settings.save(
+          const AppSettings(
+            folderAlbums: <String, String>{'camera': 'album-1'},
+          ),
+        );
+        await seed('asset-a', folderId: 'camera');
+
+        final report = await makeCoordinator(albumClient: albums).run();
+
+        expect(report.uploaded, 1, reason: 'the upload itself succeeded');
+        expect(report.linked, 0, reason: 'nothing joined a deleted album');
+        expect(report.error, isNull);
+        expect((await settings.load()).folderAlbums, isEmpty);
+        expect(albums.existsCalls, 1);
+        expect(
+          albums.addCalls,
+          hasLength(1),
+          reason: 'a gone album is never retried per asset',
+        );
+        expect((await queue.byLocalId('asset-a'))!.albumLinkedAt, isNotNull);
+      },
+    );
+
+    test(
+      'retries per asset when a batch 404s but the album is alive',
+      () async {
+        final albums = _FakeAlbumClient()..deadAssets.add('server-gone.jpg');
+        await settings.save(
+          const AppSettings(
+            folderAlbums: <String, String>{'camera': 'album-1'},
+          ),
+        );
+        await seed('asset-dead', fileName: 'gone.jpg', folderId: 'camera');
+        await seed('asset-live', fileName: 'live.jpg', folderId: 'camera');
+
+        final report = await makeCoordinator(albumClient: albums).run();
+
+        expect(report.uploaded, 2);
+        expect(report.error, isNull);
+        expect(albums.existsCalls, 1);
+        expect(albums.addCalls, hasLength(3), reason: 'one batch plus two ids');
+        expect(albums.addedAssets['album-1'], <String>['server-live.jpg']);
+        expect(
+          report.linked,
+          1,
+          reason: 'only the live asset actually joined the album',
+        );
+        expect((await settings.load()).folderAlbums, <String, String>{
+          'camera': 'album-1',
+        });
+        expect(
+          (await queue.byLocalId('asset-dead'))!.albumLinkedAt,
+          isNotNull,
+          reason: 'a gone asset can never join and must not stay in the sweep',
+        );
+        expect((await queue.byLocalId('asset-live'))!.albumLinkedAt, isNotNull);
+      },
+    );
+
+    test('a failed album call leaves the row for the next pass', () async {
+      final albums = _FakeAlbumClient()
+        ..error = const ApiException(message: 'offline');
+      await settings.save(
+        const AppSettings(folderAlbums: <String, String>{'camera': 'album-1'}),
+      );
+      await seed('asset-a', folderId: 'camera');
+
+      final report = await makeCoordinator(albumClient: albums).run();
+
+      expect(report.error, isNull);
+      expect(report.linked, 0);
+      expect(albums.existsCalls, 0, reason: 'only a 404 asks about the album');
+      expect((await queue.byLocalId('asset-a'))!.albumLinkedAt, isNull);
+      expect((await settings.load()).folderAlbums, <String, String>{
+        'camera': 'album-1',
+      });
+    });
+
+    test(
+      'adoptFolder attributes uploaded rows without uploading them',
+      () async {
+        await seed('asset-a');
+        final first = await makeCoordinator().run();
+        expect(first.uploaded, 1);
+        final watermark = await queue.getMeta(SyncCoordinator.scanWatermarkKey);
+        expect((await queue.byLocalId('asset-a'))!.folderId, isNull);
+        final uploads = transport.uploadCalls;
+
+        // The mapping exists now and the platform reports which album it is in.
+        observer.candidates.clear();
+        await seed('asset-a', folderId: 'camera');
+
+        await makeCoordinator().adoptFolder('camera');
+
+        final row = (await queue.byLocalId('asset-a'))!;
+        expect(row.folderId, 'camera');
+        expect(row.state, UploadState.uploaded.name);
+        expect(transport.uploadCalls, uploads);
+        expect(
+          await queue.getMeta(SyncCoordinator.scanWatermarkKey),
+          watermark,
+        );
+        expect(observer.lastSince, isNull);
+        expect(observer.lastFolderIds, <String>['camera']);
+      },
+    );
+  });
 }
 
 class _ScriptedUploader extends Uploader {
@@ -533,6 +720,53 @@ class _ScriptedUploader extends Uploader {
       serverAssetId: 'server-asset',
       serverFileId: 'server-file',
     );
+  }
+}
+
+class _FakeAlbumClient implements AlbumClient {
+  /// album id -> asset ids posted to it, in call order.
+  final Map<String, List<String>> addedAssets = <String, List<String>>{};
+
+  /// Every add call, including the per-id retries, in call order.
+  final List<List<String>> addCalls = <List<String>>[];
+
+  /// Asset ids the server no longer has: a batch containing one 404s.
+  final Set<String> deadAssets = <String>{};
+
+  /// When set, every add throws it, standing in for the server.
+  Object? error;
+
+  /// Whether [exists] reports the album as still there.
+  bool albumExists = true;
+
+  int existsCalls = 0;
+
+  @override
+  ApiClient get api => throw StateError('the fake never talks HTTP');
+
+  @override
+  Future<List<ServerAlbum>> list() async => const <ServerAlbum>[];
+
+  @override
+  Future<ServerAlbum> create(String name, {required bool hiddenFromTimeline}) {
+    throw StateError('the fake creates nothing');
+  }
+
+  @override
+  Future<bool> exists(String albumId) async {
+    existsCalls++;
+    return albumExists;
+  }
+
+  @override
+  Future<void> addAssets(String albumId, List<String> assetIds) async {
+    addCalls.add(List<String>.of(assetIds));
+    final failure = error;
+    if (failure != null) throw failure;
+    if (assetIds.any(deadAssets.contains)) {
+      throw const ApiException(statusCode: 404, message: 'Asset not found');
+    }
+    addedAssets.putIfAbsent(albumId, () => <String>[]).addAll(assetIds);
   }
 }
 

@@ -1,176 +1,228 @@
-# Plan — per-album "hidden from timeline" (backend + web + e2e)
+# Mobile: device folder → server album upload (plan)
 
-Status: plan only, nothing implemented. Scope: `apps/core`, `packages/shared-types`, `apps/web`, `e2e`.
-No mobile work in this plan.
+Core + web shipped in `feat/album-hide-from-timeline` (`dcc5530`, `54b7255`). This doc is the
+remaining mobile work. Nothing implemented yet.
 
-## Goal
+## Shipped contract (do not redo)
 
-1. An album can be marked **hidden from timeline**. Assets that belong to at least one hidden album do
-   not appear on the timeline.
-2. Albums without the flag behave exactly as today (their assets still show on the timeline).
-3. Hiding is retroactive: flag on → the album's assets leave the timeline; flag off (or album deleted)
-   → they come back. Nothing is deleted or re-uploaded.
+- `albums.hiddenFromTimeline` boolean, migration `1794200000000-AlbumHiddenFromTimeline`,
+  `CreateAlbumDto`/`UpdateAlbumDto.hiddenFromTimeline?`, `AlbumDto.hiddenFromTimeline: boolean`.
+- `GET /api/v1/assets` and `/assets/layout` exclude assets in a hidden album; `?albumId=` bypasses,
+  trash / `?ids=` / search / people / shares unaffected. ETag folds hidden membership in.
+- Web album menu toggles the flag and shows a "hidden" indicator.
 
-## Decisions
+Mobile consequence to accept: the merged Library tab reads `GET /api/v1/assets`, so hidden-album
+assets disappear there too.
 
-- **Rule:** timeline = assets whose album set contains **no** hidden album. Not "album-less only":
-  membership in a normal album still shows on the timeline, so the existing e2e step
-  "my timeline still contains the album photo" (`e2e/steps/albums/albums.steps.ts:228`) stays green as
-  the control case.
-- **Any-hidden wins:** an asset in both a hidden and a normal album is hidden.
-- **Explicit album view wins:** `GET /api/v1/assets?albumId=…` (what the web album page uses via
-  `useTimelineView({ albumId })`) must keep returning that album's assets even when hidden. The
-  exclusion is skipped whenever an `albumId` filter is present.
-- **No per-asset column, no backfill, no upload-ingest change.** Album membership already exists in
-  `album_assets`; the flag lives on the album.
-- Flag is **update-only** (`UpdateAlbumDto`); new albums default to `false` and get hidden from the
-  album page menu. (A create-time flag is a 3-line addition if a client ever needs it.)
-- Timeline-scoped only. Search, semantic search, persons/places, shares and face thumbnails keep
-  showing hidden-album assets — out of scope, documented.
+## Target behaviour
 
-## Backend (`apps/core`, `packages/shared-types`)
+On the Albums tab, each device folder can be pointed at one server album (existing, or created on the
+spot with "hide from timeline"). Assets uploaded from that folder are added to that album, so a hidden
+album's uploads never reach the timeline. Assets from unmapped folders behave exactly as today.
 
-1. **Flag on the album**
-   - `albums/entities/album.entity.ts`: `@Column({ type: 'boolean', default: false }) hiddenFromTimeline!: boolean;`
-   - Migration `database/migrations/<ts>-AlbumHiddenFromTimeline.ts`:
-     `ALTER TABLE albums ADD COLUMN "hiddenFromTimeline" boolean NOT NULL DEFAULT false` (+ `down`).
-     Dev DBs run `synchronize`; a synchronize-era DB still has to be marked migrated before prod
-     applies it — same caveat the existing migrations carry.
-   - `albums/dto/update-album.dto.ts`: optional `@IsBoolean() hiddenFromTimeline?: boolean`
-     (`forbidNonWhitelisted` means the field 400s today, so this is required, not optional).
-   - `albums/albums.service.ts`: thread it through the existing `patch` object in `update()`
-     (`:75-80`), and return it from `toDto()` (`:170`).
-   - `packages/shared-types/src/albums.ts`: `AlbumDto.hiddenFromTimeline: boolean`,
-     `UpdateAlbumDto.hiddenFromTimeline?: boolean`.
+## 1. Server album client — new `lib/server/album_client.dart`
 
-2. **Timeline exclusion** — `apps/core/src/assets/assets.service.ts`
-   - New private helper, applied in `list()` (after `:95`) and `layout()` (after `:163`):
-     ```sql
-     NOT EXISTS (
-       SELECT 1 FROM album_assets aa
-       JOIN albums al ON al.id = aa."albumId"
-       WHERE aa."assetId" = asset.id
-         AND al."userId" = :userId
-         AND al."hiddenFromTimeline"
-     )
-     ```
-     Skipped when `albumId` is set. `:userId` is already bound in both builders.
-   - Deliberately **not** in `applyAssetFilters()` (shared with album-scoped reads) and **not** in
-     `listByIdsRanked()` (album contents + search ranking).
-   - Indexes: `albums(userId)` exists and `album_assets` has a composite PK `(albumId, assetId)` +
-     index on `assetId`, so the subquery is indexed as-is. No new index.
+Mirror `server_assets_client.dart` (takes `ApiClient`, parses through `ApiClient.parseResponse`):
 
-3. **Layout ETag** — `layoutFingerprint()` (`:193`) must include hidden-album state, or the grid
-   geometry changes behind a matching ETag (album membership never bumps `assets.updatedAt`; the
-   controller comment at `assets.controller.ts:50` already documents this hazard). Add a second
-   aggregate scoped to the user:
-   - `COUNT(*)` of `album_assets JOIN albums WHERE al."userId" = :userId AND al."hiddenFromTimeline"`
-   - `MAX(GREATEST(al."updatedAt", aa."addedAt"))`
-     Fold both into the ETag string. `albums.updatedAt` also moves on rename → harmless extra
-     invalidation. The filtered-layout path keeps skipping revalidation.
+```dart
+class ServerAlbum { final String id, name; final int assetCount; final bool hiddenFromTimeline; }
 
-4. **No behavioural change elsewhere:** `assets.getOne`, trashed list, shares, search, faces, admin
-   reads, and the worker's `GET /api/v1/assets?ids=` ranking read are untouched (`list` with `ids`
-   still passes through the new subquery, which is the intended timeline semantics).
+class AlbumClient {
+  Future<List<ServerAlbum>> list();                                  // GET  api/v1/albums?limit=1000
+  Future<ServerAlbum> create(String name, {required bool hiddenFromTimeline}); // POST api/v1/albums
+  Future<void> addAssets(String albumId, List<String> assetIds);      // POST api/v1/albums/:id/assets
+  Future<void> removeAsset(String albumId, String assetId);           // optional, unbinding
+}
+```
 
-## Web (`apps/web`)
+`PaginationQueryDto` allows `limit` up to 1000, so one page covers a normal account; page the loop only
+if `total` exceeds the page size.
+`addAssets` takes ≤100 ids per call (`AddAssetsBodyDto`), and the server `orIgnore`s duplicates, so
+retries are safe.
 
-1. `pages/albums/[id].tsx` — album options menu (`button[aria-label="Album options"]`, JSX at
-   `:263-299`): one entry between "Share album" and the divider, label toggling
-   `Hide from timeline` → `Show on timeline` (icon from `react-icons/fa6`). Handler mirrors
-   `handleEditDescription` (`:145`): close menu, `updateAlbum(id, { hiddenFromTimeline: !album.hiddenFromTimeline })`,
-   `setAlbum(updated)`, then `bumpTimelineRefresh()` so the home timeline refetches instead of serving
-   its cached months.
-2. Header: when `album.hiddenFromTimeline` render a small `Hidden from timeline` pill next to the
-   `{assetCount} items` label (`:249`) so the state is visible without opening the menu. Visual
-   treatment (spacing, colour, icon) is @designer's call; the text is the e2e hook.
-3. `api/albums.ts` — no change; `UpdateAlbumDto` gains the field via `shared-types` and typecheck
-   enforces it.
-4. Nothing else: the home timeline, favourites, people and album pages all filter server-side.
+Wire in `AppServices._build` next to `ServerAssetsClient` and pass it to both `SyncCoordinator` (linker)
+and `PhotoXController` (UI).
 
-**Known UX consequence to accept in v1:** `AddPhotosDialog` (the album page's "Add photos" picker,
-`pages/albums/AddPhotosDialog.tsx`) sources from the timeline, so photos already in a hidden album no
-longer appear there and cannot be re-added to another album from the web UI. Upgrade path: an
-`includeAlbumHidden` flag on the picker's `listAllAssets` call.
+## 2. Folder → album mapping — `lib/settings/settings_store.dart`
 
-## e2e (`e2e`)
+One new field on `AppSettings`:
 
-New feature file `e2e/features/06-albums/albums-hidden.feature` (picked up automatically: the `suite`
-project globs `features/**/*.feature`, scenarios are user-scoped so they parallelise). All assertions
-are API-first — no coupling to empty-state copy — plus two UI scenarios for the menu toggle.
+```dart
+final Map<String, String> folderAlbums; // device folder id -> server album id
+```
 
-**Steps to add in `e2e/steps/albums/albums.steps.ts`** (reuse `createAlbumViaApi`, `addAssetsViaApi`,
-`uploadViaApi`, `authHeaders`, `requireAuth`, `currentAlbum`, `albumAssetAt`):
+- Persisted as JSON under the existing `settings` namespace (same as `uploadFolderIds`), read with a
+  new `_readStringMap` that drops non-string values and malformed JSON.
+- Extend `copyWith`, `==`, `hashCode`, `toString`, `toStorage`, `load`.
+- Deliberately **not** a drift table: it is a handful of ids, written only from settings.
+- Not part of `_scopeChanged` (it does not change what discovery reads), so `updateSettings` does not
+  clear the watermark for it; the caller schedules a pass instead.
 
-| Step                                                   | Implementation sketch                                                                                                  |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `When I hide the album from the timeline`              | `PATCH /api/v1/albums/:id {hiddenFromTimeline:true}` → `ctx.lastStatus`                                                |
-| `When I show the album on the timeline`                | same with `false`                                                                                                      |
-| `Then the album reports hidden from the timeline`      | `GET /albums/:id` → `hiddenFromTimeline` true                                                                          |
-| `Then my timeline does not contain the album photo`    | `GET /api/v1/assets` → ids not containing `albumAssetAt(ctx,0)`                                                        |
-| `Then the timeline is empty`                           | `GET /api/v1/assets` → `total === 0` (scenario-scoped user)                                                            |
-| `Then the timeline layout is empty`                    | `GET /api/v1/assets/layout` → `items.length === 0`                                                                     |
-| `Then the timeline layout only omits the hidden photo` | same call with one visible + one hidden asset → `items.length === 1`                                                   |
-| `Then the timeline layout ETag changes after hiding`   | capture `GET /assets/layout` ETag → hide → conditional `GET` with `If-None-Match` must return 200 and a different ETag |
-| `When I hide the album from its options menu`          | open `button[aria-label="Album options"]`, `waitForResponse` PATCH 200 while clicking `Hide from timeline`             |
-| `When I show the album from its options menu`          | same with `Show on timeline`                                                                                           |
-| `Then the album page shows the hidden badge`           | `expect(page.getByText('Hidden from timeline')).toBeVisible()`                                                         |
+## 3. Which folder an asset came from — drift schema v3
 
-**Scenarios**
+Today nothing records it: `AssetCandidate` has no folder, `QueuedAssets` has no folder column, and
+`scanNew` de-dups by asset id because one photo can sit in several device albums.
 
-API / contract (`albums-hidden.feature`):
+- `lib/media/photo_observer.dart`: `AssetCandidate.folderId` (nullable `String`).
+- `photo_manager_observer.dart:scanNew`: `_displayCandidate(asset, folderId: album.id)` — first album
+  the asset is seen in wins, matching the existing `seen` set.
+- `lib/upload/database.dart`: `QueuedAssets.folderId` (nullable text) and
+  `QueuedAssets.albumLinkedAt` (nullable dateTime); `schemaVersion => 3`; `onUpgrade` gets
+  `if (from < 3) { await m.addColumn(queuedAssets, queuedAssets.folderId); await m.addColumn(queuedAssets, queuedAssets.albumLinkedAt); }`.
+- `upload_queue.dart:enqueueAll`: write `folderId` on the insert companion **and** on both update
+  branches (content-changed and unchanged), so a later scan re-attributes an existing row without
+  touching its progress.
+- New queue methods: `Future<List<QueuedAsset>> unlinkedUploaded({int limit = 100})` (state in
+  `uploaded`/`duplicate`, `albumLinkedAt IS NULL`, `folderId IS NOT NULL`) and
+  `Future<void> markAlbumLinked(Iterable<String> localIds)`; plus
+  `Future<void> forgetFolderAlbum(String folderId)` (null `albumLinkedAt` so a re-map re-links).
+- `dart run build_runner build` — `database.g.dart` is committed.
 
-1. _Hiding an album removes its photo from the timeline but not from the album_ — upload 1 photo, add
-   to album, hide → timeline total 0; `GET /albums/:id/assets` still 1; `GET /albums/:id` reports the
-   flag.
-2. _Showing a hidden album puts its photo back on the timeline_ — hide then show → timeline contains it
-   again.
-3. _Deleting a hidden album returns its photo to the timeline_ — hide, delete album → timeline contains
-   it (the `NOT EXISTS` join has no rows left).
-4. _A normal album keeps its photo on the timeline_ — control case, guards against an over-broad
-   filter.
-5. _The album-scoped timeline still lists a hidden album's photos_ — `GET /api/v1/assets?albumId=…`
-   contains the photo while the unfiltered list does not.
-6. _Hiding one album leaves another album's photo on the timeline_ — two albums, two photos, hide one →
-   timeline has exactly the second; layout length 1.
-7. _The timeline layout ETag changes after hiding_ — covers the fingerprint requirement; without it the
-   web grid can keep stale geometry.
-8. _Hiding an empty album changes nothing_ — no assets, timeline untouched, flag set.
+## 4. Linking — `lib/sync/sync_coordinator.dart`
 
-UI (`albums.feature`, appended): 9. _Hiding an album from its options menu removes its photo from the timeline_ — create album via API,
-add photo, open album, hide via menu, badge visible, `page.goto('/')` then assert via
-`GET /api/v1/assets` that it is gone; album page still shows 1 item. 10. _Showing a hidden album from its options menu restores it on the timeline_ — same flow in reverse,
-end on the API assertion.
+The coordinator already runs in both isolates (UI and Workmanager), so linking works in the background
+without new plumbing.
 
-Regression guard: keep scenario _"Deleting an album keeps its photos on the timeline"_ and
-_"Removing a photo from an album keeps it on the timeline"_ untouched — both must still pass, proving
-non-hidden albums are unaffected.
+- Accumulate `Map<String /*albumId*/, Set<String> /*assetId*/>` while the upload loop runs: for every
+  `UploadOutcome` with a non-null `serverAssetId` (covers both `uploaded` and `duplicate`), resolve
+  `settings.folderAlbums[item.folderId]` and collect.
+- Flush after the loop (and before `report.remaining`): `AlbumClient.addAssets` in ≤100-id chunks,
+  then `queue.markAlbumLinked(localIds)` for the rows that went in.
+- Sweep once per pass, before the upload loop: `unlinkedUploaded(limit: 100)` grouped by album, same
+  flush. This is what makes a crash/offline between upload and link cost one pass instead of the
+  album membership.
+- Failure handling: 401/5xx/network → leave `albumLinkedAt` null (next pass retries, no user-facing
+  error); 404 → the album is gone, so drop every `folderAlbums` entry pointing at it (persist through
+  the settings store) and stop retrying that batch.
+- New `Future<void> adoptFolder(String folderId)`: one `scanNew(since: null, folderIds: [folderId])`
+  (no watermark change, no upload) so already-backed-up photos in that folder receive a `folderId`;
+  the sweep then links them. Without this, only uploads made after the mapping ever join the album.
+- `SyncReport` stays unchanged.
 
-## Test plan outside e2e
+## 5. UI
 
-- `apps/core/src/assets/assets.service.spec.ts`: hidden-album asset absent from `list` and `layout`;
-  present again after the flag clears; `albumId` filter bypass; `layoutFingerprint` changes when the
-  flag flips and when a member is added to a hidden album; non-hidden album unchanged.
-- `apps/core/src/albums/albums.service.spec.ts`: `hiddenFromTimeline` round-trips through
-  `update()`/`toDto()`; omitted field leaves the value untouched.
-- Full gate: `pnpm verify` (lint → tests → typecheck → build → e2e with `E2E_BUILD=1`).
+- `lib/ui/albums_screen.dart` (screen never touches services — pass callbacks from `app.dart`):
+  - new callbacks `Future<List<ServerAlbum>> Function() loadServerAlbums`,
+    `Future<ServerAlbum> Function(String name, {required bool hiddenFromTimeline}) onCreateServerAlbum`,
+    `Future<void> Function(String folderId, String? albumId) onFolderAlbumChanged`;
+  - one menu row above the scope rows: "Save to server album…" → opens the sheet;
+  - the card shows the mapped album's name with a small "hidden" chip when
+    `ServerAlbum.hiddenFromTimeline` is true (so hiding is never invisible).
+- New `lib/ui/widgets/folder_album_sheet.dart`: list of server albums (name, asset count, hidden
+  badge) + "New album" row that reveals a name field and a `SwitchListTile` "Hide from timeline",
+  **default on** for this flow; "Not in an album" row clears the mapping.
+- `app.dart:_albums()` wires the three callbacks to the controller.
 
-## Lanes
+## 6. Controller — `lib/app_controller.dart`
 
-1. **backend** (entity, migration, DTO, service, query, fingerprint, shared-types, unit specs) — lands
-   first; the wire field gates the web lane.
-2. **web** (menu toggle, badge, refresh bump) — needs 1 for `AlbumDto.hiddenFromTimeline`.
-3. **e2e** (feature files + steps) — needs 1 for the API scenarios; its UI scenarios need 2, so it runs
-   after or alongside the end of lane 2. Validation owner runs the suite.
+- `List<ServerAlbum> get serverAlbums` + `Future<void> refreshServerAlbums()` (cached, refreshed when
+  the sheet opens; failures surface as an inline sheet error, not a snackbar).
+- `Future<ServerAlbum> createServerAlbum(String name, {required bool hiddenFromTimeline})`.
+- `Future<void> setFolderAlbum(String folderId, String? albumId)`:
+  `updateSettings(settings.copyWith(folderAlbums: …))` → `queue.forgetFolderAlbum(folderId)` →
+  `await coordinator.adoptFolder(folderId)` → `unawaited(_syncAfterCurrent())`.
+- `_wipeAccountData()` (`:627`): also clear `folderAlbums`, since album ids belong to the account that
+  just signed out (a stale id 404s on every pass).
+- Abstract `AppController` gets the same three members so screens stay controller-agnostic.
 
-## Risks / limits (accepted for v1)
+## Files touched
 
-- Hidden-album assets stay reachable in search, persons/places and shares; the rule is timeline-only.
-- Hidden-album photos cannot be added to another album from the web "Add photos" picker (it reads the
-  timeline).
-- Every default timeline layout request now carries two extra aggregate subqueries for the ETag; cheap
-  on the existing indexes but unmeasured.
-- Hiding an album affects the owner's timeline only; shared links to that album keep serving it.
-- Flag changes don't touch `assets.updatedAt`, so any other client caching `/assets` by asset
-  mutation time (none in this repo) would go stale; the layout fingerprint above is the only such
-  consumer.
+| File | Change |
+|---|---|
+| `lib/server/album_client.dart` | new: `ServerAlbum` + `AlbumClient` |
+| `lib/settings/settings_store.dart` | `folderAlbums` field, JSON codec, load |
+| `lib/media/photo_observer.dart` | `AssetCandidate.folderId` |
+| `lib/media/photo_manager_observer.dart` | attribute folder in `scanNew` |
+| `lib/upload/database.dart` (+ `database.g.dart`) | schema v3: `folderId`, `albumLinkedAt` |
+| `lib/upload/upload_queue.dart` | write `folderId`, `unlinkedUploaded`, `markAlbumLinked`, `forgetFolderAlbum` |
+| `lib/sync/sync_coordinator.dart` | album client, link accumulation + flush, sweep, `adoptFolder` |
+| `lib/app_services.dart` | construct `AlbumClient`, pass to coordinator + controller |
+| `lib/app_controller.dart` | album members, `setFolderAlbum`, sign-out reset |
+| `lib/ui/albums_screen.dart`, `lib/ui/widgets/folder_album_sheet.dart`, `lib/app.dart` | folder → album UI |
+| `test/unit/{settings,queue,sync_coordinator,photo_manager_observer}_test.dart`, `test/widget/albums_screen_test.dart`, new `folder_album_sheet_test.dart`, `album_client_test.dart` | coverage |
+| `e2e/mobile/run.sh` | seed a second device folder (`DCIM/E2EAlbum`) |
+| `integration_test/support/pipeline.dart`, new `integration_test/folder_album_test.dart` | on-device e2e (E1–E6) |
+
+## Order
+
+1. **Plumbing** (§2, §3 + build_runner). Unit tests: settings map round-trip, `enqueueAll` writes
+   `folderId` for new and existing rows, migration path from v2.
+2. **Album client** (§1) — independent of (1), separate files, can run in parallel.
+3. **Linker** (§4) — needs (1) and (2). Unit tests with a fake `AlbumClient`: accumulation, chunking at
+   100, sweep on the next pass, 404 drops the mapping, 401 leaves rows unlinked.
+4. **UI + controller** (§5, §6) — needs (2) for data and (3) for `setFolderAlbum`.
+5. Gates: `pnpm mobile:verify` (always) and `pnpm mobile:e2e` (opt-in, on device — see the next
+   section). `pnpm verify` is untouched; mobile is outside turbo.
+
+Lanes 1 and 2 can run in parallel; 3 and 4 stay sequential to avoid touching the same files twice.
+
+## Mobile e2e (on device, `pnpm mobile:e2e`)
+
+Existing harness: `e2e/mobile/run.sh` boots the compose stack + an AVD, seeds
+`/sdcard/DCIM/Camera/{e2e-small,e2e-large}.jpg`, publishes core and runs
+`apps/mobile/integration_test/*_test.dart`. `support/pipeline.dart` builds the background graph
+(`AppServices.initializeBackground`) with a clean drift queue, `support/harness.dart` gives
+`apiDio()`/`authHeader()` for the test's own server assertions. Each file registers a throwaway user.
+
+Harness additions (not tests):
+
+- `e2e/mobile/run.sh:seed_media`: push the small jpeg a third time as
+  `/sdcard/DCIM/E2EAlbum/e2e-album.jpg` (same loop, new dir/name). Two device folders are what makes
+  "only the mapped folder's uploads join the album" provable; one folder only proves linking works.
+- `support/pipeline.dart` helpers: `seededFolder(services, name)` (matches `observer.folders()` by
+  name, fails loudly if the seed is missing), `createAlbum(services, name, {hidden})`,
+  `mapFolder(services, folderId, albumId)` (writes `folderAlbums` through `SettingsStore`),
+  `albumAssetIds(services, albumId)` and `timelineAssetIds(services)` (both via `apiDio()`).
+- Note for every test: the mapping does **not** add a folder to the backup scope. A non-camera folder
+  also needs `uploadFolderIds` (or `uploadAllFolders: true`) before `coordinator.run()` will scan it.
+
+Tests, one file `integration_test/folder_album_test.dart` (all `timeout: 10 min`, mirroring
+`upload_dedup_test.dart`):
+
+- **E1 mapped folder lands in the album, unmapped folder does not.** Map `E2EAlbum` → a *visible*
+  album, scope both folders, run a pass. Album holds `e2e-album.jpg`'s asset id and not the camera
+  photo's; both stay on `GET /api/v1/assets`; both rows have `albumLinkedAt` set. Proves linking and
+  that a normal album changes nothing on the timeline.
+- **E2 hidden album: uploads leave the timeline, album keeps them.** Map `Camera` → an album created
+  with `hiddenFromTimeline: true`, run a pass. `GET /api/v1/assets` returns neither seeded asset;
+  `GET /api/v1/albums/:id/assets` and `GET /api/v1/assets?albumId=<id>` return both. This is the
+  user-facing story end to end.
+- **E3 a folder backed up before it was mapped joins the album** (the `adoptFolder` path). Upload the
+  camera photo with no mapping, assert it is on the timeline and the album empty; then create the
+  hidden album, map, `coordinator.adoptFolder(cameraFolderId)` + `run()`; assert the *same* asset id is
+  now in the album and gone from the timeline, and `serverAssetTotal` did not grow.
+- **E4 dedup hits are linked, not just fresh uploads.** With the photo already in the hidden album,
+  `resetQueueOnly` + a second pass (the "second device" shape used by `upload_dedup_test`); assert
+  total assets unchanged, the album still holds exactly one asset, the row ends `uploaded` with
+  `albumLinkedAt` set.
+- **E5 the sweep repairs an unlinked row.** After E2-style linking, call `queue.forgetFolderAlbum`
+  (nulls `albumLinkedAt`) and run another pass; the album still holds the asset, no second asset is
+  created, and `report.error` is null.
+- **E6 a deleted album drops the mapping instead of looping.** Map the folder, `DELETE
+  /api/v1/albums/:id`, add a fresh seeded photo, run a pass. The upload still succeeds, the asset
+  appears on the timeline (no album holds it), `settings.folderAlbums` no longer contains the folder,
+  and a third pass reports no error and makes no failing request.
+
+Not covered on device (deliberately): the album sheet UI. It is driven purely by a fake `AlbumClient`
+in widget tests, so an on-device UI flow would re-test the platform library rather than the feature.
+
+## Limits and risks
+
+- A photo that lives in two device folders is attributed to the first folder the scan reaches, so it
+  can only land in one folder's album.
+- Historical assets join an album only through `adoptFolder`; a folder never re-scanned (permission
+  revoked, folder deleted) keeps its assets out of the album.
+- Mapping a folder does not hide the album by itself: only albums created/edited with the flag are
+  hidden. A user mapping to a pre-existing visible album keeps those uploads on the timeline —
+  intentional, but the sheet should say so.
+- Album deletion is detected only when a link attempt 404s, so a dead mapping lingers until the next
+  upload from that folder.
+- Linking is one HTTP call per 100 assets per pass; a first-time 20k-photo folder will take many
+  passes at the 25 s background budget. Acceptable because `adoptFolder` runs in the foreground.
+- No mobile-side "which albums are hidden" cache: the badge is read from `GET /albums` at sheet open,
+  so it can be stale until the sheet is reopened.
+
+## Non-goals
+
+Removing an asset from an album on mobile, browsing server albums as a grid, hiding individual assets,
+and changing search/people/shares visibility (core keeps those surfaces showing hidden-album assets).

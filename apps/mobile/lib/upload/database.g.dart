@@ -259,6 +259,29 @@ class $QueuedAssetsTable extends QueuedAssets
         type: DriftSqlType.dateTime,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _folderIdMeta = const VerificationMeta(
+    'folderId',
+  );
+  @override
+  late final GeneratedColumn<String> folderId = GeneratedColumn<String>(
+    'folder_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _albumLinkedAtMeta = const VerificationMeta(
+    'albumLinkedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> albumLinkedAt =
+      GeneratedColumn<DateTime>(
+        'album_linked_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     localId,
@@ -284,6 +307,8 @@ class $QueuedAssetsTable extends QueuedAssets
     serverFileId,
     discoveredAt,
     lastAttemptAt,
+    folderId,
+    albumLinkedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -460,6 +485,21 @@ class $QueuedAssetsTable extends QueuedAssets
         ),
       );
     }
+    if (data.containsKey('folder_id')) {
+      context.handle(
+        _folderIdMeta,
+        folderId.isAcceptableOrUnknown(data['folder_id']!, _folderIdMeta),
+      );
+    }
+    if (data.containsKey('album_linked_at')) {
+      context.handle(
+        _albumLinkedAtMeta,
+        albumLinkedAt.isAcceptableOrUnknown(
+          data['album_linked_at']!,
+          _albumLinkedAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -561,6 +601,14 @@ class $QueuedAssetsTable extends QueuedAssets
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_attempt_at'],
       ),
+      folderId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}folder_id'],
+      ),
+      albumLinkedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}album_linked_at'],
+      ),
     );
   }
 
@@ -594,6 +642,8 @@ class QueuedAsset extends DataClass implements Insertable<QueuedAsset> {
   final String? serverFileId;
   final DateTime? discoveredAt;
   final DateTime? lastAttemptAt;
+  final String? folderId;
+  final DateTime? albumLinkedAt;
   const QueuedAsset({
     required this.localId,
     required this.platform,
@@ -618,6 +668,8 @@ class QueuedAsset extends DataClass implements Insertable<QueuedAsset> {
     this.serverFileId,
     this.discoveredAt,
     this.lastAttemptAt,
+    this.folderId,
+    this.albumLinkedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -678,6 +730,12 @@ class QueuedAsset extends DataClass implements Insertable<QueuedAsset> {
     }
     if (!nullToAbsent || lastAttemptAt != null) {
       map['last_attempt_at'] = Variable<DateTime>(lastAttemptAt);
+    }
+    if (!nullToAbsent || folderId != null) {
+      map['folder_id'] = Variable<String>(folderId);
+    }
+    if (!nullToAbsent || albumLinkedAt != null) {
+      map['album_linked_at'] = Variable<DateTime>(albumLinkedAt);
     }
     return map;
   }
@@ -741,6 +799,12 @@ class QueuedAsset extends DataClass implements Insertable<QueuedAsset> {
       lastAttemptAt: lastAttemptAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastAttemptAt),
+      folderId: folderId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(folderId),
+      albumLinkedAt: albumLinkedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(albumLinkedAt),
     );
   }
 
@@ -773,6 +837,8 @@ class QueuedAsset extends DataClass implements Insertable<QueuedAsset> {
       serverFileId: serializer.fromJson<String?>(json['serverFileId']),
       discoveredAt: serializer.fromJson<DateTime?>(json['discoveredAt']),
       lastAttemptAt: serializer.fromJson<DateTime?>(json['lastAttemptAt']),
+      folderId: serializer.fromJson<String?>(json['folderId']),
+      albumLinkedAt: serializer.fromJson<DateTime?>(json['albumLinkedAt']),
     );
   }
   @override
@@ -802,6 +868,8 @@ class QueuedAsset extends DataClass implements Insertable<QueuedAsset> {
       'serverFileId': serializer.toJson<String?>(serverFileId),
       'discoveredAt': serializer.toJson<DateTime?>(discoveredAt),
       'lastAttemptAt': serializer.toJson<DateTime?>(lastAttemptAt),
+      'folderId': serializer.toJson<String?>(folderId),
+      'albumLinkedAt': serializer.toJson<DateTime?>(albumLinkedAt),
     };
   }
 
@@ -829,6 +897,8 @@ class QueuedAsset extends DataClass implements Insertable<QueuedAsset> {
     Value<String?> serverFileId = const Value.absent(),
     Value<DateTime?> discoveredAt = const Value.absent(),
     Value<DateTime?> lastAttemptAt = const Value.absent(),
+    Value<String?> folderId = const Value.absent(),
+    Value<DateTime?> albumLinkedAt = const Value.absent(),
   }) => QueuedAsset(
     localId: localId ?? this.localId,
     platform: platform ?? this.platform,
@@ -859,6 +929,10 @@ class QueuedAsset extends DataClass implements Insertable<QueuedAsset> {
     lastAttemptAt: lastAttemptAt.present
         ? lastAttemptAt.value
         : this.lastAttemptAt,
+    folderId: folderId.present ? folderId.value : this.folderId,
+    albumLinkedAt: albumLinkedAt.present
+        ? albumLinkedAt.value
+        : this.albumLinkedAt,
   );
   QueuedAsset copyWithCompanion(QueuedAssetsCompanion data) {
     return QueuedAsset(
@@ -897,6 +971,10 @@ class QueuedAsset extends DataClass implements Insertable<QueuedAsset> {
       lastAttemptAt: data.lastAttemptAt.present
           ? data.lastAttemptAt.value
           : this.lastAttemptAt,
+      folderId: data.folderId.present ? data.folderId.value : this.folderId,
+      albumLinkedAt: data.albumLinkedAt.present
+          ? data.albumLinkedAt.value
+          : this.albumLinkedAt,
     );
   }
 
@@ -925,7 +1003,9 @@ class QueuedAsset extends DataClass implements Insertable<QueuedAsset> {
           ..write('errorCode: $errorCode, ')
           ..write('serverFileId: $serverFileId, ')
           ..write('discoveredAt: $discoveredAt, ')
-          ..write('lastAttemptAt: $lastAttemptAt')
+          ..write('lastAttemptAt: $lastAttemptAt, ')
+          ..write('folderId: $folderId, ')
+          ..write('albumLinkedAt: $albumLinkedAt')
           ..write(')'))
         .toString();
   }
@@ -955,6 +1035,8 @@ class QueuedAsset extends DataClass implements Insertable<QueuedAsset> {
     serverFileId,
     discoveredAt,
     lastAttemptAt,
+    folderId,
+    albumLinkedAt,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -982,7 +1064,9 @@ class QueuedAsset extends DataClass implements Insertable<QueuedAsset> {
           other.errorCode == this.errorCode &&
           other.serverFileId == this.serverFileId &&
           other.discoveredAt == this.discoveredAt &&
-          other.lastAttemptAt == this.lastAttemptAt);
+          other.lastAttemptAt == this.lastAttemptAt &&
+          other.folderId == this.folderId &&
+          other.albumLinkedAt == this.albumLinkedAt);
 }
 
 class QueuedAssetsCompanion extends UpdateCompanion<QueuedAsset> {
@@ -1009,6 +1093,8 @@ class QueuedAssetsCompanion extends UpdateCompanion<QueuedAsset> {
   final Value<String?> serverFileId;
   final Value<DateTime?> discoveredAt;
   final Value<DateTime?> lastAttemptAt;
+  final Value<String?> folderId;
+  final Value<DateTime?> albumLinkedAt;
   final Value<int> rowid;
   const QueuedAssetsCompanion({
     this.localId = const Value.absent(),
@@ -1034,6 +1120,8 @@ class QueuedAssetsCompanion extends UpdateCompanion<QueuedAsset> {
     this.serverFileId = const Value.absent(),
     this.discoveredAt = const Value.absent(),
     this.lastAttemptAt = const Value.absent(),
+    this.folderId = const Value.absent(),
+    this.albumLinkedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   QueuedAssetsCompanion.insert({
@@ -1060,6 +1148,8 @@ class QueuedAssetsCompanion extends UpdateCompanion<QueuedAsset> {
     this.serverFileId = const Value.absent(),
     this.discoveredAt = const Value.absent(),
     this.lastAttemptAt = const Value.absent(),
+    this.folderId = const Value.absent(),
+    this.albumLinkedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : localId = Value(localId),
        platform = Value(platform),
@@ -1090,6 +1180,8 @@ class QueuedAssetsCompanion extends UpdateCompanion<QueuedAsset> {
     Expression<String>? serverFileId,
     Expression<DateTime>? discoveredAt,
     Expression<DateTime>? lastAttemptAt,
+    Expression<String>? folderId,
+    Expression<DateTime>? albumLinkedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1116,6 +1208,8 @@ class QueuedAssetsCompanion extends UpdateCompanion<QueuedAsset> {
       if (serverFileId != null) 'server_file_id': serverFileId,
       if (discoveredAt != null) 'discovered_at': discoveredAt,
       if (lastAttemptAt != null) 'last_attempt_at': lastAttemptAt,
+      if (folderId != null) 'folder_id': folderId,
+      if (albumLinkedAt != null) 'album_linked_at': albumLinkedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1144,6 +1238,8 @@ class QueuedAssetsCompanion extends UpdateCompanion<QueuedAsset> {
     Value<String?>? serverFileId,
     Value<DateTime?>? discoveredAt,
     Value<DateTime?>? lastAttemptAt,
+    Value<String?>? folderId,
+    Value<DateTime?>? albumLinkedAt,
     Value<int>? rowid,
   }) {
     return QueuedAssetsCompanion(
@@ -1170,6 +1266,8 @@ class QueuedAssetsCompanion extends UpdateCompanion<QueuedAsset> {
       serverFileId: serverFileId ?? this.serverFileId,
       discoveredAt: discoveredAt ?? this.discoveredAt,
       lastAttemptAt: lastAttemptAt ?? this.lastAttemptAt,
+      folderId: folderId ?? this.folderId,
+      albumLinkedAt: albumLinkedAt ?? this.albumLinkedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1246,6 +1344,12 @@ class QueuedAssetsCompanion extends UpdateCompanion<QueuedAsset> {
     if (lastAttemptAt.present) {
       map['last_attempt_at'] = Variable<DateTime>(lastAttemptAt.value);
     }
+    if (folderId.present) {
+      map['folder_id'] = Variable<String>(folderId.value);
+    }
+    if (albumLinkedAt.present) {
+      map['album_linked_at'] = Variable<DateTime>(albumLinkedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1278,6 +1382,8 @@ class QueuedAssetsCompanion extends UpdateCompanion<QueuedAsset> {
           ..write('serverFileId: $serverFileId, ')
           ..write('discoveredAt: $discoveredAt, ')
           ..write('lastAttemptAt: $lastAttemptAt, ')
+          ..write('folderId: $folderId, ')
+          ..write('albumLinkedAt: $albumLinkedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2011,6 +2117,8 @@ typedef $$QueuedAssetsTableCreateCompanionBuilder =
       Value<String?> serverFileId,
       Value<DateTime?> discoveredAt,
       Value<DateTime?> lastAttemptAt,
+      Value<String?> folderId,
+      Value<DateTime?> albumLinkedAt,
       Value<int> rowid,
     });
 typedef $$QueuedAssetsTableUpdateCompanionBuilder =
@@ -2038,6 +2146,8 @@ typedef $$QueuedAssetsTableUpdateCompanionBuilder =
       Value<String?> serverFileId,
       Value<DateTime?> discoveredAt,
       Value<DateTime?> lastAttemptAt,
+      Value<String?> folderId,
+      Value<DateTime?> albumLinkedAt,
       Value<int> rowid,
     });
 
@@ -2162,6 +2272,16 @@ class $$QueuedAssetsTableFilterComposer
 
   ColumnFilters<DateTime> get lastAttemptAt => $composableBuilder(
     column: $table.lastAttemptAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get folderId => $composableBuilder(
+    column: $table.folderId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get albumLinkedAt => $composableBuilder(
+    column: $table.albumLinkedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2289,6 +2409,16 @@ class $$QueuedAssetsTableOrderingComposer
     column: $table.lastAttemptAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get folderId => $composableBuilder(
+    column: $table.folderId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get albumLinkedAt => $composableBuilder(
+    column: $table.albumLinkedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$QueuedAssetsTableAnnotationComposer
@@ -2380,6 +2510,14 @@ class $$QueuedAssetsTableAnnotationComposer
     column: $table.lastAttemptAt,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get folderId =>
+      $composableBuilder(column: $table.folderId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get albumLinkedAt => $composableBuilder(
+    column: $table.albumLinkedAt,
+    builder: (column) => column,
+  );
 }
 
 class $$QueuedAssetsTableTableManager
@@ -2436,6 +2574,8 @@ class $$QueuedAssetsTableTableManager
                 Value<String?> serverFileId = const Value.absent(),
                 Value<DateTime?> discoveredAt = const Value.absent(),
                 Value<DateTime?> lastAttemptAt = const Value.absent(),
+                Value<String?> folderId = const Value.absent(),
+                Value<DateTime?> albumLinkedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => QueuedAssetsCompanion(
                 localId: localId,
@@ -2461,6 +2601,8 @@ class $$QueuedAssetsTableTableManager
                 serverFileId: serverFileId,
                 discoveredAt: discoveredAt,
                 lastAttemptAt: lastAttemptAt,
+                folderId: folderId,
+                albumLinkedAt: albumLinkedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2488,6 +2630,8 @@ class $$QueuedAssetsTableTableManager
                 Value<String?> serverFileId = const Value.absent(),
                 Value<DateTime?> discoveredAt = const Value.absent(),
                 Value<DateTime?> lastAttemptAt = const Value.absent(),
+                Value<String?> folderId = const Value.absent(),
+                Value<DateTime?> albumLinkedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => QueuedAssetsCompanion.insert(
                 localId: localId,
@@ -2513,6 +2657,8 @@ class $$QueuedAssetsTableTableManager
                 serverFileId: serverFileId,
                 discoveredAt: discoveredAt,
                 lastAttemptAt: lastAttemptAt,
+                folderId: folderId,
+                albumLinkedAt: albumLinkedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

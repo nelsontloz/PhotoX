@@ -72,6 +72,10 @@ class QueueStats {
 /// Every method that changes more than one row runs in a transaction (or a
 /// batch), so a killed process never observes half an update. The queue never
 /// touches the network; callers persist the state change *before* the request.
+///
+/// Rows also remember the device folder they came from and when their upload
+/// joined that folder's server album, which is how the sync pass repairs a
+/// link it lost between an upload and the album call.
 class UploadQueue {
   const UploadQueue(this.db);
 
@@ -118,8 +122,9 @@ class UploadQueue {
   /// Adds every candidate atomically, refreshing mutable scan metadata.
   ///
   /// Existing rows always receive [AssetCandidate.sizeBytes], [takenAt],
-  /// [modifiedAt], [fileName] and [mimeType] from the latest scan. When the
-  /// size or modification time changed, the row is cleared back to
+  /// [modifiedAt], [fileName], [mimeType] and [folderId] from the latest scan
+  /// (a null [folderId] keeps the stored one). When the size or modification
+  /// time changed, the row is cleared back to
   /// [UploadState.discovered]: digest, spool path, session id, part geometry,
   /// protocol, attempts and server ids are all reset so the new bytes are
   /// re-hashed and re-uploaded. A cleared row must never reuse the previous
@@ -163,6 +168,7 @@ class UploadQueue {
                 fileName: Value(candidate.fileName),
                 mimeType: Value(candidate.mimeType),
                 modifiedAt: Value(candidate.modifiedAt),
+                folderId: Value(candidate.folderId),
                 state: UploadState.discovered.name,
                 discoveredAt: Value(discoveredAt),
               ),
@@ -188,6 +194,9 @@ class UploadQueue {
                     modifiedAt: Value(candidate.modifiedAt),
                     fileName: Value(candidate.fileName),
                     mimeType: Value(candidate.mimeType),
+                    // A later scan re-attributes the row; one that does not know
+                    // the folder (a whole-library page) keeps what it had.
+                    folderId: Value.absentIfNull(candidate.folderId),
                     state: Value(UploadState.discovered.name),
                     sha256: const Value(null),
                     spoolPath: const Value(null),
@@ -212,6 +221,7 @@ class UploadQueue {
                     modifiedAt: Value(candidate.modifiedAt),
                     fileName: Value(candidate.fileName),
                     mimeType: Value(candidate.mimeType),
+                    folderId: Value.absentIfNull(candidate.folderId),
                   ),
             where: (t) => t.localId.equals(candidate.localId),
           );
@@ -323,6 +333,59 @@ class UploadQueue {
       }
     }
     return serverIds;
+  }
+
+  /// Uploaded rows that never joined their folder's album, oldest first.
+  ///
+  /// The linker sweeps these before uploading, so a crash or an offline pass
+  /// between the upload and the album call costs one pass instead of the album
+  /// membership. [limit] is hard: one request's worth per pass.
+  Future<List<QueuedAsset>> unlinkedUploaded({int limit = 100}) {
+    if (limit <= 0) return Future<List<QueuedAsset>>.value(const []);
+    return (db.select(db.queuedAssets)
+          ..where(
+            (t) =>
+                t.state.isIn(<String>[
+                  UploadState.uploaded.name,
+                  UploadState.duplicate.name,
+                ]) &
+                t.albumLinkedAt.isNull() &
+                t.folderId.isNotNull(),
+          )
+          ..orderBy([
+            (t) => OrderingTerm(
+              expression: t.discoveredAt,
+              nulls: NullsOrder.first,
+            ),
+            (t) => OrderingTerm(expression: t.localId),
+          ])
+          ..limit(limit))
+        .get();
+  }
+
+  /// Records that these rows' assets are in their folder's album now.
+  ///
+  /// Chunked like the other id-list writes: a swept batch can exceed SQLite's
+  /// variable limit.
+  Future<void> markAlbumLinked(Iterable<String> localIds) async {
+    final ids = localIds.toSet().toList(growable: false);
+    if (ids.isEmpty) return;
+    final linkedAt = DateTime.now();
+    await db.transaction(() async {
+      for (var start = 0; start < ids.length; start += 500) {
+        final chunk = ids.sublist(start, min(start + 500, ids.length));
+        await (db.update(db.queuedAssets)..where((t) => t.localId.isIn(chunk)))
+            .write(QueuedAssetsCompanion(albumLinkedAt: Value(linkedAt)));
+      }
+    });
+  }
+
+  /// Makes one folder's rows linkable again, so a re-map or a lost link is
+  /// retried on the next pass.
+  Future<void> forgetFolderAlbum(String folderId) {
+    return (db.update(db.queuedAssets)
+          ..where((t) => t.folderId.equals(folderId)))
+        .write(const QueuedAssetsCompanion(albumLinkedAt: Value(null)));
   }
 
   /// Persists the new [state] for one asset before the next attempt.

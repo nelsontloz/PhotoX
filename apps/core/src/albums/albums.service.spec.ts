@@ -21,9 +21,16 @@ function makeService(overrides: Partial<Album> = {}) {
     Object.assign(row, patch);
     return Promise.resolve({ affected: 1 });
   });
+  const deleteMock = vi.fn<(criteria: { id: string; userId: string }) => Promise<{ affected: number }>>(
+    () => Promise.resolve({ affected: 1 }),
+  );
+  const albumAssetDeleteMock = vi.fn<(criteria: { albumId: string }) => Promise<{ affected: number }>>(
+    () => Promise.resolve({ affected: 1 }),
+  );
   const repo = {
     save: saveMock,
     update: updateMock,
+    delete: deleteMock,
     findOne: vi.fn(() => Promise.resolve({ ...row })),
   } as unknown as Repository<Album>;
   const countQb = {
@@ -35,13 +42,11 @@ function makeService(overrides: Partial<Album> = {}) {
   const assetRepo = {
     createQueryBuilder: vi.fn(() => countQb),
   } as unknown as Repository<Asset>;
-  const service = new AlbumsService(
-    repo,
-    {} as unknown as Repository<AlbumAsset>,
-    assetRepo,
-    {} as unknown as AssetsService,
-  );
-  return { service, saveMock, updateMock };
+  const albumAssetRepo = {
+    delete: albumAssetDeleteMock,
+  } as unknown as Repository<AlbumAsset>;
+  const service = new AlbumsService(repo, albumAssetRepo, assetRepo, {} as unknown as AssetsService);
+  return { service, saveMock, updateMock, deleteMock, albumAssetDeleteMock };
 }
 
 describe('AlbumsService hiddenFromTimeline', () => {
@@ -91,5 +96,18 @@ describe('AlbumsService hiddenFromTimeline', () => {
       id: 'album-1',
       hiddenFromTimeline: true,
     });
+  });
+});
+
+describe('AlbumsService delete', () => {
+  it('removes the join rows before the album, so no orphans outlive it', async () => {
+    const { service, deleteMock, albumAssetDeleteMock } = makeService();
+    await service.delete('u1', 'album-1');
+
+    expect(albumAssetDeleteMock.mock.calls[0]![0]).toEqual({ albumId: 'album-1' });
+    expect(deleteMock.mock.calls[0]![0]).toEqual({ id: 'album-1', userId: 'u1' });
+    expect(albumAssetDeleteMock.mock.invocationCallOrder[0]).toBeLessThan(
+      deleteMock.mock.invocationCallOrder[0]!,
+    );
   });
 });

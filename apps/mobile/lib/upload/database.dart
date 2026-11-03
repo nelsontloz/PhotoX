@@ -31,6 +31,11 @@ class QueuedAssets extends Table {
   DateTimeColumn get discoveredAt => dateTime().nullable()();
   DateTimeColumn get lastAttemptAt => dateTime().nullable()();
 
+  // Schema v3: which device folder the asset came from, and when its upload
+  // joined that folder's server album (null = still to link).
+  TextColumn get folderId => text().nullable()();
+  DateTimeColumn get albumLinkedAt => dateTime().nullable()();
+
   @override
   Set<Column> get primaryKey => {localId};
 }
@@ -66,7 +71,7 @@ class AppDatabase extends _$AppDatabase {
     : super(executor ?? driftDatabase(name: 'photox_mobile'));
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -86,6 +91,10 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(queuedAssets, queuedAssets.lastAttemptAt);
         await m.addColumn(uploadParts, uploadParts.acknowledgedAt);
         await m.createTable(keyValues);
+      }
+      if (from < 3) {
+        await m.addColumn(queuedAssets, queuedAssets.folderId);
+        await m.addColumn(queuedAssets, queuedAssets.albumLinkedAt);
       }
     },
     beforeOpen: (details) async {
