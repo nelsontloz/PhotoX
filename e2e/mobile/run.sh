@@ -194,25 +194,32 @@ seed_media() {
   [ -f "$src" ] || die "missing fixture $src"
   mkdir -p "$dir"
   cp "$src" "$dir/e2e-small.jpg"
+  # Second device folder: the folder→album tests need one album's worth of
+  # assets that is not the camera roll (`folder_album_test.dart`). Different
+  # bytes on purpose: a copy of e2e-small.jpg would dedup into the same asset.
+  cp "$ROOT/e2e/fixtures/photo-text.jpg" "$dir/e2e-album.jpg"
   if [ ! -s "$dir/e2e-large.jpg" ]; then
     # Past three 8 MiB parts, so the session path needs four. The padding sits
     # after the jpeg EOI: decoders and core's 12-byte sniff both ignore it.
     { cat "$src"; head -c $((24 * 1024 * 1024)) /dev/urandom; } >"$dir/e2e-large.jpg"
   fi
 
-  local name
-  for name in e2e-small.jpg e2e-large.jpg; do
+  local entry folder name
+  for entry in Camera/e2e-small.jpg Camera/e2e-large.jpg E2EAlbum/e2e-album.jpg; do
+    folder="DCIM/${entry%/*}"
+    name="${entry##*/}"
     "$ADB" -s "$SERIAL" shell content delete \
       --uri content://media/external/images/media \
       --where "_display_name='$name'" >/dev/null 2>&1 || true
-    "$ADB" -s "$SERIAL" shell rm -f "/sdcard/DCIM/Camera/$name" >/dev/null 2>&1 || true
-    "$ADB" -s "$SERIAL" push "$dir/$name" "/sdcard/DCIM/Camera/$name" >/dev/null ||
+    "$ADB" -s "$SERIAL" shell rm -f "/sdcard/$folder/$name" >/dev/null 2>&1 || true
+    "$ADB" -s "$SERIAL" shell mkdir -p "/sdcard/$folder" >/dev/null 2>&1 || true
+    "$ADB" -s "$SERIAL" push "$dir/$name" "/sdcard/$folder/$name" >/dev/null ||
       die "could not push $name to the emulator"
     "$ADB" -s "$SERIAL" shell am broadcast \
       -a android.intent.action.MEDIA_SCANNER_SCAN_FILE \
-      -d "file:///sdcard/DCIM/Camera/$name" >/dev/null 2>&1 || true
+      -d "file:///sdcard/$folder/$name" >/dev/null 2>&1 || true
   done
-  echo "Seeded DCIM/Camera with e2e-small.jpg and e2e-large.jpg."
+  echo "Seeded DCIM/Camera (e2e-small, e2e-large) and DCIM/E2EAlbum (e2e-album)."
 }
 
 seed_media
@@ -235,6 +242,7 @@ run_test upload_paths_test.dart
 run_test upload_dedup_test.dart
 run_test upload_resume_test.dart
 run_test upload_token_test.dart
+run_test folder_album_test.dart
 # The merged Library tab: the server's rows draw next to the phone's, and the
 # mark on a tile follows where its bytes live.
 run_test library_merged_test.dart

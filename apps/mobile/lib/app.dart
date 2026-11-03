@@ -218,6 +218,17 @@ class _SignedInShellState extends State<_SignedInShell> {
       _albumsOpened = true;
     });
     unawaited(_loadLibraryCount());
+    unawaited(_loadServerAlbums());
+  }
+
+  /// Best effort: the tab must build even when the server is unreachable. The
+  /// sheet re-reads the albums itself and shows its own error.
+  Future<void> _loadServerAlbums() async {
+    try {
+      await widget.controller.refreshServerAlbums();
+    } on Object {
+      return;
+    }
   }
 
   Future<void> _loadLibraryCount() async {
@@ -311,6 +322,15 @@ class _SignedInShellState extends State<_SignedInShell> {
       permission: controller.permission,
       libraryCount: _libraryCount,
       loadFolders: controller.folders,
+      serverAlbums: controller.serverAlbums,
+      serverAlbumsLoaded: controller.serverAlbumsLoaded,
+      // The sheet re-reads on every open, so a failed read is its to report.
+      loadServerAlbums: () async {
+        await controller.refreshServerAlbums();
+        return controller.serverAlbums;
+      },
+      onCreateServerAlbum: controller.createServerAlbum,
+      onFolderAlbumChanged: controller.setFolderAlbum,
       // One page (size 1) plus one encoded thumbnail per album, asked once per
       // album: the grid-area preview the platform actually has, not an export.
       cover: (folderId) async {

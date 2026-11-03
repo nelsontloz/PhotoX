@@ -16,6 +16,7 @@ import 'library/album_scope.dart';
 import 'library/backup_status.dart';
 import 'media/media_filter.dart';
 import 'media/photo_observer.dart';
+import 'server/album_client.dart';
 import 'server/server_asset.dart';
 import 'server/server_assets_client.dart';
 import 'settings/settings_store.dart';
@@ -125,6 +126,25 @@ abstract class AppController extends ChangeNotifier {
   /// tiles again, and the bytes never change once written.
   Future<Uint8List?> serverThumb(String fileId);
 
+  /// Server albums a device folder can be mapped to; empty until loaded.
+  List<ServerAlbum> get serverAlbums;
+
+  /// True once [serverAlbums] came back from the server at least once, so an
+  /// empty list can be told apart from "not read yet".
+  bool get serverAlbumsLoaded;
+
+  /// Re-reads [serverAlbums]. A failure reaches the caller, which shows it.
+  Future<void> refreshServerAlbums();
+
+  /// Creates one album and adds it to [serverAlbums].
+  Future<ServerAlbum> createServerAlbum(
+    String name, {
+    required bool hiddenFromTimeline,
+  });
+
+  /// Points [folderId]'s uploads at [albumId], or clears the mapping when null.
+  Future<void> setFolderAlbum(String folderId, String? albumId);
+
   /// Bumped whenever queued assets changed state, so the grid re-reads its page
   /// instead of holding the whole queue in memory.
   int get queueRevision;
@@ -200,8 +220,10 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     required this.observer,
     required this.progress,
     ServerAssetsClient? serverAssets,
+    AlbumClient? albumClient,
     Future<void> Function()? clearSpool,
   }) : serverAssets = serverAssets ?? ServerAssetsClient(api),
+       albumClient = albumClient ?? AlbumClient(api),
        clearSpool = clearSpool ?? clearUploadSpool {
     _completedTransfers = progress.completedTransfers;
     progress.addListener(_onProgress);
@@ -217,6 +239,9 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   /// Reads the server's asset library; shares [api], so it uses the same auth,
   /// retries and base address.
   final ServerAssetsClient serverAssets;
+
+  /// Reads and writes server albums for the folder mapping.
+  final AlbumClient albumClient;
 
   /// Queue persistence used for the home-screen counters.
   final UploadQueue queue;
@@ -281,6 +306,10 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
 
   /// Session memo of server thumbnails, oldest insertion first.
   final Map<String, Uint8List?> _serverThumbs = <String, Uint8List?>{};
+
+  /// Albums last read from the server; empty until the sheet asks.
+  List<ServerAlbum> _serverAlbums = const <ServerAlbum>[];
+  bool _serverAlbumsLoaded = false;
 
   /// The in-flight pass, so callers join instead of stacking passes.
   Future<void>? _pass;
@@ -404,6 +433,66 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
 
   @override
   int get queueRevision => _revision;
+
+  @override
+  List<ServerAlbum> get serverAlbums => _serverAlbums;
+
+  @override
+  bool get serverAlbumsLoaded => _serverAlbumsLoaded;
+
+  @override
+  Future<void> refreshServerAlbums() async {
+    final albums = await albumClient.list();
+    _serverAlbums = List<ServerAlbum>.unmodifiable(albums);
+    // A failed read leaves this false, so the cards keep saying "not read yet"
+    // instead of claiming a live mapping is missing.
+    _serverAlbumsLoaded = true;
+    _notify();
+  }
+
+  @override
+  Future<ServerAlbum> createServerAlbum(
+    String name, {
+    required bool hiddenFromTimeline,
+  }) async {
+    final album = await albumClient.create(
+      name,
+      hiddenFromTimeline: hiddenFromTimeline,
+    );
+    _serverAlbums = List<ServerAlbum>.unmodifiable(<ServerAlbum>[
+      album,
+      ..._serverAlbums,
+    ]);
+    _notify();
+    return album;
+  }
+
+  @override
+  Future<void> setFolderAlbum(String folderId, String? albumId) async {
+    // updateSettings drops a write while another one is in flight, so a mapping
+    // asked for now would vanish while the sheet closed as if it was saved.
+    if (_busy) {
+      throw const ApiException(
+        statusCode: 409,
+        message: 'Still saving your last change. Try again in a moment.',
+      );
+    }
+    final folderAlbums = Map<String, String>.of(_settings.folderAlbums);
+    if (albumId == null) {
+      folderAlbums.remove(folderId);
+    } else {
+      folderAlbums[folderId] = albumId;
+    }
+    // A failed write must not leave the queue linking to a mapping that was
+    // never persisted, so nothing else runs before this succeeds.
+    await updateSettings(_settings.copyWith(folderAlbums: folderAlbums));
+    // Old rows must link again under the new (or no) album.
+    await queue.forgetFolderAlbum(folderId);
+    // shortcut: adoptFolder runs even if a pass holds the lease; enqueueing is
+    // idempotent and the next sweep links whatever it attributed.
+    await coordinator.adoptFolder(folderId);
+    unawaited(_syncAfterCurrent());
+  }
 
   @override
   QueueStats get stats => _stats;
@@ -622,14 +711,19 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   ///
   /// Queue rows, part receipts, the scan watermark, the refresh lock and every
   /// spooled copy of a photo go. Preferences survive so the login screen still
-  /// prefills the server address, except the pause flag: a stale pause would
-  /// silently stop the next account's first pass.
+  /// prefills the server address, except the pause flag (a stale pause would
+  /// silently stop the next account's first pass) and the folder -> album
+  /// mappings, whose album ids belong to the account that just ended.
   Future<void> _wipeAccountData() async {
     await queue.wipeAccountData();
     await clearSpool();
     progress.reset();
     // Another account's library will not share a single thumbnail.
     _serverThumbs.clear();
+    // Album ids belong to the account that just ended; a stale one would 404
+    // on every pass.
+    _serverAlbums = const <ServerAlbum>[];
+    _serverAlbumsLoaded = false;
     _completedTransfers = 0;
     _progressAsset = null;
     _progressPhase = TransferPhase.idle;
@@ -639,6 +733,11 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     _revision++;
     if (_settings.paused) {
       final next = _settings.copyWith(paused: false);
+      await settingsStore.save(next);
+      _settings = next;
+    }
+    if (_settings.folderAlbums.isNotEmpty) {
+      final next = _settings.copyWith(folderAlbums: const <String, String>{});
       await settingsStore.save(next);
       _settings = next;
     }

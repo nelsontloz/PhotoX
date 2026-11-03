@@ -96,6 +96,10 @@ export class AlbumsService {
 
   async delete(userId: string, id: string): Promise<void> {
     await findOwnedOr404(this.repo, id, userId, 'Album');
+    // The baseline schema has no foreign keys, so the join rows are ours to
+    // remove; orphans would outlive the album and resurface if an id were ever
+    // reused, and they are what the mobile linker's 404 has to reason about.
+    await this.albumAssetRepo.delete({ albumId: id });
     await this.repo.delete({ id, userId });
   }
 

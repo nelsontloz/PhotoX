@@ -601,7 +601,11 @@ void main() {
       await controller.initialize();
       await controller.syncNow();
       await controller.updateSettings(
-        const AppSettings(apiBaseUrl: 'http://192.168.1.9:3000', paused: true),
+        const AppSettings(
+          apiBaseUrl: 'http://192.168.1.9:3000',
+          paused: true,
+          folderAlbums: <String, String>{'camera': 'album-1'},
+        ),
       );
       await queue.setMeta(
         SyncCoordinator.scanWatermarkKey,
@@ -637,6 +641,11 @@ void main() {
       final persisted = await settingsStore.load();
       expect(persisted.apiBaseUrl, 'http://192.168.1.9:3000');
       expect(persisted.paused, isFalse);
+      expect(
+        persisted.folderAlbums,
+        isEmpty,
+        reason: 'album ids belong to the account that signed out',
+      );
       expect(controller.paused, isFalse);
     },
   );
@@ -744,6 +753,59 @@ void main() {
       expect(await queue.getMeta(SyncCoordinator.scanWatermarkKey), '');
     },
   );
+
+  test('setFolderAlbum persists the mapping and unlinks old rows', () async {
+    await queue.enqueueAll(<AssetCandidate>[
+      const AssetCandidate(
+        localId: 'asset-a',
+        platform: 'ios',
+        kind: MediaKind.photo,
+        fileName: 'asset-a.jpg',
+        mimeType: 'image/jpeg',
+        sizeBytes: 3,
+        folderId: 'camera',
+      ),
+    ]);
+    await queue.markState(
+      localId: 'asset-a',
+      state: UploadState.uploaded,
+      serverAssetId: 'server-a',
+    );
+    await queue.markAlbumLinked(<String>['asset-a']);
+    expect((await queue.byLocalId('asset-a'))!.albumLinkedAt, isNotNull);
+
+    await controller.setFolderAlbum('camera', 'album-1');
+
+    expect(controller.settings.folderAlbums, <String, String>{
+      'camera': 'album-1',
+    });
+    expect((await settingsStore.load()).folderAlbums, <String, String>{
+      'camera': 'album-1',
+    });
+    expect(
+      (await queue.byLocalId('asset-a'))!.albumLinkedAt,
+      isNull,
+      reason: 'the row must link again under the new album',
+    );
+
+    await controller.setFolderAlbum('camera', null);
+
+    expect((await settingsStore.load()).folderAlbums, isEmpty);
+  });
+
+  test('setFolderAlbum reports a write it cannot persist', () async {
+    // The first call holds `busy` from the moment it starts, which is exactly
+    // the window a sheet opened from the Albums tab would hit.
+    final first = controller.updateSettings(const AppSettings(wifiOnly: true));
+
+    await expectLater(
+      controller.setFolderAlbum('camera', 'album-1'),
+      throwsA(isA<ApiException>()),
+    );
+    await first;
+
+    expect((await settingsStore.load()).folderAlbums, isEmpty);
+  });
 
   test('an unrelated settings change keeps the queue and watermark', () async {
     await queue.enqueue(_assetCandidate('pending'));

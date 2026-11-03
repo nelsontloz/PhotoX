@@ -131,7 +131,7 @@ class PhotoManagerObserver implements PhotoObserver {
     );
     final candidates = <AssetCandidate>[];
     for (final asset in assets) {
-      final candidate = _displayCandidate(asset);
+      final candidate = _displayCandidate(asset, folderId: folderId);
       if (candidate != null) candidates.add(candidate);
     }
     return candidates;
@@ -215,7 +215,7 @@ class PhotoManagerObserver implements PhotoObserver {
         if (assets.isEmpty) break;
         for (final asset in assets) {
           if (!seen.add(asset.id)) continue;
-          final candidate = _displayCandidate(asset);
+          final candidate = _displayCandidate(asset, folderId: album.id);
           if (candidate != null) candidates.add(candidate);
         }
         if (assets.length < pageSize) break;
@@ -441,7 +441,7 @@ class PhotoManagerObserver implements PhotoObserver {
   /// materialise a cache copy of every asset in the window before anything is
   /// queued, and on iOS would download the whole iCloud library first; the
   /// uploader measures the real length once it prepares one asset.
-  AssetCandidate? _displayCandidate(AssetEntity asset) {
+  AssetCandidate? _displayCandidate(AssetEntity asset, {String? folderId}) {
     final kind = switch (asset.type) {
       AssetType.image => MediaKind.photo,
       AssetType.video => MediaKind.video,
@@ -472,6 +472,7 @@ class PhotoManagerObserver implements PhotoObserver {
       width: asset.width,
       height: asset.height,
       durationSeconds: asset.duration,
+      folderId: folderId,
     );
   }
 

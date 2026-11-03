@@ -320,6 +320,9 @@ void main() {
       'asset-1',
       'asset-2',
     ]);
+    // The first album the scan reaches owns the asset: asset-1 is in both.
+    expect(candidates.first.folderId, 'camera');
+    expect(candidates.last.folderId, 'screens');
     expect(
       calls.where((call) => call.method == 'fetchPathProperties'),
       hasLength(2),
@@ -365,6 +368,7 @@ void main() {
       'asset-2',
       'asset-3',
     ]);
+    expect(candidates.first.folderId, 'screens');
 
     final rangeCall = calls.lastWhere(
       (call) => call.method == 'getAssetListRange',
