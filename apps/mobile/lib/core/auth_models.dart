@@ -1,3 +1,5 @@
+import 'json_read.dart';
+
 /// User record embedded in every auth response.
 class AuthUser {
   const AuthUser({
@@ -11,12 +13,12 @@ class AuthUser {
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
     return AuthUser(
-      id: _requireString(json, 'id', 'AuthUser'),
-      email: _requireString(json, 'email', 'AuthUser'),
-      role: _requireString(json, 'role', 'AuthUser'),
-      displayName: _requireString(json, 'displayName', 'AuthUser'),
-      createdAt: _requireDateTime(json, 'createdAt', 'AuthUser'),
-      updatedAt: _requireDateTime(json, 'updatedAt', 'AuthUser'),
+      id: requireString(json, 'id', 'AuthUser'),
+      email: requireString(json, 'email', 'AuthUser'),
+      role: requireString(json, 'role', 'AuthUser'),
+      displayName: requireString(json, 'displayName', 'AuthUser'),
+      createdAt: requireDateTime(json, 'createdAt', 'AuthUser'),
+      updatedAt: requireDateTime(json, 'updatedAt', 'AuthUser'),
     );
   }
 
@@ -53,10 +55,10 @@ class AuthTokens {
   /// Parses the persisted representation written by [toJson].
   factory AuthTokens.fromJson(Map<String, dynamic> json) {
     return AuthTokens(
-      accessToken: _requireString(json, 'accessToken', 'AuthTokens'),
-      refreshToken: _requireString(json, 'refreshToken', 'AuthTokens'),
-      accessExpiresAt: _requireDateTime(json, 'accessExpiresAt', 'AuthTokens'),
-      user: AuthUser.fromJson(_requireMap(json, 'user', 'AuthTokens')),
+      accessToken: requireString(json, 'accessToken', 'AuthTokens'),
+      refreshToken: requireString(json, 'refreshToken', 'AuthTokens'),
+      accessExpiresAt: requireDateTime(json, 'accessExpiresAt', 'AuthTokens'),
+      user: AuthUser.fromJson(requireMap(json, 'user', 'AuthTokens')),
     );
   }
 
@@ -66,17 +68,13 @@ class AuthTokens {
     Map<String, dynamic> json, {
     DateTime? now,
   }) {
-    final expiresIn = _requireNum(
-      json,
-      'accessTokenExpiresIn',
-      'AuthTokens',
-    ).toInt();
+    final expiresIn = requireInt(json, 'accessTokenExpiresIn', 'AuthTokens');
     final issuedAt = (now ?? DateTime.now()).toUtc();
     return AuthTokens(
-      accessToken: _requireString(json, 'accessToken', 'AuthTokens'),
-      refreshToken: _requireString(json, 'refreshToken', 'AuthTokens'),
+      accessToken: requireString(json, 'accessToken', 'AuthTokens'),
+      refreshToken: requireString(json, 'refreshToken', 'AuthTokens'),
       accessExpiresAt: issuedAt.add(Duration(seconds: expiresIn)),
-      user: AuthUser.fromJson(_requireMap(json, 'user', 'AuthTokens')),
+      user: AuthUser.fromJson(requireMap(json, 'user', 'AuthTokens')),
     );
   }
 
@@ -107,54 +105,4 @@ class AuthException implements Exception {
     final errorCode = code == null ? '' : ' [$code]';
     return 'AuthException$status$errorCode: $message';
   }
-}
-
-String _requireString(Map<String, dynamic> json, String field, String context) {
-  final value = json[field];
-  if (value is String) return value;
-  throw FormatException(
-    '$context.$field must be a string, got ${value.runtimeType}',
-  );
-}
-
-num _requireNum(Map<String, dynamic> json, String field, String context) {
-  final value = json[field];
-  if (value is num) return value;
-  throw FormatException(
-    '$context.$field must be a number, got ${value.runtimeType}',
-  );
-}
-
-Map<String, dynamic> _requireMap(
-  Map<String, dynamic> json,
-  String field,
-  String context,
-) {
-  final value = json[field];
-  if (value is Map<String, dynamic>) return value;
-  if (value is Map) {
-    try {
-      return Map<String, dynamic>.from(value);
-    } on TypeError {
-      // Fall through to the FormatException below.
-    }
-  }
-  throw FormatException(
-    '$context.$field must be an object, got ${value.runtimeType}',
-  );
-}
-
-DateTime _requireDateTime(
-  Map<String, dynamic> json,
-  String field,
-  String context,
-) {
-  final raw = _requireString(json, field, context);
-  final parsed = DateTime.tryParse(raw);
-  if (parsed == null) {
-    throw FormatException(
-      '$context.$field must be an ISO-8601 timestamp, got "$raw"',
-    );
-  }
-  return parsed.toUtc();
 }

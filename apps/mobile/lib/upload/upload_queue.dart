@@ -78,7 +78,7 @@ class UploadQueue {
   /// Drift database holding queued assets and part receipts.
   final AppDatabase db;
 
-  /// Namespace used by [getMeta] / [setMeta] / [deleteMeta].
+  /// Namespace used by [getMeta] / [setMeta].
   static const String metaNamespace = 'meta';
 
   /// States from which the queue never schedules another attempt.
@@ -125,11 +125,14 @@ class UploadQueue {
   /// re-hashed and re-uploaded. A cleared row must never reuse the previous
   /// spool, because that spool holds the bytes of the *old* file version.
   /// Unchanged rows keep their progress untouched.
-  Future<void> enqueueAll(Iterable<AssetCandidate> candidates) async {
+  ///
+  /// Returns how many candidates were not already queued.
+  Future<int> enqueueAll(Iterable<AssetCandidate> candidates) async {
     final list = candidates.toList(growable: false);
-    if (list.isEmpty) return;
+    if (list.isEmpty) return 0;
     final discoveredAt = DateTime.now();
     final ids = list.map((candidate) => candidate.localId).toSet().toList();
+    var inserted = 0;
 
     await db.transaction(() async {
       // Chunk the lookup: a library scan can exceed SQLite's variable limit.
@@ -148,6 +151,7 @@ class UploadQueue {
         for (final candidate in list) {
           final previous = byId[candidate.localId];
           if (previous == null) {
+            inserted++;
             batch.insert(
               db.queuedAssets,
               QueuedAssetsCompanion.insert(
@@ -214,6 +218,7 @@ class UploadQueue {
         }
       });
     });
+    return inserted;
   }
 
   /// Drift stores `DateTime` with second precision, so compare that way.
@@ -292,15 +297,6 @@ class UploadQueue {
       }
     }
     return states;
-  }
-
-  /// Reads every asset currently in one of [states].
-  Future<List<QueuedAsset>> byStates(Iterable<UploadState> states) {
-    final names = states.map((state) => state.name).toList();
-    if (names.isEmpty) return Future<List<QueuedAsset>>.value(const []);
-    return (db.select(
-      db.queuedAssets,
-    )..where((t) => t.state.isIn(names))).get();
   }
 
   /// Persists the new [state] for one asset before the next attempt.
@@ -546,13 +542,6 @@ class UploadQueue {
             updatedAt: DateTime.now(),
           ),
         );
-  }
-
-  /// Deletes one [metaNamespace] key; absent keys are a no-op.
-  Future<void> deleteMeta(String key) {
-    return (db.delete(db.keyValues)
-          ..where((t) => t.namespace.equals(metaNamespace) & t.key.equals(key)))
-        .go();
   }
 
   Future<int> _countWhere(Expression<bool> predicate) async {

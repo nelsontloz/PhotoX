@@ -683,9 +683,6 @@ class _FakeObserver implements PhotoObserver {
       null;
 
   @override
-  Stream<void> get changes => const Stream<void>.empty();
-
-  @override
   Future<void> dispose() async {}
 }
 
@@ -751,7 +748,6 @@ class _FakeSessionTransport implements SessionTransport {
       uploadId: id,
       chunkSizeBytes: chunkSize,
       totalParts: totalParts,
-      expiresAt: DateTime.utc(2030),
       status: 'pending',
     );
   }
@@ -776,8 +772,6 @@ class _FakeSessionTransport implements SessionTransport {
       chunkSizeBytes: chunkSize,
       totalParts: totalParts,
       receivedParts: sorted,
-      receivedBytes: 0,
-      expiresAt: DateTime.utc(2030),
       assetId: done ? 'asset-$uploadId' : null,
       fileId: done ? 'file-$uploadId' : null,
     );
@@ -813,7 +807,6 @@ class _FakeSessionTransport implements SessionTransport {
     completedByUpload[uploadId] = true;
     return UploadCompleteResult(
       asset: AssetSummary(id: 'asset-$uploadId', fileId: 'file-$uploadId'),
-      deduplicated: false,
     );
   }
 

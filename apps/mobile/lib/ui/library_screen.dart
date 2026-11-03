@@ -17,9 +17,11 @@ import 'viewer_screen.dart';
 import 'widgets/app_background.dart';
 import 'widgets/asset_tile.dart';
 import 'widgets/count_format.dart';
+import 'widgets/month_names.dart';
 import 'widgets/month_rail.dart';
 import 'widgets/rows_sliver.dart';
 import 'widgets/panel.dart';
+import 'widgets/scope_pill.dart';
 import 'widgets/status_banner.dart';
 
 /// The device library, newest first, one column-page at a time.
@@ -156,21 +158,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   /// Quiet period before the loaded page's queue states are re-read.
   static const Duration _statesQuiet = Duration(milliseconds: 400);
-
-  static const List<String> _monthNames = <String>[
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
 
   final List<AssetCandidate> _assets = <AssetCandidate>[];
 
@@ -1059,7 +1046,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: <Widget>[
-          _ScopePill(label: _scopeLabel),
+          ScopePill(label: _scopeLabel),
           if (loaded > 0)
             Text(
               _hasMore
@@ -1507,7 +1494,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       '${date.year}-${date.month.toString().padLeft(2, '0')}';
 
   String _monthLabel(DateTime date) =>
-      '${_monthNames[date.month - 1]} ${date.year}';
+      '${monthAbbreviations[date.month - 1]} ${date.year}';
 
   Widget _footer(BuildContext context) {
     final theme = Theme.of(context);
@@ -1613,7 +1600,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final days = today.difference(day).inDays;
     if (days == 0) return 'Today';
     if (days == 1) return 'Yesterday';
-    final month = _monthNames[date.month - 1];
+    final month = monthAbbreviations[date.month - 1];
     return date.year == now.year
         ? '${date.day} $month'
         : '${date.day} $month ${date.year}';
@@ -1689,60 +1676,6 @@ class _DayHeader extends StatelessWidget {
                 formatCount(count),
                 style: theme.textTheme.labelMedium?.copyWith(
                   color: scheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Scope pill: which albums the backup reads.
-class _ScopePill extends StatelessWidget {
-  const _ScopePill({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Semantics(
-      container: true,
-      label: 'Backup scope: $label',
-      child: ExcludeSemantics(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainer,
-            borderRadius: BorderRadius.circular(100),
-            border: Border.all(
-              color: scheme.outlineVariant.withValues(alpha: 0.5),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: scheme.primary,
-                ),
-                child: const SizedBox.square(dimension: 6),
-              ),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                  ),
                 ),
               ),
             ],

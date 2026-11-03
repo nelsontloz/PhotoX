@@ -692,16 +692,6 @@ void main() {
       expect(stats.uploaded, 1);
       expect(stats.duplicate, 1);
       expect(stats.failed, 2);
-
-      final byStates = await queue.byStates(<UploadState>[
-        UploadState.uploaded,
-        UploadState.duplicate,
-      ]);
-      expect(byStates.map((row) => row.localId).toSet(), <String>{
-        'uploaded',
-        'duplicate',
-      });
-      expect(await queue.byStates(const <UploadState>[]), isEmpty);
     });
 
     test('splits photos and videos and exposes the overall fraction', () async {
@@ -787,7 +777,7 @@ void main() {
   });
 
   group('metadata', () {
-    test('set, get and delete only touch the meta namespace', () async {
+    test('set and get only touch the meta namespace', () async {
       expect(await queue.getMeta('lastScan'), isNull);
 
       await queue.setMeta('lastScan', '2026-10-19T12:00:00.000Z');
@@ -804,13 +794,6 @@ void main() {
             ),
           );
       expect(await queue.getMeta('lastScan'), '2026-10-19T12:00:00.000Z');
-
-      await queue.deleteMeta('lastScan');
-      expect(await queue.getMeta('lastScan'), isNull);
-      final settingsRow = await (db.select(
-        db.keyValues,
-      )..where((t) => t.namespace.equals('settings'))).getSingle();
-      expect(settingsRow.value, 'other-namespace');
     });
   });
 

@@ -20,14 +20,6 @@ abstract class WorkRegistrar {
     required ExistingPeriodicWorkPolicy existingWorkPolicy,
   });
 
-  /// Registers or replaces the one-off "sync now" task.
-  Future<void> registerOneOffTask(
-    String uniqueName,
-    String taskName, {
-    required Constraints constraints,
-    required ExistingWorkPolicy existingWorkPolicy,
-  });
-
   /// Registers the long-running iOS BGProcessingTask.
   Future<void> registerProcessingTask(
     String uniqueName,
@@ -65,21 +57,6 @@ class WorkmanagerRegistrar implements WorkRegistrar {
   }
 
   @override
-  Future<void> registerOneOffTask(
-    String uniqueName,
-    String taskName, {
-    required Constraints constraints,
-    required ExistingWorkPolicy existingWorkPolicy,
-  }) {
-    return Workmanager().registerOneOffTask(
-      uniqueName,
-      taskName,
-      constraints: constraints,
-      existingWorkPolicy: existingWorkPolicy,
-    );
-  }
-
-  @override
   Future<void> registerProcessingTask(
     String uniqueName,
     String taskName, {
@@ -97,12 +74,12 @@ class WorkmanagerRegistrar implements WorkRegistrar {
       Workmanager().cancelByUniqueName(uniqueName);
 }
 
-/// Registers OS background schedules and asks for immediate sync passes.
+/// Registers OS background schedules.
 ///
 /// Constraints (network, charging, battery) are always enforced by the OS via
 /// [Constraints], never by Dart: a task either becomes eligible or it does
 /// not. The unique name doubles as the iOS BGTaskScheduler identifier, which
-/// is why it equals the task name and why all three names must stay listed in
+/// is why it equals the task name and why both names must stay listed in
 /// `BGTaskSchedulerPermittedIdentifiers`.
 class BackgroundScheduler {
   BackgroundScheduler({WorkRegistrar? registrar, bool? isIOS})
@@ -115,9 +92,6 @@ class BackgroundScheduler {
   /// Long-running iOS BGProcessingTask for bulk backfill.
   static const String processingTask = 'photox.sync.processing';
 
-  /// One-off pass requested by app open, resume or pull-to-sync.
-  static const String oneOffTask = 'photox.sync.now';
-
   /// Android's periodic floor; iOS treats it as a scheduling hint only.
   static const Duration periodicFrequency = Duration(minutes: 15);
 
@@ -126,7 +100,6 @@ class BackgroundScheduler {
 
   final bool _isIOS;
 
-  AppSettings _settings = const AppSettings();
   bool _initialized = false;
 
   /// Registers every OS schedule; safe to call again on each app start.
@@ -144,19 +117,6 @@ class BackgroundScheduler {
   /// the plugin; [init] guards against double-initialization.
   Future<void> updateSettings(AppSettings settings) => init(settings);
 
-  /// Asks the OS for one pass as soon as its constraints allow.
-  ///
-  /// ponytail: reserved for a future pull-to-sync / one-off caller; nothing
-  /// calls it today, and it is not wired to the home screen.
-  Future<void> requestSyncNow() async {
-    await registrar.registerOneOffTask(
-      oneOffTask,
-      oneOffTask,
-      constraints: _constraintsFor(_settings),
-      existingWorkPolicy: ExistingWorkPolicy.replace,
-    );
-  }
-
   /// Cancels every scheduled sync task (used on sign-out).
   ///
   /// Keeps going if one cancellation fails so the other schedules are still
@@ -164,7 +124,7 @@ class BackgroundScheduler {
   Future<void> cancelAll() async {
     Object? firstError;
     StackTrace? firstStackTrace;
-    for (final name in <String>[periodicTask, processingTask, oneOffTask]) {
+    for (final name in <String>[periodicTask, processingTask]) {
       try {
         await registrar.cancelByUniqueName(name);
       } on Object catch (error, stackTrace) {
@@ -178,7 +138,6 @@ class BackgroundScheduler {
   }
 
   Future<void> _register(AppSettings settings) async {
-    _settings = settings;
     final constraints = _constraintsFor(settings);
     await registrar.registerPeriodicTask(
       periodicTask,

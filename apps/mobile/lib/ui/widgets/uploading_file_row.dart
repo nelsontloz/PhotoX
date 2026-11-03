@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../sync/transfer_progress.dart';
 import 'count_format.dart';
+import 'panel.dart';
 
 /// The one asset currently in flight: thumbnail, name, bytes, and its own bar.
 ///
@@ -103,13 +104,7 @@ class _UploadingFileRowState extends State<UploadingFileRow> {
         : '${formatBytes(progress.sentBytes)} / '
               '${formatBytes(progress.totalBytes)} · ${_phaseLabel()}';
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.3)),
-      ),
+    return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[

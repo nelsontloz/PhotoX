@@ -24,8 +24,6 @@ void main() {
       wifiOnly: false,
       chargingOnly: true,
       includeVideos: true,
-      notificationsEnabled: false,
-      source: 'albums',
       apiBaseUrl: 'http://192.168.1.10:3000',
       paused: true,
       uploadFolderIds: <String>['camera', 'favorites'],
@@ -54,26 +52,6 @@ void main() {
         .insert(
           KeyValuesCompanion.insert(
             namespace: SettingsStore.namespace,
-            key: 'notificationsEnabled',
-            value: '  FALSE  ',
-            updatedAt: now,
-          ),
-        );
-    await db
-        .into(db.keyValues)
-        .insert(
-          KeyValuesCompanion.insert(
-            namespace: SettingsStore.namespace,
-            key: 'source',
-            value: '   ',
-            updatedAt: now,
-          ),
-        );
-    await db
-        .into(db.keyValues)
-        .insert(
-          KeyValuesCompanion.insert(
-            namespace: SettingsStore.namespace,
             key: 'uploadFolderIds',
             value: '{not a list',
             updatedAt: now,
@@ -86,8 +64,6 @@ void main() {
     expect(loaded.wifiOnly, isTrue);
     expect(loaded.chargingOnly, isFalse);
     expect(loaded.includeVideos, isFalse);
-    expect(loaded.notificationsEnabled, isFalse);
-    expect(loaded.source, 'cameraRoll');
     expect(loaded.uploadFolderIds, isEmpty);
     expect(loaded.uploadAllFolders, isFalse);
   });
@@ -120,7 +96,7 @@ void main() {
     await store.save(const AppSettings(wifiOnly: true, includeVideos: true));
 
     final rows = await db.select(db.keyValues).get();
-    expect(rows, hasLength(9));
+    expect(rows, hasLength(7));
     final loaded = await store.load();
     expect(loaded.wifiOnly, isTrue);
     expect(loaded.includeVideos, isTrue);

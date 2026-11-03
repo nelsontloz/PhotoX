@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
+import 'api_client.dart';
 import 'app_config.dart';
 import 'auth_models.dart';
 import 'refresh_lock.dart';
@@ -281,19 +282,8 @@ class AuthManager extends ChangeNotifier {
   }
 
   /// Extracts the server envelope message without ever echoing credentials.
-  static String _messageFor(DioException error) {
-    final data = error.response?.data;
-    if (data is Map) {
-      final message = data['message'];
-      if (message is String && message.isNotEmpty) return message;
-      if (message is List) {
-        final joined = message
-            .map((entry) => entry.toString())
-            .where((entry) => entry.isNotEmpty)
-            .join('; ');
-        if (joined.isNotEmpty) return joined;
-      }
-    }
-    return error.message ?? error.type.name;
-  }
+  static String _messageFor(DioException error) => envelopeMessage(
+    error.response?.data,
+    fallback: error.message ?? error.type.name,
+  );
 }

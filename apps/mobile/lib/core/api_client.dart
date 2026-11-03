@@ -24,7 +24,10 @@ class ApiException implements Exception {
   factory ApiException.fromDio(DioException error) {
     final response = error.response;
     final data = response?.data;
-    var message = error.message ?? error.type.name;
+    var message = envelopeMessage(
+      data,
+      fallback: error.message ?? error.type.name,
+    );
     String? code;
     List<int>? receivedParts;
     String? existingAssetId;
@@ -32,16 +35,6 @@ class ApiException implements Exception {
     int? statusCode = response?.statusCode;
 
     if (data is Map) {
-      final rawMessage = data['message'];
-      if (rawMessage is String && rawMessage.isNotEmpty) {
-        message = rawMessage;
-      } else if (rawMessage is List) {
-        final joined = rawMessage
-            .map((entry) => entry.toString())
-            .where((entry) => entry.isNotEmpty)
-            .join('; ');
-        if (joined.isNotEmpty) message = joined;
-      }
       final rawCode = data['code'];
       if (rawCode is String) code = rawCode;
       final rawParts = data['receivedParts'];
@@ -137,6 +130,23 @@ class ApiException implements Exception {
     final errorCode = code == null ? '' : ' [$code]';
     return 'ApiException$status$errorCode: $message';
   }
+}
+
+/// Extracts the server envelope's `message`: a plain string or a validation
+/// list joined with `; `. Returns [fallback] when neither is usable.
+String envelopeMessage(Object? data, {required String fallback}) {
+  if (data is Map) {
+    final message = data['message'];
+    if (message is String && message.isNotEmpty) return message;
+    if (message is List) {
+      final joined = message
+          .map((entry) => entry.toString())
+          .where((entry) => entry.isNotEmpty)
+          .join('; ');
+      if (joined.isNotEmpty) return joined;
+    }
+  }
+  return fallback;
 }
 
 /// Dio transport for the PhotoX core API, signed with the stored Bearer token.
@@ -315,34 +325,17 @@ class ApiClient {
   }
 
   /// GET helper converting every transport failure to [ApiException].
-  Future<T> get<T>(String path, {Map<String, dynamic>? queryParameters}) async {
-    late final Response<dynamic> response;
-    try {
-      response = await dio.get<dynamic>(path, queryParameters: queryParameters);
-    } on DioException catch (error) {
-      throw ApiException.fromDio(error);
-    }
-    return parseResponse(
-      () => _decode<T>(response.data, response.statusCode),
-      context: 'GET $path response',
-      statusCode: response.statusCode,
-    );
-  }
+  Future<T> get<T>(String path, {Map<String, dynamic>? queryParameters}) =>
+      _send<T>(
+        'GET',
+        path,
+        queryParameters: queryParameters,
+        context: 'GET $path response',
+      );
 
   /// POST helper converting every transport failure to [ApiException].
-  Future<T> post<T>(String path, {Object? data}) async {
-    late final Response<dynamic> response;
-    try {
-      response = await dio.post<dynamic>(path, data: data);
-    } on DioException catch (error) {
-      throw ApiException.fromDio(error);
-    }
-    return parseResponse(
-      () => _decode<T>(response.data, response.statusCode),
-      context: 'POST $path response',
-      statusCode: response.statusCode,
-    );
-  }
+  Future<T> post<T>(String path, {Object? data}) =>
+      _send<T>('POST', path, data: data, context: 'POST $path response');
 
   /// PUT helper converting every transport failure to [ApiException].
   Future<T> put<T>(
@@ -350,13 +343,38 @@ class ApiClient {
     Object? data,
     Options? options,
     ProgressCallback? onSendProgress,
+  }) => _send<T>(
+    'PUT',
+    path,
+    data: data,
+    options: options,
+    onSendProgress: onSendProgress,
+    context: 'PUT $path response',
+  );
+
+  /// DELETE helper converting every transport failure to [ApiException].
+  Future<void> delete(String path) async {
+    await _send<dynamic>('DELETE', path, context: 'DELETE $path response');
+  }
+
+  /// Runs one request, normalizing transport and shape failures to
+  /// [ApiException].
+  Future<T> _send<T>(
+    String method,
+    String path, {
+    Object? data,
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+    ProgressCallback? onSendProgress,
+    required String context,
   }) async {
     late final Response<dynamic> response;
     try {
-      response = await dio.put<dynamic>(
+      response = await dio.request<dynamic>(
         path,
         data: data,
-        options: options,
+        queryParameters: queryParameters,
+        options: (options ?? Options()).copyWith(method: method),
         onSendProgress: onSendProgress,
       );
     } on DioException catch (error) {
@@ -364,18 +382,9 @@ class ApiClient {
     }
     return parseResponse(
       () => _decode<T>(response.data, response.statusCode),
-      context: 'PUT $path response',
+      context: context,
       statusCode: response.statusCode,
     );
-  }
-
-  /// DELETE helper converting every transport failure to [ApiException].
-  Future<void> delete(String path) async {
-    try {
-      await dio.delete<dynamic>(path);
-    } on DioException catch (error) {
-      throw ApiException.fromDio(error);
-    }
   }
 
   /// Closes the underlying connection pool.

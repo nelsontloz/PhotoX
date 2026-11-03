@@ -473,36 +473,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ],
                           ],
                         ),
-                        const SectionLabel('Notifications'),
-                        _SettingsCard(
-                          children: <Widget>[
-                            SwitchListTile(
-                              contentPadding: const EdgeInsets.fromLTRB(
-                                16,
-                                6,
-                                16,
-                                6,
-                              ),
-                              secondary: const Icon(
-                                Icons.notifications_none_rounded,
-                              ),
-                              title: const Text('Upload notifications'),
-                              subtitle: Text(
-                                _settings.notificationsEnabled
-                                    ? 'Show backup progress while running.'
-                                    : 'No progress notifications.',
-                              ),
-                              value: _settings.notificationsEnabled,
-                              onChanged: _busy
-                                  ? null
-                                  : (value) => _apply(
-                                      _settings.copyWith(
-                                        notificationsEnabled: value,
-                                      ),
-                                    ),
-                            ),
-                          ],
-                        ),
                         const SectionLabel('Source'),
                         _SettingsCard(
                           children: <Widget>[
