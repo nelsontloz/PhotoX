@@ -32,7 +32,7 @@ OS-discretionary; see [Background behaviour](#background-behaviour).
   processing). App-open/resume always starts a foreground pass and is the
   guaranteed sync path.
 - Queue stats, last-sync summary, permission/banner states, and backup settings
-  (Wi-Fi only, charging only, include videos, backfill, notifications toggle).
+  (Wi-Fi only, charging only, include videos, notifications toggle).
 - On-device library grid with a per-tile backup badge, multi-select → "Back up
   now", and a full-screen viewer. Videos play in the viewer through the
   platform's own player (`video_player`): tap to play/pause, scrub the timeline,
@@ -51,7 +51,8 @@ OS-discretionary; see [Background behaviour](#background-behaviour).
   Selected albums are deduped by asset id, since a photo can live in several.
 - **Photos only by default.** Videos are opt-in in Settings
   (`includeVideos: false`).
-- Backfill of pre-existing assets is on by default (`backfill: true`).
+- The first pass reads the whole library, pre-existing assets included; there is
+  no switch to start "from now on".
 - Wi-Fi only is on by default (`wifiOnly: true`); charging-only is off. The
   background worker gets this from the OS (WorkManager `Constraints`); every
   foreground/resume pass re-checks the link itself (`NetworkStatus`) and stops
@@ -130,7 +131,8 @@ observe → enqueue in drift → spool exact bytes + hash → dedup pre-check
 
 The drift database is authoritative for resume decisions. Tokens are stored in
 the platform keystore; refresh rotation is serialized across isolates with a
-drift-backed lock.
+drift-backed lock, and so is the sync pass itself — the UI isolate and the
+Workmanager isolate can never run two passes over the same queue.
 
 ## Background behaviour
 

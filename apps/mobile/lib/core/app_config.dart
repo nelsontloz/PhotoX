@@ -29,6 +29,18 @@ abstract final class AppConfig {
   // endpoint once it exists instead of hardcoding them here.
 }
 
+/// One-line warning for a plain-http server address, or null when [raw] is
+/// unusable or https.
+///
+/// Over http the login password, every Bearer token and every uploaded photo
+/// travel in clear text, so a user typing an address deserves to know.
+String? insecureServerWarning(String raw) {
+  final url = normalizeServerUrl(raw);
+  if (url == null || !url.startsWith('http://')) return null;
+  return 'Not encrypted: anyone on this network can read your password. Use '
+      'https:// outside your home network.';
+}
+
 /// Returns [raw] as a usable base URL (trimmed, no trailing slash), or null
 /// when it is not an absolute http(s) address.
 String? normalizeServerUrl(String raw) {

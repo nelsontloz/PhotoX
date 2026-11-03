@@ -33,7 +33,11 @@ class MemoryRefreshLock implements RefreshLock {
   Future<bool> acquire(String owner, Duration ttl) async {
     final now = _clock();
     final expiresAt = _expiresAt;
-    if (_owner != null && expiresAt != null && now.isBefore(expiresAt)) {
+    // Re-taking a live lock as its own owner is a renewal, not a conflict.
+    if (_owner != null &&
+        _owner != owner &&
+        expiresAt != null &&
+        now.isBefore(expiresAt)) {
       return false;
     }
     _owner = owner;
@@ -59,17 +63,30 @@ class MemoryRefreshLock implements RefreshLock {
 ///
 /// Wall-clock [DateTime.now] is deliberate: the token clock can be swapped in
 /// tests, but lock expiry must match the clock other isolates use.
+///
+/// One instance guards refresh rotation ([defaultNamespace]); a second one
+/// guards the sync pass, which needs its own row so the two never contend.
 class DriftRefreshLock implements RefreshLock {
-  const DriftRefreshLock(this.db);
+  const DriftRefreshLock(
+    this.db, {
+    this.namespace = defaultNamespace,
+    this.lockKey = defaultLockKey,
+  });
+
+  /// Namespace holding auth-related bookkeeping.
+  static const String defaultNamespace = 'auth';
+
+  /// Key holding the single lock document.
+  static const String defaultLockKey = 'refreshLock';
 
   /// Database shared by every isolate in the app process.
   final AppDatabase db;
 
-  /// Namespace holding auth-related bookkeeping.
-  static const String namespace = 'auth';
+  /// Row namespace of this lease; one per lock kind.
+  final String namespace;
 
-  /// Key holding the single lock document.
-  static const String lockKey = 'refreshLock';
+  /// Row key holding this lease's single document.
+  final String lockKey;
 
   @override
   Future<bool> acquire(String owner, Duration ttl) {

@@ -496,10 +496,12 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     String? scheduleError;
     try {
       await _applyServerUrl(serverUrl);
-      // A new session never inherits the previous account's work: rows left by
-      // a sign-out that died halfway must not upload to this account.
-      await _wipeAccountData();
       await auth.signIn(email: email, password: password);
+      // Only once the credentials were accepted: a typo must not cost the
+      // previous session its queue. A new session still never inherits the old
+      // account's work, so rows left by a sign-out that died halfway must not
+      // upload to this account.
+      await _wipeAccountData();
       _authRequired = false;
       signedIn = true;
       // signOut() cancels every scheduled task, so signing back in must
@@ -596,7 +598,9 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
       // Only expose the new settings once both the save and re-register
       // succeeded, so a failed write leaves the UI on the persisted values.
       _settings = next;
-      if (scopeChanged) await _resetScope();
+      if (scopeChanged) {
+        await _resetScope();
+      }
     } finally {
       _busy = false;
       _notify();
@@ -675,10 +679,13 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     _notify();
     try {
       final report = await coordinator.run();
-      final stats = await queue.stats();
       // A sign-out happened while the pass was running: its results describe
       // an account that is gone, so never write them back.
       if (generation != _generation) return;
+      // Another isolate owns the queue right now and did nothing that this
+      // pass could report; keep the state the last real pass left behind.
+      if (report.alreadyRunning) return;
+      final stats = await queue.stats();
       // Without this, a pass that scans nothing looks identical to one that
       // found nothing worth queueing.
       if (kDebugMode) debugPrint('photox pass: $report');

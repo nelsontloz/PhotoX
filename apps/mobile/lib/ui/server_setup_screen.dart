@@ -108,6 +108,8 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                         enableSuggestions: false,
                         validator: _validateUrl,
                         autovalidateMode: AutovalidateMode.onUserInteraction,
+                        // Rebuilds the plain-http warning as the scheme changes.
+                        onChanged: (_) => setState(() {}),
                         onFieldSubmitted: (_) => _submit(),
                         decoration: fieldBoxDecoration(
                           context,
@@ -124,6 +126,17 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                           height: 1.4,
                         ),
                       ),
+                      if (insecureServerWarning(_url.text) case final warning?)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            warning,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
                       if (_error != null) ...<Widget>[
                         const SizedBox(height: 12),
                         Text(

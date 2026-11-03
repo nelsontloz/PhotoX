@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import '../core/api_client.dart';
 import '../core/auth_models.dart';
 import '../core/network_status.dart';
+import '../core/refresh_lock.dart';
 import '../media/media_filter.dart';
 import '../media/photo_observer.dart';
 import '../settings/settings_store.dart';
@@ -49,6 +50,10 @@ class SyncReport {
   /// True when the pass did nothing because backups are paused.
   bool paused = false;
 
+  /// True when another isolate already runs a pass over this queue, so this
+  /// one did nothing and changed nothing.
+  bool alreadyRunning = false;
+
   /// True when uploads are held because `wifiOnly` is on and the link is
   /// metered. Discovery still ran.
   bool waitingForWifi = false;
@@ -62,7 +67,8 @@ class SyncReport {
       'enqueued: $enqueued, uploaded: $uploaded, duplicates: $duplicates, '
       'failed: $failed, skipped: $skipped, remaining: $remaining, '
       'authRequired: $authRequired, paused: $paused, '
-      'waitingForWifi: $waitingForWifi'
+      'waitingForWifi: $waitingForWifi, '
+      'alreadyRunning: $alreadyRunning'
       '${error == null ? '' : ', error: $error'})';
 }
 
@@ -83,7 +89,9 @@ class SyncCoordinator {
     DateTime Function()? clock,
     this.filter = const MediaFilter(),
     this.network = const ConnectivityNetworkStatus(),
-  }) : clock = clock ?? DateTime.now;
+    RefreshLock? passLock,
+  }) : clock = clock ?? DateTime.now,
+       passLock = passLock ?? MemoryRefreshLock();
 
   /// Queue persistence for discovery and per-asset state.
   final UploadQueue queue;
@@ -94,7 +102,7 @@ class SyncCoordinator {
   /// Per-asset upload pipeline.
   final Uploader uploader;
 
-  /// User preferences (`includeVideos`, `backfill`).
+  /// User preferences (`includeVideos`, `paused`, `wifiOnly`, album scope).
   final SettingsStore settingsStore;
 
   /// Transport used only for the batch dedup pre-check.
@@ -105,6 +113,30 @@ class SyncCoordinator {
 
   /// Injectable wall clock so tests can assert scheduling.
   final DateTime Function() clock;
+
+  /// Cross-isolate lease held for the duration of one pass.
+  ///
+  /// The UI isolate and the Workmanager isolate share one drift file and one
+  /// queue, so two passes at once stomp each other's rows and spool files.
+  /// AppServices wires the drift-backed implementation; the in-memory default
+  /// only serialises passes inside one isolate.
+  final RefreshLock passLock;
+
+  /// How long this pass owns [passLock] before another isolate may take it.
+  ///
+  /// Renewed before every asset, so it only has to outlast one prepare+upload.
+  /// It is also the wait a killed app leaves behind: a process that dies mid-
+  /// pass keeps the row until it expires, and the next launch's pass is then
+  /// skipped, so this must stay short (a real install force-stops the app).
+  ///
+  /// shortcut: no lease heartbeat during one upload, so an asset that runs
+  /// longer than this can still be picked up by another pass on Android; renew
+  /// from inside the uploader's part loop if that is ever observed.
+  static const Duration passLease = Duration(minutes: 2);
+
+  static int _ownerCounter = 0;
+  final String _owner =
+      'sync-${DateTime.now().microsecondsSinceEpoch}-${_ownerCounter++}';
 
   /// Client-side container/MIME filter.
   final MediaFilter filter;
@@ -130,153 +162,178 @@ class SyncCoordinator {
     final startedAt = clock();
     final report = SyncReport(permission: PhotoPermission.notDetermined);
 
-    await queue.resetInterrupted();
-    final settings = await settingsStore.load();
-
-    // Paused means paused: no permission prompt, no scan, no upload.
-    if (settings.paused) {
-      report.paused = true;
+    // The lease is taken before any write: a pass that does not own the queue
+    // must not even normalise its rows, or it flips the other isolate's live
+    // work back to `pending` and uploads the same asset twice.
+    if (!await _holdLease()) {
+      report.alreadyRunning = true;
       report.remaining = (await queue.stats()).pending;
       return report;
     }
-
-    final permission = await observer.ensurePermission();
-    report.permission = permission;
-    if (permission != PhotoPermission.authorized &&
-        permission != PhotoPermission.limited) {
-      return report;
-    }
-
-    var watermark = _parseWatermark(await queue.getMeta(scanWatermarkKey));
-    if (!settings.backfill && watermark == null) {
-      watermark = clock();
-      await queue.setMeta(
-        scanWatermarkKey,
-        watermark.toUtc().toIso8601String(),
-      );
-    }
-
-    final folderIds = await _scanScope(settings);
-    // The flag is cleared in `finally`: a failed scan must not leave the
-    // dashboard waiting on a spinner forever.
-    onDiscovery?.call(true);
     try {
-      final List<AssetCandidate> scanned;
-      try {
-        scanned = await observer.scanNew(
-          since: watermark,
-          folderIds: folderIds,
-        );
-      } on Object catch (error) {
-        report.error = error.toString();
+      await queue.resetInterrupted();
+      final settings = await settingsStore.load();
+
+      // Paused means paused: no permission prompt, no scan, no upload.
+      if (settings.paused) {
+        report.paused = true;
+        report.remaining = (await queue.stats()).pending;
         return report;
       }
-      report.scanned = scanned.length;
 
-      final supported = scanned
-          .where(
-            (candidate) => filter.isSupported(
-              candidate,
-              includeVideos: settings.includeVideos,
-            ),
-          )
-          .toList(growable: false);
-
-      final existing = await _existingIds(
-        supported.map((candidate) => candidate.localId).toList(growable: false),
-      );
-      await queue.enqueueAll(supported);
-      report.enqueued = supported
-          .where((candidate) => !existing.contains(candidate.localId))
-          .length;
-      if (kDebugMode) {
-        // A pass that queues nothing looks identical to one that scanned
-        // nothing; the window and the scope are the only way to tell.
-        debugPrint(
-          'photox scan: watermark=$watermark folders=$folderIds '
-          'scanned=${report.scanned} supported=${supported.length} '
-          'enqueued=${report.enqueued}',
-        );
+      final permission = await observer.ensurePermission();
+      report.permission = permission;
+      if (permission != PhotoPermission.authorized &&
+          permission != PhotoPermission.limited) {
+        return report;
       }
 
-      // Only eligible assets move the watermark, and only forward. An empty
-      // (or fully filtered) scan must not skip assets added while it was
-      // running, and an edited low-timestamp asset must not rewind the window.
-      final newest = _newestTimestamp(supported);
-      if (newest != null && (watermark == null || newest.isAfter(watermark))) {
-        watermark = newest;
-        await queue.setMeta(
-          scanWatermarkKey,
-          watermark.toUtc().toIso8601String(),
-        );
-      }
-    } finally {
-      onDiscovery?.call(false);
-    }
+      // No watermark means nothing has been scanned yet, so the first pass
+      // reads the whole library: assets taken before install are backed up too.
+      var watermark = _parseWatermark(await queue.getMeta(scanWatermarkKey));
 
-    final uploadBudgetStart = startedAt;
-    while (true) {
-      if (_budgetExhausted(uploadBudgetStart, budget)) break;
-
-      // Pause and the link check are re-read every batch: both can change
-      // while this pass is running.
-      final current = await settingsStore.load();
-      if (current.paused) {
-        report.paused = true;
-        break;
-      }
-      if (current.wifiOnly && !await _allowsUpload()) {
-        report.waitingForWifi = true;
-        break;
-      }
-
-      final batch = await queue.nextBatch(batchSize, now: clock());
-      if (batch.isEmpty) break;
-
-      final prepared = <String, PreparedUpload>{};
-      for (final item in batch) {
+      final folderIds = await _scanScope(settings);
+      // The flag is cleared in `finally`: a failed scan must not leave the
+      // dashboard waiting on a spinner forever.
+      onDiscovery?.call(true);
+      try {
+        final List<AssetCandidate> scanned;
         try {
-          prepared[item.localId] = await uploader.prepare(item);
+          scanned = await observer.scanNew(
+            since: watermark,
+            folderIds: folderIds,
+          );
         } on Object catch (error) {
-          if (await _handleFailure(item, error, report)) break;
+          report.error = error.toString();
+          return report;
         }
+        report.scanned = scanned.length;
+
+        final supported = scanned
+            .where(
+              (candidate) => filter.isSupported(
+                candidate,
+                includeVideos: settings.includeVideos,
+              ),
+            )
+            .toList(growable: false);
+
+        final existing = await _existingIds(
+          supported
+              .map((candidate) => candidate.localId)
+              .toList(growable: false),
+        );
+        await queue.enqueueAll(supported);
+        report.enqueued = supported
+            .where((candidate) => !existing.contains(candidate.localId))
+            .length;
+        if (kDebugMode) {
+          // A pass that queues nothing looks identical to one that scanned
+          // nothing; the window and the scope are the only way to tell.
+          debugPrint(
+            'photox scan: watermark=$watermark folders=$folderIds '
+            'scanned=${report.scanned} supported=${supported.length} '
+            'enqueued=${report.enqueued}',
+          );
+        }
+
+        // Only eligible assets move the watermark, and only forward. An empty
+        // (or fully filtered) scan must not skip assets added while it was
+        // running, and an edited low-timestamp asset must not rewind the window.
+        final newest = _newestTimestamp(supported);
+        if (newest != null &&
+            (watermark == null || newest.isAfter(watermark))) {
+          watermark = newest;
+          await queue.setMeta(
+            scanWatermarkKey,
+            watermark.toUtc().toIso8601String(),
+          );
+        }
+      } finally {
+        onDiscovery?.call(false);
       }
-      if (report.authRequired) break;
 
-      final hits = await _precheck(prepared.values, report);
-      if (report.authRequired) break;
-
-      for (final item in batch) {
+      final uploadBudgetStart = startedAt;
+      var lostLease = false;
+      while (!lostLease) {
         if (_budgetExhausted(uploadBudgetStart, budget)) break;
-        // A pause hit mid-batch stops after the asset that is already in
-        // flight, so no acknowledged part or spool is thrown away.
-        if ((await settingsStore.load()).paused) {
+
+        // Pause and the link check are re-read every batch: both can change
+        // while this pass is running.
+        final current = await settingsStore.load();
+        if (current.paused) {
           report.paused = true;
           break;
         }
-        final preparedItem = prepared[item.localId];
-        if (preparedItem == null) continue;
-        try {
-          final outcome = await uploader.process(
-            item,
-            prechecked: hits[preparedItem.sha256],
-            // A background pass stops at the part cap so its OS window can end
-            // between parts. A foreground pass has no window to respect, so it
-            // finishes the asset in one attempt instead of restarting at every
-            // 64 MiB boundary.
-            maxParts: budget == null ? 0 : uploader.maxPartsPerPass,
-          );
-          _countOutcome(outcome, report);
-        } on Object catch (error) {
-          if (await _handleFailure(item, error, report)) break;
+        if (current.wifiOnly && !await _allowsUpload()) {
+          report.waitingForWifi = true;
+          break;
         }
-      }
-      if (report.authRequired || report.paused) break;
-    }
 
-    report.remaining = (await queue.stats()).pending;
-    return report;
+        final batch = await queue.nextBatch(batchSize, now: clock());
+        if (batch.isEmpty) break;
+
+        final prepared = <String, PreparedUpload>{};
+        for (final item in batch) {
+          // Renewed per asset, because one prepare or upload can outlive the
+          // lease; a lost lease means another isolate owns the queue now.
+          if (!await _holdLease()) {
+            lostLease = true;
+            break;
+          }
+          try {
+            prepared[item.localId] = await uploader.prepare(item);
+          } on Object catch (error) {
+            if (await _handleFailure(item, error, report)) break;
+          }
+        }
+        if (report.authRequired || lostLease) break;
+
+        final hits = await _precheck(prepared.values, report);
+        if (report.authRequired) break;
+
+        for (final item in batch) {
+          if (_budgetExhausted(uploadBudgetStart, budget)) break;
+          if (!await _holdLease()) {
+            lostLease = true;
+            break;
+          }
+          // A pause hit mid-batch stops after the asset that is already in
+          // flight, so no acknowledged part or spool is thrown away.
+          if ((await settingsStore.load()).paused) {
+            report.paused = true;
+            break;
+          }
+          final preparedItem = prepared[item.localId];
+          if (preparedItem == null) continue;
+          try {
+            final outcome = await uploader.process(
+              item,
+              prechecked: hits[preparedItem.sha256],
+              // A background pass stops at the part cap so its OS window can end
+              // between parts. A foreground pass has no window to respect, so it
+              // finishes the asset in one attempt instead of restarting at every
+              // 64 MiB boundary.
+              maxParts: budget == null ? 0 : uploader.maxPartsPerPass,
+            );
+            _countOutcome(outcome, report);
+          } on Object catch (error) {
+            if (await _handleFailure(item, error, report)) break;
+          }
+        }
+        if (report.authRequired || report.paused) break;
+      }
+
+      report.remaining = (await queue.stats()).pending;
+      return report;
+    } finally {
+      await passLock.release(_owner);
+    }
   }
+
+  /// Takes or renews the cross-isolate pass lease; false when another pass
+  /// holds it.
+  Future<bool> _holdLease() => passLock.acquire(_owner, passLease);
 
   /// Albums this pass scans; null means the whole library.
   ///

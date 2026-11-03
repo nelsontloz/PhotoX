@@ -20,9 +20,10 @@ import 'upload/uploader.dart';
 /// Wired object graph for one isolate.
 ///
 /// The UI isolate calls [initialize]; the Workmanager callback uses
-/// [initializeBackground]. Both isolates share the same drift database file,
-/// and refresh rotation is serialized through [DriftRefreshLock] so the two
-/// never rotate the token pair in parallel.
+/// [initializeBackground]. Both isolates share the same drift database file;
+/// refresh rotation and the sync pass are each serialized through a
+/// [DriftRefreshLock], so the two never rotate the token pair in parallel and
+/// never run two passes over the same queue.
 ///
 /// Call exactly one of the builders once per isolate and [dispose] it when the
 /// isolate is done.
@@ -182,6 +183,9 @@ class AppServices {
       settingsStore: settingsStore,
       dedupTransport: ApiUploadTransport(api),
       retryPolicy: RetryPolicy(),
+      // One pass at a time across isolates: the UI and the Workmanager task
+      // share this queue, so a second pass would upload the same assets.
+      passLock: DriftRefreshLock(db, namespace: 'sync', lockKey: 'pass'),
     );
     final backgroundScheduler = scheduler ?? BackgroundScheduler();
     return AppServices(

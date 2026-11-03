@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:photo_manager/photo_manager.dart';
 
 import 'app.dart';
 import 'app_services.dart';
@@ -8,6 +9,16 @@ import 'upload/database.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // photo_manager copies every exported original into the app cache, so a full
+  // backup leaves a second copy of the library on the device. The plugin asks
+  // apps to clear it at launch, which is the cheapest moment: this isolate has
+  // not started a pass yet.
+  try {
+    await PhotoManager.clearFileCache();
+  } on Object {
+    // A cache that cannot be cleared is not a reason to refuse to start.
+  }
 
   final db = AppDatabase();
   final settingsStore = SettingsStore(db);
