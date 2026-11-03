@@ -7,6 +7,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photox_mobile/core/api_client.dart';
 import 'package:photox_mobile/core/network_status.dart';
+import 'package:photox_mobile/core/refresh_lock.dart';
 import 'package:photox_mobile/media/hasher.dart';
 import 'package:photox_mobile/media/photo_observer.dart';
 import 'package:photox_mobile/settings/settings_store.dart';
@@ -48,7 +49,7 @@ void main() {
     if (await temp.exists()) await temp.delete(recursive: true);
   });
 
-  SyncCoordinator makeCoordinator({Uploader? uploader}) {
+  SyncCoordinator makeCoordinator({Uploader? uploader, RefreshLock? passLock}) {
     final pipeline =
         uploader ??
         Uploader(
@@ -69,6 +70,7 @@ void main() {
       retryPolicy: RetryPolicy(jitter: 0),
       clock: () => now,
       network: network,
+      passLock: passLock,
     );
   }
 
@@ -131,6 +133,29 @@ void main() {
 
     expect(report.error, contains('library unavailable'));
     expect(seen, <bool>[true, false]);
+  });
+
+  test('a second pass over the same queue is skipped, never raced', () async {
+    await seed('asset-a');
+    final first = makeCoordinator(passLock: DriftRefreshLock(db));
+    final second = makeCoordinator(passLock: DriftRefreshLock(db));
+
+    // The UI isolate starts a pass; the background isolate asks for one too.
+    final running = first.run();
+    final other = await second.run();
+
+    expect(other.alreadyRunning, isTrue);
+    expect(other.scanned, 0);
+
+    final report = await running;
+    expect(report.alreadyRunning, isFalse);
+    expect(report.uploaded, 1);
+    expect(observer.scanCalls, 1, reason: 'a skipped pass reads nothing');
+    expect(transport.uploadCalls, 1);
+    expect(
+      (await queue.byLocalId('asset-a'))?.state,
+      UploadState.uploaded.name,
+    );
   });
 
   test('does nothing at all while paused', () async {
@@ -393,26 +418,6 @@ void main() {
     expect(
       await queue.getMeta(SyncCoordinator.scanWatermarkKey),
       eligibleModified.toIso8601String(),
-    );
-  });
-
-  test('with backfill disabled starts at now and skips old assets', () async {
-    await settings.save(const AppSettings(backfill: false));
-    await seed(
-      'asset-old',
-      takenAt: now.subtract(const Duration(days: 2)),
-      modifiedAt: now.subtract(const Duration(days: 1)),
-    );
-
-    final report = await makeCoordinator().run();
-
-    expect(observer.lastSince, now);
-    expect(report.scanned, 0);
-    expect(report.enqueued, 0);
-    expect(await db.select(db.queuedAssets).get(), isEmpty);
-    expect(
-      await queue.getMeta(SyncCoordinator.scanWatermarkKey),
-      now.toIso8601String(),
     );
   });
 

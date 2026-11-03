@@ -40,9 +40,6 @@ Future<AppServices> bootPipeline({bool reset = true, TokenStore? store}) async {
       // The emulator's link is unmetered, but this must never be what a red
       // run is about.
       wifiOnly: false,
-      // Scan the whole library on the first pass instead of only what arrives
-      // after install; the fixtures are pushed before the app starts.
-      backfill: true,
     ),
   );
   final auth = AuthManager(

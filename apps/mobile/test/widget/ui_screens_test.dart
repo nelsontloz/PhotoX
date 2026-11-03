@@ -985,8 +985,18 @@ void main() {
       expect(saved.single.uploadAllFolders, isFalse);
       expect(await _summary(tester), '1 folder: Screenshots');
 
-      // Dropping the last album leaves the camera album, not "nothing".
+      // Dropping the last album leaves the camera album, not "nothing" — but
+      // first it asks, because narrowing drops queued work.
       await _tapInView(tester, find.text('Screenshots'));
+      expect(find.byKey(const Key('scope-confirm')), findsOneWidget);
+      expect(saved, hasLength(1));
+
+      await _tapInView(tester, find.byKey(const Key('scope-cancel')));
+      expect(saved, hasLength(1), reason: 'cancelling keeps the scope');
+      expect(await _summary(tester), '1 folder: Screenshots');
+
+      await _tapInView(tester, find.text('Screenshots'));
+      await _tapInView(tester, find.byKey(const Key('scope-confirm')));
 
       expect(saved, hasLength(2));
       expect(saved.last.uploadFolderIds, isEmpty);

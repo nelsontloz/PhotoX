@@ -161,19 +161,24 @@ void main() {
     expect(create['ignore'], isFalse);
   });
 
-  test(
-    'fileFor reuses the scan-time file instead of exporting twice',
-    () async {
-      final observer = PhotoManagerObserver();
-      addTearDown(observer.dispose);
+  test('discovery never exports bytes; fileFor fetches one asset', () async {
+    final observer = PhotoManagerObserver();
+    addTearDown(observer.dispose);
 
-      await observer.scanNew();
-      final file = await observer.fileFor('asset-1');
+    final candidates = await observer.scanNew();
 
-      expect(file?.path, assetFile.path);
-      expect(calls.where((call) => call.method == 'getFullFile'), hasLength(1));
-    },
-  );
+    expect(candidates, isNotEmpty);
+    expect(candidates.first.sizeBytes, 0);
+    expect(
+      calls.where((call) => call.method == 'getFullFile'),
+      isEmpty,
+      reason: 'a scan must not materialise the whole library',
+    );
+
+    final file = await observer.fileFor('asset-1');
+    expect(file?.path, assetFile.path);
+    expect(calls.where((call) => call.method == 'getFullFile'), hasLength(1));
+  });
 
   test(
     'playableVideo hands back the platform file, asking for the original',

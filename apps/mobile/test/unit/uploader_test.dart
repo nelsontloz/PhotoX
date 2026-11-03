@@ -40,12 +40,16 @@ void main() {
     if (await temp.exists()) await temp.delete(recursive: true);
   });
 
-  Uploader makeUploader({int threshold = 64, int maxPartsPerPass = 8}) {
+  Uploader makeUploader({
+    int threshold = 64,
+    int maxPartsPerPass = 8,
+    Hasher? hasher,
+  }) {
     return Uploader(
       queue: queue,
       uploadTransport: uploads,
       sessionTransport: sessions,
-      hasher: const Hasher(),
+      hasher: hasher ?? const Hasher(),
       observer: observer,
       spoolDirectory: '${temp.path}/spool',
       thresholdBytes: threshold,
@@ -130,6 +134,20 @@ void main() {
         expect(await File(second.spoolPath).readAsBytes(), bytes);
       },
     );
+
+    test('a resumed prepare does not re-hash an unchanged spool', () async {
+      final bytes = utf8.encode('resumed spool');
+      final item = await enqueue('prepare-4', bytes);
+      final hasher = _CountingHasher();
+      final uploader = makeUploader(hasher: hasher);
+
+      await uploader.prepare(item);
+      expect(hasher.calls, 1);
+
+      // What a bounded part batch does: prepare the same row again next pass.
+      await uploader.prepare((await queue.byLocalId('prepare-4'))!);
+      expect(hasher.calls, 1, reason: 'a verified spool is not read twice');
+    });
   });
 
   group('single upload path', () {
@@ -804,5 +822,16 @@ class _FakeSessionTransport implements SessionTransport {
     aborted.add(uploadId);
     final error = abortError;
     if (error != null) throw error;
+  }
+}
+
+/// Counts how often the uploader reads a spool back off disk.
+class _CountingHasher extends Hasher {
+  int calls = 0;
+
+  @override
+  Future<String> sha256OfFile(String path) {
+    calls++;
+    return super.sha256OfFile(path);
   }
 }

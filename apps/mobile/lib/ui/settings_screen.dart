@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../media/photo_observer.dart';
 import '../settings/settings_store.dart';
+import 'albums_screen.dart' show confirmScopeNarrowing;
 import 'widgets/app_background.dart';
 import 'widgets/count_format.dart';
 import 'widgets/section_label.dart';
@@ -127,6 +128,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _setAllFolders(bool value) async {
+    // Turning the switch off drops every album but the camera one, which also
+    // drops queued work: the same warning the Albums tab gives.
+    if (!value) {
+      final confirmed = await confirmScopeNarrowing(
+        context,
+        title: 'Stop backing up every album?',
+        action: 'Back up fewer albums',
+      );
+      if (!confirmed || !mounted) return;
+    }
     // The whole library wins over stored ids, so drop them rather than leave a
     // selection that would reappear when the switch goes off.
     await _apply(
@@ -140,7 +151,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!value && _showFolders && _folders == null) await _loadFolders();
   }
 
-  Future<void> _setFolderSelected(MediaFolder folder, bool selected) {
+  Future<void> _setFolderSelected(MediaFolder folder, bool selected) async {
+    if (!selected) {
+      final confirmed = await confirmScopeNarrowing(
+        context,
+        title: 'Remove “${folder.name}” from backup?',
+        action: 'Remove',
+      );
+      if (!confirmed || !mounted) return;
+    }
     final ids = <String>[..._settings.uploadFolderIds]..remove(folder.id);
     if (selected) ids.add(folder.id);
     return _apply(
@@ -396,29 +415,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ? null
                                   : (value) => _apply(
                                       _settings.copyWith(includeVideos: value),
-                                    ),
-                            ),
-                            _divider(scheme),
-                            SwitchListTile(
-                              contentPadding: const EdgeInsets.fromLTRB(
-                                16,
-                                6,
-                                16,
-                                6,
-                              ),
-                              secondary: const Icon(Icons.history_rounded),
-                              title: const Text('Backfill'),
-                              subtitle: Text(
-                                _settings.backfill
-                                    ? 'Include photos taken before PhotoX was '
-                                          'installed.'
-                                    : 'Start with new photos from now on.',
-                              ),
-                              value: _settings.backfill,
-                              onChanged: _busy
-                                  ? null
-                                  : (value) => _apply(
-                                      _settings.copyWith(backfill: value),
                                     ),
                             ),
                           ],

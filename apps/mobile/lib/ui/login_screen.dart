@@ -131,7 +131,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _onServerChanged(String value) {
     final valid = normalizeServerUrl(value) != null;
-    if (valid != _serverValid) setState(() => _serverValid = valid);
+    // Always rebuild: the plain-http warning is decided by the scheme, which
+    // does not change validity.
+    setState(() => _serverValid = valid);
     _clearErrorOnEdit(value);
   }
 
@@ -145,6 +147,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final errorText = _errorText;
+    final insecureWarning = insecureServerWarning(_server.text);
 
     return AppBackground(
       child: Scaffold(
@@ -232,6 +235,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : null,
                           ),
                         ),
+                        if (insecureWarning != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              insecureWarning,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
                         const SizedBox(height: 16),
                         const FieldLabel('Email'),
                         const SizedBox(height: 6),

@@ -66,8 +66,8 @@ void main() {
         .into(db.keyValues)
         .insert(
           KeyValuesCompanion.insert(
-            namespace: DriftRefreshLock.namespace,
-            key: DriftRefreshLock.lockKey,
+            namespace: DriftRefreshLock.defaultNamespace,
+            key: DriftRefreshLock.defaultLockKey,
             value: '{not-json',
             updatedAt: DateTime(2026),
           ),

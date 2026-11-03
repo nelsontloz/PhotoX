@@ -28,13 +28,6 @@ class PhotoManagerObserver implements PhotoObserver {
 
   final StreamController<void> _changes = StreamController<void>.broadcast();
 
-  /// Files materialised by the current [scanNew] pass, keyed by asset id.
-  ///
-  /// [Uploader.prepare] asks [fileFor] for the same bytes right after a scan.
-  /// Keeping the path avoids a second PhotoKit/MediaStore export for assets
-  /// whose bytes are already on disk. Cleared at the start of every scan.
-  final Map<String, File> _scanFiles = <String, File>{};
-
   /// Folder listing memoised for the process.
   ///
   /// Dropped by [_onChange], so an album created or deleted by another app
@@ -196,7 +189,6 @@ class PhotoManagerObserver implements PhotoObserver {
     DateTime? since,
     List<String>? folderIds,
   }) async {
-    _scanFiles.clear();
     final now = DateTime.now();
     final filterOption = FilterOptionGroup(
       imageOption: const FilterOption(needTitle: true),
@@ -226,7 +218,7 @@ class PhotoManagerObserver implements PhotoObserver {
         if (assets.isEmpty) break;
         for (final asset in assets) {
           if (!seen.add(asset.id)) continue;
-          final candidate = await _toCandidate(asset);
+          final candidate = _displayCandidate(asset);
           if (candidate != null) candidates.add(candidate);
         }
         if (assets.length < pageSize) break;
@@ -307,14 +299,6 @@ class PhotoManagerObserver implements PhotoObserver {
 
   @override
   Future<File?> fileFor(String localId) async {
-    final cached = _scanFiles[localId];
-    if (cached != null) {
-      try {
-        if (await cached.exists()) return cached;
-      } on Object {
-        // Fall through and ask the platform for a fresh path.
-      }
-    }
     try {
       final entity = await AssetEntity.fromId(localId);
       if (entity == null) return null;
@@ -433,7 +417,6 @@ class PhotoManagerObserver implements PhotoObserver {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
-    _scanFiles.clear();
     _folders = null;
     _paths.clear();
     _forgetThumbs(null);
@@ -460,8 +443,12 @@ class PhotoManagerObserver implements PhotoObserver {
     _changes.add(null);
   }
 
-  /// Cheap [AssetCandidate] for the grid: no byte export, so the candidate's
-  /// `sizeBytes` is 0 and only the uploader may decide upload strategy.
+  /// Metadata-only [AssetCandidate]: never exports bytes.
+  ///
+  /// Discovery and the grid both use this. Reading `originFile` here would
+  /// materialise a cache copy of every asset in the window before anything is
+  /// queued, and on iOS would download the whole iCloud library first; the
+  /// uploader measures the real length once it prepares one asset.
   AssetCandidate? _displayCandidate(AssetEntity asset) {
     final kind = switch (asset.type) {
       AssetType.image => MediaKind.photo,
@@ -482,7 +469,8 @@ class PhotoManagerObserver implements PhotoObserver {
       fileName: fileName,
       mimeType: filter.inferMimeType(fileName) ?? asset.mimeType ?? '',
       // shortcut: entity.sizeBytes is not exposed by photo_manager and a real
-      // size needs an originFile export; the grid does not need it.
+      // size needs an originFile export; every reader tolerates 0, and
+      // `Uploader.prepare` records the measured length before uploading.
       sizeBytes: 0,
       takenAt: asset.createDateSecond == null ? null : asset.createDateTime,
       modifiedAt: asset.modifiedDateSecond == null
@@ -492,63 +480,6 @@ class PhotoManagerObserver implements PhotoObserver {
       width: asset.width,
       height: asset.height,
       durationSeconds: asset.duration,
-    );
-  }
-
-  Future<AssetCandidate?> _toCandidate(AssetEntity asset) async {
-    final kind = switch (asset.type) {
-      AssetType.image => MediaKind.photo,
-      AssetType.video => MediaKind.video,
-      _ => null,
-    };
-    if (kind == null) return null;
-
-    final File? file;
-    try {
-      file = await asset.originFile;
-    } on Object {
-      // iCloud-only assets can fail to materialise; they are retried by a
-      // later scan once the system has downloaded them.
-      return null;
-    }
-    if (file == null) return null;
-
-    final int length;
-    try {
-      length = await file.length();
-    } on FileSystemException {
-      return null;
-    }
-    _scanFiles[asset.id] = file;
-
-    var fileName = asset.title?.trim();
-    if (fileName == null || fileName.isEmpty) {
-      try {
-        final asyncTitle = (await asset.titleAsync).trim();
-        if (asyncTitle.isNotEmpty) fileName = asyncTitle;
-      } on Object {
-        fileName = null;
-      }
-    }
-    fileName ??= _basename(file.path);
-
-    final takenAt = asset.createDateSecond == null
-        ? null
-        : asset.createDateTime;
-    final modifiedAt = asset.modifiedDateSecond == null
-        ? null
-        : asset.modifiedDateTime;
-
-    return AssetCandidate(
-      localId: asset.id,
-      platform: _platform,
-      kind: kind,
-      fileName: fileName,
-      mimeType: filter.inferMimeType(fileName) ?? asset.mimeType ?? '',
-      sizeBytes: length,
-      takenAt: takenAt,
-      modifiedAt: modifiedAt,
-      relativePath: asset.relativePath,
     );
   }
 

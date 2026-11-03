@@ -25,7 +25,6 @@ void main() {
       chargingOnly: true,
       includeVideos: true,
       notificationsEnabled: false,
-      backfill: false,
       source: 'albums',
       apiBaseUrl: 'http://192.168.1.10:3000',
       paused: true,
@@ -88,7 +87,6 @@ void main() {
     expect(loaded.chargingOnly, isFalse);
     expect(loaded.includeVideos, isFalse);
     expect(loaded.notificationsEnabled, isFalse);
-    expect(loaded.backfill, isTrue);
     expect(loaded.source, 'cameraRoll');
     expect(loaded.uploadFolderIds, isEmpty);
     expect(loaded.uploadAllFolders, isFalse);
@@ -122,7 +120,7 @@ void main() {
     await store.save(const AppSettings(wifiOnly: true, includeVideos: true));
 
     final rows = await db.select(db.keyValues).get();
-    expect(rows, hasLength(10));
+    expect(rows, hasLength(9));
     final loaded = await store.load();
     expect(loaded.wifiOnly, isTrue);
     expect(loaded.includeVideos, isTrue);

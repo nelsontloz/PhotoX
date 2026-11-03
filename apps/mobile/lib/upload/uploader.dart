@@ -173,6 +173,18 @@ class Uploader {
   /// Live progress slot shared with the UI, when one is wired.
   final TransferProgress? progress;
 
+  /// Spools whose bytes this isolate already verified, keyed by spool path.
+  ///
+  /// The value is the `length|sha256` signature that was checked, so a spool
+  /// rewritten for an edited asset is verified again. Re-hashing a multi-gigabyte
+  /// spool before every resumed part batch made a background pass spend its whole
+  /// window reading the file it had just written.
+  final Map<String, String> _verifiedSpools = <String, String>{};
+
+  /// Verified entries kept before the cache starts over. A pass never needs
+  /// more than a batch, and the spool for an asset is stable across passes.
+  static const int _verifiedSpoolLimit = 1024;
+
   /// Copies [item]'s exact bytes into a stable spool and hashes them.
   ///
   /// A previously prepared spool is reused only when its file still exists,
@@ -225,6 +237,10 @@ class Uploader {
       await temporary.rename(spool.path);
 
       final sha256 = await hasher.sha256OfFile(spool.path);
+      // The bytes were just hashed from disk, so this spool is verified as-is;
+      // record it before anything can throw and force the work twice.
+      final signature = await _spoolSignature(spool, length, sha256);
+      if (signature != null) _rememberVerified(spool.path, signature);
       final protocol = _protocolFor(length);
       await queue.markState(
         localId: item.localId,
@@ -326,8 +342,15 @@ class Uploader {
       if (length != item.sizeBytes) return null;
       // Length proves nothing about the content: an unclean shutdown can leave
       // a full-length file whose pages never reached disk. Re-hash so a damaged
-      // spool is re-copied from the library instead of uploaded as-is.
-      if (await hasher.sha256OfFile(spoolPath) != sha256) return null;
+      // spool is re-copied from the library instead of uploaded as-is — but
+      // only when the file changed since this isolate last checked it, or every
+      // resumed part batch pays for the whole file again.
+      final signature = await _spoolSignature(spool, length, sha256);
+      if (signature == null) return null;
+      if (_verifiedSpools[spoolPath] != signature) {
+        if (await hasher.sha256OfFile(spoolPath) != sha256) return null;
+        _rememberVerified(spoolPath, signature);
+      }
       return PreparedUpload(
         localId: item.localId,
         sha256: sha256,
@@ -652,7 +675,6 @@ class Uploader {
           uploadId: uploadId,
           partIndex: index,
           bytes: bytes.length,
-          sha256: Hasher.sha256OfBytes(bytes),
         );
         sent++;
       }
@@ -800,6 +822,26 @@ class Uploader {
   String _spoolPathFor(String localId) {
     final digest = Hasher.sha256OfBytes(utf8.encode(localId));
     return '$spoolDirectory/$digest';
+  }
+
+  void _rememberVerified(String spoolPath, String signature) {
+    if (_verifiedSpools.length >= _verifiedSpoolLimit) _verifiedSpools.clear();
+    _verifiedSpools[spoolPath] = signature;
+  }
+
+  /// Identity of one verified spool: its length, when it was written, and the
+  /// digest the queue recorded. A rewrite of the same length still misses.
+  static Future<String?> _spoolSignature(
+    File spool,
+    int length,
+    String sha256,
+  ) async {
+    try {
+      final modified = await spool.lastModified();
+      return '$length|${modified.millisecondsSinceEpoch}|$sha256';
+    } on FileSystemException {
+      return null;
+    }
   }
 
   UploadProtocol _protocolFor(int sizeBytes) => sizeBytes <= thresholdBytes

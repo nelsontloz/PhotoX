@@ -23,16 +23,6 @@ void main() {
 
     final small = await seededAsset(services, smallPhotoName);
     final large = await seededAsset(services, largePhotoName);
-    expect(
-      small.sizeBytes,
-      lessThanOrEqualTo(8 * 1024 * 1024),
-      reason: 'fixture must stay under the single-POST threshold',
-    );
-    expect(
-      large.sizeBytes,
-      greaterThan(3 * 8 * 1024 * 1024),
-      reason: 'fixture must need more than three 8 MiB parts',
-    );
 
     await signInPipeline(services, user);
     final report = await services.coordinator.run();
@@ -42,16 +32,26 @@ void main() {
     expect(report.uploaded, greaterThanOrEqualTo(2), reason: '$report');
 
     final smallRow = await queueRow(services, small.localId);
+    expect(
+      smallRow.sizeBytes,
+      lessThanOrEqualTo(8 * 1024 * 1024),
+      reason: 'fixture must stay under the single-POST threshold',
+    );
     expect(smallRow.protocol, UploadProtocol.single.name);
     expect(smallRow.state, UploadState.uploaded.name);
     expect(smallRow.partCount, isNull, reason: 'a single POST has no parts');
 
     final largeRow = await queueRow(services, large.localId);
+    expect(
+      largeRow.sizeBytes,
+      greaterThan(3 * 8 * 1024 * 1024),
+      reason: 'fixture must need more than three 8 MiB parts',
+    );
     expect(largeRow.protocol, UploadProtocol.session.name);
     expect(largeRow.state, UploadState.uploaded.name);
     expect(
       largeRow.partCount,
-      (large.sizeBytes + 8 * 1024 * 1024 - 1) ~/ (8 * 1024 * 1024),
+      (largeRow.sizeBytes + 8 * 1024 * 1024 - 1) ~/ (8 * 1024 * 1024),
       reason: 'the server fixes the 8 MiB part grid',
     );
     expect(largeRow.uploadId, isNotNull);

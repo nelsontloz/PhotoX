@@ -12,7 +12,6 @@ class AppSettings {
     this.chargingOnly = false,
     this.includeVideos = false,
     this.notificationsEnabled = true,
-    this.backfill = true,
     this.source = 'cameraRoll',
     this.apiBaseUrl = '',
     this.paused = false,
@@ -44,9 +43,6 @@ class AppSettings {
   /// will need the POST_NOTIFICATIONS permission when one is wired up.
   final bool notificationsEnabled;
 
-  /// Also enqueue assets that already existed before the app was installed.
-  final bool backfill;
-
   /// Library scope, `cameraRoll` for the whole library.
   final String source;
 
@@ -63,7 +59,6 @@ class AppSettings {
     bool? chargingOnly,
     bool? includeVideos,
     bool? notificationsEnabled,
-    bool? backfill,
     String? source,
     String? apiBaseUrl,
     bool? paused,
@@ -75,7 +70,6 @@ class AppSettings {
       chargingOnly: chargingOnly ?? this.chargingOnly,
       includeVideos: includeVideos ?? this.includeVideos,
       notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
-      backfill: backfill ?? this.backfill,
       source: source ?? this.source,
       apiBaseUrl: apiBaseUrl ?? this.apiBaseUrl,
       paused: paused ?? this.paused,
@@ -90,7 +84,6 @@ class AppSettings {
     'chargingOnly': chargingOnly.toString(),
     'includeVideos': includeVideos.toString(),
     'notificationsEnabled': notificationsEnabled.toString(),
-    'backfill': backfill.toString(),
     'source': source,
     'apiBaseUrl': apiBaseUrl,
     'paused': paused.toString(),
@@ -106,7 +99,6 @@ class AppSettings {
           other.chargingOnly == chargingOnly &&
           other.includeVideos == includeVideos &&
           other.notificationsEnabled == notificationsEnabled &&
-          other.backfill == backfill &&
           other.source == source &&
           other.apiBaseUrl == apiBaseUrl &&
           other.paused == paused &&
@@ -119,7 +111,6 @@ class AppSettings {
     chargingOnly,
     includeVideos,
     notificationsEnabled,
-    backfill,
     source,
     apiBaseUrl,
     paused,
@@ -131,7 +122,7 @@ class AppSettings {
   String toString() =>
       'AppSettings(wifiOnly: $wifiOnly, chargingOnly: $chargingOnly, '
       'includeVideos: $includeVideos, '
-      'notificationsEnabled: $notificationsEnabled, backfill: $backfill, '
+      'notificationsEnabled: $notificationsEnabled, '
       'source: $source, apiBaseUrl: $apiBaseUrl, paused: $paused, '
       'uploadFolderIds: $uploadFolderIds, '
       'uploadAllFolders: $uploadAllFolders)';
@@ -165,7 +156,6 @@ class SettingsStore {
         values['notificationsEnabled'],
         defaults.notificationsEnabled,
       ),
-      backfill: _readBool(values['backfill'], defaults.backfill),
       source: _readString(values['source'], defaults.source),
       apiBaseUrl: _readString(values['apiBaseUrl'], defaults.apiBaseUrl),
       paused: _readBool(values['paused'], defaults.paused),
