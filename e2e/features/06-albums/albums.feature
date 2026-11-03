@@ -150,3 +150,16 @@ Feature: Albums UI flows
     And I show the album from its options menu
     Then the album page shows 1 album photos
     And my timeline still contains the album photo
+
+  Scenario: Toggling an album from its card menu hides it from the timeline
+    Given I am signed in
+    And I created an album via the API named "Card-menu album"
+    And I uploaded an album photo
+    When I add my album photo to the album
+    And I open "/albums"
+    And I hide the album from its card menu
+    Then the album card shows the hidden indicator
+    And my timeline does not contain the album photo
+    When I show the album from its card menu
+    Then the album card hides the hidden indicator
+    And my timeline still contains the album photo

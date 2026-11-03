@@ -389,6 +389,46 @@ Then('only the album card {string} is visible', async ({ page }, name: string) =
   await expect(cards.first()).toContainText(name);
 });
 
+// --- albums page UI: hidden from timeline via the card menu -----------------
+
+async function toggleAlbumTimelineFromCard(page: Page, ctx: Ctx, label: string): Promise<void> {
+  const album = currentAlbum(ctx);
+  await page.getByRole('button', { name: `Options for ${album.name}` }).click();
+  const entry = page.getByRole('button', { name: label });
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (r) =>
+        r.request().method() === 'PATCH' &&
+        new URL(r.url()).pathname === `/api/v1/albums/${album.id}`,
+    ),
+    entry.click(),
+  ]);
+  expect(response.status()).toBe(200);
+  await expect(entry).toHaveCount(0);
+}
+
+When('I hide the album from its card menu', async ({ page, ctx }) => {
+  await toggleAlbumTimelineFromCard(page, ctx, 'Hide from timeline');
+});
+
+When('I show the album from its card menu', async ({ page, ctx }) => {
+  await toggleAlbumTimelineFromCard(page, ctx, 'Show on timeline');
+});
+
+Then('the album card shows the hidden indicator', async ({ page, ctx }) => {
+  const album = currentAlbum(ctx);
+  await expect(
+    page.locator(`[data-album-card="${album.id}"] [aria-label="Hidden from timeline"]`),
+  ).toBeVisible();
+});
+
+Then('the album card hides the hidden indicator', async ({ page, ctx }) => {
+  const album = currentAlbum(ctx);
+  await expect(
+    page.locator(`[data-album-card="${album.id}"] [aria-label="Hidden from timeline"]`),
+  ).toHaveCount(0);
+});
+
 // --- album detail UI --------------------------------------------------------
 
 When('I open the album', async ({ page, ctx }) => {
