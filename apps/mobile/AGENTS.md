@@ -23,20 +23,37 @@ cd ../.. && pnpm mobile:e2e            # on-device e2e: real containers + Androi
 + `docker-compose.mobile-e2e.yml`), registers a throwaway user, boots the `photox` AVD on the
 host (a container cannot run an emulator on macOS), points the app at the run's published core
 port through the emulator's `10.0.2.2` host alias, pre-grants the media permissions (a system
-dialog would block the test), `pm clear`s the app, and runs `integration_test/`: 
-`auth_flow_test.dart` (setup → bad password → sign in → sign out → sign in again, then a fresh
-app graph over the same storage to prove the session was persisted) and `auth_protocol_test.dart`
-(refresh rotation, reuse detection, sign-out against real core). Env: `MOBILE_E2E_HEADLESS=1` boots without a window, `MOBILE_E2E_KEEP=1` leaves the stack
+dialog would block the test), `pm clear`s the app, seeds two files into `DCIM/Camera`
+and runs `integration_test/`. The tests run with `--no-uninstall`, because `flutter test`
+otherwise uninstalls the app after every file and a fresh install loses the granted media
+permissions:
+
+- `auth_flow_test.dart` — setup → bad password → sign in → sign out → sign in again, then a
+  fresh app graph over the same storage to prove the session was persisted.
+- `auth_protocol_test.dart` — refresh rotation, reuse detection, sign-out against real core.
+- `upload_paths_test.dart` — a small photo takes one `POST /files`, a >24 MiB one takes a
+  session with the server's 8 MiB part grid, and both digests resolve to the asset the queue
+  row recorded.
+- `upload_dedup_test.dart` — the queue is wiped (a reinstall / a second device) and the second
+  pass adds no asset at all.
+- `upload_resume_test.dart` — a one-part-per-attempt uploader stops with `PARTS_PENDING`, the
+  graph is rebuilt over the same drift file, and the pass continues the **same** session.
+- `upload_token_test.dart` — an access token that expired between passes still uploads (the
+  interceptor refreshes), and a session revoked from another device stops the pass with
+  `authRequired` instead of retrying.
+
+Env: `MOBILE_E2E_HEADLESS=1` boots without a window, `MOBILE_E2E_KEEP=1` leaves the stack
 running, `MOBILE_E2E_BUILD=1` rebuilds images, `MOBILE_E2E_AVD=<id>` picks another AVD,
 `MOBILE_E2E_STOP_EMULATOR=1` kills the emulator on exit (it is otherwise left running and
 reused, since its boot is the slow part of a cold run), `ADB=<path>` overrides adb detection.
-Each run gets its own compose project and host port; `flutter test` reinstalls the APK and the
-app's state is gone between test files, so each file has to build its own starting state.
+Each run gets its own compose project and host port. Each file builds its own starting state
+(fresh account, cleared queue), so the order does not matter.
 
-The suite covers the **foreground** auth/setup path only. Media seeding, the backup pipeline,
-and anything the OS owns (WorkManager/BGTaskScheduler, MediaStore edge cases) are not covered —
-an emulator proves nothing about those, as above. It is opt-in and never part of `pnpm verify`
-or Jenkins: both need an AVD.
+The suite covers the **foreground** pipeline: auth/setup plus discovery, hashing, dedup,
+single and session uploads, resume across a restart, and the unusable-token paths. Real
+background execution (WorkManager/BGTaskScheduler windows) and OS-owned library edge cases are
+not covered — an emulator proves nothing about those, as above. It is opt-in and never part of
+`pnpm verify` or Jenkins: both need an AVD.
 
 - Toolchain verified: Flutter 3.47.7 stable (`/opt/homebrew/bin/flutter`), Dart 3.13.5, build_runner 2.16.2, drift 2.35.2.
 - `--delete-conflicting-outputs` is accepted but ignored on build_runner 2.16 — harmless, never needed.
@@ -120,7 +137,10 @@ Verified in `../../apps/core/src`. Controllers declare `api/v1/...` with no glob
 
 Behaviours an agent would otherwise get wrong:
 
-- The 64 MiB single-POST threshold is a **client** policy (`AppConfig`), not a server limit.
+- The single-POST threshold is a **client** policy (`AppConfig.singleUploadThresholdBytes`), not
+  a server limit. It is exactly one session part (8 MiB, deliberately: a proxy in front of core
+  caps request bodies well below 64 MiB), so every asset larger than 8 MiB takes the session
+  API. `upload_paths_test.dart` pins this.
 - Re-uploading bytes already stored returns **409 with `{existingAssetId, existingFileId}`** — that is "already backed up": mark done, never retry. (Distinct from the `409 missingParts` the future session API returns from `/complete`.)
 - The server sniffs 12 header bytes and rejects anything else with 400 `Unsupported file type`; accepted: jpeg, png, gif, webp, avi, webm, heic, heif, avif, quicktime, mp4. RAW/DNG/TIFF/MKV must be filtered client-side.
 - 413 (quota) appears only when `STORAGE_QUOTA_BYTES` is configured, and is checked *after* the dedup fast-path.

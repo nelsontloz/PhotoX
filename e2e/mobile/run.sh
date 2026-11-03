@@ -16,10 +16,13 @@
 # The emulator is left running between runs and reused (its boot is the slow
 # part of a cold run).
 #
-# The two test files run in separate app processes and each starts from cleared
-# app data (`flutter test` reinstalls the APK without the app's state):
-# auth_flow drives the first-launch and session flows, auth_protocol checks the
-# token contract over HTTP. `adb shell pm clear` runs once, before the first.
+# The test files run in separate processes. `flutter test` uninstalls the app
+# after each file by default, which also drops the runtime media permissions
+# `pm grant` set up (a fresh install is a fresh permission state) — so the suite
+# runs with `--no-uninstall` and each file starts from whatever the previous one
+# left behind. Every pipeline test clears its own queue and registers its own
+# account, so order does not matter; `auth_flow` runs first, right after the
+# `pm clear` below.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -180,11 +183,45 @@ for perm in READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_MEDIA_VISUAL_USER_SELECTED A
   "$ADB" -s "$SERIAL" shell pm grant "$PACKAGE" "android.permission.$perm" >/dev/null 2>&1 || true
 done
 
-# --- 5. the suite ---
+# --- 5. device media: the pipeline tests upload these ---
+# The backup tests read the emulator's MediaStore, so the fixtures go through
+# `adb push` + a media scan rather than into the app. Names are fixed
+# (`integration_test/support/pipeline.dart`); the MediaStore rows are deleted
+# first so a re-run sees the new bytes instead of a cached size.
+seed_media() {
+  local dir="$LOG_DIR/fixtures"
+  local src="$ROOT/e2e/fixtures/photo.jpg"
+  [ -f "$src" ] || die "missing fixture $src"
+  mkdir -p "$dir"
+  cp "$src" "$dir/e2e-small.jpg"
+  if [ ! -s "$dir/e2e-large.jpg" ]; then
+    # Past three 8 MiB parts, so the session path needs four. The padding sits
+    # after the jpeg EOI: decoders and core's 12-byte sniff both ignore it.
+    { cat "$src"; head -c $((24 * 1024 * 1024)) /dev/urandom; } >"$dir/e2e-large.jpg"
+  fi
+
+  local name
+  for name in e2e-small.jpg e2e-large.jpg; do
+    "$ADB" -s "$SERIAL" shell content delete \
+      --uri content://media/external/images/media \
+      --where "_display_name='$name'" >/dev/null 2>&1 || true
+    "$ADB" -s "$SERIAL" shell rm -f "/sdcard/DCIM/Camera/$name" >/dev/null 2>&1 || true
+    "$ADB" -s "$SERIAL" push "$dir/$name" "/sdcard/DCIM/Camera/$name" >/dev/null ||
+      die "could not push $name to the emulator"
+    "$ADB" -s "$SERIAL" shell am broadcast \
+      -a android.intent.action.MEDIA_SCANNER_SCAN_FILE \
+      -d "file:///sdcard/DCIM/Camera/$name" >/dev/null 2>&1 || true
+  done
+  echo "Seeded DCIM/Camera with e2e-small.jpg and e2e-large.jpg."
+}
+
+seed_media
+
+# --- 6. the suite ---
 run_test() {
   echo
   echo "=== $1 ==="
-  (cd "$MOBILE_DIR" && flutter test "integration_test/$1" -d "$SERIAL" \
+  (cd "$MOBILE_DIR" && flutter test "integration_test/$1" -d "$SERIAL" --no-uninstall \
     --dart-define=PHOTOX_E2E_API_URL="$APP_URL" \
     --dart-define=PHOTOX_E2E_EMAIL="$E2E_EMAIL" \
     --dart-define=PHOTOX_E2E_PASSWORD="$E2E_PASSWORD")
@@ -192,6 +229,12 @@ run_test() {
 
 run_test auth_flow_test.dart
 run_test auth_protocol_test.dart
+# Pipeline tests. Each registers its own account and clears the local queue, so
+# order does not matter and they never share auth_flow's login rate limit.
+run_test upload_paths_test.dart
+run_test upload_dedup_test.dart
+run_test upload_resume_test.dart
+run_test upload_token_test.dart
 
 echo
 echo "Mobile e2e passed."
