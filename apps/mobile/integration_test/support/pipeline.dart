@@ -64,11 +64,20 @@ Future<void> resetQueueOnly(AppDatabase db) async {
 }
 
 /// [resetQueueOnly] plus the preferences: a full fresh-install state.
+///
+/// The lock rows go too: a pass killed when an earlier test file's process
+/// exited leaves its `sync`/`pass` lease behind for its 2-minute TTL, and the
+/// next file would run to `alreadyRunning: true` instead of scanning anything.
 Future<void> resetLocalState(AppDatabase db) async {
   await resetQueueOnly(db);
-  await (db.delete(
-    db.keyValues,
-  )..where((t) => t.namespace.equals(SettingsStore.namespace))).go();
+  await (db.delete(db.keyValues)..where(
+        (t) => t.namespace.isIn(const <String>[
+          SettingsStore.namespace,
+          'sync',
+          'auth',
+        ]),
+      ))
+      .go();
 }
 
 /// Registers a throwaway account, so files never share the login rate limit.

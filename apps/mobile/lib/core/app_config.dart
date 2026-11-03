@@ -19,9 +19,6 @@ abstract final class AppConfig {
   /// Largest asset the core API accepts, in bytes (4 GiB).
   static const int maxUploadSizeBytes = 4 * 1024 * 1024 * 1024;
 
-  /// Maximum concurrent resumable sessions the server allows per user.
-  static const int maxActiveSessionsPerUser = 5;
-
   /// Refresh the access token when this much time (or less) remains.
   static const Duration refreshSkew = Duration(seconds: 60);
 

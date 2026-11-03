@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../upload/upload_queue.dart';
 import 'count_format.dart';
+import 'panel.dart';
 
 /// Overall backup progress: the share of the whole queue that is done.
 class BackupProgressPanel extends StatelessWidget {
@@ -31,13 +32,7 @@ class BackupProgressPanel extends StatelessWidget {
         : '${formatCount(stats.completed)} / ${formatCount(stats.total)} '
               '${stats.total == 1 ? 'file' : 'files'} synced';
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.3)),
-      ),
+    return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -173,15 +168,14 @@ class BackupProgressTrack extends StatelessWidget {
   const BackupProgressTrack({
     super.key,
     required this.value,
-    this.height = 12,
     this.animate = false,
   });
 
+  /// Track height, including the 2px inset around the fill.
+  static const double _height = 12;
+
   /// Completed fraction, `0`..`1`.
   final double value;
-
-  /// Track height, including the 2px inset around the fill.
-  final double height;
 
   /// True while bytes are moving. The sheen is the only animation here, and it
   /// is stopped and reset when this goes false, so an idle dashboard schedules
@@ -197,7 +191,7 @@ class BackupProgressTrack extends StatelessWidget {
       label: 'Overall backup progress',
       value: '${(fraction * 100).round()} percent',
       child: Container(
-        height: height,
+        height: _height,
         padding: const EdgeInsets.all(2),
         decoration: BoxDecoration(
           color: scheme.surfaceContainerHighest,

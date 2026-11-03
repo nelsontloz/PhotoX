@@ -19,20 +19,6 @@ class _PeriodicCall {
   final ExistingPeriodicWorkPolicy policy;
 }
 
-class _OneOffCall {
-  const _OneOffCall(
-    this.uniqueName,
-    this.taskName,
-    this.constraints,
-    this.policy,
-  );
-
-  final String uniqueName;
-  final String taskName;
-  final Constraints constraints;
-  final ExistingWorkPolicy policy;
-}
-
 class _ProcessingCall {
   const _ProcessingCall(this.uniqueName, this.taskName, this.constraints);
 
@@ -44,7 +30,6 @@ class _ProcessingCall {
 class _FakeRegistrar implements WorkRegistrar {
   int initializeCalls = 0;
   final List<_PeriodicCall> periodicCalls = <_PeriodicCall>[];
-  final List<_OneOffCall> oneOffCalls = <_OneOffCall>[];
   final List<_ProcessingCall> processingCalls = <_ProcessingCall>[];
   final List<String> cancelled = <String>[];
   final Set<String> failCancellations = <String>{};
@@ -70,18 +55,6 @@ class _FakeRegistrar implements WorkRegistrar {
         constraints,
         existingWorkPolicy,
       ),
-    );
-  }
-
-  @override
-  Future<void> registerOneOffTask(
-    String uniqueName,
-    String taskName, {
-    required Constraints constraints,
-    required ExistingWorkPolicy existingWorkPolicy,
-  }) async {
-    oneOffCalls.add(
-      _OneOffCall(uniqueName, taskName, constraints, existingWorkPolicy),
     );
   }
 
@@ -167,37 +140,12 @@ void main() {
     expect(call.constraints.requiresBatteryNotLow, isTrue);
   });
 
-  test(
-    'requestSyncNow replaces the one-off task with current constraints',
-    () async {
-      await scheduler.init(const AppSettings(wifiOnly: false));
-      await scheduler.requestSyncNow();
-
-      final first = registrar.oneOffCalls.single;
-      expect(first.uniqueName, BackgroundScheduler.oneOffTask);
-      expect(first.taskName, BackgroundScheduler.oneOffTask);
-      expect(first.policy, ExistingWorkPolicy.replace);
-      expect(first.constraints.networkType, NetworkType.connected);
-
-      await scheduler.updateSettings(const AppSettings(wifiOnly: true));
-      await scheduler.requestSyncNow();
-
-      expect(registrar.oneOffCalls, hasLength(2));
-      expect(registrar.oneOffCalls.last.policy, ExistingWorkPolicy.replace);
-      expect(
-        registrar.oneOffCalls.last.constraints.networkType,
-        NetworkType.unmetered,
-      );
-    },
-  );
-
-  test('cancelAll cancels all three tasks', () async {
+  test('cancelAll cancels every scheduled task', () async {
     await scheduler.cancelAll();
 
     expect(registrar.cancelled, <String>[
       BackgroundScheduler.periodicTask,
       BackgroundScheduler.processingTask,
-      BackgroundScheduler.oneOffTask,
     ]);
   });
 
@@ -243,7 +191,6 @@ void main() {
       expect(registrar.cancelled, <String>[
         BackgroundScheduler.periodicTask,
         BackgroundScheduler.processingTask,
-        BackgroundScheduler.oneOffTask,
       ]);
     },
   );

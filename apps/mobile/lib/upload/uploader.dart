@@ -438,8 +438,6 @@ class Uploader {
             chunkSizeBytes: created.result.chunkSizeBytes,
             totalParts: created.result.totalParts,
             receivedParts: const <int>[],
-            receivedBytes: 0,
-            expiresAt: created.result.expiresAt,
           );
         } else {
           await queue.markState(
@@ -476,11 +474,8 @@ class Uploader {
           throw failure;
         }
 
-        await queue.markState(
-          localId: row.localId,
-          state: UploadState.uploading,
-          protocol: UploadProtocol.session,
-          uploadId: row.uploadId,
+        await _markUploading(
+          row,
           partSize: status.chunkSizeBytes,
           partCount: status.totalParts,
         );
@@ -496,22 +491,8 @@ class Uploader {
           );
         }
 
-        await queue.markState(
-          localId: row.localId,
-          state: UploadState.completing,
-          protocol: UploadProtocol.session,
-          uploadId: row.uploadId,
-        );
-
         try {
-          final result = await sessionTransport.complete(row.uploadId!);
-          await queue.clearParts(row.uploadId!);
-          return await _markUploaded(
-            row,
-            prepared,
-            result.asset.id,
-            result.asset.fileId,
-          );
+          return await _finishSession(row, prepared);
         } on ApiException catch (error) {
           if (_isPartsMissing(error)) {
             if (!mayFillGap) rethrow;
@@ -527,11 +508,8 @@ class Uploader {
             }
             final gaps = _missingParts(fresh.totalParts, fresh.receivedParts);
             if (gaps.isNotEmpty) {
-              await queue.markState(
-                localId: row.localId,
-                state: UploadState.uploading,
-                protocol: UploadProtocol.session,
-                uploadId: row.uploadId,
+              await _markUploading(
+                row,
                 partSize: fresh.chunkSizeBytes,
                 partCount: fresh.totalParts,
               );
@@ -543,20 +521,7 @@ class Uploader {
                 maxParts: maxParts,
               );
             }
-            await queue.markState(
-              localId: row.localId,
-              state: UploadState.completing,
-              protocol: UploadProtocol.session,
-              uploadId: row.uploadId,
-            );
-            final result = await sessionTransport.complete(row.uploadId!);
-            await queue.clearParts(row.uploadId!);
-            return await _markUploaded(
-              row,
-              prepared,
-              result.asset.id,
-              result.asset.fileId,
-            );
+            return await _finishSession(row, prepared);
           }
           if (_isSessionGone(error)) throw const _SessionExpired();
           rethrow;
@@ -601,6 +566,38 @@ class Uploader {
         throw _authFailure(error);
       }
     }
+  }
+
+  /// Marks the row uploading with the server's part grid, before any PUT.
+  Future<void> _markUploading(
+    QueuedAsset row, {
+    required int partSize,
+    required int partCount,
+  }) {
+    return queue.markState(
+      localId: row.localId,
+      state: UploadState.uploading,
+      protocol: UploadProtocol.session,
+      uploadId: row.uploadId,
+      partSize: partSize,
+      partCount: partCount,
+    );
+  }
+
+  /// Marks completing, completes the session and records the asset.
+  Future<UploadOutcome> _finishSession(
+    QueuedAsset row,
+    PreparedUpload prepared,
+  ) async {
+    await queue.markState(
+      localId: row.localId,
+      state: UploadState.completing,
+      protocol: UploadProtocol.session,
+      uploadId: row.uploadId,
+    );
+    final result = await sessionTransport.complete(row.uploadId!);
+    await queue.clearParts(row.uploadId!);
+    return _markUploaded(row, prepared, result.asset.id, result.asset.fileId);
   }
 
   Future<({QueuedAsset row, CreateSessionResult result})> _createSession(

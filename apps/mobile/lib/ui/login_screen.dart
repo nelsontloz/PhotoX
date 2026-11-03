@@ -314,46 +314,43 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 22),
-                        _PressScale(
-                          enabled: !_busy,
-                          child: SizedBox(
-                            width: double.infinity,
-                            child: FilledButton(
-                              onPressed: _busy ? null : _submit,
-                              style: primaryButtonStyle(context),
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 160),
-                                child: _busy
-                                    ? Row(
-                                        key: const ValueKey<String>('busy'),
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: <Widget>[
-                                          SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: scheme.onPrimaryContainer,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          const Text('Signing in…'),
-                                        ],
-                                      )
-                                    : Row(
-                                        key: const ValueKey<String>('idle'),
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: <Widget>[
-                                          const Text('Sign in'),
-                                          const SizedBox(width: 8),
-                                          Icon(
-                                            Icons.arrow_forward_rounded,
-                                            size: 18,
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: _busy ? null : _submit,
+                            style: primaryButtonStyle(context),
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 160),
+                              child: _busy
+                                  ? Row(
+                                      key: const ValueKey<String>('busy'),
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: <Widget>[
+                                        SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
                                             color: scheme.onPrimaryContainer,
                                           ),
-                                        ],
-                                      ),
-                              ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        const Text('Signing in…'),
+                                      ],
+                                    )
+                                  : Row(
+                                      key: const ValueKey<String>('idle'),
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: <Widget>[
+                                        const Text('Sign in'),
+                                        const SizedBox(width: 8),
+                                        Icon(
+                                          Icons.arrow_forward_rounded,
+                                          size: 18,
+                                          color: scheme.onPrimaryContainer,
+                                        ),
+                                      ],
+                                    ),
                             ),
                           ),
                         ),
@@ -463,42 +460,6 @@ class _TrustNote extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// Gives the primary action a small press-in without replacing the button's
-/// own ripple and semantics.
-class _PressScale extends StatefulWidget {
-  const _PressScale({required this.child, required this.enabled});
-
-  final Widget child;
-  final bool enabled;
-
-  @override
-  State<_PressScale> createState() => _PressScaleState();
-}
-
-class _PressScaleState extends State<_PressScale> {
-  bool _down = false;
-
-  void _set(bool value) {
-    if (_down == value) return;
-    setState(() => _down = value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Listener(
-      onPointerDown: widget.enabled ? (_) => _set(true) : null,
-      onPointerUp: (_) => _set(false),
-      onPointerCancel: (_) => _set(false),
-      child: AnimatedScale(
-        scale: _down ? 0.98 : 1,
-        duration: const Duration(milliseconds: 90),
-        curve: Curves.easeOut,
-        child: widget.child,
-      ),
     );
   }
 }

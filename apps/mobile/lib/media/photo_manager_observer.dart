@@ -26,14 +26,11 @@ class PhotoManagerObserver implements PhotoObserver {
   /// Client-side container/MIME filter used to describe candidates.
   final MediaFilter filter;
 
-  final StreamController<void> _changes = StreamController<void>.broadcast();
-
   /// Folder listing memoised for the process.
   ///
   /// Dropped by [_onChange], so an album created or deleted by another app
-  /// shows up on the next library change. [changes] only emits while the
-  /// platform notify listener runs (`PhotoManager.startChangeNotify`), which
-  /// the app does not start yet, so today this lives until restart.
+  /// shows up on the next library change. Without the platform notify listener
+  /// (`PhotoManager.startChangeNotify`), this lives until restart.
   List<MediaFolder>? _folders;
 
   /// Library paths resolved for [page]/[libraryCount], keyed by album id
@@ -411,9 +408,6 @@ class PhotoManagerObserver implements PhotoObserver {
   }
 
   @override
-  Stream<void> get changes => _changes.stream;
-
-  @override
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
@@ -427,11 +421,10 @@ class PhotoManagerObserver implements PhotoObserver {
     _thumbWaiters.clear();
     PhotoManager.removeChangeCallback(_onChange);
     await PhotoManager.stopChangeNotify();
-    await _changes.close();
   }
 
   void _onChange(MethodCall call) {
-    if (_disposed || _changes.isClosed) return;
+    if (_disposed) return;
     // An album can be created or deleted without the app knowing; any cached
     // id may now resolve elsewhere, so both listings reload on next use.
     _folders = null;
@@ -440,7 +433,6 @@ class PhotoManagerObserver implements PhotoObserver {
     // for it are stale. The callback names the assets when the platform says
     // so; otherwise everything is suspect and the cache starts over.
     _forgetThumbs(_changedIds(call));
-    _changes.add(null);
   }
 
   /// Metadata-only [AssetCandidate]: never exports bytes.

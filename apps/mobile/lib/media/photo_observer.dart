@@ -137,10 +137,7 @@ abstract class PhotoObserver {
   /// the asset is gone or the platform cannot produce one.
   Future<Uint8List?> thumbnailFor(String localId, {int size = 128});
 
-  /// Emits whenever the platform library reports a change.
-  Stream<void> get changes;
-
-  /// Releases platform callbacks and closes [changes].
+  /// Releases platform callbacks and cached platform handles.
   Future<void> dispose();
 
   // TODO(spec §3.2): PhotoKit persistent change token on iOS, MediaStore

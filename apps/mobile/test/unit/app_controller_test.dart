@@ -108,9 +108,6 @@ class _DeniedObserver implements PhotoObserver {
       null;
 
   @override
-  Stream<void> get changes => const Stream<void>.empty();
-
-  @override
   Future<void> dispose() async {}
 }
 
@@ -193,14 +190,6 @@ class _FakeRegistrar implements WorkRegistrar {
     if (failPeriodic) throw StateError('scheduler unavailable');
     periodicConstraints.add(constraints);
   }
-
-  @override
-  Future<void> registerOneOffTask(
-    String uniqueName,
-    String taskName, {
-    required Constraints constraints,
-    required ExistingWorkPolicy existingWorkPolicy,
-  }) async {}
 
   @override
   Future<void> registerProcessingTask(
@@ -629,7 +618,6 @@ void main() {
       expect(registrar.cancelled, <String>[
         BackgroundScheduler.periodicTask,
         BackgroundScheduler.processingTask,
-        BackgroundScheduler.oneOffTask,
       ]);
       expect(
         controller.stats,

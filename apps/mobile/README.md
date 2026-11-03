@@ -27,12 +27,11 @@ OS-discretionary; see [Background behaviour](#background-behaviour).
 - Retry policy: exponential backoff + jitter, capped at 15 minutes, honouring
   `Retry-After`; network/408/429/5xx retry, 400/404/413/422 fail permanently
   (413 is recorded as `skippedQuota`).
-- Background registration through WorkManager (Android periodic; a one-off API
-  exists but is not wired to the UI) and BGTaskScheduler (iOS refresh +
-  processing). App-open/resume always starts a foreground pass and is the
-  guaranteed sync path.
+- Background registration through WorkManager (Android periodic) and
+  BGTaskScheduler (iOS refresh + processing). App-open/resume always starts a
+  foreground pass and is the guaranteed sync path.
 - Queue stats, last-sync summary, permission/banner states, and backup settings
-  (Wi-Fi only, charging only, include videos, notifications toggle).
+  (Wi-Fi only, charging only, include videos).
 - On-device library grid with a per-tile backup badge, multi-select → "Back up
   now", and a full-screen viewer. Videos play in the viewer through the
   platform's own player (`video_player`): tap to play/pause, scrub the timeline,
@@ -84,10 +83,8 @@ pipeline (single vs session, dedup, resume across a restart, unusable tokens) �
 see `AGENTS.md` for the details and the `MOBILE_E2E_*` knobs.
 
 Toolchain: Flutter 3.47 stable / Dart 3.13, drift, Dio, Workmanager,
-photo_manager, flutter_secure_storage, connectivity_plus. (`background_downloader`
-is declared
-for a possible native-transfer path but is not used yet; background work runs
-through Workmanager + Dio.)
+photo_manager, flutter_secure_storage, connectivity_plus. Background work runs
+through Workmanager + Dio.
 
 `lib/upload/database.g.dart` is committed. If you edit the drift tables, rerun
 codegen and commit the regenerated file.
@@ -162,9 +159,8 @@ exercise real uploads — only a device does.
 
 ## Known limitations
 
-- **No notifications.** The settings toggle is persisted for a future notifier;
-  nothing displays upload progress today. Android would also need
-  `POST_NOTIFICATIONS`.
+- **No notifications.** Nothing displays upload progress today; Android would
+  also need `POST_NOTIFICATIONS`.
 - **No Android foreground service.** Long uploads rely on a background window
   or the app staying open.
 - **iOS limited-library access** only exposes assets the user selected in the

@@ -31,12 +31,10 @@ class AppServices {
   AppServices({
     required this.db,
     required this.queue,
-    required this.settingsStore,
     required this.auth,
     required this.api,
     required this.sessions,
     required this.observer,
-    required this.uploader,
     required this.coordinator,
     required this.scheduler,
     this.controller,
@@ -47,9 +45,6 @@ class AppServices {
 
   /// Persistence facade over [db] used by the upload pipeline.
   final UploadQueue queue;
-
-  /// Preference persistence over [db].
-  final SettingsStore settingsStore;
 
   /// Token owner; one instance per isolate, serialized across isolates by the
   /// drift refresh lock.
@@ -63,9 +58,6 @@ class AppServices {
 
   /// Platform media discovery.
   final PhotoObserver observer;
-
-  /// Per-asset upload pipeline.
-  final Uploader uploader;
 
   /// Discovery + upload pass runner.
   final SyncCoordinator coordinator;
@@ -191,12 +183,10 @@ class AppServices {
     return AppServices(
       db: db,
       queue: queue,
-      settingsStore: settingsStore,
       auth: authManager,
       api: api,
       sessions: sessions,
       observer: mediaObserver,
-      uploader: uploader,
       coordinator: coordinator,
       scheduler: backgroundScheduler,
       controller: withController

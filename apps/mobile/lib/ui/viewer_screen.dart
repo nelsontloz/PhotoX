@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../library/backup_status.dart';
 import '../media/photo_observer.dart';
 import '../media/video_playback.dart';
+import 'widgets/month_names.dart';
 import 'widgets/status_badge.dart';
 
 /// Full-screen view of one on-device asset, swiped through [assets] in order.
@@ -51,21 +52,6 @@ class ViewerScreen extends StatefulWidget {
 }
 
 class _ViewerScreenState extends State<ViewerScreen> {
-  static const List<String> _months = <String>[
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-
   late final PageController _pages = PageController(
     initialPage: widget.initialIndex,
   );
@@ -262,7 +248,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
     if (at == null) return 'Undated';
     final hour = at.hour.toString().padLeft(2, '0');
     final minute = at.minute.toString().padLeft(2, '0');
-    return '${at.day} ${_months[at.month - 1]} ${at.year} · $hour:$minute';
+    return '${at.day} ${monthAbbreviations[at.month - 1]} ${at.year} · $hour:$minute';
   }
 }
 

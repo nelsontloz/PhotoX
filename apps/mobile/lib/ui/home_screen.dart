@@ -11,6 +11,7 @@ import 'widgets/backup_progress.dart';
 import 'widgets/last_sync_panel.dart';
 import 'widgets/panel.dart';
 import 'widgets/queue_summary.dart';
+import 'widgets/scope_pill.dart';
 import 'widgets/sign_out_dialog.dart';
 import 'widgets/status_banner.dart';
 import 'widgets/uploading_file_row.dart';
@@ -300,50 +301,40 @@ class HomeScreen extends StatelessWidget {
   Widget _buildSubBar(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                'Backup Status',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  color: theme.colorScheme.onSurface,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.5,
-                  height: 1.15,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: <Widget>[
-                  _StatusPill(
-                    status: _statusFor(
-                      syncing: syncing,
-                      discovering: discovering,
-                      paused: paused,
-                      waitingForWifi: lastReport?.waitingForWifi == true,
-                      authRequired: authRequired,
-                      permission: permission,
-                      stats: stats,
-                      error: error?.trim(),
-                    ),
-                  ),
-                  _ScopePill(label: scopeLabel),
-                ],
-              ),
-            ],
+        Text(
+          'Backup Status',
+          style: theme.textTheme.headlineSmall?.copyWith(
+            color: theme.colorScheme.onSurface,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.5,
+            height: 1.15,
           ),
         ),
-        const SizedBox(width: 12),
-        _SquareButton(
-          tooltip: 'Settings',
-          icon: Icons.tune_rounded,
-          onPressed: onOpenSettings,
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: <Widget>[
+            _StatusPill(
+              status: _statusFor(
+                syncing: syncing,
+                discovering: discovering,
+                paused: paused,
+                waitingForWifi: lastReport?.waitingForWifi == true,
+                authRequired: authRequired,
+                permission: permission,
+                stats: stats,
+                error: error?.trim(),
+              ),
+            ),
+            ScopePill(
+              label: scopeLabel,
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+            ),
+          ],
         ),
       ],
     );
@@ -606,99 +597,6 @@ class _StatusPill extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// How many albums the pass reads, next to the live status.
-class _ScopePill extends StatelessWidget {
-  const _ScopePill({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Semantics(
-      container: true,
-      label: 'Backup scope: $label',
-      child: ExcludeSemantics(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainer,
-            borderRadius: BorderRadius.circular(100),
-            border: Border.all(
-              color: scheme.outlineVariant.withValues(alpha: 0.5),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: scheme.primary,
-                ),
-                child: const SizedBox.square(dimension: 6),
-              ),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Square icon shortcut used next to the screen title.
-class _SquareButton extends StatelessWidget {
-  const _SquareButton({
-    required this.tooltip,
-    required this.icon,
-    required this.onPressed,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: scheme.surfaceContainer,
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: BorderSide(
-            color: scheme.outlineVariant.withValues(alpha: 0.45),
-          ),
-        ),
-        child: InkWell(
-          onTap: onPressed,
-          child: SizedBox.square(
-            dimension: 40,
-            child: Icon(icon, size: 20, color: scheme.onSurfaceVariant),
           ),
         ),
       ),

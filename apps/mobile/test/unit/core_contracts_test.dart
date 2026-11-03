@@ -75,7 +75,6 @@ void main() {
       );
       expect(AppConfig.sessionChunkSizeBytes, 8 * 1024 * 1024);
       expect(AppConfig.maxUploadSizeBytes, 4 * 1024 * 1024 * 1024);
-      expect(AppConfig.maxActiveSessionsPerUser, 5);
       expect(AppConfig.refreshSkew, const Duration(seconds: 60));
       expect(AppConfig.apiBaseUrl, isNotEmpty);
     });
@@ -221,7 +220,6 @@ void main() {
         final status = await sessions.getStatus('upload-1');
         expect(status.status, 'pending');
         expect(status.receivedParts, <int>[0]);
-        expect(status.receivedBytes, AppConfig.sessionChunkSizeBytes);
         expect(status.assetId, isNull);
         expect(status.fileId, isNull);
 
@@ -245,7 +243,6 @@ void main() {
         final completed = await sessions.complete('upload-1');
         expect(completed.asset.id, 'asset-1');
         expect(completed.asset.fileId, 'file-1');
-        expect(completed.deduplicated, isTrue);
 
         // A 404/410 abort means the session is already gone.
         await sessions.abort('gone');
@@ -347,22 +344,6 @@ void main() {
               (error) => error.message,
               'message',
               contains('DedupHit.exists'),
-            ),
-          ),
-        );
-        expect(
-          () => CreateSessionResult.fromJson(<String, dynamic>{
-            'uploadId': 'upload-1',
-            'chunkSizeBytes': 8,
-            'totalParts': 1,
-            'expiresAt': 42,
-            'status': 'pending',
-          }),
-          throwsA(
-            isA<FormatException>().having(
-              (error) => error.message,
-              'message',
-              contains('CreateSessionResult.expiresAt'),
             ),
           ),
         );

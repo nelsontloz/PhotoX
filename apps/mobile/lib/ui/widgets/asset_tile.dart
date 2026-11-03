@@ -227,11 +227,7 @@ class _ThumbnailState extends State<_Thumbnail> {
               image: ResizeImage.resizeIfNeeded(
                 width,
                 null,
-                _PreviewImage(
-                  widget.asset.localId,
-                  _Thumbnail.requestPixels,
-                  bytes,
-                ),
+                MemoryImage(bytes),
               ),
               fit: BoxFit.cover,
               gaplessPlayback: true,
@@ -243,32 +239,6 @@ class _ThumbnailState extends State<_Thumbnail> {
       },
     );
   }
-}
-
-/// Encoded preview bytes as an image-cache key that survives a remount.
-///
-/// [MemoryImage] has no equality, so every remount was a fresh cache entry and
-/// the same JPEG was decoded again on every scroll-back. Equality here is the
-/// asset, the requested size and the exact byte instance — an edited asset
-/// answers with new bytes, so it cannot hit a stale decode.
-class _PreviewImage extends MemoryImage {
-  // MemoryImage cannot be constructed const, and this subclass adds no mutable
-  // state; the lint's const suggestion does not apply.
-  // ignore: prefer_const_constructors_in_immutables
-  _PreviewImage(this.localId, this.pixels, Uint8List bytes) : super(bytes);
-
-  final String localId;
-  final int pixels;
-
-  @override
-  bool operator ==(Object other) =>
-      other is _PreviewImage &&
-      other.localId == localId &&
-      other.pixels == pixels &&
-      identical(other.bytes, bytes);
-
-  @override
-  int get hashCode => Object.hash(localId, pixels);
 }
 
 /// Neutral stand-in while a preview loads, and when the platform has none.

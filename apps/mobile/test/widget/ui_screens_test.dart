@@ -606,7 +606,7 @@ void main() {
       await tester.pump();
       expect(syncs, 1);
 
-      await tester.tap(find.byTooltip('Settings'));
+      await tester.tap(find.text('Settings'));
       await tester.pump();
       expect(settingsOpened, 1);
     });

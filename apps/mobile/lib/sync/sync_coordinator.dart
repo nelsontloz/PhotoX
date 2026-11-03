@@ -218,15 +218,7 @@ class SyncCoordinator {
             )
             .toList(growable: false);
 
-        final existing = await _existingIds(
-          supported
-              .map((candidate) => candidate.localId)
-              .toList(growable: false),
-        );
-        await queue.enqueueAll(supported);
-        report.enqueued = supported
-            .where((candidate) => !existing.contains(candidate.localId))
-            .length;
+        report.enqueued = await queue.enqueueAll(supported);
         if (kDebugMode) {
           // A pass that queues nothing looks identical to one that scanned
           // nothing; the window and the scope are the only way to tell.
@@ -494,19 +486,6 @@ class SyncCoordinator {
       }
     }
     return hits;
-  }
-
-  Future<Set<String>> _existingIds(List<String> ids) async {
-    if (ids.isEmpty) return <String>{};
-    final found = <String>{};
-    for (var start = 0; start < ids.length; start += 500) {
-      final chunk = ids.sublist(start, min(start + 500, ids.length));
-      final rows = await (queue.db.select(
-        queue.db.queuedAssets,
-      )..where((table) => table.localId.isIn(chunk))).get();
-      found.addAll(rows.map((row) => row.localId));
-    }
-    return found;
   }
 
   DateTime? _newestTimestamp(List<AssetCandidate> candidates) {

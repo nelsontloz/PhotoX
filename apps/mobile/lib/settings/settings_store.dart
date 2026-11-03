@@ -11,8 +11,6 @@ class AppSettings {
     this.wifiOnly = true,
     this.chargingOnly = false,
     this.includeVideos = false,
-    this.notificationsEnabled = true,
-    this.source = 'cameraRoll',
     this.apiBaseUrl = '',
     this.paused = false,
     this.uploadFolderIds = const <String>[],
@@ -37,15 +35,6 @@ class AppSettings {
   /// Include videos in the backup set.
   final bool includeVideos;
 
-  /// Show upload progress notifications.
-  ///
-  /// ponytail: persisted for a future notifier; nothing reads it today. Android
-  /// will need the POST_NOTIFICATIONS permission when one is wired up.
-  final bool notificationsEnabled;
-
-  /// Library scope, `cameraRoll` for the whole library.
-  final String source;
-
   /// Album ids the user chose to back up.
   ///
   /// Empty means "not chosen": the pipeline then defaults to the camera album.
@@ -58,8 +47,6 @@ class AppSettings {
     bool? wifiOnly,
     bool? chargingOnly,
     bool? includeVideos,
-    bool? notificationsEnabled,
-    String? source,
     String? apiBaseUrl,
     bool? paused,
     List<String>? uploadFolderIds,
@@ -69,8 +56,6 @@ class AppSettings {
       wifiOnly: wifiOnly ?? this.wifiOnly,
       chargingOnly: chargingOnly ?? this.chargingOnly,
       includeVideos: includeVideos ?? this.includeVideos,
-      notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
-      source: source ?? this.source,
       apiBaseUrl: apiBaseUrl ?? this.apiBaseUrl,
       paused: paused ?? this.paused,
       uploadFolderIds: uploadFolderIds ?? this.uploadFolderIds,
@@ -83,8 +68,6 @@ class AppSettings {
     'wifiOnly': wifiOnly.toString(),
     'chargingOnly': chargingOnly.toString(),
     'includeVideos': includeVideos.toString(),
-    'notificationsEnabled': notificationsEnabled.toString(),
-    'source': source,
     'apiBaseUrl': apiBaseUrl,
     'paused': paused.toString(),
     'uploadFolderIds': jsonEncode(uploadFolderIds),
@@ -98,8 +81,6 @@ class AppSettings {
           other.wifiOnly == wifiOnly &&
           other.chargingOnly == chargingOnly &&
           other.includeVideos == includeVideos &&
-          other.notificationsEnabled == notificationsEnabled &&
-          other.source == source &&
           other.apiBaseUrl == apiBaseUrl &&
           other.paused == paused &&
           listEquals(other.uploadFolderIds, uploadFolderIds) &&
@@ -110,8 +91,6 @@ class AppSettings {
     wifiOnly,
     chargingOnly,
     includeVideos,
-    notificationsEnabled,
-    source,
     apiBaseUrl,
     paused,
     Object.hashAll(uploadFolderIds),
@@ -122,8 +101,7 @@ class AppSettings {
   String toString() =>
       'AppSettings(wifiOnly: $wifiOnly, chargingOnly: $chargingOnly, '
       'includeVideos: $includeVideos, '
-      'notificationsEnabled: $notificationsEnabled, '
-      'source: $source, apiBaseUrl: $apiBaseUrl, paused: $paused, '
+      'apiBaseUrl: $apiBaseUrl, paused: $paused, '
       'uploadFolderIds: $uploadFolderIds, '
       'uploadAllFolders: $uploadAllFolders)';
 }
@@ -152,11 +130,6 @@ class SettingsStore {
       wifiOnly: _readBool(values['wifiOnly'], defaults.wifiOnly),
       chargingOnly: _readBool(values['chargingOnly'], defaults.chargingOnly),
       includeVideos: _readBool(values['includeVideos'], defaults.includeVideos),
-      notificationsEnabled: _readBool(
-        values['notificationsEnabled'],
-        defaults.notificationsEnabled,
-      ),
-      source: _readString(values['source'], defaults.source),
       apiBaseUrl: _readString(values['apiBaseUrl'], defaults.apiBaseUrl),
       paused: _readBool(values['paused'], defaults.paused),
       uploadFolderIds: _readStringList(values['uploadFolderIds']),

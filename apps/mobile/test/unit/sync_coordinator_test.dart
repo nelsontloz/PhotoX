@@ -603,9 +603,6 @@ class _FakeObserver implements PhotoObserver {
       thumbnails[localId];
 
   @override
-  Stream<void> get changes => const Stream<void>.empty();
-
-  @override
   Future<void> dispose() async {}
 }
 
