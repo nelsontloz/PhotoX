@@ -21,7 +21,7 @@ OS-discretionary; see [Background behaviour](#background-behaviour).
   resize, or re-export.
 - Batch dedup pre-check (`POST /api/v1/files/exists`), with an extra guard for
   pre-existing file records that have no asset yet.
-- Uploads ≤ 64 MiB use multipart `POST /api/v1/files`; larger files use the
+- Uploads ≤ 8 MiB (one session part) use multipart `POST /api/v1/files`; larger files use the
   resumable `/api/v1/uploads` session API (8 MiB parts) and resume from server
   status. A 409 duplicate means "already backed up", not a retry.
 - Retry policy: exponential backoff + jitter, capped at 15 minutes, honouring
@@ -78,8 +78,9 @@ cd ../.. && pnpm mobile:e2e            # on-device e2e: real containers + Androi
 `MOBILE_E2E_AVD`), boots the real stack and drives `integration_test/` on the
 emulator, which reaches the run's published core port as `10.0.2.2:<port>`.
 The emulator is left running and reused by the next run. It is opt-in, never
-part of `pnpm verify`, and covers the foreground setup/auth flow only — see
-`AGENTS.md` for the details and the `MOBILE_E2E_*` knobs.
+part of `pnpm verify`, and covers the foreground auth flow plus the upload
+pipeline (single vs session, dedup, resume across a restart, unusable tokens) —
+see `AGENTS.md` for the details and the `MOBILE_E2E_*` knobs.
 
 Toolchain: Flutter 3.47 stable / Dart 3.13, drift, Dio, Workmanager,
 photo_manager, flutter_secure_storage, connectivity_plus. (`background_downloader`
@@ -95,7 +96,7 @@ codegen and commit the regenerated file.
 | Setting | Default | How |
 | --- | --- | --- |
 | Core API URL | prefilled `http://localhost:3000` | First-launch "Connect your server" screen, and editable on the sign-in screen (persisted in the drift `KeyValues` table); `--dart-define=PHOTOX_API_URL=...` only pre-fills that field |
-| Single-upload threshold | 64 MiB | `AppConfig.singleUploadThresholdBytes` (client policy, not a server limit) |
+| Single-upload threshold | 8 MiB | `AppConfig.singleUploadThresholdBytes` (client policy, not a server limit) |
 | Session part size | 8 MiB | Fixed by the core upload-session contract |
 | Max upload | 4 GiB | Core limit |
 
@@ -122,7 +123,7 @@ Flow:
 
 ```text
 observe → enqueue in drift → spool exact bytes + hash → dedup pre-check
-        → single POST /api/v1/files (≤64 MiB)
+        → single POST /api/v1/files (≤8 MiB)
           or create /api/v1/uploads session → PUT parts → complete
         → mark uploaded (or duplicate/skipped/failed)
 ```
