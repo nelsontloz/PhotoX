@@ -17,6 +17,8 @@ import { Album } from '../../src/albums/entities/album.entity';
 import { AlbumAsset } from '../../src/albums/entities/album-asset.entity';
 import { Share } from '../../src/shares/entities/share.entity';
 import { BackupMerge } from '../../src/backup/entities/backup-merge.entity';
+import { BackupRun } from '../../src/backup/entities/backup-run.entity';
+import { BackupRunItem } from '../../src/backup/entities/backup-run-item.entity';
 
 /**
  * Every entity the test apps register, and the single source of truth for the schema baked
@@ -42,4 +44,6 @@ export const ENTITIES = [
   UploadSession,
   UploadSessionPart,
   BackupMerge,
+  BackupRun,
+  BackupRunItem,
 ];

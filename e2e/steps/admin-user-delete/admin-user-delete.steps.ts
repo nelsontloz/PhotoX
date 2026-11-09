@@ -13,6 +13,7 @@ import {
   seedEmbedding,
   signIn,
   signInAdmin,
+  startAndWaitForRun,
   uploadViaApi,
   waitForThumbnails,
   workerHeaders,
@@ -183,12 +184,12 @@ async function seedFullLibrary(
     )
     .toBeGreaterThanOrEqual(2);
   if (!personId) throw new Error('the cluster job never produced a person');
-  const backupResponse = await request.post('/api/v1/admin/backups', {
-    headers: authHeaders(admin),
-    data: { emailOrId: user.user.id },
-  });
-  expect(backupResponse.status()).toBe(200);
-  const backup = (await backupResponse.json()) as { backedUpAt: string; assets: number };
+  const backup = await startAndWaitForRun<{ backedUpAt: string; assets: number }>(
+    request,
+    admin,
+    '/api/v1/admin/backups',
+    { emailOrId: user.user.id },
+  );
   return {
     assetId,
     fileId: asset.fileId,
@@ -687,12 +688,12 @@ Then('the sibling backup stays active with a working backup action', async ({ pa
 When('the victim backup is restored through the API', async ({ request, ctx, $testInfo }) => {
   // the restore rebuilds rows + copies bytes inline, then re-queues derivatives
   $testInfo.setTimeout(360_000);
-  const response = await request.post('/api/v1/admin/restores', {
-    headers: authHeaders(requireStateAdmin(ctx)),
-    data: { emailOrId: requireVictim(ctx).user.id },
-  });
-  expect(response.status()).toBe(200);
-  const body = (await response.json()) as { email?: string };
+  const body = await startAndWaitForRun<{ email?: string }>(
+    request,
+    requireStateAdmin(ctx),
+    '/api/v1/admin/restores',
+    { emailOrId: requireVictim(ctx).user.id },
+  );
   if (!body.email) throw new Error('restore response is missing the restored email');
   deleteState(ctx).restoredEmail = body.email;
 });
@@ -770,7 +771,8 @@ Then(
 Then('the restore toast names the fallback address', async ({ page, request, ctx }) => {
   const state = deleteState(ctx);
   const victim = requireVictim(ctx);
-  expect(state.restoreStatus).toBe(200);
+  // the dialog's POST accepts the run (202); the toast appears once the page's poll finishes
+  expect(state.restoreStatus).toBe(202);
   // the toast auto-dismisses after ~3s, so assert it before the overview poll below
   await expect(page.getByText(/Restored restored-\d+-/).first()).toBeVisible({
     timeout: 10_000,

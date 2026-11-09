@@ -9,8 +9,11 @@ import { StorageModule } from '../files/storage/storage.module';
 import { PlacesModule } from '../places/places.module';
 import { BackupController } from './backup.controller';
 import { BackupMerge } from './entities/backup-merge.entity';
+import { BackupRun } from './entities/backup-run.entity';
+import { BackupRunItem } from './entities/backup-run-item.entity';
 import { S3BackupService } from './s3-backup.service';
 import { UserBackupService } from './user-backup.service';
+import { BackupRunsSweeper } from './backup-runs.sweeper';
 
 // ponytail: BullMqService is @Global, so no QueueModule import — like AdminModule,
 // this module only declares the TypeORM scope its own queries touch
@@ -25,12 +28,14 @@ import { UserBackupService } from './user-backup.service';
       Share,
       Person,
       BackupMerge,
+      BackupRun,
+      BackupRunItem,
     ]),
     StorageModule,
     PlacesModule,
   ],
   controllers: [BackupController],
-  providers: [S3BackupService, UserBackupService],
+  providers: [S3BackupService, UserBackupService, BackupRunsSweeper],
   exports: [UserBackupService],
 })
 export class BackupModule {}
