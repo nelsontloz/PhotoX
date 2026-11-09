@@ -49,6 +49,7 @@ import { AuthModule } from '../../src/auth/auth.module';
 import { BullMqModule } from '../../src/queue/bullmq.module';
 import { BullMqService } from '../../src/queue/bullmq.service';
 import { HttpExceptionFilter } from '../../src/common/filters/http-exception.filter';
+import { configureBodyParsers } from '../../src/common/body-parsers';
 import {
   TEST_AUTH_SECRET,
   TEST_WORKER_SECRET,
@@ -176,7 +177,10 @@ export async function createApiTestApp(opts?: {
     }
 
     const moduleRef = await builder.compile();
-    const app = moduleRef.createNestApplication<NestExpressApplication>();
+    // mirrors main.ts (bodyParser disabled there too): the /worker face payload can exceed the
+    // 100 KB default, and the large-body regression spec must exercise the same parser stack
+    const app = moduleRef.createNestApplication<NestExpressApplication>({ bodyParser: false });
+    configureBodyParsers(app);
     // mirrors main.ts: the XFF trust-proxy test needs req.ip from X-Forwarded-For
     app.set('trust proxy', 1);
     app.useGlobalPipes(

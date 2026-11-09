@@ -127,21 +127,21 @@ without new plumbing.
 
 ## Files touched
 
-| File | Change |
-|---|---|
-| `lib/server/album_client.dart` | new: `ServerAlbum` + `AlbumClient` |
-| `lib/settings/settings_store.dart` | `folderAlbums` field, JSON codec, load |
-| `lib/media/photo_observer.dart` | `AssetCandidate.folderId` |
-| `lib/media/photo_manager_observer.dart` | attribute folder in `scanNew` |
-| `lib/upload/database.dart` (+ `database.g.dart`) | schema v3: `folderId`, `albumLinkedAt` |
-| `lib/upload/upload_queue.dart` | write `folderId`, `unlinkedUploaded`, `markAlbumLinked`, `forgetFolderAlbum` |
-| `lib/sync/sync_coordinator.dart` | album client, link accumulation + flush, sweep, `adoptFolder` |
-| `lib/app_services.dart` | construct `AlbumClient`, pass to coordinator + controller |
-| `lib/app_controller.dart` | album members, `setFolderAlbum`, sign-out reset |
-| `lib/ui/albums_screen.dart`, `lib/ui/widgets/folder_album_sheet.dart`, `lib/app.dart` | folder → album UI |
-| `test/unit/{settings,queue,sync_coordinator,photo_manager_observer}_test.dart`, `test/widget/albums_screen_test.dart`, new `folder_album_sheet_test.dart`, `album_client_test.dart` | coverage |
-| `e2e/mobile/run.sh` | seed a second device folder (`DCIM/E2EAlbum`) |
-| `integration_test/support/pipeline.dart`, new `integration_test/folder_album_test.dart` | on-device e2e (E1–E6) |
+| File                                                                                                                                                                                | Change                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `lib/server/album_client.dart`                                                                                                                                                      | new: `ServerAlbum` + `AlbumClient`                                           |
+| `lib/settings/settings_store.dart`                                                                                                                                                  | `folderAlbums` field, JSON codec, load                                       |
+| `lib/media/photo_observer.dart`                                                                                                                                                     | `AssetCandidate.folderId`                                                    |
+| `lib/media/photo_manager_observer.dart`                                                                                                                                             | attribute folder in `scanNew`                                                |
+| `lib/upload/database.dart` (+ `database.g.dart`)                                                                                                                                    | schema v3: `folderId`, `albumLinkedAt`                                       |
+| `lib/upload/upload_queue.dart`                                                                                                                                                      | write `folderId`, `unlinkedUploaded`, `markAlbumLinked`, `forgetFolderAlbum` |
+| `lib/sync/sync_coordinator.dart`                                                                                                                                                    | album client, link accumulation + flush, sweep, `adoptFolder`                |
+| `lib/app_services.dart`                                                                                                                                                             | construct `AlbumClient`, pass to coordinator + controller                    |
+| `lib/app_controller.dart`                                                                                                                                                           | album members, `setFolderAlbum`, sign-out reset                              |
+| `lib/ui/albums_screen.dart`, `lib/ui/widgets/folder_album_sheet.dart`, `lib/app.dart`                                                                                               | folder → album UI                                                            |
+| `test/unit/{settings,queue,sync_coordinator,photo_manager_observer}_test.dart`, `test/widget/albums_screen_test.dart`, new `folder_album_sheet_test.dart`, `album_client_test.dart` | coverage                                                                     |
+| `e2e/mobile/run.sh`                                                                                                                                                                 | seed a second device folder (`DCIM/E2EAlbum`)                                |
+| `integration_test/support/pipeline.dart`, new `integration_test/folder_album_test.dart`                                                                                             | on-device e2e (E1–E6)                                                        |
 
 ## Order
 
@@ -179,7 +179,7 @@ Harness additions (not tests):
 Tests, one file `integration_test/folder_album_test.dart` (all `timeout: 10 min`, mirroring
 `upload_dedup_test.dart`):
 
-- **E1 mapped folder lands in the album, unmapped folder does not.** Map `E2EAlbum` → a *visible*
+- **E1 mapped folder lands in the album, unmapped folder does not.** Map `E2EAlbum` → a _visible_
   album, scope both folders, run a pass. Album holds `e2e-album.jpg`'s asset id and not the camera
   photo's; both stay on `GET /api/v1/assets`; both rows have `albumLinkedAt` set. Proves linking and
   that a normal album changes nothing on the timeline.
@@ -189,7 +189,7 @@ Tests, one file `integration_test/folder_album_test.dart` (all `timeout: 10 min`
   user-facing story end to end.
 - **E3 a folder backed up before it was mapped joins the album** (the `adoptFolder` path). Upload the
   camera photo with no mapping, assert it is on the timeline and the album empty; then create the
-  hidden album, map, `coordinator.adoptFolder(cameraFolderId)` + `run()`; assert the *same* asset id is
+  hidden album, map, `coordinator.adoptFolder(cameraFolderId)` + `run()`; assert the _same_ asset id is
   now in the album and gone from the timeline, and `serverAssetTotal` did not grow.
 - **E4 dedup hits are linked, not just fresh uploads.** With the photo already in the hidden album,
   `resetQueueOnly` + a second pass (the "second device" shape used by `upload_dedup_test`); assert
@@ -199,7 +199,7 @@ Tests, one file `integration_test/folder_album_test.dart` (all `timeout: 10 min`
   (nulls `albumLinkedAt`) and run another pass; the album still holds the asset, no second asset is
   created, and `report.error` is null.
 - **E6 a deleted album drops the mapping instead of looping.** Map the folder, `DELETE
-  /api/v1/albums/:id`, add a fresh seeded photo, run a pass. The upload still succeeds, the asset
+/api/v1/albums/:id`, add a fresh seeded photo, run a pass. The upload still succeeds, the asset
   appears on the timeline (no album holds it), `settings.folderAlbums` no longer contains the folder,
   and a third pass reports no error and makes no failing request.
 

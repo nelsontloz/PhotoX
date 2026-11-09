@@ -137,12 +137,8 @@ describe('Face pipeline (integration)', () => {
     const { queue, job, sig } = await runFaceJob(asset.id, record.id, userId);
     expect(await waitForJob(queue, job.id!)).toBe('completed');
 
-    expect(testApp.fake.deleteFacesCalls).toEqual([asset.id]);
-    expect(testApp.fake.callsOf('deleteAssetFaces').at(-1)!.binding).toEqual({
-      sig,
-      scope: asset.id,
-    });
-    expect(testApp.fake.callsOf('registerFaces').at(-1)!.binding).toEqual({ sig, scope: asset.id });
+    expect(testApp.fake.deleteFacesCalls).toEqual([]);
+    expect(testApp.fake.callsOf('replaceFaces').at(-1)!.binding).toEqual({ sig, scope: asset.id });
     const faces = testApp.fake.faces.get(asset.id)!;
     expect(faces).toHaveLength(1);
     expect(faces[0]!.box).toEqual({ x: 5, y: 5, w: 50, h: 50 });
@@ -165,7 +161,9 @@ describe('Face pipeline (integration)', () => {
 
     expect(clusterAdd).not.toHaveBeenCalled();
 
-    expect(testApp.fake.faces.get(asset.id)).toBeUndefined();
+    // the replace POST still runs (with an empty set) so any stale rows are cleared
+    expect(testApp.fake.callsOf('replaceFaces')).toHaveLength(1);
+    expect(testApp.fake.faces.get(asset.id)).toEqual([]);
     const updated = testApp.fake.assets.get(asset.id)!;
     expect(updated.faceStatus).toBe('ready');
     expect(updated.faceCount).toBe(0);

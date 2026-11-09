@@ -135,6 +135,69 @@ describe('faces HTTP', () => {
     expect(await t.faceRepo.count()).toBe(0);
   });
 
+  it('replaces the whole face set (and clears the old person cover) in one request', async () => {
+    const owner = await seedUser(t);
+    const token = t.signToken(
+      { id: owner.id, email: owner.email, role: owner.role },
+      { act: true },
+    );
+    const person = await t.personRepo.save(
+      t.personRepo.create({
+        userId: owner.id,
+        name: null,
+        clusterLabel: 'c-replace',
+        faceCount: 1,
+      }),
+    );
+    const { asset, face: old } = await seedFace(owner.id, { personId: person.id });
+    await t.personRepo.update(person.id, { coverFaceId: old.id });
+
+    const res = await request(apiServer(t))
+      .post(`/worker/assets/${asset.id}/faces`)
+      .set(t.authHeader(token))
+      .send({
+        faces: [{ box: { x: 5, y: 5, w: 10, h: 10 }, confidence: 0.8, embedding: EMBEDDING_512 }],
+      });
+
+    expect(res.status).toBe(201);
+    expect((res.body as { count: number }).count).toBe(1);
+    const rows = await t.faceRepo.find({ where: { assetId: asset.id } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.id).not.toBe(old.id);
+    expect(rows[0]!.personId).toBeNull();
+    const updated = await t.personRepo.findOneByOrFail({ id: person.id });
+    expect(updated.coverFaceId).toBeNull();
+    expect(updated.faceCount).toBe(0);
+  });
+
+  it('accepts a group-photo body above the default 100 KB JSON limit', async () => {
+    const owner = await seedUser(t);
+    const token = t.signToken(
+      { id: owner.id, email: owner.email, role: owner.role },
+      { act: true },
+    );
+    const file = await seedFile(t, owner.id);
+    const asset = await seedAsset(t, owner.id, file.id);
+    // real embeddings are long decimals (the 0.1 fixture serializes to 3 chars); 12 faces of
+    // this shape is ~110 KB, i.e. above the Nest default body limit that used to 413 the job
+    const embedding = Array.from({ length: 512 }, (_, i) => Math.fround(Math.sin(i + 1)));
+    const faces = Array.from({ length: 12 }, () => ({
+      box: { x: 1, y: 2, w: 10, h: 10 },
+      confidence: 0.9,
+      embedding,
+    }));
+    expect(Buffer.byteLength(JSON.stringify({ faces }))).toBeGreaterThan(100 * 1024);
+
+    const res = await request(apiServer(t))
+      .post(`/worker/assets/${asset.id}/faces`)
+      .set(t.authHeader(token))
+      .send({ faces });
+
+    expect(res.status).toBe(201);
+    expect((res.body as { count: number }).count).toBe(12);
+    expect(await t.faceRepo.count({ where: { assetId: asset.id } })).toBe(12);
+  });
+
   it('rejects an embedding with the wrong length', async () => {
     const owner = await seedUser(t);
     const token = t.signToken(

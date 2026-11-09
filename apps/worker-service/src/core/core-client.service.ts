@@ -170,7 +170,12 @@ export class CoreClient {
     });
   }
 
-  async registerFaces(
+  /**
+   * Replace the asset's whole face set. The POST is atomic in core (delete + insert in one
+   * transaction), so it must be called even when `faces` is empty to clear stale rows, and a
+   * retry can never leave the asset faceless.
+   */
+  async replaceFaces(
     userId: string,
     assetId: string,
     faces: DetectedFaceInput[],
@@ -334,8 +339,9 @@ export class CoreClient {
     const detail = await res.text().catch(() => '');
     const message = `Core ${method} ${path} failed: ${res.status}${detail ? ` — ${detail.slice(0, 300)}` : ''}`;
 
-    // bad payload / unknown or foreign resource: retrying cannot help
-    if (res.status === 400 || res.status === 404 || res.status === 422) {
+    // bad payload / unknown or foreign resource: retrying cannot help. 413 is permanent for
+    // this body too — a face set above the limit would be rejected identically on every attempt.
+    if (res.status === 400 || res.status === 404 || res.status === 413 || res.status === 422) {
       throw new UnrecoverableError(message);
     }
     // 401/403/429/5xx are plain errors — BullMQ retries the job (attempts:3 + exponential backoff)

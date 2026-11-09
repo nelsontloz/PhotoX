@@ -64,7 +64,7 @@ describe('CoreClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it.each([400, 422])('maps %i to UnrecoverableError without retrying', async (status) => {
+  it.each([400, 413, 422])('maps %i to UnrecoverableError without retrying', async (status) => {
     fetchMock.mockResolvedValue(jsonResponse(status, { message: 'bad' }));
 
     await expect(makeClient().getAsset('user-1', 'asset-1')).rejects.toBeInstanceOf(
@@ -162,10 +162,10 @@ describe('CoreClient', () => {
     expect(result).toEqual({ created: 1, assigned: 2 });
   });
 
-  it('registers faces with the body carrying only the face list', async () => {
+  it('replaces faces with the body carrying only the face list', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { count: 1 }));
 
-    const result = await makeClient().registerFaces('user-1', 'asset-1', [
+    const result = await makeClient().replaceFaces('user-1', 'asset-1', [
       { box: { x: 1, y: 2, w: 3, h: 4 }, confidence: 0.9, embedding: [0.1, 0.2] },
     ]);
 

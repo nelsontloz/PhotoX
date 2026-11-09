@@ -82,14 +82,14 @@ export class WorkerController {
   }
 
   @Post('assets/:id/faces')
-  @ApiOperation({ summary: 'Worker register of detected faces' })
-  @ApiResponse({ status: 201, description: 'Faces registered' })
-  async registerFaces(
+  @ApiOperation({ summary: "Worker replace of the asset's detected faces (atomic, idempotent)" })
+  @ApiResponse({ status: 201, description: 'Face set replaced' })
+  async replaceFaces(
     @Param('id') id: string,
     @Body() dto: RegisterFacesDto,
     @CurrentUserId() userId: string,
   ) {
-    return this.faces.registerFaces(id, userId, dto.faces);
+    return this.faces.replaceForAsset(userId, id, dto.faces);
   }
 
   @Delete('assets/:id/faces')
