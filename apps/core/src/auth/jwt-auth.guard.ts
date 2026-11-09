@@ -160,21 +160,26 @@ export class JwtAuthGuard implements CanActivate {
     // killing every access token minted before it. Runs for Bearer and cookie alike, before
     // the sliding re-mint below.
     // ponytail: per-request O(1) PK lookup — Redis-cache the floor if this shows up hot
+    // The same row decides the role: a leaked signing secret lets anyone mint a token that
+    // claims `admin`, so admin access must come from the account, not from the claim.
+    let storedRole: Role | undefined;
     if (this.dataSource) {
       if (typeof payload.iat !== 'number') throw new UnauthorizedException();
       // a failed lookup reads as "no row": non-act tokens still fail closed below, while
       // worker-actor pseudo-subs (e.g. worker-service, not a uuid Postgres can cast) pass
-      let row: { tokensValidAfter: Date | null } | null;
+      let row: { role: Role; tokensValidAfter: Date | null } | null;
       try {
-        row = await this.dataSource
-          .getRepository(User)
-          .findOne({ where: { id: sub }, select: { id: true, tokensValidAfter: true } });
+        row = await this.dataSource.getRepository(User).findOne({
+          where: { id: sub },
+          select: { id: true, role: true, tokensValidAfter: true },
+        });
       } catch {
         row = null;
       }
       // no user row fails closed — except worker-actor pseudo-subs (e.g. worker-service),
       // which have no users row; user-sub worker tokens still hit the floor above
       if (!row && !payload.act) throw new UnauthorizedException();
+      storedRole = row?.role;
       // second granularity: iat is seconds while the floor carries ms
       if (row?.tokensValidAfter && Math.floor(row.tokensValidAfter.getTime() / 1000) > payload.iat)
         throw new UnauthorizedException();
@@ -193,7 +198,10 @@ export class JwtAuthGuard implements CanActivate {
       }
     }
 
-    const user = { id: sub, email: payload.email, role: payload.role };
+    // stored role wins whenever the row exists; act pseudo-subs (no row) keep the claim, and
+    // the act-only route rules below still keep them out of the admin surface
+    const role = storedRole ?? payload.role;
+    const user = { id: sub, email: payload.email, role };
     // absolute session cap: sliding renewal must never outlive sst + 7d. Enforced for Bearer
     // and cookie alike — a cookie replayed as a Bearer header would otherwise evade it.
     if (typeof payload.sst === 'number' && Date.now() - payload.sst * 1000 >= ABSOLUTE_SESSION_MS) {
@@ -236,7 +244,8 @@ export class JwtAuthGuard implements CanActivate {
           {
             sub,
             email: payload.email,
-            role: payload.role,
+            // carry the effective (stored) role, not the possibly-stale claim
+            role,
             jti: randomUUID(),
             // a worker-actor token must stay locked to the admin allowlist after renewal
             ...(payload.act ? { act: payload.act } : {}),

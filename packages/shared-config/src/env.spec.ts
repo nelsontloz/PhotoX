@@ -1,6 +1,25 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { join } from 'path';
-import { FACE_DETECTOR_MODEL_FILE, loadEnv, resolveFaceDetectorModelPath } from './env';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { parseEnv } from 'node:util';
+import {
+  FACE_DETECTOR_MODEL_FILE,
+  loadAuthEnv,
+  loadEnv,
+  resolveFaceDetectorModelPath,
+} from './env';
+
+// `.env.example` is shipped at the workspace root; this spec runs with its package as cwd.
+function findExampleEnv(): string {
+  let dir = process.cwd();
+  for (;;) {
+    const candidate = join(dir, '.env.example');
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) throw new Error('.env.example not found above ' + process.cwd());
+    dir = parent;
+  }
+}
 
 describe('AUTH_REFRESH_TTL parsing', () => {
   const original = process.env.AUTH_REFRESH_TTL;
@@ -47,5 +66,43 @@ describe('face detector helpers', () => {
     expect(resolveFaceDetectorModelPath()).toBe(
       join('/tmp/photox-storage-test', 'models', FACE_DETECTOR_MODEL_FILE),
     );
+  });
+});
+
+// The repo ships `.env.example` and the README says `cp .env.example .env`. Any secret that is
+// published in the repo must therefore fail validation, or a default install is forgeable with
+// a one-line HS256 token. These pin that the printed values are not deployable.
+describe('shipped auth secrets', () => {
+  const KEYS = ['AUTH_TOKEN_SECRET', 'AUTH_TOKEN_SECRET_PREVIOUS', 'WORKER_JWT_SECRET'] as const;
+  const original = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
+
+  afterEach(() => {
+    for (const key of KEYS) {
+      if (original[key] === undefined) delete process.env[key];
+      else process.env[key] = original[key];
+    }
+  });
+
+  function useExampleSecrets(): void {
+    const example = parseEnv(readFileSync(findExampleEnv(), 'utf8'));
+    process.env.AUTH_TOKEN_SECRET = example.AUTH_TOKEN_SECRET;
+    process.env.WORKER_JWT_SECRET = example.WORKER_JWT_SECRET;
+    delete process.env.AUTH_TOKEN_SECRET_PREVIOUS;
+  }
+
+  it('rejects the secrets shipped in .env.example', () => {
+    useExampleSecrets();
+    // the file must actually ship values — an empty assignment would fail validation for the
+    // wrong reason and hide a broken template
+    expect(process.env.AUTH_TOKEN_SECRET).toBeTruthy();
+    expect(process.env.WORKER_JWT_SECRET).toBeTruthy();
+    expect(() => loadAuthEnv()).toThrow(/AUTH_TOKEN_SECRET|WORKER_JWT_SECRET/);
+  });
+
+  it('rejects a published placeholder that passes the length and variety check', () => {
+    process.env.AUTH_TOKEN_SECRET = 'change-me-to-at-least-32-characters-long-string';
+    process.env.WORKER_JWT_SECRET = 'change-me-to-a-different-32-characters-long-string';
+    delete process.env.AUTH_TOKEN_SECRET_PREVIOUS;
+    expect(() => loadAuthEnv()).toThrow(/AUTH_TOKEN_SECRET|WORKER_JWT_SECRET/);
   });
 });

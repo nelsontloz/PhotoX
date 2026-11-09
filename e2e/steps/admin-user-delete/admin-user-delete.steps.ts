@@ -22,10 +22,9 @@ import {
 
 // The suite mints its own tokens with node:crypto (same precedent as workerHeaders in
 // support.ts). Open registration only ever mints role 'user' and there is no promote
-// endpoint, so the last-admin 409 (target admin != requester, single admin in the DB) is
-// unreachable with real sessions — this forges the admin role onto a REAL registered user
-// row (the guard's session floor still finds the row) purely to exercise the real server
-// guard chain end to end. Test seeding only, never prod.
+// endpoint, so this forges the admin role onto a REAL registered user row purely to prove the
+// server guard ignores the claim: the last-admin 409 stays unit-tested, while the forged token
+// must be rejected with 403 before the delete guard runs. Test seeding only, never prod.
 const E2E_AUTH_TOKEN_SECRET =
   process.env.E2E_AUTH_TOKEN_SECRET ?? 'dev-auth-secret-32-characters-minimum!!';
 
@@ -446,7 +445,7 @@ Then('the missing-user message is shown and the dialog stays open', async ({ pag
 });
 
 When(
-  'an admin delete is attempted on the last admin with an API setup token',
+  'an admin delete is attempted on the last admin with a forged setup token',
   async ({ request, ctx }) => {
     const admin = requireStateAdmin(ctx);
     const setup = requireListed(ctx);
@@ -460,10 +459,12 @@ When(
   },
 );
 
-Then('the last-admin guard rejects with 409 verbatim', ({ ctx }) => {
+Then('the forged admin token is rejected with 403', ({ ctx }) => {
+  // the account row says 'user', so the claim on the forged token buys nothing: 403 before any
+  // delete logic runs (the last-admin 409 is covered at the service level)
   const state = deleteState(ctx);
-  expect(state.lastAdminStatus).toBe(409);
-  expect(state.lastAdminMessage ?? '').toContain('Cannot delete the last admin');
+  expect(state.lastAdminStatus).toBe(403);
+  expect(state.lastAdminMessage ?? '').toContain('Admin only');
 });
 
 Then('self-deletion through the API is rejected with 403 verbatim', async ({ request, ctx }) => {
