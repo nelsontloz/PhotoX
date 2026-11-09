@@ -10,11 +10,11 @@ One mark, one slot: the bottom-right position `AssetTile` already gives the stat
 
 New widget `lib/ui/widgets/provenance_badge.dart` (`ProvenanceBadge`), same `_BadgeStyle` shape as `StatusBadge`, `size = StatusBadge.size` (22). `StatusBadge` is not modified.
 
-| Provenance | Glyph | Size | Colour | Mount | Semantics label |
-|---|---|---|---|---|---|
-| `both` | `Icons.check_rounded` | 14 | `scheme.primary` | disc, scrim `0x8C000000` | `Backed up` |
-| `deviceOnly` | `Icons.circle_outlined` | 9 | `scheme.onSurface @0.6` | disc, scrim | `Not backed up` |
-| `onlineOnly` | `Icons.cloud_outlined` | 15 | `scheme.onSurfaceVariant` | **no disc**, `Shadow(blur 3, black54)` | `Online only` |
+| Provenance   | Glyph                   | Size | Colour                    | Mount                                  | Semantics label |
+| ------------ | ----------------------- | ---- | ------------------------- | -------------------------------------- | --------------- |
+| `both`       | `Icons.check_rounded`   | 14   | `scheme.primary`          | disc, scrim `0x8C000000`               | `Backed up`     |
+| `deviceOnly` | `Icons.circle_outlined` | 9    | `scheme.onSurface @0.6`   | disc, scrim                            | `Not backed up` |
+| `onlineOnly` | `Icons.cloud_outlined`  | 15   | `scheme.onSurfaceVariant` | **no disc**, `Shadow(blur 3, black54)` | `Online only`   |
 
 `both` and `deviceOnly` deliberately reuse the exact glyph, size and colour `StatusBadge` uses today for `backedUp` and `unknown` — a not-backed-up tile must look identical before and after this change. `onlineOnly` is the only new mark, so it gets the only new shape language: the bare glyph with no disc behind it. That gives three silhouettes that survive greyscale and colour blindness: **tick on a disc / hollow dot on a disc / disc-less cloud**.
 
@@ -39,12 +39,12 @@ Everything else keeps its corner: video play glyph top-left (`_VideoMark`), sele
 
 `All` / `Not backed up` / `Online only` / `Failed` — same `_filterChip`, same `+` suffix while `_hasMore`.
 
-| Chip | Counts | Why |
-|---|---|---|
-| All | every loaded item | |
+| Chip          | Counts                                           | Why                                                  |
+| ------------- | ------------------------------------------------ | ---------------------------------------------------- |
+| All           | every loaded item                                |                                                      |
 | Not backed up | `deviceOnly` (queued, failed, unknown, excluded) | the actionable pile: photos this phone should upload |
-| Online only | `onlineOnly` | the "not on this phone" pile |
-| Failed | `deviceOnly` + `failed` | the only sub-state needing intervention |
+| Online only   | `onlineOnly`                                     | the "not on this phone" pile                         |
+| Failed        | `deviceOnly` + `failed`                          | the only sub-state needing intervention              |
 
 They partition cleanly: All = both + deviceOnly + onlineOnly, Failed ⊂ Not backed up, Online only disjoint from both. Keep `_LibraryFilter.all/notBackedUp/onlineOnly/failed`; `_matchesFilter` switches on provenance, and `Failed` additionally on `_statusOf == failed`.
 

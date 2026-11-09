@@ -21,12 +21,12 @@ function makeService(overrides: Partial<Album> = {}) {
     Object.assign(row, patch);
     return Promise.resolve({ affected: 1 });
   });
-  const deleteMock = vi.fn<(criteria: { id: string; userId: string }) => Promise<{ affected: number }>>(
-    () => Promise.resolve({ affected: 1 }),
-  );
-  const albumAssetDeleteMock = vi.fn<(criteria: { albumId: string }) => Promise<{ affected: number }>>(
-    () => Promise.resolve({ affected: 1 }),
-  );
+  const deleteMock = vi.fn<
+    (criteria: { id: string; userId: string }) => Promise<{ affected: number }>
+  >(() => Promise.resolve({ affected: 1 }));
+  const albumAssetDeleteMock = vi.fn<
+    (criteria: { albumId: string }) => Promise<{ affected: number }>
+  >(() => Promise.resolve({ affected: 1 }));
   const repo = {
     save: saveMock,
     update: updateMock,
@@ -45,7 +45,12 @@ function makeService(overrides: Partial<Album> = {}) {
   const albumAssetRepo = {
     delete: albumAssetDeleteMock,
   } as unknown as Repository<AlbumAsset>;
-  const service = new AlbumsService(repo, albumAssetRepo, assetRepo, {} as unknown as AssetsService);
+  const service = new AlbumsService(
+    repo,
+    albumAssetRepo,
+    assetRepo,
+    {} as unknown as AssetsService,
+  );
   return { service, saveMock, updateMock, deleteMock, albumAssetDeleteMock };
 }
 
