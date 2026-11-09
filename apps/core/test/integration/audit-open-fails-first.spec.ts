@@ -22,11 +22,12 @@ import type { ApiTestApp } from './helpers';
 // Fails-first suite for the open audit findings (red until each fix lands). Each test names the
 // behavior the fix must produce, so it doubles as the acceptance check when the fix is written.
 //
-// Covered: job-binding holes (#4), restore mid-download failure (#2), assembly cleanup (#6),
-// quota counting thumbnails (#7), orphan sweep deleting the GeoNames cache (#9), malformed path
-// ids (#15), case-sensitive login (#16).
+// Covered: job-binding holes (#4), assembly cleanup (#6), quota counting thumbnails (#7), orphan
+// sweep deleting the GeoNames cache (#9), malformed path ids (#15), case-sensitive login (#16).
 // Already green: the rejected-upload temp cleanup (#5) — Nest 12's FileInterceptor removes the
 // file when a pipe rejects — kept as a regression guard.
+// Restore mid-download failure (#2) is covered by master's per-file transfer ledger
+// (`backup-runs.sweeper` and the "resumes a failed restore" test in user-backup.spec.ts).
 // Deliberately not here: the 65k-parameter batching (#8) and the worker-internal bugs (#10-#12)
 // are not reachable from an HTTP/DB integration test.
 

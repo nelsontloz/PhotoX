@@ -17,6 +17,7 @@ import { FileRecord } from '../database/entities';
 import { AlbumAsset } from '../albums/entities/album-asset.entity';
 import { Face } from '../database/entities';
 import { findOwnedOr404 } from '../common/asset-ownership';
+import { chunk } from '../common/chunk';
 import { refreshPersonsAfterFaceDelete } from '../common/face-cleanup';
 import { CreateAssetDto } from './dto/create-asset.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
@@ -282,7 +283,10 @@ export class AssetsService {
   }
 
   async emptyTrash(userId: string): Promise<void> {
-    const assets = await this.repo.find({ where: { userId, isTrashed: true } });
+    const assets = await this.repo.find({
+      where: { userId, isTrashed: true },
+      select: { id: true },
+    });
     if (assets.length === 0) return;
     await this.hardDelete(assets.map((a) => a.id));
   }
@@ -300,12 +304,15 @@ export class AssetsService {
       // C4: mirror FacesService.deleteForAsset — collect deleted face ids, null matching
       // person covers, and refresh live counts inside the same txn so hard-deleted assets
       // can't leave dangling coverFaceUrl thumbs behind.
-      const existingFaces =
-        assetIds.length > 0 ? await em.find(Face, { where: { assetId: In(assetIds) } }) : [];
-      await em.delete(Face, { assetId: In(assetIds) });
-      await em.delete(AlbumAsset, { assetId: In(assetIds) });
-      // shares.assetId FK is ON DELETE CASCADE, so share rows fall with the asset
-      await em.delete(Asset, { id: In(assetIds) });
+      const existingFaces: Face[] = [];
+      // bounded batches: one giant IN (...) list would exceed Postgres's 65,535 bind parameters
+      for (const batch of chunk(assetIds)) {
+        existingFaces.push(...(await em.find(Face, { where: { assetId: In(batch) } })));
+        await em.delete(Face, { assetId: In(batch) });
+        await em.delete(AlbumAsset, { assetId: In(batch) });
+        // shares.assetId FK is ON DELETE CASCADE, so share rows fall with the asset
+        await em.delete(Asset, { id: In(batch) });
+      }
       await refreshPersonsAfterFaceDelete(em, existingFaces);
     });
   }

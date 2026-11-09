@@ -12,6 +12,7 @@ import { join, relative, resolve } from 'path';
 import { DataSource, In, Repository } from 'typeorm';
 import { Album } from '../../albums/entities/album.entity';
 import { AlbumAsset } from '../../albums/entities/album-asset.entity';
+import { chunk } from '../../common/chunk';
 import { Asset, Face, FileRecord, Person, UploadSession } from '../../database/entities';
 import { BackupRun } from '../../backup/entities/backup-run.entity';
 import { Share } from '../../shares/entities/share.entity';
@@ -167,13 +168,20 @@ export class UserDeleteService {
         const albumIds = (await m.find(Album, { where: { userId }, select: { id: true } })).map(
           (a) => a.id,
         );
-        if (albumIds.length > 0) await m.delete(AlbumAsset, { albumId: In(albumIds) });
+        // bounded batches: one giant IN (...) list would exceed Postgres's 65,535 bind parameters
+        for (const batch of chunk(albumIds)) {
+          await m.delete(AlbumAsset, { albumId: In(batch) });
+        }
         // the user's assets may sit in foreign albums — clear those links too
-        if (assetIds.length > 0) await m.delete(AlbumAsset, { assetId: In(assetIds) });
+        for (const batch of chunk(assetIds)) {
+          await m.delete(AlbumAsset, { assetId: In(batch) });
+        }
         await m.delete(Album, { userId });
         // incl. trashed (no isTrashed filter — reuse hardDelete semantics); CASCADE drops
         // asset_thumbnails/embeddings/detections, shares.assetId FK drops foreign shares
-        if (assetIds.length > 0) await m.delete(Asset, { id: In(assetIds) });
+        for (const batch of chunk(assetIds)) {
+          await m.delete(Asset, { id: In(batch) });
+        }
         await m.delete(FileRecord, { userId });
         // resumable sessions have no FK to users; leaving them behind both leaks up to 4 GiB
         // per session and, because restore re-creates the same userId, eats the 5-session cap

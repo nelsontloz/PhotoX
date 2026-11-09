@@ -400,7 +400,8 @@ export interface FileExistsCheckResponse {
   items: FileExistsCheckHit[];
 }
 
-// Wire contract for GET /api/v1/files/quota — sum of the user's purpose='original' bytes;
+// Wire contract for GET /api/v1/files/quota — sum of the user's `originals/` prefix bytes
+// (derivative thumbnails share purpose='original' but do not count);
 // limitBytes/remainingBytes are null when STORAGE_QUOTA_BYTES is unset (unlimited)
 export interface StorageQuotaResponse {
   usedBytes: number;
