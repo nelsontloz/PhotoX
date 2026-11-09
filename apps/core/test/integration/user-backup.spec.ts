@@ -58,6 +58,8 @@ class FakeS3BackupService {
 
   failNextCopies = 0;
 
+  failNextDownloads = 0;
+
   failListKeys = false;
 
   async ensureBucket(): Promise<void> {
@@ -122,6 +124,10 @@ class FakeS3BackupService {
   }
 
   async downloadToFile(key: string, destPath: string): Promise<void> {
+    if (this.failNextDownloads > 0) {
+      this.failNextDownloads -= 1;
+      throw new Error('injected download failure');
+    }
     await writeFile(destPath, await this.getBuffer(key));
   }
 
@@ -232,6 +238,7 @@ describe('user backup round-trip', () => {
     fake.ops = [];
     fake.failNextPuts = 0;
     fake.failNextCopies = 0;
+    fake.failNextDownloads = 0;
     fake.failListKeys = false;
   });
 
@@ -1861,4 +1868,45 @@ describe('user backup round-trip', () => {
       }
     }, 120_000);
   });
+
+  it('a failed restore leaves no half-restored account, and the retry succeeds', async () => {
+    const email = `restore-fail-${randomUUID()}@example.com`;
+    const user = await userRepo.save(
+      userRepo.create({
+        email,
+        role: 'user',
+        passwordHash: 'restore-hash',
+        displayName: 'Restore User',
+      }),
+    );
+    const photo = await seedOriginal(user.id, Buffer.from('restore-failure-bytes'), {
+      mimeType: 'image/png',
+      originalName: 'photo.png',
+    });
+    await assetRepo.save(
+      assetRepo.create({
+        userId: user.id,
+        kind: 'photo',
+        fileId: photo.record.id,
+        isTrashed: false,
+        mimeType: 'image/png',
+      }),
+    );
+
+    await svc.backupUser(email);
+    await wipeUserData();
+
+    // rows are committed before the bytes: make the first original download fail
+    fake.failNextDownloads = 1;
+    await expect(svc.restoreUser(email)).rejects.toBeTruthy();
+
+    // desired: a failed restore compensates, so no live half-restored account blocks the retry
+    expect(await userRepo.findOne({ where: { id: user.id } })).toBeNull();
+    expect(await fileRepo.findOne({ where: { id: photo.record.id } })).toBeNull();
+
+    const retried = await svc.restoreUser(email);
+    expect(retried.userId).toBe(user.id);
+    const restored = await fileRepo.findOneOrFail({ where: { id: photo.record.id } });
+    expect(await readFile(storage.pathFor(restored.storageKey))).toEqual(photo.bytes);
+  }, 120_000);
 });
