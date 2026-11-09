@@ -235,7 +235,7 @@ describe('user backup round-trip', () => {
   beforeEach(async () => {
     await dataSource.query(
       'TRUNCATE users, files, assets, albums, album_assets, shares, persons, ' +
-        'app_settings, backup_merges RESTART IDENTITY CASCADE',
+        'app_settings, backup_merges, backup_runs RESTART IDENTITY CASCADE',
     );
     rmSync(storageDir, { recursive: true, force: true });
     await storage.ensureDir();
@@ -295,7 +295,7 @@ describe('user backup round-trip', () => {
 
   async function wipeUserData(): Promise<void> {
     await dataSource.query(
-      'TRUNCATE users, files, assets, albums, album_assets, shares, persons, backup_merges ' +
+      'TRUNCATE users, files, assets, albums, album_assets, shares, persons, backup_merges, backup_runs ' +
         'RESTART IDENTITY CASCADE',
     );
     rmSync(storageDir, { recursive: true, force: true });
@@ -1213,7 +1213,7 @@ describe('user backup round-trip', () => {
       const email = `gone-${randomUUID()}@example.com`;
       const { user, prefix } = await backupSingle(email);
       await dataSource.query(
-        'TRUNCATE users, files, assets, albums, album_assets, shares, persons ' +
+        'TRUNCATE users, files, assets, albums, album_assets, shares, persons, backup_runs ' +
           'RESTART IDENTITY CASCADE',
       );
       rmSync(storageDir, { recursive: true, force: true });
@@ -1445,7 +1445,7 @@ describe('user backup round-trip', () => {
       const { user } = await backupSingle(email);
       const origId = user.id;
       await dataSource.query(
-        'TRUNCATE users, files, assets, albums, album_assets, shares, persons ' +
+        'TRUNCATE users, files, assets, albums, album_assets, shares, persons, backup_runs ' +
           'RESTART IDENTITY CASCADE',
       );
       rmSync(storageDir, { recursive: true, force: true });
@@ -1995,4 +1995,25 @@ describe('user backup round-trip', () => {
       }
     }, 120_000);
   });
+
+  it('reports a non-terminal run on the overview row so a reload can resume progress', async () => {
+    const email = `active-run-${randomUUID()}@example.com`;
+    const user = await userRepo.save(
+      userRepo.create({
+        email,
+        role: 'user',
+        passwordHash: 'test-hash',
+        displayName: 'Active Run',
+      }),
+    );
+    await seedOriginal(user.id, Buffer.from('active-run-bytes'));
+
+    const { runId } = await svc.startBackup(user.id);
+    const row = (await svc.backupOverview()).find((entry) => entry.userId === user.id);
+    expect(row?.activeRun).toEqual({ id: runId, kind: 'backup', state: 'running' });
+
+    await svc.cancelRun(runId);
+    const after = (await svc.backupOverview()).find((entry) => entry.userId === user.id);
+    expect(after?.activeRun).toBeUndefined();
+  }, 120_000);
 });

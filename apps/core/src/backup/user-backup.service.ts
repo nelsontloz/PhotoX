@@ -465,6 +465,8 @@ export interface BackupOverviewRow {
   backedUpAlbums?: number;
   backedUpShares?: number;
   backedUpPersons?: number;
+  /** Non-terminal run for this user, so the admin UI resumes its state after a reload. */
+  activeRun?: { id: string; kind: 'backup' | 'restore'; state: BackupRunState };
 }
 
 export interface MergeUserBackupInput {
@@ -2434,7 +2436,23 @@ export class UserBackupService {
       });
       orphanRows.push(buildOrphanBackupOverviewRow(prefixEmail, sourceId, status, snapshot.prefix));
     }
-    const all = [...liveRows, ...orphanRows];
+
+    // One non-terminal run per user: the admin page uses it to resume the spinner and the
+    // per-file counters immediately after a reload (the run ledger outlives the browser).
+    const activeRuns = await this.runs.find({
+      where: { state: In(['running', 'paused', 'finalizing']) },
+      order: { startedAt: 'DESC' },
+    });
+    const activeByUser = new Map<string, BackupRun>();
+    for (const run of activeRuns) {
+      if (!activeByUser.has(run.userId)) activeByUser.set(run.userId, run);
+    }
+    const all = [...liveRows, ...orphanRows].map((row) => {
+      const run = activeByUser.get(row.userId);
+      return run === undefined
+        ? row
+        : { ...row, activeRun: { id: run.id, kind: run.kind, state: run.state } };
+    });
     all.sort((a, b) => a.email.localeCompare(b.email) || a.userId.localeCompare(b.userId));
     return all;
   }
