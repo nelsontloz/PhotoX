@@ -88,9 +88,14 @@ export function loadEnv(): Env {
   };
 }
 
+// A secret published in the repo (the shipped .env.example, a copied README snippet) is never a
+// secret, however long and varied it looks: anyone can sign tokens with it.
+const PLACEHOLDER_SECRET = /change[-_ ]?me|replace[-_ ]?me|example|placeholder|your[-_ ]?secret/i;
+
 // ponytail: entropy floor for every JWT secret — length alone accepts 'a'.repeat(32).
 // generate with: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 function hasSecretEntropy(secret: string): boolean {
+  if (PLACEHOLDER_SECRET.test(secret)) return false;
   if (new Set(secret).size < 16) return false;
   return !/(.)\1{5}/.test(secret);
 }

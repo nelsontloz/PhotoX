@@ -1,6 +1,7 @@
 import { ForbiddenException, UnauthorizedException, type ExecutionContext } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
+import type { DataSource } from 'typeorm';
 import { ACCESS_COOKIE } from './auth-cookie';
 import { JwtAuthGuard, requireUserId } from './jwt-auth.guard';
 
@@ -421,6 +422,39 @@ describe('JwtAuthGuard', () => {
       authorization: `Bearer ${tokenFor()}`,
     });
     await expect(guard.canActivate(context)).resolves.toBe(true);
+  });
+});
+
+// Once a signing secret leaks (see .env.example), the token's `role` claim is attacker-written:
+// an ordinary account can mint `{sub: ownId, role: 'admin'}`. Admin access must therefore be
+// decided by the stored users row, not by the claim.
+describe('admin authorisation uses the stored account row', () => {
+  function guardWithStoredRole(role: 'user' | 'admin'): JwtAuthGuard {
+    const dataSource = {
+      getRepository: () => ({
+        findOne: vi.fn().mockResolvedValue({ id: 'u1', role, tokensValidAfter: null }),
+        exists: vi.fn().mockResolvedValue(true),
+      }),
+    } as unknown as DataSource;
+    return new JwtAuthGuard(jwt, dataSource);
+  }
+
+  it('rejects an admin claim when the stored account is a user', async () => {
+    await expect(
+      guardWithStoredRole('user').canActivate(
+        testContext('GET', '/api/v1/admin/users', {
+          authorization: `Bearer ${tokenFor('admin')}`,
+        }).context,
+      ),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('lets a stored admin through and uses the stored role', async () => {
+    const { context, req } = testContext('GET', '/api/v1/admin/users', {
+      authorization: `Bearer ${tokenFor('admin')}`,
+    });
+    await expect(guardWithStoredRole('admin').canActivate(context)).resolves.toBe(true);
+    expect(req.user?.role).toBe('admin');
   });
 });
 

@@ -34,11 +34,11 @@ Feature: Admin user deletion
     And I confirm deletion of that user
     Then the missing-user message is shown and the dialog stays open
 
-  Scenario: Deleting the last admin is rejected with 409
+  Scenario: A forged admin role cannot delete the last admin
     Given I am signed in as the seeded administrator
     And a regular user is registered for the admin list
-    When an admin delete is attempted on the last admin with an API setup token
-    Then the last-admin guard rejects with 409 verbatim
+    When an admin delete is attempted on the last admin with a forged setup token
+    Then the forged admin token is rejected with 403
     And self-deletion through the API is rejected with 403 verbatim
 
   Scenario: Deleting a user wipes the library but keeps the S3 backup and spares siblings
