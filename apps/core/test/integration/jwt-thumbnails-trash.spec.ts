@@ -1,8 +1,9 @@
 import request from 'supertest';
-import { createHmac, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import {
   closeTestApp,
   createApiTestApp,
+  jobSig,
   resetDb,
   seedAsset,
   seedFile,
@@ -10,7 +11,6 @@ import {
   apiServer,
 } from './helpers';
 import type { ApiTestApp } from './helpers';
-import { TEST_WORKER_SECRET } from './test-setup';
 import type { Asset, AssetListResponse } from '@photox/shared-types';
 
 describe('thumbnails and trash JWT identity', () => {
@@ -101,16 +101,12 @@ describe('thumbnails and trash JWT identity', () => {
     const thumbFile = await seedFile(t, a.id);
     const body = { size: 'sm', fileId: thumbFile.id, width: 10, height: 10, bytes: 5 };
     // worker-origin act token + the job binding core's guard recomputes (HMAC of sub:assetId)
-    const workerAuth = (userId: string) => {
-      const token = t.signWorkerToken(
-        { id: userId, email: 'worker@internal', role: 'user' },
-        { act: true },
-      );
-      const sig = createHmac('sha256', TEST_WORKER_SECRET)
-        .update(`${userId}:${asset.id}`)
-        .digest('hex');
-      return { ...t.authHeader(token), 'X-Job-Signature': sig };
-    };
+    const workerAuth = (userId: string) => ({
+      ...t.authHeader(
+        t.signWorkerToken({ id: userId, email: 'worker@internal', role: 'user' }, { act: true }),
+      ),
+      'X-Job-Signature': jobSig(userId, asset.id),
+    });
 
     const crossRegister = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/thumbnails`)

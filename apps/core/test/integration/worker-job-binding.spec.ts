@@ -1,24 +1,16 @@
-import { createHmac } from 'node:crypto';
 import request from 'supertest';
 import { BullMqService } from '../../src/queue/bullmq.service';
-import { TEST_WORKER_SECRET } from './test-setup';
 import {
   apiServer,
   closeTestApp,
   createApiTestApp,
+  jobSig,
   resetDb,
   seedAsset,
   seedFile,
   seedUser,
 } from './helpers';
 import type { ApiTestApp } from './helpers';
-
-// HMAC of sub:scope under the worker secret, mirroring BullMqService.withJobSig;
-// the guard accepts when it verifies against ANY request scope (route target,
-// body asset, X-Job-Scope header, or sub)
-function jobSig(sub: string, scope: string): string {
-  return createHmac('sha256', TEST_WORKER_SECRET).update(`${sub}:${scope}`).digest('hex');
-}
 
 describe('worker job binding (H1)', () => {
   let t: ApiTestApp;

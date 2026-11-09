@@ -72,3 +72,11 @@ export function isWorkerRoute(path: string): boolean {
 export function isActListRoute(path: string): boolean {
   return ACT_LIST_ROUTE.test(path);
 }
+
+/**
+ * X-Job-Scope exists because the file routes cannot derive the job's asset scope from their
+ * path; honoring it on any other route would let one job's signature authorize another job.
+ */
+export function allowsJobScopeHeader(path: string): boolean {
+  return /^\/worker\/files(?:\/[^/]+)?\/?$/i.test(path);
+}

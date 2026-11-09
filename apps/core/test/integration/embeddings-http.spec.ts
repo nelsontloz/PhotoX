@@ -4,6 +4,7 @@ import {
   apiServer,
   closeTestApp,
   createApiTestApp,
+  jobSig,
   resetDb,
   seedAsset,
   seedFile,
@@ -46,10 +47,11 @@ describe('asset embeddings HTTP', () => {
   });
 
   it('registers a 768-d image embedding for the asset owner', async () => {
-    const { act, asset } = await seedOwnedAsset();
+    const { owner, act, asset } = await seedOwnedAsset();
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/embedding`)
       .set(t.authHeader(act))
+      .set('X-Job-Signature', jobSig(owner.id, asset.id))
       .send(BODY);
     expect(res.status).toBe(201);
     expect(res.body).toEqual({ ok: true });
@@ -65,11 +67,12 @@ describe('asset embeddings HTTP', () => {
   });
 
   it('upserts on (assetId, kind, model) instead of duplicating', async () => {
-    const { act, asset } = await seedOwnedAsset();
+    const { owner, act, asset } = await seedOwnedAsset();
     const post = (embedding: number[]) =>
       request(apiServer(t))
         .post(`/worker/assets/${asset.id}/embedding`)
         .set(t.authHeader(act))
+        .set('X-Job-Signature', jobSig(owner.id, asset.id))
         .send({ ...BODY, embedding });
     expect((await post(EMBEDDING_768)).status).toBe(201);
     expect((await post(EMBEDDING_768_B)).status).toBe(201);
@@ -80,12 +83,13 @@ describe('asset embeddings HTTP', () => {
   });
 
   it('persists embeddingStatus through PATCH metadata', async () => {
-    const { act, asset } = await seedOwnedAsset();
+    const { owner, act, asset } = await seedOwnedAsset();
     expect((await t.assetRepo.findOneByOrFail({ id: asset.id })).embeddingStatus).toBeNull();
 
     const res = await request(apiServer(t))
       .patch(`/worker/assets/${asset.id}/metadata`)
       .set(t.authHeader(act))
+      .set('X-Job-Signature', jobSig(owner.id, asset.id))
       .send({ embeddingStatus: 'failed' });
     expect(res.status).toBe(200);
     expect((await t.assetRepo.findOneByOrFail({ id: asset.id })).embeddingStatus).toBe('failed');
@@ -98,10 +102,11 @@ describe('asset embeddings HTTP', () => {
     ['a non-finite entry', { ...BODY, embedding: [NaN, ...EMBEDDING_768.slice(1)] }],
     ['a scaled (non-unit) vector', { ...BODY, embedding: EMBEDDING_768.map((v) => v * 2) }],
   ])('422s %s without writing', async (_label, body) => {
-    const { act, asset } = await seedOwnedAsset();
+    const { owner, act, asset } = await seedOwnedAsset();
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/embedding`)
       .set(t.authHeader(act))
+      .set('X-Job-Signature', jobSig(owner.id, asset.id))
       .send(body);
     expect(res.status).toBe(422);
     expect(await t.embeddingRepo.count()).toBe(0);
@@ -114,6 +119,7 @@ describe('asset embeddings HTTP', () => {
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/embedding`)
       .set(t.authHeader(act))
+      .set('X-Job-Signature', jobSig(other.id, asset.id))
       .send(BODY);
     expect(res.status).toBe(404);
     expect(await t.embeddingRepo.count()).toBe(0);
@@ -125,6 +131,7 @@ describe('asset embeddings HTTP', () => {
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/embedding`)
       .set(t.authHeader(act))
+      .set('X-Job-Signature', jobSig(owner.id, asset.id))
       .send(BODY);
     expect(res.status).toBe(201);
     expect(await t.embeddingRepo.count()).toBe(1);

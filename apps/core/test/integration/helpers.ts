@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
 import { ValidationPipe, type ExecutionContext, type INestApplication } from '@nestjs/common';
@@ -243,6 +243,10 @@ export async function createApiTestApp(opts?: {
     else process.env.STORAGE_DIR = prevStorageDir;
     throw err;
   }
+}
+
+export function jobSig(sub: string, scope: string, secret = TEST_WORKER_SECRET): string {
+  return createHmac('sha256', secret).update(`${sub}:${scope}`).digest('hex');
 }
 
 export async function resetDb(t: ApiTestApp): Promise<void> {

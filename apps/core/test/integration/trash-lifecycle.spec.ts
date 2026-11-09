@@ -3,6 +3,7 @@ import {
   apiServer,
   closeTestApp,
   createApiTestApp,
+  jobSig,
   resetDb,
   seedAsset,
   seedFile,
@@ -103,11 +104,12 @@ describe('trash lifecycle', () => {
   });
 
   it('permanent delete cascades the faces of the asset', async () => {
-    const { token, act, asset } = await seedOwner();
+    const { user, token, act, asset } = await seedOwner();
 
     const register = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(act))
+      .set('X-Job-Signature', jobSig(user.id, asset.id))
       .send({
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }],
       });

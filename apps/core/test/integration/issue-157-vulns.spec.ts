@@ -1,10 +1,10 @@
-import { createHmac, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { vi } from 'vitest';
 import { JwtService } from '@nestjs/jwt';
 import type { Redis } from 'ioredis';
 import { loadAuthEnv } from '@photox/shared-config';
-import { TEST_AUTH_SECRET_PREVIOUS, TEST_WORKER_SECRET } from './test-setup';
+import { TEST_AUTH_SECRET_PREVIOUS } from './test-setup';
 import { ACCESS_COOKIE } from '../../src/auth/auth-cookie';
 import { RATE_LIMITS } from '../../src/users/rate-limit.service';
 import { BullMqService } from '../../src/queue/bullmq.service';
@@ -13,6 +13,7 @@ import {
   apiServer,
   closeTestApp,
   createApiTestApp,
+  jobSig,
   resetDb,
   seedAsset,
   seedFile,
@@ -394,9 +395,7 @@ describe('issue-157 vulns (expect secure, currently insecure)', () => {
     const file = await seedFile(t, u.id);
     const asset = await seedAsset(t, u.id, file.id);
     const job = t.signWorkerToken({ id: u.id, email: u.email, role: u.role }, { act: true });
-    const sig = createHmac('sha256', TEST_WORKER_SECRET)
-      .update(`${u.id}:${asset.id}`)
-      .digest('hex');
+    const sig = jobSig(u.id, asset.id);
     expect(
       (
         await request(apiServer(t))

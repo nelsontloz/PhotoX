@@ -3,6 +3,7 @@ import { createHmac, randomUUID } from 'node:crypto';
 import {
   closeTestApp,
   createApiTestApp,
+  jobSig,
   resetDb,
   seedAsset,
   seedFile,
@@ -267,6 +268,7 @@ describe('assets JWT identity', () => {
     const res = await request(apiServer(t))
       .patch(`/worker/assets/${asset.id}/metadata`)
       .set(t.authHeader(actA))
+      .set('X-Job-Signature', jobSig(a.id, asset.id))
       .send({ altitude: -12.5 });
     expect(res.status).toBe(200);
     expect((res.body as unknown as { altitude: number }).altitude).toBe(-12.5);
@@ -274,7 +276,7 @@ describe('assets JWT identity', () => {
     expect(Number(row.altitude)).toBe(-12.5);
   });
 
-  // the test above uses an auth-secret act token, which the guard's job-binding gate skips;
+  // the test above uses a user-secret act token with an explicit HMAC binding;
   // this exercises the real trust domain: worker-minted token + X-Job-Signature
   it('applies a job-bound worker metadata patch and rejects a tampered signature', async () => {
     const user = await seedUser(t);
