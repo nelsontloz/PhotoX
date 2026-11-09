@@ -2,7 +2,8 @@ import { Logger } from '@nestjs/common';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { randomUUID, createHash } from 'crypto';
-import { rm, mkdir, readFile } from 'fs/promises';
+import { rm, mkdir, stat } from 'fs/promises';
+import { createReadStream } from 'fs';
 import { assetRefsJobSchema, bindingOf, type AssetRefsJob } from './job-schemas';
 import { patchStatusFailed, runAssetFileJob } from './asset-file-job';
 import type { ProcessorDeps, ProcessorSpec } from './processor-spec';
@@ -25,8 +26,11 @@ export async function registerDerivative(
   outPath: string,
   sig?: string,
 ): Promise<string> {
-  const bytes = await readFile(outPath);
-  const checksum = createHash('sha256').update(bytes).digest('hex');
+  // stream the (multi-GB) transcode instead of buffering it whole; stat before save, which moves it
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(outPath)) hash.update(chunk as Buffer);
+  const checksum = hash.digest('hex');
+  const { size: sizeBytes } = await stat(outPath);
   const fileId = randomUUID();
   const storageKey = storage.buildKey('transcode', userId, fileId, 'webm');
   await storage.save(storageKey, outPath);
@@ -40,7 +44,7 @@ export async function registerDerivative(
       checksumSha256: checksum,
       originalName: 'video.webm',
       mimeType: 'video/webm',
-      sizeBytes: bytes.length,
+      sizeBytes,
       assetId,
     },
     // assetId rides in the body here, so the guard derives the scope without a header
