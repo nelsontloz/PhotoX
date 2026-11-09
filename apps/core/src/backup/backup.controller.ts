@@ -147,9 +147,7 @@ export class BackupController {
   @ApiOperation({ summary: 'One backup/restore run: state, counters and final result' })
   @ApiResponse({ status: 200, description: 'Run status' })
   @ApiResponse({ status: 404, description: 'Run not found' })
-  async runStatus(
-    @Param('runId', new ParseUUIDPipe()) runId: string,
-  ): Promise<BackupRunStatus> {
+  async runStatus(@Param('runId', new ParseUUIDPipe()) runId: string): Promise<BackupRunStatus> {
     return this.backups.getRunStatus(runId);
   }
 
