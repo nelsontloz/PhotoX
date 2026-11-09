@@ -44,27 +44,40 @@ export class FacesService {
     private readonly storage: LocalStorageService,
   ) {}
 
-  async registerFaces(
-    assetId: string,
+  /**
+   * Replace the asset's whole face set in one transaction — the worker posts the complete set
+   * after every detection run. The old DELETE-then-POST pair committed the delete first, so a
+   * rejected register (a >100 KB body, a core 5xx) left the asset faceless; delete+insert that
+   * commit together cannot, and a retried insert stays idempotent.
+   */
+  async replaceForAsset(
     userId: string,
+    assetId: string,
     faces: DetectedFaceInput[],
   ): Promise<{ count: number }> {
     await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset');
-    const entities = faces.map((f) => {
-      const face = new Face();
-      face.assetId = assetId;
-      face.userId = userId;
-      face.box = f.box;
-      face.confidence = f.confidence;
-      face.embedding = f.embedding;
-      return face;
+    return this.dataSource.transaction(async (em) => {
+      const existing = await em.find(Face, { where: { assetId, userId } });
+      if (existing.length > 0) await em.delete(Face, { assetId, userId });
+      if (faces.length > 0) {
+        await em.insert(
+          Face,
+          faces.map((f) => ({
+            assetId,
+            userId,
+            box: f.box,
+            confidence: f.confidence,
+            embedding: f.embedding,
+          })),
+        );
+      }
+      await refreshPersonsAfterFaceDelete(em, existing, userId);
+      return { count: faces.length };
     });
-    await this.repo.save(entities);
-    return { count: entities.length };
   }
 
-  // ponytail: transactional companion to registerFaces — worker re-embed does DELETE then POST,
-  // so a retry never duplicates stale rows
+  // ponytail: transactional delete companion to the atomic replace route — kept for the worker's
+  // explicit clear/repair calls; the face job itself no longer does DELETE then POST
   async deleteForAsset(userId: string, assetId: string): Promise<{ deleted: number }> {
     await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset');
     return this.dataSource.transaction(async (em) => {

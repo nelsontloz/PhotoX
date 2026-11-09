@@ -55,12 +55,10 @@ export function faceProcessor({
             embedding: d.embedding,
           }));
 
-          // ponytail: unconditional delete + re-save after a successful detect — retry-safe replace
-          // (was re-embed-only, so a retried job duplicated faces); never before detect, to avoid data loss
-          await core.deleteAssetFaces(userId, assetId, binding);
-          if (faces.length > 0) {
-            await core.registerFaces(userId, assetId, faces, binding);
-          }
+          // one atomic replace, even when nothing was detected: the old DELETE-then-POST pair
+          // wiped the faces before a rejected register (a group photo's body used to exceed the
+          // 100 KB limit) could land the new set, and a retried replace stays idempotent
+          await core.replaceFaces(userId, assetId, faces, binding);
 
           await core.patchMetadata(
             userId,

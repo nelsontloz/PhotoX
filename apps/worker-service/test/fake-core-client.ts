@@ -206,16 +206,16 @@ export class FakeCoreClient {
     return Promise.resolve();
   }
 
-  registerFaces(
+  replaceFaces(
     userId: string,
     assetId: string,
     faces: DetectedFaceInput[],
     binding?: JobBinding,
   ): Promise<{ count: number }> {
-    this.calls.push({ method: 'registerFaces', args: [assetId, faces], binding });
+    this.calls.push({ method: 'replaceFaces', args: [assetId, faces], binding });
     const err = this.assetError(userId, assetId);
     if (err) return Promise.reject(err);
-    this.faces.set(assetId, [...(this.faces.get(assetId) ?? []), ...faces]);
+    this.faces.set(assetId, [...faces]);
     return Promise.resolve({ count: faces.length });
   }
 

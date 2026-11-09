@@ -119,11 +119,10 @@ describe('FaceProcessor', () => {
       'getFile',
       'getAsset',
       'patchMetadata',
-      'deleteAssetFaces',
-      'registerFaces',
+      'replaceFaces',
       'patchMetadata',
     ]);
-    expect(fake.deleteFacesCalls).toEqual([asset.id]);
+    expect(fake.deleteFacesCalls).toEqual([]);
     const faces = fake.faces.get(asset.id)!;
     expect(faces).toHaveLength(1);
     expect(faces[0]!.box).toEqual({ x: 10, y: 20, w: 30, h: 40 });
@@ -216,12 +215,18 @@ describe('FaceProcessor', () => {
   it('clears faces and reports zero when nothing is detected', async () => {
     const run = setup();
     const { userId, fileId, asset } = await seedPhoto();
+    fake.faces.set(asset.id, [
+      { box: { x: 1, y: 1, w: 5, h: 5 }, confidence: 0.9, embedding: emb512() },
+    ]);
     detect.mockResolvedValue([]);
 
     await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>);
 
-    expect(fake.deleteFacesCalls).toEqual([asset.id]);
-    expect(fake.callsOf('registerFaces')).toHaveLength(0);
+    // replace semantics: an empty set still clears the asset, in one request
+    expect(fake.deleteFacesCalls).toEqual([]);
+    expect(fake.callsOf('replaceFaces')).toHaveLength(1);
+    expect(fake.callsOf('replaceFaces')[0]!.args[1]).toEqual([]);
+    expect(fake.faces.get(asset.id) ?? []).toHaveLength(0);
     const assetState = fake.assets.get(asset.id)!;
     expect(assetState.faceStatus).toBe('ready');
     expect(assetState.faceCount).toBe(0);
@@ -236,7 +241,7 @@ describe('FaceProcessor', () => {
       run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>),
     ).resolves.toBeUndefined();
 
-    expect(fake.callsOf('registerFaces')).toHaveLength(0);
+    expect(fake.callsOf('replaceFaces')).toHaveLength(0);
     expect(fake.deleteFacesCalls).toHaveLength(0);
     expect(fake.assets.get(asset.id)!.faceStatus).toBe('failed');
   });
@@ -253,7 +258,7 @@ describe('FaceProcessor', () => {
     expect(detect).toHaveBeenCalledTimes(1);
     expect(detect.mock.calls[0]![0]).toBeInstanceOf(Buffer);
     expect(detect.mock.calls[0]!).toHaveLength(1);
-    const registerArgs = fake.callsOf('registerFaces')[0]!.args;
+    const registerArgs = fake.callsOf('replaceFaces')[0]!.args;
     expect(registerArgs[0]).toBe(asset.id);
     expect(registerArgs).toHaveLength(2);
   });
