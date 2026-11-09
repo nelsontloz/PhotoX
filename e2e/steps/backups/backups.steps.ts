@@ -10,6 +10,7 @@ import {
   registerUser,
   requireAuth,
   signInAdmin,
+  startAndWaitForRun,
   uploadViaApi,
   type AuthResponse,
   type Ctx,
@@ -101,12 +102,12 @@ async function runBackup(
   state: BackupState,
   emailOrId: string,
 ): Promise<BackupResult> {
-  const response = await request.post('/api/v1/admin/backups', {
-    headers: authHeaders(await requireAdmin(request, state)),
-    data: { emailOrId },
-  });
-  expect(response.status()).toBe(200);
-  const result = (await response.json()) as BackupResult;
+  const result = await startAndWaitForRun<BackupResult>(
+    request,
+    await requireAdmin(request, state),
+    '/api/v1/admin/backups',
+    { emailOrId },
+  );
   state.results.push(result);
   return result;
 }
@@ -531,8 +532,8 @@ When(
       { timeout: 240_000 },
     );
     await page.getByRole('button', { name: 'Restore', exact: true }).click();
-    // the controller answers 200 (HttpCode OK) with the restored address in the body
-    expect((await answered).status()).toBe(200);
+    // the controller accepts the run (202); the page then polls it to completion
+    expect((await answered).status()).toBe(202);
   },
 );
 

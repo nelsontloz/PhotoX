@@ -10,10 +10,12 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { isUUID } from 'class-validator';
-import { randomUUID } from 'crypto';
-import { mkdtemp, rm } from 'fs/promises';
+import { createHash, randomUUID } from 'crypto';
+import { createReadStream } from 'fs';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { extname, join } from 'path';
+import { pipeline } from 'stream/promises';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import {
   LocalStorageService,
@@ -38,6 +40,8 @@ import { PlacesResolveService } from '../places/places-resolve.service';
 import { S3BackupService, isNotFound } from './s3-backup.service';
 import { backfillPlaces, type PlacesBackfillItem } from './places-backfill';
 import { BackupMerge } from './entities/backup-merge.entity';
+import { BackupRun, type BackupRunState } from './entities/backup-run.entity';
+import { BackupRunItem } from './entities/backup-run-item.entity';
 
 const fileManifestSchema = z.object({
   id: z.string().uuid(),
@@ -373,6 +377,58 @@ export interface BackupProgress {
   updatedAt: string;
 }
 
+/** Items one sweeper pass may claim; small enough to keep S3/disk load bounded. */
+const TRANSFER_BATCH_SIZE = 4;
+const TRANSFER_MAX_ATTEMPTS = 5;
+const TRANSFER_MAX_BACKOFF_MS = 5 * 60_000;
+/** A crashed core leaves items 'running'; after this they are claimable again. */
+const TRANSFER_CLAIM_TIMEOUT_MS = 30 * 60_000;
+
+/** Per-run poller shape: counters plus the completed result (or the failure reason). */
+export interface BackupRunStatus {
+  id: string;
+  kind: 'backup' | 'restore';
+  userId: string;
+  state: BackupRunState;
+  total: number;
+  completed: number;
+  uploaded: number;
+  skipped: number;
+  failed: number;
+  currentFile?: string;
+  error?: string;
+  startedAt: string;
+  updatedAt: string;
+  finishedAt?: string;
+  result?: BackupResult | RestoreResult;
+}
+
+interface ClaimedBackupItem {
+  id: string;
+  runId: string;
+  fileId: string;
+  storageKey: string;
+  s3Key: string;
+  checksumSha256: string | null;
+  mimeType: string | null;
+  attempts: number;
+}
+
+async function sha256File(path: string): Promise<string> {
+  const hash = createHash('sha256');
+  await pipeline(createReadStream(path), hash);
+  return hash.digest('hex');
+}
+
+/**
+ * TypeORM's Postgres driver returns UPDATE/DELETE results as `[rows, affected]`; SELECTs return
+ * the rows directly. Normalize both so a claim/finalize query reads the same way.
+ */
+function rowsOf<T>(result: unknown): T[] {
+  if (Array.isArray(result) && Array.isArray(result[0])) return result[0] as T[];
+  return result as T[];
+}
+
 /** One backup account snapshot surfaced in the admin overview/merge picker. */
 export interface BackupSnapshot {
   userId: string;
@@ -664,17 +720,14 @@ export function buildFallbackEmail(origEmail: string, nowMs: number, attempt = 0
  * detections/thumbnails (all regenerable via re-enqueue). Trashed rows+bytes
  * travel as-is and stay degraded (reprocess filters exclude trashed).
  *
- * Restore runs rows-first in one transaction (fresh `createdAt = now()` keeps new
- * rows inside the orphan grace window), bytes second — the reverse order would
- * leave strays the next cleanup-orphans run deletes.
- *
- * HARD PREREQUISITE (M4): pause cleanup-orphans for the WHOLE restore — never run
- * `POST /api/v1/admin/cleanup-orphans/run` (or any automated sweep) mid-restore.
- * Restored rows use `now()` timestamps inside the ~10-minute orphan grace window,
- * so a sweep past that window deletes freshly restored bytes/rows. Multi-GB
- * restores can exceed 10 minutes — keep the sweeper paused until the restore
- * completion log line (with startedAt/completedAt) appears. No lock is held in
- * code; the operator owns the pause.
+ * Restore commits rows + one ledger item per original in one transaction, then the
+ * advisory-locked sweeper downloads one file per item and retries each file on its
+ * own schedule; finalize re-enqueues derivatives. Backup uses the same ledger, writes
+ * original bytes per item and `manifest.json` LAST (HEAD-verified), so a failed run
+ * never leaves a live manifest over missing bytes. Successful items are deleted; a
+ * failed/paused run is resumable (`startRestore` with the same manifest, or retryRun).
+ * The run directory under `STORAGE_DIR/backup-runs/<runId>/` is skipped by the orphan
+ * sweep and removed when a run completes.
  *
  * Stale-until-jobs-complete (A2/A3): derivative statuses restore as-was while the
  * bytes/jobs are still outstanding — transcode/thumbnail/face/embedding statuses
@@ -709,11 +762,6 @@ export function buildFallbackEmail(origEmail: string, nowMs: number, attempt = 0
 @Injectable()
 export class UserBackupService {
   private readonly logger = new Logger(UserBackupService.name);
-  // ponytail: in-memory progress only (no DB/S3 row) — backupUser mutates the
-  // entry each file while GET backups/progress polls a copy; a restart wipes
-  // it and a rerun overwrites the stale entry, so never treat it as durable
-  // history (upgrade path: persist the counters to app_settings/a job row)
-  private readonly backupProgress = new Map<string, BackupProgress>();
   // In-process merge mutual exclusion (`<backupUserId>:<targetUserId>`). The unique
   // ledger pair is the durable arbiter; this only turns a concurrent double-click
   // into a clean 409 before any bytes/rows are written.
@@ -733,12 +781,22 @@ export class UserBackupService {
     @InjectRepository(Share) private readonly shares: Repository<Share>,
     @InjectRepository(Person) private readonly persons: Repository<Person>,
     @InjectRepository(BackupMerge) private readonly backupMerges: Repository<BackupMerge>,
+    @InjectRepository(BackupRun) private readonly runs: Repository<BackupRun>,
+    @InjectRepository(BackupRunItem) private readonly runItems: Repository<BackupRunItem>,
   ) {}
 
-  async backupUser(emailOrId: string): Promise<BackupResult> {
+  /**
+   * Creates a backup run: snapshot the account, write the manifest draft, then the run + one
+   * item per original that is not already in S3 (the incremental gate). The sweeper uploads
+   * each item and the run finalizes with the manifest LAST — a run that fails never leaves a
+   * live manifest over missing bytes.
+   */
+  async startBackup(emailOrId: string): Promise<{ runId: string }> {
     const user = await this.findUser(emailOrId);
     if (!user) throw new NotFoundException(`No user for ${emailOrId}`);
     await this.s3.ensureBucket();
+    await this.assertNoActiveRun(user.id);
+    await this.cleanupAbandonedBackupRuns(user.id);
 
     // purpose='original' also matches thumbnail rows (they share the enum value
     // but live under derivatives/thumbnails/...), so the storageKey prefix is the
@@ -780,143 +838,129 @@ export class UserBackupService {
       persons: personRows.map(personToManifestEntry),
     };
 
-    // ponytail: one-backup-per-user — fixed keys per user, a rerun overwrites the
-    // previous backup in place. Bytes land FIRST, manifest LAST (M3): a mid-run
-    // failure leaves the previous manifest (stale but consistent), never a live
-    // manifest over missing bytes; a rerun re-uploads missing bytes then the
-    // manifest, so rerun-after-failure is safe and idempotent.
-    // Pre-fix backups uploaded thumbnail bytes as originals/<thumbFileId>.webp;
-    // the originals/% query filter stops new uploads, so prune those stale keys
-    // here (before the manifest, keeping bytes-first/manifest-last).
-    // Incremental (manifest-diff + listKeys gate) + lazy email-change rename:
-    // copy-forward stale same-userId prefixes, diff against the previous
-    // manifest, gate each PUT on listed presence, prune the new prefix, write
-    // the manifest LAST + HEAD-verify it, then delete old prefixes.
+    // one-backup-per-user: fixed keys, bytes first, manifest last (M3). The stale-prefix
+    // rename stays in the start step — it is a rare, bounded set of server-side copies.
     const prefix = backupPrefix(user.email, user.id);
     const manifestObjectKey = manifestKey(user.email, user.id);
-    const backupStartedAt = new Date().toISOString();
-    this.backupProgress.set(user.id, {
-      userId: user.id,
-      inProgress: true,
-      total: fileRows.length,
-      completed: 0,
-      uploaded: 0,
-      skipped: 0,
-      currentFile: undefined,
-      startedAt: backupStartedAt,
-      updatedAt: backupStartedAt,
-    });
-    try {
-      let stalePrefixes: string[] = [];
-      try {
-        stalePrefixes = await this.findStalePrefixesForUser(user.id, prefix);
-      } catch (err) {
-        this.logger.warn(
-          `Stale prefix scan failed for user ${user.id} (${errorName(err)}) — skipping rename`,
-        );
-        stalePrefixes = [];
-      }
-      if (stalePrefixes.length > 0) {
-        try {
-          await this.renameBackupPrefix(stalePrefixes, prefix);
-        } catch (err) {
-          this.logger.warn(
-            `Backup rename failed for user ${user.id} (${err instanceof Error ? err.message : String(err)}) — continuing with direct upload`,
-          );
-        }
-      }
-      let prevFileMap = await this.loadPreviousFileMap(manifestObjectKey);
-      if (prevFileMap === null) {
-        for (const stale of stalePrefixes) {
-          const fallback = await this.loadPreviousFileMap(`${stale}manifest.json`);
-          if (fallback !== null) {
-            prevFileMap = fallback;
-            break;
-          }
-        }
-      }
-      let listedSet = new Set<string>();
-      let canPrune = true;
-      try {
-        listedSet = new Set(await this.s3.listKeys(prefix));
-      } catch (err) {
-        this.logger.warn(
-          `Backup listKeys failed for ${prefix} (${errorName(err)}) — uploading all, skipping prune`,
-        );
-        listedSet = new Set<string>();
-        canPrune = false;
-      }
-      const expectedKeys = new Set(
-        manifest.files.map((file) =>
-          originalKey(user.email, user.id, file.id, extOf(file.storageKey)),
-        ),
-      );
-      let uploaded = 0;
-      let skipped = 0;
-      for (const file of manifest.files) {
-        const key = originalKey(user.email, user.id, file.id, extOf(file.storageKey));
-        if (shouldSkipUpload(prevFileMap, listedSet, file, key)) {
-          skipped += 1;
-          this.updateBackupProgress(user.id, {
-            completed: skipped + uploaded,
-            uploaded,
-            skipped,
-            currentFile: file.originalName,
-          });
-          continue;
-        }
-        await this.s3.putFile(key, this.storage.pathFor(file.storageKey), file.mimeType);
-        uploaded += 1;
-        listedSet.add(key);
-        this.updateBackupProgress(user.id, {
-          completed: skipped + uploaded,
-          uploaded,
-          skipped,
-          currentFile: file.originalName,
-        });
-      }
-      if (canPrune) {
-        const staleKeys = [...listedSet].filter(
-          (key) => key.startsWith(`${prefix}originals/`) && !expectedKeys.has(key),
-        );
-        if (staleKeys.length > 0) {
-          await this.s3.deleteKeys(staleKeys);
-          this.logger.log(
-            `Pruned ${staleKeys.length} stale original(s) from pre-fix backup for user ${user.id}`,
-          );
-        }
-      } else {
-        this.logger.warn(`Skipping prune for user ${user.id} — new-prefix listing failed`);
-      }
-      await this.s3.putObject(
-        manifestObjectKey,
-        Buffer.from(JSON.stringify(manifest)),
-        'application/json',
-      );
-      await this.s3.headObject(manifestObjectKey);
-      await this.deletePrefixesQuietly(stalePrefixes, user.id);
+    const runId = randomUUID();
 
-      this.finishBackupProgress(user.id);
-      this.logger.log(
-        `Backed up user ${user.id} (${fileRows.length} files, ${uploaded} uploaded, ${skipped} skipped) to ${prefix}`,
+    let stalePrefixes: string[] = [];
+    try {
+      stalePrefixes = await this.findStalePrefixesForUser(user.id, prefix);
+    } catch (err) {
+      this.logger.warn(
+        `Stale prefix scan failed for user ${user.id} (${errorName(err)}) — skipping rename`,
       );
-      return {
+      stalePrefixes = [];
+    }
+    if (stalePrefixes.length > 0) {
+      try {
+        await this.renameBackupPrefix(stalePrefixes, prefix);
+      } catch (err) {
+        this.logger.warn(
+          `Backup rename failed for user ${user.id} (${errorMessage(err)}) — continuing with direct upload`,
+        );
+      }
+    }
+    let prevFileMap = await this.loadPreviousFileMap(manifestObjectKey);
+    if (prevFileMap === null) {
+      for (const stale of stalePrefixes) {
+        const fallback = await this.loadPreviousFileMap(`${stale}manifest.json`);
+        if (fallback !== null) {
+          prevFileMap = fallback;
+          break;
+        }
+      }
+    }
+    let listedSet: Set<string>;
+    try {
+      listedSet = new Set(await this.s3.listKeys(prefix));
+    } catch (err) {
+      this.logger.warn(
+        `Backup listKeys failed for ${prefix} (${errorName(err)}) — uploading all, skipping prune`,
+      );
+      listedSet = new Set<string>();
+    }
+
+    const items: {
+      runId: string;
+      fileId: string;
+      storageKey: string;
+      s3Key: string;
+      sizeBytes: number;
+      checksumSha256: string;
+      mimeType: string;
+      state: 'pending';
+      attempts: number;
+      nextAttemptAt: Date;
+    }[] = [];
+    let skipped = 0;
+    for (const file of manifest.files) {
+      const key = originalKey(user.email, user.id, file.id, extOf(file.storageKey));
+      if (shouldSkipUpload(prevFileMap, listedSet, file, key)) {
+        skipped += 1;
+        continue;
+      }
+      items.push({
+        runId,
+        fileId: file.id,
+        storageKey: file.storageKey,
+        s3Key: key,
+        sizeBytes: file.sizeBytes,
+        checksumSha256: file.checksumSha256,
+        mimeType: file.mimeType,
+        state: 'pending',
+        attempts: 0,
+        nextAttemptAt: new Date(),
+      });
+    }
+
+    const manifestPath = this.manifestDraftKey(runId);
+    await this.writeManifestDraft(runId, manifest);
+
+    await this.dataSource.transaction(async (manager: EntityManager) => {
+      await manager.insert(BackupRun, {
+        id: runId,
+        kind: 'backup',
         userId: user.id,
+        state: 'running',
         email: user.email,
         prefix,
-        backedUpAt,
-        files: fileRows.length,
-        assets: assetRows.length,
-        albums: albumRows.length,
-        shares: shareRows.length,
-        persons: personRows.length,
-        uploaded,
+        manifestKey: manifestObjectKey,
+        manifestPath,
+        identity: backedUpAt,
+        stalePrefixes,
+        counts: {
+          files: manifest.files.length,
+          assets: assetRows.length,
+          albums: albumRows.length,
+          shares: shareRows.length,
+          persons: personRows.length,
+        },
+        totalItems: manifest.files.length,
+        completedItems: skipped,
+        uploaded: 0,
         skipped,
-      };
-    } catch (err) {
-      this.finishBackupProgress(user.id);
-      throw err;
-    }
+        failedItems: 0,
+        currentFile: null,
+        error: null,
+        result: null,
+        finishedAt: null,
+      });
+      if (items.length > 0) await manager.insert(BackupRunItem, items);
+    });
+
+    this.logger.log(
+      `Backup run ${runId} started for user ${user.id} (${items.length} to upload, ${skipped} unchanged)`,
+    );
+    return { runId };
+  }
+
+  /** Synchronous driver (tests + internal callers): start the run and process it to completion. */
+  async backupUser(emailOrId: string): Promise<BackupResult> {
+    const { runId } = await this.startBackup(emailOrId);
+    await this.drainRun(runId);
+    return this.completedBackupResult(runId);
   }
 
   /**
@@ -1030,13 +1074,15 @@ export class UserBackupService {
     }
   }
 
-  async restoreUser(emailOrId: string, restoreEmail?: string): Promise<RestoreResult> {
-    const startedAt = new Date().toISOString();
-    this.logger.warn(
-      `Restore started at ${startedAt} — keep cleanup-orphans paused until restore ` +
-        'completes; never run cleanup mid-restore (bytes land after rows, strays ' +
-        'would be deleted; restored rows use now() inside the ~10-min grace window)',
-    );
+  /**
+   * Creates a restore run: validate the manifest, resolve the restored email, then commit the
+   * rows, the run and one item per original in one transaction. The sweeper downloads each item
+   * independently; finalize re-enqueues derivatives and re-homes the prefix if the email changed.
+   *
+   * An unfinished run for the SAME manifest can be resumed even though the user row is live
+   * (that is how a failed restore is retried instead of 409ing forever).
+   */
+  async startRestore(emailOrId: string, restoreEmail?: string): Promise<{ runId: string }> {
     await this.s3.ensureBucket();
     let located: { prefix: string; manifestObjectKey: string; userId: string };
     try {
@@ -1045,10 +1091,6 @@ export class UserBackupService {
       if (err instanceof NotFoundException || err instanceof ServiceUnavailableException) throw err;
       throw new ServiceUnavailableException('Backup storage (S3) unreachable');
     }
-    // (a) same userId live → 409 already-restored: the row is already back, so a
-    // rerun would PK-collide — fail closed before touching S3 bytes.
-    const liveSameId = await this.users.findOne({ where: { id: located.userId } });
-    if (liveSameId) throw new ConflictException('already-restored');
     // A live user with no exact manifest resolves to its exact prefix (so callers
     // can report exists:false) — the GET then 404s instead of leaking NoSuchKey.
     // zod runtime-validates the downloaded manifest (untrusted S3 bytes)
@@ -1065,6 +1107,27 @@ export class UserBackupService {
         `Backup manifest userId ${manifest.userId} does not match prefix user ${located.userId}`,
       );
     }
+
+    // (a) same userId live: only an unfinished run for THIS manifest may resume; a completed
+    // restore (or a live account backed up elsewhere) stays 409.
+    const liveSameId = await this.users.findOne({ where: { id: located.userId } });
+    if (liveSameId) {
+      const resumable = await this.runs.findOne({
+        where: {
+          userId: located.userId,
+          kind: 'restore',
+          manifestKey: located.manifestObjectKey,
+          identity: manifest.backedUpAt,
+          state: In(['running', 'paused', 'failed', 'finalizing']),
+        },
+        order: { startedAt: 'DESC' },
+      });
+      if (!resumable) throw new ConflictException('already-restored');
+      await this.resumeRun(resumable.id);
+      this.logger.log(`Restore run ${resumable.id} resumed for user ${located.userId}`);
+      return { runId: resumable.id };
+    }
+
     // (b) email taken by a different live id (email reuse after delete) → restore
     // under the ORIGINAL userId with a fallback `restored-<ms>-<orig>` email. The
     // snapshot is re-homed to the fallback address's prefix below (bytes still
@@ -1100,6 +1163,37 @@ export class UserBackupService {
           `file(s) from legacy manifest for user ${manifest.userId}`,
       );
     }
+
+    // Untrusted manifest: a storageKey outside this user's originals folder would let a crafted
+    // backup write bytes into another account's prefix (pathFor only stops escaping STORAGE_DIR).
+    const runId = randomUUID();
+    const items = originalFiles.map((file) => {
+      if (!file.storageKey.startsWith(`originals/${manifest.userId}/`)) {
+        throw new BadRequestException(
+          `Manifest storage key escapes the user prefix: ${file.storageKey}`,
+        );
+      }
+      return {
+        runId,
+        fileId: file.id,
+        storageKey: file.storageKey,
+        s3Key: originalKey(
+          manifest.emailAtBackup,
+          manifest.userId,
+          file.id,
+          extOf(file.storageKey),
+        ),
+        sizeBytes: file.sizeBytes,
+        checksumSha256: file.checksumSha256,
+        mimeType: file.mimeType,
+        state: 'pending' as const,
+        attempts: 0,
+        nextAttemptAt: new Date(),
+      };
+    });
+
+    const manifestPath = this.manifestDraftKey(runId);
+    await this.writeManifestDraft(runId, manifest);
 
     // rows first, in one transaction — links (assets.fileId, album_assets, shares)
     // land together so no row is ever orphan-eligible; timestamps default to now()
@@ -1185,92 +1279,49 @@ export class UserBackupService {
           faceCount: p.faceCount,
         })),
       );
+
+      await manager.insert(BackupRun, {
+        id: runId,
+        kind: 'restore',
+        userId: manifest.userId,
+        state: 'running',
+        email: actualEmail,
+        prefix: located.prefix,
+        manifestKey: located.manifestObjectKey,
+        manifestPath,
+        identity: manifest.backedUpAt,
+        stalePrefixes: [],
+        counts: {
+          files: originalFiles.length,
+          assets: manifest.assets.length,
+          albums: manifest.albums.length,
+          shares: manifest.shares.length,
+          persons: manifest.persons.length,
+        },
+        totalItems: originalFiles.length,
+        completedItems: 0,
+        uploaded: 0,
+        skipped: 0,
+        failedItems: 0,
+        currentFile: null,
+        error: null,
+        result: null,
+        finishedAt: null,
+      });
+      if (items.length > 0) await manager.insert(BackupRunItem, items);
     });
 
-    // bytes second — rows already reference every key, so no stray sweep can fire
-    // (pathFor containment rejects escaped storageKeys before any byte lands)
-    await this.downloadToStorage(
-      originalFiles.map((f) => ({
-        id: f.id,
-        storageKey: f.storageKey,
-        sourceKey: originalKey(manifest.emailAtBackup, manifest.userId, f.id, extOf(f.storageKey)),
-      })),
-      'photox-restore-',
-    );
-
-    // Restoring under a different email re-homes the snapshot to the restored
-    // address's canonical prefix now — otherwise bytes/manifest stay under the
-    // backup-time email until the next backupUser renames them.
-    // Phase 1 (copy + manifest rewrite, manifest LAST): a failure keeps the
-    // snapshot at the source prefix, reports reassignmentError and never fails the
-    // restore (rows/bytes are already committed).
-    const targetPrefix = backupPrefix(actualEmail, manifest.userId);
-    let finalPrefix = located.prefix;
-    let reassignmentError: string | undefined;
-    if (targetPrefix !== located.prefix) {
-      const targetManifestKey = manifestKey(actualEmail, manifest.userId);
-      try {
-        await this.renameBackupPrefix([located.prefix], targetPrefix);
-        // same snapshot, same rows/backedUpAt — only the email fields move
-        const rehomed: UserBackupManifest = {
-          ...manifest,
-          emailAtBackup: actualEmail,
-          user: { ...manifest.user, email: actualEmail },
-        };
-        await this.s3.putObject(
-          targetManifestKey,
-          Buffer.from(JSON.stringify(rehomed)),
-          'application/json',
-        );
-        await this.s3.headObject(targetManifestKey);
-        finalPrefix = targetPrefix;
-      } catch (err) {
-        reassignmentError = err instanceof Error ? err.message : String(err);
-        this.logger.warn(
-          `Backup reassignment for restored user ${manifest.userId} -> ${targetPrefix} failed ` +
-            `(${reassignmentError}) — keeping ${located.prefix}`,
-        );
-      }
-      // Phase 2 (cleanup), only after the copy+manifest landed; log-only on failure
-      // (the live copy is valid and the old prefix is a same-userId stale prefix
-      // the next backup sweeps).
-      if (reassignmentError === undefined) {
-        await this.deletePrefixesQuietly([located.prefix], manifest.userId);
-      }
-    }
-
-    const enqueued = await this.reenqueueDerivatives(manifest.userId);
-    const completedAt = new Date().toISOString();
     this.logger.log(
-      `Restored user ${manifest.userId} (${originalFiles.length} files) ` +
-        `startedAt=${startedAt} completedAt=${completedAt} prefix=${finalPrefix}` +
-        (reassignmentError !== undefined ? ` reassignmentError=${reassignmentError}` : '') +
-        ` — cleanup-orphans may resume`,
+      `Restore run ${runId} started for user ${manifest.userId} (${originalFiles.length} files)`,
     );
-    return {
-      userId: manifest.userId,
-      email: actualEmail,
-      prefix: finalPrefix,
-      backedUpAt: manifest.backedUpAt,
-      restoredFrom: {
-        emailAtBackup: manifest.emailAtBackup,
-        prefix: located.prefix,
-        manifestObjectKey: located.manifestObjectKey,
-      },
-      startedAt,
-      completedAt,
-      files: originalFiles.length,
-      assets: manifest.assets.length,
-      albums: manifest.albums.length,
-      shares: manifest.shares.length,
-      persons: manifest.persons.length,
-      // restore downloads bytes (no incremental S3 gate) — zero counters keep the
-      // BackupResult extension satisfied without implying skipped uploads
-      uploaded: 0,
-      skipped: 0,
-      enqueued,
-      reassignmentError,
-    };
+    return { runId };
+  }
+
+  /** Synchronous driver (tests + internal callers): start the run and process it to completion. */
+  async restoreUser(emailOrId: string, restoreEmail?: string): Promise<RestoreResult> {
+    const { runId } = await this.startRestore(emailOrId, restoreEmail);
+    await this.drainRun(runId);
+    return this.completedRestoreResult(runId);
   }
 
   /**
@@ -2389,50 +2440,41 @@ export class UserBackupService {
   }
 
   /**
-   * Live per-file snapshot of the current (or last) backup run for one user.
-   * Unknown users throw like backupUser; known users with no run yet get an
-   * idle zero snapshot (queried-at timestamps — meaningless while total is 0).
-   * Returns a copy so pollers cannot mutate the stored entry.
+   * Live per-file snapshot of the latest backup run for one user. Unknown users throw like
+   * startBackup; known users with no run yet get an idle zero snapshot.
    */
   async getBackupProgress(emailOrId: string): Promise<BackupProgress> {
     const user = await this.findUser(emailOrId);
     if (!user) throw new NotFoundException(`No user for ${emailOrId}`);
-    const current = this.backupProgress.get(user.id);
-    if (current) return { ...current };
-    const now = new Date().toISOString();
+    const run = await this.runs.findOne({
+      where: { userId: user.id, kind: 'backup' },
+      order: { startedAt: 'DESC' },
+    });
+    if (!run) {
+      const now = new Date().toISOString();
+      return {
+        userId: user.id,
+        inProgress: false,
+        total: 0,
+        completed: 0,
+        uploaded: 0,
+        skipped: 0,
+        currentFile: undefined,
+        startedAt: now,
+        updatedAt: now,
+      };
+    }
     return {
       userId: user.id,
-      inProgress: false,
-      total: 0,
-      completed: 0,
-      uploaded: 0,
-      skipped: 0,
-      currentFile: undefined,
-      startedAt: now,
-      updatedAt: now,
+      inProgress: run.state === 'running' || run.state === 'finalizing',
+      total: run.totalItems,
+      completed: run.completedItems,
+      uploaded: run.uploaded,
+      skipped: run.skipped,
+      currentFile: run.currentFile ?? undefined,
+      startedAt: run.startedAt.toISOString(),
+      updatedAt: run.updatedAt.toISOString(),
     };
-  }
-
-  /** Per-iteration mutation of the stored entry (no-op when absent). */
-  private updateBackupProgress(
-    userId: string,
-    patch: Pick<BackupProgress, 'completed' | 'uploaded' | 'skipped' | 'currentFile'>,
-  ): void {
-    const current = this.backupProgress.get(userId);
-    if (!current) return;
-    current.completed = patch.completed;
-    current.uploaded = patch.uploaded;
-    current.skipped = patch.skipped;
-    current.currentFile = patch.currentFile;
-    current.updatedAt = new Date().toISOString();
-  }
-
-  /** Clears the in-progress flag on success AND failure (callers rethrow). */
-  private finishBackupProgress(userId: string): void {
-    const current = this.backupProgress.get(userId);
-    if (!current) return;
-    current.inProgress = false;
-    current.updatedAt = new Date().toISOString();
   }
 
   /**
@@ -2489,6 +2531,601 @@ export class UserBackupService {
       // raw bytes are not JSON at all — prefix-derived identity stands
     }
     return identity;
+  }
+
+  // ---------------------------------------------------------------------------------------
+  // Per-file transfer ledger: backup/restore items are claimed in small batches, retried
+  // independently, and the run finalizes (manifest last, derivatives last) when none remain.
+  // ---------------------------------------------------------------------------------------
+
+  /** Public status shape for the admin poller. */
+  toRunStatus(run: BackupRun): BackupRunStatus {
+    return {
+      id: run.id,
+      kind: run.kind,
+      userId: run.userId,
+      state: run.state,
+      total: run.totalItems,
+      completed: run.completedItems,
+      uploaded: run.uploaded,
+      skipped: run.skipped,
+      failed: run.failedItems,
+      ...(run.currentFile ? { currentFile: run.currentFile } : {}),
+      ...(run.error ? { error: run.error } : {}),
+      startedAt: run.startedAt.toISOString(),
+      updatedAt: run.updatedAt.toISOString(),
+      ...(run.finishedAt ? { finishedAt: run.finishedAt.toISOString() } : {}),
+      ...(run.result ? { result: run.result as unknown as BackupResult | RestoreResult } : {}),
+    };
+  }
+
+  async getRunStatus(runId: string): Promise<BackupRunStatus> {
+    const run = await this.runs.findOne({ where: { id: runId } });
+    if (!run) throw new NotFoundException('Backup run not found');
+    return this.toRunStatus(run);
+  }
+
+  /**
+   * Re-drives a failed/paused/cancelled run: every unfinished item goes back to pending with a
+   * fresh attempt budget. A completed run is not retryable (start a new restore instead).
+   */
+  async retryRun(runId: string): Promise<BackupRunStatus> {
+    const run = await this.runs.findOne({ where: { id: runId } });
+    if (!run) throw new NotFoundException('Backup run not found');
+    if (run.state !== 'failed' && run.state !== 'paused' && run.state !== 'cancelled') {
+      throw new ConflictException('Backup run is not retryable');
+    }
+    const otherActive = await this.runs.findOne({
+      where: { userId: run.userId, state: In(['running', 'paused', 'finalizing']) },
+    });
+    if (otherActive && otherActive.id !== run.id) {
+      throw new ConflictException('Another backup or restore is running for this user');
+    }
+    await this.resumeRun(runId);
+    return this.getRunStatus(runId);
+  }
+
+  async cancelRun(runId: string): Promise<BackupRunStatus> {
+    const run = await this.runs.findOne({ where: { id: runId } });
+    if (!run) throw new NotFoundException('Backup run not found');
+    if (run.state === 'running' || run.state === 'paused') {
+      await this.runs.update(runId, {
+        state: 'cancelled',
+        currentFile: null,
+        finishedAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+    return this.getRunStatus(runId);
+  }
+
+  /** One sweeper pass: requeue crashed claims, transfer one batch, finalize finished runs. */
+  async runTransfersOnce(ignoreBackoff = false): Promise<number> {
+    await this.requeueStuckFinalizing();
+    await this.requeueStaleClaims();
+    const processed = await this.processBatch(TRANSFER_BATCH_SIZE, null, ignoreBackoff);
+    await this.finalizeDueRuns(null);
+    return processed;
+  }
+
+  /**
+   * Synchronous driver used by the public backupUser/restoreUser wrappers (integration tests and
+   * callers that cannot poll). Ignores backoff so a retry does not stall the request.
+   */
+  private async drainRun(runId: string): Promise<void> {
+    for (;;) {
+      const run = await this.runs.findOne({ where: { id: runId } });
+      if (!run) throw new NotFoundException('Backup run not found');
+      if (run.state === 'finalizing') {
+        await this.finalizeDueRuns(runId);
+      } else if (run.state !== 'running') {
+        return;
+      }
+      const processed = await this.processBatch(TRANSFER_BATCH_SIZE, runId, true);
+      await this.finalizeDueRuns(runId);
+      const after = await this.runs.findOne({ where: { id: runId } });
+      if (!after) return;
+      if (after.state === 'running' && processed === 0) return;
+      if (after.state !== 'running' && after.state !== 'finalizing') return;
+    }
+  }
+
+  private async assertNoActiveRun(userId: string): Promise<void> {
+    const active = await this.runs.findOne({
+      where: { userId, state: In(['running', 'paused', 'finalizing']) },
+    });
+    if (active) {
+      throw new ConflictException('A backup or restore is already running for this user');
+    }
+  }
+
+  /** A fresh backup supersedes its own failed/cancelled attempts: drop those rows and drafts. */
+  private async cleanupAbandonedBackupRuns(userId: string): Promise<void> {
+    const abandoned = await this.runs.find({
+      where: { userId, kind: 'backup', state: In(['failed', 'cancelled']) },
+    });
+    if (abandoned.length === 0) return;
+    for (const run of abandoned) {
+      await rm(this.storage.pathFor(join('backup-runs', run.id)), {
+        recursive: true,
+        force: true,
+      }).catch(() => undefined);
+    }
+    await this.runs.delete({ id: In(abandoned.map((run) => run.id)) });
+  }
+
+  private async resumeRun(runId: string): Promise<void> {
+    await this.runItems.update(
+      { runId, state: In(['pending', 'retrying', 'running', 'failed', 'missing']) },
+      { state: 'pending', attempts: 0, nextAttemptAt: new Date(), claimedAt: null, error: null },
+    );
+    await this.runs.update(runId, {
+      state: 'running',
+      error: null,
+      currentFile: null,
+      finishedAt: null,
+      updatedAt: new Date(),
+    });
+  }
+
+  private manifestDraftKey(runId: string): string {
+    return join('backup-runs', runId, 'manifest.json');
+  }
+
+  private async writeManifestDraft(runId: string, manifest: UserBackupManifest): Promise<void> {
+    const dir = this.storage.pathFor(join('backup-runs', runId));
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'manifest.json'), JSON.stringify(manifest));
+  }
+
+  private async readManifestDraft(run: BackupRun): Promise<UserBackupManifest> {
+    if (!run.manifestPath) throw new Error('Backup run has no manifest draft');
+    return JSON.parse(
+      await readFile(this.storage.pathFor(run.manifestPath), 'utf8'),
+    ) as UserBackupManifest;
+  }
+
+  private completedBackupResult(runId: string): Promise<BackupResult> {
+    return this.completedResult<BackupResult>(runId, 'Backup');
+  }
+
+  private completedRestoreResult(runId: string): Promise<RestoreResult> {
+    return this.completedResult<RestoreResult>(runId, 'Restore');
+  }
+
+  private async completedResult<T>(runId: string, label: string): Promise<T> {
+    const run = await this.runs.findOne({ where: { id: runId } });
+    if (!run) throw new NotFoundException(`${label} run not found`);
+    if (run.state === 'completed') return run.result as unknown as T;
+    throw new Error(run.error ?? `${label} ${run.state}`);
+  }
+
+  /** A crashed core leaves items claimed; after the timeout they become claimable again. */
+  private async requeueStaleClaims(): Promise<void> {
+    await this.dataSource.query(
+      `UPDATE "backup_run_items" SET "state" = 'retrying', "nextAttemptAt" = now()
+       WHERE "state" = 'running' AND "claimedAt" < now() - ($1::int * interval '1 millisecond')`,
+      [TRANSFER_CLAIM_TIMEOUT_MS],
+    );
+  }
+
+  /** A crash during finalize leaves a run 'finalizing'; re-drive it once it is clearly stale. */
+  private async requeueStuckFinalizing(): Promise<void> {
+    await this.dataSource.query(
+      `UPDATE "backup_runs" SET "state" = 'running', "updatedAt" = now()
+       WHERE "state" = 'finalizing' AND "updatedAt" < now() - interval '10 minutes'`,
+    );
+  }
+
+  private async claimItems(
+    limit: number,
+    onlyRunId: string | null,
+    ignoreBackoff: boolean,
+  ): Promise<ClaimedBackupItem[]> {
+    const due = ignoreBackoff ? '' : 'AND i2."nextAttemptAt" <= now()';
+    const result: unknown = await this.dataSource.query(
+      `UPDATE "backup_run_items" i
+       SET "state" = 'running', "claimedAt" = now(), "attempts" = i."attempts" + 1
+       WHERE i."id" IN (
+         SELECT i2."id" FROM "backup_run_items" i2
+         JOIN "backup_runs" r ON r."id" = i2."runId"
+         WHERE r."state" = 'running'
+           AND i2."state" IN ('pending', 'retrying')
+           ${due}
+           AND ($2::uuid IS NULL OR i2."runId" = $2::uuid)
+         ORDER BY i2."nextAttemptAt" ASC
+         FOR UPDATE OF i2 SKIP LOCKED
+         LIMIT $1
+       )
+       RETURNING i."id" AS "id", i."runId" AS "runId", i."fileId" AS "fileId",
+                 i."storageKey" AS "storageKey", i."s3Key" AS "s3Key",
+                 i."checksumSha256" AS "checksumSha256", i."mimeType" AS "mimeType",
+                 i."attempts" AS "attempts"`,
+      [limit, onlyRunId],
+    );
+    return rowsOf<ClaimedBackupItem>(result);
+  }
+
+  private async processBatch(
+    limit: number,
+    onlyRunId: string | null,
+    ignoreBackoff: boolean,
+  ): Promise<number> {
+    const items = await this.claimItems(limit, onlyRunId, ignoreBackoff);
+    if (items.length === 0) return 0;
+    const runs = new Map<string, BackupRun>();
+    for (const runId of new Set(items.map((item) => item.runId))) {
+      const run = await this.runs.findOne({ where: { id: runId } });
+      if (run) runs.set(runId, run);
+    }
+    await Promise.all(
+      items.map((item) => {
+        const run = runs.get(item.runId);
+        return run ? this.transferItem(run, item) : Promise.resolve();
+      }),
+    );
+    return items.length;
+  }
+
+  private async transferItem(run: BackupRun, item: ClaimedBackupItem): Promise<void> {
+    await this.runs.update(run.id, { currentFile: item.storageKey, updatedAt: new Date() });
+    try {
+      if (run.kind === 'backup') {
+        await this.s3.putFile(
+          item.s3Key,
+          this.storage.pathFor(item.storageKey),
+          item.mimeType ?? undefined,
+        );
+      } else {
+        await this.restoreFile(run, item);
+      }
+      await this.runItems.delete(item.id);
+      await this.bumpRun(run.id, 'uploaded');
+    } catch (err) {
+      await this.handleTransferError(run, item, err);
+    }
+  }
+
+  private async restoreFile(run: BackupRun, item: ClaimedBackupItem): Promise<void> {
+    const dir = this.storage.pathFor(join('backup-runs', run.id, 'tmp'));
+    await mkdir(dir, { recursive: true });
+    const tmp = join(dir, `${item.fileId}.${randomUUID()}.part`);
+    try {
+      await this.s3.downloadToFile(item.s3Key, tmp);
+      if (item.checksumSha256) {
+        const actual = await sha256File(tmp);
+        if (actual !== item.checksumSha256) {
+          throw new Error(`checksum mismatch for ${item.fileId}`);
+        }
+      }
+      // atomic save consumes the temp file; a failure leaves the run item retryable
+      await this.storage.save(item.storageKey, tmp);
+    } finally {
+      await rm(tmp, { force: true }).catch(() => undefined);
+    }
+  }
+
+  private async handleTransferError(
+    run: BackupRun,
+    item: ClaimedBackupItem,
+    err: unknown,
+  ): Promise<void> {
+    const message = errorMessage(err);
+    const code = (err as NodeJS.ErrnoException).code;
+
+    // local storage is full/unwritable: retrying every file is pointless — park the run
+    if (code === 'ENOSPC' || code === 'EDQUOT' || code === 'EACCES') {
+      await this.runItems.update(item.id, {
+        state: 'retrying',
+        attempts: 0,
+        nextAttemptAt: new Date(),
+        claimedAt: null,
+        error: message,
+      });
+      await this.runs.update(run.id, {
+        state: 'paused',
+        error: `Transfer paused: ${message}`,
+        currentFile: null,
+        updatedAt: new Date(),
+      });
+      this.logger.error(`Transfer paused for run ${run.id}: ${message}`);
+      return;
+    }
+
+    const missing = run.kind === 'restore' && isNotFound(err);
+    const permanent = missing || code === 'ENOENT' || item.attempts >= TRANSFER_MAX_ATTEMPTS;
+    if (permanent) {
+      await this.runItems.update(item.id, {
+        state: missing ? 'missing' : 'failed',
+        error: message,
+        claimedAt: null,
+      });
+      await this.bumpRun(run.id, 'failed');
+      this.logger.warn(
+        `Backup transfer ${missing ? 'missing' : 'failed'} (${run.kind}) file=${item.fileId} ` +
+          `run=${run.id}: ${message}`,
+      );
+      return;
+    }
+
+    const delayMs = Math.min(TRANSFER_MAX_BACKOFF_MS, 1000 * 2 ** item.attempts);
+    await this.runItems.update(item.id, {
+      state: 'retrying',
+      nextAttemptAt: new Date(Date.now() + delayMs),
+      claimedAt: null,
+      error: message,
+    });
+    this.logger.warn(
+      `Backup transfer retry (${run.kind}) file=${item.fileId} attempt=${item.attempts}: ${message}`,
+    );
+  }
+
+  private async bumpRun(runId: string, outcome: 'uploaded' | 'failed'): Promise<void> {
+    const column = outcome === 'uploaded' ? '"uploaded"' : '"failedItems"';
+    await this.dataSource.query(
+      `UPDATE "backup_runs"
+       SET "completedItems" = "completedItems" + 1,
+           ${column} = ${column} + 1,
+           "currentFile" = NULL,
+           "updatedAt" = now()
+       WHERE "id" = $1`,
+      [runId],
+    );
+  }
+
+  /** Runs with no claimable items left are atomically promoted to finalizing and finished. */
+  private async finalizeDueRuns(onlyRunId: string | null): Promise<void> {
+    const rows = rowsOf<{ id: string }>(
+      await this.dataSource.query(
+        `SELECT r."id" FROM "backup_runs" r
+       WHERE r."state" = 'running'
+         AND NOT EXISTS (
+           SELECT 1 FROM "backup_run_items" i
+           WHERE i."runId" = r."id" AND i."state" IN ('pending', 'retrying', 'running')
+         )
+         AND ($1::uuid IS NULL OR r."id" = $1::uuid)`,
+        [onlyRunId],
+      ),
+    );
+    for (const row of rows) {
+      const claimed = rowsOf<{ id: string }>(
+        await this.dataSource.query(
+          `UPDATE "backup_runs" SET "state" = 'finalizing', "updatedAt" = now()
+           WHERE "id" = $1 AND "state" = 'running' RETURNING "id"`,
+          [row.id],
+        ),
+      );
+      if (claimed.length === 0) continue;
+      try {
+        await this.finalizeRun(row.id);
+      } catch (err) {
+        const message = errorMessage(err);
+        this.logger.error(`Backup run ${row.id} finalize failed: ${message}`);
+        await this.failRun(row.id, `Finalize failed: ${message}`);
+      }
+    }
+  }
+
+  private async finalizeRun(runId: string): Promise<void> {
+    const run = await this.runs.findOne({ where: { id: runId } });
+    if (!run) return;
+    const manifest = await this.readManifestDraft(run);
+    if (run.kind === 'backup') {
+      await this.finalizeBackupRun(run, manifest);
+    } else {
+      await this.finalizeRestoreRun(run, manifest);
+    }
+  }
+
+  private async finalizeBackupRun(run: BackupRun, manifest: UserBackupManifest): Promise<void> {
+    const failed = await this.runItems.count({ where: { runId: run.id, state: 'failed' } });
+    if (failed > 0) {
+      const first = await this.runItems.findOne({
+        where: { runId: run.id, state: 'failed' },
+        order: { createdAt: 'ASC' },
+      });
+      await this.failRun(
+        run.id,
+        `${failed} file(s) could not be uploaded${first?.error ? ` — ${first.error}` : ''}`,
+      );
+      return;
+    }
+    if (!run.prefix || !run.manifestKey || !run.email || !run.identity) {
+      await this.failRun(run.id, 'Backup run is missing its S3 target');
+      return;
+    }
+
+    // prune stale originals under the new prefix (pre-fix backups uploaded thumbnail bytes)
+    try {
+      const listed = new Set(await this.s3.listKeys(run.prefix));
+      const expected = new Set(
+        manifest.files.map((file) =>
+          originalKey(run.email!, run.userId, file.id, extOf(file.storageKey)),
+        ),
+      );
+      const stale = [...listed].filter(
+        (key) => key.startsWith(`${run.prefix}originals/`) && !expected.has(key),
+      );
+      if (stale.length > 0) {
+        await this.s3.deleteKeys(stale);
+        this.logger.log(`Pruned ${stale.length} stale original(s) from backup for ${run.userId}`);
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Backup prune listing failed for ${run.prefix} (${errorName(err)}) — skipping prune`,
+      );
+    }
+
+    // bytes are all in S3 now: the manifest lands last and is HEAD-verified
+    await this.s3.putObject(
+      run.manifestKey,
+      Buffer.from(JSON.stringify(manifest)),
+      'application/json',
+    );
+    await this.s3.headObject(run.manifestKey);
+    await this.deletePrefixesQuietly(run.stalePrefixes ?? [], run.userId);
+
+    const result: BackupResult = {
+      userId: run.userId,
+      email: run.email,
+      prefix: run.prefix,
+      backedUpAt: run.identity,
+      files: run.counts.files ?? 0,
+      assets: run.counts.assets ?? 0,
+      albums: run.counts.albums ?? 0,
+      shares: run.counts.shares ?? 0,
+      persons: run.counts.persons ?? 0,
+      uploaded: run.uploaded,
+      skipped: run.skipped,
+    };
+    await this.completeRun(run.id, result);
+    await rm(this.storage.pathFor(join('backup-runs', run.id)), {
+      recursive: true,
+      force: true,
+    }).catch(() => undefined);
+    this.logger.log(
+      `Backed up user ${run.userId} (${result.files} files, ${result.uploaded} uploaded, ` +
+        `${result.skipped} skipped) to ${result.prefix}`,
+    );
+  }
+
+  private async finalizeRestoreRun(run: BackupRun, manifest: UserBackupManifest): Promise<void> {
+    // files the backup no longer has: trash the assets BEFORE re-enqueueing derivatives so no
+    // job is queued for an asset whose bytes never landed
+    const broken = await this.runItems.find({
+      where: { runId: run.id, state: In(['failed', 'missing']) },
+    });
+    const brokenFileIds = broken.map((item) => item.fileId);
+    const brokenSet = new Set(brokenFileIds);
+    const manifestTrashed = new Map(manifest.assets.map((a) => [a.fileId, a.isTrashed]));
+    // a previous attempt trashed these; the bytes are here now and the manifest says live
+    const recovered = (run.brokenFileIds ?? []).filter(
+      (fileId) => !brokenSet.has(fileId) && manifestTrashed.get(fileId) === false,
+    );
+    if (recovered.length > 0) {
+      await this.assets.update(
+        { userId: run.userId, fileId: In(recovered) },
+        { isTrashed: false, trashedAt: null },
+      );
+    }
+    if (broken.length > 0) {
+      await this.assets.update(
+        { userId: run.userId, fileId: In(brokenFileIds) },
+        { isTrashed: true, trashedAt: new Date() },
+      );
+      this.logger.warn(
+        `${broken.length} restored file(s) missing from the backup — assets trashed for ${run.userId}`,
+      );
+    }
+    await this.runs.update(run.id, { brokenFileIds, updatedAt: new Date() });
+
+    const enqueued = await this.reenqueueDerivatives(run.userId);
+
+    // Restoring under a different email re-homes the snapshot to the restored address's
+    // canonical prefix now — otherwise bytes/manifest stay under the backup-time email until the
+    // next backup renames them. Phase 1 (copy + manifest rewrite, manifest LAST): a failure keeps
+    // the snapshot at the source prefix, reports reassignmentError and never fails the restore.
+    let finalPrefix = run.prefix ?? '';
+    let reassignmentError: string | undefined;
+    const actualEmail = run.email ?? manifest.emailAtBackup;
+    const targetPrefix = backupPrefix(actualEmail, run.userId);
+    if (finalPrefix !== '' && targetPrefix !== finalPrefix) {
+      const targetManifestKey = manifestKey(actualEmail, run.userId);
+      try {
+        await this.renameBackupPrefix([finalPrefix], targetPrefix);
+        // same snapshot, same rows/backedUpAt — only the email fields move
+        const rehomed: UserBackupManifest = {
+          ...manifest,
+          emailAtBackup: actualEmail,
+          user: { ...manifest.user, email: actualEmail },
+        };
+        await this.s3.putObject(
+          targetManifestKey,
+          Buffer.from(JSON.stringify(rehomed)),
+          'application/json',
+        );
+        await this.s3.headObject(targetManifestKey);
+        finalPrefix = targetPrefix;
+      } catch (err) {
+        reassignmentError = errorMessage(err);
+        this.logger.warn(
+          `Backup reassignment for restored user ${run.userId} -> ${targetPrefix} failed ` +
+            `(${reassignmentError}) — keeping ${run.prefix}`,
+        );
+      }
+      if (reassignmentError === undefined) {
+        await this.deletePrefixesQuietly([run.prefix ?? ''], run.userId);
+      }
+    }
+
+    const completedAt = new Date().toISOString();
+    const result: RestoreResult = {
+      userId: run.userId,
+      email: actualEmail,
+      prefix: finalPrefix,
+      backedUpAt: run.identity ?? manifest.backedUpAt,
+      restoredFrom: {
+        emailAtBackup: manifest.emailAtBackup,
+        prefix: run.prefix ?? '',
+        manifestObjectKey: run.manifestKey ?? '',
+      },
+      startedAt: run.startedAt.toISOString(),
+      completedAt,
+      files: run.counts.files ?? 0,
+      assets: run.counts.assets ?? 0,
+      albums: run.counts.albums ?? 0,
+      shares: run.counts.shares ?? 0,
+      persons: run.counts.persons ?? 0,
+      // restore downloads bytes (no incremental S3 gate) — zero counters keep the
+      // BackupResult extension satisfied without implying skipped uploads
+      uploaded: 0,
+      skipped: 0,
+      enqueued,
+      ...(reassignmentError === undefined ? {} : { reassignmentError }),
+    };
+
+    if (broken.length > 0) {
+      await this.runs.update(run.id, {
+        state: 'failed',
+        result: result as never,
+        error: `${broken.length} file(s) could not be restored`,
+        finishedAt: new Date(),
+        currentFile: null,
+        updatedAt: new Date(),
+      });
+      return;
+    }
+    await this.completeRun(run.id, result);
+    await rm(this.storage.pathFor(join('backup-runs', run.id)), {
+      recursive: true,
+      force: true,
+    }).catch(() => undefined);
+    this.logger.log(
+      `Restored user ${run.userId} (${result.files} files) startedAt=${result.startedAt} ` +
+        `completedAt=${completedAt} prefix=${finalPrefix}` +
+        (reassignmentError !== undefined ? ` reassignmentError=${reassignmentError}` : ''),
+    );
+  }
+
+  private async completeRun(runId: string, result: BackupResult | RestoreResult): Promise<void> {
+    await this.runs.update(runId, {
+      state: 'completed',
+      result: result as never,
+      error: null,
+      finishedAt: new Date(),
+      currentFile: null,
+      updatedAt: new Date(),
+    });
+  }
+
+  private async failRun(runId: string, error: string): Promise<void> {
+    await this.runs.update(runId, {
+      state: 'failed',
+      error,
+      finishedAt: new Date(),
+      currentFile: null,
+      updatedAt: new Date(),
+    });
   }
 
   private async findUser(emailOrId: string): Promise<User | null> {

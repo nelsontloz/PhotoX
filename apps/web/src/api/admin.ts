@@ -166,7 +166,7 @@ export interface BackupResult {
 }
 
 /**
- * GET /v1/admin/backups/progress response: per-file progress of an in-flight inline backup.
+ * GET /v1/admin/backups/progress response: per-file progress of the running backup.
  * total/completed cover original files; uploaded/skipped split the completed ones.
  */
 export interface BackupProgress {
@@ -181,6 +181,22 @@ export interface BackupProgress {
   updatedAt?: string;
 }
 
+/** GET /v1/admin/backups/runs/:runId response: counters plus the final result. */
+export interface BackupRunStatus {
+  id: string;
+  kind: 'backup' | 'restore';
+  userId: string;
+  state: 'running' | 'paused' | 'finalizing' | 'completed' | 'failed' | 'cancelled';
+  total: number;
+  completed: number;
+  uploaded: number;
+  skipped: number;
+  failed: number;
+  currentFile?: string;
+  error?: string;
+  result?: BackupResult | RestoreResult;
+}
+
 /**
  * Client-side preview of the S3 prefix a user's backup lands under. Mirrors
  * backupPrefix() in @photox/shared-config (normalizeEmail + segment-wise
@@ -191,21 +207,33 @@ export function backupPrefixPreview(email: string, userId: string): string {
   return `backups/${encodeURIComponent(normalized)}__${encodeURIComponent(userId)}/`;
 }
 
-// Backups run inline in core (originals first, manifest last) and routinely outlive the client's
-// 10s default on multi-GB libraries — raise the cap instead of failing a healthy backup.
+// Backups/restores run as a per-file ledger in core (originals first, manifest last) and
+// routinely outlive the client's 10s default on multi-GB libraries — raise the cap instead of
+// failing a healthy run. Starting the run answers 202; the client polls until it is terminal.
 const BACKUP_TIMEOUT_MS = 600_000;
 
 // Progress reads the manifest back from S3 and can stall when the store is slow — give it
 // headroom over the generic 10s client default without touching the shared timeout.
 const BACKUP_STATUS_TIMEOUT_MS = 30_000;
 
+async function waitForRun<T>(runId: string): Promise<T> {
+  const deadline = Date.now() + BACKUP_TIMEOUT_MS;
+  for (;;) {
+    const { data } = await api.get<BackupRunStatus>(`/v1/admin/backups/runs/${runId}`, {
+      timeout: BACKUP_STATUS_TIMEOUT_MS,
+    });
+    if (data.state === 'completed' && data.result) return data.result as T;
+    if (data.state === 'failed' || data.state === 'cancelled' || data.state === 'paused') {
+      throw new Error(data.error ?? `Backup run ${data.state}`);
+    }
+    if (Date.now() > deadline) throw new Error('Backup run timed out');
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+}
+
 export async function backupUser(emailOrId: string): Promise<BackupResult> {
-  const { data } = await api.post<BackupResult>(
-    '/v1/admin/backups',
-    { emailOrId },
-    { timeout: BACKUP_TIMEOUT_MS },
-  );
-  return data;
+  const { data } = await api.post<{ runId: string }>('/v1/admin/backups', { emailOrId });
+  return waitForRun<BackupResult>(data.runId);
 }
 
 export async function getBackupProgress(emailOrId: string): Promise<BackupProgress> {
@@ -234,19 +262,19 @@ export interface RestoreResult extends BackupResult {
   reassignmentError?: string;
 }
 
-// Restores rebuild rows + copy bytes back from S3 inline, so they outlive the 10s client
-// default just like backups — reuse the same cap. `restoreEmail` (optional) overrides the
-// backup-time address so a previous-account snapshot can land under a different email.
+// Restores rebuild rows and copy bytes back from S3 through the same per-file ledger, so they
+// outlive the 10s client default just like backups — the POST answers 202 and this waits on the
+// run. `restoreEmail` (optional) overrides the backup-time address so a previous-account snapshot
+// can land under a different email.
 export async function restoreUser(
   emailOrId: string,
   restoreEmail?: string,
 ): Promise<RestoreResult> {
-  const { data } = await api.post<RestoreResult>(
-    '/v1/admin/restores',
-    { emailOrId, ...(restoreEmail ? { restoreEmail } : {}) },
-    { timeout: BACKUP_TIMEOUT_MS },
-  );
-  return data;
+  const { data } = await api.post<{ runId: string }>('/v1/admin/restores', {
+    emailOrId,
+    ...(restoreEmail ? { restoreEmail } : {}),
+  });
+  return waitForRun<RestoreResult>(data.runId);
 }
 
 /** POST /v1/admin/restores/merge response: what moved from a previous-account backup into the live account. */

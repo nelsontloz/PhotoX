@@ -13,6 +13,7 @@ import { DataSource, In, Repository } from 'typeorm';
 import { Album } from '../../albums/entities/album.entity';
 import { AlbumAsset } from '../../albums/entities/album-asset.entity';
 import { Asset, Face, FileRecord, Person, UploadSession } from '../../database/entities';
+import { BackupRun } from '../../backup/entities/backup-run.entity';
 import { Share } from '../../shares/entities/share.entity';
 import { BackupMerge } from '../../backup/entities/backup-merge.entity';
 import { BullMqService } from '../../queue/bullmq.service';
@@ -161,6 +162,8 @@ export class UserDeleteService {
         await m.delete(BackupMerge, { targetUserId: userId });
         await m.delete(Face, { userId });
         await m.delete(Person, { userId });
+        // stop the transfer sweeper from chasing a deleted account (items CASCADE)
+        await m.delete(BackupRun, { userId });
         const albumIds = (await m.find(Album, { where: { userId }, select: { id: true } })).map(
           (a) => a.id,
         );

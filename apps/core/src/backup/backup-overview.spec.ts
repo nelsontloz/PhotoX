@@ -329,6 +329,8 @@ function makeOverviewService(
     nil,
     nil,
     backupMergesRepo,
+    nil,
+    nil,
   );
   return { svc, usersRepo, createQueryBuilder, qb, s3, backupMergesRepo };
 }

@@ -85,17 +85,28 @@ describe('user backup admin API', () => {
     persons: 1,
   };
 
-  it('backupUser posts the emailOrId with a timeout sized for inline S3 copies', async () => {
-    postMock.mockResolvedValue({ data: result });
+  it('backupUser starts a run and polls it to the completed result', async () => {
+    postMock.mockResolvedValue({ data: { runId: 'run-1' } });
+    getMock.mockResolvedValue({
+      data: {
+        id: 'run-1',
+        kind: 'backup',
+        userId: 'u-1',
+        state: 'completed',
+        total: 3,
+        completed: 3,
+        uploaded: 1,
+        skipped: 2,
+        failed: 0,
+        result,
+      },
+    });
     await expect(backupUser('u-1')).resolves.toEqual(result);
-    expect(postMock).toHaveBeenCalledWith(
-      '/v1/admin/backups',
-      { emailOrId: 'u-1' },
-      { timeout: 600_000 },
-    );
+    expect(postMock).toHaveBeenCalledWith('/v1/admin/backups', { emailOrId: 'u-1' });
+    expect(getMock).toHaveBeenCalledWith('/v1/admin/backups/runs/run-1', { timeout: 30_000 });
   });
 
-  it('restoreUser posts the emailOrId with the long inline timeout', async () => {
+  it('restoreUser starts a run and polls it to the completed result', async () => {
     const restored = {
       userId: 'u-3',
       email: 'gone@example.com',
@@ -117,13 +128,24 @@ describe('user backup admin API', () => {
       completedAt: '2026-10-04T00:01:00.000Z',
       enqueued: { metadata: 40, thumbnails: 40, videos: 0, faces: 40, ai: 0 },
     };
-    postMock.mockResolvedValue({ data: restored });
+    postMock.mockResolvedValue({ data: { runId: 'run-3' } });
+    getMock.mockResolvedValue({
+      data: {
+        id: 'run-3',
+        kind: 'restore',
+        userId: 'u-3',
+        state: 'completed',
+        total: 55,
+        completed: 55,
+        uploaded: 55,
+        skipped: 0,
+        failed: 0,
+        result: restored,
+      },
+    });
     await expect(restoreUser('u-3')).resolves.toEqual(restored);
-    expect(postMock).toHaveBeenCalledWith(
-      '/v1/admin/restores',
-      { emailOrId: 'u-3' },
-      { timeout: 600_000 },
-    );
+    expect(postMock).toHaveBeenCalledWith('/v1/admin/restores', { emailOrId: 'u-3' });
+    expect(getMock).toHaveBeenCalledWith('/v1/admin/backups/runs/run-3', { timeout: 30_000 });
   });
 
   it('deleteBackup issues DELETE with emailOrId as a query param', async () => {

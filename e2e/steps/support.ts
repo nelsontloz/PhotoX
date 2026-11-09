@@ -546,3 +546,34 @@ export async function getAsset(
   expect(response.status()).toBe(200);
   return (await response.json()) as Asset;
 }
+
+/**
+ * Starts an admin backup/restore run (202 + runId) and polls it to a terminal state, returning
+ * the completed `result` payload. Backups and restores are per-file ledgers in core, so the
+ * start call no longer waits for the bytes.
+ */
+export async function startAndWaitForRun<T = Record<string, unknown>>(
+  request: APIRequestContext,
+  admin: AuthResponse,
+  path: '/api/v1/admin/backups' | '/api/v1/admin/restores',
+  data: Record<string, unknown>,
+  timeoutMs = 300_000,
+): Promise<T> {
+  const created = await request.post(path, { headers: authHeaders(admin), data });
+  expect(created.status()).toBe(202);
+  const { runId } = (await created.json()) as { runId: string };
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const res = await request.get(`/api/v1/admin/backups/runs/${runId}`, {
+      headers: authHeaders(admin),
+    });
+    expect(res.status()).toBe(200);
+    const body = (await res.json()) as { state: string; error?: string; result?: T };
+    if (body.state === 'completed' && body.result) return body.result;
+    if (body.state === 'failed' || body.state === 'cancelled' || body.state === 'paused') {
+      throw new Error(body.error ?? `backup run ${runId} ${body.state}`);
+    }
+    if (Date.now() > deadline) throw new Error(`backup run ${runId} timed out`);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+}
