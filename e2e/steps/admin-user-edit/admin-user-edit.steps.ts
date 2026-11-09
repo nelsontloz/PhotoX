@@ -9,6 +9,7 @@ import {
   registerUser,
   signIn,
   signInAdmin,
+  startAndWaitForRun,
   type AuthResponse,
   type Ctx,
 } from '../support';
@@ -134,11 +135,9 @@ Given(
   async ({ request, ctx, $testInfo }) => {
     $testInfo.setTimeout(360_000);
     const admin = await requireEditAdmin(request, ctx);
-    const response = await request.post('/api/v1/admin/backups', {
-      headers: authHeaders(admin),
-      data: { emailOrId: requireAccount(ctx).user.id },
+    await startAndWaitForRun(request, admin, '/api/v1/admin/backups', {
+      emailOrId: requireAccount(ctx).user.id,
     });
-    expect(response.status()).toBe(200);
   },
 );
 

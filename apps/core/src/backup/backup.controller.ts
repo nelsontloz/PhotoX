@@ -1,15 +1,25 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 import {
   UserBackupService,
   type BackupOverviewRow,
   type BackupProgress,
-  type BackupResult,
+  type BackupRunStatus,
   type BackupStatus,
   type DeleteBackupResult,
   type MergeBackupResult,
-  type RestoreResult,
 } from './user-backup.service';
 
 class EmailOrIdQueryDto {
@@ -53,40 +63,31 @@ export class BackupController {
   constructor(private readonly backups: UserBackupService) {}
 
   @Post('backups')
-  @HttpCode(HttpStatus.OK)
+  @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
-    summary: 'Back up one user (rows + original bytes) to S3 (admin-only)',
+    summary: 'Start a backup of one user (rows + original bytes) to S3 (admin-only)',
     description:
-      'Original bytes first, manifest.json last (rerun-safe fixed keys). ' +
-      'Layout backups/<email>__<userId>/ — an email change auto-renames the old prefix ' +
-      'via server-side copy (manifest rewritten fresh, old deleted after HEAD verify). ' +
-      'Incremental: unchanged bytes are skipped via the previous manifest + S3 listing ' +
-      '(uploaded/skipped counters in the result).',
+      'Returns 202 with a run id. The per-file ledger uploads one original per item and ' +
+      'writes manifest.json LAST; GET backups/runs/:runId reports progress and the final ' +
+      'counts. A failed file retries alone and a failed run never writes a manifest.',
   })
-  @ApiResponse({ status: 200, description: 'Backup counts and S3 prefix' })
-  async backup(@Body() dto: EmailOrIdQueryDto): Promise<BackupResult> {
-    return this.backups.backupUser(dto.emailOrId);
+  @ApiResponse({ status: 202, description: 'Backup run id' })
+  async backup(@Body() dto: EmailOrIdQueryDto): Promise<{ runId: string }> {
+    return this.backups.startBackup(dto.emailOrId);
   }
 
   @Post('restores')
-  @HttpCode(HttpStatus.OK)
+  @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
-    summary: 'Restore one user from S3 and re-enqueue derivatives (admin-only)',
+    summary: 'Start a restore of one user from S3 and re-enqueue derivatives (admin-only)',
     description:
-      'HARD PREREQUISITE: keep cleanup-orphans paused until the restore completion ' +
-      'log (multi-GB restores can exceed the ~10-min orphan grace window). Derivative ' +
-      'statuses stay stale until jobs complete (metadata pending for all, ' +
-      'persons.faceCount until cluster). Restoring under a different email (explicit ' +
-      'restoreEmail or the restored-<ms>-<orig> fallback) re-homes the S3 snapshot to ' +
-      'the restored address: the prefix is server-side copied, the manifest is rewritten ' +
-      'with the new emailAtBackup/user.email (userId and rows unchanged) and written last, ' +
-      'then the old prefix is deleted. A failed move does not fail the restore — the ' +
-      'snapshot stays at the source prefix and the response reports reassignmentError ' +
-      '(prefix then points at the source).',
+      'Returns 202 with a run id. Rows commit in one transaction, then one item per original ' +
+      'is downloaded and retried independently; finalize re-enqueues derivatives. A restore ' +
+      'that fails is resumable by starting it again (same manifest), not a 409.',
   })
-  @ApiResponse({ status: 200, description: 'Restore counts and re-enqueue totals' })
-  async restore(@Body() dto: RestoreRequestDto): Promise<RestoreResult> {
-    return this.backups.restoreUser(dto.emailOrId, dto.restoreEmail);
+  @ApiResponse({ status: 202, description: 'Restore run id' })
+  async restore(@Body() dto: RestoreRequestDto): Promise<{ runId: string }> {
+    return this.backups.startRestore(dto.emailOrId, dto.restoreEmail);
   }
 
   @Post('restores/merge')
@@ -140,6 +141,33 @@ export class BackupController {
   @ApiResponse({ status: 404, description: 'No user for emailOrId' })
   async progress(@Query() query: EmailOrIdQueryDto): Promise<BackupProgress> {
     return this.backups.getBackupProgress(query.emailOrId);
+  }
+
+  @Get('backups/runs/:runId')
+  @ApiOperation({ summary: 'One backup/restore run: state, counters and final result' })
+  @ApiResponse({ status: 200, description: 'Run status' })
+  @ApiResponse({ status: 404, description: 'Run not found' })
+  async runStatus(
+    @Param('runId', new ParseUUIDPipe()) runId: string,
+  ): Promise<BackupRunStatus> {
+    return this.backups.getRunStatus(runId);
+  }
+
+  @Post('backups/runs/:runId/retry')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset a failed/paused/cancelled run and process it again' })
+  @ApiResponse({ status: 200, description: 'Run status after the reset' })
+  @ApiResponse({ status: 409, description: 'Run is not retryable' })
+  async retryRun(@Param('runId', new ParseUUIDPipe()) runId: string): Promise<BackupRunStatus> {
+    return this.backups.retryRun(runId);
+  }
+
+  @Post('backups/runs/:runId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cancel a running/paused run (in-flight files finish)' })
+  @ApiResponse({ status: 200, description: 'Run status after cancellation' })
+  async cancelRun(@Param('runId', new ParseUUIDPipe()) runId: string): Promise<BackupRunStatus> {
+    return this.backups.cancelRun(runId);
   }
 
   @Delete('backups')

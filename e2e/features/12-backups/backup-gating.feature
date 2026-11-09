@@ -10,6 +10,9 @@ Feature: Backup admin APIs reject unauthorized callers
       | GET /api/v1/admin/backups/overview                                             |
       | GET /api/v1/admin/backups/status?emailOrId=00000000-0000-0000-0000-000000000000 |
       | GET /api/v1/admin/backups/progress?emailOrId=00000000-0000-0000-0000-000000000000 |
+      | GET /api/v1/admin/backups/runs/00000000-0000-0000-0000-000000000000                |
+      | POST /api/v1/admin/backups/runs/00000000-0000-0000-0000-000000000000/retry         |
+      | POST /api/v1/admin/backups/runs/00000000-0000-0000-0000-000000000000/cancel        |
       | POST /api/v1/admin/restores                                                    |
       | POST /api/v1/admin/restores/merge                                              |
       | DELETE /api/v1/admin/backups?emailOrId=00000000-0000-0000-0000-000000000000     |
@@ -25,6 +28,9 @@ Feature: Backup admin APIs reject unauthorized callers
       | GET /api/v1/admin/backups/overview                                             |
       | GET /api/v1/admin/backups/status?emailOrId=00000000-0000-0000-0000-000000000000 |
       | GET /api/v1/admin/backups/progress?emailOrId=00000000-0000-0000-0000-000000000000 |
+      | GET /api/v1/admin/backups/runs/00000000-0000-0000-0000-000000000000                |
+      | POST /api/v1/admin/backups/runs/00000000-0000-0000-0000-000000000000/retry         |
+      | POST /api/v1/admin/backups/runs/00000000-0000-0000-0000-000000000000/cancel        |
       | POST /api/v1/admin/restores                                                    |
       | POST /api/v1/admin/restores/merge                                              |
       | DELETE /api/v1/admin/backups?emailOrId=00000000-0000-0000-0000-000000000000     |

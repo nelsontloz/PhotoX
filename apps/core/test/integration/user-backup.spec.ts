@@ -56,6 +56,10 @@ class FakeS3BackupService {
 
   failNextPuts = 0;
 
+  putAttempts = 0;
+
+  failNextDownloads = 0;
+
   failNextCopies = 0;
 
   failListKeys = false;
@@ -71,6 +75,7 @@ class FakeS3BackupService {
   }
 
   async putFile(key: string, localPath: string): Promise<void> {
+    this.putAttempts += 1;
     if (this.failNextPuts > 0) {
       this.failNextPuts -= 1;
       throw new Error('injected putFile failure');
@@ -122,6 +127,12 @@ class FakeS3BackupService {
   }
 
   async downloadToFile(key: string, destPath: string): Promise<void> {
+    if (this.failNextDownloads > 0) {
+      this.failNextDownloads -= 1;
+      const err = new Error(`injected download failure ${key}`);
+      err.name = 'NoSuchKey';
+      throw err;
+    }
     await writeFile(destPath, await this.getBuffer(key));
   }
 
@@ -231,6 +242,8 @@ describe('user backup round-trip', () => {
     fake.objects.clear();
     fake.ops = [];
     fake.failNextPuts = 0;
+    fake.putAttempts = 0;
+    fake.failNextDownloads = 0;
     fake.failNextCopies = 0;
     fake.failListKeys = false;
   });
@@ -616,7 +629,8 @@ describe('user backup round-trip', () => {
       }),
     );
 
-    fake.failNextPuts = 1;
+    // per-file retries: exhaust the attempt budget so the run still fails and writes no manifest
+    fake.failNextPuts = 10;
     await expect(svc.backupUser(user.id)).rejects.toThrow('injected putFile failure');
     // manifest-last: the failed run leaves no live manifest over missing bytes
     expect([...fake.objects.keys()].some((k) => k.endsWith('manifest.json'))).toBe(false);
@@ -634,6 +648,126 @@ describe('user backup round-trip', () => {
       const row = await fileRepo.findOneOrFail({ where: { id: f.record.id } });
       expect(await readFile(storage.pathFor(row.storageKey))).toEqual(f.bytes);
     }
+  });
+
+  it('drives a backup through the async ledger and reports run status', async () => {
+    const email = `async-run-${randomUUID()}@example.com`;
+    const user = await userRepo.save(
+      userRepo.create({
+        email,
+        role: 'user',
+        passwordHash: 'test-hash',
+        displayName: 'Async Run',
+      }),
+    );
+    const a = await seedOriginal(user.id, Buffer.from('async-run-a'));
+    const b = await seedOriginal(user.id, Buffer.from('async-run-b'));
+    await assetRepo.save([
+      assetRepo.create({ userId: user.id, kind: 'photo', fileId: a.record.id, isTrashed: false }),
+      assetRepo.create({ userId: user.id, kind: 'photo', fileId: b.record.id, isTrashed: false }),
+    ]);
+
+    const { runId } = await svc.startBackup(user.id);
+    expect((await svc.getRunStatus(runId)).state).toBe('running');
+    for (let i = 0; i < 20; i++) {
+      if ((await svc.getRunStatus(runId)).state !== 'running') break;
+      await svc.runTransfersOnce();
+    }
+
+    const status = await svc.getRunStatus(runId);
+    expect(status.state).toBe('completed');
+    expect(status.result).toMatchObject({ files: 2, uploaded: 2, skipped: 0 });
+    expectManifestLast();
+    // the progress endpoint maps the same run row
+    expect(await svc.getBackupProgress(email)).toMatchObject({
+      inProgress: false,
+      total: 2,
+      completed: 2,
+    });
+  });
+
+  it('retries a transient file failure alone without failing the run', async () => {
+    const email = `async-retry-${randomUUID()}@example.com`;
+    const user = await userRepo.save(
+      userRepo.create({
+        email,
+        role: 'user',
+        passwordHash: 'test-hash',
+        displayName: 'Async Retry',
+      }),
+    );
+    const a = await seedOriginal(user.id, Buffer.from('async-retry-a'));
+    const b = await seedOriginal(user.id, Buffer.from('async-retry-b'));
+    await assetRepo.save([
+      assetRepo.create({ userId: user.id, kind: 'photo', fileId: a.record.id, isTrashed: false }),
+      assetRepo.create({ userId: user.id, kind: 'photo', fileId: b.record.id, isTrashed: false }),
+    ]);
+
+    fake.failNextPuts = 2;
+    const { runId } = await svc.startBackup(user.id);
+    for (let i = 0; i < 20; i++) {
+      if ((await svc.getRunStatus(runId)).state !== 'running') break;
+      // the ledger backs off between attempts; the API exposes the no-backoff driver for tests
+      await svc.runTransfersOnce(true);
+    }
+
+    const status = await svc.getRunStatus(runId);
+    expect(status.state).toBe('completed');
+    expect(status.result).toMatchObject({ files: 2, uploaded: 2 });
+    expect(fake.putAttempts).toBe(4);
+    expectManifestLast();
+  });
+
+  it('resumes a failed restore of the same manifest instead of 409ing', async () => {
+    const email = `async-resume-${randomUUID()}@example.com`;
+    const user = await userRepo.save(
+      userRepo.create({
+        email,
+        role: 'user',
+        passwordHash: 'test-hash',
+        displayName: 'Async Resume',
+      }),
+    );
+    const photo = await seedOriginal(user.id, Buffer.from('async-resume-bytes'));
+    const asset = await assetRepo.save(
+      assetRepo.create({
+        userId: user.id,
+        kind: 'photo',
+        fileId: photo.record.id,
+        isTrashed: false,
+      }),
+    );
+    await svc.backupUser(user.id);
+    const key = originalKey(email, user.id, photo.record.id, 'bin');
+
+    await wipeUserData();
+    fake.objects.delete(key);
+
+    const first = await svc.startRestore(user.id);
+    for (let i = 0; i < 20; i++) {
+      if ((await svc.getRunStatus(first.runId)).state !== 'running') break;
+      await svc.runTransfersOnce();
+    }
+    const failed = await svc.getRunStatus(first.runId);
+    expect(failed.state).toBe('failed');
+    expect(failed.error).toContain('could not be restored');
+    // no silent 404: the asset row came back but its bytes did not, so it is trashed
+    expect((await assetRepo.findOneOrFail({ where: { id: asset.id } })).isTrashed).toBe(true);
+
+    fake.objects.set(key, photo.bytes);
+    const second = await svc.startRestore(user.id);
+    expect(second.runId).toBe(first.runId);
+    for (let i = 0; i < 20; i++) {
+      if ((await svc.getRunStatus(second.runId)).state !== 'running') break;
+      await svc.runTransfersOnce();
+    }
+
+    const done = await svc.getRunStatus(second.runId);
+    expect(done.state).toBe('completed');
+    expect(done.result).toMatchObject({ files: 1, assets: 1 });
+    expect((await assetRepo.findOneOrFail({ where: { id: asset.id } })).isTrashed).toBe(false);
+    const row = await fileRepo.findOneOrFail({ where: { id: photo.record.id } });
+    expect(await readFile(storage.pathFor(row.storageKey))).toEqual(photo.bytes);
   });
 
   it('backs up original bytes only, skipping thumbnail/transcode derivatives', async () => {

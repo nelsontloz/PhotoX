@@ -236,6 +236,8 @@ export class AdminAssetsService {
       // in-flight resumable chunks have no FileRecord (only upload_session_parts rows), so
       // this sweep would delete live uploads; the session sweeper owns that prefix
       if (key === 'upload-sessions' || key.startsWith('upload-sessions/')) continue;
+      // in-flight backup/restore drafts and temp downloads are owned by the run ledger
+      if (key === 'backup-runs' || key.startsWith('backup-runs/')) continue;
       keys.push(key);
     }
     return keys;
