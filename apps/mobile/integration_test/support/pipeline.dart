@@ -5,6 +5,7 @@ import 'package:photox_mobile/core/auth_manager.dart';
 import 'package:photox_mobile/core/refresh_lock.dart';
 import 'package:photox_mobile/core/token_store.dart';
 import 'package:photox_mobile/media/photo_observer.dart';
+import 'package:photox_mobile/server/album_client.dart';
 import 'package:photox_mobile/settings/settings_store.dart';
 import 'package:photox_mobile/upload/database.dart';
 import 'package:photox_mobile/upload/upload_queue.dart';
@@ -19,6 +20,13 @@ import 'harness.dart';
 /// four 8 MiB parts. The server sniffs the header bytes, so padding is enough.
 const String smallPhotoName = 'e2e-small.jpg';
 const String largePhotoName = 'e2e-large.jpg';
+
+/// The second seeded device folder, used by the folder -> album tests.
+///
+/// A camera-roll-only library cannot prove "only the mapped folder's uploads
+/// join the album", and the camera roll also holds the 24 MiB fixture.
+const String albumPhotoName = 'e2e-album.jpg';
+const String albumFolderName = 'E2EAlbum';
 
 /// Builds the pipeline graph against the run's real core, with an empty queue.
 ///
@@ -170,3 +178,104 @@ Future<String> signInPipeline(
   expect(tokens, isNotNull, reason: 'sign-in did not persist a token pair');
   return tokens!.refreshToken;
 }
+
+/// The device folder named [name], case-insensitive.
+///
+/// Fails loudly with the library's own folder names: a renamed seed is the most
+/// likely reason this cannot find it.
+Future<MediaFolder> seededFolder(AppServices services, String name) async {
+  final folders = await services.observer.folders();
+  final wanted = name.toLowerCase();
+  final matches = folders.where(
+    (folder) => folder.name.toLowerCase() == wanted,
+  );
+  expect(
+    matches,
+    isNotEmpty,
+    reason:
+        'no device folder named $name (run.sh seeds DCIM/$name); found '
+        '${folders.map((folder) => folder.name).toList()}',
+  );
+  return matches.first;
+}
+
+/// The camera roll / Recents album the pipeline falls back to.
+Future<MediaFolder> cameraFolder(AppServices services) async {
+  final folders = await services.observer.folders();
+  final matches = folders.where((folder) => folder.isCamera);
+  expect(matches, isNotEmpty, reason: 'no camera album in the library');
+  return matches.first;
+}
+
+/// Writes the two preferences the folder -> album tests drive: what the pass
+/// scans and which album each folder's uploads belong to.
+Future<void> savePipelineSettings(
+  AppServices services, {
+  required List<String> scope,
+  required Map<String, String> folderAlbums,
+}) async {
+  final store = SettingsStore(services.db);
+  final current = await store.load();
+  await store.save(
+    current.copyWith(
+      uploadFolderIds: scope,
+      uploadAllFolders: false,
+      folderAlbums: folderAlbums,
+    ),
+  );
+}
+
+/// Asset ids on the server's timeline (the default album-hidden filter applied).
+Future<Set<String>> timelineAssetIds(AppServices services) =>
+    _assetIds(services, '/api/v1/assets', <String, dynamic>{'limit': 100});
+
+/// Asset ids one album holds; unaffected by the timeline rule.
+Future<Set<String>> albumAssetIds(AppServices services, String albumId) =>
+    _assetIds(services, '/api/v1/albums/$albumId/assets', <String, dynamic>{
+      'limit': 100,
+    });
+
+/// The timeline scoped to one album, which must still answer when it is hidden.
+Future<Set<String>> albumScopedTimelineIds(
+  AppServices services,
+  String albumId,
+) => _assetIds(services, '/api/v1/assets', <String, dynamic>{
+  'limit': 100,
+  'albumId': albumId,
+});
+
+Future<Set<String>> _assetIds(
+  AppServices services,
+  String path,
+  Map<String, dynamic> query,
+) async {
+  final token = await services.auth.ensureAccessToken();
+  final response = await apiDio().get<Map<String, dynamic>>(
+    path,
+    queryParameters: query,
+    options: authHeader(token),
+  );
+  final items = response.data!['items'] as List<dynamic>;
+  return <String>{for (final item in items) (item as Map)['id'] as String};
+}
+
+/// Removes one album, leaving whatever the device still maps to it.
+Future<void> deleteAlbum(AppServices services, String albumId) async {
+  final token = await services.auth.ensureAccessToken();
+  final response = await apiDio().delete<void>(
+    '/api/v1/albums/$albumId',
+    options: authHeader(token),
+  );
+  expect(response.statusCode, 204, reason: '${response.statusCode}');
+}
+
+/// The preferences as persisted, for assertions after a pass rewrote them.
+Future<AppSettings> readPipelineSettings(AppServices services) =>
+    SettingsStore(services.db).load();
+
+/// Creates one album for the signed-in account.
+Future<ServerAlbum> createAlbum(
+  AppServices services,
+  String name, {
+  bool hidden = false,
+}) => services.albums.create(name, hiddenFromTimeline: hidden);

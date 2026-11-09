@@ -28,11 +28,24 @@ void main() {
       paused: true,
       uploadFolderIds: <String>['camera', 'favorites'],
       uploadAllFolders: true,
+      folderAlbums: <String, String>{'camera': 'album-1', 'screens': 'album-2'},
     );
 
     await store.save(settings);
 
     expect(await store.load(), settings);
+  });
+
+  test('compares folder maps regardless of insertion order', () {
+    const left = AppSettings(
+      folderAlbums: <String, String>{'camera': 'album-1', 'screens': 'album-2'},
+    );
+    const right = AppSettings(
+      folderAlbums: <String, String>{'screens': 'album-2', 'camera': 'album-1'},
+    );
+
+    expect(left, right);
+    expect(left.hashCode, right.hashCode);
   });
 
   test('falls back per key when values are corrupt or missing', () async {
@@ -66,6 +79,7 @@ void main() {
     expect(loaded.includeVideos, isFalse);
     expect(loaded.uploadFolderIds, isEmpty);
     expect(loaded.uploadAllFolders, isFalse);
+    expect(loaded.folderAlbums, isEmpty);
   });
 
   test('decodes the folder list defensively', () async {
@@ -96,10 +110,35 @@ void main() {
     await store.save(const AppSettings(wifiOnly: true, includeVideos: true));
 
     final rows = await db.select(db.keyValues).get();
-    expect(rows, hasLength(7));
+    expect(rows, hasLength(8));
     final loaded = await store.load();
     expect(loaded.wifiOnly, isTrue);
     expect(loaded.includeVideos, isTrue);
+  });
+
+  test('decodes the folder album map defensively', () async {
+    final now = DateTime(2026, 10, 19);
+    Future<void> setRaw(String value) => db
+        .into(db.keyValues)
+        .insertOnConflictUpdate(
+          KeyValuesCompanion.insert(
+            namespace: SettingsStore.namespace,
+            key: 'folderAlbums',
+            value: value,
+            updatedAt: now,
+          ),
+        );
+
+    await setRaw('{"camera": "album-1", "screens": 7, "other": null}');
+    expect((await store.load()).folderAlbums, <String, String>{
+      'camera': 'album-1',
+    });
+
+    await setRaw('not json');
+    expect((await store.load()).folderAlbums, isEmpty);
+
+    await setRaw('["camera"]');
+    expect((await store.load()).folderAlbums, isEmpty);
   });
 
   test('accepts only absolute http(s) server URLs', () {

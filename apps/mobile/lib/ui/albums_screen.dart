@@ -6,9 +6,11 @@ import 'package:flutter/material.dart';
 import '../library/album_progress.dart';
 import '../library/album_scope.dart';
 import '../media/photo_observer.dart';
+import '../server/album_client.dart';
 import '../settings/settings_store.dart';
 import 'widgets/app_background.dart';
 import 'widgets/count_format.dart';
+import 'widgets/folder_album_sheet.dart';
 import 'widgets/panel.dart';
 import 'widgets/section_label.dart';
 import 'widgets/status_banner.dart';
@@ -25,6 +27,11 @@ class AlbumsScreen extends StatefulWidget {
     required this.loadFolders,
     required this.onScopeChanged,
     required this.onOpenAlbum,
+    this.serverAlbums = const <ServerAlbum>[],
+    this.serverAlbumsLoaded = false,
+    this.loadServerAlbums,
+    this.onCreateServerAlbum,
+    this.onFolderAlbumChanged,
     this.permission = PhotoPermission.authorized,
     this.libraryCount,
     this.cover,
@@ -43,6 +50,30 @@ class AlbumsScreen extends StatefulWidget {
 
   /// Opens one album's grid.
   final void Function(MediaFolder album) onOpenAlbum;
+
+  /// Server albums a folder can be pointed at; the card reads names from it.
+  final List<ServerAlbum> serverAlbums;
+
+  /// True once [serverAlbums] came back from the server at least once.
+  ///
+  /// Tells a mapping's "not read yet" apart from "the album is gone", which an
+  /// empty [serverAlbums] alone cannot: an account whose only album was deleted
+  /// also has an empty list.
+  final bool serverAlbumsLoaded;
+
+  /// Reads the server's albums for the sheet; its failures show inline there.
+  final Future<List<ServerAlbum>> Function()? loadServerAlbums;
+
+  /// Creates a server album, optionally kept out of the timeline.
+  final Future<ServerAlbum> Function(
+    String name, {
+    required bool hiddenFromTimeline,
+  })?
+  onCreateServerAlbum;
+
+  /// Persists a folder's album; null clears it.
+  final Future<void> Function(String folderId, String? albumId)?
+  onFolderAlbumChanged;
 
   /// Current photo-library permission; albums are only read when it allows it.
   final PhotoPermission permission;
@@ -247,25 +278,60 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
     return choices;
   }
 
+  /// True when a folder can be pointed at a server album at all.
+  bool get _canMapFolder =>
+      widget.loadServerAlbums != null &&
+      widget.onCreateServerAlbum != null &&
+      widget.onFolderAlbumChanged != null;
+
   Widget _menu(MediaFolder album) {
     final choices = _choices(album);
-    if (choices.isEmpty) return const SizedBox.shrink();
+    final canMap = _canMapFolder;
+    if (choices.isEmpty && !canMap) return const SizedBox.shrink();
 
     return PopupMenuButton<_AlbumAction>(
       key: Key('album-menu-${album.id}'),
       tooltip: 'Album actions',
       icon: const Icon(Icons.more_vert_rounded),
       onSelected: (action) {
+        if (action == _AlbumAction.album) {
+          unawaited(_openFolderAlbum(album));
+          return;
+        }
         final choice = choices.firstWhere((item) => item.action == action);
         unawaited(_runChoice(album, choice));
       },
       itemBuilder: (context) => <PopupMenuEntry<_AlbumAction>>[
+        if (canMap)
+          const PopupMenuItem<_AlbumAction>(
+            value: _AlbumAction.album,
+            child: Text('Save to server album…'),
+          ),
+        if (canMap && choices.isNotEmpty) const PopupMenuDivider(),
         for (final choice in choices)
           PopupMenuItem<_AlbumAction>(
             value: choice.action,
             child: Text(choice.label),
           ),
       ],
+    );
+  }
+
+  /// Opens the sheet that points [album]'s uploads at a server album.
+  Future<void> _openFolderAlbum(MediaFolder album) async {
+    final load = widget.loadServerAlbums;
+    final create = widget.onCreateServerAlbum;
+    final changed = widget.onFolderAlbumChanged;
+    if (load == null || create == null || changed == null) return;
+
+    await showFolderAlbumSheet(
+      context,
+      folderId: album.id,
+      folderName: album.name,
+      currentAlbumId: widget.settings.folderAlbums[album.id],
+      loadAlbums: load,
+      createAlbum: create,
+      onChanged: changed,
     );
   }
 
@@ -375,6 +441,10 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
     final albums = _albums;
     final error = _error;
     final all = widget.settings.uploadAllFolders;
+    final folderAlbums = widget.settings.folderAlbums;
+    final serverAlbums = <String, ServerAlbum>{
+      for (final album in widget.serverAlbums) album.id: album,
+    };
 
     return <Widget>[
       if (_loading && albums != null)
@@ -471,6 +541,11 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
             inScope: AlbumScope.of(widget.settings).includes(album),
             cover: _coverFor(album),
             progress: _progressFor(album),
+            folderAlbumId: folderAlbums[album.id],
+            folderAlbum: serverAlbums[folderAlbums[album.id]],
+            // An empty list means "not read yet" as often as "no albums", so the
+            // flag decides; the id's absence then means the album is gone.
+            albumsKnown: widget.serverAlbumsLoaded,
             onOpen: () => widget.onOpenAlbum(album),
             menu: _menu(album),
           ),
@@ -482,7 +557,13 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
 }
 
 /// Which scope change a menu entry makes; only used for building the menu.
-enum _AlbumAction { only, include, remove }
+enum _AlbumAction {
+  /// Points the folder at a server album; carries no settings of its own.
+  album,
+  only,
+  include,
+  remove,
+}
 
 /// One scope action, with the settings it would store.
 class _AlbumScopeChoice {
@@ -641,55 +722,75 @@ class _ScopePanel extends StatelessWidget {
     final scheme = theme.colorScheme;
     final all = settings.uploadAllFolders;
 
-    return Panel(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: <Widget>[
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  'BACKUP SCOPE',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  albumScopeLabel(settings),
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: scheme.onSurface,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.2,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  all
-                      ? 'Every album on this phone is backed up.'
-                      : 'Only albums marked “Backing up” are scanned. The rest '
-                            'stay on this phone.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
+    final summary = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          'BACKUP SCOPE',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.2,
           ),
-          const SizedBox(width: 8),
-          if (onBackUpEverything != null)
-            TextButton(
-              key: const Key('scope-all'),
-              onPressed: onBackUpEverything,
-              child: const Text('Back up everything'),
-            )
-          else
-            Icon(Icons.check_circle_rounded, size: 20, color: scheme.primary),
-        ],
+        ),
+        const SizedBox(height: 5),
+        Text(
+          albumScopeLabel(settings),
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: scheme.onSurface,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.2,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          all
+              ? 'Every album on this phone is backed up.'
+              : 'Only albums marked “Backing up” are scanned. The rest '
+                    'stay on this phone.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+            height: 1.4,
+          ),
+        ),
+      ],
+    );
+    final action = onBackUpEverything != null
+        ? TextButton(
+            key: const Key('scope-all'),
+            onPressed: onBackUpEverything,
+            child: const Text('Back up everything'),
+          )
+        : Icon(Icons.check_circle_rounded, size: 20, color: scheme.primary);
+
+    return Panel(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // The button needs ~300 dp of panel width next to the copy (more once
+          // text is scaled), else it clips the label the user has to read.
+          // shortcut: a width breakpoint, not a measured row; upgrade by
+          // measuring the intrinsic row if the copy grows.
+          final stacked =
+              onBackUpEverything != null &&
+              constraints.maxWidth <
+                  300 * MediaQuery.textScalerOf(context).scale(1);
+
+          if (stacked) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[summary, const SizedBox(height: 4), action],
+            );
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              Expanded(child: summary),
+              const SizedBox(width: 8),
+              action,
+            ],
+          );
+        },
       ),
     );
   }
@@ -704,6 +805,9 @@ class _AlbumCard extends StatelessWidget {
     required this.progress,
     required this.onOpen,
     required this.menu,
+    this.folderAlbumId,
+    this.folderAlbum,
+    this.albumsKnown = false,
   });
 
   final MediaFolder album;
@@ -712,6 +816,18 @@ class _AlbumCard extends StatelessWidget {
 
   /// Backed-up tally, or null when the card shows the platform count only.
   final Future<AlbumProgress?>? progress;
+
+  /// Server album this folder's uploads join, or null when none is set.
+  final String? folderAlbumId;
+
+  /// The album behind [folderAlbumId]; null while the list has not loaded, or
+  /// once the album was deleted on the server.
+  final ServerAlbum? folderAlbum;
+
+  /// Whether [serverAlbums] arrived, so a missing id means "deleted", not
+  /// "not read yet".
+  final bool albumsKnown;
+
   final VoidCallback onOpen;
 
   /// Trailing action menu, or an empty box when nothing would change.
@@ -721,6 +837,7 @@ class _AlbumCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final mappedId = folderAlbumId;
 
     return Panel(
       padding: EdgeInsets.zero,
@@ -729,36 +846,164 @@ class _AlbumCard extends StatelessWidget {
         onTap: onOpen,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(10, 10, 4, 10),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              _AlbumCover(album: album, cover: cover),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Text(
-                      album.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: scheme.onSurface,
-                        fontWeight: FontWeight.w600,
-                      ),
+              Row(
+                children: <Widget>[
+                  _AlbumCover(album: album, cover: cover),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Text(
+                          album.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: scheme.onSurface,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        _AlbumSummary(album: album, progress: progress),
+                        const SizedBox(height: 5),
+                        _ScopeChip(inScope: inScope),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    _AlbumSummary(album: album, progress: progress),
-                    const SizedBox(height: 5),
-                    _ScopeChip(inScope: inScope),
-                  ],
-                ),
+                  ),
+                  menu,
+                ],
               ),
-              menu,
+              if (mappedId != null) ...<Widget>[
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: _FolderAlbumLine(
+                    album: folderAlbum,
+                    albumsKnown: albumsKnown,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Where this folder's uploads also land, and whether that hides them.
+///
+/// A footer under the card rather than another chip: the scope chip already
+/// owns the loud row, and hiding must still be readable in one line.
+///
+/// Three states, decided by [albumsKnown] and the lookup alone: the list has not
+/// arrived yet (neutral "Album set", because the id has not been looked for), it
+/// arrived and the id is absent — including an empty list — ("Album missing",
+/// which is what a deleted album looks like), or the album is found.
+class _FolderAlbumLine extends StatelessWidget {
+  const _FolderAlbumLine({required this.album, required this.albumsKnown});
+
+  /// The album behind the mapping; null means it is not in the list.
+  final ServerAlbum? album;
+
+  /// Whether the list [album] was looked up in actually arrived from the server.
+  final bool albumsKnown;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final album = this.album;
+
+    if (album == null && !albumsKnown) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(Icons.folder_rounded, size: 12, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 5),
+          Text(
+            'Album set',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (album == null) {
+      return Row(
+        children: <Widget>[
+          Icon(Icons.link_off_rounded, size: 12, color: scheme.error),
+          const SizedBox(width: 5),
+          Text(
+            'Album missing',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: scheme.error,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 2,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: <Widget>[
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(
+              Icons.folder_rounded,
+              size: 12,
+              color: scheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                album.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (album.hiddenFromTimeline)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(
+                Icons.visibility_off_rounded,
+                size: 12,
+                color: scheme.tertiary,
+              ),
+              const SizedBox(width: 3),
+              Flexible(
+                child: Text(
+                  'Hidden from timeline',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.tertiary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+      ],
     );
   }
 }
@@ -910,12 +1155,15 @@ class _ScopeChip extends StatelessWidget {
             children: <Widget>[
               Icon(icon, size: 12, color: foreground),
               const SizedBox(width: 4),
-              Text(
-                inScope ? 'Backing up' : 'Not backed up',
-                maxLines: 1,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: foreground,
-                  fontWeight: FontWeight.w600,
+              Flexible(
+                child: Text(
+                  inScope ? 'Backing up' : 'Not backed up',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: foreground,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],

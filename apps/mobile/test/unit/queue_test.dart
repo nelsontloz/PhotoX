@@ -210,6 +210,135 @@ void main() {
       final row = (await queue.byLocalId('asset-1'))!;
       expect(row.sizeBytes, 42);
     });
+
+    test('writes the device folder on insert and on both updates', () async {
+      await queue.enqueueAll(<AssetCandidate>[
+        _candidate('asset-1', folderId: 'camera'),
+      ]);
+      expect((await queue.byLocalId('asset-1'))!.folderId, 'camera');
+
+      // Unchanged content: the attribution refreshes, progress survives.
+      await queue.markState(
+        localId: 'asset-1',
+        state: UploadState.uploaded,
+        serverAssetId: 'server-1',
+      );
+      await queue.enqueueAll(<AssetCandidate>[
+        _candidate('asset-1', folderId: 'screens'),
+      ]);
+      final unchanged = (await queue.byLocalId('asset-1'))!;
+      expect(unchanged.folderId, 'screens');
+      expect(unchanged.state, UploadState.uploaded.name);
+
+      // Changed content resets the row but keeps the new attribution.
+      await queue.enqueueAll(<AssetCandidate>[
+        _candidate('asset-1', sizeBytes: 999, folderId: 'camera'),
+      ]);
+      final changed = (await queue.byLocalId('asset-1'))!;
+      expect(changed.folderId, 'camera');
+      expect(changed.state, UploadState.discovered.name);
+    });
+
+    test('a scan that knows no folder keeps the stored attribution', () async {
+      await queue.enqueueAll(<AssetCandidate>[
+        _candidate('asset-1', folderId: 'camera'),
+      ]);
+
+      // The merged grid re-queues from a whole-library page, which has no
+      // folder id; that must not forget where the row came from.
+      await queue.enqueueAll(<AssetCandidate>[_candidate('asset-1')]);
+
+      expect((await queue.byLocalId('asset-1'))!.folderId, 'camera');
+    });
+  });
+
+  group('album linking', () {
+    test('unlinkedUploaded serves rows that uploaded from a folder', () async {
+      await queue.enqueueAll(<AssetCandidate>[
+        _candidate('uploaded', folderId: 'camera'),
+        _candidate('deduped', folderId: 'camera'),
+        _candidate('no-folder'),
+        _candidate('pending', folderId: 'camera'),
+        _candidate('no-server-id', folderId: 'camera'),
+      ]);
+      await queue.markState(
+        localId: 'uploaded',
+        state: UploadState.uploaded,
+        serverAssetId: 'server-1',
+      );
+      await queue.markState(
+        localId: 'deduped',
+        state: UploadState.duplicate,
+        serverAssetId: 'server-2',
+      );
+      await queue.markState(
+        localId: 'no-server-id',
+        state: UploadState.uploaded,
+      );
+      await queue.markState(localId: 'pending', state: UploadState.pending);
+
+      final rows = await queue.unlinkedUploaded();
+      // Rows without a server id are served too; the linker skips them because
+      // there is no asset id to post.
+      expect(rows.map((row) => row.localId).toSet(), <String>{
+        'uploaded',
+        'deduped',
+        'no-server-id',
+      });
+      expect(await queue.unlinkedUploaded(limit: 1), hasLength(1));
+      expect(await queue.unlinkedUploaded(limit: 0), isEmpty);
+
+      await queue.markAlbumLinked(<String>['uploaded', 'deduped']);
+      expect(
+        (await queue.unlinkedUploaded()).map((row) => row.localId).toSet(),
+        <String>{'no-server-id'},
+      );
+    });
+
+    test(
+      'markAlbumLinked stamps the rows, forgetFolderAlbum undoes it',
+      () async {
+        await queue.enqueueAll(<AssetCandidate>[
+          _candidate('camera-1', folderId: 'camera'),
+          _candidate('camera-2', folderId: 'camera'),
+          _candidate('screens-1', folderId: 'screens'),
+        ]);
+        for (final localId in <String>['camera-1', 'camera-2', 'screens-1']) {
+          await queue.markState(
+            localId: localId,
+            state: UploadState.uploaded,
+            serverAssetId: 'server-$localId',
+          );
+        }
+
+        await queue.markAlbumLinked(<String>[
+          'camera-1',
+          'camera-2',
+          'screens-1',
+        ]);
+        expect(
+          (await queue.unlinkedUploaded()).map((row) => row.localId),
+          isEmpty,
+        );
+
+        // A re-map of one folder makes only that folder's rows linkable again.
+        await queue.forgetFolderAlbum('camera');
+        expect(
+          (await queue.unlinkedUploaded()).map((row) => row.localId).toSet(),
+          <String>{'camera-1', 'camera-2'},
+        );
+        expect(
+          (await queue.byLocalId('screens-1'))!.albumLinkedAt,
+          isNotNull,
+          reason: 'another folder keeps its mark',
+        );
+      },
+    );
+
+    test('markAlbumLinked is a no-op for an empty set', () async {
+      await queue.markAlbumLinked(const <String>[]);
+      expect(await queue.unlinkedUploaded(), isEmpty);
+    });
   });
 
   group('nextBatch', () {
@@ -906,6 +1035,8 @@ void main() {
       expect(row.fileName, isNull);
       expect(row.spoolPath, isNull);
       expect(row.discoveredAt, isNull);
+      expect(row.folderId, isNull);
+      expect(row.albumLinkedAt, isNull);
 
       await upgraded
           .into(upgraded.keyValues)
@@ -949,6 +1080,7 @@ AssetCandidate _candidate(
   DateTime? modifiedAt,
   String? fileName,
   String? mimeType,
+  String? folderId,
 }) {
   return AssetCandidate(
     localId: localId,
@@ -960,5 +1092,6 @@ AssetCandidate _candidate(
     takenAt: takenAt ?? DateTime.utc(2026, 10, 18, 9),
     modifiedAt: modifiedAt ?? DateTime.utc(2026, 10, 18, 10),
     relativePath: 'DCIM/$localId.jpg',
+    folderId: folderId,
   );
 }

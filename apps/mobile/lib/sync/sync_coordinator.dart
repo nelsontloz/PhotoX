@@ -8,6 +8,7 @@ import '../core/network_status.dart';
 import '../core/refresh_lock.dart';
 import '../media/media_filter.dart';
 import '../media/photo_observer.dart';
+import '../server/album_client.dart';
 import '../settings/settings_store.dart';
 import '../upload/database.dart';
 import '../upload/models.dart';
@@ -34,6 +35,9 @@ class SyncReport {
 
   /// Assets skipped because the bytes already existed server-side.
   int duplicates = 0;
+
+  /// Assets confirmed as added to an album this pass.
+  int linked = 0;
 
   /// Assets that gave up permanently (including quota skips).
   int failed = 0;
@@ -65,7 +69,8 @@ class SyncReport {
   String toString() =>
       'SyncReport(permission: $permission, scanned: $scanned, '
       'enqueued: $enqueued, uploaded: $uploaded, duplicates: $duplicates, '
-      'failed: $failed, skipped: $skipped, remaining: $remaining, '
+      'linked: $linked, failed: $failed, skipped: $skipped, '
+      'remaining: $remaining, '
       'authRequired: $authRequired, paused: $paused, '
       'waitingForWifi: $waitingForWifi, '
       'alreadyRunning: $alreadyRunning'
@@ -89,6 +94,7 @@ class SyncCoordinator {
     DateTime Function()? clock,
     this.filter = const MediaFilter(),
     this.network = const ConnectivityNetworkStatus(),
+    this.albumClient,
     RefreshLock? passLock,
   }) : clock = clock ?? DateTime.now,
        passLock = passLock ?? MemoryRefreshLock();
@@ -110,6 +116,10 @@ class SyncCoordinator {
 
   /// Backoff schedule for retryable failures.
   final RetryPolicy retryPolicy;
+
+  /// Album calls that bind an upload to its folder's server album; null skips
+  /// linking entirely (tests and any graph built without one).
+  final AlbumClient? albumClient;
 
   /// Injectable wall clock so tests can assert scheduling.
   final DateTime Function() clock;
@@ -245,6 +255,14 @@ class SyncCoordinator {
         onDiscovery?.call(false);
       }
 
+      // Album membership survives neither a crash nor an offline pass between
+      // an upload and the album call, so every pass first re-links what the
+      // last one left behind. Linking is a request: same link rule as uploads.
+      final links = <String, Map<String, String>>{};
+      if (!settings.wifiOnly || await _allowsUpload()) {
+        await _collectUnlinked(links, settings);
+      }
+
       final uploadBudgetStart = startedAt;
       var lostLease = false;
       while (!lostLease) {
@@ -309,6 +327,7 @@ class SyncCoordinator {
               maxParts: budget == null ? 0 : uploader.maxPartsPerPass,
             );
             _countOutcome(outcome, report);
+            _collectLink(outcome, item, settings, links);
           } on Object catch (error) {
             if (await _handleFailure(item, error, report)) break;
           }
@@ -316,11 +335,42 @@ class SyncCoordinator {
         if (report.authRequired || report.paused) break;
       }
 
+      await _flushLinks(links, report);
+
       report.remaining = (await queue.stats()).pending;
       return report;
     } finally {
       await passLock.release(_owner);
     }
+  }
+
+  /// Gives already-backed-up photos in [folderId] their folder attribution.
+  ///
+  /// A mapping only ever sees uploads made after it exists, so without this a
+  /// folder backed up before it was mapped would never join its album. It scans
+  /// without moving the watermark and uploads nothing: the rows it touches are
+  /// already terminal, and the next pass's sweep links them.
+  Future<void> adoptFolder(String folderId) async {
+    final settings = await settingsStore.load();
+    final List<AssetCandidate> scanned;
+    try {
+      scanned = await observer.scanNew(
+        since: null,
+        folderIds: <String>[folderId],
+      );
+    } on Object {
+      // A folder that vanished keeps whatever it adopted before.
+      return;
+    }
+    final supported = scanned
+        .where(
+          (candidate) => filter.isSupported(
+            candidate,
+            includeVideos: settings.includeVideos,
+          ),
+        )
+        .toList(growable: false);
+    await queue.enqueueAll(supported);
   }
 
   /// Takes or renews the cross-isolate pass lease; false when another pass
@@ -353,6 +403,144 @@ class SyncCoordinator {
       return await network.isUnmetered();
     } on Object {
       return false;
+    }
+  }
+
+  /// Adds the sweep's already-uploaded rows to [links], keyed album -> row.
+  ///
+  /// A read that fails costs the pass nothing: the upload loop still runs, and
+  /// the next pass sweeps again.
+  Future<void> _collectUnlinked(
+    Map<String, Map<String, String>> links,
+    AppSettings settings,
+  ) async {
+    if (albumClient == null) return;
+    final List<QueuedAsset> rows;
+    try {
+      rows = await queue.unlinkedUploaded();
+    } on Object {
+      return;
+    }
+    for (final row in rows) {
+      final assetId = row.serverAssetId;
+      if (assetId == null) continue;
+      _addLink(
+        links,
+        settings.folderAlbums[row.folderId],
+        row.localId,
+        assetId,
+      );
+    }
+  }
+
+  /// Collects one finished upload for its folder's album.
+  ///
+  /// A dedup hit carries the existing asset id too, and it must land in the
+  /// album exactly like a fresh upload.
+  void _collectLink(
+    UploadOutcome outcome,
+    QueuedAsset item,
+    AppSettings settings,
+    Map<String, Map<String, String>> links,
+  ) {
+    final assetId = outcome.serverAssetId;
+    if (assetId == null) return;
+    _addLink(
+      links,
+      settings.folderAlbums[item.folderId],
+      item.localId,
+      assetId,
+    );
+  }
+
+  static void _addLink(
+    Map<String, Map<String, String>> links,
+    String? albumId,
+    String localId,
+    String assetId,
+  ) {
+    if (albumId == null) return;
+    (links[albumId] ??= <String, String>{})[localId] = assetId;
+  }
+
+  /// Posts the pass's album memberships, then marks those rows linked.
+  ///
+  /// Only a finished call marks rows: any other failure (401/5xx/network)
+  /// leaves them unlinked so the next pass retries, silently, because a lost
+  /// link is not a user-facing error.
+  Future<void> _flushLinks(
+    Map<String, Map<String, String>> links,
+    SyncReport report,
+  ) async {
+    final client = albumClient;
+    if (client == null || links.isEmpty) return;
+    final gone = <String>{};
+    for (final entry in links.entries) {
+      final albumId = entry.key;
+      final rows = entry.value;
+      if (rows.isEmpty) continue;
+      try {
+        await client.addAssets(albumId, rows.values.toList(growable: false));
+        await queue.markAlbumLinked(rows.keys);
+        report.linked += rows.length;
+        continue;
+      } on ApiException catch (error) {
+        if (error.statusCode != 404) continue;
+      } on Object {
+        // Network or an unexpected shape: retried by the next pass's sweep.
+        continue;
+      }
+      // A 404 batch is either a deleted album or one asset deleted since it
+      // uploaded; only the album read tells them apart.
+      bool alive;
+      try {
+        alive = await client.exists(albumId);
+      } on Object {
+        continue;
+      }
+      if (!alive) {
+        gone.add(albumId);
+        // Marked though nothing was added: the mapping is dropped, and a
+        // re-map nulls these marks again, so the sweep never wedges on it.
+        await queue.markAlbumLinked(rows.keys);
+        continue;
+      }
+      // shortcut: retries one id at a time in this rare dead-asset case, up to
+      // one request per row per pass; batching the per-id 404s would need core
+      // to report which asset id failed.
+      for (final row in rows.entries) {
+        try {
+          await client.addAssets(albumId, <String>[row.value]);
+          await queue.markAlbumLinked(<String>[row.key]);
+          report.linked++;
+        } on ApiException catch (error) {
+          // A per-id 404 means that asset is gone: it can never join, and
+          // leaving it unlinked would crowd the 100-row sweep forever.
+          if (error.statusCode != 404) break;
+          await queue.markAlbumLinked(<String>[row.key]);
+        } on Object {
+          // Anything else aborts the rest unmarked so the next pass retries.
+          break;
+        }
+      }
+    }
+    if (gone.isNotEmpty) await _forgetAlbumMappings(gone);
+  }
+
+  /// Drops every folder mapped to an album the server no longer has.
+  ///
+  /// Re-read before writing, so a mapping the user changed mid-pass survives.
+  Future<void> _forgetAlbumMappings(Set<String> albumIds) async {
+    try {
+      final current = await settingsStore.load();
+      final kept = <String, String>{
+        for (final entry in current.folderAlbums.entries)
+          if (!albumIds.contains(entry.value)) entry.key: entry.value,
+      };
+      if (kept.length == current.folderAlbums.length) return;
+      await settingsStore.save(current.copyWith(folderAlbums: kept));
+    } on Object {
+      // The next pass hits the 404 again and retries the cleanup.
     }
   }
 

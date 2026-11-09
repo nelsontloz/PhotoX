@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/foundation.dart' show listEquals, mapEquals;
 
 import '../upload/database.dart';
 
@@ -15,6 +15,7 @@ class AppSettings {
     this.paused = false,
     this.uploadFolderIds = const <String>[],
     this.uploadAllFolders = false,
+    this.folderAlbums = const <String, String>{},
   });
 
   /// Base URL of the PhotoX core API the user entered on first launch.
@@ -43,6 +44,12 @@ class AppSettings {
   /// Back up the whole library instead of [uploadFolderIds].
   final bool uploadAllFolders;
 
+  /// Device folder id -> server album id.
+  ///
+  /// Every asset uploaded from a mapped folder is added to that album. Not part
+  /// of the scan scope: it changes where uploads go, not what discovery reads.
+  final Map<String, String> folderAlbums;
+
   AppSettings copyWith({
     bool? wifiOnly,
     bool? chargingOnly,
@@ -51,6 +58,7 @@ class AppSettings {
     bool? paused,
     List<String>? uploadFolderIds,
     bool? uploadAllFolders,
+    Map<String, String>? folderAlbums,
   }) {
     return AppSettings(
       wifiOnly: wifiOnly ?? this.wifiOnly,
@@ -60,6 +68,7 @@ class AppSettings {
       paused: paused ?? this.paused,
       uploadFolderIds: uploadFolderIds ?? this.uploadFolderIds,
       uploadAllFolders: uploadAllFolders ?? this.uploadAllFolders,
+      folderAlbums: folderAlbums ?? this.folderAlbums,
     );
   }
 
@@ -72,6 +81,7 @@ class AppSettings {
     'paused': paused.toString(),
     'uploadFolderIds': jsonEncode(uploadFolderIds),
     'uploadAllFolders': uploadAllFolders.toString(),
+    'folderAlbums': jsonEncode(folderAlbums),
   };
 
   @override
@@ -84,7 +94,8 @@ class AppSettings {
           other.apiBaseUrl == apiBaseUrl &&
           other.paused == paused &&
           listEquals(other.uploadFolderIds, uploadFolderIds) &&
-          other.uploadAllFolders == uploadAllFolders);
+          other.uploadAllFolders == uploadAllFolders &&
+          mapEquals(other.folderAlbums, folderAlbums));
 
   @override
   int get hashCode => Object.hash(
@@ -95,6 +106,10 @@ class AppSettings {
     paused,
     Object.hashAll(uploadFolderIds),
     uploadAllFolders,
+    // Order-independent: a re-saved map must keep the same hash.
+    Object.hashAllUnordered(
+      folderAlbums.entries.map((entry) => Object.hash(entry.key, entry.value)),
+    ),
   );
 
   @override
@@ -103,7 +118,8 @@ class AppSettings {
       'includeVideos: $includeVideos, '
       'apiBaseUrl: $apiBaseUrl, paused: $paused, '
       'uploadFolderIds: $uploadFolderIds, '
-      'uploadAllFolders: $uploadAllFolders)';
+      'uploadAllFolders: $uploadAllFolders, '
+      'folderAlbums: $folderAlbums)';
 }
 
 /// Persists [AppSettings] in the drift [KeyValues] table.
@@ -137,6 +153,7 @@ class SettingsStore {
         values['uploadAllFolders'],
         defaults.uploadAllFolders,
       ),
+      folderAlbums: _readStringMap(values['folderAlbums']),
     );
   }
 
@@ -188,6 +205,23 @@ class SettingsStore {
       ];
     } on FormatException {
       return const <String>[];
+    }
+  }
+
+  /// Decodes a JSON object of string values; malformed input falls back to
+  /// "no mapping" and non-string keys or values are dropped.
+  static Map<String, String> _readStringMap(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return const <String, String>{};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return const <String, String>{};
+      return <String, String>{
+        for (final entry in decoded.entries)
+          if (entry.key is String && entry.value is String)
+            entry.key as String: entry.value as String,
+      };
+    } on FormatException {
+      return const <String, String>{};
     }
   }
 }

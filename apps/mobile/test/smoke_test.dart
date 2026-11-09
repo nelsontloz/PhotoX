@@ -7,6 +7,7 @@ import 'package:photox_mobile/app_controller.dart';
 import 'package:photox_mobile/library/album_progress.dart';
 import 'package:photox_mobile/library/backup_status.dart';
 import 'package:photox_mobile/media/photo_observer.dart';
+import 'package:photox_mobile/server/album_client.dart';
 import 'package:photox_mobile/server/server_asset.dart';
 import 'package:photox_mobile/settings/settings_store.dart';
 import 'package:photox_mobile/sync/sync_coordinator.dart';
@@ -106,6 +107,33 @@ class FakeAppController extends AppController {
 
   @override
   Future<Uint8List?> serverThumb(String fileId) async => null;
+
+  @override
+  List<ServerAlbum> get serverAlbums => const <ServerAlbum>[];
+
+  @override
+  bool get serverAlbumsLoaded => false;
+
+  @override
+  Future<void> refreshServerAlbums() async => calls.add('refreshServerAlbums');
+
+  @override
+  Future<ServerAlbum> createServerAlbum(
+    String name, {
+    required bool hiddenFromTimeline,
+  }) async {
+    calls.add('createServerAlbum:$name');
+    return ServerAlbum(
+      id: 'album-1',
+      name: name,
+      assetCount: 0,
+      hiddenFromTimeline: hiddenFromTimeline,
+    );
+  }
+
+  @override
+  Future<void> setFolderAlbum(String folderId, String? albumId) async =>
+      calls.add('setFolderAlbum:$folderId:$albumId');
 
   @override
   int get queueRevision => 0;

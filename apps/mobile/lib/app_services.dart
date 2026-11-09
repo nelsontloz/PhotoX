@@ -7,6 +7,7 @@ import 'core/token_store.dart';
 import 'media/hasher.dart';
 import 'media/photo_manager_observer.dart';
 import 'media/photo_observer.dart';
+import 'server/album_client.dart';
 import 'server/server_assets_client.dart';
 import 'settings/settings_store.dart';
 import 'sync/sync_coordinator.dart';
@@ -36,6 +37,7 @@ class AppServices {
     required this.api,
     required this.sessions,
     required this.serverAssets,
+    required this.albums,
     required this.observer,
     required this.coordinator,
     required this.scheduler,
@@ -60,6 +62,9 @@ class AppServices {
 
   /// The server's own asset library, for the merged grid.
   final ServerAssetsClient serverAssets;
+
+  /// Server albums, for the device folder -> album mapping.
+  final AlbumClient albums;
 
   /// Platform media discovery.
   final PhotoObserver observer;
@@ -163,6 +168,7 @@ class AppServices {
     );
     final sessions = SessionClient(api);
     final serverAssets = ServerAssetsClient(api);
+    final albums = AlbumClient(api);
     final mediaObserver = observer ?? PhotoManagerObserver();
     final queue = UploadQueue(db);
     final settingsStore = SettingsStore(db);
@@ -181,6 +187,7 @@ class AppServices {
       settingsStore: settingsStore,
       dedupTransport: ApiUploadTransport(api),
       retryPolicy: RetryPolicy(),
+      albumClient: albums,
       // One pass at a time across isolates: the UI and the Workmanager task
       // share this queue, so a second pass would upload the same assets.
       passLock: DriftRefreshLock(db, namespace: 'sync', lockKey: 'pass'),
@@ -193,6 +200,7 @@ class AppServices {
       api: api,
       sessions: sessions,
       serverAssets: serverAssets,
+      albums: albums,
       observer: mediaObserver,
       coordinator: coordinator,
       scheduler: backgroundScheduler,
@@ -207,6 +215,7 @@ class AppServices {
               observer: mediaObserver,
               progress: progress,
               serverAssets: serverAssets,
+              albumClient: albums,
             )
           : null,
     );

@@ -23,6 +23,7 @@ class AssetCandidate {
     this.width,
     this.height,
     this.durationSeconds,
+    this.folderId,
   });
 
   /// Platform asset id (PhotoKit localIdentifier / MediaStore id).
@@ -60,6 +61,12 @@ class AssetCandidate {
 
   /// Video length in seconds. Display-only, the queue ignores it.
   final int? durationSeconds;
+
+  /// Device album this asset was first seen in, when discovery knew one.
+  ///
+  /// A photo can sit in several albums; the first one a scan reaches wins, so
+  /// at most one folder's server album can ever collect it.
+  final String? folderId;
 }
 
 /// A library album the user can scope backups to.
