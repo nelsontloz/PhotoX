@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface UseAsyncFetchOptions {
-  /** Changing this key re-runs the fetch. Same-key calls while one is in flight are dropped
-   *  (StrictMode dev double-mount, duplicate refresh clicks). Numbers and strings both work. */
+  /** Changing this key re-runs the fetch. Same-key calls while one is in flight share that
+   *  request (StrictMode dev double-mount, duplicate refresh clicks). Numbers and strings both work. */
   refreshKey?: string | number;
   errorMessage: string;
   /**
@@ -28,28 +28,32 @@ export function useAsyncFetch<T>(
   fetcherRef.current = fetcher;
   const fetchIdRef = useRef(0);
   const loadedOnceRef = useRef(false);
-  const inFlightKeyRef = useRef<string | number | null>(null);
+  const inFlightRef = useRef<{ key: string | number; promise: Promise<void> } | null>(null);
 
-  const refresh = useCallback(async () => {
-    if (inFlightKeyRef.current === refreshKey) return;
-    inFlightKeyRef.current = refreshKey;
-    const fetchId = ++fetchIdRef.current;
-    try {
-      if (loadingMode === 'always' || !loadedOnceRef.current) setLoading(true);
-      setError(null);
-      const result = await fetcherRef.current();
-      if (fetchId !== fetchIdRef.current) return;
-      setData(result);
-    } catch (err) {
-      if (fetchId !== fetchIdRef.current) return;
-      setError((err as Error).message ?? errorMessage);
-    } finally {
-      if (fetchId === fetchIdRef.current) {
-        loadedOnceRef.current = true;
-        setLoading(false);
-        inFlightKeyRef.current = null;
+  const refresh = useCallback((): Promise<void> => {
+    if (inFlightRef.current?.key === refreshKey) return inFlightRef.current.promise;
+    const promise = (async () => {
+      const fetchId = ++fetchIdRef.current;
+      try {
+        if (loadingMode === 'always' || !loadedOnceRef.current) setLoading(true);
+        setError(null);
+        const result = await fetcherRef.current();
+        if (fetchId !== fetchIdRef.current) return;
+        setData(result);
+      } catch (err) {
+        if (fetchId !== fetchIdRef.current) return;
+        setError((err as Error).message ?? errorMessage);
+      } finally {
+        if (fetchId === fetchIdRef.current) {
+          loadedOnceRef.current = true;
+          setLoading(false);
+          // fetchId ownership: a newer key already replaced the slot, so only the latest clears it
+          inFlightRef.current = null;
+        }
       }
-    }
+    })();
+    inFlightRef.current = { key: refreshKey, promise };
+    return promise;
   }, [refreshKey, errorMessage, loadingMode]);
 
   useEffect(() => {
