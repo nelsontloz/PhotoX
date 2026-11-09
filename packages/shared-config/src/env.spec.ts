@@ -38,9 +38,9 @@ describe('AUTH_REFRESH_TTL parsing', () => {
     expect(loadEnv().AUTH_REFRESH_TTL).toBe(1 * 24 * 60 * 60 * 1000);
   });
 
-  it('falls back to 15 minutes for an unparseable value', () => {
+  it('throws for an unparseable value instead of silently shortening sessions', () => {
     process.env.AUTH_REFRESH_TTL = 'garbage';
-    expect(loadEnv().AUTH_REFRESH_TTL).toBe(15 * 60 * 1000);
+    expect(() => loadEnv()).toThrow(/Invalid duration "garbage"/);
   });
 });
 

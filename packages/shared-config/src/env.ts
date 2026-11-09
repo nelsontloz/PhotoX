@@ -2,10 +2,10 @@ import { existsSync } from 'fs';
 import { dirname, isAbsolute, join, resolve } from 'path';
 import { z } from 'zod';
 
-/** `15m`/`2h`/`30d` -> milliseconds; unparseable values fall back to 15 minutes. */
+/** `15m`/`2h`/`30d` -> milliseconds; anything else throws so a typo fails boot. */
 function parseDurationMs(duration: string): number {
   const match = /^(\d+)([mhd])$/.exec(duration);
-  if (!match) return 15 * 60 * 1000;
+  if (!match) throw new Error(`Invalid duration "${duration}" — expected e.g. 30m, 2h, 1d`);
 
   const value = parseInt(match[1]!, 10);
   // regex restricts the unit to m|h|d, so the assertion is safe and the switch is exhaustive
