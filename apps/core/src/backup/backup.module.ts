@@ -13,7 +13,8 @@ import { BackupRun } from './entities/backup-run.entity';
 import { BackupRunItem } from './entities/backup-run-item.entity';
 import { S3BackupService } from './s3-backup.service';
 import { UserBackupService } from './user-backup.service';
-import { BackupRunsSweeper } from './backup-runs.sweeper';
+import { BackupTransfersDispatcher } from './backup-transfers.dispatcher';
+import { BackupTransferConsumers } from './backup-transfer.consumers';
 
 // ponytail: BullMqService is @Global, so no QueueModule import — like AdminModule,
 // this module only declares the TypeORM scope its own queries touch
@@ -35,7 +36,12 @@ import { BackupRunsSweeper } from './backup-runs.sweeper';
     PlacesModule,
   ],
   controllers: [BackupController],
-  providers: [S3BackupService, UserBackupService, BackupRunsSweeper],
+  providers: [
+    S3BackupService,
+    UserBackupService,
+    BackupTransfersDispatcher,
+    BackupTransferConsumers,
+  ],
   exports: [UserBackupService],
 })
 export class BackupModule {}

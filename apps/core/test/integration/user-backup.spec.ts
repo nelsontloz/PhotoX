@@ -29,11 +29,12 @@ import { User } from '../../src/users/entities/user.entity';
 import { BackupModule } from '../../src/backup/backup.module';
 import { BackupMerge } from '../../src/backup/entities/backup-merge.entity';
 import { S3BackupService } from '../../src/backup/s3-backup.service';
+import { UserBackupService, buildFallbackEmail, type UserBackupManifest } from '../../src/backup/user-backup.service';
 import {
-  UserBackupService,
-  buildFallbackEmail,
-  type UserBackupManifest,
-} from '../../src/backup/user-backup.service';
+  BACKUP_TRANSFER_QUEUE,
+  RESTORE_TRANSFER_QUEUE,
+  type TransferJobData,
+} from '../../src/backup/backup-transfer.constants';
 import { BullMqModule } from '../../src/queue/bullmq.module';
 import { BullMqService } from '../../src/queue/bullmq.service';
 import { setupTestInfra, teardownTestInfra } from './test-setup';
@@ -433,7 +434,8 @@ describe('user backup round-trip', () => {
     expect(result.restoredFrom.prefix).toBe(result.prefix);
     expect(result.restoredFrom.manifestObjectKey.endsWith('manifest.json')).toBe(true);
     expect(new Date(result.completedAt).getTime()).toBeGreaterThanOrEqual(
-      new Date(result.startedAt).getTime(),
+      // startedAt comes from the DB row, completedAt from the process clock: allow ms skew
+      new Date(result.startedAt).getTime() - 5_000,
     );
     // M2: video gets a metadata job too — 2 live assets (trashed excluded)
     expect(result.enqueued).toEqual({ metadata: 2, thumbnails: 8, videos: 1, faces: 1, ai: 2 });
@@ -2016,4 +2018,156 @@ describe('user backup round-trip', () => {
     const after = (await svc.backupOverview()).find((entry) => entry.userId === user.id);
     expect(after?.activeRun).toBeUndefined();
   }, 120_000);
+
+  describe('queued transfers', () => {
+    beforeEach(async () => {
+      await bullMq.redis.flushdb();
+    });
+
+    async function takeJob(queueName: string): Promise<TransferJobData> {
+      const jobs = await bullMq.getQueue(queueName).getJobs(['waiting', 'delayed']);
+      expect(jobs).toHaveLength(1);
+      const job = jobs[0]!;
+      await job.remove();
+      return job.data as TransferJobData;
+    }
+
+    async function queuedItemCount(runId: string): Promise<number> {
+      const rows = await dataSource.query<{ count: number }[]>(
+        'SELECT COUNT(*)::int AS count FROM backup_run_items WHERE "runId" = $1',
+        [runId],
+      );
+      return rows[0]?.count ?? 0;
+    }
+
+    it('dispatches a backup item to the backup queue and consumes it to completion', async () => {
+      const email = `queue-backup-${randomUUID()}@example.com`;
+      const user = await userRepo.save(
+        userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'test-hash',
+          displayName: 'Queue Backup',
+        }),
+      );
+      await seedOriginal(user.id, Buffer.from('queue-backup-bytes'));
+
+      const photo = await fileRepo.findOneOrFail({ where: { userId: user.id } });
+      const { runId } = await svc.startBackup(user.id);
+      expect(await svc.dispatchPendingTransfers('backup', 10)).toBe(1);
+      const data = await takeJob(BACKUP_TRANSFER_QUEUE);
+      expect(await bullMq.getQueue(RESTORE_TRANSFER_QUEUE).getJobs(['waiting'])).toHaveLength(0);
+
+      await svc.consumeTransferJob('backup', { data, attemptsMade: 0, opts: { attempts: 5 } });
+
+      expect((await svc.getRunStatus(runId)).state).toBe('completed');
+      expect(await queuedItemCount(runId)).toBe(0);
+      const key = originalKey(email, user.id, photo.id, 'bin');
+      expect(fake.objects.has(key)).toBe(true);
+    });
+
+    it('dispatches a restore to the restore queue only and restores the bytes', async () => {
+      const email = `queue-restore-${randomUUID()}@example.com`;
+      const user = await userRepo.save(
+        userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'test-hash',
+          displayName: 'Queue Restore',
+        }),
+      );
+      const photo = await seedOriginal(user.id, Buffer.from('queue-restore-bytes'));
+      await svc.backupUser(user.id);
+      await wipeUserData();
+
+      const { runId } = await svc.startRestore(user.id);
+      expect(await svc.dispatchPendingTransfers('restore', 10)).toBe(1);
+      const data = await takeJob(RESTORE_TRANSFER_QUEUE);
+      expect(await bullMq.getQueue(BACKUP_TRANSFER_QUEUE).getJobs(['waiting'])).toHaveLength(0);
+
+      await svc.consumeTransferJob('restore', { data, attemptsMade: 0, opts: { attempts: 5 } });
+
+      expect((await svc.getRunStatus(runId)).state).toBe('completed');
+      const restored = await fileRepo.findOneOrFail({ where: { id: photo.record.id } });
+      expect(await readFile(storage.pathFor(restored.storageKey))).toEqual(photo.bytes);
+    });
+
+    it('ignores a job delivered to the wrong queue', async () => {
+      const user = await userRepo.save(
+        userRepo.create({
+          email: `queue-wrong-${randomUUID()}@example.com`,
+          role: 'user',
+          passwordHash: 'test-hash',
+          displayName: 'Queue Wrong',
+        }),
+      );
+      await seedOriginal(user.id, Buffer.from('queue-wrong-bytes'));
+      const { runId } = await svc.startBackup(user.id);
+      await svc.dispatchPendingTransfers('backup', 10);
+      const data = await takeJob(BACKUP_TRANSFER_QUEUE);
+
+      await svc.consumeTransferJob('restore', { data, attemptsMade: 0, opts: { attempts: 5 } });
+
+      expect(await queuedItemCount(runId)).toBe(1);
+      expect((await svc.getRunStatus(runId)).state).toBe('running');
+      await svc.cancelRun(runId);
+    });
+
+    it('retries a transient failure through the queue and finishes on the second attempt', async () => {
+      const user = await userRepo.save(
+        userRepo.create({
+          email: `queue-retry-${randomUUID()}@example.com`,
+          role: 'user',
+          passwordHash: 'test-hash',
+          displayName: 'Queue Retry',
+        }),
+      );
+      await seedOriginal(user.id, Buffer.from('queue-retry-bytes'));
+      const { runId } = await svc.startBackup(user.id);
+      await svc.dispatchPendingTransfers('backup', 10);
+      const data = await takeJob(BACKUP_TRANSFER_QUEUE);
+
+      fake.failNextPuts = 1;
+      await expect(
+        svc.consumeTransferJob('backup', { data, attemptsMade: 0, opts: { attempts: 5 } }),
+      ).rejects.toThrow('injected putFile failure');
+      const queued = await dataSource.query<{ state: string }[]>(
+        'SELECT "state" FROM backup_run_items WHERE "id" = $1',
+        [data.itemId],
+      );
+      expect(queued[0]?.state).toBe('queued');
+
+      await svc.consumeTransferJob('backup', { data, attemptsMade: 1, opts: { attempts: 5 } });
+      expect((await svc.getRunStatus(runId)).state).toBe('completed');
+    });
+
+    it('pauses the run on a local disk failure without retrying the job', async () => {
+      const email = `queue-disk-${randomUUID()}@example.com`;
+      const user = await userRepo.save(
+        userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'test-hash',
+          displayName: 'Queue Disk',
+        }),
+      );
+      await seedOriginal(user.id, Buffer.from('queue-disk-bytes'));
+      await svc.backupUser(user.id);
+      await wipeUserData();
+      const { runId } = await svc.startRestore(user.id);
+      await svc.dispatchPendingTransfers('restore', 10);
+      const data = await takeJob(RESTORE_TRANSFER_QUEUE);
+
+      const noSpace = Object.assign(new Error('no space left on device'), { code: 'ENOSPC' });
+      const save = vi.spyOn(storage, 'save').mockRejectedValueOnce(noSpace);
+      try {
+        await svc.consumeTransferJob('restore', { data, attemptsMade: 0, opts: { attempts: 5 } });
+      } finally {
+        save.mockRestore();
+      }
+
+      expect((await svc.getRunStatus(runId)).state).toBe('paused');
+      expect(await queuedItemCount(runId)).toBe(1);
+    });
+  });
 });

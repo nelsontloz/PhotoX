@@ -27,7 +27,7 @@ import type { ApiTestApp } from './helpers';
 // Already green: the rejected-upload temp cleanup (#5) — Nest 12's FileInterceptor removes the
 // file when a pipe rejects — kept as a regression guard.
 // Restore mid-download failure (#2) is covered by master's per-file transfer ledger
-// (`backup-runs.sweeper` and the "resumes a failed restore" test in user-backup.spec.ts).
+// (`backup-transfer` queues and the "resumes a failed restore" test in user-backup.spec.ts).
 // Deliberately not here: the 65k-parameter batching (#8) and the worker-internal bugs (#10-#12)
 // are not reachable from an HTTP/DB integration test.
 
