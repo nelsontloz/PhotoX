@@ -162,15 +162,15 @@ export function thumbnailProcessor({
       sig === undefined ? undefined : { sig },
     );
 
-    await patchStatusFailed(
-      core,
-      logger,
+    // not patchStatusFailed: a lost 'ready' patch must fail the job so BullMQ retries
+    // (the register calls above are idempotent on checksum + asset)
+    await core.patchMetadata(
       userId,
       assetId,
       {
         thumbnailStatus: 'ready',
       },
-      sig,
+      sig === undefined ? undefined : { sig },
     );
   }
 

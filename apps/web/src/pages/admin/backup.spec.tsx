@@ -11,6 +11,7 @@ import type {
 const api = vi.hoisted(() => ({
   getBackupOverview: vi.fn(),
   getBackupProgress: vi.fn(),
+  getBackupRunStatus: vi.fn(),
   backupUser: vi.fn(),
   restoreUser: vi.fn(),
   deleteBackup: vi.fn(),
@@ -173,6 +174,7 @@ const notFound = () => ({ isAxiosError: true, response: { status: 404 }, message
 beforeEach(() => {
   api.getBackupOverview.mockResolvedValue([ada, grace]);
   api.getBackupProgress.mockRejectedValue(notFound());
+  api.getBackupRunStatus.mockRejectedValue(notFound());
   api.backupUser.mockResolvedValue(result);
   api.restoreUser.mockResolvedValue(restoreResult);
   api.mergeBackup.mockResolvedValue(mergeResult);
@@ -356,6 +358,62 @@ describe('BackupSection table', () => {
       finish(result);
       await Promise.resolve();
     });
+  });
+
+  it('resumes a running backup from the overview after a reload', async () => {
+    api.getBackupOverview.mockResolvedValue([
+      { ...ada, activeRun: { id: 'run-1', kind: 'backup', state: 'running' } },
+      grace,
+    ]);
+    api.getBackupRunStatus.mockResolvedValue({
+      id: 'run-1',
+      kind: 'backup',
+      userId: 'u-1',
+      state: 'running',
+      total: 10,
+      completed: 4,
+      uploaded: 1,
+      skipped: 3,
+      failed: 0,
+    });
+
+    render(<BackupSection />);
+    await rowsReady();
+
+    expect(await screen.findByText('Backing up…')).toBeTruthy();
+    expect(await screen.findByLabelText('Backup progress for ada@example.com')).toBeTruthy();
+    expect(screen.getByText('4/10 (1 new, 3 unchanged)')).toBeTruthy();
+    expect(api.getBackupRunStatus).toHaveBeenCalledWith('run-1');
+    expect(api.getBackupProgress).not.toHaveBeenCalled();
+  });
+
+  it('finishes an adopted run, refreshes the list and toasts the result', async () => {
+    api.getBackupOverview
+      .mockResolvedValueOnce([
+        { ...ada, activeRun: { id: 'run-2', kind: 'backup', state: 'running' } },
+        grace,
+      ])
+      .mockResolvedValue([ada, grace]);
+    api.getBackupRunStatus.mockResolvedValue({
+      id: 'run-2',
+      kind: 'backup',
+      userId: 'u-1',
+      state: 'completed',
+      total: 10,
+      completed: 10,
+      uploaded: 2,
+      skipped: 8,
+      failed: 0,
+      result,
+    });
+
+    render(<BackupSection />);
+    await rowsReady();
+
+    await waitFor(() => expect(api.getBackupOverview).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText('Backing up…')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Back up ada@example.com' })).toBeTruthy();
+    expect(screen.getByText(/Backed up ada@example\.com — 121 files/)).toBeTruthy();
   });
 
   it('backs up all users sequentially and finishes with a summary toast', async () => {

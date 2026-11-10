@@ -261,7 +261,7 @@ Given('I seed a detection on the uploaded text photo', async ({ request, ctx }) 
   const auth = requireAuth(ctx);
   const { assetId } = uploadByName(ctx, TEXT_FIXTURE);
   const response = await request.post(`/worker/assets/${assetId}/detections`, {
-    headers: workerHeaders(auth.user.id),
+    headers: workerHeaders(auth.user.id, assetId),
     data: {
       detections: [
         {

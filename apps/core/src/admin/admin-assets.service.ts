@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, LessThan, Repository } from 'typeorm';
-import { readdir } from 'fs/promises';
+import { readdir, stat } from 'fs/promises';
 import { join, relative } from 'path';
 import { loadEnv, LocalStorageService } from '@photox/shared-config';
 import { Asset, AssetThumbnail, FileRecord } from '../database/entities';
@@ -172,6 +172,10 @@ export class AdminAssetsService {
     for (const key of await this.listDiskKeys()) {
       if (!knownKeys.has(key)) {
         try {
+          // bytes land before their row: ignore anything younger than the grace window so a
+          // just-saved original cannot be deleted in the gap before its FileRecord insert
+          const info = await stat(this.storage.pathFor(key)).catch(() => null);
+          if (!info || Date.now() - info.mtimeMs < ORPHAN_GRACE_MS) continue;
           await this.storage.delete(key);
           deletedStrays++;
         } catch (err) {
@@ -238,6 +242,8 @@ export class AdminAssetsService {
       if (key === 'upload-sessions' || key.startsWith('upload-sessions/')) continue;
       // in-flight backup/restore drafts and temp downloads are owned by the run ledger
       if (key === 'backup-runs' || key.startsWith('backup-runs/')) continue;
+      // GeoNames cache (places:import): regenerable, but a download to re-fetch it is expensive
+      if (key === 'geo' || key.startsWith('geo/')) continue;
       keys.push(key);
     }
     return keys;

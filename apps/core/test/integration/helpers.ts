@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
 import { ValidationPipe, type ExecutionContext, type INestApplication } from '@nestjs/common';
@@ -245,9 +245,13 @@ export async function createApiTestApp(opts?: {
   }
 }
 
+export function jobSig(sub: string, scope: string, secret = TEST_WORKER_SECRET): string {
+  return createHmac('sha256', secret).update(`${sub}:${scope}`).digest('hex');
+}
+
 export async function resetDb(t: ApiTestApp): Promise<void> {
   await t.dataSource.query(
-    'TRUNCATE users, refresh_tokens, albums, album_assets, shares, files, assets, asset_thumbnails, faces, persons, app_settings, asset_embeddings, asset_detections, places, upload_sessions, upload_session_parts, backup_merges RESTART IDENTITY CASCADE',
+    'TRUNCATE users, refresh_tokens, albums, album_assets, shares, files, assets, asset_thumbnails, faces, persons, app_settings, asset_embeddings, asset_detections, places, upload_sessions, upload_session_parts, backup_merges, backup_runs RESTART IDENTITY CASCADE',
   );
   rmSync(t.storageDir, { recursive: true, force: true });
   await t.storage.ensureDir();

@@ -301,4 +301,10 @@ describe('VideoMetadataExtractor', () => {
     expect(result.height).toBeNull();
     expect(result.orientation).toBe(90);
   });
+
+  it('propagates a failed probe so the processor can retry', async () => {
+    vi.mocked(runFfprobeJson).mockRejectedValue(new Error('ffprobe exploded'));
+
+    await expect(extractor.extract('/tmp/unreadable.mp4')).rejects.toThrow('ffprobe exploded');
+  });
 });

@@ -318,20 +318,29 @@ export async function signInAdmin(request: APIRequestContext): Promise<AuthRespo
 // E2E_AUTH_TOKEN_SECRET when it diverges).
 const E2E_AUTH_TOKEN_SECRET =
   process.env.E2E_AUTH_TOKEN_SECRET ?? 'dev-auth-secret-32-characters-minimum!!';
+// The job binding is verified with the worker secret even for a user-secret act token.
+const E2E_WORKER_JWT_SECRET =
+  process.env.E2E_WORKER_JWT_SECRET ?? 'dev-worker-secret-32-characters-minimum!!';
 
 function base64url(input: string | Buffer): string {
   return (typeof input === 'string' ? Buffer.from(input) : input).toString('base64url');
 }
 
 /** Delegated worker headers scoped to a job user id (test seeding only, never prod). */
-export function workerHeaders(userId: string): Record<string, string> {
+export function workerHeaders(userId: string, scope: string): Record<string, string> {
   // the guard mandates iat on every verified token and fails closed when absent
   const now = Math.floor(Date.now() / 1000);
   const encoded =
     `${base64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.` +
     `${base64url(JSON.stringify({ sub: userId, email: 'worker@internal', role: 'user', act: { sub: 'worker-service' }, iat: now, exp: now + 1800 }))}`;
   const signature = base64url(createHmac('sha256', E2E_AUTH_TOKEN_SECRET).update(encoded).digest());
-  return { Authorization: `Bearer ${encoded}.${signature}` };
+  const jobSignature = createHmac('sha256', E2E_WORKER_JWT_SECRET)
+    .update(`${userId}:${scope}`)
+    .digest('hex');
+  return {
+    Authorization: `Bearer ${encoded}.${signature}`,
+    'X-Job-Signature': jobSignature,
+  };
 }
 
 /** The signed-in user for this scenario; every authenticated step starts here. */

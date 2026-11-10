@@ -1,5 +1,6 @@
 import { ForbiddenException, UnauthorizedException, type ExecutionContext } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { createHmac } from 'node:crypto';
 import type { Request } from 'express';
 import type { DataSource } from 'typeorm';
 import { ACCESS_COOKIE } from './auth-cookie';
@@ -9,9 +10,13 @@ const TEST_SECRET = 'test-secret-0123456789abcdef0123456789';
 // phase-2: the guard verifies against explicit env secrets (not the injected JwtService
 // default), so the env user secret must match this spec's signing secret
 process.env.AUTH_TOKEN_SECRET = TEST_SECRET;
-process.env.WORKER_JWT_SECRET = 'worker-unit-test-secret-9f8e7d6c5b4a3210';
+const WORKER_SECRET = 'worker-unit-test-secret-9f8e7d6c5b4a3210';
+process.env.WORKER_JWT_SECRET = WORKER_SECRET;
 const jwt = new JwtService({ secret: TEST_SECRET });
 const guard = new JwtAuthGuard(jwt);
+
+const jobSig = (sub: string, scope: string): string =>
+  createHmac('sha256', WORKER_SECRET).update(`${sub}:${scope}`).digest('hex');
 
 function tokenFor(role: 'user' | 'admin' = 'user'): string {
   return jwt.sign({ sub: 'u1', email: 'u@example.com', role });
@@ -253,7 +258,7 @@ describe('JwtAuthGuard', () => {
     expect(cookie).not.toHaveBeenCalled();
   });
 
-  it('preserves the act claim when renewing a cookie-borne worker token', async () => {
+  it('never re-mints a cookie from an act token', async () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date('2030-01-01T00:00:00Z'));
@@ -262,17 +267,14 @@ describe('JwtAuthGuard', () => {
         { expiresIn: 30 },
       );
       vi.setSystemTime(new Date('2030-01-01T00:00:20Z'));
-      const { context, cookie } = testContext('GET', '/worker/assets/a1', cookieHeader(stale));
+      // the act-allowed list read keeps the token reachable outside the worker surface
+      const { context, cookie } = testContext('GET', '/api/v1/assets', cookieHeader(stale), {
+        ids: 'a1',
+      });
 
       await expect(guard.canActivate(context)).resolves.toBe(true);
-      const [, fresh] = cookie.mock.calls[0] as CookieArgs;
-      expect(fresh).not.toBe(stale);
-      expect(jwt.verify(fresh)).toMatchObject({
-        sub: 'u1',
-        role: 'admin',
-        // dropping act would turn this into a plain admin token, escaping the act-only rules
-        act: { sub: 'worker-service' },
-      });
+      // an act token is a job credential, not a browser session — no renewable cookie
+      expect(cookie).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -311,7 +313,7 @@ describe('JwtAuthGuard', () => {
     }
   });
 
-  it('heals a stale cookie to a worker bearer identity with act preserved', async () => {
+  it('does not re-mint the cookie when the bearer is an act token', async () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date('2030-01-01T00:00:00Z'));
@@ -324,17 +326,18 @@ describe('JwtAuthGuard', () => {
         { expiresIn: 30 },
       );
       vi.setSystemTime(new Date('2030-01-01T00:00:20Z'));
-      const { context, cookie } = testContext('GET', '/worker/assets/a1', {
-        ...cookieHeader(staleCookie),
-        authorization: `Bearer ${bearer}`,
-      });
+      const { context, cookie } = testContext(
+        'GET',
+        '/api/v1/assets',
+        {
+          ...cookieHeader(staleCookie),
+          authorization: `Bearer ${bearer}`,
+        },
+        { ids: 'a1' },
+      );
 
       await expect(guard.canActivate(context)).resolves.toBe(true);
-      const [, fresh] = cookie.mock.calls[0] as CookieArgs;
-      expect(jwt.verify(fresh)).toMatchObject({
-        sub: 'u1',
-        act: { sub: 'worker-service' },
-      });
+      expect(cookie).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -376,7 +379,11 @@ describe('JwtAuthGuard', () => {
   });
 
   it('lets worker-actor admin tokens through on worker routes and the act list read', async () => {
-    const auth = { authorization: `Bearer ${workerTokenFor('admin')}` };
+    // the unit context carries no route params, so the sub is the only derivable scope
+    const auth = {
+      authorization: `Bearer ${workerTokenFor('admin')}`,
+      'x-job-signature': jobSig('worker-service', 'worker-service'),
+    };
     const pass = (method: string, path: string, query: Record<string, unknown> = {}) =>
       guard.canActivate(testContext(method, path, auth, query).context);
     await expect(pass('GET', '/worker/assets/a1')).resolves.toBe(true);

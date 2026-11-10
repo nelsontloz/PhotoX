@@ -296,6 +296,8 @@ function makeOverviewService(
   const backupMergesRepo = {
     find: vi.fn().mockResolvedValue(merges),
   } as unknown as Repository<BackupMerge>;
+  // the overview attaches the user's non-terminal run (reload-safe progress); no runs here
+  const runsRepo = { find: vi.fn().mockResolvedValue([]) } as never;
   const getBuffer = vi.fn((key: string) => {
     const found = objects.get(key);
     if (!found) throw notFoundError(key);
@@ -329,7 +331,7 @@ function makeOverviewService(
     nil,
     nil,
     backupMergesRepo,
-    nil,
+    runsRepo,
     nil,
   );
   return { svc, usersRepo, createQueryBuilder, qb, s3, backupMergesRepo };

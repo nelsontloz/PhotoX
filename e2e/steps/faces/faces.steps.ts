@@ -51,7 +51,7 @@ async function seedFaces(
   faces: SeedFace[],
 ): Promise<void> {
   const response = await request.post(`/worker/assets/${assetId}/faces`, {
-    headers: workerHeaders(auth.user.id),
+    headers: workerHeaders(auth.user.id, assetId),
     data: {
       faces: faces.map((face) => ({ ...face, confidence: 0.9, embedding: seedEmbedding() })),
     },

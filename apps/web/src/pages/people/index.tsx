@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FaArrowsRotate, FaCheck, FaSpinner, FaUsers, FaFaceSmile } from 'react-icons/fa6';
 import { RequireAuth } from '../../components/RequireAuth';
@@ -18,6 +18,17 @@ export default function PeoplePage() {
   const persons = data ?? EMPTY;
   const [clustering, setClustering] = useState(false);
   const [clusterQueued, setClusterQueued] = useState(false);
+  const pollTimerRef = useRef<number | null>(null);
+  const queuedTimerRef = useRef<number | null>(null);
+
+  // stop the cluster poll and the queued badge after navigating away
+  useEffect(
+    () => () => {
+      if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current);
+      if (queuedTimerRef.current !== null) window.clearTimeout(queuedTimerRef.current);
+    },
+    [],
+  );
 
   const handleCluster = async () => {
     if (clustering) return;
@@ -26,14 +37,17 @@ export default function PeoplePage() {
     try {
       await triggerCluster();
       setClusterQueued(true);
-      window.setTimeout(() => setClusterQueued(false), 3000);
+      if (queuedTimerRef.current !== null) window.clearTimeout(queuedTimerRef.current);
+      queuedTimerRef.current = window.setTimeout(() => setClusterQueued(false), 3000);
       // ponytail: refetch after worker has time to process; poll briefly in case of slow runs
+      if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current);
       let elapsed = 0;
       const interval = window.setInterval(() => {
         elapsed += 3000;
         void refresh();
         if (elapsed >= 30000) window.clearInterval(interval);
       }, 3000);
+      pollTimerRef.current = interval;
     } catch {
       /* ponytail: silent fail */
     } finally {

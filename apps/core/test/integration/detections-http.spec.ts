@@ -5,6 +5,7 @@ import {
   apiServer,
   closeTestApp,
   createApiTestApp,
+  jobSig,
   resetDb,
   seedAsset,
   seedFile,
@@ -55,10 +56,11 @@ describe('asset detections HTTP', () => {
   });
 
   it('registers detections and returns them ordered by confidence desc', async () => {
-    const { token, act, asset } = await seedOwnedAsset();
+    const { owner, token, act, asset } = await seedOwnedAsset();
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/detections`)
       .set(t.authHeader(act))
+      .set('X-Job-Signature', jobSig(owner.id, asset.id))
       .send(DETECTIONS);
     expect(res.status).toBe(201);
     expect(res.body).toEqual({ ok: true });
@@ -72,11 +74,12 @@ describe('asset detections HTTP', () => {
   });
 
   it('replaces the row set instead of appending', async () => {
-    const { token, act, asset } = await seedOwnedAsset();
+    const { owner, token, act, asset } = await seedOwnedAsset();
     const post = (body: Record<string, unknown>) =>
       request(apiServer(t))
         .post(`/worker/assets/${asset.id}/detections`)
         .set(t.authHeader(act))
+        .set('X-Job-Signature', jobSig(owner.id, asset.id))
         .send(body);
     expect((await post(DETECTIONS)).status).toBe(201);
     expect(
@@ -97,14 +100,16 @@ describe('asset detections HTTP', () => {
   });
 
   it('clears stale rows when the new set is empty', async () => {
-    const { token, act, asset } = await seedOwnedAsset();
+    const { owner, token, act, asset } = await seedOwnedAsset();
     await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/detections`)
       .set(t.authHeader(act))
+      .set('X-Job-Signature', jobSig(owner.id, asset.id))
       .send(DETECTIONS);
     const clear = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/detections`)
       .set(t.authHeader(act))
+      .set('X-Job-Signature', jobSig(owner.id, asset.id))
       .send({ detections: [] });
     expect(clear.status).toBe(201);
 
@@ -149,10 +154,11 @@ describe('asset detections HTTP', () => {
       { detections: [{ label: 'car', confidence: 0.5, box: { x: 1, y: 1, w: 10, h: -1 } }] },
     ],
   ])('400s %s without writing', async (_label, body) => {
-    const { act, asset } = await seedOwnedAsset();
+    const { owner, act, asset } = await seedOwnedAsset();
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/detections`)
       .set(t.authHeader(act))
+      .set('X-Job-Signature', jobSig(owner.id, asset.id))
       .send(body);
     // class-validator rejects at the pipe: 400 Bad Request (was the service's 422)
     expect(res.status).toBe(400);
@@ -167,6 +173,7 @@ describe('asset detections HTTP', () => {
     const post = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/detections`)
       .set(t.authHeader(act))
+      .set('X-Job-Signature', jobSig(other.id, asset.id))
       .send(DETECTIONS);
     expect(post.status).toBe(404);
     const get = await request(apiServer(t))
@@ -182,16 +189,18 @@ describe('asset detections HTTP', () => {
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/detections`)
       .set(t.authHeader(act))
+      .set('X-Job-Signature', jobSig(owner.id, asset.id))
       .send(DETECTIONS);
     expect(res.status).toBe(201);
     expect(await t.detectionRepo.count()).toBe(2);
   });
 
   it('makes registered labels searchable through the P3 FTS union', async () => {
-    const { token, act, asset } = await seedOwnedAsset();
+    const { owner, token, act, asset } = await seedOwnedAsset();
     await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/detections`)
       .set(t.authHeader(act))
+      .set('X-Job-Signature', jobSig(owner.id, asset.id))
       .send(DETECTIONS);
 
     const res = await request(apiServer(t))

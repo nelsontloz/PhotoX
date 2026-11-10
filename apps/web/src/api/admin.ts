@@ -219,9 +219,7 @@ const BACKUP_STATUS_TIMEOUT_MS = 30_000;
 async function waitForRun<T>(runId: string): Promise<T> {
   const deadline = Date.now() + BACKUP_TIMEOUT_MS;
   for (;;) {
-    const { data } = await api.get<BackupRunStatus>(`/v1/admin/backups/runs/${runId}`, {
-      timeout: BACKUP_STATUS_TIMEOUT_MS,
-    });
+    const data = await getBackupRunStatus(runId);
     if (data.state === 'completed' && data.result) return data.result as T;
     if (data.state === 'failed' || data.state === 'cancelled' || data.state === 'paused') {
       throw new Error(data.error ?? `Backup run ${data.state}`);
@@ -229,6 +227,14 @@ async function waitForRun<T>(runId: string): Promise<T> {
     if (Date.now() > deadline) throw new Error('Backup run timed out');
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
+}
+
+/** GET /v1/admin/backups/runs/:runId — one poll of a running backup/restore. */
+export async function getBackupRunStatus(runId: string): Promise<BackupRunStatus> {
+  const { data } = await api.get<BackupRunStatus>(`/v1/admin/backups/runs/${runId}`, {
+    timeout: BACKUP_STATUS_TIMEOUT_MS,
+  });
+  return data;
 }
 
 export async function backupUser(emailOrId: string): Promise<BackupResult> {
@@ -408,6 +414,8 @@ export interface BackupOverviewRow {
   backedUpAlbums?: number;
   backedUpShares?: number;
   backedUpPersons?: number;
+  /** Non-terminal run for this user (survives a page reload; drives the resume progress). */
+  activeRun?: { id: string; kind: 'backup' | 'restore'; state: string };
 }
 
 export async function getBackupOverview(): Promise<BackupOverviewRow[]> {

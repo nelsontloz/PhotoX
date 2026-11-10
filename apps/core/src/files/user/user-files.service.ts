@@ -316,14 +316,15 @@ export class UserFilesService {
     return { file: FileRecordDto.from(winner), created: false };
   }
 
-  // quota inputs: original-purpose bytes only (thumbnails/transcodes are system output);
-  // one raw SUM row, shared by the upload guard and the upload-session advisory check
+  // quota inputs: original-purpose bytes under originals/ only — thumbnails share the purpose
+  // but live under derivatives/thumbnails/ (system output, not the user's uploads)
   private async sumOriginalBytes(userId: string): Promise<number> {
     const { used } = (await this.fileRepo
       .createQueryBuilder('f')
       .select('COALESCE(SUM(f.sizeBytes), 0)', 'used')
       .where('f.userId = :userId', { userId })
       .andWhere('f.purpose = :purpose', { purpose: 'original' })
+      .andWhere('f."storageKey" LIKE :originals', { originals: 'originals/%' })
       .getRawOne<{ used: string }>()) ?? { used: '0' };
     return Number(used);
   }

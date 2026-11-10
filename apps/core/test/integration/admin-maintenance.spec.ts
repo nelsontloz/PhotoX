@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { existsSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, utimes, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import {
@@ -233,7 +233,12 @@ describe('admin maintenance', () => {
 
     await mkdir(join(t.storageDir, 'models'), { recursive: true });
     await writeFile(join(t.storageDir, 'models', 'keep.onnx'), Buffer.from('model'));
-    await writeFile(join(t.storageDir, 'stray.bin'), Buffer.from('stray'));
+    const agedStray = join(t.storageDir, 'stray.bin');
+    await writeFile(agedStray, Buffer.from('stray'));
+    const agedAt = new Date(Date.now() - 60 * 60 * 1000);
+    await utimes(agedStray, agedAt, agedAt);
+    // young stray: bytes land before their row, so the sweep must respect the grace window
+    await writeFile(join(t.storageDir, 'fresh-stray.bin'), Buffer.from('fresh'));
     await writeFile(join(t.storageDir, 'staging.tmp'), Buffer.from('tmp'));
 
     const res = await request(apiServer(t))
@@ -251,6 +256,7 @@ describe('admin maintenance', () => {
     expect(existsSync(join(t.storageDir, 'models', 'keep.onnx'))).toBe(true);
     expect(existsSync(join(t.storageDir, 'staging.tmp'))).toBe(true);
     expect(existsSync(join(t.storageDir, 'stray.bin'))).toBe(false);
+    expect(existsSync(join(t.storageDir, 'fresh-stray.bin'))).toBe(true);
 
     const again = await request(apiServer(t))
       .post('/api/v1/admin/cleanup-orphans/run')

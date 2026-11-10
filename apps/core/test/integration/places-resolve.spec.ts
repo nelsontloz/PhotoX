@@ -3,6 +3,7 @@ import type { Repository } from 'typeorm';
 import {
   closeTestApp,
   createApiTestApp,
+  jobSig,
   resetDb,
   seedAsset,
   seedFile,
@@ -73,6 +74,7 @@ describe('places resolution', () => {
     const res = await request(apiServer(t))
       .patch(`/worker/assets/${asset.id}/metadata`)
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(user.id, asset.id))
       .send(PARIS);
     expect(res.status).toBe(200);
 
@@ -92,6 +94,7 @@ describe('places resolution', () => {
     const res = await request(apiServer(t))
       .patch(`/worker/assets/${asset.id}/metadata`)
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(user.id, asset.id))
       .send(OPEN_OCEAN);
     expect(res.status).toBe(200);
 
@@ -112,6 +115,7 @@ describe('places resolution', () => {
     const res = await request(apiServer(t))
       .patch(`/worker/assets/${asset.id}/metadata`)
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(user.id, asset.id))
       .send(PARIS);
     expect(res.status).toBe(200);
 
@@ -129,6 +133,7 @@ describe('places resolution', () => {
     const res = await request(apiServer(t))
       .patch(`/worker/assets/${asset.id}/metadata`)
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(user.id, asset.id))
       .send({ latitude: null, longitude: null });
     expect(res.status).toBe(200);
     expect(resolveSpy).not.toHaveBeenCalled();
@@ -147,6 +152,7 @@ describe('places resolution', () => {
     const res = await request(apiServer(t))
       .patch(`/worker/assets/${asset.id}/metadata`)
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(user.id, asset.id))
       .send(PARIS);
     expect(res.status).toBe(200);
 

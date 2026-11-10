@@ -94,7 +94,7 @@ async function setLocation(
   // coordinates are worker-only extraction fields (#156), so placing goes through the
   // act-required worker route scoped to the scenario user
   const response = await request.patch(`/worker/assets/${assetId}/metadata`, {
-    headers: workerHeaders(auth.user.id),
+    headers: workerHeaders(auth.user.id, assetId),
     data: { latitude: lat, longitude: lng },
   });
   expect(response.status()).toBe(200);

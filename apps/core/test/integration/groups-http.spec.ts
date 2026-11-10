@@ -5,6 +5,7 @@ import {
   apiServer,
   closeTestApp,
   createApiTestApp,
+  jobSig,
   resetDb,
   seedAsset,
   seedFile,
@@ -187,6 +188,7 @@ describe('groups HTTP (duplicates / similar)', () => {
     const ok = await request(apiServer(t))
       .patch(`/worker/assets/${asset.id}/metadata`)
       .set(act)
+      .set('X-Job-Signature', jobSig(userId, asset.id))
       .send({ phash: 'deadbeefdeadbeef' });
     expect(ok.status).toBe(200);
     expect((await t.assetRepo.findOneByOrFail({ id: asset.id })).phash).toBe('deadbeefdeadbeef');
@@ -195,6 +197,7 @@ describe('groups HTTP (duplicates / similar)', () => {
       const res = await request(apiServer(t))
         .patch(`/worker/assets/${asset.id}/metadata`)
         .set(act)
+        .set('X-Job-Signature', jobSig(userId, asset.id))
         .send({ phash: bad });
       expect(res.status).toBe(422);
     }

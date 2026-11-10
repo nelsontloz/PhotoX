@@ -83,7 +83,14 @@ export class AuthService {
     await this.rateLimit.consume('loginIp', ip);
     await this.rateLimit.consume('login', ip, email);
 
-    const user = await this.userRepo.findOne({ where: { email } });
+    // LOWER() on both sides: open sign-up stores the address raw while admin-created and
+    // admin-edited accounts store it normalized, so the login address must match either form.
+    // ponytail: LOWER(email) cannot use the plain unique index — a sequential scan, acceptable
+    // while the users table is small; upgrade path is a functional index.
+    const user = await this.userRepo
+      .createQueryBuilder('u')
+      .where('LOWER(u.email) = LOWER(:email)', { email })
+      .getOne();
     // unknown email still pays one verify against the dummy hash, so the two 401 paths cost the same
     const valid = await argon2.verify(user?.passwordHash ?? DUMMY_PASSWORD_HASH, password);
     if (!user || !valid) {

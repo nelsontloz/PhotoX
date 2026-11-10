@@ -155,7 +155,7 @@ async function seedFullLibrary(
   const share = (await shareResponse.json()) as { token?: string };
   if (!share.token) throw new Error('share response is missing a token');
   const facesResponse = await request.post(`/worker/assets/${assetId}/faces`, {
-    headers: workerHeaders(user.user.id),
+    headers: workerHeaders(user.user.id, assetId),
     data: {
       faces: [
         { box: { x: 10, y: 10, w: 60, h: 60 }, confidence: 0.9, embedding: seedEmbedding(0) },

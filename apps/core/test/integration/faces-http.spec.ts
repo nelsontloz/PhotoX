@@ -6,6 +6,7 @@ import {
   apiServer,
   closeTestApp,
   createApiTestApp,
+  jobSig,
   resetDb,
   seedAsset,
   seedFile,
@@ -88,6 +89,7 @@ describe('faces HTTP', () => {
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(owner.id, asset.id))
       .send({
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }],
       });
@@ -110,6 +112,7 @@ describe('faces HTTP', () => {
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(owner.id, asset.id))
       .send({
         detector: 'scrfd',
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }],
@@ -129,6 +132,7 @@ describe('faces HTTP', () => {
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(owner.id, asset.id))
       .send({ faces: [] });
     expect(res.status).toBe(201);
     expect((res.body as { count: number }).count).toBe(0);
@@ -155,6 +159,7 @@ describe('faces HTTP', () => {
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(owner.id, asset.id))
       .send({
         faces: [{ box: { x: 5, y: 5, w: 10, h: 10 }, confidence: 0.8, embedding: EMBEDDING_512 }],
       });
@@ -191,6 +196,7 @@ describe('faces HTTP', () => {
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(owner.id, asset.id))
       .send({ faces });
 
     expect(res.status).toBe(201);
@@ -209,6 +215,7 @@ describe('faces HTTP', () => {
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(owner.id, asset.id))
       .send({
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: [0.1, 0.2] }],
       });
@@ -225,6 +232,7 @@ describe('faces HTTP', () => {
     const res = await request(apiServer(t))
       .post(`/worker/assets/${asset.id}/faces`)
       .set(t.authHeader(tokenB))
+      .set('X-Job-Signature', jobSig(b.id, asset.id))
       .send({
         faces: [{ box: { x: 1, y: 2, w: 10, h: 10 }, confidence: 0.9, embedding: EMBEDDING_512 }],
       });
@@ -428,7 +436,8 @@ describe('faces HTTP', () => {
 
     const res = await request(apiServer(t))
       .delete(`/worker/assets/${asset.id}/faces`)
-      .set(t.authHeader(token));
+      .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(user.id, asset.id));
     expect(res.status).toBe(200);
     expect((res.body as { deleted: number }).deleted).toBe(2);
     expect(await t.faceRepo.count()).toBe(0);
@@ -438,7 +447,8 @@ describe('faces HTTP', () => {
 
     const again = await request(apiServer(t))
       .delete(`/worker/assets/${asset.id}/faces`)
-      .set(t.authHeader(token));
+      .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(user.id, asset.id));
     expect(again.status).toBe(200);
     expect((again.body as { deleted: number }).deleted).toBe(0);
   });
@@ -448,13 +458,16 @@ describe('faces HTTP', () => {
     const b = await seedUser(t);
     const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role }, { act: true });
     const { asset, face } = await seedFace(a.id);
+    const unknownId = randomUUID();
     const cross = await request(apiServer(t))
       .delete(`/worker/assets/${asset.id}/faces`)
-      .set(t.authHeader(tokenB));
+      .set(t.authHeader(tokenB))
+      .set('X-Job-Signature', jobSig(b.id, asset.id));
     expect(cross.status).toBe(404);
     const unknown = await request(apiServer(t))
-      .delete(`/worker/assets/${randomUUID()}/faces`)
-      .set(t.authHeader(tokenB));
+      .delete(`/worker/assets/${unknownId}/faces`)
+      .set(t.authHeader(tokenB))
+      .set('X-Job-Signature', jobSig(b.id, unknownId));
     expect(unknown.status).toBe(404);
     expect(await t.faceRepo.count({ where: { id: face.id } })).toBe(1);
   });

@@ -14,7 +14,13 @@ import { DataSource } from 'typeorm';
 import { loadAuthEnv, loadEnv } from '@photox/shared-config';
 import type { JwtPayload, Role } from '@photox/shared-types';
 import { bearerToken, clearAccessCookie, readAccessCookie, setAccessCookie } from './auth-cookie';
-import { isActListRoute, isAdminRoute, isOpenRoute, isWorkerRoute } from './open-routes';
+import {
+  allowsJobScopeHeader,
+  isActListRoute,
+  isAdminRoute,
+  isOpenRoute,
+  isWorkerRoute,
+} from './open-routes';
 import { ABSOLUTE_SESSION_MS } from './session.constants';
 import { User } from '../users/entities/user.entity';
 import { RefreshToken } from '../users/entities/refresh-token.entity';
@@ -71,13 +77,16 @@ function isActListRead(req: Request, path: string): boolean {
 // stamps scope from the JOB payload (first of assetId|fileId|userId — usually the asset)
 // while file reads address the fileId, so no single derived scope fits every legit call;
 // the guard accepts when the presented sig verifies against ANY non-empty candidate.
+// X-Job-Scope is honored ONLY on the worker file routes: their path cannot derive the job's
+// asset scope, while on any other route the header would let one job's signature authorize
+// another job (open-routes.allowsJobScopeHeader).
 // Unforgeability holds (only the secret holder mints sigs) and sub-scoped services still
 // enforce ownership, so an assetId-scoped sig reading that asset's file adds no capability.
-function jobScopesFrom(req: Request, sub: string): string[] {
+function jobScopesFrom(req: Request, sub: string, path: string): string[] {
   const scopes: string[] = [];
   const params = req.params as Record<string, unknown> | undefined;
   const body = req.body as Record<string, unknown> | undefined;
-  const header = req.headers['x-job-scope'];
+  const header = allowsJobScopeHeader(path) ? req.headers['x-job-scope'] : undefined;
   for (const v of [params?.id, params?.fileId, body?.assetId, header, sub]) {
     if (typeof v === 'string' && v.length > 0 && !scopes.includes(v)) scopes.push(v);
   }
@@ -220,19 +229,22 @@ export class JwtAuthGuard implements CanActivate {
     // worker ranking fetches
     if (payload.act && !isWorkerRoute(path) && !isActListRead(req, path))
       throw new ForbiddenException('Not allowed for service tokens');
-    // ponytail: HMAC job binding — a worker-origin token alone proves only delegation, not that
-    // a job was enqueued for this target; every /worker/* call (reads included — a forged
-    // act token otherwise reads any victim row) must carry the X-Job-Signature the enqueue
-    // stamped (HMAC of sub:scope under WORKER_JWT_SECRET). Scoped to worker-origin
-    // because only the worker mints act tokens in prod (auth never sets act; the user-secret act
-    // tokens in specs are pre-binding stand-ins). Ceiling: scope is the asset,
-    // not the job — a leaked token replays within its asset until it expires.
-    if (workerOrigin && payload.act && isWorkerRoute(path)) this.assertJobBinding(req, sub);
+    // ponytail: HMAC job binding — an act token alone proves only delegation, not that a job
+    // was enqueued for this target; every /worker/* call (reads included — a forged act token
+    // otherwise reads any victim row) must carry the X-Job-Signature the enqueue stamped
+    // (HMAC of sub:scope under WORKER_JWT_SECRET). Required for EVERY act token on the worker
+    // surface, whichever secret signed it: a signature is the only thing that binds the
+    // token to a job. Ceiling: scope is the asset, not the job — a leaked token replays
+    // within its asset until it expires.
+    if (payload.act && isWorkerRoute(path)) this.assertJobBinding(req, sub);
 
     // sliding renewal: once past half of its own ttl, a cookie-borne token is re-minted
-    // from the verified payload so subresources keep authenticating without client JS
+    // from the verified payload so subresources keep authenticating without client JS.
+    // Never for act tokens: an act token is a job credential, not a browser session — it
+    // must never be promoted into a renewable cookie.
     // ponytail: each parallel request re-mints its own cookie — same exp, no coordination
     if (
+      !payload.act &&
       cookieToken !== undefined &&
       typeof payload.exp === 'number' &&
       typeof payload.iat === 'number'
@@ -247,8 +259,6 @@ export class JwtAuthGuard implements CanActivate {
             // carry the effective (stored) role, not the possibly-stale claim
             role,
             jti: randomUUID(),
-            // a worker-actor token must stay locked to the admin allowlist after renewal
-            ...(payload.act ? { act: payload.act } : {}),
             // the session start must survive every renewal or the cap resets each time
             ...(typeof payload.sst === 'number' ? { sst: payload.sst } : {}),
             // the device session must survive too, or a renewed cookie would outlive logout
@@ -271,7 +281,7 @@ export class JwtAuthGuard implements CanActivate {
     const presented = req.headers['x-job-signature'];
     const valid =
       typeof presented === 'string' &&
-      jobScopesFrom(req, sub).some((scope) => {
+      jobScopesFrom(req, sub, req.path).some((scope) => {
         const expectedHex = createHmac('sha256', this.workerSecret)
           .update(`${sub}:${scope}`)
           .digest('hex');

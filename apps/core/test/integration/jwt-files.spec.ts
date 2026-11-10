@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import request from 'supertest';
@@ -6,6 +6,7 @@ import { ACCESS_COOKIE } from '../../src/auth/auth-cookie';
 import {
   closeTestApp,
   createApiTestApp,
+  jobSig,
   resetDb,
   seedAsset,
   seedFile,
@@ -13,7 +14,6 @@ import {
   apiServer,
 } from './helpers';
 import type { ApiTestApp } from './helpers';
-import { TEST_WORKER_SECRET } from './test-setup';
 
 describe('files JWT identity', () => {
   let t: ApiTestApp;
@@ -130,6 +130,7 @@ describe('files JWT identity', () => {
     const res = await request(apiServer(t))
       .post('/worker/files/register')
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(user.id, user.id))
       .send(
         registerBody(bytes, {
           id,
@@ -160,6 +161,7 @@ describe('files JWT identity', () => {
     const res = await request(apiServer(t))
       .post('/worker/files/register')
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(user.id, asset.id))
       .send(registerBody(bytes, { id, kind: 'transcode', ext: 'webm', assetId: asset.id }));
     expect(res.status).toBe(201);
     const row = await t.fileRepo.findOne({ where: { id } });
@@ -178,12 +180,14 @@ describe('files JWT identity', () => {
     const first = await request(apiServer(t))
       .post('/worker/files/register')
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(user.id, user.id))
       .send(registerBody(bytes, { id: firstId }));
     expect(first.status).toBe(201);
 
     const second = await request(apiServer(t))
       .post('/worker/files/register')
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(user.id, user.id))
       .send(registerBody(bytes));
     expect(second.status).toBe(200);
     const body = second.body as unknown as { id: string };
@@ -201,12 +205,14 @@ describe('files JWT identity', () => {
     const first = await request(apiServer(t))
       .post('/worker/files/register')
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(user.id, user.id))
       .send(registerBody(bytes, { id }));
     expect(first.status).toBe(201);
 
     const second = await request(apiServer(t))
       .post('/worker/files/register')
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(user.id, user.id))
       .send(registerBody(Buffer.from('different-bytes'), { id }));
     expect(second.status).toBe(409);
   });
@@ -224,6 +230,7 @@ describe('files JWT identity', () => {
     const res = await request(apiServer(t))
       .post('/worker/files/register')
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(other.id, asset.id))
       .send(registerBody(Buffer.from('foreign-asset-bytes'), { assetId: asset.id }));
     expect(res.status).toBe(404);
   });
@@ -245,6 +252,7 @@ describe('files JWT identity', () => {
       const res = await request(apiServer(t))
         .post('/worker/files/register')
         .set(t.authHeader(token))
+        .set('X-Job-Signature', jobSig(user.id, user.id))
         .send(payload);
       expect(res.status).toBe(400);
     }
@@ -256,16 +264,13 @@ describe('files JWT identity', () => {
     const res = await request(apiServer(t))
       .post('/worker/files/register')
       .set(t.authHeader(token))
+      .set('X-Job-Signature', jobSig(user.id, user.id))
       .send(registerBody(Buffer.from('register-missing-bytes')));
     expect(res.status).toBe(422);
   });
 
-  function jobSig(sub: string, scope: string): string {
-    return createHmac('sha256', TEST_WORKER_SECRET).update(`${sub}:${scope}`).digest('hex');
-  }
-
-  // the tests above use auth-secret act tokens, which the guard's job-binding gate skips;
-  // these exercise the real trust domain: worker-minted token + X-Job-Signature
+  // the tests above use user-secret act tokens with an explicit HMAC binding; these exercise
+  // the real trust domain: worker-minted token + X-Job-Signature
   it('registers a file for a worker-secret token with its job signature', async () => {
     const user = await seedUser(t);
     const token = t.signWorkerToken(

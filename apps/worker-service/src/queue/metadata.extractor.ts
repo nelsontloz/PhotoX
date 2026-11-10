@@ -182,24 +182,6 @@ interface VideoMetadataPatch {
   altitude: number | null;
 }
 
-// all-null patch returned when ffprobe cannot read the file
-const NULL_VIDEO_METADATA: VideoMetadataPatch = {
-  durationSeconds: null,
-  width: null,
-  height: null,
-  codec: null,
-  fps: null,
-  hasAudio: null,
-  orientation: null,
-  takenAt: null,
-  cameraMake: null,
-  cameraModel: null,
-  lensModel: null,
-  latitude: null,
-  longitude: null,
-  altitude: null,
-};
-
 function readOrientation(result: FfprobeResult): number | null {
   for (const stream of result.streams) {
     if (stream.codec_type !== 'video') continue;
@@ -248,17 +230,8 @@ export function parseFps(rate: string | undefined): number | null {
 
 @Injectable()
 export class VideoMetadataExtractor {
-  private readonly logger = new Logger(VideoMetadataExtractor.name);
-
   async extract(inputPath: string): Promise<VideoMetadataPatch> {
-    let result: FfprobeResult;
-    try {
-      result = await runFfprobeJson(inputPath);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`ffprobe failed for ${inputPath}: ${message}`);
-      return NULL_VIDEO_METADATA;
-    }
+    const result = await runFfprobeJson(inputPath);
 
     const videoStream = result.streams.find((s) => s.codec_type === 'video');
     const hasAudio = result.streams.some((s) => s.codec_type === 'audio');

@@ -611,17 +611,27 @@ export class UploadsService {
     const path = join(dir, `assembled-${randomUUID()}`);
     const out = createWriteStream(path);
     const closed = finished(out);
+    // the catch below destroys the stream, so its rejection is observed there; this keeps a
+    // write error from surfacing as an unhandled rejection before `await closed` is reached
+    closed.catch(() => undefined);
     const hash = createHash('sha256');
-    for (let index = 0; index < session.totalParts; index++) {
-      const reader = createReadStream(join(dir, `part-${index}`)) as AsyncIterable<Buffer>;
-      for await (const chunk of reader) {
-        hash.update(chunk);
-        if (!out.write(chunk)) await once(out, 'drain');
+    try {
+      for (let index = 0; index < session.totalParts; index++) {
+        const reader = createReadStream(join(dir, `part-${index}`)) as AsyncIterable<Buffer>;
+        for await (const chunk of reader) {
+          hash.update(chunk);
+          if (!out.write(chunk)) await once(out, 'drain');
+        }
       }
+      out.end();
+      await closed;
+      return { path, sha256: hash.digest('hex') };
+    } catch (err) {
+      // a failed assembly must not leave its partial assembled-* file behind
+      out.destroy();
+      await rm(path, { force: true }).catch(() => undefined);
+      throw err;
     }
-    out.end();
-    await closed;
-    return { path, sha256: hash.digest('hex') };
   }
 
   private statusResponse(

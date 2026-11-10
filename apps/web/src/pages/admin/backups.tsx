@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   FaArrowsRotate,
   FaCodeMerge,
@@ -13,6 +13,7 @@ import { AdminSection, AdminToast, Button, ProgressBar, StatusPill, cx } from '.
 import {
   getBackupOverview,
   getBackupProgress,
+  getBackupRunStatus,
   backupUser,
   restoreUser,
   deleteBackup,
@@ -21,6 +22,7 @@ import {
   type BackupOverviewRow,
   type BackupResult,
   type BackupProgress,
+  type BackupRunStatus,
   type RestoreResult,
   type BackupSnapshot,
 } from '../../api/admin';
@@ -173,6 +175,8 @@ interface RowState {
   restoring?: boolean;
   deleting?: boolean;
   merging?: boolean;
+  /** Set for a run adopted from the overview after a reload; drives the run-status poll. */
+  runId?: string;
   progress?: BackupProgress | null;
   progressUnsupported?: boolean;
   error?: string | null;
@@ -590,8 +594,11 @@ export function BackupSection() {
     message: ReactNode;
     tone: 'default' | 'error';
   } | null>(null);
-  const notify = (message: ReactNode, tone: 'default' | 'error' = 'default') =>
-    setToast((prev) => ({ key: (prev?.key ?? 0) + 1, message, tone }));
+  const notify = useCallback(
+    (message: ReactNode, tone: 'default' | 'error' = 'default') =>
+      setToast((prev) => ({ key: (prev?.key ?? 0) + 1, message, tone })),
+    [],
+  );
 
   const {
     data,
@@ -628,6 +635,10 @@ export function BackupSection() {
   );
   const rows = data ?? null;
   const loadErrorIsStore = isStoreDown(loadError);
+  // The run poll needs the email only for its completion toast; a ref keeps it out of the
+  // interval's dependency list (which must change only when the set of runs changes).
+  const rowsRef = useRef<BackupOverviewRow[] | null>(null);
+  rowsRef.current = rows;
 
   const filtered = useMemo(() => {
     const list = rows ?? [];
@@ -656,39 +667,120 @@ export function BackupSection() {
   // Backup-all covers live accounts only — orphan backups are restored, not re-backed-up.
   const liveTargets = useMemo(() => filtered.filter((r) => !r.deleted), [filtered]);
 
-  // Per-row progress: poll the progress endpoint once a second for every in-flight row.
-  // A 404 means the core predates the endpoint — fall back to the indeterminate bar.
-  const pollIds = Object.entries(rowState)
+  // A run that started before the reload still exists in the ledger; adopt it so the spinner,
+  // the progress bar and the action lock come back as soon as the overview lands. Live actions
+  // in this tab (busy without a runId) keep ownership of their row.
+  useEffect(() => {
+    if (!rows) return;
+    setRowState((prev) => {
+      let changed = false;
+      const out = { ...prev };
+      for (const row of rows) {
+        const run = row.activeRun;
+        if (run?.kind !== 'backup') continue;
+        const current = prev[row.userId];
+        if (current?.runId === run.id) continue;
+        if (current?.busy && !current.runId) continue;
+        if (current?.restoring || current?.deleting || current?.merging) continue;
+        out[row.userId] = {
+          ...current,
+          busy: true,
+          runId: run.id,
+          error: null,
+          progress: null,
+          progressUnsupported: false,
+        };
+        changed = true;
+      }
+      return changed ? out : prev;
+    });
+  }, [rows]);
+
+  // Per-row progress: poll the run status for a run adopted after a reload, and the progress
+  // endpoint for a live action (whose POST is already waiting on the run). A 404 on the live
+  // path means the core predates the endpoint — fall back to the indeterminate bar.
+  const pollEntries = Object.entries(rowState)
     .filter(([, state]) => state.busy && !state.progressUnsupported)
-    .map(([id]) => id)
+    .map(([id, state]) => `${id}:${state.runId ?? ''}`)
     .sort();
   // A stable string key keeps the interval alive across progress updates (only the set of
-  // in-flight ids restarts it).
-  const pollKey = pollIds.join('|');
+  // in-flight rows or their runs restarts it). UUIDs contain no ':', so the split is safe.
+  const pollKey = pollEntries.join('|');
   useEffect(() => {
-    const ids = pollKey === '' ? [] : pollKey.split('|');
-    if (ids.length === 0) return;
+    const entries =
+      pollKey === ''
+        ? []
+        : pollKey.split('|').map((entry) => {
+            const sep = entry.indexOf(':');
+            return { id: entry.slice(0, sep), runId: entry.slice(sep + 1) || null };
+          });
+    if (entries.length === 0) return;
     let cancelled = false;
-    const poll = async (id: string) => {
+    const finish = (id: string) => {
+      patchRow(id, { busy: false, progress: null, runId: undefined });
+      setVersion((v) => v + 1);
+    };
+    const poll = async (id: string, runId: string | null) => {
       try {
+        if (runId !== null) {
+          const run: BackupRunStatus = await getBackupRunStatus(runId);
+          if (cancelled) return;
+          if (run.state !== 'running' && run.state !== 'finalizing') {
+            const email = rowsRef.current?.find((row) => row.userId === id)?.email ?? id;
+            finish(id);
+            if (run.state === 'completed') {
+              const res = run.result;
+              notify(
+                `Backed up ${email} — ${
+                  res
+                    ? `${res.files.toLocaleString()} files (${res.uploaded.toLocaleString()} new, ${res.skipped.toLocaleString()} unchanged)`
+                    : 'finished'
+                }`,
+              );
+            } else if (run.state === 'paused') {
+              patchRow(id, { error: run.error ?? 'Backup paused' });
+              notify(
+                `Backup of ${email} paused — ${run.error ?? 'check disk space and retry'}`,
+                'error',
+              );
+            } else if (run.state === 'failed') {
+              patchRow(id, { error: run.error ?? 'Backup failed' });
+              notify(`Backup of ${email} failed — ${run.error ?? 'run failed'}`, 'error');
+            }
+            return;
+          }
+          patchRow(id, {
+            progress: {
+              userId: run.userId,
+              inProgress: true,
+              total: run.total,
+              completed: run.completed,
+              uploaded: run.uploaded,
+              skipped: run.skipped,
+              ...(run.currentFile ? { currentFile: run.currentFile } : {}),
+            },
+          });
+          return;
+        }
         const snapshot = await getBackupProgress(id);
         if (!cancelled) patchRow(id, { progress: snapshot });
       } catch (err: unknown) {
         if (cancelled) return;
         if (isAxiosError(err) && err.response?.status === 404) {
-          patchRow(id, { progressUnsupported: true });
+          if (runId !== null) finish(id);
+          else patchRow(id, { progressUnsupported: true });
         }
       }
     };
-    ids.forEach((id) => void poll(id));
+    entries.forEach((entry) => void poll(entry.id, entry.runId));
     const timer = setInterval(() => {
-      ids.forEach((id) => void poll(id));
+      entries.forEach((entry) => void poll(entry.id, entry.runId));
     }, 1000);
     return () => {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [pollKey, patchRow]);
+  }, [pollKey, patchRow, notify]);
 
   const runOne = async (row: BackupOverviewRow): Promise<boolean> => {
     patchRow(row.userId, { busy: true, error: null, progress: null, progressUnsupported: false });

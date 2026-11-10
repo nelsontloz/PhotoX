@@ -34,7 +34,7 @@ function fileKind(file: File): 'photo' | 'video' {
 
 // The File objects live in an in-memory ref (lib/upload), so nothing here survives a reload:
 // a queued row without its File can never be retried, hence no persistence middleware.
-export const useUploadStore = create<UploadState>()((set) => ({
+export const useUploadStore = create<UploadState>()((set, get) => ({
   items: [],
   dismissed: false,
 
@@ -66,8 +66,14 @@ export const useUploadStore = create<UploadState>()((set) => ({
 
   setDismissed: (b) => set({ dismissed: b }),
 
-  clearDone: () =>
-    set((s) => ({
-      items: s.items.filter((i) => i.status !== 'done' && i.status !== 'error'),
-    })),
+  clearDone: () => {
+    const items = get().items;
+    for (const item of items) {
+      if ((item.status === 'done' || item.status === 'error') && item.localThumbUrl) {
+        // blob: previews live until revoked; uploading rows must keep theirs alive
+        URL.revokeObjectURL?.(item.localThumbUrl);
+      }
+    }
+    set({ items: items.filter((i) => i.status !== 'done' && i.status !== 'error') });
+  },
 }));
