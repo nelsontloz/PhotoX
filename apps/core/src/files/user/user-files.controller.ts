@@ -44,6 +44,8 @@ export class UserFilesController {
   constructor(private readonly userFilesService: UserFilesService) {}
 
   @Post()
+  // Cleanup of the multer temp file on a rejected request is FileInterceptor's own
+  // (Nest 12 removeFilesOnPipeRejection) — a replacement interceptor must keep it.
   @UseInterceptors(FileInterceptor('file', uploadOptions))
   @ApiConsumes('multipart/form-data')
   @ApiBody({

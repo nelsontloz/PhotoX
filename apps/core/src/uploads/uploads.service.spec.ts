@@ -1,5 +1,5 @@
 import { Readable } from 'node:stream';
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -21,6 +21,27 @@ import {
 import { readPartBody } from './uploads.controller';
 import { UPLOAD_SWEEP_INTERVAL_MS, UploadSessionsSweeper } from './upload-sessions.sweeper';
 import type { CreateUploadSessionBodyDto } from './dto/create-upload-session.body.dto';
+
+// Armed only by the write-error test: the assembled file's stream errors once it is open.
+const writeFailure = vi.hoisted(() => ({ armed: false }));
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  const create = actual.createWriteStream as unknown as (
+    path: string,
+    options?: object,
+  ) => ReturnType<typeof actual.createWriteStream>;
+  return {
+    ...actual,
+    createWriteStream: ((path: string, options?: object) => {
+      const stream = create(path, options);
+      if (writeFailure.armed && path.includes('assembled-')) {
+        stream.once('open', () => stream.destroy(new Error('ENOSPC')));
+      }
+      return stream;
+    }) as typeof actual.createWriteStream,
+  };
+});
 
 const USER = '11111111-1111-4111-8111-111111111111';
 const OTHER_USER = '22222222-2222-4222-8222-222222222222';
@@ -561,6 +582,32 @@ describe('UploadsService.complete', () => {
     expect(sessionRepo.update).toHaveBeenCalledWith({ id: session.id }, { status: 'completed' });
     // the parts directory is gone once the session completed
     await expect(stat(sessionDir(USER, session.id))).rejects.toThrow();
+  });
+
+  it('removes the partial assembled file when a write fails mid-stream', async () => {
+    // >16 KiB makes out.write return false, so the error arrives on the backpressure path that
+    // used to reject finished(out) with nobody awaiting it and take the process down.
+    const big = Buffer.concat([JPEG, Buffer.alloc(64 * 1024, 0x41)]);
+    const session = sessionRow({ id: randomUUID(), expectedSizeBytes: big.length });
+    const parts = [partRow({ sessionId: session.id, partIndex: 0, bytes: big })];
+    const { service, persistOriginal } = makeService({
+      sessions: [session],
+      parts,
+      persist: PERSIST_OK,
+      asset: ASSET,
+    });
+    await writePartFiles(session, [big]);
+
+    writeFailure.armed = true;
+    try {
+      await expect(service.complete(USER, session.id)).rejects.toThrow('ENOSPC');
+    } finally {
+      writeFailure.armed = false;
+    }
+
+    expect(persistOriginal).not.toHaveBeenCalled();
+    const names = await readdir(sessionDir(USER, session.id));
+    expect(names.filter((name) => name.startsWith('assembled-'))).toEqual([]);
   });
 
   it('replays onto a pre-existing asset when the checksum was already owned', async () => {
