@@ -166,8 +166,27 @@ export class UserFilesService {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`[UserFilesService] upload failed user=${userId} name=${name}: ${message}`);
+      // A duplicate asset can mean an earlier attempt saved the row and died before enqueuing.
+      // Repair it before reporting the 409: jobIds dedupe, so a healthy duplicate costs nothing
+      // but the metadata/faces re-enqueue, and this is the only door that reaches that asset.
+      await this.repairDuplicateAsset(userId, err);
       throw err;
     }
+  }
+
+  /**
+   * Re-enqueues the jobs of the asset a duplicate upload resolved to. A missing asset (deleted
+   * between the conflict and here) keeps the 409; an enqueue failure surfaces as the 503 so the
+   * client retries instead of being told the file is already safe.
+   */
+  private async repairDuplicateAsset(userId: string, err: unknown): Promise<void> {
+    if (!(err instanceof ConflictException)) return;
+    const body = err.getResponse() as { existingAssetId?: unknown } | null;
+    const assetId = typeof body?.existingAssetId === 'string' ? body.existingAssetId : null;
+    if (!assetId) return;
+    const asset = await this.assets.getOne(userId, assetId).catch(() => null);
+    if (!asset) return;
+    await this.enqueueAssetJobs(userId, { id: asset.fileId }, asset.kind, asset.id);
   }
 
   // shared by legacy upload and upload-session complete: create the asset row, then enqueue its

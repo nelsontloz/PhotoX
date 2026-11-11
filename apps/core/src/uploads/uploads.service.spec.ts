@@ -563,22 +563,59 @@ describe('UploadsService.complete', () => {
     await expect(stat(sessionDir(USER, session.id))).rejects.toThrow();
   });
 
-  it('replays onto a pre-existing asset when the checksum was already owned', async () => {
+  it('replays onto a pre-existing asset and still enqueues its jobs', async () => {
     const session = sessionRow({ id: randomUUID() });
     const parts = [partRow({ sessionId: session.id, partIndex: 0 })];
-    const { service, assetRepo, assetsGetOne, createAsset } = makeService({
+    const { service, assetRepo, assetsGetOne, createAsset, enqueueAssetJobs, sessionRepo } =
+      makeService({
+        sessions: [session],
+        parts,
+        persist: { record: { id: 'file-dup', mimeType: 'image/jpeg' }, created: false },
+        existingAsset: { id: 'asset-dup' } as Asset,
+        asset: { id: 'asset-dup' } as AssetResponse,
+      });
+    await writePartFiles(session, [JPEG]);
+    const res = await service.complete(USER, session.id);
+    expect(assetRepo.findOne).toHaveBeenCalledOnce();
+    expect(assetsGetOne).toHaveBeenCalledWith(USER, 'asset-dup');
+    expect(createAsset).not.toHaveBeenCalled();
+    // the replay stamps `assembled` so the enqueue half still runs, then `completed`
+    expect(enqueueAssetJobs).toHaveBeenCalledWith(USER, { id: 'file-dup' }, 'photo', 'asset-dup');
+    expect(sessionRepo.update).toHaveBeenCalledWith({ id: session.id }, { status: 'completed' });
+    expect(res.deduplicated).toBe(true);
+    expect(res.asset.id).toBe('asset-dup');
+  });
+
+  it('leaves a replayed session assembled when its enqueues fail, and heals on retry', async () => {
+    const session = sessionRow({ id: randomUUID() });
+    const parts = [partRow({ sessionId: session.id, partIndex: 0 })];
+    const { service, updates, enqueueAssetJobs, sessionRepo } = makeService({
       sessions: [session],
       parts,
       persist: { record: { id: 'file-dup', mimeType: 'image/jpeg' }, created: false },
       existingAsset: { id: 'asset-dup' } as Asset,
       asset: { id: 'asset-dup' } as AssetResponse,
     });
+    enqueueAssetJobs.mockRejectedValueOnce(new Error('redis down'));
     await writePartFiles(session, [JPEG]);
+
+    const first = await caught(() => service.complete(USER, session.id));
+    expect(first.status).toBe(503);
+    expect(first.body).toMatchObject({ code: 'ENQUEUE_FAILED' });
+    expect(updates).toContainEqual({
+      status: 'assembled',
+      completedFileId: 'file-dup',
+      completedAssetId: 'asset-dup',
+    });
+    expect(sessionRepo.update).not.toHaveBeenCalledWith(
+      { id: session.id },
+      { status: 'completed' },
+    );
+
     const res = await service.complete(USER, session.id);
-    expect(assetRepo.findOne).toHaveBeenCalledOnce();
-    expect(assetsGetOne).toHaveBeenCalledWith(USER, 'asset-dup');
-    expect(createAsset).not.toHaveBeenCalled();
     expect(res.deduplicated).toBe(true);
+    expect(res.asset.id).toBe('asset-dup');
+    expect(sessionRepo.update).toHaveBeenCalledWith({ id: session.id }, { status: 'completed' });
   });
 
   it('replays a duplicate complete without reassembling', async () => {

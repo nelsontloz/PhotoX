@@ -82,18 +82,20 @@ function makeUploadService(scenario: { naturals: (FileRecord | null)[]; byId: Fi
   const assetCreate =
     vi.fn<(userId: string, dto: { fileId: string; kind?: string }) => Promise<AssetResponse>>();
   assetCreate.mockResolvedValue({ id: 'asset-new' } as AssetResponse);
+  const assetGetOne = vi.fn((): Promise<AssetResponse | null> => Promise.resolve(null));
+  const bullMq = {
+    enqueueThumbnails: vi.fn((): Promise<boolean> => Promise.resolve(true)),
+    enqueue: vi.fn((): Promise<boolean> => Promise.resolve(true)),
+    enqueueAssetJob: vi.fn((): Promise<boolean> => Promise.resolve(true)),
+  };
   const service = new UserFilesService(
     fileRepo,
     { findOne: vi.fn() } as unknown as Repository<Asset>,
     storage,
-    { create: assetCreate } as unknown as AssetsService,
-    {
-      enqueueThumbnails: vi.fn((): Promise<boolean> => Promise.resolve(true)),
-      enqueue: vi.fn((): Promise<boolean> => Promise.resolve(true)),
-      enqueueAssetJob: vi.fn((): Promise<boolean> => Promise.resolve(true)),
-    } as unknown as BullMqService,
+    { create: assetCreate, getOne: assetGetOne } as unknown as AssetsService,
+    bullMq as unknown as BullMqService,
   );
-  return { service, execute, save, remove, assetCreate };
+  return { service, execute, save, remove, assetCreate, assetGetOne, bullMq };
 }
 
 describe('UserFilesService upload race', () => {
@@ -118,6 +120,32 @@ describe('UserFilesService upload race', () => {
     expect(res.id).toBe('asset-new');
     expect(remove).not.toHaveBeenCalled();
     expect(assetCreate.mock.calls[0]?.[1]?.fileId).toBe('mine-1');
+  });
+
+  it('re-enqueues the duplicate asset before rethrowing the 409', async () => {
+    const mine = fileRow({ id: 'mine-1' });
+    const { service, assetCreate, assetGetOne, bullMq } = makeUploadService({
+      naturals: [mine],
+      byId: mine,
+    });
+    assetCreate.mockRejectedValue(
+      new ConflictException({
+        statusCode: 409,
+        message: 'File already uploaded',
+        existingAssetId: 'asset-dup',
+      }),
+    );
+    assetGetOne.mockResolvedValue({
+      id: 'asset-dup',
+      fileId: 'file-dup',
+      kind: 'photo',
+    } as AssetResponse);
+
+    await expect(service.upload('u1', await tmpUpload())).rejects.toBeInstanceOf(ConflictException);
+    expect(assetGetOne).toHaveBeenCalledWith('u1', 'asset-dup');
+    // the stuck asset gets the full job set back, so a retry no longer lies about "already done"
+    expect(bullMq.enqueueThumbnails).toHaveBeenCalledWith('asset-dup', 'file-dup', 'u1');
+    expect(bullMq.enqueue).toHaveBeenCalled();
   });
 });
 
