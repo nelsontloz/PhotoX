@@ -7,6 +7,7 @@ import {
   ConflictException,
   NotFoundException,
   PayloadTooLargeException,
+  ServiceUnavailableException,
   type INestApplication,
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -29,7 +30,11 @@ import { User } from '../../src/users/entities/user.entity';
 import { BackupModule } from '../../src/backup/backup.module';
 import { BackupMerge } from '../../src/backup/entities/backup-merge.entity';
 import { S3BackupService } from '../../src/backup/s3-backup.service';
-import { UserBackupService, buildFallbackEmail, type UserBackupManifest } from '../../src/backup/user-backup.service';
+import {
+  UserBackupService,
+  buildFallbackEmail,
+  type UserBackupManifest,
+} from '../../src/backup/user-backup.service';
 import {
   BACKUP_TRANSFER_QUEUE,
   RESTORE_TRANSFER_QUEUE,
@@ -770,6 +775,70 @@ describe('user backup round-trip', () => {
     expect((await assetRepo.findOneOrFail({ where: { id: asset.id } })).isTrashed).toBe(false);
     const row = await fileRepo.findOneOrFail({ where: { id: photo.record.id } });
     expect(await readFile(storage.pathFor(row.storageKey))).toEqual(photo.bytes);
+  });
+
+  // Regression: `enqueue` swallows a Redis failure and returns false, so the old code counted
+  // jobs that were never added and completed the run — assets restored, derivatives queued
+  // nowhere, and no sweep for `pending`. A refused add must fail the run and stay retryable.
+  it('fails a restore whose derivative enqueue is refused instead of reporting completed', async () => {
+    const email = `enqueue-refused-${randomUUID()}@example.com`;
+    const user = await userRepo.save(
+      userRepo.create({
+        email,
+        role: 'user',
+        passwordHash: 'test-hash',
+        displayName: 'Enqueue Refused',
+      }),
+    );
+    const photo = await seedOriginal(user.id, Buffer.from('enqueue-refused-bytes'));
+    await assetRepo.save(
+      assetRepo.create({
+        userId: user.id,
+        kind: 'photo',
+        fileId: photo.record.id,
+        isTrashed: false,
+      }),
+    );
+    await svc.backupUser(user.id);
+    await wipeUserData();
+
+    // Only the derivative family is refused: a blanket false also breaks the restore's own
+    // transfer adds, which would prove nothing about this contract.
+    const realEnqueue = bullMq.enqueue.bind(bullMq);
+    const spy = vi
+      .spyOn(bullMq, 'enqueue')
+      .mockImplementation((queue, jobName, data, opts) =>
+        queue === 'process-metadata'
+          ? Promise.resolve(false)
+          : realEnqueue(queue, jobName, data, opts),
+      );
+    let runId: string;
+    try {
+      ({ runId } = await svc.startRestore(user.id));
+      for (let i = 0; i < 20; i++) {
+        const state = (await svc.getRunStatus(runId)).state;
+        if (state !== 'running' && state !== 'finalizing') break;
+        await svc.runTransfersOnce();
+      }
+      const failed = await svc.getRunStatus(runId);
+      expect(failed.state).toBe('failed');
+      expect(failed.error).toContain('enqueue');
+      expect(await queueJobsFor('process-metadata', user.id)).toHaveLength(0);
+    } finally {
+      spy.mockRestore();
+    }
+
+    // failed, not wedged: the same manifest resumes and the retry really enqueues
+    const retry = await svc.startRestore(user.id);
+    expect(retry.runId).toBe(runId);
+    for (let i = 0; i < 20; i++) {
+      const state = (await svc.getRunStatus(retry.runId)).state;
+      if (state !== 'running' && state !== 'finalizing') break;
+      await svc.runTransfersOnce();
+    }
+    const done = await svc.getRunStatus(retry.runId);
+    expect(done.state).toBe('completed');
+    expect(await queueJobsFor('process-metadata', user.id)).toHaveLength(1);
   });
 
   it('backs up original bytes only, skipping thumbnail/transcode derivatives', async () => {
@@ -1779,6 +1848,47 @@ describe('user backup round-trip', () => {
       const metadataJobs = await queueJobsFor('process-metadata', target.id);
       expect(metadataJobs.map((data) => data.assetId)).toContain(legacy.asset.id);
     }, 120_000);
+
+    // Same contract as the restore path: a refused add must fail the request, not return
+    // counts for jobs that were never created.
+    it('fails the merge when a derivative enqueue is refused instead of claiming it', async () => {
+      const email = `merge-enqueue-${randomUUID()}@example.com`;
+      const legacy = await seedAccount(email);
+      await svc.backupUser(legacy.user.id);
+      const legacyId = legacy.user.id;
+      await deleteAccountRows(legacyId);
+      const target = await userRepo.save(
+        userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'target-hash',
+          displayName: 'Target',
+        }),
+      );
+
+      const realEnqueue = bullMq.enqueue.bind(bullMq);
+      const spy = vi
+        .spyOn(bullMq, 'enqueue')
+        .mockImplementation((queue, jobName, data, opts) =>
+          queue === 'process-metadata'
+            ? Promise.resolve(false)
+            : realEnqueue(queue, jobName, data, opts),
+        );
+      try {
+        await expect(
+          svc.mergeUserBackup({ targetEmailOrId: target.id, backupUserId: legacyId }),
+        ).rejects.toThrow(ServiceUnavailableException);
+      } finally {
+        spy.mockRestore();
+      }
+
+      // the ledger lands after the derivatives, so nothing claims the merge and the
+      // documented plain retry is still allowed
+      expect(
+        await mergeRepo.findOne({ where: { backupUserId: legacyId, targetUserId: target.id } }),
+      ).toBeNull();
+      expect(await queueJobsFor('process-metadata', target.id)).toHaveLength(0);
+    });
 
     it('recovers from a failed adoption with a retry that replays the merge', async () => {
       const email = `merge-retry-${randomUUID()}@example.com`;

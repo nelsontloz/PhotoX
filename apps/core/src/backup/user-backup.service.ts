@@ -2739,11 +2739,7 @@ export class UserBackupService {
   }
 
   /** Atomic claim for one queued item; a crash-retried job may re-claim its own running row. */
-  private async claimQueuedItem(
-    itemId: string,
-    runId: string,
-    attempt: number,
-  ): Promise<boolean> {
+  private async claimQueuedItem(itemId: string, runId: string, attempt: number): Promise<boolean> {
     const rows = rowsOf<{ id: string }>(
       await this.dataSource.query(
         `UPDATE "backup_run_items"
@@ -3647,6 +3643,10 @@ export class UserBackupService {
    * the account for assets it deduped or skipped). `mode` switches the jobId
    * family so a merge never collides with a retained restore record.
    *
+   * Every add is awaited and one refused add throws 503 — the caller fails the
+   * run (restore) or the request (merge) instead of reporting jobs that do not
+   * exist; a retry re-runs this under a fresh run tag.
+   *
    * Every jobId carries a per-run tag: a previous restore's records stay retained in
    * Redis (completed; removeOnComplete is unset for every family but metadata) and
    * BullMQ silently rejects any add whose jobId already exists — without the tag, a
@@ -3670,59 +3670,71 @@ export class UserBackupService {
         // M2: metadata for BOTH kinds — restore marks every asset pending and the
         // upload path enqueues process-metadata for photos and videos alike; the
         // photo-only admin backstop stays untouched.
-        await this.bullMq.enqueue(
-          'process-metadata',
-          'process-metadata',
-          { assetId: asset.id, fileId: asset.fileId, userId, kind: asset.kind },
-          {
-            jobId: `metadata-${mode}-${runTag}-${asset.id}`,
-            removeOnComplete: true,
-          },
-        );
-        totals.metadata += pass === 0 ? 1 : 0;
-        await this.bullMq.enqueueThumbnails(
-          asset.id,
-          asset.fileId,
-          userId,
-          `thumb-${mode}-${runTag}`,
-        );
-        totals.thumbnails += pass === 0 ? 4 : 0;
+        const adds: Promise<boolean>[] = [
+          this.bullMq.enqueue(
+            'process-metadata',
+            'process-metadata',
+            { assetId: asset.id, fileId: asset.fileId, userId, kind: asset.kind },
+            {
+              jobId: `metadata-${mode}-${runTag}-${asset.id}`,
+              removeOnComplete: true,
+            },
+          ),
+          this.bullMq.enqueueThumbnails(asset.id, asset.fileId, userId, `thumb-${mode}-${runTag}`),
+        ];
         if (asset.kind === 'video') {
-          await this.bullMq.enqueueVideo(asset.id, asset.fileId, userId, {
-            jobId: `video-${mode}-${runTag}-${asset.id}`,
-          });
-          totals.videos += pass === 0 ? 1 : 0;
+          adds.push(
+            this.bullMq.enqueueVideo(asset.id, asset.fileId, userId, {
+              jobId: `video-${mode}-${runTag}-${asset.id}`,
+            }),
+          );
         }
         if (asset.kind === 'photo') {
-          await this.bullMq.enqueue(
-            'process-faces',
-            'process-faces',
-            { assetId: asset.id, fileId: asset.fileId, userId, reason: mode },
-            { jobId: `face-${mode}-${runTag}-${asset.id}` },
+          adds.push(
+            this.bullMq.enqueue(
+              'process-faces',
+              'process-faces',
+              { assetId: asset.id, fileId: asset.fileId, userId, reason: mode },
+              { jobId: `face-${mode}-${runTag}-${asset.id}` },
+            ),
+            this.bullMq.enqueue(
+              'process-embeddings',
+              'process-embeddings',
+              { assetId: asset.id, fileId: asset.fileId, userId, reason: mode },
+              { jobId: `embed-${mode}-${runTag}-${asset.id}-${SEARCH_EMBEDDING_MODEL}` },
+            ),
+            this.bullMq.enqueue(
+              'process-detect',
+              'process-detect',
+              { assetId: asset.id, fileId: asset.fileId, userId, reason: mode },
+              { jobId: `detect-${mode}-${runTag}-${asset.id}` },
+            ),
           );
+        }
+        // P0-3 precedent (`enqueueAssetJobs`): a refused add fails the run instead of
+        // reporting `completed` — the assets are already restored, so a green run with no
+        // jobs leaves thumbnails/search/faces pending forever (nothing sweeps `pending`).
+        if ((await Promise.all(adds)).includes(false)) {
+          throw new ServiceUnavailableException('Failed to enqueue background processing jobs');
+        }
+        totals.metadata += pass === 0 ? 1 : 0;
+        totals.thumbnails += pass === 0 ? 4 : 0;
+        if (asset.kind === 'video') totals.videos += pass === 0 ? 1 : 0;
+        if (asset.kind === 'photo') {
           totals.faces += pass === 0 ? 1 : 0;
-          await this.bullMq.enqueue(
-            'process-embeddings',
-            'process-embeddings',
-            { assetId: asset.id, fileId: asset.fileId, userId, reason: mode },
-            { jobId: `embed-${mode}-${runTag}-${asset.id}-${SEARCH_EMBEDDING_MODEL}` },
-          );
-          await this.bullMq.enqueue(
-            'process-detect',
-            'process-detect',
-            { assetId: asset.id, fileId: asset.fileId, userId, reason: mode },
-            { jobId: `detect-${mode}-${runTag}-${asset.id}` },
-          );
           totals.ai += pass === 0 ? 2 : 0;
         }
       }
     }
-    await this.bullMq.enqueue(
+    const clustered = await this.bullMq.enqueue(
       'process-faces-cluster',
       'cluster',
       { userId, reason: mode },
       { jobId: `cluster-${userId}-${mode}-${Date.now()}` },
     );
+    if (!clustered) {
+      throw new ServiceUnavailableException('Failed to enqueue background processing jobs');
+    }
     await this.backfillUserPlaces(userId);
     return totals;
   }
