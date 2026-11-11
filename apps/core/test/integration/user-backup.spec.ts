@@ -819,14 +819,15 @@ describe('user backup round-trip', () => {
     expect(manifest.files[0]!.id).toBe(original.record.id);
     expect(manifest.files[0]!.storageKey.startsWith('originals/')).toBe(true);
     expectManifestLast();
-    // stale pre-fix bytes are pruned before the manifest lands, expected original remains
+    // stale pre-fix bytes are pruned only after the new manifest is published, expected
+    // original remains
     expect(fake.objects.has(staleKey)).toBe(false);
     expect(fake.objects.has(putFiles[0]!.key)).toBe(true);
     const deletes = fake.ops.filter((o) => o.op === 'deleteKey');
     expect(deletes.map((o) => o.key)).toContain(staleKey);
     const manifestIdx = fake.ops.findIndex((o) => o.key.endsWith('manifest.json'));
     for (const op of deletes) {
-      expect(fake.ops.indexOf(op)).toBeLessThan(manifestIdx);
+      expect(fake.ops.indexOf(op)).toBeGreaterThan(manifestIdx);
     }
 
     const status = await svc.backupStatus(user.id);
