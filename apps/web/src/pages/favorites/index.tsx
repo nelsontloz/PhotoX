@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { FaHeart } from 'react-icons/fa6';
-import { RequireAuth } from '../../components/RequireAuth';
 import { AppShell } from '../../components/AppShell';
 import { TimelineAssets } from '../../components/Timeline/TimelineAssets';
 import { TimelineError, TimelineViewer } from '../../components/Timeline/TimelinePage';
@@ -46,10 +45,7 @@ function FavoritesContent() {
       <TimelineAssets view={view} onSelect={nav.open} />
       <TimelineViewer
         nav={nav}
-        onToggleFavorite={(nextValue) => {
-          const cur = nav.selected;
-          if (cur) void nav.toggleFavorite(cur.id, nextValue);
-        }}
+        onToggleFavorite={(nextValue) => void nav.toggleSelectedFavorite(nextValue)}
         onAddToAlbum={() => setPickerOpen(true)}
         siblingAssets={loadedAssets}
         onSelectSibling={(asset) => nav.open(asset)}
@@ -62,10 +58,8 @@ function FavoritesContent() {
 
 export default function FavoritesPage() {
   return (
-    <RequireAuth>
-      <AppShell>
-        <FavoritesContent />
-      </AppShell>
-    </RequireAuth>
+    <AppShell>
+      <FavoritesContent />
+    </AppShell>
   );
 }

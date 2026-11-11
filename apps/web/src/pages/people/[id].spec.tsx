@@ -24,9 +24,6 @@ vi.mock('../../hooks/useInlineRename', () => ({
   }),
 }));
 vi.mock('../../api/persons', () => ({ renamePerson: vi.fn() }));
-vi.mock('../../components/RequireAuth', () => ({
-  RequireAuth: ({ children }: { children: ReactNode }) => children,
-}));
 vi.mock('../../components/AppShell', () => ({
   AppShell: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));

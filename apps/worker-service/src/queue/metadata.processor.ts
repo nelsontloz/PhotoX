@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import { assetRefsJobSchema, bindingOf, type AssetRefsJob } from './job-schemas';
 import { patchStatusFailed, runAssetFileJob } from './asset-file-job';
 import type { ProcessorDeps, ProcessorSpec } from './processor-spec';
+import type { MetadataPatch } from '../core/core-client.service';
 import { computeDhash, DHASH_HEIGHT, DHASH_WIDTH } from './dhash';
 
 export function branchFor(mimeType: string | null): 'photo' | 'video' | null {
@@ -25,15 +26,12 @@ export function metadataProcessor({
 
   return {
     queue: 'process-metadata',
-    logger,
-    listening: 'Metadata processor listening for jobs',
     run: async (job) => {
       await runAssetFileJob({ core, storage, logger }, job, {
         queue: 'process-metadata',
         schema: assetRefsJobSchema,
         label: 'metadata',
         failureLabel: 'Metadata',
-        missingModelMarkers: [],
         onFailure: ({ userId, assetId, sig }) =>
           patchStatusFailed(core, logger, userId, assetId, { status: 'failed' }, sig),
         body: async ({ data, record, filePath }) => {
@@ -48,6 +46,7 @@ export function metadataProcessor({
             return;
           }
 
+          let patch: MetadataPatch;
           if (branch === 'photo') {
             const metadata = metadataExtractor.extract(await readFile(filePath));
             const hasAnyField = Object.values(metadata).some((v) => v !== null);
@@ -66,50 +65,39 @@ export function metadataProcessor({
                 .grayscale()
                 .raw()
                 .toBuffer();
-              phash = computeDhash(grayscale, DHASH_WIDTH, DHASH_HEIGHT);
+              phash = computeDhash(grayscale);
             } catch (err) {
               const message = err instanceof Error ? err.message : String(err);
               logger.warn(`dHash failed: asset=${assetId} — ${message}`);
             }
 
-            await core.patchMetadata(
-              userId,
-              assetId,
-              {
-                ...metadataFields,
-                // EXIF iso can be rational (e.g. 201/2) — the DTO gates iso with @IsInt
-                iso: metadata.iso === null ? null : Math.round(metadata.iso),
-                mimeType,
-                sizeBytes,
-                originalName,
-                status: metadataStatus,
-                metadata: null,
-                ...(phash === null ? {} : { phash }),
-                ...(takenAt === null ? {} : { takenAt }),
-              },
-              bindingOf(data),
-            );
-          } else if (branch === 'video') {
+            patch = {
+              ...metadataFields,
+              // EXIF iso can be rational (e.g. 201/2) — the DTO gates iso with @IsInt
+              iso: metadata.iso === null ? null : Math.round(metadata.iso),
+              status: metadataStatus,
+              ...(phash === null ? {} : { phash }),
+              ...(takenAt === null ? {} : { takenAt }),
+            };
+          } else {
             const videoMeta = await videoMetadataExtractor.extract(filePath);
             const hasAnyVideoField = Object.values(videoMeta).some((v) => v !== null);
             const videoMetadataStatus = hasAnyVideoField ? 'ready' : 'failed';
             // same rule as photos: an absent probe date must not clobber a client-supplied takenAt
             const { takenAt: videoTakenAt, ...videoFields } = videoMeta;
-            await core.patchMetadata(
-              userId,
-              assetId,
-              {
-                status: videoMetadataStatus,
-                mimeType,
-                ...videoFields,
-                sizeBytes,
-                originalName,
-                ...(videoTakenAt === null ? {} : { takenAt: videoTakenAt }),
-                metadata: null,
-              },
-              bindingOf(data),
-            );
+            patch = {
+              ...videoFields,
+              status: videoMetadataStatus,
+              ...(videoTakenAt === null ? {} : { takenAt: videoTakenAt }),
+            };
           }
+
+          await core.patchMetadata(
+            userId,
+            assetId,
+            { mimeType, sizeBytes, originalName, metadata: null, ...patch },
+            bindingOf(data),
+          );
 
           logger.log(`Metadata complete: asset=${assetId}`);
         },

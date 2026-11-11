@@ -97,7 +97,7 @@ describeIfFfmpeg('ffmpeg wrapper', () => {
     await expect(
       runFfmpeg(
         ['-re', '-f', 'lavfi', '-i', 'testsrc=duration=30:size=320x240:rate=30', '-f', 'null', '-'],
-        { timeoutMs: 200 },
+        200,
       ),
     ).rejects.toThrow('ffmpeg timed out after 200ms');
   });

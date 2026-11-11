@@ -1,5 +1,3 @@
-import { toNchw } from './nchw';
-
 export const SCRFD_INPUT_SIZE = 640;
 
 export interface ScrfdTensorLike {
@@ -13,23 +11,17 @@ interface ScrfdDetection {
   kps: [number, number][];
 }
 
-interface ScrfdRgb {
-  data: Uint8Array;
-  width: number;
-  height: number;
-  channels: number;
-}
-
 export interface ScrfdCoordinateMap {
   scaleX: number;
   scaleY: number;
-  offsetX: number;
-  offsetY: number;
 }
 
 const SCRFD_STRIDES = [8, 16, 32] as const;
 // SCRFD heads emit 2 predictions per grid cell, both anchored at the same center
 const NUM_ANCHORS = 2;
+// decode-only constants: no caller has ever tuned them
+const SCORE_THRESHOLD = 0.5;
+const NMS_THRESHOLD = 0.4;
 
 function anchorsForStride(stride: number): number {
   return (SCRFD_INPUT_SIZE / stride) ** 2 * NUM_ANCHORS;
@@ -39,21 +31,6 @@ function strideForAnchors(anchors: number): number {
   // ponytail: inverse of anchorsForStride — exact for 12800/3200/800 (perfect squares,
   // correctly-rounded sqrt); anything else fails the stride check at the call site
   return SCRFD_INPUT_SIZE / Math.sqrt(anchors / NUM_ANCHORS);
-}
-
-// ponytail: canonical SCRFD layout (insightface/model_zoo/scrfd.py) — output row i belongs to
-// cell floor(i / 2) (row-major, both anchors share one center) and centers sit at cell * stride
-// with no half-pixel offset
-export function scrfdPreprocess(rgb: ScrfdRgb): Float32Array {
-  const { data, width, height, channels } = rgb;
-  if (channels !== 3) {
-    throw new Error(`SCRFD preprocessing expects 3-channel RGB, got ${channels} channels`);
-  }
-  if (width <= 0 || height <= 0) {
-    throw new Error(`SCRFD preprocessing expects positive dimensions, got ${width}x${height}`);
-  }
-  // InsightFace normalization: (x - 127.5) / 128 into CHW float32
-  return toNchw(data, width, height, 127.5, 128);
 }
 
 interface IouBox {
@@ -83,14 +60,13 @@ function nms(detections: ScrfdDetection[], threshold: number): ScrfdDetection[] 
   return kept;
 }
 
+// ponytail: canonical SCRFD layout (insightface/model_zoo/scrfd.py) — output row i belongs to
+// cell floor(i / 2) (row-major, both anchors share one center) and centers sit at cell * stride
+// with no half-pixel offset
 export function decodeScrfdOutputs(
   outputs: ScrfdTensorLike[],
   map: ScrfdCoordinateMap,
-  opts: { scoreThreshold?: number; nmsThreshold?: number } = {},
 ): ScrfdDetection[] {
-  const scoreThreshold = opts.scoreThreshold ?? 0.5;
-  const nmsThreshold = opts.nmsThreshold ?? 0.4;
-
   if (outputs.length !== SCRFD_STRIDES.length * 3) {
     throw new Error(`SCRFD expects 9 outputs (3 strides x score/bbox/kps), got ${outputs.length}`);
   }
@@ -143,7 +119,7 @@ export function decodeScrfdOutputs(
     for (let i = 0; i < anchors; i++) {
       const score = entry.score.data[i]!;
       // ponytail: !(>=) also drops NaN scores (a plain `<` would admit them)
-      if (!(score >= scoreThreshold)) continue;
+      if (!(score >= SCORE_THRESHOLD)) continue;
       const cell = Math.floor(i / NUM_ANCHORS);
       const cx = (cell % grid) * stride;
       const cy = Math.floor(cell / grid) * stride;
@@ -151,20 +127,20 @@ export function decodeScrfdOutputs(
       const dt = entry.bbox.data[i * 4 + 1]! * stride;
       const dr = entry.bbox.data[i * 4 + 2]! * stride;
       const db = entry.bbox.data[i * 4 + 3]! * stride;
-      const x1 = (cx - dl) * map.scaleX + map.offsetX;
-      const y1 = (cy - dt) * map.scaleY + map.offsetY;
-      const x2 = (cx + dr) * map.scaleX + map.offsetX;
-      const y2 = (cy + db) * map.scaleY + map.offsetY;
+      const x1 = (cx - dl) * map.scaleX;
+      const y1 = (cy - dt) * map.scaleY;
+      const x2 = (cx + dr) * map.scaleX;
+      const y2 = (cy + db) * map.scaleY;
       const kps: [number, number][] = [];
       for (let k = 0; k < 5; k++) {
         kps.push([
-          (cx + entry.kps.data[i * 10 + k * 2]! * stride) * map.scaleX + map.offsetX,
-          (cy + entry.kps.data[i * 10 + k * 2 + 1]! * stride) * map.scaleY + map.offsetY,
+          (cx + entry.kps.data[i * 10 + k * 2]! * stride) * map.scaleX,
+          (cy + entry.kps.data[i * 10 + k * 2 + 1]! * stride) * map.scaleY,
         ]);
       }
       detections.push({ box: { x: x1, y: y1, w: x2 - x1, h: y2 - y1 }, score, kps });
     }
   }
 
-  return nms(detections, nmsThreshold);
+  return nms(detections, NMS_THRESHOLD);
 }

@@ -45,7 +45,7 @@ interface UseAssetNavigationResult {
   trash: () => Promise<void>;
   restore: () => Promise<void>;
   permanentlyDelete: () => Promise<void>;
-  toggleFavorite: (assetId: string, nextValue: boolean) => Promise<void>;
+  toggleSelectedFavorite: (nextValue: boolean) => Promise<void>;
 }
 
 export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNavigationResult {
@@ -224,6 +224,10 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
     }
   };
 
+  const toggleSelectedFavorite = async (nextValue: boolean) => {
+    if (selected) await toggleFavorite(selected.id, nextValue);
+  };
+
   return {
     selected,
     open,
@@ -235,6 +239,6 @@ export function useAssetNavigation(opts: UseAssetNavigationOptions): UseAssetNav
     trash,
     restore,
     permanentlyDelete,
-    toggleFavorite,
+    toggleSelectedFavorite,
   };
 }

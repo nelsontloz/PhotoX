@@ -10,8 +10,6 @@ class ServerAsset {
     required this.kind,
     required this.uploadedAt,
     this.takenAt,
-    this.width,
-    this.height,
     this.thumbnailFileId,
     this.title,
   });
@@ -23,8 +21,6 @@ class ServerAsset {
       kind: kind,
       uploadedAt: requireDateTime(json, 'uploadedAt', 'ServerAsset'),
       takenAt: _dateTimeOrNull(json, 'takenAt', 'ServerAsset'),
-      width: _intOrNull(json, 'width', 'ServerAsset'),
-      height: _intOrNull(json, 'height', 'ServerAsset'),
       thumbnailFileId: _pickThumbnail(json, video: kind == 'video'),
       title: requireStringOrNull(json, 'originalName', 'ServerAsset'),
     );
@@ -42,9 +38,6 @@ class ServerAsset {
 
   /// Capture date from EXIF/metadata, when the pipeline has filled it in.
   final DateTime? takenAt;
-
-  final int? width;
-  final int? height;
 
   /// Thumbnail file record the grid can stream; null until thumbnails exist.
   final String? thumbnailFileId;
@@ -89,15 +82,6 @@ class ServerAsset {
     if (value == null) return null;
     return requireDateTime(json, field, context);
   }
-
-  static int? _intOrNull(Map<String, dynamic> json, String field, String context) {
-    final value = json[field];
-    if (value == null) return null;
-    if (value is num) return value.toInt();
-    throw FormatException(
-      '$context.$field must be a number or null, got ${value.runtimeType}',
-    );
-  }
 }
 
 /// One page of the server's asset list.
@@ -108,6 +92,4 @@ class ServerAssetPage {
 
   /// Total assets matching the query, so the caller can tell there is more.
   final int total;
-
-  bool get hasMore => items.isNotEmpty && items.length < total;
 }

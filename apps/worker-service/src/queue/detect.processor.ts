@@ -17,8 +17,6 @@ export function detectProcessor({
 
   return {
     queue: 'process-detect',
-    logger,
-    listening: 'Detection processor listening for jobs',
     run: async (job) => {
       await runAssetFileJob({ core, storage, logger }, job, {
         queue: 'process-detect',

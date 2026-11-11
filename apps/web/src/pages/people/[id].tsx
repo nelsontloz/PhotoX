@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FaArrowLeft, FaFaceSmile } from 'react-icons/fa6';
-import { RequireAuth } from '../../components/RequireAuth';
 import { AppShell } from '../../components/AppShell';
 import { ErrorState, LoadingState } from '../../components/StateViews';
 import { ViewerHost } from '../../components/ViewerHost';
@@ -115,9 +114,5 @@ function PersonDetail({ id }: { id: string }) {
 
 export default function PersonDetailPage() {
   const { id } = useParams<{ id: string }>();
-  return (
-    <RequireAuth>
-      <AppShell>{id ? <PersonDetail key={id} id={id} /> : null}</AppShell>
-    </RequireAuth>
-  );
+  return <AppShell>{id ? <PersonDetail key={id} id={id} /> : null}</AppShell>;
 }

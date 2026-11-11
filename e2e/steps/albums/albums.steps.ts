@@ -1,11 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import {
-  expect,
-  type APIRequestContext,
-  type APIResponse,
-  type Page,
-  type Response,
-} from '@playwright/test';
+import { expect, type APIRequestContext, type Page, type Response } from '@playwright/test';
 import {
   Given,
   Then,
@@ -258,16 +252,20 @@ async function fetchTimeline(
   return (await response.json()) as TimelinePayload;
 }
 
+interface LayoutMonthsPayload {
+  months: { key: string; count: number; version: string }[];
+}
+
+/** GET the timeline layout month index: the paged layout's window list + versions. */
 async function fetchLayout(
   request: APIRequestContext,
   auth: AuthResponse,
-  headers: Record<string, string> = {},
-): Promise<APIResponse> {
-  const response = await request.get('/api/v1/assets/layout', {
-    headers: { ...authHeaders(auth), ...headers },
+): Promise<LayoutMonthsPayload> {
+  const response = await request.get('/api/v1/assets/layout/months?tz=UTC', {
+    headers: authHeaders(auth),
   });
   expect(response.status()).toBe(200);
-  return response;
+  return (await response.json()) as LayoutMonthsPayload;
 }
 
 async function setAlbumHidden(
@@ -324,16 +322,15 @@ Then('the album timeline contains the album photo', async ({ request, ctx }) => 
 });
 
 Then('the timeline layout is empty', async ({ request, ctx }) => {
-  const response = await fetchLayout(request, requireAuth(ctx));
-  const layout = (await response.json()) as { items: unknown[] };
-  expect(layout.items).toHaveLength(0);
+  const layout = await fetchLayout(request, requireAuth(ctx));
+  expect(layout.months).toHaveLength(0);
 });
 
 Then('the timeline layout only omits the hidden photo', async ({ request, ctx }) => {
   const auth = requireAuth(ctx);
-  const response = await fetchLayout(request, auth);
-  const layout = (await response.json()) as { items: unknown[] };
-  expect(layout.items).toHaveLength(1);
+  const layout = await fetchLayout(request, auth);
+  const layoutTotal = layout.months.reduce((sum, month) => sum + month.count, 0);
+  expect(layoutTotal).toBe(1);
   // the scenario holds exactly two photos, so a total of 1 plus the sibling "does not contain"
   // step pins the remaining layout item to the visible album's photo
   expect((await fetchTimeline(request, auth)).total).toBe(1);
@@ -341,14 +338,14 @@ Then('the timeline layout only omits the hidden photo', async ({ request, ctx })
 
 Then('the timeline layout ETag changes after hiding', async ({ request, ctx }) => {
   const auth = requireAuth(ctx);
-  const before = await fetchLayout(request, auth);
-  const etag = before.headers().etag;
-  if (!etag) throw new Error('the timeline layout response carried no ETag');
-  // the ETag has to be captured before the flag flips, so this step performs the hide itself
+  // the month index's per-window version is the layout's change signal now
+  const versions = (layout: LayoutMonthsPayload) =>
+    layout.months.map((month) => `${month.key}:${month.version}`).join('|');
+  const before = versions(await fetchLayout(request, auth));
+  // the version has to be captured before the flag flips, so this step performs the hide itself
   await setAlbumHidden(request, ctx, true);
-  const after = await fetchLayout(request, auth, { 'If-None-Match': etag });
-  expect(after.headers().etag).toBeDefined();
-  expect(after.headers().etag).not.toBe(etag);
+  const after = versions(await fetchLayout(request, auth));
+  expect(after).not.toBe(before);
 });
 
 // --- albums page UI ---------------------------------------------------------

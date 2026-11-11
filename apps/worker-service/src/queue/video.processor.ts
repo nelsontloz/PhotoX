@@ -63,8 +63,6 @@ export function videoProcessor({
 
   return {
     queue: 'process-video',
-    logger,
-    listening: 'Video processor listening for jobs',
     // ponytail: concurrency 2 bounds poison-video stall without CPU oversubscribe on a
     // personal host; raise only with abuse evidence (bullmq's default is 1)
     workerOptions: { concurrency: 2 },
@@ -74,7 +72,6 @@ export function videoProcessor({
         schema: assetRefsJobSchema,
         label: 'video transcode',
         failureLabel: 'Video transcode',
-        missingModelMarkers: [],
         onFailure: ({ userId, assetId, message, sig }) =>
           patchStatusFailed(
             core,
@@ -154,7 +151,7 @@ export function videoProcessor({
               outPath,
             ];
 
-            await runFfmpeg(ffmpegArgs, { timeoutMs: TRANSCODE_TIMEOUT_MS });
+            await runFfmpeg(ffmpegArgs, TRANSCODE_TIMEOUT_MS);
 
             const derivativeFileId = await registerDerivative(
               { core, storage },

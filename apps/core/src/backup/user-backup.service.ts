@@ -30,6 +30,7 @@ import {
 } from '@photox/shared-config';
 import { SEARCH_EMBEDDING_MODEL, type AdminUserBackupSync } from '@photox/shared-types';
 import { z } from 'zod';
+import { errorMessage, errorName } from '../common/errors';
 import { Asset, FileRecord, Person } from '../database/entities';
 import { Album } from '../albums/entities/album.entity';
 import { AlbumAsset } from '../albums/entities/album-asset.entity';
@@ -201,7 +202,7 @@ function isDerivativeStorageKey(storageKey: string): boolean {
   return storageKey.startsWith('derivatives/');
 }
 
-// Shared row→manifest projections: backupUser and backup adoption (merge) must
+// Shared row→manifest projections: a backup and backup adoption (merge) must
 // emit byte-identical entries for the same DB row, so both go through here.
 function fileToManifestEntry(f: FileRecord): UserBackupManifest['files'][number] {
   return {
@@ -333,14 +334,6 @@ export function shouldSkipUpload(
   return true;
 }
 
-function errorName(err: unknown): string {
-  return (err as { name?: string }).name ?? 'Unknown';
-}
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
 export interface BackupResult {
   userId: string;
   email: string;
@@ -400,9 +393,7 @@ export interface BackupProgress {
   updatedAt: string;
 }
 
-/** Items one sweeper pass may claim; small enough to keep S3/disk load bounded. */
-const TRANSFER_BATCH_SIZE = 4;
-const TRANSFER_MAX_ATTEMPTS = 5;
+/** Cap for the run driver's retry backoff when it retries without BullMQ's scheduler. */
 const TRANSFER_MAX_BACKOFF_MS = 5 * 60_000;
 /** A crashed core leaves items 'running'; after this they are claimable again. */
 const TRANSFER_CLAIM_TIMEOUT_MS = 30 * 60_000;
@@ -757,7 +748,8 @@ export function buildFallbackEmail(origEmail: string, nowMs: number, attempt = 0
  * own schedule; finalize re-enqueues derivatives. Backup uses the same ledger, writes
  * original bytes per item and `manifest.json` LAST (HEAD-verified), so a failed run
  * never leaves a live manifest over missing bytes. Successful items are deleted; a
- * failed/paused run is resumable (`startRestore` with the same manifest, or retryRun).
+ * failed/paused run is resumable by starting it again with the same manifest
+ * (`startRestore`).
  * The run directory under `STORAGE_DIR/backup-runs/<runId>/` is skipped by the orphan
  * sweep and removed when a run completes.
  *
@@ -769,7 +761,7 @@ export function buildFallbackEmail(origEmail: string, nowMs: number, attempt = 0
  * covers/counts.
  *
  * Email changes auto-rename prefixes (A6): the S3 layout is keyed by backup-time
- * email (`backups/<email>__<userId>/`), so backupUser copy-forwards bytes from
+ * email (`backups/<email>__<userId>/`), so a backup copy-forwards bytes from
  * every stale same-userId prefix into the current one (server-side copy, manifest
  * skipped and rewritten fresh), gates uploads on the previous manifest + a
  * pre-loop listKeys of the new prefix (uploaded/skipped counters), prunes the
@@ -983,20 +975,13 @@ export class UserBackupService {
     return { runId };
   }
 
-  /** Synchronous driver (tests + internal callers): start the run and process it to completion. */
-  async backupUser(emailOrId: string): Promise<BackupResult> {
-    const { runId } = await this.startBackup(emailOrId);
-    await this.drainRun(runId);
-    return this.completedBackupResult(runId);
-  }
-
   /**
    * Relocates a user's backup to the prefix for the CURRENT email after an
    * account edit (A6): copy-forward every stale same-userId prefix, patch the
    * manifest identity block to the live user row, HEAD-verify the new manifest,
    * and only then delete the old prefixes. The old prefix (and its manifest)
-   * survives until the new manifest is verified — same crash-safe ordering as
-   * backupUser.
+   * survives until the new manifest is verified — same crash-safe ordering as a
+   * normal backup.
    *
    * Never throws, including when the target prefix itself cannot be computed
    * (loadEnv/zod failure, empty email/userId) — every path resolves to an
@@ -1014,7 +999,7 @@ export class UserBackupService {
    */
   async moveBackupPrefix(user: User): Promise<AdminUserBackupSync> {
     // computed outside the main try: a throw here must still return a result —
-    // updateUser's fallback and syncUserBackup both call this and rely on it
+    // callers report the failure instead of 500ing
     let to: string;
     try {
       to = backupPrefix(user.email, user.id);
@@ -1349,13 +1334,6 @@ export class UserBackupService {
     return { runId };
   }
 
-  /** Synchronous driver (tests + internal callers): start the run and process it to completion. */
-  async restoreUser(emailOrId: string, restoreEmail?: string): Promise<RestoreResult> {
-    const { runId } = await this.startRestore(emailOrId, restoreEmail);
-    await this.drainRun(runId);
-    return this.completedRestoreResult(runId);
-  }
-
   /**
    * Merges a matched legacy snapshot into a live account (additive only).
    *
@@ -1591,7 +1569,7 @@ export class UserBackupService {
       const adoptedAlbumIds = new Set<string>();
       const adoptionCopies = new Map<string, { sourceKey: string; targetStorageKey: string }>();
 
-      // Same manifest-entry shape restoreUser builds, plus the per-pipeline
+      // Same manifest-entry shape a restore builds, plus the per-pipeline
       // regeneration reset (merged bytes are originals only).
       const buildAsset = (asset: UserBackupManifest['assets'][number], fileId: string): Asset =>
         this.assets.create({
@@ -2616,46 +2594,71 @@ export class UserBackupService {
   }
 
   /**
-   * Re-drives a failed/paused/cancelled run: every unfinished item goes back to pending with a
-   * fresh attempt budget. A completed run is not retryable (start a new restore instead).
+   * One sweeper pass without BullMQ: requeue crashed claims, drive one batch of each kind
+   * through the same consumer, then finish runs with nothing left. Test-only driver — the
+   * production executor is the queue pair (dispatcher + consumers).
    */
-  async retryRun(runId: string): Promise<BackupRunStatus> {
-    const run = await this.runs.findOne({ where: { id: runId } });
-    if (!run) throw new NotFoundException('Backup run not found');
-    if (run.state !== 'failed' && run.state !== 'paused' && run.state !== 'cancelled') {
-      throw new ConflictException('Backup run is not retryable');
-    }
-    const otherActive = await this.runs.findOne({
-      where: { userId: run.userId, state: In(['running', 'paused', 'finalizing']) },
-    });
-    if (otherActive && otherActive.id !== run.id) {
-      throw new ConflictException('Another backup or restore is running for this user');
-    }
-    await this.resumeRun(runId);
-    return this.getRunStatus(runId);
-  }
-
-  async cancelRun(runId: string): Promise<BackupRunStatus> {
-    const run = await this.runs.findOne({ where: { id: runId } });
-    if (!run) throw new NotFoundException('Backup run not found');
-    if (run.state === 'running' || run.state === 'paused') {
-      await this.runs.update(runId, {
-        state: 'cancelled',
-        currentFile: null,
-        finishedAt: new Date(),
-        updatedAt: new Date(),
-      });
-    }
-    return this.getRunStatus(runId);
-  }
-
-  /** One sweeper pass: requeue crashed claims, transfer one batch, finalize finished runs. */
   async runTransfersOnce(ignoreBackoff = false): Promise<number> {
     await this.requeueStuckFinalizing();
     await this.requeueStaleClaims();
-    const processed = await this.processBatch(TRANSFER_BATCH_SIZE, null, ignoreBackoff);
+    let consumed = 0;
+    for (const kind of Object.keys(TRANSFER_QUEUES) as TransferKind[]) {
+      const rows = await this.claimDispatchable(kind, TRANSFER_DISPATCH_BATCH_SIZE, ignoreBackoff);
+      for (const row of rows) {
+        try {
+          await this.consumeTransferJob(kind, {
+            data: { runId: row.runId, itemId: row.id },
+            attemptsMade: row.attempts,
+            opts: { attempts: TRANSFER_JOB_ATTEMPTS },
+          });
+        } catch {
+          // transient: the consumer left the row queued, so own the retry here instead of BullMQ
+          const delayMs = ignoreBackoff
+            ? 0
+            : Math.min(TRANSFER_MAX_BACKOFF_MS, 1000 * 2 ** row.attempts);
+          await this.runItems.update(row.id, {
+            state: 'retrying',
+            nextAttemptAt: new Date(Date.now() + delayMs),
+            claimedAt: null,
+          });
+        }
+        consumed += 1;
+      }
+    }
     await this.finalizeDueRuns(null);
-    return processed;
+    return consumed;
+  }
+
+  /**
+   * Atomic claim of one kind's due items: pending/retrying rows become queued (the lease
+   * marker the dispatcher and the local driver both use) and their attempt count comes back
+   * so the consumer can decide permanent vs transient without another read.
+   */
+  private async claimDispatchable(
+    kind: TransferKind,
+    limit: number,
+    ignoreBackoff = false,
+  ): Promise<{ id: string; runId: string; attempts: number }[]> {
+    const due = ignoreBackoff ? '' : 'AND i2."nextAttemptAt" <= now()';
+    const rows = rowsOf<{ id: string; runId: string; attempts: number }>(
+      await this.dataSource.query(
+        `UPDATE "backup_run_items" i
+         SET "state" = 'queued', "claimedAt" = now()
+         WHERE i."id" IN (
+           SELECT i2."id" FROM "backup_run_items" i2
+           JOIN "backup_runs" r ON r."id" = i2."runId"
+           WHERE r."state" = 'running' AND r."kind" = $2
+             AND i2."state" IN ('pending', 'retrying')
+             ${due}
+           ORDER BY i2."nextAttemptAt" ASC
+           FOR UPDATE OF i2 SKIP LOCKED
+           LIMIT $1
+         )
+         RETURNING i."id" AS "id", i."runId" AS "runId", i."attempts" AS "attempts"`,
+        [limit, kind],
+      ),
+    );
+    return rows;
   }
 
   /**
@@ -2667,24 +2670,7 @@ export class UserBackupService {
     kind: TransferKind,
     limit = TRANSFER_DISPATCH_BATCH_SIZE,
   ): Promise<number> {
-    const rows = rowsOf<{ id: string; runId: string }>(
-      await this.dataSource.query(
-        `UPDATE "backup_run_items" i
-         SET "state" = 'queued', "claimedAt" = now()
-         WHERE i."id" IN (
-           SELECT i2."id" FROM "backup_run_items" i2
-           JOIN "backup_runs" r ON r."id" = i2."runId"
-           WHERE r."state" = 'running' AND r."kind" = $2
-             AND i2."state" IN ('pending', 'retrying')
-             AND i2."nextAttemptAt" <= now()
-           ORDER BY i2."nextAttemptAt" ASC
-           FOR UPDATE OF i2 SKIP LOCKED
-           LIMIT $1
-         )
-         RETURNING i."id" AS "id", i."runId" AS "runId"`,
-        [limit, kind],
-      ),
-    );
+    const rows = await this.claimDispatchable(kind, limit);
     let enqueued = 0;
     for (const row of rows) {
       const ok = await this.bullMq.enqueue(
@@ -2859,28 +2845,6 @@ export class UserBackupService {
     }
   }
 
-  /**
-   * Synchronous driver used by the public backupUser/restoreUser wrappers (integration tests and
-   * callers that cannot poll). Ignores backoff so a retry does not stall the request.
-   */
-  private async drainRun(runId: string): Promise<void> {
-    for (;;) {
-      const run = await this.runs.findOne({ where: { id: runId } });
-      if (!run) throw new NotFoundException('Backup run not found');
-      if (run.state === 'finalizing') {
-        await this.finalizeDueRuns(runId);
-      } else if (run.state !== 'running') {
-        return;
-      }
-      const processed = await this.processBatch(TRANSFER_BATCH_SIZE, runId, true);
-      await this.finalizeDueRuns(runId);
-      const after = await this.runs.findOne({ where: { id: runId } });
-      if (!after) return;
-      if (after.state === 'running' && processed === 0) return;
-      if (after.state !== 'running' && after.state !== 'finalizing') return;
-    }
-  }
-
   /** Refuses a restore/merge while a batched account wipe is queued or running. */
   private async assertNoLiveWipe(userId: string): Promise<void> {
     const wipe = await this.userDeletes.findOne({ where: { userId } });
@@ -2966,21 +2930,6 @@ export class UserBackupService {
     ) as UserBackupManifest;
   }
 
-  private completedBackupResult(runId: string): Promise<BackupResult> {
-    return this.completedResult<BackupResult>(runId, 'Backup');
-  }
-
-  private completedRestoreResult(runId: string): Promise<RestoreResult> {
-    return this.completedResult<RestoreResult>(runId, 'Restore');
-  }
-
-  private async completedResult<T>(runId: string, label: string): Promise<T> {
-    const run = await this.runs.findOne({ where: { id: runId } });
-    if (!run) throw new NotFoundException(`${label} run not found`);
-    if (run.state === 'completed') return run.result as unknown as T;
-    throw new Error(run.error ?? `${label} ${run.state}`);
-  }
-
   /** A crashed core leaves items claimed; after the timeout they become claimable again. */
   private async requeueStaleClaims(): Promise<void> {
     await this.dataSource.query(
@@ -2996,67 +2945,6 @@ export class UserBackupService {
       `UPDATE "backup_runs" SET "state" = 'running', "updatedAt" = now()
        WHERE "state" = 'finalizing' AND "updatedAt" < now() - interval '10 minutes'`,
     );
-  }
-
-  private async claimItems(
-    limit: number,
-    onlyRunId: string | null,
-    ignoreBackoff: boolean,
-  ): Promise<ClaimedBackupItem[]> {
-    const due = ignoreBackoff ? '' : 'AND i2."nextAttemptAt" <= now()';
-    const result: unknown = await this.dataSource.query(
-      `UPDATE "backup_run_items" i
-       SET "state" = 'running', "claimedAt" = now(), "attempts" = i."attempts" + 1
-       WHERE i."id" IN (
-         SELECT i2."id" FROM "backup_run_items" i2
-         JOIN "backup_runs" r ON r."id" = i2."runId"
-         WHERE r."state" = 'running'
-           AND i2."state" IN ('pending', 'retrying')
-           ${due}
-           AND ($2::uuid IS NULL OR i2."runId" = $2::uuid)
-         ORDER BY i2."nextAttemptAt" ASC
-         FOR UPDATE OF i2 SKIP LOCKED
-         LIMIT $1
-       )
-       RETURNING i."id" AS "id", i."runId" AS "runId", i."fileId" AS "fileId",
-                 i."storageKey" AS "storageKey", i."s3Key" AS "s3Key",
-                 i."checksumSha256" AS "checksumSha256", i."mimeType" AS "mimeType",
-                 i."attempts" AS "attempts"`,
-      [limit, onlyRunId],
-    );
-    return rowsOf<ClaimedBackupItem>(result);
-  }
-
-  private async processBatch(
-    limit: number,
-    onlyRunId: string | null,
-    ignoreBackoff: boolean,
-  ): Promise<number> {
-    const items = await this.claimItems(limit, onlyRunId, ignoreBackoff);
-    if (items.length === 0) return 0;
-    const runs = new Map<string, BackupRun>();
-    for (const runId of new Set(items.map((item) => item.runId))) {
-      const run = await this.runs.findOne({ where: { id: runId } });
-      if (run) runs.set(runId, run);
-    }
-    await Promise.all(
-      items.map((item) => {
-        const run = runs.get(item.runId);
-        return run ? this.transferItem(run, item) : Promise.resolve();
-      }),
-    );
-    return items.length;
-  }
-
-  private async transferItem(run: BackupRun, item: ClaimedBackupItem): Promise<void> {
-    await this.runs.update(run.id, { currentFile: item.storageKey, updatedAt: new Date() });
-    try {
-      await this.performTransfer(run, item);
-      await this.runItems.delete(item.id);
-      await this.bumpRun(run.id, 'uploaded');
-    } catch (err) {
-      await this.handleTransferError(run, item, err);
-    }
   }
 
   private async restoreFile(run: BackupRun, item: ClaimedBackupItem): Promise<void> {
@@ -3076,61 +2964,6 @@ export class UserBackupService {
     } finally {
       await rm(tmp, { force: true }).catch(() => undefined);
     }
-  }
-
-  private async handleTransferError(
-    run: BackupRun,
-    item: ClaimedBackupItem,
-    err: unknown,
-  ): Promise<void> {
-    const message = errorMessage(err);
-    const code = (err as NodeJS.ErrnoException).code;
-
-    // local storage is full/unwritable: retrying every file is pointless — park the run
-    if (code === 'ENOSPC' || code === 'EDQUOT' || code === 'EACCES') {
-      await this.runItems.update(item.id, {
-        state: 'retrying',
-        attempts: 0,
-        nextAttemptAt: new Date(),
-        claimedAt: null,
-        error: message,
-      });
-      await this.runs.update(run.id, {
-        state: 'paused',
-        error: `Transfer paused: ${message}`,
-        currentFile: null,
-        updatedAt: new Date(),
-      });
-      this.logger.error(`Transfer paused for run ${run.id}: ${message}`);
-      return;
-    }
-
-    const missing = run.kind === 'restore' && isNotFound(err);
-    const permanent = missing || code === 'ENOENT' || item.attempts >= TRANSFER_MAX_ATTEMPTS;
-    if (permanent) {
-      await this.runItems.update(item.id, {
-        state: missing ? 'missing' : 'failed',
-        error: message,
-        claimedAt: null,
-      });
-      await this.bumpRun(run.id, 'failed');
-      this.logger.warn(
-        `Backup transfer ${missing ? 'missing' : 'failed'} (${run.kind}) file=${item.fileId} ` +
-          `run=${run.id}: ${message}`,
-      );
-      return;
-    }
-
-    const delayMs = Math.min(TRANSFER_MAX_BACKOFF_MS, 1000 * 2 ** item.attempts);
-    await this.runItems.update(item.id, {
-      state: 'retrying',
-      nextAttemptAt: new Date(Date.now() + delayMs),
-      claimedAt: null,
-      error: message,
-    });
-    this.logger.warn(
-      `Backup transfer retry (${run.kind}) file=${item.fileId} attempt=${item.attempts}: ${message}`,
-    );
   }
 
   private async bumpRun(runId: string, outcome: 'uploaded' | 'failed'): Promise<void> {

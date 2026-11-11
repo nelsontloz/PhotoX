@@ -393,7 +393,6 @@ export interface PersonDto {
   userId: string;
   name: string | null;
   coverFaceId: string | null;
-  coverFaceUrl: string | null;
   clusterLabel: string | null;
   faceCount: number;
   createdAt: string;

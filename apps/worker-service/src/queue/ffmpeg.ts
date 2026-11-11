@@ -38,11 +38,6 @@ const SIGKILL_DELAY_MS = 5_000;
 // for the last 2000 chars of the error
 const MAX_BUFFER = 64 * 1024 * 1024;
 
-interface RunOptions {
-  timeoutMs?: number;
-  label?: string;
-}
-
 // ffmpeg can ignore SIGTERM mid-mux, and a stuck 1h transcode would hold CPU and a BullMQ slot —
 // escalate to SIGKILL after a grace period
 function killWithDelay(proc: ChildProcess) {
@@ -68,7 +63,8 @@ function killWithDelay(proc: ChildProcess) {
 function runBin(
   bin: string,
   args: string[],
-  { timeoutMs = DEFAULT_TIMEOUT_MS, label = 'process' }: RunOptions = {},
+  label: string,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     let timedOut = false;
@@ -102,10 +98,10 @@ function runBin(
   });
 }
 
-export async function runFfmpeg(args: string[], options?: { timeoutMs?: number }): Promise<Buffer> {
+export async function runFfmpeg(args: string[], timeoutMs?: number): Promise<Buffer> {
   if (!FFMPEG_PATH)
     throw new Error('ffmpeg-static not found — install ffmpeg-static or set FFMPEG_PATH');
-  return runBin(FFMPEG_PATH, args, { ...options, label: 'ffmpeg' });
+  return runBin(FFMPEG_PATH, args, 'ffmpeg', timeoutMs);
 }
 
 export async function runFfprobeJson(input: string): Promise<FfprobeResult> {
@@ -115,7 +111,7 @@ export async function runFfprobeJson(input: string): Promise<FfprobeResult> {
   const stdout = await runBin(
     FFPROBE_PATH,
     ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', input],
-    { label: 'ffprobe' },
+    'ffprobe',
   );
 
   const raw = stdout.toString('utf-8');

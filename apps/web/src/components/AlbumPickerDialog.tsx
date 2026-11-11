@@ -15,15 +15,13 @@ import { Dialog } from './Dialog';
 import { NewAlbumFields } from './NewAlbumFields';
 
 interface AlbumPickerDialogProps {
-  open: boolean;
   onClose: () => void;
   assetIds: string[];
   onDone?: () => void;
 }
 
-export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPickerDialogProps) {
+export function AlbumPickerDialog({ onClose, assetIds, onDone }: AlbumPickerDialogProps) {
   const [albums, setAlbums] = useState<AlbumDto[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -32,16 +30,6 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
   const [newDesc, setNewDesc] = useState('');
 
   useEffect(() => {
-    if (!open) return;
-    setAlbums([]);
-    // matches the old reducer reset: no spinner when the dialog is reopened
-    setLoading(false);
-    setError(null);
-    setSelected(new Set());
-    setBusy(false);
-    setCreating(false);
-    setNewName('');
-    setNewDesc('');
     const ac = new AbortController();
     void (async () => {
       try {
@@ -54,7 +42,7 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
       }
     })();
     return () => ac.abort();
-  }, [open]);
+  }, []);
 
   const toggle = (id: string) => {
     setSelected((prev) => toggleId(prev, id));
@@ -93,8 +81,6 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
     }
   }, [newName, newDesc, assetIds, onDone, onClose]);
 
-  if (!open) return null;
-
   const count = assetIds.length;
   const hasAlbums = albums.length > 0;
   const trimmedName = newName.trim();
@@ -121,11 +107,7 @@ export function AlbumPickerDialog({ open, onClose, assetIds, onDone }: AlbumPick
       )}
 
       <div className="flex-1 overflow-y-auto min-h-0 -mx-1 px-1">
-        {loading ? (
-          <div className="flex justify-center py-16">
-            <FaSpinner className="text-primary text-2xl animate-spin" />
-          </div>
-        ) : creating ? (
+        {creating ? (
           <div className="py-4">
             <NewAlbumFields
               name={newName}

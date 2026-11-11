@@ -21,10 +21,6 @@ class AlbumProgress {
 
   /// True when the tally stopped at the cap instead of reading the album.
   final bool partial;
-
-  @override
-  String toString() =>
-      'AlbumProgress(backedUp: $backedUp, total: $total, partial: $partial)';
 }
 
 /// Counts the backed-up share of an album, one page at a time.

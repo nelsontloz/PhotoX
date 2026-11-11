@@ -218,14 +218,6 @@ export class CoreClient {
     });
   }
 
-  async deleteAssetFaces(
-    userId: string,
-    assetId: string,
-    binding?: JobBinding,
-  ): Promise<{ deleted: number }> {
-    return this.request('DELETE', `/worker/assets/${assetId}/faces`, { sub: userId, ...binding });
-  }
-
   async getFacesForCluster(userId: string, binding?: JobBinding): Promise<ClusterFace[]> {
     // ponytail: one request per page (30s timeout + 400/404/422→Unrecoverable mapping), cursor
     // walks id ASC until nextCursor null

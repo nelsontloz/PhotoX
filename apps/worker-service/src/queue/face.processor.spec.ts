@@ -100,7 +100,6 @@ describe('FaceProcessor', () => {
     );
 
     expect(fake.callsOf('patchMetadata')).toHaveLength(0);
-    expect(fake.deleteFacesCalls).toHaveLength(0);
   });
 
   it('unconditionally replaces faces after a successful detect and reports ready', async () => {
@@ -122,7 +121,6 @@ describe('FaceProcessor', () => {
       'replaceFaces',
       'patchMetadata',
     ]);
-    expect(fake.deleteFacesCalls).toEqual([]);
     const faces = fake.faces.get(asset.id)!;
     expect(faces).toHaveLength(1);
     expect(faces[0]!.box).toEqual({ x: 10, y: 20, w: 30, h: 40 });
@@ -223,7 +221,6 @@ describe('FaceProcessor', () => {
     await run({ data: signJob({ assetId: asset.id, fileId, userId }) } as Job<FaceJob>);
 
     // replace semantics: an empty set still clears the asset, in one request
-    expect(fake.deleteFacesCalls).toEqual([]);
     expect(fake.callsOf('replaceFaces')).toHaveLength(1);
     expect(fake.callsOf('replaceFaces')[0]!.args[1]).toEqual([]);
     expect(fake.faces.get(asset.id) ?? []).toHaveLength(0);
@@ -242,7 +239,6 @@ describe('FaceProcessor', () => {
     ).resolves.toBeUndefined();
 
     expect(fake.callsOf('replaceFaces')).toHaveLength(0);
-    expect(fake.deleteFacesCalls).toHaveLength(0);
     expect(fake.assets.get(asset.id)!.faceStatus).toBe('failed');
   });
 

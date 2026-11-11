@@ -304,7 +304,7 @@ function SnapshotSubRow({
               </span>
             )}
             <Button
-              variant="outlinePrimary"
+              className="inline-flex items-center gap-2 text-xs font-semibold rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-primary/50 text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low"
               onClick={onRestore}
               disabled={anyBusy}
               ariaLabel={labels.restore}
@@ -313,11 +313,14 @@ function SnapshotSubRow({
               Restore to a new account
             </Button>
             <Button
-              variant="dangerFlat"
+              className={`inline-flex items-center gap-1.5 rounded-lg border font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-status-error focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low px-3 py-1.5 text-xs ${
+                anyBusy
+                  ? 'border-outline/30 text-outline/60 cursor-not-allowed'
+                  : 'border-status-error/40 text-status-error hover:bg-status-error/10'
+              }`}
               ariaLabel={labels.delete}
               title={labels.delete}
               disabled={anyBusy}
-              size="md"
               onClick={onDelete}
               icon={
                 deleting ? (

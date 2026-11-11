@@ -18,6 +18,7 @@ import { readFile, rename, rm, stat } from 'fs/promises';
 import { loadEnv } from '@photox/shared-config';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
+import { errorName } from '../common/errors';
 
 // ponytail: 100MB single-PUT ceiling — manifests/thumbs go single-PUT, originals
 // (videos up to the 4GiB upload cap) stream via lib-storage MPU. Floci single-op
@@ -31,10 +32,6 @@ const DEFAULT_BUCKET = 'photox-dev-backups';
 export function isNotFound(err: unknown): boolean {
   const name = (err as { name?: string }).name;
   return name === 'NotFound' || name === 'NoSuchKey' || name === 'NoSuchBucket';
-}
-
-function errorName(err: unknown): string {
-  return (err as { name?: string }).name ?? 'Unknown';
 }
 
 /**
@@ -270,8 +267,8 @@ export class S3BackupService {
 
   /**
    * Server-side copy of every key under srcPrefix into dstPrefix (suffix-mapped),
-   * skipping manifests (rewritten fresh by backupUser). Sequential to stay inside
-   * the Floci single-op budget; logs the copy/skip counts per prefix.
+   * skipping manifests (rewritten fresh by the dispatcher's consumers). Sequential to stay
+   * inside the Floci single-op budget; logs the copy/skip counts per prefix.
    */
   async copyPrefix(srcPrefix: string, dstPrefix: string): Promise<void> {
     const keys = await this.listKeys(srcPrefix);

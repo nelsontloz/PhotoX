@@ -53,8 +53,7 @@ describe('p0 fails-first', () => {
       const res = await request(apiServer(t))
         .post('/api/v1/files')
         .set(t.authHeader(token))
-        .attach('file', await pngBytes(), 'photo.png')
-        .field('kind', 'photo');
+        .attach('file', await pngBytes(), 'photo.png');
       expect([503, 500]).toContain(res.status);
     } finally {
       spy.mockRestore();

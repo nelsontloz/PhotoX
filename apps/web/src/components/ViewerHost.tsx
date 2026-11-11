@@ -48,7 +48,6 @@ export function ViewerHost({
       {pickerOpen && (
         <Suspense fallback={null}>
           <AlbumPickerDialog
-            open
             onClose={() => onPickerClose?.()}
             assetIds={pickerAssetIds ?? (asset ? [asset.id] : [])}
             onDone={onPickerDone}

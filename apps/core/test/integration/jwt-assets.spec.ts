@@ -454,10 +454,7 @@ describe('assets JWT identity', () => {
     const middle = await seedAt('02');
     const newest = await seedAt('03');
 
-    const first = await request(apiServer(t))
-      .get('/api/v1/assets')
-      .query({ limit: 2 })
-      .set(auth);
+    const first = await request(apiServer(t)).get('/api/v1/assets').query({ limit: 2 }).set(auth);
     expect(first.status).toBe(200);
     const firstBody = first.body as { items: { id: string }[]; nextCursor: string | null };
     const firstIds = firstBody.items.map((item) => item.id);

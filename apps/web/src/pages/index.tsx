@@ -1,7 +1,6 @@
 import { useCallback, useState } from 'react';
 import type { Asset } from '@photox/shared-types';
 import { FaFolderPlus, FaImage, FaMountain, FaTrash, FaWandMagicSparkles } from 'react-icons/fa6';
-import { RequireAuth } from '../components/RequireAuth';
 import { AppShell } from '../components/AppShell';
 import { useConfirm } from '../components/ConfirmProvider';
 import { LoadingState } from '../components/StateViews';
@@ -127,10 +126,7 @@ function TimelineContent() {
         onTrash={() => {
           void nav.trash();
         }}
-        onToggleFavorite={(nextValue) => {
-          const cur = nav.selected;
-          if (cur) void nav.toggleFavorite(cur.id, nextValue);
-        }}
+        onToggleFavorite={(nextValue) => void nav.toggleSelectedFavorite(nextValue)}
         onAddToAlbum={() => {
           const cur = nav.selected;
           if (cur) {
@@ -195,10 +191,8 @@ function TimelineContent() {
 
 export default function TimelineRoute() {
   return (
-    <RequireAuth>
-      <AppShell>
-        <TimelineContent />
-      </AppShell>
-    </RequireAuth>
+    <AppShell>
+      <TimelineContent />
+    </AppShell>
   );
 }

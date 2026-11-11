@@ -204,7 +204,7 @@ describe('locateBackup fallback (email-matched legacy backup)', () => {
       user: null,
       keys: [`${orphanPrefix}manifest.json`],
     });
-    await expect(svc.restoreUser(orphanId)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.startRestore(orphanId)).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('picks the newest manifest for a deleted user with multiple prefixes', async () => {

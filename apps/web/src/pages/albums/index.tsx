@@ -10,7 +10,6 @@ import {
   FaPlus,
   FaSpinner,
 } from 'react-icons/fa6';
-import { RequireAuth } from '../../components/RequireAuth';
 import { AppShell } from '../../components/AppShell';
 import { AlbumCover } from '../../components/AlbumCover';
 import { Dialog } from '../../components/Dialog';
@@ -318,10 +317,8 @@ function AlbumsListContent() {
 
 export default function AlbumsPage() {
   return (
-    <RequireAuth>
-      <AppShell>
-        <AlbumsListContent />
-      </AppShell>
-    </RequireAuth>
+    <AppShell>
+      <AlbumsListContent />
+    </AppShell>
   );
 }

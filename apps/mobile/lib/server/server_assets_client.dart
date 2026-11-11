@@ -22,7 +22,6 @@ class ServerAssetsClient {
   /// [dateTo] is an exclusive upper bound on `COALESCE(takenAt, uploadedAt)`,
   /// which is how the caller walks further back without a date window.
   Future<ServerAssetPage> list({
-    DateTime? dateFrom,
     DateTime? dateTo,
     int limit = maxLimit,
     int offset = 0,
@@ -32,7 +31,6 @@ class ServerAssetsClient {
       queryParameters: <String, dynamic>{
         'limit': limit,
         'offset': offset,
-        if (dateFrom != null) 'dateFrom': dateFrom.toUtc().toIso8601String(),
         if (dateTo != null) 'dateTo': dateTo.toUtc().toIso8601String(),
       },
     );

@@ -6,7 +6,7 @@ import { ConflictException } from '@nestjs/common';
 import type { Repository } from 'typeorm';
 import type { LocalStorageService } from '@photox/shared-config';
 import type { Asset as AssetResponse } from '@photox/shared-types';
-import { UserFilesService, type UploadedDiskFile } from './user-files.service';
+import { UserFilesService, type OriginalFileInput } from './user-files.service';
 import type { RegisterFileBodyDto } from './dto/register-file.body.dto';
 import type { Asset } from '../../database/entities';
 import type { FileRecord } from '../../database/entities';
@@ -15,7 +15,7 @@ import type { BullMqService } from '../../queue/bullmq.service';
 
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]);
 
-async function tmpUpload(name = 'pic.jpg'): Promise<UploadedDiskFile> {
+async function tmpUpload(name = 'pic.jpg'): Promise<OriginalFileInput> {
   const dir = await mkdtemp(join(tmpdir(), 'photox-race-'));
   const path = join(dir, name);
   await writeFile(path, Buffer.concat([JPEG, randomBytes(64)]));
@@ -149,23 +149,6 @@ describe('UserFilesService upload race', () => {
   });
 });
 
-describe('UserFilesService upload kind override (C2-narrowed)', () => {
-  it('ignores client kind=video for JPEG bytes and runs the photo pipeline', async () => {
-    const mine = fileRow({ id: 'mine-1' });
-    const { service, assetCreate } = makeUploadService({ naturals: [null], byId: mine });
-    const res = await service.upload('u1', await tmpUpload(), { kind: 'video' });
-    expect(res.id).toBe('asset-new');
-    // derived solely from the sniffed mime, not the client override
-    expect(assetCreate.mock.calls[0]?.[1]?.kind).toBe('photo');
-  });
-
-  it('ignores client kind=photo metadata but still derives photo for JPEG', async () => {
-    const mine = fileRow({ id: 'mine-1' });
-    const { service, assetCreate } = makeUploadService({ naturals: [null], byId: mine });
-    await service.upload('u1', await tmpUpload(), { kind: 'photo' });
-    expect(assetCreate.mock.calls[0]?.[1]?.kind).toBe('photo');
-  });
-});
 describe('UserFilesService.register race', () => {
   it('winner registers with created:true', async () => {
     const row = fileRow({ id: 'reg-1' });

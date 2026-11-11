@@ -35,7 +35,7 @@ function makeService(countResult: { count: string }) {
   };
   const personRepo = {
     findOne: vi.fn(() => Promise.resolve({ ...person })),
-    update: vi.fn(() => Promise.resolve({ affected: 1 })),
+    save: vi.fn((row: unknown) => Promise.resolve(row)),
   };
   const qb = chain(countResult);
   const faceRepo = { createQueryBuilder: vi.fn(() => qb) };

@@ -1,6 +1,5 @@
 import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { backupPrefix } from '@photox/shared-config';
 import {
   USER_DELETE_QUEUE,
   userDeleteJobId,
@@ -103,17 +102,6 @@ export class UserDeleteService {
       failedFiles: row.failedFiles,
       error: row.error,
     };
-  }
-
-  /**
-   * True from enqueue until the byte sweep reports: a restore/merge for the same id must wait,
-   * because the sweep would delete the originals it just copied back.
-   */
-  async hasLiveWipe(userId: string): Promise<boolean> {
-    const row = await this.runs.findOne({ where: { userId } });
-    return row
-      ? row.state === 'queued' || row.state === 'active' || row.state === 'wiping-files'
-      : false;
   }
 
   /**
@@ -315,11 +303,5 @@ export class UserDeleteService {
       await m.delete(User, userId);
       return true;
     });
-  }
-
-  /** Kept for the admin status response: the prefix a live row would use. */
-  async prefixFor(userId: string): Promise<string | undefined> {
-    const user = await this.users.findOne({ where: { id: userId } });
-    return user ? backupPrefix(user.email, user.id) : undefined;
   }
 }

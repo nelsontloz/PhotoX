@@ -26,7 +26,7 @@ export interface AssetFileJobSpec<
   // failure-log prefix when it differs from `label` (metadata: 'Metadata failed')
   failureLabel?: string;
   // error substrings that mean "model weights not provisioned" — warn + no retry
-  missingModelMarkers: string[];
+  missingModelMarkers?: string[];
   // runs after the fetch + ownership check, before the body; true ends the job (thumbnail defer)
   beforeBody?: (ctx: AssetFileJobContext<T>) => Promise<boolean>;
   body: (ctx: AssetFileJobContext<T>) => Promise<void>;
@@ -67,7 +67,9 @@ export async function runAssetFileJob<
     await spec.body(ctx);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    const missingModel = spec.missingModelMarkers.some((marker) => message.includes(marker));
+    const missingModel = (spec.missingModelMarkers ?? []).some((marker) =>
+      message.includes(marker),
+    );
     if (missingModel) {
       logger.warn(`${spec.label} skipped (missing model): asset=${assetId} — ${message}`);
     } else {

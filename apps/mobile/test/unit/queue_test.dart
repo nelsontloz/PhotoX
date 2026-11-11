@@ -1091,7 +1091,6 @@ AssetCandidate _candidate(
     sizeBytes: sizeBytes,
     takenAt: takenAt ?? DateTime.utc(2026, 10, 18, 9),
     modifiedAt: modifiedAt ?? DateTime.utc(2026, 10, 18, 10),
-    relativePath: 'DCIM/$localId.jpg',
     folderId: folderId,
   );
 }

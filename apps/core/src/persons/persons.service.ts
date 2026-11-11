@@ -24,18 +24,9 @@ export class PersonsService {
       .where('p.userId = :userId', { userId })
       .getCount();
 
-    interface PersonRow {
-      id: string;
-      userId: string;
-      name: string | null;
-      coverFaceId: string | null;
-      clusterLabel: string | null;
-      createdAt: Date;
-      updatedAt: Date;
-      liveFaceCount: string;
-    }
-
-    const rows: PersonRow[] = await this.personRepo.query(
+    const rows = await this.personRepo.query<
+      (Omit<Person, 'faceCount'> & { liveFaceCount: string })[]
+    >(
       `SELECT p.id, p."userId", p.name, p."coverFaceId", p."clusterLabel",
               p."createdAt", p."updatedAt",
               COALESCE(fc.cnt, 0) AS "liveFaceCount"
@@ -53,17 +44,8 @@ export class PersonsService {
       [userId, limit, offset],
     );
 
-    const persons = rows.map((r) =>
-      this.toListItem({
-        id: r.id,
-        userId: r.userId,
-        name: r.name,
-        coverFaceId: r.coverFaceId,
-        clusterLabel: r.clusterLabel,
-        faceCount: Number(r.liveFaceCount ?? 0),
-        createdAt: r.createdAt,
-        updatedAt: r.updatedAt,
-      }),
+    const persons = rows.map((row) =>
+      this.toListItem({ ...row, faceCount: Number(row.liveFaceCount) }),
     );
 
     return {
@@ -81,13 +63,13 @@ export class PersonsService {
   }
 
   async update(userId: string, id: string, name: string | null): Promise<PersonDto> {
-    await findOwnedOr404(this.personRepo, id, userId, 'Person');
-    await this.personRepo.update(id, { name });
-    const updated = await this.personRepo.findOne({ where: { id } });
+    const person = await findOwnedOr404(this.personRepo, id, userId, 'Person');
+    person.name = name;
+    await this.personRepo.save(person);
     // C4: count live (non-trashed) faces like getOne/list — the stored faceCount goes stale
     // as soon as an asset is trashed/deleted, so PATCH must not echo it.
-    updated!.faceCount = await countLiveFaces(this.faceRepo, id, userId);
-    return this.toListItem(updated!);
+    person.faceCount = await countLiveFaces(this.faceRepo, id, userId);
+    return this.toListItem(person);
   }
 
   // ponytail: worker cluster job applies its whole plan atomically; re-running after a success is a
@@ -209,9 +191,6 @@ export class PersonsService {
       userId: person.userId,
       name: person.name,
       coverFaceId: person.coverFaceId,
-      coverFaceUrl: person.coverFaceId
-        ? `/api/v1/faces/${person.coverFaceId}/thumb?userId=${person.userId}`
-        : null,
       clusterLabel: person.clusterLabel,
       faceCount: person.faceCount,
       createdAt:

@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { FaUsers, FaTrash, FaCopy, FaCheck, FaPhotoFilm, FaImage, FaVideo } from 'react-icons/fa6';
-import { RequireAuth } from '../../components/RequireAuth';
 import { AppShell } from '../../components/AppShell';
 import { useConfirm } from '../../components/ConfirmProvider';
 import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews';
@@ -161,10 +160,8 @@ function SharedContent() {
 
 export default function SharedPage() {
   return (
-    <RequireAuth>
-      <AppShell>
-        <SharedContent />
-      </AppShell>
-    </RequireAuth>
+    <AppShell>
+      <SharedContent />
+    </AppShell>
   );
 }

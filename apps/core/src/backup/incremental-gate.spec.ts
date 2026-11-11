@@ -52,7 +52,7 @@ function makeProgressService(user: User | null, run: unknown = null) {
   const runs = { findOne: vi.fn().mockResolvedValue(run) };
   // ponytail: progress transitions need no S3/DB — every other dep is nil and
   // only the users/runs repos are faked, so this stays a pure unit spec (no
-  // testcontainers); full backupUser runs stay in test/integration/user-backup
+  // testcontainers); full backup runs stay in test/integration/user-backup
   const nil = undefined as never;
   const svc = new UserBackupService(
     nil,

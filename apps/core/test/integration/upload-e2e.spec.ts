@@ -113,7 +113,7 @@ async function writeVideoFixture(
     ...(opts.withAudio ? ['-c:a', 'aac', '-t', '0.2'] : []),
     path,
   ];
-  await runFfmpeg(args, { timeoutMs: 30_000 });
+  await runFfmpeg(args, 30_000);
 }
 
 // ponytail: same shape a real detection has (box in resized coords + real embedding), but the

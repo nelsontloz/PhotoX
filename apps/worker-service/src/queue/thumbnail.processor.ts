@@ -176,8 +176,6 @@ export function thumbnailProcessor({
 
   return {
     queue: 'process-thumbnail',
-    logger,
-    listening: 'Thumbnail processor listening for jobs',
     run: async (job) => {
       await runAssetFileJob({ core, storage, logger }, job, {
         queue: 'process-thumbnail',
@@ -185,7 +183,6 @@ export function thumbnailProcessor({
         label: 'thumbnail',
         failureLabel: 'Thumbnail',
         detail: (data) => `size=${data.size}`,
-        missingModelMarkers: [],
         // video thumbs wait for the metadata job's orientation/duration
         beforeBody: async ({ data, record, asset }) => {
           if (

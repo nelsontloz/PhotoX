@@ -92,7 +92,6 @@ export class FakeCoreClient {
   readonly calls: CallRecord[] = [];
   readonly thumbnails: (RegisterThumbnailInput & { assetId: string })[] = [];
   readonly faces = new Map<string, DetectedFaceInput[]>();
-  readonly deleteFacesCalls: string[] = [];
   readonly clusterFaces: ClusterFace[] = [];
   readonly applyClustersCalls: ApplyClustersPayload[] = [];
   dedupeRegistrations = false;
@@ -111,7 +110,6 @@ export class FakeCoreClient {
     this.calls.length = 0;
     this.thumbnails.length = 0;
     this.faces.clear();
-    this.deleteFacesCalls.length = 0;
     this.clusterFaces.length = 0;
     this.applyClustersCalls.length = 0;
     this.registeredByChecksum.clear();
@@ -243,20 +241,6 @@ export class FakeCoreClient {
     return Promise.resolve();
   }
 
-  deleteAssetFaces(
-    userId: string,
-    assetId: string,
-    binding?: JobBinding,
-  ): Promise<{ deleted: number }> {
-    this.calls.push({ method: 'deleteAssetFaces', args: [assetId], binding });
-    const err = this.assetError(userId, assetId);
-    if (err) return Promise.reject(err);
-    const deleted = this.faces.get(assetId)?.length ?? 0;
-    this.faces.delete(assetId);
-    this.deleteFacesCalls.push(assetId);
-    return Promise.resolve({ deleted });
-  }
-
   getFacesForCluster(userId: string, binding?: JobBinding): Promise<ClusterFace[]> {
     this.calls.push({ method: 'getFacesForCluster', args: [userId], binding });
     return Promise.resolve(this.clusterFaces.map((f) => ({ ...f })));
@@ -299,11 +283,6 @@ export class FakeCoreClient {
   pruneEmptyPersons(userId: string, binding?: JobBinding): Promise<{ deleted: number }> {
     this.calls.push({ method: 'pruneEmptyPersons', args: [userId], binding });
     return Promise.resolve({ deleted: 0 });
-  }
-
-  purgeUser(userId: string, backupPrefix: string, binding?: JobBinding): Promise<void> {
-    this.calls.push({ method: 'purgeUser', args: [userId, backupPrefix], binding });
-    return Promise.resolve();
   }
 
   private assignClusterFace(faceId: string, personId: string): void {

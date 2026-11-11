@@ -14,8 +14,6 @@ export function embeddingProcessor({
 
   return {
     queue: 'process-embeddings',
-    logger,
-    listening: 'Embedding processor listening for jobs',
     run: async (job) => {
       await runAssetFileJob({ core, storage, logger }, job, {
         queue: 'process-embeddings',

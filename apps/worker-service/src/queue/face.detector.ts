@@ -1,7 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import sharp from 'sharp';
 import { resolveFaceDetectorModelPath } from '@photox/shared-config';
-import { SCRFD_INPUT_SIZE, decodeScrfdOutputs, scrfdPreprocess } from './scrfd.decode';
+import { SCRFD_INPUT_SIZE, decodeScrfdOutputs } from './scrfd.decode';
+import { toNchw } from './nchw';
 import { lazyOnce, loadSession } from './model-loader';
 import { FaceEmbedderService, alignFaceCrop, type RawImage } from './face.embedder';
 import type * as ort from 'onnxruntime-node';
@@ -121,12 +122,8 @@ export class FaceDetectorService implements OnModuleInit {
     const { Tensor } = await import('onnxruntime-node');
     const tensor = new Tensor(
       'float32',
-      scrfdPreprocess({
-        data: letterboxed,
-        width: SCRFD_INPUT_SIZE,
-        height: SCRFD_INPUT_SIZE,
-        channels,
-      }),
+      // InsightFace normalization: (x - 127.5) / 128 into CHW float32
+      toNchw(letterboxed, SCRFD_INPUT_SIZE, SCRFD_INPUT_SIZE, 127.5, 128),
       [1, 3, SCRFD_INPUT_SIZE, SCRFD_INPUT_SIZE],
     );
 
@@ -140,8 +137,6 @@ export class FaceDetectorService implements OnModuleInit {
     return decodeScrfdOutputs(tensors, {
       scaleX: meta.width / scaled.info.width,
       scaleY: meta.height / scaled.info.height,
-      offsetX: 0,
-      offsetY: 0,
     }).map((det) => ({
       box: det.box,
       score: det.score,
