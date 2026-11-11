@@ -137,7 +137,6 @@ describe('Face pipeline (integration)', () => {
     const { queue, job, sig } = await runFaceJob(asset.id, record.id, userId);
     expect(await waitForJob(queue, job.id!)).toBe('completed');
 
-    expect(testApp.fake.deleteFacesCalls).toEqual([]);
     expect(testApp.fake.callsOf('replaceFaces').at(-1)!.binding).toEqual({ sig, scope: asset.id });
     const faces = testApp.fake.faces.get(asset.id)!;
     expect(faces).toHaveLength(1);

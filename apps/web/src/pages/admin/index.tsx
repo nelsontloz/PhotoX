@@ -8,7 +8,6 @@ import {
   FaHardDrive,
   FaUserShield,
 } from 'react-icons/fa6';
-import { RequireAuth } from '../../components/RequireAuth';
 import { useAuthStore } from '../../store/auth-store';
 import { AppShell, useScrollContainer } from '../../components/AppShell';
 import { LibraryStatsSection } from './library-stats';
@@ -219,15 +218,11 @@ export function AdminPageContent() {
 
 export default function AdminPage() {
   const user = useAuthStore((s) => s.user);
-  return (
-    <RequireAuth>
-      {user?.role !== 'admin' ? (
-        <Navigate to="/" replace />
-      ) : (
-        <AppShell>
-          <AdminPageContent />
-        </AppShell>
-      )}
-    </RequireAuth>
+  return user?.role !== 'admin' ? (
+    <Navigate to="/" replace />
+  ) : (
+    <AppShell>
+      <AdminPageContent />
+    </AppShell>
   );
 }

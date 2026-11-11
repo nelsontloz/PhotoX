@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
 import '../../src/app.css';
 import { buildBuckets, type TimelineItem } from '../../src/lib/timelineLayout';
@@ -24,12 +24,6 @@ const FIXTURE: TimelineItem[] = [
   { t: '2026-02-27T12:00:00', w: 1920, h: 1080 },
   { t: '2026-02-10T12:00:00', w: 8000, h: 1000 },
 ];
-
-// the layout endpoint is the hook's only network call
-vi.mock('../../src/api/assets', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/api/assets')>();
-  return { ...actual, getAssetLayout: async () => ({ items: FIXTURE }) };
-});
 
 // Fixed column width → deterministic row breaking. Browser viewport is 1024px (config), so the
 // `width < 40rem` media query keeps `--row-height` at its desktop value (200px).

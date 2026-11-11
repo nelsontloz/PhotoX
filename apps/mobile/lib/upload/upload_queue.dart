@@ -59,12 +59,6 @@ class QueueStats {
   @override
   int get hashCode =>
       Object.hash(pending, uploaded, duplicate, failed, photos, videos);
-
-  @override
-  String toString() =>
-      'QueueStats(pending: $pending, uploaded: $uploaded, '
-      'duplicate: $duplicate, failed: $failed, photos: $photos, '
-      'videos: $videos)';
 }
 
 /// Persistence facade over [AppDatabase] used by the upload pipeline.

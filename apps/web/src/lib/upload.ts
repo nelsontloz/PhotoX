@@ -130,7 +130,7 @@ async function processQueue(ids: string[]): Promise<void> {
             .setStatus(id, 'uploading', { localThumbUrl: URL.createObjectURL(thumbBlob) });
         }
 
-        await uploadFile(file, (pct) => useUploadStore.getState().setProgress(id, pct), item.kind);
+        await uploadFile(file, (pct) => useUploadStore.getState().setProgress(id, pct));
         useUploadStore.getState().setStatus(id, 'done');
         dropRefs(id);
       } catch (err) {

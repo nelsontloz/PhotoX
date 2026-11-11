@@ -4,6 +4,7 @@ import { SEARCH_EMBEDDING_MODEL } from '@photox/shared-types';
 import { Queue, type JobsOptions } from 'bullmq';
 import Redis from 'ioredis';
 import { createHmac } from 'node:crypto';
+import { errorMessage } from '../common/errors';
 
 // ponytail: one table for the identical asset job wrappers; jobId prefixes are the dedup
 // contract — `embed-` also pins the model so a switch never collides with the old model's job
@@ -75,28 +76,8 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
       );
       return true;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Failed to enqueue ${queueName} job: ${msg}`);
+      this.logger.error(`Failed to enqueue ${queueName} job: ${errorMessage(err)}`);
       return false;
-    }
-  }
-
-  /**
-   * State snapshot for polling routes: the job's state + payload, or null when the job is gone
-   * or Redis never answers (a dead Redis must not hang the poll).
-   */
-  async getJobSnapshot(
-    queueName: string,
-    jobId: string,
-  ): Promise<{ state: string; data: unknown } | null> {
-    try {
-      const job = await this.withTimeout(this.getQueue(queueName).getJob(jobId));
-      if (!job) return null;
-      return { state: await this.withTimeout(job.getState()), data: job.data };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`Failed to read ${queueName} job ${jobId}: ${msg}`);
-      return null;
     }
   }
 

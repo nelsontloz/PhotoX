@@ -54,18 +54,15 @@ describe('assets layout', () => {
     const otherAsset = await seedAsset(t, other.id, otherFile.id);
     await t.assetRepo.update(otherAsset.id, { takenAt: new Date('2024-05-01T00:00:00.000Z') });
 
-    const res = await request(apiServer(t)).get('/api/v1/assets/layout').set(t.authHeader(token));
+    const items = await wholeLayout(t, token);
 
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({
-      items: [
-        { t: '2024-03-02T10:00:00.000Z', w: 4032, h: 3024 },
-        { t: '2024-01-05T08:30:00.000Z', w: 1, h: 1 },
-      ],
-    });
+    expect(items).toEqual([
+      { t: '2024-03-02T10:00:00.000Z', w: 4032, h: 3024 },
+      { t: '2024-01-05T08:30:00.000Z', w: 1, h: 1 },
+    ]);
   });
 
-  it('revalidates with ETag/304 and tiebreaks equal timestamps by newest upload', async () => {
+  it('moves the touched window version and tiebreaks equal timestamps by newest upload', async () => {
     const user = await seedUser(t);
     const token = t.signToken({ id: user.id, email: user.email, role: user.role });
 
@@ -77,27 +74,14 @@ describe('assets layout', () => {
       height: 3024,
     });
 
-    const first = await request(apiServer(t)).get('/api/v1/assets/layout').set(t.authHeader(token));
-    expect(first.status).toBe(200);
-    expect(first.headers.etag).toMatch(/^"layout-\d+-\d+-\d+-\d+"$/);
-    expect(first.headers['cache-control']).toBe('private, no-cache');
-    const firstEtag = first.headers.etag!;
+    const before = await monthsOf(t, token);
+    const marchVersion = before.get('2024-03')?.version;
 
-    const revalidated = await request(apiServer(t))
-      .get('/api/v1/assets/layout')
-      .set(t.authHeader(token))
-      .set('If-None-Match', firstEtag);
-    expect(revalidated.status).toBe(304);
-    expect(revalidated.text).toBe('');
-
-    // any layout-visible mutation bumps updatedAt → old ETag no longer matches
+    // any layout-visible mutation bumps updatedAt → the March window version moves
+    await tick();
     await t.assetRepo.update(withDims.id, { width: 1000 });
-    const mutated = await request(apiServer(t))
-      .get('/api/v1/assets/layout')
-      .set(t.authHeader(token))
-      .set('If-None-Match', firstEtag);
-    expect(mutated.status).toBe(200);
-    expect(mutated.headers.etag).not.toBe(firstEtag);
+    const after = await monthsOf(t, token);
+    expect(after.get('2024-03')?.version).not.toBe(marchVersion);
 
     // tiebreak: equal effective timestamps fall back to newest uploadedAt first
     const olderFile = await seedFile(t, user.id);
@@ -116,10 +100,7 @@ describe('assets layout', () => {
       newer.id,
     ]);
 
-    const tied = await request(apiServer(t)).get('/api/v1/assets/layout').set(t.authHeader(token));
-    expect(tied.status).toBe(200);
-    const tiedBody = tied.body as { items: { t: string; w: number; h: number }[] };
-    const tiedItems = tiedBody.items.filter((i) => i.t === sameTaken.toISOString());
+    const tiedItems = (await wholeLayout(t, token)).filter((i) => i.t === sameTaken.toISOString());
     expect(tiedItems).toEqual([
       { t: sameTaken.toISOString(), w: 20, h: 1 },
       { t: sameTaken.toISOString(), w: 10, h: 1 },
@@ -183,25 +164,14 @@ describe('assets layout', () => {
       }),
     );
 
-    const filtered = await request(apiServer(t))
-      .get('/api/v1/assets/layout')
-      .query({ personId: person.id })
-      .set(t.authHeader(token));
-    expect(filtered.status).toBe(200);
-    expect(filtered.body).toEqual({
-      items: [{ t: '2024-03-02T10:00:00.000Z', w: 4032, h: 3024 }],
-    });
+    const filtered = await wholeLayout(t, token, { personId: person.id });
+    expect(filtered).toEqual([{ t: '2024-03-02T10:00:00.000Z', w: 4032, h: 3024 }]);
 
-    const all = await request(apiServer(t)).get('/api/v1/assets/layout').set(t.authHeader(token));
-    expect(all.status).toBe(200);
-    expect((all.body as { items: unknown[] }).items).toHaveLength(2);
+    const all = await wholeLayout(t, token);
+    expect(all).toHaveLength(2);
 
-    const foreign = await request(apiServer(t))
-      .get('/api/v1/assets/layout')
-      .query({ personId: otherPerson.id })
-      .set(t.authHeader(token));
-    expect(foreign.status).toBe(200);
-    expect(foreign.body).toEqual({ items: [] });
+    const foreign = await wholeLayout(t, token, { personId: otherPerson.id });
+    expect(foreign).toEqual([]);
   });
 
   it('scopes layout to favorites and to an album', async () => {
@@ -240,30 +210,17 @@ describe('assets layout', () => {
       t.albumAssetRepo.create({ albumId: otherAlbum.id, assetId: otherAsset.id }),
     );
 
-    const favs = await request(apiServer(t))
-      .get('/api/v1/assets/layout')
-      .query({ favorite: true })
-      .set(t.authHeader(token));
-    expect(favs.status).toBe(200);
-    expect(favs.body).toEqual({ items: [{ t: '2024-03-02T10:00:00.000Z', w: 4032, h: 3024 }] });
+    const favs = await wholeLayout(t, token, { favorite: 'true' });
+    expect(favs).toEqual([{ t: '2024-03-02T10:00:00.000Z', w: 4032, h: 3024 }]);
 
-    const inAlbum = await request(apiServer(t))
-      .get('/api/v1/assets/layout')
-      .query({ albumId: album.id })
-      .set(t.authHeader(token));
-    expect(inAlbum.status).toBe(200);
-    expect(inAlbum.body).toEqual({ items: [{ t: '2024-02-01T00:00:00.000Z', w: 1, h: 1 }] });
+    const inAlbum = await wholeLayout(t, token, { albumId: album.id });
+    expect(inAlbum).toEqual([{ t: '2024-02-01T00:00:00.000Z', w: 1, h: 1 }]);
 
-    const all = await request(apiServer(t)).get('/api/v1/assets/layout').set(t.authHeader(token));
-    expect(all.status).toBe(200);
-    expect((all.body as { items: unknown[] }).items).toHaveLength(3);
+    const all = await wholeLayout(t, token);
+    expect(all).toHaveLength(3);
 
-    const foreign = await request(apiServer(t))
-      .get('/api/v1/assets/layout')
-      .query({ albumId: otherAlbum.id })
-      .set(t.authHeader(token));
-    expect(foreign.status).toBe(200);
-    expect(foreign.body).toEqual({ items: [] });
+    const foreign = await wholeLayout(t, token, { albumId: otherAlbum.id });
+    expect(foreign).toEqual([]);
   });
 
   it('groups month windows by the requested timezone', async () => {
@@ -528,7 +485,6 @@ describe('assets layout', () => {
     expect(first.status).toBe(200);
     expect(first.headers['cache-control']).toBe('private, no-cache');
     expect(first.headers.vary).toBe('Authorization');
-    expect(first.headers.etag).toBeUndefined();
     expect(first.body).toMatchObject({
       from: from.toISOString(),
       to: to.toISOString(),
@@ -613,6 +569,40 @@ async function monthsOf(
   expect(res.status).toBe(200);
   const body = res.body as { months: MonthWindow[] };
   return new Map(body.months.map((m) => [m.key, m]));
+}
+
+interface LayoutItem {
+  t: string;
+  w: number;
+  h: number;
+}
+
+/**
+ * Whole-library layout in timeline order: `/assets/layout` only serves one window page, so read
+ * the month index and walk every window's pages, concatenating the items.
+ */
+async function wholeLayout(
+  t: ApiTestApp,
+  token: string,
+  filters: Record<string, string> = {},
+): Promise<LayoutItem[]> {
+  const windows = [...(await monthsOf(t, token, filters)).values()];
+  const items: LayoutItem[] = [];
+  for (const window of windows) {
+    let offset = 0;
+    for (;;) {
+      const res = await request(apiServer(t))
+        .get('/api/v1/assets/layout')
+        .query({ ...filters, from: window.from, to: window.to, offset, limit: 2000 })
+        .set(t.authHeader(token));
+      expect(res.status).toBe(200);
+      const body = res.body as { items: LayoutItem[]; nextOffset: number | null };
+      items.push(...body.items);
+      if (body.nextOffset === null) break;
+      offset = body.nextOffset;
+    }
+  }
+  return items;
 }
 
 // versions carry millisecond timestamps; mutations that reuse the same millisecond are invisible

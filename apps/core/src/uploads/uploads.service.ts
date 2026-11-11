@@ -84,7 +84,6 @@ function partConflictError(message: string): ConflictException {
 
 // what a locked complete() decided to do once the session row was inspected
 interface CompletePlan {
-  kind: 'replay' | 'fresh';
   fileId: string;
   assetId: string;
   assetKind: 'photo' | 'video';
@@ -533,7 +532,6 @@ export class UploadsService {
             { status: 'assembled', completedFileId: record.id, completedAssetId: existing.id },
           );
           return {
-            kind: 'replay',
             fileId: record.id,
             assetId: existing.id,
             assetKind,
@@ -556,7 +554,6 @@ export class UploadsService {
         { status: 'assembled', completedFileId: record.id, completedAssetId: asset.id },
       );
       return {
-        kind: 'fresh',
         fileId: record.id,
         assetId: asset.id,
         assetKind,

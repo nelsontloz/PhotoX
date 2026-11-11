@@ -19,7 +19,6 @@ class AssetCandidate {
     required this.sizeBytes,
     this.takenAt,
     this.modifiedAt,
-    this.relativePath,
     this.width,
     this.height,
     this.durationSeconds,
@@ -49,9 +48,6 @@ class AssetCandidate {
 
   /// Last modification time reported by the platform library.
   final DateTime? modifiedAt;
-
-  /// Path relative to the platform library root, when available.
-  final String? relativePath;
 
   /// Pixel width reported by the platform. Display-only, the queue ignores it.
   final int? width;

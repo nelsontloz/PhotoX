@@ -28,8 +28,6 @@ export function userDeleteProcessor({
 
   return {
     queue: USER_DELETE_QUEUE,
-    logger,
-    listening: 'User-delete processor listening for jobs',
     run: async (job) => {
       const data = parseJobData(userDeleteJobSchema, job.data, USER_DELETE_QUEUE);
       const binding = bindingOf(data);

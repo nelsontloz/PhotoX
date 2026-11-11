@@ -111,15 +111,6 @@ class AppSettings {
       folderAlbums.entries.map((entry) => Object.hash(entry.key, entry.value)),
     ),
   );
-
-  @override
-  String toString() =>
-      'AppSettings(wifiOnly: $wifiOnly, chargingOnly: $chargingOnly, '
-      'includeVideos: $includeVideos, '
-      'apiBaseUrl: $apiBaseUrl, paused: $paused, '
-      'uploadFolderIds: $uploadFolderIds, '
-      'uploadAllFolders: $uploadAllFolders, '
-      'folderAlbums: $folderAlbums)';
 }
 
 /// Persists [AppSettings] in the drift [KeyValues] table.

@@ -167,7 +167,6 @@ export class SharesService {
 
     if (share.kind === 'album') {
       if (!share.album) throw new NotFoundException('Share not found');
-      const shareDto = await this.toAlbumDto(share, share.album);
       return {
         kind: 'album',
         share: this.toPublicShare(share),
@@ -175,7 +174,7 @@ export class SharesService {
           id: share.album.id,
           name: share.album.name,
           description: share.album.description,
-          assetCount: shareDto.albumAssetCount,
+          assetCount: await this.countAlbumAssets(share.album.id),
         },
       };
     }

@@ -6,7 +6,6 @@ import { ViewerActions } from './ViewerActions';
 import { useAssetMedia } from './useAssetMedia';
 import { useDetections } from './useDetections';
 import { useAssetDuplicates, useSimilarAssets } from './useRelatedAssets';
-import { useViewerKeyboard } from './useViewerKeyboard';
 import { ViewerMedia } from './ViewerMedia';
 import { ViewerInfoPanel } from './ViewerInfoPanel';
 import { ViewerRelatedTray } from './ViewerRelatedTray';
@@ -68,7 +67,16 @@ export function AssetViewer({
     };
   }, [asset]);
   const { imageUrl, videoPosterUrl, placeholderUrl, loading } = useAssetMedia(currentAsset);
-  useViewerKeyboard({ onClose, onPrev, onNext, hasPrev, hasNext });
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      else if (e.key === 'ArrowLeft' && hasPrev && onPrev) onPrev();
+      else if (e.key === 'ArrowRight' && hasNext && onNext) onNext();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose, onPrev, onNext, hasPrev, hasNext]);
 
   useEffect(() => {
     const prev = document.body.style.overflow;

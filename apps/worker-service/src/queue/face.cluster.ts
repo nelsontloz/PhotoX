@@ -349,8 +349,6 @@ export function faceClusterProcessor({
 
   return {
     queue: 'process-faces-cluster',
-    logger,
-    listening: 'Face cluster processor listening for jobs',
     run: async (job) => {
       const { userId, sig } = parseJobData(clusterJobSchema, job.data, 'process-faces-cluster');
       // user-scoped job: the scope is the sub itself, so the guard resolves it from the header

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { FaMagnifyingGlass } from 'react-icons/fa6';
-import { RequireAuth } from '../../components/RequireAuth';
 import { AppShell } from '../../components/AppShell';
 import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews';
 import { GalleryItem } from '../../components/GalleryItem';
@@ -107,10 +106,7 @@ function SearchContent() {
         onTrash={() => {
           void nav.trash();
         }}
-        onToggleFavorite={(nextValue) => {
-          const cur = nav.selected;
-          if (cur) void nav.toggleFavorite(cur.id, nextValue);
-        }}
+        onToggleFavorite={(nextValue) => void nav.toggleSelectedFavorite(nextValue)}
         onAddToAlbum={() => setPickerOpen(true)}
         siblingAssets={items}
         onSelectSibling={(asset) => nav.open(asset)}
@@ -123,10 +119,8 @@ function SearchContent() {
 
 export default function SearchPage() {
   return (
-    <RequireAuth>
-      <AppShell>
-        <SearchContent />
-      </AppShell>
-    </RequireAuth>
+    <AppShell>
+      <SearchContent />
+    </AppShell>
   );
 }

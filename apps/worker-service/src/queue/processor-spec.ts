@@ -1,4 +1,3 @@
-import type { Logger } from '@nestjs/common';
 import type { Job, WorkerOptions } from 'bullmq';
 import type { LocalStorageService } from '@photox/shared-config';
 import type { BullMqService } from './bullmq.service';
@@ -24,8 +23,6 @@ export interface ProcessorDeps {
 // one queue consumer's wiring: what ProcessorsService's init loop registers
 export interface ProcessorSpec<T = never> {
   queue: string;
-  logger: Logger;
-  listening: string;
   workerOptions?: Partial<WorkerOptions>;
   run: (job: Job<T>) => Promise<void>;
 }

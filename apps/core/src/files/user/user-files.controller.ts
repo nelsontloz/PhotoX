@@ -25,7 +25,7 @@ import { randomUUID } from 'crypto';
 import { tmpdir } from 'os';
 import multer from 'multer';
 import { CurrentUserId } from '../../auth/jwt-auth.guard';
-import { UserFilesService, type UploadedDiskFile } from './user-files.service';
+import { UserFilesService, type OriginalFileInput } from './user-files.service';
 import { UploadFileBodyDto } from './dto/upload-file.body.dto';
 import { CheckFilesExistsBodyDto } from './dto/check-files-exists.body.dto';
 import { serveFileBytes } from '../streaming.util';
@@ -52,7 +52,6 @@ export class UserFilesController {
       required: ['file'],
       properties: {
         file: { type: 'string', format: 'binary' },
-        kind: { type: 'string', enum: ['photo', 'video'] },
         title: { type: 'string', maxLength: 255 },
         description: { type: 'string', maxLength: 2000 },
         takenAt: { type: 'string', format: 'date-time' },
@@ -67,7 +66,7 @@ export class UserFilesController {
   @ApiResponse({ status: 503, description: 'Failed to enqueue background processing jobs' })
   async upload(
     @CurrentUserId() userId: string,
-    @UploadedFile() file: UploadedDiskFile,
+    @UploadedFile() file: OriginalFileInput,
     @Body() body: UploadFileBodyDto,
   ) {
     return this.userFilesService.upload(userId, file, body);

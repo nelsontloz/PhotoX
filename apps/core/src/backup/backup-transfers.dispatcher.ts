@@ -8,15 +8,12 @@ import {
   type TransferKind,
 } from './backup-transfer.constants';
 import { UserBackupService } from './user-backup.service';
+import { errorMessage } from '../common/errors';
 
 const DISPATCH_LOCKS: Record<TransferKind, number> = {
   backup: BACKUP_DISPATCH_LOCK_KEY,
   restore: RESTORE_DISPATCH_LOCK_KEY,
 };
-
-function messageOf(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
 
 /**
  * Producer half of the backup/restore queues. One tick reconciles crash leftovers, then hands a
@@ -55,7 +52,7 @@ export class BackupTransfersDispatcher implements OnModuleInit, OnModuleDestroy 
       try {
         await this.backups.reconcileTransfers();
       } catch (err) {
-        this.logger.error(`[backup-transfers] reconcile failed: ${messageOf(err)}`);
+        this.logger.error(`[backup-transfers] reconcile failed: ${errorMessage(err)}`);
       } finally {
         this.reconciling = false;
       }
@@ -80,7 +77,7 @@ export class BackupTransfersDispatcher implements OnModuleInit, OnModuleDestroy 
         await runner.query('SELECT pg_advisory_unlock($1)', [DISPATCH_LOCKS[kind]]);
       }
     } catch (err) {
-      this.logger.error(`[backup-transfers] ${kind} dispatch failed: ${messageOf(err)}`);
+      this.logger.error(`[backup-transfers] ${kind} dispatch failed: ${errorMessage(err)}`);
     } finally {
       await runner.release();
       this.ticking.delete(kind);

@@ -75,14 +75,12 @@ function makeService(opts?: {
   user?: MockUser | null;
   adminCount?: number;
   enqueueResult?: boolean;
-  job?: { state: string; data: unknown } | null;
   progress?: { jobId: string; state: 'completed' } | undefined;
   /** rows the case-insensitive holder lookup may match (the query excludes the target id) */
   emailHolders?: { id: string; email: string }[];
   saveError?: Error;
   revokeError?: Error;
   moveResult?: AdminUserBackupSync;
-  moveError?: Error;
 }) {
   // transaction-scoped EntityManager fake: the service must save through the SAME
   // manager it runs the revocation on, and a rejection must propagate to the caller
@@ -127,7 +125,6 @@ function makeService(opts?: {
   };
   const bullMq = {
     enqueue: vi.fn().mockResolvedValue(opts?.enqueueResult ?? true),
-    getJobSnapshot: vi.fn().mockResolvedValue(opts?.job === undefined ? null : opts.job),
   };
   const deletes = {
     clearFinishedJob: vi.fn().mockResolvedValue(false),
@@ -148,11 +145,7 @@ function makeService(opts?: {
     ),
   };
   const backups = {
-    moveBackupPrefix: vi.fn(() =>
-      opts?.moveError
-        ? Promise.reject(opts.moveError)
-        : Promise.resolve(opts?.moveResult ?? DEFAULT_MOVE),
-    ),
+    moveBackupPrefix: vi.fn(() => Promise.resolve(opts?.moveResult ?? DEFAULT_MOVE)),
   };
   const service = new AdminService(
     userRepo as never,
@@ -302,22 +295,12 @@ describe('AdminService.getUserDeleteStatus', () => {
     expect(res.backupPrefix).toBe(backupPrefix(TARGET_EMAIL, TARGET_ID));
   });
 
-  it('maps a live BullMQ job state', async () => {
-    const { service } = makeService({
-      user: targetUser,
-      job: { state: 'active', data: { backupPrefix: 'backups/kept/' } },
-    });
-    const res = await service.getUserDeleteStatus(TARGET_ID);
-    expect(res.state).toBe('active');
-    expect(res.backupPrefix).toBe('backups/kept/');
-  });
-
   it('404s for an unknown user with no recorded run', async () => {
     const { service } = makeService({ user: null });
     await expect(service.getUserDeleteStatus(TARGET_ID)).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('reports unknown for a live user with no job and no run', async () => {
+  it('reports unknown for a live user with no recorded run', async () => {
     const { service } = makeService({ user: targetUser });
     const res = await service.getUserDeleteStatus(TARGET_ID);
     expect(res.state).toBe('unknown');
@@ -495,29 +478,19 @@ describe('AdminService.updateUser', () => {
     expect(res.backup.synced).toBe(true);
   });
 
-  it('never fails the edit when the backup move throws', async () => {
+  it('never fails the edit when the backup move reports a failure', async () => {
     const user = makeUser();
-    const { service, backups } = makeService({ user, moveError: new Error('S3 down') });
+    const failedMove: AdminUserBackupSync = {
+      synced: false,
+      moved: false,
+      to: backupPrefix(TARGET_EMAIL, TARGET_ID),
+      error: 'S3 down',
+    };
+    const { service, backups } = makeService({ user, moveResult: failedMove });
     const res = await service.updateUser(TARGET_ID, { displayName: 'Renamed' }, ADMIN_ID);
     expect(backups.moveBackupPrefix).toHaveBeenCalled();
     expect(res.user.displayName).toBe('Renamed');
-    expect(res.backup.synced).toBe(false);
-    expect(res.backup.moved).toBe(false);
-    expect(res.backup.to).toBe(backupPrefix(TARGET_EMAIL, TARGET_ID));
-    expect(res.backup.error).toBe('S3 down');
-  });
-
-  it('never fails the edit when the fallback prefix computation itself throws', async () => {
-    // a blank email makes backupPrefix throw — the unguarded fallback used to turn
-    // the completed edit into a 500; it must degrade to `to: ''` instead
-    const { service, backups } = makeService({
-      user: makeUser({ email: '   ' }),
-      moveError: new Error('S3 down'),
-    });
-    const res = await service.updateUser(TARGET_ID, { displayName: 'Renamed' }, ADMIN_ID);
-    expect(backups.moveBackupPrefix).toHaveBeenCalled();
-    expect(res.user.displayName).toBe('Renamed');
-    expect(res.backup).toEqual({ synced: false, moved: false, to: '', error: 'S3 down' });
+    expect(res.backup).toEqual(failedMove);
   });
 });
 
@@ -536,14 +509,15 @@ describe('AdminService.syncUserBackup', () => {
     expect(res).toEqual(DEFAULT_MOVE);
   });
 
-  it('reports the failure instead of throwing when the move rejects', async () => {
-    const { service, backups } = makeService({ user: makeUser(), moveError: new Error('S3 down') });
-    await expect(service.syncUserBackup(TARGET_ID)).resolves.toEqual({
+  it('returns the move failure result instead of throwing', async () => {
+    const failedMove: AdminUserBackupSync = {
       synced: false,
       moved: false,
       to: backupPrefix(TARGET_EMAIL, TARGET_ID),
       error: 'S3 down',
-    });
+    };
+    const { service, backups } = makeService({ user: makeUser(), moveResult: failedMove });
+    await expect(service.syncUserBackup(TARGET_ID)).resolves.toEqual(failedMove);
     expect(backups.moveBackupPrefix).toHaveBeenCalled();
   });
 });

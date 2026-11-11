@@ -154,23 +154,6 @@ export class BackupController {
     return this.backups.getRunStatus(runId);
   }
 
-  @Post('backups/runs/:runId/retry')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Reset a failed/paused/cancelled run and process it again' })
-  @ApiResponse({ status: 200, description: 'Run status after the reset' })
-  @ApiResponse({ status: 409, description: 'Run is not retryable' })
-  async retryRun(@Param('runId', new ParseUUIDPipe()) runId: string): Promise<BackupRunStatus> {
-    return this.backups.retryRun(runId);
-  }
-
-  @Post('backups/runs/:runId/cancel')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Cancel a running/paused run (in-flight files finish)' })
-  @ApiResponse({ status: 200, description: 'Run status after cancellation' })
-  async cancelRun(@Param('runId', new ParseUUIDPipe()) runId: string): Promise<BackupRunStatus> {
-    return this.backups.cancelRun(runId);
-  }
-
   @Delete('backups')
   @ApiOperation({ summary: 'Delete one user backup from S3 (admin-only)' })
   @ApiResponse({ status: 200, description: 'Deleted backup prefix and object count' })

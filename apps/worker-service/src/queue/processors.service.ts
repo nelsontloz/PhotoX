@@ -70,7 +70,7 @@ export class ProcessorsService implements OnModuleInit {
       // one queue failing to start (e.g. a Redis hiccup) must not take the other seven down
       try {
         this.deps.bullMq.createWorker(spec.queue, spec.run, spec.workerOptions);
-        spec.logger.log(spec.listening);
+        this.logger.log(`${spec.queue} worker listening`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         this.logger.error(`Failed to start ${spec.queue} worker: ${message}`);

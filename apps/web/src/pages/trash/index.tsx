@@ -1,6 +1,5 @@
 import { useCallback, useState } from 'react';
 import { FaSpinner, FaTrash, FaTrashCan } from 'react-icons/fa6';
-import { RequireAuth } from '../../components/RequireAuth';
 import { AppShell } from '../../components/AppShell';
 import { useConfirm } from '../../components/ConfirmProvider';
 import { GalleryItem } from '../../components/GalleryItem';
@@ -130,10 +129,8 @@ function TrashContent() {
 
 export default function TrashPage() {
   return (
-    <RequireAuth>
-      <AppShell>
-        <TrashContent />
-      </AppShell>
-    </RequireAuth>
+    <AppShell>
+      <TrashContent />
+    </AppShell>
   );
 }

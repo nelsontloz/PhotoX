@@ -13,7 +13,6 @@ import { backupPrefix, normalizeEmail } from '@photox/shared-config';
 import type {
   AdminUserBackupSync,
   AdminUserDeleteResponse,
-  AdminUserDeleteState,
   AdminUserDeleteStatus,
   AdminUserListResponse,
   AdminUserRow,
@@ -38,29 +37,6 @@ interface ListAdminUsersParams {
   sortField: AdminUserSortField;
   sortDir: 'asc' | 'desc';
   role?: 'user' | 'admin';
-}
-
-/**
- * `backupPrefix` → `resolveBackupPrefix` → `loadEnv()` can throw (zod env error,
- * empty email/userId, empty userId). A fallback `to` must never turn an already
- * applied edit into a 500, so a failed computation degrades to `''`.
- */
-function safeBackupPrefix(email: string, userId: string): string {
-  try {
-    return backupPrefix(email, userId);
-  } catch {
-    return '';
-  }
-}
-
-/** Fallback sync result for a failed backup move; safeBackupPrefix keeps this non-throwing. */
-function backupSyncFailure(user: Pick<User, 'id' | 'email'>, err: unknown): AdminUserBackupSync {
-  return {
-    synced: false,
-    moved: false,
-    to: safeBackupPrefix(user.email, user.id),
-    error: err instanceof Error ? err.message : String(err),
-  };
 }
 
 @Injectable()
@@ -197,15 +173,7 @@ export class AdminService {
     // re-read so the response carries the post-revocation row (tokensValidAfter bump)
     const fresh = (await this.userRepo.findOne({ where: { id: user.id } })) ?? user;
 
-    let backup: AdminUserBackupSync;
-    try {
-      backup = await this.backups.moveBackupPrefix(fresh);
-    } catch (err) {
-      // never fail the edit on backup storage — the UI can retry the move.
-      // moveBackupPrefix itself never throws, but the fallback must not either:
-      // backupPrefix can throw (loadEnv/empty email), so compute `to` defensively.
-      backup = backupSyncFailure(fresh, err);
-    }
+    const backup = await this.backups.moveBackupPrefix(fresh);
 
     // never log the password value or any hash — field names only
     this.logger.log(`admin ${requesterId} updated user ${fresh.id}: ${changedFields.join(',')}`);
@@ -265,17 +233,12 @@ export class AdminService {
   /**
    * Idempotent "retry the backup move" for an account edit that could not reach S3.
    * moveBackupPrefix never throws: no existing prefix reports `{ synced: true }`, a
-   * storage failure reports `{ synced: false, error }` — and if it ever did throw,
-   * the retry endpoint reports the failure rather than 500ing.
+   * storage failure reports `{ synced: false, error }`.
    */
   async syncUserBackup(targetUserId: string): Promise<AdminUserBackupSync> {
     const user = await this.userRepo.findOne({ where: { id: targetUserId } });
     if (!user) throw new NotFoundException('User not found');
-    try {
-      return await this.backups.moveBackupPrefix(user);
-    } catch (err) {
-      return backupSyncFailure(user, err);
-    }
+    return this.backups.moveBackupPrefix(user);
   }
 
   /**
@@ -325,15 +288,12 @@ export class AdminService {
   }
 
   /**
-   * Pollable deletion status (the UI polls this): BullMQ job state when the job record
-   * exists, else the in-memory progress (covers failed jobs, which BullMQ drops via
-   * removeOnFail). Unknown users 404 unless a finished run is recorded (the user row
-   * is gone after a completed delete, so that state must stay readable).
+   * Pollable deletion status (the UI polls this): the durable `user_deletes` row, marked
+   * before the 202, survives a core restart mid-wipe and stays readable after the user
+   * row is gone. Unknown users 404 unless a finished run is recorded.
    */
   async getUserDeleteStatus(targetUserId: string): Promise<AdminUserDeleteStatus> {
     const jobId = userDeleteJobId(targetUserId);
-    // the durable row is the source of truth (it survives a core restart mid-wipe and stays
-    // readable after the user row is gone); the BullMQ snapshot only fills a legacy gap
     const progress = await this.deletes.getProgress(targetUserId);
     if (progress) {
       return {
@@ -349,25 +309,13 @@ export class AdminService {
       };
     }
 
-    const job = await this.bullMq.getJobSnapshot(USER_DELETE_QUEUE, jobId);
-    if (!job) {
-      const user = await this.userRepo.findOne({ where: { id: targetUserId } });
-      if (!user) throw new NotFoundException('User not found');
-      return {
-        jobId,
-        state: 'unknown',
-        backupKept: true,
-        backupPrefix: backupPrefix(user.email, user.id),
-      };
-    }
-
-    const data = job.data as { backupPrefix?: unknown } | null | undefined;
-    const fromData = typeof data?.backupPrefix === 'string' ? data.backupPrefix : undefined;
+    const user = await this.userRepo.findOne({ where: { id: targetUserId } });
+    if (!user) throw new NotFoundException('User not found');
     return {
       jobId,
-      state: mapJobState(job.state),
+      state: 'unknown',
       backupKept: true,
-      backupPrefix: fromData ?? (await this.prefixForLiveUser(targetUserId)),
+      backupPrefix: backupPrefix(user.email, user.id),
     };
   }
 
@@ -375,14 +323,4 @@ export class AdminService {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     return user ? backupPrefix(user.email, user.id) : '';
   }
-}
-
-function mapJobState(raw: string): AdminUserDeleteState {
-  if (raw === 'completed') return 'completed';
-  if (raw === 'failed') return 'failed';
-  if (raw === 'active') return 'active';
-  if (raw === 'delayed' || raw === 'waiting' || raw === 'prioritized' || raw === 'paused') {
-    return 'queued';
-  }
-  return 'unknown';
 }

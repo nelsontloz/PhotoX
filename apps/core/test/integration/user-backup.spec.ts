@@ -34,6 +34,8 @@ import { S3BackupService } from '../../src/backup/s3-backup.service';
 import {
   UserBackupService,
   buildFallbackEmail,
+  type BackupResult,
+  type RestoreResult,
   type UserBackupManifest,
 } from '../../src/backup/user-backup.service';
 import {
@@ -324,6 +326,39 @@ describe('user backup round-trip', () => {
     return jobs.map((j) => j.data as JobData).filter((d) => d.userId === userId);
   }
 
+  /**
+   * Drives the real ledger path (claim -> consume -> finalize) to a terminal run. The
+   * production executor is the queue pair; this is only its synchronous stand-in.
+   */
+  async function driveRun<T extends BackupResult | RestoreResult>(
+    runId: string,
+    label: string,
+  ): Promise<T> {
+    for (let pass = 0; pass < 200; pass++) {
+      const status = await svc.getRunStatus(runId);
+      if (status.state === 'completed') return status.result as T;
+      if (status.state !== 'running' && status.state !== 'finalizing') {
+        throw new Error(status.error ?? `${label} ${status.state}`);
+      }
+      if ((await svc.runTransfersOnce(true)) === 0) {
+        const after = await svc.getRunStatus(runId);
+        if (after.state === 'completed') return after.result as T;
+        throw new Error(after.error ?? `${label} stalled in ${after.state}`);
+      }
+    }
+    throw new Error(`${label} did not finish`);
+  }
+
+  async function runBackup(emailOrId: string): Promise<BackupResult> {
+    const { runId } = await svc.startBackup(emailOrId);
+    return driveRun<BackupResult>(runId, 'Backup');
+  }
+
+  async function runRestore(emailOrId: string, restoreEmail?: string): Promise<RestoreResult> {
+    const { runId } = await svc.startRestore(emailOrId, restoreEmail);
+    return driveRun<RestoreResult>(runId, 'Restore');
+  }
+
   it('backs up and restores one user via EMAIL with same UUIDs (M1/M2/M4)', async () => {
     const email = `backup-${randomUUID()}@example.com`;
     const user = await userRepo.save(
@@ -416,7 +451,7 @@ describe('user backup round-trip', () => {
     );
 
     // M1: EMAIL identifier (uppercased) — pre-fix this 500s on the uuid-typed lookup
-    const backed = await svc.backupUser(email.toUpperCase());
+    const backed = await runBackup(email.toUpperCase());
     expect(backed).toMatchObject({
       userId: user.id,
       files: 3,
@@ -433,7 +468,7 @@ describe('user backup round-trip', () => {
     await wipeUserData();
 
     // M4: RestoreResult records the window cleanup-orphans must stay paused across
-    const result = await svc.restoreUser(email.toUpperCase());
+    const result = await runRestore(email.toUpperCase());
     expect(result.userId).toBe(user.id);
     expect(result.email).toBe(email);
     expect(result.restoredFrom.emailAtBackup).toBe(email);
@@ -492,7 +527,7 @@ describe('user backup round-trip', () => {
     expect(thumbJobs.filter((d) => d.assetId === videoAsset.id)).toHaveLength(4);
 
     // M1: unknown email is a 404, never a uuid-typed 500 (QueryFailedError 22P02)
-    await expect(svc.backupUser('no-such-user@example.com')).rejects.toThrow(NotFoundException);
+    await expect(runBackup('no-such-user@example.com')).rejects.toThrow(NotFoundException);
   });
 
   // Regression: BullMQ dedups by jobId, so the deterministic restore jobIds of a first
@@ -545,7 +580,7 @@ describe('user backup round-trip', () => {
       }),
     );
 
-    await svc.backupUser(email);
+    await runBackup(email);
     await wipeUserData();
 
     // no media workers run in this app: boot trivial ones so the first restore's jobs
@@ -573,7 +608,7 @@ describe('user backup round-trip', () => {
         }),
     );
     try {
-      await svc.restoreUser(email);
+      await runRestore(email);
       for (const name of runnableQueues) {
         let runnable = 1;
         for (let i = 0; i < 300 && runnable > 0; i++) {
@@ -590,7 +625,7 @@ describe('user backup round-trip', () => {
     // so the second restore enqueues into ids that already exist
     await wipeUserData();
 
-    const second = await svc.restoreUser(email);
+    const second = await runRestore(email);
     expect(second.enqueued).toEqual({ metadata: 2, thumbnails: 8, videos: 1, faces: 1, ai: 2 });
 
     // every family must be runnable again: pre-fix each of these adds was rejected as
@@ -639,18 +674,18 @@ describe('user backup round-trip', () => {
 
     // per-file retries: exhaust the attempt budget so the run still fails and writes no manifest
     fake.failNextPuts = 10;
-    await expect(svc.backupUser(user.id)).rejects.toThrow('injected putFile failure');
+    await expect(runBackup(user.id)).rejects.toThrow('injected putFile failure');
     // manifest-last: the failed run leaves no live manifest over missing bytes
     expect([...fake.objects.keys()].some((k) => k.endsWith('manifest.json'))).toBe(false);
 
     fake.ops = [];
     fake.failNextPuts = 0;
-    const backed = await svc.backupUser(user.id);
+    const backed = await runBackup(user.id);
     expect(backed.files).toBe(2);
     expectManifestLast();
 
     await wipeUserData();
-    const restored = await svc.restoreUser(email);
+    const restored = await runRestore(email);
     expect(restored.files).toBe(2);
     for (const f of [a, b]) {
       const row = await fileRepo.findOneOrFail({ where: { id: f.record.id } });
@@ -745,7 +780,7 @@ describe('user backup round-trip', () => {
         isTrashed: false,
       }),
     );
-    await svc.backupUser(user.id);
+    await runBackup(user.id);
     const key = originalKey(email, user.id, photo.record.id, 'bin');
 
     await wipeUserData();
@@ -800,7 +835,7 @@ describe('user backup round-trip', () => {
         isTrashed: false,
       }),
     );
-    await svc.backupUser(user.id);
+    await runBackup(user.id);
     await wipeUserData();
 
     // Only the derivative family is refused: a blanket false also breaks the restore's own
@@ -877,7 +912,7 @@ describe('user backup round-trip', () => {
     const staleKey = `${backupPrefix(email, user.id)}originals/${randomUUID()}.webp`;
     fake.objects.set(staleKey, Buffer.from('stale-thumb-bytes'));
 
-    const backed = await svc.backupUser(user.id);
+    const backed = await runBackup(user.id);
     expect(backed.files).toBe(1);
     const putFiles = fake.ops.filter((o) => o.op === 'putFile');
     expect(putFiles).toHaveLength(1);
@@ -923,7 +958,7 @@ describe('user backup round-trip', () => {
       { mimeType: 'image/webp', originalName: 'thumb-sm.webp', purpose: 'original' },
     );
 
-    const backed = await svc.backupUser(user.id);
+    const backed = await runBackup(user.id);
     expect(backed.files).toBe(1);
 
     // splice a pre-fix derivative entry into the stored manifest plus its S3 bytes
@@ -961,7 +996,7 @@ describe('user backup round-trip', () => {
 
     await wipeUserData();
 
-    const restored = await svc.restoreUser(email);
+    const restored = await runRestore(email);
     expect(restored.files).toBe(1);
     const restoredOriginal = await fileRepo.findOneOrFail({ where: { id: original.record.id } });
     expect(await readFile(storage.pathFor(restoredOriginal.storageKey))).toEqual(original.bytes);
@@ -985,7 +1020,7 @@ describe('user backup round-trip', () => {
       }),
     );
     await seedOriginal(user.id, Buffer.from('status-bytes'));
-    await svc.backupUser(user.id);
+    await runBackup(user.id);
     expect((await svc.backupStatus(email)).exists).toBe(true);
 
     for (const key of [...fake.objects.keys()]) {
@@ -1018,12 +1053,12 @@ describe('user backup round-trip', () => {
 
     it('skips all uploads on an unchanged rerun (uploaded 0, empty prune)', async () => {
       const { user } = await seedUserWithFiles(2, 'skipall');
-      const first = await svc.backupUser(user.id);
+      const first = await runBackup(user.id);
       expect(first.uploaded).toBe(2);
       expect(first.skipped).toBe(0);
 
       fake.ops = [];
-      const second = await svc.backupUser(user.id);
+      const second = await runBackup(user.id);
       expect(second).toMatchObject({ files: 2, uploaded: 0, skipped: 2 });
       expect(fake.ops.filter((o) => o.op === 'putFile')).toHaveLength(0);
       expect(fake.ops.filter((o) => o.op === 'putObject')).toHaveLength(1);
@@ -1033,18 +1068,18 @@ describe('user backup round-trip', () => {
 
     it('uploads only new files on the next run (delta-only)', async () => {
       const { user } = await seedUserWithFiles(2, 'delta');
-      await svc.backupUser(user.id);
+      await runBackup(user.id);
 
       await seedOriginal(user.id, Buffer.from('delta-new-bytes'));
       fake.ops = [];
-      const second = await svc.backupUser(user.id);
+      const second = await runBackup(user.id);
       expect(second).toMatchObject({ files: 3, uploaded: 1, skipped: 2 });
       expect(fake.ops.filter((o) => o.op === 'putFile')).toHaveLength(1);
     });
 
     it('re-uploads when the checksum changes', async () => {
       const { user, seeded } = await seedUserWithFiles(2, 'checksum');
-      await svc.backupUser(user.id);
+      await runBackup(user.id);
 
       const target = seeded[0]!.record;
       const nextBytes = Buffer.from('checksum-changed-bytes');
@@ -1054,7 +1089,7 @@ describe('user backup round-trip', () => {
         checksumSha256: createHash('sha256').update(nextBytes).digest('hex'),
       });
       fake.ops = [];
-      const second = await svc.backupUser(user.id);
+      const second = await runBackup(user.id);
       expect(second).toMatchObject({ files: 2, uploaded: 1, skipped: 1 });
       const putKeys = fake.ops.filter((o) => o.op === 'putFile').map((o) => o.key);
       expect(putKeys).toHaveLength(1);
@@ -1063,36 +1098,36 @@ describe('user backup round-trip', () => {
 
     it('falls back to a full upload on a missing manifest', async () => {
       const { user } = await seedUserWithFiles(2, 'missing-manifest');
-      await svc.backupUser(user.id);
+      await runBackup(user.id);
 
       for (const key of [...fake.objects.keys()]) {
         if (key.endsWith('manifest.json')) fake.objects.delete(key);
       }
       fake.ops = [];
-      const second = await svc.backupUser(user.id);
+      const second = await runBackup(user.id);
       expect(second).toMatchObject({ files: 2, uploaded: 2, skipped: 0 });
     });
 
     it('falls back to a full upload on a corrupt manifest', async () => {
       const { user } = await seedUserWithFiles(2, 'corrupt-manifest');
-      await svc.backupUser(user.id);
+      await runBackup(user.id);
 
       const manifestKey = fake.ops.find((o) => o.key.endsWith('manifest.json'))!.key;
       fake.objects.set(manifestKey, Buffer.from('not-json{{{'));
       fake.ops = [];
-      const second = await svc.backupUser(user.id);
+      const second = await runBackup(user.id);
       expect(second).toMatchObject({ files: 2, uploaded: 2, skipped: 0 });
     });
 
     it('re-uploads S3-missing keys despite a manifest match', async () => {
       const { user } = await seedUserWithFiles(2, 's3missing');
-      await svc.backupUser(user.id);
+      await runBackup(user.id);
 
       const originalKeys = [...fake.objects.keys()].filter((k) => k.includes('/originals/'));
       expect(originalKeys).toHaveLength(2);
       fake.objects.delete(originalKeys[0]!);
       fake.ops = [];
-      const second = await svc.backupUser(user.id);
+      const second = await runBackup(user.id);
       expect(second).toMatchObject({ files: 2, uploaded: 1, skipped: 1 });
       expect(fake.ops.filter((o) => o.op === 'putFile').map((o) => o.key)).toEqual([
         originalKeys[0],
@@ -1101,14 +1136,14 @@ describe('user backup round-trip', () => {
 
     it('uploads all and skips prune when listKeys fails', async () => {
       const { user } = await seedUserWithFiles(1, 'listfail');
-      await svc.backupUser(user.id);
+      await runBackup(user.id);
       // second run would skip, but listing fails so every byte re-uploads
       fake.failListKeys = true;
       // stale key that prune would delete if listing worked
       const staleKey = `${backupPrefix((await userRepo.findOneOrFail({ where: { id: user.id } })).email, user.id)}originals/stale.webp`;
       fake.objects.set(staleKey, Buffer.from('stale'));
       fake.ops = [];
-      const second = await svc.backupUser(user.id);
+      const second = await runBackup(user.id);
       expect(second).toMatchObject({ files: 1, uploaded: 1, skipped: 0 });
       expect(fake.ops.filter((o) => o.op === 'deleteKey')).toHaveLength(0);
       expect(fake.objects.has(staleKey)).toBe(true);
@@ -1119,7 +1154,7 @@ describe('user backup round-trip', () => {
       const { user, seeded } = await seedUserWithFiles(2, 'rename');
       const oldEmail = user.email;
       const oldPrefix = backupPrefix(oldEmail, user.id);
-      await svc.backupUser(user.id);
+      await runBackup(user.id);
       expect([...fake.objects.keys()].some((k) => k.startsWith(oldPrefix))).toBe(true);
 
       const newEmail = `renamed-${randomUUID()}@example.com`;
@@ -1127,7 +1162,7 @@ describe('user backup round-trip', () => {
       const newPrefix = backupPrefix(newEmail, user.id);
       fake.ops = [];
 
-      const second = await svc.backupUser(user.id);
+      const second = await runBackup(user.id);
       expect(second.prefix).toBe(newPrefix);
       expect(second.uploaded).toBeLessThanOrEqual(1);
       expect(second.skipped).toBeGreaterThanOrEqual(1);
@@ -1174,7 +1209,7 @@ describe('user backup round-trip', () => {
         }),
       );
       await seedOriginal(u.id, Buffer.from(`overview-bytes-${email}`));
-      const res = await svc.backupUser(u.id);
+      const res = await runBackup(u.id);
       const manifestKey = `${res.prefix}manifest.json`;
       return { user: u, prefix: res.prefix, manifestKey };
     }
@@ -1269,14 +1304,14 @@ describe('user backup round-trip', () => {
         }),
       );
       await seedOriginal(u.id, Buffer.from(`collision-bytes-${email}`));
-      const res = await svc.backupUser(u.id);
+      const res = await runBackup(u.id);
       return { user: u, prefix: res.prefix };
     }
 
     it('throws 409 already-restored when the same userId is live', async () => {
       const email = `sameid-${randomUUID()}@example.com`;
       const { user } = await backupSingle(email);
-      const caught = await svc.restoreUser(user.id).catch((e: unknown) => e);
+      const caught = await runRestore(user.id).catch((e: unknown) => e);
       expect(caught).toBeInstanceOf(ConflictException);
       expect((caught as ConflictException).getStatus()).toBe(409);
       expect((caught as ConflictException).message).toContain('already-restored');
@@ -1291,7 +1326,7 @@ describe('user backup round-trip', () => {
       );
       rmSync(storageDir, { recursive: true, force: true });
       await storage.ensureDir();
-      const result = await svc.restoreUser(user.id);
+      const result = await runRestore(user.id);
       expect(result.userId).toBe(user.id);
       expect(result.email).toBe(email);
       expect(result.prefix).toBe(prefix);
@@ -1326,7 +1361,7 @@ describe('user backup round-trip', () => {
       );
       expect(other.id).not.toBe(origId);
 
-      const result = await svc.restoreUser(origId);
+      const result = await runRestore(origId);
       expect(result.userId).toBe(origId);
       expect(result.email).not.toBe(origEmail);
       expect(result.email).toMatch(/^restored-\d+-.*@example\.com$/);
@@ -1386,7 +1421,7 @@ describe('user backup round-trip', () => {
       );
 
       const requested = `requested-${randomUUID()}@example.com`;
-      const result = await svc.restoreUser(origId, requested.toUpperCase());
+      const result = await runRestore(origId, requested.toUpperCase());
       expect(result.userId).toBe(origId);
       expect(result.email).toBe(requested);
       // the snapshot was re-homed to the requested address; restoredFrom keeps the source
@@ -1431,7 +1466,7 @@ describe('user backup round-trip', () => {
       );
 
       fake.failNextCopies = 1;
-      const result = await svc.restoreUser(origId);
+      const result = await runRestore(origId);
       // the restore itself still succeeded under the fallback email
       expect(result.userId).toBe(origId);
       expect(result.email).toMatch(/^restored-\d+-.*@example\.com$/);
@@ -1464,9 +1499,7 @@ describe('user backup round-trip', () => {
         }),
       );
 
-      const caught = await svc
-        .restoreUser(origId, holderEmail.toUpperCase())
-        .catch((e: unknown) => e);
+      const caught = await runRestore(origId, holderEmail.toUpperCase()).catch((e: unknown) => e);
       expect(caught).toBeInstanceOf(ConflictException);
       expect((caught as ConflictException).getStatus()).toBe(409);
       expect((caught as ConflictException).message).toContain('email-taken');
@@ -1506,7 +1539,7 @@ describe('user backup round-trip', () => {
       );
       const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(fixedNow);
       try {
-        const result = await svc.restoreUser(origId);
+        const result = await runRestore(origId);
         expect(result.email).toBe(buildFallbackEmail(origEmail, fixedNow, 1));
       } finally {
         nowSpy.mockRestore();
@@ -1523,9 +1556,9 @@ describe('user backup round-trip', () => {
       );
       rmSync(storageDir, { recursive: true, force: true });
       await storage.ensureDir();
-      const first = await svc.restoreUser(origId);
+      const first = await runRestore(origId);
       expect(first.userId).toBe(origId);
-      const caught = await svc.restoreUser(origId).catch((e: unknown) => e);
+      const caught = await runRestore(origId).catch((e: unknown) => e);
       expect(caught).toBeInstanceOf(ConflictException);
       expect((caught as ConflictException).message).toContain('already-restored');
     });
@@ -1552,7 +1585,7 @@ describe('user backup round-trip', () => {
           isTrashed: false,
         }),
       );
-      const res = await svc.backupUser(u.id);
+      const res = await runBackup(u.id);
       expect(res.files).toBe(1);
       return { user: u, prefix: res.prefix, fileId: seeded.record.id, assetId: asset.id };
     }
@@ -1577,7 +1610,7 @@ describe('user backup round-trip', () => {
       await assetRepo.findOneOrFail({ where: { id: assetId } });
 
       // next backup recreates the prefix from scratch
-      const re = await svc.backupUser(user.id);
+      const re = await runBackup(user.id);
       expect(re).toMatchObject({ userId: user.id, prefix, files: 1 });
       await expect(svc.backupStatus(email)).resolves.toMatchObject({ exists: true, files: 1 });
     });
@@ -1696,7 +1729,7 @@ describe('user backup round-trip', () => {
     it('merges a matched legacy snapshot, adopts it into the live prefix and removes the source', async () => {
       const email = `merge-${randomUUID()}@example.com`;
       const legacy = await seedAccount(email);
-      const legacyBackup = await svc.backupUser(legacy.user.id);
+      const legacyBackup = await runBackup(legacy.user.id);
       const legacyPrefix = legacyBackup.prefix;
       const legacyId = legacy.user.id;
       await deleteAccountRows(legacyId);
@@ -1848,7 +1881,7 @@ describe('user backup round-trip', () => {
 
       // the adopted manifest is a valid incremental predecessor: a rerun re-uploads
       // nothing
-      const nextBackup = await svc.backupUser(target.id);
+      const nextBackup = await runBackup(target.id);
       expect(nextBackup).toMatchObject({ uploaded: 0, skipped: 1 });
 
       const metadataJobs = await queueJobsFor('process-metadata', target.id);
@@ -1860,7 +1893,7 @@ describe('user backup round-trip', () => {
     it('fails the merge when a derivative enqueue is refused instead of claiming it', async () => {
       const email = `merge-enqueue-${randomUUID()}@example.com`;
       const legacy = await seedAccount(email);
-      await svc.backupUser(legacy.user.id);
+      await runBackup(legacy.user.id);
       const legacyId = legacy.user.id;
       await deleteAccountRows(legacyId);
       const target = await userRepo.save(
@@ -1899,7 +1932,7 @@ describe('user backup round-trip', () => {
     it('recovers from a failed adoption with a retry that replays the merge', async () => {
       const email = `merge-retry-${randomUUID()}@example.com`;
       const legacy = await seedAccount(email);
-      const legacyPrefix = (await svc.backupUser(legacy.user.id)).prefix;
+      const legacyPrefix = (await runBackup(legacy.user.id)).prefix;
       const legacyId = legacy.user.id;
       await deleteAccountRows(legacyId);
 
@@ -1975,7 +2008,7 @@ describe('user backup round-trip', () => {
           expiresAt: null,
         }),
       );
-      await svc.backupUser(legacyUser.id);
+      await runBackup(legacyUser.id);
       await deleteAccountRows(legacyUser.id);
 
       const target = await userRepo.save(
@@ -2031,7 +2064,7 @@ describe('user backup round-trip', () => {
     it('rejects an email mismatch, a second merge and a missing source', async () => {
       const email = `merge-conflict-${randomUUID()}@example.com`;
       const legacy = await seedAccount(email);
-      await svc.backupUser(legacy.user.id);
+      await runBackup(legacy.user.id);
       await deleteAccountRows(legacy.user.id);
 
       const target = await userRepo.save(
@@ -2080,7 +2113,7 @@ describe('user backup round-trip', () => {
       try {
         const email = `merge-quota-${randomUUID()}@example.com`;
         const legacy = await seedAccount(email);
-        const legacyPrefix = (await svc.backupUser(legacy.user.id)).prefix;
+        const legacyPrefix = (await runBackup(legacy.user.id)).prefix;
         await deleteAccountRows(legacy.user.id);
         const target = await userRepo.save(
           userRepo.create({
@@ -2117,7 +2150,7 @@ describe('user backup round-trip', () => {
     it('refuses to merge a snapshot whose source account is still live', async () => {
       const email = `merge-live-${randomUUID()}@example.com`;
       const source = await seedAccount(email);
-      const snapshot = await svc.backupUser(source.user.id);
+      const snapshot = await runBackup(source.user.id);
       // The account deleted those photos and never backed up again, so the snapshot's
       // ids are gone from the DB — only the prefix and its emailAtBackup remain. That
       // is what lets the merge get past the global id-conflict check.
@@ -2153,7 +2186,7 @@ describe('user backup round-trip', () => {
     it('deletes only the merged prefix, not another backup of the same account id', async () => {
       const email = `merge-scope-${randomUUID()}@example.com`;
       const source = await seedAccount(email);
-      const mergedPrefix = (await svc.backupUser(source.user.id)).prefix;
+      const mergedPrefix = (await runBackup(source.user.id)).prefix;
 
       // The account changes its address and backs up again. The old prefix's clean-up
       // fails here, so one account id ends up with two prefixes — the state a failed
@@ -2170,7 +2203,7 @@ describe('user backup round-trip', () => {
           }
           return realDelete(keys);
         });
-      const keptPrefix = (await svc.backupUser(source.user.id)).prefix;
+      const keptPrefix = (await runBackup(source.user.id)).prefix;
       deleteSpy.mockRestore();
 
       expect(keptPrefix).not.toBe(mergedPrefix);
@@ -2218,7 +2251,12 @@ describe('user backup round-trip', () => {
     const row = (await svc.backupOverview()).find((entry) => entry.userId === user.id);
     expect(row?.activeRun).toEqual({ id: runId, kind: 'backup', state: 'running' });
 
-    await svc.cancelRun(runId);
+    // the overview's activeRun is a projection of a non-terminal run row, not of cancel
+    await dataSource.getRepository(BackupRun).update(runId, {
+      state: 'cancelled',
+      currentFile: null,
+      finishedAt: new Date(),
+    });
     const after = (await svc.backupOverview()).find((entry) => entry.userId === user.id);
     expect(after?.activeRun).toBeUndefined();
   }, 120_000);
@@ -2281,7 +2319,7 @@ describe('user backup round-trip', () => {
         }),
       );
       const photo = await seedOriginal(user.id, Buffer.from('queue-restore-bytes'));
-      await svc.backupUser(user.id);
+      await runBackup(user.id);
       await wipeUserData();
 
       const { runId } = await svc.startRestore(user.id);
@@ -2314,7 +2352,6 @@ describe('user backup round-trip', () => {
 
       expect(await queuedItemCount(runId)).toBe(1);
       expect((await svc.getRunStatus(runId)).state).toBe('running');
-      await svc.cancelRun(runId);
     });
 
     it('retries a transient failure through the queue and finishes on the second attempt', async () => {
@@ -2356,7 +2393,7 @@ describe('user backup round-trip', () => {
         }),
       );
       await seedOriginal(user.id, Buffer.from('queue-disk-bytes'));
-      await svc.backupUser(user.id);
+      await runBackup(user.id);
       await wipeUserData();
       const { runId } = await svc.startRestore(user.id);
       await svc.dispatchPendingTransfers('restore', 10);

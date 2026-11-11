@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { decodeScrfdOutputs, scrfdPreprocess } from './scrfd.decode';
+import { decodeScrfdOutputs } from './scrfd.decode';
+import { toNchw } from './nchw';
 import type { ScrfdCoordinateMap, ScrfdTensorLike } from './scrfd.decode';
 
 // canonical layout: 2 anchors per cell (640/8)^2*2 = 12800, (640/16)^2*2 = 3200, (640/32)^2*2 = 800
@@ -19,7 +20,7 @@ type Tensors = ReturnType<typeof makeTensors>;
 type Stride = 8 | 16 | 32;
 
 const STRIDE_INDEX: Record<Stride, number> = { 8: 0, 16: 1, 32: 2 };
-const UNIT_MAP: ScrfdCoordinateMap = { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
+const UNIT_MAP: ScrfdCoordinateMap = { scaleX: 1, scaleY: 1 };
 
 function allTensors(t: Tensors): ScrfdTensorLike[] {
   return [...t.score, ...t.bbox, ...t.kps];
@@ -46,14 +47,9 @@ function setDetection(
   }
 }
 
-describe('scrfdPreprocess', () => {
+describe('toNchw (SCRFD input)', () => {
   it('normalizes RGB pixels to CHW float32 with (x - 127.5) / 128', () => {
-    const out = scrfdPreprocess({
-      data: Uint8Array.from([0, 127, 255, 128, 0, 255]),
-      width: 2,
-      height: 1,
-      channels: 3,
-    });
+    const out = toNchw(Uint8Array.from([0, 127, 255, 128, 0, 255]), 2, 1, 127.5, 128);
     expect(out).toBeInstanceOf(Float32Array);
     expect(out.length).toBe(6);
     expect(out[0]).toBeCloseTo((0 - 127.5) / 128, 6);
@@ -64,12 +60,8 @@ describe('scrfdPreprocess', () => {
     expect(out[5]).toBeCloseTo((255 - 127.5) / 128, 6);
   });
 
-  it('throws for non-RGB buffers and non-positive dimensions', () => {
-    const data = new Uint8Array(4);
-    expect(() => scrfdPreprocess({ data, width: 1, height: 1, channels: 4 })).toThrow(/3-channel/);
-    expect(() => scrfdPreprocess({ data, width: 0, height: 0, channels: 3 })).toThrow(
-      /positive dimensions/,
-    );
+  it('throws for a buffer that is not RGB-sized', () => {
+    expect(() => toNchw(new Uint8Array(4), 1, 1, 127.5, 128)).toThrow(/Expected 3 RGB bytes/);
   });
 });
 
@@ -79,12 +71,7 @@ describe('decodeScrfdOutputs', () => {
     // row 820 -> cell 410 -> grid (10,10) at stride 16 -> center (160,160)
     setDetection(t, 16, 820, 0.9);
 
-    const dets = decodeScrfdOutputs(allTensors(t), {
-      scaleX: 1.5,
-      scaleY: 2,
-      offsetX: 0,
-      offsetY: 0,
-    });
+    const dets = decodeScrfdOutputs(allTensors(t), { scaleX: 1.5, scaleY: 2 });
 
     expect(dets).toHaveLength(1);
     const det = dets[0]!;
@@ -99,26 +86,6 @@ describe('decodeScrfdOutputs', () => {
     expect(det.kps[0]![1]).toBeCloseTo(352, 4);
     expect(det.kps[4]![0]).toBeCloseTo(360, 4);
     expect(det.kps[4]![1]).toBeCloseTo(480, 4);
-  });
-
-  it('applies a non-zero offset after scaling', () => {
-    const t = makeTensors();
-    setDetection(t, 16, 820, 0.9);
-
-    const dets = decodeScrfdOutputs(allTensors(t), {
-      scaleX: 1,
-      scaleY: 1,
-      offsetX: 5,
-      offsetY: 7,
-    });
-
-    expect(dets).toHaveLength(1);
-    expect(dets[0]!.box.x).toBeCloseTo(149, 4);
-    expect(dets[0]!.box.y).toBeCloseTo(135, 4);
-    expect(dets[0]!.box.w).toBeCloseTo(64, 4);
-    expect(dets[0]!.box.h).toBeCloseTo(96, 4);
-    expect(dets[0]!.kps[0]![0]).toBeCloseTo(181, 4);
-    expect(dets[0]!.kps[0]![1]).toBeCloseTo(183, 4);
   });
 
   it('does not wrap x across a stride-8 grid row boundary', () => {

@@ -1,7 +1,6 @@
 import { api } from './client';
 import type {
   Asset,
-  AssetLayout,
   AssetLayoutIndex,
   AssetLayoutPage,
   AssetListResponse,
@@ -69,15 +68,6 @@ export async function getAsset(assetId: string): Promise<Asset> {
   return data;
 }
 
-/**
- * Legacy whole-library layout (`{ items }` + ETag). The timeline reads windows now; kept for any
- * caller that still wants the one-shot body.
- */
-export async function getAssetLayout(filters: AssetFilters = {}): Promise<AssetLayout> {
-  const { data } = await api.get<AssetLayout>('/v1/assets/layout', { params: filters });
-  return data;
-}
-
 /** Layout filters plus the IANA zone whose local calendar months define the windows. */
 export interface AssetLayoutIndexParams extends AssetFilters {
   tz: string;
@@ -129,17 +119,18 @@ export function getFileStreamUrl(fileId: string): string {
   return `/api/v1/files/${fileId}/stream`;
 }
 
+/**
+ * Sniffing sets `kind` server-side; the multipart DTO has no client field for it.
+ */
 export async function uploadFile(
   file: File,
   onProgress?: (pct: number) => void,
-  kind?: 'photo' | 'video',
   title?: string,
   description?: string,
   takenAt?: string,
 ): Promise<Asset> {
   const formData = new FormData();
   formData.append('file', file);
-  if (kind) formData.append('kind', kind);
   if (title) formData.append('title', title);
   if (description) formData.append('description', description);
   if (takenAt) formData.append('takenAt', takenAt);

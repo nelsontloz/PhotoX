@@ -13,7 +13,6 @@ import {
   FaShare,
   FaTrash,
 } from 'react-icons/fa6';
-import { RequireAuth } from '../../components/RequireAuth';
 import { AppShell } from '../../components/AppShell';
 import { useConfirm } from '../../components/ConfirmProvider';
 import { LoadingState } from '../../components/StateViews';
@@ -36,11 +35,7 @@ import type { AlbumDto } from '@photox/shared-types';
 
 export default function AlbumDetailPage() {
   const { id } = useParams<{ id: string }>();
-  return (
-    <RequireAuth>
-      <AppShell>{id ? <AlbumDetail key={id} id={id} /> : null}</AppShell>
-    </RequireAuth>
-  );
+  return <AppShell>{id ? <AlbumDetail key={id} id={id} /> : null}</AppShell>;
 }
 
 function AlbumDetail({ id }: { id: string }) {
@@ -368,10 +363,7 @@ function AlbumDetail({ id }: { id: string }) {
         onTrash={() => {
           void nav.trash();
         }}
-        onToggleFavorite={(nextValue) => {
-          const cur = nav.selected;
-          if (cur) void nav.toggleFavorite(cur.id, nextValue);
-        }}
+        onToggleFavorite={(nextValue) => void nav.toggleSelectedFavorite(nextValue)}
         onAddToAlbum={() => setPickerOpen(true)}
         onRemoveFromAlbum={() => {
           void (async () => {

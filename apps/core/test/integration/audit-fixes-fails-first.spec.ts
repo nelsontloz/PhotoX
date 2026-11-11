@@ -126,8 +126,7 @@ describe('audit fixes (fails first)', () => {
     const req = request(apiServer(t))
       .post('/api/v1/files')
       .set(auth(t, user))
-      .attach('file', await pngBytes(), 'photo.png')
-      .field('kind', 'photo');
+      .attach('file', await pngBytes(), 'photo.png');
     try {
       const status = await Promise.race([req.then((r) => r.status), sleep(2000).then(() => -1)]);
       // -1 means the request never answered: a client hangs until the proxy gives up

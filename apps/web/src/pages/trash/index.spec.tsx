@@ -15,11 +15,8 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../../api/assets', () => api);
 
-// The auth gate, shell chrome and the real viewer are not this spec's subject: stand them in so the
-// page content runs against the mocked api module only (same stub-the-boundary style as FacesSection).
-vi.mock('../../components/RequireAuth', () => ({
-  RequireAuth: ({ children }: { children: ReactNode }) => children,
-}));
+// The shell chrome and the real viewer are not this spec's subject: stand them in so the page
+// content runs against the mocked api module only (same stub-the-boundary style as FacesSection).
 vi.mock('../../components/AppShell', () => ({
   AppShell: ({ children }: { children: ReactNode }) => children,
   useScrollContainer: () => null,

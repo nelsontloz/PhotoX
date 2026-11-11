@@ -10,12 +10,8 @@ vi.mock('../../api/assets', async (importOriginal) => {
   return { ...actual, listAllAssets: listAllAssetsMock };
 });
 
-// The auth gate is not this spec's subject: stand it in so the AppShell prop the page
-// passes (notably places' mainClassName override) is asserted against the real page.
-vi.mock('../../components/RequireAuth', () => ({
-  RequireAuth: ({ children }: { children: ReactNode }) => children,
-}));
-
+// The AppShell prop the page passes (notably places' mainClassName override) is asserted against
+// the real page.
 vi.mock('../../components/AppShell', () => ({
   AppShell: ({ children, mainClassName }: { children: ReactNode; mainClassName?: string }) => (
     <main data-testid="places-shell" className={mainClassName}>

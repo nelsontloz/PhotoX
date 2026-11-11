@@ -7,7 +7,6 @@ import 'leaflet.markercluster/dist/MarkerCluster.css';
 import { FaMapLocationDot } from 'react-icons/fa6';
 import type { Asset } from '@photox/shared-types';
 import { getFileStreamUrl, listAllAssets } from '../../api/assets';
-import { RequireAuth } from '../../components/RequireAuth';
 import { AppShell } from '../../components/AppShell';
 import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews';
 import { ViewerHost } from '../../components/ViewerHost';
@@ -384,10 +383,8 @@ function PlacesContent() {
 
 export default function PlacesPage() {
   return (
-    <RequireAuth>
-      <AppShell mainClassName="flex-1 overflow-hidden relative">
-        <PlacesContent />
-      </AppShell>
-    </RequireAuth>
+    <AppShell mainClassName="flex-1 overflow-hidden relative">
+      <PlacesContent />
+    </AppShell>
   );
 }

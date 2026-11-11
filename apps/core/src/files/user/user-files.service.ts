@@ -38,8 +38,6 @@ export interface OriginalFileInput {
   size: number;
 }
 
-export type UploadedDiskFile = OriginalFileInput;
-
 // meta accepted by createAssetAndEnqueue — title/description/takenAt plus the file-derived
 // originalName/sizeBytes the asset row records
 export interface AssetUploadMeta {
@@ -136,7 +134,7 @@ export class UserFilesService {
 
   async upload(
     userId: string,
-    file: UploadedDiskFile,
+    file: OriginalFileInput,
     meta: UploadFileBodyDto = {},
   ): Promise<AssetResponse> {
     const name = file?.originalname;
@@ -145,8 +143,8 @@ export class UserFilesService {
     );
     try {
       const { record, created } = await this.persistOriginal(userId, file);
-      // C2-narrowed: client `kind` is accepted-but-ignored (see UploadFileBodyDto) — derive
-      // solely from the sniffed mime so JPEG bytes + kind=video can't enter the video pipeline.
+      // C2-narrowed: the pipeline kind is derived solely from the sniffed mime, so JPEG bytes
+      // with a mislabelled mime can't enter the video pipeline.
       const kind = kindFromMime(record.mimeType);
       if (!kind) {
         throw new BadRequestException('Unsupported file type');

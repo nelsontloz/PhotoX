@@ -177,8 +177,7 @@ const FOCUS_DANGER =
 const ICON_BUTTON_CLASS =
   'p-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low';
 
-type ButtonVariant =
-  'primary' | 'ghost' | 'secondary' | 'danger' | 'dangerFlat' | 'outlinePrimary' | 'icon';
+type ButtonVariant = 'primary' | 'ghost' | 'secondary' | 'danger' | 'icon';
 
 interface ButtonProps {
   /** Visual treatment. Primary/ghost are the filled compact buttons; the outline variants back tables. */
@@ -191,7 +190,7 @@ interface ButtonProps {
   icon?: ReactNode;
   title?: string;
   ariaLabel?: string;
-  /** Icon variant only: replaces the default icon-button classes entirely. */
+  /** Replaces the variant's classes entirely; icon defaults to the icon-button classes when omitted. */
   className?: string;
   children?: ReactNode;
 }
@@ -246,22 +245,8 @@ export function Button({
         'border-status-error/40 text-status-error enabled:hover:border-status-error/60 enabled:hover:bg-status-error/10',
       );
       break;
-    case 'dangerFlat':
-      classes = cx(
-        'inline-flex items-center gap-1.5 rounded-lg border font-semibold transition-colors',
-        FOCUS_DANGER,
-        size === 'md' ? 'px-3 py-1.5 text-xs' : 'px-2.5 py-1.5 text-[11px]',
-        disabled
-          ? 'border-outline/30 text-outline/60 cursor-not-allowed'
-          : 'border-status-error/40 text-status-error hover:bg-status-error/10',
-      );
-      break;
-    case 'outlinePrimary':
-      classes =
-        'inline-flex items-center gap-2 text-xs font-semibold rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-primary/50 text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-container-low';
-      break;
     case 'icon':
-      classes = className ?? ICON_BUTTON_CLASS;
+      classes = ICON_BUTTON_CLASS;
       break;
     default:
       classes = cx(
@@ -276,7 +261,7 @@ export function Button({
       disabled={disabled}
       aria-label={ariaLabel}
       title={title}
-      className={classes}
+      className={className ?? classes}
     >
       {icon}
       {children}

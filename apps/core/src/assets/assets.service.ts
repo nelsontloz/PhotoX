@@ -17,7 +17,6 @@ import { FileRecord } from '../database/entities';
 import { AlbumAsset } from '../albums/entities/album-asset.entity';
 import { Face } from '../database/entities';
 import { findOwnedOr404 } from '../common/asset-ownership';
-import { chunk } from '../common/chunk';
 import { refreshPersonsAfterFaceDelete } from '../common/face-cleanup';
 import { CreateAssetDto } from './dto/create-asset.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
@@ -29,7 +28,6 @@ import { PlacesResolveService } from '../places/places-resolve.service';
 import { BullMqService } from '../queue/bullmq.service';
 import type {
   Asset as AssetResponse,
-  AssetLayout,
   AssetLayoutIndex,
   AssetLayoutPage,
   AssetListResponse,
@@ -136,7 +134,6 @@ export class AssetsService {
             statusCode: 409,
             message: 'File already uploaded',
             existingAssetId: existing.id,
-            existingFileId: dto.fileId,
           });
         }
       }
@@ -153,9 +150,7 @@ export class AssetsService {
     const cursor = q.cursor ? decodeAssetCursor(q.cursor) : null;
 
     const baseQuery = (): SelectQueryBuilder<Asset> => {
-      const qb = this.repo
-        .createQueryBuilder('asset')
-        .where('asset.userId = :userId', { userId });
+      const qb = this.repo.createQueryBuilder('asset').where('asset.userId = :userId', { userId });
 
       qb.andWhere('asset.isTrashed = :isTrashed', { isTrashed });
 
@@ -244,11 +239,11 @@ export class AssetsService {
 
   async layout(
     userId: string,
-    personId?: string,
-    favorite?: boolean,
-    albumId?: string,
-    range?: LayoutRange,
-  ): Promise<AssetLayout | AssetLayoutPage> {
+    personId: string | undefined,
+    favorite: boolean | undefined,
+    albumId: string | undefined,
+    range: LayoutRange,
+  ): Promise<AssetLayoutPage> {
     const filters = { personId, favorite, albumId };
     const qb = this.repo
       .createQueryBuilder('asset')
@@ -263,11 +258,6 @@ export class AssetsService {
     this.applyHiddenAlbumFilter(qb, albumId);
 
     this.applyAssetFilters(qb, filters);
-
-    if (!range) {
-      const rows = await qb.getRawMany<LayoutRow>();
-      return { items: rows.map(toLayoutItem) };
-    }
 
     qb.andWhere('COALESCE(asset.takenAt, asset.uploadedAt) >= :from', { from: range.from })
       .andWhere('COALESCE(asset.takenAt, asset.uploadedAt) < :to', { to: range.to })
@@ -366,43 +356,6 @@ export class AssetsService {
     };
   }
 
-  /**
-   * Cheap per-user fingerprint of layout-relevant state (count + latest mutation).
-   * Every add/delete/trash/restore/patch of an asset goes through TypeORM save()/update(),
-   * which bumps `updatedAt`, so the fingerprint changes on any layout-visible mutation.
-   * Album membership never bumps `assets.updatedAt`, so hidden albums are folded in separately.
-   * ponytail: not a hot-path cache — this only powers ETag revalidation for /layout.
-   */
-  async layoutFingerprint(userId: string): Promise<{
-    count: number;
-    maxUpdatedAtMs: number;
-    hiddenCount: number;
-    hiddenMaxTouchedMs: number;
-  }> {
-    const row = await this.repo
-      .createQueryBuilder('asset')
-      .select('COUNT(*)', 'count')
-      .addSelect('MAX(asset.updatedAt)', 'maxUpdatedAt')
-      .where('asset.userId = :userId', { userId })
-      .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false })
-      .getRawOne<{ count: string; maxUpdatedAt: Date | string | null }>();
-    const hidden = await this.repo
-      .createQueryBuilder('asset')
-      .select('COUNT(*)', 'count')
-      .addSelect('MAX(GREATEST(al."updatedAt", aa."addedAt"))', 'maxTouched')
-      .innerJoin('album_assets', 'aa', 'aa."assetId" = asset.id')
-      .innerJoin('albums', 'al', 'al.id = aa."albumId"')
-      .where('asset.userId = :userId', { userId })
-      .andWhere('al."hiddenFromTimeline"')
-      .getRawOne<{ count: string; maxTouched: Date | string | null }>();
-    return {
-      count: Number(row?.count ?? 0),
-      maxUpdatedAtMs: row?.maxUpdatedAt ? new Date(row.maxUpdatedAt).getTime() : 0,
-      hiddenCount: Number(hidden?.count ?? 0),
-      hiddenMaxTouchedMs: hidden?.maxTouched ? new Date(hidden.maxTouched).getTime() : 0,
-    };
-  }
-
   async getOne(userId: string, id: string): Promise<AssetResponse> {
     const asset = await findOwnedOr404(this.repo, id, userId, 'Asset');
     const faces = await this.facesService.getForAsset(asset.userId, id);
@@ -481,7 +434,8 @@ export class AssetsService {
       // can't leave dangling coverFaceUrl thumbs behind.
       const existingFaces: Face[] = [];
       // bounded batches: one giant IN (...) list would exceed Postgres's 65,535 bind parameters
-      for (const batch of chunk(assetIds)) {
+      for (let i = 0; i < assetIds.length; i += 500) {
+        const batch = assetIds.slice(i, i + 500);
         existingFaces.push(...(await em.find(Face, { where: { assetId: In(batch) } })));
         await em.delete(Face, { assetId: In(batch) });
         await em.delete(AlbumAsset, { assetId: In(batch) });

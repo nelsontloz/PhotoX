@@ -310,25 +310,6 @@ describe('UserDeleteService.finish', () => {
   });
 });
 
-describe('UserDeleteService.hasLiveWipe', () => {
-  it.each([
-    ['queued', true],
-    ['active', true],
-    ['wiping-files', true],
-    ['completed', false],
-    ['partial', false],
-    ['failed', false],
-  ])('state %s -> live=%s', async (state, live) => {
-    const { service } = makeService({ run: { state } });
-    await expect(service.hasLiveWipe(USER_ID)).resolves.toBe(live);
-  });
-
-  it('is false when no run was ever recorded', async () => {
-    const { service } = makeService({ run: null });
-    await expect(service.hasLiveWipe(USER_ID)).resolves.toBe(false);
-  });
-});
-
 describe('UserDeleteService.clearFinishedJob', () => {
   it('removes a retained completed job so the next enqueue is not swallowed', async () => {
     const { service, bullMq } = makeService();

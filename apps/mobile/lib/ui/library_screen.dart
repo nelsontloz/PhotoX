@@ -1088,13 +1088,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
     return false;
   }
 
-  /// Mirrors the dashboard's wording for what the backup pass reads.
-  String get _scopeLabel {
-    if (widget.settings.uploadAllFolders) return 'All albums';
-    final count = widget.settings.uploadFolderIds.length;
-    return count > 1 ? '${formatCount(count)} albums' : 'Camera album';
-  }
-
   void _toggleSelection(LibraryItem item) {
     // Nothing can be queued for a row that only the server holds.
     if (item.provenance == Provenance.onlineOnly) return;
@@ -1415,7 +1408,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final children = <Widget>[];
     if (widget.serverPage == null) {
       // Device-only (album) grid: exactly the line it always had.
-      children.add(ScopePill(label: _scopeLabel));
+      children.add(ScopePill(label: albumScopeLabel(widget.settings)));
       if (loaded > 0) {
         children.add(
           Text(

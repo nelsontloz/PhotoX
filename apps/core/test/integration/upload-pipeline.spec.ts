@@ -72,8 +72,7 @@ describe('upload pipeline', () => {
     const res = await request(apiServer(t))
       .post('/api/v1/files')
       .set(t.authHeader(token))
-      .attach('file', bytes, 'photo.png')
-      .field('kind', 'photo');
+      .attach('file', bytes, 'photo.png');
     expect(res.status).toBe(201);
     const asset = res.body as unknown as { id: string; fileId: string; kind: string };
     expect(asset.kind).toBe('photo');
@@ -125,13 +124,11 @@ describe('upload pipeline', () => {
       statusCode: number;
       message: string;
       existingAssetId: string;
-      existingFileId: string;
     };
-    // additive envelope: statusCode/message join the pre-existing ids
+    // additive envelope: statusCode/message join the pre-existing id
     expect(body.statusCode).toBe(409);
     expect(body.message).toBe('File already uploaded');
     expect(body.existingAssetId).toBe(firstAsset.id);
-    expect(body.existingFileId).toBe(firstAsset.fileId);
   });
 
   it('rejects non-image/video mime with 400', async () => {
@@ -169,8 +166,7 @@ describe('upload pipeline', () => {
     const res = await request(apiServer(t))
       .post('/api/v1/files')
       .set(t.authHeader(token))
-      .attach('file', png, 'over-quota.png')
-      .field('kind', 'photo');
+      .attach('file', png, 'over-quota.png');
     // 413, not 429: quota exhaustion has no time-based retry. No guard exists yet → 201 (red).
     expect(res.status).toBe(413);
     expect(await t.fileRepo.count()).toBe(filesBefore);
