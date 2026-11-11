@@ -30,9 +30,32 @@ import { BullMqService } from '../queue/bullmq.service';
 import type {
   Asset as AssetResponse,
   AssetLayout,
+  AssetLayoutIndex,
+  AssetLayoutPage,
   AssetListResponse,
   AssetThumbnail as AssetThumbnailResponse,
 } from '@photox/shared-types';
+
+interface LayoutFilters {
+  personId?: string;
+  favorite?: boolean;
+  albumId?: string;
+}
+interface LayoutRange {
+  from: Date;
+  to: Date;
+  offset: number;
+  limit: number;
+}
+interface WindowTouch {
+  count: number;
+  maxTouched: Date | string | null;
+}
+interface LayoutRow {
+  t: Date | string;
+  w: number;
+  h: number;
+}
 
 @Injectable()
 export class AssetsService {
@@ -164,30 +187,122 @@ export class AssetsService {
     personId?: string,
     favorite?: boolean,
     albumId?: string,
-  ): Promise<AssetLayout> {
+    range?: LayoutRange,
+  ): Promise<AssetLayout | AssetLayoutPage> {
+    const filters = { personId, favorite, albumId };
     const qb = this.repo
       .createQueryBuilder('asset')
       .select('COALESCE(asset.takenAt, asset.uploadedAt)', 't')
       .addSelect('COALESCE(asset.width, 1)', 'w')
       .addSelect('COALESCE(asset.height, 1)', 'h')
       .where('asset.userId = :userId', { userId })
-      .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false });
+      .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false })
+      .orderBy('COALESCE(asset.takenAt, asset.uploadedAt)', 'DESC')
+      .addOrderBy('asset.uploadedAt', 'DESC');
 
     this.applyHiddenAlbumFilter(qb, albumId);
 
-    this.applyAssetFilters(qb, { personId, favorite, albumId });
+    this.applyAssetFilters(qb, filters);
 
-    const rows = await qb
-      .orderBy('COALESCE(asset.takenAt, asset.uploadedAt)', 'DESC')
-      .addOrderBy('asset.uploadedAt', 'DESC')
-      .getRawMany<{ t: Date | string; w: number; h: number }>();
+    if (!range) {
+      const rows = await qb.getRawMany<LayoutRow>();
+      return { items: rows.map(toLayoutItem) };
+    }
+
+    qb.andWhere('COALESCE(asset.takenAt, asset.uploadedAt) >= :from', { from: range.from })
+      .andWhere('COALESCE(asset.takenAt, asset.uploadedAt) < :to', { to: range.to })
+      // offset paging needs a total order: equal (timestamp, uploadedAt) rows otherwise page
+      // non-deterministically and the walk would repeat or skip items
+      .addOrderBy('asset.id', 'DESC')
+      .offset(range.offset)
+      .limit(range.limit);
+
+    const [rows, stats] = await Promise.all([
+      qb.getRawMany<LayoutRow>(),
+      this.windowStats(userId, filters, range),
+    ]);
+    const items = rows.map(toLayoutItem);
+    const walked = range.offset + items.length;
+    return {
+      from: range.from.toISOString(),
+      to: range.to.toISOString(),
+      version: stats.version,
+      total: stats.total,
+      items,
+      nextOffset: walked < stats.total ? walked : null,
+    };
+  }
+
+  /**
+   * Month index for the paged timeline: one window per local calendar month in `tz`, plus the
+   * version the page endpoint must reproduce for each window. `tz` is validated here because
+   * `Intl` (not class-validator) owns the timezone vocabulary.
+   */
+  async layoutMonths(
+    userId: string,
+    personId?: string,
+    favorite?: boolean,
+    albumId?: string,
+    tz = 'UTC',
+  ): Promise<AssetLayoutIndex> {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    } catch (err) {
+      if (err instanceof RangeError) throw new BadRequestException(`Invalid timezone: ${tz}`);
+      throw err;
+    }
+
+    const filters = { personId, favorite, albumId };
+    const month = `date_trunc('month', COALESCE(asset.takenAt, asset.uploadedAt) AT TIME ZONE :tz)`;
+    const monthKey = `to_char(${month}, 'YYYY-MM')`;
+    const qb = this.repo
+      .createQueryBuilder('asset')
+      .select(monthKey, 'key')
+      .addSelect(`${month} AT TIME ZONE :tz`, 'from')
+      // add the month to the local timestamp, then back to an instant: `timestamptz + interval`
+      // would add it in the session zone and drift off the local month boundary
+      .addSelect(`(${month} + interval '1 month') AT TIME ZONE :tz`, 'to')
+      .addSelect('COUNT(*)', 'count')
+      .addSelect('MAX(asset.updatedAt)', 'maxUpdatedAt')
+      .where('asset.userId = :userId', { userId })
+      .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false })
+      // `:tz` only appears in the select list and group-by, so it must be registered by hand
+      .setParameters({ tz })
+      .groupBy('1, 2, 3');
+
+    this.applyHiddenAlbumFilter(qb, albumId);
+
+    this.applyAssetFilters(qb, filters);
+
+    const rows = await qb.getRawMany<{
+      key: string;
+      from: Date | string;
+      to: Date | string;
+      count: string;
+      maxUpdatedAt: Date | string | null;
+    }>();
+
+    const touches =
+      albumId || (await this.hasHiddenAlbum(userId))
+        ? await this.windowTouches(userId, filters, { keySelect: monthKey, params: { tz } })
+        : new Map<string, WindowTouch>();
 
     return {
-      items: rows.map((r) => ({
-        t: r.t instanceof Date ? r.t.toISOString() : new Date(r.t).toISOString(),
-        w: Number(r.w),
-        h: Number(r.h),
-      })),
+      months: rows
+        .map((r) => ({
+          key: r.key,
+          from: isoInstant(r.from),
+          to: isoInstant(r.to),
+          count: Number(r.count),
+          version: this.windowVersion(
+            Number(r.count),
+            r.maxUpdatedAt,
+            albumId ? null : (touches.get(r.key) ?? null),
+            albumId ? (touches.get(r.key)?.maxTouched ?? null) : undefined,
+          ),
+        }))
+        // from/to are monotonic in key, so a string sort is the window order
+        .sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0)),
     };
   }
 
@@ -423,6 +538,129 @@ export class AssetsService {
     return toThumbnailResponse(row);
   }
 
+  /** One window's `total` + `version`, with the same predicates as the page query itself. */
+  private async windowStats(
+    userId: string,
+    filters: LayoutFilters,
+    range: { from: Date; to: Date },
+  ): Promise<{ total: number; version: string }> {
+    const qb = this.repo
+      .createQueryBuilder('asset')
+      .select('COUNT(*)', 'count')
+      .addSelect('MAX(asset.updatedAt)', 'maxUpdatedAt')
+      .where('asset.userId = :userId', { userId })
+      .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false })
+      .andWhere('COALESCE(asset.takenAt, asset.uploadedAt) >= :from', { from: range.from })
+      .andWhere('COALESCE(asset.takenAt, asset.uploadedAt) < :to', { to: range.to });
+
+    this.applyHiddenAlbumFilter(qb, filters.albumId);
+
+    this.applyAssetFilters(qb, filters);
+
+    const row = await qb.getRawOne<{ count: string; maxUpdatedAt: Date | string | null }>();
+    const total = Number(row?.count ?? 0);
+    const touch =
+      filters.albumId || (await this.hasHiddenAlbum(userId))
+        ? await this.windowTouches(userId, filters, { keySelect: `''`, range })
+        : null;
+    // the index groups by month and reads the same per-window counters by key
+    const window = touch?.values().next().value ?? null;
+    return {
+      total,
+      version: this.windowVersion(
+        total,
+        row?.maxUpdatedAt ?? null,
+        filters.albumId ? null : window,
+        filters.albumId ? (window?.maxTouched ?? null) : undefined,
+      ),
+    };
+  }
+
+  /**
+   * Version components for one window. `count`/`maxUpdatedAt` cover the visible matching set;
+   * hidden-album membership is folded in separately because hiding or joining an album never
+   * bumps `assets.updatedAt`. `albumId` views bypass the hidden filter, so they track membership
+   * through `albumMaxAddedMs` instead (removals already move `count`).
+   */
+  private windowVersion(
+    count: number,
+    maxUpdatedAt: Date | string | null,
+    hidden: WindowTouch | null,
+    albumMaxAdded?: Date | string | null,
+  ): string {
+    const parts = [
+      count,
+      toEpochMs(maxUpdatedAt),
+      hidden?.count ?? 0,
+      toEpochMs(hidden?.maxTouched),
+    ];
+    if (albumMaxAdded !== undefined) parts.push(toEpochMs(albumMaxAdded));
+    return parts.join('-');
+  }
+
+  /**
+   * Hidden-album touch counters, or album-membership ones for `albumId` views. The index groups
+   * them by month key; the window page passes a range and reads the single row. Person/favourite
+   * filters are deliberately not applied: a spurious version bump costs one refetch, a missed one
+   * would keep a stale window cached.
+   */
+  private async windowTouches(
+    userId: string,
+    filters: LayoutFilters,
+    window: {
+      keySelect: string;
+      params?: Record<string, unknown>;
+      range?: { from: Date; to: Date };
+    },
+  ): Promise<Map<string, WindowTouch>> {
+    const qb = this.repo
+      .createQueryBuilder('asset')
+      .select(window.keySelect, 'key')
+      .where('asset.userId = :userId', { userId })
+      .andWhere('asset.isTrashed = :isTrashed', { isTrashed: false });
+
+    if (filters.albumId) {
+      qb.addSelect('MAX(aa."addedAt")', 'maxTouched')
+        .innerJoin('album_assets', 'aa', 'aa."assetId" = asset.id')
+        .andWhere('aa."albumId" = :albumId', { albumId: filters.albumId });
+    } else {
+      qb.addSelect('COUNT(*)', 'count')
+        .addSelect('MAX(GREATEST(al."updatedAt", aa."addedAt"))', 'maxTouched')
+        .innerJoin('album_assets', 'aa', 'aa."assetId" = asset.id')
+        .innerJoin('albums', 'al', 'al.id = aa."albumId"')
+        .andWhere('al."hiddenFromTimeline"')
+        .andWhere('al."userId" = :userId');
+    }
+
+    const range = window.range;
+    if (range) {
+      qb.andWhere('COALESCE(asset.takenAt, asset.uploadedAt) >= :from', {
+        from: range.from,
+      }).andWhere('COALESCE(asset.takenAt, asset.uploadedAt) < :to', { to: range.to });
+    } else {
+      qb.groupBy('1');
+    }
+    if (window.params) qb.setParameters(window.params);
+
+    const rows = await qb.getRawMany<{
+      key: string;
+      count?: string;
+      maxTouched: Date | string | null;
+    }>();
+    return new Map(
+      rows.map((r) => [r.key, { count: Number(r.count ?? 0), maxTouched: r.maxTouched ?? null }]),
+    );
+  }
+
+  /** A user without a hidden album skips the per-window hidden aggregate entirely. */
+  private async hasHiddenAlbum(userId: string): Promise<boolean> {
+    const rows: unknown[] = await this.repo.query(
+      'SELECT 1 FROM albums WHERE "userId" = $1 AND "hiddenFromTimeline" LIMIT 1',
+      [userId],
+    );
+    return rows.length > 0;
+  }
+
   private applyAssetFilters(
     qb: SelectQueryBuilder<Asset>,
     filters: { personId?: string; favorite?: boolean; albumId?: string },
@@ -536,4 +774,17 @@ function toThumbnailResponse(t: AssetThumbnail): AssetThumbnailResponse {
     bytes: Number(t.bytes),
     createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : t.createdAt,
   };
+}
+
+function toLayoutItem(row: LayoutRow): { t: string; w: number; h: number } {
+  return { t: isoInstant(row.t), w: Number(row.w), h: Number(row.h) };
+}
+
+// pg hands timestamptz back as Date; raw query output can also arrive as a string
+function isoInstant(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function toEpochMs(value: Date | string | null | undefined): number {
+  return value ? new Date(value).getTime() : 0;
 }

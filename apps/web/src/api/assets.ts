@@ -2,6 +2,8 @@ import { api } from './client';
 import type {
   Asset,
   AssetLayout,
+  AssetLayoutIndex,
+  AssetLayoutPage,
   AssetListResponse,
   AssetDetectionsResponse,
   FileExistsCheckHit,
@@ -66,8 +68,38 @@ export async function getAsset(assetId: string): Promise<Asset> {
   return data;
 }
 
+/**
+ * Legacy whole-library layout (`{ items }` + ETag). The timeline reads windows now; kept for any
+ * caller that still wants the one-shot body.
+ */
 export async function getAssetLayout(filters: AssetFilters = {}): Promise<AssetLayout> {
   const { data } = await api.get<AssetLayout>('/v1/assets/layout', { params: filters });
+  return data;
+}
+
+/** Layout filters plus the IANA zone whose local calendar months define the windows. */
+export interface AssetLayoutIndexParams extends AssetFilters {
+  tz: string;
+}
+
+/** Month index: the revalidation call — version per window, no items. */
+export async function getAssetLayoutIndex(
+  params: AssetLayoutIndexParams,
+): Promise<AssetLayoutIndex> {
+  const { data } = await api.get<AssetLayoutIndex>('/v1/assets/layout/months', { params });
+  return data;
+}
+
+export interface AssetLayoutPageParams extends AssetFilters {
+  from: string;
+  to: string;
+  offset?: number;
+  limit?: number;
+}
+
+/** One offset page of a month window; walk `nextOffset` until it is null. */
+export async function getAssetLayoutPage(params: AssetLayoutPageParams): Promise<AssetLayoutPage> {
+  const { data } = await api.get<AssetLayoutPage>('/v1/assets/layout', { params });
   return data;
 }
 

@@ -163,6 +163,29 @@ export function TimelineGrid({
     setScrollPos({ top: el.scrollTop, height: el.clientHeight });
   }, [rememberScroll, measured, layout, scrollContainer]);
 
+  // Scroll anchoring for later layout rebuilds: the restore above runs once, so a window that
+  // grew above the viewport (a refresh pulling in assets) would otherwise move the sticky day
+  // under the header. Shift the scroll by the anchor day's content delta — once per rebuild.
+  const anchorRef = useRef<{ layout: TimelineLayout; measured: boolean } | null>(null);
+  useLayoutEffect(() => {
+    const prev = anchorRef.current;
+    anchorRef.current = { layout, measured };
+    // Only a settled previous layout can anchor: the pre-measure track reserves one row per day,
+    // and the first real layout belongs to the restore effect above.
+    if (!prev?.measured || !measured || prev.layout === layout) return;
+    const el = scrollContainer?.current;
+    if (!el) return;
+    const pad = scrollPadTop(el);
+    const day = dayAtContentY(prev.layout, el.scrollTop - pad);
+    if (day === null) return;
+    const before = dayContentY(prev.layout, day);
+    const after = dayContentY(layout, day);
+    // the anchor day is gone (trashed) or did not move: nothing to compensate
+    if (before === null || after === null || after === before) return;
+    el.scrollTo({ top: el.scrollTop + after - before, behavior: 'instant' });
+    setScrollPos({ top: el.scrollTop, height: el.clientHeight });
+  }, [layout, measured, scrollContainer]);
+
   // Save the day under the sticky header. el.scrollTop (not scrollPos) is the truth here: on the
   // commit that flips `measured` this runs after the restore but before scrollPos catches up, and
   // the stale {0, 0} would otherwise remember the newest day.
@@ -223,7 +246,9 @@ export function TimelineGrid({
       <div
         ref={containerRef}
         className="max-w-6xl mx-auto relative"
-        style={{ height: layout.totalHeight }}
+        // the manual anchor effect in this component owns scroll compensation (browser scroll
+        // anchoring on top of it would double-shift)
+        style={{ height: layout.totalHeight, overflowAnchor: 'none' }}
       >
         {mountedBuckets.map((bucket) => (
           <section
