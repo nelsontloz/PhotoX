@@ -28,11 +28,16 @@ const BOOTSTRAP_SQL: { warn: string; statements: string[] }[] = [
     statements: [
       // vision-search embeddings (SigLIP2-B/16, SEARCH_EMBEDDING_DIM) — hnsw halfvec_cosine_ops
       // is the only index-compatible opclass for the text-stored embedding column.
-      // model hardcoded (SEARCH_EMBEDDING_MODEL): ANN over one row set must not mix models
-      'DROP INDEX IF EXISTS asset_embeddings_hnsw',
-      `CREATE INDEX asset_embeddings_hnsw ON asset_embeddings
+      // model hardcoded (SEARCH_EMBEDDING_MODEL): ANN over one row set must not mix models.
+      // The name carries a version: bump it when the opclass, dimension or that WHERE clause
+      // changes, and add the old name to the drop below. It used to be dropped and rebuilt on
+      // every boot, which blocked embedding writes for minutes on a large library.
+      `CREATE INDEX IF NOT EXISTS asset_embeddings_hnsw_v1 ON asset_embeddings
        USING hnsw ((embedding::halfvec(768)) halfvec_cosine_ops)
        WHERE kind = 'image' AND model = 'siglip2-b16-224'`,
+      // retire the versioned-less index this replaced — after the create, so a failed create can
+      // never leave the table unindexed
+      'DROP INDEX IF EXISTS asset_embeddings_hnsw',
     ],
   },
   {

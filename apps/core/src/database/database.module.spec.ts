@@ -1,10 +1,32 @@
 import type { Mock } from 'vitest';
+import { vi } from 'vitest';
 import * as argon2 from 'argon2';
 import type { DataSource } from 'typeorm';
-import { AdminSeedService, DatabaseModule } from './database.module';
+import { AdminSeedService, DatabaseModule, VectorInitService } from './database.module';
 
 const EMAIL = 'admin-seed@example.com';
 const PASSWORD = 'seed-password-123';
+
+describe('VectorInitService bootstrap', () => {
+  it('creates the versioned hnsw index before retiring the old name', async () => {
+    const sql: string[] = [];
+    const query = vi.fn((statement: string) => {
+      sql.push(statement.replace(/\s+/g, ' ').trim());
+      return Promise.resolve([]);
+    });
+    await new VectorInitService({ query } as unknown as DataSource).onApplicationBootstrap();
+
+    const create = sql.findIndex((statement) => statement.includes('asset_embeddings_hnsw_v1'));
+    const drop = sql.findIndex((statement) =>
+      /^DROP INDEX IF EXISTS asset_embeddings_hnsw$/.test(statement),
+    );
+    expect(create).toBeGreaterThanOrEqual(0);
+    // never rebuilt on a boot: the versioned name only builds when it is missing
+    expect(sql[create]).toContain('CREATE INDEX IF NOT EXISTS');
+    // the old unversioned index is retired only after the replacement exists
+    expect(drop).toBeGreaterThan(create);
+  });
+});
 
 describe('AdminSeedService bootstrap', () => {
   const prevEmail = process.env.ADMIN_EMAIL;
