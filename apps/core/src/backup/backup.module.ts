@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Asset, FileRecord, Person } from '../database/entities';
+import { Asset, FileRecord, Person, UserDelete } from '../database/entities';
 import { Album } from '../albums/entities/album.entity';
 import { AlbumAsset } from '../albums/entities/album-asset.entity';
 import { Share } from '../shares/entities/share.entity';
@@ -31,6 +31,7 @@ import { BackupTransferConsumers } from './backup-transfer.consumers';
       BackupMerge,
       BackupRun,
       BackupRunItem,
+      UserDelete,
     ]),
     StorageModule,
     PlacesModule,

@@ -18,6 +18,7 @@ import {
   seedUser,
 } from './helpers';
 import type { ApiTestApp } from './helpers';
+import { runQueuedDelete, waitForDeleteState } from './helpers/user-delete';
 import { TEST_AUTH_SECRET } from './test-setup';
 import type { User } from '../../src/users/entities/user.entity';
 
@@ -66,42 +67,6 @@ async function seedInFlightSession(t: ApiTestApp, userId: string): Promise<strin
     t.uploadPartRepo.create({ sessionId: session.id, partIndex: 0, sizeBytes: 11 }),
   );
   return key;
-}
-
-/** Plays the worker's `user-delete` consumer, exactly as admin-user-delete.spec.ts does. */
-async function runQueuedDelete(t: ApiTestApp, userId: string): Promise<void> {
-  const job = await t.getQueue('user-delete').getJob(`user-delete-${userId}`);
-  expect(job).not.toBeNull();
-  const data = job!.data as { backupPrefix: string; sig: string };
-  const res = await request(apiServer(t))
-    .post(`/worker/users/${userId}/purge`)
-    .set(
-      t.authHeader(
-        t.signWorkerToken({ id: userId, email: 'worker@internal', role: 'user' }, { act: true }),
-      ),
-    )
-    .set('X-Job-Signature', data.sig)
-    .send({ backupPrefix: data.backupPrefix });
-  expect(res.status).toBe(200);
-  await job!.remove();
-}
-
-async function waitForDeleteState(
-  t: ApiTestApp,
-  admin: Record<string, string>,
-  userId: string,
-): Promise<string> {
-  let state = '';
-  for (let i = 0; i < 80; i++) {
-    const status = await request(apiServer(t))
-      .get(`/api/v1/admin/users/${userId}/delete-status`)
-      .set(admin);
-    expect(status.status).toBe(200);
-    state = (status.body as { state: string }).state;
-    if (state === 'completed' || state === 'failed') return state;
-    await sleep(250);
-  }
-  return state;
 }
 
 describe('audit fixes (fails first)', () => {

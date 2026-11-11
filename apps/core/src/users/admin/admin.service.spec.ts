@@ -131,8 +131,8 @@ function makeService(opts?: {
   };
   const deletes = {
     clearFinishedJob: vi.fn().mockResolvedValue(false),
-    setProgress: vi.fn(),
-    getProgress: vi.fn().mockReturnValue(
+    markQueued: vi.fn().mockResolvedValue(undefined),
+    getProgress: vi.fn().mockResolvedValue(
       opts?.progress
         ? {
             jobId: `user-delete-${TARGET_ID}`,
@@ -215,7 +215,13 @@ describe('AdminService.requestUserDelete guards', () => {
         email: TARGET_EMAIL,
         backupPrefix: backupPrefix(TARGET_EMAIL, TARGET_ID),
       },
-      { jobId: `user-delete-${TARGET_ID}`, removeOnComplete: true },
+      {
+        jobId: `user-delete-${TARGET_ID}`,
+        removeOnComplete: true,
+        removeOnFail: false,
+        attempts: 5,
+        backoff: { type: 'exponential', delay: 2000 },
+      },
     );
   });
 

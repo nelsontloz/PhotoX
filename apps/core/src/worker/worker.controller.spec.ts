@@ -12,7 +12,7 @@ const USER_ID = '33333333-3333-4333-8333-333333333333';
 
 function controllerWith(
   register: ReturnType<typeof vi.fn>,
-  purge: ReturnType<typeof vi.fn> = vi.fn(),
+  deletes: Record<string, ReturnType<typeof vi.fn>> = {},
 ): WorkerController {
   const svc = { register } as unknown as EmbeddingsService;
   return new WorkerController(
@@ -22,7 +22,7 @@ function controllerWith(
     {} as PersonsService,
     svc,
     { register } as unknown as DetectionsService,
-    { purge } as unknown as UserDeleteService,
+    deletes as unknown as UserDeleteService,
   );
 }
 
@@ -40,20 +40,56 @@ describe('WorkerController identity resolution', () => {
   });
 });
 
-describe('WorkerController purgeUser', () => {
-  it('purges the job user, never another account named in the path', async () => {
-    const purge = vi.fn().mockResolvedValue({});
-    const controller = controllerWith(vi.fn(), purge);
-    await controller.purgeUser(USER_ID, { backupPrefix: 'p/' }, USER_ID);
-    expect(purge).toHaveBeenCalledWith(USER_ID, 'p/');
+describe('WorkerController purge', () => {
+  it('runs one step for the job user, never another account named in the path', async () => {
+    const step = vi.fn().mockResolvedValue({ done: false, phase: 'assets', deleted: 2 });
+    const controller = controllerWith(vi.fn(), { step });
+    await expect(
+      controller.purgeUserStep(USER_ID, { backupPrefix: 'p/' }, USER_ID),
+    ).resolves.toMatchObject({ phase: 'assets', deleted: 2 });
+    expect(step).toHaveBeenCalledWith(USER_ID, 'p/');
   });
 
-  it('refuses a path target other than the job user', async () => {
-    const purge = vi.fn();
-    const controller = controllerWith(vi.fn(), purge);
+  it('refuses a step path target other than the job user', async () => {
+    const step = vi.fn();
+    const controller = controllerWith(vi.fn(), { step });
     await expect(
-      controller.purgeUser('44444444-4444-4444-8444-444444444444', { backupPrefix: 'p/' }, USER_ID),
+      controller.purgeUserStep(
+        '44444444-4444-4444-8444-444444444444',
+        { backupPrefix: 'p/' },
+        USER_ID,
+      ),
     ).rejects.toBeInstanceOf(ForbiddenException);
-    expect(purge).not.toHaveBeenCalled();
+    expect(step).not.toHaveBeenCalled();
+  });
+
+  it('reports the finish counters for the job user and echoes the durable state', async () => {
+    const finish = vi.fn().mockResolvedValue(undefined);
+    const getProgress = vi.fn().mockResolvedValue({ state: 'partial' });
+    const controller = controllerWith(vi.fn(), { finish, getProgress });
+    await expect(
+      controller.purgeUserFinish(
+        USER_ID,
+        { backupPrefix: 'p/', filesDeleted: 3, filesFailed: 1, firstError: 'EACCES' },
+        USER_ID,
+      ),
+    ).resolves.toEqual({ state: 'partial' });
+    expect(finish).toHaveBeenCalledWith(
+      USER_ID,
+      expect.objectContaining({ filesDeleted: 3, filesFailed: 1 }),
+    );
+  });
+
+  it('refuses a finish path target other than the job user', async () => {
+    const finish = vi.fn();
+    const controller = controllerWith(vi.fn(), { finish });
+    await expect(
+      controller.purgeUserFinish(
+        '44444444-4444-4444-8444-444444444444',
+        { backupPrefix: 'p/', filesDeleted: 0, filesFailed: 0 },
+        USER_ID,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(finish).not.toHaveBeenCalled();
   });
 });

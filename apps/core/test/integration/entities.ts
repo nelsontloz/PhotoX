@@ -7,6 +7,7 @@ import {
   AppSetting,
   UploadSession,
   UploadSessionPart,
+  UserDelete,
 } from '../../src/database/entities';
 import { AssetEmbedding } from '../../src/database/entities/asset-embedding.entity';
 import { AssetDetection } from '../../src/database/entities/asset-detection.entity';
@@ -46,4 +47,5 @@ export const ENTITIES = [
   BackupMerge,
   BackupRun,
   BackupRunItem,
+  UserDelete,
 ];

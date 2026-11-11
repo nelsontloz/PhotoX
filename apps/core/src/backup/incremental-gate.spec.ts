@@ -70,6 +70,7 @@ function makeProgressService(user: User | null, run: unknown = null) {
     nil,
     runs as never,
     nil,
+    nil,
   );
   return { svc, findOne };
 }

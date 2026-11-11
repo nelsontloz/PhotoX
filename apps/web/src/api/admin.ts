@@ -477,18 +477,21 @@ export async function deleteAdminUser(id: string): Promise<AdminUserDeleteRespon
 export interface AdminUserDeleteStatus {
   status: string;
   error?: string | null;
+  failedFiles?: number;
 }
 
 export async function getAdminUserDeleteStatus(userId: string): Promise<AdminUserDeleteStatus> {
-  const { data } = await api.get<AdminUserDeleteBackendStatus & { error?: unknown }>(
-    `/v1/admin/users/${encodeURIComponent(userId)}/delete-status`,
-  );
+  const { data } = await api.get<
+    AdminUserDeleteBackendStatus & { error?: unknown; failedFiles?: unknown }
+  >(`/v1/admin/users/${encodeURIComponent(userId)}/delete-status`);
   const error = typeof data.error === 'string' ? data.error : null;
-  return { status: data.state, error };
+  const failedFiles = typeof data.failedFiles === 'number' ? data.failedFiles : 0;
+  return { status: data.state, error, failedFiles };
 }
 
 const DELETE_DONE = new Set(['completed']);
-const DELETE_FAILED = new Set(['failed']);
+// `partial` = rows gone, some bytes left: the account is deleted but the promise is not kept
+const DELETE_FAILED = new Set(['failed', 'partial']);
 
 /**
  * Poll the :id/delete-status endpoint until the removal lands or the budget runs out.
@@ -506,6 +509,13 @@ export async function pollAdminUserDelete(
     const status = state.status?.toLowerCase() ?? '';
     if (DELETE_DONE.has(status)) return;
     if (DELETE_FAILED.has(status)) {
+      if (status === 'partial') {
+        const left = state.failedFiles ?? 0;
+        const detail = state.error ? ` (${state.error})` : '';
+        throw new Error(
+          `Account removed, but ${left} file(s) could not be deleted${detail} — rerun the cleanup or free the disk and retry.`,
+        );
+      }
       const message = state.error ?? 'User deletion failed';
       throw new Error(message === '' ? 'User deletion failed' : message);
     }

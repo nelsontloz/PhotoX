@@ -308,10 +308,18 @@ export class AdminService {
       USER_DELETE_QUEUE,
       'user-delete',
       { userId: user.id, email: user.email, backupPrefix: prefix },
-      { jobId, removeOnComplete: true },
+      {
+        jobId,
+        removeOnComplete: true,
+        // a batched wipe can fail late (filesystem, DB blip): keep the record so the failure is
+        // retryable/inspectable instead of vanishing with the default removeOnFail
+        removeOnFail: false,
+        attempts: 5,
+        backoff: { type: 'exponential', delay: 2000 },
+      },
     );
     if (!enqueued) throw new ServiceUnavailableException('Failed to enqueue user deletion');
-    this.deletes.setProgress(user.id, 'queued', jobId, prefix);
+    await this.deletes.markQueued(user.id, jobId, prefix);
     // the S3 backup prefix is deliberately left intact — never enumerated or deleted
     return { jobId, userId: user.id, backupKept: true, backupPrefix: prefix };
   }
@@ -324,23 +332,43 @@ export class AdminService {
    */
   async getUserDeleteStatus(targetUserId: string): Promise<AdminUserDeleteStatus> {
     const jobId = userDeleteJobId(targetUserId);
-    const job = await this.bullMq.getJobSnapshot(USER_DELETE_QUEUE, jobId);
-    const progress = this.deletes.getProgress(targetUserId);
-
-    let state: AdminUserDeleteState = progress?.state ?? 'unknown';
-    let prefix = progress?.backupPrefix ?? '';
-    if (job) {
-      state = mapJobState(job.state);
-      const data = job.data as { backupPrefix?: unknown } | null | undefined;
-      const fromData = typeof data?.backupPrefix === 'string' ? data.backupPrefix : undefined;
-      prefix = progress?.backupPrefix ?? fromData ?? (await this.prefixForLiveUser(targetUserId));
-    } else if (progress?.state !== 'completed' && progress?.state !== 'failed') {
-      const user = await this.userRepo.findOne({ where: { id: targetUserId } });
-      if (!user) throw new NotFoundException('User not found');
-      prefix = progress?.backupPrefix ?? backupPrefix(user.email, user.id);
+    // the durable row is the source of truth (it survives a core restart mid-wipe and stays
+    // readable after the user row is gone); the BullMQ snapshot only fills a legacy gap
+    const progress = await this.deletes.getProgress(targetUserId);
+    if (progress) {
+      return {
+        jobId,
+        state: progress.state,
+        backupKept: true,
+        backupPrefix: progress.backupPrefix || (await this.prefixForLiveUser(targetUserId)),
+        ...(progress.phase ? { phase: progress.phase } : {}),
+        deletedRows: progress.deletedRows,
+        deletedFiles: progress.deletedFiles,
+        failedFiles: progress.failedFiles,
+        ...(progress.error ? { error: progress.error } : {}),
+      };
     }
 
-    return { jobId, state, backupKept: true, backupPrefix: prefix };
+    const job = await this.bullMq.getJobSnapshot(USER_DELETE_QUEUE, jobId);
+    if (!job) {
+      const user = await this.userRepo.findOne({ where: { id: targetUserId } });
+      if (!user) throw new NotFoundException('User not found');
+      return {
+        jobId,
+        state: 'unknown',
+        backupKept: true,
+        backupPrefix: backupPrefix(user.email, user.id),
+      };
+    }
+
+    const data = job.data as { backupPrefix?: unknown } | null | undefined;
+    const fromData = typeof data?.backupPrefix === 'string' ? data.backupPrefix : undefined;
+    return {
+      jobId,
+      state: mapJobState(job.state),
+      backupKept: true,
+      backupPrefix: fromData ?? (await this.prefixForLiveUser(targetUserId)),
+    };
   }
 
   private async prefixForLiveUser(userId: string): Promise<string> {

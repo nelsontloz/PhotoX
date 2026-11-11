@@ -1,19 +1,18 @@
 import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { backupPrefix, loadEnv, LocalStorageService } from '@photox/shared-config';
+import { backupPrefix } from '@photox/shared-config';
 import {
   USER_DELETE_QUEUE,
   userDeleteJobId,
   type AdminUserDeleteState,
+  type UserDeleteFinishRequest,
+  type UserDeletePhase,
+  type UserDeleteStepResult,
 } from '@photox/shared-types';
-import { readdir, rm } from 'fs/promises';
-import type { Dirent } from 'fs';
-import { join, relative, resolve } from 'path';
 import { DataSource, In, Repository } from 'typeorm';
 import { Album } from '../../albums/entities/album.entity';
-import { AlbumAsset } from '../../albums/entities/album-asset.entity';
-import { chunk } from '../../common/chunk';
-import { Asset, Face, FileRecord, Person, UploadSession } from '../../database/entities';
+import { Face, FileRecord, Person, UploadSession } from '../../database/entities';
+import { UserDelete } from '../../database/entities/user-delete.entity';
 import { BackupRun } from '../../backup/entities/backup-run.entity';
 import { Share } from '../../shares/entities/share.entity';
 import { BackupMerge } from '../../backup/entities/backup-merge.entity';
@@ -25,68 +24,96 @@ export interface UserDeleteProgress {
   jobId: string;
   state: AdminUserDeleteState;
   backupPrefix: string;
+  phase: UserDeletePhase | null;
+  deletedRows: number;
+  deletedFiles: number;
+  failedFiles: number;
+  error: string | null;
 }
 
-export interface UserDeleteResult {
-  userId: string;
-  backupPrefix: string;
-  deletedFiles: number;
-  deletedStrays: number;
-}
+/** Assets removed per `step` call; the batch that bounds one transaction. */
+const ASSET_BATCH = 200;
+
+/** Rows removed per `step` call for tables without an asset cascade. */
+const ROW_BATCH = 2000;
+
+/** Rows that disappear in one statement, in the order they must go. */
+const ROW_PHASES = ['files', 'faces', 'persons', 'albums', 'shares', 'sessions', 'ledger'] as const;
 
 /**
- * Full per-user wipe. Executed in core (core owns the DB + storage; the worker-service
- * must never gain DB access) but driven by the worker's `user-delete` consumer through
- * `POST /worker/users/:id/purge` — core no longer consumes any queue itself.
+ * The account wipe, split into bounded steps that the worker's `user-delete` consumer drives
+ * through `POST /worker/users/:id/purge/step`, then finishes through `.../finish`.
+ *
+ * Why batched: the previous single call deleted the whole library in one transaction and then
+ * unlinked every byte in-request. It held locks for minutes on a large account, a crashed
+ * request could not be retried, and every file error was swallowed while the run still
+ * reported `completed`. Now each call is one short transaction; the worker loops, sweeps the
+ * four storage prefixes by id (it owns `STORAGE_DIR`), and reports what it actually deleted.
  *
  * HARD RULE — backups excluded: per-user backups live in external S3
- * (`backups/<email>__<userId>/`, see UserBackupService/S3BackupService). This service
- * MUST NOT call S3BackupService listKeys/deleteKeys/deleteKey/copyPrefix, MUST NOT
- * enumerate or delete manifest.json or originals — the prefix stays intact and the
- * response reports it (`backupKept: true`) for transparency. This service therefore
- * takes no S3 dependency at all (only the pure `backupPrefix()` path helper).
+ * (`backups/<email>__<userId>/`, see UserBackupService/S3BackupService). This service MUST NOT
+ * call S3BackupService listKeys/deleteKeys/deleteKey/copyPrefix, MUST NOT enumerate or delete
+ * manifest.json or originals — the prefix stays intact and the status reports it
+ * (`backupKept: true`). Only the core-side ledger rows (`backup_runs`, `backup_merges`) go.
  *
- * DB order: sessions invalidate (refresh_tokens + tokensValidAfter bump, killing
- * in-flight access tokens) → shares → faces/persons → album_assets/albums → assets
- * (CASCADE drops asset_thumbnails/embeddings/detections; shares.assetId FK
- * cascades foreign shares on the user's assets) → files (original+transcode+thumbnail
- * FileRecords — thumb fileId has no FK, so keys are collected explicitly) → user row.
- * Global tables (places/app_settings) are untouched.
- *
- * Storage: every collected storageKey is deleted (ENOENT ignored), then stray keys
- * under originals/<uid>/, derivatives/thumbnails/<uid>/, derivatives/transcodes/<uid>/
- * are swept. STORAGE_DIR/models/ is never touched.
+ * Session invalidation happens on the first step, not the last: refresh tokens are deleted and
+ * `tokensValidAfter` is bumped before any row disappears, so an account being wiped cannot keep
+ * signing in while the batches drain.
  */
 @Injectable()
 export class UserDeleteService {
   private readonly logger = new Logger(UserDeleteService.name);
-  // ponytail: in-memory progress only (same pattern as UserBackupService.backupProgress)
-  // — a restart wipes it and the BullMQ job record remains the durable source; never
-  // treat it as history (upgrade path: persist to a job row)
-  private readonly progress = new Map<string, UserDeleteProgress>();
 
   constructor(
     private readonly dataSource: DataSource,
     private readonly bullMq: BullMqService,
-    private readonly storage: LocalStorageService,
     @InjectRepository(User) private readonly users: Repository<User>,
-    @InjectRepository(FileRecord) private readonly files: Repository<FileRecord>,
+    @InjectRepository(UserDelete) private readonly runs: Repository<UserDelete>,
   ) {}
 
-  // one setter for every lifecycle write; jobId/prefix default to the recorded run (a
-  // finished step has no ids of its own) or to the deterministic job id / unknown prefix
-  setProgress(userId: string, state: AdminUserDeleteState, jobId?: string, prefix?: string): void {
-    const current = this.progress.get(userId);
-    this.progress.set(userId, {
-      jobId: jobId ?? current?.jobId ?? userDeleteJobId(userId),
-      state,
-      backupPrefix: prefix ?? current?.backupPrefix ?? '',
-    });
+  /** Records the admin's enqueue intent and resets any counters from an earlier run. */
+  async markQueued(userId: string, jobId: string, prefix: string): Promise<void> {
+    await this.runs.upsert(
+      {
+        userId,
+        jobId,
+        state: 'queued',
+        backupPrefix: prefix,
+        phase: null,
+        deletedRows: 0,
+        deletedFiles: 0,
+        failedFiles: 0,
+        error: null,
+        sessionsLocked: false,
+      },
+      ['userId'],
+    );
   }
 
-  getProgress(userId: string): UserDeleteProgress | undefined {
-    const current = this.progress.get(userId);
-    return current ? { ...current } : undefined;
+  async getProgress(userId: string): Promise<UserDeleteProgress | undefined> {
+    const row = await this.runs.findOne({ where: { userId } });
+    if (!row) return undefined;
+    return {
+      jobId: row.jobId,
+      state: row.state,
+      backupPrefix: row.backupPrefix,
+      phase: row.phase,
+      deletedRows: row.deletedRows,
+      deletedFiles: row.deletedFiles,
+      failedFiles: row.failedFiles,
+      error: row.error,
+    };
+  }
+
+  /**
+   * True from enqueue until the byte sweep reports: a restore/merge for the same id must wait,
+   * because the sweep would delete the originals it just copied back.
+   */
+  async hasLiveWipe(userId: string): Promise<boolean> {
+    const row = await this.runs.findOne({ where: { userId } });
+    return row
+      ? row.state === 'queued' || row.state === 'active' || row.state === 'wiping-files'
+      : false;
   }
 
   /**
@@ -113,148 +140,186 @@ export class UserDeleteService {
   }
 
   /**
-   * Worker-triggered wipe for `POST /worker/users/:id/purge`. Progress is recorded here
-   * because core runs the work, so the admin status poll (and its completed-after-the-row-is-
-   * gone case) is unchanged. Idempotent: a retried job finds no user row and returns cleanly.
+   * One bounded unit of the wipe. Stateless: every call asks "what is left" instead of carrying
+   * a cursor, so a crash between calls costs nothing and a retry resumes. Idempotent — once the
+   * rows are gone it answers `done` forever.
    */
-  async purge(userId: string, fallbackPrefix: string, jobId?: string): Promise<UserDeleteResult> {
-    this.setProgress(userId, 'active', jobId, fallbackPrefix);
-    try {
-      const user = await this.users.findOne({ where: { id: userId } });
-      if (!user) {
-        // idempotent retry: a previous attempt already dropped the row. The row sweep still
-        // runs — a crash between the txn commit and the byte deletions must not orphan files
-        // with no later retry able to reach them.
-        const deletedStrays = await this.sweepUserPrefixes(userId);
-        this.setProgress(userId, 'completed');
-        return {
-          userId,
-          backupPrefix: fallbackPrefix,
-          deletedFiles: 0,
-          deletedStrays,
-        };
-      }
-      const prefix = backupPrefix(user.email, user.id);
+  async step(userId: string, prefix: string): Promise<UserDeleteStepResult> {
+    const run = await this.runs.findOne({ where: { userId } });
+    if (!run) {
+      await this.markQueued(userId, userDeleteJobId(userId), prefix);
+    } else if (run.state === 'completed' || run.state === 'partial' || run.state === 'failed') {
+      return { done: true, phase: 'rows-done', deleted: 0 };
+    } else if (run.state === 'queued') {
+      await this.runs.update(userId, { state: 'active' });
+    }
 
-      const assetRows = await this.dataSource
-        .getRepository(Asset)
-        .find({ where: { userId }, select: { id: true } });
-      const assetIds = assetRows.map((a) => a.id);
-      // thumb bytes live in FileRecords under the same userId (registerFile is owner-scoped
-      // and thumb fileId carries no FK), so the files sweep below collects them explicitly
-      const fileRows = await this.files.find({ where: { userId }, select: { storageKey: true } });
-      const storageKeys = fileRows.map((f) => f.storageKey);
+    const user = await this.users.findOne({ where: { id: userId } });
+    if (!user) {
+      // idempotent retry: a previous run already dropped the row; the caller still has to
+      // sweep the bytes, so `done` here never means "finished"
+      await this.markFilesPending(userId);
+      return { done: true, phase: 'rows-done', deleted: 0 };
+    }
 
+    const locked = await this.runs.findOne({ where: { userId } });
+    if (locked && !locked.sessionsLocked) {
+      // sessions die first, so nothing can sign in while the rows drain
       await this.dataSource.transaction(async (m) => {
-        // C3: last-admin re-check inside the txn — the request-time count in AdminService is
-        // only the fast path; two concurrent deletes both passing it must not wipe all admins.
-        const fresh = await m.findOne(User, { where: { id: userId } });
-        if (!fresh) return;
-        if (fresh.role === 'admin') {
-          const adminCount = await m.count(User, { where: { role: 'admin' } });
-          if (adminCount <= 1) throw new ConflictException('Cannot delete the last admin');
-        }
-        // sessions first: refresh rows die and the floor kills in-flight access tokens
         await m.delete(RefreshToken, { userId });
         await m.update(User, userId, { tokensValidAfter: new Date() });
-        await m.delete(Share, { userId });
-        // merge ledger rows are metadata about the deleted target account; the S3
-        // legacy backup itself stays in place (backups are never deleted here)
-        await m.delete(BackupMerge, { targetUserId: userId });
-        await m.delete(Face, { userId });
-        await m.delete(Person, { userId });
-        // stop the transfer sweeper from chasing a deleted account (items CASCADE)
-        await m.delete(BackupRun, { userId });
-        const albumIds = (await m.find(Album, { where: { userId }, select: { id: true } })).map(
-          (a) => a.id,
-        );
-        // bounded batches: one giant IN (...) list would exceed Postgres's 65,535 bind parameters
-        for (const batch of chunk(albumIds)) {
-          await m.delete(AlbumAsset, { albumId: In(batch) });
-        }
-        // the user's assets may sit in foreign albums — clear those links too
-        for (const batch of chunk(assetIds)) {
-          await m.delete(AlbumAsset, { assetId: In(batch) });
-        }
-        await m.delete(Album, { userId });
-        // incl. trashed (no isTrashed filter — reuse hardDelete semantics); CASCADE drops
-        // asset_thumbnails/embeddings/detections, shares.assetId FK drops foreign shares
-        for (const batch of chunk(assetIds)) {
-          await m.delete(Asset, { id: In(batch) });
-        }
-        await m.delete(FileRecord, { userId });
-        // resumable sessions have no FK to users; leaving them behind both leaks up to 4 GiB
-        // per session and, because restore re-creates the same userId, eats the 5-session cap
-        await m.delete(UploadSession, { userId });
-        await m.delete(User, userId);
+        await m.update(UserDelete, userId, { sessionsLocked: true });
       });
-
-      let deletedFiles = 0;
-      for (const key of storageKeys) {
-        try {
-          await this.storage.delete(key);
-          deletedFiles++;
-        } catch (err) {
-          this.logger.warn(
-            `User-delete storage delete failed for ${key}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      }
-      const deletedStrays = await this.sweepUserPrefixes(userId);
-
-      this.setProgress(userId, 'completed');
-      this.logger.log(
-        `Deleted user ${userId} (${assetIds.length} assets, ${deletedFiles} files, ${deletedStrays} strays; backup ${prefix} kept)`,
-      );
-      return { userId, backupPrefix: prefix, deletedFiles, deletedStrays };
-    } catch (err) {
-      this.setProgress(userId, 'failed');
-      throw err;
+      await this.advance(userId, 'tokens', 0);
+      return { done: false, phase: 'tokens', deleted: 0 };
     }
+
+    // no ORDER BY: sorting the whole library per batch would be O(n^2) on a big account
+    const assets: { id: string }[] = await this.dataSource.query(
+      `SELECT id FROM assets WHERE "userId" = $1 LIMIT $2`,
+      [userId, ASSET_BATCH],
+    );
+    if (assets.length > 0) {
+      const ids = assets.map((row) => row.id);
+      await this.dataSource.transaction(async (m) => {
+        // album links and faces carry no asset FK cascade; the asset delete drops
+        // thumbnails/embeddings/detections (and shares by assetId)
+        await m.query(`DELETE FROM album_assets WHERE "assetId" = ANY($1::uuid[])`, [ids]);
+        await m.query(`DELETE FROM faces WHERE "assetId" = ANY($1::uuid[])`, [ids]);
+        await m.query(`DELETE FROM assets WHERE id = ANY($1::uuid[])`, [ids]);
+      });
+      await this.advance(userId, 'assets', ids.length);
+      return { done: false, phase: 'assets', deleted: ids.length };
+    }
+
+    for (const phase of ROW_PHASES) {
+      const deleted = await this.runPhase(phase, userId);
+      if (deleted > 0) {
+        await this.advance(userId, phase, deleted);
+        return { done: false, phase, deleted };
+      }
+    }
+
+    const removed = await this.deleteUserRow(userId);
+    if (removed) {
+      await this.advance(userId, 'user', 1);
+      await this.markFilesPending(userId);
+      return { done: true, phase: 'user', deleted: 1 };
+    }
+    await this.markFilesPending(userId);
+    return { done: true, phase: 'rows-done', deleted: 0 };
   }
 
   /**
-   * Sweep stray bytes under the user's four storage prefixes (crashed uploads, rows
-   * already gone). ENOENT (nothing ever written) is the normal case. models/ is never
-   * listed — the prefixes are user-scoped literals by construction.
+   * Terminal report from the worker after its storage sweep. `error` means the rows half did
+   * not finish; a non-zero `filesFailed` means the rows went but some bytes stayed — the honest
+   * `partial` state, which a retry can fix.
    */
-  private async sweepUserPrefixes(userId: string): Promise<number> {
-    const root = resolve(loadEnv().STORAGE_DIR);
-    const prefixes = [
-      `originals/${userId}/`,
-      `derivatives/thumbnails/${userId}/`,
-      `derivatives/transcodes/${userId}/`,
-      `upload-sessions/${userId}/`,
-    ];
-    let strays = 0;
-    for (const prefix of prefixes) {
-      let dir: string;
-      try {
-        dir = this.storage.pathFor(prefix);
-      } catch {
-        continue;
-      }
-      let entries: Dirent<string>[];
-      try {
-        entries = await readdir(dir, { recursive: true, withFileTypes: true });
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue;
-        throw err;
-      }
-      for (const entry of entries) {
-        if (!entry.isFile()) continue;
-        const key = relative(root, join(entry.parentPath, entry.name));
-        try {
-          await this.storage.delete(key);
-          strays++;
-        } catch (err) {
-          this.logger.warn(
-            `User-delete stray delete failed for ${key}: ${err instanceof Error ? err.message : String(err)}`,
+  async finish(userId: string, report: UserDeleteFinishRequest): Promise<void> {
+    const state: AdminUserDeleteState = report.error
+      ? 'failed'
+      : report.filesFailed > 0
+        ? 'partial'
+        : 'completed';
+    await this.runs.update(userId, {
+      state,
+      deletedFiles: report.filesDeleted,
+      failedFiles: report.filesFailed,
+      error: report.firstError ?? report.error ?? null,
+    });
+    this.logger.log(
+      `User wipe ${state}: user=${userId} rows=${(await this.getProgress(userId))?.deletedRows ?? 0} ` +
+        `files=${report.filesDeleted} failed=${report.filesFailed}`,
+    );
+  }
+
+  /** Rows are gone; the worker is sweeping bytes. Restores stay blocked until it reports. */
+  private async markFilesPending(userId: string): Promise<void> {
+    await this.dataSource.query(
+      `UPDATE user_deletes SET state = 'wiping-files', "updatedAt" = now()
+        WHERE "userId" = $1 AND state IN ('queued', 'active')`,
+      [userId],
+    );
+  }
+
+  private async advance(userId: string, phase: UserDeletePhase, rows: number): Promise<void> {
+    await this.dataSource.query(
+      `UPDATE user_deletes
+          SET state = 'active', phase = $2, "deletedRows" = "deletedRows" + $3,
+              error = NULL, "updatedAt" = now()
+        WHERE "userId" = $1`,
+      [userId, phase, rows],
+    );
+  }
+
+  private async runPhase(phase: (typeof ROW_PHASES)[number], userId: string): Promise<number> {
+    return this.dataSource.transaction(async (m) => {
+      switch (phase) {
+        case 'files': {
+          // bounded like the asset batches: one DELETE over 100k rows would be the long
+          // transaction this whole change exists to avoid
+          const rows: { id: string }[] = await m.query(
+            `SELECT id FROM files WHERE "userId" = $1 LIMIT $2`,
+            [userId, ROW_BATCH],
           );
+          if (rows.length === 0) return 0;
+          await m.delete(FileRecord, { id: In(rows.map((row) => row.id)) });
+          return rows.length;
+        }
+        case 'faces': {
+          const rows: { id: string }[] = await m.query(
+            `SELECT id FROM faces WHERE "userId" = $1 LIMIT $2`,
+            [userId, ROW_BATCH],
+          );
+          if (rows.length === 0) return 0;
+          await m.delete(Face, { id: In(rows.map((row) => row.id)) });
+          return rows.length;
+        }
+        case 'persons':
+          return (await m.delete(Person, { userId })).affected ?? 0;
+        case 'albums': {
+          const ids: { id: string }[] = await m.query(`SELECT id FROM albums WHERE "userId" = $1`, [
+            userId,
+          ]);
+          if (ids.length > 0) {
+            await m.query(`DELETE FROM album_assets WHERE "albumId" = ANY($1::uuid[])`, [
+              ids.map((row) => row.id),
+            ]);
+          }
+          return (await m.delete(Album, { userId })).affected ?? 0;
+        }
+        case 'shares':
+          return (await m.delete(Share, { userId })).affected ?? 0;
+        case 'sessions':
+          // parts CASCADE from the session row
+          return (await m.delete(UploadSession, { userId })).affected ?? 0;
+        case 'ledger': {
+          // the core-side transfer ledger is metadata about the account; the S3 backup stays
+          const merges = (await m.delete(BackupMerge, { targetUserId: userId })).affected ?? 0;
+          const runs = (await m.delete(BackupRun, { userId })).affected ?? 0;
+          return merges + runs;
         }
       }
-      await rm(dir, { recursive: true, force: true }).catch(() => undefined);
-    }
-    return strays;
+    });
+  }
+
+  /** Last step: the user row itself, with the last-admin re-check inside the transaction. */
+  private async deleteUserRow(userId: string): Promise<boolean> {
+    return this.dataSource.transaction(async (m) => {
+      const user = await m.findOne(User, { where: { id: userId } });
+      if (!user) return false;
+      if (user.role === 'admin') {
+        const adminCount = await m.count(User, { where: { role: 'admin' } });
+        if (adminCount <= 1) throw new ConflictException('Cannot delete the last admin');
+      }
+      await m.delete(User, userId);
+      return true;
+    });
+  }
+
+  /** Kept for the admin status response: the prefix a live row would use. */
+  async prefixFor(userId: string): Promise<string | undefined> {
+    const user = await this.users.findOne({ where: { id: userId } });
+    return user ? backupPrefix(user.email, user.id) : undefined;
   }
 }

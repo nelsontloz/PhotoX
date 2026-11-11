@@ -333,6 +333,7 @@ function makeOverviewService(
     backupMergesRepo,
     runsRepo,
     nil,
+    nil,
   );
   return { svc, usersRepo, createQueryBuilder, qb, s3, backupMergesRepo };
 }

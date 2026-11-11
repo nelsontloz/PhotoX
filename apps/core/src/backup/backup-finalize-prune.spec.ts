@@ -106,6 +106,7 @@ function makeService(store: Map<string, Buffer>, failPut = false) {
     nil, // backupMerges
     runs as never,
     runItems as never,
+    nil,
   );
   type Finalize = (run: BackupRun, manifest: UserBackupManifest) => Promise<void>;
   const finalize = (svc as unknown as { finalizeBackupRun: Finalize }).finalizeBackupRun.bind(svc);

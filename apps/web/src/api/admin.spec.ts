@@ -224,6 +224,7 @@ describe('admin user deletion API', () => {
     await expect(getAdminUserDeleteStatus('u-1')).resolves.toEqual({
       status: 'active',
       error: null,
+      failedFiles: 0,
     });
     expect(getMock).toHaveBeenCalledWith('/v1/admin/users/u-1/delete-status');
   });
@@ -267,6 +268,47 @@ describe('admin user deletion API', () => {
       },
     });
     await expect(pollAdminUserDelete('u-1', { intervalMs: 1 })).rejects.toThrow('disk full');
+  });
+
+  it('pollAdminUserDelete reports a partial wipe as a failure with the leftover count', async () => {
+    getMock.mockResolvedValue({
+      data: {
+        userId: 'u-1',
+        jobId: 'user-delete-u-1',
+        state: 'partial',
+        backupKept: true,
+        backupPrefix: 'backups/ada%40example.com__u-1/',
+        failedFiles: 2,
+        error: 'originals/x.jpg: EACCES',
+      },
+    });
+    await expect(pollAdminUserDelete('u-1', { intervalMs: 1 })).rejects.toThrow(
+      /Account removed, but 2 file\(s\) could not be deleted \(originals\/x\.jpg: EACCES\)/,
+    );
+  });
+
+  it('pollAdminUserDelete keeps polling while the wipe is on the file sweep', async () => {
+    getMock
+      .mockResolvedValueOnce({
+        data: {
+          userId: 'u-1',
+          jobId: 'user-delete-u-1',
+          state: 'wiping-files',
+          backupKept: true,
+          backupPrefix: 'backups/ada%40example.com__u-1/',
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          userId: 'u-1',
+          jobId: 'user-delete-u-1',
+          state: 'completed',
+          backupKept: true,
+          backupPrefix: 'backups/ada%40example.com__u-1/',
+        },
+      });
+    await pollAdminUserDelete('u-1', { intervalMs: 1 });
+    expect(getMock).toHaveBeenCalledTimes(2);
   });
 
   it('pollAdminUserDelete times out on a stuck job', async () => {

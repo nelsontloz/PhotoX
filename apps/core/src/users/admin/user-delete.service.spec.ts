@@ -1,205 +1,331 @@
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { LocalStorageService } from '@photox/shared-config';
-import { S3BackupService } from '../../backup/s3-backup.service';
+import { ConflictException } from '@nestjs/common';
 import { UserDeleteService } from './user-delete.service';
 
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 const EMAIL = 'doomed@example.com';
+
+interface RunRow {
+  userId: string;
+  jobId: string;
+  state: string;
+  backupPrefix: string;
+  phase: string | null;
+  deletedRows: number;
+  deletedFiles: number;
+  failedFiles: number;
+  error: string | null;
+  sessionsLocked: boolean;
+}
 
 interface DeleteCall {
   entity: { name: string };
   criteria: unknown;
 }
 
+interface UpdateCall {
+  entity: { name: string };
+  id: string;
+  patch: Record<string, unknown>;
+}
+
 function makeService(opts?: {
-  storageRoot?: string;
-  user?: { id: string; email: string; role?: 'user' | 'admin' } | null;
-  assetIds?: string[];
+  user?: { id: string; email: string; role: 'user' | 'admin' } | null;
+  run?: Partial<RunRow> | null;
+  assetBatches?: string[][];
+  affected?: Record<string, number>;
+  boundedDeletes?: { files?: number; faces?: number };
   adminCount?: number;
+  albumIds?: string[];
 }) {
-  const ops: DeleteCall[] = [];
-  const txnUser =
-    opts?.user === undefined ? { id: USER_ID, email: EMAIL, role: 'user' } : opts.user;
+  let run: RunRow | null =
+    opts?.run === null
+      ? null
+      : {
+          userId: USER_ID,
+          jobId: `user-delete-${USER_ID}`,
+          state: 'queued',
+          backupPrefix: 'backups/old/',
+          phase: null,
+          deletedRows: 0,
+          deletedFiles: 0,
+          failedFiles: 0,
+          error: null,
+          sessionsLocked: false,
+          ...opts?.run,
+        };
+
+  const affectedOf = (name: string) => opts?.affected?.[name] ?? 1;
+  const deletes: DeleteCall[] = [];
+  const updates: UpdateCall[] = [];
+  const queries: string[] = [];
+  const user =
+    opts?.user === null ? null : (opts?.user ?? { id: USER_ID, email: EMAIL, role: 'user' });
+
   const manager = {
     delete: vi.fn((entity: { name: string }, criteria: unknown) => {
-      ops.push({ entity, criteria });
-      return { affected: 1 };
+      deletes.push({ entity, criteria });
+      return Promise.resolve({ affected: affectedOf(entity.name) });
     }),
-    update: vi.fn().mockResolvedValue({ affected: 1 }),
-    find: vi.fn().mockResolvedValue([]),
-    findOne: vi.fn().mockResolvedValue(txnUser),
-    count: vi.fn().mockResolvedValue(opts?.adminCount ?? 2),
-  };
-  const repos = new Map<string, unknown>();
-  const dataSource = {
-    getRepository: vi.fn((cls: { name: string }) => {
-      if (!repos.has(cls.name)) {
-        const rows = cls.name === 'Asset' ? (opts?.assetIds ?? []).map((id) => ({ id })) : [];
-        repos.set(cls.name, { find: vi.fn().mockResolvedValue(rows) });
+    update: vi.fn((entity: { name: string }, id: string, patch: Record<string, unknown>) => {
+      updates.push({ entity, id, patch });
+      return Promise.resolve({ affected: 1 });
+    }),
+    query: vi.fn((sql: string) => {
+      queries.push(sql);
+      if (sql.includes('FROM albums')) {
+        return Promise.resolve((opts?.albumIds ?? []).map((id) => ({ id })));
       }
-      return repos.get(cls.name);
+      if (sql.includes('SELECT id FROM files')) {
+        return Promise.resolve(
+          Array.from({ length: opts?.boundedDeletes?.files ?? 0 }, () => ({ id: 'f' })),
+        );
+      }
+      if (sql.includes('SELECT id FROM faces')) {
+        return Promise.resolve(
+          Array.from({ length: opts?.boundedDeletes?.faces ?? 0 }, () => ({ id: 'f' })),
+        );
+      }
+      return Promise.resolve([]);
     }),
-    transaction: vi.fn(async (fn: (m: unknown) => Promise<void>) => fn(manager)),
+    findOne: vi.fn(() => Promise.resolve(user)),
+    count: vi.fn(() => Promise.resolve(opts?.adminCount ?? 2)),
   };
-  const storageRoot = opts?.storageRoot ?? mkdtempSync(join(tmpdir(), 'user-delete-unit-'));
-  const storage = {
-    delete: vi.fn(async (key: string) => {
-      await new LocalStorageService().delete(key);
+
+  let assetCall = 0;
+  const dataSource = {
+    query: vi.fn((sql: string, params?: unknown[]) => {
+      queries.push(sql);
+      if (sql.includes('FROM assets')) {
+        const batch = opts?.assetBatches?.[assetCall++] ?? [];
+        return Promise.resolve(batch.map((id) => ({ id })));
+      }
+      void params;
+      return Promise.resolve([]);
     }),
-    pathFor: (key: string) => new LocalStorageService().pathFor(key),
+    transaction: vi.fn((fn: (m: unknown) => Promise<unknown>) => fn(manager)),
   };
-  // point STORAGE_DIR at the scratch root for pathFor containment
-  process.env.STORAGE_DIR = storageRoot;
-  const users = {
-    findOne: vi
-      .fn()
-      .mockResolvedValue(opts?.user === undefined ? { id: USER_ID, email: EMAIL } : opts.user),
+
+  const runs = {
+    findOne: vi.fn(() => Promise.resolve(run)),
+    upsert: vi.fn((row: RunRow) => {
+      run = { ...row };
+      return Promise.resolve();
+    }),
+    update: vi.fn((userId: string, patch: Partial<RunRow>) => {
+      void userId;
+      run = { ...run!, ...patch };
+      return Promise.resolve();
+    }),
   };
-  const files = {
-    find: vi
-      .fn()
-      .mockResolvedValue([
-        { storageKey: `originals/${USER_ID}/a.bin` },
-        { storageKey: `derivatives/thumbnails/${USER_ID}/b.webp` },
-      ]),
-  };
+  const users = { findOne: vi.fn(() => Promise.resolve(user)) };
   const bullMq = { getQueue: vi.fn() };
+
   const service = new UserDeleteService(
     dataSource as never,
     bullMq as never,
-    storage as never,
     users as never,
-    files as never,
+    runs as never,
   );
-  return { service, ops, manager, users, files, bullMq, storage, storageRoot };
+  return {
+    service,
+    dataSource,
+    manager,
+    runs,
+    users,
+    bullMq,
+    deletes,
+    updates,
+    queries,
+    currentRun: () => run,
+  };
 }
 
-describe('UserDeleteService.purge', () => {
-  it('deletes in dependency order: sessions, shares, faces/persons, albums, assets, files, user', async () => {
-    const { service, ops, manager } = makeService({ assetIds: ['asset-1'] });
-    manager.find.mockResolvedValue([{ id: 'album-1' }]);
-    await service.purge(USER_ID, 'backups/old/');
-    const names = ops.map((op) => op.entity.name);
-    const order = [
-      'RefreshToken',
-      'Share',
-      'Face',
-      'Person',
-      'AlbumAsset',
-      'Album',
-      'Asset',
-      'FileRecord',
-      'User',
-    ];
-    let cursor = -1;
-    for (const name of order) {
-      const idx = names.indexOf(name, cursor + 1);
-      expect(idx).toBeGreaterThan(cursor);
-      cursor = idx;
-    }
-    // sessions also bump the access-token floor before the row dies
-    const updateCall = manager.update.mock.calls[0] as unknown as [
-      { name: string },
-      string,
-      { tokensValidAfter: unknown },
-    ];
-    expect(updateCall[0].name).toBe('User');
-    expect(updateCall[1]).toBe(USER_ID);
-    expect(updateCall[2].tokensValidAfter).toBeInstanceOf(Date);
+describe('UserDeleteService.step', () => {
+  it('kills sessions on the first step, before any row disappears', async () => {
+    const { service, manager, dataSource, deletes, updates } = makeService();
+
+    await expect(service.step(USER_ID, 'backups/old/')).resolves.toEqual({
+      done: false,
+      phase: 'tokens',
+      deleted: 0,
+    });
+
+    expect(deletes.map((call) => call.entity.name)).toEqual(['RefreshToken']);
+    const floor = updates.find((call) => call.entity.name === 'User');
+    expect(floor?.patch.tokensValidAfter).toBeInstanceOf(Date);
+    // the lock flag is written in the same transaction, so a crash cannot leave sessions alive
+    expect(manager.update).toHaveBeenCalledWith(expect.anything(), USER_ID, {
+      sessionsLocked: true,
+    });
+    // and the durable row records the phase (raw UPDATE, so assert on its parameters)
+    expect(dataSource.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE user_deletes'), [
+      USER_ID,
+      'tokens',
+      0,
+    ]);
   });
 
-  it('returns a zero-count result without touching the DB when the row is missing', async () => {
-    const { service, manager } = makeService({ user: null });
-    const res = await service.purge(USER_ID, 'backups/old/');
-    expect(res).toEqual({
-      userId: USER_ID,
-      backupPrefix: 'backups/old/',
-      deletedFiles: 0,
-      deletedStrays: 0,
+  it('deletes one bounded asset batch and its un-cascaded links', async () => {
+    const { service, dataSource, queries } = makeService({
+      run: { sessionsLocked: true },
+      assetBatches: [['a-1', 'a-2']],
+    });
+
+    await expect(service.step(USER_ID, 'backups/old/')).resolves.toEqual({
+      done: false,
+      phase: 'assets',
+      deleted: 2,
+    });
+
+    expect(dataSource.transaction).toHaveBeenCalled();
+    expect(queries.some((sql) => sql.includes('SELECT id FROM assets'))).toBe(true);
+    expect(queries.some((sql) => sql.includes('DELETE FROM album_assets'))).toBe(true);
+    expect(queries.some((sql) => sql.includes('DELETE FROM faces'))).toBe(true);
+    expect(queries.some((sql) => sql.includes('DELETE FROM assets'))).toBe(true);
+  });
+
+  it('walks the row phases in order and reports the first one that removed rows', async () => {
+    const { service, deletes, queries } = makeService({
+      run: { sessionsLocked: true },
+      boundedDeletes: { files: 0, faces: 0 },
+      affected: { Person: 0, Album: 0, Share: 0, UploadSession: 4 },
+    });
+
+    await expect(service.step(USER_ID, 'backups/old/')).resolves.toMatchObject({
+      done: false,
+      phase: 'sessions',
+      deleted: 4,
+    });
+
+    // files and faces are bounded selects first; the rest go straight to the repository
+    const filesAt = queries.findIndex((sql) => sql.includes('SELECT id FROM files'));
+    const facesAt = queries.findIndex((sql) => sql.includes('SELECT id FROM faces'));
+    expect(filesAt).toBeGreaterThanOrEqual(0);
+    expect(facesAt).toBeGreaterThan(filesAt);
+    expect(deletes.map((call) => call.entity.name)).toEqual([
+      'Person',
+      'Album',
+      'Share',
+      'UploadSession',
+    ]);
+  });
+
+  it('drops the user row last and reports done, still expecting a byte sweep', async () => {
+    const { service, deletes } = makeService({
+      run: { sessionsLocked: true },
+      boundedDeletes: { files: 0, faces: 0 },
+      affected: {
+        Person: 0,
+        Album: 0,
+        Share: 0,
+        UploadSession: 0,
+        BackupMerge: 0,
+        BackupRun: 0,
+      },
+    });
+
+    await expect(service.step(USER_ID, 'backups/old/')).resolves.toMatchObject({
+      done: true,
+      phase: 'user',
+    });
+    expect(deletes.at(-1)?.entity.name).toBe('User');
+  });
+
+  it('re-checks the last-admin rule inside the user phase', async () => {
+    const { service, manager, deletes } = makeService({
+      user: { id: USER_ID, email: EMAIL, role: 'admin' },
+      adminCount: 1,
+      run: { sessionsLocked: true },
+      boundedDeletes: { files: 0, faces: 0 },
+      affected: {
+        Person: 0,
+        Album: 0,
+        Share: 0,
+        UploadSession: 0,
+        BackupMerge: 0,
+        BackupRun: 0,
+      },
+    });
+
+    await expect(service.step(USER_ID, 'backups/old/')).rejects.toBeInstanceOf(ConflictException);
+    expect(manager.count).toHaveBeenCalled();
+    expect(deletes.some((call) => call.entity.name === 'User')).toBe(false);
+  });
+
+  it('is idempotent: a finished run answers done without touching the DB', async () => {
+    const { service, manager, dataSource } = makeService({ run: { state: 'completed' } });
+
+    await expect(service.step(USER_ID, 'backups/old/')).resolves.toEqual({
+      done: true,
+      phase: 'rows-done',
+      deleted: 0,
+    });
+    expect(manager.delete).not.toHaveBeenCalled();
+    expect(dataSource.query).not.toHaveBeenCalled();
+  });
+
+  it('answers done for a retry whose user row is already gone', async () => {
+    const { service, manager } = makeService({ user: null, run: { sessionsLocked: true } });
+
+    await expect(service.step(USER_ID, 'backups/old/')).resolves.toEqual({
+      done: true,
+      phase: 'rows-done',
+      deleted: 0,
     });
     expect(manager.delete).not.toHaveBeenCalled();
   });
+});
 
-  it('deletes collected bytes plus strays, never models/, never S3', async () => {
-    const storageRoot = mkdtempSync(join(tmpdir(), 'user-delete-unit-'));
-    const stray = join(storageRoot, 'derivatives', 'thumbnails', USER_ID, 'stray.webp');
-    mkdirSync(join(storageRoot, 'derivatives', 'thumbnails', USER_ID), { recursive: true });
-    writeFileSync(stray, Buffer.from('stray'));
-    const model = join(storageRoot, 'models', 'keep.onnx');
-    mkdirSync(join(storageRoot, 'models'), { recursive: true });
-    writeFileSync(model, Buffer.from('model'));
-
-    const s3methods = [
-      'listKeys',
-      'deleteKeys',
-      'copyPrefix',
-      'copyKey',
-      'putObject',
-      'putFile',
-      'getBuffer',
-      'headObject',
-      'downloadToFile',
-      'ensureBucket',
-    ] as const;
-    const s3Proto = S3BackupService.prototype as unknown as Record<
-      string,
-      (...args: never[]) => Promise<unknown>
-    >;
-    const spies = s3methods.map((m) => vi.spyOn(s3Proto, m).mockResolvedValue([]));
-    try {
-      const { service, storage } = makeService({ storageRoot });
-      const res = await service.purge(USER_ID, 'backups/old/');
-
-      expect(res.backupPrefix).toContain(USER_ID);
-      const deletedKeys = storage.delete.mock.calls.map((c) => c[0]);
-      expect(deletedKeys).toContain(`originals/${USER_ID}/a.bin`);
-      expect(deletedKeys).toContain(`derivatives/thumbnails/${USER_ID}/b.webp`);
-      expect(deletedKeys).toContain(`derivatives/thumbnails/${USER_ID}/stray.webp`);
-      expect(deletedKeys.some((k) => k === 'models/keep.onnx' || k.startsWith('models/'))).toBe(
-        false,
-      );
-      expect(existsSync(stray)).toBe(false);
-      expect(existsSync(model)).toBe(true);
-      expect(res.deletedStrays).toBe(1);
-      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
-    } finally {
-      for (const spy of spies) spy.mockRestore();
-    }
+describe('UserDeleteService.finish', () => {
+  it('completes when every byte was removed', async () => {
+    const { service, currentRun } = makeService({ run: { state: 'active' } });
+    await service.finish(USER_ID, { backupPrefix: 'p/', filesDeleted: 12, filesFailed: 0 });
+    expect(currentRun()).toMatchObject({ state: 'completed', deletedFiles: 12, failedFiles: 0 });
   });
 
-  it('re-checks last-admin inside the txn and 409s when only one admin remains', async () => {
-    const { service, manager } = makeService({
-      user: { id: USER_ID, email: EMAIL, role: 'admin' },
-      adminCount: 1,
+  it('reports partial (not completed) when files were left behind', async () => {
+    const { service, currentRun } = makeService({ run: { state: 'active' } });
+    await service.finish(USER_ID, {
+      backupPrefix: 'p/',
+      filesDeleted: 11,
+      filesFailed: 1,
+      firstError: 'originals/x.jpg: EACCES',
     });
-    await expect(service.purge(USER_ID, 'backups/old/')).rejects.toMatchObject({
-      status: 409,
+    expect(currentRun()).toMatchObject({
+      state: 'partial',
+      failedFiles: 1,
+      error: 'originals/x.jpg: EACCES',
     });
-    expect(manager.count).toHaveBeenCalled();
-    // user row must not be deleted when the txn guard trips
-    expect(manager.delete.mock.calls.some((c) => c[0].name === 'User')).toBe(false);
   });
 
-  it('allows deleting an admin when another admin remains', async () => {
-    const { service, manager } = makeService({
-      user: { id: USER_ID, email: EMAIL, role: 'admin' },
-      adminCount: 2,
+  it('fails the run when the rows half never finished', async () => {
+    const { service, currentRun } = makeService({ run: { state: 'active' } });
+    await service.finish(USER_ID, {
+      backupPrefix: 'p/',
+      filesDeleted: 0,
+      filesFailed: 0,
+      error: 'database is gone',
     });
-    manager.find.mockResolvedValue([]);
-    const res = await service.purge(USER_ID, 'backups/old/');
-    expect(res.deletedFiles).toBe(2);
-    expect(manager.delete.mock.calls.some((c) => c[0].name === 'User')).toBe(true);
+    expect(currentRun()).toMatchObject({ state: 'failed', error: 'database is gone' });
+  });
+});
+
+describe('UserDeleteService.hasLiveWipe', () => {
+  it.each([
+    ['queued', true],
+    ['active', true],
+    ['wiping-files', true],
+    ['completed', false],
+    ['partial', false],
+    ['failed', false],
+  ])('state %s -> live=%s', async (state, live) => {
+    const { service } = makeService({ run: { state } });
+    await expect(service.hasLiveWipe(USER_ID)).resolves.toBe(live);
   });
 
-  it('skips the admin count for regular users', async () => {
-    const { service, manager } = makeService({
-      user: { id: USER_ID, email: EMAIL, role: 'user' },
-    });
-    manager.find.mockResolvedValue([]);
-    await service.purge(USER_ID, 'backups/old/');
-    expect(manager.count).not.toHaveBeenCalled();
+  it('is false when no run was ever recorded', async () => {
+    const { service } = makeService({ run: null });
+    await expect(service.hasLiveWipe(USER_ID)).resolves.toBe(false);
   });
 });
 
