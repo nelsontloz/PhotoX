@@ -16,6 +16,12 @@ export type BackupRunState =
 // restart and every file retries on its own (see UserBackupService.runTransfersOnce).
 @Entity('backup_runs')
 @Index(['userId', 'startedAt'])
+// At most one active run per user: `assertNoActiveRun` is a plain read, so two starts that race
+// it would share one fixed S3 prefix and prune each other's uploads. The index is the real guard.
+@Index('UQ_backup_runs_active_user', ['userId'], {
+  unique: true,
+  where: `state IN ('running', 'paused', 'finalizing')`,
+})
 export class BackupRun {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
