@@ -286,6 +286,26 @@ describe('BackupSection table', () => {
     ).toBe(false);
   });
 
+  it('explains a 409 as a run already in progress, not a failure', async () => {
+    api.backupUser.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 409 },
+      message: 'Conflict',
+    });
+
+    render(<BackupSection />);
+    await rowsReady();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back up ada@example.com' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    await waitFor(() => expect(api.backupUser).toHaveBeenCalled());
+
+    // the row error and the toast both carry the explanation (never the raw axios text)
+    expect((await screen.findAllByText(/already running for this user/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Backup failed')).toBeNull();
+  });
+
   it('shows degraded pills with a rerun hint', async () => {
     api.getBackupOverview.mockResolvedValue([
       { ...ada, degraded: 'unreadable' },

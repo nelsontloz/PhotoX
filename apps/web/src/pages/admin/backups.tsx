@@ -51,6 +51,8 @@ const BACKUP_TIMEOUT_MESSAGE =
   'Timed out talking to the API — the backup store may be slow or down. Retry in a moment.';
 const STATUS_LOAD_FALLBACK = "Couldn't load backup status.";
 const RUN_FALLBACK = 'Backup failed';
+const RUN_IN_PROGRESS_MESSAGE =
+  'A backup or restore is already running for this user — wait for it to finish, then retry.';
 const RESTORE_FALLBACK = 'Restore failed';
 const ALREADY_RESTORED_MESSAGE =
   'That account is already back — the list was refreshed to show it.';
@@ -82,7 +84,11 @@ const DEGRADED_HINT: Record<string, string> = {
 const STORE_ERRORS = { offline: S3_DOWN_BODY, timeout: BACKUP_TIMEOUT_MESSAGE } as const;
 
 const STATUS_ERRORS: HttpErrorMessages = { fallback: STATUS_LOAD_FALLBACK, ...STORE_ERRORS };
-const RUN_ERRORS: HttpErrorMessages = { fallback: RUN_FALLBACK, ...STORE_ERRORS };
+const RUN_ERRORS: HttpErrorMessages = {
+  fallback: RUN_FALLBACK,
+  byStatus: { 409: RUN_IN_PROGRESS_MESSAGE },
+  ...STORE_ERRORS,
+};
 /** Delete failures use plain wording; a 404 means the manifest is already gone. */
 const DELETE_ERRORS: HttpErrorMessages = {
   fallback: DELETE_FALLBACK,

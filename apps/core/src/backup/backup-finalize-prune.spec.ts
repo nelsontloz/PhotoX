@@ -9,11 +9,13 @@ const USER_ID = '11111111-1111-4111-8111-111111111111';
 const EMAIL = 'ada@example.com';
 const OLD_FILE_ID = '22222222-2222-4222-8222-222222222222';
 const NEW_FILE_ID = '33333333-3333-4333-8333-333333333333';
+const EXTRA_FILE_ID = '55555555-5555-4555-8555-555555555555';
 
 const PREFIX = backupPrefix(EMAIL, USER_ID);
 const MANIFEST_KEY = manifestKey(EMAIL, USER_ID);
 const OLD_KEY = originalKey(EMAIL, USER_ID, OLD_FILE_ID, 'jpg');
 const NEW_KEY = originalKey(EMAIL, USER_ID, NEW_FILE_ID, 'jpg');
+const EXTRA_KEY = originalKey(EMAIL, USER_ID, EXTRA_FILE_ID, 'jpg');
 
 /** The previous, still-published manifest — it references exactly the stale key. */
 const OLD_MANIFEST = Buffer.from(
@@ -66,7 +68,22 @@ function manifestWith(fileId: string): UserBackupManifest {
   } as unknown as UserBackupManifest;
 }
 
-function makeService(store: Map<string, Buffer>, failPut = false) {
+interface LiveFilesQuery {
+  where(): LiveFilesQuery;
+  andWhere(): LiveFilesQuery;
+  getMany(): Promise<{ id: string; storageKey: string }[]>;
+}
+
+function makeService(
+  store: Map<string, Buffer>,
+  {
+    failPut = false,
+    liveFileIds = [NEW_FILE_ID],
+  }: {
+    failPut?: boolean;
+    liveFileIds?: string[];
+  } = {},
+) {
   const s3: PruneS3 = {
     putObject: vi.fn((key: string, body: Buffer) => {
       if (failPut) return Promise.reject(new Error('S3 putObject failed'));
@@ -88,6 +105,13 @@ function makeService(store: Map<string, Buffer>, failPut = false) {
   };
   const runs = { update: vi.fn(() => Promise.resolve()) };
   const runItems = { count: vi.fn(() => Promise.resolve(0)), findOne: vi.fn() };
+  const liveRows = liveFileIds.map((id) => ({ id, storageKey: `originals/${USER_ID}/${id}.jpg` }));
+  const liveFiles: LiveFilesQuery = {
+    where: () => liveFiles,
+    andWhere: () => liveFiles,
+    getMany: () => Promise.resolve(liveRows),
+  };
+  const files = { createQueryBuilder: () => liveFiles };
   const storage = { pathFor: (key: string) => join(tmpdir(), 'photox-prune-spec', key) };
   const nil = undefined as never;
   const svc = new UserBackupService(
@@ -97,7 +121,7 @@ function makeService(store: Map<string, Buffer>, failPut = false) {
     nil, // places
     storage as never,
     nil, // users
-    nil, // files
+    files as never,
     nil, // assets
     nil, // albums
     nil, // albumAssets
@@ -155,7 +179,7 @@ describe('finalizeBackupRun — prune ordering', () => {
 
   it('leaves the previous manifest and its bytes untouched when the manifest write fails', async () => {
     const store = seededStore();
-    const { finalize, s3, runs } = makeService(store, true);
+    const { finalize, s3, runs } = makeService(store, { failPut: true });
 
     await expect(finalize(run(), manifestWith(NEW_FILE_ID))).rejects.toThrow('putObject failed');
 
@@ -164,5 +188,22 @@ describe('finalizeBackupRun — prune ordering', () => {
     expect(store.has(OLD_KEY)).toBe(true);
     expect(store.get(MANIFEST_KEY)).toEqual(OLD_MANIFEST);
     expect(runs.update).not.toHaveBeenCalled();
+  });
+
+  it('keeps an original uploaded by another run while this one was copying', async () => {
+    const store = seededStore();
+    // a second start (the one the per-user guard must refuse) uploaded EXTRA_KEY after this
+    // run took its snapshot: the row exists now, the snapshot does not list it
+    store.set(EXTRA_KEY, Buffer.from('concurrent bytes'));
+    const { finalize, s3 } = makeService(store, {
+      liveFileIds: [NEW_FILE_ID, EXTRA_FILE_ID],
+    });
+
+    await finalize(run(), manifestWith(NEW_FILE_ID));
+
+    expect(store.has(EXTRA_KEY)).toBe(true);
+    expect(store.has(NEW_KEY)).toBe(true);
+    expect(store.has(OLD_KEY)).toBe(false);
+    expect(s3.deleteKeys.mock.calls[0]?.[0]).toEqual([OLD_KEY]);
   });
 });

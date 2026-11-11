@@ -52,6 +52,7 @@ import {
 } from './backup-transfer.constants';
 import { BackupRunItem } from './entities/backup-run-item.entity';
 import { UserDelete } from '../database/entities/user-delete.entity';
+import { isPostgresUniqueViolation } from '../assets/assets.service';
 
 const fileManifestSchema = z.object({
   id: z.string().uuid(),
@@ -179,6 +180,18 @@ type ManifestReadResult =
 
 function extOf(storageKey: string): string {
   return extname(storageKey).slice(1);
+}
+
+/**
+ * 23505 from `UQ_backup_runs_active_user`: the real "one active run per user" guard. Two starts
+ * that race `assertNoActiveRun` (a plain read) would share one fixed S3 prefix and prune each
+ * other's uploads, so the second insert is refused here instead of damaging a backup.
+ */
+function rethrowActiveRunConflict(err: unknown): never {
+  if (isPostgresUniqueViolation(err)) {
+    throw new ConflictException('A backup or restore is already running for this user');
+  }
+  throw err;
 }
 
 // Thumbnails register with purpose='original' (FileRecord only has
@@ -818,15 +831,7 @@ export class UserBackupService {
     await this.assertNoActiveRun(user.id);
     await this.cleanupAbandonedBackupRuns(user.id);
 
-    // purpose='original' also matches thumbnail rows (they share the enum value
-    // but live under derivatives/thumbnails/...), so the storageKey prefix is the
-    // arbiter — keep both predicates, no register/storage layout change.
-    const fileRowsPromise = this.files
-      .createQueryBuilder('f')
-      .where('f."userId" = :userId', { userId: user.id })
-      .andWhere('f.purpose = :purpose', { purpose: 'original' })
-      .andWhere('f."storageKey" LIKE :prefix', { prefix: 'originals/%' })
-      .getMany();
+    const fileRowsPromise = this.originalFiles(user.id).getMany();
     const [fileRows, assetRows, albumRows, shareRows, personRows] = await Promise.all([
       fileRowsPromise,
       this.assets.find({ where: { userId: user.id } }),
@@ -939,34 +944,36 @@ export class UserBackupService {
     await this.writeManifestDraft(runId, manifest);
 
     await this.dataSource.transaction(async (manager: EntityManager) => {
-      await manager.insert(BackupRun, {
-        id: runId,
-        kind: 'backup',
-        userId: user.id,
-        state: 'running',
-        email: user.email,
-        prefix,
-        manifestKey: manifestObjectKey,
-        manifestPath,
-        identity: backedUpAt,
-        stalePrefixes,
-        counts: {
-          files: manifest.files.length,
-          assets: assetRows.length,
-          albums: albumRows.length,
-          shares: shareRows.length,
-          persons: personRows.length,
-        },
-        totalItems: manifest.files.length,
-        completedItems: skipped,
-        uploaded: 0,
-        skipped,
-        failedItems: 0,
-        currentFile: null,
-        error: null,
-        result: null,
-        finishedAt: null,
-      });
+      await manager
+        .insert(BackupRun, {
+          id: runId,
+          kind: 'backup',
+          userId: user.id,
+          state: 'running',
+          email: user.email,
+          prefix,
+          manifestKey: manifestObjectKey,
+          manifestPath,
+          identity: backedUpAt,
+          stalePrefixes,
+          counts: {
+            files: manifest.files.length,
+            assets: assetRows.length,
+            albums: albumRows.length,
+            shares: shareRows.length,
+            persons: personRows.length,
+          },
+          totalItems: manifest.files.length,
+          completedItems: skipped,
+          uploaded: 0,
+          skipped,
+          failedItems: 0,
+          currentFile: null,
+          error: null,
+          result: null,
+          finishedAt: null,
+        })
+        .catch(rethrowActiveRunConflict);
       if (items.length > 0) await manager.insert(BackupRunItem, items);
     });
 
@@ -1303,34 +1310,36 @@ export class UserBackupService {
         })),
       );
 
-      await manager.insert(BackupRun, {
-        id: runId,
-        kind: 'restore',
-        userId: manifest.userId,
-        state: 'running',
-        email: actualEmail,
-        prefix: located.prefix,
-        manifestKey: located.manifestObjectKey,
-        manifestPath,
-        identity: manifest.backedUpAt,
-        stalePrefixes: [],
-        counts: {
-          files: originalFiles.length,
-          assets: manifest.assets.length,
-          albums: manifest.albums.length,
-          shares: manifest.shares.length,
-          persons: manifest.persons.length,
-        },
-        totalItems: originalFiles.length,
-        completedItems: 0,
-        uploaded: 0,
-        skipped: 0,
-        failedItems: 0,
-        currentFile: null,
-        error: null,
-        result: null,
-        finishedAt: null,
-      });
+      await manager
+        .insert(BackupRun, {
+          id: runId,
+          kind: 'restore',
+          userId: manifest.userId,
+          state: 'running',
+          email: actualEmail,
+          prefix: located.prefix,
+          manifestKey: located.manifestObjectKey,
+          manifestPath,
+          identity: manifest.backedUpAt,
+          stalePrefixes: [],
+          counts: {
+            files: originalFiles.length,
+            assets: manifest.assets.length,
+            albums: manifest.albums.length,
+            shares: manifest.shares.length,
+            persons: manifest.persons.length,
+          },
+          totalItems: originalFiles.length,
+          completedItems: 0,
+          uploaded: 0,
+          skipped: 0,
+          failedItems: 0,
+          currentFile: null,
+          error: null,
+          result: null,
+          finishedAt: null,
+        })
+        .catch(rethrowActiveRunConflict);
       if (items.length > 0) await manager.insert(BackupRunItem, items);
     });
 
@@ -2884,6 +2893,19 @@ export class UserBackupService {
     }
   }
 
+  /**
+   * The user's original files. `purpose='original'` alone also matches thumbnail rows (they share
+   * the enum value but live under `derivatives/thumbnails/...`), so the storageKey prefix is the
+   * second arbiter — keep both predicates, no register/storage layout change.
+   */
+  private originalFiles(userId: string) {
+    return this.files
+      .createQueryBuilder('f')
+      .where('f."userId" = :userId', { userId })
+      .andWhere('f.purpose = :purpose', { purpose: 'original' })
+      .andWhere('f."storageKey" LIKE :prefix', { prefix: 'originals/%' });
+  }
+
   private async assertNoActiveRun(userId: string): Promise<void> {
     const active = await this.runs.findOne({
       where: { userId, state: In(['running', 'paused', 'finalizing']) },
@@ -2916,13 +2938,17 @@ export class UserBackupService {
       },
       { state: 'pending', attempts: 0, nextAttemptAt: new Date(), claimedAt: null, error: null },
     );
-    await this.runs.update(runId, {
-      state: 'running',
-      error: null,
-      currentFile: null,
-      finishedAt: null,
-      updatedAt: new Date(),
-    });
+    // a retry can race a newer run for the same user (failed A, started B, then retry A): the
+    // unique index turns that into a 409 instead of a raw 23505
+    await this.runs
+      .update(runId, {
+        state: 'running',
+        error: null,
+        currentFile: null,
+        finishedAt: null,
+        updatedAt: new Date(),
+      })
+      .catch(rethrowActiveRunConflict);
   }
 
   private manifestDraftKey(runId: string): string {
@@ -3194,14 +3220,15 @@ export class UserBackupService {
     await this.s3.headObject(run.manifestKey);
 
     // prune stale originals under the prefix (pre-fix backups uploaded thumbnail bytes) — only
-    // after the replacement manifest is HEAD-verified: until then the previous manifest is still
-    // the published one and deleting its objects would leave it pointing at missing bytes
+    // after the replacement manifest is HEAD-verified (until then the previous manifest is the
+    // published one), and keyed on the CURRENT rows rather than this run's snapshot: a file
+    // created while this run was copying keeps its bytes, because a concurrent run may have
+    // uploaded them and deleting them would leave a manifest listing files that do not exist
     try {
       const listed = new Set(await this.s3.listKeys(run.prefix));
+      const live = await this.originalFiles(run.userId).getMany();
       const expected = new Set(
-        manifest.files.map((file) =>
-          originalKey(run.email!, run.userId, file.id, extOf(file.storageKey)),
-        ),
+        live.map((file) => originalKey(run.email!, run.userId, file.id, extOf(file.storageKey))),
       );
       const stale = [...listed].filter(
         (key) => key.startsWith(`${run.prefix}originals/`) && !expected.has(key),

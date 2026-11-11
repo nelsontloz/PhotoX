@@ -29,6 +29,7 @@ import { Share } from '../../src/shares/entities/share.entity';
 import { User } from '../../src/users/entities/user.entity';
 import { BackupModule } from '../../src/backup/backup.module';
 import { BackupMerge } from '../../src/backup/entities/backup-merge.entity';
+import { BackupRun } from '../../src/backup/entities/backup-run.entity';
 import { S3BackupService } from '../../src/backup/s3-backup.service';
 import {
   UserBackupService,
@@ -2279,6 +2280,76 @@ describe('user backup round-trip', () => {
 
       expect((await svc.getRunStatus(runId)).state).toBe('paused');
       expect(await queuedItemCount(runId)).toBe(1);
+    });
+  });
+
+  // Two POSTs (double click, two tabs, an auto-retry) both pass `assertNoActiveRun`, a plain
+  // findOne with no lock or unique rule behind it, and then write into the same fixed prefix.
+  describe('concurrent starts for one user (fails first)', () => {
+    it('accepts exactly one of two simultaneous starts', async () => {
+      const email = `race-start-${randomUUID()}@example.com`;
+      const user = await userRepo.save(
+        userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'test-hash',
+          displayName: 'Race Start',
+        }),
+      );
+      await seedOriginal(user.id, Buffer.from('race-start-bytes'));
+
+      // launched in the same tick: both read "no active run" before either inserts
+      const settled = await Promise.allSettled([
+        svc.startBackup(user.id),
+        svc.startBackup(user.id),
+      ]);
+
+      const refused = settled.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+      const activeRuns = await dataSource.getRepository(BackupRun).count({
+        where: { userId: user.id, state: In(['running', 'paused', 'finalizing']) },
+      });
+
+      expect(settled.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      expect(refused).toHaveLength(1);
+      expect(refused[0]?.reason).toBeInstanceOf(ConflictException);
+      expect(activeRuns).toBe(1);
+    });
+
+    it('does not prune bytes uploaded for a file created after its snapshot', async () => {
+      const email = `race-prune-${randomUUID()}@example.com`;
+      const user = await userRepo.save(
+        userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'test-hash',
+          displayName: 'Race Prune',
+        }),
+      );
+      const a = await seedOriginal(user.id, Buffer.from('race-prune-a'));
+      await assetRepo.save(
+        assetRepo.create({ userId: user.id, kind: 'photo', fileId: a.record.id, isTrashed: false }),
+      );
+
+      const { runId } = await svc.startBackup(user.id);
+      expect((await svc.getRunStatus(runId)).state).toBe('running');
+
+      // The second start uploads a new file into the same prefix after the first run took
+      // its file list. The prune compares S3 against that frozen snapshot, not the DB.
+      const b = await seedOriginal(user.id, Buffer.from('race-prune-b'));
+      await assetRepo.save(
+        assetRepo.create({ userId: user.id, kind: 'photo', fileId: b.record.id, isTrashed: false }),
+      );
+      const keyB = originalKey(email, user.id, b.record.id, 'bin');
+      await fake.putObject(keyB, Buffer.from('race-prune-b'));
+
+      for (let i = 0; i < 20; i++) {
+        if ((await svc.getRunStatus(runId)).state !== 'running') break;
+        await svc.runTransfersOnce();
+      }
+      expect((await svc.getRunStatus(runId)).state).toBe('completed');
+
+      // b has a live file row, so its bytes belong to the user: the prune must not delete them
+      expect(fake.objects.has(keyB)).toBe(true);
     });
   });
 });
