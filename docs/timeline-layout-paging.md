@@ -18,7 +18,7 @@ Accepted consequences:
 
 - **Cold load still transfers the full dataset** — chunked into month windows, and then never again
   (no gzip from core; the reverse proxy owns transfer size). The reported symptom is a multi-second
-  stall *after every change*, and the cache + per-window invalidation is what fixes it.
+  stall _after every change_, and the cache + per-window invalidation is what fixes it.
 - A progressive track (months appear as they load) is rejected: it reintroduces the shift that
   `useTimelineLayout`'s ponytail comment and `TimelineGridSpace.spec` currently prevent.
   Server-computed heights per width is the upgrade path if cold load must shrink later; it means a
@@ -144,7 +144,7 @@ layout  = buildBuckets(items, { containerWidth, rowHeight })   // unchanged
 
 ### Scroll anchoring on refresh
 
-`TimelineGrid` only restores the remembered day once, so a window that grows *above* the viewport
+`TimelineGrid` only restores the remembered day once, so a window that grows _above_ the viewport
 would move the day under the sticky header. Add one effect: on a layout rebuild after the initial
 restore, read `dayAtContentY(prevLayout, scrollTop)`, then `dayContentY(nextLayout, day)` and adjust
 `scrollTop` by the delta once. Skip when the anchor day is gone (trashed).
@@ -152,6 +152,7 @@ restore, read `dayAtContentY(prevLayout, scrollTop)`, then `dayContentY(nextLayo
 ## Test plan
 
 Core:
+
 - integration (`apps/core/test/integration/assets-layout.spec.ts`, real Postgres): window grouping
   honours `tz` (an item at 23:30 local on the last day lands in that local month; a UTC default run
   differs); add / edit (`takenAt` move, width) / trash / restore / hidden-album toggle / add+remove
@@ -164,6 +165,7 @@ Core:
   `no-store`.
 
 Web:
+
 - `useTimelineLayout`: warm load issues 1 index request and 0 page requests; a version bump refetches
   only that window; a new/window key added, a vanished key pruned; window page walk concatenates
   `nextOffset` pages once and restarts on a mid-walk version change; IDB failure falls back to memory;

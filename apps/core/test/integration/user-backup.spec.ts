@@ -1611,7 +1611,8 @@ describe('user backup round-trip', () => {
   });
 
   describe('merge backups', () => {
-    async function deleteAccountRows(userId: string): Promise<void> {
+    /** Rows only — the account itself stays live (a stale snapshot over a live user). */
+    async function deleteOwnedRows(userId: string): Promise<void> {
       const albums = await albumRepo.find({ where: { userId } });
       if (albums.length > 0) {
         await albumAssetRepo.delete({ albumId: In(albums.map((album) => album.id)) });
@@ -1621,6 +1622,10 @@ describe('user backup round-trip', () => {
       await assetRepo.delete({ userId });
       await fileRepo.delete({ userId });
       await albumRepo.delete({ userId });
+    }
+
+    async function deleteAccountRows(userId: string): Promise<void> {
+      await deleteOwnedRows(userId);
       await userRepo.delete(userId);
     }
 
@@ -2107,6 +2112,93 @@ describe('user backup round-trip', () => {
         if (previous === undefined) delete process.env.STORAGE_QUOTA_BYTES;
         else process.env.STORAGE_QUOTA_BYTES = previous;
       }
+    }, 120_000);
+
+    it('refuses to merge a snapshot whose source account is still live', async () => {
+      const email = `merge-live-${randomUUID()}@example.com`;
+      const source = await seedAccount(email);
+      const snapshot = await svc.backupUser(source.user.id);
+      // The account deleted those photos and never backed up again, so the snapshot's
+      // ids are gone from the DB — only the prefix and its emailAtBackup remain. That
+      // is what lets the merge get past the global id-conflict check.
+      await deleteOwnedRows(source.user.id);
+      await userRepo.update(source.user.id, {
+        email: `merge-live-moved-${randomUUID()}@example.com`,
+      });
+      // Another account registers the freed address: the manifest label now matches it.
+      const target = await userRepo.save(
+        userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'target-hash',
+          displayName: 'Live Source Target',
+        }),
+      );
+
+      const keysBefore = [...fake.objects.keys()].sort();
+      const err = await svc
+        .mergeUserBackup({ targetEmailOrId: target.id, backupUserId: source.user.id })
+        .catch((e: unknown) => e);
+
+      expect(snapshot.prefix).toBe(backupPrefix(email, source.user.id));
+      expect(err).toBeInstanceOf(ConflictException);
+      expect((err as ConflictException).message).toContain('source-alive');
+      // Nothing adopted into the target and no backup bytes deleted: the live account
+      // keeps the snapshot the merge was about to take from it.
+      expect([...fake.objects.keys()].sort()).toEqual(keysBefore);
+      expect(await assetRepo.count({ where: { userId: target.id } })).toBe(0);
+      expect(await assetRepo.count({ where: { userId: source.user.id } })).toBe(0);
+    }, 120_000);
+
+    it('deletes only the merged prefix, not another backup of the same account id', async () => {
+      const email = `merge-scope-${randomUUID()}@example.com`;
+      const source = await seedAccount(email);
+      const mergedPrefix = (await svc.backupUser(source.user.id)).prefix;
+
+      // The account changes its address and backs up again. The old prefix's clean-up
+      // fails here, so one account id ends up with two prefixes — the state a failed
+      // rename/delete leaves behind in production.
+      await userRepo.update(source.user.id, {
+        email: `merge-scope-moved-${randomUUID()}@example.com`,
+      });
+      const realDelete = fake.deleteKeys.bind(fake);
+      const deleteSpy = vi
+        .spyOn(fake, 'deleteKeys')
+        .mockImplementation(async (keys: string[]): Promise<void> => {
+          if (keys.some((key) => key.startsWith(mergedPrefix))) {
+            throw new Error('injected delete failure');
+          }
+          return realDelete(keys);
+        });
+      const keptPrefix = (await svc.backupUser(source.user.id)).prefix;
+      deleteSpy.mockRestore();
+
+      expect(keptPrefix).not.toBe(mergedPrefix);
+      expect(await fake.listKeys(mergedPrefix)).not.toEqual([]);
+      expect(await fake.listKeys(keptPrefix)).not.toEqual([]);
+      const keptKeysBefore = (await fake.listKeys(keptPrefix)).sort();
+
+      // Rows gone, so the snapshot's ids no longer collide with a live owner.
+      await deleteAccountRows(source.user.id);
+      const target = await userRepo.save(
+        userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'target-hash',
+          displayName: 'Scope Target',
+        }),
+      );
+
+      // Merge the snapshot by its explicit prefix: the newest prefix is the other one,
+      // and deleting the source by account id takes both.
+      await svc.mergeUserBackup({
+        targetEmailOrId: target.id,
+        backupUserId: source.user.id,
+        prefix: mergedPrefix,
+      });
+
+      await expect(fake.listKeys(mergedPrefix)).resolves.toEqual([]);
+      expect((await fake.listKeys(keptPrefix)).sort()).toEqual(keptKeysBefore);
     }, 120_000);
   });
 

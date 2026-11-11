@@ -75,10 +75,7 @@ export class BackupTransfersDispatcher implements OnModuleInit, OnModuleDestroy 
       ])) as { locked: boolean }[];
       if (rows[0]?.locked !== true) return;
       try {
-        processed = await this.backups.dispatchPendingTransfers(
-          kind,
-          TRANSFER_DISPATCH_BATCH_SIZE,
-        );
+        processed = await this.backups.dispatchPendingTransfers(kind, TRANSFER_DISPATCH_BATCH_SIZE);
       } finally {
         await runner.query('SELECT pg_advisory_unlock($1)', [DISPATCH_LOCKS[kind]]);
       }

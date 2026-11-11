@@ -1371,8 +1371,11 @@ export class UserBackupService {
    * the merged rows are projected into a source-style manifest, unioned with any
    * existing live manifest (live entries win, shares dedupe by token), missing
    * originals are server-side copied into the live prefix, and the union manifest
-   * is written last (HEAD-verified). The source prefix is then deleted, so the
-   * account reads as a normal backed-up row instead of a legacyBackups sub-row.
+   * is written last (HEAD-verified). Only the located source prefix is then
+   * deleted — other prefixes of that account id survive — so the account reads
+   * as a normal backed-up row instead of a legacyBackups sub-row. The source
+   * account must already be deleted: a live `backupUserId` is a 409, since
+   * merging it would move and then erase that account's backup.
    * The durable ledger row makes a plain rerun a 409; `force` re-plans and
    * upserts the ledger for recovery after a partial run (already-inserted ids are
    * skipped naturally). If adoption fails (unreadable live manifest or S3 error)
@@ -1394,9 +1397,16 @@ export class UserBackupService {
     const backupUserId = input.backupUserId;
     if (backupUserId === target.id) throw new ConflictException('already-restored');
     // neither side may be mid-wipe: the target would lose the merged rows, the source prefix
-    // would be deleted by a sweep that is still running
+    // would be deleted by a sweep that is still running. Checked before the live-source rule
+    // so a wiping account gets the specific "deletion is in progress" answer.
     await this.assertNoLiveWipe(backupUserId);
     await this.assertNoLiveWipe(target.id);
+    // A merge consumes a *deleted* account's snapshot. Handing a live account's
+    // backup to the target and then deleting the source would strip that account
+    // of its only copy, so refuse: the admin can delete the account first.
+    if (await this.users.exists({ where: { id: backupUserId } })) {
+      throw new ConflictException('source-alive');
+    }
     // The ledger check runs before source resolution: a successful merge adopts
     // (and deletes) the source prefix, so a repeat plain merge must still answer
     // 409 already-merged instead of 404 missing backup. Force keeps resolving the
@@ -1939,8 +1949,9 @@ export class UserBackupService {
           );
         }
         // Ledger is durable, so the source snapshot can go; keep the ledger
-        // prefix as source-audit even though the S3 objects are now gone.
-        assigned.sourceDeleted = await this.deleteMergedSourceBackup(prefix, target, backupUserId);
+        // prefix as source-audit even though the S3 objects are now gone. Only
+        // the merged prefix is deleted — other prefixes of this account id stay.
+        assigned.sourceDeleted = await this.deleteMergedSourceBackup(prefix);
       }
 
       const completedAt = new Date().toISOString();
@@ -2110,33 +2121,20 @@ export class UserBackupService {
 
   /**
    * Best-effort removal of an adopted source snapshot after the ledger write.
-   * Lists the backup root once, sweeps every prefix owned by `backupUserId`
-   * (plus the located source prefix defensively) and never touches the live
-   * account's own prefix. Never throws: a failed sweep reports `false` while
-   * the already-adopted live copy stays intact.
+   * Deletes only the located source prefix: other prefixes under the same
+   * `backupUserId` are not this merge's business — a stale one left by a failed
+   * rename may be the account's only other copy. Never throws: a failed sweep
+   * reports `false` while the already-adopted live copy stays intact.
    */
-  private async deleteMergedSourceBackup(
-    sourcePrefix: string,
-    target: User,
-    backupUserId: string,
-  ): Promise<boolean> {
+  private async deleteMergedSourceBackup(sourcePrefix: string): Promise<boolean> {
     try {
-      const base = resolveBackupPrefix();
-      const keys = await this.s3.listKeys(base);
-      const prefixes = new Set(findPrefixesForUserId(keys, base, backupUserId));
-      prefixes.add(sourcePrefix);
-      prefixes.delete(backupPrefix(target.email, target.id));
-      const prefixList = [...prefixes];
-      const doomed = keys.filter((key) => prefixList.some((prefix) => key.startsWith(prefix)));
+      const doomed = await this.s3.listKeys(sourcePrefix);
       if (doomed.length > 0) await this.s3.deleteKeys(doomed);
-      this.logger.log(
-        `Deleted merged source backup ${sourcePrefix} for ${backupUserId} ` +
-          `(${doomed.length} object(s))`,
-      );
+      this.logger.log(`Deleted merged source backup ${sourcePrefix} (${doomed.length} object(s))`);
       return true;
     } catch (err) {
       this.logger.warn(
-        `Failed to delete merged source backup ${sourcePrefix} for ${backupUserId} ` +
+        `Failed to delete merged source backup ${sourcePrefix} ` +
           `(${err instanceof Error ? err.message : String(err)}) — leaving source bytes`,
       );
       return false;

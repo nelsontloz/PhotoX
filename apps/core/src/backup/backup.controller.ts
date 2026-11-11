@@ -111,7 +111,10 @@ export class BackupController {
   })
   @ApiResponse({ status: 200, description: 'Merge counts, dedupe/skip totals and jobs enqueued' })
   @ApiResponse({ status: 404, description: 'Target user or source backup not found' })
-  @ApiResponse({ status: 409, description: 'Email mismatch, already merged or id conflict' })
+  @ApiResponse({
+    status: 409,
+    description: 'Email mismatch, live source, already merged or id conflict',
+  })
   @ApiResponse({ status: 413, description: 'Storage quota exceeded (retry with force)' })
   @ApiResponse({ status: 422, description: 'Backup manifest corrupt' })
   @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })

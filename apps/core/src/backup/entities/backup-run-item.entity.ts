@@ -1,12 +1,7 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, Unique } from 'typeorm';
 
 export type BackupRunItemState =
-  | 'pending'
-  | 'retrying'
-  | 'queued'
-  | 'running'
-  | 'failed'
-  | 'missing';
+  'pending' | 'retrying' | 'queued' | 'running' | 'failed' | 'missing';
 
 // Work row for one original: upload it (backup) or download it (restore). Successful rows are
 // deleted, so the table only ever holds outstanding or failed work — an empty run is finished.
