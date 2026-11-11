@@ -171,6 +171,30 @@ describe('hybrid search HTTP', () => {
     expect((page2.body as { items: Asset[] }).items.map((i) => i.id)).toEqual([]);
   });
 
+  // regression guard (audit #8): the branch depth is fixed, so `total` and the fused order do not
+  // change while the client pages. It used to grow with `offset` (2*(limit+offset)).
+  it('reports the same total while paging', async () => {
+    const { userId, auth } = await ownerAuth();
+    for (let i = 0; i < 11; i++) {
+      const asset = await seedAssetWith(userId);
+      await seedEmbedding(asset.id, E0);
+    }
+
+    const first = await request(apiServer(t))
+      .get('/api/v1/search')
+      .query({ q: 'red square', limit: '5' })
+      .set(auth);
+    const later = await request(apiServer(t))
+      .get('/api/v1/search')
+      .query({ q: 'red square', limit: '5', offset: '10' })
+      .set(auth);
+
+    expect(first.status).toBe(200);
+    expect(later.status).toBe(200);
+    // 11 candidates: the first page fuses 10 of them, the later page 11
+    expect((later.body as { total: number }).total).toBe((first.body as { total: number }).total);
+  });
+
   it('503s when the text model is not provisioned', async () => {
     const { auth } = await ownerAuth();
     encodeMock.mockRejectedValueOnce(

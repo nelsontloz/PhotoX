@@ -9,10 +9,11 @@ import { fuseRrf } from './rrf';
 import { routeMatches } from './routing';
 import type { SearchQueryDto } from './dto/search-query.dto';
 
-// 2N candidates per branch (N = limit + offset): enough to survive fusion demotions and offset
-// paging without scanning the whole library. The ANN branch raises hnsw.ef_search to match (see
-// annIds) — HNSW scans cap at ef_search rows, so LIMIT alone under-delivers past 40.
-const BRANCH_MULTIPLIER = 2;
+// Fixed candidate depth per branch, independent of `offset`. The fused order and `total` must not
+// change while the client pages: a window of 2N that grew with offset re-ranked rows between
+// pages, so page N repeated and skipped results. 200 is the ANN cap (hnsw.ef_search) — deeper
+// results need a DB-side count plus a cursor.
+const BRANCH_DEPTH = 200;
 // ponytail: routed assets (person/place) are bonus-only, so cap the fan-out — a person with a
 // 10k-photo library would otherwise put every one of them in the fused list
 const ROUTE_ASSET_LIMIT = 200;
@@ -41,13 +42,12 @@ export class SearchService {
     const offset = dto.offset;
     if (query === '') return { items: [], total: 0 };
 
-    const branchLimit = BRANCH_MULTIPLIER * (limit + offset);
     // 503 before any DB work when the text tower is not provisioned
     const vector = await this.textEncoder.encode(query);
 
     const [annIds, ftsIds, routedIds] = await Promise.all([
-      this.annIds(userId, vector, branchLimit),
-      this.ftsIds(userId, query, branchLimit),
+      this.annIds(userId, vector, BRANCH_DEPTH),
+      this.ftsIds(userId, query, BRANCH_DEPTH),
       this.routedIds(userId, query),
     ]);
 

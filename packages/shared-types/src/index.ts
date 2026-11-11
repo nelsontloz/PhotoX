@@ -133,6 +133,8 @@ export interface AssetListResponse {
   total: number;
   limit: number;
   offset: number;
+  /** Set when more rows follow; pass back as `cursor` to get the next page. */
+  nextCursor?: string | null;
 }
 
 // GET /api/v1/search + GET /api/v1/assets/:id/{duplicates,similar} — items reuse the

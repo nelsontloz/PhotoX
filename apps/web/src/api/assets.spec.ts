@@ -106,22 +106,25 @@ describe('checkFilesExist', () => {
 });
 
 describe('listAllAssets', () => {
-  it('pages by limit until total is covered', async () => {
+  it('walks nextCursor until the server stops, filters riding along', async () => {
+    const pages: Record<string, { items: Asset[]; nextCursor: string | null }> = {
+      first: { items: [makeAsset('a-0')], nextCursor: 'c1' },
+      c1: { items: [makeAsset('a-1')], nextCursor: 'c2' },
+      c2: { items: [makeAsset('a-2')], nextCursor: null },
+    };
     getMock.mockImplementation((_url, config) => {
-      const offset = Number(config?.params?.offset ?? 0);
-      return Promise.resolve({
-        data: {
-          items: offset < 120 ? [makeAsset(`a-${offset}`)] : [],
-          total: 120,
-          limit: 50,
-          offset,
-        },
-      });
+      const page = pages[(config?.params?.cursor as string | undefined) ?? 'first']!;
+      const data: AssetListResponse = { ...page, total: 3, limit: 1, offset: 0 };
+      return Promise.resolve({ data });
     });
 
-    const all = await listAllAssets({ limit: 50, personId: 'p-1', albumId: 'al-1' });
+    const all = await listAllAssets({ limit: 1, personId: 'p-1', albumId: 'al-1' });
 
-    expect(getMock.mock.calls.map(([, config]) => config?.params?.offset)).toEqual([0, 50, 100]);
+    expect(getMock.mock.calls.map(([, config]) => config?.params?.cursor)).toEqual([
+      undefined,
+      'c1',
+      'c2',
+    ]);
     // the person/album filters ride along on every page request
     expect(
       getMock.mock.calls.map(([, config]) => [config?.params?.personId, config?.params?.albumId]),
@@ -130,28 +133,17 @@ describe('listAllAssets', () => {
       ['p-1', 'al-1'],
       ['p-1', 'al-1'],
     ]);
-    expect(all).toHaveLength(3);
+    expect(all.map((a) => a.id)).toEqual(['a-0', 'a-1', 'a-2']);
   });
 
-  it('requests the remaining pages in parallel', async () => {
-    const resolvers = new Map<number, (value: { data: AssetListResponse }) => void>();
-    getMock.mockImplementation((_url, config) => {
-      const offset = Number(config?.params?.offset ?? 0);
-      return new Promise((resolve) => resolvers.set(offset, resolve));
+  it('stops on a repeated cursor instead of looping forever', async () => {
+    getMock.mockResolvedValue({
+      data: { items: [makeAsset('a-0')], total: 9, limit: 50, offset: 0, nextCursor: 'stuck' },
     });
 
-    const pending = listAllAssets({ limit: 50 });
-    expect(resolvers.has(0)).toBe(true);
-    resolvers.get(0)!({ data: { items: [makeAsset('a-0')], total: 120, limit: 50, offset: 0 } });
-    await vi.waitFor(() => expect(resolvers.has(100)).toBe(true));
-    // both follow-up pages are in flight before either resolves
-    expect(resolvers.has(50)).toBe(true);
-    resolvers.get(50)!({ data: { items: [makeAsset('a-50')], total: 120, limit: 50, offset: 50 } });
-    resolvers.get(100)!({
-      data: { items: [makeAsset('a-100')], total: 120, limit: 50, offset: 100 },
-    });
-    const all = await pending;
-    // pages resolve out of order (50 before 100) but must concatenate in offset order
-    expect(all.map((a) => a.id)).toEqual(['a-0', 'a-50', 'a-100']);
+    const all = await listAllAssets({ limit: 50 });
+
+    expect(getMock).toHaveBeenCalledTimes(2);
+    expect(all).toHaveLength(2);
   });
 });

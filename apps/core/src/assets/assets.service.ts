@@ -57,6 +57,41 @@ interface LayoutRow {
   h: number;
 }
 
+interface AssetCursor {
+  at: Date;
+  uploadedAt: Date;
+  id: string;
+}
+
+/** The last row's (effective date, uploadedAt, id) — the full list ORDER BY tuple. */
+function encodeAssetCursor(asset: Asset): string {
+  const at = asset.takenAt ?? asset.uploadedAt;
+  return Buffer.from(
+    JSON.stringify([at.toISOString(), asset.uploadedAt.toISOString(), asset.id]),
+  ).toString('base64url');
+}
+
+function decodeAssetCursor(raw: string): AssetCursor {
+  const invalid = (): BadRequestException => new BadRequestException('Invalid cursor');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+  } catch {
+    throw invalid();
+  }
+  if (!Array.isArray(parsed) || parsed.length !== 3) throw invalid();
+  const [at, uploadedAt, id] = parsed as unknown[];
+  if (typeof at !== 'string' || typeof uploadedAt !== 'string' || typeof id !== 'string') {
+    throw invalid();
+  }
+  const atDate = new Date(at);
+  const uploadedDate = new Date(uploadedAt);
+  if (Number.isNaN(atDate.getTime()) || Number.isNaN(uploadedDate.getTime()) || !isUUID(id)) {
+    throw invalid();
+  }
+  return { at: atDate, uploadedAt: uploadedDate, id };
+}
+
 @Injectable()
 export class AssetsService {
   private readonly logger = new Logger(AssetsService.name);
@@ -115,55 +150,80 @@ export class AssetsService {
     const limit = q.limit ?? (q.ids ? Math.min(q.ids.length, 100) : 20);
     const offset = q.offset ?? 0;
     const isTrashed = q.isTrashed ?? false;
+    const cursor = q.cursor ? decodeAssetCursor(q.cursor) : null;
 
-    const qb = this.repo.createQueryBuilder('asset').where('asset.userId = :userId', { userId });
+    const baseQuery = (): SelectQueryBuilder<Asset> => {
+      const qb = this.repo
+        .createQueryBuilder('asset')
+        .where('asset.userId = :userId', { userId });
 
-    qb.andWhere('asset.isTrashed = :isTrashed', { isTrashed });
+      qb.andWhere('asset.isTrashed = :isTrashed', { isTrashed });
 
-    // the trash view must keep listing hidden-album assets so they can be restored or purged, and
-    // id-batch reads (worker re-embed) are not timelines — only the browser timeline is filtered
-    if (!isTrashed && !q.ids) this.applyHiddenAlbumFilter(qb, q.albumId);
+      // the trash view must keep listing hidden-album assets so they can be restored or purged, and
+      // id-batch reads (worker re-embed) are not timelines — only the browser timeline is filtered
+      if (!isTrashed && !q.ids) this.applyHiddenAlbumFilter(qb, q.albumId);
 
-    if (q.ids) {
-      qb.andWhere('asset.id IN (:...ids)', { ids: q.ids });
-    }
+      if (q.ids) {
+        qb.andWhere('asset.id IN (:...ids)', { ids: q.ids });
+      }
 
-    if (q.dateFrom) {
-      qb.andWhere('COALESCE(asset.takenAt, asset.uploadedAt) >= :dateFrom', {
-        dateFrom: q.dateFrom,
-      });
-    }
+      if (q.dateFrom) {
+        qb.andWhere('COALESCE(asset.takenAt, asset.uploadedAt) >= :dateFrom', {
+          dateFrom: q.dateFrom,
+        });
+      }
 
-    if (q.dateTo) {
-      qb.andWhere('COALESCE(asset.takenAt, asset.uploadedAt) < :dateTo', { dateTo: q.dateTo });
-    }
+      if (q.dateTo) {
+        qb.andWhere('COALESCE(asset.takenAt, asset.uploadedAt) < :dateTo', { dateTo: q.dateTo });
+      }
 
-    if (q.favorite !== undefined) {
-      qb.andWhere('asset.favorite = :favorite', { favorite: q.favorite });
-    }
+      if (q.favorite !== undefined) {
+        qb.andWhere('asset.favorite = :favorite', { favorite: q.favorite });
+      }
 
-    if (q.hasLocations === true) {
-      qb.andWhere('asset.latitude IS NOT NULL AND asset.longitude IS NOT NULL');
-    } else if (q.hasLocations === false) {
-      qb.andWhere('(asset.latitude IS NULL OR asset.longitude IS NULL)');
-    }
+      if (q.hasLocations === true) {
+        qb.andWhere('asset.latitude IS NOT NULL AND asset.longitude IS NOT NULL');
+      } else if (q.hasLocations === false) {
+        qb.andWhere('(asset.latitude IS NULL OR asset.longitude IS NULL)');
+      }
 
-    this.applyAssetFilters(qb, q);
+      this.applyAssetFilters(qb, q);
+      return qb;
+    };
 
-    const [items, total] = await qb
+    // `total` is the whole match count, not the remaining window: a cursor page must report the
+    // same total the first page did
+    const total = await baseQuery().getCount();
+
+    const qb = baseQuery()
       .orderBy(`COALESCE(asset.takenAt, asset.uploadedAt)`, 'DESC')
       .addOrderBy('asset.uploadedAt', 'DESC')
-      .skip(offset)
-      .take(limit)
-      .getManyAndCount();
+      // id completes the sort key, so a keyset cursor can compare the whole tuple
+      .addOrderBy('asset.id', 'DESC')
+      .take(limit + 1);
+    if (cursor) {
+      // keyset, not offset: a photo uploaded mid-scroll sorts above the cursor and cannot shift
+      // the next page, so pages never repeat or skip a row
+      qb.andWhere(
+        `(COALESCE(asset.takenAt, asset.uploadedAt), asset.uploadedAt, asset.id) <
+         (:cursorAt::timestamptz, :cursorUploadedAt::timestamptz, :cursorId::uuid)`,
+        { cursorAt: cursor.at, cursorUploadedAt: cursor.uploadedAt, cursorId: cursor.id },
+      );
+    } else {
+      qb.skip(offset);
+    }
 
+    const rows = await qb.getMany();
+    const items = rows.length > limit ? rows.slice(0, limit) : rows;
     const thumbsByAsset = await this.fetchThumbs(items.map((a) => a.id));
+    const last = items.at(-1);
 
     return {
       items: items.map((a) => this.toResponse(a, thumbsByAsset.get(a.id) ?? [])),
       total,
       limit,
       offset,
+      nextCursor: rows.length > limit && last ? encodeAssetCursor(last) : null,
     };
   }
 
