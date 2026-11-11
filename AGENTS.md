@@ -42,6 +42,7 @@ Node 24 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 - `apps/core/src/main.ts` (mandatory, keep in sync): `ValidationPipe({whitelist, forbidNonWhitelisted, transform})` + `HttpExceptionFilter` + Swagger `/docs`/`/docs-json` + static security headers; `trust proxy` 1 is load-bearing for per-IP rate limits; no CORS (browsers reach core same-origin through the Vite dev proxy or a reverse proxy). Worker `main.ts` is intentionally bare.
 - DTOs live next to controllers with class-validator; wire interfaces live in `shared-types`.
 - Albums carry `hiddenFromTimeline` (default false): assets in a flagged album are excluded from the timeline query and the layout, but not from album-scoped reads (`GET api/v1/assets?albumId=`, `GET api/v1/albums/:id/assets`), the trash view, id-batch reads (`?ids=`, the worker's fetch) or search/persons/shares. The layout ETag folds hidden-album membership in because album changes never bump `assets.updatedAt`.
+- Timeline layout is paged by month window: `GET api/v1/assets/layout/months?tz=<IANA>` returns local-calendar-month windows `{key,from,to,count,version}`, and `GET api/v1/assets/layout?from&to&offset&limit` returns one window page (`version`, `total`, `items`, `nextOffset`) — the client passes the index's instants back verbatim. `version` covers asset mutations plus hidden-album and (for `albumId=`) album-membership touches, never person clustering (`faces` has no `updatedAt`). The no-param call still returns the whole `{items}` with its ETag; both new responses carry no ETag and are written past Express's implicit one, because the client must always read the version.
 
 ## Auth
 
@@ -79,6 +80,7 @@ Node 24 (`.nvmrc`), pnpm 9.15.0 (`packageManager`). After pulling: `pnpm install
 - Explicit lazy routes in `src/App.tsx` (react-router-dom 7 `useRoutes`); zustand stores; axios client is cookie-only (`withCredentials`, no Bearer header) with proactive-refresh + 401-retry interceptors. Vite proxies `/api`, `/worker`, `/health` to `VITE_API_URL || http://localhost:3000`; `/worker` is e2e plumbing only.
 - Dark by default (`<html class="dark">`). Tailwind v4 CSS config (`@import "tailwindcss"` + `@theme` in `app.css`) — no `tailwind.config.*`. Icons: `react-icons/fa6` only.
 - Media loads through direct stream URLs (`/api/v1/files/:id/stream`, `/api/v1/faces/:id/thumb`) authenticated by the HttpOnly cookie — blob fetching only for the explicit download action.
+- Timeline layout: `useTimelineLayout` fetches the month index, diffs it against the IndexedDB window cache (`src/lib/layoutCache.ts`, user- and filter-namespaced, memory fallback) and fetches only windows whose `version` moved. Cold load still fetches every window — the error-free scroll track needs each window's exact aspect data. `personId` views are memory-only (no fingerprint for clustering).
 
 ## Style
 

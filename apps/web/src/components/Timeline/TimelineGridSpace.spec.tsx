@@ -1,17 +1,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { cleanup, render, waitFor, act } from '@testing-library/react';
 import type { RefObject } from 'react';
-import type { AssetLayout } from '@photox/shared-types';
+import type { AssetLayoutIndex, AssetLayoutPage, User } from '@photox/shared-types';
 import { buildBuckets, dayContentY, type TimelineItem } from '../../lib/timelineLayout';
+import { monthKeyOf } from '../../lib/dateFormat';
 import { resetDayMemory } from '../../lib/timelineDayMemory';
 import { ScrollContainerContext } from '../AppShell';
+import { useAppStore } from '../../store/app-store';
+import { useAuthStore } from '../../store/auth-store';
 
 // Pinned measurement inputs — jsdom has no ResizeObserver and resolves no stylesheet vars, so the
 // stubs below must feed useTimelineLayout exactly these values.
 const CONTAINER_WIDTH = 1000;
 const ROW_HEIGHT = 200;
+const LAYOUT_OPTIONS = { containerWidth: CONTAINER_WIDTH, rowHeight: ROW_HEIGHT };
 
-// Realistic layout-endpoint payload: two months, mixed aspects, one null-dims item (→ 1:1), and
+// Realistic layout payload: two months, mixed aspects, one null-dims item (→ 1:1), and
 // a day that wraps past one row. Local-noon times keep groupDateSortKey stable in every timezone.
 const LAYOUT_ITEMS: TimelineItem[] = [
   // 2026-03-20 — four 4:3 tiles (266.7px) → three fit, the fourth wraps → 2 rows
@@ -39,14 +43,81 @@ const LAYOUT_ITEMS: TimelineItem[] = [
 
 vi.mock('../../api/assets', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/assets')>();
-  return { ...actual, getAssetLayout: vi.fn() };
+  return { ...actual, getAssetLayoutIndex: vi.fn(), getAssetLayoutPage: vi.fn() };
 });
 
-import { getAssetLayout } from '../../api/assets';
+import { getAssetLayoutIndex, getAssetLayoutPage } from '../../api/assets';
 import { useTimelineLayout } from '../../hooks/useTimelineLayout';
 import { TimelineGrid } from './TimelineGrid';
 
-const getAssetLayoutMock = vi.mocked(getAssetLayout);
+const getIndexMock = vi.mocked(getAssetLayoutIndex);
+const getPageMock = vi.mocked(getAssetLayoutPage);
+
+// Live month windows: the index and page mocks both read them, so a test can mutate one month
+// and let the hook re-index it. `from` is the mock's window id (`<key>-start`).
+let windows: Map<string, { items: TimelineItem[]; version: string }>;
+let userSeq = 0;
+
+function resetWindows(): void {
+  const grouped = new Map<string, TimelineItem[]>();
+  for (const item of LAYOUT_ITEMS) {
+    const key = monthKeyOf(item.t);
+    const list = grouped.get(key);
+    if (list) list.push(item);
+    else grouped.set(key, [item]);
+  }
+  windows = new Map(
+    [...grouped].map(([key, items]) => [
+      key,
+      {
+        items: [...items].sort((a, b) => new Date(b.t).getTime() - new Date(a.t).getTime()),
+        version: `v${items.length}`,
+      },
+    ]),
+  );
+}
+
+function layoutIndex(): AssetLayoutIndex {
+  return {
+    // key desc, like the API
+    months: [...windows.keys()]
+      .sort()
+      .reverse()
+      .map((key) => {
+        const win = windows.get(key);
+        return {
+          key,
+          from: `${key}-start`,
+          to: `${key}-end`,
+          count: win?.items.length ?? 0,
+          version: win?.version ?? '0',
+        };
+      }),
+  };
+}
+
+function stubLayoutApi(): void {
+  getIndexMock.mockReset();
+  getPageMock.mockReset();
+  getIndexMock.mockImplementation(() => Promise.resolve(layoutIndex()));
+  getPageMock.mockImplementation((params) => {
+    const key = params.from.replace(/-start$/, '');
+    const items = windows.get(key)?.items ?? [];
+    const offset = params.offset ?? 0;
+    const limit = params.limit ?? 2000;
+    const slice = items.slice(offset, offset + limit);
+    const next = offset + slice.length;
+    return Promise.resolve({
+      from: params.from,
+      to: params.to,
+      version: windows.get(key)?.version ?? '0',
+      total: items.length,
+      // the wire payload never carries null dims: they pack as 1:1
+      items: slice.map((item) => ({ t: item.t, w: item.w ?? 1, h: item.h ?? 1 })),
+      nextOffset: next < items.length ? next : null,
+    } satisfies AssetLayoutPage);
+  });
+}
 
 function stubMeasurement(): void {
   vi.stubGlobal(
@@ -74,12 +145,21 @@ function stubMeasurement(): void {
   });
 }
 
+function stubTimelineData(): void {
+  resetWindows();
+  stubLayoutApi();
+  useAppStore.setState({ timelineRefreshKey: 0 });
+  // one fresh cache namespace per test: the layout cache is module-level in-memory in jsdom
+  useAuthStore.setState({ user: { id: `grid-space-${++userSeq}` } as User });
+  stubMeasurement();
+}
+
 const noopEnsureMonth = (): Promise<null> => Promise.resolve(null);
 const noopRetainMonths = vi.fn();
 const onSelectStub = vi.fn();
 const onToggleSelectStub = vi.fn();
 
-// Cheapest seam that keeps the real data flow: layout endpoint → useTimelineLayout → TimelineGrid.
+// Cheapest seam that keeps the real data flow: layout index + windows → useTimelineLayout → grid.
 function TimelineHarness({ rememberScroll }: { rememberScroll?: boolean }) {
   const { layout, containerRef, measured } = useTimelineLayout();
   return (
@@ -99,12 +179,42 @@ function TimelineHarness({ rememberScroll }: { rememberScroll?: boolean }) {
   );
 }
 
-describe('TimelineGrid reserved space', () => {
-  beforeEach(() => {
-    getAssetLayoutMock.mockReset();
-    getAssetLayoutMock.mockResolvedValue({ items: LAYOUT_ITEMS } as AssetLayout);
-    stubMeasurement();
+/** Waits for the complete layout: the track reserves `totalHeight` only after every window landed. */
+async function waitForTrack(container: HTMLElement, totalHeight: number): Promise<void> {
+  await waitFor(() => {
+    const track = container.querySelector<HTMLElement>('.max-w-6xl');
+    expect(track?.style.height).toBe(`${totalHeight}px`);
   });
+}
+
+/** Scroll container fake: scrollTop is writable, scrollTo moves it synchronously like a browser. */
+function fakeScroller() {
+  const el = document.createElement('div');
+  let top = 0;
+  Object.defineProperty(el, 'scrollTop', {
+    get: () => top,
+    set: (value: number) => {
+      top = value;
+    },
+  });
+  Object.defineProperty(el, 'clientHeight', { value: 700 });
+  const scrollTo = vi.fn(({ top: next }: ScrollToOptions) => {
+    top = next ?? 0;
+  });
+  el.scrollTo = scrollTo as unknown as HTMLDivElement['scrollTo'];
+  return { ref: { current: el }, scrollTo };
+}
+
+function renderWithScroller(ref: RefObject<HTMLDivElement>, rememberScroll: boolean) {
+  return render(
+    <ScrollContainerContext.Provider value={ref}>
+      <TimelineHarness rememberScroll={rememberScroll} />
+    </ScrollContainerContext.Provider>,
+  );
+}
+
+describe('TimelineGrid reserved space', () => {
+  beforeEach(stubTimelineData);
 
   afterEach(() => {
     cleanup();
@@ -112,11 +222,8 @@ describe('TimelineGrid reserved space', () => {
     vi.unstubAllGlobals();
   });
 
-  it('reserves exactly the buildBuckets() space fed by GET /api/v1/assets/layout', async () => {
-    const expected = buildBuckets(LAYOUT_ITEMS, {
-      containerWidth: CONTAINER_WIDTH,
-      rowHeight: ROW_HEIGHT,
-    });
+  it('reserves exactly the buildBuckets() space fed by the layout index + windows', async () => {
+    const expected = buildBuckets(LAYOUT_ITEMS, LAYOUT_OPTIONS);
     // guard the fixture so the comparison can't pass vacuously
     expect(expected.buckets.map((b) => b.key)).toEqual([
       '2026-03',
@@ -139,7 +246,8 @@ describe('TimelineGrid reserved space', () => {
       expect(el?.style.height).toBe(`${expected.totalHeight}px`);
       return el!;
     });
-    expect(getAssetLayoutMock).toHaveBeenCalledTimes(1);
+    expect(getIndexMock).toHaveBeenCalledTimes(1);
+    expect(getPageMock).toHaveBeenCalledTimes(expected.buckets.length); // one window each
 
     // month buckets: absolute top + height per bucket, then each day section's height
     const monthEls = Array.from(track.children) as HTMLElement[];
@@ -181,7 +289,7 @@ describe('TimelineGrid reserved space', () => {
       expect(el?.style.height).toBe('6882px');
       return el!;
     });
-    expect(getAssetLayoutMock).toHaveBeenCalledTimes(1);
+    expect(getIndexMock).toHaveBeenCalledTimes(1);
     expect(track.querySelectorAll(':scope > section')).toHaveLength(3);
 
     const boundary = Array.from(track.children)[2] as HTMLElement;
@@ -196,41 +304,10 @@ describe('TimelineGrid reserved space', () => {
 
 describe('TimelineGrid day memory', () => {
   const STORAGE_KEY = 'photox.timeline.day';
-  const layout = buildBuckets(LAYOUT_ITEMS, {
-    containerWidth: CONTAINER_WIDTH,
-    rowHeight: ROW_HEIGHT,
-  });
-
-  /** Scroll container fake: scrollTop is writable, scrollTo moves it synchronously like a browser. */
-  function fakeScroller() {
-    const el = document.createElement('div');
-    let top = 0;
-    Object.defineProperty(el, 'scrollTop', {
-      get: () => top,
-      set: (value: number) => {
-        top = value;
-      },
-    });
-    Object.defineProperty(el, 'clientHeight', { value: 700 });
-    const scrollTo = vi.fn(({ top: next }: ScrollToOptions) => {
-      top = next ?? 0;
-    });
-    el.scrollTo = scrollTo as unknown as HTMLDivElement['scrollTo'];
-    return { ref: { current: el }, scrollTo };
-  }
-
-  function renderWithScroller(ref: RefObject<HTMLDivElement>, rememberScroll: boolean) {
-    return render(
-      <ScrollContainerContext.Provider value={ref}>
-        <TimelineHarness rememberScroll={rememberScroll} />
-      </ScrollContainerContext.Provider>,
-    );
-  }
+  const layout = buildBuckets(LAYOUT_ITEMS, LAYOUT_OPTIONS);
 
   beforeEach(() => {
-    getAssetLayoutMock.mockReset();
-    getAssetLayoutMock.mockResolvedValue({ items: LAYOUT_ITEMS } as AssetLayout);
-    stubMeasurement();
+    stubTimelineData();
     // the scroll handler schedules through rAF; run it inline so the test needs no frame timing
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
       cb(0);
@@ -273,9 +350,9 @@ describe('TimelineGrid day memory', () => {
 
   it('remembers the day under the sticky header while scrolling', async () => {
     const { ref } = fakeScroller();
-    renderWithScroller(ref, true);
+    const { container } = renderWithScroller(ref, true);
     // wait for the measured layout: the restore path is a no-op, so only `measured` gates the save
-    await waitFor(() => expect(getAssetLayoutMock).toHaveBeenCalledTimes(1));
+    await waitForTrack(container, layout.totalHeight);
 
     const target = dayContentY(layout, '2025-10-15');
     expect(target).not.toBeNull();
@@ -289,8 +366,8 @@ describe('TimelineGrid day memory', () => {
 
   it('leaves sessionStorage alone when the grid does not opt in', async () => {
     const { ref } = fakeScroller();
-    renderWithScroller(ref, false);
-    await waitFor(() => expect(getAssetLayoutMock).toHaveBeenCalledTimes(1));
+    const { container } = renderWithScroller(ref, false);
+    await waitForTrack(container, layout.totalHeight);
 
     ref.current.scrollTop = 1000;
     act(() => {
@@ -298,5 +375,37 @@ describe('TimelineGrid day memory', () => {
     });
 
     expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it('keeps the sticky day fixed when a window above the viewport gains assets on refresh', async () => {
+    const { ref } = fakeScroller();
+    const { container } = renderWithScroller(ref, false);
+    await waitForTrack(container, layout.totalHeight);
+
+    // park the viewport inside a lower month
+    const anchorDay = '2025-12-15';
+    const anchorY = dayContentY(layout, anchorDay);
+    expect(anchorY).not.toBeNull();
+    ref.current.scrollTop = anchorY! + 10;
+
+    // a pre-existing month above the viewport gains a day; its index version moves with it
+    const march = windows.get('2026-03');
+    expect(march).toBeDefined();
+    const added: TimelineItem[] = [
+      { t: '2026-03-25T12:00:00', w: 1920, h: 1080 },
+      { t: '2026-03-25T12:00:00', w: 1920, h: 1080 },
+    ];
+    march!.items = [...march!.items, ...added];
+    march!.version = 'bumped';
+
+    act(() => useAppStore.getState().bumpTimelineRefresh());
+
+    const next = buildBuckets([...LAYOUT_ITEMS, ...added], LAYOUT_OPTIONS);
+    await waitForTrack(container, next.totalHeight);
+
+    // guard: the anchor day really moved in content space, or the assertion below is vacuous
+    expect(dayContentY(next, anchorDay)).not.toBe(anchorY);
+    // same 10px into the day, i.e. the sticky day did not move under the header
+    expect(ref.current?.scrollTop).toBe(dayContentY(next, anchorDay)! + 10);
   });
 });

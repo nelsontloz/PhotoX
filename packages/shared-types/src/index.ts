@@ -152,6 +152,32 @@ export interface AssetLayout {
   items: AssetLayoutItem[];
 }
 
+/** One month window from GET api/v1/assets/layout/months (a local calendar month for the `tz`). */
+export interface AssetLayoutMonth {
+  /** Local month key, `YYYY-MM`. */
+  key: string;
+  /** Window bounds as UTC instants — pass them straight back to the window page endpoint. */
+  from: string;
+  to: string;
+  count: number;
+  /** Changes on any layout-visible mutation inside the window (see the plan doc). */
+  version: string;
+}
+
+export interface AssetLayoutIndex {
+  months: AssetLayoutMonth[];
+}
+
+/** One page of a month window from GET api/v1/assets/layout?from&to&offset&limit. */
+export interface AssetLayoutPage extends AssetLayout {
+  from: string;
+  to: string;
+  total: number;
+  version: string;
+  /** Next offset while more items remain, else null. */
+  nextOffset: number | null;
+}
+
 export interface AssetThumbnail {
   size: string;
   fileId: string;
