@@ -3170,7 +3170,17 @@ export class UserBackupService {
       return;
     }
 
-    // prune stale originals under the new prefix (pre-fix backups uploaded thumbnail bytes)
+    // bytes are all in S3 now: the manifest lands last and is HEAD-verified
+    await this.s3.putObject(
+      run.manifestKey,
+      Buffer.from(JSON.stringify(manifest)),
+      'application/json',
+    );
+    await this.s3.headObject(run.manifestKey);
+
+    // prune stale originals under the prefix (pre-fix backups uploaded thumbnail bytes) — only
+    // after the replacement manifest is HEAD-verified: until then the previous manifest is still
+    // the published one and deleting its objects would leave it pointing at missing bytes
     try {
       const listed = new Set(await this.s3.listKeys(run.prefix));
       const expected = new Set(
@@ -3191,13 +3201,6 @@ export class UserBackupService {
       );
     }
 
-    // bytes are all in S3 now: the manifest lands last and is HEAD-verified
-    await this.s3.putObject(
-      run.manifestKey,
-      Buffer.from(JSON.stringify(manifest)),
-      'application/json',
-    );
-    await this.s3.headObject(run.manifestKey);
     await this.deletePrefixesQuietly(run.stalePrefixes ?? [], run.userId);
 
     const result: BackupResult = {
