@@ -7,8 +7,10 @@ import {
   IsBoolean,
   IsUUID,
   IsArray,
+  IsString,
   ArrayMinSize,
   ArrayMaxSize,
+  MaxLength,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { isQueryTrue } from '../../common/query-params';
@@ -42,6 +44,17 @@ export class ListAssetsQueryDto {
   @Min(0)
   @ApiProperty({ default: 0, required: false })
   offset?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  @ApiProperty({
+    required: false,
+    description:
+      'Opaque cursor from a previous page (nextCursor). Replaces offset so a library change ' +
+      'mid-scroll cannot repeat or skip rows.',
+  })
+  cursor?: string;
 
   @IsOptional()
   @Transform(({ value }) => isQueryTrue(value))

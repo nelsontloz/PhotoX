@@ -15,6 +15,8 @@ import type {
 interface ListAssetsParams {
   limit?: number;
   offset?: number;
+  /** Opaque next-page token from `AssetListResponse.nextCursor`. */
+  cursor?: string;
   isTrashed?: boolean;
   favorite?: boolean;
   hasLocations?: boolean;
@@ -45,22 +47,21 @@ export async function listAssets(params: ListAssetsParams = {}): Promise<AssetLi
 }
 
 /**
- * Fetches page 1 (offset 0) serially, then all remaining pages in parallel. `limit` is the page
- * size, not a cap; an empty first page returns [].
+ * Walks `nextCursor` until the server stops. `limit` is the page size, not a cap; an empty first
+ * page returns []. Cursor (not offset) paging keeps pages disjoint when the library changes
+ * mid-scroll — an upload landing between two offset pages repeated the last row of the previous one.
  */
 export async function listAllAssets(params: ListAssetsParams = {}): Promise<Asset[]> {
   const limit = params.limit ?? 100;
-  const first = await listAssets({ ...params, limit, offset: 0 });
-  const all = [...first.items];
-  if (first.items.length === 0 || all.length >= first.total) return all;
-  const pages: Promise<AssetListResponse>[] = [];
-  // ponytail: all remaining pages fire at once; the browser/HTTP stack caps concurrency.
-  // Cap + retry if a single month ever exceeds a few thousand rows.
-  for (let offset = limit; offset < first.total; offset += limit) {
-    pages.push(listAssets({ ...params, limit, offset }));
+  const all: Asset[] = [];
+  let cursor: string | undefined;
+  for (;;) {
+    const page = await listAssets({ ...params, limit, offset: 0, cursor });
+    all.push(...page.items);
+    // a repeated cursor would loop forever on a server bug
+    if (!page.nextCursor || page.nextCursor === cursor) return all;
+    cursor = page.nextCursor;
   }
-  for (const page of await Promise.all(pages)) all.push(...page.items);
-  return all;
 }
 
 export async function getAsset(assetId: string): Promise<Asset> {

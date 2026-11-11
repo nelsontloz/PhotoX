@@ -259,7 +259,8 @@ interface FakeQb {
   take: () => FakeQb;
   offset: () => FakeQb;
   limit: () => FakeQb;
-  getManyAndCount: () => Promise<[Asset[], number]>;
+  getCount: () => Promise<number>;
+  getMany: () => Promise<Asset[]>;
   getRawMany: () => Promise<{ t: Date; w: number; h: number }[]>;
 }
 
@@ -296,13 +297,11 @@ function makeTimelineService(rows: TimelineRow[]) {
     take: () => qb,
     offset: () => qb,
     limit: () => qb,
-    getManyAndCount: () => {
-      const hits = matching();
-      return Promise.resolve([
-        hits.map((r) => ({ id: r.id, userId: 'u1' }) as unknown as Asset),
-        hits.length,
-      ]);
-    },
+    getCount: () => Promise.resolve(matching().length),
+    getMany: () =>
+      Promise.resolve(
+        matching().map((r) => ({ id: r.id, userId: 'u1' }) as unknown as Asset),
+      ),
     getRawMany: () =>
       Promise.resolve(
         matching().map((r) => ({

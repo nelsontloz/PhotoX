@@ -437,6 +437,57 @@ describe('assets JWT identity', () => {
     expect(secondBody.items).toHaveLength(1);
   });
 
+  // regression guard (audit #9): cursor paging keeps pages disjoint when a photo is uploaded
+  // mid-scroll. Offset paging shifted and repeated the last row of the previous page.
+  it('keeps pages disjoint when a photo is uploaded between them', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const auth = t.authHeader(token);
+    const seedAt = async (day: string): Promise<string> => {
+      const file = await seedFile(t, user.id);
+      const asset = await seedAsset(t, user.id, file.id);
+      const at = new Date(`2024-01-${day}T00:00:00.000Z`);
+      await t.assetRepo.update(asset.id, { takenAt: at, uploadedAt: at });
+      return asset.id;
+    };
+    await seedAt('01');
+    const middle = await seedAt('02');
+    const newest = await seedAt('03');
+
+    const first = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .query({ limit: 2 })
+      .set(auth);
+    expect(first.status).toBe(200);
+    const firstBody = first.body as { items: { id: string }[]; nextCursor: string | null };
+    const firstIds = firstBody.items.map((item) => item.id);
+    expect(firstIds).toEqual([newest, middle]);
+    expect(firstBody.nextCursor).toBeTruthy();
+
+    // the user uploads one more photo while the next page is in flight
+    await seedAt('04');
+
+    const second = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .query({ limit: 2, cursor: firstBody.nextCursor })
+      .set(auth);
+    expect(second.status).toBe(200);
+    const secondIds = (second.body as { items: { id: string }[] }).items.map((item) => item.id);
+
+    expect(secondIds.filter((id) => firstIds.includes(id))).toEqual([]);
+    expect(new Set([...firstIds, ...secondIds]).size).toBe(3);
+  });
+
+  it('rejects a malformed cursor', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const res = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .query({ cursor: 'not-a-cursor' })
+      .set(t.authHeader(token));
+    expect(res.status).toBe(400);
+  });
+
   it('filters by ids CSV and returns only those assets with fileId', async () => {
     const user = await seedUser(t);
     const other = await seedUser(t);
