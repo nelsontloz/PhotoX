@@ -83,16 +83,15 @@ function partConflictError(message: string): ConflictException {
 }
 
 // what a locked complete() decided to do once the session row was inspected
-type CompletePlan =
-  | { kind: 'replay'; asset: AssetResponse; deduplicated: boolean }
-  | {
-      kind: 'fresh';
-      fileId: string;
-      assetId: string;
-      assetKind: 'photo' | 'video';
-      asset: AssetResponse;
-      deduplicated: boolean;
-    };
+interface CompletePlan {
+  kind: 'replay' | 'fresh';
+  fileId: string;
+  assetId: string;
+  assetKind: 'photo' | 'video';
+  /** the just-created asset; null on a replay, where the response layer reads it by id */
+  asset: AssetResponse | null;
+  deduplicated: boolean;
+}
 
 async function pathExists(path: string): Promise<boolean> {
   try {
@@ -347,20 +346,15 @@ export class UploadsService {
       const plan = await this.finalizeAssembly(runner, session, userId);
       // durable from here: `assembled` + the completed ids survive an enqueue failure below
       await runner.commitTransaction();
-      if (plan.kind === 'replay') {
-        await this.removeSessionDir(session);
-        this.logger.log(
-          `[UploadsService] upload finished session=${session.id} asset=${plan.asset.id} deduplicated=true`,
-        );
-        return { asset: plan.asset, deduplicated: plan.deduplicated };
-      }
+      // a replay still owes the jobs: the previous attempt may have saved the rows and died
+      // before enqueuing, and `completed` must keep meaning "rows saved AND jobs queued"
       return this.runEnqueues(
         userId,
         session,
         plan.fileId,
         plan.assetId,
         plan.assetKind,
-        plan.asset,
+        plan.asset ?? undefined,
         plan.deduplicated,
       );
     });
@@ -527,17 +521,23 @@ export class UploadsService {
 
       if (!created) {
         // these exact bytes are already owned: hand back a pre-existing asset instead of
-        // creating a second one for the same file row (legacy POST /files 409s here)
+        // creating a second one for the same file row (legacy POST /files 409s here). The stamp
+        // is `assembled`, not `completed`: the caller still owes the jobs after this commits.
+        // A retry that lands here may be repairing an earlier attempt that saved the rows and
+        // died before enqueuing, so it must not answer success with nothing queued.
         const existing = await this.assetRepo.findOne({ where: { fileId: record.id, userId } });
         if (existing) {
           await runner.manager.update(
             UploadSession,
             { id: session.id },
-            { status: 'completed', completedFileId: record.id, completedAssetId: existing.id },
+            { status: 'assembled', completedFileId: record.id, completedAssetId: existing.id },
           );
           return {
             kind: 'replay',
-            asset: await this.assets.getOne(userId, existing.id),
+            fileId: record.id,
+            assetId: existing.id,
+            assetKind,
+            asset: null,
             deduplicated: true,
           };
         }

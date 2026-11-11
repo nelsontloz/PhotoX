@@ -2,13 +2,23 @@ import request from 'supertest';
 import { createHash, randomUUID } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { closeTestApp, createApiTestApp, resetDb, seedUser, apiServer } from './helpers';
+import { vi } from 'vitest';
+import {
+  closeTestApp,
+  createApiTestApp,
+  resetDb,
+  seedUser,
+  seedAsset,
+  seedFile,
+  apiServer,
+} from './helpers';
 import type { ApiTestApp } from './helpers';
 import {
   UPLOAD_CHUNK_SIZE_BYTES,
   UPLOAD_MAX_ACTIVE_SESSIONS,
 } from '../../src/uploads/uploads.service';
 import { UploadSessionsSweeper } from '../../src/uploads/upload-sessions.sweeper';
+import { UserFilesService } from '../../src/files/user/user-files.service';
 import type { User } from '../../src/users/entities/user.entity';
 
 // 16 MiB: the out-of-order happy path needs two real 8 MiB parts, and the authoritative-quota
@@ -269,6 +279,37 @@ describe('upload sessions', () => {
     expect(secondBody.asset.id).toBe(firstBody.asset.id);
     expect(await t.assetRepo.count()).toBe(1);
     expect(await t.fileRepo.count()).toBe(1);
+  });
+
+  it('repairs an asset a previous attempt saved but never enqueued', async () => {
+    const user = await seedUser(t);
+    const file = pngish(64);
+    // the leftovers of a complete() that saved the rows and died before enqueuing: the file and
+    // asset exist, the session is still pending and its parts are on disk
+    const seededFile = await seedFile(t, user.id, { bytes: file });
+    const seededAsset = await seedAsset(t, user.id, seededFile.id);
+    const created = await createSession(t, user, { sizeBytes: file.length });
+    const session = created.body as SessionCreated;
+    await putPart(t, user, session.uploadId, 0, file);
+    const enqueue = vi.spyOn(t.app.get(UserFilesService), 'enqueueAssetJobs');
+
+    const res = await request(apiServer(t))
+      .post(`/api/v1/uploads/${session.uploadId}/complete`)
+      .set(auth(t, user));
+    expect(res.status).toBe(200);
+    const body = res.body as { asset: { id: string }; deduplicated: boolean };
+    expect(body.deduplicated).toBe(true);
+    expect(body.asset.id).toBe(seededAsset.id);
+    // the replay answered success only because it queued the jobs this time
+    expect(enqueue).toHaveBeenCalledWith(user.id, { id: seededFile.id }, 'photo', seededAsset.id);
+    expect(await t.assetRepo.count()).toBe(1);
+    expect(await t.fileRepo.count()).toBe(1);
+
+    const status = await request(apiServer(t))
+      .get(`/api/v1/uploads/${session.uploadId}`)
+      .set(auth(t, user));
+    expect((status.body as StatusBody).status).toBe('completed');
+    enqueue.mockRestore();
   });
 
   it('409s PARTS_MISSING with the received indices when a part is absent', async () => {
