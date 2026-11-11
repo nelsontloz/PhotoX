@@ -125,6 +125,7 @@ function makeDeleteService(opts: {
     nil,
     nil,
     nil,
+    nil,
   );
   return { svc, mocks: { usersRepo, dataSource, s3 } };
 }

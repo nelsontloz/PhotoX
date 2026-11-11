@@ -51,6 +51,7 @@ import {
   type TransferKind,
 } from './backup-transfer.constants';
 import { BackupRunItem } from './entities/backup-run-item.entity';
+import { UserDelete } from '../database/entities/user-delete.entity';
 
 const fileManifestSchema = z.object({
   id: z.string().uuid(),
@@ -801,6 +802,7 @@ export class UserBackupService {
     @InjectRepository(BackupMerge) private readonly backupMerges: Repository<BackupMerge>,
     @InjectRepository(BackupRun) private readonly runs: Repository<BackupRun>,
     @InjectRepository(BackupRunItem) private readonly runItems: Repository<BackupRunItem>,
+    @InjectRepository(UserDelete) private readonly userDeletes: Repository<UserDelete>,
   ) {}
 
   /**
@@ -1101,6 +1103,9 @@ export class UserBackupService {
    * (that is how a failed restore is retried instead of 409ing forever).
    */
   async startRestore(emailOrId: string, restoreEmail?: string): Promise<{ runId: string }> {
+    // checked before any S3 work: a batched delete owns the account until its last step
+    const liveTarget = await this.findUser(emailOrId);
+    if (liveTarget) await this.assertNoLiveWipe(liveTarget.id);
     await this.s3.ensureBucket();
     let located: { prefix: string; manifestObjectKey: string; userId: string };
     try {
@@ -1379,6 +1384,10 @@ export class UserBackupService {
     }
     const backupUserId = input.backupUserId;
     if (backupUserId === target.id) throw new ConflictException('already-restored');
+    // neither side may be mid-wipe: the target would lose the merged rows, the source prefix
+    // would be deleted by a sweep that is still running
+    await this.assertNoLiveWipe(backupUserId);
+    await this.assertNoLiveWipe(target.id);
     // The ledger check runs before source resolution: a successful merge adopts
     // (and deletes) the source prefix, so a repeat plain merge must still answer
     // 409 already-merged instead of 404 missing backup. Force keeps resolving the
@@ -2862,6 +2871,16 @@ export class UserBackupService {
       if (!after) return;
       if (after.state === 'running' && processed === 0) return;
       if (after.state !== 'running' && after.state !== 'finalizing') return;
+    }
+  }
+
+  /** Refuses a restore/merge while a batched account wipe is queued or running. */
+  private async assertNoLiveWipe(userId: string): Promise<void> {
+    const wipe = await this.userDeletes.findOne({ where: { userId } });
+    if (wipe && (wipe.state === 'queued' || wipe.state === 'active')) {
+      throw new ConflictException(
+        'A deletion is in progress for this account — wait for it to finish',
+      );
     }
   }
 

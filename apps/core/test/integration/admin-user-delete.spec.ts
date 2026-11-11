@@ -17,6 +17,7 @@ import {
 } from './helpers';
 import type { ApiTestApp } from './helpers';
 import { TEST_WORKER_SECRET } from './test-setup';
+import { runQueuedDelete, waitForDeleteState } from './helpers/user-delete';
 
 async function seedFullUser(t: ApiTestApp) {
   const user = await seedUser(t);
@@ -88,7 +89,29 @@ async function seedFullUser(t: ApiTestApp) {
       revokedAt: null,
     }),
   );
-  return { user, photoFile };
+  // an in-flight resumable session: rows have no user FK and the chunks are bytes on disk
+  const session = await t.uploadSessionRepo.save(
+    t.uploadSessionRepo.create({
+      userId: user.id,
+      status: 'pending',
+      chunkSizeBytes: 8 * 1024 * 1024,
+      totalParts: 1,
+      expectedSizeBytes: 10,
+      originalName: 'half-uploaded.jpg',
+      expiresAt: new Date(Date.now() + 3600_000),
+    }),
+  );
+  await t.uploadPartRepo.save(
+    t.uploadPartRepo.create({
+      sessionId: session.id,
+      partIndex: 0,
+      sizeBytes: 10,
+      checksumSha256: null,
+    }),
+  );
+  const chunkKey = `upload-sessions/${user.id}/${session.id}/part-0`;
+  await plantStray(t, chunkKey);
+  return { user, photoFile, chunkKey };
 }
 
 async function plantStray(t: ApiTestApp, key: string): Promise<string> {
@@ -96,49 +119,6 @@ async function plantStray(t: ApiTestApp, key: string): Promise<string> {
   await mkdir(dirname(full), { recursive: true });
   await writeFile(full, Buffer.from(`stray-${randomUUID()}`));
   return full;
-}
-
-/** Polls the delete-status endpoint until the run is terminal; returns the last state seen. */
-async function waitForDeleteState(
-  t: ApiTestApp,
-  adminAuth: Record<string, string>,
-  userId: string,
-): Promise<string> {
-  let state = '';
-  for (let i = 0; i < 80; i++) {
-    const status = await request(apiServer(t))
-      .get(`/api/v1/admin/users/${userId}/delete-status`)
-      .set(adminAuth);
-    expect(status.status).toBe(200);
-    state = (status.body as { state: string }).state;
-    if (state === 'completed' || state === 'failed') return state;
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  return state;
-}
-
-/**
- * Plays the worker's `user-delete` consumer: the queue consumer lives in the worker-service,
- * which is not booted here, so the harness reads the enqueued job and calls core's purge route
- * with that job's own identity + binding.
- */
-async function runQueuedDelete(t: ApiTestApp, userId: string): Promise<void> {
-  const job = await t.getQueue('user-delete').getJob(`user-delete-${userId}`);
-  expect(job).not.toBeNull();
-  const data = job!.data as { backupPrefix: string; sig: string };
-  const res = await request(apiServer(t))
-    .post(`/worker/users/${userId}/purge`)
-    .set(
-      t.authHeader(
-        t.signWorkerToken({ id: userId, email: 'worker@internal', role: 'user' }, { act: true }),
-      ),
-    )
-    .set('X-Job-Signature', data.sig)
-    .send({ backupPrefix: data.backupPrefix });
-  expect(res.status).toBe(200);
-  // the real consumer was enqueued with removeOnComplete, so the record is gone afterwards
-  // and the status poll falls back to core's progress
-  await job!.remove();
 }
 
 describe('admin async user deletion', () => {
@@ -209,7 +189,7 @@ describe('admin async user deletion', () => {
     const adminAuth = t.authHeader(
       t.signToken({ id: admin.id, email: admin.email, role: admin.role }),
     );
-    const { user, photoFile } = await seedFullUser(t);
+    const { user, photoFile, chunkKey } = await seedFullUser(t);
     const other = await seedUser(t);
     const otherFile = await seedFile(t, other.id);
     const otherAsset = await seedAsset(t, other.id, otherFile.id, { kind: 'photo' });
@@ -239,10 +219,19 @@ describe('admin async user deletion', () => {
       backupPrefix: backupPrefix(user.email, user.id),
     });
 
-    // the worker consumes the job and asks core to run the wipe; then poll until terminal
-    await runQueuedDelete(t, user.id);
+    // the worker drains, drives the bounded steps, sweeps the bytes and reports the outcome
+    const run = await runQueuedDelete(t, user.id);
+    expect(run.steps[0]).toBe('tokens');
+    expect(run.steps).toContain('assets');
+    expect(run.steps.at(-1)).toBe('user');
+    expect(run.sweep.failed).toBe(0);
     const state = await waitForDeleteState(t, adminAuth, user.id);
     expect(state).toBe('completed');
+
+    // the durable progress row is what the poll reads (it survives a core restart)
+    const progress = await t.userDeleteRepo.findOneOrFail({ where: { userId: user.id } });
+    expect(progress).toMatchObject({ state: 'completed', failedFiles: 0 });
+    expect(progress.deletedRows).toBeGreaterThan(0);
 
     // every owned row is gone, incl. trashed assets and CASCADE tables
     expect(await t.userRepo.findOne({ where: { id: user.id } })).toBeNull();
@@ -257,6 +246,10 @@ describe('admin async user deletion', () => {
     expect(await t.thumbRepo.count()).toBe(0);
     expect(await t.embeddingRepo.count()).toBe(0);
     expect(await t.detectionRepo.count()).toBe(0);
+    // resumable-upload state: rows (no user FK) and the chunk bytes on disk
+    expect(await t.uploadSessionRepo.count({ where: { userId: user.id } })).toBe(0);
+    expect(await t.uploadPartRepo.count()).toBe(0);
+    expect(await t.storage.exists(chunkKey)).toBe(false);
 
     // every owned byte is gone, strays swept, models untouched
     expect(await t.storage.exists(photoFile.storageKey)).toBe(false);
@@ -277,6 +270,68 @@ describe('admin async user deletion', () => {
   // swallow every later delete of that id. The restore flow re-creates the account with its
   // original userId. The queue is consumed by the worker now, but the retained job still
   // carries a valid binding, so the wipe must still run for the restored account.
+  it('answers done for a step past completion without touching the row it reported', async () => {
+    const admin = await seedUser(t, { role: 'admin' });
+    const adminAuth = t.authHeader(
+      t.signToken({ id: admin.id, email: admin.email, role: admin.role }),
+    );
+    const { user } = await seedFullUser(t);
+    await request(apiServer(t)).delete(`/api/v1/admin/users/${user.id}`).set(adminAuth);
+    await runQueuedDelete(t, user.id);
+
+    const replay = await request(apiServer(t))
+      .post(`/worker/users/${user.id}/purge/step`)
+      .set(
+        t.authHeader(
+          t.signWorkerToken({ id: user.id, email: 'worker@internal', role: 'user' }, { act: true }),
+        ),
+      )
+      .set(
+        'X-Job-Signature',
+        createHmac('sha256', TEST_WORKER_SECRET).update(`${user.id}:${user.id}`).digest('hex'),
+      )
+      .send({ backupPrefix: backupPrefix(user.email, user.id) });
+
+    expect(replay.status).toBe(200);
+    expect(replay.body).toEqual({ done: true, phase: 'rows-done', deleted: 0 });
+    const progress = await t.userDeleteRepo.findOneOrFail({ where: { userId: user.id } });
+    expect(progress.state).toBe('completed');
+  }, 120_000);
+
+  it('refuses a restore or merge while a wipe for that account is still live', async () => {
+    const admin = await seedUser(t, { role: 'admin' });
+    const adminAuth = t.authHeader(
+      t.signToken({ id: admin.id, email: admin.email, role: admin.role }),
+    );
+    const victim = await seedUser(t);
+    // a queued wipe row is enough: the guard must not depend on the job record
+    await t.userDeleteRepo.insert({
+      userId: victim.id,
+      jobId: `user-delete-${victim.id}`,
+      state: 'queued',
+      backupPrefix: backupPrefix(victim.email, victim.id),
+      sessionsLocked: false,
+    });
+
+    const restore = await request(apiServer(t))
+      .post('/api/v1/admin/restores')
+      .set(adminAuth)
+      .send({ emailOrId: victim.email });
+    expect(restore.status).toBe(409);
+    expect(String((restore.body as { message?: unknown }).message)).toContain(
+      'deletion is in progress',
+    );
+
+    const merge = await request(apiServer(t))
+      .post('/api/v1/admin/restores/merge')
+      .set(adminAuth)
+      .send({ targetEmailOrId: admin.id, backupUserId: victim.id });
+    expect(merge.status).toBe(409);
+    expect(String((merge.body as { message?: unknown }).message)).toContain(
+      'deletion is in progress',
+    );
+  }, 120_000);
+
   it('re-deletes an account that came back with the same id despite a retained job record', async () => {
     const admin = await seedUser(t, { role: 'admin' });
     const adminAuth = t.authHeader(

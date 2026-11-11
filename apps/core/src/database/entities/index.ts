@@ -6,3 +6,4 @@ export { Person } from './person.entity';
 export { AppSetting } from './app-setting.entity';
 export { UploadSession } from './upload-session.entity';
 export { UploadSessionPart } from './upload-session-part.entity';
+export { UserDelete } from './user-delete.entity';

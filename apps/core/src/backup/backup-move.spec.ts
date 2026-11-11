@@ -141,6 +141,7 @@ function makeMoveService(objects: Map<string, Buffer> = new Map<string, Buffer>(
     nil,
     nil,
     nil,
+    nil,
   );
   return { svc, s3, store };
 }

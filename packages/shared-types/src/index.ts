@@ -480,13 +480,55 @@ export interface AdminUserDeleteResponse {
   backupPrefix: string;
 }
 
-export type AdminUserDeleteState = 'queued' | 'active' | 'completed' | 'failed' | 'unknown';
+export type AdminUserDeleteState =
+  'queued' | 'active' | 'wiping-files' | 'completed' | 'partial' | 'failed' | 'unknown';
+
+/**
+ * One bounded unit of the batched wipe. `tokens` locks the account, `assets`/`files`/…
+ * delete rows in chunks, `user` drops the row itself, `rows-done` means the worker may
+ * sweep the bytes. See UserDeleteService.step.
+ */
+export type UserDeletePhase =
+  | 'tokens'
+  | 'assets'
+  | 'files'
+  | 'faces'
+  | 'persons'
+  | 'albums'
+  | 'shares'
+  | 'sessions'
+  | 'ledger'
+  | 'user'
+  | 'rows-done';
+
+export interface UserDeleteStepResult {
+  /** No rows left for this user; the caller must still sweep the storage prefixes. */
+  done: boolean;
+  phase: UserDeletePhase;
+  /** Rows removed by this call. */
+  deleted: number;
+}
+
+export interface UserDeleteFinishRequest {
+  backupPrefix: string;
+  filesDeleted: number;
+  filesFailed: number;
+  /** First file error, reported verbatim on a `partial` run. */
+  firstError?: string;
+  /** The rows half did not finish: the run is `failed`, not `partial`. */
+  error?: string;
+}
 
 export interface AdminUserDeleteStatus {
   jobId: string;
   state: AdminUserDeleteState;
   backupKept: true;
   backupPrefix: string;
+  phase?: UserDeletePhase;
+  deletedRows?: number;
+  deletedFiles?: number;
+  failedFiles?: number;
+  error?: string;
 }
 
 // The user-delete queue + job-id contract lives here because core produces and the worker consumes.

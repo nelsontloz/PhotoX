@@ -32,7 +32,9 @@ import { RegisterDetectionsDto } from '../detections/dto/register-detections.dto
 import { WorkerMetadataDto } from './dto/worker-metadata.dto';
 import { ListFacesQueryDto } from './dto/list-faces-query.dto';
 import { PurgeUserDto } from './dto/purge-user.dto';
+import { PurgeUserFinishDto } from './dto/purge-user-finish.dto';
 import { UserDeleteService } from '../users/admin/user-delete.service';
+import type { UserDeleteStepResult } from '@photox/shared-types';
 
 // Worker job surface (agreed interface with the worker lane — do not rename paths). Every route
 // is act-required via JwtAuthGuard; ownership is scoped by the job's sub through the reused
@@ -167,17 +169,32 @@ export class WorkerController {
   }
 
   // The `user-delete` queue consumer lives in the worker-service (no DB access), so the wipe
-  // itself is requested here. The route target must be the job's own sub: the job binding
-  // already pins (sub, scope=userId), and this keeps a purge from ever naming another account.
-  @Post('users/:id/purge')
+  // is driven from here in bounded steps: the worker loops `purge/step` until `done`, sweeps
+  // the four storage prefixes itself (it owns STORAGE_DIR), then reports `purge/finish`.
+  // Every route target must be the job's own sub: the job binding already pins
+  // (sub, scope=userId), and this keeps a wipe from ever naming another account.
+  @Post('users/:id/purge/step')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Worker-triggered full wipe of the job user account' })
-  async purgeUser(
+  @ApiOperation({ summary: 'Worker-driven bounded step of the job user account wipe' })
+  async purgeUserStep(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: PurgeUserDto,
     @CurrentUserId() userId: string,
-  ) {
+  ): Promise<UserDeleteStepResult> {
     if (id !== userId) throw new ForbiddenException('Purge target must be the job user');
-    return this.deletes.purge(id, dto.backupPrefix);
+    return this.deletes.step(id, dto.backupPrefix);
+  }
+
+  @Post('users/:id/purge/finish')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Worker terminal report for the job user account wipe' })
+  async purgeUserFinish(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: PurgeUserFinishDto,
+    @CurrentUserId() userId: string,
+  ): Promise<{ state: string }> {
+    if (id !== userId) throw new ForbiddenException('Purge target must be the job user');
+    await this.deletes.finish(id, dto);
+    return { state: (await this.deletes.getProgress(id))?.state ?? 'unknown' };
   }
 }

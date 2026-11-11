@@ -24,6 +24,7 @@ import {
 import { AssetEmbedding } from '../../src/database/entities/asset-embedding.entity';
 import { AssetDetection } from '../../src/database/entities/asset-detection.entity';
 import { LocalStorageService } from '@photox/shared-config';
+import { UserDelete } from '../../src/database/entities/user-delete.entity';
 import { User } from '../../src/users/entities/user.entity';
 import { RefreshToken } from '../../src/users/entities/refresh-token.entity';
 import { Album } from '../../src/albums/entities/album.entity';
@@ -89,6 +90,7 @@ export interface ApiTestApp {
   detectionRepo: Repository<AssetDetection>;
   uploadSessionRepo: Repository<UploadSession>;
   uploadPartRepo: Repository<UploadSessionPart>;
+  userDeleteRepo: Repository<UserDelete>;
   getQueue: (name: string) => Queue;
   signToken: (user: MockUser, opts?: { act?: boolean }) => string;
   authHeader: (token: string) => Record<string, string>;
@@ -233,6 +235,7 @@ export async function createApiTestApp(opts?: {
       detectionRepo: app.get<Repository<AssetDetection>>(getRepositoryToken(AssetDetection)),
       uploadSessionRepo: app.get<Repository<UploadSession>>(getRepositoryToken(UploadSession)),
       uploadPartRepo: app.get<Repository<UploadSessionPart>>(getRepositoryToken(UploadSessionPart)),
+      userDeleteRepo: app.get<Repository<UserDelete>>(getRepositoryToken(UserDelete)),
       getQueue: (name: string) => bullMq.getQueue(name),
       signToken,
       signWorkerToken,

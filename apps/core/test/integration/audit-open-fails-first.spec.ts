@@ -80,7 +80,7 @@ describe('open audit findings (fails first)', () => {
     it('an asset-scoped signature cannot purge the account through X-Job-Scope', async () => {
       const { user, asset } = await seedVictim();
       const res = await request(apiServer(t))
-        .post(`/worker/users/${user.id}/purge`)
+        .post(`/worker/users/${user.id}/purge/step`)
         .set(t.authHeader(workerToken(user)))
         .set('X-Job-Signature', jobSig(user.id, asset.id))
         .set('X-Job-Scope', asset.id)
@@ -95,7 +95,7 @@ describe('open audit findings (fails first)', () => {
         { act: true },
       );
       const res = await request(apiServer(t))
-        .post(`/worker/users/${user.id}/purge`)
+        .post(`/worker/users/${user.id}/purge/step`)
         .set(t.authHeader(renewed))
         .send({ backupPrefix: 'backups/x/' });
       expect(res.status).toBe(403);

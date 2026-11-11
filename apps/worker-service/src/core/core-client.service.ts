@@ -12,6 +12,8 @@ import type {
   MetadataStatus,
   RegisterDetectionsRequestDto,
   RegisterEmbeddingRequestDto,
+  UserDeleteFinishRequest,
+  UserDeleteStepResult,
 } from '@photox/shared-types';
 
 export type MetadataPatch = Partial<
@@ -93,8 +95,8 @@ export interface ApplyClustersResult {
 }
 
 const REQUEST_TIMEOUT_MS = 30_000;
-// a full account wipe plus the stray-byte sweep can outrun the default budget; the call is
-// idempotent (a retry finds no user row), but an abort mid-sweep costs a whole job attempt
+// one wipe step can delete a 200-asset batch with its cascades; both calls are idempotent, but
+// an abort mid-step still costs a whole job attempt
 const PURGE_TIMEOUT_MS = 15 * 60_000;
 // ponytail: keyset walk over GET /worker/faces (id ASC, cursor = last id); 500 matches core's default
 const FACES_PAGE_LIMIT = 500;
@@ -293,12 +295,30 @@ export class CoreClient {
     return this.request('POST', '/worker/persons/prune-empty', { sub: userId, ...binding });
   }
 
-  /** Runs the full account wipe in core (the worker has no DB/storage access). Idempotent. */
-  async purgeUser(userId: string, backupPrefix: string, binding?: JobBinding): Promise<void> {
-    await this.request(
+  /** One bounded step of the account wipe (the worker has no DB access). Idempotent. */
+  async purgeStep(
+    userId: string,
+    backupPrefix: string,
+    binding?: JobBinding,
+  ): Promise<UserDeleteStepResult> {
+    return this.request(
       'POST',
-      `/worker/users/${userId}/purge`,
+      `/worker/users/${userId}/purge/step`,
       { sub: userId, body: { backupPrefix }, ...binding },
+      PURGE_TIMEOUT_MS,
+    );
+  }
+
+  /** Terminal report after the worker's storage sweep; `error` marks the rows half unfinished. */
+  async purgeFinish(
+    userId: string,
+    report: UserDeleteFinishRequest,
+    binding?: JobBinding,
+  ): Promise<{ state: string }> {
+    return this.request(
+      'POST',
+      `/worker/users/${userId}/purge/finish`,
+      { sub: userId, body: report, ...binding },
       PURGE_TIMEOUT_MS,
     );
   }
