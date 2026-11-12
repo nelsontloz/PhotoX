@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { UnrecoverableError, type Job } from 'bullmq';
 import { LocalStorageService } from '@photox/shared-config';
-import { registerDerivative, videoProcessor } from './video.processor';
+import { registerDerivative, transcodeOutputDir, videoProcessor } from './video.processor';
 import type { CoreClient, RegisterFileInput } from '../core/core-client.service';
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../../test/fake-core-client';
 import { signJob, useTestAuthEnv } from '../../test/sign-job';
@@ -78,6 +78,17 @@ describe('VideoProcessor disk paths', () => {
     expect(dto.id).not.toBe(firstId);
     expect(await storage.exists(storage.buildKey('transcode', userId, dto.id, 'webm'))).toBe(false);
     expect(await storage.exists(storage.buildKey('transcode', userId, firstId, 'webm'))).toBe(true);
+  });
+
+  it('gives every execution its own output directory', () => {
+    const fileId = randomUUID();
+
+    const first = transcodeOutputDir(fileId);
+    const second = transcodeOutputDir(fileId);
+
+    expect(first).not.toBe(second);
+    expect(first.startsWith(tmpdir())).toBe(true);
+    expect(first).toContain(fileId);
   });
 
   it('rejects a job whose asset belongs to another user before patching', async () => {
