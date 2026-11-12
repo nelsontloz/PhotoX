@@ -1,15 +1,45 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
+import { isUUID } from 'class-validator';
 import { Album } from './entities/album.entity';
 import { AlbumAsset } from './entities/album-asset.entity';
 import { Asset } from '../database/entities';
 import { findOwnedOr404 } from '../common/asset-ownership';
 import { CreateAlbumDto } from './dto/create-album.dto';
 import { UpdateAlbumDto } from './dto/update-album.dto';
+import { ListAlbumAssetsQueryDto } from './dto/list-album-assets-query.dto';
 import { PaginationQueryDto } from '../common/pagination-query.dto';
 import { AssetsService } from '../assets/assets.service';
 import type { AlbumDto, Asset as AssetResponse } from '@photox/shared-types';
+
+interface AlbumAssetCursor {
+  addedAt: Date;
+  assetId: string;
+}
+
+/** The last row's ("addedAt", "assetId") — the full album-assets ORDER BY tuple. */
+function encodeAlbumAssetCursor(row: { addedAt: Date | string; assetId: string }): string {
+  return Buffer.from(JSON.stringify([new Date(row.addedAt).toISOString(), row.assetId])).toString(
+    'base64url',
+  );
+}
+
+function decodeAlbumAssetCursor(raw: string): AlbumAssetCursor {
+  const invalid = (): BadRequestException => new BadRequestException('Invalid cursor');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+  } catch {
+    throw invalid();
+  }
+  if (!Array.isArray(parsed) || parsed.length !== 2) throw invalid();
+  const [addedAt, assetId] = parsed as unknown[];
+  if (typeof addedAt !== 'string' || typeof assetId !== 'string') throw invalid();
+  const addedAtDate = new Date(addedAt);
+  if (Number.isNaN(addedAtDate.getTime()) || !isUUID(assetId)) throw invalid();
+  return { addedAt: addedAtDate, assetId };
+}
 
 @Injectable()
 export class AlbumsService {
@@ -136,31 +166,54 @@ export class AlbumsService {
   async listAssets(
     userId: string,
     albumId: string,
-    q: PaginationQueryDto,
-  ): Promise<{ items: AssetResponse[]; total: number }> {
+    q: ListAlbumAssetsQueryDto,
+  ): Promise<{ items: AssetResponse[]; total: number; nextCursor: string | null }> {
     await findOwnedOr404(this.repo, albumId, userId, 'Album');
 
     const limit = q.limit;
     const offset = q.offset;
+    const cursor = q.cursor ? decodeAlbumAssetCursor(q.cursor) : null;
 
-    const joins = await this.albumAssetRepo
+    const qb = this.albumAssetRepo
       .createQueryBuilder('aa')
       .select('aa.assetId', 'assetId')
+      .addSelect('aa.addedAt', 'addedAt')
       .innerJoin('assets', 'asset', 'asset.id = aa."assetId"')
       .where('aa.albumId = :albumId', { albumId })
       .andWhere('asset.isTrashed = false')
       .orderBy('aa.addedAt', 'DESC')
-      .offset(offset)
-      .limit(limit)
-      .getRawMany<{ assetId: string }>();
+      // id completes the sort key, so a keyset cursor can compare the whole tuple
+      .addOrderBy('aa.assetId', 'DESC')
+      .limit(limit + 1);
 
+    if (cursor) {
+      // keyset, not offset: a bulk add mid-scroll shares one addedAt, so offset pages would
+      // repeat or skip rows. A cursor alongside an offset wins; the offset is ignored.
+      qb.andWhere(
+        '(aa."addedAt", aa."assetId") < (:cursorAddedAt::timestamptz, :cursorAssetId::uuid)',
+        { cursorAddedAt: cursor.addedAt, cursorAssetId: cursor.assetId },
+      );
+    } else {
+      qb.offset(offset);
+    }
+
+    // `total` is the whole album count, not the remaining window: a cursor page reports the same
+    // total the first page did
     const total = await this.countAssets(albumId);
+
+    const rows = await qb.getRawMany<{ assetId: string; addedAt: Date | string }>();
+    const page = rows.slice(0, limit);
     const items = await this.assets.listByIdsRanked(
       userId,
-      joins.map((j) => j.assetId),
+      page.map((j) => j.assetId),
     );
+    const last = page.at(-1);
 
-    return { items, total };
+    return {
+      items,
+      total,
+      nextCursor: rows.length > limit && last ? encodeAlbumAssetCursor(last) : null,
+    };
   }
 
   private async countAssets(albumId: string): Promise<number> {

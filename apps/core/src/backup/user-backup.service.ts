@@ -2915,7 +2915,8 @@ export class UserBackupService {
     // unique index turns that into a 409 instead of a raw 23505
     // The items just went back to pending, so the old failure tally is stale and `uploaded` is the
     // only durable success count (successful item rows are deleted). Without this a resumed run
-    // finishes above 100% with failures it already retried.
+    // finishes above 100% with failures it already retried. `skipped` never had item rows, so it
+    // has to be added back or a resumed incremental run tops out short of 100%.
     const run = await this.runs.findOne({ where: { id: runId } });
     await this.runs
       .update(runId, {
@@ -2924,7 +2925,7 @@ export class UserBackupService {
         currentFile: null,
         finishedAt: null,
         failedItems: 0,
-        completedItems: run?.uploaded ?? 0,
+        completedItems: (run?.uploaded ?? 0) + (run?.skipped ?? 0),
         updatedAt: new Date(),
       })
       .catch(rethrowActiveRunConflict);

@@ -7,7 +7,10 @@ import { UserBackupService } from './user-backup.service';
 
 const USER = '11111111-1111-4111-8111-111111111111';
 
-function makeService(opts: { paused: Partial<BackupRun> | null; ensureBucket?: () => Promise<void> }) {
+function makeService(opts: {
+  paused: Partial<BackupRun> | null;
+  ensureBucket?: () => Promise<void>;
+}) {
   const users = { findOne: vi.fn(() => Promise.resolve({ id: USER, email: 'ada@example.com' })) };
   const runs = {
     findOne: vi.fn(() => Promise.resolve(opts.paused)),
@@ -61,6 +64,26 @@ describe('UserBackupService.startBackup — paused run', () => {
     expect(runs.update).toHaveBeenCalledWith(
       'run-1',
       expect.objectContaining({ state: 'running', failedItems: 0, completedItems: 7 }),
+    );
+  });
+
+  it('counts the previously skipped files back in, so a resumed run can reach 100%', async () => {
+    // skipped files never had ledger rows: their count only lives on the run row
+    const paused: Partial<BackupRun> = {
+      id: 'run-2',
+      userId: USER,
+      kind: 'backup',
+      state: 'paused',
+      uploaded: 7,
+      skipped: 3,
+    };
+    const { svc, runs } = makeService({ paused });
+
+    await expect(svc.startBackup('ada@example.com')).resolves.toEqual({ runId: 'run-2' });
+
+    expect(runs.update).toHaveBeenCalledWith(
+      'run-2',
+      expect.objectContaining({ failedItems: 0, completedItems: 10 }),
     );
   });
 

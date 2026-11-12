@@ -24,28 +24,32 @@ export class PersonsService {
       .where('p.userId = :userId', { userId })
       .getCount();
 
-    const rows = await this.personRepo.query<
-      (Omit<Person, 'faceCount'> & { liveFaceCount: string })[]
-    >(
+    // shortcut: ordering reads the stored faceCount, which refreshPersonFaceCount updates on face
+    // changes but not on asset trash/restore/purge — the order can lag the live counts in that one
+    // case. Upgrade: refresh the counters from those asset paths.
+    const rows = await this.personRepo.query<Person[]>(
       `SELECT p.id, p."userId", p.name, p."coverFaceId", p."clusterLabel",
-              p."createdAt", p."updatedAt",
-              COALESCE(fc.cnt, 0) AS "liveFaceCount"
+              p."faceCount", p."createdAt", p."updatedAt"
        FROM persons p
-       LEFT JOIN (
-         SELECT f."personId" AS pid, COUNT(*)::int AS cnt
-         FROM faces f
-         INNER JOIN assets a ON a.id = f."assetId"
-         WHERE f."userId" = $1 AND a."isTrashed" = false
-         GROUP BY f."personId"
-       ) fc ON fc.pid = p.id
        WHERE p."userId" = $1
-       ORDER BY "liveFaceCount" DESC, p."updatedAt" DESC
+       ORDER BY p."faceCount" DESC, p."updatedAt" DESC, p.id
        LIMIT $2 OFFSET $3`,
       [userId, limit, offset],
     );
 
+    // exact live count for this page only; the whole-library aggregate used to run on every page
+    const counts = await this.personRepo.query<{ pid: string; cnt: number }[]>(
+      `SELECT f."personId" AS pid, COUNT(*)::int AS cnt
+       FROM faces f
+       INNER JOIN assets a ON a.id = f."assetId"
+       WHERE f."personId" = ANY($1::uuid[]) AND f."userId" = $2 AND a."isTrashed" = false
+       GROUP BY f."personId"`,
+      [rows.map((r) => r.id), userId],
+    );
+    const liveCounts = new Map(counts.map((c): [string, number] => [c.pid, c.cnt]));
+
     const persons = rows.map((row) =>
-      this.toListItem({ ...row, faceCount: Number(row.liveFaceCount) }),
+      this.toListItem({ ...row, faceCount: liveCounts.get(row.id) ?? 0 }),
     );
 
     return {

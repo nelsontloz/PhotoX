@@ -24,8 +24,9 @@ const ROUTE_ASSET_LIMIT = 200;
 // survives while FAR (1.0) is still cut.
 const ANN_MARGIN = 0.25;
 
-// labels enter as an aggregated subquery (one row per asset) — a direct join would fan out and
-// inflate ts_rank_cd/duplicate assets in the FTS branch
+// labels enter as an aggregated per-asset subquery (one row per asset) — a direct join would fan
+// out and inflate ts_rank_cd/duplicate assets in the FTS branch. LATERAL keeps the aggregate scoped
+// to the candidate asset instead of grouping the whole library's detections on every search.
 const FTS_DOCUMENT = `to_tsvector('simple', COALESCE(a.title, '') || ' ' || COALESCE(a.description, '') || ' ' || COALESCE(d.labels, ''))`;
 
 @Injectable()
@@ -76,11 +77,11 @@ export class SearchService {
     const rows: { id: string }[] = await this.dataSource.query(
       `SELECT a.id AS id
        FROM assets a
-       LEFT JOIN (
-         SELECT "assetId", string_agg(label, ' ') AS labels
-         FROM asset_detections
-         GROUP BY "assetId"
-       ) d ON d."assetId" = a.id
+       LEFT JOIN LATERAL (
+         SELECT string_agg(d.label, ' ') AS labels
+         FROM asset_detections d
+         WHERE d."assetId" = a.id
+       ) d ON true
        WHERE a."userId" = $1 AND a."isTrashed" = false
          AND ${FTS_DOCUMENT} @@ websearch_to_tsquery('simple', $2)
        ORDER BY ts_rank_cd(${FTS_DOCUMENT}, websearch_to_tsquery('simple', $2)) DESC

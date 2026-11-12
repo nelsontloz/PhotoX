@@ -16,6 +16,7 @@ import { AlbumsService } from './albums.service';
 import { CreateAlbumDto } from './dto/create-album.dto';
 import { UpdateAlbumDto } from './dto/update-album.dto';
 import { PaginationQueryDto } from '../common/pagination-query.dto';
+import { ListAlbumAssetsQueryDto } from './dto/list-album-assets-query.dto';
 import { AddAssetsBodyDto } from './dto/add-assets.dto';
 
 @ApiTags('albums')
@@ -100,7 +101,7 @@ export class AlbumsController {
   async listAssets(
     @Param('id') id: string,
     @CurrentUserId() userId: string,
-    @Query() q: PaginationQueryDto,
+    @Query() q: ListAlbumAssetsQueryDto,
   ) {
     return this.albums.listAssets(userId, id, q);
   }

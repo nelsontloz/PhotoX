@@ -9,6 +9,7 @@ import {
 
 @Entity('persons')
 @Index(['userId', 'clusterLabel'])
+@Index(['userId', 'faceCount'])
 export class Person {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

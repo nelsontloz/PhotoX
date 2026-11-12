@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { FaceDetectionSettings } from '@photox/shared-types';
 
 const { getMock, postMock, deleteMock, patchMock } = vi.hoisted(() => ({
@@ -70,6 +70,7 @@ describe('face detection admin API', () => {
 
 describe('user backup admin API', () => {
   beforeEach(() => vi.clearAllMocks());
+  afterEach(() => vi.useRealTimers());
 
   const result: BackupResult = {
     userId: 'u-1',
@@ -146,6 +147,81 @@ describe('user backup admin API', () => {
     await expect(restoreUser('u-3')).resolves.toEqual(restored);
     expect(postMock).toHaveBeenCalledWith('/v1/admin/restores', { emailOrId: 'u-3' });
     expect(getMock).toHaveBeenCalledWith('/v1/admin/backups/runs/run-3', { timeout: 30_000 });
+  });
+
+  const runPayload = (state: string, extra: Record<string, unknown> = {}) => ({
+    data: {
+      id: 'run-1',
+      kind: 'backup',
+      userId: 'u-1',
+      state,
+      total: 3,
+      completed: 0,
+      uploaded: 0,
+      skipped: 0,
+      failed: 0,
+      ...extra,
+    },
+  });
+
+  // Mirrors the axios error shape isAxiosError() recognizes (no /v1 client involved here).
+  const pollUnavailable = () =>
+    Object.assign(new Error('Request failed with status code 503'), {
+      isAxiosError: true,
+      response: { status: 503 },
+    });
+
+  it('backupUser rides out transient poll failures instead of failing the run', async () => {
+    vi.useFakeTimers();
+    postMock.mockResolvedValue({ data: { runId: 'run-1' } });
+    getMock
+      .mockRejectedValueOnce(pollUnavailable())
+      .mockRejectedValueOnce(pollUnavailable())
+      .mockResolvedValue(runPayload('completed', { completed: 3, result }));
+    const done = expect(backupUser('u-1')).resolves.toEqual(result);
+    await vi.runAllTimersAsync();
+    await done;
+    expect(getMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('backupUser gives up after 5 consecutive failed polls', async () => {
+    vi.useFakeTimers();
+    postMock.mockResolvedValue({ data: { runId: 'run-1' } });
+    getMock.mockRejectedValue(pollUnavailable());
+    const done = expect(backupUser('u-1')).rejects.toThrow(/503/);
+    await vi.runAllTimersAsync();
+    await done;
+    expect(getMock).toHaveBeenCalledTimes(5);
+  });
+
+  it('backupUser rejects immediately when the run reports failed', async () => {
+    postMock.mockResolvedValue({ data: { runId: 'run-1' } });
+    getMock.mockResolvedValue(runPayload('failed', { error: 'disk full' }));
+    await expect(backupUser('u-1')).rejects.toThrow('disk full');
+    expect(getMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('backupUser fails a completed run that carries no result instead of polling forever', async () => {
+    postMock.mockResolvedValue({ data: { runId: 'run-1' } });
+    getMock.mockResolvedValue(runPayload('completed'));
+    await expect(backupUser('u-1')).rejects.toThrow(/completed without a result/);
+    expect(getMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('backupUser keeps polling a long run past the old 10-minute clock', async () => {
+    vi.useFakeTimers();
+    postMock.mockResolvedValue({ data: { runId: 'run-1' } });
+    let polls = 0;
+    getMock.mockImplementation(() => {
+      polls += 1;
+      return Promise.resolve(
+        polls > 700 ? runPayload('completed', { result }) : runPayload('running'),
+      );
+    });
+    const done = expect(backupUser('u-1')).resolves.toEqual(result);
+    await vi.runAllTimersAsync();
+    await done;
+    expect(getMock).toHaveBeenCalledTimes(701);
   });
 
   it('deleteBackup issues DELETE with emailOrId as a query param', async () => {
