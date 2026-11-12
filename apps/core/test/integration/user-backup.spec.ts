@@ -426,7 +426,12 @@ describe('user backup round-trip', () => {
     );
 
     const album = await albumRepo.save(
-      albumRepo.create({ userId: user.id, name: 'Trip', description: null }),
+      albumRepo.create({
+        userId: user.id,
+        name: 'Trip',
+        description: null,
+        hiddenFromTimeline: true,
+      }),
     );
     await albumAssetRepo.save(albumAssetRepo.create({ albumId: album.id, assetId: photoAsset.id }));
     const token = createHash('sha256').update(randomUUID()).digest('hex');
@@ -461,6 +466,14 @@ describe('user backup round-trip', () => {
       persons: 1,
     });
     expectManifestLast();
+
+    // the timeline flag is part of the manifest, or a restored album reappears in the timeline
+    const manifestObjectKey = fake.ops.find((o) => o.key.endsWith('manifest.json'))!.key;
+    const manifest = JSON.parse((await fake.getBuffer(manifestObjectKey)).toString('utf-8')) as {
+      albums: { id: string; hiddenFromTimeline?: boolean }[];
+    };
+    expect(manifest.albums).toHaveLength(1);
+    expect(manifest.albums[0]).toMatchObject({ id: album.id, hiddenFromTimeline: true });
 
     const status = await svc.backupStatus(email.toUpperCase());
     expect(status).toMatchObject({ exists: true, userId: user.id, files: 3 });
@@ -501,7 +514,8 @@ describe('user backup round-trip', () => {
     expect(trashedAfter.isTrashed).toBe(true);
     expect(trashedAfter.trashedAt).not.toBeNull();
 
-    await albumRepo.findOneOrFail({ where: { id: album.id } });
+    const albumAfter = await albumRepo.findOneOrFail({ where: { id: album.id } });
+    expect(albumAfter.hiddenFromTimeline).toBe(true);
     await albumAssetRepo.findOneOrFail({
       where: { albumId: album.id, assetId: photoAsset.id },
     });
@@ -528,6 +542,53 @@ describe('user backup round-trip', () => {
 
     // M1: unknown email is a 404, never a uuid-typed 500 (QueryFailedError 22P02)
     await expect(runBackup('no-such-user@example.com')).rejects.toThrow(NotFoundException);
+  });
+
+  // Compatibility: a backup taken before `hiddenFromTimeline` existed must still restore —
+  // the zod default supplies false, exactly the behaviour that backup had.
+  it('restores a manifest that predates hiddenFromTimeline', async () => {
+    const email = `legacy-album-${randomUUID()}@example.com`;
+    const user = await userRepo.save(
+      userRepo.create({
+        email,
+        role: 'user',
+        passwordHash: 'test-hash',
+        displayName: 'Legacy Album User',
+      }),
+    );
+    const photo = await seedOriginal(user.id, Buffer.from('legacy-album-bytes'), {
+      mimeType: 'image/png',
+      originalName: 'legacy-album.png',
+    });
+    const asset = await assetRepo.save(
+      assetRepo.create({
+        userId: user.id,
+        kind: 'photo',
+        fileId: photo.record.id,
+        isTrashed: false,
+        mimeType: 'image/png',
+      }),
+    );
+    const album = await albumRepo.save(
+      albumRepo.create({ userId: user.id, name: 'Old Trip', description: null }),
+    );
+    await albumAssetRepo.save(albumAssetRepo.create({ albumId: album.id, assetId: asset.id }));
+
+    await runBackup(user.id);
+
+    // rewrite the published manifest as an old core would have written it
+    const manifestObjectKey = fake.ops.find((o) => o.key.endsWith('manifest.json'))!.key;
+    const stored = JSON.parse((await fake.getBuffer(manifestObjectKey)).toString('utf-8')) as {
+      albums: Record<string, unknown>[];
+    };
+    delete stored.albums[0]!.hiddenFromTimeline;
+    await fake.putObject(manifestObjectKey, Buffer.from(JSON.stringify(stored)));
+
+    await wipeUserData();
+    await runRestore(user.id);
+
+    const albumAfter = await albumRepo.findOneOrFail({ where: { id: album.id } });
+    expect(albumAfter.hiddenFromTimeline).toBe(false);
   });
 
   // Regression: an Asset row binds ~47 columns, so a 10k-asset restore used to emit a single
@@ -1798,7 +1859,12 @@ describe('user backup round-trip', () => {
         }),
       );
       const album = await albumRepo.save(
-        albumRepo.create({ userId: user.id, name: 'Legacy Trip', description: 'old album' }),
+        albumRepo.create({
+          userId: user.id,
+          name: 'Legacy Trip',
+          description: 'old album',
+          hiddenFromTimeline: true,
+        }),
       );
       await albumAssetRepo.save(albumAssetRepo.create({ albumId: album.id, assetId: asset.id }));
       const share = await shareRepo.save(
@@ -1897,6 +1963,7 @@ describe('user backup round-trip', () => {
       });
       const albumAfter = await albumRepo.findOneOrFail({ where: { id: legacy.album.id } });
       expect(albumAfter.userId).toBe(target.id);
+      expect(albumAfter.hiddenFromTimeline).toBe(true);
       await albumAssetRepo.findOneOrFail({
         where: { albumId: legacy.album.id, assetId: legacy.asset.id },
       });

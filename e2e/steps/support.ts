@@ -370,10 +370,11 @@ export async function createAlbumViaApi(
   request: APIRequestContext,
   auth: AuthResponse,
   name: string,
+  hiddenFromTimeline = false,
 ): Promise<AlbumRef> {
   const response = await request.post('/api/v1/albums', {
     headers: authHeaders(auth),
-    data: { name },
+    data: { name, hiddenFromTimeline },
   });
   expect(response.status()).toBe(201);
   const album = (await response.json()) as AlbumRef;

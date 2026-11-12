@@ -4,14 +4,18 @@ import {
   Given,
   Then,
   When,
+  addAssetsViaApi,
   authHeaders,
+  createAlbumViaApi,
   getAsset,
   injectSession,
   registerUser,
   requireAuth,
+  signIn,
   signInAdmin,
   startAndWaitForRun,
   uploadViaApi,
+  type AlbumRef,
   type AuthResponse,
   type Ctx,
 } from '../support';
@@ -79,6 +83,8 @@ interface BackupState {
   deletedVictim?: AuthResponse;
   orphanBackupAt?: string;
   backupAllTargets?: string[];
+  victimAssetId?: string;
+  victimHiddenAlbum?: AlbumRef;
 }
 
 const states = new WeakMap<Ctx, BackupState>();
@@ -435,7 +441,12 @@ Given(
     const admin = await requireAdmin(request, state);
     const victim = await registerUser(request, `victim-${randomUUID()}@photox.test`);
     state.victim = victim;
-    await uploadViaApi(request, victim, 'photo.jpg');
+    const assetId = await uploadViaApi(request, victim, 'photo.jpg');
+    state.victimAssetId = assetId;
+    // the hidden album must survive the backup/restore round trip, not just the photo
+    const hiddenAlbum = await createAlbumViaApi(request, victim, 'Hidden Backup Album', true);
+    state.victimHiddenAlbum = hiddenAlbum;
+    expect(await addAssetsViaApi(request, victim, hiddenAlbum.id, [assetId])).toBe(201);
     await runBackup(request, state, victim.user.id);
     await deleteUserViaApi(request, admin, victim.user.id);
   },
@@ -553,6 +564,38 @@ Then('the orphan victim row shows as active with backup enabled', async ({ page,
   });
   await expect(page.getByText('Deleted user')).toHaveCount(0);
   await expect(page.getByText('Backed up', { exact: true }).first()).toBeVisible();
+});
+
+Then('the restored orphan victim keeps the hidden album', async ({ request, ctx }) => {
+  const state = backupState(ctx);
+  const victim = requireVictim(state);
+  const albumRef = state.victimHiddenAlbum;
+  const assetId = state.victimAssetId;
+  if (!albumRef) throw new Error('seed the hidden backup album first');
+  if (!assetId) throw new Error('seed the backup photo first');
+
+  // restore recreates the same account id and password hash, so the pre-delete login still works
+  const restored = await signIn(request, victim.user.email);
+
+  const albumsResponse = await request.get('/api/v1/albums?limit=1000', {
+    headers: authHeaders(restored),
+  });
+  expect(albumsResponse.status()).toBe(200);
+  const albums = (await albumsResponse.json()) as {
+    items: { id: string; name: string; hiddenFromTimeline: boolean }[];
+  };
+  const album = albums.items.find((candidate) => candidate.id === albumRef.id);
+  // assert the name first: a vanished album then fails on identity, not on a casted undefined flag
+  expect(album?.name).toBe(albumRef.name);
+  expect(album?.hiddenFromTimeline).toBe(true);
+
+  // the asset's only album is hidden, so the timeline list must not hand it back
+  const assetsResponse = await request.get('/api/v1/assets?limit=100', {
+    headers: authHeaders(restored),
+  });
+  expect(assetsResponse.status()).toBe(200);
+  const assets = (await assetsResponse.json()) as { items: { id: string }[] };
+  expect(assets.items.map((item) => item.id)).not.toContain(assetId);
 });
 
 When('I open the delete backup dialog for that live user', async ({ page, ctx }) => {

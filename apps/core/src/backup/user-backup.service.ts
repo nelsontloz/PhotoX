@@ -166,6 +166,9 @@ const albumManifestSchema = z.object({
   userId: z.string().uuid(),
   name: z.string(),
   description: z.string().nullable(),
+  // added after manifestVersion 1 shipped: default keeps pre-fix backups restorable (they
+  // restore as visible, which is what they did before) instead of rejecting them
+  hiddenFromTimeline: z.boolean().default(false),
 });
 
 const albumAssetManifestSchema = z.object({
@@ -318,6 +321,7 @@ function albumToManifestEntry(a: Album): UserBackupManifest['albums'][number] {
     userId: a.userId,
     name: a.name,
     description: a.description,
+    hiddenFromTimeline: a.hiddenFromTimeline,
   };
 }
 
@@ -1331,6 +1335,7 @@ export class UserBackupService {
           userId: a.userId,
           name: a.name,
           description: a.description,
+          hiddenFromTimeline: a.hiddenFromTimeline,
         })),
       );
       await bulkSave(
@@ -1813,6 +1818,8 @@ export class UserBackupService {
             userId: target.id,
             name: album.name,
             description: album.description,
+            // an album the target already owns keeps its own flag (live wins on id collisions)
+            hiddenFromTimeline: album.hiddenFromTimeline,
           }),
         );
         adoptedAlbumIds.add(album.id);

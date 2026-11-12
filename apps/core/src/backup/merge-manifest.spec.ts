@@ -111,7 +111,14 @@ function albumEntry(
   id: string,
   over: Partial<UserBackupManifest['albums'][number]> = {},
 ): UserBackupManifest['albums'][number] {
-  return { id, userId: USER, name: `album-${id}`, description: null, ...over };
+  return {
+    id,
+    userId: USER,
+    name: `album-${id}`,
+    description: null,
+    hiddenFromTimeline: false,
+    ...over,
+  };
 }
 
 function personEntry(
@@ -184,14 +191,14 @@ describe('unionBackupManifests', () => {
     const live = manifest({
       files: [fileEntry(FILE_A, { originalName: 'live.jpg' })],
       assets: [assetEntry(ASSET_A, { title: 'live title' })],
-      albums: [albumEntry(ALBUM_A, { name: 'live album' })],
+      albums: [albumEntry(ALBUM_A, { name: 'live album', hiddenFromTimeline: true })],
       persons: [personEntry(PERSON_A, { name: 'live person' })],
       shares: [shareEntry(SHARE_A, { token: 'live-token' })],
     });
     const adopted = manifest({
       files: [fileEntry(FILE_A, { originalName: 'adopted.jpg' })],
       assets: [assetEntry(ASSET_A, { title: 'adopted title' })],
-      albums: [albumEntry(ALBUM_A, { name: 'adopted album' })],
+      albums: [albumEntry(ALBUM_A, { name: 'adopted album', hiddenFromTimeline: false })],
       persons: [personEntry(PERSON_A, { name: 'adopted person' })],
       shares: [shareEntry(SHARE_A, { token: 'adopted-token' })],
     });
@@ -203,6 +210,8 @@ describe('unionBackupManifests', () => {
     expect(result.assets[0]?.title).toBe('live title');
     expect(result.albums).toHaveLength(1);
     expect(result.albums[0]?.name).toBe('live album');
+    // the timeline flag follows the same live-wins rule
+    expect(result.albums[0]?.hiddenFromTimeline).toBe(true);
     expect(result.persons).toHaveLength(1);
     expect(result.persons[0]?.name).toBe('live person');
     expect(result.shares).toHaveLength(1);
