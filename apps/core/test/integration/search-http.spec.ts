@@ -116,6 +116,41 @@ describe('hybrid search HTTP', () => {
     expect(res.body).toEqual({ items: [], total: 0 });
   });
 
+  it('matches detection labels per asset and never leaks another user detections', async () => {
+    const { userId, auth } = await ownerAuth();
+    const detected = await seedAssetWith(userId);
+    await seedAssetWith(userId);
+    const detection = (assetId: string, label: string) => ({
+      assetId,
+      label,
+      confidence: 0.9,
+      box: { x: 1, y: 1, w: 10, h: 10 },
+    });
+    await t.detectionRepo.save([
+      t.detectionRepo.create(detection(detected.id, 'laptop')),
+      t.detectionRepo.create(detection(detected.id, 'computer')),
+      t.detectionRepo.create(detection(detected.id, 'laptop')),
+    ]);
+    const other = await seedUser(t);
+    const otherAsset = await seedAssetWith(other.id);
+    await t.detectionRepo.save(t.detectionRepo.create(detection(otherAsset.id, 'wallet')));
+
+    const byLabel = await request(apiServer(t))
+      .get('/api/v1/search')
+      .query({ q: 'laptop' })
+      .set(auth);
+    expect(byLabel.status).toBe(200);
+    // three detection rows on one asset stay a single hit (per-asset label aggregate)
+    expect((byLabel.body as { items: Asset[] }).items.map((i) => i.id)).toEqual([detected.id]);
+
+    // another user's detections never enter the owner's FTS document
+    const foreign = await request(apiServer(t))
+      .get('/api/v1/search')
+      .query({ q: 'wallet' })
+      .set(auth);
+    expect(foreign.body).toEqual({ items: [], total: 0 });
+  });
+
   it('surfaces person-name and place matches via the fusion bonus', async () => {
     const { userId, auth } = await ownerAuth();
     const personAsset = await seedAssetWith(userId);

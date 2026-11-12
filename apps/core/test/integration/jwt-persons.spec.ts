@@ -45,6 +45,22 @@ describe('persons JWT identity', () => {
     return { asset, person, face };
   }
 
+  async function seedFaceOnNewAsset(userId: string, personId: string) {
+    const file = await seedFile(t, userId);
+    const asset = await seedAsset(t, userId, file.id);
+    await t.faceRepo.save(
+      t.faceRepo.create({
+        assetId: asset.id,
+        userId,
+        box: { x: 1, y: 1, w: 10, h: 10 },
+        confidence: 0.9,
+        embedding: [0.1, 0.2, 0.3],
+        personId,
+      }),
+    );
+    return asset;
+  }
+
   it('lists only the JWT user persons', async () => {
     const a = await seedUser(t);
     const b = await seedUser(t);
@@ -56,6 +72,40 @@ describe('persons JWT identity', () => {
     const body = res.body as unknown as { items: { userId: string }[]; total: number };
     expect(body.total).toBe(1);
     expect(body.items[0]?.userId).toBe(a.id);
+  });
+
+  it('orders by the stored faceCount and keeps the page counts exact', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+
+    // A: 4 faces on 4 assets, B: 2 faces on 2 assets. The stored counters are what
+    // refreshPersonFaceCount maintains; seeding bypasses it, so set them explicitly.
+    const a = await t.personRepo.save(
+      t.personRepo.create({ userId: user.id, name: 'A', clusterLabel: null, faceCount: 4 }),
+    );
+    const trashed: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      const asset = await seedFaceOnNewAsset(user.id, a.id);
+      if (i < 3) trashed.push(asset.id);
+    }
+    const b = await t.personRepo.save(
+      t.personRepo.create({ userId: user.id, name: 'B', clusterLabel: null, faceCount: 2 }),
+    );
+    for (let i = 0; i < 2; i++) await seedFaceOnNewAsset(user.id, b.id);
+
+    // trash 3 of A's assets: live A = 1 < live B = 2, but the stored order (A, B) is what sorts
+    await t.assetRepo.update(trashed, { isTrashed: true });
+
+    const res = await request(apiServer(t)).get('/api/v1/persons').set(t.authHeader(token));
+    expect(res.status).toBe(200);
+    const body = res.body as unknown as {
+      items: { id: string; faceCount: number }[];
+      total: number;
+    };
+    expect(body.total).toBe(2);
+    expect(body.items.map((i) => i.id)).toEqual([a.id, b.id]);
+    // the page's counts stay exact live counts, not the stale stored column
+    expect(body.items.map((i) => i.faceCount)).toEqual([1, 2]);
   });
 
   it('scopes get and rename to JWT user', async () => {
