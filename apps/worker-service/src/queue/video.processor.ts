@@ -55,6 +55,14 @@ export async function registerDerivative(
   return saved.id;
 }
 
+// One directory per execution, never per file: an upload job and an admin reprocess carry
+// different jobIds and both can run at once for the same asset, so a shared output path would let
+// one encode truncate the other's bytes and its cleanup delete them mid-read.
+// shortcut: a killed worker leaves this directory behind and nothing sweeps it; the OS reclaims tmp.
+export function transcodeOutputDir(fileId: string): string {
+  return join(tmpdir(), `${fileId}-transcode-${randomUUID()}`);
+}
+
 export function videoProcessor({
   core,
   storage,
@@ -85,7 +93,7 @@ export function videoProcessor({
           const { assetId, userId, sig } = data;
           const binding = bindingOf(data);
           // only ffmpeg's output lives in tmp — the immutable original is read in place
-          const outDir = join(tmpdir(), `${data.fileId}-transcode`);
+          const outDir = transcodeOutputDir(data.fileId);
 
           try {
             await core.patchMetadata(userId, assetId, { transcodeStatus: 'pending' }, binding);

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import type { MetadataPatch, RegisterFileInput } from '../../src/core/core-client.service';
-import { FFMPEG_PATH } from '../../src/queue/ffmpeg';
+import { FFMPEG_PATH, runFfprobeJson } from '../../src/queue/ffmpeg';
 import {
   closeTestApp,
   createTestApp,
@@ -197,6 +197,62 @@ describe('VideoProcessor (integration)', () => {
         expect(updated.transcodeStatus).toBe('ready');
         expect(updated.transcodeFileId).toBeTruthy();
         unlinkSync(highFpsPath);
+      },
+      120_000,
+    );
+  });
+
+  describe('concurrent jobs for one asset', () => {
+    it.skipIf(!hasSvtAv1())(
+      "keeps each job's output separate so neither registers the other's partial file",
+      async () => {
+        // long enough that the two encodes actually overlap (worker concurrency 2)
+        const sourcePath = join(TEST_VIDEO_DIR, 'concurrent.avi');
+        execSync(
+          `"${FFMPEG_PATH}" -f lavfi -i color=c=black:s=320x240:d=3 -c:v mjpeg -pix_fmt yuvj420p -t 3 -y "${sourcePath}"`,
+          { timeout: 30_000, stdio: 'pipe' },
+        );
+
+        const userId = randomUUID();
+        const { record, asset } = await seedOriginal(testApp, {
+          userId,
+          bytes: readFileSync(sourcePath),
+          mimeType: 'video/avi',
+          ext: 'avi',
+        });
+
+        const queue = testApp.getQueue('process-video');
+        const payload = signJob({ assetId: asset.id, fileId: record.id, userId });
+        // the two jobId shapes the upload path and an admin reprocess produce: both run
+        const [upload, reprocess] = await Promise.all([
+          queue.add('video', payload, { jobId: `video-${asset.id}` }),
+          queue.add('video', payload, { jobId: `video-reprocess-${asset.id}` }),
+        ]);
+
+        expect(await waitForJob(queue, upload.id!)).toBe('completed');
+        expect(await waitForJob(queue, reprocess.id!)).toBe('completed');
+
+        const registered = testApp.fake
+          .callsOf('registerFile')
+          .map((call) => call.args[0] as RegisterFileInput);
+        expect(registered).toHaveLength(2);
+
+        for (const dto of registered) {
+          const derivative = testApp.fake.files.get(dto.id)!;
+          // a shared output dir makes one job move/delete the other's bytes: the row would then
+          // be empty, shorter than what it claims, or not a muxed stream at all
+          expect(dto.sizeBytes).toBeGreaterThan(0);
+          const stored = await stat(testApp.storage.pathFor(derivative.storageKey));
+          expect(stored.size).toBe(dto.sizeBytes);
+          const probe = await runFfprobeJson(testApp.storage.pathFor(derivative.storageKey));
+          expect(probe.streams.some((stream) => stream.codec_type === 'video')).toBe(true);
+        }
+
+        const updated = testApp.fake.assets.get(asset.id)!;
+        expect(updated.transcodeStatus).toBe('ready');
+        expect(registered.map((dto) => dto.id)).toContain(updated.transcodeFileId);
+
+        unlinkSync(sourcePath);
       },
       120_000,
     );

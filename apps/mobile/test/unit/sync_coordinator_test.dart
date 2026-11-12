@@ -357,7 +357,7 @@ void main() {
     );
   });
 
-  test('uses one batch dedup call for the whole batch', () async {
+  test('pre-checks one asset just before uploading it', () async {
     await seed('a');
     await seed('b');
     await seed('c');
@@ -365,8 +365,35 @@ void main() {
     final report = await makeCoordinator().run();
 
     expect(report.uploaded, 3);
-    expect(transport.existsRequests, hasLength(1));
-    expect(transport.existsRequests.single, hasLength(3));
+    expect(transport.existsRequests, hasLength(3));
+    expect(
+      transport.existsRequests.every((request) => request.length == 1),
+      isTrue,
+    );
+  });
+
+  test('prepares each asset right before it uploads it', () async {
+    await seed('first');
+    await seed('second');
+
+    final uploader = _RecordingUploader(
+      queue: queue,
+      uploadTransport: transport,
+      sessionTransport: _NoopSessionTransport(),
+      hasher: const Hasher(),
+      observer: observer,
+      spoolDirectory: '${temp.path}/spool',
+      thresholdBytes: 1024,
+    );
+
+    await makeCoordinator(uploader: uploader).run();
+
+    expect(uploader.calls, <String>[
+      'prepare:first',
+      'process:first',
+      'prepare:second',
+      'process:second',
+    ]);
   });
 
   test('does not create a watermark when nothing was scanned', () async {
@@ -720,6 +747,49 @@ class _ScriptedUploader extends Uploader {
       serverAssetId: 'server-asset',
       serverFileId: 'server-file',
     );
+  }
+}
+
+/// Records the coordinator's per-asset call order; the upload itself is real.
+class _RecordingUploader extends Uploader {
+  _RecordingUploader({
+    required super.queue,
+    required super.uploadTransport,
+    required super.sessionTransport,
+    required super.hasher,
+    required super.observer,
+    super.spoolDirectory,
+    super.thresholdBytes,
+  });
+
+  final List<String> calls = <String>[];
+  bool _inProcess = false;
+
+  @override
+  Future<PreparedUpload> prepare(QueuedAsset item) async {
+    // `process` re-prepares to reuse the spool; only the coordinator's own call
+    // is the one whose position this test pins.
+    if (!_inProcess) calls.add('prepare:${item.localId}');
+    return super.prepare(item);
+  }
+
+  @override
+  Future<UploadOutcome> process(
+    QueuedAsset item, {
+    DedupHit? prechecked,
+    int? maxParts,
+  }) async {
+    calls.add('process:${item.localId}');
+    _inProcess = true;
+    try {
+      return await super.process(
+        item,
+        prechecked: prechecked,
+        maxParts: maxParts,
+      );
+    } finally {
+      _inProcess = false;
+    }
   }
 }
 

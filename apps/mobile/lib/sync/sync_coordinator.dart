@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 
 import '../core/api_client.dart';
@@ -283,27 +281,10 @@ class SyncCoordinator {
         final batch = await queue.nextBatch(batchSize, now: clock());
         if (batch.isEmpty) break;
 
-        final prepared = <String, PreparedUpload>{};
-        for (final item in batch) {
-          // Renewed per asset, because one prepare or upload can outlive the
-          // lease; a lost lease means another isolate owns the queue now.
-          if (!await _holdLease()) {
-            lostLease = true;
-            break;
-          }
-          try {
-            prepared[item.localId] = await uploader.prepare(item);
-          } on Object catch (error) {
-            if (await _handleFailure(item, error, report)) break;
-          }
-        }
-        if (report.authRequired || lostLease) break;
-
-        final hits = await _precheck(prepared.values, report);
-        if (report.authRequired) break;
-
         for (final item in batch) {
           if (_budgetExhausted(uploadBudgetStart, budget)) break;
+          // Renewed per asset, because one prepare or upload can outlive the
+          // lease; a lost lease means another isolate owns the queue now.
           if (!await _holdLease()) {
             lostLease = true;
             break;
@@ -314,12 +295,16 @@ class SyncCoordinator {
             report.paused = true;
             break;
           }
-          final preparedItem = prepared[item.localId];
-          if (preparedItem == null) continue;
           try {
+            // One asset at a time: spooling the whole batch first pinned every
+            // video of it in temp (gigabytes) and could spend a short background
+            // window copying without uploading a byte.
+            final prepared = await uploader.prepare(item);
+            final prechecked = await _precheck(prepared, report);
+            if (report.authRequired) break;
             final outcome = await uploader.process(
               item,
-              prechecked: hits[preparedItem.sha256],
+              prechecked: prechecked,
               // A background pass stops at the part cap so its OS window can end
               // between parts. A foreground pass has no window to respect, so it
               // finishes the asset in one attempt instead of restarting at every
@@ -634,46 +619,32 @@ class SyncCoordinator {
     return false;
   }
 
-  /// One best-effort batch dedup pre-check; transport errors fall back to the
-  /// server's own duplicate detection on upload.
-  Future<Map<String, DedupHit>> _precheck(
-    Iterable<PreparedUpload> prepared,
+  /// One best-effort dedup pre-check for the asset about to upload; a transport
+  /// error falls back to the server's own duplicate detection.
+  Future<DedupHit?> _precheck(
+    PreparedUpload prepared,
     SyncReport report,
   ) async {
-    final checks = <String, DedupCheck>{};
-    for (final item in prepared) {
-      checks.putIfAbsent(
-        item.sha256,
-        () => DedupCheck(checksumSha256: item.sha256),
-      );
-    }
-    if (checks.isEmpty) return <String, DedupHit>{};
-
-    final hits = <String, DedupHit>{};
-    final values = checks.values.toList(growable: false);
-    for (var start = 0; start < values.length; start += 100) {
-      final chunk = values.sublist(start, min(start + 100, values.length));
-      try {
-        final response = await dedupTransport.exists(chunk);
-        for (final hit in response) {
-          hits[hit.checksumSha256] = hit;
-        }
-      } on AuthException catch (error) {
+    try {
+      final response = await dedupTransport.exists(<DedupCheck>[
+        DedupCheck(checksumSha256: prepared.sha256),
+      ]);
+      for (final hit in response) {
+        if (hit.checksumSha256 == prepared.sha256) return hit;
+      }
+    } on AuthException catch (error) {
+      report.authRequired = true;
+      report.error = error.message;
+    } on ApiException catch (error) {
+      if (error.isAuthError) {
         report.authRequired = true;
         report.error = error.message;
-        return hits;
-      } on ApiException catch (error) {
-        if (error.isAuthError) {
-          report.authRequired = true;
-          report.error = error.message;
-          return hits;
-        }
-        // Fall through: uploads still detect duplicates via 409.
-      } on Object {
-        // Dedup is an optimization; a broken pre-check must not stop uploads.
       }
+      // Fall through: uploads still detect duplicates via 409.
+    } on Object {
+      // Dedup is an optimization; a broken pre-check must not stop uploads.
     }
-    return hits;
+    return null;
   }
 
   DateTime? _newestTimestamp(List<AssetCandidate> candidates) {
