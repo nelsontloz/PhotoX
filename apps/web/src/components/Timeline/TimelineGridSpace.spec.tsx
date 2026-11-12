@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { cleanup, render, waitFor, act } from '@testing-library/react';
+import { cleanup, fireEvent, render, waitFor, act, screen } from '@testing-library/react';
 import type { RefObject } from 'react';
 import type { AssetLayoutIndex, AssetLayoutPage, User } from '@photox/shared-types';
 import { buildBuckets, dayContentY, type TimelineItem } from '../../lib/timelineLayout';
@@ -48,6 +48,7 @@ vi.mock('../../api/assets', async (importOriginal) => {
 
 import { getAssetLayoutIndex, getAssetLayoutPage } from '../../api/assets';
 import { useTimelineLayout } from '../../hooks/useTimelineLayout';
+import type { MonthStatus } from '../../hooks/useTimelineMonths';
 import { TimelineGrid } from './TimelineGrid';
 
 const getIndexMock = vi.mocked(getAssetLayoutIndex);
@@ -407,5 +408,47 @@ describe('TimelineGrid day memory', () => {
     expect(dayContentY(next, anchorDay)).not.toBe(anchorY);
     // same 10px into the day, i.e. the sticky day did not move under the header
     expect(ref.current?.scrollTop).toBe(dayContentY(next, anchorDay)! + 10);
+  });
+});
+
+describe('TimelineGrid month failure', () => {
+  const errorLayout = buildBuckets(
+    [
+      { t: '2026-03-20T12:00:00', w: 4000, h: 3000 },
+      { t: '2026-03-19T12:00:00', w: 4000, h: 3000 },
+    ],
+    LAYOUT_OPTIONS,
+  );
+
+  function renderGrid(monthStatus: Map<string, MonthStatus>) {
+    const ensureMonth = vi.fn(() => Promise.resolve(null));
+    render(
+      <TimelineGrid
+        layout={errorLayout}
+        containerRef={() => undefined}
+        groups={[]}
+        monthStatus={monthStatus}
+        ensureMonth={ensureMonth}
+        retainMonths={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    );
+    return ensureMonth;
+  }
+
+  afterEach(cleanup);
+
+  it('offers one retry instead of endless skeletons for an errored month', () => {
+    const ensureMonth = renderGrid(new Map([['2026-03', 'error']]));
+    const retries = screen.getAllByRole('button', { name: 'Retry' });
+    expect(retries).toHaveLength(1);
+    fireEvent.click(retries[0]!);
+    expect(ensureMonth).toHaveBeenCalledWith('2026-03');
+  });
+
+  it('keeps skeletons and no retry while the month is loading', () => {
+    renderGrid(new Map([['2026-03', 'loading']]));
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(document.querySelectorAll('figure')).toHaveLength(2);
   });
 });

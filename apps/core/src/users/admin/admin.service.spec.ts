@@ -184,6 +184,14 @@ describe('AdminService.requestUserDelete guards', () => {
     expect(bullMq.enqueue).not.toHaveBeenCalled();
   });
 
+  it('403s on an upper-cased self-delete without enqueuing', async () => {
+    const { service, bullMq } = makeService({ user: targetUser });
+    await expect(
+      service.requestUserDelete(TARGET_ID.toUpperCase(), TARGET_ID),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(bullMq.enqueue).not.toHaveBeenCalled();
+  });
+
   it('409s when the target is the last admin', async () => {
     const { service, bullMq } = makeService({
       user: { ...targetUser, role: 'admin' },
@@ -293,6 +301,12 @@ describe('AdminService.getUserDeleteStatus', () => {
     expect(res.jobId).toBe(`user-delete-${TARGET_ID}`);
     expect(res.backupKept).toBe(true);
     expect(res.backupPrefix).toBe(backupPrefix(TARGET_EMAIL, TARGET_ID));
+  });
+
+  it('reports the recorded job id when the poll uses another casing', async () => {
+    const { service } = makeService({ user: null, progress: { jobId: '', state: 'completed' } });
+    const res = await service.getUserDeleteStatus(TARGET_ID.toUpperCase());
+    expect(res.jobId).toBe(`user-delete-${TARGET_ID}`);
   });
 
   it('404s for an unknown user with no recorded run', async () => {

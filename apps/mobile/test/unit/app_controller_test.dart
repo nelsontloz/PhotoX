@@ -171,6 +171,7 @@ class _FailingSessionTransport implements SessionTransport {
 class _FakeRegistrar implements WorkRegistrar {
   int initializeCalls = 0;
   bool failPeriodic = false;
+  bool failCancel = false;
   final List<Constraints> periodicConstraints = <Constraints>[];
   final List<String> cancelled = <String>[];
 
@@ -201,6 +202,7 @@ class _FakeRegistrar implements WorkRegistrar {
   @override
   Future<void> cancelByUniqueName(String uniqueName) async {
     cancelled.add(uniqueName);
+    if (failCancel) throw StateError('scheduler unavailable');
   }
 }
 
@@ -650,6 +652,25 @@ void main() {
     },
   );
 
+  test('signOut wipes account data even when cancelAll fails', () async {
+    await tokenStore.write(_tokens());
+    await queue.enqueue(_assetCandidate('asset-a'));
+    await queue.setMeta(SyncCoordinator.scanWatermarkKey, '2026-01-01T00:00Z');
+    await controller.initialize();
+    registrar.failCancel = true;
+
+    await expectLater(controller.signOut(), throwsA(isA<StateError>()));
+
+    expect(controller.isSignedIn, isFalse);
+    expect(await tokenStore.read(), isNull);
+    expect(await db.select(db.queuedAssets).get(), isEmpty);
+    expect(await queue.getMeta(SyncCoordinator.scanWatermarkKey), isNull);
+    expect(spoolClears, 1);
+    expect(
+      controller.stats,
+      const QueueStats(pending: 0, uploaded: 0, duplicate: 0, failed: 0),
+    );
+  });
   test('signIn wipes a queue left behind while signed out', () async {
     await queue.enqueue(_assetCandidate('asset-b'));
     await queue.setMeta(SyncCoordinator.scanWatermarkKey, '2026-01-01T00:00Z');

@@ -689,15 +689,19 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     _notify();
     try {
       await auth.signOut();
-      // Nothing should keep waking the device for a signed-out account.
-      await scheduler.cancelAll();
-      // The account is gone, so its queue, receipts, watermark and spooled
-      // photo bytes go too; the next login starts from an empty library scan.
-      await _wipeAccountData();
-      _authRequired = false;
-      _error = null;
-      _lastReport = null;
-      _stats = _emptyStats;
+      try {
+        // Nothing should keep waking the device for a signed-out account.
+        await scheduler.cancelAll();
+      } finally {
+        // The tokens are already gone, so the local wipe must not depend on the
+        // scheduler: a cancel failure would otherwise leave the spooled
+        // originals and thumbnails on the device of a signed-out account.
+        await _wipeAccountData();
+        _authRequired = false;
+        _error = null;
+        _lastReport = null;
+        _stats = _emptyStats;
+      }
     } on Object {
       _error = 'Could not sign out. Try again.';
       rethrow;

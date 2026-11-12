@@ -240,6 +240,9 @@ export function TimelineGrid({
     layout.buckets,
   ]);
 
+  // One retry affordance per failed month, however many of its days are mounted.
+  const failedMonthsShown = new Set<string>();
+
   return (
     <>
       <TimelineScrollbar layout={layout} scrollPos={scrollPos} />
@@ -273,7 +276,14 @@ export function TimelineGrid({
                 );
               }
               const group = groupsByDay.get(day.sortKey);
-              const monthReady = monthStatus.get(day.sortKey.slice(0, 7)) === 'ready';
+              const monthKey = day.sortKey.slice(0, 7);
+              const monthState = monthStatus.get(monthKey);
+              const monthReady = monthState === 'ready';
+              // A failed month with nothing cached would otherwise pulse skeletons forever:
+              // offer one retry per month instead (a month with stale items keeps showing them).
+              const monthFailed = monthState === 'error' && !group;
+              const showMonthRetry = monthFailed && !failedMonthsShown.has(monthKey);
+              if (showMonthRetry) failedMonthsShown.add(monthKey);
               const items = group?.items ?? [];
               const allSelected =
                 items.length > 0 && items.every((item) => selectedIds.has(item.id));
@@ -289,7 +299,18 @@ export function TimelineGrid({
                     title={group ? group.label : groupDateLabelFromSortKey(day.sortKey)}
                     surfaceClassName={dayHeaderSurfaceClassName}
                     action={
-                      onToggleSelect && items.length > 0 ? (
+                      showMonthRetry ? (
+                        <div className="ml-auto flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                          <span>Couldn&apos;t load this month</span>
+                          <button
+                            type="button"
+                            onClick={() => void ensureMonth(monthKey)}
+                            className="text-primary font-medium hover:underline"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      ) : onToggleSelect && items.length > 0 ? (
                         <div className="ml-auto flex items-center">
                           <button
                             type="button"
@@ -312,7 +333,7 @@ export function TimelineGrid({
                   />
                   <div
                     className="justified-grid-gallery fixed-row-gallery"
-                    aria-hidden={!group && !monthReady}
+                    aria-hidden={!group && !monthReady && !monthFailed}
                   >
                     {group
                       ? items.map((asset) => (
