@@ -20,6 +20,7 @@ Feature: Backup orphans, restore and delete
     When I restore the orphan victim through the confirmation dialog
     Then the orphan victim restore toast names the restored account
     And the orphan victim row shows as active with backup enabled
+    And the restored orphan victim keeps the hidden album
 
   Scenario: Deleting a live backup keeps the account and library
     Given a backed-up user with one photo is registered for live backup deletion
