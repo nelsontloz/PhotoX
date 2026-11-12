@@ -1,3 +1,4 @@
+import { isAxiosError } from 'axios';
 import { api } from './client';
 import { sleep } from '../lib/sleep';
 import type {
@@ -207,25 +208,41 @@ export function backupPrefixPreview(email: string, userId: string): string {
   return `backups/${encodeURIComponent(normalized)}__${encodeURIComponent(userId)}/`;
 }
 
-// Backups/restores run as a per-file ledger in core (originals first, manifest last) and
-// routinely outlive the client's 10s default on multi-GB libraries — raise the cap instead of
-// failing a healthy run. Starting the run answers 202; the client polls until it is terminal.
+// Inline calls (merges, account edits) copy multi-GB libraries and routinely outlive the
+// client's 10s default — raise the cap instead of failing a healthy call.
 const BACKUP_TIMEOUT_MS = 600_000;
 
 // Progress reads the manifest back from S3 and can stall when the store is slow — give it
 // headroom over the generic 10s client default without touching the shared timeout.
 const BACKUP_STATUS_TIMEOUT_MS = 30_000;
 
+// A run's length is the server's call, so the poll has no deadline; it only gives up after
+// this many consecutive failed reads so an unreachable core cannot spin forever.
+const BACKUP_POLL_MAX_FAILURES = 5;
+
 async function waitForRun<T>(runId: string): Promise<T> {
-  const deadline = Date.now() + BACKUP_TIMEOUT_MS;
+  let failures = 0;
   for (;;) {
-    const data = await getBackupRunStatus(runId);
-    if (data.state === 'completed' && data.result) return data.result as T;
+    let data: BackupRunStatus;
+    try {
+      data = await getBackupRunStatus(runId);
+      failures = 0;
+    } catch (err: unknown) {
+      // A 404 means the run is gone — retrying cannot help.
+      if (isAxiosError(err) && err.response?.status === 404) throw err;
+      if (++failures >= BACKUP_POLL_MAX_FAILURES) throw err;
+      await sleep(1000);
+      continue;
+    }
+    if (data.state === 'completed') {
+      // no deadline guards this loop, so a completed row with no result must fail, not spin
+      if (data.result) return data.result as T;
+      throw new Error('Backup run completed without a result');
+    }
     if (data.state === 'failed' || data.state === 'cancelled' || data.state === 'paused') {
       throw new Error(data.error ?? `Backup run ${data.state}`);
     }
-    if (Date.now() > deadline) throw new Error('Backup run timed out');
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await sleep(1000);
   }
 }
 

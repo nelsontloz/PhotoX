@@ -725,6 +725,19 @@ export function BackupSection() {
           });
     if (entries.length === 0) return;
     let cancelled = false;
+    // Consecutive failed polls per row. A transient 503 or network blip must not leave the row
+    // looking alive forever; a successful read clears the count and any warning it raised.
+    const failures = new Map<string, number>();
+    const noteFailure = (id: string) => {
+      const count = (failures.get(id) ?? 0) + 1;
+      failures.set(id, count);
+      if (count === 5) {
+        patchRow(id, { error: 'Status unavailable — the run is still going; retrying…' });
+      }
+    };
+    const noteSuccess = (id: string) => {
+      if (failures.delete(id)) patchRow(id, { error: null });
+    };
     const finish = (id: string) => {
       patchRow(id, { busy: false, progress: null, runId: undefined });
       setVersion((v) => v + 1);
@@ -734,6 +747,7 @@ export function BackupSection() {
         if (runId !== null) {
           const run: BackupRunStatus = await getBackupRunStatus(runId);
           if (cancelled) return;
+          noteSuccess(id);
           if (run.state !== 'running' && run.state !== 'finalizing') {
             const email = rowsRef.current?.find((row) => row.userId === id)?.email ?? id;
             finish(id);
@@ -772,12 +786,17 @@ export function BackupSection() {
           return;
         }
         const snapshot = await getBackupProgress(id);
-        if (!cancelled) patchRow(id, { progress: snapshot });
+        if (!cancelled) {
+          noteSuccess(id);
+          patchRow(id, { progress: snapshot });
+        }
       } catch (err: unknown) {
         if (cancelled) return;
         if (isAxiosError(err) && err.response?.status === 404) {
           if (runId !== null) finish(id);
           else patchRow(id, { progressUnsupported: true });
+        } else {
+          noteFailure(id);
         }
       }
     };
