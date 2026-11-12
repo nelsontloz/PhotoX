@@ -453,10 +453,28 @@ export class AssetsService {
       throw new UnprocessableEntityException('phash must be 16 lowercase hex characters');
     }
 
-    // every DTO field except `status`/`transcodeFileId` maps 1:1 to an Asset column; TypeORM
-    // skips undefined values, so absent fields stay untouched
-    const { status, transcodeFileId, ...fields } = dto;
+    // every DTO field except `status`/`transcodeFileId`/`thumbnailStatus` maps 1:1 to an Asset
+    // column; TypeORM skips undefined values, so absent fields stay untouched
+    const { status, transcodeFileId, thumbnailStatus, ...fields } = dto;
     const patch: Partial<Asset> = { ...fields };
+    if (thumbnailStatus === 'ready' || thumbnailStatus === 'failed') {
+      // ponytail: the 4 size jobs race, so derive the verdict from committed thumbnail rows
+      // instead of trusting the last caller: no false ready, no failure flipping a full set
+      await this.repo
+        .createQueryBuilder()
+        .update(Asset)
+        .set({ thumbnailStatus })
+        .where('id = :id AND "userId" = :userId', { id, userId })
+        .andWhere(
+          `(SELECT COUNT(DISTINCT size) FROM asset_thumbnails WHERE "assetId" = :id) ${
+            thumbnailStatus === 'ready' ? '>=' : '<'
+          } 4`,
+          { id },
+        )
+        .execute();
+    } else if (thumbnailStatus !== undefined) {
+      patch.thumbnailStatus = thumbnailStatus;
+    }
     if (status !== undefined) {
       patch.metadataStatus = status;
       patch.metadataExtractedAt = new Date();
@@ -496,7 +514,12 @@ export class AssetsService {
       }
     }
 
-    await this.repo.update(id, patch as Record<string, unknown>);
+    // the conditional thumbnail update above already wrote its own column; skip an empty patch
+    // (TypeORM throws on an update with no values, and the worker's ready/failed PATCH sends
+    // only thumbnailStatus)
+    if (Object.keys(patch).length > 0) {
+      await this.repo.update(id, patch as Record<string, unknown>);
+    }
     const updated = await this.repo.findOne({ where: { id } });
     return this.toResponse(updated!);
   }
