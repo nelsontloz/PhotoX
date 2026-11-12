@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 import { UnrecoverableError } from 'bullmq';
 import { loadEnv } from '@photox/shared-config';
+import { FACE_EMBEDDING_DIM } from '@photox/shared-types';
 import type {
   Asset,
   AssetListResponse,
@@ -94,14 +95,59 @@ export interface ApplyClustersResult {
   assigned: number;
 }
 
+/** Running sum/count for one person, so a walk never has to retain assigned faces' embeddings. */
+export interface ClusterCentroid {
+  sum: number[];
+  count: number;
+}
+
+export interface ClusterFaceWalk {
+  /** unassigned clonable faces (current dim, >= minConfidence), at most `cap` */
+  unassigned: ClusterFace[];
+  /** assigned faces' running sums, keyed by person id */
+  centroids: Map<string, ClusterCentroid>;
+  /** deduped asset ids of unassigned legacy-dim faces (sampled, not exhaustive) */
+  legacyAssetIds: string[];
+  /** number of unassigned legacy-dim faces seen (may exceed legacyAssetIds.length) */
+  legacyCount: number;
+  /** more clonable unassigned faces exist than the cap allowed */
+  truncated: boolean;
+  /** how many clonable unassigned faces the cap left for later runs */
+  deferred: number;
+  /** every face seen, assigned or not */
+  total: number;
+}
+
+export function addToCentroid(
+  centroids: Map<string, ClusterCentroid>,
+  personId: string,
+  embedding: number[],
+): void {
+  let acc = centroids.get(personId);
+  if (!acc) {
+    acc = { sum: new Array<number>(embedding.length).fill(0), count: 0 };
+    centroids.set(personId, acc);
+  }
+  for (let i = 0; i < acc.sum.length; i++) acc.sum[i]! += embedding[i]!;
+  acc.count++;
+}
+
+/** Mean of a running accumulator; callers must ensure count > 0. */
+export function centroidMean(acc: ClusterCentroid): number[] {
+  return acc.sum.map((v) => v / acc.count);
+}
+
 const REQUEST_TIMEOUT_MS = 30_000;
 // one wipe step can delete a 200-asset batch with its cascades; both calls are idempotent, but
 // an abort mid-step still costs a whole job attempt
 const PURGE_TIMEOUT_MS = 15 * 60_000;
 // ponytail: keyset walk over GET /worker/faces (id ASC, cursor = last id); 500 matches core's default
 const FACES_PAGE_LIMIT = 500;
-// ponytail: O(n²) DBSCAN ceiling — fail loudly above this, Phase 3 streams/pages the algorithm itself
-const MAX_FACES_PER_USER = 10_000;
+// ponytail: per-run cap on the unassigned set DBSCAN sees. Each run assigns faces, so the next
+// run's first cap-sized unassigned batch is different work; the cluster service chains a continuation.
+const MAX_UNASSIGNED_FACES_PER_RUN = 10_000;
+// face.cluster only re-enqueues LEGACY_REEMBED_PER_RUN assets per run, so this sample is enough
+const LEGACY_ASSET_SAMPLE = 100;
 
 /** Job-binding proof threaded from the BullMQ payload: the guard recomputes the HMAC per route. */
 export interface JobBinding {
@@ -218,12 +264,28 @@ export class CoreClient {
     });
   }
 
-  async getFacesForCluster(userId: string, binding?: JobBinding): Promise<ClusterFace[]> {
-    // ponytail: one request per page (30s timeout + 400/404/422→Unrecoverable mapping), cursor
-    // walks id ASC until nextCursor null
-    const faces: ClusterFace[] = [];
-    let cursor: string | undefined;
+  /**
+   * Streaming walk for face clustering: paged like before, but nothing unbounded is retained.
+   * Assigned high-confidence current-dim faces feed per-person sum/count centroids, unassigned
+   * clonable faces stop collecting at `cap` (the caller chains a continuation), and unassigned
+   * legacy-dim faces surface as asset ids for re-embed.
+   */
+  async getFacesForCluster(
+    userId: string,
+    binding?: JobBinding,
+    opts: { minConfidence?: number; cap?: number } = {},
+  ): Promise<ClusterFaceWalk> {
+    const minConfidence = opts.minConfidence ?? 0;
+    const cap = opts.cap ?? MAX_UNASSIGNED_FACES_PER_RUN;
+    const unassigned: ClusterFace[] = [];
+    const centroids = new Map<string, ClusterCentroid>();
+    const legacyAssets = new Set<string>();
+    let legacyCount = 0;
+    let deferred = 0;
+    let total = 0;
     let pageCount = 0;
+    let cursor: string | undefined;
+
     for (;;) {
       const query =
         `includeEmbeddings=true&excludeTrashed=true&limit=${FACES_PAGE_LIMIT}` +
@@ -233,25 +295,41 @@ export class CoreClient {
         `/worker/faces?${query}`,
         { sub: userId, ...binding },
       );
-      faces.push(...res.items);
       pageCount += 1;
-      if (faces.length > MAX_FACES_PER_USER) {
-        this.logger.error(
-          `Face cap exceeded: user=${userId} faceCount=${faces.length} pageCount=${pageCount}`,
-        );
-        // deterministic overshoot — retries re-fetch the same pages, so fail without retry
-        throw new UnrecoverableError(
-          `Too many faces for user=${userId}: ${faces.length} > ${MAX_FACES_PER_USER}`,
-        );
+      for (const face of res.items) {
+        total += 1;
+        if (face.personId !== null) {
+          if (face.confidence >= minConfidence && face.embedding.length === FACE_EMBEDDING_DIM) {
+            addToCentroid(centroids, face.personId, face.embedding);
+          }
+        } else if (face.embedding.length !== FACE_EMBEDDING_DIM) {
+          // legacy-dim rows (pre-buffalo_l 1024-dim) are incomparable — never cluster; the caller
+          // re-enqueues their assets for re-embed
+          legacyCount += 1;
+          if (legacyAssets.size < LEGACY_ASSET_SAMPLE) legacyAssets.add(face.assetId);
+        } else if (face.confidence >= minConfidence) {
+          if (unassigned.length < cap) unassigned.push(face);
+          else deferred += 1;
+        }
       }
       // deprecated fallback: old core serves { items } with no nextCursor — single page, done
       if (res.nextCursor === undefined || res.nextCursor === null) break;
       cursor = res.nextCursor;
     }
+
     this.logger.log(
-      `Cluster faces fetched: user=${userId} faceCount=${faces.length} pageCount=${pageCount}`,
+      `Cluster faces fetched: user=${userId} total=${total} pageCount=${pageCount} ` +
+        `unassigned=${unassigned.length} persons=${centroids.size} truncated=${deferred > 0}`,
     );
-    return faces;
+    return {
+      unassigned,
+      centroids,
+      legacyAssetIds: [...legacyAssets],
+      legacyCount,
+      truncated: deferred > 0,
+      deferred,
+      total,
+    };
   }
 
   // one request: the only caller (face.cluster's LEGACY_REEMBED_PER_RUN) caps ids at 100, which

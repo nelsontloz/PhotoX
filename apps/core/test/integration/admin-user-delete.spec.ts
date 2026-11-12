@@ -298,6 +298,43 @@ describe('admin async user deletion', () => {
     expect(progress.state).toBe('completed');
   }, 120_000);
 
+  it('restarts the wipe when a terminal row meets a live user (lost reset)', async () => {
+    const user = await seedUser(t);
+    const prefix = backupPrefix(user.email, user.id);
+    // the shape a crashed request leaves behind: terminal row, live account. A worker that
+    // trusted it would sweep a live account's bytes.
+    await t.userDeleteRepo.insert({
+      userId: user.id,
+      jobId: `user-delete-${user.id}`,
+      state: 'completed',
+      backupPrefix: prefix,
+      phase: 'rows-done',
+      sessionsLocked: true,
+      error: 'stale run',
+    });
+
+    const step = await request(apiServer(t))
+      .post(`/worker/users/${user.id}/purge/step`)
+      .set(
+        t.authHeader(
+          t.signWorkerToken({ id: user.id, email: 'worker@internal', role: 'user' }, { act: true }),
+        ),
+      )
+      .set(
+        'X-Job-Signature',
+        createHmac('sha256', TEST_WORKER_SECRET).update(`${user.id}:${user.id}`).digest('hex'),
+      )
+      .send({ backupPrefix: prefix });
+
+    expect(step.status).toBe(200);
+    // not `done`: the live account got a real step (sessions lock first, so the reset cleared
+    // the stale sessionsLocked flag)
+    expect(step.body).toEqual({ done: false, phase: 'tokens', deleted: 0 });
+    const row = await t.userDeleteRepo.findOneOrFail({ where: { userId: user.id } });
+    expect(row).toMatchObject({ state: 'active', error: null, sessionsLocked: true });
+    expect(await t.userRepo.findOne({ where: { id: user.id } })).not.toBeNull();
+  }, 120_000);
+
   it('refuses a restore or merge while a wipe for that account is still live', async () => {
     const admin = await seedUser(t, { role: 'admin' });
     const adminAuth = t.authHeader(

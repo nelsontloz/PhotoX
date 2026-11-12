@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FACE_EMBEDDING_DIM } from '@photox/shared-types';
-import { FaceClusterService } from './face.cluster';
+import { FaceClusterService, dbscan } from './face.cluster';
 import { FakeCoreClient, makeAsset } from '../../test/fake-core-client';
-import type { ClusterFace } from '../core/core-client.service';
+import type { ClusterFace, ClusterFaceWalk } from '../core/core-client.service';
+
+const DBSCAN_EPS = 0.35;
+const DBSCAN_MIN_PTS = 2;
 
 const emb512 = (...pairs: [number, number][]): number[] => {
   const v = new Array<number>(FACE_EMBEDDING_DIM).fill(0);
@@ -57,6 +60,8 @@ describe('FaceClusterService.cluster', () => {
     expect(fake.clusterFaces.find((f) => f.id === 'face-assigned')!.personId).toBe(
       'person-existing',
     );
+    // no truncation: nothing to chain
+    expect(enqueueMock).not.toHaveBeenCalled();
   });
 
   it('attaches a cluster to the nearest existing person with the largest-box cover', async () => {
@@ -246,5 +251,166 @@ describe('FaceClusterService.cluster', () => {
       },
       expect.objectContaining({ jobId: 'face-reembed-asset-legacy', removeOnComplete: true }),
     );
+  });
+
+  it('defers over-cap faces to exactly one chained continuation without losing the plan', async () => {
+    const unassigned = [face('face-a', emb512([0, 1])), face('face-b', emb512([0, 1]))];
+    const walk: ClusterFaceWalk = {
+      unassigned,
+      centroids: new Map(),
+      legacyAssetIds: [],
+      legacyCount: 0,
+      truncated: true,
+      deferred: 8_000,
+      total: 18_002,
+    };
+    vi.spyOn(fake, 'getFacesForCluster').mockResolvedValue(walk);
+
+    await service.cluster(userId);
+
+    // the deferred remainder never becomes a failure: this run's plan still applies
+    expect(fake.applyClustersCalls).toHaveLength(1);
+    expect(fake.applyClustersCalls[0]!.creates[0]!.faceIds).toEqual(['face-a', 'face-b']);
+
+    expect(enqueueMock).toHaveBeenCalledTimes(1);
+    const call = enqueueMock.mock.calls[0] as unknown as [
+      string,
+      string,
+      { userId: string },
+      { jobId?: string; removeOnComplete?: boolean; delay?: number },
+    ];
+    expect(call.slice(0, 3)).toEqual(['process-faces-cluster', 'cluster', { userId }]);
+    expect(call[3].jobId).toMatch(/^cluster-user-1-cont-\d+$/);
+    expect(call[3].removeOnComplete).toBe(true);
+    expect(call[3].delay).toBe(2_000);
+  });
+
+  it('does not chain a continuation when the walk was not truncated', async () => {
+    fake.clusterFaces.splice(0, fake.clusterFaces.length);
+    fake.clusterFaces.push(face('face-a1', emb512([0, 1])), face('face-a2', emb512([0, 1])));
+
+    await service.cluster(userId);
+
+    expect(fake.applyClustersCalls).toHaveLength(1);
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+});
+
+function referenceCosineDistance(a: number[], b: number[]): number {
+  if (a.length !== b.length || a.length === 0) return 1;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    const ai = a[i]!;
+    const bi = b[i]!;
+    dot += ai * bi;
+    normA += ai * ai;
+    normB += bi * bi;
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  if (denom === 0) return 1;
+  return 1 - dot / denom;
+}
+
+// frozen copy of the pre-refactor synchronous loop — the async dbscan must match it label for label
+function referenceDbscan(points: number[][], eps: number, minPts: number): number[] {
+  const n = points.length;
+  const UNVISITED = -2;
+  const NOISE = -1;
+  const labels = new Array<number>(n).fill(UNVISITED);
+  let clusterId = 0;
+
+  for (let i = 0; i < n; i++) {
+    if (labels[i] !== UNVISITED) continue;
+
+    const neighbors: number[] = [];
+    for (let j = 0; j < n; j++) {
+      if (referenceCosineDistance(points[i]!, points[j]!) <= eps) neighbors.push(j);
+    }
+
+    if (neighbors.length < minPts) {
+      labels[i] = NOISE;
+      continue;
+    }
+
+    labels[i] = clusterId;
+    const queue = [...neighbors];
+    const seen = new Set(neighbors);
+
+    while (queue.length > 0) {
+      const q = queue.pop()!;
+      if (labels[q] === NOISE) labels[q] = clusterId;
+      if (labels[q] === UNVISITED) labels[q] = clusterId;
+      if (labels[q] !== clusterId) continue;
+
+      const qNeighbors: number[] = [];
+      for (let j = 0; j < n; j++) {
+        if (referenceCosineDistance(points[q]!, points[j]!) <= eps) qNeighbors.push(j);
+      }
+
+      if (qNeighbors.length >= minPts) {
+        for (const nn of qNeighbors) {
+          if (!seen.has(nn)) {
+            seen.add(nn);
+            queue.push(nn);
+          }
+        }
+      }
+    }
+
+    clusterId++;
+  }
+
+  return labels;
+}
+
+describe('dbscan', () => {
+  function seeded(seed: number): () => number {
+    let state = seed >>> 0;
+    return () => {
+      state = (state * 1664525 + 1013904223) >>> 0;
+      return state / 2 ** 32;
+    };
+  }
+
+  it('labels match the original synchronous implementation on a random fixture', async () => {
+    const rand = seeded(42);
+    const points: number[][] = [];
+    // three tight clusters on orthogonal axes plus one-hot points on unused axes (all noise)
+    for (let c = 0; c < 3; c++) {
+      for (let k = 0; k < 25; k++) {
+        const v = Array.from({ length: 12 }, () => rand() * 0.2);
+        v[c] = 1;
+        points.push(v);
+      }
+    }
+    for (let k = 0; k < 9; k++) {
+      const v = new Array<number>(12).fill(0);
+      v[3 + k] = 1;
+      points.push(v);
+    }
+
+    const expected = referenceDbscan(points, DBSCAN_EPS, DBSCAN_MIN_PTS);
+    const labels = await dbscan(points, DBSCAN_EPS, DBSCAN_MIN_PTS);
+
+    expect(new Set(expected)).toEqual(new Set([0, 1, 2, -1]));
+    expect(labels).toEqual(expected);
+  });
+
+  it('yields to the event loop every yieldEvery work iterations', async () => {
+    // one-hot vectors: every pairwise distance is 1, so the whole fixture is noise and the work
+    // count is exactly one tick per outer iteration
+    const points = Array.from({ length: 100 }, (_, i) => {
+      const v = new Array<number>(100).fill(0);
+      v[i] = 1;
+      return v;
+    });
+    const pause = vi.fn(() => Promise.resolve());
+
+    const labels = await dbscan(points, DBSCAN_EPS, DBSCAN_MIN_PTS, { yieldEvery: 16, pause });
+
+    expect(labels.every((label) => label === -1)).toBe(true);
+    expect(pause).toHaveBeenCalledTimes(Math.floor(100 / 16));
   });
 });

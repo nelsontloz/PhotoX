@@ -239,6 +239,41 @@ describe('AssetsService.hardDelete cover mirror (C4)', () => {
   });
 });
 
+describe('AssetsService.hardDelete face loading', () => {
+  it('selects only id and personId so embeddings are never read', async () => {
+    const face = { id: 'face-1', assetId: 'asset-1', userId: 'u1', personId: 'p1' } as Face;
+    const { service, em } = makeHardDeleteService({ faces: [face] });
+    await (service as unknown as { hardDelete: (ids: string[]) => Promise<unknown> }).hardDelete([
+      'asset-1',
+    ]);
+    expect(em.find).toHaveBeenCalledWith(Face as never, {
+      where: { assetId: In(['asset-1']) },
+      select: { id: true, personId: true },
+    });
+  });
+
+  it('deletes every batch and still refreshes the affected persons', async () => {
+    const ids = Array.from({ length: 501 }, (_, i) => `asset-${i + 1}`);
+    const faces = [
+      { id: 'face-1', assetId: 'asset-1', userId: 'u1', personId: 'p1' },
+      { id: 'face-501', assetId: 'asset-501', userId: 'u1', personId: 'p1' },
+    ] as Face[];
+    const person = { id: 'p1', userId: 'u1', coverFaceId: 'face-501' } as Person;
+    const { service, em, ops } = makeHardDeleteService({ faces, person });
+
+    await (service as unknown as { hardDelete: (ids: string[]) => Promise<unknown> }).hardDelete(
+      ids,
+    );
+
+    expect(em.find).toHaveBeenCalledTimes(2);
+    for (const [, options] of em.find.mock.calls as unknown as [unknown, { select: unknown }][]) {
+      expect(options).toMatchObject({ select: { id: true, personId: true } });
+    }
+    expect(ops.filter((op) => op.op === 'delete' && op.target === 'Face')).toHaveLength(2);
+    expect(em.update).toHaveBeenCalledWith(Person as never, { id: 'p1' }, { coverFaceId: null });
+  });
+});
+
 interface TimelineRow {
   id: string;
   albums?: { id: string; hidden: boolean }[];

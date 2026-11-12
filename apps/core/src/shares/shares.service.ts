@@ -52,8 +52,9 @@ export class SharesService {
 
   /**
    * Token resolution across the hash migration: new rows store sha256 (match first), legacy
-   * rows store plaintext (raw fallback). Presenting T matches only rows storing T or sha256(T)
-   * — no escalation beyond the pre-hash contract — and misses stay uniform-404 downstream.
+   * rows store plaintext (raw fallback). A digest-shaped presentation never reaches the raw
+   * lookup: the stored hash is also written into backup manifests, so accepting it would turn
+   * a manifest leak into working public links. Legacy 22-char tokens still resolve raw.
    */
   private async findShareByToken(
     token: string,
@@ -64,6 +65,7 @@ export class SharesService {
       relations,
     });
     if (hashed) return hashed;
+    if (/^[0-9a-f]{64}$/.test(token)) return null;
     return this.shareRepo.findOne({ where: { token }, relations });
   }
 

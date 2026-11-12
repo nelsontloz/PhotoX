@@ -530,10 +530,107 @@ describe('user backup round-trip', () => {
     await expect(runBackup('no-such-user@example.com')).rejects.toThrow(NotFoundException);
   });
 
-  // Regression: BullMQ dedups by jobId, so the deterministic restore jobIds of a first
-  // restore stay retained (completed records, removeOnComplete unset for most families)
-  // and every add of a later restore of the same user was swallowed as `duplicated` —
-  // originals came back but no derivative regenerated (places worked: synchronous backfill).
+  // Regression: an Asset row binds ~47 columns, so a 10k-asset restore used to emit a single
+  // INSERT and Postgres rejected it (65,535 bind parameters). Restore must chunk its saves.
+  it('restores a manifest far above the single-statement bind limit (1,600 assets)', async () => {
+    const email = `bulk-restore-${randomUUID()}@example.com`;
+    const userId = randomUUID();
+    const files = Array.from({ length: 1600 }, () => {
+      const id = randomUUID();
+      return {
+        id,
+        userId,
+        storageKey: `originals/${userId}/${id}.png`,
+        originalName: 'photo.png',
+        mimeType: 'image/png',
+        sizeBytes: 4,
+        checksumSha256: createHash('sha256').update(id).digest('hex'),
+        purpose: 'original' as const,
+        assetId: null,
+      };
+    });
+    const assets = files.map((file) => ({
+      id: randomUUID(),
+      userId,
+      kind: 'photo' as const,
+      fileId: file.id,
+      isTrashed: false,
+      trashedAt: null,
+      title: null,
+      description: null,
+      takenAt: null,
+      favorite: false,
+      mimeType: 'image/png',
+      sizeBytes: 4,
+      originalName: 'photo.png',
+      width: 1,
+      height: 1,
+      durationSeconds: null,
+      cameraMake: null,
+      cameraModel: null,
+      lensModel: null,
+      orientation: null,
+      iso: null,
+      fNumber: null,
+      exposureTime: null,
+      focalLength: null,
+      latitude: null,
+      longitude: null,
+      altitude: null,
+      placeCity: null,
+      placeAdmin1: null,
+      placeCountryCode: null,
+      placeTimezone: null,
+      placeDistanceKm: null,
+      fps: null,
+      codec: null,
+      hasAudio: null,
+      metadata: null,
+      metadataStatus: 'ready' as const,
+      transcodeStatus: null,
+      thumbnailStatus: 'ready' as const,
+      faceStatus: null,
+      embeddingStatus: null,
+      faceCount: null,
+    }));
+    const manifest: UserBackupManifest = {
+      manifestVersion: 1,
+      userId,
+      emailAtBackup: email,
+      backedUpAt: new Date().toISOString(),
+      user: {
+        id: userId,
+        email,
+        role: 'user',
+        passwordHash: 'test-hash',
+        displayName: 'Bulk Restore',
+        tokensValidAfter: null,
+      },
+      files,
+      assets,
+      albums: [],
+      albumAssets: [],
+      shares: [],
+      persons: [],
+    };
+    await fake.putObject(manifestKey(email, userId), Buffer.from(JSON.stringify(manifest)));
+
+    const { runId } = await svc.startRestore(userId);
+
+    expect(await fileRepo.count({ where: { userId } })).toBe(1600);
+    expect(await assetRepo.count({ where: { userId } })).toBe(1600);
+    await expect(svc.getRunStatus(runId)).resolves.toMatchObject({
+      kind: 'restore',
+      state: 'running',
+      total: 1600,
+    });
+  }, 120_000);
+
+  // Regression: BullMQ dedups by jobId, so deterministic restore jobIds swallowed every
+  // add of a later restore of the same user as `duplicated` when completed records were
+  // retained — originals came back but no derivative regenerated (places worked:
+  // synchronous backfill). Completed jobs are removed now (removeOnComplete defaults to
+  // true), but a delayed/active job still holds its id, so each run keeps its own tag.
   it('re-enqueues derivatives on a second restore instead of deduping into retained records', async () => {
     const email = `restore-twice-${randomUUID()}@example.com`;
     const user = await userRepo.save(

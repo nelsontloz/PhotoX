@@ -16,7 +16,16 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { extname, join } from 'path';
 import { pipeline } from 'stream/promises';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  In,
+  Repository,
+  type DeepPartial,
+  type EntityTarget,
+  type ObjectLiteral,
+  type QueryDeepPartialEntity,
+} from 'typeorm';
 import {
   LocalStorageService,
   backupPrefix,
@@ -54,6 +63,44 @@ import {
 import { BackupRunItem } from './entities/backup-run-item.entity';
 import { UserDelete } from '../database/entities/user-delete.entity';
 import { isPostgresUniqueViolation } from '../assets/assets.service';
+
+/**
+ * Rows per bulk INSERT: Postgres rejects a statement with more than 65,535 bind parameters, and
+ * TypeORM only splits when `chunk` is set (Asset alone binds ~47 columns per row).
+ */
+export const BULK_CHUNK = 500;
+
+/** Splits a list into fixed-size groups — one statement per group stays under the bind cap. */
+export function chunked<T>(items: T[], size = 1000): T[][] {
+  const groups: T[][] = [];
+  for (let i = 0; i < items.length; i += size) groups.push(items.slice(i, i + size));
+  return groups;
+}
+
+/** One bulk save that always chunks; an empty input is a no-op. */
+export async function bulkSave<Entity>(
+  manager: EntityManager,
+  entity: EntityTarget<Entity>,
+  rows: DeepPartial<Entity>[],
+): Promise<void> {
+  await manager.save(entity, rows, { chunk: BULK_CHUNK });
+}
+
+/** One bulk insert that always chunks; an empty input issues no statement. */
+export async function bulkInsert<Entity extends ObjectLiteral>(
+  manager: EntityManager,
+  entity: EntityTarget<Entity>,
+  rows: QueryDeepPartialEntity<Entity>[],
+): Promise<void> {
+  for (const group of chunked(rows, BULK_CHUNK)) await manager.insert(entity, group);
+}
+
+/** `In(...)` lookups over a manifest-sized id list: one query per chunk. */
+async function findInChunks<T>(ids: string[], find: (ids: string[]) => Promise<T[]>): Promise<T[]> {
+  const rows: T[] = [];
+  for (const group of chunked(ids)) rows.push(...(await find(group)));
+  return rows;
+}
 
 const fileManifestSchema = z.object({
   id: z.string().uuid(),
@@ -819,6 +866,8 @@ export class UserBackupService {
   async startBackup(emailOrId: string): Promise<{ runId: string }> {
     const user = await this.findUser(emailOrId);
     if (!user) throw new NotFoundException(`No user for ${emailOrId}`);
+    // a wipe that is still sweeping bytes must not snapshot (or re-snapshot) this account
+    await this.assertNoLiveWipe(user.id);
     // A paused run is resumable by starting the backup again (same contract as restore): no
     // request can move it out of `paused`, and `assertNoActiveRun` below would 409 forever.
     const paused = await this.runs.findOne({
@@ -977,7 +1026,7 @@ export class UserBackupService {
           finishedAt: null,
         })
         .catch(rethrowActiveRunConflict);
-      if (items.length > 0) await manager.insert(BackupRunItem, items);
+      await bulkInsert(manager, BackupRunItem, items);
     });
 
     this.logger.log(
@@ -1117,6 +1166,9 @@ export class UserBackupService {
       if (err instanceof NotFoundException || err instanceof ServiceUnavailableException) throw err;
       throw new ServiceUnavailableException('Backup storage (S3) unreachable');
     }
+    // a wipe leaves no live user row, so the guard above cannot fire: locateBackup resolves
+    // the id from the snapshot prefix, and the byte sweep must still block the restore
+    await this.assertNoLiveWipe(located.userId);
     // A live user with no exact manifest resolves to its exact prefix (so callers
     // can report exists:false) — the GET then 404s instead of leaking NoSuchKey.
     // zod runtime-validates the downloaded manifest (untrusted S3 bytes)
@@ -1242,7 +1294,8 @@ export class UserBackupService {
       );
       // Bulk save keeps the manifest order in the INSERT; explicit PKs make every
       // row a plain insert (the same row content the per-row save produced).
-      await manager.save(
+      await bulkSave(
+        manager,
         FileRecord,
         originalFiles.map((f) => ({
           id: f.id,
@@ -1256,7 +1309,8 @@ export class UserBackupService {
           assetId: f.assetId,
         })),
       );
-      await manager.save(
+      await bulkSave(
+        manager,
         Asset,
         manifest.assets.map((a) => ({
           ...a,
@@ -1269,7 +1323,8 @@ export class UserBackupService {
           metadataExtractedAt: null,
         })),
       );
-      await manager.save(
+      await bulkSave(
+        manager,
         Album,
         manifest.albums.map((a) => ({
           id: a.id,
@@ -1278,11 +1333,13 @@ export class UserBackupService {
           description: a.description,
         })),
       );
-      await manager.save(
+      await bulkSave(
+        manager,
         AlbumAsset,
         manifest.albumAssets.map((aa) => ({ albumId: aa.albumId, assetId: aa.assetId })),
       );
-      await manager.save(
+      await bulkSave(
+        manager,
         Share,
         manifest.shares.map((s) => ({
           id: s.id,
@@ -1294,7 +1351,8 @@ export class UserBackupService {
           expiresAt: s.expiresAt ? new Date(s.expiresAt) : null,
         })),
       );
-      await manager.save(
+      await bulkSave(
+        manager,
         Person,
         manifest.persons.map((p) => ({
           id: p.id,
@@ -1336,7 +1394,7 @@ export class UserBackupService {
           finishedAt: null,
         })
         .catch(rethrowActiveRunConflict);
-      if (items.length > 0) await manager.insert(BackupRunItem, items);
+      await bulkInsert(manager, BackupRunItem, items);
     });
 
     this.logger.log(
@@ -1498,27 +1556,18 @@ export class UserBackupService {
               .getMany()
           : [];
       // Existing ids are checked globally: an old UUID owned by somebody else is
-      // a hard 409, never a silent overwrite or cross-account link.
+      // a hard 409, never a silent overwrite or cross-account link. Each lookup is
+      // split: a whole manifest would blow the bind-parameter ceiling.
       const [globalFiles, globalAssets, globalAlbums, globalPersons, globalShares, tokensInUse] =
         await Promise.all([
-          manifestFileIds.length > 0
-            ? this.files.find({ where: { id: In(manifestFileIds) } })
-            : Promise.resolve([]),
-          manifestAssetIds.length > 0
-            ? this.assets.find({ where: { id: In(manifestAssetIds) } })
-            : Promise.resolve([]),
-          manifestAlbumIds.length > 0
-            ? this.albums.find({ where: { id: In(manifestAlbumIds) } })
-            : Promise.resolve([]),
-          manifestPersonIds.length > 0
-            ? this.persons.find({ where: { id: In(manifestPersonIds) } })
-            : Promise.resolve([]),
-          manifestShareIds.length > 0
-            ? this.shares.find({ where: { id: In(manifestShareIds) } })
-            : Promise.resolve([]),
-          manifestTokens.length > 0
-            ? this.shares.find({ where: { token: In(manifestTokens) }, select: { token: true } })
-            : Promise.resolve([] as Share[]),
+          findInChunks(manifestFileIds, (ids) => this.files.find({ where: { id: In(ids) } })),
+          findInChunks(manifestAssetIds, (ids) => this.assets.find({ where: { id: In(ids) } })),
+          findInChunks(manifestAlbumIds, (ids) => this.albums.find({ where: { id: In(ids) } })),
+          findInChunks(manifestPersonIds, (ids) => this.persons.find({ where: { id: In(ids) } })),
+          findInChunks(manifestShareIds, (ids) => this.shares.find({ where: { id: In(ids) } })),
+          findInChunks(manifestTokens, (ids) =>
+            this.shares.find({ where: { token: In(ids) }, select: { token: true } }),
+          ),
         ]);
       const globalFileById = new Map(globalFiles.map((row) => [row.id, row]));
       const globalAssetById = new Map(globalAssets.map((row) => [row.id, row]));
@@ -1874,12 +1923,12 @@ export class UserBackupService {
       // Rows first, one transaction — links land together so nothing is ever
       // orphan-eligible; reused files parked with assetId null get the new asset.
       await this.dataSource.transaction(async (manager: EntityManager) => {
-        for (const file of filesToInsert) await manager.save(FileRecord, file);
-        for (const asset of assetsToInsert) await manager.save(Asset, asset);
-        for (const album of albumsToInsert) await manager.save(Album, album);
-        for (const link of albumAssetsToInsert) await manager.save(AlbumAsset, link);
-        for (const share of sharesToInsert) await manager.save(Share, share);
-        for (const person of personsToInsert) await manager.save(Person, person);
+        await bulkSave(manager, FileRecord, filesToInsert);
+        await bulkSave(manager, Asset, assetsToInsert);
+        await bulkSave(manager, Album, albumsToInsert);
+        await bulkSave(manager, AlbumAsset, albumAssetsToInsert);
+        await bulkSave(manager, Share, sharesToInsert);
+        await bulkSave(manager, Person, personsToInsert);
         for (const link of reusedFileLinks) {
           await manager.update(FileRecord, link.fileId, { assetId: link.assetId });
         }
@@ -2856,10 +2905,11 @@ export class UserBackupService {
     }
   }
 
-  /** Refuses a restore/merge while a batched account wipe is queued or running. */
+  /** Refuses a backup/restore/merge while a batched account wipe owns the account. */
   private async assertNoLiveWipe(userId: string): Promise<void> {
     const wipe = await this.userDeletes.findOne({ where: { userId } });
-    if (wipe && (wipe.state === 'queued' || wipe.state === 'active')) {
+    // every non-terminal state owns the account: `wiping-files` still sweeps STORAGE_DIR
+    if (wipe && wipe.state !== 'completed' && wipe.state !== 'partial' && wipe.state !== 'failed') {
       throw new ConflictException(
         'A deletion is in progress for this account — wait for it to finish',
       );
@@ -3536,18 +3586,19 @@ export class UserBackupService {
    *
    * `assetFilter` limits the pass to freshly inserted rows (merge must not churn
    * the account for assets it deduped or skipped). `mode` switches the jobId
-   * family so a merge never collides with a retained restore record.
+   * family so a merge never collides with a restore's in-flight job ids.
    *
    * Every add is awaited and one refused add throws 503 — the caller fails the
    * run (restore) or the request (merge) instead of reporting jobs that do not
    * exist; a retry re-runs this under a fresh run tag.
    *
-   * Every jobId carries a per-run tag: a previous restore's records stay retained in
-   * Redis (completed; removeOnComplete is unset for every family but metadata) and
-   * BullMQ silently rejects any add whose jobId already exists — without the tag, a
-   * later restore of the same user (delete → restore again) enqueues nothing while
-   * still reporting success. Both passes of one run share the tag, so their
-   * double-enqueue keeps deduping.
+   * Every jobId carries a per-run tag: BullMQ silently rejects any add whose jobId
+   * already exists, and a delayed or active job holds its id until it runs. Without
+   * the tag, a later restore of the same user (delete → restore again) could enqueue
+   * nothing while still reporting success. Completed jobs are removed now
+   * (`removeOnComplete` defaults to true), so only that in-flight window remains —
+   * still enough to dedupe a re-enqueue away. Both passes of one run share the tag,
+   * so their double-enqueue keeps deduping.
    */
   private async reenqueueDerivatives(
     userId: string,

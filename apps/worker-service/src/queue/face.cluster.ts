@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { FACE_EMBEDDING_DIM } from '@photox/shared-types';
 import { BullMqService } from './bullmq.service';
 import { parseJobData, bindingOf, clusterJobSchema, type ClusterJob } from './job-schemas';
 import type { ProcessorDeps, ProcessorSpec } from './processor-spec';
@@ -9,7 +8,7 @@ import type {
   ApplyClusterCreate,
   ClusterFace,
 } from '../core/core-client.service';
-import { CoreClient } from '../core/core-client.service';
+import { addToCentroid, centroidMean, CoreClient } from '../core/core-client.service';
 
 // ponytail: ArcFace-family tuning — DBSCAN_EPS 0.35 means similarity >= 0.65; this is a pair radius,
 // not a transitivity radius, so old 0.55 (similarity 0.45) chained different people through
@@ -59,21 +58,60 @@ function centroidOf(embeddings: number[][]): number[] {
   return centroid;
 }
 
-// ponytail: O(n²) in-memory DBSCAN — fine for v1 personal photo library (hundreds, not thousands of faces).
-// Upgrade path: use pgvector HNSW nearest-neighbor queries in media-service when N > ~10k faces per user.
-function dbscan(points: number[][], eps: number, minPts: number): number[] {
+function normOf(v: number[]): number {
+  let sum = 0;
+  for (const value of v) sum += value * value;
+  return Math.sqrt(sum);
+}
+
+// exact same value as cosineDistance, with the norms computed once per point instead of per pair
+function distanceWithNorms(a: number[], b: number[], normA: number, normB: number): number {
+  // ponytail: cross-dim rows (legacy 1024-dim vs current 512-dim) are incomparable — max distance, never match
+  if (a.length !== b.length || a.length === 0) return 1;
+  let dot = 0;
+  for (let i = 0; i < a.length; i++) dot += a[i]! * b[i]!;
+  const denom = normA * normB;
+  if (denom === 0) return 1;
+  return 1 - dot / denom;
+}
+
+export interface DbscanOptions {
+  /** yield to the event loop every this many work iterations */
+  yieldEvery?: number;
+  pause?: () => Promise<void>;
+}
+
+// ponytail: O(n²) in-memory DBSCAN (upgrade path: pgvector HNSW when the cap ever moves again).
+// Labels are identical to the original synchronous loop — the pauses only keep /health and BullMQ's
+// lock renewal alive while the walk runs.
+export async function dbscan(
+  points: number[][],
+  eps: number,
+  minPts: number,
+  options: DbscanOptions = {},
+): Promise<number[]> {
+  const { yieldEvery = 64, pause = () => new Promise<void>((resolve) => setImmediate(resolve)) } =
+    options;
   const n = points.length;
+  const norms = points.map(normOf);
   const UNVISITED = -2;
   const NOISE = -1;
   const labels = new Array<number>(n).fill(UNVISITED);
   let clusterId = 0;
+  // one shared counter: a single giant cluster does its expensive work in the queue loop below
+  let work = 0;
+  const tick = async () => {
+    work += 1;
+    if (work % yieldEvery === 0) await pause();
+  };
 
   for (let i = 0; i < n; i++) {
+    await tick();
     if (labels[i] !== UNVISITED) continue;
 
     const neighbors: number[] = [];
     for (let j = 0; j < n; j++) {
-      if (cosineDistance(points[i]!, points[j]!) <= eps) {
+      if (distanceWithNorms(points[i]!, points[j]!, norms[i]!, norms[j]!) <= eps) {
         neighbors.push(j);
       }
     }
@@ -88,6 +126,7 @@ function dbscan(points: number[][], eps: number, minPts: number): number[] {
     const seen = new Set(neighbors);
 
     while (queue.length > 0) {
+      await tick();
       const q = queue.pop()!;
 
       if (labels[q] === NOISE) labels[q] = clusterId;
@@ -96,7 +135,7 @@ function dbscan(points: number[][], eps: number, minPts: number): number[] {
 
       const qNeighbors: number[] = [];
       for (let j = 0; j < n; j++) {
-        if (cosineDistance(points[q]!, points[j]!) <= eps) {
+        if (distanceWithNorms(points[q]!, points[j]!, norms[q]!, norms[j]!) <= eps) {
           qNeighbors.push(j);
         }
       }
@@ -138,39 +177,25 @@ export class FaceClusterService {
 
   async cluster(userId: string, binding?: { sig?: string }): Promise<void> {
     // core's E1 endpoint excludes trashed assets (trashed faces stay stored, just don't vote);
-    // pageCount for this fetch is in CoreClient's fetch log (signature kept array-only)
+    // the walk streams pages and keeps only centroids + a capped set of unassigned embeddings
     const started = Date.now();
-    const faces = await this.core.getFacesForCluster(userId, binding);
-
-    if (faces.length === 0) {
-      this.logger.log(`No faces for user=${userId}`);
-      return;
-    }
+    const walk = await this.core.getFacesForCluster(userId, binding, {
+      minConfidence: CLUSTER_MIN_CONFIDENCE,
+    });
 
     // ponytail: legacy-dim rows (pre-buffalo_l 1024-dim) are incomparable — never cluster or cast
     // in place; unassigned ones get their assets re-enqueued for re-embed (processor deletes +
     // re-saves at 512-dim), assigned ones stay frozen until their asset re-embeds
-    const legacyUnassigned = faces.filter(
-      (f) => f.personId === null && f.embedding.length !== FACE_EMBEDDING_DIM,
-    );
-    if (legacyUnassigned.length > 0) {
-      const assetIds = [...new Set(legacyUnassigned.map((f) => f.assetId))].slice(
-        0,
-        LEGACY_REEMBED_PER_RUN,
-      );
+    if (walk.legacyCount > 0) {
+      const assetIds = walk.legacyAssetIds.slice(0, LEGACY_REEMBED_PER_RUN);
       await this.enqueueReembed(assetIds, userId, binding);
       this.logger.log(
-        `Skipped ${legacyUnassigned.length} legacy-dim faces, re-embed enqueued for ` +
+        `Skipped ${walk.legacyCount} legacy-dim faces, re-embed enqueued for ` +
           `${assetIds.length} assets: user=${userId}`,
       );
     }
 
-    const unassigned = faces.filter(
-      (f) =>
-        f.personId === null &&
-        f.confidence >= CLUSTER_MIN_CONFIDENCE &&
-        f.embedding.length === FACE_EMBEDDING_DIM,
-    );
+    const { unassigned } = walk;
 
     if (unassigned.length === 0) {
       this.logger.log(`No unassigned faces for user=${userId}, skipping clustering`);
@@ -178,7 +203,7 @@ export class FaceClusterService {
     }
 
     const embeddings = unassigned.map((f) => f.embedding);
-    const labels = dbscan(embeddings, DBSCAN_EPS, DBSCAN_MIN_PTS);
+    const labels = await dbscan(embeddings, DBSCAN_EPS, DBSCAN_MIN_PTS);
 
     const clusters = new Map<number, ClusterFace[]>();
     const noiseFaces: ClusterFace[] = [];
@@ -197,32 +222,15 @@ export class FaceClusterService {
       this.logger.log(`No clusters for user=${userId}, all faces are noise`);
     }
 
-    // ponytail: centroids from high-confidence current-dim faces only — low-conf and legacy
-    // faces stay stored, just don't vote
-    const personCentroids = new Map<string, number[]>();
-    const facesByPerson = new Map<string, ClusterFace[]>();
-    for (const f of faces) {
-      if (
-        f.personId === null ||
-        f.confidence < CLUSTER_MIN_CONFIDENCE ||
-        f.embedding.length !== FACE_EMBEDDING_DIM
-      )
-        continue;
-      const arr = facesByPerson.get(f.personId) ?? [];
-      arr.push(f);
-      facesByPerson.set(f.personId, arr);
-    }
-    const refreshCentroid = (pid: string) => {
-      const pfs = facesByPerson.get(pid) ?? [];
-      if (pfs.length === 0) personCentroids.delete(pid);
-      else personCentroids.set(pid, centroidOf(pfs.map((f) => f.embedding)));
-    };
-    for (const pid of facesByPerson.keys()) refreshCentroid(pid);
+    // ponytail: centroid sums from high-confidence current-dim faces only — low-conf and legacy
+    // faces stay stored, just don't vote. The walk already accumulated them without retaining the
+    // embeddings; in-run attaches/noise land in the same accumulator.
+    const personCentroids = walk.centroids;
 
     const nearestPerson = (embedding: number[]): NearestPerson | null => {
       let best: NearestPerson | null = null;
-      for (const [pid, centroid] of personCentroids) {
-        const d = cosineDistance(embedding, centroid);
+      for (const [pid, acc] of personCentroids) {
+        const d = cosineDistance(embedding, centroidMean(acc));
         if (best === null) {
           best = { id: pid, dist: d, runnerUp: Infinity };
         } else if (d < best.dist) {
@@ -245,8 +253,7 @@ export class FaceClusterService {
     for (const face of noiseFaces) {
       const best = nearestPerson(face.embedding);
       if (matchesPerson(best, NOISE_ASSIGN_EPS)) {
-        facesByPerson.get(best.id)!.push(face);
-        refreshCentroid(best.id);
+        addToCentroid(personCentroids, best.id, face.embedding);
         // noise attaches carry no cover (parity with the old per-face update)
         const attach = attaches.find((a) => a.personId === best.id && a.coverFaceId === undefined);
         if (attach) attach.faceIds.push(face.id);
@@ -273,11 +280,8 @@ export class FaceClusterService {
         };
         creates.push(create);
         pendingCreates.set(clusterLabel, create);
-        facesByPerson.set(clusterLabel, []);
-        for (const face of facesInCluster) {
-          facesByPerson.get(clusterLabel)!.push(face);
-        }
-        refreshCentroid(clusterLabel);
+        for (const face of facesInCluster)
+          addToCentroid(personCentroids, clusterLabel, face.embedding);
         continue;
       }
 
@@ -295,24 +299,45 @@ export class FaceClusterService {
         });
       }
 
-      for (const face of facesInCluster) {
-        facesByPerson.get(personId)!.push(face);
-      }
       // ponytail: refresh so later clusters in the same run match against faces attached earlier
-      refreshCentroid(personId);
+      for (const face of facesInCluster) addToCentroid(personCentroids, personId, face.embedding);
     }
 
     if (creates.length === 0 && attaches.length === 0) {
       this.logger.log(`No cluster plan for user=${userId}, nothing to apply`);
-      return;
+    } else {
+      const result = await this.core.applyClusters(userId, { creates, attaches }, binding);
+      this.logger.log(
+        `Clustered ${unassigned.length} unassigned faces into ${clusters.size} groups ` +
+          `(${noiseReassigned} noise faces reassigned to existing persons) for user=${userId}; ` +
+          `applied created=${result.created}, assigned=${result.assigned}, ` +
+          `faceCount=${walk.total} clusterMs=${Date.now() - started}`,
+      );
     }
 
-    const result = await this.core.applyClusters(userId, { creates, attaches }, binding);
+    await this.enqueueContinuation(userId, binding, walk);
+  }
+
+  // ponytail: the per-run cap defers work instead of failing — each run assigns faces, so the next
+  // run's first cap-sized unassigned batch is new work. A run-tagged id keeps BullMQ from deduping.
+  private async enqueueContinuation(
+    userId: string,
+    binding: { sig?: string } | undefined,
+    walk: { truncated: boolean; deferred: number },
+  ): Promise<void> {
+    if (!walk.truncated) return;
     this.logger.log(
-      `Clustered ${unassigned.length} unassigned faces into ${clusters.size} groups ` +
-        `(${noiseReassigned} noise faces reassigned to existing persons) for user=${userId}; ` +
-        `applied created=${result.created}, assigned=${result.assigned}, ` +
-        `faceCount=${faces.length} clusterMs=${Date.now() - started}`,
+      `Deferred ${walk.deferred} unassigned faces to a follow-up run: user=${userId}`,
+    );
+    await this.bullMq.enqueue(
+      'process-faces-cluster',
+      'cluster',
+      { userId, ...(binding?.sig ? { sig: binding.sig } : {}) },
+      {
+        jobId: `cluster-${userId}-cont-${Date.now()}`,
+        removeOnComplete: true,
+        delay: 2_000,
+      },
     );
   }
 

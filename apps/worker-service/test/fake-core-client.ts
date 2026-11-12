@@ -1,5 +1,6 @@
 import { UnrecoverableError } from 'bullmq';
 import type { LocalStorageService } from '@photox/shared-config';
+import { FACE_EMBEDDING_DIM } from '@photox/shared-types';
 import type {
   Asset,
   DetectedFaceInput,
@@ -10,12 +11,15 @@ import type {
 import type {
   ApplyClustersPayload,
   ApplyClustersResult,
+  ClusterCentroid,
   ClusterFace,
+  ClusterFaceWalk,
   JobBinding,
   MetadataPatch,
   RegisterFileInput,
   RegisterThumbnailInput,
 } from '../src/core/core-client.service';
+import { addToCentroid } from '../src/core/core-client.service';
 
 export interface CallRecord {
   method: string;
@@ -241,9 +245,45 @@ export class FakeCoreClient {
     return Promise.resolve();
   }
 
-  getFacesForCluster(userId: string, binding?: JobBinding): Promise<ClusterFace[]> {
+  // mirrors CoreClient's streaming walk over the in-memory fixtures: assigned faces become centroid
+  // sums, unassigned current-dim faces are capped, legacy-dim ones surface as re-embed asset ids
+  getFacesForCluster(
+    userId: string,
+    binding?: JobBinding,
+    opts: { minConfidence?: number; cap?: number } = {},
+  ): Promise<ClusterFaceWalk> {
     this.calls.push({ method: 'getFacesForCluster', args: [userId], binding });
-    return Promise.resolve(this.clusterFaces.map((f) => ({ ...f })));
+    const minConfidence = opts.minConfidence ?? 0;
+    const cap = opts.cap ?? 10_000;
+    const unassigned: ClusterFace[] = [];
+    const centroids = new Map<string, ClusterCentroid>();
+    const legacyAssets = new Set<string>();
+    let legacyCount = 0;
+    let deferred = 0;
+
+    for (const face of this.clusterFaces) {
+      if (face.personId !== null) {
+        if (face.confidence >= minConfidence && face.embedding.length === FACE_EMBEDDING_DIM) {
+          addToCentroid(centroids, face.personId, face.embedding);
+        }
+      } else if (face.embedding.length !== FACE_EMBEDDING_DIM) {
+        legacyCount++;
+        legacyAssets.add(face.assetId);
+      } else if (face.confidence >= minConfidence) {
+        if (unassigned.length < cap) unassigned.push({ ...face });
+        else deferred++;
+      }
+    }
+
+    return Promise.resolve({
+      unassigned,
+      centroids,
+      legacyAssetIds: [...legacyAssets],
+      legacyCount,
+      truncated: deferred > 0,
+      deferred,
+      total: this.clusterFaces.length,
+    });
   }
 
   getAssetsByIds(

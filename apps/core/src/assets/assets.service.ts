@@ -432,11 +432,17 @@ export class AssetsService {
       // C4: mirror FacesService.deleteForAsset — collect deleted face ids, null matching
       // person covers, and refresh live counts inside the same txn so hard-deleted assets
       // can't leave dangling coverFaceUrl thumbs behind.
-      const existingFaces: Face[] = [];
+      const existingFaces: Pick<Face, 'id' | 'personId'>[] = [];
       // bounded batches: one giant IN (...) list would exceed Postgres's 65,535 bind parameters
       for (let i = 0; i < assetIds.length; i += 500) {
         const batch = assetIds.slice(i, i + 500);
-        existingFaces.push(...(await em.find(Face, { where: { assetId: In(batch) } })));
+        // select only the cleanup keys: loading every 512-float embedding is hundreds of MB
+        existingFaces.push(
+          ...(await em.find(Face, {
+            where: { assetId: In(batch) },
+            select: { id: true, personId: true },
+          })),
+        );
         await em.delete(Face, { assetId: In(batch) });
         await em.delete(AlbumAsset, { assetId: In(batch) });
         // shares.assetId FK is ON DELETE CASCADE, so share rows fall with the asset

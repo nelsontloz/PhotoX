@@ -57,3 +57,41 @@ describe('BullMqService.enqueueVideo', () => {
     );
   });
 });
+
+// ponytail: a retained completed job never disappears (~6 per asset), so a long-lived library
+// fills Redis and noeviction starts refusing uploads — the default must remove them
+describe('BullMqService.enqueue retention defaults', () => {
+  function makeService() {
+    const service = new BullMqService();
+    const add = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(service, 'getQueue').mockReturnValue({ add } as never);
+    return { service, add };
+  }
+
+  it('removes completed jobs by default', async () => {
+    const { service, add } = makeService();
+    await service.enqueue('process-metadata', 'process-metadata', { userId: 'u1' });
+    await vi.waitFor(() => expect(add).toHaveBeenCalled());
+    expect(add).toHaveBeenCalledWith(
+      'process-metadata',
+      { userId: 'u1' },
+      expect.objectContaining({ removeOnComplete: true, removeOnFail: true, attempts: 3 }),
+    );
+  });
+
+  it('lets an explicit removeOnComplete:false win', async () => {
+    const { service, add } = makeService();
+    await service.enqueue(
+      'process-metadata',
+      'process-metadata',
+      { userId: 'u1' },
+      { removeOnComplete: false },
+    );
+    await vi.waitFor(() => expect(add).toHaveBeenCalled());
+    expect(add).toHaveBeenCalledWith(
+      'process-metadata',
+      { userId: 'u1' },
+      expect.objectContaining({ removeOnComplete: false }),
+    );
+  });
+});

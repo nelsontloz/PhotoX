@@ -252,8 +252,33 @@ describe('UserDeleteService.step', () => {
     expect(deletes.some((call) => call.entity.name === 'User')).toBe(false);
   });
 
-  it('is idempotent: a finished run answers done without touching the DB', async () => {
-    const { service, manager, dataSource } = makeService({ run: { state: 'completed' } });
+  it('restarts a terminal run when the user row is still live (lost reset)', async () => {
+    const { service, currentRun, manager } = makeService({
+      run: { state: 'completed', error: 'stale', sessionsLocked: true },
+    });
+
+    await expect(service.step(USER_ID, 'backups/old/')).resolves.toEqual({
+      done: false,
+      phase: 'tokens',
+      deleted: 0,
+    });
+    // the stale terminal row was reset (counters + lock) and the wipe resumed: sessions first
+    expect(currentRun()).toMatchObject({
+      state: 'active',
+      phase: null,
+      error: null,
+      deletedRows: 0,
+      deletedFiles: 0,
+      failedFiles: 0,
+      sessionsLocked: false,
+    });
+    expect(manager.update).toHaveBeenCalledWith(expect.anything(), USER_ID, {
+      sessionsLocked: true,
+    });
+  });
+
+  it('answers done for a terminal row once the user row is gone', async () => {
+    const { service, manager } = makeService({ user: null, run: { state: 'completed' } });
 
     await expect(service.step(USER_ID, 'backups/old/')).resolves.toEqual({
       done: true,
@@ -261,7 +286,6 @@ describe('UserDeleteService.step', () => {
       deleted: 0,
     });
     expect(manager.delete).not.toHaveBeenCalled();
-    expect(dataSource.query).not.toHaveBeenCalled();
   });
 
   it('answers done for a retry whose user row is already gone', async () => {
