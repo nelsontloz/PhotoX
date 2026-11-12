@@ -37,7 +37,13 @@ export class BackupTransfersDispatcher implements OnModuleInit, OnModuleDestroy 
   onModuleInit(): void {
     // integration specs drive the same runs synchronously; a live timer would race them
     if (process.env.NODE_ENV === 'test') return;
-    this.timer = setInterval(() => void this.tick(), TRANSFER_DISPATCH_INTERVAL_MS);
+    // the timer is the one place a rejection has no caller: an unhandled one kills core on Node's
+    // default handler, so every tick reports its own failure instead
+    this.timer = setInterval(() => {
+      void this.tick().catch((err: unknown) => {
+        this.logger.error(`[backup-transfers] tick failed: ${errorMessage(err)}`);
+      });
+    }, TRANSFER_DISPATCH_INTERVAL_MS);
     this.timer.unref();
   }
 
@@ -65,8 +71,10 @@ export class BackupTransfersDispatcher implements OnModuleInit, OnModuleDestroy 
     this.ticking.add(kind);
     let processed = 0;
     const runner = this.dataSource.createQueryRunner();
-    await runner.connect();
     try {
+      // inside the try: a connect failure must still clear `ticking`, or this kind never
+      // dispatches again until the process restarts
+      await runner.connect();
       const rows = (await runner.query('SELECT pg_try_advisory_lock($1) AS locked', [
         DISPATCH_LOCKS[kind],
       ])) as { locked: boolean }[];
@@ -79,8 +87,14 @@ export class BackupTransfersDispatcher implements OnModuleInit, OnModuleDestroy 
     } catch (err) {
       this.logger.error(`[backup-transfers] ${kind} dispatch failed: ${errorMessage(err)}`);
     } finally {
-      await runner.release();
-      this.ticking.delete(kind);
+      // release can throw on a dead connection; the lane flag must clear either way
+      try {
+        await runner.release();
+      } catch (err) {
+        this.logger.error(`[backup-transfers] ${kind} release failed: ${errorMessage(err)}`);
+      } finally {
+        this.ticking.delete(kind);
+      }
     }
     // a full batch means more work is due: do not wait for the next interval
     if (processed > 0) setImmediate(() => void this.dispatch(kind));

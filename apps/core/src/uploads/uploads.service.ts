@@ -397,15 +397,37 @@ export class UploadsService {
       for (const condition of where) condition.userId = userId;
     }
     const stale = await this.sessionRepo.find({ where });
+    let expired = 0;
     for (const session of stale) {
-      // bytes before row: a crash between the two makes the next sweep re-run the idempotent rm
-      await this.removeSessionDir(session);
-      await this.sessionRepo.update({ id: session.id }, { status: 'expired' });
+      if (await this.parkExpired(session)) expired += 1;
     }
-    if (stale.length > 0) {
-      this.logger.warn(`[UploadsService] expired ${stale.length} abandoned upload session(s)`);
+    if (expired > 0) {
+      this.logger.warn(`[UploadsService] expired ${expired} abandoned upload session(s)`);
     }
-    return { expired: stale.length };
+    return { expired };
+  }
+
+  /**
+   * Parks a stale session and drops its bytes. Claim first: `complete`/`PUT` hold the row lock, so
+   * an expected-status update either wins the row or loses to a session that just finished — bytes
+   * are deleted only after the claim, never while an assembly is still reading them. A failed rm
+   * reverts the claim so the next sweep retries instead of leaking the parts.
+   *
+   * shortcut: a crash between the claim and the rm leaves an expired row with bytes on disk
+   * (terminal rows are not re-swept); sweep upload-sessions/ manually if that residue matters.
+   */
+  private async parkExpired(session: UploadSession): Promise<boolean> {
+    const previous = session.status;
+    const claimed = await this.sessionRepo.update(
+      { id: session.id, status: previous },
+      { status: 'expired' },
+    );
+    if (claimed.affected !== 1) return false;
+    session.status = 'expired';
+    if (await this.removeSessionDir(session)) return true;
+    await this.sessionRepo.update({ id: session.id, status: 'expired' }, { status: previous });
+    session.status = previous;
+    return false;
   }
 
   /**
@@ -680,10 +702,9 @@ export class UploadsService {
 
   /** Lazy expiry on a session row read outside a transaction (GET): park it and drop its bytes. */
   private async expireStale(session: UploadSession): Promise<void> {
-    // bytes before row: a crash between the two makes the next sweep re-run the idempotent rm
-    await this.removeSessionDir(session);
-    await this.sessionRepo.update({ id: session.id }, { status: 'expired' });
-    session.status = 'expired';
+    // same claim-then-remove path as the sweeper: a GET must not overwrite a session that
+    // completed between the read and this call
+    await this.parkExpired(session);
   }
 
   /** Lazy expiry under the session lock (PUT/complete) — the update must ride the same runner. */
@@ -733,13 +754,18 @@ export class UploadsService {
     await this.writePartFile(session, partIndex, body);
   }
 
-  /** Best-effort byte cleanup: the DB row is the durable record, a failed rm only leaks disk. */
-  private async removeSessionDir(session: UploadSession): Promise<void> {
+  /**
+   * Removes a session's part files. Returns whether the directory is gone: parkExpired keeps the
+   * row retryable when this is false, other callers treat it as best-effort.
+   */
+  private async removeSessionDir(session: UploadSession): Promise<boolean> {
     try {
       await rm(this.sessionDir(session.userId, session.id), { recursive: true, force: true });
+      return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`[UploadsService] failed to remove session dir ${session.id}: ${message}`);
+      return false;
     }
   }
 }

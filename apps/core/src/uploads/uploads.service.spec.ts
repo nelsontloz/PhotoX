@@ -209,9 +209,8 @@ function makeService(scenario: Scenario = {}) {
     find: vi.fn(() => Promise.resolve(parts)),
   };
   const assetRepo = { findOne: vi.fn(() => Promise.resolve(scenario.existingAsset ?? null)) };
-  const storage = {
-    pathFor: vi.fn((key: string) => join(storageRoot, key)),
-  } as unknown as LocalStorageService;
+  const pathFor = vi.fn((key: string) => join(storageRoot, key));
+  const storage = { pathFor } as unknown as LocalStorageService;
 
   const persistOriginal = vi.fn(() =>
     Promise.resolve(
@@ -258,6 +257,8 @@ function makeService(scenario: Scenario = {}) {
     enqueueAssetJobs,
     assets,
     assetsGetOne,
+    storage,
+    pathFor,
   };
 }
 
@@ -743,7 +744,10 @@ describe('UploadsService.status', () => {
     const { status, body } = await caught(() => service.status(USER, session.id));
     expect(status).toBe(410);
     expect(body).toMatchObject({ code: 'SESSION_EXPIRED' });
-    expect(sessionRepo.update).toHaveBeenCalledWith({ id: session.id }, { status: 'expired' });
+    expect(sessionRepo.update).toHaveBeenCalledWith(
+      { id: session.id, status: 'pending' },
+      { status: 'expired' },
+    );
   });
 
   it('410s a session already parked as expired', async () => {
@@ -793,8 +797,41 @@ describe('UploadsService.purgeExpired', () => {
     sessionRepo.find.mockResolvedValueOnce([session]);
     await writePartFiles(session, [JPEG]);
     await expect(service.purgeExpired()).resolves.toEqual({ expired: 1 });
-    expect(sessionRepo.update).toHaveBeenCalledWith({ id: session.id }, { status: 'expired' });
+    expect(sessionRepo.update).toHaveBeenCalledWith(
+      { id: session.id, status: 'pending' },
+      { status: 'expired' },
+    );
     await expect(stat(sessionDir(USER, session.id))).rejects.toThrow();
+  });
+
+  it('leaves a session alone when it completed between the read and the claim', async () => {
+    const session = sessionRow({ id: randomUUID(), expiresAt: new Date(Date.now() - 1000) });
+    const { service, sessionRepo } = makeService({ sessions: [session] });
+    sessionRepo.find.mockResolvedValueOnce([session]);
+    // the expected-status claim matched no row: `complete` won the row lock first
+    sessionRepo.update.mockResolvedValueOnce({ affected: 0 });
+    await writePartFiles(session, [JPEG]);
+
+    await expect(service.purgeExpired()).resolves.toEqual({ expired: 0 });
+    expect(sessionRepo.update).toHaveBeenCalledTimes(1);
+    // bytes are still there, because assembly may still be reading them
+    await expect(stat(sessionDir(USER, session.id))).resolves.toBeTruthy();
+  });
+
+  it('reverts the claim when the bytes cannot be removed, so the next sweep retries', async () => {
+    const session = sessionRow({ id: randomUUID(), expiresAt: new Date(Date.now() - 1000) });
+    const { service, sessionRepo, pathFor } = makeService({ sessions: [session] });
+    sessionRepo.find.mockResolvedValueOnce([session]);
+    pathFor.mockImplementation((key: string) => {
+      if (key.includes(session.id)) throw new Error('EACCES');
+      return join(storageRoot, key);
+    });
+
+    await expect(service.purgeExpired()).resolves.toEqual({ expired: 0 });
+    expect(sessionRepo.update).toHaveBeenLastCalledWith(
+      { id: session.id, status: 'expired' },
+      { status: 'pending' },
+    );
   });
 
   it('reports nothing when no session is stale', async () => {
