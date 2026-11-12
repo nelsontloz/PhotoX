@@ -819,6 +819,17 @@ export class UserBackupService {
   async startBackup(emailOrId: string): Promise<{ runId: string }> {
     const user = await this.findUser(emailOrId);
     if (!user) throw new NotFoundException(`No user for ${emailOrId}`);
+    // A paused run is resumable by starting the backup again (same contract as restore): no
+    // request can move it out of `paused`, and `assertNoActiveRun` below would 409 forever.
+    const paused = await this.runs.findOne({
+      where: { userId: user.id, kind: 'backup', state: 'paused' },
+      order: { startedAt: 'DESC' },
+    });
+    if (paused) {
+      await this.resumeRun(paused.id);
+      this.logger.log(`Backup run ${paused.id} resumed for user ${user.id}`);
+      return { runId: paused.id };
+    }
     await this.s3.ensureBucket();
     await this.assertNoActiveRun(user.id);
     await this.cleanupAbandonedBackupRuns(user.id);
@@ -2902,12 +2913,18 @@ export class UserBackupService {
     );
     // a retry can race a newer run for the same user (failed A, started B, then retry A): the
     // unique index turns that into a 409 instead of a raw 23505
+    // The items just went back to pending, so the old failure tally is stale and `uploaded` is the
+    // only durable success count (successful item rows are deleted). Without this a resumed run
+    // finishes above 100% with failures it already retried.
+    const run = await this.runs.findOne({ where: { id: runId } });
     await this.runs
       .update(runId, {
         state: 'running',
         error: null,
         currentFile: null,
         finishedAt: null,
+        failedItems: 0,
+        completedItems: run?.uploaded ?? 0,
         updatedAt: new Date(),
       })
       .catch(rethrowActiveRunConflict);
