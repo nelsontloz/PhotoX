@@ -26,6 +26,7 @@ interface AlbumAssetsItem {
 interface AlbumAssetsBody {
   items: AlbumAssetsItem[];
   total: number;
+  nextCursor?: string | null;
 }
 
 describe('album assets list', () => {
@@ -68,7 +69,7 @@ describe('album assets list', () => {
   async function listAlbumAssets(
     token: string,
     albumId: string,
-    query?: { limit?: number; offset?: number },
+    query?: { limit?: number; offset?: number; cursor?: string },
   ): Promise<AlbumAssetsBody> {
     const req = request(apiServer(t))
       .get(`/api/v1/albums/${albumId}/assets`)
@@ -160,13 +161,52 @@ describe('album assets list', () => {
     expect(seen.size).toBe(3);
   });
 
+  it('pages a tied addedAt with a cursor without repeating or skipping rows', async () => {
+    const { id: userId, token } = await seedUserWithToken();
+    const albumId = await createAlbum(token);
+    const assetIds: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const file = await seedFile(t, userId);
+      const asset = await seedAsset(t, userId, file.id);
+      assetIds.push(asset.id);
+      await addAsset(token, albumId, asset.id);
+    }
+    // a bulk add shares one now(); the non-unique sort term is what offset paging cannot survive
+    await t.albumAssetRepo.update({ albumId }, { addedAt: new Date('2024-01-01T00:00:00.000Z') });
+
+    const pages: AlbumAssetsBody[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await listAlbumAssets(token, albumId, {
+        limit: 2,
+        ...(cursor ? { cursor } : {}),
+      });
+      pages.push(page);
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+
+    expect(pages.map((page) => page.total)).toEqual([5, 5, 5]);
+    const listed = pages.flatMap((page) => page.items.map((item) => item.id));
+    expect(listed).toEqual([...assetIds].sort().reverse());
+    expect(new Set(listed).size).toBe(5);
+
+    // offset paging still works when no cursor is sent; the cursor it returns continues from
+    // that page (a client on offset simply ignores it)
+    const offsetPage = await listAlbumAssets(token, albumId, { limit: 2, offset: 2 });
+    expect(offsetPage.total).toBe(5);
+    expect(offsetPage.items.map((item) => item.id)).toEqual(
+      [...assetIds].sort().reverse().slice(2, 4),
+    );
+    expect(offsetPage.nextCursor).not.toBeNull();
+  });
+
   it('returns an empty page with zero total for an album without assets', async () => {
     const { token } = await seedUserWithToken();
     const albumId = await createAlbum(token);
 
     const body = await listAlbumAssets(token, albumId);
 
-    expect(body).toEqual({ items: [], total: 0 });
+    expect(body).toEqual({ items: [], total: 0, nextCursor: null });
   });
 
   it('excludes trashed assets from page and total, and restores them', async () => {
@@ -180,7 +220,11 @@ describe('album assets list', () => {
       .post(`/api/v1/assets/${asset.id}/trash`)
       .set(t.authHeader(token));
     expect(trash.status).toBe(204);
-    expect(await listAlbumAssets(token, albumId)).toEqual({ items: [], total: 0 });
+    expect(await listAlbumAssets(token, albumId)).toEqual({
+      items: [],
+      total: 0,
+      nextCursor: null,
+    });
 
     const restore = await request(apiServer(t))
       .post(`/api/v1/assets/trashed/${asset.id}/restore`)
