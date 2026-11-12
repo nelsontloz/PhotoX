@@ -252,7 +252,9 @@ export class AdminService {
   ): Promise<AdminUserDeleteResponse> {
     const user = await this.userRepo.findOne({ where: { id: targetUserId } });
     if (!user) throw new NotFoundException('User not found');
-    if (requesterId === targetUserId) {
+    // compare the stored id, not the raw input: the uuid lookup above is
+    // case-insensitive, so an upper-cased targetId must not dodge this guard
+    if (requesterId === user.id) {
       throw new ForbiddenException('Cannot delete your own account');
     }
     if (user.role === 'admin') {
@@ -293,11 +295,10 @@ export class AdminService {
    * row is gone. Unknown users 404 unless a finished run is recorded.
    */
   async getUserDeleteStatus(targetUserId: string): Promise<AdminUserDeleteStatus> {
-    const jobId = userDeleteJobId(targetUserId);
     const progress = await this.deletes.getProgress(targetUserId);
     if (progress) {
       return {
-        jobId,
+        jobId: progress.jobId,
         state: progress.state,
         backupKept: true,
         backupPrefix: progress.backupPrefix || (await this.prefixForLiveUser(targetUserId)),
@@ -312,7 +313,7 @@ export class AdminService {
     const user = await this.userRepo.findOne({ where: { id: targetUserId } });
     if (!user) throw new NotFoundException('User not found');
     return {
-      jobId,
+      jobId: userDeleteJobId(user.id),
       state: 'unknown',
       backupKept: true,
       backupPrefix: backupPrefix(user.email, user.id),
