@@ -20,6 +20,8 @@ function makeService(opts: {
   const s3 = {
     ensureBucket: vi.fn(opts.ensureBucket ?? (() => Promise.resolve())),
   };
+  // no wipe row: startBackup's assertNoLiveWipe is a read-only pass
+  const userDeletes = { findOne: vi.fn(() => Promise.resolve(null)) };
   const nil = undefined as never;
   const svc = new UserBackupService(
     s3 as never,
@@ -37,7 +39,7 @@ function makeService(opts: {
     nil,
     runs as unknown as Repository<BackupRun>,
     runItems as unknown as Repository<BackupRunItem>,
-    nil,
+    userDeletes as never,
   );
   return { svc, runs, runItems, s3 };
 }

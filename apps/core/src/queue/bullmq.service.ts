@@ -71,6 +71,8 @@ export class BullMqService implements OnModuleInit, OnModuleDestroy {
           attempts: 3,
           backoff: { type: 'exponential' },
           removeOnFail: true,
+          // completed jobs are dead weight: ~6 per asset forever would fill Redis (noeviction)
+          removeOnComplete: true,
           ...opts,
         }),
       );

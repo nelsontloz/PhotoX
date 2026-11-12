@@ -10,7 +10,7 @@ import { refreshPersonFaceCount } from '../faces/face-count';
  */
 export async function refreshPersonsAfterFaceDelete(
   em: EntityManager,
-  faces: Face[],
+  faces: Pick<Face, 'id' | 'personId'>[],
   userId?: string,
 ): Promise<void> {
   if (faces.length === 0) return;

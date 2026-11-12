@@ -38,6 +38,23 @@ const SIGKILL_DELAY_MS = 5_000;
 // for the last 2000 chars of the error
 const MAX_BUFFER = 64 * 1024 * 1024;
 
+// every live child, so a shutdown can SIGKILL it instead of waiting out a 1h encode. Module-level
+// because the signal fires during Nest's shutdown, not inside a request.
+const liveChildren = new Set<ChildProcess>();
+
+/** SIGKILL every live child — called from main.ts's signal handlers. Returns how many it hit. */
+export function killLiveChildren(): number {
+  const count = liveChildren.size;
+  for (const proc of liveChildren) {
+    try {
+      proc.kill('SIGKILL');
+    } catch {
+      // process already gone
+    }
+  }
+  return count;
+}
+
 // ffmpeg can ignore SIGTERM mid-mux, and a stuck 1h transcode would hold CPU and a BullMQ slot —
 // escalate to SIGKILL after a grace period
 function killWithDelay(proc: ChildProcess) {
@@ -95,6 +112,10 @@ function runBin(
       killWithDelay(proc);
       reject(new Error(`${label} timed out after ${timeoutMs}ms`));
     }, timeoutMs);
+
+    liveChildren.add(proc);
+    proc.once('exit', () => liveChildren.delete(proc));
+    proc.once('error', () => liveChildren.delete(proc));
   });
 }
 

@@ -267,6 +267,9 @@ export class AdminService {
     // a retained terminal job with this id would swallow the enqueue (BullMQ dedups by
     // jobId), so a re-delete after a restore would silently no-op — drop it first
     await this.deletes.clearFinishedJob(user.id);
+    // the durable intent lands BEFORE the job: a lost write after an enqueue would leave the
+    // worker stepping against a stale terminal row and sweeping a live account
+    await this.deletes.markQueued(user.id, jobId, prefix);
     // pending per-user media jobs are drained by the worker's consumer at job start (the
     // worker owns those queues); core only enqueues the wipe here
     const enqueued = await this.bullMq.enqueue(
@@ -283,8 +286,11 @@ export class AdminService {
         backoff: { type: 'exponential', delay: 2000 },
       },
     );
-    if (!enqueued) throw new ServiceUnavailableException('Failed to enqueue user deletion');
-    await this.deletes.markQueued(user.id, jobId, prefix);
+    if (!enqueued) {
+      // no worker will ever drive the steps: record the dead intent instead of leaving `queued`
+      await this.deletes.markEnqueueFailed(user.id, 'Failed to enqueue user deletion');
+      throw new ServiceUnavailableException('Failed to enqueue user deletion');
+    }
     // the S3 backup prefix is deliberately left intact — never enumerated or deleted
     return { jobId, userId: user.id, backupKept: true, backupPrefix: prefix };
   }

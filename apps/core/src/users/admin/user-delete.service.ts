@@ -89,6 +89,14 @@ export class UserDeleteService {
     );
   }
 
+  /**
+   * The enqueue never reached BullMQ, so no worker will drive the steps. Terminal `failed`
+   * keeps the intent visible; a retry request writes `queued` again (markQueued resets it).
+   */
+  async markEnqueueFailed(userId: string, message: string): Promise<void> {
+    await this.runs.update(userId, { state: 'failed', error: message });
+  }
+
   async getProgress(userId: string): Promise<UserDeleteProgress | undefined> {
     const row = await this.runs.findOne({ where: { userId } });
     if (!row) return undefined;
@@ -129,25 +137,40 @@ export class UserDeleteService {
 
   /**
    * One bounded unit of the wipe. Stateless: every call asks "what is left" instead of carrying
-   * a cursor, so a crash between calls costs nothing and a retry resumes. Idempotent — once the
-   * rows are gone it answers `done` forever.
+   * a cursor, so a crash between calls costs nothing and a retry resumes. Idempotent — with no
+   * live user row it answers `done` forever; a terminal row that still meets a live user row
+   * means the reset was lost, so the wipe restarts instead of trusting the stale state.
    */
   async step(userId: string, prefix: string): Promise<UserDeleteStepResult> {
-    const run = await this.runs.findOne({ where: { userId } });
-    if (!run) {
-      await this.markQueued(userId, userDeleteJobId(userId), prefix);
-    } else if (run.state === 'completed' || run.state === 'partial' || run.state === 'failed') {
-      return { done: true, phase: 'rows-done', deleted: 0 };
-    } else if (run.state === 'queued') {
-      await this.runs.update(userId, { state: 'active' });
-    }
-
-    const user = await this.users.findOne({ where: { id: userId } });
+    const [run, user] = await Promise.all([
+      this.runs.findOne({ where: { userId } }),
+      this.users.findOne({ where: { id: userId } }),
+    ]);
     if (!user) {
       // idempotent retry: a previous run already dropped the row; the caller still has to
       // sweep the bytes, so `done` here never means "finished"
+      if (!run) await this.markQueued(userId, userDeleteJobId(userId), prefix);
       await this.markFilesPending(userId);
       return { done: true, phase: 'rows-done', deleted: 0 };
+    }
+
+    if (!run) {
+      await this.markQueued(userId, userDeleteJobId(userId), prefix);
+    } else if (run.state === 'completed' || run.state === 'partial' || run.state === 'failed') {
+      // The user row is back (restore/merge rebuilt the account, or a re-delete raced the
+      // queue), so the terminal row is stale: restart the wipe instead of lying `done`.
+      await this.runs.update(userId, {
+        state: 'active',
+        phase: null,
+        backupPrefix: prefix,
+        deletedRows: 0,
+        deletedFiles: 0,
+        failedFiles: 0,
+        error: null,
+        sessionsLocked: false,
+      });
+    } else if (run.state === 'queued') {
+      await this.runs.update(userId, { state: 'active' });
     }
 
     const locked = await this.runs.findOne({ where: { userId } });

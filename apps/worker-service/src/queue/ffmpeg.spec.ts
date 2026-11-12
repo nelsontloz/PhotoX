@@ -3,7 +3,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { unlinkSync } from 'fs';
-import { runFfprobeJson, runFfmpeg, FFMPEG_PATH } from './ffmpeg';
+import { runFfprobeJson, runFfmpeg, killLiveChildren, FFMPEG_PATH } from './ffmpeg';
 
 const fixturePath = join(tmpdir(), 'test-fixture.mp4');
 
@@ -101,4 +101,27 @@ describeIfFfmpeg('ffmpeg wrapper', () => {
       ),
     ).rejects.toThrow('ffmpeg timed out after 200ms');
   });
+
+  it('killLiveChildren SIGKILLs a live encode and empties the tracked set', async () => {
+    // a previous test's child may still be exiting after its SIGTERM; kill and wait it out so the
+    // count below is exactly this test's child
+    while (killLiveChildren() > 0) await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const pending = runFfmpeg([
+      '-re',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc=duration=60:size=320x240:rate=30',
+      '-f',
+      'null',
+      '-',
+    ]);
+
+    // execFile spawns synchronously, so the child is tracked by the time runFfmpeg returns
+    expect(killLiveChildren()).toBe(1);
+    await expect(pending).rejects.toBeInstanceOf(Error);
+    // the exit handler removed it from the set
+    expect(killLiveChildren()).toBe(0);
+  }, 15_000);
 });

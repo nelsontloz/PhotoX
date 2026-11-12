@@ -129,6 +129,7 @@ function makeService(opts?: {
   const deletes = {
     clearFinishedJob: vi.fn().mockResolvedValue(false),
     markQueued: vi.fn().mockResolvedValue(undefined),
+    markEnqueueFailed: vi.fn().mockResolvedValue(undefined),
     getProgress: vi.fn().mockResolvedValue(
       opts?.progress
         ? {
@@ -237,11 +238,32 @@ describe('AdminService.requestUserDelete guards', () => {
     expect(clearOrder).toBeLessThan(enqueueOrder);
   });
 
-  it('503s when the enqueue fails', async () => {
-    const { service } = makeService({ user: targetUser, enqueueResult: false });
+  it('writes the durable queued intent before the enqueue so a crash cannot wipe a live account', async () => {
+    const { service, deletes, bullMq } = makeService({ user: targetUser });
+    let recorded: string | undefined;
+    deletes.markQueued.mockImplementation(() => {
+      recorded = 'queued';
+      return Promise.resolve();
+    });
+    bullMq.enqueue.mockImplementation(() => {
+      expect(recorded).toBe('queued');
+      return Promise.resolve(true);
+    });
+
+    await service.requestUserDelete(TARGET_ID, ADMIN_ID);
+
+    expect(recorded).toBe('queued');
+  });
+
+  it('503s when the enqueue fails and records the dead intent as failed', async () => {
+    const { service, deletes } = makeService({ user: targetUser, enqueueResult: false });
     await expect(service.requestUserDelete(TARGET_ID, ADMIN_ID)).rejects.toMatchObject({
       status: 503,
     });
+    expect(deletes.markEnqueueFailed).toHaveBeenCalledWith(
+      TARGET_ID,
+      expect.stringContaining('enqueue'),
+    );
   });
 });
 

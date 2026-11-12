@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { JwtService } from '@nestjs/jwt';
 import { UnrecoverableError } from 'bullmq';
+import { FACE_EMBEDDING_DIM } from '@photox/shared-types';
 import { CoreClient } from './core-client.service';
 
 const fetchMock = vi.fn();
@@ -94,39 +95,133 @@ describe('CoreClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('fetches cluster faces from the worker endpoint', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { items: [{ id: 'face-1' }] }));
+  it('streams cluster faces from the worker endpoint into a walk', async () => {
+    const embedding = new Array<number>(FACE_EMBEDDING_DIM).fill(0.1);
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        items: [
+          {
+            id: 'face-1',
+            assetId: 'asset-1',
+            box: { x: 0, y: 0, w: 1, h: 1 },
+            confidence: 0.9,
+            personId: null,
+            embedding,
+          },
+        ],
+      }),
+    );
 
-    const faces = await makeClient().getFacesForCluster('user-1');
+    const walk = await makeClient().getFacesForCluster('user-1', undefined, { minConfidence: 0.4 });
 
-    expect(faces).toEqual([{ id: 'face-1' }]);
+    expect(walk.unassigned.map((f) => f.id)).toEqual(['face-1']);
+    expect(walk.total).toBe(1);
+    expect(walk.truncated).toBe(false);
     expect(fetchMock.mock.calls[0]![0]).toBe(
       'http://localhost:3000/worker/faces?includeEmbeddings=true&excludeTrashed=true&limit=500',
     );
   });
 
   it('walks paginated faces with cursor until nextCursor is null', async () => {
+    const embedding = new Array<number>(FACE_EMBEDDING_DIM).fill(0.1);
+    const face = (id: string) => ({
+      id,
+      assetId: `asset-${id}`,
+      box: { x: 0, y: 0, w: 1, h: 1 },
+      confidence: 0.9,
+      personId: null,
+      embedding,
+    });
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(200, { items: [{ id: 'face-1' }], nextCursor: 'f1' }))
-      .mockResolvedValueOnce(jsonResponse(200, { items: [{ id: 'face-2' }], nextCursor: null }));
+      .mockResolvedValueOnce(jsonResponse(200, { items: [face('face-1')], nextCursor: 'f1' }))
+      .mockResolvedValueOnce(jsonResponse(200, { items: [face('face-2')], nextCursor: null }));
 
-    const faces = await makeClient().getFacesForCluster('user-1');
+    const walk = await makeClient().getFacesForCluster('user-1', undefined, { minConfidence: 0.4 });
 
-    expect(faces).toEqual([{ id: 'face-1' }, { id: 'face-2' }]);
+    expect(walk.unassigned.map((f) => f.id)).toEqual(['face-1', 'face-2']);
+    expect(walk.total).toBe(2);
     const urls = fetchMock.mock.calls.map((call) => call[0] as string);
     expect(urls).toHaveLength(2);
     expect(urls[0]).not.toContain('cursor=');
     expect(urls[1]).toContain('cursor=f1');
   });
 
-  it('fails without retry over 10k faces per user', async () => {
-    const items = Array.from({ length: 10_001 }, (_, i) => ({ id: `face-${i}` }));
-    fetchMock.mockResolvedValue(jsonResponse(200, { items, nextCursor: null }));
-
-    await expect(makeClient().getFacesForCluster('user-1')).rejects.toBeInstanceOf(
-      UnrecoverableError,
+  it('caps unassigned faces per run and reports truncation instead of failing', async () => {
+    const embedding = new Array<number>(FACE_EMBEDDING_DIM).fill(0.1);
+    const face = (id: string) => ({
+      id,
+      assetId: `asset-${id}`,
+      box: { x: 0, y: 0, w: 1, h: 1 },
+      confidence: 0.9,
+      personId: null,
+      embedding,
+    });
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, { items: [face('f1'), face('f2'), face('f3')], nextCursor: null }),
     );
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const walk = await makeClient().getFacesForCluster('user-1', undefined, { cap: 2 });
+
+    expect(walk.unassigned.map((f) => f.id)).toEqual(['f1', 'f2']);
+    expect(walk.truncated).toBe(true);
+    expect(walk.deferred).toBe(1);
+    expect(walk.total).toBe(3);
+  });
+
+  it('accumulates person centroids and samples legacy asset ids', async () => {
+    const current = new Array<number>(FACE_EMBEDDING_DIM).fill(0.1);
+    const legacy = new Array<number>(1024).fill(0.1);
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        items: [
+          {
+            id: 'assigned',
+            assetId: 'asset-a',
+            box: { x: 0, y: 0, w: 1, h: 1 },
+            confidence: 0.9,
+            personId: 'person-1',
+            embedding: [1, 0, ...current.slice(2)],
+          },
+          // low confidence: stored but never a centroid vote
+          {
+            id: 'low',
+            assetId: 'asset-low',
+            box: { x: 0, y: 0, w: 1, h: 1 },
+            confidence: 0.2,
+            personId: 'person-2',
+            embedding: current,
+          },
+          {
+            id: 'legacy',
+            assetId: 'asset-legacy',
+            box: { x: 0, y: 0, w: 1, h: 1 },
+            confidence: 0.9,
+            personId: null,
+            embedding: legacy,
+          },
+          {
+            id: 'unassigned',
+            assetId: 'asset-u',
+            box: { x: 0, y: 0, w: 1, h: 1 },
+            confidence: 0.9,
+            personId: null,
+            embedding: current,
+          },
+        ],
+      }),
+    );
+
+    const walk = await makeClient().getFacesForCluster('user-1', undefined, { minConfidence: 0.4 });
+
+    expect(walk.centroids.get('person-1')).toEqual({
+      sum: [1, 0, ...current.slice(2)],
+      count: 1,
+    });
+    expect(walk.centroids.has('person-2')).toBe(false);
+    expect(walk.legacyAssetIds).toEqual(['asset-legacy']);
+    expect(walk.legacyCount).toBe(1);
+    expect(walk.unassigned.map((f) => f.id)).toEqual(['unassigned']);
+    expect(walk.total).toBe(4);
   });
 
   it('sends one lookup for the caller-capped id list', async () => {

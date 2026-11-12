@@ -109,6 +109,7 @@ function makeDeleteService(opts: {
     deleteKeys: vi.fn(() => Promise.resolve()),
   };
   const nil = undefined as never;
+  const userDeletes = { findOne: vi.fn(() => Promise.resolve(null)) };
   const svc = new UserBackupService(
     s3 as never,
     dataSource as never,
@@ -125,7 +126,7 @@ function makeDeleteService(opts: {
     nil,
     nil,
     nil,
-    nil,
+    userDeletes as never,
   );
   return { svc, mocks: { usersRepo, dataSource, s3 } };
 }

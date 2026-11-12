@@ -1,5 +1,7 @@
 import { QueryFailedError } from 'typeorm';
+import * as crypto from 'crypto';
 import { SharesService } from './shares.service';
+import type { Share } from './entities/share.entity';
 
 function uniqueViolation(): QueryFailedError {
   return new QueryFailedError(
@@ -71,5 +73,59 @@ describe('SharesService.create concurrent rotation (C10)', () => {
       {} as never,
     );
     await expect(service.create('u1', { assetId: 'asset-1' })).rejects.toBe(err);
+  });
+});
+
+describe('SharesService.findShareByToken', () => {
+  const hash = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
+
+  // fake repo: rows are matched exactly like the column lookup would match them
+  function makeService(storedTokens: string[]) {
+    const shareRepo = {
+      findOne: vi.fn((opts: { where: { token: string } }) =>
+        Promise.resolve(
+          storedTokens.includes(opts.where.token)
+            ? ({ id: 'share-1', token: opts.where.token } as Share)
+            : null,
+        ),
+      ),
+    };
+    const service = new SharesService(
+      shareRepo as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const find = (token: string): Promise<Share | null> =>
+      (
+        service as unknown as { findShareByToken: (t: string) => Promise<Share | null> }
+      ).findShareByToken(token);
+    return { find, shareRepo };
+  }
+
+  it('resolves a presented token against its stored hash', async () => {
+    const { find } = makeService([hash('real-token')]);
+    await expect(find('real-token')).resolves.toMatchObject({ id: 'share-1' });
+  });
+
+  it('does not accept the stored hash itself as a capability', async () => {
+    const stored = hash('real-token');
+    const { find, shareRepo } = makeService([stored]);
+    await expect(find(stored)).resolves.toBeNull();
+    // the digest-shaped guard skips the raw fallback entirely
+    expect(shareRepo.findOne).toHaveBeenCalledTimes(1);
+  });
+
+  it('still resolves a legacy 22-char plaintext token', async () => {
+    const legacy = crypto.randomBytes(16).toString('base64url');
+    expect(legacy).toHaveLength(22);
+    const { find } = makeService([legacy]);
+    await expect(find(legacy)).resolves.toMatchObject({ id: 'share-1' });
+  });
+
+  it('returns null on a miss', async () => {
+    const { find } = makeService([]);
+    await expect(find('no-such-token')).resolves.toBeNull();
   });
 });
