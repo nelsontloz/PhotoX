@@ -24,6 +24,11 @@ import { CurrentUserId } from '../auth/jwt-auth.guard';
 import { UPLOAD_CHUNK_SIZE_BYTES, UploadsService } from './uploads.service';
 import { ingestErrorBody } from '../common/ingest-errors';
 import { CreateUploadSessionBodyDto } from './dto/create-upload-session.body.dto';
+import {
+  UploadCompleteResponseModel,
+  UploadSessionCreatedModel,
+  UploadSessionStatusResponseModel,
+} from '../swagger/response-models';
 
 /**
  * Reads one raw part body with a hard memory bound (never more than one chunk plus a stream
@@ -89,7 +94,7 @@ export class UploadsController {
 
   @Post()
   @ApiOperation({ summary: 'Create a resumable upload session (8 MiB chunks)' })
-  @ApiResponse({ status: 201, description: 'Session created', type: Object })
+  @ApiResponse({ status: 201, description: 'Session created', type: UploadSessionCreatedModel })
   @ApiResponse({ status: 400, description: 'Invalid request body' })
   @ApiResponse({ status: 409, description: 'SESSION_LIMIT — too many active sessions' })
   @ApiResponse({ status: 413, description: 'SIZE_LIMIT or QUOTA_EXCEEDED' })
@@ -102,7 +107,11 @@ export class UploadsController {
 
   @Get(':uploadId')
   @ApiOperation({ summary: 'Get session status and the parts received so far' })
-  @ApiResponse({ status: 200, description: 'Session status', type: Object })
+  @ApiResponse({
+    status: 200,
+    description: 'Session status',
+    type: UploadSessionStatusResponseModel,
+  })
   @ApiResponse({ status: 404, description: 'Session not found' })
   @ApiResponse({ status: 410, description: 'SESSION_EXPIRED' })
   async status(
@@ -140,10 +149,15 @@ export class UploadsController {
       'not (checksum already owned, session already completed, or an enqueue retry). A duplicate ' +
       'is success, not a conflict; `deduplicated` is the same fact in the body.',
   })
-  @ApiResponse({ status: 201, description: 'New bytes stored, asset created' })
+  @ApiResponse({
+    status: 201,
+    description: 'New bytes stored, asset created',
+    type: UploadCompleteResponseModel,
+  })
   @ApiResponse({
     status: 200,
     description: 'No new bytes stored; the existing asset is returned with deduplicated=true',
+    type: UploadCompleteResponseModel,
   })
   @ApiResponse({ status: 400, description: 'UNSUPPORTED_TYPE' })
   @ApiResponse({ status: 404, description: 'Session not found' })

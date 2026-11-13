@@ -21,6 +21,15 @@ import {
   type DeleteBackupResult,
   type MergeBackupResult,
 } from './user-backup.service';
+import {
+  BackupOverviewRowModel,
+  BackupProgressModel,
+  BackupRunStatusModel,
+  BackupStatusModel,
+  DeleteBackupResultModel,
+  MergeBackupResultModel,
+  RunIdResponseModel,
+} from '../swagger/response-models';
 
 class EmailOrIdQueryDto {
   @IsString()
@@ -71,7 +80,7 @@ export class BackupController {
       'writes manifest.json LAST; GET backups/runs/:runId reports progress and the final ' +
       'counts. A failed file retries alone and a failed run never writes a manifest.',
   })
-  @ApiResponse({ status: 202, description: 'Backup run id' })
+  @ApiResponse({ status: 202, description: 'Backup run id', type: RunIdResponseModel })
   async backup(@Body() dto: EmailOrIdQueryDto): Promise<{ runId: string }> {
     return this.backups.startBackup(dto.emailOrId);
   }
@@ -85,7 +94,7 @@ export class BackupController {
       'is downloaded and retried independently; finalize re-enqueues derivatives. A restore ' +
       'that fails is resumable by starting it again (same manifest), not a 409.',
   })
-  @ApiResponse({ status: 202, description: 'Restore run id' })
+  @ApiResponse({ status: 202, description: 'Restore run id', type: RunIdResponseModel })
   async restore(@Body() dto: RestoreRequestDto): Promise<{ runId: string }> {
     return this.backups.startRestore(dto.emailOrId, dto.restoreEmail);
   }
@@ -109,7 +118,11 @@ export class BackupController {
       'ledger and source delete are skipped, and the response reports assigned:null plus ' +
       'adoptionError so a plain retry stays allowed.',
   })
-  @ApiResponse({ status: 200, description: 'Merge counts, dedupe/skip totals and jobs enqueued' })
+  @ApiResponse({
+    status: 200,
+    description: 'Merge counts, dedupe/skip totals and jobs enqueued',
+    type: MergeBackupResultModel,
+  })
   @ApiResponse({ status: 404, description: 'Target user or source backup not found' })
   @ApiResponse({
     status: 409,
@@ -124,7 +137,11 @@ export class BackupController {
 
   @Get('backups/overview')
   @ApiOperation({ summary: 'Aggregated backup overview, one row per user (admin-only)' })
-  @ApiResponse({ status: 200, description: 'Live asset counts joined with manifest status' })
+  @ApiResponse({
+    status: 200,
+    description: 'Live asset counts joined with manifest status',
+    type: [BackupOverviewRowModel],
+  })
   @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
   async overview(): Promise<BackupOverviewRow[]> {
     return this.backups.backupOverview();
@@ -132,7 +149,11 @@ export class BackupController {
 
   @Get('backups/status')
   @ApiOperation({ summary: 'Backup manifest status for one user (admin-only)' })
-  @ApiResponse({ status: 200, description: 'Manifest presence and row counts' })
+  @ApiResponse({
+    status: 200,
+    description: 'Manifest presence and row counts',
+    type: BackupStatusModel,
+  })
   @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
   async status(@Query() query: EmailOrIdQueryDto): Promise<BackupStatus> {
     return this.backups.backupStatus(query.emailOrId);
@@ -140,7 +161,11 @@ export class BackupController {
 
   @Get('backups/progress')
   @ApiOperation({ summary: 'Live per-file backup progress for one user (admin-only)' })
-  @ApiResponse({ status: 200, description: 'In-progress flag plus per-file counters' })
+  @ApiResponse({
+    status: 200,
+    description: 'In-progress flag plus per-file counters',
+    type: BackupProgressModel,
+  })
   @ApiResponse({ status: 404, description: 'No user for emailOrId' })
   async progress(@Query() query: EmailOrIdQueryDto): Promise<BackupProgress> {
     return this.backups.getBackupProgress(query.emailOrId);
@@ -148,7 +173,7 @@ export class BackupController {
 
   @Get('backups/runs/:runId')
   @ApiOperation({ summary: 'One backup/restore run: state, counters and final result' })
-  @ApiResponse({ status: 200, description: 'Run status' })
+  @ApiResponse({ status: 200, description: 'Run status', type: BackupRunStatusModel })
   @ApiResponse({ status: 404, description: 'Run not found' })
   async runStatus(@Param('runId', new ParseUUIDPipe()) runId: string): Promise<BackupRunStatus> {
     return this.backups.getRunStatus(runId);
@@ -156,7 +181,11 @@ export class BackupController {
 
   @Delete('backups')
   @ApiOperation({ summary: 'Delete one user backup from S3 (admin-only)' })
-  @ApiResponse({ status: 200, description: 'Deleted backup prefix and object count' })
+  @ApiResponse({
+    status: 200,
+    description: 'Deleted backup prefix and object count',
+    type: DeleteBackupResultModel,
+  })
   @ApiResponse({ status: 404, description: 'No backup for emailOrId' })
   @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
   async deleteBackup(@Query() query: EmailOrIdQueryDto): Promise<DeleteBackupResult> {

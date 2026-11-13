@@ -4,6 +4,7 @@ import type { Response } from 'express';
 import { CurrentUserId } from '../auth/jwt-auth.guard';
 import { AssetsService } from './assets.service';
 import { TimelineIndexQueryDto, TimelineWindowQueryDto } from './dto/timeline-query.dto';
+import { AssetLayoutIndexModel, AssetLayoutPageModel } from '../swagger/response-models';
 
 /**
  * The timeline sync surface: a month index carrying one version per local-calendar window, and a
@@ -29,7 +30,11 @@ export class TimelineController {
       'carry no updatedAt), so `personId` views are memory-only on the client. Only windows with ' +
       'items are returned: a newly non-empty month appears, an emptied one disappears.',
   })
-  @ApiResponse({ status: 200, description: 'Month windows with per-window versions' })
+  @ApiResponse({
+    status: 200,
+    description: 'Month windows with per-window versions',
+    type: AssetLayoutIndexModel,
+  })
   @ApiResponse({ status: 400, description: 'Invalid timezone' })
   async index(
     @Res() res: Response,
@@ -55,7 +60,7 @@ export class TimelineController {
       'window changed mid-walk — discard the walk and restart that window once. No ETag: the ' +
       'caller must always read the version.',
   })
-  @ApiResponse({ status: 200, description: 'One window page' })
+  @ApiResponse({ status: 200, description: 'One window page', type: AssetLayoutPageModel })
   @ApiResponse({ status: 400, description: 'Missing/invalid from or to, or an invalid filter' })
   async window(
     @Res() res: Response,

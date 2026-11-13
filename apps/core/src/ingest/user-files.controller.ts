@@ -30,6 +30,11 @@ import { UserFilesService, type OriginalFileInput } from './user-files.service';
 import { UploadFileBodyDto } from './dto/upload-file.body.dto';
 import { CheckFilesExistsBodyDto } from './dto/check-files-exists.body.dto';
 import { serveFileBytes } from '../common/streaming.util';
+import {
+  AssetModel,
+  FileExistsCheckResponseModel,
+  StorageQuotaResponseModel,
+} from '../swagger/response-models';
 
 const diskStorage = multer.diskStorage({
   destination: tmpdir(),
@@ -68,8 +73,12 @@ export class UserFilesController {
       'owned; both return the same asset (the existing one on a duplicate). No Idempotency-Key ' +
       'is needed — a retried upload is safe by construction.',
   })
-  @ApiResponse({ status: 201, description: 'New bytes stored, asset created' })
-  @ApiResponse({ status: 200, description: 'Bytes already owned; the existing asset is returned' })
+  @ApiResponse({ status: 201, description: 'New bytes stored, asset created', type: AssetModel })
+  @ApiResponse({
+    status: 200,
+    description: 'Bytes already owned; the existing asset is returned',
+    type: AssetModel,
+  })
   @ApiResponse({ status: 400, description: 'EMPTY_BODY, UNSUPPORTED_TYPE, or invalid request' })
   @ApiResponse({ status: 413, description: 'QUOTA_EXCEEDED' })
   @ApiResponse({ status: 503, description: 'Failed to enqueue background processing jobs' })
@@ -87,7 +96,11 @@ export class UserFilesController {
 
   @Get('quota')
   @ApiOperation({ summary: 'Storage usage and limit for originals' })
-  @ApiResponse({ status: 200, description: 'Used/limit/remaining bytes (limit null = unlimited)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Used/limit/remaining bytes (limit null = unlimited)',
+    type: StorageQuotaResponseModel,
+  })
   async quota(@CurrentUserId() userId: string): Promise<StorageQuotaResponse> {
     return this.userFilesService.storageQuota(userId);
   }
@@ -100,7 +113,11 @@ export class UserFilesController {
       'Pre-flight for ingest: safe and idempotent (a read expressed as POST for its batch body). ' +
       'A hit carries the existing asset/file ids, so the client can skip the upload entirely.',
   })
-  @ApiResponse({ status: 200, description: 'Existence hits in input order' })
+  @ApiResponse({
+    status: 200,
+    description: 'Existence hits in input order',
+    type: FileExistsCheckResponseModel,
+  })
   async exists(@CurrentUserId() userId: string, @Body() body: CheckFilesExistsBodyDto) {
     const items = await this.userFilesService.existsMany(userId, body.items);
     return { items };

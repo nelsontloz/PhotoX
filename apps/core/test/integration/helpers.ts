@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
-import { ValidationPipe, type ExecutionContext, type INestApplication } from '@nestjs/common';
+import { type ExecutionContext, type INestApplication } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { JwtModule, JwtService } from '@nestjs/jwt';
@@ -52,6 +52,9 @@ import { AuthModule } from '../../src/auth/auth.module';
 import { BullMqModule } from '../../src/queue/bullmq.module';
 import { BullMqService } from '../../src/queue/bullmq.service';
 import { HttpExceptionFilter } from '../../src/common/filters/http-exception.filter';
+import { createValidationPipe } from '../../src/common/validation';
+import { requestIdMiddleware } from '../../src/common/request-id';
+import { setupSwagger } from '../../src/swagger/setup';
 import { configureBodyParsers } from '../../src/common/body-parsers';
 import {
   TEST_AUTH_SECRET,
@@ -113,6 +116,8 @@ export async function createApiTestApp(opts?: {
   encodeQuery?: (q: string) => Promise<number[]>;
   /** replaces providers before compile (e.g. UserBackupService/S3BackupService for admin specs) */
   overrides?: ProviderOverride[];
+  /** build the Swagger document (only the API error-contract spec needs /docs-json) */
+  swagger?: boolean;
 }): Promise<ApiTestApp> {
   const mockUser = opts?.mockUser === undefined ? DEFAULT_MOCK_USER : opts.mockUser;
   const { pgHost, pgPort, pgDb } = await setupTestInfra();
@@ -189,10 +194,12 @@ export async function createApiTestApp(opts?: {
     configureBodyParsers(app);
     // mirrors main.ts: the XFF trust-proxy test needs req.ip from X-Forwarded-For
     app.set('trust proxy', 1);
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
-    );
+    // mirrors main.ts: every error body carries the request id the log line uses
+    app.use(requestIdMiddleware);
+    app.useGlobalPipes(createValidationPipe());
     app.useGlobalFilters(new HttpExceptionFilter());
+    // opt-in: building the document is not free, so only the contract spec pays for it
+    if (opts?.swagger) setupSwagger(app);
     await app.init();
 
     const bullMq = app.get<BullMqService>(BullMqService);

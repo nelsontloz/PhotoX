@@ -4,6 +4,7 @@ import type { SearchResponse } from '@photox/shared-types';
 import { CurrentUserId } from '../auth/jwt-auth.guard';
 import { GroupsService } from './groups.service';
 import { DuplicatesQueryDto, SimilarQueryDto } from './dto/groups-query.dto';
+import { SearchResponseModel } from '../swagger/response-models';
 
 @ApiTags('groups')
 @Controller('api/v1')
@@ -12,7 +13,11 @@ export class GroupsController {
 
   @Get('assets/:id/duplicates')
   @ApiOperation({ summary: 'Find perceptual duplicates of an asset within a Hamming threshold' })
-  @ApiResponse({ status: 200, description: 'Duplicate assets ordered by Hamming distance asc' })
+  @ApiResponse({
+    status: 200,
+    description: 'Duplicate assets ordered by Hamming distance asc',
+    type: SearchResponseModel,
+  })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async duplicates(
     @Param('id') id: string,
@@ -27,6 +32,7 @@ export class GroupsController {
   @ApiResponse({
     status: 200,
     description: 'Similar assets (empty when the asset has no embedding)',
+    type: SearchResponseModel,
   })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async similar(

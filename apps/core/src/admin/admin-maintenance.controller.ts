@@ -8,6 +8,19 @@ import { AdminAssetsService } from './admin-assets.service';
 import { AdminJobsService } from './admin-jobs.service';
 import { REPROCESS_PAGE_SIZE } from './reprocess.util';
 import { BullMqService } from '../queue/bullmq.service';
+import {
+  AdminReprocessThumbnailsResponseModel,
+  CleanupOrphansResponseModel,
+  EmbeddingReprocessStatusModel,
+  EnqueuedTotalResponseModel,
+  FaceDetectionSettingsModel,
+  OrphanCountsResponseModel,
+  PlacesBackfillResponseModel,
+  PlacesBackfillStatusModel,
+  ReclusterResponseModel,
+  ReprocessEmbeddingsResponseModel,
+  ReprocessStatusModel,
+} from '../swagger/response-models';
 
 class ReprocessThumbnailsDto {
   @IsIn(['photo', 'video'])
@@ -26,6 +39,7 @@ export class AdminMaintenanceController {
 
   @Get('orphan-counts')
   @ApiOperation({ summary: 'Count orphan files and thumbnail rows (admin-only)' })
+  @ApiResponse({ status: 200, description: 'Orphan counts', type: OrphanCountsResponseModel })
   async orphanCounts(): Promise<{ orphanFiles: number; orphanThumbnails: number }> {
     return this.admin.getOrphanCounts();
   }
@@ -33,7 +47,11 @@ export class AdminMaintenanceController {
   @Post('cleanup-orphans/run')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Run orphan cleanup inline (admin-only)' })
-  @ApiResponse({ status: 200, description: 'Deleted orphan file, thumbnail and stray counts' })
+  @ApiResponse({
+    status: 200,
+    description: 'Deleted orphan file, thumbnail and stray counts',
+    type: CleanupOrphansResponseModel,
+  })
   async runCleanupOrphans(): Promise<{
     deletedFiles: number;
     deletedThumbnails: number;
@@ -45,6 +63,11 @@ export class AdminMaintenanceController {
   @Post('thumbnails/reprocess')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Enqueue thumbnail reprocess jobs for all assets of a kind' })
+  @ApiResponse({
+    status: 200,
+    description: 'Thumbnail jobs enqueued per size and the asset total',
+    type: AdminReprocessThumbnailsResponseModel,
+  })
   async reprocess(
     @Body() dto: ReprocessThumbnailsDto,
   ): Promise<{ enqueued: number; totalAssets: number }> {
@@ -69,14 +92,22 @@ export class AdminMaintenanceController {
   @Post('faces/reprocess')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Enqueue face re-embed jobs for all non-trashed photos (admin-only)' })
-  @ApiResponse({ status: 200, description: 'Re-embed jobs enqueued and the run recorded' })
+  @ApiResponse({
+    status: 200,
+    description: 'Re-embed jobs enqueued and the run recorded',
+    type: EnqueuedTotalResponseModel,
+  })
   async reprocessFaces(): Promise<{ enqueued: number; total: number }> {
     return this.adminJobs.reprocessFaces();
   }
 
   @Get('face-detection')
   @ApiOperation({ summary: 'SCRFD face-detector model availability (admin-only)' })
-  @ApiResponse({ status: 200, description: 'Current face detection settings' })
+  @ApiResponse({
+    status: 200,
+    description: 'Current face detection settings',
+    type: FaceDetectionSettingsModel,
+  })
   async faceDetectionSettings(): Promise<FaceDetectionSettings> {
     return this.settings.getSettings();
   }
@@ -86,6 +117,7 @@ export class AdminMaintenanceController {
   @ApiResponse({
     status: 200,
     description: 'Last run record (null when never run) and queue counts',
+    type: ReprocessStatusModel,
   })
   faceReprocessStatus(): Promise<{
     lastRun: LastRun<'face'> | null;
@@ -100,6 +132,7 @@ export class AdminMaintenanceController {
   @ApiResponse({
     status: 200,
     description: 'One cluster job enqueued per distinct user with faces',
+    type: ReclusterResponseModel,
   })
   async reclusterFaces(): Promise<{ enqueued: number }> {
     return this.adminJobs.reclusterFaces();
@@ -108,7 +141,11 @@ export class AdminMaintenanceController {
   @Post('embeddings/reprocess')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Enqueue embed jobs for all non-trashed photos (admin-only)' })
-  @ApiResponse({ status: 200, description: 'Embed jobs enqueued and the run recorded' })
+  @ApiResponse({
+    status: 200,
+    description: 'Embed jobs enqueued and the run recorded',
+    type: ReprocessEmbeddingsResponseModel,
+  })
   async reprocessEmbeddings(): Promise<{ enqueued: number; total: number; model: string }> {
     const { enqueued, total } = await this.adminJobs.reprocessEmbeddings();
     return { enqueued, total, model: SEARCH_EMBEDDING_MODEL };
@@ -121,6 +158,7 @@ export class AdminMaintenanceController {
   @ApiResponse({
     status: 200,
     description: 'Last run record (null when never run) and queue counts',
+    type: EmbeddingReprocessStatusModel,
   })
   embeddingReprocessStatus(): Promise<{
     lastRun: LastRun<'embedding'> | null;
@@ -134,7 +172,11 @@ export class AdminMaintenanceController {
   @ApiOperation({
     summary: 'Enqueue object-detection jobs for all non-trashed photos (admin-only)',
   })
-  @ApiResponse({ status: 200, description: 'Detection jobs enqueued and the run recorded' })
+  @ApiResponse({
+    status: 200,
+    description: 'Detection jobs enqueued and the run recorded',
+    type: EnqueuedTotalResponseModel,
+  })
   async reprocessDetections(): Promise<{ enqueued: number; total: number }> {
     return this.adminJobs.reprocessDetections();
   }
@@ -144,6 +186,7 @@ export class AdminMaintenanceController {
   @ApiResponse({
     status: 200,
     description: 'Last run record (null when never run) and queue counts',
+    type: ReprocessStatusModel,
   })
   detectionsReprocessStatus(): Promise<{
     lastRun: LastRun<'detections'> | null;
@@ -157,14 +200,22 @@ export class AdminMaintenanceController {
   @ApiOperation({
     summary: 'Resolve place fields for all assets with coordinates and no city (admin-only)',
   })
-  @ApiResponse({ status: 200, description: 'Place resolution counts and the run recorded' })
+  @ApiResponse({
+    status: 200,
+    description: 'Place resolution counts and the run recorded',
+    type: PlacesBackfillResponseModel,
+  })
   async backfillPlaces(): Promise<{ updated: number; total: number }> {
     return this.adminJobs.backfillPlaces();
   }
 
   @Get('places/backfill')
   @ApiOperation({ summary: 'Places backfill last-run record' })
-  @ApiResponse({ status: 200, description: 'Last run record (null when never run)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Last run record (null when never run)',
+    type: PlacesBackfillStatusModel,
+  })
   async placesBackfillStatus(): Promise<{ lastRun: LastRun<'places'> | null }> {
     return this.adminJobs.placesStatus();
   }
@@ -174,7 +225,11 @@ export class AdminMaintenanceController {
   @ApiOperation({
     summary: 'Enqueue metadata jobs for non-trashed photos missing a phash (admin-only)',
   })
-  @ApiResponse({ status: 200, description: 'Metadata jobs enqueued and the run recorded' })
+  @ApiResponse({
+    status: 200,
+    description: 'Metadata jobs enqueued and the run recorded',
+    type: EnqueuedTotalResponseModel,
+  })
   async reprocessMetadata(): Promise<{ enqueued: number; total: number }> {
     return this.adminJobs.reprocessMetadata();
   }
@@ -186,6 +241,7 @@ export class AdminMaintenanceController {
   @ApiResponse({
     status: 200,
     description: 'Last run record (null when never run) and queue counts',
+    type: ReprocessStatusModel,
   })
   metadataReprocessStatus(): Promise<{
     lastRun: LastRun<'metadata'> | null;

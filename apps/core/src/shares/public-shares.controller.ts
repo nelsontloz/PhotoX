@@ -1,11 +1,17 @@
 import { Controller, Get, Param, Query, Req, Res } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiExtraModels, ApiTags, ApiOperation, ApiResponse, getSchemaPath } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { SharesService } from './shares.service';
 import { UserFilesService } from '../ingest/user-files.service';
 import { serveFileBytes } from '../common/streaming.util';
+import {
+  PublicAlbumAssetsResponseModel,
+  PublicAlbumShareResponseModel,
+  PublicAssetShareResponseModel,
+} from '../swagger/response-models';
 
 @ApiTags('shares')
+@ApiExtraModels(PublicAssetShareResponseModel, PublicAlbumShareResponseModel)
 @Controller('api/share')
 export class PublicSharesController {
   constructor(
@@ -15,7 +21,17 @@ export class PublicSharesController {
 
   @Get(':token')
   @ApiOperation({ summary: 'Get a shared asset or album by public token' })
-  @ApiResponse({ status: 200, description: 'Shared asset or album info' })
+  @ApiResponse({
+    status: 200,
+    description: 'Shared asset or album info',
+    // the payload matches the share's kind: one asset projection or one album projection
+    schema: {
+      oneOf: [
+        { $ref: getSchemaPath(PublicAssetShareResponseModel) },
+        { $ref: getSchemaPath(PublicAlbumShareResponseModel) },
+      ],
+    },
+  })
   @ApiResponse({ status: 404, description: 'Share not found' })
   async getByToken(@Param('token') token: string) {
     return this.shares.getByToken(token);
@@ -36,7 +52,11 @@ export class PublicSharesController {
 
   @Get(':token/assets')
   @ApiOperation({ summary: 'List the non-trashed members of a shared album' })
-  @ApiResponse({ status: 200, description: 'Album asset list' })
+  @ApiResponse({
+    status: 200,
+    description: 'Album asset list',
+    type: PublicAlbumAssetsResponseModel,
+  })
   @ApiResponse({ status: 404, description: 'Share not found or not an album share' })
   async listAlbumAssets(@Param('token') token: string) {
     return this.shares.listAlbumAssetsByToken(token);

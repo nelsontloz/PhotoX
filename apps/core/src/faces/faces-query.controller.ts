@@ -15,6 +15,7 @@ import { CurrentUserId } from '../auth/jwt-auth.guard';
 import { FacesService } from './faces.service';
 import { AssignPersonDto } from './dto/assign-person.dto';
 import { FaceThumbQueryDto } from './dto/face-thumb-query.dto';
+import { OkResponseModel } from '../swagger/response-models';
 
 @ApiTags('faces-query')
 @Controller('api/v1/faces')
@@ -43,7 +44,7 @@ export class FacesQueryController {
   @Patch(':id/person')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Assign or unassign a face from a person' })
-  @ApiResponse({ status: 200, description: 'Face updated' })
+  @ApiResponse({ status: 200, description: 'Face updated', type: OkResponseModel })
   @ApiResponse({ status: 404, description: 'Face not found or userId mismatch' })
   async assignPerson(
     @Param('id') id: string,

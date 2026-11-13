@@ -28,6 +28,7 @@ import { SettingsService } from '../settings/settings.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/logout.dto';
+import { AuthResponseModel, RegistrationSettingsModel } from '../swagger/response-models';
 
 // ponytail: socket peer address via req.ip — main.ts sets 'trust proxy', so behind the
 // reverse proxy this is the X-Forwarded-For client, not the proxy itself
@@ -58,14 +59,18 @@ export class AuthController {
 
   @Get('registration')
   @ApiOperation({ summary: 'Whether public sign-up is enabled' })
-  @ApiResponse({ status: 200, description: 'Current registration setting' })
+  @ApiResponse({
+    status: 200,
+    description: 'Current registration setting',
+    type: RegistrationSettingsModel,
+  })
   async registration(): Promise<RegistrationSettings> {
     return { enabled: await this.settings.isRegistrationEnabled() };
   }
 
   @Post('register')
   @ApiOperation({ summary: 'Register a new user account' })
-  @ApiResponse({ status: 201, description: 'Account created' })
+  @ApiResponse({ status: 201, description: 'Account created', type: AuthResponseModel })
   @ApiResponse({ status: 409, description: 'Email already registered' })
   async register(
     @Body() dto: RegisterDto,
@@ -85,7 +90,7 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Authenticate with email and password' })
-  @ApiResponse({ status: 200, description: 'Authenticated' })
+  @ApiResponse({ status: 200, description: 'Authenticated', type: AuthResponseModel })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async login(
     @Body() dto: LoginDto,
@@ -100,7 +105,7 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Rotate a refresh token for a new token pair' })
-  @ApiResponse({ status: 200, description: 'Tokens rotated' })
+  @ApiResponse({ status: 200, description: 'Tokens rotated', type: AuthResponseModel })
   @ApiResponse({ status: 401, description: 'Invalid, revoked, or expired refresh token' })
   async refresh(
     @Body() dto: RefreshDto,

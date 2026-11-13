@@ -1,5 +1,6 @@
-import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { Redis } from 'ioredis';
+import { apiError } from '../common/api-error';
 import { BullMqService } from '../queue/bullmq.service';
 
 type RateLimitRoute = 'login' | 'loginIp' | 'loginEmail' | 'register' | 'refresh';
@@ -61,18 +62,33 @@ export class RateLimitService {
     const count = await this.countHit(key, windowSec);
     if (count === null) {
       this.logger.warn(`Rate limit unavailable for ${route} (${key}); rejecting request`);
-      throw new HttpException(
-        { statusCode: HttpStatus.SERVICE_UNAVAILABLE, message: 'Rate limiter unavailable' },
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
+      throw apiError(503, 'RATE_LIMIT_UNAVAILABLE', 'Rate limiter unavailable');
     }
 
     if (count > limit) {
       this.logger.warn(`Rate limit exceeded: ${route} ${ip} ${email?.toLowerCase() ?? '-'}`);
-      throw new HttpException(
-        { statusCode: HttpStatus.TOO_MANY_REQUESTS, message: 'Too many requests' },
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
+      const retryAfterSec = await this.retryAfterSec(key, windowSec);
+      throw apiError(429, 'RATE_LIMITED', 'Too many requests', { retryAfterSec });
+    }
+  }
+
+  /** Remaining window in whole seconds; the route's configured window when Redis cannot say. */
+  private async retryAfterSec(key: string, windowSec: number): Promise<number> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const redis: Redis | undefined = this.bullMq.redis;
+      if (!redis) return windowSec;
+      const pttl = await Promise.race([
+        redis.pttl(key),
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), RATE_LIMIT_TIMEOUT_MS);
+        }),
+      ]);
+      return pttl === null || pttl < 0 ? windowSec : Math.max(1, Math.ceil(pttl / 1000));
+    } catch {
+      return windowSec;
+    } finally {
+      clearTimeout(timer);
     }
   }
 

@@ -4,6 +4,7 @@ import type { SearchResponse } from '@photox/shared-types';
 import { CurrentUserId } from '../auth/jwt-auth.guard';
 import { SearchService } from './search.service';
 import { SearchQueryDto } from './dto/search-query.dto';
+import { SearchResponseModel } from '../swagger/response-models';
 
 @ApiTags('search')
 @Controller('api/v1/search')
@@ -15,6 +16,7 @@ export class SearchController {
   @ApiResponse({
     status: 200,
     description: 'Ranked page of assets (identical item shape to GET /api/v1/assets)',
+    type: SearchResponseModel,
   })
   @ApiResponse({ status: 400, description: 'Invalid q/limit/offset' })
   @ApiResponse({ status: 503, description: 'Vision search model not provisioned' })
