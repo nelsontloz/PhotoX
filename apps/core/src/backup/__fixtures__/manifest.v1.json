@@ -1,0 +1,108 @@
+{
+  "manifestVersion": 1,
+  "userId": "3f1c2b4a-9d5e-4a71-8c62-0b7d9e1f2a3b",
+  "emailAtBackup": "ada@example.com",
+  "backedUpAt": "2026-11-01T12:34:56.789Z",
+  "user": {
+    "id": "3f1c2b4a-9d5e-4a71-8c62-0b7d9e1f2a3b",
+    "email": "ada@example.com",
+    "role": "user",
+    "passwordHash": "$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHRzb21lc2FsdA$RdescudvJCsgt3ub+b+dWRWJTmaaJObG",
+    "displayName": "Ada Lovelace",
+    "tokensValidAfter": null
+  },
+  "files": [
+    {
+      "id": "6d2f6a2e-3b7c-4b0e-9a51-7c8d2f4e6a01",
+      "userId": "3f1c2b4a-9d5e-4a71-8c62-0b7d9e1f2a3b",
+      "storageKey": "backups/ada%40example.com__3f1c2b4a-9d5e-4a71-8c62-0b7d9e1f2a3b/originals/6d2f6a2e-3b7c-4b0e-9a51-7c8d2f4e6a01.jpg",
+      "originalName": "IMG_0042.jpg",
+      "mimeType": "image/jpeg",
+      "sizeBytes": 4821337,
+      "checksumSha256": "9f2c1e7b4a6d8c0e2f5a7b9d1c3e5f708192a3b4c5d6e7f8091a2b3c4d5e6f7a",
+      "purpose": "original",
+      "assetId": "b1a2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+    }
+  ],
+  "assets": [
+    {
+      "id": "b1a2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "userId": "3f1c2b4a-9d5e-4a71-8c62-0b7d9e1f2a3b",
+      "kind": "photo",
+      "fileId": "6d2f6a2e-3b7c-4b0e-9a51-7c8d2f4e6a01",
+      "isTrashed": false,
+      "trashedAt": null,
+      "title": "Sunset over Skógafoss",
+      "description": null,
+      "takenAt": "2026-09-14T19:42:11.000Z",
+      "favorite": true,
+      "mimeType": "image/jpeg",
+      "sizeBytes": 4821337,
+      "originalName": "IMG_0042.jpg",
+      "width": 4032,
+      "height": 3024,
+      "durationSeconds": null,
+      "cameraMake": "FUJIFILM",
+      "cameraModel": "X-T5",
+      "lensModel": "XF23mmF1.4 R LM WR",
+      "orientation": 1,
+      "iso": 160,
+      "fNumber": 5.6,
+      "exposureTime": 0.008,
+      "focalLength": 23,
+      "latitude": 63.53205,
+      "longitude": -19.51137,
+      "altitude": 63.4,
+      "placeCity": "Skógar",
+      "placeAdmin1": "Suðurland",
+      "placeCountryCode": "IS",
+      "placeTimezone": "Atlantic/Reykjavik",
+      "placeDistanceKm": 0.8,
+      "fps": null,
+      "codec": null,
+      "hasAudio": null,
+      "metadata": { "Make": "FUJIFILM", "Model": "X-T5" },
+      "metadataStatus": "ready",
+      "transcodeStatus": null,
+      "thumbnailStatus": "ready",
+      "faceStatus": "ready",
+      "embeddingStatus": "ready",
+      "faceCount": 1
+    }
+  ],
+  "albums": [
+    {
+      "id": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d",
+      "userId": "3f1c2b4a-9d5e-4a71-8c62-0b7d9e1f2a3b",
+      "name": "Iceland 2026",
+      "description": "Ring road, September",
+      "hiddenFromTimeline": false
+    }
+  ],
+  "albumAssets": [
+    {
+      "albumId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d",
+      "assetId": "b1a2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+    }
+  ],
+  "shares": [
+    {
+      "id": "c9d8e7f6-a5b4-4c3d-9e2f-1a0b9c8d7e6f",
+      "userId": "3f1c2b4a-9d5e-4a71-8c62-0b7d9e1f2a3b",
+      "kind": "album",
+      "assetId": null,
+      "albumId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d",
+      "token": "Zk3mQ9xT2pR7wY4n",
+      "expiresAt": "2026-12-01T00:00:00.000Z"
+    }
+  ],
+  "persons": [
+    {
+      "id": "e1f2a3b4-c5d6-4e7f-8a9b-0c1d2e3f4a5b",
+      "userId": "3f1c2b4a-9d5e-4a71-8c62-0b7d9e1f2a3b",
+      "name": "Ada",
+      "clusterLabel": "person-7",
+      "faceCount": 3
+    }
+  ]
+}
