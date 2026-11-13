@@ -6,11 +6,14 @@ import {
   ManyToOne,
   JoinColumn,
   Unique,
+  Index,
 } from 'typeorm';
 import { Asset } from './asset.entity';
 
 @Entity('asset_thumbnails')
 @Unique(['assetId', 'size'])
+// the orphan sweep's `NOT IN (SELECT id FROM files)` predicates on fileId; unindexed it seq-scans
+@Index('idx_asset_thumbnails_file_id', ['fileId'])
 export class AssetThumbnail {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

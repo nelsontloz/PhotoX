@@ -6,6 +6,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { configureBodyParsers } from './common/body-parsers';
+import { requestIdMiddleware } from './common/request-id';
 import { loadEnv } from '@photox/shared-config';
 
 async function bootstrap() {
@@ -14,7 +15,12 @@ async function bootstrap() {
   // face-registration body can exceed the 100 KB default (see that file). Keep the test app
   // helper in sync (apps/core/test/integration/helpers.ts).
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+  // first listener: every log line, the exception filter and the response header carry this id
+  app.use(requestIdMiddleware);
   configureBodyParsers(app);
+  // SIGTERM/SIGINT run onModuleDestroy/onApplicationShutdown: drains the Redis connection and
+  // stops the backup/upload timers instead of exiting mid-transfer.
+  app.enableShutdownHooks();
 
   // ponytail: trust proxy 1 — a single reverse proxy in front; req.ip reads X-Forwarded-For
   // so per-IP rate limiting sees clients, not the proxy. Bump the hop count if proxies stack.

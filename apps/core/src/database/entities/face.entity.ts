@@ -3,6 +3,8 @@ import { vectorTransformer } from '../shared/pgvector';
 
 @Entity('faces')
 @Index(['personId', 'userId'])
+// person-filtered layout correlates on (personId, assetId); the userId index is not enough
+@Index('idx_faces_person_asset', ['personId', 'assetId'])
 export class Face {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

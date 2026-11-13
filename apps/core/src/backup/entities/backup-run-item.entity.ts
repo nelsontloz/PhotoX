@@ -8,6 +8,9 @@ export type BackupRunItemState =
 @Entity('backup_run_items')
 @Unique(['runId', 'fileId'])
 @Index(['runId', 'state', 'nextAttemptAt'])
+// the dispatcher claims due work ACROSS runs every ~1s (state IN (...) AND nextAttemptAt <= now(),
+// ordered by nextAttemptAt), which the runId-leading index cannot serve
+@Index('idx_backup_run_items_state_next_attempt', ['state', 'nextAttemptAt'])
 export class BackupRunItem {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

@@ -79,9 +79,11 @@ export class AuthService {
   }
 
   async login(email: string, password: string, ip: string): Promise<AuthResponse> {
-    // per-IP bucket first, then the per-(ip,email) one, so email rotation can't multiply attempts
+    // per-IP bucket first, then the per-(ip,email) one, so email rotation can't multiply attempts,
+    // then the account-scoped one so many source IPs can't either
     await this.rateLimit.consume('loginIp', ip);
     await this.rateLimit.consume('login', ip, email);
+    await this.rateLimit.consume('loginEmail', ip, email);
 
     // LOWER() on both sides: open sign-up stores the address raw while admin-created and
     // admin-edited accounts store it normalized, so the login address must match either form.
