@@ -1,6 +1,15 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsISO8601, IsOptional, IsUUID, Matches, Max, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsISO8601,
+  IsInt,
+  IsOptional,
+  IsUUID,
+  Matches,
+  Max,
+  Min,
+} from 'class-validator';
 import { isQueryTrue } from '../../common/query-params';
 
 // The timeline is two resources (a month index and a window page), so it gets two DTOs:
@@ -44,14 +53,21 @@ export class TimelineWindowQueryDto extends TimelineFilterDto {
 
   @IsOptional()
   @Type(() => Number)
+  @IsInt()
   @Min(0)
-  @ApiProperty({ default: 0, required: false, description: 'Row index inside this window' })
+  @ApiProperty({
+    type: Number,
+    default: 0,
+    required: false,
+    description: 'Row index inside this window',
+  })
   offset?: number;
 
   @IsOptional()
   @Type(() => Number)
+  @IsInt()
   @Min(1)
   @Max(5000)
-  @ApiProperty({ default: 2000, required: false })
+  @ApiProperty({ type: Number, default: 2000, required: false })
   limit?: number;
 }

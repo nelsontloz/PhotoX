@@ -438,24 +438,69 @@ describe('assets JWT identity', () => {
       .query({ limit: 2 })
       .set(t.authHeader(token));
     expect(first.status).toBe(200);
+    // the envelope echoes neither limit nor offset: they are request parameters, and echoing an
+    // offset next to a cursor page reported a position that was not the page's
     const firstBody = first.body as unknown as {
       items: { id: string }[];
       total: number;
-      limit: number;
-      offset: number;
+      nextCursor: string | null;
+      limit?: number;
+      offset?: number;
     };
     expect(firstBody.total).toBe(3);
-    expect(firstBody.limit).toBe(2);
-    expect(firstBody.offset).toBe(0);
+    expect(firstBody.limit).toBeUndefined();
+    expect(firstBody.offset).toBeUndefined();
     expect(firstBody.items).toHaveLength(2);
+    expect(firstBody.nextCursor).toEqual(expect.any(String));
     const second = await request(apiServer(t))
       .get('/api/v1/assets')
       .query({ limit: 2, offset: 2 })
       .set(t.authHeader(token));
     expect(second.status).toBe(200);
-    const secondBody = second.body as unknown as { items: { id: string }[]; total: number };
+    const secondBody = second.body as unknown as {
+      items: { id: string }[];
+      total: number;
+      nextCursor: string | null;
+    };
     expect(secondBody.total).toBe(3);
     expect(secondBody.items).toHaveLength(1);
+    expect(secondBody.nextCursor).toBeNull();
+  });
+
+  it('rejects a cursor combined with a non-zero offset', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const cursor = Buffer.from(
+      JSON.stringify(['2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z', randomUUID()]),
+    ).toString('base64url');
+    const res = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .query({ limit: 2, offset: 2, cursor })
+      .set(t.authHeader(token));
+    expect(res.status).toBe(400);
+    expect((res.body as { code: string }).code).toBe('VALIDATION_FAILED');
+  });
+
+  it('rejects a malformed cursor as a 400, not a 500', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const res = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .query({ cursor: 'not-a-cursor' })
+      .set(t.authHeader(token));
+    expect(res.status).toBe(400);
+    expect((res.body as { code: string }).code).toBe('INVALID_CURSOR');
+  });
+
+  it('rejects a float limit instead of failing in SQL', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const res = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .query({ limit: '1.5' })
+      .set(t.authHeader(token));
+    expect(res.status).toBe(400);
+    expect((res.body as { code: string }).code).toBe('VALIDATION_FAILED');
   });
 
   // regression guard (audit #9): cursor paging keeps pages disjoint when a photo is uploaded

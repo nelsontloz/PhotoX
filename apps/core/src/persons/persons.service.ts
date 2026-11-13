@@ -55,8 +55,6 @@ export class PersonsService {
     return {
       items: persons,
       total,
-      limit,
-      offset,
     };
   }
 

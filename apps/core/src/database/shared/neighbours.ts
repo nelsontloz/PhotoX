@@ -35,7 +35,7 @@ export async function neighbourRows(
      WHERE a."userId" = $1 AND a."isTrashed" = false
        AND ae.kind = 'image' AND ae.model = $2
        ${exclude}
-     ORDER BY ${opts.exact ? `(${distance}) + 0` : 'dist'}
+     ORDER BY ${opts.exact ? `(${distance}) + 0` : 'dist'}, ae."assetId" ASC
      LIMIT $4`,
     params,
   )) as NeighbourRow[];

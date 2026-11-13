@@ -25,8 +25,6 @@ interface PersonSummary {
 interface PersonList {
   items: PersonSummary[];
   total: number;
-  limit: number;
-  offset: number;
 }
 
 interface FaceSummary {
@@ -409,11 +407,9 @@ Then('the person API has no name', async ({ request, ctx }) => {
 Then('the person list pages with a limit of {int}', async ({ request, ctx }, limit: number) => {
   const auth = requireAuth(ctx);
   const first = await fetchPersons(request, auth, `?limit=${limit}`);
-  expect(first.limit).toBe(limit);
   expect(first.total).toBe(2);
   expect(first.items).toHaveLength(limit);
   const second = await fetchPersons(request, auth, `?limit=${limit}&offset=${limit}`);
-  expect(second.offset).toBe(limit);
   expect(second.items).toHaveLength(limit);
   const firstId = first.items[0]?.id;
   const secondId = second.items[0]?.id;

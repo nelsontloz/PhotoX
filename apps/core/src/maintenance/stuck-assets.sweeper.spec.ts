@@ -9,7 +9,9 @@ function harness(options: { locked?: boolean; rows?: unknown[] }) {
     release: () => Promise.resolve(),
     query: (sql: string) => {
       queries.push(sql);
-      return Promise.resolve(sql.includes('pg_try_advisory_lock') ? [{ locked: options.locked ?? true }] : []);
+      return Promise.resolve(
+        sql.includes('pg_try_advisory_lock') ? [{ locked: options.locked ?? true }] : [],
+      );
     },
   };
   const dataSource = {

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { isUUID } from 'class-validator';
@@ -6,12 +6,14 @@ import { Album } from '../database/entities/album.entity';
 import { AlbumAsset } from '../database/entities/album-asset.entity';
 import { Asset } from '../database/entities';
 import { findOwnedOr404 } from '../common/asset-ownership';
+import { apiError } from '../common/api-error';
+import { decodeCursor, encodeCursor, invalidCursor } from '../common/cursor';
 import { CreateAlbumDto } from './dto/create-album.dto';
 import { UpdateAlbumDto } from './dto/update-album.dto';
 import { ListAlbumAssetsQueryDto } from './dto/list-album-assets-query.dto';
 import { PaginationQueryDto } from '../common/pagination-query.dto';
 import { AssetsService } from '../assets/assets.service';
-import type { AlbumDto, Asset as AssetResponse } from '@photox/shared-types';
+import type { AlbumDto, AssetListResponse, AlbumListResponse } from '@photox/shared-types';
 
 interface AlbumAssetCursor {
   addedAt: Date;
@@ -20,25 +22,15 @@ interface AlbumAssetCursor {
 
 /** The last row's ("addedAt", "assetId") — the full album-assets ORDER BY tuple. */
 function encodeAlbumAssetCursor(row: { addedAt: Date | string; assetId: string }): string {
-  return Buffer.from(JSON.stringify([new Date(row.addedAt).toISOString(), row.assetId])).toString(
-    'base64url',
-  );
+  return encodeCursor([new Date(row.addedAt).toISOString(), row.assetId]);
 }
 
 function decodeAlbumAssetCursor(raw: string): AlbumAssetCursor {
-  const invalid = (): BadRequestException => new BadRequestException('Invalid cursor');
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
-  } catch {
-    throw invalid();
-  }
-  if (!Array.isArray(parsed) || parsed.length !== 2) throw invalid();
-  const [addedAt, assetId] = parsed as unknown[];
-  if (typeof addedAt !== 'string' || typeof assetId !== 'string') throw invalid();
-  const addedAtDate = new Date(addedAt);
-  if (Number.isNaN(addedAtDate.getTime()) || !isUUID(assetId)) throw invalid();
-  return { addedAt: addedAtDate, assetId };
+  const parts = decodeCursor(raw, 2);
+  const addedAt = new Date(parts[0] ?? '');
+  const assetId = parts[1] ?? '';
+  if (Number.isNaN(addedAt.getTime()) || !isUUID(assetId)) invalidCursor();
+  return { addedAt, assetId };
 }
 
 @Injectable()
@@ -63,13 +55,15 @@ export class AlbumsService {
     return this.toDto(saved, 0);
   }
 
-  async list(userId: string, q: PaginationQueryDto): Promise<{ items: AlbumDto[]; total: number }> {
+  async list(userId: string, q: PaginationQueryDto): Promise<AlbumListResponse> {
     const limit = q.limit;
     const offset = q.offset;
 
     const [items, total] = await this.repo.findAndCount({
       where: { userId },
-      order: { createdAt: 'DESC' },
+      // id completes the sort key: albums created in the same second would otherwise page
+      // non-deterministically and repeat or skip rows
+      order: { createdAt: 'DESC', id: 'DESC' },
       take: limit,
       skip: offset,
     });
@@ -167,12 +161,18 @@ export class AlbumsService {
     userId: string,
     albumId: string,
     q: ListAlbumAssetsQueryDto,
-  ): Promise<{ items: AssetResponse[]; total: number; nextCursor: string | null }> {
+  ): Promise<AssetListResponse> {
     await findOwnedOr404(this.repo, albumId, userId, 'Album');
 
     const limit = q.limit;
     const offset = q.offset;
     const cursor = q.cursor ? decodeAlbumAssetCursor(q.cursor) : null;
+    // one continuation style per request: a cursor already encodes the position
+    if (cursor && offset > 0) {
+      throw apiError(400, 'VALIDATION_FAILED', 'offset must be 0 when cursor is provided', {
+        details: [{ field: 'offset', message: 'offset must be 0 when cursor is provided' }],
+      });
+    }
 
     const qb = this.albumAssetRepo
       .createQueryBuilder('aa')

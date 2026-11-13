@@ -1,5 +1,7 @@
 export type ShareKind = 'asset' | 'album';
 
+import type { Page } from './pagination';
+
 export interface AssetShareDto {
   id: string;
   kind: 'asset';
@@ -43,9 +45,7 @@ export interface CreateShareRequest {
   albumId?: string;
 }
 
-export interface ShareListResponse {
-  items: ShareListItem[];
-}
+export type ShareListResponse = Page<ShareListItem>;
 
 /** EXIF-safe asset projection used by public share endpoints (no GPS/faces/metadata blobs,
  *  no internal ids — the stream endpoints resolve files server-side from the token). */
@@ -84,6 +84,4 @@ export interface PublicAlbumShareResponse {
 
 export type PublicShareResponse = PublicAssetShareResponse | PublicAlbumShareResponse;
 
-export interface PublicAlbumAssetsResponse {
-  items: PublicShareAsset[];
-}
+export type PublicAlbumAssetsResponse = Page<PublicShareAsset>;

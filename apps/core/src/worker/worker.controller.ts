@@ -34,7 +34,7 @@ import { ListFacesQueryDto } from './dto/list-faces-query.dto';
 import { PurgeUserDto } from './dto/purge-user.dto';
 import { PurgeUserFinishDto } from './dto/purge-user-finish.dto';
 import { UserDeleteService } from '../users/admin/user-delete.service';
-import type { UserDeleteStepResult } from '@photox/shared-types';
+import type { UserDeleteStepResult, FaceListResponse } from '@photox/shared-types';
 
 // Worker job surface (agreed interface with the worker lane — do not rename paths). Every route
 // is act-required via JwtAuthGuard; ownership is scoped by the job's sub through the reused
@@ -150,7 +150,11 @@ export class WorkerController {
 
   @Get('faces')
   @ApiOperation({ summary: 'Worker list of faces for clustering (job user scope)' })
-  async listFaces(@Query() q: ListFacesQueryDto, @CurrentUserId() userId: string) {
+  @ApiResponse({ status: 200, description: 'Keyset page of faces; nextCursor=null ends the walk' })
+  async listFaces(
+    @Query() q: ListFacesQueryDto,
+    @CurrentUserId() userId: string,
+  ): Promise<FaceListResponse> {
     return this.faces.listForUserPaginated(userId, q);
   }
 

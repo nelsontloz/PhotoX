@@ -3,6 +3,7 @@ import { ApiExtraModels, ApiTags, ApiOperation, ApiResponse, getSchemaPath } fro
 import type { Request, Response } from 'express';
 import { SharesService } from './shares.service';
 import { UserFilesService } from '../ingest/user-files.service';
+import { ListPublicAlbumAssetsQueryDto } from './dto/list-shares-query.dto';
 import { serveFileBytes } from '../common/streaming.util';
 import {
   PublicAlbumAssetsResponseModel,
@@ -51,15 +52,15 @@ export class PublicSharesController {
   }
 
   @Get(':token/assets')
-  @ApiOperation({ summary: 'List the non-trashed members of a shared album' })
+  @ApiOperation({ summary: 'List the non-trashed members of a shared album (keyset page)' })
   @ApiResponse({
     status: 200,
     description: 'Album asset list',
     type: PublicAlbumAssetsResponseModel,
   })
   @ApiResponse({ status: 404, description: 'Share not found or not an album share' })
-  async listAlbumAssets(@Param('token') token: string) {
-    return this.shares.listAlbumAssetsByToken(token);
+  async listAlbumAssets(@Param('token') token: string, @Query() q: ListPublicAlbumAssetsQueryDto) {
+    return this.shares.listAlbumAssetsByToken(token, q);
   }
 
   @Get(':token/content')

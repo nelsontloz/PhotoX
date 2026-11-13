@@ -84,7 +84,7 @@ export class SearchService {
        ) d ON true
        WHERE a."userId" = $1 AND a."isTrashed" = false
          AND ${FTS_DOCUMENT} @@ websearch_to_tsquery('simple', $2)
-       ORDER BY ts_rank_cd(${FTS_DOCUMENT}, websearch_to_tsquery('simple', $2)) DESC
+       ORDER BY ts_rank_cd(${FTS_DOCUMENT}, websearch_to_tsquery('simple', $2)) DESC, a.id ASC
        LIMIT $3`,
       [userId, query, limit],
     );

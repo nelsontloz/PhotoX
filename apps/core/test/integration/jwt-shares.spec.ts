@@ -47,7 +47,7 @@ describe('shares JWT identity', () => {
     expect(typeof body.token).toBe('string');
   });
 
-  it('lists without userId and ignores query userId', async () => {
+  it('ignores a query userId by rejecting it, never by scoping to it', async () => {
     const a = await seedUser(t);
     const b = await seedUser(t);
     const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role });
@@ -64,12 +64,18 @@ describe('shares JWT identity', () => {
       .post('/api/v1/shares')
       .set(t.authHeader(tokenB))
       .send({ assetId: assetB.id });
+    // the list is scoped by the token, and `userId` is not a parameter of it — a stray one is a
+    // 400 under the global forbidNonWhitelisted pipe instead of a silently ignored filter
     const res = await request(apiServer(t))
       .get('/api/v1/shares')
       .query({ userId: b.id })
       .set(t.authHeader(tokenA));
-    expect(res.status).toBe(200);
-    const body = res.body as unknown as { items: { kind: string; userId: string }[] };
+    expect(res.status).toBe(400);
+    expect((res.body as { code: string }).code).toBe('VALIDATION_FAILED');
+
+    const own = await request(apiServer(t)).get('/api/v1/shares').set(t.authHeader(tokenA));
+    expect(own.status).toBe(200);
+    const body = own.body as unknown as { items: { kind: string; userId: string }[] };
     expect(body.items).toHaveLength(1);
     expect(body.items[0]?.kind).toBe('asset');
     expect(body.items[0]?.userId).toBe(a.id);
@@ -107,6 +113,61 @@ describe('shares JWT identity', () => {
     expect(itemsB).toHaveLength(1);
     expect(itemsB[0]?.userId).toBe(b.id);
     expect(itemsB[0]?.assetId).toBe(assetB.id);
+  });
+
+  it('pages the share list with keyset cursors', async () => {
+    const a = await seedUser(t);
+    const tokenA = t.signToken({ id: a.id, email: a.email, role: a.role });
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const file = await seedFile(t, a.id);
+      const asset = await seedAsset(t, a.id, file.id);
+      const created = await request(apiServer(t))
+        .post('/api/v1/shares')
+        .set(t.authHeader(tokenA))
+        .send({ assetId: asset.id });
+      const share = created.body as unknown as { id: string };
+      ids.push(share.id);
+      // distinct createdAt per row so the (createdAt, id) keyset tuple is a total order
+      await t.shareRepo.update(share.id, {
+        createdAt: new Date(`2024-01-0${i + 1}T00:00:00.000Z`),
+      });
+    }
+
+    const first = await request(apiServer(t))
+      .get('/api/v1/shares')
+      .query({ limit: 2 })
+      .set(t.authHeader(tokenA));
+    expect(first.status).toBe(200);
+    const firstBody = first.body as unknown as {
+      items: { id: string }[];
+      total: number;
+      nextCursor: string;
+    };
+    expect(firstBody.total).toBe(3);
+    expect(firstBody.items.map((i) => i.id)).toEqual([ids[2], ids[1]]);
+    expect(firstBody.nextCursor).toEqual(expect.any(String));
+
+    const second = await request(apiServer(t))
+      .get('/api/v1/shares')
+      .query({ limit: 2, cursor: firstBody.nextCursor })
+      .set(t.authHeader(tokenA));
+    expect(second.status).toBe(200);
+    const secondBody = second.body as unknown as {
+      items: { id: string }[];
+      total: number;
+      nextCursor: null;
+    };
+    expect(secondBody.total).toBe(3);
+    expect(secondBody.items.map((i) => i.id)).toEqual([ids[0]]);
+    expect(secondBody.nextCursor).toBeNull();
+
+    const bad = await request(apiServer(t))
+      .get('/api/v1/shares')
+      .query({ cursor: 'not-a-cursor' })
+      .set(t.authHeader(tokenA));
+    expect(bad.status).toBe(400);
+    expect((bad.body as unknown as { code: string }).code).toBe('INVALID_CURSOR');
   });
 
   it('rejects cross-user revoke', async () => {

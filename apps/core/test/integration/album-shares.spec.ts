@@ -335,6 +335,48 @@ describe('album shares', () => {
     expect((removed.body as { items: unknown[] }).items).toHaveLength(0);
   });
 
+  it('pages the anonymous member list with keyset cursors', async () => {
+    const { id: userId, token } = await seedUserWithToken();
+    const album = await createAlbum(userId);
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const file = await seedFile(t, userId);
+      const asset = await seedAsset(t, userId, file.id);
+      await addMember(album.id, asset.id);
+      ids.push(asset.id);
+      // distinct addedAt per member so the keyset tuple is a total order
+      await t.albumAssetRepo.update(
+        { albumId: album.id, assetId: asset.id },
+        { addedAt: new Date(`2024-01-0${i + 1}T00:00:00.000Z`) },
+      );
+    }
+    const share = (await createShare(token, { albumId: album.id })).body as ShareBody;
+
+    const first = await request(apiServer(t))
+      .get(`/api/share/${share.token}/assets`)
+      .query({ limit: 2 });
+    expect(first.status).toBe(200);
+    const firstBody = first.body as { items: { id: string }[]; total: number; nextCursor: string };
+    expect(firstBody.total).toBe(3);
+    expect(firstBody.items.map((i) => i.id)).toEqual([ids[2], ids[1]]);
+    expect(firstBody.nextCursor).toEqual(expect.any(String));
+
+    const second = await request(apiServer(t))
+      .get(`/api/share/${share.token}/assets`)
+      .query({ limit: 2, cursor: firstBody.nextCursor });
+    expect(second.status).toBe(200);
+    const secondBody = second.body as { items: { id: string }[]; total: number; nextCursor: null };
+    expect(secondBody.total).toBe(3);
+    expect(secondBody.items.map((i) => i.id)).toEqual([ids[0]]);
+    expect(secondBody.nextCursor).toBeNull();
+
+    const bad = await request(apiServer(t))
+      .get(`/api/share/${share.token}/assets`)
+      .query({ cursor: 'not-a-cursor' });
+    expect(bad.status).toBe(400);
+    expect((bad.body as { code: string }).code).toBe('INVALID_CURSOR');
+  });
+
   it('serves Range 206 and ETag 304 on a member stream', async () => {
     const bytes = Buffer.from('0123456789');
     const etag = `"${createHash('sha256').update(bytes).digest('hex')}"`;
