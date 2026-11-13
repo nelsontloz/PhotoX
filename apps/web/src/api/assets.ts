@@ -95,28 +95,43 @@ export async function getAssetLayoutPage(params: AssetLayoutPageParams): Promise
 }
 
 /**
+ * Thumbnail / derivative bytes by file id. One file per size with no variant decision to make, so
+ * the id alone identifies the bytes; `GET /assets/:id/content` is for the original-vs-transcode
+ * choice, which only the server can make.
+ *
+ * Same-origin URL for direct <img>/<video> use: the browser attaches the auth cookie itself,
+ * which axios can't do for those tags (it sends no headers there at all).
+ */
+export function getThumbStreamUrl(fileId: string): string {
+  return `/api/v1/files/${fileId}/stream`;
+}
+
+/**
+ * The bytes to display: the webm transcode once the worker produced one, else the original. `v` is
+ * the server-issued cache token — it changes exactly when that decision changes, which keeps
+ * `Cache-Control: immutable` on the byte route correct.
+ */
+export function getAssetContentUrl(asset: Pick<Asset, 'id' | 'contentVersion'>): string {
+  return `/api/v1/assets/${asset.id}/content?v=${encodeURIComponent(asset.contentVersion)}`;
+}
+
+/** The uploaded bytes, never the derivative — for "view original" and downloads. */
+export function getAssetOriginalUrl(asset: Pick<Asset, 'id' | 'fileId'>): string {
+  return `/api/v1/assets/${asset.id}/content?variant=original&v=${encodeURIComponent(asset.fileId)}`;
+}
+
+/** Same-origin URL the browser downloads natively: bytes stream straight to disk (no Blob). */
+export function getAssetDownloadUrl(asset: Pick<Asset, 'id' | 'fileId'>): string {
+  return `/api/v1/assets/${asset.id}/content/download?v=${encodeURIComponent(asset.fileId)}`;
+}
+
+/**
  * HEADs the download route first so the axios refresh/401-retry interceptors run and auth or
  * missing-file errors throw here — the caller then skips the anchor click instead of the tab
  * navigating to a JSON error page mid-download.
  */
-export async function preflightFileDownload(fileId: string): Promise<void> {
-  await api.head(`/v1/files/${fileId}/download`);
-}
-
-/**
- * Same-origin URL the browser downloads natively: bytes stream straight to disk (no Blob in
- * memory) and the server already sets the filename via Content-Disposition.
- */
-export function getFileDownloadUrl(fileId: string): string {
-  return `/api/v1/files/${fileId}/download`;
-}
-
-/**
- * Same-origin URL for direct <img>/<video> use: the browser attaches the auth cookie itself,
- * which axios can't do for those tags (it sends no headers there at all).
- */
-export function getFileStreamUrl(fileId: string): string {
-  return `/api/v1/files/${fileId}/stream`;
+export async function preflightAssetDownload(asset: Pick<Asset, 'id' | 'fileId'>): Promise<void> {
+  await api.head(`/v1/assets/${asset.id}/content/download?v=${encodeURIComponent(asset.fileId)}`);
 }
 
 /**

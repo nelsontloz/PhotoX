@@ -6,7 +6,7 @@ import 'leaflet.markercluster';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import { FaMapLocationDot } from 'react-icons/fa6';
 import type { Asset } from '@photox/shared-types';
-import { getFileStreamUrl, listAllAssets } from '../../api/assets';
+import { getThumbStreamUrl, listAllAssets } from '../../api/assets';
 import { AppShell } from '../../components/AppShell';
 import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews';
 import { ViewerHost } from '../../components/ViewerHost';
@@ -52,7 +52,7 @@ function markerIconFor(asset: Asset, selected = false, groupSize = 1): L.DivIcon
   // shortcut: at zoom >= 16 (clustering off) every placed asset's thumbnail loads; gate on a
   // viewport check if a placed library ever grows past a few thousand photos.
   const inner = thumb
-    ? `<img src="${getFileStreamUrl(thumb.fileId)}" alt="" decoding="async" draggable="false">${asset.kind === 'video' ? PLAY_BADGE : ''}`
+    ? `<img src="${getThumbStreamUrl(thumb.fileId)}" alt="" decoding="async" draggable="false">${asset.kind === 'video' ? PLAY_BADGE : ''}`
     : '<span class="photox-thumb-spinner"></span>';
   // The count chip is a sibling of the circle: the circle's overflow: hidden would clip a corner
   // chip, while the leaflet icon element (position: absolute, 40x40) is already a positioning box.

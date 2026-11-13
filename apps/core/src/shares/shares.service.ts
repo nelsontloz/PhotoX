@@ -9,6 +9,7 @@ import { FileRecord } from '../database/entities';
 import { Album } from '../albums/entities/album.entity';
 import { AlbumAsset } from '../albums/entities/album-asset.entity';
 import { findOwnedOr404 } from '../common/asset-ownership';
+import { playableFileId } from '../files/content-target';
 import { CreateShareDto } from './dto/create-share.dto';
 import type {
   AlbumShareDto,
@@ -258,9 +259,7 @@ export class SharesService {
     transcodeFileId: string | null,
     fallbackFileId: string,
   ): Promise<string> {
-    if (!transcodeFileId) return fallbackFileId;
-    const file = await this.fileRepo.findOne({ where: { id: transcodeFileId } });
-    return file?.userId === userId ? transcodeFileId : fallbackFileId;
+    return playableFileId(this.fileRepo, userId, transcodeFileId, fallbackFileId);
   }
 
   private async getAlbumShare(token: string): Promise<Share> {
@@ -292,6 +291,7 @@ export class SharesService {
       id: asset.id,
       kind: asset.kind,
       hasTranscode: asset.transcodeFileId !== null,
+      contentVersion: asset.transcodeFileId ?? asset.fileId,
       title: asset.title,
       originalName: asset.originalName,
       mimeType: asset.mimeType,

@@ -1,7 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { FaChevronLeft, FaChevronRight, FaImage, FaSpinner } from 'react-icons/fa6';
 import type { Asset, AssetDetectionDto, FaceDto } from '@photox/shared-types';
-import { getFileStreamUrl } from '../../api/assets';
+import { getAssetContentUrl, getAssetOriginalUrl } from '../../api/assets';
 import { FaceOverlay } from './FaceOverlay';
 import { DetectionOverlay } from './DetectionOverlay';
 import { summarizeDetections } from './detectionView';
@@ -56,9 +56,9 @@ export function ViewerMedia({
   const faces: FaceDto[] = asset.faces ?? [];
   // Every media field is a function of the asset; only the resolved URLs/progress are runtime state.
   const isVideo = asset.kind === 'video';
-  const videoSrc = isVideo ? getFileStreamUrl(asset.transcodeFileId ?? asset.fileId) : null;
+  const videoSrc = isVideo ? getAssetContentUrl(asset) : null;
   const videoFallbackSrc =
-    isVideo && asset.transcodeFileId ? getFileStreamUrl(asset.fileId) : undefined;
+    isVideo && asset.transcodeFileId ? getAssetOriginalUrl(asset) : undefined;
   const videoTitle = asset.title ?? asset.originalName ?? undefined;
   const imageAlt = asset.originalName ?? asset.title ?? 'Photo';
   const dims =

@@ -2,11 +2,13 @@ import { describe, it, expect, vi } from 'vitest';
 import type { Asset, AssetListResponse, FileExistsCheckHit } from '@photox/shared-types';
 import {
   CHECK_FILES_EXIST_TIMEOUT_MS,
-  getFileDownloadUrl,
-  getFileStreamUrl,
+  getAssetContentUrl,
+  getAssetDownloadUrl,
+  getAssetOriginalUrl,
+  getThumbStreamUrl,
   listAllAssets,
   checkFilesExist,
-  preflightFileDownload,
+  preflightAssetDownload,
 } from './assets';
 
 const { getMock, postMock, headMock } = vi.hoisted(() => ({
@@ -36,23 +38,37 @@ function makeAsset(id: string): Asset {
   return { id, kind: 'photo', uploadedAt: '2024-01-01T00:00:00Z' } as Asset;
 }
 
-describe('stream URL builders', () => {
-  it('getFileStreamUrl targets core through the /api prefix', () => {
-    expect(getFileStreamUrl('file-1')).toBe('/api/v1/files/file-1/stream');
+describe('content URL builders', () => {
+  it('thumbnail bytes stay file-id addressed (one file per size, no variant decision)', () => {
+    expect(getThumbStreamUrl('file-1')).toBe('/api/v1/files/file-1/stream');
   });
 
-  it('getFileDownloadUrl targets core through the /api prefix', () => {
-    expect(getFileDownloadUrl('file-1')).toBe('/api/v1/files/file-1/download');
+  it('display bytes are asset addressed and carry the server cache token', () => {
+    expect(getAssetContentUrl({ id: 'asset-1', contentVersion: 'cv-1' })).toBe(
+      '/api/v1/assets/asset-1/content?v=cv-1',
+    );
+  });
+
+  it('the original variant is explicit and keyed on the stable file id', () => {
+    expect(getAssetOriginalUrl({ id: 'asset-1', fileId: 'file-1' })).toBe(
+      '/api/v1/assets/asset-1/content?variant=original&v=file-1',
+    );
+  });
+
+  it('the download URL targets the asset content route', () => {
+    expect(getAssetDownloadUrl({ id: 'asset-1', fileId: 'file-1' })).toBe(
+      '/api/v1/assets/asset-1/content/download?v=file-1',
+    );
   });
 });
 
-describe('preflightFileDownload', () => {
+describe('preflightAssetDownload', () => {
   it('HEADs the download route through the axios client', async () => {
     headMock.mockResolvedValue(undefined);
 
-    await preflightFileDownload('file-1');
+    await preflightAssetDownload({ id: 'asset-1', fileId: 'file-1' });
 
-    expect(headMock).toHaveBeenCalledWith('/v1/files/file-1/download');
+    expect(headMock).toHaveBeenCalledWith('/v1/assets/asset-1/content/download?v=file-1');
   });
 });
 

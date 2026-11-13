@@ -1,5 +1,5 @@
 import type { Asset, AssetThumbnail } from '@photox/shared-types';
-import { getFileStreamUrl } from '../api/assets';
+import { getThumbStreamUrl } from '../api/assets';
 
 export function pickViewerThumb(asset: Asset): AssetThumbnail | undefined {
   const preferSize = asset.kind === 'photo' ? 'xl' : 'lg';
@@ -20,5 +20,5 @@ export function prefetchViewerMedia(asset: Asset): void {
   const img = new Image();
   warming.add(img);
   img.onload = img.onerror = () => warming.delete(img);
-  img.src = getFileStreamUrl(thumb.fileId);
+  img.src = getThumbStreamUrl(thumb.fileId);
 }

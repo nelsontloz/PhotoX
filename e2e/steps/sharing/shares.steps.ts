@@ -349,7 +349,7 @@ Then('the public share page shows the shared photo', async ({ page, ctx }) => {
   const share = requireShare(ctx.lastShare, 'UI or API');
   // the anonymous context must stay on the capability URL, not bounce to /login
   expect(new URL(page.url()).pathname).toBe(`/share/${share.token}`);
-  const img = page.locator(`img[src*="/api/share/${share.token}/stream"]`);
+  const img = page.locator(`img[src*="/api/share/${share.token}/content"]`);
   await expect(img).toBeVisible();
   await expect
     .poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth), { timeout: 30_000 })

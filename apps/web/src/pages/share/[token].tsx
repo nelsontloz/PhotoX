@@ -16,12 +16,12 @@ const VideoPlayer = lazy(() =>
 );
 
 function getStreamUrl(token: string): string {
-  return `/api/share/${encodeURIComponent(token)}/stream`;
+  return `/api/share/${encodeURIComponent(token)}/content`;
 }
 
 function getAlbumAssetUrl(token: string, assetId: string, size?: 'sm'): string {
   const query = size ? `?size=${size}` : '';
-  return `/api/share/${encodeURIComponent(token)}/assets/${encodeURIComponent(assetId)}/stream${query}`;
+  return `/api/share/${encodeURIComponent(token)}/assets/${encodeURIComponent(assetId)}/content${query}`;
 }
 
 // The share stream endpoints serve the AV1/webm derivative whenever the worker transcoded the
