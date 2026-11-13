@@ -1,6 +1,6 @@
 import { DataSource } from 'typeorm';
 import { StuckAssetsSweeper } from './stuck-assets.sweeper';
-import type { UserFilesService } from '../files/user/user-files.service';
+import type { UserFilesService } from '../ingest/user-files.service';
 
 function harness(options: { locked?: boolean; rows?: unknown[] }) {
   const queries: string[] = [];

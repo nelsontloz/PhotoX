@@ -23,7 +23,7 @@ import {
   setRefreshCookie,
 } from '../auth/auth-cookie';
 import { AuthService } from './auth.service';
-import { TokenService } from './tokens/token.service';
+import { TokenService } from './token.service';
 import { SettingsService } from '../settings/settings.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';

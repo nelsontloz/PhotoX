@@ -2,7 +2,7 @@ import request from 'supertest';
 import { randomUUID } from 'node:crypto';
 import { UserBackupService } from '../../src/backup/user-backup.service';
 import { S3BackupService } from '../../src/backup/s3-backup.service';
-import { hashPassword } from '../../src/users/password';
+import { hashPassword } from '../../src/auth/password';
 import { apiServer, closeTestApp, createApiTestApp, resetDb, seedUser } from './helpers';
 import type { ApiTestApp } from './helpers';
 import type { User } from '../../src/database/entities/user.entity';

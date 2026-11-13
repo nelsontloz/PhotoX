@@ -8,10 +8,10 @@ import type { LocalStorageService } from '@photox/shared-config';
 import type { Asset as AssetResponse } from '@photox/shared-types';
 import { UserFilesService, type OriginalFileInput } from './user-files.service';
 import type { RegisterFileBodyDto } from './dto/register-file.body.dto';
-import type { Asset } from '../../database/entities';
-import type { FileRecord } from '../../database/entities';
-import type { AssetsService } from '../../assets/assets.service';
-import type { BullMqService } from '../../queue/bullmq.service';
+import type { Asset } from '../database/entities';
+import type { FileRecord } from '../database/entities';
+import type { AssetsService } from '../assets/assets.service';
+import type { BullMqService } from '../queue/bullmq.service';
 
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]);
 

@@ -22,8 +22,8 @@ import type {
 import { isPostgresUniqueViolation } from '../../common/sql-errors';
 import { UserBackupService } from '../../backup/user-backup.service';
 import { User } from '../../database/entities/user.entity';
-import { AuthService } from '../auth.service';
-import { hashPassword } from '../password';
+import { AuthService } from '../../auth/auth.service';
+import { hashPassword } from '../../auth/password';
 import { BullMqService } from '../../queue/bullmq.service';
 import { USER_DELETE_QUEUE, userDeleteJobId } from '@photox/shared-types';
 import { UserDeleteService } from './user-delete.service';

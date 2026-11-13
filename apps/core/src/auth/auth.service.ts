@@ -13,11 +13,11 @@ import { randomUUID } from 'crypto';
 import * as argon2 from 'argon2';
 import { User } from '../database/entities/user.entity';
 import { RefreshToken } from '../database/entities/refresh-token.entity';
-import { TokenService } from './tokens/token.service';
+import { TokenService } from './token.service';
 import { RateLimitService } from './rate-limit.service';
 import { hashPassword } from './password';
 import { isPostgresUniqueViolation } from '../common/sql-errors';
-import { ABSOLUTE_SESSION_MS } from '../auth/session.constants';
+import { ABSOLUTE_SESSION_MS } from './session.constants';
 import { SettingsService } from '../settings/settings.service';
 import type { AuthResponse } from '@photox/shared-types';
 

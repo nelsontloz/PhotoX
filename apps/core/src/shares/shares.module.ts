@@ -5,7 +5,7 @@ import { Asset } from '../database/entities';
 import { FileRecord } from '../database/entities';
 import { Album } from '../database/entities/album.entity';
 import { AlbumAsset } from '../database/entities/album-asset.entity';
-import { UserFilesModule } from '../files/user/user-files.module';
+import { UserFilesModule } from '../ingest/user-files.module';
 import { SharesService } from './shares.service';
 import { SharesController } from './shares.controller';
 import { PublicSharesController } from './public-shares.controller';

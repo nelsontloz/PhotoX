@@ -1,6 +1,6 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { UserFilesService } from '../files/user/user-files.service';
+import { UserFilesService } from '../ingest/user-files.service';
 
 export const STUCK_ASSET_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 // A healthy upload enqueues its jobs inside the same request, so anything still `pending` after

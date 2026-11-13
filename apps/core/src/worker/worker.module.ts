@@ -4,7 +4,7 @@ import { FacesModule } from '../faces/faces.module';
 import { PersonsModule } from '../persons/persons.module';
 import { EmbeddingsModule } from '../embeddings/embeddings.module';
 import { DetectionsModule } from '../detections/detections.module';
-import { UserFilesModule } from '../files/user/user-files.module';
+import { UserFilesModule } from '../ingest/user-files.module';
 import { UsersModule } from '../users/users.module';
 import { WorkerController } from './worker.controller';
 

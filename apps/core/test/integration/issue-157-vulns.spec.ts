@@ -6,7 +6,7 @@ import type { Redis } from 'ioredis';
 import { loadAuthEnv } from '@photox/shared-config';
 import { TEST_AUTH_SECRET_PREVIOUS } from './test-setup';
 import { ACCESS_COOKIE } from '../../src/auth/auth-cookie';
-import { RATE_LIMITS } from '../../src/users/rate-limit.service';
+import { RATE_LIMITS } from '../../src/auth/rate-limit.service';
 import { BullMqService } from '../../src/queue/bullmq.service';
 import { RefreshToken } from '../../src/database/entities/refresh-token.entity';
 import {

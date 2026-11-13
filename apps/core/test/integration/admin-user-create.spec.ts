@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { S3BackupService } from '../../src/backup/s3-backup.service';
 import { BullMqService } from '../../src/queue/bullmq.service';
-import { hashPassword } from '../../src/users/password';
+import { hashPassword } from '../../src/auth/password';
 import { apiServer, closeTestApp, createApiTestApp, resetDb, seedUser } from './helpers';
 import type { ApiTestApp } from './helpers';
 import type { User } from '../../src/database/entities/user.entity';

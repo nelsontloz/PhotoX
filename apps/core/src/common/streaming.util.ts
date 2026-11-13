@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import type { FileRecord } from '../database/entities';
-import type { UserFilesService } from './user/user-files.service';
+import type { UserFilesService } from '../ingest/user-files.service';
 
 const BYTES_CACHE_CONTROL = 'private, max-age=31536000, immutable';
 

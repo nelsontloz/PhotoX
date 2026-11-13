@@ -26,8 +26,7 @@ import { BullMqService } from '../../src/queue/bullmq.service';
  *   (`if (payload.act && !isWorkerRoute(path) && !isActListRead(req)) throw new ForbiddenException(...)`).
  *   The exception is keyed on the query-parameter SHAPE, not on the route, so any route carrying
  *   ?ids= becomes reachable by a service token — including routes that serve raw bytes, and with no
- *   X-Job-Signature job binding attached. The stream route is scoped to the token's own subject
- *   (apps/core/src/files/user/user-files.controller.ts:85-98
+ *   X-Job-Signature job binding attached. The stream route is scoped to the token'../../src/ingest/user-files.controller.ts:85-98
  *   `stream(fileId, ..., userId)` -> `serveFileBytes(req, res, this.userFilesService, userId, fileId)`),
  *   so a service token whose `sub` is the victim reads the victim's bytes.
  *
@@ -35,7 +34,7 @@ import { BullMqService } from '../../src/queue/bullmq.service';
  *   Route: POST /api/v1/auth/logout
  *   The session floor (users.tokensValidAfter) is raised only when a refresh token is supplied:
  *   apps/core/src/users/auth.controller.ts:116-117 does `if (raw) await this.authService.logout(raw)`,
- *   and apps/core/src/users/auth.service.ts:123-131 returns early (`if (!row) return`) for an
+ *   and apps/core/src/auth/auth.service.ts:123-131 returns early (`if (!row) return`) for an
  *   unknown/absent token. A bearer-only client (or an attacker holding only an access token) can
  *   therefore never terminate its own session, and "log out everywhere" leaves every previously
  *   issued access token alive. The guard enforces the floor at

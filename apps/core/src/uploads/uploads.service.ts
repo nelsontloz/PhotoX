@@ -38,7 +38,7 @@ import { AssetsService } from '../assets/assets.service';
 import { isPostgresUniqueViolation } from '../common/sql-errors';
 import { ingestErrorBody } from '../common/ingest-errors';
 // value import: Nest resolves the constructor parameter type at runtime
-import { UserFilesService } from '../files/user/user-files.service';
+import { UserFilesService } from '../ingest/user-files.service';
 import { kindFromMime, sniffMime } from '../common/mime';
 import type { CreateUploadSessionBodyDto } from './dto/create-upload-session.body.dto';
 

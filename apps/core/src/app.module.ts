@@ -5,7 +5,7 @@ import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { BullMqModule } from './queue/bullmq.module';
 import { UsersModule } from './users/users.module';
-import { UserFilesModule } from './files/user/user-files.module';
+import { UserFilesModule } from './ingest/user-files.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { AssetsModule } from './assets/assets.module';
 import { AlbumsModule } from './albums/albums.module';

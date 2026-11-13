@@ -10,7 +10,7 @@ import type { Asset as AssetResponse } from '@photox/shared-types';
 import { UploadSession, UploadSessionPart } from '../database/entities';
 import type { Asset } from '../database/entities';
 import type { AssetsService } from '../assets/assets.service';
-import type { UserFilesService } from '../files/user/user-files.service';
+import type { UserFilesService } from '../ingest/user-files.service';
 import {
   UPLOAD_CHUNK_SIZE_BYTES,
   UPLOAD_MAX_ACTIVE_SESSIONS,

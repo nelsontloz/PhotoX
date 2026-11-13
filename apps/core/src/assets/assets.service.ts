@@ -18,7 +18,7 @@ import { Face } from '../database/entities';
 import { findOwnedOr404 } from '../common/asset-ownership';
 import { isPostgresUniqueViolation } from '../common/sql-errors';
 import { refreshPersonsAfterFaceDelete } from '../common/face-cleanup';
-import { playableFileId } from '../files/content-target';
+import { playableFileId } from './content-target';
 import { CreateAssetDto } from './dto/create-asset.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto';

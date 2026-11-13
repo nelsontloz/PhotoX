@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { UserFilesModule } from '../files/user/user-files.module';
+import { UserFilesModule } from '../ingest/user-files.module';
 import { StuckAssetsSweeper } from './stuck-assets.sweeper';
 
 @Module({

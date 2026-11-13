@@ -1,5 +1,5 @@
 import type { AssetsService } from '../assets/assets.service';
-import type { UserFilesService } from '../files/user/user-files.service';
+import type { UserFilesService } from '../ingest/user-files.service';
 import type { FacesService } from '../faces/faces.service';
 import type { PersonsService } from '../persons/persons.service';
 import type { EmbeddingsService } from '../embeddings/embeddings.service';

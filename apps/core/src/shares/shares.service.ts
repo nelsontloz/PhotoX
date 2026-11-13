@@ -9,7 +9,7 @@ import { FileRecord } from '../database/entities';
 import { Album } from '../database/entities/album.entity';
 import { AlbumAsset } from '../database/entities/album-asset.entity';
 import { findOwnedOr404 } from '../common/asset-ownership';
-import { playableFileId } from '../files/content-target';
+import { playableFileId } from '../assets/content-target';
 import { CreateShareDto } from './dto/create-share.dto';
 import type {
   AlbumShareDto,

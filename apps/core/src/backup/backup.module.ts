@@ -5,7 +5,7 @@ import { Album } from '../database/entities/album.entity';
 import { AlbumAsset } from '../database/entities/album-asset.entity';
 import { Share } from '../database/entities/share.entity';
 import { User } from '../database/entities/user.entity';
-import { StorageModule } from '../files/storage/storage.module';
+import { StorageModule } from '../storage/storage.module';
 import { PlacesModule } from '../places/places.module';
 import { BackupController } from './backup.controller';
 import { BackupMerge } from '../database/entities/backup-merge.entity';

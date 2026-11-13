@@ -1,9 +1,9 @@
 import { Controller, Get, Param, Query, Req, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
-import { CurrentUserId } from '../../auth/jwt-auth.guard';
-import { AssetsService } from '../../assets/assets.service';
-import { serveFileBytes } from '../streaming.util';
+import { CurrentUserId } from '../auth/jwt-auth.guard';
+import { AssetsService } from '../assets/assets.service';
+import { serveFileBytes } from '../common/streaming.util';
 import { UserFilesService } from './user-files.service';
 import { AssetContentQueryDto } from './dto/asset-content-query.dto';
 

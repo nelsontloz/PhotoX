@@ -16,16 +16,16 @@ import { createReadStream } from 'fs';
 import { unlink } from 'fs/promises';
 import { extname } from 'path';
 import { pipeline } from 'stream/promises';
-import { Asset, FileRecord } from '../../database/entities';
+import { Asset, FileRecord } from '../database/entities';
 import { loadEnv, LocalStorageService } from '@photox/shared-config';
-import { findOwnedOr404 } from '../../common/asset-ownership';
-import { kindFromMime, sniffMime } from '../../common/mime';
-import { ingestErrorBody } from '../../common/ingest-errors';
+import { findOwnedOr404 } from '../common/asset-ownership';
+import { kindFromMime, sniffMime } from '../common/mime';
+import { ingestErrorBody } from '../common/ingest-errors';
 import { RegisterFileBodyDto } from './dto/register-file.body.dto';
 import type { UploadFileBodyDto } from './dto/upload-file.body.dto';
-import { FileRecordDto } from '../file-record.dto';
-import { AssetsService } from '../../assets/assets.service';
-import { BullMqService } from '../../queue/bullmq.service';
+import { FileRecordDto } from './file-record.dto';
+import { AssetsService } from '../assets/assets.service';
+import { BullMqService } from '../queue/bullmq.service';
 import type {
   Asset as AssetResponse,
   FileExistsCheckHit,

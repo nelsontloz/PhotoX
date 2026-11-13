@@ -18,7 +18,7 @@ import {
   UPLOAD_MAX_ACTIVE_SESSIONS,
 } from '../../src/uploads/uploads.service';
 import { UploadSessionsSweeper } from '../../src/uploads/upload-sessions.sweeper';
-import { UserFilesService } from '../../src/files/user/user-files.service';
+import { UserFilesService } from '../../src/ingest/user-files.service';
 import type { User } from '../../src/database/entities/user.entity';
 
 // 16 MiB: the out-of-order happy path needs two real 8 MiB parts, and the authoritative-quota
