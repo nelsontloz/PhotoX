@@ -5,6 +5,7 @@ import { Redis } from 'ioredis';
 import { DataSource } from 'typeorm';
 import { GenericContainer, type StartedTestContainer } from 'testcontainers';
 import { ENTITIES } from './integration/entities';
+import { MIGRATIONS } from '../src/database/migrations';
 import { TEMPLATE_DB, withAdminDb } from './integration/test-setup';
 
 /**
@@ -13,8 +14,8 @@ import { TEMPLATE_DB, withAdminDb } from './integration/test-setup';
  * Isolation used to come from the container itself (one pair per spec file, ~80 containers per
  * run). It now comes from inside the shared containers:
  *   - Postgres: each spec file clones TEMPLATE_DB into a private database. The template carries
- *     the pgvector extensions *and* the schema (baked from the entity metadata below), so a
- *     clone needs no DDL — the spec app runs with `synchronize: false`.
+ *     the pgvector extensions *and* the schema, built by the same migrations production runs
+ *     (see `bakeTemplate`), so a clone needs no DDL — the spec app runs with `synchronize: false`.
  *   - Redis: each spec file claims a private logical DB index, so flushdb() and the
  *     rate-limit buckets stay file-local.
  *
@@ -108,9 +109,9 @@ async function dropSuiteDatabases(pgHost: string, pgPort: number): Promise<void>
 /**
  * Rebuilds the template from scratch on every run: extensions first (search ANN casts to
  * halfvec, places reverse-geocoding uses the cube/earthdistance KNN operators, and core's
- * VectorInitService is not part of the test module graph), then the schema from the entity
- * metadata. Rebuilding on every run also means an entity change can never be served from a
- * stale template.
+ * VectorInitService is not part of the test module graph), then the schema from the migrations.
+ * Rebuilding on every run also means a migration change can never be served from a stale
+ * template.
  */
 async function bakeTemplate(pgHost: string, pgPort: number): Promise<void> {
   await withAdminDb(pgHost, pgPort, 'photox', async (ds) => {
@@ -122,8 +123,10 @@ async function bakeTemplate(pgHost: string, pgPort: number): Promise<void> {
     await ds.query('CREATE EXTENSION IF NOT EXISTS earthdistance');
   });
 
-  // Same entities and same synchronize path the spec apps used to run per file — the clone is
-  // byte-identical to what a per-file `synchronize: true` produced.
+  // The template is production-shaped: the same MIGRATIONS core runs, so a spec can never pass
+  // against a schema (or an index/constraint) that only existed in synchronize's head. `entities`
+  // stays only so TypeORM's postgres driver creates the uuid-ossp extension the baseline's
+  // `uuid_generate_v4()` defaults need.
   const ds = new DataSource({
     type: 'postgres',
     host: pgHost,
@@ -132,7 +135,10 @@ async function bakeTemplate(pgHost: string, pgPort: number): Promise<void> {
     password: PG_PASSWORD,
     database: TEMPLATE_DB,
     entities: ENTITIES,
-    synchronize: true,
+    migrations: MIGRATIONS,
+    migrationsRun: true,
+    migrationsTransactionMode: 'each',
+    synchronize: false,
   });
   await ds.initialize();
   await ds.destroy();

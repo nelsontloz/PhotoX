@@ -1,5 +1,7 @@
 import type { Mock } from 'vitest';
 import { vi } from 'vitest';
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import * as argon2 from 'argon2';
 import type { DataSource } from 'typeorm';
 import {
@@ -8,6 +10,7 @@ import {
   VectorInitService,
   typeOrmOptions,
 } from './database.module';
+import { MIGRATIONS } from './migrations';
 import { StructuralIndexes1794500000000 } from './migrations/1794500000000-StructuralIndexes';
 
 const EMAIL = 'admin-seed@example.com';
@@ -89,36 +92,43 @@ describe('AdminSeedService bootstrap', () => {
   });
 });
 
-describe('forRoot synchronize gate', () => {
-  const prevNodeEnv = process.env.NODE_ENV;
-
-  afterEach(() => {
-    if (prevNodeEnv === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = prevNodeEnv;
-  });
-
-  function findSynchronize(node: unknown, seen = new Set<unknown>()): unknown {
+describe('schema ownership', () => {
+  function findOption(node: unknown, key: string, seen = new Set<unknown>()): unknown {
     if (node === null || typeof node !== 'object' || seen.has(node)) return undefined;
     seen.add(node);
     const rec = node as Record<string, unknown>;
-    if ('synchronize' in rec) return rec.synchronize;
+    if (key in rec) return rec[key];
     for (const v of Object.values(rec)) {
-      const r = findSynchronize(v, seen);
+      const r = findOption(v, key, seen);
       if (r !== undefined) return r;
     }
     return undefined;
   }
 
-  it('disables synchronize in production', () => {
-    process.env.NODE_ENV = 'production';
-    expect(findSynchronize(DatabaseModule.forRoot())).toBe(false);
+  // Both used to be environment-gated, which is how the entity metadata and the migrations
+  // drifted apart: dev/test ran a schema nobody had written a migration for.
+  it('never synchronizes, in any environment', () => {
+    expect(findOption(DatabaseModule.forRoot(), 'synchronize')).toBe(false);
+    expect(typeOrmOptions().synchronize).toBe(false);
   });
 
-  it('enables synchronize elsewhere', () => {
-    process.env.NODE_ENV = 'test';
-    expect(findSynchronize(DatabaseModule.forRoot())).toBe(true);
-    delete process.env.NODE_ENV;
-    expect(findSynchronize(DatabaseModule.forRoot())).toBe(true);
+  it('runs the declared migrations everywhere', () => {
+    expect(findOption(DatabaseModule.forRoot(), 'migrationsRun')).toBe(true);
+    expect(typeOrmOptions().migrations).toBe(MIGRATIONS);
+  });
+});
+
+describe('migrations list', () => {
+  it('registers every migration file, in timestamp order', () => {
+    const files = readdirSync(join(__dirname, 'migrations'))
+      .filter((file) => /^\d+-.+\.(ts|js)$/.test(file))
+      .sort();
+    expect(MIGRATIONS).toHaveLength(files.length);
+    // a migration appended out of order runs out of order; the class name carries the timestamp
+    files.forEach((file, index) => {
+      const timestamp = file.split('-')[0];
+      expect(MIGRATIONS[index]!.name.endsWith(timestamp!)).toBe(true);
+    });
   });
 });
 

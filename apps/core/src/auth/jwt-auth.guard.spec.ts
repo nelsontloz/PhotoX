@@ -7,6 +7,10 @@ import { ACCESS_COOKIE } from './auth-cookie';
 import { JwtAuthGuard, requireUserId } from './jwt-auth.guard';
 
 const TEST_SECRET = 'test-secret-0123456789abcdef0123456789';
+// real subjects are uuids: a non-uuid sub cannot identify an account, so the guard
+// canonicalizes it (`worker-service` -> nil uuid). Keep these fixtures representative.
+const USER_ID = '11111111-1111-4111-8111-111111111111';
+const BEARER_ID = '22222222-2222-4222-8222-222222222222';
 // phase-2: the guard verifies against explicit env secrets (not the injected JwtService
 // default), so the env user secret must match this spec's signing secret
 process.env.AUTH_TOKEN_SECRET = TEST_SECRET;
@@ -19,7 +23,7 @@ const jobSig = (sub: string, scope: string): string =>
   createHmac('sha256', WORKER_SECRET).update(`${sub}:${scope}`).digest('hex');
 
 function tokenFor(role: 'user' | 'admin' = 'user'): string {
-  return jwt.sign({ sub: 'u1', email: 'u@example.com', role });
+  return jwt.sign({ sub: USER_ID, email: 'u@example.com', role });
 }
 
 function workerTokenFor(role: 'user' | 'admin', sub = 'worker-service'): string {
@@ -101,7 +105,7 @@ describe('JwtAuthGuard', () => {
 
   it('rejects spoofed x-user-* headers alone', async () => {
     const spoofed = {
-      'x-user-id': 'u1',
+      'x-user-id': USER_ID,
       'x-user-email': 'u@example.com',
       'x-user-role': 'admin',
     };
@@ -119,7 +123,7 @@ describe('JwtAuthGuard', () => {
   });
 
   it('rejects tokens with an unknown role with 401', async () => {
-    const forged = jwt.sign({ sub: 'u1', email: 'u@example.com', role: 'root' });
+    const forged = jwt.sign({ sub: USER_ID, email: 'u@example.com', role: 'root' });
     await expect(
       guard.canActivate(
         testContext('GET', '/api/v1/assets', { authorization: `Bearer ${forged}` }).context,
@@ -129,7 +133,7 @@ describe('JwtAuthGuard', () => {
 
   it('rejects expired tokens with 401', async () => {
     const expired = jwt.sign(
-      { sub: 'u1', email: 'u@example.com', role: 'user' },
+      { sub: USER_ID, email: 'u@example.com', role: 'user' },
       {
         expiresIn: '-1h',
       },
@@ -146,7 +150,7 @@ describe('JwtAuthGuard', () => {
       authorization: `Bearer ${tokenFor()}`,
     });
     await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(req.user).toEqual({ id: 'u1', email: 'u@example.com', role: 'user' });
+    expect(req.user).toEqual({ id: USER_ID, email: 'u@example.com', role: 'user' });
   });
 
   it('ignores spoofed x-user-* headers when a valid token is present', async () => {
@@ -157,7 +161,7 @@ describe('JwtAuthGuard', () => {
       'x-user-role': 'admin',
     });
     await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(req.user).toEqual({ id: 'u1', email: 'u@example.com', role: 'user' });
+    expect(req.user).toEqual({ id: USER_ID, email: 'u@example.com', role: 'user' });
   });
 
   it('authenticates via the HttpOnly access cookie alone', async () => {
@@ -167,7 +171,7 @@ describe('JwtAuthGuard', () => {
       cookieHeader(tokenFor()),
     );
     await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(req.user).toEqual({ id: 'u1', email: 'u@example.com', role: 'user' });
+    expect(req.user).toEqual({ id: USER_ID, email: 'u@example.com', role: 'user' });
   });
 
   it('prefers the bearer token over a conflicting cookie', async () => {
@@ -176,7 +180,7 @@ describe('JwtAuthGuard', () => {
       authorization: `Bearer ${tokenFor('admin')}`,
     });
     await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(req.user).toEqual({ id: 'u1', email: 'u@example.com', role: 'admin' });
+    expect(req.user).toEqual({ id: USER_ID, email: 'u@example.com', role: 'admin' });
   });
 
   it('rejects an invalid cookie when no bearer token is present', async () => {
@@ -198,7 +202,7 @@ describe('JwtAuthGuard', () => {
     try {
       vi.setSystemTime(new Date('2030-01-01T00:00:00Z'));
       const stale = jwt.sign(
-        { sub: 'u1', email: 'u@example.com', role: 'user' },
+        { sub: USER_ID, email: 'u@example.com', role: 'user' },
         { expiresIn: 30 },
       );
       vi.setSystemTime(new Date('2030-01-01T00:00:20Z'));
@@ -212,7 +216,11 @@ describe('JwtAuthGuard', () => {
       );
       const [, fresh] = cookie.mock.calls[0] as CookieArgs;
       expect(fresh).not.toBe(stale);
-      expect(jwt.verify(fresh)).toMatchObject({ sub: 'u1', email: 'u@example.com', role: 'user' });
+      expect(jwt.verify(fresh)).toMatchObject({
+        sub: USER_ID,
+        email: 'u@example.com',
+        role: 'user',
+      });
     } finally {
       vi.useRealTimers();
     }
@@ -224,7 +232,7 @@ describe('JwtAuthGuard', () => {
       vi.setSystemTime(new Date('2030-01-01T00:00:00Z'));
       const dead = jwt.sign(
         {
-          sub: 'u1',
+          sub: USER_ID,
           email: 'u@example.com',
           role: 'user',
           sst: Math.floor(Date.now() / 1000) - 8 * 24 * 3600,
@@ -250,7 +258,7 @@ describe('JwtAuthGuard', () => {
 
   it('does not renew a fresh cookie token', async () => {
     const token = jwt.sign(
-      { sub: 'u1', email: 'u@example.com', role: 'user' },
+      { sub: USER_ID, email: 'u@example.com', role: 'user' },
       { expiresIn: 3600 },
     );
     const { context, cookie } = testContext('GET', '/api/v1/assets', cookieHeader(token));
@@ -263,7 +271,7 @@ describe('JwtAuthGuard', () => {
     try {
       vi.setSystemTime(new Date('2030-01-01T00:00:00Z'));
       const stale = jwt.sign(
-        { sub: 'u1', email: 'u@example.com', role: 'admin', act: { sub: 'worker-service' } },
+        { sub: USER_ID, email: 'u@example.com', role: 'admin', act: { sub: 'worker-service' } },
         { expiresIn: 30 },
       );
       vi.setSystemTime(new Date('2030-01-01T00:00:20Z'));
@@ -289,7 +297,7 @@ describe('JwtAuthGuard', () => {
         { expiresIn: 30 },
       );
       const bearer = jwt.sign(
-        { sub: 'bearer-user', email: 'bearer@example.com', role: 'user' },
+        { sub: BEARER_ID, email: 'bearer@example.com', role: 'user' },
         { expiresIn: 30 },
       );
       vi.setSystemTime(new Date('2030-01-01T00:00:20Z'));
@@ -299,7 +307,7 @@ describe('JwtAuthGuard', () => {
       });
 
       await expect(guard.canActivate(context)).resolves.toBe(true);
-      expect(req.user).toEqual({ id: 'bearer-user', email: 'bearer@example.com', role: 'user' });
+      expect(req.user).toEqual({ id: BEARER_ID, email: 'bearer@example.com', role: 'user' });
       expect(cookie).toHaveBeenCalledWith(
         ACCESS_COOKIE,
         expect.any(String),
@@ -307,7 +315,7 @@ describe('JwtAuthGuard', () => {
       );
       // the renewal heals the jar to the identity that actually authenticated, not the stale cookie's
       const [, fresh] = cookie.mock.calls[0] as CookieArgs;
-      expect(jwt.verify(fresh)).toMatchObject({ sub: 'bearer-user' });
+      expect(jwt.verify(fresh)).toMatchObject({ sub: BEARER_ID });
     } finally {
       vi.useRealTimers();
     }
@@ -322,7 +330,7 @@ describe('JwtAuthGuard', () => {
         { expiresIn: 30 },
       );
       const bearer = jwt.sign(
-        { sub: 'u1', email: 'worker@internal', role: 'admin', act: { sub: 'worker-service' } },
+        { sub: USER_ID, email: 'worker@internal', role: 'admin', act: { sub: 'worker-service' } },
         { expiresIn: 30 },
       );
       vi.setSystemTime(new Date('2030-01-01T00:00:20Z'));
@@ -344,7 +352,10 @@ describe('JwtAuthGuard', () => {
   });
 
   it('does not renew a bearer token', async () => {
-    const token = jwt.sign({ sub: 'u1', email: 'u@example.com', role: 'user' }, { expiresIn: 10 });
+    const token = jwt.sign(
+      { sub: USER_ID, email: 'u@example.com', role: 'user' },
+      { expiresIn: 10 },
+    );
     const { context, cookie } = testContext('GET', '/api/v1/assets', {
       authorization: `Bearer ${token}`,
     });
@@ -393,7 +404,7 @@ describe('JwtAuthGuard', () => {
 
   it('rejects worker-actor tokens outside the worker surface with 403', async () => {
     const adminAuth = { authorization: `Bearer ${workerTokenFor('admin')}` };
-    const userAuth = { authorization: `Bearer ${workerTokenFor('user', 'u1')}` };
+    const userAuth = { authorization: `Bearer ${workerTokenFor('user', USER_ID)}` };
     const deny = (method: string, path: string, headers: Record<string, string>) =>
       expect(guard.canActivate(testContext(method, path, headers).context)).rejects.toThrow(
         ForbiddenException,
@@ -439,7 +450,7 @@ describe('admin authorisation uses the stored account row', () => {
   function guardWithStoredRole(role: 'user' | 'admin'): JwtAuthGuard {
     const dataSource = {
       getRepository: () => ({
-        findOne: vi.fn().mockResolvedValue({ id: 'u1', role, tokensValidAfter: null }),
+        findOne: vi.fn().mockResolvedValue({ id: USER_ID, role, tokensValidAfter: null }),
         exists: vi.fn().mockResolvedValue(true),
       }),
     } as unknown as DataSource;
@@ -470,7 +481,7 @@ describe('requireUserId', () => {
     ({ switchToHttp: () => ({ getRequest: () => ({ user }) }) }) as unknown as ExecutionContext;
 
   it('returns the verified user id', () => {
-    expect(requireUserId(contextWith({ id: 'u1' }))).toBe('u1');
+    expect(requireUserId(contextWith({ id: USER_ID }))).toBe(USER_ID);
   });
 
   it('throws 401 when the request has no verified user', () => {

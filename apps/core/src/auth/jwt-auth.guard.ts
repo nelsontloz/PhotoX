@@ -25,6 +25,11 @@ import { ABSOLUTE_SESSION_MS } from './session.constants';
 import { User } from '../database/entities/user.entity';
 import { RefreshToken } from '../database/entities/refresh-token.entity';
 
+/** A sub that is not a uuid cannot identify an account; user-scoped rows are keyed by uuid. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Matches no row, but casts cleanly through every uuid column a pseudo-sub can reach. */
+const NIL_UUID = '00000000-0000-0000-0000-000000000000';
+
 declare global {
   // ponytail: replaces the passport Request.user augmentation removed with passport
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -208,9 +213,13 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     // stored role wins whenever the row exists; act pseudo-subs (no row) keep the claim, and
-    // the act-only route rules below still keep them out of the admin surface
+    // the act-only route rules below still keep them out of the admin surface.
+    // A pseudo-sub ('worker-service') is not a user id and nothing can own it: canonicalize it
+    // to the nil uuid so user-scoped SQL against uuid columns stays valid and matches no row
+    // (the owner filters used to compare text, where any garbage simply matched nothing).
+    const userId = UUID_RE.test(sub) ? sub : NIL_UUID;
     const role = storedRole ?? payload.role;
-    const user = { id: sub, email: payload.email, role };
+    const user = { id: userId, email: payload.email, role };
     // absolute session cap: sliding renewal must never outlive sst + 7d. Enforced for Bearer
     // and cookie alike — a cookie replayed as a Bearer header would otherwise evade it.
     if (typeof payload.sst === 'number' && Date.now() - payload.sst * 1000 >= ABSOLUTE_SESSION_MS) {

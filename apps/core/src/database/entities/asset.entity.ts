@@ -15,7 +15,9 @@ export class Asset {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column()
+  // uuid, not the text a bare @Column() infers: `users.id` is a uuid, and the FK needs the
+  // types to match (see the UserIdUuid migration).
+  @Column('uuid')
   userId!: string;
 
   @Column({ type: 'enum', enum: ['photo', 'video'] })
@@ -27,8 +29,7 @@ export class Asset {
   @CreateDateColumn({ type: 'timestamptz' })
   uploadedAt!: Date;
 
-  // layout fingerprint source: any save()/update() on the row bumps this (default covers
-  // legacy rows when synchronize ALTERs a non-empty table)
+  // layout fingerprint source: any save()/update() on the row bumps this
   @UpdateDateColumn({ type: 'timestamptz', default: () => 'now()' })
   updatedAt!: Date;
 

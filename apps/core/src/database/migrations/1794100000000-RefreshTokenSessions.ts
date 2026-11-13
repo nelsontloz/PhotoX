@@ -2,8 +2,7 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 // Per-device sessions: every refresh token row gains a `sessionId` that survives rotation, so
 // logout / reuse detection can delete one device's chain instead of the user's whole set. The
-// default evaluates per row, so each existing live row becomes its own session (and a
-// populated dev table can take the column through `synchronize` too).
+// default evaluates per row, so each existing live row becomes its own session.
 export class RefreshTokenSessions1794100000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

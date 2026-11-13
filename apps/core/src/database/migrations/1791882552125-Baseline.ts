@@ -4,8 +4,10 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
 // (fresh pgvector DB, synchronize off) — keep in sync by generating a new migration per change.
 // Extensions (vector/cube/earthdistance) and the custom layout/HNSW/places indexes are NOT here:
 // DatabaseModule bootstrap creates those on every boot, before the admin seed.
-// ponytail: assumes a fresh prod DB — a DB previously created by synchronize must mark this
-// applied manually (INSERT INTO migrations(name) ...) or table creation fails on existing tables.
+// Assumes a fresh DB: a database created by the old `synchronize` gate must be rebuilt (or
+// stamped with INSERT INTO migrations(name, timestamp) for every entry in MIGRATIONS) — table
+// creation fails on existing tables, and migrations are the only schema source in every
+// environment now.
 export class Baseline1791882552125 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`CREATE TYPE "public"."users_role_enum" AS ENUM('user', 'admin')`);

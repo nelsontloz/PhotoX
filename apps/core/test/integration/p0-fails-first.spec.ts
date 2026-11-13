@@ -60,16 +60,17 @@ describe('p0 fails-first', () => {
     }
   });
 
-  it('P0-2 prod synchronize gate', () => {
-    // fails today (always true): synchronize must be false in production, true elsewhere
+  it('P0-2 no schema drift: migrations build the schema in every environment', () => {
+    // was a fails-first regression (synchronize on outside production let the entity metadata
+    // and the migrations diverge — `asset_thumbnails.assetId` was varchar vs uuid in prod)
     const prev = process.env.NODE_ENV;
     try {
       process.env.NODE_ENV = 'production';
-      const prod = DatabaseModule.forRoot() as unknown as object;
-      expect(findSynchronize(prod)).toBe(false);
+      expect(findSynchronize(DatabaseModule.forRoot() as unknown as object)).toBe(false);
       process.env.NODE_ENV = 'test';
-      const dev = DatabaseModule.forRoot() as unknown as object;
-      expect(findSynchronize(dev)).toBe(true);
+      expect(findSynchronize(DatabaseModule.forRoot() as unknown as object)).toBe(false);
+      delete process.env.NODE_ENV;
+      expect(findSynchronize(DatabaseModule.forRoot() as unknown as object)).toBe(false);
     } finally {
       if (prev === undefined) delete process.env.NODE_ENV;
       else process.env.NODE_ENV = prev;
