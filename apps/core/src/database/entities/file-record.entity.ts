@@ -1,4 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm';
+import { bigintTransformer } from '../shared/bigint';
 
 @Entity('files')
 @Index(['userId', 'checksumSha256'])
@@ -28,7 +29,7 @@ export class FileRecord {
   @Column()
   mimeType!: string;
 
-  @Column({ type: 'bigint' })
+  @Column({ type: 'bigint', transformer: bigintTransformer })
   sizeBytes!: number;
 
   @Column()
@@ -41,6 +42,6 @@ export class FileRecord {
   @Index()
   assetId!: string | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 }

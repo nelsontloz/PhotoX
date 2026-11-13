@@ -30,6 +30,6 @@ export class Face {
   @Column('uuid', { nullable: true })
   personId!: string | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 }

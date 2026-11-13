@@ -18,6 +18,10 @@ export class UserDelete {
   @Column({ type: 'varchar', length: 64 })
   jobId!: string;
 
+  /** The account's email at wipe time: the user row is gone by the time this is read. */
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  email!: string | null;
+
   @Column({ type: 'varchar', length: 16 })
   state!: AdminUserDeleteState;
 
@@ -42,6 +46,14 @@ export class UserDelete {
   /** Sessions are killed once, on the first step, so the account is locked while rows drain. */
   @Column({ type: 'boolean', default: false })
   sessionsLocked!: boolean;
+
+  // plain columns, not Create/UpdateDateColumn: a retry's upsert resets the counters and must
+  // keep the first attempt's start time
+  @Column({ type: 'timestamptz', default: () => 'now()' })
+  startedAt!: Date;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  finishedAt!: Date | null;
 
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;

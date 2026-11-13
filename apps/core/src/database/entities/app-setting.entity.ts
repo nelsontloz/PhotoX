@@ -8,6 +8,6 @@ export class AppSetting {
   @Column('jsonb')
   value!: unknown;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 }

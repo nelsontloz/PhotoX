@@ -1,4 +1,5 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, Unique } from 'typeorm';
+import { bigintTransformer } from '../shared/bigint';
 
 export type BackupRunItemState =
   'pending' | 'retrying' | 'queued' | 'running' | 'failed' | 'missing';
@@ -29,7 +30,7 @@ export class BackupRunItem {
   @Column({ type: 'text' })
   s3Key!: string;
 
-  @Column({ type: 'bigint' })
+  @Column({ type: 'bigint', transformer: bigintTransformer })
   sizeBytes!: number;
 
   @Column({ type: 'varchar', length: 64, nullable: true })
