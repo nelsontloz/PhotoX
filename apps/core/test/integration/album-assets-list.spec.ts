@@ -227,7 +227,7 @@ describe('album assets list', () => {
     });
 
     const restore = await request(apiServer(t))
-      .post(`/api/v1/assets/trashed/${asset.id}/restore`)
+      .delete(`/api/v1/assets/${asset.id}/trash`)
       .set(t.authHeader(token));
     expect(restore.status).toBe(204);
     const visible = await listAlbumAssets(token, albumId);

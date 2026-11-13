@@ -104,8 +104,8 @@ describe('assets hasLocations filter', () => {
     expect((map.body as { items: { id: string }[] }).items.map((a) => a.id)).toEqual([geo]);
 
     const trashed = await request(apiServer(t))
-      .get('/api/v1/assets/trashed')
-      .query({ hasLocations: true, limit: 100 })
+      .get('/api/v1/assets')
+      .query({ hasLocations: true, limit: 100, isTrashed: true })
       .set(t.authHeader(token));
     expect(trashed.status).toBe(200);
     expect((trashed.body as { items: { id: string }[] }).items.map((a) => a.id)).toEqual([

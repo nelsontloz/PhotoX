@@ -114,21 +114,21 @@ Two front doors, one ingest path (`persistOriginal` → `createAsset` → enqueu
 
 No global prefix; controllers declare `api/v1/...`. Health and docs are unversioned.
 
-| Group           | Routes                                                                                                                                                                                     |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Health          | `GET /health`                                                                                                                                                                              |
-| Auth            | `/api/v1/auth/{register,login,refresh,logout}`; `GET /api/v1/auth/registration`                                                                                                            |
-| Assets          | `/api/v1/assets` (+ `/trashed`); `GET/PATCH /:id`; `POST /:id/{trash,reprocess-thumbnails,reprocess-video}`; `POST /bulk-trash`, `/trashed/:id/restore`; `DELETE /trashed`, `/trashed/:id` |
-| Timeline        | `GET /api/v1/timeline/index?tz=`; `GET /api/v1/timeline/window?from&to&offset&limit`                                                                                                       |
-| Files           | `POST /api/v1/files`, `/files/exists`; `GET /:fileId/{stream,download}`                                                                                                                    |
-| Upload sessions | `POST /api/v1/uploads`; `GET/DELETE /:uploadId`; `PUT /:uploadId/parts/:index`; `POST /:uploadId/complete`                                                                                 |
-| Albums          | `/api/v1/albums`; `GET/PATCH/DELETE /:id`; `POST /:id/assets`; `DELETE /:id/assets/:assetId`; `GET /:id/assets`                                                                            |
-| Shares          | Owner: `/api/v1/shares` (`POST`/`GET`, `DELETE /:id`). Public: `GET /api/share/:token` (+ `/{stream,assets,assets/:assetId/stream}`)                                                       |
-| Persons / faces | `POST /api/v1/persons/cluster`; `GET /api/v1/persons`, `GET/PATCH /:id`; `GET /api/v1/faces/:id/thumb`, `PATCH /:id/person`                                                                |
-| Search / groups | `GET /api/v1/search?q=`; `GET /api/v1/assets/:id/{duplicates,similar,detections}`                                                                                                          |
-| Admin           | `/api/v1/admin/*` (see Admin setup)                                                                                                                                                        |
-| Worker          | `/worker/*` — 14 job routes, core-internal                                                                                                                                                 |
-| Docs            | `/docs`, `/docs-json`                                                                                                                                                                      |
+| Group           | Routes                                                                                                                                                                                        |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Health          | `GET /health`                                                                                                                                                                                 |
+| Auth            | `/api/v1/auth/{register,login,refresh,logout}`; `GET /api/v1/auth/registration`                                                                                                               |
+| Assets          | `/api/v1/assets` (+ `?isTrashed=true`); `GET/PATCH /:id`; `POST /:id/{trash,reprocess-thumbnails,reprocess-video}`; `POST /bulk-trash`; `DELETE /:id`, `/:id/trash`, `/assets?isTrashed=true` |
+| Timeline        | `GET /api/v1/timeline/index?tz=`; `GET /api/v1/timeline/window?from&to&offset&limit`                                                                                                          |
+| Files           | `POST /api/v1/files`, `/files/exists`; `GET /:fileId/{stream,download}`                                                                                                                       |
+| Upload sessions | `POST /api/v1/uploads`; `GET/DELETE /:uploadId`; `PUT /:uploadId/parts/:index`; `POST /:uploadId/complete`                                                                                    |
+| Albums          | `/api/v1/albums`; `GET/PATCH/DELETE /:id`; `POST /:id/assets`; `DELETE /:id/assets/:assetId`; `GET /:id/assets`                                                                               |
+| Shares          | Owner: `/api/v1/shares` (`POST`/`GET`, `DELETE /:id`). Public: `GET /api/share/:token` (+ `/{stream,assets,assets/:assetId/stream}`)                                                          |
+| Persons / faces | `POST /api/v1/persons/cluster`; `GET /api/v1/persons`, `GET/PATCH /:id`; `GET /api/v1/faces/:id/thumb`, `PATCH /:id/person`                                                                   |
+| Search / groups | `GET /api/v1/search?q=`; `GET /api/v1/assets/:id/{duplicates,similar,detections}`                                                                                                             |
+| Admin           | `/api/v1/admin/*` (see Admin setup)                                                                                                                                                           |
+| Worker          | `/worker/*` — 14 job routes, core-internal                                                                                                                                                    |
+| Docs            | `/docs`, `/docs-json`                                                                                                                                                                         |
 
 Open routes are exactly `/docs*`, `/health`, `/api/v1/auth*` and `/api/share*`; everything else needs auth. There is no places route group — places are asset columns resolved during metadata writes and by the admin backfill. Detection labels are readable at `GET /api/v1/assets/:id/detections` (the viewer overlay).
 

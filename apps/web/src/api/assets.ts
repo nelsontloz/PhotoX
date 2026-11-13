@@ -36,12 +36,8 @@ export interface AssetFilters {
 }
 
 export async function listAssets(params: ListAssetsParams = {}): Promise<AssetListResponse> {
-  const { isTrashed, ...rest } = params;
-  if (isTrashed) {
-    const { data } = await api.get<AssetListResponse>('/v1/assets/trashed', { params: rest });
-    return data;
-  }
-  const { data } = await api.get<AssetListResponse>('/v1/assets', { params: rest });
+  // the trash is the same collection filtered by state — `isTrashed` rides along like any filter
+  const { data } = await api.get<AssetListResponse>('/v1/assets', { params });
   return data;
 }
 
@@ -175,15 +171,15 @@ export async function trashAsset(assetId: string): Promise<void> {
 }
 
 export async function restoreAsset(assetId: string): Promise<void> {
-  await api.post(`/v1/assets/trashed/${assetId}/restore`);
+  await api.delete(`/v1/assets/${assetId}/trash`);
 }
 
 export async function deleteAsset(assetId: string): Promise<void> {
-  await api.delete(`/v1/assets/trashed/${assetId}`);
+  await api.delete(`/v1/assets/${assetId}`);
 }
 
 export async function emptyTrash(): Promise<void> {
-  await api.delete('/v1/assets/trashed');
+  await api.delete('/v1/assets', { params: { isTrashed: true } });
 }
 
 export async function reprocessThumbnails(assetId: string): Promise<void> {

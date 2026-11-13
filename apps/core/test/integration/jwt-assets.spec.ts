@@ -373,11 +373,14 @@ describe('assets JWT identity', () => {
 
   // GET /api/v1/assets already has explicit no-token coverage above; per-prefix
   // lines below guard the open-routes regex (auth/share/health/docs only)
-  const noTokenRoutes: ['get' | 'patch' | 'post', string][] = [
-    ['get', '/api/v1/assets/trashed'],
+  const noTokenRoutes: ['get' | 'patch' | 'post' | 'delete', string][] = [
+    ['get', '/api/v1/assets?isTrashed=true'],
+    ['delete', '/api/v1/assets?isTrashed=true'],
     ['get', `/api/v1/assets/${randomUUID()}`],
     ['patch', `/api/v1/assets/${randomUUID()}`],
     ['post', `/api/v1/assets/${randomUUID()}/trash`],
+    ['delete', `/api/v1/assets/${randomUUID()}/trash`],
+    ['delete', `/api/v1/assets/${randomUUID()}`],
     ['post', '/api/v1/assets/bulk-trash'],
     ['post', `/api/v1/assets/${randomUUID()}/reprocess-thumbnails`],
     ['post', `/api/v1/assets/${randomUUID()}/reprocess-video`],
@@ -390,6 +393,24 @@ describe('assets JWT identity', () => {
   it.each(noTokenRoutes)('returns 401 without token for %s %s', async (method, path) => {
     const res = await request(apiServer(t))[method](path);
     expect(res.status).toBe(401);
+  });
+
+  // the act list-read exception is GET-only, so a service token can never purge a library
+  it('refuses a service token the trash purge and the per-asset delete', async () => {
+    const user = await seedUser(t);
+    const act = t.signToken({ id: user.id, email: user.email, role: user.role }, { act: true });
+    const file = await seedFile(t, user.id);
+    const asset = await seedAsset(t, user.id, file.id, { isTrashed: true });
+
+    const empty = await request(apiServer(t))
+      .delete('/api/v1/assets?isTrashed=true')
+      .set(t.authHeader(act));
+    expect(empty.status).toBe(403);
+    const one = await request(apiServer(t))
+      .delete(`/api/v1/assets/${asset.id}`)
+      .set(t.authHeader(act));
+    expect(one.status).toBe(403);
+    expect(await t.assetRepo.count({ where: { userId: user.id } })).toBe(1);
   });
 
   it('returns 404 for get and patch of an unknown asset id', async () => {

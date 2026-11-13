@@ -43,7 +43,7 @@ describe('trash lifecycle', () => {
     const { token, asset } = await seedOwner();
 
     const del = await request(apiServer(t))
-      .delete(`/api/v1/assets/trashed/${asset.id}`)
+      .delete(`/api/v1/assets/${asset.id}`)
       .set(t.authHeader(token));
     expect(del.status).toBe(400);
 
@@ -90,7 +90,7 @@ describe('trash lifecycle', () => {
     const { token, asset } = await seedOwner();
 
     const restore = await request(apiServer(t))
-      .post(`/api/v1/assets/trashed/${asset.id}/restore`)
+      .delete(`/api/v1/assets/${asset.id}/trash`)
       .set(t.authHeader(token));
     expect(restore.status).toBe(204);
 
@@ -126,9 +126,9 @@ describe('trash lifecycle', () => {
     expect(trash.status).toBe(204);
 
     const del = await request(apiServer(t))
-      .delete(`/api/v1/assets/trashed/${asset.id}`)
+      .delete(`/api/v1/assets/${asset.id}`)
       .set(t.authHeader(token));
-    expect(del.status).toBe(200);
+    expect(del.status).toBe(204);
 
     expect(await t.faceRepo.find()).toHaveLength(0);
   });
@@ -151,14 +151,16 @@ describe('trash lifecycle', () => {
     expect(body.trashedAt).toEqual(expect.any(String));
   });
 
-  it('serves trashed list without :id shadowing and gets by uuid', async () => {
+  it('lists the trash through the isTrashed filter and gets a live asset by uuid', async () => {
     const user = await seedUser(t);
     const token = t.signToken({ id: user.id, email: user.email, role: user.role });
     const activeFile = await seedFile(t, user.id);
     const active = await seedAsset(t, user.id, activeFile.id);
     const trashedFile = await seedFile(t, user.id);
     const trashed = await seedAsset(t, user.id, trashedFile.id, { isTrashed: true });
-    const list = await request(apiServer(t)).get('/api/v1/assets/trashed').set(t.authHeader(token));
+    const list = await request(apiServer(t))
+      .get('/api/v1/assets?isTrashed=true')
+      .set(t.authHeader(token));
     expect(list.status).toBe(200);
     const body = list.body as unknown as { items: { id: string; isTrashed: boolean }[] };
     expect(body.items).toHaveLength(1);
@@ -170,5 +172,50 @@ describe('trash lifecycle', () => {
     expect(one.status).toBe(200);
     const oneBody = one.body as unknown as { id: string };
     expect(oneBody.id).toBe(active.id);
+  });
+
+  it('refuses to empty the trash without the explicit isTrashed=true filter', async () => {
+    const { token, asset } = await seedOwner();
+    await request(apiServer(t))
+      .post(`/api/v1/assets/${asset.id}/trash`)
+      .set(t.authHeader(token))
+      .expect(204);
+
+    for (const query of ['', '?isTrashed=false']) {
+      const res = await request(apiServer(t))
+        .delete(`/api/v1/assets${query}`)
+        .set(t.authHeader(token));
+      expect(res.status).toBe(400);
+    }
+
+    const get = await request(apiServer(t))
+      .get(`/api/v1/assets/${asset.id}`)
+      .set(t.authHeader(token));
+    expect(get.status).toBe(200);
+    expect((get.body as unknown as Asset).isTrashed).toBe(true);
+  });
+
+  it('emptying the trash deletes only the trashed assets', async () => {
+    const { user, token, asset: trashed } = await seedOwner();
+    await request(apiServer(t))
+      .post(`/api/v1/assets/${trashed.id}/trash`)
+      .set(t.authHeader(token))
+      .expect(204);
+    const liveFile = await seedFile(t, user.id);
+    const live = await seedAsset(t, user.id, liveFile.id);
+
+    const empty = await request(apiServer(t))
+      .delete('/api/v1/assets?isTrashed=true')
+      .set(t.authHeader(token));
+    expect(empty.status).toBe(204);
+
+    const gone = await request(apiServer(t))
+      .get(`/api/v1/assets/${trashed.id}`)
+      .set(t.authHeader(token));
+    expect(gone.status).toBe(404);
+    const kept = await request(apiServer(t))
+      .get(`/api/v1/assets/${live.id}`)
+      .set(t.authHeader(token));
+    expect(kept.status).toBe(200);
   });
 });
