@@ -1,6 +1,8 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm';
 
 @Entity('refresh_tokens')
+// logout-all and the account wipe delete by userId; without this they scan the session table
+@Index('idx_refresh_tokens_user_id', ['userId'])
 export class RefreshToken {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

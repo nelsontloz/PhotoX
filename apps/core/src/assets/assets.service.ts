@@ -7,17 +7,18 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In, QueryFailedError } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import type { SelectQueryBuilder } from 'typeorm';
 import { isUUID } from 'class-validator';
 import { Asset } from '../database/entities';
 import { AssetThumbnail } from '../database/entities';
 import { FileRecord } from '../database/entities';
-import { AlbumAsset } from '../albums/entities/album-asset.entity';
+import { AlbumAsset } from '../database/entities/album-asset.entity';
 import { Face } from '../database/entities';
 import { findOwnedOr404 } from '../common/asset-ownership';
+import { isPostgresUniqueViolation } from '../common/sql-errors';
 import { refreshPersonsAfterFaceDelete } from '../common/face-cleanup';
-import { playableFileId } from '../files/content-target';
+import { playableFileId } from './content-target';
 import { CreateAssetDto } from './dto/create-asset.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto';
@@ -815,13 +816,6 @@ export class AssetsService {
 }
 
 // pg unique-violation probe shared by the upload-race arbiters (user-files + assets create).
-// ponytail: pg code only — the only prod driver; sqlite/test callers never hit this branch.
-export function isPostgresUniqueViolation(err: unknown): boolean {
-  if (!(err instanceof QueryFailedError)) return false;
-  const driver = err.driverError as { code?: unknown } | null | undefined;
-  return driver?.code === '23505';
-}
-
 function toThumbnailResponse(t: AssetThumbnail): AssetThumbnailResponse {
   return {
     size: t.size,

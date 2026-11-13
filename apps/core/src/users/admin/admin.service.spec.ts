@@ -12,7 +12,7 @@ import { backupPrefix } from '@photox/shared-config';
 import type { AdminUserBackupSync } from '@photox/shared-types';
 import { S3BackupService } from '../../backup/s3-backup.service';
 import { isWorkerRoute } from '../../auth/open-routes';
-import { User } from '../entities/user.entity';
+import { User } from '../../database/entities/user.entity';
 import { AdminService } from './admin.service';
 import { UpdateAdminUserDto } from './dto/update-admin-user.body.dto';
 

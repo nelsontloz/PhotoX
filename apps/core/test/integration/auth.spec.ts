@@ -4,7 +4,7 @@ import { ACCESS_COOKIE } from '../../src/auth/auth-cookie';
 import { closeTestApp, createApiTestApp, resetDb, apiServer } from './helpers';
 import type { ApiTestApp } from './helpers';
 import { BullMqService } from '../../src/queue/bullmq.service';
-import { RATE_LIMITS } from '../../src/users/rate-limit.service';
+import { RATE_LIMITS } from '../../src/auth/rate-limit.service';
 
 interface AuthBody {
   accessToken: string;

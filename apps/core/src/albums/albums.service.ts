@@ -2,8 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { isUUID } from 'class-validator';
-import { Album } from './entities/album.entity';
-import { AlbumAsset } from './entities/album-asset.entity';
+import { Album } from '../database/entities/album.entity';
+import { AlbumAsset } from '../database/entities/album-asset.entity';
 import { Asset } from '../database/entities';
 import { findOwnedOr404 } from '../common/asset-ownership';
 import { CreateAlbumDto } from './dto/create-album.dto';

@@ -106,22 +106,29 @@ export class DatabaseModule {
   static forRoot() {
     return {
       module: DatabaseModule,
-      imports: [
-        TypeOrmModule.forRoot({
-          ...postgresConnectionOptions(),
-          autoLoadEntities: true,
-          // ponytail: synchronize is dev/test-only (same direct-process.env precedent as
-          // ADMIN_EMAIL above) — prod boots via the baseline migration (migrationsRun).
-          synchronize: process.env.NODE_ENV !== 'production',
-          migrationsRun: process.env.NODE_ENV === 'production',
-          migrations: [`${__dirname}/migrations/*.{js,ts}`],
-          connectTimeoutMS: 3000,
-          retryAttempts: 3,
-          retryDelay: 3000,
-        }),
-      ],
+      imports: [TypeOrmModule.forRoot(typeOrmOptions())],
       providers: [VectorInitService, AdminSeedService],
       exports: [TypeOrmModule],
     };
   }
+}
+
+/** Exported for the option assertions in database.module.spec.ts. */
+export function typeOrmOptions() {
+  return {
+    ...postgresConnectionOptions(),
+    autoLoadEntities: true,
+    // ponytail: synchronize is dev/test-only (same direct-process.env precedent as
+    // ADMIN_EMAIL above) — prod boots via the baseline migration (migrationsRun).
+    synchronize: process.env.NODE_ENV !== 'production',
+    migrationsRun: process.env.NODE_ENV === 'production',
+    migrations: [`${__dirname}/migrations/*.{js,ts}`],
+    // 'each' (not TypeORM's 'all' default) so a migration may opt out of its transaction —
+    // the index builds use CREATE INDEX CONCURRENTLY, which Postgres forbids inside one.
+    // A side benefit: one failed migration no longer rolls back the ones before it.
+    migrationsTransactionMode: 'each' as const,
+    connectTimeoutMS: 3000,
+    retryAttempts: 3,
+    retryDelay: 3000,
+  };
 }

@@ -1,4 +1,4 @@
-import type { PlaceFields } from '../places/places-resolve.service';
+import type { PlaceFields } from './places-resolve.service';
 
 /** One asset row the keyset scan yields (lat/lng come back as raw SQL numerics). */
 export interface PlacesBackfillItem {

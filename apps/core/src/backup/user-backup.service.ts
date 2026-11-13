@@ -41,16 +41,16 @@ import { SEARCH_EMBEDDING_MODEL, type AdminUserBackupSync } from '@photox/shared
 import { z } from 'zod';
 import { errorMessage, errorName } from '../common/errors';
 import { Asset, FileRecord, Person } from '../database/entities';
-import { Album } from '../albums/entities/album.entity';
-import { AlbumAsset } from '../albums/entities/album-asset.entity';
-import { Share } from '../shares/entities/share.entity';
-import { User } from '../users/entities/user.entity';
+import { Album } from '../database/entities/album.entity';
+import { AlbumAsset } from '../database/entities/album-asset.entity';
+import { Share } from '../database/entities/share.entity';
+import { User } from '../database/entities/user.entity';
 import { BullMqService } from '../queue/bullmq.service';
 import { PlacesResolveService } from '../places/places-resolve.service';
 import { S3BackupService, isNotFound } from './s3-backup.service';
-import { backfillPlaces, type PlacesBackfillItem } from './places-backfill';
-import { BackupMerge } from './entities/backup-merge.entity';
-import { BackupRun, type BackupRunState } from './entities/backup-run.entity';
+import { backfillPlaces, type PlacesBackfillItem } from '../places/places-backfill';
+import { BackupMerge } from '../database/entities/backup-merge.entity';
+import { BackupRun, type BackupRunState } from '../database/entities/backup-run.entity';
 import {
   TRANSFER_DISPATCH_BATCH_SIZE,
   TRANSFER_JOB_ATTEMPTS,
@@ -60,9 +60,9 @@ import {
   type TransferJobData,
   type TransferKind,
 } from './backup-transfer.constants';
-import { BackupRunItem } from './entities/backup-run-item.entity';
+import { BackupRunItem } from '../database/entities/backup-run-item.entity';
 import { UserDelete } from '../database/entities/user-delete.entity';
-import { isPostgresUniqueViolation } from '../assets/assets.service';
+import { isPostgresUniqueViolation } from '../common/sql-errors';
 
 /**
  * Rows per bulk INSERT: Postgres rejects a statement with more than 65,535 bind parameters, and

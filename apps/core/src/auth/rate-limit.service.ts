@@ -2,13 +2,15 @@ import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import type { Redis } from 'ioredis';
 import { BullMqService } from '../queue/bullmq.service';
 
-type RateLimitRoute = 'login' | 'loginIp' | 'register' | 'refresh';
+type RateLimitRoute = 'login' | 'loginIp' | 'loginEmail' | 'register' | 'refresh';
 
 // ponytail: fixed windows as a module constant — tune here; per-user/admin config if ever needed
 export const RATE_LIMITS: Record<RateLimitRoute, { limit: number; windowSec: number }> = {
   login: { limit: 5, windowSec: 900 },
   // coarser per-IP bucket so email rotation can't multiply the per-email allowance
   loginIp: { limit: 20, windowSec: 900 },
+  // per-account ceiling across IPs: distributed spraying at one address never trips loginIp
+  loginEmail: { limit: 15, windowSec: 900 },
   register: { limit: 10, windowSec: 3600 },
   refresh: { limit: 30, windowSec: 900 },
 };
@@ -48,8 +50,13 @@ export class RateLimitService {
     const { windowSec } = RATE_LIMITS[route];
     const limit = routeLimit(route);
     // encode segments so ':' in IPv6 addresses/emails can't alias another bucket;
-    // lowercase only the key — the email lookup elsewhere stays case-sensitive
-    const key = `rl:${route}:${encodeURIComponent(ip)}:${encodeURIComponent(email?.toLowerCase() ?? '-')}`;
+    // lowercase only the key — the email lookup elsewhere stays case-sensitive.
+    // loginEmail is account-scoped, so its key deliberately omits the IP.
+    const account = encodeURIComponent(email?.toLowerCase() ?? '-');
+    const key =
+      route === 'loginEmail'
+        ? `rl:${route}:${account}`
+        : `rl:${route}:${encodeURIComponent(ip)}:${account}`;
 
     const count = await this.countHit(key, windowSec);
     if (count === null) {

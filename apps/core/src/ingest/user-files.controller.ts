@@ -25,11 +25,11 @@ import type { StorageQuotaResponse } from '@photox/shared-types';
 import { randomUUID } from 'crypto';
 import { tmpdir } from 'os';
 import multer from 'multer';
-import { CurrentUserId } from '../../auth/jwt-auth.guard';
+import { CurrentUserId } from '../auth/jwt-auth.guard';
 import { UserFilesService, type OriginalFileInput } from './user-files.service';
 import { UploadFileBodyDto } from './dto/upload-file.body.dto';
 import { CheckFilesExistsBodyDto } from './dto/check-files-exists.body.dto';
-import { serveFileBytes } from '../streaming.util';
+import { serveFileBytes } from '../common/streaming.util';
 
 const diskStorage = multer.diskStorage({
   destination: tmpdir(),

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { EntityManager } from 'typeorm';
 import { Asset } from '../database/entities';
-import { BackupRunItem } from './entities/backup-run-item.entity';
+import { BackupRunItem } from '../database/entities/backup-run-item.entity';
 import { BULK_CHUNK, bulkInsert, bulkSave, chunked } from './user-backup.service';
 
 describe('chunked', () => {

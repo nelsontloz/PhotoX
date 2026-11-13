@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Repository } from 'typeorm';
-import { User } from '../users/entities/user.entity';
-import type { BackupRun } from './entities/backup-run.entity';
-import type { BackupRunItem } from './entities/backup-run-item.entity';
+import { User } from '../database/entities/user.entity';
+import type { BackupRun } from '../database/entities/backup-run.entity';
+import type { BackupRunItem } from '../database/entities/backup-run-item.entity';
 import { UserBackupService } from './user-backup.service';
 
 const USER = '11111111-1111-4111-8111-111111111111';

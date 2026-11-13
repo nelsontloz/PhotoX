@@ -23,13 +23,13 @@ import {
 } from '@photox/shared-config';
 import { DataSource, In, type Repository } from 'typeorm';
 import { Asset, FileRecord, Person } from '../../src/database/entities';
-import { Album } from '../../src/albums/entities/album.entity';
-import { AlbumAsset } from '../../src/albums/entities/album-asset.entity';
-import { Share } from '../../src/shares/entities/share.entity';
-import { User } from '../../src/users/entities/user.entity';
+import { Album } from '../../src/database/entities/album.entity';
+import { AlbumAsset } from '../../src/database/entities/album-asset.entity';
+import { Share } from '../../src/database/entities/share.entity';
+import { User } from '../../src/database/entities/user.entity';
 import { BackupModule } from '../../src/backup/backup.module';
-import { BackupMerge } from '../../src/backup/entities/backup-merge.entity';
-import { BackupRun } from '../../src/backup/entities/backup-run.entity';
+import { BackupMerge } from '../../src/database/entities/backup-merge.entity';
+import { BackupRun } from '../../src/database/entities/backup-run.entity';
 import { S3BackupService } from '../../src/backup/s3-backup.service';
 import {
   UserBackupService,

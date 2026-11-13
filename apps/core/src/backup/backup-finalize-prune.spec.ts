@@ -2,7 +2,7 @@ import { describe, expect, it, vi, type Mock } from 'vitest';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { backupPrefix, manifestKey, originalKey } from '@photox/shared-config';
-import type { BackupRun } from './entities/backup-run.entity';
+import type { BackupRun } from '../database/entities/backup-run.entity';
 import { UserBackupService, type UserBackupManifest } from './user-backup.service';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';

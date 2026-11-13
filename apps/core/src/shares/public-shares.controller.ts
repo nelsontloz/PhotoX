@@ -2,8 +2,8 @@ import { Controller, Get, Param, Query, Req, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { SharesService } from './shares.service';
-import { UserFilesService } from '../files/user/user-files.service';
-import { serveFileBytes } from '../files/streaming.util';
+import { UserFilesService } from '../ingest/user-files.service';
+import { serveFileBytes } from '../common/streaming.util';
 
 @ApiTags('shares')
 @Controller('api/share')

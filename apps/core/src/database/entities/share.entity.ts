@@ -10,7 +10,7 @@ import {
 } from 'typeorm';
 import type { ShareKind } from '@photox/shared-types';
 import { Asset } from '../../database/entities';
-import { Album } from '../../albums/entities/album.entity';
+import { Album } from './album.entity';
 
 @Entity('shares')
 @Check('CHK_shares_exactly_one_target', '("assetId" IS NULL) <> ("albumId" IS NULL)')

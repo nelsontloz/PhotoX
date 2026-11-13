@@ -34,10 +34,12 @@ import type {
   UploadSessionStatusResponse,
 } from '@photox/shared-types';
 import { Asset, UploadSession, UploadSessionPart } from '../database/entities';
-import { AssetsService, isPostgresUniqueViolation } from '../assets/assets.service';
+import { AssetsService } from '../assets/assets.service';
+import { isPostgresUniqueViolation } from '../common/sql-errors';
 import { ingestErrorBody } from '../common/ingest-errors';
 // value import: Nest resolves the constructor parameter type at runtime
-import { kindFromMime, sniffMime, UserFilesService } from '../files/user/user-files.service';
+import { UserFilesService } from '../ingest/user-files.service';
+import { kindFromMime, sniffMime } from '../common/mime';
 import type { CreateUploadSessionBodyDto } from './dto/create-upload-session.body.dto';
 
 // Resumable chunked upload sessions (`api/v1/uploads`): create with the total size, PUT 8 MiB

@@ -3,9 +3,9 @@ import { randomUUID } from 'crypto';
 import { ServiceUnavailableException } from '@nestjs/common';
 import type { Repository } from 'typeorm';
 import { backupPrefix, manifestKey, resolveBackupPrefix } from '@photox/shared-config';
-import { User } from '../users/entities/user.entity';
+import { User } from '../database/entities/user.entity';
 import { Asset } from '../database/entities/asset.entity';
-import { BackupMerge } from './entities/backup-merge.entity';
+import { BackupMerge } from '../database/entities/backup-merge.entity';
 import {
   UserBackupService,
   buildBackupOverviewRow,

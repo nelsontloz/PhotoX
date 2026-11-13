@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import { randomUUID } from 'crypto';
 import { backupPrefix } from '@photox/shared-config';
-import { User } from '../users/entities/user.entity';
+import { User } from '../database/entities/user.entity';
 import { UserBackupService } from './user-backup.service';
 
 function user(over: Partial<User> = {}): User {

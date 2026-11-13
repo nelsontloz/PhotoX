@@ -5,7 +5,7 @@ import { Person } from '../database/entities';
 import { Asset } from '../database/entities';
 import { AssetThumbnail } from '../database/entities';
 import { FileRecord } from '../database/entities';
-import { StorageModule } from '../files/storage/storage.module';
+import { StorageModule } from '../storage/storage.module';
 import { FacesQueryController } from './faces-query.controller';
 import { FacesService } from './faces.service';
 

@@ -1,7 +1,7 @@
 import { QueryFailedError } from 'typeorm';
 import * as crypto from 'crypto';
 import { SharesService } from './shares.service';
-import type { Share } from './entities/share.entity';
+import type { Share } from '../database/entities/share.entity';
 
 function uniqueViolation(): QueryFailedError {
   return new QueryFailedError(

@@ -20,7 +20,7 @@ import {
 import type { ApiTestApp } from './helpers';
 import { runQueuedDelete, waitForDeleteState } from './helpers/user-delete';
 import { TEST_AUTH_SECRET } from './test-setup';
-import type { User } from '../../src/users/entities/user.entity';
+import type { User } from '../../src/database/entities/user.entity';
 
 // One red test per audit finding ("Fix first" 1-5). They assert the intended contract and are
 // expected to fail until the fix lands; delete each block as its fix merges, then this file goes.

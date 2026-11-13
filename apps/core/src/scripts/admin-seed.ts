@@ -3,7 +3,7 @@
 // metadata), so it can only use a bare DataSource.
 import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
-import { hashPassword } from '../users/password';
+import { hashPassword } from '../auth/password';
 import { postgresConnectionOptions } from './postgres-options';
 
 /** Insert one admin row with an argon2 hash (the boot seed and the CLI differ only in label). */

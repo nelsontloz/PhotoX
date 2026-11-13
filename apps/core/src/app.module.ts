@@ -5,7 +5,7 @@ import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { BullMqModule } from './queue/bullmq.module';
 import { UsersModule } from './users/users.module';
-import { UserFilesModule } from './files/user/user-files.module';
+import { UserFilesModule } from './ingest/user-files.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { AssetsModule } from './assets/assets.module';
 import { AlbumsModule } from './albums/albums.module';
@@ -19,6 +19,8 @@ import { PersonsModule } from './persons/persons.module';
 import { AdminModule } from './admin/admin.module';
 import { WorkerModule } from './worker/worker.module';
 import { BackupModule } from './backup/backup.module';
+import { MaintenanceModule } from './maintenance/maintenance.module';
+import { ObservabilityModule } from './common/observability/observability.module';
 
 // runs before DatabaseModule.forRoot()'s loadEnv() below — replicates @nestjs/config's envFilePath
 loadRootEnvFile();
@@ -26,6 +28,7 @@ loadRootEnvFile();
 @Module({
   imports: [
     DatabaseModule.forRoot(),
+    ObservabilityModule,
     HealthModule,
     AuthModule,
     BullMqModule,
@@ -44,6 +47,7 @@ loadRootEnvFile();
     AdminModule,
     WorkerModule,
     BackupModule,
+    MaintenanceModule,
   ],
 })
 export class AppModule {}

@@ -11,13 +11,13 @@ import { IsNull, LessThan, Repository, type EntityManager } from 'typeorm';
 import { isUUID } from 'class-validator';
 import { randomUUID } from 'crypto';
 import * as argon2 from 'argon2';
-import { User } from './entities/user.entity';
-import { RefreshToken } from './entities/refresh-token.entity';
-import { TokenService } from './tokens/token.service';
+import { User } from '../database/entities/user.entity';
+import { RefreshToken } from '../database/entities/refresh-token.entity';
+import { TokenService } from './token.service';
 import { RateLimitService } from './rate-limit.service';
 import { hashPassword } from './password';
-import { isPostgresUniqueViolation } from '../assets/assets.service';
-import { ABSOLUTE_SESSION_MS } from '../auth/session.constants';
+import { isPostgresUniqueViolation } from '../common/sql-errors';
+import { ABSOLUTE_SESSION_MS } from './session.constants';
 import { SettingsService } from '../settings/settings.service';
 import type { AuthResponse } from '@photox/shared-types';
 
@@ -79,9 +79,11 @@ export class AuthService {
   }
 
   async login(email: string, password: string, ip: string): Promise<AuthResponse> {
-    // per-IP bucket first, then the per-(ip,email) one, so email rotation can't multiply attempts
+    // per-IP bucket first, then the per-(ip,email) one, so email rotation can't multiply attempts,
+    // then the account-scoped one so many source IPs can't either
     await this.rateLimit.consume('loginIp', ip);
     await this.rateLimit.consume('login', ip, email);
+    await this.rateLimit.consume('loginEmail', ip, email);
 
     // LOWER() on both sides: open sign-up stores the address raw while admin-created and
     // admin-edited accounts store it normalized, so the login address must match either form.
