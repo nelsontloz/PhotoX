@@ -13,7 +13,7 @@ import {
   FaArrowsRotate,
   FaFilm,
 } from 'react-icons/fa6';
-import { getFileDownloadUrl, preflightFileDownload } from '../../api/assets';
+import { getAssetDownloadUrl, preflightAssetDownload } from '../../api/assets';
 import { createShare, getShareUrl } from '../../api/shares';
 import type { Asset } from '@photox/shared-types';
 
@@ -44,9 +44,9 @@ export function ViewerActions({
     try {
       // preflight: a failed HEAD is shown nowhere, but it keeps a dead session or a deleted file
       // from turning the click into a browser navigation to the JSON error body
-      await preflightFileDownload(asset.fileId);
+      await preflightAssetDownload(asset);
       const a = document.createElement('a');
-      a.href = getFileDownloadUrl(asset.fileId);
+      a.href = getAssetDownloadUrl(asset);
       a.download = asset.originalName ?? 'download';
       a.click();
     } catch {

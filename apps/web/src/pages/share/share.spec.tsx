@@ -31,6 +31,7 @@ const videoAsset = (overrides: Partial<PublicShareAsset> = {}): PublicShareAsset
   id: 'a1',
   kind: 'video',
   hasTranscode: false,
+  contentVersion: 'f1',
   title: null,
   originalName: 'clip.mov',
   mimeType: 'video/quicktime',
@@ -85,7 +86,7 @@ describe('public share page video playback', () => {
     renderShare();
 
     const player = await screen.findByTestId('player');
-    expect(player.getAttribute('data-src')).toBe('/api/share/tok/stream');
+    expect(player.getAttribute('data-src')).toBe('/api/share/tok/content');
     // portrait videos get a portrait frame instead of a 16:9 letterbox
     expect(player.getAttribute('data-ar')).toBe(String(1920 / 1080));
   });
@@ -96,7 +97,7 @@ describe('public share page video playback', () => {
     renderShare();
 
     const player = await screen.findByTestId('player');
-    expect(player.getAttribute('data-src')).toBe('/api/share/tok/stream');
+    expect(player.getAttribute('data-src')).toBe('/api/share/tok/content');
   });
 
   it('plays an album video member as webm when a transcode exists', async () => {
@@ -112,6 +113,6 @@ describe('public share page video playback', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'clip.mov' }));
     await waitFor(() => expect(screen.getByTestId('player')).toBeTruthy());
     const player = screen.getByTestId('player');
-    expect(player.getAttribute('data-src')).toBe('/api/share/tok/assets/a1/stream');
+    expect(player.getAttribute('data-src')).toBe('/api/share/tok/assets/a1/content');
   });
 });

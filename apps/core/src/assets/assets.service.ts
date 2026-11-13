@@ -18,6 +18,7 @@ import { AlbumAsset } from '../albums/entities/album-asset.entity';
 import { Face } from '../database/entities';
 import { findOwnedOr404 } from '../common/asset-ownership';
 import { refreshPersonsAfterFaceDelete } from '../common/face-cleanup';
+import { playableFileId } from '../files/content-target';
 import { CreateAssetDto } from './dto/create-asset.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto';
@@ -140,6 +141,25 @@ export class AssetsService {
       throw err;
     }
     return this.toResponse(saved);
+  }
+
+  /**
+   * The bytes behind `GET /api/v1/assets/:id/content`. The variant decision lives here so no client
+   * has to know that a video's playable target is a derivative: `display` is the transcode when the
+   * worker produced one, `original` is the uploaded bytes (downloads, "view original").
+   *
+   * A trashed asset has no content — 404 like a missing one, which also means the byte routes now
+   * follow the asset's lifecycle instead of the file row's.
+   */
+  async contentTarget(
+    userId: string,
+    id: string,
+    variant: 'display' | 'original',
+  ): Promise<string> {
+    const asset = await findOwnedOr404(this.repo, id, userId, 'Asset');
+    if (asset.isTrashed) throw new NotFoundException('Asset not found');
+    if (variant === 'original') return asset.fileId;
+    return playableFileId(this.fileRepo, userId, asset.transcodeFileId, asset.fileId);
   }
 
   async list(userId: string, q: ListAssetsQueryDto): Promise<AssetListResponse> {
@@ -780,6 +800,7 @@ export class AssetsService {
     ];
     return {
       ...wire,
+      contentVersion: asset.transcodeFileId ?? asset.fileId,
       uploadedAt:
         asset.uploadedAt instanceof Date ? asset.uploadedAt.toISOString() : asset.uploadedAt,
       trashedAt: asset.trashedAt instanceof Date ? asset.trashedAt.toISOString() : null,

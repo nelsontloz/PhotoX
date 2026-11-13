@@ -42,6 +42,34 @@ export class PublicSharesController {
     return this.shares.listAlbumAssetsByToken(token);
   }
 
+  @Get(':token/content')
+  @ApiOperation({ summary: 'Stream a single-asset share’s displayable bytes' })
+  @ApiResponse({ status: 200, description: 'File stream' })
+  @ApiResponse({ status: 206, description: 'Partial content' })
+  @ApiResponse({ status: 404, description: 'Share not found' })
+  @ApiResponse({ status: 416, description: 'Range not satisfiable' })
+  async contentByToken(@Param('token') token: string, @Req() req: Request, @Res() res: Response) {
+    const { fileId, userId } = await this.shares.getAssetStreamTarget(token);
+    await serveFileBytes(req, res, this.files, userId, fileId);
+  }
+
+  @Get(':token/assets/:assetId/content')
+  @ApiOperation({ summary: 'Stream an album share member (optional ?size=sm thumbnail)' })
+  @ApiResponse({ status: 200, description: 'File stream' })
+  @ApiResponse({ status: 206, description: 'Partial content' })
+  @ApiResponse({ status: 404, description: 'Share or asset not found' })
+  @ApiResponse({ status: 416, description: 'Range not satisfiable' })
+  async contentForAlbumAsset(
+    @Param('token') token: string,
+    @Param('assetId') assetId: string,
+    @Query('size') size: string | undefined,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const { fileId, userId } = await this.shares.getAlbumAssetFileId(token, assetId, size);
+    await serveFileBytes(req, res, this.files, userId, fileId);
+  }
+
   @Get(':token/assets/:assetId/stream')
   @ApiOperation({ summary: 'Stream an album share member (optional ?size=sm thumbnail)' })
   @ApiResponse({ status: 200, description: 'File stream' })

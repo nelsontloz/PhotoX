@@ -54,6 +54,8 @@ export interface PublicShareAsset {
   kind: 'photo' | 'video';
   /** True when the worker transcoded the video to browser-playable AV1/webm; share streams serve it instead of the original. */
   hasTranscode: boolean;
+  /** Cache token for `/api/share/:token/assets/:id/content?v=` — moves when the transcode appears. */
+  contentVersion: string;
   title: string | null;
   originalName: string | null;
   mimeType: string | null;

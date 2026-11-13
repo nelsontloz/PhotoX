@@ -88,7 +88,14 @@ export interface Asset {
   id: string;
   userId: string;
   kind: AssetKind;
+  /** Internal byte-store id. Use `contentVersion` + `/assets/:id/content` instead of routing by it. */
   fileId: string;
+  /**
+   * Cache token for `GET /api/v1/assets/:id/content` — changes when the display target changes
+   * (the worker registers a transcode). Pass it back verbatim as `?v=`; the route ignores it and
+   * only the browser cache-key uses it.
+   */
+  contentVersion: string;
   uploadedAt: string;
   isTrashed: boolean;
   trashedAt: string | null;

@@ -4,7 +4,7 @@ import { AppShell } from '../../components/AppShell';
 import { useConfirm } from '../../components/ConfirmProvider';
 import { EmptyState, ErrorState, LoadingState } from '../../components/StateViews';
 import { listShares, createShare, revokeShare, getShareUrl } from '../../api/shares';
-import { getFileStreamUrl } from '../../api/assets';
+import { getThumbStreamUrl } from '../../api/assets';
 import { useAsyncFetch } from '../../hooks/useAsyncFetch';
 import type { ShareListItem } from '@photox/shared-types';
 
@@ -100,7 +100,7 @@ function SharedContent() {
             >
               {thumbFileId ? (
                 <img
-                  src={getFileStreamUrl(thumbFileId)}
+                  src={getThumbStreamUrl(thumbFileId)}
                   alt=""
                   className="w-12 h-12 rounded object-cover bg-slate-800 shrink-0"
                 />

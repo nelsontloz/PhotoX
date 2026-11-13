@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Asset } from '@photox/shared-types';
-import { getFileStreamUrl } from '../../api/assets';
+import { getThumbStreamUrl } from '../../api/assets';
 import { pickViewerThumb } from '../../lib/asset-media';
 
 export function useAssetMedia(asset: Asset): {
@@ -16,7 +16,7 @@ export function useAssetMedia(asset: Asset): {
   // The strip already requested this md thumb, so the browser HTTP cache serves it while the
   // full-size stream loads: a synchronous stand-in to stretch+blur.
   const mdThumb = asset.thumbnails?.find((t) => t.size === 'md') ?? asset.thumbnails?.[0];
-  const placeholderUrl = mdThumb ? getFileStreamUrl(mdThumb.fileId) : null;
+  const placeholderUrl = mdThumb ? getThumbStreamUrl(mdThumb.fileId) : null;
   const thumb = pickViewerThumb(asset);
 
   // Deps include thumb?.fileId: thumbnails can arrive in a later fetch with the same id/kind
@@ -36,7 +36,7 @@ export function useAssetMedia(asset: Asset): {
     setImageUrl(null);
     setVideoPosterUrl(null);
 
-    const url = getFileStreamUrl(thumb.fileId);
+    const url = getThumbStreamUrl(thumb.fileId);
     void (async () => {
       // Pre-decode off the main thread so the swap paints the first frame instead of waiting on decode.
       const img = new Image();

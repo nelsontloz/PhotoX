@@ -48,6 +48,7 @@ export function makeAsset(
 ): Asset {
   return {
     kind: 'photo',
+    contentVersion: overrides.fileId,
     uploadedAt: new Date().toISOString(),
     isTrashed: false,
     trashedAt: null,

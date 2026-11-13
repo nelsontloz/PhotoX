@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { FaSpinner, FaTriangleExclamation } from 'react-icons/fa6';
 import type { Asset, AssetThumbnail } from '@photox/shared-types';
-import { getFileStreamUrl } from '../api/assets';
+import { getThumbStreamUrl } from '../api/assets';
 import { whenScrollIdle } from '../lib/scrollIdle';
 import { observeIntersecting } from '../lib/shared-intersection';
 import { TIMELINE_PREFETCH_PX } from '../lib/timelineLayout';
@@ -70,7 +70,7 @@ export function AssetThumb({
   }, [asset.id, asset.kind, visible]);
 
   const thumbFileId = thumb?.fileId ?? null;
-  const src = visible && thumbFileId ? getFileStreamUrl(thumbFileId) : null;
+  const src = visible && thumbFileId ? getThumbStreamUrl(thumbFileId) : null;
   const error = failedFileId !== null && failedFileId === thumbFileId;
   const isVideo = asset.kind === 'video';
   const transcodeStatus = isVideo ? asset.transcodeStatus : null;
