@@ -107,7 +107,7 @@ describe('UserFilesService upload race', () => {
     });
     const res = await service.upload('u1', await tmpUpload());
     expect(execute).toHaveBeenCalledOnce();
-    expect(res.id).toBe('asset-new');
+    expect(res.asset.id).toBe('asset-new');
     expect(save).toHaveBeenCalledOnce();
     expect(remove).toHaveBeenCalledWith(save.mock.calls[0]?.[0]);
     expect(assetCreate.mock.calls[0]?.[1]?.fileId).toBe('winner-1');
@@ -117,34 +117,22 @@ describe('UserFilesService upload race', () => {
     const mine = fileRow({ id: 'mine-1' });
     const { service, remove, assetCreate } = makeUploadService({ naturals: [null], byId: mine });
     const res = await service.upload('u1', await tmpUpload());
-    expect(res.id).toBe('asset-new');
+    expect(res.asset.id).toBe('asset-new');
     expect(remove).not.toHaveBeenCalled();
     expect(assetCreate.mock.calls[0]?.[1]?.fileId).toBe('mine-1');
   });
 
-  it('re-enqueues the duplicate asset before rethrowing the 409', async () => {
+  it('answers a duplicate with the existing asset and re-enqueues its jobs', async () => {
     const mine = fileRow({ id: 'mine-1' });
-    const { service, assetCreate, assetGetOne, bullMq } = makeUploadService({
-      naturals: [mine],
-      byId: mine,
-    });
-    assetCreate.mockRejectedValue(
-      new ConflictException({
-        statusCode: 409,
-        message: 'File already uploaded',
-        existingAssetId: 'asset-dup',
-      }),
-    );
-    assetGetOne.mockResolvedValue({
-      id: 'asset-dup',
-      fileId: 'file-dup',
-      kind: 'photo',
-    } as AssetResponse);
+    const { service, bullMq } = makeUploadService({ naturals: [mine], byId: mine });
 
-    await expect(service.upload('u1', await tmpUpload())).rejects.toBeInstanceOf(ConflictException);
-    expect(assetGetOne).toHaveBeenCalledWith('u1', 'asset-dup');
-    // the stuck asset gets the full job set back, so a retry no longer lies about "already done"
-    expect(bullMq.enqueueThumbnails).toHaveBeenCalledWith('asset-dup', 'file-dup', 'u1');
+    // duplicate is success: created=false (no new bytes) and the asset is still returned
+    const res = await service.upload('u1', await tmpUpload());
+    expect(res.created).toBe(false);
+    expect(res.asset.id).toBe('asset-new');
+    // the duplicate re-queues the full idempotent job set, so a first attempt that saved the
+    // rows and died before enqueuing is repaired by the retry
+    expect(bullMq.enqueueThumbnails).toHaveBeenCalledWith('asset-new', 'mine-1', 'u1');
     expect(bullMq.enqueue).toHaveBeenCalled();
   });
 });

@@ -90,7 +90,8 @@ When('I complete the upload session', async ({ request, ctx }) => {
   const response = await request.post(`/api/v1/uploads/${state.uploadId}/complete`, {
     headers: authHeaders(auth),
   });
-  expect(response.status()).toBe(200);
+  // this request stored the bytes: 201 (200 means "already owned", which this first complete is not)
+  expect(response.status()).toBe(201);
   const body = (await response.json()) as UploadCompleteResponse;
   expect(body.asset.id).toBeTruthy();
   state.completedAssetId = body.asset.id;

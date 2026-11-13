@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { useUploadStore } from '../store/upload-store';
 import { useAppStore } from '../store/app-store';
 import { checkFilesExist, uploadFile } from '../api/assets';
@@ -134,11 +133,6 @@ async function processQueue(ids: string[]): Promise<void> {
         useUploadStore.getState().setStatus(id, 'done');
         dropRefs(id);
       } catch (err) {
-        if (axios.isAxiosError(err) && err.response?.status === 409) {
-          useUploadStore.getState().setStatus(id, 'done');
-          dropRefs(id);
-          continue;
-        }
         useUploadStore.getState().setStatus(id, 'error', {
           error: (err as Error).message ?? 'Upload failed',
         });

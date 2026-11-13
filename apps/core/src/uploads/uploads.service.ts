@@ -30,13 +30,12 @@ import type {
   Asset as AssetResponse,
   UploadCompleteResponse,
   UploadSessionCreated,
-  UploadSessionErrorBody,
-  UploadSessionErrorCode,
   UploadSessionStatus,
   UploadSessionStatusResponse,
 } from '@photox/shared-types';
 import { Asset, UploadSession, UploadSessionPart } from '../database/entities';
 import { AssetsService, isPostgresUniqueViolation } from '../assets/assets.service';
+import { ingestErrorBody } from '../common/ingest-errors';
 // value import: Nest resolves the constructor parameter type at runtime
 import { kindFromMime, sniffMime, UserFilesService } from '../files/user/user-files.service';
 import type { CreateUploadSessionBodyDto } from './dto/create-upload-session.body.dto';
@@ -59,27 +58,19 @@ const UPLOAD_SESSIONS_KEY = 'upload-sessions';
 // statuses that still hold a slot in the per-user active-session cap
 const ACTIVE_STATUSES: UploadSessionStatus[] = ['pending', 'assembling', 'assembled'];
 
-// P0-B envelope style: machine-readable `code` (plus extras such as receivedParts) next to
-// statusCode/message on the exception body the HttpExceptionFilter serializes verbatim
-export function uploadErrorBody(
-  statusCode: number,
-  message: string,
-  code: UploadSessionErrorCode,
-  extra?: Record<string, unknown>,
-): UploadSessionErrorBody {
-  return { statusCode, message, code, ...extra };
-}
+// P0-B envelope style: `ingestErrorBody` (common/ingest-errors) puts a machine-readable `code`
+// alongside statusCode/message on the exception body the HttpExceptionFilter serializes verbatim.
 
 function sessionExpiredError(): GoneException {
-  return new GoneException(uploadErrorBody(410, 'Upload session expired', 'SESSION_EXPIRED'));
+  return new GoneException(ingestErrorBody(410, 'Upload session expired', 'SESSION_EXPIRED'));
 }
 
 function unsupportedTypeError(): BadRequestException {
-  return new BadRequestException(uploadErrorBody(400, 'Unsupported file type', 'UNSUPPORTED_TYPE'));
+  return new BadRequestException(ingestErrorBody(400, 'Unsupported file type', 'UNSUPPORTED_TYPE'));
 }
 
 function partConflictError(message: string): ConflictException {
-  return new ConflictException(uploadErrorBody(409, message, 'PART_CONFLICT'));
+  return new ConflictException(ingestErrorBody(409, message, 'PART_CONFLICT'));
 }
 
 // what a locked complete() decided to do once the session row was inspected
@@ -129,7 +120,7 @@ export class UploadsService {
         `[UploadsService] upload rejected user=${userId} size=${body.sizeBytes} (SIZE_LIMIT)`,
       );
       throw new PayloadTooLargeException(
-        uploadErrorBody(
+        ingestErrorBody(
           413,
           `sizeBytes must be between 1 and ${UPLOAD_MAX_SIZE_BYTES}`,
           'SIZE_LIMIT',
@@ -148,7 +139,7 @@ export class UploadsService {
           `[UploadsService] upload rejected user=${userId} size=${body.sizeBytes} (QUOTA_EXCEEDED)`,
         );
         throw new PayloadTooLargeException(
-          uploadErrorBody(413, 'Storage quota exceeded', 'QUOTA_EXCEEDED'),
+          ingestErrorBody(413, 'Storage quota exceeded', 'QUOTA_EXCEEDED'),
         );
       }
     }
@@ -161,7 +152,7 @@ export class UploadsService {
     if (active >= UPLOAD_MAX_ACTIVE_SESSIONS) {
       this.logger.warn(`[UploadsService] upload rejected user=${userId} (SESSION_LIMIT)`);
       throw new ConflictException(
-        uploadErrorBody(
+        ingestErrorBody(
           409,
           `Too many active upload sessions (limit ${UPLOAD_MAX_ACTIVE_SESSIONS})`,
           'SESSION_LIMIT',
@@ -220,7 +211,7 @@ export class UploadsService {
   ): Promise<void> {
     if (!/^\d+$/.test(indexRaw)) {
       throw new BadRequestException(
-        uploadErrorBody(
+        ingestErrorBody(
           400,
           `Part index must be a non-negative integer, got ${indexRaw}`,
           'INDEX_RANGE',
@@ -243,13 +234,13 @@ export class UploadsService {
       }
       if (partIndex >= session.totalParts) {
         throw new BadRequestException(
-          uploadErrorBody(400, `Part index out of range: ${partIndex}`, 'INDEX_RANGE'),
+          ingestErrorBody(400, `Part index out of range: ${partIndex}`, 'INDEX_RANGE'),
         );
       }
       const sizeBytes = body.length;
       if (sizeBytes === 0 || sizeBytes > session.chunkSizeBytes) {
         throw new BadRequestException(
-          uploadErrorBody(
+          ingestErrorBody(
             400,
             `Part must be 1..${session.chunkSizeBytes} bytes, got ${sizeBytes}`,
             'PART_TOO_LARGE',
@@ -317,7 +308,7 @@ export class UploadsService {
       if (session.status === 'expired') throw sessionExpiredError();
       if (session.status === 'failed') {
         throw new BadRequestException(
-          uploadErrorBody(400, 'Upload session failed: unsupported file type', 'UNSUPPORTED_TYPE'),
+          ingestErrorBody(400, 'Upload session failed: unsupported file type', 'UNSUPPORTED_TYPE'),
         );
       }
       if (session.status === 'assembled') {
@@ -325,7 +316,7 @@ export class UploadsService {
         const assetId = session.completedAssetId;
         if (!fileId || !assetId) {
           throw new ServiceUnavailableException(
-            uploadErrorBody(503, 'Upload session is incomplete, please retry', 'ENQUEUE_FAILED'),
+            ingestErrorBody(503, 'Upload session is incomplete, please retry', 'ENQUEUE_FAILED'),
           );
         }
         // release the lock before enqueuing: the rows are durable, the retry half is idempotent
@@ -334,7 +325,8 @@ export class UploadsService {
         const record = await this.userFiles.getOne(userId, fileId);
         const assetKind = kindFromMime(record.mimeType);
         if (!assetKind) throw unsupportedTypeError();
-        return this.runEnqueues(userId, session, fileId, assetId, assetKind);
+        // no bytes stored by THIS request (the previous attempt saved them): 200, not 201
+        return this.runEnqueues(userId, session, fileId, assetId, assetKind, undefined, true);
       }
 
       // pending | assembling
@@ -487,7 +479,7 @@ export class UploadsService {
       receivedParts.length === session.totalParts && receivedParts.every((value, i) => value === i);
     if (!indicesComplete || receivedBytes !== expectedBytes) {
       throw new ConflictException(
-        uploadErrorBody(409, 'Upload is missing parts', 'PARTS_MISSING', { receivedParts }),
+        ingestErrorBody(409, 'Upload is missing parts', 'PARTS_MISSING', { receivedParts }),
       );
     }
 
@@ -500,7 +492,7 @@ export class UploadsService {
       if (declared && declared !== assembled.sha256) {
         // no persist, no part cleanup: the client may re-PUT a corrupt part and retry
         throw new UnprocessableEntityException(
-          uploadErrorBody(
+          ingestErrorBody(
             422,
             'Assembled file checksum does not match the declared checksum',
             'CHECKSUM_MISMATCH',
@@ -528,7 +520,7 @@ export class UploadsService {
         // create-time check so clients see one QUOTA_EXCEEDED code either way
         if (err instanceof PayloadTooLargeException) {
           throw new PayloadTooLargeException(
-            uploadErrorBody(413, 'Storage quota exceeded', 'QUOTA_EXCEEDED'),
+            ingestErrorBody(413, 'Storage quota exceeded', 'QUOTA_EXCEEDED'),
           );
         }
         throw err;
@@ -611,7 +603,7 @@ export class UploadsService {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`[UploadsService] enqueue failed for session ${session.id}: ${message}`);
       throw new ServiceUnavailableException(
-        uploadErrorBody(503, 'Failed to enqueue background processing jobs', 'ENQUEUE_FAILED'),
+        ingestErrorBody(503, 'Failed to enqueue background processing jobs', 'ENQUEUE_FAILED'),
       );
     }
     await this.sessionRepo.update({ id: session.id }, { status: 'completed' });

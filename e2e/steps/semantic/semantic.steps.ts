@@ -179,8 +179,8 @@ When(
   async ({ page, ctx, $testInfo }, name: string) => {
     // scenario 4 runs two global reprocess queues; give it room beyond the 120s default
     $testInfo.setTimeout(240_000);
-    // 06 uploads photo.jpg as the admin first, so scenario 4 legitimately gets a 409 pointing at
-    // the already-processed asset — the duplicate is fine, only the asset id matters here
+    // 06 uploads photo.jpg as the admin first, so scenario 4 legitimately gets a 200 duplicate
+    // pointing at the already-processed asset — the duplicate is fine, only the id matters here
     const assetId = await uploadFixture(page, name, { allowDuplicate: true });
     const uploads = (ctx.semanticUploads ??= []);
     uploads.push({ name, assetId });

@@ -408,16 +408,8 @@ async function extractFilesPostAssetId(
   response: Response,
   options: { allowDuplicate?: boolean },
 ): Promise<string> {
-  if (options.allowDuplicate && response.status() === 409) {
-    // the same user already uploaded this fixture earlier in the run; core points back at the
-    // existing asset, which the upload path already embedded/processed
-    const body = (await response.json()) as { existingAssetId?: string };
-    if (!body.existingAssetId) {
-      throw new Error('duplicate upload response did not include the existing asset id');
-    }
-    return body.existingAssetId;
-  }
-  expect(response.status()).toBe(201);
+  // duplicate is success: 200 + the existing asset (201 when this request stored new bytes)
+  if (!options.allowDuplicate) expect(response.status()).toBe(201);
   const asset = (await response.json()) as { id?: string };
   if (!asset.id) throw new Error('upload response did not include an asset id');
   return asset.id;
@@ -426,9 +418,8 @@ async function extractFilesPostAssetId(
 /**
  * Uploads a fixture via the hidden file input (header input comes first) and returns the
  * asset id. Tolerates the same-user dedup-skip: when the browser resolves the upload from
- * the exists check it sends NO POST /api/v1/files (neither 201 nor 409), so this races the
- * files POST against the exists POST and returns the hit's existingAssetId — the same
- * outcome as a 409, keeping `allowDuplicate` semantics for both paths.
+ * the exists check it sends NO POST /api/v1/files, so this races the files POST against the
+ * exists POST and returns the hit's existingAssetId — the same outcome as a 200 duplicate.
  */
 export async function uploadFixture(
   page: Page,
