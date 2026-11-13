@@ -22,10 +22,10 @@ import { BackupRun } from '../../src/database/entities/backup-run.entity';
 import { BackupRunItem } from '../../src/database/entities/backup-run-item.entity';
 
 /**
- * Every entity the test apps register, and the single source of truth for the schema baked
- * into the template database (see test/global-setup.ts). Spec files used to pass their own
- * subsets, which cannot work once the schema is created once instead of per file — one list
- * means every spec file clones the same superset.
+ * Every entity the test apps register, and the single list the template's migrations are
+ * exercised against (see `schema-parity.spec.ts`). The schema itself comes from
+ * `src/database/migrations`; this list only decides which repositories a spec app can use —
+ * so a new entity still goes here, and it also needs a migration.
  */
 export const ENTITIES = [
   User,

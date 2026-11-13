@@ -15,7 +15,8 @@ export class FileRecord {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column()
+  // uuid, not the text a bare @Column() infers — see the UserIdUuid migration
+  @Column('uuid')
   userId!: string;
 
   @Column()

@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import {
   closeTestApp,
@@ -103,16 +102,25 @@ describe('admin face reprocess and recluster', () => {
   it('enqueues one manual cluster job per distinct user with faces', async () => {
     const u1 = await seedUser(t);
     const u2 = await seedUser(t);
-    const faceRow = (userId: string) =>
+    // faces need a real asset now that the FK enforces it
+    const u1File = await seedFile(t, u1.id);
+    const u1Asset = await seedAsset(t, u1.id, u1File.id);
+    const u2File = await seedFile(t, u2.id);
+    const u2Asset = await seedAsset(t, u2.id, u2File.id);
+    const faceRow = (userId: string, assetId: string) =>
       t.faceRepo.create({
-        assetId: randomUUID(),
+        assetId,
         userId,
         box: { x: 1, y: 1, w: 10, h: 10 },
         confidence: 0.9,
         embedding: [0.1, 0.2, 0.3],
         personId: null,
       });
-    await t.faceRepo.save([faceRow(u1.id), faceRow(u1.id), faceRow(u2.id)]);
+    await t.faceRepo.save([
+      faceRow(u1.id, u1Asset.id),
+      faceRow(u1.id, u1Asset.id),
+      faceRow(u2.id, u2Asset.id),
+    ]);
 
     const res = await request(apiServer(t)).post('/api/v1/admin/faces/recluster').set(auth);
     expect(res.status).toBe(200);

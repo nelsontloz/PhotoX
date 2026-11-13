@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { insertAdminUser } from '../scripts/admin-seed';
 import { postgresConnectionOptions } from '../scripts/postgres-options';
+import { MIGRATIONS } from './migrations';
 
 // ponytail: 512 is the InsightFace buffalo_l w600k_r50 output dim.
 // Index rebuild fails while legacy 1024-dim rows remain (warn-caught) — the cluster re-embed backfill converts them.
@@ -118,11 +119,13 @@ export function typeOrmOptions() {
   return {
     ...postgresConnectionOptions(),
     autoLoadEntities: true,
-    // ponytail: synchronize is dev/test-only (same direct-process.env precedent as
-    // ADMIN_EMAIL above) — prod boots via the baseline migration (migrationsRun).
-    synchronize: process.env.NODE_ENV !== 'production',
-    migrationsRun: process.env.NODE_ENV === 'production',
-    migrations: [`${__dirname}/migrations/*.{js,ts}`],
+    // One schema everywhere: migrations build it, in every environment. `synchronize` used to
+    // cover dev/test, which let the entity metadata and the migrations disagree (and the
+    // integration template baked that disagreement into every run). A fresh dev DB, an existing
+    // synchronize-era DB and production now all go through MIGRATIONS.
+    synchronize: false,
+    migrationsRun: true,
+    migrations: MIGRATIONS,
     // 'each' (not TypeORM's 'all' default) so a migration may opt out of its transaction —
     // the index builds use CREATE INDEX CONCURRENTLY, which Postgres forbids inside one.
     // A side benefit: one failed migration no longer rolls back the ones before it.

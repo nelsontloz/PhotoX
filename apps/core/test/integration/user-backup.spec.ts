@@ -257,6 +257,18 @@ describe('user backup round-trip', () => {
     fake.failListKeys = false;
   });
 
+  /**
+   * Deletes the account rows the real wipe would delete, including its durable ledger (a
+   * backup run is metadata about the account; a merge row whose *target* is gone cannot survive
+   * the users FK — but a merge row that names this account as its *source* must, that reference
+   * is deliberately unconstrained).
+   */
+  async function deleteAccountRow(userId: string): Promise<void> {
+    await dataSource.getRepository(BackupRun).delete({ userId });
+    await mergeRepo.delete({ targetUserId: userId });
+    await userRepo.delete(userId);
+  }
+
   async function seedOriginal(
     userId: string,
     bytes: Buffer,
@@ -449,7 +461,9 @@ describe('user backup round-trip', () => {
       personRepo.create({
         userId: user.id,
         name: 'Mom',
-        coverFaceId: randomUUID(),
+        // the manifest drops the cover (it points at regenerated faces), and a dangling id is
+        // no longer representable now that persons.coverFaceId is a FK
+        coverFaceId: null,
         clusterLabel: 'c1',
         faceCount: 5,
       }),
@@ -1378,7 +1392,7 @@ describe('user backup round-trip', () => {
       await assetRepo.delete({ userId });
       await fileRepo.delete({ userId });
       await albumRepo.delete({ userId });
-      await userRepo.delete(userId);
+      await deleteAccountRow(userId);
     }
 
     it('unions live + orphan rows with deleted flags sorted by email', async () => {
@@ -1507,7 +1521,7 @@ describe('user backup round-trip', () => {
       await personRepo.delete({ userId: origId });
       await assetRepo.delete({ userId: origId });
       await fileRepo.delete({ userId: origId });
-      await userRepo.delete(origId);
+      await deleteAccountRow(origId);
 
       const other = await userRepo.save(
         userRepo.create({
@@ -1566,7 +1580,7 @@ describe('user backup round-trip', () => {
       const { user: orig, prefix } = await backupSingle(origEmail);
       const origId = orig.id;
       await fileRepo.delete({ userId: origId });
-      await userRepo.delete(origId);
+      await deleteAccountRow(origId);
       // manifest email reused by another live account: the default path would
       // allocate restored-<ms>-<orig>, but the explicit address must win instead
       const other = await userRepo.save(
@@ -1612,7 +1626,7 @@ describe('user backup round-trip', () => {
       await personRepo.delete({ userId: origId });
       await assetRepo.delete({ userId: origId });
       await fileRepo.delete({ userId: origId });
-      await userRepo.delete(origId);
+      await deleteAccountRow(origId);
 
       await userRepo.save(
         userRepo.create({
@@ -1645,7 +1659,7 @@ describe('user backup round-trip', () => {
       const { user: orig } = await backupSingle(origEmail);
       const origId = orig.id;
       await fileRepo.delete({ userId: origId });
-      await userRepo.delete(origId);
+      await deleteAccountRow(origId);
 
       const holderEmail = `holder-${randomUUID()}@example.com`;
       const holder = await userRepo.save(
@@ -1675,7 +1689,7 @@ describe('user backup round-trip', () => {
       const origId = orig.id;
       await assetRepo.delete({ userId: origId });
       await fileRepo.delete({ userId: origId });
-      await userRepo.delete(origId);
+      await deleteAccountRow(origId);
       await userRepo.save(
         userRepo.create({
           email: origEmail,
@@ -1781,7 +1795,7 @@ describe('user backup round-trip', () => {
       await assetRepo.delete({ userId: user.id });
       await fileRepo.delete({ userId: user.id });
       await albumRepo.delete({ userId: user.id });
-      await userRepo.delete(user.id);
+      await deleteAccountRow(user.id);
 
       const deleted = await svc.deleteBackup(user.id);
       expect(deleted).toEqual({ userId: user.id, email, prefix, deletedObjects: 2 });
@@ -1817,7 +1831,7 @@ describe('user backup round-trip', () => {
 
     async function deleteAccountRows(userId: string): Promise<void> {
       await deleteOwnedRows(userId);
-      await userRepo.delete(userId);
+      await deleteAccountRow(userId);
     }
 
     async function seedAccount(email: string): Promise<{
@@ -1881,7 +1895,7 @@ describe('user backup round-trip', () => {
         personRepo.create({
           userId: user.id,
           name: 'Mom',
-          coverFaceId: randomUUID(),
+          coverFaceId: null,
           clusterLabel: 'c1',
           faceCount: 5,
         }),
