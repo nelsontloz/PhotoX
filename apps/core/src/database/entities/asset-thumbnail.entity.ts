@@ -18,7 +18,9 @@ export class AssetThumbnail {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column()
+  // `uuid`, not the varchar a bare `@Column()` infers: the migrations (and the FK to assets)
+  // have always used uuid, so the entity was the drifting side.
+  @Column('uuid')
   assetId!: string;
 
   @ManyToOne(() => Asset, (a) => a.thumbnails, { onDelete: 'CASCADE', nullable: false })

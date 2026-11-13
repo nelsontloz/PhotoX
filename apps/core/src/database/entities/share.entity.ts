@@ -22,7 +22,8 @@ export class Share {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column()
+  // uuid, not the text a bare @Column() infers — see the UserIdUuid migration
+  @Column('uuid')
   userId!: string;
 
   @Column({ type: 'varchar', length: 16 })

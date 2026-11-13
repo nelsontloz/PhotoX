@@ -4,9 +4,8 @@
 //   https://download.geonames.org/export/dump/cities500.zip         ~13MB, ~200k cities >500 ppl
 // Cache: STORAGE_DIR/geo (default data/storage/geo), reused across runs. Idempotent: no-ops when
 // `places` already has rows (--force re-imports), inserts ON CONFLICT DO NOTHING by geonameId.
-// Schema comes from the Place entity via TypeORM synchronize (non-prod; same gate as
-// DatabaseModule) or core migrations (prod) — same POSTGRES_* env as core; the script lives
-// under src/ so core tsconfig/ESLint cover it.
+// Schema comes from core migrations (`MIGRATIONS`, run by this script on first use) — same
+// POSTGRES_* env as core; the script lives under src/ so core tsconfig/ESLint cover it.
 // Usage: pnpm --filter @photox/core places:import [--force]
 import { spawnSync } from 'node:child_process';
 import { createReadStream, existsSync } from 'node:fs';
@@ -17,6 +16,7 @@ import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { loadEnv, loadRootEnvFile } from '@photox/shared-config';
 import { Place } from '../database/entities/place.entity';
+import { MIGRATIONS } from '../database/migrations';
 import { parseCityLine, type PlaceRow } from './geonames';
 import { postgresConnectionOptions } from './postgres-options';
 
@@ -71,12 +71,15 @@ async function main(): Promise<void> {
   loadRootEnvFile();
   const env = loadEnv();
 
-  // mirrors DatabaseModule.forRoot(); non-prod synchronize creates `places` from the entity
-  // if core never ran (prod schema comes from core migrations, same gate as DatabaseModule)
+  // mirrors DatabaseModule.forRoot(); migrations (not synchronize) create `places` from the
+  // entity when core never ran against this database
   const dataSource = new DataSource({
     ...postgresConnectionOptions(),
     entities: [Place],
-    synchronize: process.env.NODE_ENV !== 'production',
+    synchronize: false,
+    migrationsRun: true,
+    migrations: MIGRATIONS,
+    migrationsTransactionMode: 'each',
   });
   await dataSource.initialize();
 

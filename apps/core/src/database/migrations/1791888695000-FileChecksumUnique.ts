@@ -4,7 +4,8 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
 // findOne-then-save check and inserted duplicate `files` rows (loser bytes leaked). The
 // services now insert with ON CONFLICT DO NOTHING and re-read the winner; this partial
 // unique index (originals only — transcodes legitimately share checksums across assets)
-// is the arbiter. synchronize covers dev/test; this migration covers prod (migrationsRun).
+// is the arbiter. Migrations are the only schema source in every environment, so dev, test and
+// prod all get this index from here.
 export class FileChecksumUnique1791888695000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

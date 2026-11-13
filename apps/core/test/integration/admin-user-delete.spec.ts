@@ -251,6 +251,24 @@ describe('admin async user deletion', () => {
     expect(await t.uploadPartRepo.count()).toBe(0);
     expect(await t.storage.exists(chunkKey)).toBe(false);
 
+    // Derived from the live catalog, not a hand-written list: every table that stores a userId
+    // must be empty for this account, `user_deletes` aside (it outlives the row on purpose).
+    // A table added without a wipe phase — or without a users FK — fails here instead of
+    // leaking rows forever while the run still reports `completed`.
+    const userTables: { table_name: string }[] = await t.dataSource.query(
+      `SELECT table_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND column_name = 'userId' AND table_name <> 'user_deletes'
+        ORDER BY table_name`,
+    );
+    expect(userTables.length).toBeGreaterThan(8);
+    for (const { table_name: table } of userTables) {
+      const rows: { n: number }[] = await t.dataSource.query(
+        `SELECT COUNT(*)::int AS n FROM "${table}" WHERE "userId" = $1`,
+        [user.id],
+      );
+      expect(rows[0]!.n, `${table} still owns rows after the wipe`).toBe(0);
+    }
+
     // every owned byte is gone, strays swept, models untouched
     expect(await t.storage.exists(photoFile.storageKey)).toBe(false);
     expect(existsSync(strayOriginal)).toBe(false);
