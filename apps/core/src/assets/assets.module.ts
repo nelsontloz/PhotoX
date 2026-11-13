@@ -5,6 +5,7 @@ import { AssetThumbnail } from '../database/entities';
 import { FileRecord } from '../database/entities';
 import { AssetsService } from './assets.service';
 import { AssetsController } from './assets.controller';
+import { TimelineController } from './timeline.controller';
 import { FacesModule } from '../faces/faces.module';
 import { PlacesModule } from '../places/places.module';
 
@@ -14,7 +15,7 @@ import { PlacesModule } from '../places/places.module';
     FacesModule,
     PlacesModule,
   ],
-  controllers: [AssetsController],
+  controllers: [AssetsController, TimelineController],
   providers: [AssetsService],
   exports: [AssetsService],
 })

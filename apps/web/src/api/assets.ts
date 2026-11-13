@@ -77,7 +77,7 @@ export interface AssetLayoutIndexParams extends AssetFilters {
 export async function getAssetLayoutIndex(
   params: AssetLayoutIndexParams,
 ): Promise<AssetLayoutIndex> {
-  const { data } = await api.get<AssetLayoutIndex>('/v1/assets/layout/months', { params });
+  const { data } = await api.get<AssetLayoutIndex>('/v1/timeline/index', { params });
   return data;
 }
 
@@ -90,7 +90,7 @@ export interface AssetLayoutPageParams extends AssetFilters {
 
 /** One offset page of a month window; walk `nextOffset` until it is null. */
 export async function getAssetLayoutPage(params: AssetLayoutPageParams): Promise<AssetLayoutPage> {
-  const { data } = await api.get<AssetLayoutPage>('/v1/assets/layout', { params });
+  const { data } = await api.get<AssetLayoutPage>('/v1/timeline/window', { params });
   return data;
 }
 

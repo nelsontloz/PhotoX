@@ -151,6 +151,11 @@ export interface SearchResponse {
   total: number;
 }
 
+// Timeline sync surface: `GET /api/v1/timeline/index` + `GET /api/v1/timeline/window`.
+// The index is the revalidation call — a client diffs its per-window `version` against the cached
+// one and refetches only the windows that moved. This block is the normative contract; the
+// operation descriptions in core's TimelineController repeat it for the OpenAPI document.
+
 interface AssetLayoutItem {
   t: string;
   w: number;
@@ -161,15 +166,23 @@ export interface AssetLayout {
   items: AssetLayoutItem[];
 }
 
-/** One month window from GET api/v1/assets/layout/months (a local calendar month for the `tz`). */
+/** One local-calendar-month window for the caller's `tz`. */
 export interface AssetLayoutMonth {
   /** Local month key, `YYYY-MM`. */
   key: string;
-  /** Window bounds as UTC instants — pass them straight back to the window page endpoint. */
+  /** Window bounds as UTC instants (half-open) — echo them verbatim to the window endpoint. */
   from: string;
   to: string;
   count: number;
-  /** Changes on any layout-visible mutation inside the window (see the plan doc). */
+  /**
+   * Opaque change token for this window. Compare for EQUALITY only: never parse it, never order
+   * by it, never assume its format — it is an implementation detail that may change.
+   *
+   * It moves on: asset add/delete/trash/restore, any asset mutation (dates, title, favourite),
+   * a hidden-album toggle or membership change, and album membership changes in `albumId` views.
+   * It does NOT move on person clustering (the `faces` table has no `updatedAt`), so `personId`
+   * views are deliberately memory-only on the client and must not rely on it.
+   */
   version: string;
 }
 
@@ -177,13 +190,18 @@ export interface AssetLayoutIndex {
   months: AssetLayoutMonth[];
 }
 
-/** One page of a month window from GET api/v1/assets/layout?from&to&offset&limit. */
+/** One page of one window; walk `nextOffset` until it is null. */
 export interface AssetLayoutPage extends AssetLayout {
+  /** Echoed from the index: the window's half-open bounds. Never re-derive them client-side. */
   from: string;
   to: string;
   total: number;
+  /**
+   * The whole window's token, identical to the index's. A page whose version differs from the
+   * window's first page means the window changed mid-walk: discard the walk and restart it once.
+   */
   version: string;
-  /** Next offset while more items remain, else null. */
+  /** Row index inside this window — not the collection cursor used by `GET /api/v1/assets`. */
   nextOffset: number | null;
 }
 

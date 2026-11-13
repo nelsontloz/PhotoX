@@ -5,7 +5,7 @@ import 'server_asset.dart';
 
 /// Read-only access to the server's asset library, for the merged grid.
 ///
-/// Core has no "whole library with ids" call: `GET /assets/layout` carries no
+/// Core has no "whole library with ids" call: `GET /timeline/window` carries no
 /// asset id, and `GET /assets` caps `limit` at 100. The merged timeline
 /// therefore pages this list by date, newest first, exactly like the web's
 /// month windows do.

@@ -232,7 +232,7 @@ describe('assets layout', () => {
     await seedTimedAsset(t, user.id, '2024-02-15T12:00:00.000Z');
 
     const ny = await request(apiServer(t))
-      .get('/api/v1/assets/layout/months')
+      .get('/api/v1/timeline/index')
       .query({ tz: 'America/New_York' })
       .set(t.authHeader(token));
     expect(ny.status).toBe(200);
@@ -251,9 +251,7 @@ describe('assets layout', () => {
     expect(nyMonths[0]?.version).toMatch(/^1-\d+-0-0$/);
 
     // no tz → UTC months, so the boundary item moves to April
-    const utc = await request(apiServer(t))
-      .get('/api/v1/assets/layout/months')
-      .set(t.authHeader(token));
+    const utc = await request(apiServer(t)).get('/api/v1/timeline/index').set(t.authHeader(token));
     const utcMonths = (utc.body as { months: MonthWindow[] }).months;
     expect(utcMonths.map((m) => m.key)).toEqual(['2024-04', '2024-02']);
     expect(utcMonths[0]).toMatchObject({
@@ -266,9 +264,7 @@ describe('assets layout', () => {
     const user = await seedUser(t);
     const token = t.signToken({ id: user.id, email: user.email, role: user.role });
 
-    const res = await request(apiServer(t))
-      .get('/api/v1/assets/layout/months')
-      .set(t.authHeader(token));
+    const res = await request(apiServer(t)).get('/api/v1/timeline/index').set(t.authHeader(token));
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ months: [] });
@@ -351,7 +347,7 @@ describe('assets layout', () => {
     expect(moved.get('2024-04')?.version).not.toBe(aprilWindow.version);
 
     const page = await request(apiServer(t))
-      .get('/api/v1/assets/layout')
+      .get('/api/v1/timeline/window')
       .query({ from: aprilWindow.from, to: aprilWindow.to })
       .set(t.authHeader(token));
     expect(page.status).toBe(200);
@@ -479,7 +475,7 @@ describe('assets layout', () => {
     expect(window).toMatchObject({ count: 3 });
 
     const first = await request(apiServer(t))
-      .get('/api/v1/assets/layout')
+      .get('/api/v1/timeline/window')
       .query({ from: from.toISOString(), to: to.toISOString(), limit: 2 })
       .set(t.authHeader(token));
     expect(first.status).toBe(200);
@@ -498,7 +494,7 @@ describe('assets layout', () => {
     ]);
 
     const second = await request(apiServer(t))
-      .get('/api/v1/assets/layout')
+      .get('/api/v1/timeline/window')
       .query({ from: from.toISOString(), to: to.toISOString(), offset: 2, limit: 2 })
       .set(t.authHeader(token));
     expect(second.status).toBe(200);
@@ -512,7 +508,7 @@ describe('assets layout', () => {
     const user = await seedUser(t);
     const token = t.signToken({ id: user.id, email: user.email, role: user.role });
     const get = (query: Record<string, string>) =>
-      request(apiServer(t)).get('/api/v1/assets/layout').query(query).set(t.authHeader(token));
+      request(apiServer(t)).get('/api/v1/timeline/window').query(query).set(t.authHeader(token));
 
     expect(
       (
@@ -530,10 +526,59 @@ describe('assets layout', () => {
     expect((await get({ limit: '10' })).status).toBe(400);
 
     const badTz = await request(apiServer(t))
-      .get('/api/v1/assets/layout/months')
+      .get('/api/v1/timeline/index')
       .query({ tz: 'Not/AZone' })
       .set(t.authHeader(token));
     expect(badTz.status).toBe(400);
+
+    // one DTO per resource: the other family's params are a 400, never silently ignored
+    const wrongFamily = (path: string, query: Record<string, string>) =>
+      request(apiServer(t)).get(path).query(query).set(t.authHeader(token));
+    expect(
+      (
+        await wrongFamily('/api/v1/timeline/window', {
+          tz: 'UTC',
+          from: '2024-03-01T00:00:00.000Z',
+          to: '2024-04-01T00:00:00.000Z',
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (await wrongFamily('/api/v1/timeline/index', { from: '2024-03-01T00:00:00.000Z' })).status,
+    ).toBe(400);
+  });
+
+  it('keeps the index stable across reads and ignores person clustering', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const asset = await seedTimedAsset(t, user.id, '2024-03-02T10:00:00.000Z');
+
+    const before = await monthsOf(t, token);
+    // the token is an equality signal only: nothing mutated, so nothing may move
+    expect([...(await monthsOf(t, token)).entries()]).toEqual([...before.entries()]);
+
+    // clustering writes faces/persons, never `assets.updatedAt` — `personId` views are
+    // memory-only on the client precisely because this window version cannot see it
+    const person = await t.personRepo.save(
+      t.personRepo.create({
+        userId: user.id,
+        name: null,
+        clusterLabel: `c-${randomUUID()}`,
+        faceCount: 1,
+      }),
+    );
+    await t.faceRepo.save(
+      t.faceRepo.create({
+        assetId: asset.id,
+        userId: user.id,
+        box: { x: 1, y: 1, w: 10, h: 10 },
+        confidence: 0.9,
+        embedding: [0.1, 0.2, 0.3],
+        personId: person.id,
+      }),
+    );
+
+    expect([...(await monthsOf(t, token)).entries()]).toEqual([...before.entries()]);
   });
 });
 
@@ -563,7 +608,7 @@ async function monthsOf(
   query: Record<string, string> = {},
 ): Promise<Map<string, MonthWindow>> {
   const res = await request(apiServer(t))
-    .get('/api/v1/assets/layout/months')
+    .get('/api/v1/timeline/index')
     .query(query)
     .set(t.authHeader(token));
   expect(res.status).toBe(200);
@@ -578,7 +623,7 @@ interface LayoutItem {
 }
 
 /**
- * Whole-library layout in timeline order: `/assets/layout` only serves one window page, so read
+ * Whole-library layout in timeline order: `/timeline/window` only serves one window page, so read
  * the month index and walk every window's pages, concatenating the items.
  */
 async function wholeLayout(
@@ -592,7 +637,7 @@ async function wholeLayout(
     let offset = 0;
     for (;;) {
       const res = await request(apiServer(t))
-        .get('/api/v1/assets/layout')
+        .get('/api/v1/timeline/window')
         .query({ ...filters, from: window.from, to: window.to, offset, limit: 2000 })
         .set(t.authHeader(token));
       expect(res.status).toBe(200);

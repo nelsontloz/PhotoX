@@ -76,7 +76,7 @@ async function fetchWindow(
 }
 
 /**
- * Builds the timeline layout from per-month windows (`/v1/assets/layout/months` + the offset-paged
+ * Builds the timeline layout from per-month windows (`/v1/timeline/index` + the offset-paged
  * window endpoint) instead of one whole-library response, so a change refetches only the windows
  * whose `version` moved. Month windows are persisted per user+filter in `layoutCache`; a warm load
  * is exactly one index request and zero page requests.

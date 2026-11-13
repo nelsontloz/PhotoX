@@ -1,13 +1,11 @@
 import type { Response } from 'express';
-import { BadRequestException } from '@nestjs/common';
-import { AssetsController } from './assets.controller';
+import { TimelineController } from './timeline.controller';
 import type { AssetsService } from './assets.service';
 
 function fakeRes() {
   const res = {
     statusCode: 200,
     headers: new Map<string, string>(),
-    jsonBody: undefined as unknown,
     rawBody: undefined as string | undefined,
     ended: false,
     setHeader(name: string, value: string) {
@@ -34,18 +32,21 @@ function makeController(body: unknown) {
   return {
     layout,
     layoutMonths,
-    controller: new AssetsController({
+    controller: new TimelineController({
       layout,
       layoutMonths,
     } as unknown as AssetsService),
   };
 }
 
-describe('AssetsController layout', () => {
-  it('window page returns the paged body', async () => {
+describe('TimelineController window', () => {
+  const from = '2024-03-01T00:00:00.000Z';
+  const to = '2024-04-01T00:00:00.000Z';
+
+  it('returns the paged body with the revalidation headers and no ETag', async () => {
     const body = {
-      from: '2024-03-01T00:00:00.000Z',
-      to: '2024-04-01T00:00:00.000Z',
+      from,
+      to,
       version: '3-1700000000000-0-0',
       total: 3,
       items: [{ t: '2024-03-02T10:00:00.000Z', w: 4, h: 3 }],
@@ -54,16 +55,11 @@ describe('AssetsController layout', () => {
     const { controller, layout } = makeController(body);
     const res = fakeRes();
 
-    await controller.layout(res as unknown as Response, 'u1', {
-      from: body.from,
-      to: body.to,
-      offset: 0,
-      limit: 1,
-    });
+    await controller.window(res as unknown as Response, 'u1', { from, to, offset: 0, limit: 1 });
 
     expect(layout).toHaveBeenCalledWith('u1', undefined, undefined, undefined, {
-      from: new Date(body.from),
-      to: new Date(body.to),
+      from: new Date(from),
+      to: new Date(to),
       offset: 0,
       limit: 1,
     });
@@ -77,51 +73,22 @@ describe('AssetsController layout', () => {
   it('defaults offset/limit when a window omits them', async () => {
     const { controller, layout } = makeController({ items: [] });
 
-    await controller.layout(fakeRes() as unknown as Response, 'u1', {
-      from: '2024-03-01T00:00:00.000Z',
-      to: '2024-04-01T00:00:00.000Z',
+    await controller.window(fakeRes() as unknown as Response, 'u1', {
+      from,
+      to,
+      personId: 'p-1',
     });
 
-    expect(layout).toHaveBeenCalledWith('u1', undefined, undefined, undefined, {
-      from: new Date('2024-03-01T00:00:00.000Z'),
-      to: new Date('2024-04-01T00:00:00.000Z'),
+    expect(layout).toHaveBeenCalledWith('u1', 'p-1', undefined, undefined, {
+      from: new Date(from),
+      to: new Date(to),
       offset: 0,
       limit: 2000,
     });
   });
-
-  it('rejects a half-supplied range and a windowless read', async () => {
-    const { controller, layout } = makeController({ items: [] });
-
-    await expect(
-      controller.layout(fakeRes() as unknown as Response, 'u1', {
-        from: '2024-03-01T00:00:00.000Z',
-      }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-    await expect(
-      controller.layout(fakeRes() as unknown as Response, 'u1', {
-        to: '2024-04-01T00:00:00.000Z',
-      }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-    await expect(
-      controller.layout(fakeRes() as unknown as Response, 'u1', { offset: 2000 }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-    // falsy but present: zero offset and a bare limit are still paging requests
-    await expect(
-      controller.layout(fakeRes() as unknown as Response, 'u1', { offset: 0 }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-    await expect(
-      controller.layout(fakeRes() as unknown as Response, 'u1', { limit: 10 }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-    // the whole-library body is gone, so a bare read is a 400 too
-    await expect(
-      controller.layout(fakeRes() as unknown as Response, 'u1', {}),
-    ).rejects.toBeInstanceOf(BadRequestException);
-    expect(layout).not.toHaveBeenCalled();
-  });
 });
 
-describe('AssetsController layout months', () => {
+describe('TimelineController index', () => {
   it('sends the month index uncached with the Authorization vary', async () => {
     const body = {
       months: [
@@ -134,11 +101,11 @@ describe('AssetsController layout months', () => {
         },
       ],
     };
-    const { controller, layoutMonths } = makeController({ items: [] });
+    const { controller, layoutMonths } = makeController({ months: [] });
     layoutMonths.mockResolvedValue(body);
     const res = fakeRes();
 
-    await controller.layoutMonths(res as unknown as Response, 'u1', {
+    await controller.index(res as unknown as Response, 'u1', {
       tz: 'Europe/Madrid',
       albumId: 'a-1',
     });

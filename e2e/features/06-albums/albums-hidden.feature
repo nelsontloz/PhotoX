@@ -61,12 +61,12 @@ Feature: Albums hidden from the timeline
     Then my timeline does not contain the album photo
     And the timeline layout only omits the hidden photo
 
-  Scenario: The timeline layout ETag changes after hiding
+  Scenario: The timeline layout version changes after hiding
     Given I am signed in
     And I created an album via the API named "Fingerprinted album"
     And I uploaded an album photo
     When I add my album photo to the album
-    Then the timeline layout ETag changes after hiding
+    Then the timeline layout version changes after hiding
 
   Scenario: Hiding an empty album changes nothing measurable
     Given I am signed in
