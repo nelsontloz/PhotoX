@@ -15,7 +15,7 @@ const BOOTSTRAP_SQL: { warn: string; statements: string[] }[] = [
   {
     warn: 'assets_layout_idx creation failed — layout endpoint falls back to filter+sort',
     statements: [
-      // covering index for GET /assets/layout: partial (non-trashed) + COALESCE order keys
+      // covering index for GET /timeline/window: partial (non-trashed) + COALESCE order keys
       // + INCLUDE makes both the layout fetch and the ETag fingerprint query index-only
       `CREATE INDEX IF NOT EXISTS assets_layout_idx
        ON assets ("userId", (COALESCE("takenAt", "uploadedAt")) DESC, "uploadedAt" DESC)

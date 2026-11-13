@@ -1,4 +1,10 @@
-# Timeline layout: month pages + browser cache (plan)
+# Timeline layout: month pages + browser cache (design record)
+
+> **Status: design record, not the contract.** The wire contract lives in `AssetLayoutMonth` /
+> `AssetLayoutPage` (`packages/shared-types/src/index.ts`) and in the `TimelineController`
+> operation descriptions. The routes are `GET /api/v1/timeline/index` and
+> `GET /api/v1/timeline/window` (formerly `/api/v1/assets/layout*`). This file records why they
+> look the way they do — keep the reasoning here, put the guarantees there.
 
 Item 18: `GET /assets/layout` returns the whole library (~55 B/asset, 5.5 MB at 100k) and is rebuilt
 on every ETag miss (any upload, trash, favourite, edit), then sorted and packed on the main thread.
@@ -28,7 +34,7 @@ Accepted consequences:
 
 Path policy in `open-routes.ts` is unchanged (both routes are authenticated).
 
-### `GET /api/v1/assets/layout/months` (new)
+### `GET /api/v1/timeline/index`
 
 ```
 ?tz=Europe/Madrid&personId&favorite&albumId
@@ -69,7 +75,7 @@ membership. It does **not** cover person clustering: `faces` has no `updatedAt`
 (`apps/core/src/database/entities/face.entity.ts`), so `personId` views stay memory-only on the
 client. Same hole the current filtered-ETag comment documents; do not pretend to solve it here.
 
-### `GET /api/v1/assets/layout?from&to&offset&limit` (extend)
+### `GET /api/v1/timeline/window?from&to&offset&limit`
 
 ```
 → { from, to, version, total, items: [{t,w,h}], nextOffset: number | null }
@@ -84,13 +90,11 @@ client. Same hole the current filtered-ETag comment documents; do not pretend to
   EXIF dates lands entirely in one window through `uploadedAt`) is a rare cold path.
 - Concurrency: a page fetch that returns a different `version` than the first page of the same
   window means the month changed mid-walk — the client restarts that window once.
-- **Legacy**: no `from`/`to` → exactly today's `{ items }` body and ETag path, unchanged. The e2e
-  suite (`e2e/steps/albums/albums.steps.ts`) and the integration specs keep hitting it.
-- Both `from` and `to` or neither → `400` (`@ValidateIf` pair or a class-level check).
+- `from` and `to` are both required → a bare window read is a `400`; there is no whole-library body.
 
-Both params sets live in one `LayoutQueryDto` (`@IsUUID` person/album, `@IsBoolean` favourite,
-`@IsISO8601` from/to, `@Type(() => Number)` offset/limit, `tz` regex). `forbidNonWhitelisted` is
-global, so the DTO is the only place new params can be added.
+The two resources have separate DTOs (`TimelineIndexQueryDto`, `TimelineWindowQueryDto`), so
+`forbidNonWhitelisted` turns a param from the other family (`tz` on the window, `from` on the
+index) into a `400` instead of the silently-ignored parameter one shared DTO used to accept.
 
 Service signatures stay additive:
 
@@ -159,10 +163,11 @@ Core:
   into a hidden album each change exactly the affected window's version, and only that window's;
   `albumId` version moves on membership change; `from`/`to` bounds (start inclusive, end exclusive);
   `offset`/`limit` walk with `nextOffset`, `limit` 5000 cap; `from` without `to` → 400; bad `tz` →
-  400; empty library → `months: []`; legacy no-param call still `{ items }` + ETag + 304.
-- controller unit spec: legacy branch keeps ETag headers; window branch sets
-  `Cache-Control: private, no-cache` + `Vary: Authorization` and no ETag; `layoutMonths` sets
-  `no-store`.
+  400; a param from the other family → 400; empty library → `months: []`; two consecutive index
+  reads with no mutation return identical versions; inserting a face / assigning it to a person
+  moves no window version (the documented clustering exclusion).
+- controller unit spec: the window sets `Cache-Control: private, no-cache` + `Vary: Authorization`
+  and no ETag; the index sets `no-store`.
 
 Web:
 
@@ -174,8 +179,8 @@ Web:
   (extend `TimelineGridSpace.spec`).
 - Existing `buildBuckets` / `TimelineScrollbar` / `TimelineGrid` specs pass untouched.
 
-e2e: `06-albums/albums-hidden.feature` (legacy layout + ETag steps) and the timeline/scroll-restore
-suites pass unchanged.
+e2e: `06-albums/albums-hidden.feature` (timeline index + version steps) and the
+timeline/scroll-restore suites pass unchanged.
 
 Budget to record in the PR (100k fixture): cold index bytes, warm-load request count, post-upload
 request count, `EXPLAIN` of the grouped query (expect an index-only scan of `assets_layout_idx`;

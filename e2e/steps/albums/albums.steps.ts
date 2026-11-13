@@ -256,12 +256,12 @@ interface LayoutMonthsPayload {
   months: { key: string; count: number; version: string }[];
 }
 
-/** GET the timeline layout month index: the paged layout's window list + versions. */
+/** GET the timeline month index: window list + per-window versions. */
 async function fetchLayout(
   request: APIRequestContext,
   auth: AuthResponse,
 ): Promise<LayoutMonthsPayload> {
-  const response = await request.get('/api/v1/assets/layout/months?tz=UTC', {
+  const response = await request.get('/api/v1/timeline/index?tz=UTC', {
     headers: authHeaders(auth),
   });
   expect(response.status()).toBe(200);
@@ -336,9 +336,8 @@ Then('the timeline layout only omits the hidden photo', async ({ request, ctx })
   expect((await fetchTimeline(request, auth)).total).toBe(1);
 });
 
-Then('the timeline layout ETag changes after hiding', async ({ request, ctx }) => {
+Then('the timeline layout version changes after hiding', async ({ request, ctx }) => {
   const auth = requireAuth(ctx);
-  // the month index's per-window version is the layout's change signal now
   const versions = (layout: LayoutMonthsPayload) =>
     layout.months.map((month) => `${month.key}:${month.version}`).join('|');
   const before = versions(await fetchLayout(request, auth));
