@@ -12,8 +12,8 @@ The rules the code follows, so a new file has one obvious home. Enforced where i
 | `database/entities/` | **Every** entity. One schema, one directory |
 | `database/migrations/` | Every schema change. Boot SQL in `database.module.ts` is DDL that `synchronize` cannot express |
 | `common/` | Anything imported by three or more features (`sql-errors`, `mime`, `asset-ownership`, …) |
-| `files/user/` | The ingest core: `persistOriginal` → `createAsset` → `enqueueAssetJobs` |
-| `files/storage/` | `LocalStorageService` wiring (infrastructure) |
+| `ingest/` | The ingest core: `persistOriginal` → `createAsset` → `enqueueAssetJobs`, plus the `/files` and asset-content routes |
+| `storage/` | `LocalStorageService` wiring (infrastructure) |
 | `assets/` | Asset CRUD, trash, metadata ingestion, byte-target resolution |
 | `timeline` (inside `assets/`) | The month-index / window protocol and its `version` tokens |
 | `backup/` | Manifest, transfer ledger, restore, merge — the one declared cross-cutting reader |

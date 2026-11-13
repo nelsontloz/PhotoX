@@ -481,7 +481,7 @@
             font-family="'Geist Mono', monospace"
             text-anchor="middle"
           >
-            GET /assets/layout
+            GET /timeline/index
           </text>
           <text
             x="806"
